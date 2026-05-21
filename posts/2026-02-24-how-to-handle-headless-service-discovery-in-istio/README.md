@@ -41,7 +41,7 @@ my-database-2.my-database.default.svc.cluster.local
 
 ## How Istio Handles Headless Services
 
-When Istio encounters a headless service, it treats it differently from a regular service. Instead of creating a single cluster with a load balancer, Istio creates individual endpoints that the sidecar can route to independently.
+When Istio encounters a headless service, it treats it differently from a regular service. Instead of always choosing a backend from the service's endpoint list the way it does for a standard Service, Istio preserves the original pod IP selected by the application and still maintains endpoint information for the service.
 
 Here's what happens in the Envoy configuration:
 
@@ -77,12 +77,14 @@ For StatefulSet pod DNS names, each one resolves to the specific pod IP:
 kubectl exec -it deploy/my-app -c my-app -- nslookup my-database-0.my-database.default.svc.cluster.local
 ```
 
+For HTTP services, make sure the request still carries a service hostname in the `Host` header, or use the pod's DNS name instead of only the pod IP. If the application connects to a pod IP directly and the service port is declared as HTTP, Envoy may not have enough host information to select the right route.
+
 ## Applying Traffic Policies to Headless Services
 
 You can apply DestinationRule to headless services, but keep in mind that load balancing works per-connection rather than per-request for TCP:
 
 ```yaml
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-database-policy
@@ -103,16 +105,16 @@ spec:
 
 mTLS works with headless services, but there's a subtlety. Because clients connect to individual pod IPs rather than a ClusterIP, the sidecar needs to identify the destination service from the IP address. Istio handles this through its endpoint discovery, matching pod IPs to services.
 
-Verify mTLS is working:
+Check that the client sidecar has TLS configuration for the service:
 
 ```bash
-istioctl authn tls-check deploy/my-app my-database.default.svc.cluster.local
+istioctl proxy-config cluster deploy/my-app --fqdn my-database.default.svc.cluster.local -o json
 ```
 
 If you need to configure specific mTLS settings:
 
 ```yaml
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-database-mtls
@@ -129,13 +131,13 @@ spec:
 StatefulSets with headless services are the most common pattern for stateful workloads. Here are some Istio-specific things to keep in mind:
 
 ### Pod Identity
-Each StatefulSet pod has a stable DNS name and network identity. Istio respects this by maintaining individual endpoints for each pod. The sidecar on each StatefulSet pod gets its own certificate with the pod-specific identity.
+Each StatefulSet pod has a stable DNS name and network identity. Istio respects this by maintaining individual endpoints for each pod. The sidecar on each StatefulSet pod gets its own certificate, and in Kubernetes that certificate encodes the workload's service account identity.
 
 ### Persistent Connections
 Many stateful protocols (database connections, Kafka consumers) use long-lived TCP connections. Envoy handles these fine, but be aware that load balancing only happens at connection establishment time. If a pod goes down and comes back, existing connections won't rebalance automatically.
 
 ### Init Containers and Startup
-StatefulSet pods often have complex startup sequences with init containers. The Istio sidecar can interfere with this if the init container needs network access. See the pod startup order section for details on handling this.
+StatefulSet pods often have complex startup sequences with init containers. The Istio sidecar can interfere with this if the application container needs network access before the proxy is ready, so check Istio's sidecar startup settings for workloads that are sensitive to startup ordering.
 
 ## Headless Services with Multiple Ports
 
@@ -165,7 +167,7 @@ Istio uses the port name prefix to determine the protocol. `tcp-` means TCP, `ht
 Sometimes you need to route traffic to a specific pod in a headless service. You can use subset-based routing:
 
 ```yaml
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: database-subsets
@@ -183,7 +185,7 @@ spec:
     labels:
       role: replica
 ---
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: database-routing
@@ -229,4 +231,4 @@ If `istioctl proxy-config endpoint` shows no results for your headless service b
 istioctl proxy-status
 ```
 
-Headless services work well with Istio once you understand the differences from regular services. The key thing to remember is that DNS is more important for headless services, traffic policies apply per-endpoint rather than per-service, and StatefulSet pods each get their own identity in the mesh.
+Headless services work well with Istio once you understand the differences from regular services. The key thing to remember is that DNS is more important for headless services, traffic policies apply per-endpoint rather than per-service, and StatefulSet pods keep their stable Kubernetes network identity while Istio uses the workload's service account identity for mTLS.
