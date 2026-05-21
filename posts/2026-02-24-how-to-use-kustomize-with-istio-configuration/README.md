@@ -142,7 +142,12 @@ resources:
 namespace: staging
 patches:
   - path: patches/virtual-service-patch.yaml
-  - path: patches/destination-rule-patch.yaml
+  - target:
+      group: networking.istio.io
+      version: v1
+      kind: DestinationRule
+      name: order-service
+    path: patches/destination-rule-patch.yaml
 ```
 
 ```yaml
@@ -167,19 +172,17 @@ spec:
 
 ```yaml
 # istio/overlays/staging/patches/destination-rule-patch.yaml
-apiVersion: networking.istio.io/v1
-kind: DestinationRule
-metadata:
-  name: order-service
-spec:
-  host: order-service
-  trafficPolicy:
-    connectionPool:
-      tcp:
-        maxConnections: 50
-      http:
-        http1MaxPendingRequests: 50
-        http2MaxRequests: 50
+- op: replace
+  path: /spec/trafficPolicy/connectionPool/tcp/maxConnections
+  value: 50
+- op: replace
+  path: /spec/trafficPolicy/connectionPool/http/http1MaxPendingRequests
+  value: 50
+- op: replace
+  path: /spec/trafficPolicy/connectionPool/http/http2MaxRequests
+  value: 50
+- op: remove
+  path: /spec/trafficPolicy/outlierDetection
 ```
 
 ### Production Overlay
@@ -300,7 +303,7 @@ kubectl apply -k istio/overlays/production/
 
 ## Using Strategic Merge Patches
 
-For more complex modifications, use strategic merge patches. This is the default patch strategy in Kustomize:
+For simple whole-field modifications, Kustomize can apply YAML object patches:
 
 ```yaml
 # istio/overlays/production/kustomization.yaml
@@ -316,18 +319,29 @@ patches:
       kind: VirtualService
       name: order-service
     patch: |
-      - op: add
-        path: /metadata/annotations
-        value:
+      apiVersion: networking.istio.io/v1
+      kind: VirtualService
+      metadata:
+        name: order-service
+        annotations:
           external-dns.alpha.kubernetes.io/hostname: orders.example.com
-      - op: replace
-        path: /spec/http/0/timeout
-        value: 30s
+      spec:
+        http:
+          - route:
+              - destination:
+                  host: order-service
+                  port:
+                    number: 8080
+            timeout: 30s
+            retries:
+              attempts: 2
+              perTryTimeout: 5s
+              retryOn: 5xx,reset,connect-failure
 ```
 
 ## Using JSON Patches for Precise Edits
 
-When you need to modify specific array elements or deeply nested fields, JSON patches give you exact control:
+When you need to modify specific array elements or deeply nested fields, JSON patches give you exact control. This is often the safer choice for Istio custom resources, because not all custom resources or fields support strategic merge behavior:
 
 ```yaml
 # istio/overlays/production/kustomization.yaml
@@ -421,7 +435,14 @@ for ENV in staging production; do
   fi
 
   # Run istioctl analyze on the output
-  echo "$OUTPUT" | istioctl analyze --use-kube=false -f - 2>&1
+  ANALYZE_FILE=$(mktemp)
+  echo "$OUTPUT" > "$ANALYZE_FILE"
+  istioctl analyze --use-kube=false "$ANALYZE_FILE" 2>&1
+  if [ $? -ne 0 ]; then
+    echo "FAIL: istioctl analyze failed for $ENV"
+    ERRORS=$((ERRORS + 1))
+  fi
+  rm -f "$ANALYZE_FILE"
 done
 
 exit $ERRORS
