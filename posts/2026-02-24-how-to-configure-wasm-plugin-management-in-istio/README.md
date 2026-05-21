@@ -16,7 +16,7 @@ But managing Wasm plugins in a production mesh requires some care. Here is how t
 
 A Wasm plugin is a compiled WebAssembly module that runs inside the Envoy proxy. The plugin gets called for each request (or connection) and can inspect, modify, or reject traffic. Istio provides a `WasmPlugin` custom resource to deploy and configure these plugins.
 
-Wasm plugins run in a sandboxed environment, so a bug in your plugin will not crash the proxy. The worst that happens is the plugin fails and the request either passes through untouched or gets rejected, depending on the `failStrategy` configuration.
+Wasm plugins run in a sandboxed environment, so a bug in your plugin is isolated from the proxy process. If the plugin has a fatal error, Istio applies the `failStrategy` configuration: requests can be rejected, allowed to bypass the plugin, or handled by a new plugin instance for supported runtime errors.
 
 ## Deploying Your First Wasm Plugin
 
@@ -52,7 +52,7 @@ The `phase` field determines where in the Envoy filter chain your plugin execute
 
 - **AUTHN** - Authentication phase, runs early. Good for validating tokens and API keys
 - **AUTHZ** - Authorization phase, runs after authentication. Good for access control decisions
-- **STATS** - Statistics phase, runs after the request is processed. Good for custom metrics
+- **STATS** - Statistics phase, runs before Istio stats filters and after authorization filters. Good for custom metrics
 - **UNSPECIFIED_PHASE** - Default, inserts before the router. Works for general-purpose processing
 
 ```yaml
@@ -73,7 +73,7 @@ spec:
     burst: 20
 ```
 
-The `priority` field controls ordering when multiple plugins share the same phase. Lower numbers execute first.
+The `priority` field controls ordering when multiple plugins share the same phase. Higher numbers execute first.
 
 ## Fetching Plugins from OCI Registries
 
@@ -136,14 +136,14 @@ The pull policies:
 - **IfNotPresent** - Only fetch if the module is not already cached. Use with specific version tags
 - **Always** - Always fetch, even if cached. Use during development with mutable tags like `latest`
 
-For production, always use immutable version tags with `IfNotPresent`. Using `latest` in production is asking for trouble.
+For production, use immutable version tags or digest references with `IfNotPresent`. Using `latest` in production is asking for trouble.
 
 ## Applying Plugins at Different Scopes
 
 Wasm plugins can be scoped to specific workloads, namespaces, or the entire mesh:
 
 ```yaml
-# Mesh-wide (apply in istio-system without selector)
+# Mesh-wide (apply in the Istio config root namespace, commonly istio-system, without selector)
 apiVersion: extensions.istio.io/v1alpha1
 kind: WasmPlugin
 metadata:
@@ -204,6 +204,7 @@ spec:
 
 - **FAIL_CLOSE** - If the plugin fails, reject the request. Use for security-critical plugins
 - **FAIL_OPEN** - If the plugin fails, let the request through. Use for non-critical functionality
+- **FAIL_RELOAD** - Create a new plugin instance for a new request after supported runtime errors
 
 ## Monitoring Wasm Plugins
 
@@ -213,18 +214,18 @@ Check the status of your Wasm plugins:
 kubectl get wasmplugins -n production
 ```
 
-Monitor plugin performance through Envoy stats:
+Monitor Wasm-related metrics through the Istio telemetry endpoint:
 
 ```bash
-kubectl exec deploy/my-service -c istio-proxy -- curl -s localhost:15000/stats | grep "wasm"
+kubectl exec deploy/my-service -c istio-proxy -- curl -s localhost:15020/stats/prometheus | grep "wasm"
 ```
 
-Key metrics to watch:
+Key Istio agent metrics to watch for remote module distribution:
 
-- `wasm_filter.*.remote_load_cache_hits` - Plugin fetched from cache
-- `wasm_filter.*.remote_load_cache_misses` - Plugin fetched from remote
-- `wasm_filter.*.remote_load_fetch_failures` - Failed to fetch plugin
-- `wasm_filter.*.created` - Plugin instances created
+- `istio_agent_wasm_cache_lookup_count` - Wasm remote fetch cache lookups
+- `istio_agent_wasm_cache_entries` - Wasm config conversion results, including cache and fetch outcomes
+- `istio_agent_wasm_config_conversion_duration_bucket` - Time spent converting Wasm module configuration
+- `istio_agent_wasm_remote_fetch_count` - Remote fetch results, including successful downloads, download failures, and checksum mismatches
 
 ## Debugging Plugin Issues
 
