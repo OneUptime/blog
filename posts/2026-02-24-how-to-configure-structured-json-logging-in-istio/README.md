@@ -33,7 +33,7 @@ Apply this:
 istioctl install -f istio-operator.yaml
 ```
 
-After applying, existing proxies will pick up the change when they reconnect to Istiod (usually within a few seconds). No pod restart needed.
+After applying, existing proxies will pick up the change when Istiod pushes updated configuration. No workload pod restart is usually needed.
 
 ## The Default JSON Fields
 
@@ -63,7 +63,8 @@ When you use the default JSON format, each access log entry includes these field
   "upstream_local_address": "10.0.1.5:34567",
   "upstream_service_time": "43",
   "upstream_transport_failure_reason": null,
-  "user_agent": "curl/7.68.0"
+  "user_agent": "curl/7.68.0",
+  "x_forwarded_for": "10.0.1.3"
 }
 ```
 
@@ -103,7 +104,7 @@ spec:
 
 ## Using the Telemetry API with Extension Providers
 
-The modern approach (Istio 1.12+) uses extension providers defined in the mesh config, then activated through the Telemetry API:
+The modern approach uses extension providers defined in the mesh config, then activated through the Telemetry API. The Telemetry API added access logging support in Istio 1.12, and the stable `telemetry.istio.io/v1` API is available in Istio 1.22 and later:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -117,10 +118,8 @@ spec:
           logFormat:
             labels:
               timestamp: "%START_TIME%"
-              source_namespace: "%DOWNSTREAM_PEER_NAMESPACE%"
-              source_workload: "%DOWNSTREAM_PEER_ID%"
-              destination_namespace: "%UPSTREAM_PEER_NAMESPACE%"
-              destination_workload: "%UPSTREAM_PEER_ID%"
+              source_identity: "%DOWNSTREAM_PEER_URI_SAN%"
+              destination_identity: "%UPSTREAM_PEER_URI_SAN%"
               method: "%REQ(:METHOD)%"
               path: "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%"
               protocol: "%PROTOCOL%"
@@ -194,9 +193,6 @@ For Fluent Bit:
 [FILTER]
     Name              kubernetes
     Match             istio.*
-    Merge_Log         On
-    Keep_Log          Off
-    K8S-Logging.Parser On
 
 [FILTER]
     Name              parser
@@ -206,24 +202,32 @@ For Fluent Bit:
     Reserve_Data      On
 ```
 
-For Promtail (Loki):
+For Grafana Alloy (Loki):
 
-```yaml
-scrape_configs:
-  - job_name: istio-proxy
-    pipeline_stages:
-      - cri: {}
-      - json:
-          expressions:
-            method: method
-            path: path
-            response_code: response_code
-            duration: duration
-            request_id: request_id
-            upstream_cluster: upstream_cluster
-      - labels:
-            method:
-            response_code:
+```hcl
+loki.process "istio_proxy" {
+  forward_to = [loki.write.default.receiver]
+
+  stage.cri {}
+
+  stage.json {
+    expressions = {
+      method           = "method"
+      path             = "path"
+      response_code    = "response_code"
+      duration         = "duration"
+      request_id       = "request_id"
+      upstream_cluster = "upstream_cluster"
+    }
+  }
+
+  stage.labels {
+    values = {
+      method        = "method"
+      response_code = "response_code"
+    }
+  }
+}
 ```
 
 ## Querying JSON Logs
