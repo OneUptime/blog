@@ -26,11 +26,11 @@ graph LR
 
 Each step introduces delay:
 1. Envoy updates metrics counters immediately on each request
-2. Prometheus scrapes endpoints at a configured interval (default: 15s)
-3. Prometheus evaluates rules at a configured interval (default: 15s)
+2. Prometheus scrapes endpoints at a configured interval (upstream Prometheus defaults to 1m; Prometheus Operator defaults to 30s)
+3. Prometheus evaluates rules at a configured interval (upstream Prometheus defaults to 1m; Prometheus Operator defaults to 30s)
 4. Grafana refreshes dashboards at a configured interval (default: varies)
 
-The total delay from a request happening to seeing it on a dashboard can be 30-60 seconds with default settings. Here is how to bring that down.
+The total delay from a request happening to seeing it on a dashboard can be one to several minutes with default settings. Here is how to bring that down.
 
 ## Tuning Prometheus Scrape Interval
 
@@ -57,6 +57,7 @@ For the Istio-specific scrape job:
 # prometheus-additional.yaml
 
 - job_name: 'istio-proxy'
+  metrics_path: /stats/prometheus
   scrape_interval: 10s
   scrape_timeout: 8s
   kubernetes_sd_configs:
@@ -130,7 +131,7 @@ spec:
             description: "Error rate is {{ $value | humanizePercentage }}"
 ```
 
-Note the `for: 30s` on the alert. With a 10s evaluation interval, this means the condition must be true for 3 consecutive evaluations before firing, which filters out single-scrape anomalies.
+Note the `for: 30s` on the alert. With a 10s evaluation interval, this means the condition must remain true for about 30 seconds before firing, which filters out single-scrape anomalies.
 
 ## Grafana Real-Time Dashboard Configuration
 
@@ -140,7 +141,7 @@ Set your Grafana dashboard to refresh every 10 seconds. In the dashboard setting
 
 ### Streaming Queries
 
-For truly real-time panels, use Grafana's streaming data source if your Prometheus implementation supports it. Standard Prometheus does not support streaming, but Mimir and Thanos have experimental support.
+For truly real-time panels, use a Grafana streaming data source such as a Grafana Live-compatible plugin. Standard Prometheus, Mimir, and Thanos are queried through the Prometheus HTTP API rather than streamed into panels.
 
 For standard Prometheus, configure panels with:
 
@@ -229,8 +230,8 @@ data:
       group_interval: 30s
       repeat_interval: 4h
       routes:
-        - match:
-            severity: critical
+        - matchers:
+            - severity="critical"
           receiver: 'pagerduty-critical'
           group_wait: 0s
           group_interval: 10s
@@ -245,13 +246,13 @@ data:
 
       - name: 'pagerduty-critical'
         pagerduty_configs:
-          - service_key: '<YOUR_PD_KEY>'
+          - routing_key: '<YOUR_PD_EVENTS_API_V2_KEY>'
 ```
 
 Key settings for fast alerting:
 - `group_wait: 0s` for critical alerts - send immediately, do not wait to batch
 - `group_interval: 10s` - check for new alerts in the group every 10 seconds
-- `resolve_timeout: 1m` - resolve alerts quickly once the condition clears
+- `resolve_timeout: 1m` - resolve alerts quickly for clients that do not set an end time. Prometheus alerts include an end time, so their resolution is driven by rule evaluation.
 
 Resource Considerations
 
