@@ -43,6 +43,10 @@ spec:
         ISTIO_META_DNS_CAPTURE: "true"
         ISTIO_META_DNS_AUTO_ALLOCATE: "true"
   values:
+    pilot:
+      env:
+        PILOT_ENABLE_WORKLOAD_ENTRY_AUTOREGISTRATION: "true"
+        PILOT_ENABLE_WORKLOAD_ENTRY_HEALTHCHECKS: "true"
     global:
       meshID: mesh1
       multiCluster:
@@ -57,7 +61,7 @@ istioctl install -f istio-vm-support.yaml
 Install the east-west gateway to expose Istiod to VMs:
 
 ```bash
-samples/multicluster/gen-eastwest-gateway.sh --network network1 | istioctl install -f -
+samples/multicluster/gen-eastwest-gateway.sh --network network1 | istioctl install -y -f -
 ```
 
 Expose Istiod through the gateway:
@@ -69,7 +73,7 @@ kubectl apply -f samples/multicluster/expose-istiod.yaml -n istio-system
 The `expose-istiod.yaml` creates a Gateway that makes Istiod's xDS port (15012) available through the east-west gateway:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: istiod-gateway
@@ -101,7 +105,7 @@ kubectl create serviceaccount vm-mysql -n vm-workloads
 The WorkloadGroup is a template for VM workloads, similar to how a Deployment is a template for pods:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: WorkloadGroup
 metadata:
   name: mysql
@@ -115,7 +119,7 @@ spec:
     serviceAccount: vm-mysql
     network: vm-network
   probe:
-    httpGet:
+    tcpSocket:
       port: 3306
     periodSeconds: 5
 ```
@@ -153,8 +157,8 @@ For Debian/Ubuntu:
 
 ```bash
 # On the VM
-# Add the Istio package repository
-curl -LO https://storage.googleapis.com/istio-release/releases/1.20.0/deb/istio-sidecar.deb
+# Install the Istio virtual machine integration runtime
+curl -LO https://storage.googleapis.com/istio-release/releases/1.30.0/deb/istio-sidecar.deb
 sudo dpkg -i istio-sidecar.deb
 
 # Copy the configuration files
@@ -164,9 +168,11 @@ sudo mkdir -p /var/run/secrets/tokens
 sudo cp istio-token /var/run/secrets/tokens/istio-token
 sudo cp cluster.env /var/lib/istio/envoy/cluster.env
 sudo cp mesh.yaml /etc/istio/config/mesh
+sudo sh -c 'cat hosts >> /etc/hosts'
 
 # Set ownership
-sudo chown -R istio-proxy:istio-proxy /etc/certs /var/run/secrets /var/lib/istio /etc/istio
+sudo mkdir -p /etc/istio/proxy
+sudo chown -R istio-proxy:istio-proxy /etc/certs /var/run/secrets /var/lib/istio /etc/istio/proxy /etc/istio/config
 
 # Start the Istio sidecar
 sudo systemctl start istio
@@ -187,7 +193,7 @@ Look for log messages indicating successful connection to Istiod: `"xds]connecte
 If you used `--autoregister` in step 4, the WorkloadEntry is created automatically when the VM connects. Otherwise, create it manually:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: WorkloadEntry
 metadata:
   name: mysql-vm
