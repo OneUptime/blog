@@ -28,7 +28,7 @@ Test connectivity from one cluster to the other gateway:
 
 ```bash
 kubectl run --context=cluster-west -n istio-system --rm -it --image=busybox:1.36 \
-  test-connectivity -- nc -zv <east-gateway-ip> 15443
+  --restart=Never test-connectivity -- nc -zv <east-gateway-ip> 15443
 ```
 
 If this times out, you have a network-level problem. Check firewall rules, security groups, and VPN connectivity. No amount of Istio debugging will help if the networks can't talk to each other.
@@ -82,12 +82,12 @@ Check the certificate chain on both sides:
 
 istioctl proxy-config secret \
   $(kubectl get pod -n sample -l app=sleep -o jsonpath='{.items[0].metadata.name}' \
-  --context=cluster-west) --context=cluster-west
+  --context=cluster-west) --context=cluster-west -o json
 
 # Server side
 istioctl proxy-config secret \
   $(kubectl get pod -n sample -l app=helloworld -o jsonpath='{.items[0].metadata.name}' \
-  --context=cluster-east) --context=cluster-east
+  --context=cluster-east) --context=cluster-east -o json
 ```
 
 The output shows the root cert, cert chain, and expiry. Make sure:
@@ -112,10 +112,10 @@ Check istiod's push metrics:
 kubectl exec -n istio-system \
   $(kubectl get pod -n istio-system -l app=istiod -o jsonpath='{.items[0].metadata.name}' \
   --context=cluster-west) --context=cluster-west \
-  -- curl -s localhost:15014/metrics | grep pilot_xds_push
+  -- curl -s localhost:15014/metrics | grep -E 'pilot_total_xds_internal_errors|pilot_total_xds_rejects|pilot_xds_.*_reject|pilot_xds_write_timeout'
 ```
 
-High push error counts indicate configuration problems. Look at the istiod logs for details:
+High internal error, reject, or write timeout counts indicate configuration problems. Look at the istiod logs for details:
 
 ```bash
 kubectl logs -n istio-system -l app=istiod --context=cluster-west --tail=200 | grep -i error
@@ -132,15 +132,15 @@ istioctl proxy-config listeners \
   --context=cluster-west
 ```
 
-You should see a listener on port 15443 with SNI-based routing. If it's missing, the Gateway resource might not be applied correctly.
+You should see a listener on port 15443 with TLS passthrough and SNI-based filter chains. If it's missing, the Gateway resource might not be applied correctly.
 
-Check the gateway's routes:
+For the standard cross-network Gateway, Istio uses TLS `AUTO_PASSTHROUGH`, so ordinary HTTP routes might not show useful entries. Check the listener details instead:
 
 ```bash
-istioctl proxy-config routes \
+istioctl proxy-config listeners \
   $(kubectl get pod -n istio-system -l istio=eastwestgateway \
   -o jsonpath='{.items[0].metadata.name}' --context=cluster-west) \
-  --context=cluster-west
+  --context=cluster-west --port 15443 -o json
 ```
 
 And check the clusters (upstream endpoints):
@@ -189,9 +189,11 @@ Look at counters like `upstream_cx_connect_fail`, `upstream_cx_connect_timeout`,
 
 **"Request timeout"**: The default timeout might be too short for cross-mesh requests. Check your VirtualService timeout settings and increase them if needed.
 
-**Services appear then disappear**: This is often a remote secret expiry issue. The Kubernetes token in the remote secret has a limited lifetime. Check if the token is still valid:
+**Services appear then disappear**: This is often a remote secret or remote API access issue. Depending on how the credentials were issued, the token might be expired, revoked, or invalid for the API server audience. Check whether istiod still sees the remote cluster and inspect the remote secret metadata:
 
 ```bash
+istioctl remote-clusters --context=cluster-west
+
 kubectl get secret -n istio-system --context=cluster-west \
   -o json | jq '.items[] | select(.metadata.name | startswith("istio-remote-secret")) | .metadata.annotations'
 ```
