@@ -8,7 +8,7 @@ Description: How to configure custom telemetry providers in Istio to send metric
 
 ---
 
-Istio comes with built-in support for Prometheus metrics and Zipkin-style distributed tracing. But most production environments use a mix of monitoring tools. You might need to send traces to Jaeger, metrics to Datadog, and access logs to an OpenTelemetry Collector. Custom telemetry providers let you plug Istio into whatever observability stack your team uses.
+Istio comes with built-in support for Prometheus metrics and Zipkin-style distributed tracing. But most production environments use a mix of monitoring tools. You might need to send traces to Jaeger or Datadog, expose metrics for Prometheus-compatible backends, and send access logs to an OpenTelemetry Collector. Custom telemetry providers let you plug Istio into whatever observability stack your team uses.
 
 Here is how to set up and configure custom telemetry providers in Istio.
 
@@ -27,6 +27,7 @@ apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
   meshConfig:
+    enableTracing: true
     extensionProviders:
       - name: otel-tracing
         opentelemetry:
@@ -55,11 +56,12 @@ spec:
               duration: "%DURATION%"
 ```
 
-Each provider has a unique name and a type-specific configuration block. The supported provider types are:
+Each provider has a unique name and a type-specific configuration block. Common telemetry provider types include:
 
-- **prometheus** - Built-in Prometheus metrics
+- **prometheus** - Prometheus metrics
 - **opentelemetry** - OpenTelemetry protocol (OTLP) for traces
 - **zipkin** - Zipkin trace format
+- **datadog** - Datadog tracing
 - **skywalking** - Apache SkyWalking
 - **envoyOtelAls** - Envoy OpenTelemetry Access Log Service
 - **envoyFileAccessLog** - File-based access logging
@@ -165,6 +167,7 @@ apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
   meshConfig:
+    enableTracing: true
     extensionProviders:
       - name: otel-tracing
         opentelemetry:
@@ -223,7 +226,7 @@ The `filter` field with a CEL expression is powerful. In this example, only erro
 
 ## Using Multiple Providers
 
-You can send telemetry to multiple providers simultaneously. This is useful during migrations or when different teams use different tools:
+You can send access logs to multiple providers simultaneously. This is useful during migrations or when different teams use different tools. For tracing, Istio currently supports only one provider in a given tracing rule, so use separate namespace or workload-scoped Telemetry resources when different workloads need different tracing providers:
 
 ```yaml
 apiVersion: telemetry.istio.io/v1
@@ -235,7 +238,6 @@ spec:
   tracing:
     - providers:
         - name: otel-tracing
-        - name: custom-zipkin
       randomSamplingPercentage: 5.0
   accessLogging:
     - providers:
@@ -243,7 +245,7 @@ spec:
         - name: file-access-log
 ```
 
-Each provider receives the same telemetry data independently.
+Each access log provider receives the same log data independently.
 
 ## Namespace-Scoped Provider Overrides
 
@@ -290,8 +292,8 @@ kubectl logs deploy/my-service -c istio-proxy | grep "otel\|trace\|access_log"
 # Verify the Telemetry resource is applied
 istioctl analyze -n istio-system
 
-# Check OTel Collector is receiving data
-kubectl logs deploy/otel-collector -n observability | grep "TracesExporter"
+# Check OTel Collector logs for exporter activity or errors
+kubectl logs deploy/otel-collector -n observability | grep -i "exporter\|error\|warn"
 ```
 
 ## Common Issues
