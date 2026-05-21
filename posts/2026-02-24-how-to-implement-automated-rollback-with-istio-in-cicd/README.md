@@ -53,10 +53,25 @@ spec:
         - containerPort: 8080
 ```
 
+The Kubernetes Service should select both versions:
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-app
+spec:
+  selector:
+    app: my-app
+  ports:
+  - port: 8080
+    targetPort: 8080
+```
+
 And the corresponding DestinationRule that defines the subsets:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-app
@@ -76,7 +91,7 @@ spec:
 The VirtualService is where the magic happens. You start by sending all traffic to v1:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -113,12 +128,12 @@ LATENCY_THRESHOLD=500  # 500ms p99
 check_metrics() {
   # Query 5xx error rate from Envoy metrics
   ERROR_RATE=$(curl -s "${PROMETHEUS_URL}/api/v1/query" \
-    --data-urlencode "query=sum(rate(istio_requests_total{destination_service=\"${SERVICE}.${NAMESPACE}.svc.cluster.local\",response_code=~\"5.*\",destination_version=\"v2\"}[2m])) / sum(rate(istio_requests_total{destination_service=\"${SERVICE}.${NAMESPACE}.svc.cluster.local\",destination_version=\"v2\"}[2m])) * 100" \
+    --data-urlencode "query=(sum(rate(istio_requests_total{reporter=\"destination\",destination_service=\"${SERVICE}.${NAMESPACE}.svc.cluster.local\",response_code=~\"5.*\",destination_version=\"v2\"}[2m])) / clamp_min(sum(rate(istio_requests_total{reporter=\"destination\",destination_service=\"${SERVICE}.${NAMESPACE}.svc.cluster.local\",destination_version=\"v2\"}[2m])), 0.001) * 100) or vector(0)" \
     | jq -r '.data.result[0].value[1] // "0"')
 
   # Query p99 latency
   LATENCY=$(curl -s "${PROMETHEUS_URL}/api/v1/query" \
-    --data-urlencode "query=histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{destination_service=\"${SERVICE}.${NAMESPACE}.svc.cluster.local\",destination_version=\"v2\"}[2m])) by (le))" \
+    --data-urlencode "query=histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{reporter=\"destination\",destination_service=\"${SERVICE}.${NAMESPACE}.svc.cluster.local\",destination_version=\"v2\"}[2m])) by (le))" \
     | jq -r '.data.result[0].value[1] // "0"')
 
   echo "Error rate: ${ERROR_RATE}%, P99 latency: ${LATENCY}ms"
@@ -207,7 +222,7 @@ spec:
       serviceAccountName: ci-deployer
       containers:
       - name: rollout
-        image: bitnami/kubectl:latest
+        image: your-registry/kubectl-tools:latest # include kubectl, bash, curl, jq, and bc
         command: ["/bin/bash", "/scripts/rollback.sh"]
         volumeMounts:
         - name: scripts
@@ -233,6 +248,22 @@ rules:
 - apiGroups: ["apps"]
   resources: ["deployments", "deployments/scale"]
   verbs: ["get", "patch", "update"]
+```
+
+Bind that Role to the service account used by the Job:
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: canary-deployer
+subjects:
+- kind: ServiceAccount
+  name: ci-deployer
+roleRef:
+  kind: Role
+  name: canary-deployer
+  apiGroup: rbac.authorization.k8s.io
 ```
 
 ## Using Flagger for a More Robust Solution
@@ -291,10 +322,10 @@ Call it from your rollback function and after a successful promotion.
 
 Database migrations can make rollbacks tricky. If v2 ran a migration that v1 does not understand, rolling back the traffic will not fix the problem. Keep your migrations backward-compatible, at least for one version.
 
-Stateful connections like WebSockets or gRPC streams will be disrupted during traffic shifts. Istio does not drain existing connections by default when you change weights. You can configure connection draining in the DestinationRule:
+Stateful connections like WebSockets or long-lived gRPC streams can keep using the connection they are already on when you change weights. VirtualService weights affect new routing decisions; they do not force existing streams to reconnect. If you need long-lived connections to move away from a version, set application-level reconnect behavior or bound connection lifetimes in the DestinationRule:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-app
@@ -303,7 +334,7 @@ spec:
   trafficPolicy:
     connectionPool:
       tcp:
-        connectTimeout: 30ms
+        maxConnectionDuration: 5m
   subsets:
   - name: v1
     labels:
