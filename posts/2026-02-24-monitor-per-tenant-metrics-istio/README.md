@@ -29,10 +29,10 @@ In a namespace-per-tenant setup, the namespace labels are your tenant identifier
 
 ## Setting Up Prometheus for Tenant Metrics
 
-If you installed Istio with the demo or default profile, Prometheus might already be running. If not, install it:
+Istio does not install Prometheus as part of the control plane. For a quick demo setup, install the sample Prometheus addon:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.22/samples/addons/prometheus.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/prometheus.yaml
 ```
 
 Verify it is scraping Envoy metrics:
@@ -84,10 +84,12 @@ Bandwidth consumption per tenant:
 sum(rate(istio_response_bytes_sum{reporter="destination"}[5m])) by (destination_workload_namespace)
 ```
 
-Active TCP connections per tenant:
+Estimated active TCP connections per tenant:
 
 ```promql
-sum(istio_tcp_connections_opened_total{reporter="destination"} - istio_tcp_connections_closed_total{reporter="destination"}) by (destination_workload_namespace)
+sum(istio_tcp_connections_opened_total{reporter="destination"}) by (destination_workload_namespace)
+-
+sum(istio_tcp_connections_closed_total{reporter="destination"}) by (destination_workload_namespace)
 ```
 
 ## Breaking Down Traffic Between Tenants
@@ -124,14 +126,14 @@ spec:
       tagOverrides:
         tenant_id:
           operation: UPSERT
-          value: "request.headers['x-tenant-id'] | 'unknown'"
+          value: "'x-tenant-id' in request.headers ? request.headers['x-tenant-id'] : 'unknown'"
     - match:
         metric: REQUEST_DURATION
         mode: SERVER
       tagOverrides:
         tenant_id:
           operation: UPSERT
-          value: "request.headers['x-tenant-id'] | 'unknown'"
+          value: "'x-tenant-id' in request.headers ? request.headers['x-tenant-id'] : 'unknown'"
 ```
 
 Now your metrics will have a `tenant_id` label extracted from the request header. Query it like this:
@@ -147,7 +149,7 @@ Be careful with high-cardinality labels though. If you have thousands of tenants
 Install Grafana if you have not already:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.22/samples/addons/grafana.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/grafana.yaml
 ```
 
 Access it:
@@ -187,7 +189,7 @@ sum(rate(istio_request_duration_milliseconds_bucket{reporter="destination", dest
 
 ## Setting Up Per-Tenant Alerts
 
-Use Prometheus alerting rules to get notified when a specific tenant is having issues:
+If you run Prometheus with the Prometheus Operator, use a `PrometheusRule` to get notified when a specific tenant is having issues:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
