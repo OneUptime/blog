@@ -8,7 +8,7 @@ Description: Practical security policy examples for Istio covering authenticatio
 
 ---
 
-Istio security policies let you control who can access what in your service mesh. The two main policy types are PeerAuthentication (controlling mTLS between services) and AuthorizationPolicy (controlling who can call what). Together, they provide a zero-trust security model where every service call is authenticated and authorized.
+Istio security policies let you control who can access what in your service mesh. Common policy types include PeerAuthentication (controlling mTLS between services), RequestAuthentication (validating request-level credentials such as JWTs), and AuthorizationPolicy (controlling who can call what). Together, they provide the building blocks for a zero-trust security model where service calls can be authenticated and authorized.
 
 Rather than explaining theory, this post is a collection of practical security policy examples you can adapt for your own mesh.
 
@@ -60,7 +60,7 @@ This allows only the `frontend` service account to call `api-service`, and only 
 
 ## Allow Health Checks from Kubernetes
 
-If you deny all traffic, you also block Kubernetes health check probes. Allow them:
+If you deny all traffic, remember to allow any health endpoints that are reached through the mesh, such as checks from an in-mesh monitor or an ingress gateway:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -82,7 +82,7 @@ spec:
               - GET
 ```
 
-A rule without a `from` clause allows traffic from any source. Combined with the specific paths, this lets the kubelet probe your health endpoints.
+A rule without a `from` clause allows traffic from any source. Combined with the specific paths, this lets callers reach your health endpoints without opening the rest of the service. Kubernetes HTTP, TCP, and gRPC probes are usually rewritten by Istio to the sidecar agent by default; if you disable probe rewriting, account for kubelet probes separately.
 
 ## Strict mTLS for a Namespace
 
@@ -141,7 +141,7 @@ spec:
       mode: PERMISSIVE
 ```
 
-Port 8080 requires mTLS while port 9090 accepts both.
+Port 8080 requires mTLS while port 9090 accepts both. The keys under `portLevelMtls` are workload ports, not Kubernetes Service ports.
 
 ## JWT Authentication
 
@@ -221,7 +221,7 @@ spec:
               - "8080"
 ```
 
-Only traffic from the specified IP ranges can access the admin panel.
+Only traffic from the specified source IP ranges can access the admin panel. If you are matching the original client IP behind an ingress proxy or load balancer, use `remoteIpBlocks` and configure trusted proxy handling instead.
 
 ## Deny Specific Paths
 
@@ -275,7 +275,7 @@ Only services from the `frontend` and `backend` namespaces can communicate with 
 
 ## Custom Deny Response
 
-By default, denied requests get a minimal 403 response. You can customize this using an EnvoyFilter:
+By default, denied requests get a minimal 403 response. AuthorizationPolicy does not expose a response body setting directly. If you need custom local replies, you can use an EnvoyFilter carefully. For example, this formats local Envoy replies, including RBAC denials, as JSON for the selected workload:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -288,21 +288,24 @@ spec:
     labels:
       app: api-service
   configPatches:
-    - applyTo: HTTP_FILTER
+    - applyTo: NETWORK_FILTER
       match:
         context: SIDECAR_INBOUND
         listener:
           filterChain:
             filter:
               name: envoy.filters.network.http_connection_manager
-              subFilter:
-                name: envoy.filters.http.rbac
       patch:
         operation: MERGE
         value:
           typed_config:
-            "@type": type.googleapis.com/envoy.extensions.filters.http.rbac.v3.RBAC
-            shadow_rules_stat_prefix: istio_dry_run_allow
+            "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+            local_reply_config:
+              body_format:
+                json_format:
+                  status: "%RESPONSE_CODE%"
+                  message: "%LOCAL_REPLY_BODY%"
+                content_type: application/json
 ```
 
 ## Dry-Run Mode for Testing Policies
