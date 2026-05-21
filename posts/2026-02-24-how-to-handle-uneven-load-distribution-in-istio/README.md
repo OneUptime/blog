@@ -30,7 +30,7 @@ Start by checking the actual distribution across pods:
 # Check request counts per pod using Prometheus
 
 # Query in Prometheus or Grafana:
-# sum(rate(istio_requests_total{destination_service="my-service.default.svc.cluster.local"}[5m])) by (destination_workload_namespace, destination_app, pod)
+# sum(rate(istio_requests_total{reporter="destination", destination_service="my-service.default.svc.cluster.local"}[5m])) by (destination_workload_namespace, destination_app, pod)
 ```
 
 You can also check from the Envoy side:
@@ -44,10 +44,10 @@ Look at the `cx_active` (active connections) and `rq_total` (total requests) cou
 
 ## Fix 1: Switch Load Balancing Algorithm
 
-The default `ROUND_ROBIN` algorithm works well for short-lived connections. For services with long-lived connections or variable request patterns, `LEAST_REQUEST` is usually a better choice:
+If you are using `ROUND_ROBIN`, it works well for short-lived connections but can overburden endpoints in some scenarios. For services with long-lived requests or variable request patterns, `LEAST_REQUEST` is usually a better choice:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service-dr
@@ -61,14 +61,14 @@ spec:
 
 `LEAST_REQUEST` picks the endpoint with the fewest active requests. This naturally balances load even when connections have different throughput levels.
 
-For gRPC services specifically, this is almost always the right move. Envoy's implementation of `LEAST_REQUEST` samples two random endpoints and picks the one with fewer active requests (power of two choices), which provides near-optimal distribution with minimal overhead.
+For gRPC services specifically, this is often the right move when you have many concurrent RPCs or streams. Envoy's implementation of `LEAST_REQUEST` samples two random endpoints by default and picks the one with fewer active requests (power of two choices), which provides near-optimal distribution with minimal overhead when endpoint weights are equal.
 
 ## Fix 2: Tune Connection Pooling
 
 Connection pooling affects load distribution significantly. If Envoy keeps too many persistent connections per host, new pods won't get traffic quickly enough:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service-dr
@@ -88,12 +88,12 @@ spec:
       simple: LEAST_REQUEST
 ```
 
-The `maxRequestsPerConnection` setting is key. Setting it to a finite number forces Envoy to periodically close and reopen connections, which redistributes traffic. Without this, a connection can stay open indefinitely and all its requests go to one pod.
+The `maxRequestsPerConnection` setting is key for request-based HTTP traffic. Setting it to a finite number makes Envoy drain upstream connections after they have handled that many requests, which gives later requests a chance to use fresh load-balancing decisions. Without this, an HTTP/2 upstream connection can stay open indefinitely and continue multiplexing requests to the same endpoint.
 
 For gRPC (which uses HTTP/2), you might want to be more aggressive:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: grpc-service-dr
@@ -109,14 +109,14 @@ spec:
       simple: LEAST_REQUEST
 ```
 
-Setting `maxRequestsPerConnection: 100` means after 100 requests, the connection is closed and a new one is established, potentially to a different pod.
+Setting `maxRequestsPerConnection: 100` means after 100 requests, the upstream connection is drained and a new one is established for later requests, potentially to a different pod. This does not split an already-active long-lived gRPC stream; it affects new RPC streams on the connection.
 
 ## Fix 3: Enable Outlier Detection
 
-Outlier detection automatically removes unhealthy or slow endpoints from the load balancing pool. This prevents a slow pod from accumulating a queue of requests:
+Outlier detection automatically removes unhealthy or failing endpoints from the load balancing pool. This prevents a pod that is returning errors from continuing to receive normal traffic:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service-dr
@@ -133,7 +133,7 @@ spec:
       simple: LEAST_REQUEST
 ```
 
-With this config, if a pod returns 3 consecutive 5xx errors within a 10-second window, it gets ejected from the pool for 30 seconds. Up to 30% of endpoints can be ejected at any time.
+With this config, if a pod returns 3 consecutive 5xx errors, it can be ejected from the pool during Envoy's periodic outlier-detection sweep, which runs every 10 seconds here. The first ejection lasts at least 30 seconds, and repeated ejections can last longer. Up to 30% of endpoints can be ejected at any time.
 
 ## Fix 4: Use Horizontal Pod Autoscaler
 
@@ -194,7 +194,7 @@ If you're using consistent hash-based load balancing and seeing uneven distribut
 
 ```yaml
 # Bad: if most users share a small number of tenant IDs
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service-dr
@@ -214,7 +214,7 @@ After applying your changes, monitor the distribution over time:
 
 ```promql
 # Standard deviation of request rate across pods
-stddev(rate(istio_requests_total{destination_service="my-service.default.svc.cluster.local"}[5m]))
+stddev(sum(rate(istio_requests_total{reporter="destination", destination_service="my-service.default.svc.cluster.local"}[5m])) by (pod))
 ```
 
 A lower standard deviation means more even distribution. Track this metric before and after your changes to quantify the improvement.
