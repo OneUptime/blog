@@ -8,7 +8,7 @@ Description: How to use istioctl analyze to validate Istio configuration files, 
 
 ---
 
-Misconfigured Istio resources are one of the most common sources of mesh issues. A VirtualService that references a non-existent gateway, a DestinationRule with a subset that does not match any pod labels, or a conflicting AuthorizationPolicy can all cause problems that are hard to debug after deployment. The good news is that `istioctl analyze` can catch most of these issues before you apply them.
+Misconfigured Istio resources are one of the most common sources of mesh issues. A VirtualService that references a non-existent gateway, a DestinationRule with a subset that does not match any pod labels, or a conflicting AuthorizationPolicy can all cause problems that are hard to debug after deployment. The good news is that `istioctl analyze` can catch many of these issues before you apply them.
 
 This guide covers how to use `istioctl analyze` effectively, what it checks for, and how to integrate it into your development workflow.
 
@@ -23,9 +23,9 @@ istioctl analyze
 This checks the live cluster configuration and reports any issues it finds. The output looks something like:
 
 ```text
-Warning [IST0101] (VirtualService default/reviews) Referenced host not found: "reviews"
-Warning [IST0104] (Gateway default/my-gateway) The gateway refers to a server with a credential name that does not exist
-Info [IST0118] (Service default/reviews) Port name "http" does not follow the naming convention
+Error [IST0101] (VirtualService default/reviews) Referenced host not found: "reviews"
+Error [IST0161] (Gateway default/my-gateway) The gateway refers to a server with a credentialName that does not exist
+Info [IST0118] (Service default/reviews) Port name "foo-http" does not follow the naming convention
 ```
 
 Each message includes a severity level (Error, Warning, Info), a message code, the affected resource, and a description.
@@ -82,19 +82,19 @@ spec:
         host: nonexistent-service
 ```
 
-Running analyze:
+Running analyze against a cluster where that Service does not exist:
 
 ```bash
-istioctl analyze bad-vs.yaml --use-kube=false
+istioctl analyze bad-vs.yaml
 ```
 
 Output:
 
 ```text
-Warning [IST0101] (VirtualService default/bad-vs) Referenced host not found: "nonexistent-service"
+Error [IST0101] (VirtualService default/bad-vs) Referenced host not found: "nonexistent-service"
 ```
 
-### Gateway Not Found (IST0132)
+### Gateway Not Found (IST0101)
 
 When a VirtualService references a Gateway that does not exist:
 
@@ -113,6 +113,8 @@ spec:
     - destination:
         host: my-service
 ```
+
+This may also produce IST0132 because the VirtualService hosts cannot be found in the referenced Gateway.
 
 ### Conflicting Mesh Gateway Hosts (IST0109)
 
@@ -162,13 +164,13 @@ metadata:
   name: my-service
 spec:
   ports:
-  - name: web      # Should be "http-web" or just "http"
+  - name: foo-http # Should be "http-foo" or just "http"
     port: 80
   - name: grpc-api # This is correct
     port: 9090
 ```
 
-### Mismatched Subset Labels (IST0107)
+### Mismatched Subset Labels (IST0173)
 
 When a DestinationRule defines subsets with labels that do not match any running pods:
 
@@ -216,22 +218,12 @@ jobs:
 
     - name: Install istioctl
       run: |
-        curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.24.0 sh -
-        echo "$PWD/istio-1.24.0/bin" >> $GITHUB_PATH
+        curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.30.0 sh -
+        echo "$PWD/istio-1.30.0/bin" >> $GITHUB_PATH
 
     - name: Analyze Istio configuration
       run: |
-        istioctl analyze k8s/istio/ --use-kube=false
-
-    - name: Fail on errors
-      run: |
-        OUTPUT=$(istioctl analyze k8s/istio/ --use-kube=false 2>&1)
-        if echo "$OUTPUT" | grep -q "Error"; then
-          echo "Istio configuration has errors:"
-          echo "$OUTPUT"
-          exit 1
-        fi
-        echo "No errors found"
+        istioctl analyze k8s/istio/ --use-kube=false --failure-threshold Error
 ```
 
 ### Pre-commit Hook
