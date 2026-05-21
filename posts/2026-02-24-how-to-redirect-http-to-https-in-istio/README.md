@@ -4,18 +4,18 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, HTTPS, TLS, Gateway, Security, Kubernetes
 
-Description: Step-by-step guide to setting up HTTP to HTTPS redirects in Istio using Gateway configuration, VirtualService redirects, and EnvoyFilter approaches.
+Description: Step-by-step guide to setting up HTTP to HTTPS redirects in Istio using Gateway configuration, VirtualService redirects, and load balancer header handling.
 
 ---
 
-Redirecting HTTP traffic to HTTPS is one of the first things you set up when exposing a service to the internet. In Istio, there are a few ways to do this depending on your setup. The simplest approach uses the Gateway resource's built-in redirect feature, but there are situations where you need more control. This post covers all the options.
+Redirecting HTTP traffic to HTTPS is one of the first things you set up when exposing a service to the internet. In Istio, there are a few ways to do this depending on your setup. The simplest approach uses the Gateway resource's built-in redirect feature, but there are situations where you need more control. This post covers the common options.
 
 ## The Gateway Approach (Recommended)
 
 The cleanest way to redirect HTTP to HTTPS is using the `httpsRedirect` field on the Gateway resource. This tells the Envoy listener on port 80 to respond with a 301 redirect to the HTTPS version of the URL.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: my-gateway
@@ -52,7 +52,7 @@ HTTP/1.1 301 Moved Permanently
 Location: https://app.example.com/some-path
 ```
 
-The path, query parameters, and fragment are all preserved in the redirect.
+The path and query parameters are preserved in the redirect. URL fragments are handled client-side and are not sent to the gateway in the HTTP request.
 
 ### Setting Up the TLS Certificate
 
@@ -88,7 +88,7 @@ spec:
 You still need a VirtualService to route HTTPS traffic to your backend service. The VirtualService only needs to reference the gateway for the HTTPS server because the HTTP server handles redirects automatically:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: app-routes
@@ -111,7 +111,7 @@ spec:
 If you need more control over the redirect behavior, you can handle it in a VirtualService instead of the Gateway:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: my-gateway
@@ -140,7 +140,7 @@ spec:
 Notice that the HTTP server does NOT have `httpsRedirect: true` this time. Instead, the VirtualService handles the redirect:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: app-redirect
@@ -176,7 +176,7 @@ This approach is useful when you want to:
 For example, redirect HTTP to HTTPS only for specific paths:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: conditional-redirect
@@ -224,7 +224,7 @@ This allows the `/health` endpoint to work over plain HTTP (useful for load bala
 If your Gateway serves multiple domains with a wildcard:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: wildcard-gateway
@@ -261,7 +261,7 @@ In many production setups, there is an external load balancer (like AWS ALB, GCP
 In this case, you cannot rely on the port to determine if the original request was HTTP or HTTPS. Instead, check the `X-Forwarded-Proto` header:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: my-gateway
@@ -279,7 +279,7 @@ spec:
 ```
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: app-routes
@@ -347,7 +347,7 @@ After enabling the redirect, check your application for mixed content issues. If
 For extra security, add an HSTS (HTTP Strict Transport Security) header so browsers remember to always use HTTPS:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: app-routes
