@@ -149,26 +149,21 @@ cert-manager can act as the CA for Istio, giving you integration with various is
 ### Install cert-manager
 
 ```bash
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.0/cert-manager.yaml
-```
-
-### Install istio-csr
-
-The istio-csr agent handles certificate signing requests from Istio using cert-manager:
-
-```bash
-helm repo add jetstack https://charts.jetstack.io
-helm repo update
-
-helm install istio-csr jetstack/cert-manager-istio-csr \
-  -n cert-manager \
-  --set "app.tls.rootCAFile=/var/run/secrets/istio-csr/ca.pem" \
-  --set "app.server.clusterID=Kubernetes" \
-  --set "app.certmanager.issuer.name=istio-ca" \
-  --set "app.certmanager.issuer.kind=ClusterIssuer"
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml
 ```
 
 ### Create an Issuer
+
+Create the root CA secret for cert-manager:
+
+```bash
+kubectl create secret tls istio-root-ca \
+  -n cert-manager \
+  --cert=root-cert.pem \
+  --key=root-key.pem
+```
+
+Then create the issuer:
 
 ```yaml
 apiVersion: cert-manager.io/v1
@@ -180,13 +175,23 @@ spec:
     secretName: istio-root-ca
 ```
 
-Create the root CA secret for cert-manager:
+### Install istio-csr
+
+The istio-csr agent handles certificate signing requests from Istio using cert-manager:
 
 ```bash
-kubectl create secret tls istio-root-ca \
+helm upgrade cert-manager-istio-csr oci://quay.io/jetstack/charts/cert-manager-istio-csr \
+  --install \
   -n cert-manager \
-  --cert=root-cert.pem \
-  --key=root-key.pem
+  --wait \
+  --set "app.tls.rootCAFile=/var/run/secrets/istio-csr/tls.crt" \
+  --set "volumeMounts[0].name=root-ca" \
+  --set "volumeMounts[0].mountPath=/var/run/secrets/istio-csr" \
+  --set "volumes[0].name=root-ca" \
+  --set "volumes[0].secret.secretName=istio-root-ca" \
+  --set "app.server.clusterID=Kubernetes" \
+  --set "app.certmanager.issuer.name=istio-ca" \
+  --set "app.certmanager.issuer.kind=ClusterIssuer"
 ```
 
 ### Install Istio with cert-manager Integration
@@ -295,16 +300,19 @@ Check the complete chain from a workload:
 # Get the workload certificate
 istioctl proxy-config secret deploy/my-app -n my-app
 
-# Detailed certificate info
-kubectl exec deploy/my-app -n my-app -c istio-proxy -- \
-  openssl s_client -showcerts -connect localhost:15012 2>/dev/null | \
-  openssl x509 -text -noout
+# Export and inspect the certificate chain delivered to the sidecar
+istioctl proxy-config secret deploy/my-app -n my-app -o json | \
+  jq -r '.dynamicActiveSecrets[0].secret.tlsCertificate.certificateChain.inlineBytes' | \
+  base64 -d > workload-chain.pem
+
+openssl crl2pkcs7 -nocrl -certfile workload-chain.pem | \
+  openssl pkcs7 -print_certs -text -noout
 ```
 
 Verify trust chain:
 
 ```bash
-openssl verify -CAfile root-cert.pem -untrusted ca-cert.pem workload-cert.pem
+openssl verify -CAfile root-cert.pem -untrusted ca-cert.pem workload-chain.pem
 ```
 
 ## Troubleshooting
