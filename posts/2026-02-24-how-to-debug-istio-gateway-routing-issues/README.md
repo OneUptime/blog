@@ -27,9 +27,9 @@ graph TD
 
 Start from the outside and work your way in.
 
-## Step 1: Verify the External IP
+## Step 1: Verify the External Address
 
-First, make sure the ingress gateway has an external IP and it is reachable:
+First, make sure the ingress gateway has an external IP or hostname and it is reachable:
 
 ```bash
 kubectl get svc istio-ingressgateway -n istio-system
@@ -40,12 +40,12 @@ If the EXTERNAL-IP shows `<pending>`, the load balancer has not provisioned. Che
 Test basic connectivity:
 
 ```bash
-export GATEWAY_IP=$(kubectl -n istio-system get service istio-ingressgateway \
-  -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+export GATEWAY_ADDRESS=$(kubectl -n istio-system get service istio-ingressgateway \
+  -o jsonpath='{.status.loadBalancer.ingress[0].ip}{.status.loadBalancer.ingress[0].hostname}')
 
 # Basic connectivity test
 
-curl -v http://$GATEWAY_IP/
+curl -v http://$GATEWAY_ADDRESS/
 ```
 
 If you get "connection refused", the gateway pod might not be running. If you get a 404, the gateway is running but no routes match.
@@ -69,10 +69,10 @@ Look for OOMKilled, CrashLoopBackOff, or other pod health issues.
 
 ```bash
 # List all gateways
-kubectl get gateway --all-namespaces
+kubectl get gateways.networking.istio.io --all-namespaces
 
 # Check your specific gateway
-kubectl get gateway my-gateway -o yaml
+kubectl get gateway.networking.istio.io my-gateway -o yaml
 ```
 
 Verify:
@@ -173,7 +173,7 @@ Possible causes:
 
 ```bash
 # Test with explicit Host header
-curl -v -H "Host: app.example.com" http://$GATEWAY_IP/
+curl -v -H "Host: app.example.com" http://$GATEWAY_ADDRESS/
 
 # Check the routes
 istioctl proxy-config routes deploy/istio-ingressgateway -n istio-system --name http.80
@@ -212,7 +212,7 @@ Port names should start with `http`, `http2`, `grpc`, etc.
 
 ```bash
 # Check the certificate
-openssl s_client -connect $GATEWAY_IP:443 -servername app.example.com </dev/null 2>/dev/null
+openssl s_client -connect $GATEWAY_ADDRESS:443 -servername app.example.com </dev/null 2>/dev/null
 
 # Verify the secret exists
 kubectl get secret my-tls-credential -n istio-system
@@ -256,12 +256,12 @@ Look at the Graph view to see if traffic is flowing through the ingress gateway 
 When something is not working, run through this in order:
 
 1. `kubectl get pods -n istio-system` - Gateway pod running?
-2. `kubectl get gateway` - Gateway resource exists?
+2. `kubectl get gateways.networking.istio.io` - Gateway resource exists?
 3. `kubectl get virtualservice` - VirtualService exists?
 4. `istioctl analyze` - Any configuration errors?
 5. `istioctl proxy-config listener` - Port open?
 6. `istioctl proxy-config routes` - Route configured?
 7. `kubectl get endpoints <service>` - Backend has pods?
-8. `curl -v -H "Host: ..." http://$GATEWAY_IP/` - What response do you get?
+8. `curl -v -H "Host: ..." http://$GATEWAY_ADDRESS/` - What response do you get?
 
 Nine times out of ten, the problem is a mismatch between the Gateway and VirtualService (host, gateway name, or namespace), a missing backend service, or a TLS configuration issue. The systematic approach above will get you to the root cause quickly.
