@@ -27,8 +27,8 @@ Rust has several advantages for Wasm plugin development:
 
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
-# Add the wasm32-wasi target
-rustup target add wasm32-wasi
+# Add the WASI preview 1 target
+rustup target add wasm32-wasip1
 
 # Create a new library project
 cargo new --lib istio-wasm-plugin
@@ -66,7 +66,7 @@ A Wasm plugin in Rust has three main components:
 
 1. **Root Context** - Created once per plugin instance. Handles configuration and creates HTTP contexts.
 2. **HTTP Context** - Created for each HTTP request. Handles request/response processing.
-3. **Context trait** - Base trait for handling async callbacks (HTTP callouts, timers).
+3. **Context trait** - Base trait for shared hostcalls and async callbacks such as HTTP callouts. Timers are handled on the root context.
 
 ```rust
 use proxy_wasm::traits::*;
@@ -89,6 +89,7 @@ struct MyPluginRoot {
 // HTTP context - handles individual requests
 struct MyPluginHttp {
     config: PluginConfig,
+    context_id: u32,
 }
 ```
 
@@ -145,12 +146,10 @@ impl RootContext for MyPluginRoot {
         }
     }
 
-    fn create_http_context(&self, _context_id: u32) -> Option<Box<dyn HttpContext>> {
-        if !self.config.enabled {
-            return None;  // Plugin disabled, do not create HTTP context
-        }
+    fn create_http_context(&self, context_id: u32) -> Option<Box<dyn HttpContext>> {
         Some(Box::new(MyPluginHttp {
             config: self.config.clone(),
+            context_id,
         }))
     }
 
@@ -167,6 +166,10 @@ impl RootContext for MyPluginRoot {
 ```rust
 impl HttpContext for MyPluginHttp {
     fn on_http_request_headers(&mut self, _num_headers: usize, _end_of_stream: bool) -> Action {
+        if !self.config.enabled {
+            return Action::Continue;
+        }
+
         // Read a header
         let user_agent = self.get_http_request_header("user-agent")
             .unwrap_or_else(|| "unknown".to_string());
@@ -244,9 +247,10 @@ Wasm plugins can call external services asynchronously:
 ```rust
 impl HttpContext for MyPluginHttp {
     fn on_http_request_headers(&mut self, _num_headers: usize, _end_of_stream: bool) -> Action {
-        // Make an HTTP callout to an external service
+        // Make an HTTP callout to an Envoy cluster. In Istio, confirm the
+        // exact cluster name with `istioctl proxy-config cluster`.
         match self.dispatch_http_call(
-            "ext-service.default.svc.cluster.local",
+            "outbound|80||ext-service.default.svc.cluster.local",
             vec![
                 (":method", "GET"),
                 (":path", "/check"),
@@ -311,31 +315,58 @@ if let (Some(data), _cas) = self.get_shared_data("my_counter") {
 Define and update Prometheus-compatible metrics:
 
 ```rust
+#[derive(Default)]
+struct MyPluginRoot {
+    request_counter: u32,
+    latency_histogram: u32,
+}
+
+struct MyPluginHttp {
+    request_counter: u32,
+    latency_histogram: u32,
+    request_start: std::time::SystemTime,
+}
+
+impl Context for MyPluginRoot {}
+
 impl RootContext for MyPluginRoot {
     fn on_configure(&mut self, _size: usize) -> bool {
-        self.request_counter = self.define_metric(
+        self.request_counter = proxy_wasm::hostcalls::define_metric(
             MetricType::Counter,
             "wasm_plugin_requests_total"
         ).unwrap();
 
-        self.latency_histogram = self.define_metric(
+        self.latency_histogram = proxy_wasm::hostcalls::define_metric(
             MetricType::Histogram,
             "wasm_plugin_latency_ms"
         ).unwrap();
 
         true
     }
+
+    fn create_http_context(&self, _context_id: u32) -> Option<Box<dyn HttpContext>> {
+        Some(Box::new(MyPluginHttp {
+            request_counter: self.request_counter,
+            latency_histogram: self.latency_histogram,
+            request_start: std::time::SystemTime::now(),
+        }))
+    }
 }
+
+impl Context for MyPluginHttp {}
 
 impl HttpContext for MyPluginHttp {
     fn on_http_request_headers(&mut self, _num_headers: usize, _end_of_stream: bool) -> Action {
-        self.increment_metric(self.request_counter, 1);
+        proxy_wasm::hostcalls::increment_metric(self.request_counter, 1).unwrap();
         Action::Continue
     }
 
     fn on_http_response_headers(&mut self, _num_headers: usize, _end_of_stream: bool) -> Action {
-        let duration = self.calculate_duration();
-        self.record_metric(self.latency_histogram, duration);
+        let duration_ms = self.request_start
+            .elapsed()
+            .map(|duration| duration.as_millis() as u64)
+            .unwrap_or_default();
+        proxy_wasm::hostcalls::record_metric(self.latency_histogram, duration_ms).unwrap();
         Action::Continue
     }
 }
@@ -345,13 +376,13 @@ impl HttpContext for MyPluginHttp {
 
 ```bash
 # Build for release
-cargo build --target wasm32-wasi --release
+cargo build --target wasm32-wasip1 --release
 
 # Check size
-ls -lh target/wasm32-wasi/release/istio_wasm_plugin.wasm
+ls -lh target/wasm32-wasip1/release/istio_wasm_plugin.wasm
 
 # Optimize with wasm-opt
-wasm-opt -O3 target/wasm32-wasi/release/istio_wasm_plugin.wasm -o plugin.wasm
+wasm-opt -O3 target/wasm32-wasip1/release/istio_wasm_plugin.wasm -o plugin.wasm
 
 # Final size check
 ls -lh plugin.wasm
