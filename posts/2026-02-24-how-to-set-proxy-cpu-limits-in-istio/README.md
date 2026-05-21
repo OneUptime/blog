@@ -95,11 +95,11 @@ metadata:
       concurrency: 2
 ```
 
-The `concurrency` setting defaults to 2. Setting it to 0 tells Envoy to use all available CPU cores. For most workloads, 2 threads is sufficient. Increase it for high-throughput services that need to handle many concurrent connections.
+If `concurrency` is unset, Istio automatically determines the number of worker threads from the proxy CPU requests and limits, which is the recommended default. Setting it to 0 tells Envoy to use all CPU cores on the node and ignore CPU requests or limits. For most workloads, leave this unset or start with a small explicit value such as 2. Increase it for high-throughput services that need to handle many concurrent connections.
 
 The concurrency setting interacts with CPU limits in an important way. If you set `concurrency: 4` but the CPU limit is `500m`, the four threads will compete for half a core and you will see worse performance than with 2 threads that have enough CPU each.
 
-A good rule of thumb: set concurrency to match the number of cores your CPU limit allows. If your limit is 2 CPUs, set concurrency to 2.
+A good rule of thumb when you set concurrency explicitly: match it to the number of cores your CPU limit allows. If your limit is 2 CPUs, set concurrency to 2.
 
 ## Measuring Proxy CPU Usage
 
@@ -218,7 +218,7 @@ This is a valid strategy if your cluster nodes have enough CPU headroom and you 
 
 If your proxies use too much CPU, try these approaches:
 
-**Reduce telemetry overhead:**
+**Reduce metrics merge overhead:**
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -226,8 +226,6 @@ kind: IstioOperator
 spec:
   meshConfig:
     enablePrometheusMerge: false
-    defaultConfig:
-      holdApplicationUntilProxyStarts: true
 ```
 
 **Limit the configuration scope:**
@@ -275,6 +273,8 @@ global:
         cpu: "100m"
       limits:
         cpu: "1000m"
+meshConfig:
+  defaultConfig:
     concurrency: 2
 ```
 
