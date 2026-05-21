@@ -64,11 +64,11 @@ metadata:
     traffic.sidecar.istio.io/excludeOutboundIPRanges: "10.0.0.5/32,10.0.0.10/32"
 ```
 
-## Solution 2: Use the Istio CNI Plugin
+## Solution 2: Use the Istio CNI Plugin Carefully
 
-When using the Istio CNI plugin, the iptables rules are set up by the CNI plugin at the network level, but the behavior is similar. However, some CNI configurations handle init container traffic more gracefully.
+When using the Istio CNI plugin, the iptables rules are set up by the CNI plugin at the network level, but the behavior is similar. The CNI plugin replaces the privileged `istio-init` container, but init containers still run before the `istio-proxy` sidecar starts, so they can still lose network traffic.
 
-With certain Istio versions and the CNI plugin, you can configure it to not redirect init container traffic:
+Install Istio CNI when you want to avoid privileged init containers:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -81,11 +81,27 @@ spec:
     cni:
       cniBinDir: /opt/cni/bin
       cniConfDir: /etc/cni/net.d
+    pilot:
+      cni:
+        enabled: true
 ```
 
-## Solution 3: Native Sidecar Containers (Kubernetes 1.28+)
+For init container traffic with Istio CNI, use the same port/IP exclusions as above, or run the init container with the same UID as the sidecar proxy so its traffic is not captured:
 
-The best solution is Kubernetes native sidecar containers, available as stable in Kubernetes 1.28. With this feature, the Istio proxy runs as an init container with `restartPolicy: Always`, which means it starts before your regular init containers and keeps running.
+```yaml
+initContainers:
+- name: db-migrate
+  image: my-app:latest
+  command: ["./migrate.sh"]
+  securityContext:
+    runAsUser: 1337
+```
+
+Use the UID workaround only when it matches your platform's sidecar proxy UID. Some platforms, such as OpenShift, may use a different UID.
+
+## Solution 3: Native Sidecar Containers (Kubernetes 1.29+)
+
+The best solution is Kubernetes native sidecar containers, available by default starting in Kubernetes 1.29 and stable in Kubernetes 1.33. With this feature, the Istio proxy runs as an init container with `restartPolicy: Always`, which means it starts before your regular init containers and keeps running.
 
 Enable it in Istio:
 
@@ -170,7 +186,7 @@ metadata:
 spec:
   template:
     metadata:
-      annotations:
+      labels:
         sidecar.istio.io/inject: "false"
     spec:
       restartPolicy: Never
@@ -258,4 +274,4 @@ kubectl logs my-app-pod -c db-migrate
 
 ## Wrapping Up
 
-Init containers with Istio require careful handling because of the traffic interception setup. The cleanest solution is native sidecar containers in Kubernetes 1.28+, which starts the proxy before init containers run. If you cannot use native sidecars, exclude the relevant ports from the proxy redirect or move initialization logic into the main container with `holdApplicationUntilProxyStarts`. Pick the solution that best fits your Kubernetes version and security requirements.
+Init containers with Istio require careful handling because of the traffic interception setup. The cleanest solution is native sidecar containers on Kubernetes versions where the feature is enabled, which starts the proxy before init containers run. If you cannot use native sidecars, exclude the relevant ports from the proxy redirect or move initialization logic into the main container with `holdApplicationUntilProxyStarts`. Pick the solution that best fits your Kubernetes version and security requirements.
