@@ -95,7 +95,7 @@ readinessProbe:
 
 ## Probe Rewriting Issues
 
-Just like liveness probes, readiness probes are rewritten by the Istio sidecar injector when `rewriteAppHTTPProbers` is enabled. The probe is redirected through pilot-agent on port 15021.
+Just like liveness probes, readiness probes are rewritten by the Istio sidecar injector when `rewriteAppHTTPProbers` is enabled. The probe is redirected through pilot-agent on the status port, which defaults to 15020.
 
 Verify the rewrite:
 
@@ -103,10 +103,10 @@ Verify the rewrite:
 kubectl get pod <pod-name> -n my-namespace -o yaml | grep -A 8 readinessProbe
 ```
 
-If the probe points to port 15021, the rewriting is active. Test the rewritten endpoint:
+If the probe points to port 15020, the rewriting is active. Test the rewritten endpoint:
 
 ```bash
-kubectl exec <pod-name> -c istio-proxy -n my-namespace -- curl -s http://localhost:15021/app-health/my-app/readyz
+kubectl exec <pod-name> -c istio-proxy -n my-namespace -- curl -s http://localhost:15020/app-health/my-app/readyz
 ```
 
 If this fails but calling the app directly works:
@@ -162,7 +162,7 @@ istioctl proxy-config routes <pod-name> -n my-namespace | wc -l
 If there are thousands of entries, use the Sidecar resource to scope it down:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -178,13 +178,13 @@ This dramatically reduces the config that needs to be loaded before the sidecar 
 
 ## Readiness Gate Configuration
 
-Istio can use pod readiness gates, which add an additional readiness condition that must be met. Check if a readiness gate is set:
+Your workload or platform can use pod readiness gates, which add an additional readiness condition that must be met. Check if a readiness gate is set:
 
 ```bash
 kubectl get pod <pod-name> -n my-namespace -o jsonpath='{.spec.readinessGates}'
 ```
 
-If there's a readiness gate for the sidecar, check its condition status:
+If there's a relevant readiness gate, check its condition status:
 
 ```bash
 kubectl get pod <pod-name> -n my-namespace -o jsonpath='{.status.conditions}' | jq .
@@ -234,14 +234,15 @@ Look at the newest pods and their readiness. If they're stuck in "0/2 Ready", th
 
 ## Custom Readiness for Sidecar
 
-You can customize the sidecar's readiness behavior. For example, you can make the sidecar wait for specific configuration to be loaded before reporting ready:
+You can customize the sidecar's readiness behavior. For example, you can tune the sidecar readiness probe timing or the application ports Istio checks before reporting the sidecar ready:
 
 ```yaml
 metadata:
   annotations:
-    proxy.istio.io/config: |
-      proxyMetadata:
-        ISTIO_META_DNS_CAPTURE: "true"
+    readiness.status.sidecar.istio.io/applicationPorts: "8080"
+    readiness.status.sidecar.istio.io/initialDelaySeconds: "5"
+    readiness.status.sidecar.istio.io/periodSeconds: "2"
+    readiness.status.sidecar.istio.io/failureThreshold: "30"
 ```
 
 Or adjust the sidecar's own readiness configuration in the mesh config.
@@ -251,7 +252,7 @@ Or adjust the sidecar's own readiness configuration in the mesh config.
 When readiness probes fail with Istio:
 
 1. Which container is not ready? (`kubectl get pod -o jsonpath`)
-2. Can the sidecar reach Istiod? (`curl istiod:15012`)
+2. Is the sidecar connected and synced with Istiod? (`istioctl proxy-status`)
 3. Is probe rewriting working? (check the running pod spec)
 4. Is mTLS blocking probes? (check PeerAuthentication)
 5. Is the application's readiness endpoint working? (curl from inside the container)
