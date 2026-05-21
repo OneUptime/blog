@@ -129,7 +129,7 @@ spec:
   - match:
     - headers:
         cookie:
-          regex: ".*feature_new_checkout=enabled.*"
+          regex: "(^|.*;\\s*)feature_new_checkout=enabled(;.*|$)"
     route:
     - destination:
         host: checkout.production.svc.cluster.local
@@ -257,7 +257,7 @@ Start at 0% random exposure, increase to 5%, 10%, 20%, 50%, and finally 100% as 
 
 ## Multiple Feature Flags
 
-You can have multiple feature flags active simultaneously by using different headers and different deployments:
+You can have multiple feature flags active simultaneously by using different headers, different deployments, and matching DestinationRule subsets:
 
 ```yaml
 apiVersion: networking.istio.io/v1
