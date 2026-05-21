@@ -18,7 +18,7 @@ Istio has several places where TLS version settings apply:
 
 1. **Mesh-wide configuration** - The global default for all sidecars
 2. **Gateway configuration** - For ingress and egress gateways
-3. **DestinationRule** - For specific service-to-service connections
+3. **Mesh-wide TLS defaults** - For non-`ISTIO_MUTUAL` outbound TLS connections
 
 Each serves a different purpose, and you might need to configure all of them.
 
@@ -113,12 +113,13 @@ spec:
     - "*.example.com"
     tls:
       mode: ISTIO_MUTUAL
-      minProtocolVersion: TLSV1_3
 ```
+
+For `ISTIO_MUTUAL` gateway servers, Istio manages the certificates and other TLS options. Configure the minimum version for Istio-managed mTLS through the mesh-wide `meshMTLS` setting instead of adding `minProtocolVersion` to the gateway server.
 
 ## Setting TLS Version in DestinationRules
 
-For specific service connections, set the TLS version in the DestinationRule:
+For specific service connections, set the TLS mode in the DestinationRule:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -133,20 +134,15 @@ spec:
       mode: ISTIO_MUTUAL
 ```
 
-Note that the DestinationRule `tls` section does not directly support minProtocolVersion for ISTIO_MUTUAL mode. The TLS version for mesh-internal mTLS is controlled by the mesh-wide configuration. The DestinationRule's TLS version settings apply when using `SIMPLE` or `MUTUAL` modes for external services:
+Note that the DestinationRule `tls` section does not directly support `minProtocolVersion`. The TLS version for mesh-internal mTLS is controlled by the mesh-wide `meshMTLS` configuration. For `SIMPLE` or `MUTUAL` TLS to external services, use mesh-wide `tlsDefaults` if you need a default minimum TLS version:
 
 ```yaml
-apiVersion: networking.istio.io/v1
-kind: DestinationRule
-metadata:
-  name: external-api-dr
-  namespace: production
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
 spec:
-  host: api.external.com
-  trafficPolicy:
-    tls:
-      mode: SIMPLE
-      sni: api.external.com
+  meshConfig:
+    tlsDefaults:
+      minProtocolVersion: TLSV1_2
 ```
 
 ## TLS 1.2 vs TLS 1.3
@@ -246,6 +242,11 @@ spec:
   meshConfig:
     meshMTLS:
       minProtocolVersion: TLSV1_2
+      cipherSuites:
+      - ECDHE-ECDSA-AES256-GCM-SHA384
+      - ECDHE-RSA-AES256-GCM-SHA384
+      - ECDHE-ECDSA-AES128-GCM-SHA256
+      - ECDHE-RSA-AES128-GCM-SHA256
 ```
 
 ## Compliance Validation
