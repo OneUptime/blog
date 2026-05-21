@@ -18,7 +18,7 @@ The number one symptom of certificate problems in Istio is connection resets. Yo
 upstream connect error or disconnect/reset before headers. reset reason: connection termination
 ```
 
-This is Envoy's way of saying the TLS handshake failed. The underlying cause could be many things, so you need to dig deeper.
+When this is caused by mTLS, it is Envoy's way of saying the TLS handshake failed. The underlying cause could be many things, so you need to dig deeper.
 
 ## Step 1: Check the TLS Handshake
 
@@ -69,11 +69,11 @@ Both should show the same fingerprint. If they do not, the root CA certificates 
 ```bash
 # Check how many certs are in the chain
 istioctl proxy-config secret <pod-name> -o json | \
-  jq -r '.dynamicActiveSecrets[0].secret.tlsCertificate.certificateChain.inlineBytes' | \
+  jq -r '[.dynamicActiveSecrets[] | select(.name=="default")][0].secret.tlsCertificate.certificateChain.inlineBytes' | \
   base64 -d | grep -c "BEGIN CERTIFICATE"
 ```
 
-You should see at least 2 (the workload cert and the intermediate CA cert). If you only see 1, the chain is incomplete.
+In a deployment that uses an intermediate CA, you should see the workload certificate plus the intermediate certificates needed to build the chain. If the issuer is an intermediate CA but the output only contains the workload certificate, the chain is incomplete.
 
 ### Error: Certificate Has Expired
 
@@ -85,11 +85,11 @@ This one is straightforward. Check the certificate dates:
 
 ```bash
 istioctl proxy-config secret <pod-name> -o json | \
-  jq -r '.dynamicActiveSecrets[0].secret.tlsCertificate.certificateChain.inlineBytes' | \
+  jq -r '[.dynamicActiveSecrets[] | select(.name=="default")][0].secret.tlsCertificate.certificateChain.inlineBytes' | \
   base64 -d | openssl x509 -dates -noout
 ```
 
-If the certificate has expired, the rotation mechanism failed. Check if istiod is healthy:
+If the certificate has expired, rotation may have failed or the proxy may not be receiving SDS updates. Check if istiod is healthy:
 
 ```bash
 kubectl get pods -n istio-system -l app=istiod
@@ -170,19 +170,16 @@ kubectl get pod <pod-name> -o jsonpath='{.spec.containers[*].name}'
 
 ## Debugging with openssl
 
-For deeper debugging, you can use openssl s_client directly from within a pod:
+For deeper debugging, use the SDS certificate data from `istioctl proxy-config secret` and pass it to `openssl`:
 
 ```bash
-# Connect to a service and show certificate details
-kubectl exec <pod-name> -c istio-proxy -- \
-  openssl s_client -connect <target-service>:<port> \
-  -cert /var/run/secrets/istio/cert-chain.pem \
-  -key /var/run/secrets/istio/key.pem \
-  -CAfile /var/run/secrets/istio/root-cert.pem \
-  -verify_return_error
+# Show certificate details
+istioctl proxy-config secret <pod-name> -o json | \
+  jq -r '[.dynamicActiveSecrets[] | select(.name=="default")][0].secret.tlsCertificate.certificateChain.inlineBytes' | \
+  base64 -d | openssl x509 -noout -text
 ```
 
-Actually, in newer versions of Istio, certificates are delivered via SDS rather than files. You can check the SDS state:
+In current Istio versions, workload certificates are delivered through SDS rather than relying on files inside the sidecar. You can check the SDS state:
 
 ```bash
 # Check SDS connection status
@@ -200,10 +197,10 @@ Before switching to STRICT, verify that all clients have sidecars:
 ```bash
 # Find pods without sidecars
 kubectl get pods --all-namespaces -o json | \
-  jq -r '.items[] | select(.spec.containers | length == 1) | .metadata.namespace + "/" + .metadata.name'
+  jq -r '.items[] | select((([.spec.containers[].name] + [.spec.initContainers[]?.name]) | index("istio-proxy")) | not) | .metadata.namespace + "/" + .metadata.name'
 ```
 
-Pods with only one container (no sidecar) will fail to connect to STRICT mTLS services.
+Pods without an `istio-proxy` container will fail to connect to STRICT mTLS services.
 
 ## Systematic Debugging Checklist
 
