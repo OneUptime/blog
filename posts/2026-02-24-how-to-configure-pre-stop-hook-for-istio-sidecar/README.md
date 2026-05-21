@@ -44,12 +44,12 @@ If you're using Helm:
 
 ```bash
 helm upgrade istiod istio/istiod -n istio-system \
-  --set values.global.proxy.lifecycle.preStop.exec.command='{/bin/sh,-c,sleep 5}'
+  --set global.proxy.lifecycle.preStop.exec.command='{/bin/sh,-c,sleep 5}'
 ```
 
 ## Setting PreStop Per Workload
 
-For individual workloads, you can override the global setting using annotations. Istio 1.18+ supports configuring sidecar lifecycle hooks through the `sidecar.istio.io/proxyLifecycle` annotation:
+For individual workloads, you can tune the proxy's shutdown behavior using the `proxy.istio.io/config` annotation. This does not set a Kubernetes lifecycle hook on the sidecar container; it sets Istio proxy configuration such as `terminationDrainDuration`:
 
 ```yaml
 apiVersion: apps/v1
@@ -73,7 +73,7 @@ spec:
               command: ["/bin/sh", "-c", "sleep 5"]
 ```
 
-Note that you're setting the preStop on the application container here, not directly on the sidecar. The sidecar's preStop is configured through the IstioOperator or through the proxy config annotation. The application's preStop and the sidecar's preStop work together to coordinate the shutdown.
+Note that you're setting the preStop on the application container here, not directly on the sidecar. The sidecar's preStop is configured through the IstioOperator or a custom injection template. The application's preStop and the sidecar's drain settings work together to coordinate the shutdown.
 
 ## The Shutdown Timeline with PreStop Hooks
 
@@ -83,7 +83,6 @@ Here's how the timing works with preStop hooks configured:
 Pod receives termination signal
     |
     v
-[T+0s] Kubernetes sends SIGTERM to all containers
 [T+0s] Application preStop hook starts (sleep 5)
 [T+0s] Sidecar preStop hook starts (sleep 5)
     |
@@ -149,9 +148,9 @@ terminationGracePeriodSeconds (30s)
      + buffer (5s)
 ```
 
-## Using the Quit Endpoint Instead of PreStop
+## Using the Drain Endpoint Instead of PreStop
 
-Istio's sidecar has an admin endpoint that you can call to trigger shutdown. Instead of relying on SIGTERM timing, your application's preStop hook can explicitly tell the sidecar to shut down after the app is done:
+Istio's sidecar has an admin endpoint that you can call to start draining. Instead of relying only on SIGTERM timing, your application's preStop hook can explicitly tell the sidecar to drain after the app is done:
 
 ```yaml
 apiVersion: apps/v1
@@ -178,25 +177,25 @@ spec:
               - |
                 sleep 5
                 # Application handles remaining requests during these 5s
-                # Then explicitly ask the sidecar to quit
-                curl -sf -XPOST http://localhost:15020/quitquitquit || true
+                # Then explicitly ask the sidecar to drain
+                curl -sf -XPOST http://localhost:15020/drain || true
 ```
 
-The `/quitquitquit` endpoint triggers Envoy's shutdown sequence. This gives you explicit control over when the sidecar starts draining, rather than relying on SIGTERM timing.
+The `/drain` endpoint triggers the proxy drain sequence. This gives you explicit control over when the sidecar starts draining, rather than relying only on SIGTERM timing. The related `/quitquitquit` endpoint tells `pilot-agent` to exit and should not be used as a drain trigger.
 
 ## Verifying PreStop Hook Execution
 
 Check that preStop hooks are actually running:
 
 ```bash
-# Check pod events for lifecycle hook execution
+# Check pod events for lifecycle hook failures
 kubectl describe pod checkout-service-xxxx -n default | grep -A10 Events
 
 # Watch the pod termination in real time
 kubectl get pod -w -n default
 ```
 
-You should see the pod stay in `Terminating` state for at least the duration of your preStop hooks before it disappears.
+Successful hook execution is not logged as a normal pod event, but failures show up as `FailedPreStopHook` events. For a successful sleep-based hook, you should see the pod stay in `Terminating` state for at least the duration of your preStop hooks before it disappears.
 
 Also verify the sidecar's preStop is configured:
 
