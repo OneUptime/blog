@@ -14,9 +14,9 @@ Certificates are the foundation of mutual TLS in Istio. Every sidecar proxy gets
 
 Istio uses a component called the Secret Discovery Service (SDS) to distribute certificates to Envoy sidecars. Here is the flow:
 
-1. When an Envoy sidecar starts, it sends a certificate signing request (CSR) to istiod
+1. When an Istio sidecar starts, the local `istio-agent` sends a certificate signing request (CSR) to istiod
 2. istiod signs the certificate using its CA (either the built-in Istio CA or an external CA like cert-manager)
-3. The signed certificate is pushed to the sidecar via SDS
+3. The local SDS server in `istio-agent` provides the signed certificate to Envoy over SDS
 4. The certificate has a TTL (default 24 hours)
 5. Before the certificate expires, the sidecar requests a new one through SDS
 
@@ -58,18 +58,25 @@ This gives you the full certificate chain including the subject, issuer, and SAN
 
 To confirm that mTLS is actually being used between services:
 
-```bash
-istioctl authn tls-check deploy/my-app -n default
+```promql
+istio_requests_total{
+  destination_service="my-service.default.svc.cluster.local",
+  reporter="destination",
+  connection_security_policy="mutual_tls"
+}
 ```
 
-This shows you the TLS status for each destination:
+This returns destination-reported requests where Istio secured the connection with mutual TLS. For TCP services, use one of the TCP metrics instead:
 
-```text
-HOST:PORT                                STATUS     SERVER       CLIENT     AUTHN POLICY     DESTINATION RULE
-my-service.default.svc.cluster.local     OK         STRICT       ISTIO_MUTUAL   default/         default/my-service
+```promql
+istio_tcp_connections_opened_total{
+  destination_service="my-service.default.svc.cluster.local",
+  reporter="destination",
+  connection_security_policy="mutual_tls"
+}
 ```
 
-If the STATUS is not OK, something is wrong with the certificate or mTLS configuration.
+If you do not see `connection_security_policy="mutual_tls"` on destination-reported traffic, check your `PeerAuthentication`, `DestinationRule`, and sidecar injection configuration.
 
 You can also verify from the Envoy side by checking the TLS details of active connections:
 
@@ -89,11 +96,11 @@ The most critical thing to monitor is certificate expiration. Istio sidecars exp
 envoy_server_days_until_first_cert_expiring * 86400
 ```
 
-Actually, the more practical metric is:
+For the root CA, monitor a separate istiod metric:
 
 ```promql
-# Check for certificates expiring soon
-citadel_server_root_cert_expiry_timestamp
+# Check root CA time to expiry (in seconds)
+citadel_server_root_cert_expiry_timestamp - time()
 ```
 
 You can also check from inside the proxy:
@@ -131,7 +138,7 @@ groups:
 
 ## Verifying Certificate Rotation
 
-Certificates should rotate automatically before they expire. By default, Istio rotates certificates when they reach 80% of their TTL. For a 24-hour certificate, that means rotation happens after about 19 hours.
+Certificates should rotate automatically before they expire. By default, `SECRET_TTL` is 24 hours and `SECRET_GRACE_PERIOD_RATIO` is 0.5, so rotation is requested roughly halfway through the certificate lifetime, with jitter to avoid every proxy renewing at the same time.
 
 To verify rotation is happening, check the SDS stats:
 
@@ -140,10 +147,18 @@ kubectl exec deploy/my-app -c istio-proxy -- curl -s localhost:15000/stats | gre
 ```
 
 Look for:
-- `sds.total_active_sds_secrets`: Number of active SDS secrets (should be 2: the workload cert and the root CA)
-- `sds.key_rotation_count`: How many times the key has been rotated
+- `ssl_context_update_by_sds`: Envoy counters showing TLS contexts updated from SDS
+- `sds.<secret-name>.key_rotation_failed`: Filesystem SDS key rotation failures, if you use file-backed SDS secrets
 
-If `key_rotation_count` is not incrementing over time, rotation may not be working. Check the istiod logs for errors:
+You can also watch CSR and issuance counters on istiod:
+
+```promql
+rate(citadel_server_csr_count[5m])
+rate(citadel_server_success_cert_issuance_count[5m])
+rate(citadel_server_csr_sign_err_count[5m])
+```
+
+If CSR or issuance counters are not changing as certificates approach rotation time, or signing errors are increasing, rotation may not be working. Check the istiod logs for errors:
 
 ```bash
 kubectl logs deploy/istiod -n istio-system | grep -i "sds\|cert\|sign"
@@ -199,17 +214,17 @@ For a less disruptive approach, restart just the proxy process:
 kubectl exec deploy/my-app -c istio-proxy -- pilot-agent request POST /quitquitquit
 ```
 
-Kubernetes will restart the istio-proxy container without killing your application container (if you have `holdApplicationUntilProxyStarts` configured properly).
+Kubernetes will restart the istio-proxy container without killing your application container.
 
 ### CA Certificate Rotation
 
 The root CA certificate has a much longer lifetime (10 years by default), but you may need to rotate it for security reasons. Check the root CA expiration:
 
 ```bash
-kubectl get secret istio-ca-secret -n istio-system -o jsonpath='{.data.ca-cert\.pem}' | base64 -d | openssl x509 -noout -dates
+kubectl get secret cacerts -n istio-system -o jsonpath='{.data.root-cert\.pem}' | base64 -d | openssl x509 -noout -dates
 ```
 
-If you are using an external CA, monitor the CA certificate through your CA management tools.
+This command applies when you plugged in a CA through the `cacerts` secret. If you use Istio's self-signed CA, monitor the CA expiry metrics from istiod. If you are using an external CA, monitor the CA certificate through your CA management tools.
 
 ## Configuring Certificate TTL
 
@@ -249,10 +264,10 @@ The CA component of istiod exposes metrics about certificate operations:
 
 ```promql
 # Successful CSR signings
-rate(citadel_server_csr_count[5m])
+rate(citadel_server_success_cert_issuance_count[5m])
 
 # Failed CSR signings
-rate(citadel_server_authentication_failure_count[5m])
+rate(citadel_server_csr_sign_err_count[5m])
 
 # Root cert expiry timestamp
 citadel_server_root_cert_expiry_timestamp
@@ -265,7 +280,7 @@ groups:
 - name: istio-ca
   rules:
   - alert: IstioCASigningFailures
-    expr: rate(citadel_server_authentication_failure_count[5m]) > 0
+    expr: rate(citadel_server_csr_sign_err_count[5m]) > 0
     for: 5m
     labels:
       severity: warning
