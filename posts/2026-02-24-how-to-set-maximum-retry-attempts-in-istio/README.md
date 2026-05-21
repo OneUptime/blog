@@ -24,7 +24,7 @@ The `attempts` field in a VirtualService retry configuration specifies the maxim
 That's 4 total requests to the upstream. Here's the configuration:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: catalog-service
@@ -93,7 +93,7 @@ Beyond 3 retries, the improvement is marginal for typical failure rates.
 ### For Idempotent Read Operations: 3 Retries
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: product-service
@@ -147,7 +147,7 @@ retries:
 But pair this with a circuit breaker to prevent retry storms:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: critical-service
@@ -238,10 +238,10 @@ If the upstream returns 400 errors and your retryOn is `5xx`, no retries will ha
 
 ## Testing Your Retry Configuration
 
-Use fault injection to verify retries work as expected:
+Do not use Istio fault injection on the same route to verify retries. Istio disables route timeouts and retries when client-side faults are configured. Instead, point the route at a test service that returns intermittent 503 responses and verify that the retry policy reduces the observed failure rate:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: catalog-service
@@ -250,12 +250,7 @@ spec:
   hosts:
     - catalog-service
   http:
-    - fault:
-        abort:
-          httpStatus: 503
-          percentage:
-            value: 50.0
-      retries:
+    - retries:
         attempts: 3
         perTryTimeout: 2s
         retryOn: 5xx
@@ -264,7 +259,7 @@ spec:
             host: catalog-service
 ```
 
-With 50% abort rate and 3 retries, the effective failure rate should be about 6.25% (0.5^4). Send 100 requests and check:
+If the test service returns 503 for about 50% of requests and succeeds otherwise, 3 retries should reduce the effective failure rate to about 6.25% (0.5^4). Send 100 requests and check:
 
 ```bash
 success=0
