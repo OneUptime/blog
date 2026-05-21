@@ -75,18 +75,22 @@ done
 ### View Current Settings
 
 ```bash
-# Display all ArgoCD settings from ConfigMaps
-argocd admin settings resource-overrides list --namespace argocd
+# Validate ArgoCD settings loaded from ConfigMaps and Secrets
+argocd admin settings validate --load-cluster-settings --namespace argocd
 ```
 
 ### Validate Resource Customizations
 
 ```bash
 # Test resource customization configurations
-argocd admin settings resource-overrides health --namespace argocd
+argocd admin settings resource-overrides health /path/to/resource.yaml \
+  --load-cluster-settings \
+  --namespace argocd
 
 # Test ignore differences configuration
-argocd admin settings resource-overrides ignore-differences --namespace argocd
+argocd admin settings resource-overrides ignore-differences /path/to/resource.yaml \
+  --load-cluster-settings \
+  --namespace argocd
 ```
 
 ## Cluster Management
@@ -94,24 +98,25 @@ argocd admin settings resource-overrides ignore-differences --namespace argocd
 ### List Clusters with Details
 
 ```bash
-# List clusters with connection info (direct from Kubernetes secrets)
-argocd admin cluster list --namespace argocd
+# List cluster secrets directly from Kubernetes
+kubectl get secrets -n argocd \
+  -l argocd.argoproj.io/secret-type=cluster
 ```
 
-### Cluster Statistics
+### Cluster Namespace Scope
 
 ```bash
-# Get cluster statistics
-argocd admin cluster stats --namespace argocd
+# Print namespaces that ArgoCD manages in each cluster
+argocd admin cluster namespaces --namespace argocd
 ```
 
-This shows resource counts per cluster, which helps diagnose performance issues.
+This shows the namespace scope per cluster, which helps diagnose cluster access and scoping issues.
 
-### Regenerate Cluster Credentials
+### Generate Cluster Declarative Config
 
 ```bash
-# Generate new cluster credentials
-argocd admin cluster generate-spec my-context --namespace argocd
+# Generate declarative cluster configuration from a kubeconfig context
+argocd admin cluster generate-spec my-context -o yaml
 ```
 
 ## Backup and Restore
@@ -136,10 +141,10 @@ The export includes:
 
 ```bash
 # Import from a backup
-argocd admin import --namespace argocd < argocd-backup.yaml
+argocd admin import - --namespace argocd < argocd-backup.yaml
 
 # Import from a specific file
-argocd admin import --namespace argocd < argocd-backup-20260226-100000.yaml
+argocd admin import argocd-backup-20260226-100000.yaml --namespace argocd
 ```
 
 ### Backup Script
@@ -193,10 +198,9 @@ When you are locked out of the admin account:
 ```bash
 # Reset the admin password directly (bypasses the API server)
 # First, generate a bcrypt hash of the new password
-argocd admin initial-password --namespace argocd
+NEW_HASH=$(argocd account bcrypt --password mynewpassword)
 
-# Or if you need to set a specific password, patch the secret directly
-NEW_HASH=$(python3 -c "import bcrypt; print(bcrypt.hashpw(b'mynewpassword', bcrypt.gensalt()).decode())")
+# Then patch the secret directly
 kubectl patch secret argocd-secret -n argocd \
   -p "{\"stringData\": {\"admin.password\": \"$NEW_HASH\", \"admin.passwordMtime\": \"$(date +%FT%T%Z)\"}}"
 ```
@@ -216,26 +220,29 @@ argocd admin initial-password --namespace argocd
 
 ```bash
 # List applications without going through the API server
-argocd admin app list --namespace argocd
+kubectl get applications -n argocd
 ```
 
-### Diff Applications Directly
+### Generate Application Declarative Spec
 
 ```bash
-# Diff an application using direct Kubernetes access
-argocd admin app diff my-app --namespace argocd
+# Generate declarative config for an application
+argocd admin app generate-spec my-app \
+  --repo https://github.com/argoproj/argocd-example-apps.git \
+  --path guestbook \
+  --dest-namespace default \
+  --dest-server https://kubernetes.default.svc
 ```
 
-## Repo Server Diagnostics
+## Repo Configuration Diagnostics
 
-### Generate Manifests Locally
+### Generate Repository Declarative Config
 
-Test manifest generation without the ArgoCD server:
+Generate repository configuration without the ArgoCD server:
 
 ```bash
-# Generate manifests for debugging
-argocd admin repo generate-manifests /path/to/repo \
-  --namespace argocd
+# Generate declarative repository config for debugging
+argocd admin repo generate-spec https://github.com/example/repo.git
 ```
 
 ## Notification Diagnostics
@@ -244,11 +251,8 @@ If you have ArgoCD Notifications installed:
 
 ```bash
 # Test notification templates
-argocd admin notifications template notify \
-  --config-map argocd-notifications-cm \
-  --secret argocd-notifications-secret \
-  --namespace argocd \
-  app-sync-succeeded my-app
+argocd admin notifications template notify app-sync-succeeded my-app \
+  --namespace argocd
 ```
 
 ## Performance Diagnostics
