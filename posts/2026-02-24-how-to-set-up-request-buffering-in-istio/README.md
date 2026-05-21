@@ -12,7 +12,7 @@ Request buffering controls whether Envoy fully reads the request body before for
 
 ## Why Request Buffering Matters
 
-When Envoy streams a request body and the upstream fails midway through, Envoy cannot retry the request because the body data is already gone - it was forwarded as it arrived and not stored. If you want reliable retries for POST, PUT, or PATCH requests with bodies, you need request buffering.
+When Envoy streams a request body and the upstream fails midway through, Envoy cannot retry the request unless the body was buffered for retry by the router. If you want reliable retries for POST, PUT, or PATCH requests with bodies, you need a retry body buffer sized for those requests.
 
 Buffering also matters for:
 
@@ -169,7 +169,7 @@ This sets a 1 MB per-connection buffer at the TCP level. This is different from 
 
 ## Configuring Retry Buffer Size
 
-When retries are configured on a VirtualService, Envoy needs to buffer the request body to retry it. The retry buffer has its own configuration:
+When retries are configured on a VirtualService, Envoy's router needs to buffer the request body to retry it. That retry buffer is controlled by the route action's `request_body_buffer_limit`; if it is not set, Envoy falls back to the listener's `per_connection_buffer_limit_bytes`.
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -182,22 +182,22 @@ spec:
     labels:
       app: my-service
   configPatches:
-    - applyTo: NETWORK_FILTER
+    - applyTo: HTTP_ROUTE
       match:
         context: SIDECAR_OUTBOUND
-        listener:
-          filterChain:
-            filter:
-              name: envoy.filters.network.http_connection_manager
+        routeConfiguration:
+          vhost:
+            name: "my-service.default.svc.cluster.local:8080"
+            route:
+              action: ROUTE
       patch:
         operation: MERGE
         value:
-          typed_config:
-            "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
-            request_timeout: 30s
+          route:
+            request_body_buffer_limit: 5242880
 ```
 
-For retries to work with request bodies, you typically need the buffer filter enabled on the outbound path:
+For retries to work with request bodies larger than the default connection buffer limit, configure this route-level limit on the outbound path. Add the HTTP buffer filter only when you also need Envoy to fully read the request body before forwarding it upstream:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -228,7 +228,7 @@ spec:
             max_request_bytes: 5242880
 ```
 
-Now when the VirtualService retry policy kicks in, Envoy has the full request body buffered and can resend it.
+Now when the VirtualService retry policy kicks in, Envoy can keep enough request body data to resend the request, and the optional buffer filter can force full request buffering before upstream forwarding.
 
 ## Memory Considerations
 
@@ -278,9 +278,10 @@ Watch Envoy's buffer-related stats:
 # Check buffer stats
 kubectl exec <pod> -c istio-proxy -- curl -s localhost:15000/stats | grep buffer
 
-# Key metrics to watch:
-# http.inbound_0.0.0.0_8080.buffer.rq_timeout - requests that timed out during buffering
-# cluster.outbound|8080||service.upstream_rq_retry - retry attempts
+# Other signals to watch:
+# - 413 responses when requests exceed max_request_bytes
+# - cluster.outbound|8080||service.upstream_rq_retry - retry attempts
+# - istio-proxy container memory usage
 ```
 
 ## When Not to Buffer
