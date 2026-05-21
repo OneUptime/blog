@@ -39,25 +39,32 @@ Note that Istio also supports revision-based labeling for canary upgrades:
 kubectl get namespace production --show-labels | grep istio.io/rev
 ```
 
-If you're using revisions, the label is `istio.io/rev=<revision>` instead of `istio-injection=enabled`. You can't use both labels at the same time.
+If you're using revisions, the label is `istio.io/rev=<revision>` instead of `istio-injection=enabled`. If both `istio-injection` and `istio.io/rev` are present on a namespace, Istio gives `istio-injection` precedence, so remove the label you don't intend to use.
 
-## Step 2: Check Pod-Level Annotations
+## Step 2: Check Pod-Level Labels and Deprecated Annotations
 
 Even if the namespace is labeled, individual pods can opt out of injection:
 
 ```bash
-kubectl get pod my-pod -n production -o jsonpath='{.metadata.annotations}' | python3 -m json.tool
+kubectl get pod my-pod -n production -o jsonpath='{.metadata.labels}' | python3 -m json.tool
 ```
 
 Look for:
 
 - `sidecar.istio.io/inject: "false"` - Explicitly disables injection
 - This can be set on the pod template in a Deployment, StatefulSet, etc.
+- The older `sidecar.istio.io/inject` annotation is deprecated in favor of the label, but it may still appear in older manifests.
+
+If you have older manifests, check annotations too:
+
+```bash
+kubectl get pod my-pod -n production -o jsonpath='{.metadata.annotations}' | python3 -m json.tool
+```
 
 Check the Deployment template:
 
 ```bash
-kubectl get deployment my-app -n production -o jsonpath='{.spec.template.metadata.annotations}'
+kubectl get deployment my-app -n production -o jsonpath='{.spec.template.metadata.labels}'
 ```
 
 ## Step 3: Verify the Webhook is Registered
@@ -68,7 +75,7 @@ Check that the mutating webhook configuration exists:
 kubectl get mutatingwebhookconfiguration | grep istio
 ```
 
-You should see `istio-sidecar-injector` or `istio-revision-tag-<tag>`. If it's missing, Istio isn't properly installed.
+You should see `istio-sidecar-injector`, `istio-sidecar-injector-<revision>`, or `istio-revision-tag-<tag>`. If it's missing, Istio isn't properly installed.
 
 Look at the webhook configuration:
 
@@ -91,16 +98,15 @@ This confirms that only namespaces with `istio-injection=enabled` will get injec
 
 ## Step 4: Check if the Webhook is Reachable
 
-The webhook runs inside istiod. If istiod is down or the API server can't reach it, injection fails silently (pods get created without sidecars):
+The webhook runs inside istiod. If istiod is down or the API server can't reach it, pod creation usually fails and Kubernetes records the webhook error in the Deployment status and namespace events:
 
 ```bash
 # Check istiod is running
 
 kubectl get pods -n istio-system -l app=istiod
 
-# Check istiod's webhook port is responding
-kubectl exec -n istio-system deploy/istiod -- \
-  pilot-discovery request GET /ready
+# Check istiod has endpoints, including the webhook port
+kubectl get endpoints istiod -n istio-system
 ```
 
 On cloud providers, the API server runs outside the cluster and needs firewall rules to reach the webhook. Check for failed injection attempts:
@@ -109,7 +115,7 @@ On cloud providers, the API server runs outside the cluster and needs firewall r
 kubectl get events -n production | grep -i inject
 ```
 
-On GKE, make sure port 15017 is open from the control plane to the nodes (see the GKE CNI guide for firewall rule details).
+On GKE private clusters with an in-cluster control plane, make sure port 15017 is open from the control plane to the nodes (see the Cloud Service Mesh private cluster guide for firewall rule details).
 
 ## Step 5: Check for Host Network Pods
 
@@ -179,10 +185,13 @@ kubectl get deployment my-app -n production -o yaml | \
 
 If manual injection works but automatic injection doesn't, the problem is with the webhook, not the injection logic.
 
-You can also do a dry-run to see what the injector would do:
+You can also render the injected manifest to stdout to see what the injector would do:
 
 ```bash
-istioctl kube-inject -f my-deployment.yaml --meshConfigFile <(kubectl get configmap istio -n istio-system -o jsonpath='{.data.mesh}')
+istioctl kube-inject -f my-deployment.yaml \
+  --injectConfigFile <(kubectl get configmap istio-sidecar-injector -n istio-system -o jsonpath='{.data.config}') \
+  --meshConfigFile <(kubectl get configmap istio -n istio-system -o jsonpath='{.data.mesh}') \
+  --valuesFile <(kubectl get configmap istio-sidecar-injector -n istio-system -o jsonpath='{.data.values}')
 ```
 
 ## Step 9: Check Injection Configuration
@@ -215,16 +224,16 @@ The sidecar adds resource requests (typically 100m CPU and 128Mi memory by defau
 
 ## Step 11: Check for Init Container Issues
 
-When the Istio CNI plugin is not installed, injection includes an `istio-init` container that requires NET_ADMIN capability. If your cluster enforces Pod Security Standards that prohibit this:
+When the Istio CNI plugin is not installed, injection includes an `istio-init` container that requires NET_ADMIN and NET_RAW capabilities. If your cluster enforces Pod Security Standards that prohibit this:
 
 ```bash
 kubectl get namespace production -o jsonpath='{.metadata.labels}' | grep "pod-security"
 ```
 
-If the namespace has `pod-security.kubernetes.io/enforce: restricted`, the init container can't run with NET_ADMIN. Solutions:
+If the namespace has `pod-security.kubernetes.io/enforce: baseline` or `pod-security.kubernetes.io/enforce: restricted`, the init container can't run with those capabilities. Solutions:
 
 1. Install the Istio CNI plugin (which eliminates the need for the init container)
-2. Change the Pod Security Standard to `baseline`
+2. Use a policy that explicitly allows the required capabilities, such as `privileged` for the affected namespace
 
 ## Debugging Checklist
 
@@ -238,8 +247,8 @@ kubectl get mutatingwebhookconfiguration | grep istio
 # 3. Istiod running?
 kubectl get pods -n istio-system -l app=istiod
 
-# 4. Pod annotations?
-kubectl get deploy my-app -n production -o jsonpath='{.spec.template.metadata.annotations}'
+# 4. Pod labels?
+kubectl get deploy my-app -n production -o jsonpath='{.spec.template.metadata.labels}'
 
 # 5. Try manual injection
 istioctl kube-inject -f my-deployment.yaml | kubectl diff -f -
@@ -251,4 +260,4 @@ kubectl get events -n production --sort-by='.lastTimestamp' | tail -20
 kubectl rollout restart deployment my-app -n production
 ```
 
-Sidecar injection failures are frustrating because they're silent. The pod just comes up without a sidecar and you don't notice until something doesn't work. The most common causes are a missing namespace label, a pod annotation disabling injection, or a webhook connectivity issue. Work through the checklist from top to bottom and you'll find the problem quickly.
+Sidecar injection failures are frustrating because a namespace or pod that doesn't match the injection policy can come up without a sidecar and you don't notice until something doesn't work. The most common causes are a missing namespace label, a pod label disabling injection, or a webhook connectivity issue. Work through the checklist from top to bottom and you'll find the problem quickly.
