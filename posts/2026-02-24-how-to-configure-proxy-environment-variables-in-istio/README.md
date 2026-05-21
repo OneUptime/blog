@@ -8,7 +8,7 @@ Description: A practical guide to setting custom environment variables on the Is
 
 ---
 
-Every workload in an Istio mesh gets a sidecar proxy container (Envoy) injected alongside the application container. Sometimes you need to pass custom environment variables to this proxy. Maybe you need to tune Envoy's behavior, configure a custom logging format, or set variables that a WebAssembly plugin expects. Istio provides several ways to do this, from per-pod annotations to mesh-wide settings.
+In Istio sidecar mode, workloads enrolled in the mesh get a sidecar proxy container (Envoy) injected alongside the application container. Sometimes you need to pass custom environment variables to this proxy. Maybe you need to tune Envoy's behavior, configure a custom logging format, or set variables that a WebAssembly plugin expects. Istio provides several ways to do this, from per-pod annotations to mesh-wide settings.
 
 ## Why You Would Set Proxy Environment Variables
 
@@ -16,7 +16,7 @@ There are several situations where you need to customize the sidecar's environme
 
 - Setting `ISTIO_META_*` variables to pass metadata to the proxy
 - Configuring DNS resolution behavior
-- Tuning Envoy internal settings like concurrency or drain duration
+- Supplying proxy metadata and feature flags that Istio reads during bootstrap
 - Passing configuration to custom Envoy filters or WASM plugins
 - Setting HTTP proxy variables for outbound connections through a corporate proxy
 
@@ -85,7 +85,7 @@ spec:
 kubectl apply -f proxy-config.yaml
 ```
 
-The ProxyConfig resource is namespace-scoped and uses label selectors to target specific workloads. If you omit the selector, it applies to all workloads in the namespace.
+The ProxyConfig resource is namespace-scoped and uses label selectors to target specific workloads. If you omit the selector, it applies to all workloads in the namespace. For mesh-wide settings, create the ProxyConfig in Istio's root configuration namespace without a selector.
 
 ## Method 3: Mesh-Wide Configuration
 
@@ -134,11 +134,10 @@ These enable Istio's DNS proxying, which lets the sidecar handle DNS resolution.
 **Concurrency:**
 
 ```yaml
-proxyMetadata:
-  ISTIO_META_PROXY_CONCURRENCY: "2"
+concurrency: 2
 ```
 
-Controls how many worker threads Envoy uses. Default is 2 on most installations. Setting it to 0 means Envoy will use all available CPU cores.
+Controls how many worker threads Envoy uses. If unset, Istio determines this automatically based on CPU limits. Setting it to 0 means Envoy will use all available CPU cores.
 
 **Proxy metadata for telemetry:**
 
@@ -160,30 +159,31 @@ proxyMetadata:
   NO_PROXY: "localhost,127.0.0.1,.svc.cluster.local"
 ```
 
-If your cluster sits behind a corporate proxy and external traffic needs to go through it, these variables tell the sidecar where to route outbound connections.
+If your cluster sits behind a corporate proxy, these variables can be useful for proxy-side processes that honor standard HTTP proxy environment variables. They do not replace Istio traffic management configuration for routing application traffic through an egress proxy or gateway.
 
-## Using sidecar.istio.io/proxyImage Annotation
+## Using Custom Injection Templates
 
-While not exactly an environment variable, you can also control the proxy container settings through annotations. For custom environment variables that aren't covered by `proxyMetadata`, you can use the `sidecar.istio.io/inject` annotation in combination with a custom injection template:
+For custom environment variables that aren't covered by `proxyMetadata`, you can define a custom injection template at installation time and select it with the `inject.istio.io/templates` annotation:
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
 metadata:
-  name: istio-sidecar-injector
-  namespace: istio-system
-data:
-  values: |-
-    {
-      "global": {
-        "proxy": {
-          "env": {
-            "CUSTOM_ENVOY_VAR": "custom-value"
-          }
-        }
-      }
-    }
+  name: istio
+spec:
+  values:
+    sidecarInjectorWebhook:
+      templates:
+        custom: |
+          spec:
+            containers:
+            - name: istio-proxy
+              env:
+              - name: CUSTOM_ENVOY_VAR
+                value: custom-value
 ```
+
+Then add `inject.istio.io/templates: sidecar,custom` to the pod template annotations for workloads that should use the custom template.
 
 ## Verifying Environment Variables
 
@@ -203,18 +203,17 @@ kubectl get pod $POD_NAME -o jsonpath='{.spec.containers[?(@.name=="istio-proxy"
 
 ## Priority and Override Order
 
-When the same environment variable is set at multiple levels, there is a precedence order:
+When the same proxy setting is set at multiple levels, Istio merges the configurations. The important precedence rules are:
 
-1. Pod annotations (highest priority)
-2. ProxyConfig with workload selector
-3. ProxyConfig without selector (namespace-wide)
-4. MeshConfig defaultConfig (lowest priority)
+1. A matching ProxyConfig resource takes precedence over the `proxy.istio.io/config` annotation for overlapping fields.
+2. A mesh-wide ProxyConfig resource takes precedence over `meshConfig.defaultConfig` for overlapping fields.
+3. The `proxy.istio.io/config` annotation overrides `meshConfig.defaultConfig` when no matching ProxyConfig field overrides it.
 
-This means a pod-level annotation always wins over mesh-wide settings. This is useful when you need to override a global default for a specific workload.
+This is useful when you need to override a global default for a specific workload, but remember that ProxyConfig resources can override pod-level annotation fields when both are present.
 
 ## Setting Variables for the Init Container
 
-The init container (`istio-init`) that sets up iptables rules is separate from the sidecar. To set environment variables on the init container, use:
+The init container (`istio-init`) that sets up iptables rules is separate from the sidecar. It is configured through specific annotations rather than generic environment variables. For example, to choose the inbound traffic interception mode, use:
 
 ```yaml
 metadata:
