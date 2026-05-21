@@ -65,7 +65,7 @@ kubectl patch deployment my-service -n production -p '{
   "spec": {
     "template": {
       "metadata": {
-        "annotations": {
+        "labels": {
           "sidecar.istio.io/inject": "false"
         }
       }
@@ -123,8 +123,9 @@ Before uninstalling, remove injection labels from all namespaces first:
 
 ```bash
 # Remove injection labels from all namespaces
-for ns in $(kubectl get namespaces -l istio-injection=enabled -o jsonpath='{.items[*].metadata.name}'); do
-  kubectl label namespace $ns istio-injection-
+for ns in $(kubectl get namespaces -o jsonpath='{.items[*].metadata.name}'); do
+  kubectl label namespace $ns istio-injection- 2>/dev/null
+  kubectl label namespace $ns istio.io/rev- 2>/dev/null
 done
 
 # Restart all deployments to remove sidecars
