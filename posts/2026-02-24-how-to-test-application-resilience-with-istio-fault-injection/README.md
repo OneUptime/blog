@@ -41,7 +41,7 @@ For each dependency, ask:
 Simulate a service being completely unavailable by injecting 100% abort:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: payment-service
@@ -88,7 +88,7 @@ kubectl delete virtualservice payment-service -n production
 Slow dependencies are tricky because they tie up resources. A service waiting for a slow upstream holds connections, threads, and memory:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: product-service
@@ -132,7 +132,7 @@ wait
 This is the hardest type of failure to handle because it's unpredictable. Some requests succeed, some fail:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: product-service
@@ -153,7 +153,7 @@ spec:
 
 What to verify:
 
-- Does the calling service retry failed requests?
+- Does the calling service retry failed requests? If you rely on Istio retries, configure and test those separately from the fault-injection `VirtualService`, because Istio does not apply retry or timeout policies configured on the same `VirtualService` rule as a fault.
 - After retrying, does the user get a successful response most of the time?
 - Does the circuit breaker open if failures persist?
 - Are retries adding excessive load to the upstream?
@@ -164,7 +164,7 @@ Real outages rarely affect just one service. Test what happens when multiple dep
 
 ```yaml
 # Slow product service
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: product-service
@@ -183,7 +183,7 @@ spec:
             host: product-service
 ---
 # Failing payment service
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: payment-service
@@ -213,7 +213,7 @@ Testing in production requires care. Here's how to do it without causing real in
 Only inject faults for requests with a specific header:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: payment-service
