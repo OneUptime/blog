@@ -26,7 +26,7 @@ Istio retries solve these by:
 
 - Applying consistent retry behavior at the proxy layer
 - Being configurable without code changes
-- Providing built-in metrics on retries
+- Providing Envoy statistics for retry behavior
 - Working the same regardless of programming language
 
 ## What Application-Level Retries Look Like
@@ -104,7 +104,7 @@ spec:
 
 ### Understanding the Configuration
 
-- **attempts**: Maximum number of retry attempts (including the original request in some interpretations, check your Istio version)
+- **attempts**: Number of retries allowed for a request. The maximum number of upstream requests is the original request plus this value
 - **perTryTimeout**: Timeout for each individual attempt
 - **retryOn**: Conditions that trigger a retry
 - **retryRemoteLocalities**: Whether to retry on endpoints in different localities
@@ -119,8 +119,8 @@ The `retryOn` field accepts these values:
 - `connect-failure` - Retry on connection failure
 - `retriable-4xx` - Retry on 409 (conflict)
 - `refused-stream` - Retry when upstream refuses the stream
-- `retriable-status-codes` - Retry on specific status codes (configured separately)
-- `retriable-headers` - Retry based on response headers
+- `retriable-status-codes` - Retry on specific status codes, either listed directly in `retryOn` or supplied with the `x-envoy-retriable-status-codes` header
+- `retriable-headers` - Retry based on response headers configured in Envoy or supplied with the `x-envoy-retriable-header-names` header
 
 You can combine multiple conditions with commas.
 
@@ -192,7 +192,7 @@ spec:
 
 ### Step 3: Deploy with Both Active
 
-Apply the VirtualService retries while the application retries are still in place. This means you will have double retries temporarily, which is not ideal but is safe during a short transition.
+Apply the VirtualService retries while the application retries are still in place. This means you will have double retries temporarily, which can amplify traffic, so keep this transition short and monitor it carefully.
 
 ```bash
 kubectl apply -f virtual-services/
@@ -224,7 +224,7 @@ Deploy the updated code and verify that Istio retries are handling failures corr
 
 ### Step 5: Monitor Retry Behavior
 
-Check retry metrics in Prometheus:
+Check request outcomes in Prometheus:
 
 ```text
 istio_requests_total{response_code="503",destination_service="payment-service.default.svc.cluster.local"}
@@ -274,11 +274,11 @@ Istio retries work best with idempotent operations (GET, DELETE, PUT). For non-i
 
 ### Backoff
 
-Istio uses a default backoff of 25ms with jitter. You can not configure exponential backoff in Istio the way you can in application code. If you need specific backoff behavior, you may need to keep that logic in the application.
+Istio uses a default base backoff of 25ms for exponential retry backoff. You can configure the minimum backoff duration with the `backoff` field, but you can not fully customize retry backoff behavior in Istio the way you can in application code. If you need specific backoff behavior, you may need to keep that logic in the application.
 
 ### Retry Budgets
 
-To prevent retry storms, configure circuit breaking alongside retries:
+To prevent retry storms, configure a retry budget and circuit breaking alongside retries:
 
 ```yaml
 apiVersion: networking.istio.io/v1beta1
@@ -288,6 +288,9 @@ metadata:
 spec:
   host: payment-service
   trafficPolicy:
+    retryBudget:
+      percent: 20
+      minRetryConcurrency: 3
     outlierDetection:
       consecutive5xxErrors: 5
       interval: 10s
@@ -297,7 +300,7 @@ spec:
         http2MaxRequests: 100
 ```
 
-This way, if a host keeps failing, it gets ejected from the load balancing pool instead of being retried endlessly.
+This way, concurrent retries are capped relative to active traffic, and if a host keeps failing, it gets ejected from the load balancing pool instead of being retried endlessly.
 
 ### Interaction with Application Timeouts
 
@@ -308,12 +311,12 @@ Make sure the overall request timeout in the VirtualService accounts for retries
     - route:
         - destination:
             host: payment-service
-      timeout: 20s  # Total timeout for all attempts
+      timeout: 25s  # Total timeout for all attempts
       retries:
         attempts: 3
         perTryTimeout: 5s  # Timeout per attempt
 ```
 
-Total possible time: 3 attempts * 5s = 15s, which fits within the 20s overall timeout.
+Total possible attempt time: 4 requests (the original request plus 3 retries) * 5s = 20s, which fits within the 25s overall timeout and leaves room for retry backoff.
 
 Moving retries to Istio simplifies your application code and gives you consistent retry behavior across all services. Start by documenting your current retry patterns, create matching VirtualService configurations, verify they work, and then remove the application-level retry code.
