@@ -61,21 +61,22 @@ This restricts all ingress traffic to requests from these IP ranges. Everything 
 
 There's an important caveat: the source IP seen by the gateway depends on your cloud provider and load balancer configuration. If the load balancer does SNAT (source network address translation), the gateway sees the load balancer's IP, not the client's real IP.
 
-To preserve the original client IP, configure your load balancer to use proxy protocol or X-Forwarded-For headers:
+To preserve the original client IP, configure your load balancer to use proxy protocol or X-Forwarded-For headers. For AWS NLB with PROXY protocol, the annotation belongs on the `Service`, and the Istio gateway must be configured to accept PROXY protocol:
+
+```bash
+kubectl annotate service istio-ingressgateway -n istio-system \
+  service.beta.kubernetes.io/aws-load-balancer-proxy-protocol="*" \
+  --overwrite
+```
 
 ```yaml
-# For the gateway deployment
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: istio-ingressgateway
-  namespace: istio-system
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
 spec:
-  template:
-    metadata:
-      annotations:
-        # For AWS NLB
-        service.beta.kubernetes.io/aws-load-balancer-proxy-protocol: "*"
+  meshConfig:
+    defaultConfig:
+      gatewayTopology:
+        proxyProtocol: {}
 ```
 
 And configure Istio to use `remoteIpBlocks` instead of `ipBlocks` for XFF-based IP checking:
@@ -98,7 +99,7 @@ spec:
               - "203.0.113.0/24"
 ```
 
-`remoteIpBlocks` uses the X-Forwarded-For header to determine the client IP, which works correctly behind load balancers.
+`remoteIpBlocks` uses the X-Forwarded-For header or PROXY protocol to determine the client IP. For X-Forwarded-For, also configure `gatewayTopology.numTrustedProxies` so Istio knows how many trusted proxies are in front of the gateway.
 
 ## Host-Based Access Control
 
@@ -191,6 +192,7 @@ spec:
       jwksUri: "https://auth.example.com/.well-known/jwks.json"
       audiences:
         - "my-api"
+      forwardOriginalToken: true
 ---
 apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
@@ -269,6 +271,21 @@ spec:
 ---
 # Service: fine-grained access control
 apiVersion: security.istio.io/v1
+kind: RequestAuthentication
+metadata:
+  name: service-jwt
+  namespace: my-app
+spec:
+  selector:
+    matchLabels:
+      app: order-service
+  jwtRules:
+    - issuer: "https://auth.example.com"
+      jwksUri: "https://auth.example.com/.well-known/jwks.json"
+      audiences:
+        - "my-api"
+---
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: service-policy
@@ -315,17 +332,20 @@ This only works if your infrastructure injects geographic headers before they re
 ## Testing Ingress Policies
 
 ```bash
-# Get your gateway's external IP
-GATEWAY_IP=$(kubectl get svc istio-ingressgateway -n istio-system -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+# Get your gateway's external address
+GATEWAY_HOST=$(kubectl get svc istio-ingressgateway -n istio-system -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+if [ -z "$GATEWAY_HOST" ]; then
+  GATEWAY_HOST=$(kubectl get svc istio-ingressgateway -n istio-system -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+fi
 
 # Test from your machine
-curl -s -o /dev/null -w "%{http_code}" -H "Host: api.example.com" http://$GATEWAY_IP/api/v1/users
+curl -s -o /dev/null -w "%{http_code}" -H "Host: api.example.com" http://$GATEWAY_HOST/api/v1/users
 
 # Test with JWT
-curl -s -o /dev/null -w "%{http_code}" -H "Host: api.example.com" -H "Authorization: Bearer $TOKEN" http://$GATEWAY_IP/api/v1/users
+curl -s -o /dev/null -w "%{http_code}" -H "Host: api.example.com" -H "Authorization: Bearer $TOKEN" http://$GATEWAY_HOST/api/v1/users
 
 # Test blocked path
-curl -s -o /dev/null -w "%{http_code}" -H "Host: api.example.com" http://$GATEWAY_IP/.env
+curl -s -o /dev/null -w "%{http_code}" -H "Host: api.example.com" http://$GATEWAY_HOST/.env
 
 # Check gateway logs
 kubectl logs -n istio-system -l istio=ingressgateway | grep -E "403|rbac"
@@ -337,7 +357,7 @@ kubectl logs -n istio-system -l istio=ingressgateway | grep -E "403|rbac"
 
 2. **Wrong selector labels.** Double-check the gateway pod labels. Custom gateway deployments might use different labels than the default `istio: ingressgateway`.
 
-3. **IP address confusion.** Behind a load balancer, the source IP might not be what you expect. Use `remoteIpBlocks` with X-Forwarded-For when operating behind L7 load balancers.
+3. **IP address confusion.** Behind a load balancer, the source IP might not be what you expect. Use `remoteIpBlocks` with X-Forwarded-For when operating behind L7 load balancers, and configure `gatewayTopology.numTrustedProxies` for your proxy chain.
 
 4. **Host header with port.** Some clients send `Host: example.com:443`. If your policy only matches `example.com`, these requests get denied. Include both variants.
 
