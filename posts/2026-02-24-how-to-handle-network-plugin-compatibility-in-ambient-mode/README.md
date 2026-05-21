@@ -15,7 +15,7 @@ Istio ambient mode relies on low-level network manipulation to redirect traffic 
 Before getting into CNI-specific issues, it helps to understand what ambient mode does at the network level. The Istio CNI agent (which runs as a DaemonSet) is responsible for:
 
 1. Detecting pods that should be in the ambient mesh
-2. Setting up network redirection rules (iptables or eBPF) so traffic from those pods goes through ztunnel
+2. Setting up network redirection rules in the pod network namespace so traffic from those pods goes through ztunnel
 3. Setting up rules so traffic destined for those pods also goes through ztunnel
 
 This network manipulation must coexist with whatever the cluster's CNI plugin is doing. If there are conflicts in iptables rule ordering or network namespace configuration, traffic can break.
@@ -60,7 +60,7 @@ spec:
 
 ### Calico with eBPF mode
 
-Calico's eBPF dataplane can conflict with Istio ambient mode because both try to intercept traffic at the kernel level. If you are running Calico in eBPF mode, you may need to disable Calico's eBPF for pods in the ambient mesh:
+Calico's eBPF dataplane changes how service routing and policy are implemented. If you see connection failures after enabling ambient mode with Calico eBPF, compare the behavior with Calico's standard Linux dataplane. For manifest-based Calico installs, the FelixConfiguration field that disables the BPF dataplane is:
 
 ```yaml
 apiVersion: projectcalico.org/v3
@@ -68,8 +68,7 @@ kind: FelixConfiguration
 metadata:
   name: default
 spec:
-  bpfEnabled: true
-  bpfExternalServiceMode: DSR
+  bpfEnabled: false
 ```
 
 If you see connection failures after enabling ambient mode with Calico eBPF, check the ztunnel logs for redirection errors:
@@ -78,28 +77,26 @@ If you see connection failures after enabling ambient mode with Calico eBPF, che
 kubectl logs -n istio-system -l app=ztunnel | grep -i "redirect\|intercept\|error"
 ```
 
-A workaround is to use Calico in iptables mode for namespaces that are part of the ambient mesh.
+A workaround is to use Calico's standard Linux dataplane for clusters where you plan to run ambient mode.
 
 ## Cilium Compatibility
 
 Cilium is popular in modern clusters and has its own eBPF-based networking stack. Ambient mode compatibility with Cilium requires specific configuration.
 
-### Disabling Cilium's kube-proxy Replacement for Mesh Traffic
+### Configuring Cilium's kube-proxy Replacement for Mesh Traffic
 
-Cilium often replaces kube-proxy with its own eBPF-based service routing. This can interfere with how ztunnel routes traffic:
+Cilium can replace kube-proxy with its own eBPF-based service routing. The simplest Istio-compatible setup is to keep kube-proxy and set `kubeProxyReplacement: false`. If you run Cilium without kube-proxy, Cilium's Istio integration documentation requires `socketLB.hostNamespaceOnly: true` and `cni.exclusive: false`:
 
 ```yaml
 # In the Cilium ConfigMap or Helm values
-kubeProxyReplacement: partial
-hostServices:
-  enabled: false
-  protocols: tcp
+kubeProxyReplacement: true
+cni:
+  exclusive: false
 socketLB:
-  enabled: true
   hostNamespaceOnly: true
 ```
 
-Setting `hostNamespaceOnly: true` for socketLB prevents Cilium from intercepting pod traffic that should go through ztunnel.
+Setting `hostNamespaceOnly: true` for socketLB prevents Cilium's socket-based load balancing from interfering with traffic that Istio needs to proxy. Setting `cni.exclusive: false` prevents Cilium from removing other CNI configuration, which is required when Istio installs its chained CNI plugin.
 
 ### Cilium CNI Chaining
 
@@ -153,19 +150,23 @@ kubectl get pods -n kube-flannel
 kubectl debug node/my-node -it --image=nicolaka/netshoot -- ip link show flannel.1
 ```
 
-If you see MTU-related issues (connections hang or packets get dropped), adjust the MTU on the ztunnel:
+If you see MTU-related issues (connections hang or packets get dropped), adjust the pod network MTU in Flannel's configuration:
 
 ```yaml
-apiVersion: install.istio.io/v1alpha1
-kind: IstioOperator
-spec:
-  values:
-    ztunnel:
-      env:
-        ZTUNNEL_OUTBOUND_MTU: "1400"
+# Example Flannel net-conf snippet
+net-conf.json: |
+  {
+    "Network": "10.244.0.0/16",
+    "Backend": {
+      "Type": "vxlan",
+      "VNI": 1,
+      "Port": 8472
+    },
+    "MTU": 1450
+  }
 ```
 
-Flannel's default MTU is usually 1450 (1500 minus 50 for VXLAN overhead). ztunnel needs to use a slightly lower MTU to account for its own encapsulation.
+Flannel's VXLAN MTU is commonly 1450 on a 1500-byte underlay. If your underlay MTU is lower, make sure the pod interface MTU leaves enough room for VXLAN overhead; otherwise, ambient traffic can expose the same fragmentation or packet-drop problems as other pod-to-pod traffic.
 
 ## Antrea Compatibility
 
@@ -173,14 +174,17 @@ Antrea is a CNI plugin that supports both OVS-based and eBPF datapath. For ambie
 
 ```yaml
 # Antrea configuration for compatibility with ambient mode
-apiVersion: crd.antrea.io/v1alpha1
-kind: AntreaAgentConfiguration
-spec:
-  trafficEncapMode: encap
-  noSNAT: true
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: antrea-config
+  namespace: kube-system
+data:
+  antrea-agent.conf: |
+    trafficEncapMode: encap
 ```
 
-The `noSNAT` setting is important because Istio ambient mode needs to see the original source IP of pods to enforce authorization policies. If the CNI performs SNAT, ztunnel sees the node IP instead of the pod IP, breaking identity-based policies.
+Antrea's `trafficEncapMode` is configured in `antrea-agent.conf`, not as an `AntreaAgentConfiguration` custom resource. The `noSNAT` setting is only relevant for Antrea `noEncap` mode and external traffic; it is not required for the default `encap` mode shown here.
 
 ## Debugging CNI Conflicts
 
@@ -189,19 +193,19 @@ When you suspect a CNI conflict, here is a systematic debugging approach:
 ### Check iptables Rules
 
 ```bash
-# On the node, check iptables rules
-kubectl debug node/my-node -it --image=nicolaka/netshoot -- \
-  iptables-save | grep -E "ztunnel|istio|ISTIO"
+# In an ambient workload pod, check iptables rules
+kubectl debug deploy/my-app -it --image=gcr.io/istio-release/base \
+  --profile=netadmin -- iptables-save | grep -E "ztunnel|istio|ISTIO"
 ```
 
-You should see rules that redirect traffic to ztunnel. If these rules are missing or in the wrong chain position, the CNI might be overwriting them.
+You should see Istio-specific rules in the pod network namespace that redirect traffic to ztunnel. If these rules are missing, the Istio CNI agent may not have enrolled the pod.
 
 ### Check Network Namespaces
 
 ```bash
 # Verify pod network namespace setup
-kubectl debug node/my-node -it --image=nicolaka/netshoot -- \
-  nsenter -t $(pgrep -f "my-app-container") -n -- iptables-save
+kubectl debug deploy/my-app -it --image=nicolaka/netshoot \
+  --profile=netadmin -- ss -ntlp
 ```
 
 ### Check CNI Plugin Logs
@@ -219,8 +223,9 @@ kubectl logs -n istio-system -l k8s-app=istio-cni-node | grep -i "error\|fail"
 Use tcpdump to verify traffic is being redirected correctly:
 
 ```bash
-# Capture traffic on the ztunnel pod
-kubectl exec -n istio-system ztunnel-xxxxx -- \
+# Capture traffic from a debug container attached to a ztunnel pod
+kubectl debug -n istio-system pod/ztunnel-xxxxx -it \
+  --image=nicolaka/netshoot -- \
   tcpdump -i any -n port 15008 -c 20
 
 # Or from a debug pod on the node
@@ -236,7 +241,7 @@ Port 15008 is the HBONE port used by ztunnel. If you see traffic on this port, r
 
 2. **Avoid eBPF conflicts**: If both your CNI and Istio use eBPF, check for conflicts. In some cases, you may need to disable eBPF features on one side.
 
-3. **Match MTU settings**: Ensure ztunnel's MTU is compatible with your CNI's encapsulation overhead.
+3. **Match MTU settings**: Ensure pod MTU settings are compatible with your CNI's encapsulation overhead.
 
 4. **Test with a simple workload first**: Before rolling out ambient mode cluster-wide, test with a single namespace and simple HTTP services.
 
