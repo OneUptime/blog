@@ -8,9 +8,9 @@ Description: A step-by-step guide to safely upgrading Istio using Helm charts, c
 
 ---
 
-Upgrading Istio is one of those operations that makes people nervous, and honestly, a healthy amount of caution is warranted. A bad upgrade can affect every service in your mesh. But with Helm, the upgrade process is well-structured and repeatable, and you always have a clear rollback path.
+Upgrading Istio is one of those operations that makes people nervous, and honestly, a healthy amount of caution is warranted. A bad upgrade can affect every service in your mesh. But with Helm, the upgrade process is well-structured and repeatable, and you can plan a clear rollback path.
 
-Istio supports upgrading one minor version at a time (e.g., 1.22 to 1.23, not 1.22 to 1.24). Patch version upgrades within the same minor version are generally safe and straightforward.
+For in-place upgrades, Istio supports upgrading when the installed version is no more than one minor version behind the target version (e.g., 1.29 to 1.30, not 1.28 to 1.30). Canary upgrades with revisions can support skipping farther, but upgrading across more than two minor versions in one step is not officially tested or recommended. Patch version upgrades within the same minor version are generally safe and straightforward.
 
 ## Pre-Upgrade Checklist
 
@@ -23,6 +23,7 @@ helm list -n istio-system
 istioctl version
 
 # 2. Check for deprecated APIs in your config
+istioctl x precheck
 istioctl analyze --all-namespaces
 
 # 3. Read the upgrade notes for the target version
@@ -61,10 +62,10 @@ For most upgrades, this is the process:
 ```bash
 helm upgrade istio-base istio/base \
   -n istio-system \
-  --version 1.24.0
+  --version 1.30.0
 ```
 
-This updates the CRDs. The CRDs are backward-compatible, so existing resources continue to work.
+This updates the CRDs and other cluster-wide resources. Istio's Helm upgrade flow updates these before the control plane because the base chart is shared across revisions.
 
 **Step 2: Upgrade Istiod**
 
@@ -72,7 +73,7 @@ This updates the CRDs. The CRDs are backward-compatible, so existing resources c
 helm upgrade istiod istio/istiod \
   -n istio-system \
   -f istiod-values.yaml \
-  --version 1.24.0 \
+  --version 1.30.0 \
   --wait
 ```
 
@@ -82,7 +83,7 @@ Watch the upgrade progress:
 kubectl get pods -n istio-system -w
 ```
 
-Istiod performs a rolling update. The old pod stays running until the new one is ready, so there's no control plane downtime.
+Istiod performs a rolling update. Existing sidecars continue using their current configuration while the control plane rolls, but for production you should run at least two `istiod` replicas and a PodDisruptionBudget to reduce the risk of disruption.
 
 **Step 3: Upgrade gateways**
 
@@ -90,7 +91,7 @@ Istiod performs a rolling update. The old pod stays running until the new one is
 helm upgrade istio-ingress istio/gateway \
   -n istio-ingress \
   -f gateway-values.yaml \
-  --version 1.24.0 \
+  --version 1.30.0 \
   --wait
 ```
 
@@ -100,7 +101,7 @@ This is the part that takes the longest. Each workload needs to be restarted to 
 
 ```bash
 # Restart namespace by namespace
-for ns in $(kubectl get namespaces -l istio-injection=enabled -o jsonpath='{.items[*].metadata.name}'); do
+for ns in $({ kubectl get namespaces -l istio-injection=enabled -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}'; kubectl get namespaces -l istio.io/rev -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}'; } | sort -u); do
   echo "Restarting deployments in $ns..."
   kubectl rollout restart deployment -n "$ns"
 done
@@ -115,20 +116,37 @@ For critical environments, a canary upgrade lets you run two versions of Istiod 
 **Step 1: Install the new version alongside the old one using revisions**
 
 ```bash
-helm install istiod-1-24 istio/istiod \
+# First update shared cluster-wide resources
+helm upgrade istio-base istio/base \
   -n istio-system \
-  --set revision=1-24 \
+  --version 1.30.0
+
+helm install istiod-1-30-0 istio/istiod \
+  -n istio-system \
+  --set revision=1-30-0 \
   -f istiod-values.yaml \
-  --version 1.24.0
+  --version 1.30.0 \
+  --wait
 ```
 
-Now you have two Istiod deployments: the old one and the new one (tagged with revision `1-24`).
+Now you have two Istiod deployments: the old one and the new one (tagged with revision `1-30-0`).
+
+If you are using Istio gateways, install a revision-specific gateway as well:
+
+```bash
+helm install istio-ingress-1-30-0 istio/gateway \
+  -n istio-ingress \
+  --set revision=1-30-0 \
+  -f gateway-values.yaml \
+  --version 1.30.0 \
+  --wait
+```
 
 **Step 2: Migrate namespaces to the new revision**
 
 ```bash
 # Change the namespace label from injection to revision-based
-kubectl label namespace my-namespace istio-injection- istio.io/rev=1-24 --overwrite
+kubectl label namespace my-namespace istio-injection- istio.io/rev=1-30-0 --overwrite
 
 # Restart pods in that namespace
 kubectl rollout restart deployment -n my-namespace
@@ -155,8 +173,11 @@ Once all namespaces are migrated:
 # Remove the old Istiod
 helm uninstall istiod -n istio-system
 
-# Rename the new one (optional, for consistency)
-# Or just keep using the revision-based naming
+# Make the new revision the default for cluster-wide validation
+helm upgrade istio-base istio/base --set defaultRevision=1-30-0 -n istio-system --version 1.30.0
+
+# If you installed a canary gateway and no longer need the old one
+helm uninstall istio-ingress -n istio-ingress
 ```
 
 ## Handling Values Changes Between Versions
@@ -165,7 +186,7 @@ Helm values can change between Istio versions. Some keys get deprecated or renam
 
 ```bash
 # Compare your values with the new defaults
-helm show values istio/istiod --version 1.24.0 > new-defaults.yaml
+helm show values istio/istiod --version 1.30.0 > new-defaults.yaml
 diff current-istiod-values.yaml new-defaults.yaml
 ```
 
@@ -240,7 +261,10 @@ kubectl label namespace my-namespace istio.io/rev- istio-injection=enabled --ove
 kubectl rollout restart deployment -n my-namespace
 
 # Remove the failed new revision
-helm uninstall istiod-1-24 -n istio-system
+helm uninstall istiod-1-30-0 -n istio-system
+
+# If you installed a canary gateway
+helm uninstall istio-ingress-1-30-0 -n istio-ingress
 ```
 
 ## Automating Upgrades
@@ -262,6 +286,7 @@ echo "Upgrading Istio to $TARGET_VERSION"
 
 # Pre-checks
 echo "Running pre-checks..."
+istioctl x precheck || { echo "Precheck found issues. Fix before upgrading."; exit 1; }
 istioctl analyze --all-namespaces || { echo "Analysis found issues. Fix before upgrading."; exit 1; }
 
 # Backup
