@@ -8,7 +8,7 @@ Description: How to diagnose and fix out-of-memory (OOM) issues in Istio control
 
 ---
 
-OOM (Out of Memory) kills are one of the most frustrating issues you can encounter with Istio. When the control plane gets OOMKilled, configuration updates stop being pushed to sidecars. When a sidecar gets OOMKilled, the application pod restarts and traffic is disrupted. Both scenarios can cause cascading failures in your mesh.
+OOM (Out of Memory) kills are one of the most frustrating issues you can encounter with Istio. When the control plane gets OOMKilled, configuration updates stop being pushed to sidecars. When a sidecar gets OOMKilled, the proxy container restarts and traffic is disrupted. Both scenarios can cause cascading failures in your mesh.
 
 This guide walks through how to identify, diagnose, and fix OOM issues in both the Istio control plane and sidecar proxies.
 
@@ -64,9 +64,9 @@ kubectl get deployment istiod -n istio-system -o jsonpath='{.spec.template.spec.
 # Check number of connected sidecars
 kubectl exec -n istio-system deploy/istiod -- curl -s localhost:15014/metrics | grep pilot_xds_connected
 
-# Check number of services and endpoints
+# Check number of services and endpoint slices
 kubectl get services -A --no-headers | wc -l
-kubectl get endpoints -A --no-headers | wc -l
+kubectl get endpointslices -A --no-headers | wc -l
 
 # Check number of Istio configuration objects
 kubectl get virtualservices -A --no-headers | wc -l
@@ -82,7 +82,7 @@ kubectl get serviceentries -A --no-headers | wc -l
 
 3. **Large number of Istio configuration objects**: Hundreds of VirtualServices or DestinationRules means more configuration to process and cache.
 
-4. **Memory limit too low**: The default memory limit might not be sufficient for your cluster size.
+4. **Memory limit too low**: The configured memory limit might not be sufficient for your cluster size.
 
 ### Fix: Increase Istiod Memory
 
@@ -110,17 +110,15 @@ spec:
     pilot:
       k8s:
         env:
-        - name: PILOT_ENABLE_CONFIG_DISTRIBUTION_TRACKING
-          value: "false"
         - name: PILOT_PUSH_THROTTLE
           value: "50"
         - name: PILOT_DEBOUNCE_AFTER
-          value: "200ms"
+          value: "1s"
         - name: PILOT_DEBOUNCE_MAX
-          value: "2s"
+          value: "10s"
 ```
 
-Throttling pushes and increasing debounce windows reduces the memory spike during configuration updates.
+Throttling concurrent pushes and increasing the debounce delay reduces the memory spike during configuration updates.
 
 ## Diagnosing Sidecar OOM
 
@@ -153,7 +151,7 @@ kubectl exec -n my-namespace my-pod -c istio-proxy -- \
 
 4. **Access log buffering**: Under high traffic, access logs waiting to be flushed consume memory.
 
-5. **Memory limit too low**: The default 128Mi or 256Mi might not be enough for your workload.
+5. **Memory limit too low**: A configured 128Mi or 256Mi limit might not be enough for your workload.
 
 ### Fix: Increase Sidecar Memory
 
@@ -193,7 +191,7 @@ spec:
 The most effective fix for configuration-related OOM:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: my-service-sidecar
@@ -214,7 +212,7 @@ spec:
 For services that handle large payloads:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service-dr
@@ -266,11 +264,11 @@ spec:
         summary: "Sidecar in {{ $labels.pod }} at {{ $value | humanizePercentage }} of memory limit"
     - alert: IstiodOOMKilled
       expr: |
-        increase(kube_pod_container_status_restarts_total{namespace="istio-system", container="discovery"}[1h]) > 0
+        kube_pod_container_status_last_terminated_reason{namespace="istio-system", container="discovery", reason="OOMKilled"} == 1
       labels:
         severity: critical
       annotations:
-        summary: "istiod has restarted, check for OOMKill"
+        summary: "istiod was OOMKilled"
 ```
 
 ## Emergency Response
