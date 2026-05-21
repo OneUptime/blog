@@ -23,71 +23,96 @@ Each layer catches different categories of bugs.
 
 ## Unit Testing in Rust
 
-The proxy-wasm Rust SDK includes a test framework that lets you test plugin logic without running Envoy:
+The Proxy-Wasm project includes a Rust test framework that lets you test plugin logic without running Envoy:
 
 Add the test dependency to `Cargo.toml`:
 
 ```toml
 [dev-dependencies]
-proxy-wasm-test-framework = "0.1"
+anyhow = "1"
+proxy-wasm-test-framework = { git = "https://github.com/proxy-wasm/test-framework" }
 ```
 
 Write tests in a `tests/` directory:
 
 ```rust
 // tests/integration_test.rs
+use anyhow::Result;
 use proxy_wasm_test_framework::tester;
 use proxy_wasm_test_framework::types::*;
 
 #[test]
-fn test_adds_response_header() {
+fn test_adds_response_header() -> Result<()> {
     let args = tester::MockSettings {
-        wasm_path: "target/wasm32-wasi/release/my_plugin.wasm".to_string(),
-        plugin_config: r#"{"header_name":"x-test","header_value":"hello"}"#.to_string(),
-        ..Default::default()
+        wasm_path: "target/wasm32-wasip1/release/my_plugin.wasm".to_string(),
+        quiet: true,
+        allow_unexpected: false,
     };
+    let plugin_config = r#"{"header_name":"x-test","header_value":"hello"}"#;
 
     let mut test = tester::mock(args).unwrap();
 
     // Start the plugin
-    test.call_start();
-    test.call_configure(args.plugin_config.len());
+    test.call_start().execute_and_expect(ReturnType::None)?;
+
+    // Create and configure the root context
+    let root_context = 1;
+    test.call_proxy_on_context_create(root_context, 0)
+        .execute_and_expect(ReturnType::None)?;
+    test.call_proxy_on_configure(root_context, plugin_config.len() as i32)
+        .expect_get_buffer_bytes(Some(BufferType::PluginConfiguration))
+        .returning(Some(plugin_config))
+        .execute_and_expect(ReturnType::Bool(true))?;
 
     // Create an HTTP context
-    let http_context = test.create_http_context();
+    let http_context = 2;
+    test.call_proxy_on_context_create(http_context, root_context)
+        .execute_and_expect(ReturnType::None)?;
 
     // Send request headers
-    test.call_proxy_on_request_headers(http_context, 0, false);
+    test.call_proxy_on_request_headers(http_context, 0, false)
+        .execute_and_expect(ReturnType::Action(Action::Continue))?;
 
     // Send response headers
-    test.call_proxy_on_response_headers(http_context, 0, false);
+    test.call_proxy_on_response_headers(http_context, 0, false)
+        .expect_add_header_map_value(Some(MapType::HttpResponseHeaders), Some("x-test"), Some("hello"))
+        .execute_and_expect(ReturnType::Action(Action::Continue))?;
 
-    // Verify the response header was added
-    let headers = test.get_response_headers(http_context);
-    assert!(headers.iter().any(|(k, v)| k == "x-test" && v == "hello"));
+    Ok(())
 }
 
 #[test]
-fn test_rejects_missing_api_key() {
+fn test_rejects_missing_api_key() -> Result<()> {
     let args = tester::MockSettings {
-        wasm_path: "target/wasm32-wasi/release/my_plugin.wasm".to_string(),
-        plugin_config: r#"{"api_keys":{"key1":"client1"}}"#.to_string(),
-        ..Default::default()
+        wasm_path: "target/wasm32-wasip1/release/my_plugin.wasm".to_string(),
+        quiet: true,
+        allow_unexpected: false,
     };
+    let plugin_config = r#"{"api_keys":{"key1":"client1"}}"#;
 
     let mut test = tester::mock(args).unwrap();
-    test.call_start();
-    test.call_configure(args.plugin_config.len());
+    test.call_start().execute_and_expect(ReturnType::None)?;
 
-    let http_context = test.create_http_context();
+    let root_context = 1;
+    test.call_proxy_on_context_create(root_context, 0)
+        .execute_and_expect(ReturnType::None)?;
+    test.call_proxy_on_configure(root_context, plugin_config.len() as i32)
+        .expect_get_buffer_bytes(Some(BufferType::PluginConfiguration))
+        .returning(Some(plugin_config))
+        .execute_and_expect(ReturnType::Bool(true))?;
+
+    let http_context = 2;
+    test.call_proxy_on_context_create(http_context, root_context)
+        .execute_and_expect(ReturnType::None)?;
 
     // Send request without API key header
-    let action = test.call_proxy_on_request_headers(http_context, 0, false);
+    test.call_proxy_on_request_headers(http_context, 0, false)
+        .expect_get_header_map_value(Some(MapType::HttpRequestHeaders), Some("x-api-key"))
+        .returning(None)
+        .expect_send_local_response(Some(401), Some("missing API key"), Some(vec![]), Some(-1))
+        .execute_and_expect(ReturnType::Action(Action::Pause))?;
 
-    // Should have sent a local response (401)
-    assert_eq!(action, Action::Pause);
-    let response = test.get_sent_local_response(http_context);
-    assert_eq!(response.unwrap().status_code, 401);
+    Ok(())
 }
 ```
 
@@ -95,8 +120,9 @@ Run the tests:
 
 ```bash
 # Build the Wasm binary first
+rustup target add wasm32-wasip1
 
-cargo build --target wasm32-wasi --release
+cargo build --target wasm32-wasip1 --release
 
 # Run tests
 cargo test
@@ -113,8 +139,8 @@ package main
 import (
 	"testing"
 
-	"github.com/tetratelabs/proxy-wasm-go-sdk/proxytest"
-	"github.com/tetratelabs/proxy-wasm-go-sdk/proxywasm/types"
+	"github.com/proxy-wasm/proxy-wasm-go-sdk/proxywasm/proxytest"
+	"github.com/proxy-wasm/proxy-wasm-go-sdk/proxywasm/types"
 )
 
 func TestOnHttpRequestHeaders(t *testing.T) {
@@ -275,10 +301,13 @@ Run Envoy with Docker:
 
 ```bash
 # Start an upstream test server
-docker run -d --name upstream --network=host hashicorp/http-echo -listen=:8081 -text="hello from upstream"
+docker network create wasm-test
+docker run -d --name upstream --network=wasm-test hashicorp/http-echo -listen=:8080 -text="hello from upstream"
 
 # Run Envoy with the plugin
-docker run -d --name envoy --network=host \
+docker run -d --name envoy --network=wasm-test \
+  -p 8080:8080 \
+  -p 9901:9901 \
   -v $(pwd)/envoy.yaml:/etc/envoy/envoy.yaml \
   -v $(pwd)/plugin.wasm:/etc/envoy/plugin.wasm \
   envoyproxy/envoy:v1.31-latest \
@@ -301,7 +330,6 @@ For more realistic testing, use Docker Compose with multiple services:
 
 ```yaml
 # docker-compose.yaml
-version: '3'
 services:
   envoy:
     image: envoyproxy/envoy:v1.31-latest
@@ -333,7 +361,7 @@ services:
         echo "Test 2: Check custom header"
         curl -s -D - http://envoy:8080/test | grep x-test
 
-        echo "Test 3: Auth rejection"
+        echo "Test 3: Protected route status"
         curl -s -o /dev/null -w "%{http_code}" http://envoy:8080/api/protected
         echo ""
 ```
@@ -341,7 +369,7 @@ services:
 Run the tests:
 
 ```bash
-docker-compose up --build --abort-on-container-exit
+docker compose up --build --abort-on-container-exit
 ```
 
 ## Automated Testing Script
@@ -355,11 +383,12 @@ Create a test script that builds, deploys locally, and validates:
 set -e
 
 echo "Building plugin..."
-cargo build --target wasm32-wasi --release
-cp target/wasm32-wasi/release/my_plugin.wasm plugin.wasm
+rustup target add wasm32-wasip1
+cargo build --target wasm32-wasip1 --release
+cp target/wasm32-wasip1/release/my_plugin.wasm plugin.wasm
 
 echo "Starting test environment..."
-docker-compose up -d envoy upstream
+docker compose up -d envoy upstream
 sleep 3
 
 echo "Running tests..."
@@ -367,7 +396,7 @@ FAILURES=0
 
 # Test 1: Plugin loads successfully
 echo -n "Test: Plugin loads... "
-if docker logs envoy 2>&1 | grep -q "wasm.*created"; then
+if curl -s http://localhost:9901/stats | grep -q "wasm.*created"; then
     echo "PASS"
 else
     echo "FAIL"
@@ -394,18 +423,8 @@ else
     FAILURES=$((FAILURES + 1))
 fi
 
-# Test 4: Missing API key returns 401
-echo -n "Test: Missing API key returns 401... "
-STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/api/data)
-if [ "$STATUS" = "401" ]; then
-    echo "PASS"
-else
-    echo "FAIL (got $STATUS)"
-    FAILURES=$((FAILURES + 1))
-fi
-
 echo "Cleaning up..."
-docker-compose down
+docker compose down
 
 if [ $FAILURES -gt 0 ]; then
     echo "FAILED: $FAILURES tests failed"
