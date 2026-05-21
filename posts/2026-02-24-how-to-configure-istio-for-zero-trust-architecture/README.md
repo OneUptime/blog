@@ -184,29 +184,21 @@ This ensures that only requests with valid JWTs can enter the mesh through the g
 
 ## Step 6: Lock Down the Control Plane
 
-Do not forget about the Istio control plane itself. Restrict access to istiod and its admin endpoints:
+Do not forget about the Istio control plane itself. Istio authorization policies are enforced by the data plane, so use Kubernetes network controls and Istio's control-plane hardening settings for `istiod`.
 
-```yaml
-apiVersion: security.istio.io/v1
-kind: AuthorizationPolicy
-metadata:
-  name: istiod-access
-  namespace: istio-system
-spec:
-  selector:
-    matchLabels:
-      app: istiod
-  action: ALLOW
-  rules:
-    - from:
-        - source:
-            namespaces: ["istio-system"]
-    - to:
-        - operation:
-            ports: ["15012", "15017"]
+If you install Istio with `istioctl`, enable the built-in NetworkPolicy resources:
+
+```bash
+istioctl install --set values.global.networkPolicy.enabled=true
 ```
 
-Port 15012 is the xDS port that sidecars connect to, and 15017 is the webhook port. This allows the control plane to function while blocking unauthorized access.
+You should also disable the debug endpoint when you do not need it:
+
+```bash
+kubectl set env deployment/istiod -n istio-system ENABLE_DEBUG_ON_HTTP=false
+```
+
+Port 15012 is the secure xDS port that sidecars connect to, and 15017 is the webhook port. Istiod also exposes port 8080 for debug access and port 15010 for plaintext xDS by default; lock these down or disable them if they are not required.
 
 ## Step 7: Enable Audit Logging
 
@@ -228,7 +220,7 @@ This gives you a log of every request flowing through the mesh, including source
 
 ## Step 8: Rotate Certificates Frequently
 
-Istio's citadel component automatically manages and rotates mTLS certificates. By default, certificates have a 24-hour lifetime. For stricter zero-trust postures, you can reduce this:
+Istiod's certificate authority automatically manages and rotates mTLS certificates. By default, workload certificates have a 24-hour lifetime. For stricter zero-trust postures, you can reduce the lifetime requested by proxies:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -249,7 +241,7 @@ After configuring everything, validate that your setup is working correctly:
 ```bash
 # Check mTLS status between services
 
-istioctl authn tls-check deploy/frontend.default
+istioctl proxy-config cluster deploy/frontend.default -o json | grep -i "transport_socket\|tls_context"
 
 # Verify authorization policies are applied
 istioctl x authz check deploy/api-server.backend
