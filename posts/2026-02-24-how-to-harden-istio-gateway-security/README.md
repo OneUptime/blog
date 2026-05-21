@@ -36,10 +36,6 @@ spec:
       mode: SIMPLE
       credentialName: main-tls-cert
       minProtocolVersion: TLSV1_3
-      cipherSuites:
-      - TLS_AES_256_GCM_SHA384
-      - TLS_AES_128_GCM_SHA256
-      - TLS_CHACHA20_POLY1305_SHA256
     hosts:
     - "app.example.com"
     - "api.example.com"
@@ -47,7 +43,7 @@ spec:
 
 Key points:
 - Set `minProtocolVersion` to `TLSV1_3` if all your clients support it. Otherwise use `TLSV1_2` as the minimum.
-- Explicitly list cipher suites instead of relying on defaults. Remove weak ciphers.
+- For TLS 1.2, explicitly list cipher suites instead of relying on defaults. Remove weak ciphers. TLS 1.3 cipher suites are not configured with this setting.
 - Use `credentialName` to reference a Kubernetes secret containing the TLS certificate.
 
 **Create the TLS secret:**
@@ -59,6 +55,8 @@ kubectl create secret tls main-tls-cert -n istio-system \
 ```
 
 **For mutual TLS (client certificate verification):**
+
+For `MUTUAL` mode, the credential must also include the CA certificate used to verify client certificates, for example as `ca.crt` in the referenced secret or through `caCertCredentialName`.
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -226,8 +224,9 @@ spec:
     ingressGateways:
     - name: istio-ingressgateway
       k8s:
-        podAnnotations:
-          seccomp.security.alpha.kubernetes.io/pod: runtime/default
+        securityContext:
+          seccompProfile:
+            type: RuntimeDefault
         resources:
           requests:
             cpu: 500m
@@ -242,7 +241,7 @@ spec:
 
 ## Network Policies for the Gateway
 
-Restrict which pods can communicate with the gateway:
+Restrict inbound and outbound ports for the gateway:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -286,7 +285,7 @@ spec:
 
 Egress gateways control outbound traffic. They are just as important as ingress gateways for security.
 
-**Force all outbound traffic through the egress gateway:**
+**Block unknown outbound traffic and enable the egress gateway:**
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -301,6 +300,8 @@ spec:
       enabled: true
 ```
 
+`REGISTRY_ONLY` blocks traffic to destinations that are not in the service registry. It does not, by itself, force all traffic through the egress gateway; you still need routes for approved external services and network controls that prevent workloads from bypassing the sidecar.
+
 **Route external traffic through the egress gateway:**
 
 ```yaml
@@ -314,8 +315,8 @@ spec:
   - api.external-service.com
   ports:
   - number: 443
-    name: https
-    protocol: HTTPS
+    name: tls
+    protocol: TLS
   resolution: DNS
   location: MESH_EXTERNAL
 ---
