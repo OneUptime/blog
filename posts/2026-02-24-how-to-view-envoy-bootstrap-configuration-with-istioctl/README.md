@@ -18,7 +18,7 @@ Most of the time you won't need to look at bootstrap config. But when you're deb
 istioctl proxy-config bootstrap productpage-v1-abc123.default
 ```
 
-The table output isn't very useful for bootstrap, so you'll almost always want JSON:
+Bootstrap output defaults to JSON, but it's still useful to be explicit:
 
 ```bash
 istioctl proxy-config bootstrap productpage-v1-abc123.default -o json
@@ -28,7 +28,7 @@ The output is large. Here are the important sections.
 
 ## Control Plane Connection
 
-The bootstrap defines how Envoy connects to Istiod for dynamic configuration (xDS):
+The bootstrap defines how Envoy obtains dynamic configuration (xDS):
 
 ```json
 {
@@ -48,13 +48,13 @@ The bootstrap defines how Envoy connects to Istiod for dynamic configuration (xD
 }
 ```
 
-The `xds-grpc` cluster name references a static cluster in the bootstrap that points to Istiod:
+The `xds-grpc` cluster name references a static cluster in the bootstrap. In current Istio sidecars, that cluster points to the local Istio agent over a Unix domain socket. The agent then proxies xDS traffic to Istiod:
 
 ```json
 {
   "name": "xds-grpc",
-  "type": "STRICT_DNS",
-  "connectTimeout": "10s",
+  "type": "STATIC",
+  "connectTimeout": "1s",
   "loadAssignment": {
     "clusterName": "xds-grpc",
     "endpoints": [
@@ -63,9 +63,8 @@ The `xds-grpc` cluster name references a static cluster in the bootstrap that po
           {
             "endpoint": {
               "address": {
-                "socketAddress": {
-                  "address": "istiod.istio-system.svc",
-                  "portValue": 15012
+                "pipe": {
+                  "path": "./etc/istio/proxy/XDS"
                 }
               }
             }
@@ -73,44 +72,21 @@ The `xds-grpc` cluster name references a static cluster in the bootstrap that po
         ]
       }
     ]
-  },
-  "transportSocket": {
-    "name": "envoy.transport_sockets.tls",
-    "typedConfig": {
-      "commonTlsContext": {
-        "tlsCertificateSdsSecretConfigs": [
-          {
-            "name": "default",
-            "sdsConfig": {
-              "apiConfigSource": {
-                "apiType": "GRPC",
-                "grpcServices": [
-                  {
-                    "envoyGrpc": {
-                      "clusterName": "sds-grpc"
-                    }
-                  }
-                ]
-              }
-            }
-          }
-        ]
-      }
-    }
   }
 }
 ```
 
 This tells you:
-- Envoy connects to `istiod.istio-system.svc` on port 15012
-- The connection uses TLS with certificates managed by SDS (Secret Discovery Service)
-- The cluster type is STRICT_DNS, meaning it resolves the DNS name on startup
+- Envoy connects to the local Istio agent through `./etc/istio/proxy/XDS`
+- The agent handles the upstream xDS connection to Istiod
+- The cluster type is STATIC, because the Unix socket endpoint is known at startup
 
-If the proxy can't connect to Istiod, this is where you verify the address is correct. Common issues:
+The Istiod discovery address is usually visible in the proxy metadata, under `node.metadata.PROXY_CONFIG.discoveryAddress`. If the proxy can't connect to Istiod, verify that address and the local xDS socket path. Common issues:
 
 - Istiod DNS name doesn't resolve (kube-dns issues)
 - Port 15012 is blocked by a NetworkPolicy
 - TLS certificates are invalid or expired
+- The local XDS socket between Envoy and pilot-agent is missing or not writable
 
 ## Admin Interface
 
@@ -119,7 +95,15 @@ The bootstrap configures Envoy's admin interface:
 ```json
 {
   "admin": {
-    "accessLogPath": "/dev/null",
+    "accessLog": [
+      {
+        "name": "envoy.access_loggers.file",
+        "typedConfig": {
+          "@type": "type.googleapis.com/envoy.extensions.access_loggers.file.v3.FileAccessLog",
+          "path": "/dev/null"
+        }
+      }
+    ],
     "profilePath": "/var/lib/istio/data/envoy.prof",
     "address": {
       "socketAddress": {
@@ -152,7 +136,7 @@ The bootstrap defines how Envoy collects and exports metrics:
     "statsTags": [
       {
         "tagName": "cluster_name",
-        "regex": "^cluster\\.((.+?(\\..+?\\.svc\\.cluster\\.local)?)\\.)"
+        "regex": "^cluster(\\.(.+);)"
       },
       {
         "tagName": "tcp_prefix",
@@ -160,11 +144,11 @@ The bootstrap defines how Envoy collects and exports metrics:
       },
       {
         "tagName": "response_code",
-        "regex": ".*\\.response_code\\.(\\d{3})\\..*"
+        "regex": "_rq(_(\\d{3}))$"
       },
       {
         "tagName": "response_code_class",
-        "regex": ".*\\.response_code_class\\.(\\dxx)\\..*"
+        "regex": "_rq(_(\\dxx))$"
       }
     ],
     "useAllDefaultTags": false
@@ -176,7 +160,7 @@ These regex patterns extract tags from Envoy's flat stat names and turn them int
 
 ## Tracing Configuration
 
-If distributed tracing is configured, it shows up in the bootstrap:
+If legacy MeshConfig or pod annotation tracing is configured, it shows up in the bootstrap:
 
 ```json
 {
@@ -184,6 +168,7 @@ If distributed tracing is configured, it shows up in the bootstrap:
     "http": {
       "name": "envoy.tracers.zipkin",
       "typedConfig": {
+        "@type": "type.googleapis.com/envoy.config.trace.v3.ZipkinConfig",
         "collectorCluster": "zipkin",
         "collectorEndpoint": "/api/v2/spans",
         "collectorEndpointVersion": "HTTP_JSON",
@@ -201,7 +186,9 @@ The tracing cluster is also defined as a static cluster in the bootstrap:
 {
   "name": "zipkin",
   "type": "STRICT_DNS",
-  "connectTimeout": "10s",
+  "respectDnsTtl": true,
+  "dnsRefreshRate": "30s",
+  "connectTimeout": "1s",
   "loadAssignment": {
     "clusterName": "zipkin",
     "endpoints": [
@@ -233,8 +220,8 @@ If traces aren't showing up, verify:
 
 The bootstrap contains several static clusters that Envoy uses for internal communication:
 
-- **xds-grpc** - Connection to Istiod for configuration
-- **sds-grpc** - Connection to the SDS agent for certificates
+- **xds-grpc** - Connection to the local Istio agent for xDS configuration
+- **sds-grpc** - Connection to the local Istio agent's SDS service for certificates
 - **zipkin** or **jaeger** - Tracing collector (if configured)
 - **agent** - Connection to the local Istio agent (pilot-agent)
 - **prometheus_stats** - Stats endpoint for Prometheus scraping
@@ -269,6 +256,11 @@ The bootstrap includes metadata about the proxy that gets sent to Istiod:
       "NAME": "productpage-v1-abc123",
       "NAMESPACE": "default",
       "OWNER": "kubernetes://apis/apps/v1/namespaces/default/deployments/productpage-v1",
+      "PROXY_CONFIG": {
+        "discoveryAddress": "istiod.istio-system.svc:15012",
+        "proxyAdminPort": 15000,
+        "statusPort": 15020
+      },
       "SERVICE_ACCOUNT": "bookinfo-productpage",
       "WORKLOAD_NAME": "productpage-v1"
     }
@@ -290,7 +282,7 @@ istioctl pc bootstrap broken-pod.default -o json > bootstrap-broken.json
 diff <(python3 -m json.tool bootstrap-working.json) <(python3 -m json.tool bootstrap-broken.json)
 ```
 
-Differences in the xds-grpc cluster address (pointing to different Istiod instances), node metadata, or tracing config can explain different behavior.
+Differences in the xds-grpc socket path, `PROXY_CONFIG.discoveryAddress`, node metadata, or tracing config can explain different behavior.
 
 ## Customizing Bootstrap
 
@@ -346,4 +338,4 @@ kubectl rollout restart deployment/productpage-v1 -n default
 
 ## Summary
 
-The bootstrap configuration is the foundation that everything else builds on. It defines how Envoy connects to Istiod, how it reports metrics, where it sends traces, and what metadata identifies it. You won't check it often, but when you're debugging connectivity to the control plane, missing traces, or incorrect proxy identity, the bootstrap has the answers.
+The bootstrap configuration is the foundation that everything else builds on. It defines how Envoy gets xDS configuration, how it reports metrics, where it sends traces, and what metadata identifies it. You won't check it often, but when you're debugging connectivity to the control plane, missing traces, or incorrect proxy identity, the bootstrap has the answers.
