@@ -14,36 +14,35 @@ This post explains how Istio's protocol detection works, why it fails for certai
 
 ## How Istio Detects Protocols
 
-When traffic arrives at an Envoy sidecar, Istio needs to figure out what protocol it is. This determines which filters and processing to apply. Istio uses three methods in this order:
+When traffic arrives at an Envoy sidecar, Istio needs to figure out what protocol it is. This determines which filters and processing to apply. Istio can determine the protocol in these ways:
 
-1. **Explicit port naming**: If the Service port name starts with a recognized prefix (like `http-`, `grpc-`, `tcp-`, `mysql`, `redis`, `mongo`), Istio uses that as the protocol.
+1. **Explicit port naming**: If the Service port name follows the `name: <protocol>[-<suffix>]` convention (like `http-web`, `grpc-api`, `tcp-mysql`, `mysql`, `redis`, or `mongo`), Istio uses that as the protocol.
 
-2. **Protocol field**: The `appProtocol` field on a Service port can specify the protocol.
+2. **Protocol field**: The `appProtocol` field on a Service port can specify the protocol. If both `appProtocol` and the port name are set, `appProtocol` takes precedence.
 
-3. **Automatic detection (sniffing)**: If neither of the above is set, Istio inspects the first few bytes of the connection to guess the protocol. It looks for HTTP/1.1 magic bytes, HTTP/2 preface, or TLS Client Hello.
+3. **Automatic detection (sniffing)**: If neither of the above is set, Istio inspects the first few bytes of the connection to detect HTTP or HTTP/2 traffic. If the protocol cannot be determined, Istio treats the connection as plain TCP.
 
 For database traffic, method 3 (sniffing) is where things go wrong.
 
 ## Why Sniffing Fails for Databases
 
-Protocol sniffing works by reading the first bytes a client sends. If those bytes match an HTTP or TLS pattern, Istio classifies the connection accordingly. If they do not match anything, Istio falls back to TCP after a timeout.
+Protocol sniffing works by reading the first bytes a client sends. If those bytes match an HTTP pattern, Istio classifies the connection accordingly. If they do not match anything, Istio treats the connection as TCP.
 
 The problem with databases is twofold:
 
-1. **Server-first protocols**: Some databases (MySQL, PostgreSQL, MongoDB) send data to the client before the client sends anything. The server initiates the handshake. Istio's sniffing sits on the client side waiting for client bytes, but the client is also waiting for server bytes. This causes a deadlock that eventually times out.
+1. **Server-first protocols**: Some protocols, such as MySQL, send data to the client before the client sends anything. The server initiates the handshake. Istio's sniffing sits on the client side waiting for client bytes, but the client is also waiting for server bytes. This causes a deadlock that eventually times out.
 
 2. **Binary protocols**: Even for client-first database protocols, the binary bytes do not match any HTTP pattern. Istio eventually falls back to TCP, but the detection timeout (usually 10 seconds) adds latency to the first connection.
 
 ## Server-First Protocol List
 
-These databases use server-first protocols:
+These protocols and ports are commonly relevant to server-first handling:
 - MySQL (sends greeting packet)
-- PostgreSQL (not strictly server-first, but the startup sequence can be ambiguous)
-- MongoDB (server responds first after client connects)
+- MongoDB (commonly treated as a server-first port by Istio)
 - SMTP (sends greeting)
-- FTP (sends greeting)
+- DNS over TCP (commonly treated as a server-first port by Istio)
 
-Istio maintains a list of known server-first ports (3306 for MySQL, 5432 for PostgreSQL) and skips sniffing for those. But relying on this implicit behavior is fragile. Always use explicit port naming.
+Istio maintains a list of ports that commonly carry server-first protocols (25 for SMTP, 53 for DNS, 3306 for MySQL, and 27017 for MongoDB) and automatically assumes those ports are TCP. But relying on this implicit behavior is fragile. Always use explicit port naming.
 
 ## The Fix: Explicit Port Naming
 
@@ -67,18 +66,18 @@ Here are the recognized prefixes for common databases:
 | Database | Port Name | Protocol |
 |----------|-----------|----------|
 | PostgreSQL | `tcp-postgres` | TCP |
-| MySQL | `tcp-mysql` or `mysql` | TCP |
-| MongoDB | `tcp-mongo` or `mongo` | TCP |
-| Redis | `tcp-redis` or `redis` | TCP |
+| MySQL | `tcp-mysql` | TCP |
+| MongoDB | `tcp-mongo` | TCP |
+| Redis | `tcp-redis` | TCP |
 | Cassandra | `tcp-cql` | TCP |
 | Elasticsearch (API) | `http` | HTTP |
 | Elasticsearch (transport) | `tcp-transport` | TCP |
 
-The `tcp-` prefix tells Istio to use pure TCP routing with no protocol inspection. This is what you want for database traffic.
+The `tcp-` prefix tells Istio to use pure TCP routing with no protocol inspection. This is what you want for database traffic. Istio also recognizes `mysql`, `mongo`, and `redis` as experimental application protocol names, but unless you have explicitly enabled that protocol support, prefer `tcp-` for opaque database traffic.
 
 ## Using appProtocol
 
-Kubernetes 1.20+ supports the `appProtocol` field, which is another way to tell Istio the protocol:
+Kubernetes 1.20+ has the `appProtocol` field as stable, and Istio can use it on Kubernetes 1.18+ to select the protocol:
 
 ```yaml
 apiVersion: v1
@@ -94,7 +93,7 @@ spec:
       appProtocol: tcp
 ```
 
-This is equivalent to naming the port `tcp-mysql`. The `appProtocol` field takes precedence over port name-based detection.
+For Istio protocol selection, this is equivalent to naming the port `tcp-mysql`. The `appProtocol` field takes precedence over port name-based detection.
 
 ## Verifying Protocol Detection
 
@@ -161,11 +160,11 @@ spec:
       targetPort: 15432
 ```
 
-Without the `tcp-` prefix, Istio would try to sniff this port and likely fail because PostgreSQL on a non-standard port is not in the server-first port list.
+Without the `tcp-` prefix, Istio may try to sniff this port before treating it as TCP. Explicit naming avoids that ambiguity and any detection delay.
 
-## Disabling Protocol Sniffing
+## Declaring TCP with Sidecar
 
-If you want to disable protocol sniffing entirely for a namespace, you can set all ports to TCP by default using a Sidecar resource:
+If you want to constrain outbound sidecar listeners in a namespace and declare database ports as TCP, you can use a Sidecar resource:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -191,11 +190,11 @@ spec:
         - "istio-system/*"
 ```
 
-This explicitly declares the protocol for each port, bypassing the detection entirely.
+This explicitly declares the protocol for those outbound listener ports. It does not replace correct Service port naming for inbound traffic.
 
 ## EnvoyFilter for Detection Timeout
 
-If you cannot rename ports (maybe a third-party Helm chart hardcodes the port name), you can adjust the protocol detection timeout:
+If you cannot rename ports (maybe a third-party Helm chart hardcodes the port name), you can adjust the listener filter timeout:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -211,11 +210,11 @@ spec:
       patch:
         operation: MERGE
         value:
-          listener_filters_timeout: 0s
+          listener_filters_timeout: 100ms
           continue_on_listener_filters_timeout: true
 ```
 
-Setting `listener_filters_timeout: 0s` with `continue_on_listener_filters_timeout: true` means Istio will immediately fall back to TCP if it cannot detect the protocol. This eliminates the detection delay but means HTTP services without explicit port names will also be treated as TCP.
+Do not set `listener_filters_timeout` to `0s` when your goal is a faster fallback. In Envoy, `0s` disables the timeout. Use a small non-zero timeout if you must tune this, and test it carefully because HTTP services without explicit protocol selection may be treated as TCP.
 
 ## Mixed Protocol Services
 
