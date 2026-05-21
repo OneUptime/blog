@@ -31,7 +31,7 @@ Here is a basic bulkhead setup for two downstream services:
 ```yaml
 # Bulkhead for Service B (payment service - critical)
 
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: payment-service-dr
@@ -48,7 +48,7 @@ spec:
 
 ---
 # Bulkhead for Service C (recommendation service - non-critical)
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: recommendation-service-dr
@@ -71,7 +71,7 @@ Notice that the payment service gets more connections than the recommendation se
 You can create different connection pools for different subsets of the same service. This is useful when you have different versions or environments:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: api-service-dr
@@ -107,7 +107,7 @@ The v2 canary deployment gets a smaller connection pool. If v2 has a bug that ca
 
 Sometimes you want different callers to have different connection limits. For example, your internal batch processing service should not be able to consume all the connections to the API service that the frontend also uses.
 
-You achieve this by applying different DestinationRules to different source workloads using an EnvoyFilter:
+You achieve this by applying different EnvoyFilter patches to different source workloads:
 
 ```yaml
 # Connection limit for the frontend calling the API
@@ -169,7 +169,7 @@ Now the batch processor can only open 20 connections to the API service, while t
 The bulkhead pattern works best when combined with outlier detection. The bulkhead limits how many resources a failing service can consume, while outlier detection removes failing endpoints from the pool:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: inventory-service-dr
@@ -194,24 +194,30 @@ spec:
 
 The `connectTimeout: 3s` is important. Without it, connections to a down endpoint might hang for the default TCP timeout (which can be minutes), consuming a connection slot the entire time. A 3-second connect timeout means the connection either succeeds quickly or fails quickly, freeing the slot.
 
-`maxRequestsPerConnection: 10` limits how many requests are multiplexed on a single connection. This prevents one bad connection from affecting too many requests.
+`maxRequestsPerConnection: 10` limits how many requests can use a single backend connection before Envoy closes it. This prevents one bad long-lived connection from affecting too many requests over its lifetime.
 
 ## Monitoring Bulkhead Effectiveness
 
-To know if your bulkheads are actually working, monitor the overflow metrics:
+To know if your bulkheads are actually working, monitor the overflow metrics. Istio only records a minimal set of Envoy statistics by default, so make sure these cluster stats are included in your proxy stats configuration before relying on the PromQL queries:
 
 ```promql
-# Connection pool overflow (bulkhead triggered)
+# Pending request overflow (bulkhead triggered)
 sum(rate(envoy_cluster_upstream_rq_pending_overflow{cluster_name=~"outbound.*"}[5m])) by (cluster_name)
+
+# Active request overflow
+sum(rate(envoy_cluster_upstream_rq_active_overflow{cluster_name=~"outbound.*"}[5m])) by (cluster_name)
+
+# Connection overflow
+sum(rate(envoy_cluster_upstream_cx_overflow{cluster_name=~"outbound.*"}[5m])) by (cluster_name)
 
 # Current active connections per service
 envoy_cluster_upstream_cx_active{cluster_name=~"outbound.*"}
 
-# Connection pool utilization percentage
-envoy_cluster_upstream_cx_active{cluster_name=~"outbound.*"}
-/
+# Connection circuit breaker open state (1 means at capacity)
 envoy_cluster_circuit_breakers_default_cx_open{cluster_name=~"outbound.*"}
-* 100
+
+# Pending request circuit breaker open state (1 means at capacity)
+envoy_cluster_circuit_breakers_default_rq_pending_open{cluster_name=~"outbound.*"}
 ```
 
 Set up alerts for when bulkheads start triggering:
@@ -227,7 +233,11 @@ spec:
       rules:
         - alert: BulkheadTriggered
           expr: |
-            sum(rate(envoy_cluster_upstream_rq_pending_overflow[5m])) by (cluster_name) > 0
+            (
+              sum(rate(envoy_cluster_upstream_rq_pending_overflow[5m])) by (cluster_name)
+              or sum(rate(envoy_cluster_upstream_rq_active_overflow[5m])) by (cluster_name)
+              or sum(rate(envoy_cluster_upstream_cx_overflow[5m])) by (cluster_name)
+            ) > 0
           for: 2m
           labels:
             severity: warning
