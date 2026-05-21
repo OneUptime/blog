@@ -15,7 +15,7 @@ Mirroring 100% of production traffic sounds great in theory, but it is not alway
 Istio's VirtualService supports a `mirrorPercentage` field that controls what percentage of requests get copied to the mirror destination:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service
@@ -93,10 +93,26 @@ spec:
             - containerPort: 8080
 ```
 
+### Service
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: api
+  namespace: default
+spec:
+  selector:
+    app: api
+  ports:
+    - port: 8080
+      targetPort: 8080
+```
+
 ### DestinationRule with Subsets
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: api
@@ -159,7 +175,7 @@ When testing a new version, start with a low percentage and increase it as confi
 ### Phase 1: Smoke Test (1%)
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api
@@ -239,10 +255,10 @@ Track the actual mirror rate and compare it against the configured percentage:
 ```bash
 # Actual request rate to production
 
-# PromQL: sum(rate(istio_requests_total{destination_service="api.default.svc.cluster.local",destination_version="v1"}[5m]))
+# PromQL: sum(rate(istio_requests_total{reporter="destination",destination_service="api.default.svc.cluster.local",destination_version="v1"}[5m]))
 
 # Actual request rate to mirror
-# PromQL: sum(rate(istio_requests_total{destination_service="api.default.svc.cluster.local",destination_version="v2"}[5m]))
+# PromQL: sum(rate(istio_requests_total{reporter="destination",destination_service="api.default.svc.cluster.local",destination_version="v2"}[5m]))
 
 # Expected ratio
 # mirror_rate / production_rate should approximately equal mirrorPercentage/100
@@ -258,7 +274,7 @@ If the actual ratio differs significantly from the configured percentage, check 
 You can mirror different percentages for different routes:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api
@@ -314,14 +330,14 @@ If the mirror service cannot keep up with the mirrored traffic, Envoy handles it
 - Mirror requests are sent asynchronously (fire-and-forget)
 - If the connection to the mirror fails, the mirror request is silently dropped
 - Production traffic is never affected
-- No retry attempts are made for failed mirror requests
+- The original client never receives mirror responses or mirror failures
 
 This is by design. The mirror is informational, not critical. If it falls behind, you just get a lower effective mirror rate than configured.
 
 You can add circuit breaking to the mirror service to control resource usage:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: api-mirror
@@ -351,14 +367,16 @@ After configuring, verify with a quick test:
 kubectl exec deploy/sleep -- sh -c \
   'for i in $(seq 1 1000); do curl -s http://api:8080/health > /dev/null; done'
 
-# Check request counts
+# Check request counts in Prometheus
 echo "=== Production ==="
-kubectl exec deploy/api-v1 -c istio-proxy -- \
-  curl -s localhost:15000/stats | grep "rq_total"
+kubectl exec deploy/prometheus -n istio-system -- \
+  promtool query instant http://localhost:9090 \
+  'sum(istio_requests_total{reporter="destination",destination_service="api.default.svc.cluster.local",destination_version="v1"})'
 
 echo "=== Mirror ==="
-kubectl exec deploy/api-v2 -c istio-proxy -- \
-  curl -s localhost:15000/stats | grep "rq_total"
+kubectl exec deploy/prometheus -n istio-system -- \
+  promtool query instant http://localhost:9090 \
+  'sum(istio_requests_total{reporter="destination",destination_service="api.default.svc.cluster.local",destination_version="v2"})'
 ```
 
 With 25% mirroring, you should see roughly 1000 requests to v1 and roughly 250 to v2. The exact numbers will vary due to sampling, but the ratio should be close.
@@ -374,7 +392,7 @@ A helper script for adjusting mirror percentage:
 PERCENTAGE=${1:?Usage: set-mirror-percentage.sh <percentage>}
 
 kubectl apply -f - <<EOF
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api
