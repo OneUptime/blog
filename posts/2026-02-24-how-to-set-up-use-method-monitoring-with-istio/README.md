@@ -60,6 +60,8 @@ Memory growth in the sidecar is often caused by high cardinality metrics, large 
 
 Istio's connection pool settings (configured in DestinationRule) are a critical resource:
 
+These Envoy-native metrics must be enabled with `proxyStatsMatcher` if your mesh is using Istio's default minimal Envoy stats collection.
+
 ```promql
 # Active connections per cluster
 sum(envoy_cluster_upstream_cx_active{}) by (cluster_name)
@@ -84,7 +86,7 @@ Saturation occurs when requests are waiting because the connection pool is full:
 sum(envoy_cluster_upstream_rq_pending_active{}) by (cluster_name)
 
 # Connection pool overflow (requests rejected because pool is full)
-sum(rate(envoy_cluster_upstream_cx_overflow{} [5m])) by (cluster_name)
+sum(rate(envoy_cluster_upstream_cx_overflow{}[5m])) by (cluster_name)
 
 # Pending request overflow
 sum(rate(envoy_cluster_upstream_rq_pending_overflow{}[5m])) by (cluster_name)
@@ -109,7 +111,7 @@ sum(rate(envoy_listener_downstream_cx_total{}[5m])) by (pod)
 Circuit breakers create their own form of saturation:
 
 ```promql
-# Requests rejected by circuit breaker
+# Retries rejected by circuit breaker or retry budget
 sum(rate(envoy_cluster_upstream_rq_retry_overflow{}[5m])) by (cluster_name)
 
 # Outlier detection ejections
@@ -179,14 +181,14 @@ sum(rate(container_cpu_usage_seconds_total{container="discovery", namespace="ist
 # istiod memory
 container_memory_working_set_bytes{container="discovery", namespace="istio-system"}
 
-# xDS push queue depth (saturation)
-pilot_xds_push_queue_time_bucket
+# Proxy push queue latency (saturation)
+histogram_quantile(0.99, sum(rate(pilot_proxy_queue_time_bucket[5m])) by (le))
 
 # xDS push errors
-sum(rate(pilot_xds_push_errors{}[5m]))
+sum(rate(pilot_total_xds_internal_errors{}[5m]))
 
 # Connected proxies
-pilot_xds_pushes{}
+pilot_xds{}
 ```
 
 ## Building USE Alerts
