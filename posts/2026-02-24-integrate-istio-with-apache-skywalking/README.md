@@ -19,29 +19,35 @@ SkyWalking was actually designed with service mesh observability in mind. It can
 Deploy SkyWalking using Helm. The SkyWalking Helm chart includes the OAP (Observability Analysis Platform) server and the UI:
 
 ```bash
-helm repo add skywalking https://apache.jfrog.io/artifactory/skywalking-helm
-helm repo update
-
-helm install skywalking skywalking/skywalking \
+helm install skywalking oci://registry-1.docker.io/apache/skywalking-helm \
+  --version 4.9.0 \
   --namespace skywalking \
   --create-namespace \
+  --set oap.image.tag=10.4.0 \
   --set oap.replicas=1 \
-  --set oap.storageType=elasticsearch \
+  --set oap.storageType=banyandb \
+  --set ui.image.tag=10.4.0 \
   --set ui.service.type=ClusterIP \
-  --set elasticsearch.enabled=true \
-  --set elasticsearch.replicas=1
+  --set elasticsearch.enabled=false \
+  --set banyandb.enabled=true \
+  --set banyandb.image.tag=0.10.1
 ```
 
-For a quick test setup, you can use the in-memory storage instead of Elasticsearch:
+If you want to use an existing Elasticsearch cluster instead, disable the embedded Elasticsearch deployment and point the chart at your Elasticsearch service:
 
 ```bash
-helm install skywalking skywalking/skywalking \
+helm install skywalking oci://registry-1.docker.io/apache/skywalking-helm \
+  --version 4.9.0 \
   --namespace skywalking \
   --create-namespace \
+  --set oap.image.tag=10.4.0 \
   --set oap.replicas=1 \
-  --set oap.storageType=memory \
+  --set oap.storageType=elasticsearch \
+  --set ui.image.tag=10.4.0 \
   --set ui.service.type=ClusterIP \
-  --set elasticsearch.enabled=false
+  --set elasticsearch.enabled=false \
+  --set elasticsearch.config.host=elasticsearch-es-http \
+  --set elasticsearch.config.port.http=9200
 ```
 
 Verify the installation:
@@ -126,52 +132,21 @@ spec:
       skywalking:
         service: skywalking-oap.skywalking.svc.cluster.local
         port: 11800
+    defaultProviders:
+      tracing:
+      - skywalking
 ```
 
 ## Setting Up the SkyWalking Satellite
 
-For high-traffic environments, you probably do not want every sidecar proxy talking directly to the OAP server. SkyWalking Satellite acts as a lightweight proxy/collector that buffers and batches telemetry data:
+For high-traffic environments, you probably do not want every sidecar proxy talking directly to the OAP server. SkyWalking Satellite acts as a lightweight proxy/collector that can be deployed by the SkyWalking Helm chart:
 
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: skywalking-satellite
-  namespace: skywalking
-spec:
-  replicas: 2
-  selector:
-    matchLabels:
-      app: skywalking-satellite
-  template:
-    metadata:
-      labels:
-        app: skywalking-satellite
-    spec:
-      containers:
-      - name: satellite
-        image: apache/skywalking-satellite:latest
-        ports:
-        - containerPort: 11800
-          name: grpc
-        env:
-        - name: SATELLITE_GRPC_CLIENT_FINDER
-          value: static
-        - name: SATELLITE_GRPC_CLIENT_SERVER_ADDR
-          value: skywalking-oap.skywalking.svc:11800
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: skywalking-satellite
-  namespace: skywalking
-spec:
-  selector:
-    app: skywalking-satellite
-  ports:
-  - port: 11800
-    name: grpc
-    targetPort: 11800
+```bash
+helm upgrade skywalking oci://registry-1.docker.io/apache/skywalking-helm \
+  --version 4.9.0 \
+  --namespace skywalking \
+  --reuse-values \
+  --set satellite.enabled=true
 ```
 
 Then point your Istio configuration at the satellite instead of the OAP server directly.
@@ -196,21 +171,26 @@ Open your browser to `http://localhost:8080`. The UI has several key sections:
 
 ## Configuring Metrics Collection
 
-SkyWalking can also scrape Istio's Prometheus metrics for additional data. Configure the OAP server to fetch metrics from Istio:
+SkyWalking can also receive Envoy metrics from Istio. Configure the mesh to point Envoy's metrics service at SkyWalking:
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: skywalking-oap-config
-  namespace: skywalking
-data:
-  fetcher-default.yaml: |
-    fetcherType: prometheus
-    metricsPath: /stats/prometheus
-    staticConfig:
-      targets:
-      - url: http://istio-ingressgateway.istio-system.svc:15090/stats/prometheus
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
+spec:
+  meshConfig:
+    defaultConfig:
+      envoyMetricsService:
+        address: skywalking-oap.skywalking.svc:11800
+      proxyStatsMatcher:
+        inclusionRegexps:
+        - ".*membership_healthy.*"
+        - ".*upstream_cx_active.*"
+        - ".*upstream_cx_total.*"
+        - ".*upstream_rq_active.*"
+        - ".*upstream_rq_total.*"
+        - ".*upstream_rq_pending_active.*"
+        - ".*lb_healthy_panic.*"
+        - ".*upstream_cx_none_healthy.*"
 ```
 
 ## Setting Up Alerts
@@ -220,18 +200,12 @@ SkyWalking has a built-in alerting engine. Configure alert rules for your mesh s
 ```yaml
 rules:
   service_resp_time_rule:
-    metrics-name: service_resp_time
-    op: ">"
-    threshold: 1000
+    expression: avg(service_resp_time) > 1000
     period: 10
-    count: 3
     message: "Response time of service {name} is more than 1000ms in the last 10 minutes"
   service_sla_rule:
-    metrics-name: service_sla
-    op: "<"
-    threshold: 8000
+    expression: sum((service_sla / 100) < 80) >= 2
     period: 10
-    count: 2
     message: "Successful rate of service {name} is lower than 80% in the last 10 minutes"
 ```
 
