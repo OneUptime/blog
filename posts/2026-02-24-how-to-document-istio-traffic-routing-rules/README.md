@@ -28,7 +28,7 @@ The YAML itself tells you the "what." Documentation should tell you the "why."
 The simplest approach is to use Kubernetes annotations directly on the Istio resources:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: checkout-routing
@@ -96,10 +96,10 @@ Route matching in Istio follows a specific order: the first matching rule wins. 
 # 3. Path match: /api/v1/* -> v1 deployment (legacy API)
 # 4. Default: 95% stable, 5% canary (gradual rollout)
 #
-# IMPORTANT: Route 2 must come before Route 3 because /api/v2/checkout
-# would match /api/v1/* if v1 route had a less specific prefix.
+# IMPORTANT: Route 4 must stay last because it has no match block and
+# would otherwise catch requests before the more specific routes.
 
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: checkout-routing
@@ -162,16 +162,25 @@ echo '```mermaid'
 echo 'graph TD'
 
 kubectl get virtualservices -A -o json | jq -r '
+  def node_id: gsub("[^A-Za-z0-9_]"; "_");
+  def match_label:
+    if .uri.prefix then .uri.prefix
+    elif .uri.exact then .uri.exact
+    elif .uri.regex then .uri.regex
+    elif .headers then (.headers | to_entries | map(.key + "=" + (.value.exact // .value.prefix // .value.regex // "*")) | join(","))
+    else "default" end;
   .items[] |
   .metadata.name as $vs |
   .spec.hosts[0] as $host |
-  .spec.http[] |
+  ($vs | node_id) as $vs_id |
+  .spec.http[]? |
   . as $route |
   ($route.match // [{"uri": {"prefix": "/*"}}])[0] as $match |
-  $route.route[] |
-  "    " + $vs + "[" + $host + "] -->|" +
-  ($match.uri.prefix // $match.uri.exact // $match.headers // "default" | tostring) +
-  "| " + .destination.host + "_" + (.destination.subset // "default")
+  $route.route[]? |
+  (.destination.host + "_" + (.destination.subset // "default") | node_id) as $dest_id |
+  "    " + $vs_id + "[\"" + $host + "\"] -->|" +
+  ($match | match_label) +
+  "| " + $dest_id + "[\"" + .destination.host + " (" + (.destination.subset // "default") + ")\"]"
 '
 
 echo '```'
@@ -182,7 +191,7 @@ A manually maintained diagram often communicates better:
 ```markdown
 ## Checkout Service Routing
 
-    ```
+    ```text
     Incoming Request
          |
          v
@@ -196,7 +205,7 @@ A manually maintained diagram often communicates better:
                                 |Yes        |No
                                 v            v
                              [v1]      [95% stable / 5% canary]
-    ```text
+    ```
 ```
 
 ## Documenting Traffic Policies
@@ -204,7 +213,7 @@ A manually maintained diagram often communicates better:
 DestinationRules define how traffic behaves after routing. Document these alongside the VirtualService rules:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: checkout-dr
@@ -213,7 +222,7 @@ metadata:
     docs.team/description: |
       Traffic policies for checkout service.
       - Circuit breaker: 5 consecutive 5xx errors triggers 30s ejection
-      - Max 200 concurrent connections per pod
+      - Max 200 TCP connections to the destination
       - Connections cycle after 100 requests to enable gradual drain
 spec:
   host: checkout.production.svc.cluster.local
@@ -244,7 +253,7 @@ spec:
 
 ## Generating a Route Table
 
-Create a comprehensive route table that shows all routes in the mesh:
+Create a route table that shows HTTP forwarding routes in the mesh:
 
 ```bash
 #!/bin/bash
@@ -254,15 +263,21 @@ echo "| Service | Namespace | Match | Destination | Timeout | Retries | Weight |
 echo "|---------|-----------|-------|-------------|---------|---------|--------|"
 
 kubectl get virtualservices -A -o json | jq -r '
+  def match_label:
+    if .uri.prefix then .uri.prefix
+    elif .uri.exact then .uri.exact
+    elif .uri.regex then .uri.regex
+    elif .headers then (.headers | to_entries | map(.key + "=" + (.value.exact // .value.prefix // .value.regex // "*")) | join(","))
+    else "*" end;
   .items[] |
   .metadata.name as $svc |
   .metadata.namespace as $ns |
   .spec.http[]? |
   . as $route |
-  .route[] |
+  .route[]? |
   "| " + $svc +
   " | " + $ns +
-  " | " + (($route.match[0].uri.prefix // $route.match[0].uri.exact // "*") // "*") +
+  " | " + (($route.match[0] | match_label) // "*") +
   " | " + .destination.host + ":" + (.destination.port.number // 80 | tostring) +
   " | " + ($route.timeout // "15s") +
   " | " + (($route.retries.attempts // 0) | tostring) +
