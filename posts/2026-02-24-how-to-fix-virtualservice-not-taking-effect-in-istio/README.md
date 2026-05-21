@@ -33,7 +33,7 @@ The `hosts` field in your VirtualService is critical. It tells Istio which traff
 For mesh-internal traffic, the host must match the Kubernetes service name:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service-vs
@@ -54,7 +54,7 @@ You can also use the short form `my-service` if the VirtualService is in the sam
 For gateway-bound traffic, the host should match the hostname configured in the Gateway resource:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-external-vs
@@ -103,7 +103,7 @@ Without `mesh` in the list, internal sidecar traffic won't use this VirtualServi
 
 ## Namespace Visibility Issues
 
-Istio has a concept called `exportTo` that controls which namespaces can see a VirtualService. By default, VirtualServices are exported to all namespaces (`.` and `*`). But if someone has restricted this, your VirtualService might be invisible to the calling service.
+Istio has a concept called `exportTo` that controls which namespaces can see a VirtualService. By default, VirtualServices are exported to all namespaces. But if someone has restricted this, your VirtualService might be invisible to the calling service.
 
 Check if `exportTo` is set:
 
@@ -129,7 +129,7 @@ spec:
 
 ## Conflicting VirtualServices
 
-If multiple VirtualServices exist for the same host, Istio will merge them. But this merge has rules. If you have conflicting routes across multiple VirtualServices for the same host, the behavior can be unpredictable.
+If multiple VirtualServices exist for the same host and are attached to ingress gateways, Istio can merge them. But this merge has rules. Multiple VirtualServices for the same host on the mesh gateway are considered conflicting, and overlapping routes across multiple VirtualServices can behave unpredictably.
 
 Find all VirtualServices targeting the same host:
 
@@ -192,7 +192,7 @@ Look for warnings about rejected configuration or xDS sync failures.
 You can also increase the log level temporarily:
 
 ```bash
-istioctl proxy-config log <pod-name> -n my-namespace --level routing:debug
+istioctl proxy-config log <pod-name> -n my-namespace --level router:debug
 ```
 
 Then reproduce the issue and check the logs again for more detail.
@@ -235,7 +235,7 @@ spec:
 
 ## Sidecar Injection Missing
 
-If the target pod doesn't have an Istio sidecar, the VirtualService won't have any effect on traffic from that pod. Verify sidecar injection:
+For mesh-internal traffic, the calling pod needs an Istio sidecar for outbound VirtualService routing to apply. For ingress traffic, check the gateway proxy instead. Verify sidecar injection on the workload that is sending the request:
 
 ```bash
 kubectl get pod <pod-name> -n my-namespace -o jsonpath='{.spec.containers[*].name}'
@@ -247,7 +247,7 @@ You should see `istio-proxy` in the list. If not, check that the namespace has t
 kubectl get namespace my-namespace --show-labels
 ```
 
-You need the `istio-injection=enabled` label:
+For the default sidecar injection setup, you need the `istio-injection=enabled` label:
 
 ```bash
 kubectl label namespace my-namespace istio-injection=enabled
