@@ -180,7 +180,7 @@ spec:
 
 ## Deny-All with Selective Exceptions
 
-Since DENY always overrides ALLOW, how do you create exceptions? You can't use ALLOW policies. Instead, you need to make the DENY rule more specific so it doesn't match the traffic you want to allow:
+Since DENY always overrides ALLOW, how do you create exceptions? You can't use an ALLOW policy to override traffic that a DENY rule already matches. Instead, you need to make the DENY rule more specific so it doesn't match the traffic you want to allow:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -200,11 +200,11 @@ spec:
             notPaths: ["/healthz", "/ready"]
 ```
 
-This denies all traffic except requests to `/healthz` and `/ready`. But this is getting complicated - and it's exactly why the allow-nothing pattern is preferred for most use cases.
+This DENY rule does not match requests to `/healthz` and `/ready`. If there are no ALLOW policies for the workload, those excluded paths are allowed by Istio's default behavior; if ALLOW policies exist, you still need an ALLOW policy for the excluded paths. But this is getting complicated - and it's exactly why the allow-nothing pattern is preferred for most use cases.
 
 ## Impact on Health Checks
 
-A deny-all policy blocks Kubernetes health probes. Your pods will fail their liveness and readiness checks:
+A deny-all policy blocks normal mesh traffic to your application's health endpoints. Kubernetes liveness and readiness probes are different in many Istio sidecar deployments: Istio rewrites HTTP, TCP, and gRPC probes to the sidecar agent by default, so those kubelet probes do not necessarily fail just because application traffic to `/healthz` or `/ready` is denied. If probe rewriting is disabled, or if you rely on in-mesh health check traffic, a deny-all policy can make health checks fail:
 
 ```bash
 # Pods start restarting because health probes fail
@@ -213,10 +213,10 @@ kubectl get pods -n my-app -l app=my-service
 # my-service-5d4f6b7c8-abcde   1/2     Running   3          5m
 ```
 
-If you need health checks to work with a deny-all policy, either:
+If you need in-mesh health check requests to work with a deny-all policy, either:
 
 1. Use the allow-nothing pattern instead (which lets you add ALLOW policies for health checks)
-2. Make the DENY rule exclude health paths:
+2. Make the DENY rule exclude health paths, and add matching ALLOW policies if the workload already has ALLOW policies:
 
 ```yaml
 apiVersion: security.istio.io/v1
