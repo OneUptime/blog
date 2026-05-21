@@ -8,7 +8,7 @@ Description: Step-by-step guide to configuring Istio traffic interception includ
 
 ---
 
-Istio intercepts all TCP traffic in and out of your pods by default. That works well for most HTTP-based microservices, but real-world applications often need more control. Maybe your app connects to an external database that shouldn't go through the proxy. Maybe you have a health check port that needs to be excluded. Or maybe you want to switch from the default iptables REDIRECT mode to TPROXY for source IP preservation.
+Istio sidecars intercept inbound application TCP traffic and outbound TCP traffic by default, with some ports used by the sidecar excluded. That works well for most HTTP-based microservices, but real-world applications often need more control. Maybe your app connects to an external database that shouldn't go through the proxy. Maybe you have a health check port that needs to be excluded. Or maybe you want to switch from the default iptables REDIRECT mode to TPROXY for source IP preservation.
 
 Whatever the reason, Istio gives you multiple knobs to configure exactly how traffic interception works. This guide covers all of them.
 
@@ -78,7 +78,7 @@ spec:
 
 ### Excluding Database Ports
 
-One of the most common use cases is excluding database traffic. When your app connects to a PostgreSQL database running outside the mesh, you don't want Istio trying to apply HTTP routing to a PostgreSQL wire protocol:
+One of the most common use cases is excluding database traffic. When your app connects to a PostgreSQL database running outside the mesh, you may want that connection to bypass Envoy instead of being handled as mesh egress traffic:
 
 ```yaml
 metadata:
@@ -86,7 +86,7 @@ metadata:
     traffic.sidecar.istio.io/excludeOutboundPorts: "5432"
 ```
 
-This adds a RETURN rule in the iptables OUTPUT chain for port 5432, so traffic goes directly to the database without touching Envoy.
+This adds a RETURN rule to the outbound iptables redirection rules for port 5432, so traffic goes directly to the database without touching Envoy.
 
 ### Excluding External IP Ranges
 
@@ -102,7 +102,7 @@ This is especially useful for cloud metadata endpoints (like the AWS instance me
 
 ## Using the Sidecar Resource
 
-The `Sidecar` resource gives you more fine-grained control over traffic interception at the workload level:
+The `Sidecar` resource gives you more fine-grained control over the listeners configured on a workload's proxy and how traffic is expected to be captured:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -131,18 +131,20 @@ spec:
     - port:
         number: 443
         protocol: TLS
+        name: egress-tls
+      bind: 127.0.0.1
       hosts:
-        - "istio-system/*"
+        - "*/external.example.com"
       captureMode: NONE
 ```
 
-The `captureMode` field on each ingress/egress listener controls whether traffic interception is active:
+The `captureMode` field on each ingress/egress listener tells Istio how traffic to that listener is expected to be captured:
 
+- `DEFAULT` - Use the default capture mode defined by the proxy environment
 - `IPTABLES` - Use iptables REDIRECT (default)
-- `TPROXY` - Use TPROXY transparent proxying
-- `NONE` - No interception; traffic goes directly
+- `NONE` - No traffic capture for that listener
 
-Setting `captureMode: NONE` on an egress rule means traffic to those hosts bypasses the proxy entirely.
+For egress listeners, `captureMode: NONE` means the application must explicitly connect to the listener address and port, such as `127.0.0.1:443` in the example above. It does not add an iptables bypass for the original destination; use the outbound port or IP range annotations for that.
 
 ## Configuring the CNI Plugin
 
@@ -183,10 +185,10 @@ spec:
       mode: ALLOW_ANY
 ```
 
-- `ALLOW_ANY` - Unknown destinations are forwarded through a PassthroughCluster. Traffic flows normally but without Istio features like mTLS or telemetry.
-- `REGISTRY_ONLY` - Unknown destinations are blocked. You must create `ServiceEntry` resources for any external service.
+- `ALLOW_ANY` - Unknown destinations are allowed through a passthrough path. Traffic flows normally but has limited Istio features, such as reduced observability.
+- `REGISTRY_ONLY` - Unknown destinations are dropped. You must create `ServiceEntry` resources for any external service.
 
-The `REGISTRY_ONLY` mode is more secure but requires more configuration. You need ServiceEntry resources for external services:
+The `REGISTRY_ONLY` mode is useful for detecting missing service registry entries but requires more configuration. You need ServiceEntry resources for external services:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -234,7 +236,7 @@ If the `istio-init` container fails, no iptables rules get set up and your pod w
 
 - Missing `NET_ADMIN` capability (use CNI plugin to avoid this)
 - SELinux or AppArmor blocking iptables commands
-- Custom PodSecurityPolicy blocking the init container
+- Custom Pod Security admission or security policy controls blocking the init container
 
 Check init container status:
 
