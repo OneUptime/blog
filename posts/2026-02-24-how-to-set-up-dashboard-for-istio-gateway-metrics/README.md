@@ -8,11 +8,11 @@ Description: Step-by-step instructions for building a Grafana dashboard to monit
 
 ---
 
-Your Istio gateways are the front door to your mesh. All external traffic flows through them, which makes gateway monitoring absolutely critical. If your ingress gateway is struggling, every service behind it suffers. Building a solid dashboard for gateway metrics gives you the visibility to catch issues before your users notice them.
+Your Istio gateways are the front door to your mesh. All external traffic that you route through them flows through them, which makes gateway monitoring absolutely critical. If your ingress gateway is struggling, every service behind it suffers. Building a solid dashboard for gateway metrics gives you the visibility to catch issues before your users notice them.
 
 ## Understanding Istio Gateway Metrics
 
-Istio gateways are essentially Envoy proxies running in standalone mode (not as sidecars). They expose the same set of Envoy metrics plus Istio-specific telemetry. The metrics are available on port 15090 at the `/stats/prometheus` endpoint.
+Istio gateways are essentially Envoy proxies running in standalone mode (not as sidecars). They expose Envoy metrics plus Istio-specific telemetry. The metrics are available at the `/stats/prometheus` endpoint, commonly on port 15020 for merged telemetry or port 15090 for Envoy-only telemetry, depending on your scrape configuration.
 
 The key difference between gateway metrics and sidecar metrics is scope. Gateway metrics show you the edge of your mesh - everything entering and leaving. Sidecar metrics show you individual service-to-service communication.
 
@@ -92,14 +92,18 @@ sum(rate(istio_response_bytes_count{reporter="source",source_workload="istio-ing
 
 ## Building the Dashboard
 
-Here is a complete Grafana dashboard JSON that you can import directly:
+Here is a complete Grafana dashboard API payload that you can import directly:
 
 ```json
 {
   "dashboard": {
+    "id": null,
+    "uid": null,
     "title": "Istio Gateway Metrics",
     "tags": ["istio", "gateway"],
     "timezone": "browser",
+    "schemaVersion": 39,
+    "version": 0,
     "panels": [
       {
         "title": "Requests Per Second",
@@ -147,13 +151,13 @@ Here is a complete Grafana dashboard JSON that you can import directly:
         ]
       },
       {
-        "title": "Active Connections",
+        "title": "Active Downstream Connections",
         "type": "timeseries",
         "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
         "targets": [
           {
-            "expr": "sum(envoy_server_total_connections{pod=~\"istio-ingressgateway.*\"})",
-            "legendFormat": "Total Connections"
+            "expr": "sum(envoy_listener_downstream_cx_active{pod=~\"istio-ingressgateway.*\"})",
+            "legendFormat": "Active Connections"
           }
         ]
       },
@@ -254,7 +258,7 @@ This lets you filter the dashboard by gateway, namespace, and destination servic
 Istio ships with several Grafana dashboards that you can use as a starting point. If you installed Istio with the addons, they are already available. Otherwise, you can find them in the Istio source:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/grafana.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.29/samples/addons/grafana.yaml
 ```
 
 The built-in mesh dashboard includes gateway panels, but building your own gives you the flexibility to focus on what matters most for your specific setup.
