@@ -41,7 +41,7 @@ spec:
         http2MaxRequests: 1000
 ```
 
-With this config, if an endpoint returns 5 consecutive 5xx errors within 10 seconds, it gets ejected from the pool for at least 30 seconds. No more than 50% of endpoints can be ejected at once.
+With this config, if an endpoint returns 5 consecutive 5xx errors, it gets ejected from the pool for at least 30 seconds. Envoy also runs outlier detection checks every 10 seconds for interval-based detection types and recovery bookkeeping. No more than 50% of endpoints can be ejected at once.
 
 ## Key Metrics for Circuit Breaker Monitoring
 
@@ -50,7 +50,7 @@ With this config, if an endpoint returns 5 consecutive 5xx errors within 10 seco
 ```promql
 # Number of times a host was ejected
 
-envoy_cluster_outlier_detection_ejections_total
+envoy_cluster_outlier_detection_ejections_enforced_total
 
 # Number of currently ejected hosts
 envoy_cluster_outlier_detection_ejections_active
@@ -105,7 +105,7 @@ The `clusters` endpoint shows you which hosts are healthy and which are ejected:
 
 ```bash
 kubectl exec deploy/my-app -c istio-proxy -- \
-  pilot-agent request GET "clusters?format=json" | jq '.cluster_statuses[] | select(.name | contains("my-service")) | .host_statuses[] | {address: .address, health: .health_status}'
+  pilot-agent request GET "clusters?format=json" | jq '.cluster_statuses[] | select(.name | contains("my-service")) | .host_statuses[] | {address: .address, ejected: .health_status.failed_outlier_check, health: .health_status}'
 ```
 
 ## Setting Up Prometheus Alerts
@@ -122,7 +122,7 @@ spec:
     rules:
     - alert: IstioCircuitBreakerEjection
       expr: |
-        rate(envoy_cluster_outlier_detection_ejections_total[5m]) > 0
+        rate(envoy_cluster_outlier_detection_ejections_enforced_total[5m]) > 0
       for: 1m
       labels:
         severity: warning
@@ -157,7 +157,7 @@ spec:
         severity: critical
       annotations:
         summary: "All hosts ejected from {{ $labels.cluster_name }}"
-        description: "Every endpoint has been ejected. All requests will fail."
+        description: "Every endpoint is currently marked ejected. The cluster may enter panic routing or return failures."
     - alert: IstioConnectionCircuitBreakerOpen
       expr: |
         envoy_cluster_circuit_breakers_default_cx_open > 0
@@ -187,7 +187,7 @@ spec:
         "title": "Ejection Rate",
         "type": "timeseries",
         "targets": [{
-          "expr": "sum(rate(envoy_cluster_outlier_detection_ejections_total[5m])) by (cluster_name)",
+          "expr": "sum(rate(envoy_cluster_outlier_detection_ejections_enforced_total[5m])) by (cluster_name)",
           "legendFormat": "{{ cluster_name }}"
         }]
       },
@@ -228,19 +228,19 @@ spec:
 
 ## Understanding Ejection Behavior
 
-When Envoy ejects a host, the ejection time increases exponentially with repeated ejections. The first ejection lasts `baseEjectionTime`, the second lasts `2 * baseEjectionTime`, and so on. This means a repeatedly failing host stays ejected longer each time.
+When Envoy ejects a host, the ejection time increases with repeated ejections. The first ejection lasts `baseEjectionTime`, the second lasts `2 * baseEjectionTime`, and so on, up to Envoy's configured maximum ejection time. This means a repeatedly failing host stays ejected longer each time.
 
 You can observe this pattern in the metrics:
 
 ```promql
 # Total ejections over time (cumulative)
-envoy_cluster_outlier_detection_ejections_total
+envoy_cluster_outlier_detection_ejections_enforced_total
 
 # How many are active right now
 envoy_cluster_outlier_detection_ejections_active
 ```
 
-If ejections_total keeps climbing but ejections_active is low, hosts are being ejected and then recovering. If ejections_active stays high, hosts are staying ejected because they keep failing when readmitted.
+If `ejections_enforced_total` keeps climbing but `ejections_active` is low, hosts are being ejected and then recovering. If `ejections_active` stays high, hosts are staying ejected because they keep failing when readmitted.
 
 ## Testing Circuit Breakers
 
@@ -249,6 +249,18 @@ Verify your circuit breaker configuration is working with a load test:
 ```bash
 # Deploy a test app that can return errors
 kubectl apply -f - <<EOF
+apiVersion: v1
+kind: Service
+metadata:
+  name: fault-service
+spec:
+  selector:
+    app: fault-service
+  ports:
+  - name: http
+    port: 80
+    targetPort: 80
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -287,12 +299,12 @@ Circuit breaker events should be viewed alongside the health of the service they
 sum(rate(istio_requests_total{response_code=~"5.*",destination_service="my-service.default.svc.cluster.local"}[1m]))
 
 # 2. Ejection events
-rate(envoy_cluster_outlier_detection_ejections_total{cluster_name=~".*my-service.*"}[1m])
+rate(envoy_cluster_outlier_detection_ejections_enforced_total{cluster_name=~".*my-service.*"}[1m])
 
-# 3. Service request rate (should drop as hosts are ejected)
+# 3. Service request rate
 sum(rate(istio_requests_total{destination_service="my-service.default.svc.cluster.local"}[1m]))
 ```
 
-You should see error rates rise first, then ejections kick in, and then error rates drop as unhealthy hosts are removed. If error rates stay high after ejection, the problem might be affecting all hosts or the ejection thresholds need adjustment.
+You should see error rates rise first, then ejections kick in, and then traffic to ejected hosts drop as unhealthy hosts are removed. If overall error rates stay high after ejection, the problem might be affecting all hosts or the ejection thresholds need adjustment.
 
 Circuit breaker monitoring is essential for understanding how your mesh is protecting itself. When these metrics light up, treat it as an early warning signal and go investigate the root cause on the upstream service.
