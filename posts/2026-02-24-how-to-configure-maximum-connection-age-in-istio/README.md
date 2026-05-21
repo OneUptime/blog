@@ -8,17 +8,17 @@ Description: How to configure maximum connection age in Istio to improve load ba
 
 ---
 
-Long-lived connections are a common problem in service meshes, especially with HTTP/2 and gRPC. A single HTTP/2 connection can multiplex hundreds of concurrent streams, which means all those requests go to the same backend pod. When you scale up, the new pods sit idle because existing connections are still pinned to the old pods. Maximum connection age fixes this by forcing connections to be recycled periodically.
+Long-lived connections are a common problem with HTTP/2 and gRPC. A single HTTP/2 connection can multiplex hundreds of concurrent streams, which means all those requests can stay on the same established network path for a long time. When you scale up, new pods may receive little traffic until clients or proxies create new connections. Maximum connection age helps by forcing connections to be recycled periodically.
 
 ## The Core Problem
 
-Picture this: you have a gRPC service with 3 replicas. Your client opens one HTTP/2 connection to the service. All requests flow through that single connection to a single backend pod. You scale up to 6 replicas because of increased load, but the 3 new pods receive zero traffic because the existing connection never gets rebalanced.
+Picture this: you have a gRPC service with 3 replicas. Your client opens one HTTP/2 connection to the service. Without an L7 proxy doing request-level balancing, all requests can flow through that single connection to a single backend pod. You scale up to 6 replicas because of increased load, but the 3 new pods receive little or no traffic until new connections are created.
 
-This happens because HTTP/2 connection multiplexing is a client-side decision. The client sees one healthy connection and keeps using it. Kubernetes Service load balancing only applies at connection creation time, not per-request.
+This happens because HTTP/2 connection multiplexing is a client-side decision. The client sees one healthy connection and keeps using it. Kubernetes Service load balancing is connection-oriented, not per-request. Istio's Envoy sidecars can load balance HTTP and gRPC at request level, but upstream HTTP/2 connection pools can still keep connections around for a long time.
 
 ## Setting Maximum Requests Per Connection
 
-The most direct way to limit connection lifetime in Istio is through `maxRequestsPerConnection` in a DestinationRule:
+One direct way to limit connection reuse in Istio is through `maxRequestsPerConnection` in a DestinationRule:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -34,7 +34,7 @@ spec:
         h2UpgradePolicy: DEFAULT
 ```
 
-After 1000 requests, Envoy gracefully closes the connection and opens a new one. The new connection goes through load balancing again and might land on a different backend pod.
+After 1000 requests on an upstream connection, Envoy drains that connection and creates a new one when more requests need to be sent. The new connection goes through load balancing again and might land on a different backend pod.
 
 The right number depends on your traffic patterns. Too low and you waste time on connection setup. Too high and you defeat the purpose. For most services, something between 100 and 10,000 works well.
 
@@ -59,7 +59,7 @@ This is different from max requests - it closes connections based on inactivity 
 
 ## Envoy's Connection Max Age via EnvoyFilter
 
-For more precise control over connection age, you can use an EnvoyFilter to set the maximum connection duration directly. This closes connections after a fixed amount of time regardless of how many requests have been sent:
+For more precise control over downstream connection age, you can use an EnvoyFilter to set Envoy's HTTP connection manager `max_connection_duration` directly. This closes downstream HTTP connections after a fixed amount of time regardless of how many requests have been sent:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -82,36 +82,28 @@ spec:
       patch:
         operation: MERGE
         value:
-          typedConfig:
+          name: envoy.filters.network.http_connection_manager
+          typed_config:
             "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
-            commonHttpProtocolOptions:
-              maxConnectionDuration: 600s
+            common_http_protocol_options:
+              max_connection_duration: 600s
 ```
 
 This tells Envoy to close any inbound HTTP connection after 600 seconds (10 minutes). For HTTP/2, Envoy sends a GOAWAY frame, giving clients time to finish in-flight requests before the connection is torn down.
 
-You can also set this on the outbound side:
+For outbound upstream connections, use `maxConnectionDuration` in the DestinationRule connection pool:
 
 ```yaml
-apiVersion: networking.istio.io/v1alpha3
-kind: EnvoyFilter
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
 metadata:
   name: outbound-max-connection-duration
-  namespace: default
 spec:
-  workloadSelector:
-    labels:
-      app: my-client-app
-  configPatches:
-    - applyTo: CLUSTER
-      match:
-        context: SIDECAR_OUTBOUND
-        cluster:
-          service: grpc-service.default.svc.cluster.local
-      patch:
-        operation: MERGE
-        value:
-          typedPerFilterConfig: {}
+  host: grpc-service.default.svc.cluster.local
+  trafficPolicy:
+    connectionPool:
+      tcp:
+        maxConnectionDuration: 600s
 ```
 
 ## The GOAWAY Frame
@@ -122,7 +114,7 @@ When Envoy closes an HTTP/2 connection due to max age, it doesn't just drop it. 
 2. Finish any in-flight requests
 3. Open a new connection for future requests
 
-This makes the transition smooth. Well-behaved HTTP/2 and gRPC clients handle GOAWAY automatically by opening a new connection and retrying any requests that weren't started on the old connection.
+This makes the transition smooth. Well-behaved HTTP/2 and gRPC clients handle GOAWAY by opening a new connection for new streams. Retries still depend on the client's retry policy and whether the RPC is safe to retry.
 
 ## Configuring for gRPC Specifically
 
@@ -140,6 +132,7 @@ spec:
       tcp:
         maxConnections: 100
         connectTimeout: 10s
+        maxConnectionDuration: 600s
         tcpKeepalive:
           time: 300s
           interval: 30s
@@ -154,7 +147,7 @@ spec:
 ```
 
 Combined with a LEAST_REQUEST load balancer, this ensures:
-- Connections are recycled after 5000 requests
+- Connections are recycled after 10 minutes or 5000 requests
 - Idle connections are closed after 10 minutes
 - New connections are directed to the least loaded backends
 - TCP keep-alive detects dead connections
@@ -200,15 +193,15 @@ kubectl exec my-pod -c istio-proxy -- \
 In Prometheus:
 
 ```promql
-# Average connection lifetime
+# 95th percentile connection lifetime
 histogram_quantile(0.95,
-  rate(envoy_cluster_upstream_cx_length_ms_bucket[5m]))
+  sum by (le) (rate(envoy_cluster_upstream_cx_length_ms_bucket[5m])))
 
 # Connection creation rate (should increase with lower max age)
 rate(envoy_cluster_upstream_cx_total[5m])
 ```
 
-A healthy setup shows a steady connection creation rate that matches your expected recycling frequency. If you set `maxRequestsPerConnection: 1000` and you're doing 100 RPS, you should see roughly one new connection every 10 seconds.
+A healthy setup shows a steady connection creation rate that matches your expected recycling frequency. If you set `maxRequestsPerConnection: 1000` and a single upstream connection is carrying 100 RPS, that connection should be recycled roughly every 10 seconds.
 
 ## Impact on Latency
 
