@@ -30,9 +30,9 @@ When `frontend` in cluster1 tries to call `backend.default.svc.cluster.local`, h
 
 Istio can route to remote services, but only if DNS resolution succeeds first. The sidecar proxy intercepts traffic after the application resolves the hostname. If DNS fails, the sidecar never gets a chance to help.
 
-## Solution 1: Stub Services (Recommended)
+## Solution 1: Stub Services
 
-The simplest approach is to create a headless Service in each cluster for services that only exist remotely. This gives CoreDNS a record to resolve, and Istio handles the actual routing to the remote endpoints.
+The simplest approach is to create a selectorless Service in each cluster for services that only exist remotely. This gives CoreDNS a record to resolve, and Istio handles the actual routing to the remote endpoints.
 
 In cluster1, create a stub for the backend service:
 
@@ -66,23 +66,23 @@ for SVC in $(kubectl get svc -A --context="${CTX_CLUSTER2}" -o jsonpath='{range 
   fi
 
   # Check if service already exists in cluster1
-  if kubectl get svc $NAME -n $NS --context="${CTX_CLUSTER1}" &>/dev/null; then
+  if kubectl get svc "$NAME" -n "$NS" --context="${CTX_CLUSTER1}" &>/dev/null; then
     continue
   fi
 
   # Get ports from the remote service
-  PORTS=$(kubectl get svc $NAME -n $NS --context="${CTX_CLUSTER2}" -o json | jq -c '.spec.ports')
+  PORTS=$(kubectl get svc "$NAME" -n "$NS" --context="${CTX_CLUSTER2}" -o json | jq -c '[.spec.ports[] | del(.nodePort)]')
 
   # Create namespace if needed
-  kubectl create namespace $NS --context="${CTX_CLUSTER1}" 2>/dev/null || true
+  kubectl create namespace "$NS" --context="${CTX_CLUSTER1}" 2>/dev/null || true
 
   echo "Creating stub service $NAME in namespace $NS"
   kubectl apply --context="${CTX_CLUSTER1}" -f - <<EOF
 apiVersion: v1
 kind: Service
 metadata:
-  name: $NAME
-  namespace: $NS
+  name: "$NAME"
+  namespace: "$NS"
 spec:
   ports: $PORTS
 EOF
@@ -103,10 +103,9 @@ spec:
     defaultConfig:
       proxyMetadata:
         ISTIO_META_DNS_CAPTURE: "true"
-        ISTIO_META_DNS_AUTO_ALLOCATE: "true"
 ```
 
-With `ISTIO_META_DNS_CAPTURE` enabled, the sidecar proxy captures DNS queries from the application. With `ISTIO_META_DNS_AUTO_ALLOCATE` enabled, Istio automatically assigns virtual IPs to ServiceEntries and remote services that do not have a local ClusterIP.
+With `ISTIO_META_DNS_CAPTURE` enabled, the sidecar proxy captures DNS queries from the application. In current Istio releases, address auto-allocation for ServiceEntries is handled by Istio's status-based auto-allocation controller; older Istio releases used `ISTIO_META_DNS_AUTO_ALLOCATE`, but that proxy metadata setting is deprecated in Istio 1.25 and later.
 
 After enabling this, restart your workloads:
 
@@ -171,7 +170,7 @@ reviews.default.mesh.example.com -> resolves to VIP or east-west gateway
 Configure Istio to use this domain:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: reviews-external
@@ -208,15 +207,15 @@ If the sidecar knows about the service (from remote discovery) but DNS fails, yo
 **Verify DNS capture is working (if using DNS proxying):**
 
 ```bash
-kubectl exec -n sample -c istio-proxy deployment/sleep --context="${CTX_CLUSTER1}" -- \
-  pilot-agent request GET /dns_resolve?proxyID=sleep.sample
+istioctl proxy-config bootstrap deployment/sleep -n sample --context="${CTX_CLUSTER1}" -o json | \
+  jq '.bootstrap.node.metadata.DNS_CAPTURE'
 ```
 
 ## Which Approach Should You Use?
 
 - **Stub services**: Most reliable, works everywhere, easy to understand. The downside is maintaining stub services for remote-only services.
-- **DNS proxying**: Most elegant, no extra resources needed. Requires Istio 1.8+ and needs to be enabled in mesh config.
+- **DNS proxying**: Most elegant, no extra resources needed. Requires Istio 1.8+ and needs DNS capture to be enabled for sidecar mode. In Istio 1.25 and later, use the current status-based address auto-allocation behavior instead of the deprecated `ISTIO_META_DNS_AUTO_ALLOCATE` proxy metadata setting.
 - **CoreDNS forwarding**: Good for non-Istio services that also need cross-cluster resolution.
 - **External DNS**: Best for large-scale production with many clusters and external service exposure.
 
-For most multi-cluster Istio deployments, DNS proxying (`ISTIO_META_DNS_CAPTURE` and `ISTIO_META_DNS_AUTO_ALLOCATE`) is the recommended approach. It handles everything transparently and does not require maintaining extra Kubernetes resources.
+For most multi-cluster Istio deployments, DNS proxying with `ISTIO_META_DNS_CAPTURE` and Istio's current address auto-allocation behavior is the recommended approach. It handles everything transparently and does not require maintaining extra Kubernetes resources.
