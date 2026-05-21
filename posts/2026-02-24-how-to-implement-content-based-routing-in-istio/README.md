@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Content Routing, Traffic Management, Service Mesh, VirtualService
 
-Description: Implement content-based routing in Istio to route requests based on headers, URI paths, query parameters, and request body attributes using VirtualService rules.
+Description: Implement content-based routing in Istio to route requests based on headers, URI paths, query parameters, and HTTP methods using VirtualService rules.
 
 ---
 
-Content-based routing means sending requests to different backends based on what is in the request. Not just the destination hostname, but the actual content: headers, URI paths, query parameters, method types, and even request body attributes. This is a fundamental pattern for microservices where a single entry point needs to fan out to many different services based on the request details.
+Content-based routing means sending requests to different backends based on what is in the request. Not just the destination hostname, but the request metadata and target: headers, URI paths, query parameters, and method types. This is a fundamental pattern for microservices where a single entry point needs to fan out to many different services based on the request details.
 
 Istio's VirtualService resource is the primary tool for content-based routing. It supports matching on many request attributes and routing matched traffic to specific destinations.
 
@@ -17,7 +17,7 @@ Istio's VirtualService resource is the primary tool for content-based routing. I
 The most common form of content-based routing is path-based. Different API paths go to different microservices:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-router
@@ -86,7 +86,7 @@ Istio supports three URI matching modes:
 Header-based routing lets you direct traffic based on custom headers. This is useful for version routing, tenant isolation, and feature flags:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: product-service
@@ -124,7 +124,7 @@ You can match headers using `exact`, `prefix`, and `regex` - the same modes as U
 Different HTTP methods can go to different services. For example, read operations go to a read-optimized service and writes go to a write service:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: data-service
@@ -156,7 +156,7 @@ spec:
 Istio VirtualService supports matching on query parameters. This can route requests based on parameter values:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: search-service
@@ -230,7 +230,7 @@ This routes requests from either premium OR enterprise tenants to the premium se
 Multi-tenant architectures often need to route different tenants to different backends. Maybe you have dedicated infrastructure for large tenants:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: tenant-router
@@ -293,7 +293,7 @@ A request to `/api/v2/users/123` gets rewritten to `/users/123` before reaching 
 You can match on the authority (Host header) for services that handle multiple domains:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: multi-domain-router
