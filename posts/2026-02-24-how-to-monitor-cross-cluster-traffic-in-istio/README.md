@@ -51,14 +51,9 @@ data:
       kubernetes_sd_configs:
       - role: pod
       relabel_configs:
-      - source_labels: [__meta_kubernetes_pod_container_name]
+      - source_labels: [__meta_kubernetes_pod_container_port_name]
         action: keep
-        regex: istio-proxy
-      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
-        action: replace
-        target_label: __address__
-        regex: (\d+)
-        replacement: $1
+        regex: '.*-envoy-prom'
     - job_name: 'istiod'
       kubernetes_sd_configs:
       - role: endpoints
@@ -66,9 +61,9 @@ data:
           names:
           - istio-system
       relabel_configs:
-      - source_labels: [__meta_kubernetes_service_name]
+      - source_labels: [__meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
         action: keep
-        regex: istiod
+        regex: istiod;http-monitoring
 ```
 
 Set up a central Prometheus to federate from each cluster:
@@ -113,13 +108,13 @@ spec:
     spec:
       containers:
       - name: prometheus
-        image: prom/prometheus:v2.45.0
+        image: prom/prometheus:v3.11.3
         args:
         - --storage.tsdb.min-block-duration=2h
         - --storage.tsdb.max-block-duration=2h
         - --web.enable-lifecycle
       - name: thanos-sidecar
-        image: thanosio/thanos:v0.32.0
+        image: thanosio/thanos:v0.40.0
         args:
         - sidecar
         - --tsdb.path=/prometheus
@@ -177,7 +172,10 @@ Create a Grafana dashboard specifically for cross-cluster traffic. Here is a das
 {
   "title": "Cross-Cluster Request Rate",
   "type": "timeseries",
-  "datasource": "Prometheus",
+  "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+  },
   "targets": [
     {
       "expr": "sum(rate(istio_requests_total{source_cluster!=destination_cluster}[5m])) by (source_cluster, destination_cluster)",
@@ -285,13 +283,23 @@ spec:
   meshConfig:
     enableTracing: true
     defaultConfig:
-      tracing:
-        sampling: 10.0
-  values:
-    global:
-      tracer:
-        zipkin:
-          address: jaeger-collector.observability:9411
+      tracing: {}
+    extensionProviders:
+    - name: zipkin
+      zipkin:
+        service: jaeger-collector.observability.svc.cluster.local
+        port: 9411
+---
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
+metadata:
+  name: mesh-default
+  namespace: istio-system
+spec:
+  tracing:
+  - providers:
+    - name: zipkin
+    randomSamplingPercentage: 10.0
 ```
 
 Deploy a centralized Jaeger instance that receives traces from both clusters. Use the Jaeger Collector with Kafka or Elasticsearch as a backend to handle traces from multiple sources.
