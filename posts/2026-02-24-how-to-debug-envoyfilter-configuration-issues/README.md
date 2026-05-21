@@ -46,7 +46,7 @@ kubectl exec -it deploy/my-app -c istio-proxy -- pilot-agent request GET config_
 
 If your filter doesn't show up at all, the likely causes are:
 
-1. **Wrong namespace**: EnvoyFilters in `istio-system` apply to all workloads. EnvoyFilters in other namespaces only apply to workloads in that namespace.
+1. **Wrong namespace**: EnvoyFilters in Istio's configured root namespace (often `istio-system`) apply to all workloads. EnvoyFilters in other namespaces only apply to workloads in that namespace.
 
 2. **Wrong workloadSelector**: If you specified a `workloadSelector`, make sure the labels actually match the target pod. Check with:
 
@@ -174,7 +174,7 @@ The `--previous` flag shows logs from the crashed container. Common causes inclu
 
 ### Filter Works for Some Requests but Not Others
 
-This usually means your match criteria are too broad or too narrow. Use the access log to see which requests are going through which filter chains:
+This usually means your match criteria are too broad or too narrow. Use Envoy stats as a quick signal for which HTTP listeners, routes, or clusters are active:
 
 ```bash
 kubectl exec -it deploy/my-app -c istio-proxy -- pilot-agent request GET stats | grep http
