@@ -20,8 +20,8 @@ Deploy the test environment:
 kubectl create namespace abort-test
 kubectl label namespace abort-test istio-injection=enabled
 
-kubectl apply -n abort-test -f https://raw.githubusercontent.com/istio/istio/release-1.22/samples/bookinfo/platform/kube/bookinfo.yaml
-kubectl apply -n abort-test -f https://raw.githubusercontent.com/istio/istio/release-1.22/samples/bookinfo/networking/destination-rule-all.yaml
+kubectl apply -n abort-test -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/bookinfo/platform/kube/bookinfo.yaml
+kubectl apply -n abort-test -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/bookinfo/networking/destination-rule-all.yaml
 
 kubectl wait --for=condition=ready pod --all -n abort-test --timeout=120s
 ```
@@ -167,7 +167,7 @@ Inject errors into only a subset of requests to simulate flaky services:
 apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
-  name: ratings-flaky
+  name: ratings-abort
   namespace: abort-test
 spec:
   hosts:
@@ -248,9 +248,9 @@ spec:
       retryOn: 5xx
 ```
 
-Wait, you cannot have both a fault and retries in the same VirtualService for the same host because the fault is applied before the route. The fault injection happens on the server side. The retries are configured on the client side. So you need two separate VirtualServices or configure them appropriately.
+Wait, you should not use that combined VirtualService as a retry test. Istio does not support combining fault injection with retry or timeout policies on the same VirtualService. In this case, the retry configuration does not take effect.
 
-The correct approach is to have the fault on the ratings VirtualService and the retries on the reviews VirtualService (since reviews calls ratings):
+For application-level retry testing, you can keep the fault on the ratings VirtualService and let the reviews application handle the injected failures:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -272,7 +272,7 @@ spec:
         host: ratings
 ```
 
-The retry policy is configured on the caller's side through its own VirtualService or DestinationRule.
+For mesh-level retry testing, configure retries on the caller's VirtualService and inject the upstream failure separately, such as with an EnvoyFilter on the upstream proxy.
 
 ## Header-Based Abort for Safe Production Testing
 
@@ -282,7 +282,7 @@ Target specific test traffic using header matching:
 apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
-  name: ratings-abort-testonly
+  name: ratings-abort
   namespace: abort-test
 spec:
   hosts:
@@ -342,17 +342,16 @@ kubectl exec -n abort-test deploy/productpage-v1 -- \
 Monitor abort injection through Envoy statistics:
 
 ```bash
-RATINGS_POD=$(kubectl get pod -n abort-test -l app=ratings -o jsonpath='{.items[0].metadata.name}')
+SOURCE_POD=$(kubectl get pod -n abort-test -l app=productpage -o jsonpath='{.items[0].metadata.name}')
 
-kubectl exec -n abort-test $RATINGS_POD -c istio-proxy -- \
-  pilot-agent request GET stats | grep "fault"
+kubectl exec -n abort-test $SOURCE_POD -c istio-proxy -- \
+  pilot-agent request GET stats | grep "fault.*aborts_injected"
 ```
 
 You should see counters like:
 
 ```text
-http.inbound_0.0.0.0_9080.fault.aborts_injected: 1523
-http.inbound_0.0.0.0_9080.fault.delays_injected: 0
+http.outbound_0.0.0.0_9080.fault.aborts_injected: 1523
 ```
 
 ## Cleanup
