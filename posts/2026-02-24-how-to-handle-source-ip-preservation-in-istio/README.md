@@ -29,43 +29,55 @@ The REDIRECT target in iptables changes the destination but also affects how the
 First, figure out what source IP your application is actually seeing:
 
 ```bash
-# Deploy a simple echo service
+# Deploy a simple httpbin service
 
 kubectl apply -f - <<EOF
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: echo
+  name: httpbin
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: echo
+      app: httpbin
   template:
     metadata:
       labels:
-        app: echo
+        app: httpbin
     spec:
       containers:
-        - name: echo
-          image: hashicorp/http-echo
-          args: ["-text", "hello"]
+        - name: httpbin
+          image: docker.io/kennethreitz/httpbin
+          command: ["gunicorn", "--access-logfile", "-", "-b", "0.0.0.0:80", "httpbin:app"]
           ports:
-            - containerPort: 5678
+            - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: httpbin
+spec:
+  selector:
+    app: httpbin
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 80
 EOF
 ```
 
 Then check what headers are being sent:
 
 ```bash
-kubectl exec -it sleep-pod -c sleep -- curl -s http://echo:5678 -v 2>&1 | grep -i "x-forwarded"
+kubectl exec -it sleep-pod -c sleep -- curl -s http://httpbin:8000/headers | grep -i "x-forwarded"
 ```
 
 ## Method 1: X-Forwarded-For Header
 
-For HTTP traffic, the standard approach is the `X-Forwarded-For` (XFF) header. Envoy automatically adds this header when proxying HTTP requests. Your application should read the source IP from this header rather than the TCP connection's source address.
+For HTTP traffic, the standard approach is the `X-Forwarded-For` (XFF) header. Envoy and many HTTP load balancers add or append this header when proxying HTTP requests. Your application should use the trusted client address derived from these headers rather than the TCP connection's source address.
 
-The XFF header is a comma-separated list of IPs. The leftmost IP is the original client. Each proxy that handles the request appends its own address:
+The XFF header is a comma-separated list of IPs. Each proxy that handles the request appends its own address:
 
 ```text
 X-Forwarded-For: <client>, <proxy1>, <proxy2>
@@ -83,29 +95,34 @@ spec:
         numTrustedProxies: 1
 ```
 
-The `numTrustedProxies` setting tells Envoy how many proxy hops to trust when extracting the client IP from XFF. If you have one external load balancer in front of your ingress gateway, set this to 1.
+The `numTrustedProxies` setting tells the Istio gateway proxy how many proxy hops to trust when extracting the client IP from XFF. If you have one trusted HTTP load balancer in front of your ingress gateway, set this to 1.
 
 ## Method 2: TPROXY Interception Mode
 
 For TCP traffic where HTTP headers aren't available, you can use TPROXY mode. Unlike REDIRECT, TPROXY preserves the original source address in the IP packet:
 
 ```yaml
-apiVersion: networking.istio.io/v1
-kind: Sidecar
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: preserve-source-ip
-  namespace: default
+  name: my-app
 spec:
-  workloadSelector:
-    labels:
+  selector:
+    matchLabels:
       app: my-app
-  ingress:
-    - port:
-        number: 8080
-        protocol: TCP
-        name: tcp
-      defaultEndpoint: 127.0.0.1:8080
-      captureMode: TPROXY
+  template:
+    metadata:
+      labels:
+        app: my-app
+      annotations:
+        sidecar.istio.io/interceptionMode: TPROXY
+    spec:
+      containers:
+        - name: my-app
+          image: hashicorp/http-echo
+          args: ["-listen=:8080", "-text=hello"]
+          ports:
+            - containerPort: 8080
 ```
 
 Or set it globally:
@@ -119,9 +136,9 @@ spec:
       interceptionMode: TPROXY
 ```
 
-With TPROXY, the source IP of the connection as seen by Envoy is the actual client IP. Envoy passes this through to the upstream connection, so your application sees the real source.
+With TPROXY, the source IP of the connection as seen by Envoy is the actual client IP, and Istio can use that address for L4 policy, logging, and filtering.
 
-Note that TPROXY requires additional kernel capabilities and may not work in all environments. Your nodes need the `xt_TPROXY` kernel module loaded.
+Note that TPROXY requires additional privileges and may not work in all environments. Istio configures the sidecar with the `CAP_NET_ADMIN` capability when TPROXY is enabled, and your nodes need kernel support for TPROXY.
 
 ## Method 3: Ingress Gateway Configuration
 
@@ -151,31 +168,18 @@ Setting `externalTrafficPolicy: Local` prevents kube-proxy from doing SNAT, whic
 
 ## Method 4: PROXY Protocol
 
-Some load balancers support the PROXY protocol, which is a way to convey the original client IP through the TCP connection itself. This works for both HTTP and non-HTTP traffic.
+Some load balancers support the PROXY protocol, which is a way to convey the original client IP through the TCP connection itself. In Istio gateway topology configuration, this is intended for TCP traffic and should not be used for L7 traffic or behind L7 load balancers.
 
-Configure the Envoy filter on your gateway to accept PROXY protocol:
+Configure your gateway to accept PROXY protocol:
 
 ```yaml
-apiVersion: networking.istio.io/v1alpha3
-kind: EnvoyFilter
-metadata:
-  name: proxy-protocol
-  namespace: istio-system
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
 spec:
-  workloadSelector:
-    labels:
-      istio: ingressgateway
-  configPatches:
-    - applyTo: LISTENER
-      match:
-        context: GATEWAY
-      patch:
-        operation: MERGE
-        value:
-          listenerFilters:
-            - name: envoy.filters.listener.proxy_protocol
-              typedConfig:
-                "@type": type.googleapis.com/envoy.extensions.filters.listener.proxy_protocol.v3.ProxyProtocol
+  meshConfig:
+    defaultConfig:
+      gatewayTopology:
+        proxyProtocol: {}
 ```
 
 You also need to configure your external load balancer to send PROXY protocol headers.
@@ -192,7 +196,6 @@ spec:
     defaultConfig:
       gatewayTopology:
         numTrustedProxies: 2
-        forwardClientCertDetails: SANITIZE_SET
 ```
 
 ## Verifying Source IP Preservation
@@ -206,8 +209,8 @@ kubectl exec -it my-app-pod -- curl -s localhost:8080/headers
 # Check Envoy access logs for source IP
 kubectl logs my-app-pod -c istio-proxy | tail -5
 
-# Look at the downstream_remote_address in the access log
-# This should show the real client IP
+# Look at X-Envoy-External-Address or the remote IP in the access log
+# This should show the trusted client IP
 ```
 
 You can also create an AuthorizationPolicy that tests source IP matching:
@@ -225,12 +228,9 @@ spec:
     - from:
         - source:
             remoteIpBlocks: ["203.0.113.0/24"]
-      when:
-        - key: request.headers[X-Forwarded-For]
-          values: ["203.0.113.*"]
 ```
 
-The `remoteIpBlocks` field in AuthorizationPolicy uses the trusted client IP extracted from XFF, respecting the `numTrustedProxies` setting.
+The `remoteIpBlocks` field in AuthorizationPolicy uses the trusted client IP extracted from XFF or PROXY protocol, respecting the `numTrustedProxies` setting for XFF.
 
 ## Choosing the Right Approach
 
