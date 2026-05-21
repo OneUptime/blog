@@ -60,7 +60,7 @@ kubectl logs -n istio-system deploy/istiod --tail=20
 
 ## Rolling Back All Istio Components
 
-Remember that Istio has three Helm charts. If you upgraded all of them, you might need to roll back all of them:
+Remember that a typical sidecar-mode Istio Helm install uses separate charts for base resources, Istiod, and any gateways you installed. If you upgraded all of them, you might need to roll back all of them:
 
 ```bash
 # Check revision history for each
@@ -79,7 +79,7 @@ helm rollback istio-ingress -n istio-ingress
 helm rollback istiod -n istio-system
 
 # 3. Roll back base (CRDs) - usually not needed
-# CRDs are additive, so rolling back base rarely helps
+# Istio CRD changes are generally backward-compatible, so rolling back base rarely helps
 # Only do this if CRD changes caused the issue
 helm rollback istio-base -n istio-system
 ```
@@ -89,8 +89,8 @@ helm rollback istio-base -n istio-system
 CRD rollbacks are tricky. Helm doesn't automatically roll back CRD changes because CRDs are cluster-wide resources shared across releases. If a CRD change caused the problem, you might need to manually revert:
 
 ```bash
-# Check current CRD version
-kubectl get crd virtualservices.networking.istio.io -o jsonpath='{.metadata.resourceVersion}'
+# Check served CRD API versions
+kubectl get crd virtualservices.networking.istio.io -o jsonpath='{.spec.versions[*].name}'
 
 # If you have the old CRD backed up
 kubectl apply -f backup/crds/virtualservices.networking.istio.io.yaml
@@ -166,15 +166,18 @@ helm get values istiod -n istio-system --revision 2
 If you used the canary upgrade approach with revisions, rolling back is simpler because the old version is still running:
 
 ```bash
-# Switch namespaces back to the old version
-for ns in $(kubectl get namespaces -l istio.io/rev=1-24 -o jsonpath='{.items[*].metadata.name}'); do
+OLD_REVISION=1-23
+FAILED_REVISION=1-24
+
+# Switch namespaces back to the old revision
+for ns in $(kubectl get namespaces -l istio.io/rev="$FAILED_REVISION" -o jsonpath='{.items[*].metadata.name}'); do
   echo "Reverting $ns..."
-  kubectl label namespace "$ns" istio.io/rev- istio-injection=enabled --overwrite
+  kubectl label namespace "$ns" istio.io/rev="$OLD_REVISION" --overwrite
   kubectl rollout restart deployment -n "$ns"
 done
 
 # Remove the failed revision
-helm uninstall istiod-1-24 -n istio-system
+helm uninstall "istiod-$FAILED_REVISION" -n istio-system
 ```
 
 ## Partial Rollback
@@ -207,8 +210,8 @@ Sometimes `helm rollback` itself can fail. Here's what to do:
 # Check the release status
 helm status istiod -n istio-system
 
-# If it's stuck, you might need to force it
-helm rollback istiod -n istio-system --force
+# If replacement is required, Helm 3 uses --force; Helm 4 uses --force-replace
+helm rollback istiod -n istio-system --force-replace
 ```
 
 **Release state is corrupted:**
