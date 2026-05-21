@@ -15,7 +15,7 @@ Transient failures happen all the time in distributed systems. A network blip, a
 The simplest retry configuration retries failed requests a fixed number of times:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: service-b
@@ -41,10 +41,9 @@ spec:
 Istio has default retry behavior that applies even without explicit configuration. By default, Envoy retries requests that fail with:
 
 - `connect-failure` - Connection to upstream failed
-- `refused-stream` - Upstream reset the stream (e.g., RST_STREAM in HTTP/2)
-- `unavailable` - Upstream returned a 503 (for gRPC)
+- `refused-stream` - Upstream reset the stream with a REFUSED_STREAM error code
+- `unavailable` - gRPC status code UNAVAILABLE
 - `cancelled` - gRPC status code CANCELLED
-- `retriable-status-codes` - Configurable HTTP status codes
 
 The default is 2 retry attempts with a 25ms+ base interval between retries.
 
@@ -53,7 +52,7 @@ The default is 2 retry attempts with a 25ms+ base interval between retries.
 You can explicitly control which conditions trigger a retry using the `retryOn` field:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: service-b
@@ -78,7 +77,7 @@ Available retry conditions:
 - **connect-failure** - Retry if the connection to upstream fails
 - **retriable-4xx** - Retry on 409 (Conflict)
 - **refused-stream** - Retry if the upstream refuses the stream
-- **retriable-status-codes** - Retry on specific HTTP status codes (configured separately)
+- **retriable-status-codes** - Retry on specific HTTP status codes configured in the retry policy or request header
 - **retriable-headers** - Retry based on response headers
 
 Multiple conditions are comma-separated.
@@ -86,7 +85,7 @@ Multiple conditions are comma-separated.
 For retrying specific status codes:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: service-b
@@ -100,22 +99,21 @@ spec:
     retries:
       attempts: 3
       perTryTimeout: 2s
-      retryOn: "retriable-status-codes"
-      retryRemoteLocalities: true
+      retryOn: "503,504"
 ```
 
 ## Retry Backoff
 
-Envoy uses exponential backoff between retries. The base interval is 25ms, and each subsequent retry doubles the wait time (25ms, 50ms, 100ms, etc.) with jitter added. The maximum interval is 250ms by default.
+Envoy uses fully jittered exponential backoff between retries. The base interval is 25ms, and retry delays are chosen from an exponentially growing range with jitter added. The maximum interval is 250ms by default.
 
-You cannot directly configure the backoff in the VirtualService API, but the default behavior is usually fine for most use cases.
+You can configure the minimum backoff in the VirtualService API with the `backoff` field, but the default behavior is usually fine for most use cases.
 
 ## Retries with Timeouts
 
 It is important to set `perTryTimeout` in conjunction with the overall route timeout. If you do not set a per-try timeout, each retry will use the full route timeout, which means retries at the end might not have enough time to complete.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: service-b
@@ -139,12 +137,12 @@ In this example:
 
 ## Retrying Only Idempotent Requests
 
-Retries are dangerous for non-idempotent requests. If you retry a POST that creates a record, you might create duplicate records. By default, Istio only retries on connection-level failures (where the request probably never reached the server). But if you set `retryOn: "5xx"`, even completed POST requests that returned a 500 will be retried.
+Retries are dangerous for non-idempotent requests. If you retry a POST that creates a record, you might create duplicate records. By default, Istio retries a small set of connection-level failures and gRPC retry conditions. But if you set `retryOn: "5xx"`, even completed POST requests that returned a 500 will be retried.
 
 One approach is to configure retries only for GET requests using match conditions:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: service-b
@@ -180,7 +178,7 @@ When a service is already struggling, retries can make things worse. If 100 clie
 Istio has a built-in mechanism to limit retries at the connection pool level:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: service-b
@@ -210,7 +208,7 @@ rate(envoy_cluster_upstream_rq_retry_success{cluster_name=~"outbound.*service-b.
 rate(envoy_cluster_upstream_rq_retry_overflow{cluster_name=~"outbound.*service-b.*"}[5m])
 ```
 
-If `retry_success` is high, retries are handling transient failures well. If `retry_overflow` is high, you may need to increase the retry budget. If retries are high but success rate is low, the downstream service has a persistent problem that retries will not fix.
+If `retry_success` is high, retries are handling transient failures well. If `retry_overflow` is high, you may need to increase the retry limit. If retries are high but success rate is low, the downstream service has a persistent problem that retries will not fix.
 
 Set up alerts:
 
@@ -235,7 +233,7 @@ groups:
 Sometimes you want to disable retries for specific routes, even if the default configuration includes them:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: service-b
@@ -266,7 +264,7 @@ The webhook endpoint gets no retries (because webhook delivery should only happe
 gRPC retries work similarly but use gRPC status codes instead of HTTP status codes:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: grpc-service
