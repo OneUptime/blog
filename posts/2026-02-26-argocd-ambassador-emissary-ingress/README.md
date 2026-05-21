@@ -19,7 +19,7 @@ Key advantages:
 - Native gRPC support through Envoy
 - Mapping CRD for declarative routing configuration
 - Built-in rate limiting and authentication filters
-- Automatic TLS with ACME support
+- TLS termination using Kubernetes Secrets or certificates managed by cert-manager
 - Canary routing capabilities
 
 ## Prerequisites
@@ -34,13 +34,16 @@ Install Emissary-Ingress if needed:
 # Install Emissary-Ingress CRDs
 
 kubectl apply -f https://app.getambassador.io/yaml/emissary/3.9.1/emissary-crds.yaml
+kubectl wait --timeout=90s --for=condition=available deployment emissary-apiext -n emissary-system
 
 # Install Emissary-Ingress with Helm
 helm repo add datawire https://app.getambassador.io
 helm repo update
 helm install emissary-ingress datawire/emissary-ingress \
   --namespace emissary \
-  --create-namespace
+  --create-namespace \
+  --version 3.9.1 \
+  --wait
 ```
 
 ## Configuring ArgoCD Backend
@@ -88,17 +91,18 @@ metadata:
   namespace: argocd
 spec:
   hostname: argocd.example.com
+  host: argocd.example.com:443
   prefix: /
   service: argocd-server.argocd:80
   # Enable gRPC protocol
   grpc: true
   # Match on gRPC content-type header
-  headers:
-    Content-Type: "application/grpc"
+  regex_headers:
+    Content-Type: "^application/grpc.*$"
   timeout_ms: 300000
 ```
 
-The key difference is the `grpc: true` flag on the second mapping. Emissary uses the `Content-Type` header to distinguish between regular HTTP and gRPC requests, routing each to the appropriate backend configuration.
+The key difference is the `grpc: true` flag on the second mapping. Emissary uses the `Content-Type` header to distinguish between regular HTTP and gRPC requests, routing each to the appropriate backend configuration. The ArgoCD CLI commonly includes the port in the request host header, so the gRPC mapping matches `host: argocd.example.com:443`. If your Emissary configuration strips matching host ports, use `host: argocd.example.com` instead.
 
 ## TLS Configuration
 
@@ -106,15 +110,39 @@ Create a Host resource to handle TLS:
 
 ```yaml
 apiVersion: getambassador.io/v3alpha1
+kind: Listener
+metadata:
+  name: emissary-http-listener
+  namespace: emissary
+spec:
+  port: 8080
+  protocol: HTTP
+  securityModel: XFP
+  hostBinding:
+    namespace:
+      from: ALL
+---
+apiVersion: getambassador.io/v3alpha1
+kind: Listener
+metadata:
+  name: emissary-https-listener
+  namespace: emissary
+spec:
+  port: 8443
+  protocol: HTTPS
+  securityModel: XFP
+  hostBinding:
+    namespace:
+      from: ALL
+---
+apiVersion: getambassador.io/v3alpha1
 kind: Host
 metadata:
   name: argocd-host
   namespace: argocd
 spec:
   hostname: argocd.example.com
-  # Automatic TLS with ACME (Let's Encrypt)
-  acmeProvider:
-    email: admin@example.com
+  # Use a certificate secret created manually or by cert-manager
   tlsSecret:
     name: argocd-tls-secret
   # Request policy - redirect HTTP to HTTPS
@@ -167,6 +195,7 @@ metadata:
 spec:
   service: ratelimit.ratelimit:8081
   protocol_version: v3
+  domain: ambassador
 ---
 apiVersion: getambassador.io/v3alpha1
 kind: Mapping
@@ -181,8 +210,9 @@ spec:
     ambassador:
       - request_label_group:
           - argocd_api_limit:
-              header: ":authority"
-              default: "argocd"
+              request_headers:
+                key: "authority"
+                header_name: ":authority"
 ```
 
 ## Using TLS Passthrough
@@ -191,18 +221,17 @@ If you prefer to let ArgoCD handle its own TLS, configure TLS passthrough with a
 
 ```yaml
 apiVersion: getambassador.io/v3alpha1
-kind: Host
+kind: Listener
 metadata:
-  name: argocd-host
-  namespace: argocd
+  name: argocd-tcp-listener
+  namespace: emissary
 spec:
-  hostname: argocd.example.com
-  # Do not redirect - pass through
-  requestPolicy:
-    insecure:
-      action: Route
-  tlsSecret:
-    name: argocd-tls-passthrough
+  port: 8443
+  protocol: TCP
+  securityModel: SECURE
+  hostBinding:
+    namespace:
+      from: ALL
 ---
 apiVersion: getambassador.io/v3alpha1
 kind: TCPMapping
@@ -210,10 +239,11 @@ metadata:
   name: argocd-server-tcp
   namespace: argocd
 spec:
-  port: 443
+  port: 8443
   service: argocd-server.argocd:443
-  host: argocd.example.com
 ```
+
+Do not set `host` on the `TCPMapping` for TLS passthrough. In Emissary, a non-empty `TCPMapping.spec.host` tells Emissary to terminate TLS.
 
 ## Verifying the Setup
 
@@ -232,7 +262,7 @@ kubectl port-forward -n emissary svc/emissary-ingress-admin 8877:8877
 curl -I https://argocd.example.com
 
 # Test CLI login
-argocd login argocd.example.com --grpc-web
+argocd login argocd.example.com
 ```
 
 ## Troubleshooting
@@ -245,9 +275,10 @@ argocd login argocd.example.com --grpc-web
 kubectl logs -n emissary -l app.kubernetes.io/name=emissary-ingress
 ```
 
-**TLS Certificate Not Working**: If using ACME, make sure port 80 is accessible for the HTTP-01 challenge. Check the Host resource status:
+**TLS Certificate Not Working**: Verify that the Kubernetes TLS secret exists in the namespace referenced by the Host. If cert-manager creates the secret, check the Certificate resource that owns it and the Host resource status:
 
 ```bash
+kubectl get secret argocd-tls-secret -n argocd
 kubectl describe host argocd-host -n argocd
 ```
 
