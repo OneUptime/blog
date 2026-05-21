@@ -71,7 +71,7 @@ Here is where most people run into problems. By default, Envoy has an idle timeo
 
 The default stream idle timeout is 5 minutes. If no data flows on the WebSocket connection for 5 minutes, Envoy closes it. For many WebSocket applications, this is way too short.
 
-Increase the timeout in the VirtualService:
+If you have configured a route timeout, disable it for the WebSocket route in the VirtualService:
 
 ```yaml
 apiVersion: networking.istio.io/v1beta1
@@ -93,7 +93,7 @@ spec:
       timeout: 0s
 ```
 
-Setting `timeout: 0s` disables the route timeout entirely for WebSocket connections. However, you also need to disable the stream idle timeout at the Envoy level:
+Setting `timeout: 0s` disables the route timeout entirely for WebSocket connections. Istio's HTTP route timeout is disabled by default, but setting it explicitly is useful when the rest of the VirtualService uses shorter request timeouts. You also need to increase the stream idle timeout at the Envoy level:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -124,13 +124,13 @@ spec:
               - upgrade_type: websocket
 ```
 
-This sets the stream idle timeout to 1 hour. If you need connections to stay open longer, increase this value. For applications like chat or live dashboards, you might set it to several hours.
+This sets the stream idle timeout to 1 hour. If you need idle connections to stay open longer, increase this value. For applications like chat or live dashboards, you might set it to several hours, or rely on application-level ping/pong messages to keep the stream active.
 
 The `upgrade_configs` section explicitly enables WebSocket upgrades. While this is usually enabled by default, setting it explicitly ensures it works regardless of other configuration changes.
 
 ## Handling WebSocket on the Sidecar
 
-If your WebSocket backend service also has an Istio sidecar, you need to adjust the sidecar's timeout too:
+If your WebSocket backend service also has an Istio sidecar and idle connections are still being closed there, adjust the sidecar's timeout too:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -188,9 +188,9 @@ spec:
         maxRequestsPerConnection: 0
 ```
 
-`LEAST_REQUEST` routes new connections to the pod with the fewest active connections, which helps balance long-lived WebSocket connections more evenly.
+`LEAST_REQUEST` favors endpoints with the fewest outstanding requests. Since an upgraded WebSocket remains an active HTTP stream for its lifetime, this helps balance long-lived WebSocket connections more evenly.
 
-Setting `maxRequestsPerConnection: 0` means unlimited requests per connection, which is what you want for WebSocket since each connection handles many messages.
+Setting `maxRequestsPerConnection: 0` means there is no limit on requests per upstream connection. A WebSocket is still one upgraded HTTP request, but the upgraded stream can carry many WebSocket messages.
 
 ## WebSocket with Path-Based Routing
 
@@ -238,9 +238,9 @@ The WebSocket paths get `timeout: 0s` while regular HTTP paths get a normal 30-s
 
 ## Sticky Sessions for WebSocket
 
-Some WebSocket implementations (like Socket.IO) use HTTP polling as a fallback and need sticky sessions to work correctly. The polling requests need to go to the same pod that holds the WebSocket connection.
+Some WebSocket implementations (like Socket.IO) use HTTP long-polling as a fallback and need sticky sessions to work correctly. The polling requests need to go to the same pod for the lifetime of the Socket.IO session.
 
-Configure consistent hashing based on a session cookie:
+Configure consistent hashing based on a session cookie. For Socket.IO v3 and later, configure Socket.IO to set a cookie first, because it no longer sends one by default:
 
 ```yaml
 apiVersion: networking.istio.io/v1beta1
@@ -258,7 +258,7 @@ spec:
           ttl: 0s
 ```
 
-This routes all requests with the same `io` cookie (which Socket.IO sets) to the same backend pod. The `ttl: 0s` means the cookie-based routing never expires.
+This routes all requests with the same `io` cookie to the same backend pod. If the cookie is missing, Istio generates one; `ttl: 0s` makes that generated cookie a session cookie.
 
 For other WebSocket libraries, you might hash on a different header:
 
@@ -336,7 +336,8 @@ wscat -c "wss://ws.example.com/ws"
 curl -v -H "Connection: Upgrade" \
   -H "Upgrade: websocket" \
   -H "Sec-WebSocket-Version: 13" \
-  -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \
+  -H "Sec-WebSocket-Key: $(openssl rand -base64 16)" \
+  --http1.1 \
   https://ws.example.com/ws
 ```
 
