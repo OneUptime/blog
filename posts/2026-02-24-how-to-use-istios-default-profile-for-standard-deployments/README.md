@@ -26,8 +26,9 @@ It specifically does NOT install:
 ## Installing the Default Profile
 
 ```bash
-curl -L https://istio.io/downloadIstio | sh -
-cd istio-1.24.0
+export ISTIO_VERSION=1.29.2
+curl -L https://istio.io/downloadIstio | ISTIO_VERSION=$ISTIO_VERSION sh -
+cd "istio-$ISTIO_VERSION"
 export PATH=$PWD/bin:$PATH
 
 istioctl install --set profile=default -y
@@ -49,10 +50,11 @@ Two deployments, clean and simple.
 
 ## Default Profile Resource Settings
 
-The default profile sets production-appropriate resource requests and limits:
+The default profile sets production-appropriate resource settings:
 
 ```bash
-istioctl profile dump default --config-path components.pilot.k8s.resources
+kubectl get deployment istiod -n istio-system \
+  -o jsonpath='{.spec.template.spec.containers[?(@.name=="discovery")].resources}'
 ```
 
 Default istiod resources:
@@ -64,10 +66,20 @@ resources:
     memory: 2Gi
 ```
 
+Check default ingress gateway resources:
+
+```bash
+kubectl get deployment istio-ingressgateway -n istio-system \
+  -o jsonpath='{.spec.template.spec.containers[?(@.name=="istio-proxy")].resources}'
+```
+
 Default ingress gateway resources:
 
 ```yaml
 resources:
+  limits:
+    cpu: 2000m
+    memory: 1024Mi
   requests:
     cpu: 100m
     memory: 128Mi
@@ -98,12 +110,10 @@ spec:
       tracing:
         sampling: 1.0
 
-    # Wait for sidecar before starting the app
-    defaultConfig:
+      # Wait for sidecar before starting the app
       holdApplicationUntilProxyStarts: true
 
-    # DNS capture for improved resolution
-    defaultConfig:
+      # DNS capture for improved resolution
       proxyMetadata:
         ISTIO_META_DNS_CAPTURE: "true"
 
@@ -393,8 +403,9 @@ When a new Istio version is available:
 
 ```bash
 # Download new version
-curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.25.0 sh -
-cd istio-1.25.0
+export ISTIO_VERSION=1.29.2 # replace with the supported target version
+curl -L https://istio.io/downloadIstio | ISTIO_VERSION=$ISTIO_VERSION sh -
+cd "istio-$ISTIO_VERSION"
 export PATH=$PWD/bin:$PATH
 
 # Check what will change
@@ -412,7 +423,7 @@ kubectl rollout restart deployment --all -n default
 
 ## Troubleshooting
 
-Check istiod health:
+Check proxy synchronization:
 
 ```bash
 istioctl proxy-status
