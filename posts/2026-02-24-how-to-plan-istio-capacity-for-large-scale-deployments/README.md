@@ -145,7 +145,7 @@ spec:
 The single most impactful optimization for large meshes is using Sidecar resources to limit what each proxy sees. Without Sidecar resources, every proxy gets the full mesh configuration, which at scale can be hundreds of megabytes.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -178,7 +178,7 @@ This tells Istiod to only process namespaces labeled with `istio-managed: "true"
 
 ## Proxy Concurrency
 
-By default, the Envoy sidecar uses 2 worker threads. For high-throughput services, you might need more:
+By default, Istio automatically determines the Envoy sidecar worker thread count based on CPU limits. For high-throughput services, you might need to set it explicitly:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -247,10 +247,11 @@ Set up monitoring for these metrics to catch capacity issues before they become 
 pilot_proxy_convergence_time
 
 # Number of connected proxies
-pilot_xds_connected_clients
+pilot_xds
 
-# Configuration push errors
-pilot_xds_push_errors
+# XDS internal errors and config rejects
+pilot_total_xds_internal_errors
+pilot_total_xds_rejects
 
 # Sidecar memory usage
 container_memory_working_set_bytes{container="istio-proxy"}
@@ -262,7 +263,7 @@ container_cpu_usage_seconds_total{container="istio-proxy"}
 Create alerts for:
 
 - Push latency exceeding 30 seconds (indicates control plane overload)
-- More than 5% push errors (indicates configuration issues)
+- More than 5% XDS internal errors or rejects (indicates configuration issues)
 - Sidecar memory approaching limits (OOM risk)
 - Istiod CPU consistently above 80% (needs more replicas or resources)
 
@@ -271,13 +272,14 @@ Create alerts for:
 Before going to production at scale, load test your mesh to find the breaking points:
 
 ```bash
-# Use fortio (Istio's recommended load testing tool)
+# Use fortio (one of Istio's benchmarking tools)
 kubectl apply -f samples/httpbin/httpbin.yaml
-kubectl apply -f samples/sleep/sleep.yaml
+kubectl apply -f samples/httpbin/sample-client/fortio-deploy.yaml
 
 # Run a load test
-kubectl exec deploy/sleep -c sleep -- \
-  fortio load -c 100 -qps 1000 -t 60s http://httpbin:8000/get
+export FORTIO_POD=$(kubectl get pods -l app=fortio -o 'jsonpath={.items[0].metadata.name}')
+kubectl exec "$FORTIO_POD" -c fortio -- \
+  /usr/bin/fortio load -c 100 -qps 1000 -t 60s http://httpbin:8000/get
 ```
 
 Monitor control plane metrics during the test. If push times increase or you see errors, scale up the control plane.
