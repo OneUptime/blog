@@ -28,19 +28,19 @@ These metrics include labels specific to gRPC:
 
 ## Enabling Metrics Collection
 
-Istio's default installation includes Prometheus integration. Make sure your Istio installation has metrics enabled:
+Istio's default installation exposes Prometheus-formatted metrics, but it does not deploy Prometheus by default. Make sure your metrics pipeline is scraping Istio metrics:
 
 ```bash
-# Check if Prometheus is scraping Istio metrics
+# If you installed Istio's sample Prometheus addon, check that it is running
 
-kubectl get servicemonitor -n istio-system
+kubectl get pods -n istio-system -l app=prometheus
 
 # Verify Envoy is exposing stats
 kubectl exec -it <pod-name> -c istio-proxy -- \
   pilot-agent request GET stats/prometheus | head -50
 ```
 
-If you installed Istio with `istioctl`, the default profile includes Prometheus metrics. You can verify the mesh config:
+If you installed Istio with `istioctl`, Prometheus metrics merging is enabled by default. You can verify the mesh config:
 
 ```bash
 kubectl get cm istio -n istio-system -o yaml | grep -A5 "enablePrometheusMerge"
@@ -84,17 +84,17 @@ If you do not have Prometheus running yet, you can install it alongside Istio:
 
 ```bash
 # Using Istio's sample addons
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/prometheus.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.29/samples/addons/prometheus.yaml
 
 # Verify it is running
 kubectl get pods -n istio-system -l app=prometheus
 ```
 
-For production, you probably want to use the Prometheus Operator or a managed Prometheus service. The key thing is making sure it scrapes the Istio metrics endpoints. Here is a ServiceMonitor for Envoy sidecars:
+For production, you probably want to use the Prometheus Operator or a managed Prometheus service. The key thing is making sure it scrapes the Istio metrics endpoints. Here is a PodMonitor for Envoy sidecars:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
+kind: PodMonitor
 metadata:
   name: envoy-stats
   namespace: istio-system
@@ -105,10 +105,9 @@ spec:
         operator: DoesNotExist
   namespaceSelector:
     any: true
-  jobLabel: envoy-stats
-  endpoints:
+  podMetricsEndpoints:
     - path: /stats/prometheus
-      targetPort: 15090
+      port: http-envoy-prom
       interval: 15s
 ```
 
@@ -117,7 +116,7 @@ spec:
 Istio provides pre-built Grafana dashboards. Install Grafana:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/grafana.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.29/samples/addons/grafana.yaml
 ```
 
 Access it:
@@ -131,7 +130,7 @@ The built-in dashboards include:
 - **Service Dashboard** - detailed view per service
 - **Workload Dashboard** - per-workload metrics
 
-These dashboards already handle gRPC traffic. You will see gRPC-specific panels showing success rates based on grpc_response_status rather than HTTP status codes.
+These dashboards include HTTP/gRPC traffic in their service and workload views. For gRPC-error-specific panels, use custom queries based on `grpc_response_status` rather than HTTP status codes.
 
 ## Custom gRPC Dashboard
 
@@ -167,18 +166,18 @@ kubectl exec -it <pod-name> -c istio-proxy -- \
   pilot-agent request GET stats | grep grpc
 ```
 
-You will see stats like:
-- `cluster.outbound|50051||grpc-backend.default.svc.cluster.local.grpc.0` - count of gRPC OK responses
-- `cluster.outbound|50051||grpc-backend.default.svc.cluster.local.grpc.14` - count of UNAVAILABLE responses
+Depending on the proxy configuration, you will see stats like:
+- `cluster.outbound|50051||grpc-backend.default.svc.cluster.local.grpc.success` - count of successful gRPC calls
+- `cluster.outbound|50051||grpc-backend.default.svc.cluster.local.grpc.failure` - count of failed gRPC calls
 
-These stats are per-cluster (per upstream destination) and broken down by gRPC status code number.
+These stats are per-cluster (per upstream destination). Use Istio's `grpc_response_status` label on standard metrics when you need status-code-level breakdowns.
 
 ## Enabling Additional Metrics
 
 If you want more detailed metrics, you can customize Istio's telemetry. For example, to add request method as a label:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: grpc-metrics
