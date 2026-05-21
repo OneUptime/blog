@@ -10,7 +10,7 @@ Description: A hands-on guide to debugging L4 and L7 policy issues in Istio ambi
 
 One of the trickiest parts of running Istio in ambient mode is understanding where your policies get enforced. In the sidecar model, everything happened in one place. In ambient mode, L4 policies run in ztunnel and L7 policies run in waypoint proxies. When something breaks, you need to figure out which layer is causing the problem.
 
-This matters because a misconfigured setup might silently skip your L7 policies if no waypoint proxy exists. Or you might have conflicting L4 and L7 rules that produce confusing behavior. Knowing how to trace the problem through both layers will save you hours of frustration.
+This matters because a misconfigured setup might leave your L7 policies unenforced if no waypoint proxy is attached to the traffic, or fail closed if L7 attributes are accidentally targeted at ztunnel. Or you might have conflicting L4 and L7 rules that produce confusing behavior. Knowing how to trace the problem through both layers will save you hours of frustration.
 
 ## Understanding Policy Enforcement Layers
 
@@ -22,14 +22,14 @@ Before jumping into debugging, here's the split:
 - Namespace-level access control
 - DENY policies with L4 fields only
 
-**Waypoint proxy (L7) handles:**
+**Waypoint proxy (L7) handles policies attached with `targetRefs`:**
 - HTTP method matching
 - Path-based routing and authorization
 - Header matching
-- Request authentication (JWT)
-- ALLOW policies with L7 fields
+- Request authentication (JWT validation)
+- Authorization policies with L7 fields
 
-An AuthorizationPolicy is classified as L4 or L7 based on the fields it uses. If it only references principals, namespaces, and ports, it's L4. If it references methods, paths, or headers, it's L7.
+An AuthorizationPolicy is classified as L4 or L7 based on the fields it uses and where it is attached. If it only references principals, namespaces, and ports, it's L4. If it references methods, paths, or headers, it's L7 and should be attached to a waypoint or a service using `targetRefs`.
 
 ## Step 1: Identify What Layer Your Policy Targets
 
@@ -62,6 +62,10 @@ metadata:
   name: allow-get-only
   namespace: backend
 spec:
+  targetRefs:
+  - kind: Service
+    group: ""
+    name: backend-svc
   action: ALLOW
   rules:
   - from:
@@ -73,7 +77,7 @@ spec:
         paths: ["/api/*"]
 ```
 
-The second policy requires a waypoint proxy. If you don't have one, the policy won't be enforced.
+The second policy requires a waypoint proxy and a `targetRefs` attachment. If no waypoint is handling traffic for `backend-svc`, the L7 policy won't be enforced by ztunnel.
 
 ## Step 2: Check If a Waypoint Proxy Exists
 
@@ -81,10 +85,10 @@ The second policy requires a waypoint proxy. If you don't have one, the policy w
 kubectl get gateway -n backend
 ```
 
-If you see no gateway with `gatewayClassName: istio-waypoint`, your L7 policies are not being enforced. Deploy one:
+If you see no gateway with `gatewayClassName: istio-waypoint`, your L7 policies cannot be enforced for that namespace. Deploy one and enroll the namespace:
 
 ```bash
-istioctl waypoint apply --namespace backend --enroll-namespace
+istioctl waypoint apply --namespace backend --enroll-namespace --wait
 ```
 
 Verify it's running:
@@ -100,10 +104,10 @@ Use `istioctl` to inspect what each component has loaded.
 For ztunnel:
 
 ```bash
-istioctl ztunnel-config authorization
+istioctl ztunnel-config policies
 ```
 
-This shows all L4 policies that ztunnel is aware of. If your policy isn't listed here, either it's an L7 policy (which is correct) or there's a configuration issue.
+This shows policies that ztunnel is aware of. If your L4 policy isn't listed here, there's likely a configuration or targeting issue. If a policy with L7 attributes appears here, it has been targeted at ztunnel and will fail safe by denying the matching traffic.
 
 For the waypoint proxy:
 
@@ -116,7 +120,8 @@ istioctl proxy-config route $WAYPOINT_POD -n backend
 You can also check the Envoy config directly:
 
 ```bash
-kubectl exec -n backend $WAYPOINT_POD -c istio-proxy -- curl -s localhost:15000/config_dump | python3 -m json.tool | grep -A 20 "rbac"
+istioctl proxy-config listener $WAYPOINT_POD -n backend -o json | grep -i "rbac"
+istioctl proxy-config route $WAYPOINT_POD -n backend -o json | grep -i "rbac"
 ```
 
 ## Step 4: Test Connectivity at Each Layer
@@ -124,8 +129,8 @@ kubectl exec -n backend $WAYPOINT_POD -c istio-proxy -- curl -s localhost:15000/
 When a request gets denied, figure out which layer is blocking it. Start by testing basic L4 connectivity:
 
 ```bash
-# Deploy a test pod in the source namespace
-kubectl run test-client -n frontend --image=curlimages/curl --rm -it -- sh
+# Deploy a test pod in the source namespace with nc and curl available
+kubectl run test-client -n frontend --image=nicolaka/netshoot --rm -it -- sh
 
 # Test TCP connectivity (L4)
 nc -zv backend-svc.backend.svc.cluster.local 8080
@@ -157,7 +162,7 @@ Enable debug logging for more detail:
 ```bash
 # For ztunnel
 ZTUNNEL_POD=$(kubectl get pods -n istio-system -l app=ztunnel -o jsonpath='{.items[0].metadata.name}')
-istioctl ztunnel-config log $ZTUNNEL_POD --level debug
+istioctl ztunnel-config log $ZTUNNEL_POD.istio-system --level debug
 
 # For waypoint
 istioctl proxy-config log $WAYPOINT_POD -n backend --level rbac:debug
@@ -165,7 +170,7 @@ istioctl proxy-config log $WAYPOINT_POD -n backend --level rbac:debug
 
 ## Common Issue: Mixed L4/L7 in One Policy
 
-A single AuthorizationPolicy that contains both L4 and L7 fields gets treated as L7. This is a common source of confusion.
+A single AuthorizationPolicy that contains both L4 and L7 fields must be attached to a waypoint with `targetRefs`. If it is targeted at ztunnel instead, ztunnel cannot evaluate the L7 attributes and fails safe by denying the matching traffic. This is a common source of confusion.
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -174,6 +179,10 @@ metadata:
   name: mixed-policy
   namespace: backend
 spec:
+  targetRefs:
+  - kind: Service
+    group: ""
+    name: backend-svc
   action: ALLOW
   rules:
   - from:
@@ -185,7 +194,7 @@ spec:
         ports: ["8080"]           # L4 field
 ```
 
-This entire policy goes to the waypoint proxy. If you don't have a waypoint, the namespace restriction won't be enforced at all. The fix is to either deploy a waypoint or split this into separate L4 and L7 policies:
+This entire policy is enforced at the waypoint proxy because it uses `targetRefs` and includes an L7 field. If you don't have a waypoint for `backend-svc`, the L7 policy won't be enforced by ztunnel. The fix is to either deploy a waypoint or split this into separate L4 and L7 policies:
 
 ```yaml
 # L4 policy - enforced by ztunnel
@@ -211,6 +220,10 @@ metadata:
   name: l7-get-only
   namespace: backend
 spec:
+  targetRefs:
+  - kind: Service
+    group: ""
+    name: backend-svc
   action: ALLOW
   rules:
   - to:
@@ -225,12 +238,12 @@ DENY policies always take precedence. If ztunnel denies a connection at L4, the 
 If you see connections being refused at the TCP level, check for DENY policies in ztunnel:
 
 ```bash
-istioctl ztunnel-config authorization | grep DENY
+istioctl ztunnel-config policies | grep DENY
 ```
 
-## Common Issue: Missing targetRef
+## Common Issue: Missing targetRefs
 
-In ambient mode, you can scope policies using `targetRef`. If your policy targets a specific waypoint but the waypoint name doesn't match, the policy won't apply:
+In ambient mode, you can scope waypoint policies using `targetRefs`. If your policy targets a specific waypoint but the waypoint name doesn't match, the policy won't apply:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -239,8 +252,8 @@ metadata:
   name: scoped-policy
   namespace: backend
 spec:
-  targetRef:
-    kind: Gateway
+  targetRefs:
+  - kind: Gateway
     group: gateway.networking.k8s.io
     name: waypoint
   action: ALLOW
@@ -250,7 +263,7 @@ spec:
         namespaces: ["frontend"]
 ```
 
-Make sure the `name` field in `targetRef` matches your actual Gateway name.
+Make sure the `name` field in `targetRefs` matches your actual Gateway name.
 
 ## Systematic Debugging Checklist
 
@@ -259,7 +272,7 @@ When a request gets denied and you're not sure why:
 1. Check if the namespace is enrolled in ambient mode
 2. Check if a waypoint proxy exists and is healthy
 3. Determine if your policy is L4 or L7
-4. Verify the policy shows up in the right component (`istioctl ztunnel-config authorization` or `istioctl proxy-config` on the waypoint)
+4. Verify the policy shows up in the right component (`istioctl ztunnel-config policies` or `istioctl proxy-config` on the waypoint)
 5. Test TCP connectivity separately from HTTP
 6. Check logs at both layers
 7. Look for DENY policies that might be blocking at L4 before L7 rules can apply
