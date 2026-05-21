@@ -65,7 +65,23 @@ In Octopus, go to **Infrastructure > Deployment Targets** and add a Kubernetes c
 
 ## Preparing the Istio Manifests
 
-Store your Istio manifests as part of your Octopus deployment package. Create the base resources:
+Store your Kubernetes and Istio manifests as part of your Octopus deployment package. Create the base resources:
+
+```yaml
+# service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: #{AppName}
+  namespace: #{Namespace}
+spec:
+  selector:
+    app: #{AppName}
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8080
+```
 
 ```yaml
 # virtualservice.yaml
@@ -184,7 +200,7 @@ sleep 120
 
 # Check error rate
 ERROR_RATE=$(curl -s "${PROM_URL}/api/v1/query" \
-  --data-urlencode "query=sum(rate(istio_requests_total{destination_workload=\"${APP_NAME}-canary\",namespace=\"${NAMESPACE}\",response_code=~\"5.*\"}[5m]))/sum(rate(istio_requests_total{destination_workload=\"${APP_NAME}-canary\",namespace=\"${NAMESPACE}\"}[5m]))" \
+  --data-urlencode "query=sum(rate(istio_requests_total{destination_workload=\"${APP_NAME}-canary\",destination_workload_namespace=\"${NAMESPACE}\",response_code=~\"5.*\"}[5m]))/sum(rate(istio_requests_total{destination_workload=\"${APP_NAME}-canary\",destination_workload_namespace=\"${NAMESPACE}\"}[5m]))" \
   | python3 -c "import sys,json; data=json.load(sys.stdin); print(data['data']['result'][0]['value'][1] if data['data']['result'] else '0')")
 
 echo "Canary error rate: ${ERROR_RATE}"
