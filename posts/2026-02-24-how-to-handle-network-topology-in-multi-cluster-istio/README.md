@@ -61,7 +61,7 @@ topology.kubernetes.io/region    -> e.g., us-east-1
 topology.kubernetes.io/zone      -> e.g., us-east-1a
 ```
 
-Cloud providers (AWS, GCP, Azure) automatically set these labels on nodes. You can check them:
+Hosted Kubernetes providers usually set these labels on nodes. You can check them:
 
 ```bash
 kubectl get nodes --show-labels --context="${CTX_CLUSTER1}" | grep topology
@@ -124,7 +124,7 @@ East-west gateways are only needed between different networks:
 DestinationRules control locality behavior. Here is a configuration that prefers local endpoints and fails over to specific regions:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: reviews
@@ -138,6 +138,7 @@ spec:
       baseEjectionTime: 30s
     loadBalancer:
       localityLbSetting:
+        enabled: true
         failover:
         - from: us-east-1
           to: us-west-2
