@@ -142,10 +142,11 @@ spec:
   failStrategy: FAIL_OPEN
 ```
 
-The two options are:
+The main options are:
 
 - `FAIL_CLOSE` - Requests are rejected if the plugin cannot be loaded. This is the safer option for security plugins.
 - `FAIL_OPEN` - Requests pass through even if the plugin is broken. This is better for observability or logging plugins where dropping data is acceptable but blocking traffic is not.
+- `FAIL_RELOAD` - Istio creates a new plugin instance for a new request after a runtime error. For other fatal errors, it falls back to fail-closed behavior.
 
 Choose based on what your plugin does. Authentication plugins should almost always use `FAIL_CLOSE`.
 
@@ -164,7 +165,7 @@ kubectl patch wasmplugin my-auth-plugin -n istio-system \
 You can verify the rollback took effect by checking the proxy configuration:
 
 ```bash
-istioctl proxy-config extension my-service-pod-xyz -n default
+istioctl proxy-config ecds my-service-pod-xyz -n default
 ```
 
 This shows which Wasm extensions are loaded on a given pod.
@@ -183,10 +184,10 @@ Also check the istiod logs for any issues pushing configuration to the proxies:
 kubectl logs -l app=istiod -n istio-system | grep "wasm"
 ```
 
-Envoy exposes Wasm-related metrics that you can scrape with Prometheus:
+Envoy exposes Wasm-related runtime metrics that you can scrape with Prometheus. The exact metric names depend on the runtime your proxy uses, for example:
 
-- `envoy_wasm_envoy_wasm_runtime_null_active` - Number of active Wasm VMs
-- `envoy_wasm_envoy_wasm_runtime_null_created` - Total Wasm VMs created
+- `envoy_wasm_envoy_wasm_runtime_v8_active` - Number of active V8 Wasm runtime execution instances
+- `envoy_wasm_envoy_wasm_runtime_v8_created` - Total V8 Wasm runtime execution instances created
 
 ## Cleaning Up Old Plugins
 
