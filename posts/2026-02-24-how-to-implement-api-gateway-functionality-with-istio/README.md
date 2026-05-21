@@ -279,11 +279,11 @@ spec:
   host: product-service
   trafficPolicy:
     loadBalancer:
-      consistentHashLB:
+      consistentHash:
         httpHeaderName: x-user-id
 ```
 
-This uses consistent hashing based on the user ID header, ensuring the same user always hits the same backend pod. Useful for caching.
+This uses consistent hashing based on the user ID header, keeping the same user on the same backend pod while the endpoint set remains stable. Useful for caching.
 
 ## CORS Configuration
 
