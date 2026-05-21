@@ -12,7 +12,7 @@ Latency problems are sneaky. A service might be returning 200 OK responses all d
 
 ## How Istio Tracks Latency
 
-Istio automatically records request duration for every request passing through the mesh. The metric is `istio_request_duration_milliseconds`, and it is a histogram with configurable buckets. By default, Istio records latency from both the source (client-side) and destination (server-side) perspectives.
+Istio automatically records request duration for HTTP, HTTP/2, and gRPC traffic passing through the mesh. The metric is `istio_request_duration_milliseconds`, and it is a histogram with configurable buckets. By default, Istio records latency from both the source (client-side) and destination (server-side) perspectives.
 
 The difference matters. Source-side latency includes network time between proxies, while destination-side latency measures the time from the destination proxy to the backend and back. For alerting on user-facing latency, source-side metrics are usually more relevant.
 
@@ -115,12 +115,12 @@ Different services have different latency requirements. You can create targeted 
         description: "Current P99: {{ $value }}ms. This directly impacts checkout experience."
 ```
 
-## Latency Alerts by HTTP Method
+## Latency Alerts by Protocol and Status
 
-Not all requests are equal. GET requests should be fast, while POST requests to heavy endpoints might naturally take longer:
+Not all requests are equal. You may want to alert only on HTTP traffic and exclude 5xx responses so backend errors do not skew your latency alert:
 
 ```yaml
-    - alert: IstioHighGetLatency
+    - alert: IstioHighHttpLatency
       expr: |
         histogram_quantile(0.95,
           sum(rate(istio_request_duration_milliseconds_bucket{
@@ -133,7 +133,7 @@ Not all requests are equal. GET requests should be fast, while POST requests to 
       labels:
         severity: warning
       annotations:
-        summary: "High read latency for {{ $labels.destination_workload }}"
+        summary: "High HTTP latency for {{ $labels.destination_workload }}"
 ```
 
 ## SLO-Based Latency Alerts
@@ -232,19 +232,21 @@ route:
   group_by: ['alertname', 'destination_workload']
   receiver: default
   routes:
-  - match:
-      team: payments
+  - matchers:
+    - team="payments"
     receiver: payments-team-slack
-  - match:
-      severity: critical
+  - matchers:
+    - severity="critical"
     receiver: oncall-pagerduty
 
 receivers:
+- name: default
 - name: payments-team-slack
   slack_configs:
   - channel: '#payments-alerts'
     title: '{{ .GroupLabels.alertname }}'
     text: '{{ range .Alerts }}{{ .Annotations.description }}{{ end }}'
+- name: oncall-pagerduty
 ```
 
 Latency alerting is one of the most valuable monitoring investments you can make. It directly correlates with user experience, and Istio makes it easy because the metrics are already there. Start with broad thresholds, observe the noise level, and gradually tighten them as you understand your system better.
