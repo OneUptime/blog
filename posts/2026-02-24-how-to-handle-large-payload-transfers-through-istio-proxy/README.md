@@ -16,11 +16,12 @@ This post covers the specific settings you need to adjust and the different appr
 
 Envoy has several default limits that affect large payloads:
 
-- HTTP request/response headers: 60 KB
+- HTTP request headers: 60 KiB
+- HTTP response headers: 60 KiB by default, except HTTP/1 response headers which default to 80 KiB
 - HTTP request body: no hard limit by default, but buffering behavior can cause issues
-- gRPC message size: 4 MB
-- HTTP/2 initial stream window: 64 KB
-- HTTP/2 initial connection window: 1 MB
+- gRPC received message size: commonly 4 MB, depending on the gRPC library and direction
+- HTTP/2 initial stream window: 16 MB in current Envoy releases
+- HTTP/2 initial connection window: 24 MB in current Envoy releases
 
 When you hit these limits, you will see errors like "upstream reset", "payload too large", or gRPC status code RESOURCE_EXHAUSTED.
 
@@ -55,9 +56,9 @@ This increases the max header size to 256 KB. Apply this in the `istio-system` n
 
 ## Handling Large HTTP Request Bodies
 
-For file uploads or large POST requests, the main concern is buffering. By default, Envoy may buffer the entire request body before forwarding it. For large files, this consumes a lot of memory in the sidecar.
+For file uploads or large POST requests, the main concern is buffering. Envoy can proxy arbitrarily large bodies when all HTTP filters on the route are streaming, but filters such as the buffer filter, transcoding filters, or custom filters that read the full body can force buffering. For large files, this consumes a lot of memory in the sidecar and can trigger 413 responses when buffer limits are exceeded.
 
-Disable buffering for specific routes by using a VirtualService with a large timeout and an EnvoyFilter to configure streaming:
+Avoid buffering filters on upload routes and use a VirtualService with a large timeout for long-running transfers:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -80,7 +81,7 @@ spec:
       timeout: 600s
 ```
 
-The long timeout (600 seconds) prevents Istio from killing the request before a large file finishes uploading.
+The long timeout (600 seconds) gives the upstream service enough time to complete the request and response for a large transfer. Use the stream idle timeout below if the transfer can pause with no bytes flowing.
 
 ## Configuring Stream Idle Timeout
 
@@ -114,7 +115,7 @@ spec:
 
 ## gRPC Large Messages
 
-gRPC has a default 4 MB message size limit. For services that send large gRPC messages, you need to increase this on both the client and server side. The application-level setting handles the gRPC library limit, but you also need to make sure Istio does not interfere.
+Many gRPC libraries have a default 4 MB receive message size limit. For services that send large gRPC messages, check both the client and server send and receive limits and increase the relevant settings on both sides. The application-level setting handles the gRPC library limit, but you also need to make sure Istio does not interfere.
 
 On the Istio side, the main thing is ensuring the timeout is long enough for large message transfers:
 
@@ -136,10 +137,10 @@ spec:
       timeout: 300s
 ```
 
-For the gRPC message size, configure it in your application code. For Go:
+For the gRPC message size, configure it in your application code. For a Go client:
 
 ```go
-conn, err := grpc.Dial(
+conn, err := grpc.NewClient(
     "data-service.app.svc.cluster.local:50051",
     grpc.WithDefaultCallOptions(
         grpc.MaxCallRecvMsgSize(100*1024*1024), // 100 MB
@@ -148,9 +149,11 @@ conn, err := grpc.Dial(
 )
 ```
 
+On the Go server, use `grpc.MaxRecvMsgSize` and `grpc.MaxSendMsgSize` with `grpc.NewServer`.
+
 ## HTTP/2 Window Sizes
 
-HTTP/2 uses flow control windows that limit how much data can be in-flight. For large transfers, small windows cause frequent pauses while the receiver acknowledges data. Increase the window sizes:
+HTTP/2 uses flow control windows that limit how much data can be in-flight. Current Envoy releases default to a 16 MB stream window and a 24 MB connection window, which is enough for many workloads. If you have measured flow-control stalls or high-bandwidth, high-latency links, tune the window sizes:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -176,11 +179,11 @@ spec:
               "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
               explicit_http_config:
                 http2_protocol_options:
-                  initial_stream_window_size: 1048576
-                  initial_connection_window_size: 2097152
+                  initial_stream_window_size: 33554432
+                  initial_connection_window_size: 67108864
 ```
 
-This sets the stream window to 1 MB and the connection window to 2 MB, which significantly improves throughput for large transfers.
+This sets the stream window to 32 MB and the connection window to 64 MB, which can improve throughput for large transfers on links where flow control is the bottleneck.
 
 ## Sidecar Resource Allocation
 
