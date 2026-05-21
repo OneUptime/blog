@@ -218,7 +218,7 @@ spec:
       credentialName: wildcard-tls-credential
 ```
 
-With a wildcard certificate and wildcard host, any subdomain of `example.com` is accepted. VirtualServices can then match specific subdomains:
+With a wildcard certificate and wildcard host, matching subdomains of `example.com`, such as `shop.example.com`, are accepted. VirtualServices can then match specific subdomains:
 
 ```yaml
 apiVersion: networking.istio.io/v1
