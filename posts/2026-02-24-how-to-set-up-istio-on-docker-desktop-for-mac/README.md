@@ -13,14 +13,15 @@ Docker Desktop for Mac ships with a built-in Kubernetes cluster that's perfect f
 ## Prerequisites
 
 - Docker Desktop for Mac (version 4.x or later)
+- A Docker Desktop Kubernetes version supported by your Istio release
 - At least 8 GB of RAM allocated to Docker Desktop
 - istioctl installed
 
 ## Step 1: Enable Kubernetes in Docker Desktop
 
-Open Docker Desktop and go to Settings (the gear icon). Navigate to the Kubernetes section and check "Enable Kubernetes." Click "Apply & Restart."
+Open Docker Desktop and go to the Kubernetes view. Create a Kubernetes cluster. On older Docker Desktop 4.x releases, go to Settings (the gear icon), navigate to the Kubernetes section, check "Enable Kubernetes," and click "Apply & Restart."
 
-Docker Desktop downloads the Kubernetes components and starts a single-node cluster. This takes a few minutes the first time. You'll see a green dot next to "Kubernetes is running" when it's ready.
+Docker Desktop downloads the Kubernetes components and starts a local cluster. With the kubeadm provisioner this is a single-node cluster; with the newer kind provisioner you can choose a multi-node cluster. This takes a few minutes the first time. You'll see the Kubernetes status in Docker Desktop when it's ready.
 
 Verify with kubectl:
 
@@ -29,7 +30,7 @@ kubectl config use-context docker-desktop
 kubectl get nodes
 ```
 
-You should see one node named `docker-desktop`.
+With the kubeadm provisioner, you should see one node named `docker-desktop`. With the kind provisioner, the node names reflect the kind cluster Docker Desktop created.
 
 ## Step 2: Allocate Enough Resources
 
@@ -46,8 +47,8 @@ Click "Apply & Restart." Without enough resources, Istio components will keep ge
 Download the Istio release:
 
 ```bash
-curl -L https://istio.io/downloadIstio | sh -
-cd istio-1.24.0
+curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.30.0 sh -
+cd istio-1.30.0
 export PATH=$PWD/bin:$PATH
 ```
 
@@ -135,7 +136,7 @@ When building your own microservices with Istio, the Docker Desktop setup makes 
 docker build -t my-service:dev .
 ```
 
-Since Docker Desktop's Kubernetes uses the same Docker daemon, your locally built images are immediately available without pushing to a registry:
+With Docker Desktop's kubeadm provisioner, your locally built images are available to the single-node cluster without pushing to a registry. If you use the kind provisioner, make sure the image is loaded into that cluster or push it to a registry the cluster can pull from:
 
 ```yaml
 apiVersion: apps/v1
@@ -261,11 +262,10 @@ Check what's using port 80:
 sudo lsof -i :80
 ```
 
-If there's a conflict, you can change the Istio gateway ports:
+If there's a conflict, leave the Istio service ports alone and use port forwarding for local development:
 
 ```bash
-kubectl patch svc istio-ingressgateway -n istio-system \
-  -p '{"spec":{"ports":[{"name":"http2","port":8080,"targetPort":8080},{"name":"https","port":8443,"targetPort":8443}]}}'
+kubectl port-forward -n istio-system svc/istio-ingressgateway 8080:80
 ```
 
 Then access your app at `http://localhost:8080` instead.
