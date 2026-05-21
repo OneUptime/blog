@@ -8,7 +8,7 @@ Description: Guide to setting up multi-cluster Istio where each cluster runs its
 
 ---
 
-Running separate control planes means each cluster has its own istiod instance. This is the "primary-primary" model in Istio terminology. Each cluster is self-sufficient and can operate independently even if the other cluster goes down. The trade-off is that you have more components to manage, but you get much better fault isolation.
+Running separate control planes means each cluster has its own istiod instance. This is the "multi-primary" model in Istio terminology. Each cluster is self-sufficient and can operate independently even if the other cluster goes down. The trade-off is that you have more components to manage, but you get much better fault isolation.
 
 ## Why Separate Control Planes
 
@@ -50,6 +50,8 @@ mkdir -p certs && cd certs
 openssl req -new -newkey rsa:4096 -x509 -sha256 \
   -days 3650 -nodes \
   -subj "/O=Istio/CN=Root CA" \
+  -addext "basicConstraints=critical,CA:TRUE" \
+  -addext "keyUsage=critical,digitalSignature,keyCertSign,cRLSign" \
   -keyout root-key.pem -out root-cert.pem
 
 for cluster in cluster1 cluster2; do
@@ -59,17 +61,27 @@ for cluster in cluster1 cluster2; do
 
   openssl x509 -req -sha256 -days 3650 \
     -CA root-cert.pem -CAkey root-key.pem -CAcreateserial \
+    -extfile <(printf "basicConstraints=critical,CA:TRUE,pathlen:0\nkeyUsage=critical,digitalSignature,keyCertSign,cRLSign\nsubjectAltName=DNS:istiod.istio-system.svc\n") \
     -in ${cluster}-ca-csr.pem -out ${cluster}-ca-cert.pem
+
+  cat ${cluster}-ca-cert.pem root-cert.pem > ${cluster}-cert-chain.pem
 done
 
-for ctx in ${CTX_CLUSTER1} ${CTX_CLUSTER2}; do
-  kubectl --context=${ctx} create namespace istio-system
-  kubectl --context=${ctx} create secret generic cacerts -n istio-system \
-    --from-file=ca-cert.pem=${ctx}-ca-cert.pem \
-    --from-file=ca-key.pem=${ctx}-ca-key.pem \
+kubectl --context=${CTX_CLUSTER1} create namespace istio-system
+kubectl --context=${CTX_CLUSTER1} label namespace istio-system topology.istio.io/network=network1
+kubectl --context=${CTX_CLUSTER1} create secret generic cacerts -n istio-system \
+    --from-file=ca-cert.pem=cluster1-ca-cert.pem \
+    --from-file=ca-key.pem=cluster1-ca-key.pem \
     --from-file=root-cert.pem=root-cert.pem \
-    --from-file=cert-chain.pem=${ctx}-ca-cert.pem
-done
+    --from-file=cert-chain.pem=cluster1-cert-chain.pem
+
+kubectl --context=${CTX_CLUSTER2} create namespace istio-system
+kubectl --context=${CTX_CLUSTER2} label namespace istio-system topology.istio.io/network=network2
+kubectl --context=${CTX_CLUSTER2} create secret generic cacerts -n istio-system \
+    --from-file=ca-cert.pem=cluster2-ca-cert.pem \
+    --from-file=ca-key.pem=cluster2-ca-key.pem \
+    --from-file=root-cert.pem=root-cert.pem \
+    --from-file=cert-chain.pem=cluster2-cert-chain.pem
 ```
 
 ## Step 2: Install Istio on Cluster 1
@@ -154,7 +166,7 @@ Expose services:
 
 ```bash
 kubectl --context=${CTX_CLUSTER1} apply -n istio-system -f - <<EOF
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: cross-network-gateway
@@ -250,7 +262,7 @@ spec:
 istioctl install --context=${CTX_CLUSTER2} -f eastwest-cluster2.yaml -y
 
 kubectl --context=${CTX_CLUSTER2} apply -n istio-system -f - <<EOF
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: cross-network-gateway
@@ -297,14 +309,14 @@ Test that each cluster can serve traffic independently:
 # Deploy on cluster1
 kubectl --context=${CTX_CLUSTER1} create namespace sample
 kubectl --context=${CTX_CLUSTER1} label namespace sample istio-injection=enabled
-kubectl --context=${CTX_CLUSTER1} apply -n sample -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/helloworld/helloworld.yaml
-kubectl --context=${CTX_CLUSTER1} apply -n sample -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/sleep/sleep.yaml
+kubectl --context=${CTX_CLUSTER1} apply -n sample -f https://raw.githubusercontent.com/istio/istio/master/samples/helloworld/helloworld.yaml
+kubectl --context=${CTX_CLUSTER1} apply -n sample -f https://raw.githubusercontent.com/istio/istio/master/samples/sleep/sleep.yaml
 
 # Deploy on cluster2
 kubectl --context=${CTX_CLUSTER2} create namespace sample
 kubectl --context=${CTX_CLUSTER2} label namespace sample istio-injection=enabled
-kubectl --context=${CTX_CLUSTER2} apply -n sample -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/helloworld/helloworld.yaml
-kubectl --context=${CTX_CLUSTER2} apply -n sample -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/sleep/sleep.yaml
+kubectl --context=${CTX_CLUSTER2} apply -n sample -f https://raw.githubusercontent.com/istio/istio/master/samples/helloworld/helloworld.yaml
+kubectl --context=${CTX_CLUSTER2} apply -n sample -f https://raw.githubusercontent.com/istio/istio/master/samples/sleep/sleep.yaml
 ```
 
 Verify cross-cluster load balancing:
