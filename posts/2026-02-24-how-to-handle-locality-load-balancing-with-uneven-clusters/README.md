@@ -8,7 +8,7 @@ Description: Handle locality load balancing when your Kubernetes cluster has une
 
 ---
 
-Locality load balancing sounds great in theory. Keep traffic local, fail over when needed, save on cross-zone costs. But things get complicated when your zones are not the same size. If zone A has 20 pods and zone C has 3 pods, and a failure in zone A pushes all that traffic to zone C, those 3 pods are going to have a bad time.
+Locality load balancing sounds great in theory. Keep traffic local, fail over when needed, save on cross-zone costs. But things get complicated when your zones are not the same size. If zone A has 20 pods and zone C has 3 pods, and a failure in zone A pushes too much traffic to zone C, those 3 pods are going to have a bad time.
 
 Uneven clusters are more common than people realize. Zones grow at different rates, node pools get added unevenly, autoscaling limits vary between zones, and sometimes a zone is just smaller because of cloud provider capacity constraints. Istio does not automatically account for these imbalances, so you need to configure things thoughtfully.
 
@@ -25,8 +25,8 @@ Consider this setup:
 | us-east-1c | 3 | 300 |
 
 If us-east-1a goes down and its 1500 rps worth of traffic fails over to us-east-1b and us-east-1c:
-- us-east-1b receives most of the overflow but can handle it (capacity: 1000 rps)
-- us-east-1c gets some overflow and immediately gets crushed (capacity: 300 rps)
+- us-east-1b receives most of the overflow, but its 1000 rps capacity may still not be enough
+- us-east-1c gets a smaller share of the overflow, but its 300 rps capacity can still be exceeded
 
 Without explicit configuration, the failover can cascade into a wider outage.
 
@@ -101,7 +101,7 @@ Combined with ensuring us-west-2 has enough spare capacity to absorb the overflo
 
 ## Solution 3: Use Horizontal Pod Autoscaler with Zone Awareness
 
-Set up HPA so each zone can scale independently based on load:
+Set up HPA so the workload can scale based on load, then use scheduling constraints to spread the new pods across zones:
 
 ```yaml
 apiVersion: autoscaling/v2
@@ -174,7 +174,7 @@ distribute:
       "us-east-1/us-east-1b/*": 50
 ```
 
-Notice that us-east-1c does not appear as a target for zones A or B. Zone C only receives its own local traffic. If zone C fails, its traffic goes equally to A and B, which can handle it.
+Notice that us-east-1c does not appear as a target for zones A or B, so the smaller zone does not receive overflow from the larger zones. Traffic from clients in zone C is directed to A and B, which can handle it.
 
 ## Calculating Safe Distribution Weights
 
@@ -210,20 +210,39 @@ Set up dashboards to detect when zones are being overloaded:
 ```text
 # Requests per pod per zone
 
-sum(rate(istio_requests_total{
-  destination_service="api-service.default.svc.cluster.local"
-}[5m])) by (destination_workload)
+sum by (label_topology_kubernetes_io_zone) (
+  rate(istio_requests_total{
+    reporter="destination",
+    destination_service="api-service.default.svc.cluster.local"
+  }[5m])
+  * on (namespace, pod) group_left(node)
+    kube_pod_info{namespace="default", pod=~"api-service-.*"}
+  * on (node) group_left(label_topology_kubernetes_io_zone)
+    kube_node_labels
+)
 /
-count(kube_pod_info{pod=~"api-service.*"}) by (node)
+count by (label_topology_kubernetes_io_zone) (
+  kube_pod_info{namespace="default", pod=~"api-service-.*"}
+  * on (node) group_left(label_topology_kubernetes_io_zone)
+    kube_node_labels
+)
 ```
 
-Track CPU and memory per zone:
+Track CPU per zone:
 
 ```text
 # Average CPU utilization by zone
-avg(rate(container_cpu_usage_seconds_total{
-  container="api-service"
-}[5m])) by (topology_kubernetes_io_zone)
+avg by (label_topology_kubernetes_io_zone) (
+  rate(container_cpu_usage_seconds_total{
+    namespace="default",
+    container="api-service",
+    pod=~"api-service-.*"
+  }[5m])
+  * on (namespace, pod) group_left(node)
+    kube_pod_info
+  * on (node) group_left(label_topology_kubernetes_io_zone)
+    kube_node_labels
+)
 ```
 
 Alert when any zone's per-pod request rate is significantly higher than average:
@@ -240,9 +259,37 @@ spec:
         - alert: ZoneTrafficImbalance
           expr: |
             max(
-              sum(rate(istio_requests_total{destination_app="api-service"}[5m])) by (destination_workload)
+              (
+                sum by (label_topology_kubernetes_io_zone) (
+                  rate(istio_requests_total{reporter="destination", destination_app="api-service"}[5m])
+                  * on (namespace, pod) group_left(node)
+                    kube_pod_info{namespace="default", pod=~"api-service-.*"}
+                  * on (node) group_left(label_topology_kubernetes_io_zone)
+                    kube_node_labels
+                )
+                /
+                count by (label_topology_kubernetes_io_zone) (
+                  kube_pod_info{namespace="default", pod=~"api-service-.*"}
+                  * on (node) group_left(label_topology_kubernetes_io_zone)
+                    kube_node_labels
+                )
+              )
             ) / avg(
-              sum(rate(istio_requests_total{destination_app="api-service"}[5m])) by (destination_workload)
+              (
+                sum by (label_topology_kubernetes_io_zone) (
+                  rate(istio_requests_total{reporter="destination", destination_app="api-service"}[5m])
+                  * on (namespace, pod) group_left(node)
+                    kube_pod_info{namespace="default", pod=~"api-service-.*"}
+                  * on (node) group_left(label_topology_kubernetes_io_zone)
+                    kube_node_labels
+                )
+                /
+                count by (label_topology_kubernetes_io_zone) (
+                  kube_pod_info{namespace="default", pod=~"api-service-.*"}
+                  * on (node) group_left(label_topology_kubernetes_io_zone)
+                    kube_node_labels
+                )
+              )
             ) > 2
           for: 5m
           labels:
@@ -256,7 +303,7 @@ spec:
 In practice, most teams use a combination of these solutions:
 
 1. **Set distribute weights** proportional to zone capacity
-2. **Use HPA** so zones can scale up during failover
+2. **Use HPA** so the workload can scale up during failover
 3. **Monitor per-zone load** and adjust weights as capacity changes
 4. **Plan for N-1 scenarios** where your largest zone fails
 
