@@ -8,11 +8,11 @@ Description: How to configure Istio to export distributed traces using the OpenT
 
 ---
 
-Distributed tracing is one of the most valuable features Istio provides. Every request that flows through the mesh generates trace spans automatically, showing you the full path a request takes across your services. Historically, Istio exported traces to Jaeger or Zipkin. Now, with OpenTelemetry support, you can export traces using the OTLP protocol, which gives you the freedom to send them to any backend that speaks OpenTelemetry.
+Distributed tracing is one of the most valuable features Istio provides. When tracing is enabled, sampled requests that flow through the mesh generate trace spans automatically, showing you the path a request takes across your services. Historically, Istio exported traces to Jaeger or Zipkin. Now, with OpenTelemetry support, you can export traces using the OTLP protocol, which gives you the freedom to send them to any backend that speaks OpenTelemetry.
 
 ## How Istio Generates Traces
 
-When a request enters the mesh, the first Envoy proxy it hits creates a root span. As the request propagates through the mesh (service A calls service B, which calls service C), each proxy creates child spans. These spans contain:
+When a request enters the mesh, the first Envoy proxy it hits starts or continues a trace for sampled traffic. As the request propagates through the mesh (service A calls service B, which calls service C), each proxy creates spans for the traffic it proxies. These spans contain:
 
 - Service name (source and destination)
 - Operation name (HTTP method and path, or gRPC service/method)
@@ -37,16 +37,31 @@ spec:
       opentelemetry:
         service: otel-collector.istio-system.svc.cluster.local
         port: 4317
-    defaultProviders:
-      tracing:
-      - otel-tracing
 ```
 
 ```bash
 istioctl install -f istio-otel-tracing.yaml
 ```
 
-This tells every Envoy sidecar to send trace spans to the OpenTelemetry Collector via gRPC on port 4317.
+Then enable that tracing provider for the mesh:
+
+```yaml
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
+metadata:
+  name: mesh-default
+  namespace: istio-system
+spec:
+  tracing:
+  - providers:
+    - name: otel-tracing
+```
+
+```bash
+kubectl apply -f istio-otel-telemetry.yaml
+```
+
+This tells Envoy sidecars to send sampled trace spans to the OpenTelemetry Collector via gRPC on port 4317.
 
 ## Deploying the Collector for Traces
 
@@ -105,16 +120,19 @@ Sampling determines what percentage of requests generate traces. You have two la
 **Istio-level sampling (at the proxy):**
 
 ```yaml
-apiVersion: install.istio.io/v1alpha1
-kind: IstioOperator
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
+metadata:
+  name: mesh-default
+  namespace: istio-system
 spec:
-  meshConfig:
-    defaultConfig:
-      tracing:
-        sampling: 10.0
+  tracing:
+  - providers:
+    - name: otel-tracing
+    randomSamplingPercentage: 10.0
 ```
 
-This means 10% of requests will have trace spans generated. The remaining 90% won't generate any tracing data at the proxy.
+This means 10% of requests will have trace spans generated when no earlier sampling decision is present. The remaining 90% won't generate any tracing data at the proxy.
 
 **Collector-level sampling (at the collector):**
 
@@ -196,13 +214,13 @@ spec:
         header:
           name: x-user-id
           defaultValue: "anonymous"
-      deploy_version:
+      cluster_id:
         environment:
-          name: DEPLOY_VERSION
+          name: ISTIO_META_CLUSTER_ID
           defaultValue: "unknown"
 ```
 
-Custom tags help you filter and search traces later. Adding things like cluster name, user ID, or deployment version makes trace analysis much more productive.
+Custom tags help you filter and search traces later. Adding things like cluster name, user ID, or proxy metadata makes trace analysis much more productive.
 
 ## Context Propagation Headers
 
