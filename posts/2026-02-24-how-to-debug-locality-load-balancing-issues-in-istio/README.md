@@ -82,17 +82,17 @@ loadBalancer:
   simple: ROUND_ROBIN
 ```
 
-If `enabled` is missing or set to `false`, locality load balancing is not active.
+If `enabled` is set to `false`, locality load balancing is not active for this DestinationRule. If it is missing, Istio uses the mesh-wide locality load balancing setting, which is enabled by default in current Istio releases.
 
 ## Step 4: Confirm Outlier Detection is Configured
 
-This is the most common issue. Locality load balancing requires outlier detection to be configured. Without it, Istio does not track endpoint health, and locality preferences are not applied.
+This is the most common issue. Locality failover and locality weighted distribution require outlier detection to be configured. Without it, Istio does not track endpoint health, so failover and distribution settings do not work properly.
 
 ```bash
 kubectl get destinationrule my-service -o yaml | grep -A 10 outlierDetection
 ```
 
-If there is no `outlierDetection` section, that is your problem. Add it:
+If there is no `outlierDetection` section and you expect locality failover or weighted distribution, that is your problem. Add it:
 
 ```yaml
 trafficPolicy:
@@ -170,7 +170,7 @@ Look at the Envoy cluster configuration for your service:
 
 ```bash
 istioctl proxy-config cluster <pod-name> \
-  --fqdn "outbound|80||my-service.default.svc.cluster.local" -o json
+  --fqdn my-service.default.svc.cluster.local -o json
 ```
 
 Look for these fields:
@@ -184,7 +184,7 @@ Look for these fields:
 }
 ```
 
-If `localityWeightedLbConfig` is present, locality-weighted distribution is active. If you see `healthyPanicThreshold` set to 0, that can affect failover behavior.
+If `localityWeightedLbConfig` is present, locality-weighted distribution is active. Envoy's panic threshold can also affect failover behavior; setting the panic threshold to `0` disables panic mode for that priority.
 
 ## Step 8: Check Envoy Access Logs
 
@@ -211,7 +211,7 @@ The access log shows which upstream endpoint was selected for each request. You 
 **Causes:**
 1. Missing outlier detection in DestinationRule
 2. Node topology labels not set
-3. `localityLbSetting.enabled` not set to `true`
+3. `localityLbSetting.enabled` set to `false` in the DestinationRule or mesh config
 
 **Fix:** Add outlier detection and verify labels:
 
@@ -282,8 +282,8 @@ graph TD
     B -->|No| C[Add topology.kubernetes.io labels]
     B -->|Yes| D{DestinationRule has outlierDetection?}
     D -->|No| E[Add outlierDetection config]
-    D -->|Yes| F{localityLbSetting.enabled = true?}
-    F -->|No| G[Set enabled: true]
+    D -->|Yes| F{localityLbSetting not disabled?}
+    F -->|No| G[Set enabled: true or remove false override]
     F -->|Yes| H{Endpoints show correct priorities?}
     H -->|No| I[Restart sidecar proxies]
     H -->|Yes| J{VirtualService overriding routing?}
@@ -310,6 +310,6 @@ istioctl proxy-status
 istioctl proxy-config all <pod> -o json
 ```
 
-The `istioctl analyze` command is particularly useful. It catches common configuration mistakes like missing outlier detection and can save you a lot of debugging time.
+The `istioctl analyze` command is particularly useful. It catches common configuration mistakes like invalid fields, missing referenced resources, and unreachable routing rules, which can save you a lot of debugging time.
 
 Locality load balancing debugging comes down to checking each layer methodically: labels, DestinationRule, outlier detection, priorities, and actual traffic flow. Follow the steps in order, and you will find the problem.
