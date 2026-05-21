@@ -17,7 +17,7 @@ This post walks through the complete setup, from Gateway creation to authenticat
 Before starting, decide on:
 
 1. **Domain**: Will Kiali be on its own subdomain (`kiali.example.com`) or under a path (`monitoring.example.com/kiali`)?
-2. **Authentication**: Anonymous, token, OIDC, or proxy-based?
+2. **Authentication**: Anonymous, token, OIDC, or header/proxy-based?
 3. **TLS**: Required for production. Self-signed okay for development.
 
 For this guide, we'll use a dedicated subdomain with OIDC authentication.
@@ -196,19 +196,19 @@ spec:
       url: "http://prometheus.istio-system:9090"
     grafana:
       enabled: true
-      in_cluster_url: "http://grafana.istio-system:3000"
-      url: "https://grafana.example.com"
+      internal_url: "http://grafana.istio-system:3000"
+      external_url: "https://grafana.example.com"
     tracing:
       enabled: true
-      in_cluster_url: "http://tracing.istio-system:16685/jaeger"
+      internal_url: "http://tracing.istio-system:16685"
       use_grpc: true
-      url: "https://jaeger.example.com"
+      external_url: "https://jaeger.example.com"
 ```
 
 Create the OIDC client secret:
 
 ```bash
-kubectl create secret generic kiali-oidc-secret \
+kubectl create secret generic kiali \
   --from-literal=oidc-secret='your-oidc-client-secret' \
   -n istio-system
 ```
@@ -350,16 +350,16 @@ spec:
   external_services:
     grafana:
       enabled: true
-      in_cluster_url: "http://grafana.istio-system:3000"
-      url: "https://grafana.example.com"
+      internal_url: "http://grafana.istio-system:3000"
+      external_url: "https://grafana.example.com"
     tracing:
       enabled: true
-      in_cluster_url: "http://tracing.istio-system:16685/jaeger"
+      internal_url: "http://tracing.istio-system:16685"
       use_grpc: true
-      url: "https://jaeger.example.com"
+      external_url: "https://jaeger.example.com"
 ```
 
-The `in_cluster_url` is for Kiali's backend to fetch data. The `url` is for generating links in the browser.
+The `internal_url` is for Kiali's backend to fetch data. The `external_url` is for generating links in the browser.
 
 ## Complete Configuration Example
 
@@ -395,13 +395,13 @@ spec:
       url: "http://prometheus.istio-system:9090"
     grafana:
       enabled: true
-      in_cluster_url: "http://grafana.istio-system:3000"
-      url: "https://grafana.example.com"
+      internal_url: "http://grafana.istio-system:3000"
+      external_url: "https://grafana.example.com"
     tracing:
       enabled: true
-      in_cluster_url: "http://tracing.istio-system:16685/jaeger"
+      internal_url: "http://tracing.istio-system:16685"
       use_grpc: true
-      url: "https://jaeger.example.com"
+      external_url: "https://jaeger.example.com"
 ```
 
 ## Troubleshooting
@@ -410,7 +410,7 @@ spec:
 
 **Blank page**: Open browser dev tools and check for 404 errors on static assets. This usually means `web_root` is wrong.
 
-**OIDC error "redirect_uri_mismatch"**: The redirect URI that Kiali sends to the IdP doesn't match what's registered. Check the client configuration in your IdP and make sure the redirect URI matches `https://<web_fqdn>:<web_port><web_root>`.
+**OIDC error "redirect_uri_mismatch"**: The redirect URI that Kiali sends to the IdP doesn't match what's registered. Check the client configuration in your IdP and make sure the allowed callback URL includes Kiali's root path, such as `https://<web_fqdn>:<web_port><web_root>`.
 
 **Graph shows no data**: This is unrelated to the Gateway setup. Check Prometheus connectivity in the Kiali CR's `external_services.prometheus.url`.
 
