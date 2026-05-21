@@ -16,7 +16,7 @@ When a pod in the mesh makes a DNS request, the flow depends on your Istio confi
 
 1. The application resolves a hostname through the pod's DNS configuration (usually CoreDNS)
 2. If Istio's DNS proxy is enabled, the sidecar intercepts DNS queries and can answer them directly
-3. The resolved IP address is used by the application, but the sidecar proxy routes based on the original hostname (not the IP)
+3. The resolved IP address is used by the application, but the sidecar proxy can still route HTTP traffic based on the `Host` header or TLS traffic based on SNI
 
 This separation between DNS resolution and traffic routing is important. Istio routes traffic based on the hostname in the `Host` header (for HTTP) or the SNI (for TLS), not the resolved IP.
 
@@ -104,7 +104,7 @@ spec:
   - address: 10.20.30.40
 ```
 
-With `DNS_AUTO_ALLOCATE` enabled, Istio assigns a virtual IP to `legacy-db.mycompany` so DNS queries return a routable address. The sidecar then intercepts traffic to that virtual IP and routes it to the actual endpoint (10.20.30.40).
+With `DNS_AUTO_ALLOCATE` enabled, Istio assigns a non-routable virtual IP to `legacy-db.mycompany` so DNS queries return a distinct address for the ServiceEntry. The sidecar then intercepts traffic to that virtual IP and routes it to the actual endpoint (10.20.30.40).
 
 ## Integrating with External DNS
 
@@ -157,7 +157,7 @@ spec:
   - number: 443
     name: https
     protocol: TLS
-  resolution: DNS
+  resolution: DYNAMIC_DNS
 ```
 
 The wildcard host tells Istio that any hostname matching `*.internal.company.com` is a valid destination.
@@ -180,7 +180,7 @@ spec:
   - number: 8080
     name: http
     protocol: HTTP
-  resolution: STATIC
+  resolution: DNS
   endpoints:
   - address: user-service.backend.svc.cluster.local
     ports:
@@ -209,7 +209,7 @@ spec:
   - number: 443
     name: https
     protocol: TLS
-  resolution: STATIC
+  resolution: DNS
   endpoints:
   - address: api-service.backend.svc.cluster.local
     ports:
@@ -254,7 +254,7 @@ Verify that ServiceEntry hostnames are resolvable:
 kubectl exec deploy/my-service -n backend -- nslookup legacy-db.mycompany
 ```
 
-If using `DNS_AUTO_ALLOCATE`, you should see a virtual IP address (usually from the 240.0.0.0/4 range).
+If using `DNS_AUTO_ALLOCATE`, you should see a virtual IP address from Istio's auto-allocation range (for example, 240.240.0.0/16).
 
 ## Performance Considerations
 
@@ -262,7 +262,7 @@ DNS resolution adds latency to every new connection. A few things to keep in min
 
 CoreDNS caching reduces the impact of DNS lookups. The default TTL is 30 seconds, which is fine for most use cases.
 
-Istio's DNS proxy adds its own caching layer. For ServiceEntry hosts, the proxy can respond immediately without querying CoreDNS.
+Istio's DNS proxy adds its own caching layer. For ServiceEntry hosts with known or auto-allocated addresses, the proxy can respond immediately without querying CoreDNS.
 
 If you're seeing high DNS latency, check CoreDNS pod health and resource usage:
 
