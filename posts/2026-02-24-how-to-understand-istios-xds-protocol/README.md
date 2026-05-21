@@ -29,7 +29,7 @@ These APIs were originally defined by Envoy but have become a standard used by m
 
 LDS tells Envoy what network addresses and ports to listen on. In Istio, listeners are generated from:
 
-- The services in the mesh (one listener per service IP:port)
+- The services in the mesh (virtual listeners for service IPs and wildcard listeners for HTTP ports)
 - Gateway resources (ingress/egress listeners)
 - The catch-all listeners on ports 15001 (outbound) and 15006 (inbound)
 
@@ -43,8 +43,8 @@ istioctl proxy-config listeners deploy/my-app -n default
 ADDRESS         PORT  MATCH                                DESTINATION
 0.0.0.0         15001 ALL                                  PassthroughCluster
 0.0.0.0         15006 ALL                                  Inline Route
+0.0.0.0         8080  App: HTTP                            Route: 8080
 10.96.0.1       443   ALL                                  Cluster: outbound|443||kubernetes.default.svc.cluster.local
-10.96.10.20     8080  ALL                                  Cluster: outbound|8080||payment.default.svc.cluster.local
 ```
 
 ### RDS (Route Discovery Service)
@@ -156,9 +156,9 @@ info  ads  XDS: Pushing:2024-01-15T10:30:45Z/2 Services:150 ConnectedEndpoints:4
 
 Istio supports two types of xDS pushes:
 
-**Full push** - Sends all configuration of the affected xDS type. Used when routing rules change (VirtualService, DestinationRule) or when new services appear.
+**Full push** - Recomputes the full push context. Used when routing rules change (VirtualService, DestinationRule) or when new services appear.
 
-**Incremental push (Delta xDS)** - Sends only the changed resources. Used for EDS updates (pod IP changes) to reduce bandwidth and processing time.
+**Incremental push** - Avoids recomputing the full push context when only a narrow set of resources changed, commonly for endpoint-only updates. Modern Istio also uses Delta xDS by default, so Envoy receives incremental protocol updates rather than state-of-the-world responses, though Istio may still send some unchanged resources.
 
 Monitor push types:
 
@@ -186,12 +186,12 @@ kubectl exec -n istio-system deploy/istiod -- \
 ```
 
 ```text
-pilot_proxy_convergence_time_bucket{le="0.1"} 500
+pilot_proxy_convergence_time_bucket{le="0.1"} 900
 pilot_proxy_convergence_time_bucket{le="0.5"} 980
 pilot_proxy_convergence_time_bucket{le="1"} 1000
 ```
 
-This histogram shows that most pushes converge within 100ms. For large meshes, convergence can take several seconds.
+In this example, most observed pushes converged within 100ms. For large meshes, convergence can take several seconds.
 
 ## Debugging xDS Issues
 
@@ -203,10 +203,10 @@ Check the sync status:
 istioctl proxy-status
 ```
 
-If a proxy shows `STALE` for any xDS type, it means it has not received the latest push. Common causes:
+If a proxy shows `STALE` for any xDS type, it means Istiod sent an update but has not received an acknowledgement from that proxy. Common causes:
 
 - Network connectivity issues between the sidecar and istiod
-- The sidecar NACKed the update (check sidecar logs)
+- The sidecar rejected the update (check sidecar logs and istiod NACK logs)
 - Istiod is overloaded and push is queued
 
 ### Wrong Configuration on a Proxy
@@ -219,7 +219,7 @@ kubectl exec -n istio-system deploy/istiod -- \
     curl -s "localhost:15014/debug/config_dump?proxyID=my-app-abc.default" > istiod-config.json
 
 # What the proxy actually has
-kubectl exec deploy/my-app -c istio-proxy -- \
+kubectl exec -n default deploy/my-app -c istio-proxy -- \
     curl -s localhost:15000/config_dump > proxy-config.json
 
 # Compare them
