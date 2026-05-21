@@ -20,6 +20,8 @@ Every matching field in an AuthorizationPolicy has a corresponding `not` variant
 - `ipBlocks` / `notIpBlocks`
 - `remoteIpBlocks` / `notRemoteIpBlocks`
 - `requestPrincipals` / `notRequestPrincipals`
+- `serviceAccounts` / `notServiceAccounts`
+- `trustDomains` / `notTrustDomains`
 
 ### Operation fields:
 - `methods` / `notMethods`
@@ -157,19 +159,16 @@ spec:
   selector:
     matchLabels:
       istio: ingressgateway
-  action: DENY
+  action: ALLOW
   rules:
     - to:
         - operation:
-            hosts:
+            notHosts:
               - "internal-api.example.com"
               - "admin.example.com"
-      from:
-        - source:
-            notIpBlocks: ["10.0.0.0/8"]
 ```
 
-This denies access to internal and admin hosts from outside the private network.
+This allows access to any host except the internal and admin hosts.
 
 ## Using notPorts
 
@@ -329,6 +328,7 @@ spec:
             notNamespaces: ["production"]
       to:
         - operation:
+            ports: ["80", "443"]
             notMethods: ["GET", "HEAD", "OPTIONS"]
 ```
 
@@ -355,6 +355,7 @@ spec:
             notRequestPrincipals: ["*"]
       to:
         - operation:
+            ports: ["80", "443"]
             notMethods: ["GET", "HEAD", "OPTIONS"]
 ```
 
@@ -374,11 +375,11 @@ spec:
   selector:
     matchLabels:
       istio: ingressgateway
-  action: DENY
+  action: ALLOW
   rules:
     - from:
         - source:
-            ipBlocks:
+            notIpBlocks:
               - "198.51.100.0/24"
               - "203.0.113.0/24"
 ```
@@ -392,13 +393,11 @@ metadata:
   name: private-only
   namespace: my-app
 spec:
-  action: ALLOW
+  action: DENY
   rules:
     - from:
         - source:
             notIpBlocks:
-              - "0.0.0.0/0"
-            ipBlocks:
               - "10.0.0.0/8"
               - "172.16.0.0/12"
               - "192.168.0.0/16"
@@ -430,5 +429,7 @@ Common mistakes with exclusion matching:
 2. **Wildcard behavior with not fields.** `notPaths: ["/admin/*"]` excludes `/admin/anything` but does NOT exclude `/admin` (no trailing slash/suffix).
 
 3. **Combining positive and negative.** When both `paths` and `notPaths` are specified, the request path must match the positive pattern AND not match the negative pattern.
+
+4. **DENY policies with HTTP fields.** When using HTTP-only fields like `methods`, `notMethods`, `paths`, or `notPaths` in a DENY policy, scope the rule to the intended ports so non-HTTP traffic is not accidentally denied because HTTP attributes are missing.
 
 Exclusion matching gives you the expressiveness to handle complex access control requirements without needing dozens of explicit rules. Use it when your allow list would be impractically long, or when you need precise exceptions within broader access grants.
