@@ -43,16 +43,16 @@ The Gateway resource tells the ingress gateway what ports and hosts to listen on
 
 ```bash
 # List all Gateway resources
-kubectl get gateways --all-namespaces
+kubectl get gateways.networking.istio.io --all-namespaces
 
 # Check the gateway details
-kubectl get gateway main-gateway -n istio-system -o yaml
+kubectl get gateway.networking.istio.io main-gateway -n istio-system -o yaml
 ```
 
 Make sure the selector matches the gateway deployment labels:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: main-gateway
@@ -85,7 +85,7 @@ If the selector does not match any pods, the Gateway resource is orphaned and do
 The VirtualService must reference the correct Gateway:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-routes
@@ -203,7 +203,7 @@ The gateway service must expose the correct ports:
 
 ```bash
 # Check what ports the gateway service exposes
-kubectl get svc istio-ingressgateway -n istio-system -o jsonpath='{.spec.ports[*]}' | jq .
+kubectl get svc istio-ingressgateway -n istio-system -o json | jq '.spec.ports[]'
 ```
 
 The Gateway resource ports must match ports available on the service:
@@ -223,13 +223,18 @@ servers:
 If you need to add ports to the gateway service:
 
 ```bash
-kubectl patch svc istio-ingressgateway -n istio-system --type merge -p '
-spec:
-  ports:
-  - name: custom-port
-    port: 8443
-    targetPort: 8443
-    protocol: TCP'
+kubectl patch svc istio-ingressgateway -n istio-system --type='json' -p='[
+  {
+    "op": "add",
+    "path": "/spec/ports/-",
+    "value": {
+      "name": "custom-port",
+      "port": 8443,
+      "targetPort": 8443,
+      "protocol": "TCP"
+    }
+  }
+]'
 ```
 
 ## Backend Service Unreachable
@@ -283,7 +288,7 @@ If you have multiple Gateway resources, they might conflict:
 
 ```bash
 # List all gateways
-kubectl get gateways --all-namespaces
+kubectl get gateways.networking.istio.io --all-namespaces
 ```
 
 If two Gateway resources bind to the same port with overlapping hosts, behavior is undefined:
@@ -307,7 +312,7 @@ GATEWAY_IP=$(kubectl get svc istio-ingressgateway -n istio-system -o jsonpath='{
 curl -v -H "Host: myapp.example.com" http://$GATEWAY_IP/health
 
 # Test HTTPS
-curl -v -H "Host: myapp.example.com" https://$GATEWAY_IP/health --resolve myapp.example.com:443:$GATEWAY_IP
+curl -v --resolve myapp.example.com:443:$GATEWAY_IP https://myapp.example.com/health
 
 # Test with specific path
 curl -v -H "Host: myapp.example.com" http://$GATEWAY_IP/api/v1/orders
@@ -325,7 +330,7 @@ kubectl get pods -n istio-system -l app=istio-ingressgateway
 kubectl get svc istio-ingressgateway -n istio-system
 
 # 3. Gateway resource applied?
-kubectl get gateways --all-namespaces
+kubectl get gateways.networking.istio.io --all-namespaces
 
 # 4. VirtualService bound to gateway?
 kubectl get virtualservices --all-namespaces -o yaml | grep gateways -A 2
