@@ -17,14 +17,14 @@ In ambient mode, there are two proxy layers:
 1. **ztunnel** - A per-node proxy that handles Layer 4 concerns like mTLS and basic network policy. Every pod in the mesh automatically gets ztunnel coverage.
 2. **Waypoint proxy** - An optional per-namespace or per-service proxy that handles Layer 7 concerns like HTTP routing, retries, and header manipulation.
 
-Wasm plugins only make sense at Layer 7, so they attach to waypoint proxies. If you do not have a waypoint proxy deployed, you cannot run Wasm plugins on that traffic.
+In ambient mode, custom Wasm plugins attach to Envoy-based waypoint proxies, not ztunnel. If you do not have a waypoint proxy deployed and enrolled for that traffic, you cannot run Wasm plugins on that traffic.
 
 ## Deploying a Waypoint Proxy
 
 Before you can attach Wasm plugins, you need a waypoint proxy. Create one for a specific namespace:
 
 ```bash
-istioctl waypoint apply --namespace my-app
+istioctl waypoint apply --namespace my-app --enroll-namespace
 ```
 
 This creates a Kubernetes Gateway resource:
@@ -54,6 +54,8 @@ kubectl get pods -n my-app -l gateway.networking.k8s.io/gateway-name=waypoint
 
 You should see a waypoint proxy pod running in your namespace.
 
+The `--enroll-namespace` flag labels the namespace with `istio.io/use-waypoint=waypoint`, which tells Istio to route service traffic in that namespace through the waypoint.
+
 ## Attaching a WasmPlugin to a Waypoint
 
 In ambient mode, you target waypoint proxies using the `targetRefs` field instead of the `selector` field. Here is how to attach a Wasm plugin to a waypoint:
@@ -81,13 +83,19 @@ The key difference from sidecar mode is the `targetRefs` field. Instead of match
 
 ## Targeting a Specific Service's Waypoint
 
-You can also deploy waypoint proxies per-service rather than per-namespace. First, label the service to get its own waypoint:
+You can also deploy waypoint proxies per-service rather than per-namespace. First, create the service-specific waypoint:
+
+```bash
+istioctl waypoint apply --namespace my-app --name my-api-waypoint
+```
+
+Then label the service to use that waypoint:
 
 ```bash
 kubectl label service my-api istio.io/use-waypoint=my-api-waypoint -n my-app
 ```
 
-Create the service-specific waypoint:
+The generated Gateway looks like this:
 
 ```yaml
 apiVersion: gateway.networking.k8s.io/v1
@@ -191,8 +199,8 @@ Check the waypoint proxy's configuration to verify your plugin is loaded:
 
 WAYPOINT_POD=$(kubectl get pods -n my-app -l gateway.networking.k8s.io/gateway-name=waypoint -o jsonpath='{.items[0].metadata.name}')
 
-# Check loaded extensions
-istioctl proxy-config extension $WAYPOINT_POD -n my-app
+# Check loaded extension configuration
+istioctl proxy-config ecds $WAYPOINT_POD -n my-app
 ```
 
 You can also check the waypoint proxy logs:
@@ -252,7 +260,7 @@ The waypoint proxy picks up the change without needing a restart. Istio pushes t
 
 There are a few things to keep in mind when using Wasm plugins with ambient mode:
 
-- Wasm plugins only run on waypoint proxies, not on ztunnel. If you need Layer 4 customization, Wasm is not the answer in ambient mode.
+- Wasm plugins for ambient traffic run on waypoint proxies, not on ztunnel. If you need to customize ztunnel's Layer 4 processing, Wasm is not the answer in ambient mode.
 - The `selector` field (matchLabels) does not work for waypoint targeting. You must use `targetRefs`.
 - Waypoint proxies need to be provisioned before you can attach plugins. Unlike sidecars that are always present, waypoints are optional.
 - If you remove the waypoint, all attached Wasm plugins stop running for that traffic.
