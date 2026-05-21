@@ -8,7 +8,7 @@ Description: Practical guide to deploying Istio on IBM Cloud Kubernetes Service 
 
 ---
 
-IBM Cloud Kubernetes Service (IKS) has a long history with Istio. IBM was one of the original contributors to the Istio project, and IKS even had a managed Istio addon for a while. While the managed addon has been deprecated in favor of IBM's own service mesh offering, installing upstream Istio on IKS works perfectly fine.
+IBM Cloud Kubernetes Service (IKS) has a long history with Istio. IBM was one of the original contributors to the Istio project, and IKS also offers a managed Istio add-on. This guide installs upstream Istio manually on IKS, which works perfectly fine when you use compatible Kubernetes and Istio versions.
 
 This guide covers setting up an IKS cluster and getting Istio running on it with all the IBM Cloud-specific details handled.
 
@@ -18,12 +18,14 @@ This guide covers setting up an IKS cluster and getting Istio running on it with
 - IBM Cloud CLI (`ibmcloud`) installed
 - kubectl
 - istioctl
+- Helm
+- jq
 
 Install the IBM Cloud CLI and plugins:
 
 ```bash
 curl -fsSL https://clis.cloud.ibm.com/install/linux | sh
-ibmcloud plugin install kubernetes-service
+ibmcloud plugin install ks
 ibmcloud plugin install container-registry
 ```
 
@@ -32,6 +34,7 @@ Log in:
 ```bash
 ibmcloud login
 ibmcloud target -g default
+ibmcloud target -r us-south
 ```
 
 ## Step 1: Create an IKS Cluster
@@ -54,7 +57,7 @@ ibmcloud ks cluster create vpc-gen2 \
   --subnet-id <subnet-id> \
   --flavor bx2.4x16 \
   --workers 3 \
-  --version 1.30
+  --version 1.34
 ```
 
 The `bx2.4x16` flavor gives you 4 vCPUs and 16 GB RAM per worker node, which is enough for Istio plus a few services.
@@ -82,7 +85,7 @@ kubectl get nodes
 
 ```bash
 curl -L https://istio.io/downloadIstio | sh -
-cd istio-1.24.0
+cd istio-1.29.2
 export PATH=$PWD/bin:$PATH
 ```
 
@@ -149,7 +152,7 @@ IKS on VPC uses the VPC Load Balancer for ALB (Application Load Balancer). You c
 ```yaml
 k8s:
   serviceAnnotations:
-    service.kubernetes.io/ibm-load-balancer-cloud-provider-ip-type: public
+    service.kubernetes.io/ibm-load-balancer-cloud-provider-ip-type: "public"
 ```
 
 ### Private Load Balancer
@@ -157,7 +160,7 @@ k8s:
 ```yaml
 k8s:
   serviceAnnotations:
-    service.kubernetes.io/ibm-load-balancer-cloud-provider-ip-type: private
+    service.kubernetes.io/ibm-load-balancer-cloud-provider-ip-type: "private"
 ```
 
 ### Network Load Balancer
@@ -167,25 +170,39 @@ For better performance with TCP traffic:
 ```yaml
 k8s:
   serviceAnnotations:
-    service.kubernetes.io/ibm-load-balancer-cloud-provider-enable-features: nlb
+    service.kubernetes.io/ibm-load-balancer-cloud-provider-enable-features: "nlb"
 ```
+
+If you enable the VPC Network Load Balancer, use the `ip` field from `.status.loadBalancer.ingress[0]` instead of the `hostname` field used by the default VPC ALB.
 
 ## Integrating with IBM Cloud Logging and Monitoring
 
-IBM Cloud offers Log Analysis and Cloud Monitoring (powered by Sysdig). You can send Istio logs and metrics to these services.
+IBM Cloud offers IBM Cloud Logs and IBM Cloud Monitoring (powered by Sysdig). You can send Istio logs and metrics to these services.
 
-For logging, the IKS logging agent picks up Istio's access logs automatically if you've enabled the logging addon:
+For logging, the IBM Cloud Logs agent picks up Istio's container logs from `/var/log/containers` after you deploy the agent:
 
 ```bash
-ibmcloud ks logging config create --cluster istio-cluster --logsource application --type ibm
+helm registry login -u iambearer -p $(ibmcloud iam oauth-tokens --output json | jq -r .iam_token | cut -d " " -f2) icr.io
+helm install logs-agent oci://icr.io/ibm/observe/logs-agent-helm \
+  --version <chart-version> \
+  --values ./logs-values.yaml \
+  -n ibm-observe \
+  --create-namespace \
+  --set secret.iamAPIKey=<api-key>
 ```
 
-For metrics, install the monitoring agent:
+For metrics, install the monitoring agent with the IBM Cloud Monitoring Helm chart:
 
 ```bash
-ibmcloud ks observe monitoring config create \
-  --cluster istio-cluster \
-  --instance <monitoring-instance-id>
+helm repo add sysdig https://charts.sysdig.com
+helm repo update
+helm install sysdig-agent sysdig/sysdig-deploy \
+  --namespace ibm-observe \
+  --create-namespace \
+  --set global.sysdig.accessKey=<service-access-key> \
+  --set agent.collectorSettings.collectorHost=<ingestion-endpoint> \
+  --set nodeAnalyzer.enabled=false \
+  --set global.clusterConfig.name=istio-cluster
 ```
 
 You can also install the standard Istio observability stack:
@@ -196,11 +213,11 @@ kubectl apply -f samples/addons/grafana.yaml
 kubectl apply -f samples/addons/kiali.yaml
 ```
 
-## TLS with IBM Certificate Manager
+## TLS with IBM Cloud Secrets Manager
 
-IBM Cloud Certificate Manager can store and manage TLS certificates. To use them with Istio:
+IBM Cloud Secrets Manager can store and manage TLS certificates. To use them with Istio:
 
-1. Create or import a certificate in IBM Certificate Manager
+1. Create or import a certificate in IBM Cloud Secrets Manager
 2. Create a Kubernetes secret from the certificate
 3. Reference the secret in your Istio Gateway
 
@@ -258,7 +275,7 @@ ibmcloud ks zone add vpc-gen2 \
   --worker-pool default
 ```
 
-Istio's locality-aware routing can take advantage of this:
+Istio traffic policies such as outlier detection can take advantage of this:
 
 ```yaml
 apiVersion: networking.istio.io/v1
