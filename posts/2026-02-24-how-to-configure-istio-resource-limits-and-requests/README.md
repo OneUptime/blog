@@ -8,7 +8,7 @@ Description: A practical guide to properly sizing CPU and memory resource reques
 
 ---
 
-Getting Istio resource settings right is one of those things that can make or break your cluster. Set them too low and you get OOM kills and CPU throttling. Set them too high and you waste expensive compute. The tricky part is that Istio adds a sidecar to every pod, so the overhead multiplies across your entire fleet.
+Getting Istio resource settings right is one of those things that can make or break your cluster. Set them too low and you get OOM kills and CPU throttling. Set them too high and you waste expensive compute. The tricky part in sidecar mode is that Istio adds a sidecar to every injected pod, so the overhead multiplies across your entire fleet.
 
 This guide covers how to think about resource allocation for both the Istio control plane and the Envoy sidecar proxies.
 
@@ -17,10 +17,10 @@ This guide covers how to think about resource allocation for both the Istio cont
 Istio consumes resources in three places:
 
 1. **istiod (control plane)** - Watches Kubernetes resources, computes Envoy config, distributes it to proxies
-2. **Envoy sidecar proxies** - Run alongside every application container, handle all network traffic
+2. **Envoy sidecar proxies** - Run alongside every injected application pod, handle all network traffic
 3. **Gateways** - Ingress/egress gateways, essentially Envoy instances handling edge traffic
 
-The sidecar proxies are the biggest overall consumers because there is one per pod. If you have 500 pods, that is 500 extra containers eating CPU and memory.
+The sidecar proxies are the biggest overall consumers because there is one per injected pod. If you have 500 sidecar-injected pods, that is 500 extra containers eating CPU and memory.
 
 ## Control Plane Resource Configuration
 
@@ -132,8 +132,13 @@ kind: Deployment
 metadata:
   name: high-traffic-api
 spec:
+  selector:
+    matchLabels:
+      app: high-traffic-api
   template:
     metadata:
+      labels:
+        app: high-traffic-api
       annotations:
         sidecar.istio.io/proxyCPU: "200m"
         sidecar.istio.io/proxyCPULimit: "2"
@@ -186,7 +191,7 @@ autoscaling:
 
 ## Concurrency Settings
 
-The Envoy `concurrency` setting controls how many worker threads the proxy uses. By default, it uses 2 threads. For most workloads, this is fine, but high-traffic pods might benefit from more:
+The Envoy `concurrency` setting controls how many worker threads the proxy uses. If it is unset, Istio automatically determines the value from the proxy CPU limits. For most workloads, this is fine, but high-traffic pods might benefit from setting it explicitly:
 
 ```yaml
 meshConfig:
@@ -205,12 +210,12 @@ More threads means more CPU usage but better throughput for high-RPS workloads.
 
 ## Init Container Resources
 
-The `istio-init` container (which sets up iptables) runs briefly during pod startup. It has its own resource settings:
+The `istio-init` container (which sets up iptables when Istio CNI is not used) runs briefly during pod startup. In current Istio sidecar injection templates, it uses the same resource template as the `istio-proxy` container:
 
 ```yaml
 values:
   global:
-    proxy_init:
+    proxy:
       resources:
         requests:
           cpu: 10m
@@ -220,7 +225,7 @@ values:
           memory: 50Mi
 ```
 
-Since it only runs for a second or two, keep these minimal.
+Since it only runs briefly, keep the shared default reasonable but do not set it so low that startup iptables setup is starved.
 
 ## Monitoring Actual Usage
 
@@ -251,7 +256,7 @@ container_memory_working_set_bytes{pod=~"istiod.*"}
 Check for out-of-memory kills:
 
 ```bash
-kubectl get events -A --field-selector reason=OOMKilled | grep istio
+kubectl get pods -n my-app -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{range .status.containerStatuses[?(@.name=="istio-proxy")]}{.lastState.terminated.reason}{"\n"}{end}{end}' | grep OOMKilled
 ```
 
 If sidecar proxies are getting OOM-killed, increase memory limits.
@@ -260,9 +265,12 @@ If sidecar proxies are getting OOM-killed, increase memory limits.
 
 Check for CPU throttling:
 
-```bash
-kubectl exec deploy/my-app -c istio-proxy -- \
-  curl -s localhost:15000/stats | grep "server.total_connections"
+```text
+100 * sum by (pod) (
+  rate(container_cpu_cfs_throttled_periods_total{container="istio-proxy"}[5m])
+) / sum by (pod) (
+  rate(container_cpu_cfs_periods_total{container="istio-proxy"}[5m])
+)
 ```
 
 If you see high latency and the proxy CPU is pegged at its limit, increase the CPU limit.
