@@ -14,7 +14,7 @@ This guide covers the different ways to exclude IP ranges, from pod-level annota
 
 ## How IP-Based Traffic Capture Works
 
-The `istio-init` init container sets up iptables rules in the PREROUTING and OUTPUT chains of the NAT table. By default, these rules redirect all outbound traffic through Envoy's outbound port (15001). When you exclude an IP range, the init container adds iptables rules that skip the redirect for packets destined to those IPs.
+In the default sidecar setup, the `istio-init` init container sets up iptables rules in the PREROUTING and OUTPUT chains of the NAT table. If Istio CNI is enabled, the CNI node agent applies the same kind of traffic redirection during pod network setup instead of injecting the privileged init container. By default, these rules redirect all outbound traffic through Envoy's outbound port (15001). When you exclude an IP range, Istio adds rules that skip the redirect for packets destined to those IPs.
 
 This happens at pod startup time, so changes require a pod restart to take effect.
 
@@ -38,7 +38,7 @@ spec:
           image: my-app:latest
 ```
 
-This tells the init container to add iptables RETURN rules for the specified CIDR ranges. Traffic to `10.0.0.0/8` and `169.254.169.254/32` will go directly from the application to the destination without passing through Envoy.
+This tells Istio's traffic redirection setup to add RETURN rules for the specified CIDR ranges. Traffic to `10.0.0.0/8` and `169.254.169.254/32` will go directly from the application to the destination without passing through Envoy.
 
 Multiple ranges are comma-separated, and each must be in CIDR notation.
 
@@ -54,13 +54,15 @@ metadata:
     traffic.sidecar.istio.io/excludeOutboundIPRanges: "169.254.169.254/32"
 ```
 
-On AWS EKS with IRSA (IAM Roles for Service Accounts), you might also need to exclude the token endpoint:
+On AWS EKS with EKS Pod Identity, you might also need to exclude the Pod Identity Agent endpoint:
 
 ```yaml
 metadata:
   annotations:
-    traffic.sidecar.istio.io/excludeOutboundIPRanges: "169.254.169.254/32,169.254.170.2/32"
+    traffic.sidecar.istio.io/excludeOutboundIPRanges: "169.254.169.254/32,169.254.170.23/32"
 ```
+
+IRSA (IAM Roles for Service Accounts) uses a projected web identity token file and AWS STS instead of the EKS Pod Identity Agent endpoint.
 
 ### External Database or Service IPs
 
@@ -108,13 +110,21 @@ To set IP range exclusions for the entire mesh, configure it in the IstioOperato
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
-  meshConfig:
-    defaultConfig:
-      proxyMetadata: {}
   values:
     global:
       proxy:
         excludeIPRanges: "169.254.169.254/32"
+```
+
+Or, to capture only the cluster Service CIDR mesh-wide:
+
+```yaml
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
+spec:
+  values:
+    global:
+      proxy:
         includeIPRanges: "10.96.0.0/12"
 ```
 
@@ -123,41 +133,48 @@ If you're using Helm to install Istio:
 ```bash
 helm install istio-base istio/base -n istio-system
 helm install istiod istio/istiod -n istio-system \
-  --set global.proxy.excludeIPRanges="169.254.169.254/32" \
+  --set global.proxy.excludeIPRanges="169.254.169.254/32"
+```
+
+For the include-only approach with Helm:
+
+```bash
+helm install istio-base istio/base -n istio-system
+helm install istiod istio/istiod -n istio-system \
   --set global.proxy.includeIPRanges="10.96.0.0/12"
 ```
 
-Note that pod-level annotations override mesh-wide settings. If a pod has an `includeOutboundIPRanges` annotation, it takes precedence over the global setting.
+Note that pod-level annotations override mesh-wide settings. If a pod has an `includeOutboundIPRanges` or `excludeOutboundIPRanges` annotation, it takes precedence over the corresponding global setting.
 
 ## Excluding Inbound IP Ranges
 
-While less common, you can also exclude inbound traffic from certain source IPs:
+Istio supports inbound port exclusions, but it doesn't have a direct annotation for excluding inbound traffic by source IP:
 
 ```yaml
 metadata:
   annotations:
-    traffic.sidecar.istio.io/excludeInboundPorts: ""
+    traffic.sidecar.istio.io/excludeInboundPorts: "8080"
     traffic.sidecar.istio.io/includeInboundPorts: "*"
 ```
 
-For inbound IP-based filtering, the annotations available are:
+For outbound IP-based filtering, the annotations available are:
 
 - `traffic.sidecar.istio.io/excludeOutboundIPRanges` - Skip proxy for outbound to these IPs
 - `traffic.sidecar.istio.io/includeOutboundIPRanges` - Only proxy outbound to these IPs
 
-Istio doesn't have a direct annotation for excluding inbound traffic by source IP. For that, you'd use Istio authorization policies instead.
+For inbound source-IP policy decisions, use Istio authorization policies instead.
 
 ## Verifying IP Range Exclusions
 
 Check that the iptables rules were set up correctly:
 
 ```bash
-# Look at the istio-init container logs
+# Look at the istio-init container logs when Istio CNI is not enabled
 
 kubectl logs deploy/my-app -c istio-init -n default
 ```
 
-The logs show the iptables commands that were run. Look for RETURN rules that match your excluded IP ranges:
+The logs show the iptables commands that were run. If your mesh uses the default iptables backend, look for RETURN rules that match your excluded IP ranges:
 
 ```text
 -A ISTIO_OUTPUT -d 169.254.169.254/32 -j RETURN
@@ -187,7 +204,7 @@ If you have a ServiceEntry that covers an IP range you've excluded, the exclusio
 
 ```yaml
 # This ServiceEntry won't affect traffic if 10.100.50.10 is in an excluded range
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-db
@@ -195,26 +212,28 @@ spec:
   hosts:
     - external-db.example.com
   addresses:
-    - 10.100.50.10
+    - 10.100.50.10/32
   ports:
     - number: 5432
       name: tcp-postgres
       protocol: TCP
   location: MESH_EXTERNAL
   resolution: STATIC
+  endpoints:
+    - address: 10.100.50.10
 ```
 
 If you want Istio to manage traffic to external services (for observability and traffic management), don't exclude those IP ranges. Use ServiceEntry instead and let the traffic flow through the proxy.
 
 ## Gotchas and Tips
 
-**Restart required**: IP range exclusions are applied by the init container at pod startup. Changing the annotation has no effect on running pods. You must restart:
+**Restart required**: IP range exclusions are applied when pod traffic redirection is configured at startup. Changing the annotation has no effect on running pods. You must restart:
 
 ```bash
 kubectl rollout restart deployment/my-app -n default
 ```
 
-**Include vs exclude conflict**: Don't use both `includeOutboundIPRanges` and `excludeOutboundIPRanges` on the same pod. The behavior is unpredictable. Pick one approach.
+**Include vs exclude conflict**: Don't use both `includeOutboundIPRanges` and `excludeOutboundIPRanges` on the same pod. `excludeOutboundIPRanges` only applies when all outbound traffic is being redirected. Pick one approach.
 
 **CIDR notation required**: Always use CIDR notation. `10.0.0.1` alone is not valid - use `10.0.0.1/32` for a single IP.
 
