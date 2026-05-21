@@ -18,14 +18,14 @@ A complete observability stack covers three signal types:
 2. **Traces**: End-to-end request journeys across services (latency per hop, call graphs)
 3. **Logs**: Individual event records (access logs, error messages, debug output)
 
-We'll use the OpenTelemetry Collector as the central hub that receives all three signal types and routes them to appropriate backends.
+We'll use Prometheus for metrics, Jaeger for OpenTelemetry Protocol (OTLP) traces, and Loki for logs.
 
 ## Architecture Overview
 
 ```text
-Istio Proxies ──> OpenTelemetry Collector ──> Prometheus (metrics)
-                                          ──> Jaeger (traces)
-                                          ──> Loki (logs)
+Istio Proxies ──> Prometheus (metrics)
+              ──> Jaeger (traces)
+              ──> Loki (logs)
 
                   Grafana ──> Prometheus
                           ──> Jaeger
@@ -56,32 +56,23 @@ data:
     scrape_configs:
       - job_name: 'istiod'
         kubernetes_sd_configs:
-          - role: pod
+          - role: endpoints
             namespaces:
               names:
                 - istio-system
         relabel_configs:
-          - source_labels: [__meta_kubernetes_pod_label_app]
-            regex: istiod
+          - source_labels: [__meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
             action: keep
-          - source_labels: [__meta_kubernetes_pod_ip]
-            regex: (.+)
-            target_label: __address__
-            replacement: ${1}:15014
+            regex: istiod;http-monitoring
 
       - job_name: 'envoy-stats'
         metrics_path: /stats/prometheus
         kubernetes_sd_configs:
           - role: pod
         relabel_configs:
-          - source_labels: [__meta_kubernetes_pod_container_name]
+          - source_labels: [__meta_kubernetes_pod_container_port_name]
             action: keep
-            regex: istio-proxy
-          - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
-            action: replace
-            regex: ([^:]+)(?::\d+)?;(\d+)
-            replacement: $1:15090
-            target_label: __address__
+            regex: '.*-envoy-prom'
           - source_labels: [__meta_kubernetes_namespace]
             action: replace
             target_label: namespace
@@ -234,6 +225,7 @@ apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
   meshConfig:
+    enableTracing: true
     extensionProviders:
     - name: otel-tracing
       opentelemetry:
@@ -330,70 +322,113 @@ spec:
     targetPort: 3100
 ```
 
-Deploy Promtail as a DaemonSet to ship logs to Loki:
+Deploy Grafana Alloy to ship logs to Loki:
 
 ```yaml
-apiVersion: apps/v1
-kind: DaemonSet
+apiVersion: v1
+kind: ServiceAccount
 metadata:
-  name: promtail
+  name: alloy
+  namespace: monitoring
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: alloy
+rules:
+- apiGroups: [""]
+  resources: ["pods", "pods/log", "namespaces"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: alloy
+subjects:
+- kind: ServiceAccount
+  name: alloy
+  namespace: monitoring
+roleRef:
+  kind: ClusterRole
+  name: alloy
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alloy
   namespace: monitoring
 spec:
+  replicas: 1
   selector:
     matchLabels:
-      app: promtail
+      app: alloy
   template:
     metadata:
       labels:
-        app: promtail
+        app: alloy
       annotations:
         sidecar.istio.io/inject: "false"
     spec:
+      serviceAccountName: alloy
       containers:
-      - name: promtail
-        image: grafana/promtail:2.9.4
+      - name: alloy
+        image: grafana/alloy:v1.16.1
         args:
-        - "-config.file=/etc/promtail/config.yaml"
+        - "run"
+        - "--server.http.listen-addr=0.0.0.0:12345"
+        - "--storage.path=/var/lib/alloy/data"
+        - "/etc/alloy/config.alloy"
+        ports:
+        - containerPort: 12345
         volumeMounts:
         - name: config
-          mountPath: /etc/promtail
-        - name: varlog
-          mountPath: /var/log
-          readOnly: true
+          mountPath: /etc/alloy
       volumes:
       - name: config
         configMap:
-          name: promtail-config
-      - name: varlog
-        hostPath:
-          path: /var/log
+          name: alloy-config
 ---
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: promtail-config
+  name: alloy-config
   namespace: monitoring
 data:
-  config.yaml: |
-    server:
-      http_listen_port: 9080
-    positions:
-      filename: /tmp/positions.yaml
-    clients:
-      - url: http://loki.monitoring.svc.cluster.local:3100/loki/api/v1/push
-    scrape_configs:
-      - job_name: kubernetes-pods
-        kubernetes_sd_configs:
-          - role: pod
-        relabel_configs:
-          - source_labels: [__meta_kubernetes_pod_container_name]
-            target_label: container
-          - source_labels: [__meta_kubernetes_namespace]
-            target_label: namespace
-          - source_labels: [__meta_kubernetes_pod_name]
-            target_label: pod
-        pipeline_stages:
-          - docker: {}
+  config.alloy: |
+    discovery.kubernetes "pods" {
+      role = "pod"
+    }
+
+    discovery.relabel "pod_logs" {
+      targets = discovery.kubernetes.pods.targets
+
+      rule {
+        source_labels = ["__meta_kubernetes_pod_container_name"]
+        target_label  = "container"
+      }
+
+      rule {
+        source_labels = ["__meta_kubernetes_namespace"]
+        target_label  = "namespace"
+      }
+
+      rule {
+        source_labels = ["__meta_kubernetes_pod_name"]
+        target_label  = "pod"
+      }
+    }
+
+    loki.source.kubernetes "pods" {
+      targets    = discovery.relabel.pod_logs.output
+      forward_to = [loki.write.local.receiver]
+    }
+
+    loki.write "local" {
+      endpoint {
+        url = "http://loki.monitoring.svc.cluster.local:3100/loki/api/v1/push"
+      }
+    }
 ```
 
 ## Step 4: Install Grafana
@@ -474,7 +509,6 @@ spec:
   meshConfig:
     accessLogFile: /dev/stdout
     accessLogEncoding: JSON
-    enableTracing: true
 ```
 
 ```bash
@@ -519,7 +553,9 @@ Import these community dashboards for instant visibility:
 curl -X POST http://localhost:3000/api/dashboards/import \
   -H "Content-Type: application/json" \
   -u admin:admin \
-  -d '{"dashboard": {"id": 7639}, "overwrite": true, "inputs": [{"name": "DS_PROMETHEUS", "type": "datasource", "pluginId": "prometheus", "value": "Prometheus"}]}'
+  -d "$(jq -n \
+    --argjson dashboard "$(curl -s http://localhost:3000/api/gnet/dashboards/7639 | jq '.json')" \
+    '{dashboard: $dashboard, overwrite: true, inputs: [{"name": "DS_PROMETHEUS", "type": "datasource", "pluginId": "prometheus", "value": "Prometheus"}]}')"
 ```
 
 With this stack in place, you have complete visibility into your Istio mesh. Metrics tell you what's happening, traces show you why, and logs give you the details. The three signals complement each other, and having them all in one place through Grafana means you can investigate issues without switching between tools.
