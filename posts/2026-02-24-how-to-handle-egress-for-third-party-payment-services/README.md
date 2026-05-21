@@ -23,7 +23,7 @@ Payment traffic is different from other egress traffic for several reasons:
 
 ## Configuring Egress for Stripe
 
-Stripe uses a few hostnames. The main API endpoint is `api.stripe.com`, and webhooks come from `events.stripe.com`. If you use Stripe.js, the frontend talks to `js.stripe.com`, but that is client-side and does not go through your mesh.
+Stripe uses a few hostnames. The main API endpoint is `api.stripe.com`, and file uploads or downloads use `files.stripe.com`. Webhooks are inbound requests from Stripe's webhook IP addresses to your endpoint, so they are not configured as egress from your mesh. If you use Stripe.js, the frontend talks to `js.stripe.com`, but that is client-side and does not go through your mesh.
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -41,9 +41,12 @@ spec:
     protocol: TLS
   location: MESH_EXTERNAL
   resolution: DNS
+  exportTo:
+  - "."
+  - "istio-system"
 ```
 
-Notice that the ServiceEntry is in the `payment-system` namespace. This is intentional. By creating the ServiceEntry in a specific namespace, you can scope the visibility using Istio's networking configuration.
+Notice that the ServiceEntry is in the `payment-system` namespace and uses `exportTo` for the payment namespace and the egress gateway namespace. This is intentional. By creating the ServiceEntry in a specific namespace and exporting it only where needed, you can scope the visibility using Istio's networking configuration.
 
 ## Configuring Egress for PayPal
 
@@ -65,6 +68,9 @@ spec:
     protocol: TLS
   location: MESH_EXTERNAL
   resolution: DNS
+  exportTo:
+  - "."
+  - "istio-system"
 ```
 
 For production, you should have separate ServiceEntries for sandbox and production environments, with sandbox entries only in your staging cluster.
@@ -84,12 +90,16 @@ spec:
   - api.braintreegateway.com
   - payments.braintree-api.com
   - api.sandbox.braintreegateway.com
+  - payments.sandbox.braintree-api.com
   ports:
   - number: 443
     name: tls
     protocol: TLS
   location: MESH_EXTERNAL
   resolution: DNS
+  exportTo:
+  - "."
+  - "istio-system"
 ```
 
 ## Routing Payment Traffic Through the Egress Gateway
@@ -112,8 +122,13 @@ spec:
       protocol: TLS
     hosts:
     - api.stripe.com
+    - files.stripe.com
     - api-m.paypal.com
+    - api-m.sandbox.paypal.com
     - api.braintreegateway.com
+    - payments.braintree-api.com
+    - api.sandbox.braintreegateway.com
+    - payments.sandbox.braintree-api.com
     tls:
       mode: PASSTHROUGH
 ```
@@ -180,44 +195,42 @@ spec:
         ports: ["443"]
 ```
 
-This ensures only the `payment-service` service account in the `payment-system` namespace can send traffic through the egress gateway. If any other service tries to call Stripe directly, it will be blocked.
+This ensures only the `payment-service` service account in the `payment-system` namespace can send traffic through the egress gateway. To block workloads from bypassing the gateway and calling Stripe directly, also enforce outbound restrictions with Istio outbound traffic policy, Kubernetes NetworkPolicies, or firewall rules.
 
 ## Monitoring Payment Egress
 
-Payment traffic needs extra monitoring. Create dedicated Prometheus alerts:
+Payment traffic needs extra monitoring. With TLS passthrough, Istio cannot see HTTP response codes or request latency for the encrypted payment API calls, so monitor TCP-level signals at the egress gateway:
 
 ```yaml
 groups:
 - name: payment-egress
   rules:
-  - alert: PaymentEgressErrors
+  - alert: PaymentEgressTrafficStopped
     expr: |
-      sum(rate(istio_requests_total{
+      sum(rate(istio_tcp_connections_opened_total{
         reporter="source",
         source_workload="istio-egressgateway",
-        destination_service_name=~"api.stripe.com|api-m.paypal.com|api.braintreegateway.com",
-        response_code!~"2.."
+        destination_service=~"api.stripe.com|api-m.paypal.com|api.braintreegateway.com"
+      }[15m])) == 0
+    for: 15m
+    labels:
+      severity: warning
+      team: payments
+    annotations:
+      summary: "No payment egress connections observed recently"
+  - alert: UnexpectedPaymentEgressSource
+    expr: |
+      sum(rate(istio_tcp_connections_opened_total{
+        reporter="destination",
+        destination_workload="istio-egressgateway",
+        source_workload!="payment-service"
       }[5m])) > 0
     for: 2m
     labels:
       severity: critical
       team: payments
     annotations:
-      summary: "Errors detected on payment service egress"
-  - alert: PaymentEgressLatencyHigh
-    expr: |
-      histogram_quantile(0.99,
-        sum(rate(istio_request_duration_milliseconds_bucket{
-          destination_workload="istio-egressgateway",
-          source_workload="payment-service"
-        }[5m])) by (le)
-      ) > 3000
-    for: 5m
-    labels:
-      severity: warning
-      team: payments
-    annotations:
-      summary: "Payment API latency p99 exceeds 3 seconds"
+      summary: "Unexpected workload sent traffic through the payment egress gateway"
 ```
 
 ## Timeout and Retry Configuration
@@ -237,9 +250,6 @@ spec:
       tcp:
         maxConnections: 50
         connectTimeout: 10s
-      http:
-        maxRequestsPerConnection: 100
-        idleTimeout: 120s
 ```
 
 Be very careful with retries for payment traffic. An idempotent GET request can be safely retried, but a POST to create a charge should not be retried at the mesh level. Handle payment retries in application code using idempotency keys.
@@ -272,11 +282,11 @@ Before deploying to production, verify your configuration:
 
 kubectl exec -n payment-system deploy/payment-service -- curl -sI https://api.stripe.com/v1/charges
 
-# Test from a non-payment service (should be blocked)
+# Test from a non-payment service (should be blocked when outbound policy or NetworkPolicy prevents bypassing the gateway)
 kubectl exec -n default deploy/web-app -- curl -sI https://api.stripe.com/v1/charges
 ```
 
-The first command should succeed, and the second should fail. Check the egress gateway logs to confirm the traffic routing:
+The first command should reach Stripe, though Stripe may return an authentication-related HTTP status if you do not provide API credentials. The second command should fail when your outbound policy or NetworkPolicy prevents direct egress. Check the egress gateway logs to confirm the traffic routing:
 
 ```bash
 kubectl logs -n istio-system -l istio=egressgateway -c istio-proxy --tail=20
