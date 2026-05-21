@@ -17,13 +17,13 @@ Kubernetes already has some draining built in through pod termination, but Istio
 When Kubernetes terminates a pod, here is what happens in order:
 
 1. Pod is marked as Terminating
-2. Pod is removed from Service endpoints (no new traffic)
-3. PreStop hooks run
-4. SIGTERM is sent to all containers
+2. Kubelet starts the pod shutdown flow and runs PreStop hooks
+3. SIGTERM is sent to the containers after their PreStop hooks complete
+4. At the same time, the control plane updates EndpointSlices so terminating endpoints are marked not ready
 5. Containers have `terminationGracePeriodSeconds` to shut down
 6. SIGKILL is sent if containers are still running
 
-The problem is that steps 2 and 3 happen concurrently. The Service endpoint update takes time to propagate, so new requests might still arrive after the pod starts terminating. The Envoy sidecar in other pods also needs time to update its endpoint list.
+The problem is that endpoint updates and container shutdown happen concurrently. The Service endpoint update takes time to propagate, so new requests might still arrive after the pod starts terminating. The Envoy sidecar in other pods also needs time to update its endpoint list.
 
 ## Configuring terminationGracePeriodSeconds
 
@@ -36,7 +36,13 @@ metadata:
   name: my-service
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: my-service
   template:
+    metadata:
+      labels:
+        app: my-service
     spec:
       terminationGracePeriodSeconds: 60
       containers:
@@ -59,7 +65,13 @@ metadata:
   name: my-service
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: my-service
   template:
+    metadata:
+      labels:
+        app: my-service
     spec:
       terminationGracePeriodSeconds: 60
       containers:
@@ -73,7 +85,7 @@ spec:
         - containerPort: 8080
 ```
 
-The 10-second sleep gives Kubernetes and Istio time to remove the pod from all endpoint lists before the application receives SIGTERM. During those 10 seconds, Envoy proxies in other pods stop sending new requests to this pod.
+The 10-second sleep gives Kubernetes and Istio time to mark the pod's endpoints as not ready and propagate that change before the application receives SIGTERM. During those 10 seconds, Envoy proxies in other pods have time to stop sending new requests to this pod.
 
 ## Istio Sidecar Drain Duration
 
@@ -86,8 +98,13 @@ metadata:
   name: my-service
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: my-service
   template:
     metadata:
+      labels:
+        app: my-service
       annotations:
         proxy.istio.io/config: |
           drainDuration: 45s
@@ -97,6 +114,10 @@ spec:
       containers:
       - name: my-service
         image: my-registry/my-service:latest
+        lifecycle:
+          preStop:
+            exec:
+              command: ["/bin/sh", "-c", "sleep 10"]
 ```
 
 - `drainDuration`: How long Envoy waits for active connections to complete during hot restart (live update of proxy config)
@@ -106,7 +127,7 @@ Set `terminationDrainDuration` to be less than `terminationGracePeriodSeconds` m
 
 ## The EXIT_ON_ZERO_ACTIVE_CONNECTIONS Setting
 
-Istio 1.12+ supports `EXIT_ON_ZERO_ACTIVE_CONNECTIONS`, which makes the sidecar wait for all connections to close before exiting:
+Istio 1.12+ supports `EXIT_ON_ZERO_ACTIVE_CONNECTIONS`, which lets the sidecar exit early when active connections reach zero during draining:
 
 ```yaml
 apiVersion: apps/v1
@@ -115,10 +136,16 @@ metadata:
   name: my-service
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: my-service
   template:
     metadata:
+      labels:
+        app: my-service
       annotations:
         proxy.istio.io/config: |
+          terminationDrainDuration: 30s
           proxyMetadata:
             EXIT_ON_ZERO_ACTIVE_CONNECTIONS: "true"
     spec:
@@ -132,7 +159,7 @@ spec:
               command: ["/bin/sh", "-c", "sleep 10"]
 ```
 
-With this setting, the Envoy sidecar monitors active connections during termination and exits only when all connections have closed, rather than waiting for the full drain duration. This means pods shut down faster when there is no active traffic, and they wait longer when needed.
+With this setting, the Envoy sidecar monitors active connections during termination and exits when the number of active connections becomes zero, rather than always waiting for the full drain duration. This means pods shut down faster when there is no active traffic, while still allowing active connections to use the configured drain window.
 
 ## Configuring SIGTERM Handling in Your Application
 
@@ -161,7 +188,10 @@ import (
 func main() {
     server := &http.Server{
         Addr:    ":8080",
-        Handler: myHandler(),
+        Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+            w.WriteHeader(http.StatusOK)
+            _, _ = w.Write([]byte("ok"))
+        }),
     }
 
     // Start server in a goroutine
@@ -202,12 +232,18 @@ metadata:
   namespace: production
 spec:
   replicas: 5
+  selector:
+    matchLabels:
+      app: my-service
   strategy:
     type: RollingUpdate
     rollingUpdate:
       maxSurge: 1
       maxUnavailable: 0
   template:
+    metadata:
+      labels:
+        app: my-service
     spec:
       terminationGracePeriodSeconds: 60
       containers:
@@ -232,7 +268,22 @@ spec:
 For zero-downtime deployments, use Istio to shift traffic between versions:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: my-service
+  namespace: production
+spec:
+  host: my-service
+  subsets:
+  - name: blue
+    labels:
+      version: blue
+  - name: green
+    labels:
+      version: green
+---
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service
@@ -280,7 +331,7 @@ kubectl scale deployment my-service-blue --replicas=0 -n production
 Watch for dropped connections during deployments:
 
 ```bash
-# Monitor 503 errors during deployment
+# Monitor connection destroys during deployment
 kubectl exec deploy/my-service -c istio-proxy -- \
   pilot-agent request GET stats | grep "upstream_cx_destroy"
 
