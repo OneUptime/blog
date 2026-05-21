@@ -17,14 +17,14 @@ This post goes deep on getting the most out of `istioctl analyze` in automated p
 The simplest form checks files without a cluster:
 
 ```bash
-istioctl analyze k8s/istio/
+istioctl analyze --use-kube=false k8s/istio/
 ```
 
 This reads all YAML files in the directory and runs analysis rules against them. It does not need a running Kubernetes cluster, making it perfect for CI environments.
 
 The exit code tells you the result:
-- 0: No errors (warnings and info messages are still displayed)
-- Non-zero: Errors found
+- 0: No messages at or above the failure threshold
+- Non-zero: Messages found at or above the failure threshold, which is `Error` by default
 
 ## Analyzing Specific Namespaces
 
@@ -49,7 +49,7 @@ This catches issues like:
 - Your DestinationRule references a subset label that no Deployment has
 - Your Gateway references a credential Secret that is missing
 
-Without `--use-kube`, the analyzer only checks internal consistency of the provided files.
+With `--use-kube=false`, the analyzer only checks internal consistency of the provided files.
 
 ## Understanding Message Codes
 
@@ -57,52 +57,54 @@ Each message from `istioctl analyze` has a code. Here are the common ones you wi
 
 | Code | Severity | Description |
 |------|----------|-------------|
-| IST0101 | Warning | Referenced host not found |
-| IST0104 | Warning | Referenced credential not found |
-| IST0106 | Warning | Namespace not injected |
+| IST0101 | Error | Referenced resource not found |
+| IST0102 | Info | Namespace not injected |
+| IST0103 | Warning | Pod missing Istio proxy |
+| IST0106 | Error | Schema validation error |
 | IST0108 | Warning | Unknown annotation |
-| IST0113 | Error | DestinationRule with conflicting outlier detection |
-| IST0128 | Warning | Missing sidecar |
-| IST0132 | Warning | Deprecated field usage |
-| IST0134 | Warning | Gateway selector matches no pods |
-| IST0145 | Warning | Conflicting inbound ports |
+| IST0127 | Warning | No matching workloads found |
+| IST0132 | Warning | VirtualService host not found in Gateway |
+| IST0145 | Error | Conflicting Gateways |
+| IST0161 | Error | Invalid Gateway credential |
+| IST0174 | Warning | Unknown DestinationRule host |
 
 ## Suppressing Known Issues
 
 Sometimes you have known issues that you do not want to fail the build. Use the `--suppress` flag:
 
 ```bash
-istioctl analyze k8s/istio/ \
-  --suppress "IST0106=Namespace no-mesh" \
-  --suppress "IST0128=Pod some-legacy-pod.default"
+istioctl analyze --use-kube=false k8s/istio/ \
+  --suppress "IST0102=Namespace no-mesh" \
+  --suppress "IST0103=Pod some-legacy-pod.default"
 ```
 
-This suppresses the "namespace not injected" warning for the `no-mesh` namespace and the "missing sidecar" warning for a specific pod.
+This suppresses the "namespace not injected" message for the `no-mesh` namespace and the "missing sidecar" warning for a specific pod.
 
-For CI pipelines, maintain a suppressions file:
+For CI pipelines, maintain a suppressions file named `.istio-analyze-suppressions.json`:
 
-```yaml
-# .istio-analyze-suppress.yaml
-
-- code: IST0106
-  resource: Namespace no-mesh
-- code: IST0108
-  resource: Pod legacy-app.default
+```json
+[
+  { "code": "IST0102", "resource": "Namespace no-mesh" },
+  { "code": "IST0103", "resource": "Pod legacy-app.default" }
+]
 ```
 
 And use it:
 
 ```bash
-while IFS= read -r line; do
-  SUPPRESS_ARGS="$SUPPRESS_ARGS --suppress \"$line\""
-done < <(python3 -c "
-import yaml
-with open('.istio-analyze-suppress.yaml') as f:
-    for item in yaml.safe_load(f):
+mapfile -t SUPPRESSIONS < <(python3 -c "
+import json
+with open('.istio-analyze-suppressions.json') as f:
+    for item in json.load(f):
         print(f\"{item['code']}={item['resource']}\")
 ")
 
-eval istioctl analyze k8s/istio/ $SUPPRESS_ARGS
+SUPPRESS_ARGS=()
+for suppression in "${SUPPRESSIONS[@]}"; do
+  SUPPRESS_ARGS+=(--suppress "$suppression")
+done
+
+istioctl analyze --use-kube=false k8s/istio/ "${SUPPRESS_ARGS[@]}"
 ```
 
 ## Parsing Output Programmatically
@@ -110,15 +112,16 @@ eval istioctl analyze k8s/istio/ $SUPPRESS_ARGS
 For more sophisticated CI integration, use JSON or YAML output:
 
 ```bash
-istioctl analyze k8s/istio/ -o json
+istioctl analyze --use-kube=false k8s/istio/ -o json
 ```
 
 This produces structured output you can parse with `jq`:
 
 ```bash
 # Count errors vs warnings
-ERRORS=$(istioctl analyze k8s/istio/ -o json 2>/dev/null | jq '[.[] | select(.level == "Error")] | length')
-WARNINGS=$(istioctl analyze k8s/istio/ -o json 2>/dev/null | jq '[.[] | select(.level == "Warning")] | length')
+ANALYSIS=$(istioctl analyze --use-kube=false k8s/istio/ -o json 2>/dev/null)
+ERRORS=$(printf '%s' "$ANALYSIS" | jq '[.[] | select(.level == "Error")] | length')
+WARNINGS=$(printf '%s' "$ANALYSIS" | jq '[.[] | select(.level == "Warning")] | length')
 
 echo "Errors: $ERRORS, Warnings: $WARNINGS"
 
@@ -148,26 +151,28 @@ jobs:
   analyze:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Cache istioctl
-        uses: actions/cache@v3
+        uses: actions/cache@v5
         with:
-          path: istio-1.22.0
-          key: istioctl-1.22.0
+          path: istio-1.30.0
+          key: istioctl-1.30.0
 
       - name: Install istioctl
         run: |
-          if [ ! -f istio-1.22.0/bin/istioctl ]; then
-            curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.22.0 sh -
+          if [ ! -f istio-1.30.0/bin/istioctl ]; then
+            curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.30.0 sh -
           fi
-          echo "$PWD/istio-1.22.0/bin" >> $GITHUB_PATH
+          echo "$PWD/istio-1.30.0/bin" >> $GITHUB_PATH
 
       - name: Run analysis
         id: analyze
         run: |
-          OUTPUT=$(istioctl analyze k8s/istio/ --all-namespaces 2>&1)
+          set +e
+          OUTPUT=$(istioctl analyze --use-kube=false k8s/istio/ 2>&1)
           EXIT_CODE=$?
+          set -e
           echo "$OUTPUT"
           echo "output<<EOF" >> $GITHUB_OUTPUT
           echo "$OUTPUT" >> $GITHUB_OUTPUT
@@ -177,15 +182,17 @@ jobs:
 
       - name: Comment on PR
         if: failure()
-        uses: actions/github-script@v6
+        uses: actions/github-script@v9
+        env:
+          ANALYZE_OUTPUT: ${{ steps.analyze.outputs.output }}
         with:
           script: |
-            const output = `${{ steps.analyze.outputs.output }}`;
-            github.rest.issues.createComment({
+            const output = process.env.ANALYZE_OUTPUT;
+            await github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: `## Istio Configuration Analysis Failed\n\n```\n${output}\n```\n\nPlease fix the issues above before merging.`
+              body: `## Istio Configuration Analysis Failed\n\n~~~\n${output}\n~~~\n\nPlease fix the issues above before merging.`
             });
 ```
 
@@ -199,16 +206,17 @@ istio-analyze:
   image: ubuntu:22.04
   before_script:
     - apt-get update && apt-get install -y curl
-    - curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.22.0 sh -
-    - export PATH=$PWD/istio-1.22.0/bin:$PATH
+    - curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.30.0 sh -
+    - export PATH=$PWD/istio-1.30.0/bin:$PATH
   script:
-    - istioctl analyze k8s/istio/ --all-namespaces
+    - istioctl analyze --use-kube=false k8s/istio/ -o json > istio-analysis-report.json
+    - istioctl analyze --use-kube=false k8s/istio/
   rules:
     - changes:
         - k8s/istio/**
   artifacts:
-    reports:
-      junit: istio-analysis-report.xml
+    paths:
+      - istio-analysis-report.json
     when: always
 ```
 
@@ -225,7 +233,7 @@ FAILED=0
 
 for env in "${ENVIRONMENTS[@]}"; do
   echo "Analyzing $env..."
-  istioctl analyze "k8s/overlays/$env/" --all-namespaces 2>&1
+  istioctl analyze --use-kube=false "k8s/overlays/$env/" 2>&1
   if [ $? -ne 0 ]; then
     echo "FAIL: $env has configuration issues"
     FAILED=1
@@ -240,11 +248,11 @@ exit $FAILED
 
 ## Custom Analysis with istioctl Experimental
 
-`istioctl` has experimental analysis features that catch additional issues:
+`istioctl` has targeted analyzers and experimental describe commands that are useful during review:
 
 ```bash
 # Check for deprecated features
-istioctl analyze k8s/istio/ --all-namespaces 2>&1 | grep -i "deprecated"
+istioctl analyze --use-kube=false k8s/istio/ --analyzer "deprecation.DeprecationAnalyzer"
 
 # Describe a specific workload to see all applicable policies
 istioctl x describe pod my-app-pod -n app
@@ -269,7 +277,7 @@ for file in k8s/istio/*.yaml; do
 done
 
 echo "Step 2: istioctl analyze"
-istioctl analyze k8s/istio/ --all-namespaces 2>&1 || ERRORS=$((ERRORS + 1))
+istioctl analyze --use-kube=false k8s/istio/ 2>&1 || ERRORS=$((ERRORS + 1))
 
 echo "Step 3: Check VirtualService weights"
 for file in k8s/istio/virtual-service*.yaml; do
@@ -306,7 +314,7 @@ The version of `istioctl` in your CI should match the version of Istio running o
 
 ```bash
 # .istio-version
-1.22.0
+1.30.0
 ```
 
 Then reference it in CI:
