@@ -15,8 +15,8 @@ While a mesh-wide overview tells you the big picture, you need per-service dashb
 You need Prometheus scraping Istio metrics and Grafana connected to that Prometheus instance. If you followed a standard Istio installation with addons:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/prometheus.yaml
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/grafana.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/prometheus.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/grafana.yaml
 ```
 
 Verify both are running:
@@ -141,15 +141,17 @@ sum(rate(istio_tcp_received_bytes_total{
   destination_service=~"$service"
 }[5m])) by (source_workload)
 
-# Open connections
-sum(istio_tcp_connections_opened_total{
+# Connection open rate
+sum(rate(istio_tcp_connections_opened_total{
   reporter="destination",
   destination_service=~"$service"
-}) by (source_workload)
-- sum(istio_tcp_connections_closed_total{
+}[5m])) by (source_workload)
+
+# Connection close rate
+sum(rate(istio_tcp_connections_closed_total{
   reporter="destination",
   destination_service=~"$service"
-}) by (source_workload)
+}[5m])) by (source_workload)
 ```
 
 ### gRPC-Specific Metrics
@@ -157,7 +159,7 @@ sum(istio_tcp_connections_opened_total{
 If your service uses gRPC, add gRPC-specific panels:
 
 ```promql
-# gRPC request rate by method
+# gRPC request rate by status
 sum(rate(istio_requests_total{
   reporter="destination",
   destination_service=~"$service",
@@ -194,41 +196,41 @@ Here is a minimal dashboard definition you can import into Grafana:
 
 ```json
 {
-  "dashboard": {
-    "title": "Istio Service Detail",
-    "templating": {
-      "list": [
-        {
-          "name": "namespace",
-          "type": "query",
-          "query": "label_values(istio_requests_total{reporter=\"destination\"}, destination_workload_namespace)"
-        },
-        {
-          "name": "service",
-          "type": "query",
-          "query": "label_values(istio_requests_total{reporter=\"destination\", destination_workload_namespace=~\"$namespace\"}, destination_service)"
-        }
-      ]
-    },
-    "panels": [
+  "title": "Istio Service Detail",
+  "templating": {
+    "list": [
       {
-        "title": "Request Volume",
-        "type": "timeseries",
-        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
-        "targets": [{
-          "expr": "sum(rate(istio_requests_total{reporter=\"destination\", destination_service=~\"$service\"}[5m])) by (source_workload)"
-        }]
+        "name": "namespace",
+        "type": "query",
+        "query": "label_values(istio_requests_total{reporter=\"destination\"}, destination_workload_namespace)"
       },
       {
-        "title": "Success Rate",
-        "type": "gauge",
-        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
-        "targets": [{
-          "expr": "sum(rate(istio_requests_total{reporter=\"destination\", destination_service=~\"$service\", response_code!~\"5.*\"}[5m])) / sum(rate(istio_requests_total{reporter=\"destination\", destination_service=~\"$service\"}[5m])) * 100"
-        }]
+        "name": "service",
+        "type": "query",
+        "query": "label_values(istio_requests_total{reporter=\"destination\", destination_workload_namespace=~\"$namespace\"}, destination_service)"
       }
     ]
-  }
+  },
+  "panels": [
+    {
+      "title": "Request Volume",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "targets": [{
+        "expr": "sum(rate(istio_requests_total{reporter=\"destination\", destination_service=~\"$service\"}[5m])) by (source_workload)"
+      }]
+    },
+    {
+      "title": "Success Rate",
+      "type": "gauge",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "targets": [{
+        "expr": "sum(rate(istio_requests_total{reporter=\"destination\", destination_service=~\"$service\", response_code!~\"5.*\"}[5m])) / sum(rate(istio_requests_total{reporter=\"destination\", destination_service=~\"$service\"}[5m])) * 100"
+      }]
+    }
+  ],
+  "schemaVersion": 17,
+  "version": 0
 }
 ```
 
