@@ -136,7 +136,6 @@ spec:
     route:
     - destination:
         host: shared-api
-        subset: default
   - match:
     - headers:
         x-tenant-id:
@@ -146,7 +145,6 @@ spec:
     route:
     - destination:
         host: shared-api
-        subset: default
 ```
 
 You can also use Istio to inject tenant identity headers automatically using an EnvoyFilter. This way, the shared service always knows which tenant is calling without relying on the application to set the header:
@@ -176,7 +174,7 @@ spec:
           "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
           inline_code: |
             function envoy_on_request(request_handle)
-              request_handle:headers():add("x-tenant-id", "tenant-a")
+              request_handle:headers():replace("x-tenant-id", "tenant-a")
             end
 ```
 
@@ -184,7 +182,7 @@ spec:
 
 Shared services are a natural bottleneck. If one tenant hammers a shared service, all tenants suffer. Implement per-tenant rate limiting on the shared service side.
 
-Use a rate limit descriptor based on the source namespace:
+Use a rate limit descriptor based on the tenant header:
 
 ```yaml
 apiVersion: v1
@@ -196,21 +194,23 @@ data:
   config.yaml: |
     domain: shared-services
     descriptors:
-    - key: source_namespace
+    - key: tenant_id
       value: tenant-a
       rate_limit:
         unit: minute
         requests_per_unit: 5000
-    - key: source_namespace
+    - key: tenant_id
       value: tenant-b
       rate_limit:
         unit: minute
         requests_per_unit: 2000
-    - key: source_namespace
+    - key: tenant_id
       rate_limit:
         unit: minute
         requests_per_unit: 1000
 ```
+
+Pair this with an Envoy rate limit filter and a route-level rate limit action that sends the `x-tenant-id` request header as the `tenant_id` descriptor key.
 
 ## Traffic Policies for Shared Services
 
