@@ -78,7 +78,7 @@ Create variables for the settings you want to be configurable:
 variable "istio_version" {
   description = "Version of Istio to install"
   type        = string
-  default     = "1.22.0"
+  default     = "1.30.0"
 }
 
 variable "istio_namespace" {
@@ -263,7 +263,6 @@ resource "helm_release" "istiod" {
     templatefile("${path.module}/values/istiod.yaml", {
       pilot_cpu_request    = var.pilot_resources.cpu_request
       pilot_memory_request = var.pilot_resources.memory_request
-      environment          = var.environment
     })
   ]
 
@@ -316,10 +315,10 @@ The plan output shows you exactly what will be created before you apply anything
 
 ## Handling Upgrades
 
-To upgrade Istio, change the `istio_version` variable and run plan and apply again:
+To upgrade Istio, change the `istio_version` variable and run plan and apply again. For example, if you are moving from an older supported 1.29 patch release to 1.30.0:
 
 ```bash
-terraform plan -var="istio_version=1.23.0" -out=upgrade.plan
+terraform plan -var="istio_version=1.30.0" -out=upgrade.plan
 terraform apply upgrade.plan
 ```
 
@@ -332,9 +331,10 @@ Store your Terraform state remotely so the team shares a single source of truth:
 ```hcl
 terraform {
   backend "s3" {
-    bucket = "my-terraform-state"
-    key    = "istio/terraform.tfstate"
-    region = "us-east-1"
+    bucket       = "my-terraform-state"
+    key          = "istio/terraform.tfstate"
+    region       = "us-east-1"
+    use_lockfile = true
   }
 }
 ```
