@@ -43,32 +43,22 @@ data:
           scrape_configs:
             - job_name: 'istiod'
               kubernetes_sd_configs:
-                - role: pod
+                - role: endpoints
                   namespaces:
                     names:
                       - istio-system
               relabel_configs:
-                - source_labels: [__meta_kubernetes_pod_label_app]
-                  regex: istiod
+                - source_labels: [__meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
                   action: keep
-                - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
-                  regex: '(\d+)'
-                  target_label: __address__
-                  replacement: '${1}:15014'
-                  action: replace
+                  regex: istiod;http-monitoring
             - job_name: 'envoy-stats'
               metrics_path: /stats/prometheus
               kubernetes_sd_configs:
                 - role: pod
               relabel_configs:
-                - source_labels: [__meta_kubernetes_pod_container_name]
-                  regex: istio-proxy
+                - source_labels: [__meta_kubernetes_pod_container_port_name]
                   action: keep
-                - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
-                  action: replace
-                  regex: ([^:]+)(?::\d+)?;(\d+)
-                  replacement: $1:15090
-                  target_label: __address__
+                  regex: '.*-envoy-prom'
 
     processors:
       batch:
@@ -77,26 +67,20 @@ data:
       memory_limiter:
         check_interval: 5s
         limit_mib: 512
-      resource:
-        attributes:
-          - key: service.name
-            from_attribute: source_workload
-            action: upsert
-
     exporters:
-      otlp:
-        endpoint: "https://otlp.oneuptime.com"
+      otlphttp:
+        endpoint: "https://oneuptime.com/otlp"
+        encoding: json
         headers:
+          Content-Type: "application/json"
           x-oneuptime-token: "${ONEUPTIME_TOKEN}"
-        tls:
-          insecure: false
 
     service:
       pipelines:
         metrics:
           receivers: [prometheus]
-          processors: [memory_limiter, batch, resource]
-          exporters: [otlp]
+          processors: [memory_limiter, batch]
+          exporters: [otlphttp]
 ---
 apiVersion: v1
 kind: Secret
@@ -242,17 +226,18 @@ data:
 
     scrape_configs:
       - job_name: 'istio-mesh'
+        metrics_path: /stats/prometheus
         kubernetes_sd_configs:
           - role: pod
         relabel_configs:
-          - source_labels: [__meta_kubernetes_pod_container_name]
-            regex: istio-proxy
+          - source_labels: [__meta_kubernetes_pod_container_port_name]
             action: keep
+            regex: '.*-envoy-prom'
 
     remote_write:
-      - url: "https://otlp.oneuptime.com/v1/metrics"
+      - url: "https://oneuptime.com/api/telemetry/metrics/v1/remote-write"
         headers:
-          x-oneuptime-token: "your-oneuptime-ingestion-token"
+          x-oneuptime-service-token: "your-oneuptime-ingestion-token"
         queue_config:
           max_samples_per_send: 1000
           batch_send_deadline: 30s
