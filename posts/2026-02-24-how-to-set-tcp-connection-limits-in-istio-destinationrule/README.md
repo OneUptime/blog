@@ -41,11 +41,11 @@ spec:
         maxConnections: 100
 ```
 
-With this in place, each Envoy proxy will open at most 100 TCP connections to all endpoints of `backend-service` combined. If a 101st connection is needed and all 100 are in use, the request either waits in the HTTP pending queue (if configured) or gets a 503 error.
+With this in place, each Envoy proxy limits TCP connections to the upstream cluster for `backend-service` to 100. Envoy can temporarily exceed that number to ensure a load-balanced endpoint has at least one connection, but the circuit breaker still applies across the cluster rather than as 100 connections per pod. If a new HTTP request needs a connection and all connection and pending-request limits are exhausted, the caller gets a 503 error. For raw TCP traffic, the new connection attempt fails instead of being queued as an HTTP request.
 
 ## Setting Connect Timeout
 
-The `connectTimeout` is just as important as `maxConnections`. If a backend pod is overloaded or a network issue makes connections hang, you do not want to wait the OS default of 2 minutes:
+The `connectTimeout` is just as important as `maxConnections`. Istio defaults this to 10 seconds, but if a backend pod is overloaded or a network issue makes connections hang, you may want a shorter timeout:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -65,7 +65,7 @@ With `connectTimeout: 3s`, Envoy gives up after 3 seconds if the TCP handshake i
 
 ## Configuring TCP Keepalive
 
-TCP keepalive probes detect dead connections that have not been properly closed. Without keepalive, a connection to a crashed pod can sit there indefinitely, wasting one of your `maxConnections` slots:
+TCP keepalive probes detect dead connections that have not been properly closed. Without keepalive, a silent network failure can leave an idle connection around until another timeout or application traffic detects it, wasting one of your `maxConnections` slots:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -94,7 +94,7 @@ This frees up connection slots that would otherwise be stuck on dead connections
 
 ## How maxConnections Is Distributed Across Endpoints
 
-A common question is whether `maxConnections: 100` means 100 connections per pod or 100 connections total. The answer is total across all endpoints.
+A common question is whether `maxConnections: 100` means 100 connections per pod or 100 connections total. The answer is total across the upstream cluster, with Envoy's small per-endpoint overflow exception described above.
 
 If your service has 5 pods and `maxConnections` is 100, Envoy might distribute them like:
 
@@ -104,7 +104,7 @@ Pod B: 18 connections
 Pod C: 22 connections
 Pod D: 20 connections
 Pod E: 15 connections
-Total: 100 connections (limit reached)
+Total: 100 connections (nominal limit reached)
 ```
 
 The actual distribution depends on your load balancing algorithm and traffic patterns.
