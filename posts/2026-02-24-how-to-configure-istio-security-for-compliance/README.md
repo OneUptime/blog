@@ -25,7 +25,7 @@ spec:
   meshConfig:
     # Change default trust domain from cluster.local
     trustDomain: payments.mycompany.com
-    # Disable permissive mTLS (default)
+    # Require at least TLS 1.2 for ISTIO_MUTUAL traffic
     meshMTLS:
       minProtocolVersion: TLSV1_2
 ```
@@ -45,7 +45,7 @@ spec:
     mode: STRICT
 ```
 
-Configure minimum TLS 1.2 (PCI DSS requires this as of version 3.2.1):
+Configure minimum TLS 1.2 for gateway traffic. Current PCI DSS requirements call for strong cryptography and secure protocol configurations:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -142,7 +142,7 @@ spec:
     - {}
 ```
 
-This audits every request entering the cardholder data namespace.
+This marks every request entering the cardholder data namespace for audit. A separate audit-capable plugin or provider must be configured to emit audit records.
 
 ## HIPAA Requirements Mapped to Istio
 
@@ -293,10 +293,12 @@ spec:
       proxyMetadata:
         # Shorter certificate TTL for compliance
         SECRET_TTL: "12h"
+        # Use a stronger RSA key size for workload certificates
+        WORKLOAD_RSA_KEY_SIZE: "4096"
   values:
     pilot:
       env:
-        # Use stronger key size
+        # Use a stronger RSA key size for Istio's self-signed CA
         CITADEL_SELF_SIGNED_CA_RSA_KEY_SIZE: "4096"
 ```
 
@@ -352,11 +354,11 @@ Export your Istio configuration as evidence for audits:
 
 ```bash
 # Export all security-related Istio configuration
-kubectl get peerauthentication --all-namespaces -o yaml > evidence/peer-auth.yaml
-kubectl get authorizationpolicy --all-namespaces -o yaml > evidence/authz-policies.yaml
-kubectl get requestauthentication --all-namespaces -o yaml > evidence/request-auth.yaml
-kubectl get gateway --all-namespaces -o yaml > evidence/gateways.yaml
-kubectl get networkpolicy --all-namespaces -o yaml > evidence/network-policies.yaml
+kubectl get peerauthentications.security.istio.io --all-namespaces -o yaml > evidence/peer-auth.yaml
+kubectl get authorizationpolicies.security.istio.io --all-namespaces -o yaml > evidence/authz-policies.yaml
+kubectl get requestauthentications.security.istio.io --all-namespaces -o yaml > evidence/request-auth.yaml
+kubectl get gateways.networking.istio.io --all-namespaces -o yaml > evidence/gateways.yaml
+kubectl get networkpolicies.networking.k8s.io --all-namespaces -o yaml > evidence/network-policies.yaml
 ```
 
 Istio does not make you compliant by itself, but it provides the technical controls that compliance frameworks require. The key is mapping those controls to specific requirements, monitoring them continuously, and being able to demonstrate to auditors that they are working correctly.
