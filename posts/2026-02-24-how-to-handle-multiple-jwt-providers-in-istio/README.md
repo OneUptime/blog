@@ -21,7 +21,7 @@ graph TD
     C -->|Matches Rule 1| D[Validate with JWKS 1]
     C -->|Matches Rule 2| E[Validate with JWKS 2]
     C -->|Matches Rule 3| F[Validate with JWKS 3]
-    C -->|No match| G[Token from unknown issuer - passed through without principal]
+    C -->|No match| G[Token from unknown issuer - rejected]
     D --> H{Valid?}
     E --> H
     F --> H
@@ -224,15 +224,15 @@ Both RequestAuthentication resources apply to the same workload. Istio merges th
 
 ## Handling Unknown Issuers
 
-If a token arrives with an issuer that doesn't match any configured rule, Istio treats it as if no token was provided. The request passes through without a request principal. If you have an AuthorizationPolicy requiring a principal, those requests get denied.
+If a token arrives with an issuer that doesn't match any configured rule, Istio rejects it because the `iss` claim does not match the configured JWT rules. A request with no JWT credentials is different: it passes through without a request principal unless an AuthorizationPolicy requires one.
 
-To explicitly reject tokens with unknown issuers, you don't need to do anything special - just make sure your AuthorizationPolicy requires a valid principal:
+To reject requests that do not have a validated request principal, add an AuthorizationPolicy that requires one:
 
 ```yaml
 apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
-  name: deny-unknown
+  name: deny-without-principal
   namespace: backend
 spec:
   selector:
