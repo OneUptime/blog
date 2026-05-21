@@ -15,7 +15,7 @@ Traffic policies in Istio work the same way for VM workloads as they do for Kube
 Before applying traffic policies, your VM workloads need to be properly registered in the mesh. You need a WorkloadEntry for each VM and a Kubernetes Service that selects those entries.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: WorkloadEntry
 metadata:
   name: vm-instance-1
@@ -28,7 +28,7 @@ spec:
   serviceAccount: payment-sa
   network: vm-network
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: WorkloadEntry
 metadata:
   name: vm-instance-2
@@ -59,10 +59,10 @@ The Service selector matches the labels on the WorkloadEntry resources. This is 
 
 ## Applying Load Balancing Policies
 
-By default, Istio uses round-robin load balancing. For VM workloads, you might want something different, especially if your VMs have varying capacity.
+By default, Istio uses least-request load balancing. For VM workloads, you might want to tune the policy explicitly, especially if your VMs have varying capacity.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: payment-service-dr
@@ -81,12 +81,12 @@ spec:
         http2MaxRequests: 1000
 ```
 
-The `LEAST_REQUEST` algorithm works well for heterogeneous environments where some VMs might be busier than others. Other options include `ROUND_ROBIN`, `RANDOM`, and `PASSTHROUGH`.
+The `LEAST_REQUEST` algorithm works well for heterogeneous environments where some VMs might be busier than others. Other options include `ROUND_ROBIN`, `RANDOM`, and advanced options such as `PASSTHROUGH`.
 
 For more granular control, you can use consistent hashing to ensure that requests from the same client always go to the same VM:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: payment-sticky-dr
@@ -104,7 +104,7 @@ spec:
 One of the most useful traffic patterns is canary deployments. If you have two versions of your service running on different VMs, you can gradually shift traffic between them.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: payment-service-vs
@@ -123,7 +123,7 @@ spec:
         subset: v2
       weight: 10
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: payment-service-subsets
@@ -146,7 +146,7 @@ This sends 90% of traffic to VMs labeled `version: v1` and 10% to `version: v2`.
 VMs can be less predictable than pods when it comes to availability. They might go through maintenance windows, have network blips, or experience hardware issues. Circuit breaking helps protect the rest of your mesh from cascading failures.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: payment-circuit-breaker
@@ -175,7 +175,7 @@ The outlier detection configuration ejects a VM from the load balancing pool if 
 Network issues between Kubernetes and VMs are more common than within a cluster. Setting up retries helps absorb transient failures:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: payment-retries
@@ -201,7 +201,7 @@ The `retryRemoteLocalities` flag is particularly important for VM workloads. It 
 VMs might have different response time characteristics than pod-based services. Set appropriate timeouts:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: payment-timeouts
@@ -221,7 +221,7 @@ spec:
 If your VMs are spread across regions or zones, locality-aware routing can reduce latency by preferring nearby instances:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: WorkloadEntry
 metadata:
   name: vm-us-east
@@ -235,7 +235,7 @@ spec:
   network: vm-network
   locality: us-east1/us-east1-b
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: payment-locality
@@ -262,7 +262,7 @@ The locality field on the WorkloadEntry follows the `region/zone/subzone` format
 You can inject faults into traffic going to VM workloads to test resilience:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: payment-fault-test
@@ -285,7 +285,7 @@ spec:
         host: payment-service
 ```
 
-This injects a 3-second delay in 10% of requests and returns a 503 error for 5% of requests. It is a good way to verify that your retry and circuit breaking policies work correctly.
+This injects a 3-second delay in 10% of requests and returns a 503 error for 5% of requests. It is a good way to verify circuit breaking and resilience behavior, but remember that retries and timeouts are not enabled for a route when client-side faults are enabled on that same route.
 
 ## Verifying Traffic Policies
 
