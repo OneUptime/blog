@@ -17,10 +17,10 @@ This guide explains how validating webhooks work, what they check, and how to tr
 The key difference is simple: mutating webhooks modify resources, validating webhooks only accept or reject them. Validating webhooks run after mutating webhooks in the admission pipeline. They receive the final version of the resource and return either "allowed" or "denied" with an error message.
 
 Istio uses validating webhooks to catch configuration mistakes like:
-- Referencing a host that does not exist
+- Schema and API validation errors in Istio resources
 - Using invalid regular expressions in match conditions
-- Specifying conflicting routing rules
-- Malformed YAML fields
+- Missing required route actions or destination fields
+- Malformed resource fields
 - Missing required fields
 
 ## Viewing the Istio Validating Webhook
@@ -80,6 +80,9 @@ The webhook validates resources from these API groups:
 ### telemetry.istio.io
 - Telemetry
 
+### extensions.istio.io
+- WasmPlugin
+
 For each of these, istiod checks the resource against a set of validation rules.
 
 ## Common Validation Errors
@@ -128,7 +131,7 @@ Error: `validation error: invalid load balancer simple value`
 ### Gateway Validation
 
 ```bash
-# This will be rejected - duplicate port in gateway
+# This can be rejected or reported by analysis - duplicate host/port combination
 kubectl apply -f - <<EOF
 apiVersion: networking.istio.io/v1beta1
 kind: Gateway
@@ -158,7 +161,7 @@ spec:
 EOF
 ```
 
-This might be rejected because of duplicate host/port combinations.
+This might be rejected or reported by `istioctl analyze` because of duplicate host/port combinations.
 
 ## Inspecting Validation Details
 
@@ -175,7 +178,7 @@ istioctl analyze -n my-namespace
 istioctl validate -f my-virtualservice.yaml
 ```
 
-The `istioctl validate` command runs the same validation logic locally without needing to apply the resource to the cluster. This is great for CI/CD pipelines.
+The `istioctl validate` command runs Istio's validation logic locally without needing to apply the resource to the cluster. This is great for CI/CD pipelines.
 
 ## Using istioctl analyze
 
@@ -196,8 +199,8 @@ Example output:
 
 ```text
 Warning [IST0101] (VirtualService default/my-vs) Referenced host not found: "nonexistent-service"
-Warning [IST0108] (DestinationRule default/my-dr) This destination rule is not referenced by any virtual service.
-Error [IST0134] (Gateway default/my-gw) Duplicate gateway port 443 with same host
+Warning [IST0174] (DestinationRule default/my-dr) Host defined in destination rule does not match any services in the mesh.
+Error [IST0145] (Gateway default/my-gw) Gateway should not have the same selector, port and matched hosts of server
 ```
 
 ## The failurePolicy Setting
@@ -264,7 +267,7 @@ In a GitHub Actions workflow:
 ```yaml
 - name: Validate Istio Config
   run: |
-    istioctl validate -f manifests/istio/ --recursive
+    istioctl validate -f manifests/istio/
 ```
 
 ## Custom Validation with AuthorizationPolicy
@@ -272,7 +275,7 @@ In a GitHub Actions workflow:
 The validating webhook also checks authorization policies for logical correctness:
 
 ```yaml
-# This is valid YAML but might get a warning
+# This is valid YAML, but it denies all traffic to the selected workload
 apiVersion: security.istio.io/v1beta1
 kind: AuthorizationPolicy
 metadata:
@@ -285,7 +288,7 @@ spec:
   # No rules - this denies all traffic
 ```
 
-An AuthorizationPolicy with a selector but no rules denies all traffic to the selected workload. The validator may warn about this.
+An AuthorizationPolicy with a selector but no rules denies all traffic to the selected workload.
 
 ## Checking Webhook Health
 
@@ -314,4 +317,4 @@ If the bad resource is rejected, validation is working. If it is accepted, somet
 
 ## Summary
 
-Istio's validating webhook acts as a safety net that prevents invalid configuration from entering your mesh. It validates all Istio CRDs (VirtualServices, DestinationRules, Gateways, etc.) on create and update operations. Use `istioctl validate` in CI/CD pipelines to catch errors early, and `istioctl analyze` for deeper semantic analysis. Keep the failurePolicy set to `Fail` in production so that bad configuration cannot sneak in during an istiod outage. The small inconvenience of validation errors is far better than deploying a broken routing configuration that affects production traffic.
+Istio's validating webhook acts as a safety net that prevents invalid configuration from entering your mesh. It validates Istio CRDs matched by the webhook configuration (VirtualServices, DestinationRules, Gateways, etc.) on create and update operations. Use `istioctl validate` in CI/CD pipelines to catch errors early, and `istioctl analyze` for deeper semantic analysis. Keep the failurePolicy set to `Fail` in production so that bad configuration cannot sneak in during an istiod outage. The small inconvenience of validation errors is far better than deploying a broken routing configuration that affects production traffic.
