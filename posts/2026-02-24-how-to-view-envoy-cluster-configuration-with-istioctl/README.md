@@ -230,7 +230,7 @@ spec:
 
 The `transportSocket` section shows how mTLS is configured. If you see `envoy.transport_sockets.tls`, mTLS is enabled for this cluster. The `sni` field shows the Server Name Indication used for the TLS handshake.
 
-If mTLS is disabled (PERMISSIVE mode), you might see the transport socket absent or configured differently.
+If outbound mTLS is disabled, you might see the transport socket absent or configured differently. `PERMISSIVE` mode is different: it lets a workload accept both plaintext and mTLS inbound traffic, but it does not by itself disable outbound mTLS.
 
 ## Debugging Common Cluster Issues
 
