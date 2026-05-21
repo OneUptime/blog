@@ -8,7 +8,7 @@ Description: Step-by-step guide to configuring multiple TLS certificates on an I
 
 ---
 
-When you host multiple domains behind a single Istio ingress gateway, each domain needs its own TLS certificate. You might have `api.example.com` and `dashboard.example.com` each with their own certificate, or even completely different domains like `example.com` and `anotherdomain.com`. Istio supports this through SNI-based TLS routing, where the gateway selects the right certificate based on the hostname in the TLS handshake.
+When you host multiple domains behind a single Istio ingress gateway, each domain needs a TLS certificate that covers it. You might have `api.example.com` and `dashboard.example.com` each with their own certificate, or even completely different domains like `example.com` and `anotherdomain.com`. Istio supports this through SNI-based TLS routing, where the gateway selects the right certificate based on the hostname in the TLS handshake.
 
 ## Prerequisites
 
@@ -49,13 +49,21 @@ For testing, you can generate self-signed certificates:
 ```bash
 # Generate self-signed cert for api.example.com
 openssl req -x509 -newkey rsa:4096 -keyout api.example.com.key \
-  -out api.example.com.crt -days 365 -nodes \
-  -subj "/CN=api.example.com"
+  -out api.example.com.crt -days 365 -noenc \
+  -subj "/CN=api.example.com" \
+  -addext "subjectAltName=DNS:api.example.com"
 
 # Generate self-signed cert for dashboard.example.com
 openssl req -x509 -newkey rsa:4096 -keyout dashboard.example.com.key \
-  -out dashboard.example.com.crt -days 365 -nodes \
-  -subj "/CN=dashboard.example.com"
+  -out dashboard.example.com.crt -days 365 -noenc \
+  -subj "/CN=dashboard.example.com" \
+  -addext "subjectAltName=DNS:dashboard.example.com"
+
+# Generate self-signed cert for anotherdomain.com
+openssl req -x509 -newkey rsa:4096 -keyout anotherdomain.com.key \
+  -out anotherdomain.com.crt -days 365 -noenc \
+  -subj "/CN=anotherdomain.com" \
+  -addext "subjectAltName=DNS:anotherdomain.com"
 ```
 
 ## Configuring the Gateway with Multiple Certificates
@@ -242,7 +250,7 @@ Manually managing certificates is tedious. Use cert-manager with Let's Encrypt f
 
 ```bash
 helm repo add jetstack https://charts.jetstack.io
-helm install cert-manager jetstack/cert-manager -n cert-manager --create-namespace --set installCRDs=true
+helm install cert-manager jetstack/cert-manager -n cert-manager --create-namespace --set crds.enabled=true
 ```
 
 Create a ClusterIssuer:
@@ -261,7 +269,7 @@ spec:
     solvers:
       - http01:
           ingress:
-            class: istio
+            ingressClassName: istio
 ```
 
 Create Certificate resources for each domain:
