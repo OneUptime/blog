@@ -31,7 +31,7 @@ Or use Prometheus if you track log ingestion:
 sum(rate(container_log_logged_bytes_total{container="istio-proxy"}[5m]))
 ```
 
-Multiply the hourly volume by 24 and then by 30 to get your monthly estimate.
+This metric name varies by logging pipeline; use the byte counter your log shipper or managed logging integration exposes. Multiply the hourly volume by 24 and then by 30 to get your monthly estimate.
 
 ## Option 1: Disable Access Logging Entirely
 
@@ -55,7 +55,7 @@ Use the Telemetry API to enable access logging selectively:
 
 ```yaml
 # Disable globally
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: disable-global-logging
@@ -67,7 +67,7 @@ spec:
     disabled: true
 ---
 # Enable for specific namespace
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: enable-logging
@@ -86,7 +86,7 @@ This keeps logging active only for namespaces where you really need it, like pro
 You can filter access logs to only capture failed requests using the Telemetry API:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: error-only-logging
@@ -96,25 +96,25 @@ spec:
   - providers:
     - name: envoy
     filter:
-      expression: "response.code >= 400"
+      expression: "!has(response.code) || response.code >= 400"
 ```
 
-This logs only requests that returned a 4xx or 5xx status code. For a healthy service with 99.9% success rate, this reduces log volume by 99.9%.
+This logs requests that returned a 4xx or 5xx status code, plus connection failures where no HTTP response code exists. For a healthy service with 99.9% success rate, this reduces log volume by roughly 99.9%.
 
 You can also filter on other conditions:
 
 ```yaml
 # Log only server errors (5xx)
 filter:
-  expression: "response.code >= 500"
+  expression: "!has(response.code) || response.code >= 500"
 
 # Log slow requests
 filter:
-  expression: "response.duration > duration('1s')"
+  expression: "request.duration > duration('1s')"
 
 # Log errors OR slow requests
 filter:
-  expression: "response.code >= 500 || response.duration > duration('1s')"
+  expression: "!has(response.code) || response.code >= 500 || request.duration > duration('1s')"
 ```
 
 ## Option 4: Reduce Log Line Size
@@ -136,7 +136,7 @@ spec:
         "src": "%DOWNSTREAM_REMOTE_ADDRESS%",
         "dst": "%UPSTREAM_HOST%",
         "method": "%REQ(:METHOD)%",
-        "path": "%REQ(PATH)%",
+        "path": "%REQ(:PATH)%",
         "code": "%RESPONSE_CODE%",
         "dur": "%DURATION%",
         "bytes_in": "%BYTES_RECEIVED%",
@@ -168,7 +168,7 @@ Text-encoded logs are typically 30-40% smaller than JSON. The tradeoff is that t
 If you want access logs for debugging but do not need every single request, implement sampling. Istio does not have built-in access log sampling, but you can achieve it with the Telemetry API filter:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: sampled-logging
@@ -178,10 +178,10 @@ spec:
   - providers:
     - name: envoy
     filter:
-      expression: "response.code >= 400 || request.id.substring(0, 2) == '0a'"
+      expression: "!has(response.code) || response.code >= 400 || (has(request.id) && request.id.startsWith('0a'))"
 ```
 
-The `request.id.substring(0, 2) == '0a'` expression samples roughly 1/256 of requests (assuming request IDs are hex-encoded UUIDs). Combined with logging all errors, this gives you a representative sample of normal traffic plus complete error coverage.
+The `request.id.startsWith('0a')` expression samples roughly 1/256 of requests when request IDs are randomly generated hex UUIDs. Combined with logging all errors and connection failures, this gives you a representative sample of normal traffic plus complete error coverage.
 
 ## Retention Policies
 
@@ -224,7 +224,7 @@ For Elasticsearch:
 }
 ```
 
-This keeps logs hot for 1 day, warm for 2 weeks, then deletes them. Adjust based on your needs, but 14-30 days is sufficient for most debugging scenarios.
+With daily rollover, this keeps logs hot for about 1 day, moves them to the warm phase after 2 days, and deletes them after 14 days. Adjust based on your needs, but 14-30 days is sufficient for most debugging scenarios.
 
 ## Cold Storage for Compliance
 
@@ -252,7 +252,7 @@ For Fluentd:
 </match>
 ```
 
-Gzipped access logs on S3 cost about $0.023/GB, compared to $0.30-1.00/GB on Elasticsearch. For compliance archives that you rarely query, this is a 90%+ cost reduction.
+Gzipped access logs on S3 Standard in us-east-1 cost about $0.023/GB-month, compared to $0.30-1.00/GB-month on Elasticsearch. For compliance archives that you rarely query, this is a 90%+ cost reduction.
 
 ## Cost Impact Summary
 
