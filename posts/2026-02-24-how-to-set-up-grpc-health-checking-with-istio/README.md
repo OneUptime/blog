@@ -12,7 +12,7 @@ gRPC has its own health checking protocol defined in `grpc.health.v1.Health`. It
 
 ## The gRPC Health Checking Protocol
 
-The gRPC health checking protocol is a standard defined in the gRPC repository. Your service implements the `Health` service with a `Check` RPC that returns a `HealthCheckResponse` with a status of `SERVING`, `NOT_SERVING`, or `UNKNOWN`.
+The gRPC health checking protocol is a standard defined in the gRPC repository. Your service implements the `Health` service with a `Check` RPC that returns a `HealthCheckResponse` with a status such as `SERVING`, `NOT_SERVING`, or `UNKNOWN`.
 
 Here is what the proto definition looks like:
 
@@ -31,6 +31,7 @@ message HealthCheckResponse {
     UNKNOWN = 0;
     SERVING = 1;
     NOT_SERVING = 2;
+    SERVICE_UNKNOWN = 3;
   }
   ServingStatus status = 1;
 }
@@ -49,7 +50,7 @@ healthServer.SetServingStatus("myservice", grpc_health_v1.HealthCheckResponse_SE
 
 ## Kubernetes gRPC Probes
 
-Since Kubernetes 1.24, there is native support for gRPC probes. You can configure them directly in your Pod spec:
+Kubernetes gRPC probes became available by default as a beta feature in Kubernetes 1.24 and graduated to stable in Kubernetes 1.27. You can configure them directly in your Pod spec:
 
 ```yaml
 apiVersion: apps/v1
@@ -95,19 +96,19 @@ When Istio injects its sidecar, the Envoy proxy sits in front of your container.
 1. If mTLS is in STRICT mode, the kubelet cannot reach your container because it does not present a valid mTLS certificate.
 2. The probe might hit the Envoy proxy before your application is ready.
 
-Istio handles this by rewriting health probes. Since Istio 1.10+, probe rewriting is enabled by default. Istio modifies the pod spec so that health probes are redirected to the sidecar agent, which then forwards them to your application.
+Istio handles this by rewriting health probes. Probe rewriting is enabled by default in Istio's built-in configuration profiles. Istio modifies the pod spec so that health probes are redirected to the sidecar agent, which then forwards them to your application.
 
-You can verify this is enabled in your mesh config:
+You can verify the global injector setting with:
 
 ```bash
-kubectl get cm istio -n istio-system -o jsonpath='{.data.mesh}' | grep -A2 "defaultConfig"
+kubectl get cm istio-sidecar-injector -n istio-system -o yaml | grep rewriteAppHTTPProbe
 ```
 
-Look for `holdApplicationUntilProxyStarts` and probe rewriting settings.
+Look for the `rewriteAppHTTPProbe` setting. `holdApplicationUntilProxyStarts` is a separate proxy startup setting.
 
 ## Configuring gRPC Health Checks with Istio Probe Rewriting
 
-With probe rewriting enabled, Istio converts your gRPC probe into an HTTP probe that hits the Istio agent on port 15021. The agent then makes the actual gRPC health check to your container.
+With probe rewriting enabled, Istio converts your gRPC probe into an HTTP probe that hits the Istio agent on port 15020. The agent then makes the actual gRPC health check to your container.
 
 Your deployment does not need any special changes. Just define the gRPC probes normally:
 
@@ -189,7 +190,7 @@ Exec probes run inside the container, so they bypass the Istio proxy entirely. T
 
 ## Envoy Health Checking
 
-Beyond Kubernetes probes, Envoy itself performs health checking on upstream endpoints. You can configure this through Istio's DestinationRule:
+Beyond Kubernetes probes, Envoy can eject unhealthy upstream endpoints based on passive outlier detection. You can configure this through Istio's DestinationRule:
 
 ```yaml
 apiVersion: networking.istio.io/v1beta1
@@ -207,7 +208,7 @@ spec:
       maxEjectionPercent: 50
 ```
 
-This is not exactly health checking per se. It is outlier detection. Envoy tracks error rates and ejects unhealthy endpoints from the load balancing pool. For gRPC, a 5xx error maps to gRPC status codes like `UNAVAILABLE`, `INTERNAL`, and `UNKNOWN`.
+This is not exactly health checking per se. It is outlier detection. Envoy tracks error rates and ejects unhealthy endpoints from the load balancing pool. For gRPC requests, Envoy evaluates outlier detection using the HTTP status mapped from the `grpc-status` response header.
 
 ## Checking Health Check Status
 
@@ -240,7 +241,7 @@ If your gRPC health checks are failing with Istio:
 kubectl get pod <pod-name> -o yaml | grep -A10 "livenessProbe"
 ```
 
-The rewritten probe should target port 15021 on the Istio agent.
+The rewritten application probe should target port 15020 on the Istio agent.
 
 4. Check the pilot-agent logs for probe-related errors:
 
