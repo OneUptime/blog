@@ -49,7 +49,7 @@ Write these numbers down. You'll compare against them after each optimization.
 The fastest way to improve performance is to apply a namespace-scoped Sidecar resource to every namespace in your mesh. This limits each proxy to only knowing about services in its own namespace (plus istio-system for control plane communication):
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -66,7 +66,7 @@ Create one of these for each namespace. You can script it:
 ```bash
 for ns in $(kubectl get ns -l istio-injection=enabled -o jsonpath='{.items[*].metadata.name}'); do
   cat <<EOF | kubectl apply -f -
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -84,20 +84,20 @@ Now re-measure. In a mesh with 20 namespaces and 50 services per namespace, each
 
 ## Adding Cross-Namespace Dependencies
 
-After applying namespace-scoped Sidecars, some services will break because they need to reach services in other namespaces. This is expected. You need to add those cross-namespace dependencies explicitly.
+After applying namespace-scoped Sidecars, services that need to reach services in other namespaces may lose normal service-mesh routing, telemetry, or fail under `REGISTRY_ONLY` outbound policy unless those dependencies are included. You need to add those cross-namespace dependencies explicitly.
 
 Use your observability tools to figure out which services talk to which namespaces. Kiali's service graph is great for this. Or check Istio's telemetry:
 
 ```bash
 # Query Prometheus for cross-namespace traffic
-# Look for source_workload_namespace != destination_workload_namespace
-kubectl exec -n istio-system deploy/prometheus -- curl -s 'localhost:9090/api/v1/query?query=istio_requests_total{source_workload_namespace!%3Ddestination_workload_namespace}' | jq '.data.result[] | {source: .metric.source_workload_namespace, dest: .metric.destination_workload_namespace}' | sort -u
+# PromQL cannot compare label values directly, so filter the grouped result with jq
+kubectl exec -n istio-system deploy/prometheus -- curl -sG 'http://localhost:9090/api/v1/query' --data-urlencode 'query=sum by (source_workload_namespace,destination_workload_namespace) (rate(istio_requests_total[5m]))' | jq -c '.data.result[] | select(.metric.source_workload_namespace != .metric.destination_workload_namespace) | {source: .metric.source_workload_namespace, dest: .metric.destination_workload_namespace}' | sort -u
 ```
 
 Then update the Sidecar resources to include the needed namespaces:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -116,7 +116,7 @@ spec:
 For services that you know have very limited dependencies, create workload-specific Sidecars that are even more restrictive:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: cache-worker-sidecar
@@ -138,7 +138,7 @@ This cache worker only talks to Redis. Its proxy only gets configuration for Red
 The Sidecar resource also lets you explicitly declare inbound ports, which can help the proxy skip ports it doesn't need to configure listeners for:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: api-sidecar
