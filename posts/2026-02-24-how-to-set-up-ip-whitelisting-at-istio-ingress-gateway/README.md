@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Security, IP Whitelisting, AuthorizationPolicy, Ingress Gateway
 
-Description: How to restrict access to your Istio Ingress Gateway by whitelisting specific IP addresses using AuthorizationPolicy and EnvoyFilter approaches.
+Description: How to restrict access to your Istio Ingress Gateway by whitelisting specific IP addresses using AuthorizationPolicy.
 
 ---
 
@@ -124,7 +124,7 @@ spec:
         - "admin.example.com"
 ```
 
-This denies access to `admin.example.com` from any IP not in the whitelist, while leaving other hosts unrestricted.
+For HTTP traffic, this denies access to `admin.example.com` from any IP not in the whitelist, while leaving other hosts unrestricted.
 
 ## Whitelisting with CIDR Ranges
 
@@ -218,10 +218,10 @@ If the whitelist is not working as expected, the most likely cause is incorrect 
 kubectl logs -n istio-system deploy/istio-ingressgateway --tail=20
 ```
 
-2. Check the `X-Forwarded-For` header that reaches the gateway:
+2. Turn on RBAC debug logging while you reproduce a request:
 
 ```bash
-istioctl proxy-config log deploy/istio-ingressgateway -n istio-system --level=debug
+istioctl proxy-config log deploy/istio-ingressgateway -n istio-system --level rbac:debug
 ```
 
 3. Verify `numTrustedProxies` is set correctly:
