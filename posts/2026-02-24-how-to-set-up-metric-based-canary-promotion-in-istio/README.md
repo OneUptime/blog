@@ -41,10 +41,12 @@ spec:
   http:
   - route:
     - destination:
-        host: my-app-primary
+        host: my-app
+        subset: primary
       weight: 90
     - destination:
-        host: my-app-canary
+        host: my-app
+        subset: canary
       weight: 10
 ```
 
