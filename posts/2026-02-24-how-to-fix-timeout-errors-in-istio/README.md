@@ -18,12 +18,12 @@ In an Istio mesh, timeouts exist at several levels:
 
 1. **Application-level timeout**: Your code sets a deadline for the request
 2. **VirtualService route timeout**: Configured per-route in Istio
-3. **Envoy default timeout**: 15 seconds for HTTP routes if not explicitly set
+3. **Istio route timeout default**: Disabled by default in VirtualService; Envoy's native HTTP route default is 15 seconds when no timeout is configured in Envoy
 4. **Connection pool idle timeout**: How long idle connections are kept alive
 5. **TCP connection timeout**: How long to wait for a TCP connection to establish
 6. **Load balancer timeout**: External load balancer or cloud provider timeout
 
-The effective timeout is the minimum of all these values.
+For request-level limits, the effective timeout is usually the most restrictive configured deadline. Connection and idle timeouts apply to different phases of the request lifecycle.
 
 ## Finding the Current Timeout
 
@@ -36,11 +36,11 @@ istioctl proxy-config routes <pod-name> -n production -o json | \
   jq '.[].virtualHosts[].routes[] | {name: .name, timeout: .route.timeout}'
 ```
 
-If you see `"timeout": "0s"`, it means no timeout is set (infinite). If you see `"timeout": "15s"` and you did not set that, it is Istio's default.
+If you see `"timeout": "0s"`, it means the route timeout is disabled. If you see `"timeout": "15s"` and you did not set that in the VirtualService, check for another generated or inherited route configuration; Istio's VirtualService timeout default is disabled.
 
-## The 15-Second Default Timeout
+## Istio's Disabled Timeout and Envoy's 15-Second Default
 
-Istio (through Envoy) applies a default 15-second timeout to HTTP routes. This catches a lot of people by surprise. If your service needs more than 15 seconds to respond (long-running queries, file uploads, etc.), you need to explicitly set a higher timeout.
+Istio sets VirtualService HTTP route timeouts to disabled by default. Envoy itself has a native 15-second HTTP route timeout when a route timeout is not configured, so explicitly setting the timeout in Istio is still the safest way to make the behavior obvious. If your service needs more than 15 seconds to respond (long-running queries, file uploads, etc.), set the timeout you actually want.
 
 ```yaml
 apiVersion: networking.istio.io/v1beta1
@@ -55,7 +55,7 @@ spec:
     - route:
         - destination:
             host: orders-service
-      timeout: 60s  # Override the 15-second default
+      timeout: 60s  # Set an explicit route timeout
 ```
 
 To disable the timeout entirely:
@@ -93,7 +93,7 @@ istioctl proxy-config clusters <pod-name> -n production -o json | \
 
 ## Retry Amplification Causing Timeouts
 
-Istio adds retries by default, which can multiply your effective timeout. If a route has a 10-second timeout and 3 retries with a 5-second per-try timeout, the total wait can be up to 15 seconds (3 x 5s).
+Istio can add retries by default, which can increase the total time spent on a request until the route timeout caps it. If a route has 2 retries with a 5-second per-try timeout, Envoy can make up to 3 total tries (the initial request plus 2 retries), so the total wait can be up to about 15 seconds before backoff and the overall route timeout are considered.
 
 Check retry configuration:
 
@@ -123,7 +123,7 @@ spec:
         retryOn: 5xx,reset,connect-failure
 ```
 
-The overall `timeout` caps the total time including retries. So with a 30s timeout and 10s per-try timeout with 2 attempts, the request can try twice within the 30-second window.
+The overall `timeout` caps the total time including retries. So with a 30s timeout and 10s per-try timeout with 2 retry attempts, the request can make up to 3 tries within the 30-second window.
 
 ## Gateway Timeout Issues
 
@@ -188,7 +188,7 @@ spec:
 gRPC has its own timeout mechanism through deadlines. If your gRPC services are timing out, check both the gRPC deadline and the Istio timeout:
 
 ```yaml
-# Make sure the port is named with grpc- prefix
+# Make sure the port is named grpc or uses a grpc- prefix
 apiVersion: v1
 kind: Service
 metadata:
@@ -221,7 +221,7 @@ spec:
 
 ## Streaming and Long-Lived Connections
 
-For WebSocket connections, server-sent events, or gRPC streaming, standard timeouts do not work the same way. You need to handle stream idle timeouts:
+For WebSocket connections, server-sent events, or gRPC streaming, standard request timeouts do not work the same way. Disable the route timeout for long-lived streams, and handle idle timeouts separately if connections are being closed during inactivity:
 
 ```yaml
 apiVersion: networking.istio.io/v1beta1
@@ -255,7 +255,7 @@ kubectl logs <client-pod> -c istio-proxy -n production | grep "timeout\|408\|504
 Response flags in access logs tell you about timeouts:
 
 - `UT` - Upstream request timeout
-- `DT` - Downstream request timeout
+- `DT` - Duration timeout exceeded
 - `LR` - Local reset (could be a timeout-related reset)
 
 ```bash
