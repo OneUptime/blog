@@ -22,7 +22,7 @@ This means the sidecar's resource consumption directly affects when your applica
 
 First, set explicit resource requests for the Istio sidecar. You can do this globally or per-deployment.
 
-Global configuration in the mesh config:
+Global configuration through IstioOperator values:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -102,7 +102,7 @@ With the sidecar included, the 70% threshold applies to the combined CPU of all 
 
 ## Using Container-Level Metrics
 
-Starting with Kubernetes 1.27, HPA supports container-level metrics through the `ContainerResource` metric type. This lets you target just your application container and ignore the sidecar:
+Kubernetes introduced container-level HPA metrics in 1.20. In Kubernetes 1.27, the `ContainerResource` metric type moved to beta and became enabled by default. This lets you target just your application container and ignore the sidecar:
 
 ```yaml
 apiVersion: autoscaling/v2
@@ -154,13 +154,14 @@ metadata:
 data:
   config.yaml: |
     rules:
-    - seriesQuery: 'istio_requests_total{destination_workload_namespace!="",destination_workload!=""}'
+    - seriesQuery: 'istio_requests_total{destination_workload_namespace!="unknown",destination_workload!="unknown"}'
       resources:
         overrides:
           destination_workload_namespace:
             resource: namespace
           destination_workload:
-            resource: pod
+            group: apps
+            resource: deployment
       name:
         matches: "^(.*)_total$"
         as: "${1}_per_second"
@@ -183,8 +184,12 @@ spec:
   minReplicas: 2
   maxReplicas: 20
   metrics:
-  - type: Pods
-    pods:
+  - type: Object
+    object:
+      describedObject:
+        apiVersion: apps/v1
+        kind: Deployment
+        name: my-app
       metric:
         name: istio_requests_per_second
       target:
