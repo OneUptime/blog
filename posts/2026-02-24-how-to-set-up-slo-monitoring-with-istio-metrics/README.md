@@ -20,26 +20,26 @@ An SLO has three components:
 2. **Target** - The goal (e.g., "99.9%")
 3. **Window** - The time period (e.g., "rolling 30 days")
 
-From these, you derive an **error budget** - the amount of unreliability you can tolerate. If your SLO is 99.9% availability over 30 days, your error budget is 0.1% of total requests, which works out to about 43 minutes of downtime.
+From these, you derive an **error budget** - the amount of unreliability you can tolerate. If your SLO is 99.9% availability over 30 days, your error budget is 0.1% of total requests. If you model availability as time-based downtime, that works out to about 43 minutes over 30 days.
 
 ## Defining SLIs with Istio Metrics
 
-Istio gives you two primary SLIs out of the box:
+Istio gives you metrics to build two common SLIs out of the box:
 
 **Availability SLI** - The ratio of successful (non-5xx) requests to total requests:
 
 ```text
-sum(rate(istio_requests_total{response_code!~"5.."}[5m]))
+sum(rate(istio_requests_total{reporter="destination", response_code!~"5.."}[5m]))
 /
-sum(rate(istio_requests_total[5m]))
+sum(rate(istio_requests_total{reporter="destination"}[5m]))
 ```
 
 **Latency SLI** - The ratio of requests faster than a threshold to total requests:
 
 ```text
-sum(rate(istio_request_duration_milliseconds_bucket{le="500"}[5m]))
+sum(rate(istio_request_duration_milliseconds_bucket{reporter="destination", le="500"}[5m]))
 /
-sum(rate(istio_request_duration_milliseconds_count[5m]))
+sum(rate(istio_request_duration_milliseconds_count{reporter="destination"}[5m]))
 ```
 
 ## Setting Up Prometheus Recording Rules
@@ -59,39 +59,39 @@ spec:
     - name: istio-slo-availability
       interval: 30s
       rules:
-        # Total requests per service (counter)
-        - record: istio_slo:requests_total
+        # Requests observed per service over 1 minute
+        - record: istio_slo:requests_1m
           expr: |
-            sum(increase(istio_requests_total[1m])) by (destination_service)
+            sum(increase(istio_requests_total{reporter="destination"}[1m])) by (destination_service)
 
-        # Failed requests per service (counter)
-        - record: istio_slo:errors_total
+        # Failed requests observed per service over 1 minute
+        - record: istio_slo:errors_1m
           expr: |
-            sum(increase(istio_requests_total{response_code=~"5.."}[1m])) by (destination_service)
+            sum(increase(istio_requests_total{reporter="destination", response_code=~"5.."}[1m])) by (destination_service)
 
         # Availability SLI over various windows
         - record: istio_slo:availability_ratio_1h
           expr: |
             1 - (
-              sum(increase(istio_requests_total{response_code=~"5.."}[1h])) by (destination_service)
+              sum(increase(istio_requests_total{reporter="destination", response_code=~"5.."}[1h])) by (destination_service)
               /
-              sum(increase(istio_requests_total[1h])) by (destination_service)
+              sum(increase(istio_requests_total{reporter="destination"}[1h])) by (destination_service)
             )
 
         - record: istio_slo:availability_ratio_1d
           expr: |
             1 - (
-              sum(increase(istio_requests_total{response_code=~"5.."}[1d])) by (destination_service)
+              sum(increase(istio_requests_total{reporter="destination", response_code=~"5.."}[1d])) by (destination_service)
               /
-              sum(increase(istio_requests_total[1d])) by (destination_service)
+              sum(increase(istio_requests_total{reporter="destination"}[1d])) by (destination_service)
             )
 
         - record: istio_slo:availability_ratio_30d
           expr: |
             1 - (
-              sum(increase(istio_requests_total{response_code=~"5.."}[30d])) by (destination_service)
+              sum(increase(istio_requests_total{reporter="destination", response_code=~"5.."}[30d])) by (destination_service)
               /
-              sum(increase(istio_requests_total[30d])) by (destination_service)
+              sum(increase(istio_requests_total{reporter="destination"}[30d])) by (destination_service)
             )
 
     - name: istio-slo-latency
@@ -100,15 +100,15 @@ spec:
         # Latency SLI: percentage of requests under 500ms
         - record: istio_slo:latency_good_ratio_1h
           expr: |
-            sum(increase(istio_request_duration_milliseconds_bucket{le="500"}[1h])) by (destination_service)
+            sum(increase(istio_request_duration_milliseconds_bucket{reporter="destination", le="500"}[1h])) by (destination_service)
             /
-            sum(increase(istio_request_duration_milliseconds_count[1h])) by (destination_service)
+            sum(increase(istio_request_duration_milliseconds_count{reporter="destination"}[1h])) by (destination_service)
 
         - record: istio_slo:latency_good_ratio_30d
           expr: |
-            sum(increase(istio_request_duration_milliseconds_bucket{le="500"}[30d])) by (destination_service)
+            sum(increase(istio_request_duration_milliseconds_bucket{reporter="destination", le="500"}[30d])) by (destination_service)
             /
-            sum(increase(istio_request_duration_milliseconds_count[30d])) by (destination_service)
+            sum(increase(istio_request_duration_milliseconds_count{reporter="destination"}[30d])) by (destination_service)
 
     - name: istio-slo-error-budget
       interval: 1m
@@ -143,17 +143,17 @@ spec:
           expr: |
             (
               1 - (
-                sum(increase(istio_requests_total{response_code!~"5.."}[1h])) by (destination_service)
+                sum(increase(istio_requests_total{reporter="destination", response_code!~"5.."}[1h])) by (destination_service)
                 /
-                sum(increase(istio_requests_total[1h])) by (destination_service)
+                sum(increase(istio_requests_total{reporter="destination"}[1h])) by (destination_service)
               )
             ) > (14.4 * 0.001)
             and
             (
               1 - (
-                sum(increase(istio_requests_total{response_code!~"5.."}[5m])) by (destination_service)
+                sum(increase(istio_requests_total{reporter="destination", response_code!~"5.."}[5m])) by (destination_service)
                 /
-                sum(increase(istio_requests_total[5m])) by (destination_service)
+                sum(increase(istio_requests_total{reporter="destination"}[5m])) by (destination_service)
               )
             ) > (14.4 * 0.001)
           for: 2m
@@ -168,17 +168,17 @@ spec:
           expr: |
             (
               1 - (
-                sum(increase(istio_requests_total{response_code!~"5.."}[6h])) by (destination_service)
+                sum(increase(istio_requests_total{reporter="destination", response_code!~"5.."}[6h])) by (destination_service)
                 /
-                sum(increase(istio_requests_total[6h])) by (destination_service)
+                sum(increase(istio_requests_total{reporter="destination"}[6h])) by (destination_service)
               )
             ) > (6 * 0.001)
             and
             (
               1 - (
-                sum(increase(istio_requests_total{response_code!~"5.."}[30m])) by (destination_service)
+                sum(increase(istio_requests_total{reporter="destination", response_code!~"5.."}[30m])) by (destination_service)
                 /
-                sum(increase(istio_requests_total[30m])) by (destination_service)
+                sum(increase(istio_requests_total{reporter="destination"}[30m])) by (destination_service)
               )
             ) > (6 * 0.001)
           for: 5m
@@ -193,17 +193,17 @@ spec:
           expr: |
             (
               1 - (
-                sum(increase(istio_requests_total{response_code!~"5.."}[3d])) by (destination_service)
+                sum(increase(istio_requests_total{reporter="destination", response_code!~"5.."}[3d])) by (destination_service)
                 /
-                sum(increase(istio_requests_total[3d])) by (destination_service)
+                sum(increase(istio_requests_total{reporter="destination"}[3d])) by (destination_service)
               )
             ) > (1 * 0.001)
             and
             (
               1 - (
-                sum(increase(istio_requests_total{response_code!~"5.."}[6h])) by (destination_service)
+                sum(increase(istio_requests_total{reporter="destination", response_code!~"5.."}[6h])) by (destination_service)
                 /
-                sum(increase(istio_requests_total[6h])) by (destination_service)
+                sum(increase(istio_requests_total{reporter="destination"}[6h])) by (destination_service)
               )
             ) > (1 * 0.001)
           for: 30m
@@ -214,7 +214,7 @@ spec:
             description: "Service {{ $labels.destination_service }} has been slowly burning through error budget."
 ```
 
-The burn rate multipliers (14.4x, 6x, 1x) come from the Google SRE book's recommended configuration for a 30-day window with a 99.9% SLO.
+The 14.4x and 6x burn rate multipliers come from the Google SRE workbook's recommended page-worthy alert configuration for a 30-day window. The 1x rule is a slower ticket-style alert that catches sustained budget consumption.
 
 ## Grafana Dashboard for SLO Monitoring
 
@@ -291,7 +291,7 @@ Then write recording rules and alerts parameterized for each service's target.
 
 **Use error budgets to make decisions.** The whole point of SLOs is to make reliability a data-driven discussion. When error budget is healthy, ship features. When it is running low, focus on stability work.
 
-**Account for expected errors.** Some 5xx responses are expected (like rate limiting returning 503). You may want to exclude certain response codes from your error budget calculation.
+**Account for expected errors.** Some 5xx responses may be expected in specific environments, such as known dependency-failure responses during maintenance. You may want to exclude certain response codes from your error budget calculation.
 
 **Review SLOs quarterly.** Your SLO targets should not be permanent. Review them regularly and adjust based on actual user expectations and business requirements.
 
