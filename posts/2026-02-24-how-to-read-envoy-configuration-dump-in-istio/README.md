@@ -31,6 +31,8 @@ kubectl exec productpage-v1-6b746f74dc-9rlmh -c istio-proxy -n bookinfo -- \
 
 ### Using the Envoy Admin API Directly
 
+If `curl` is available in the proxy image, you can call the admin port directly:
+
 ```bash
 kubectl exec productpage-v1-6b746f74dc-9rlmh -c istio-proxy -n bookinfo -- \
   curl -s localhost:15000/config_dump > /tmp/config_dump.json
@@ -60,6 +62,7 @@ The main sections are:
 5. **SecretsConfigDump**: TLS certificates
 6. **ScopedRoutesConfigDump**: Scoped route configurations (if used)
 7. **EndpointsConfigDump**: Backend pod addresses
+8. **EcdsConfigDump**: Extension configuration discovery service entries (if configured)
 
 ## Reading the Clusters Section
 
@@ -88,10 +91,10 @@ Each cluster entry contains:
 
 - **name**: The cluster name in the format `outbound|port|subset|hostname`
 - **type**: How endpoints are discovered (EDS, STATIC, STRICT_DNS, ORIGINAL_DST)
-- **connectTimeout**: How long to wait for a connection
-- **circuitBreakers**: Connection pool and circuit breaker settings
-- **transportSocket**: TLS configuration for upstream connections
-- **loadAssignment**: For STATIC clusters, the actual endpoint addresses
+- **connect_timeout**: How long to wait for a connection
+- **circuit_breakers**: Connection pool and circuit breaker settings
+- **transport_socket**: TLS configuration for upstream connections
+- **load_assignment**: For STATIC clusters, the actual endpoint addresses
 
 ### Finding a Specific Cluster
 
@@ -127,8 +130,8 @@ with open('/tmp/config_dump.json') as f:
             for l in dynamic:
                 active = l.get('active_state', {}).get('listener', {})
                 name = active.get('name', 'unknown')
-                addr = active.get('address', {}).get('socketAddress', {})
-                print(f'  {name} - {addr.get(\"address\", \"?\")}:{addr.get(\"portValue\", \"?\")}')
+                addr = active.get('address', {}).get('socket_address', {})
+                print(f'  {name} - {addr.get(\"address\", \"?\")}:{addr.get(\"port_value\", \"?\")}')
 "
 ```
 
@@ -148,11 +151,12 @@ with open('/tmp/config_dump.json') as f:
             for l in config.get('dynamic_listeners', []):
                 active = l.get('active_state', {}).get('listener', {})
                 name = active.get('name', '')
-                if '15006' in name:  # Inbound listener
-                    chains = active.get('filterChains', [])
+                addr = active.get('address', {}).get('socket_address', {})
+                if name == 'virtualInbound' or addr.get('port_value') == 15006:
+                    chains = active.get('filter_chains', [])
                     print(f'Inbound listener has {len(chains)} filter chains')
                     for i, chain in enumerate(chains):
-                        match = chain.get('filterChainMatch', {})
+                        match = chain.get('filter_chain_match', {})
                         print(f'  Chain {i}: match={json.dumps(match)}')
 "
 ```
@@ -226,21 +230,20 @@ with open('/tmp/config_dump.json') as f:
 ```bash
 # List all cluster names
 
-cat /tmp/config_dump.json | python3 -m json.tool | grep '"name":' | head -30
+jq -r '
+  .configs[]
+  | select(.["@type"] | contains("ClustersConfigDump"))
+  | .dynamic_active_clusters[].cluster.name
+' /tmp/config_dump.json | head -30
 
 # Find circuit breaker settings
-cat /tmp/config_dump.json | python3 -c "
-import json, sys
-data = json.load(sys.stdin)
-for config in data.get('configs', []):
-    if 'ClustersConfigDump' in config.get('@type', ''):
-        for c in config.get('dynamic_active_clusters', []):
-            cluster = c.get('cluster', {})
-            cb = cluster.get('circuitBreakers', {})
-            thresholds = cb.get('thresholds', [{}])[0]
-            if thresholds.get('maxConnections', 0) < 4294967295:
-                print(f'{cluster[\"name\"]}: maxConn={thresholds.get(\"maxConnections\")}')
-"
+jq -r '
+  .configs[]
+  | select(.["@type"] | contains("ClustersConfigDump"))
+  | .dynamic_active_clusters[].cluster
+  | select((.circuit_breakers.thresholds[0].max_connections // 4294967295) < 4294967295)
+  | "\(.name): maxConn=\(.circuit_breakers.thresholds[0].max_connections)"
+' /tmp/config_dump.json
 ```
 
 ### Compare Config Dumps Between Pods
