@@ -14,7 +14,7 @@ Best practices guides are only useful when they are specific and actionable. Gen
 
 ### Always Name Your Ports
 
-Istio uses port names to determine the protocol. If ports are not named, Istio treats all traffic as plain TCP, which means you lose HTTP-level metrics, routing, and policy enforcement.
+Istio uses port names, or the Kubernetes `appProtocol` field, to determine the protocol. Istio can automatically detect HTTP and HTTP/2 traffic, but if the protocol cannot be detected, traffic is treated as plain TCP, which means you lose HTTP-level metrics, routing, and policy enforcement.
 
 Bad:
 
@@ -46,11 +46,11 @@ spec:
     targetPort: 50051
 ```
 
-Valid prefixes: `http`, `http2`, `grpc`, `tcp`, `tls`, `https`, `mongo`, `mysql`, `redis`.
+Valid prefixes: `http`, `http2`, `grpc`, `grpc-web`, `tcp`, `tls`, `https`, `mongo`, `mysql`, `redis`.
 
 ### Use app and version Labels
 
-Istio uses `app` and `version` labels for traffic management and telemetry. Every deployment should have both:
+Istio and mesh observability tools commonly use `app` and `version` labels for traffic management and telemetry. Every deployment should have both:
 
 ```yaml
 apiVersion: apps/v1
@@ -73,7 +73,7 @@ spec:
         image: registry/checkout:1.0
 ```
 
-Without the `version` label, you cannot do traffic splitting between versions, and Kiali will not show version-specific graphs.
+Without the `version` label, or another consistent subset label, you cannot do traffic splitting between versions, and Kiali will not show version-specific graphs.
 
 ### Configure Health Checks Properly
 
@@ -127,7 +127,7 @@ metadata:
 Never deploy a VirtualService without an explicit timeout. Without one, requests can hang indefinitely:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service
@@ -157,7 +157,7 @@ http:
   retries:
     attempts: 3
     perTryTimeout: 3s
-    retryOn: connect-failure,refused-stream,unavailable,retriable-status-codes
+    retryOn: connect-failure,refused-stream,503
     retryRemoteLocalities: true
   route:
   - destination:
@@ -171,18 +171,38 @@ Never retry non-idempotent operations (POST requests that create records, for ex
 Instead of deploying a new version and hoping for the best, use traffic splitting:
 
 ```yaml
-apiVersion: platform.company.com/v1
-kind: TrafficRoute
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
 metadata:
   name: my-service
 spec:
-  service: my-service
-  routes:
-  - version: v1
-    weight: 95
-  - version: v2
-    weight: 5
-  timeout: 10s
+  host: my-service
+  subsets:
+  - name: v1
+    labels:
+      version: v1
+  - name: v2
+    labels:
+      version: v2
+---
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: my-service
+spec:
+  hosts:
+  - my-service
+  http:
+  - timeout: 10s
+    route:
+    - destination:
+        host: my-service
+        subset: v1
+      weight: 95
+    - destination:
+        host: my-service
+        subset: v2
+      weight: 5
 ```
 
 Start at 5%, monitor for 30 minutes, then increase to 25%, 50%, and finally 100%. This gives you time to spot problems before they affect all users.
@@ -194,18 +214,28 @@ Start at 5%, monitor for 30 minutes, then increase to 25%, 50%, and finally 100%
 Only allow the specific services that need to call your service:
 
 ```yaml
-apiVersion: platform.company.com/v1
-kind: ServiceAccess
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
 metadata:
   name: my-service-access
 spec:
-  allowFrom:
-  - service: frontend
-    namespace: team-frontend
-    paths: ["/api/v1/public/*"]
-  - service: admin-dashboard
-    namespace: team-admin
-    paths: ["/api/v1/admin/*"]
+  selector:
+    matchLabels:
+      app: my-service
+  action: ALLOW
+  rules:
+  - from:
+    - source:
+        principals: ["cluster.local/ns/team-frontend/sa/frontend"]
+    to:
+    - operation:
+        paths: ["/api/v1/public/*"]
+  - from:
+    - source:
+        principals: ["cluster.local/ns/team-admin/sa/admin-dashboard"]
+    to:
+    - operation:
+        paths: ["/api/v1/admin/*"]
 ```
 
 Do not open your service to an entire namespace unless every service in that namespace genuinely needs access. And never use wildcard namespaces.
@@ -226,10 +256,10 @@ istioctl x describe pod <your-pod>
 
 ### Secure External Communication
 
-When calling external services, use ServiceEntry with TLS origination:
+When calling external HTTPS services, use a ServiceEntry so the service is registered in the mesh:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-api
@@ -258,6 +288,7 @@ For distributed tracing to work across services, your application needs to propa
 - `x-b3-parentspanid`
 - `x-b3-sampled`
 - `x-b3-flags`
+- `b3`
 - `traceparent`
 - `tracestate`
 
@@ -268,7 +299,8 @@ func handler(w http.ResponseWriter, r *http.Request) {
     // Extract trace headers from incoming request
     headers := []string{
         "x-request-id", "x-b3-traceid", "x-b3-spanid",
-        "x-b3-parentspanid", "x-b3-sampled", "traceparent", "tracestate",
+        "x-b3-parentspanid", "x-b3-sampled", "x-b3-flags",
+        "b3", "traceparent", "tracestate",
     }
 
     // Create outgoing request
@@ -295,11 +327,11 @@ Include the `x-request-id` in your application logs so you can correlate applica
 
 ```python
 import logging
+from flask import has_request_context, request
 
 class RequestIDFilter(logging.Filter):
     def filter(self, record):
-        from flask import request
-        record.request_id = request.headers.get('x-request-id', 'unknown')
+        record.request_id = request.headers.get('x-request-id', 'unknown') if has_request_context() else 'unknown'
         return True
 
 logging.basicConfig(format='%(asctime)s request_id=%(request_id)s %(message)s')
@@ -323,7 +355,7 @@ Before investigating an issue:
 Every service should have circuit breaking to prevent cascade failures:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service
