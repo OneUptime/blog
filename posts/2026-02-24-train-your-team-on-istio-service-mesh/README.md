@@ -28,7 +28,7 @@ Create three groups:
 
 ### Week 1-2: Foundations
 
-Start with Kubernetes networking fundamentals. You cannot understand Istio without understanding Services, Endpoints, kube-proxy, and DNS resolution in Kubernetes.
+Start with Kubernetes networking fundamentals. You cannot understand Istio without understanding Services, EndpointSlices, kube-proxy, and DNS resolution in Kubernetes.
 
 **Required reading:**
 - Kubernetes Services documentation
@@ -44,7 +44,7 @@ kind create cluster --name istio-training
 
 # Deploy a sample application without Istio
 kubectl create namespace training
-kubectl apply -n training -f https://raw.githubusercontent.com/istio/istio/release-1.24/samples/bookinfo/platform/kube/bookinfo.yaml
+kubectl apply -n training -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/bookinfo/platform/kube/bookinfo.yaml
 
 # Explore the app
 kubectl get pods -n training
@@ -207,7 +207,7 @@ This is the most important part of the training and the one most teams skip. Peo
 
 Set up intentionally broken configurations and have team members diagnose them:
 
-**Scenario 1: Pod stuck in init container**
+**Scenario 1: Pod stuck pulling the sidecar image**
 
 Deploy a pod with sidecar injection but a misconfigured annotation:
 
@@ -221,7 +221,7 @@ Team members need to find the issue using:
 
 ```bash
 kubectl describe pod <pod-name> -n training
-kubectl logs <pod-name> -n training -c istio-init
+kubectl get pod <pod-name> -n training -o jsonpath='{.status.containerStatuses[?(@.name=="istio-proxy")].state.waiting.reason}{"\n"}'
 ```
 
 **Scenario 2: Service unreachable after mTLS**
@@ -230,7 +230,7 @@ Enable strict mTLS but deploy a pod without a sidecar. The team needs to figure 
 
 ```bash
 istioctl analyze -n training
-kubectl logs <pod-name> -n training -c istio-proxy
+kubectl get pod <pod-name> -n training -o jsonpath='{.spec.containers[*].name}{"\n"}'
 ```
 
 **Scenario 3: Routing not working**
@@ -250,7 +250,7 @@ As the team works through these scenarios, document the steps in a shared runboo
 2. Check sidecar logs: `kubectl logs <pod> -c istio-proxy`
 3. Run analyze: `istioctl analyze -n <namespace>`
 4. Check proxy config: `istioctl proxy-config`
-5. Check mTLS status: `istioctl authn tls-check`
+5. Check mTLS certificates: `istioctl proxy-config secret <pod-name> -n <namespace>`
 
 ## Training Format Tips
 
