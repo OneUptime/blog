@@ -8,7 +8,7 @@ Description: How to configure Kubernetes ResourceQuotas and LimitRanges correctl
 
 ---
 
-Kubernetes ResourceQuotas and LimitRanges help you control resource consumption per namespace. But when Istio injects a sidecar into every pod, each pod suddenly uses more CPU, memory, and counts as having additional containers. If your quotas do not account for this extra overhead, pods will fail to schedule because they exceed the namespace limits.
+Kubernetes ResourceQuotas and LimitRanges help you control resource consumption per namespace. But when Istio injects a sidecar into every pod, each pod suddenly uses more CPU, memory, and counts as having additional containers. If your quotas do not account for this extra overhead, pods will fail to be created because they exceed the namespace limits.
 
 This guide shows how to properly size your quotas and limits when running Istio.
 
@@ -33,7 +33,7 @@ kubectl get configmap istio-sidecar-injector -n istio-system -o yaml | \
 
 ## How Quotas Are Calculated
 
-ResourceQuotas sum up resource requests and limits across all pods in a namespace. With Istio, each pod's total is:
+ResourceQuotas sum up resource requests and limits across all non-terminal pods in a namespace. With Istio, each pod's total is:
 
 ```text
 Pod CPU request = App CPU request + Sidecar CPU request
@@ -162,7 +162,7 @@ Be careful with setting requests too low. If the sidecar does not have enough CP
 
 ## Handling Quota Exceeded Errors
 
-When a pod fails to schedule due to quota limits, you will see an error like:
+When a pod fails to be created due to quota limits, you will see an error like:
 
 ```text
 Error creating: pods "my-app-xyz" is forbidden: exceeded quota: production-quota,
@@ -207,8 +207,8 @@ groups:
   - alert: NamespaceQuotaNearLimit
     expr: |
       kube_resourcequota{type="used"}
-      /
-      kube_resourcequota{type="hard"}
+      / ignoring(type)
+      (kube_resourcequota{type="hard"} > 0)
       > 0.85
     for: 5m
     labels:
