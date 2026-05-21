@@ -14,12 +14,13 @@ Istio's security model depends on certificates. Every workload in the mesh gets 
 
 When a workload pod starts up, here is what happens:
 
-1. The Envoy sidecar starts and generates a private key
-2. It sends a Certificate Signing Request (CSR) to istiod
+1. The Istio agent starts and generates a private key
+2. It sends a Certificate Signing Request (CSR), along with the workload credentials, to istiod
 3. istiod validates the request against the Kubernetes service account
 4. istiod signs the certificate using its CA private key
-5. The signed certificate is returned to the sidecar
-6. The sidecar uses this certificate for all mTLS connections
+5. The signed certificate is returned to the Istio agent
+6. Envoy requests the certificate and key from the Istio agent through Secret Discovery Service (SDS)
+7. The sidecar uses this certificate for mTLS connections
 
 By default, workload certificates have a 24-hour lifetime and are automatically rotated before expiry. The CA certificate (root or intermediate) has a much longer lifetime, typically 10 years for the root.
 
@@ -83,13 +84,13 @@ Kubernetes secrets are stored in etcd. You need to account for this when plannin
 ```text
 CA secrets: 1 x 12 KB = 12 KB
 Gateway TLS secrets: N_gateways x N_domains x 10 KB
-ConfigMap for CA root distribution: 1 x 2 KB = 2 KB
+CA root ConfigMaps: N_namespaces x 2 KB
 ```
 
-For a deployment with 1 CA, 3 ingress gateways serving 20 domains:
+For a deployment with 1 CA, 3 ingress gateways serving 20 domains across 10 mesh namespaces:
 
 ```text
-Certificate storage in etcd: 12 KB + (20 x 10 KB) + 2 KB = 214 KB
+Certificate storage in etcd: 12 KB + (20 x 10 KB) + (10 x 2 KB) = 232 KB
 ```
 
 This is negligible in terms of etcd storage, but the number of secret watch events matters for etcd performance.
@@ -117,7 +118,7 @@ Rotations per day (24h cert lifetime): 1 per workload per day
 But rotations are not evenly distributed. They happen when:
 - Cert reaches 80% of its lifetime (default)
 - Pods restart
-- istiod restarts (triggers re-issuance)
+- Workloads reconnect to the CA after control plane or network interruptions
 ```
 
 ## Planning for Custom CA Integration
@@ -135,7 +136,7 @@ metadata:
 spec:
   isCA: true
   duration: 720h
-  secretName: cacerts
+  secretName: istio-ca-tls
   commonName: istio-ca
   issuerRef:
     name: root-issuer
@@ -146,7 +147,7 @@ spec:
     size: 256
 ```
 
-With cert-manager, additional secrets are created for the issuer chain. Plan for:
+This creates a cert-manager TLS secret, not the `cacerts` secret format that Istio's plug-in CA expects. Either use Istio's Kubernetes CSR integration with cert-manager, or sync the issued certificate into a `cacerts` secret containing `ca-cert.pem`, `ca-key.pem`, `root-cert.pem`, and `cert-chain.pem`. With cert-manager, additional secrets are created for the issuer chain. Plan for:
 
 ```text
 cert-manager secrets: 3-5 additional secrets x 10 KB = 30-50 KB
@@ -217,8 +218,8 @@ min(envoy_server_days_until_first_cert_expiring) < 1
 # Check certificate details for a specific workload
 istioctl proxy-config secret <pod-name> -n <namespace>
 
-# Verify the entire mesh certificate status
-istioctl proxy-config secret --all
+# Compare ROOTCA values between two workloads
+istioctl proxy-config rootca-compare <pod-name-1>.<namespace-1> <pod-name-2>.<namespace-2>
 ```
 
 ## Backup and Recovery Planning
@@ -229,8 +230,8 @@ Certificate backup is critical for disaster recovery:
 # Backup the CA secret
 kubectl get secret cacerts -n istio-system -o yaml > istio-ca-backup.yaml
 
-# Backup all gateway TLS secrets
-kubectl get secrets -n istio-system -l istio-type=tls -o yaml > gateway-certs-backup.yaml
+# Backup gateway TLS secrets that you have labeled for backup
+kubectl get secrets -n istio-system -l certificate-backup=gateway-tls -o yaml > gateway-certs-backup.yaml
 ```
 
 Store backups encrypted and in a separate location from your cluster. If you lose the CA key without a backup, every workload certificate in the mesh becomes invalid and you will need to re-bootstrap the entire certificate chain.
@@ -244,6 +245,6 @@ Store backups encrypted and in a separate location from your cluster. If you los
 | Gateway TLS certs | etcd (K8s secret) | 10 KB per domain | Per ingress domain |
 | Workload certs | Sidecar memory | 10 KB per pod | Not persistent |
 | cert-manager objects | etcd (CRDs) | 50 KB | If using cert-manager |
-| CA bundle ConfigMap | etcd (ConfigMap) | 2 KB | Distributed to all namespaces |
+| CA bundle ConfigMaps | etcd (ConfigMap) | 2 KB per namespace | Distributed to mesh namespaces |
 
 The total persistent storage for certificates is typically under 1 MB even for large deployments. The real planning concern is not storage space but operational processes: rotation schedules, backup procedures, monitoring, and disaster recovery for the CA infrastructure.
