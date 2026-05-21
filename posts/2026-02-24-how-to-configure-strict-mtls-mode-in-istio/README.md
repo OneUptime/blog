@@ -126,7 +126,7 @@ kubectl get pods -n production -o json | \
   jq '.items[].spec.containers[].livenessProbe'
 ```
 
-If you see TCP probes or exec probes, those go directly to the container and are not affected by mTLS. HTTP probes are rewritten by Istio automatically.
+If you see HTTP, TCP, or gRPC probes, verify that Istio's probe rewrite is enabled so the kubelet checks the sidecar agent instead of hitting the application port directly. Exec probes run inside the container and do not need mTLS.
 
 ### 4. Check Current mTLS Status
 
@@ -146,9 +146,12 @@ Sometimes you need to allow plain text connections for specific ports or service
 apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
-  name: default
+  name: payment-service-exceptions
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: payment-service
   mtls:
     mode: STRICT
   portLevelMtls:
@@ -158,7 +161,7 @@ spec:
       mode: DISABLE
 ```
 
-This sets the default to STRICT but allows port 8080 to accept both mTLS and plain text, and completely disables mTLS on port 9090.
+This sets the default to STRICT for pods with the label `app: payment-service`, but allows workload port 8080 to accept both mTLS and plain text, and completely disables mTLS on workload port 9090. Port-level mTLS settings apply to workload ports and require a workload selector.
 
 This is useful for:
 - Prometheus scraping on a metrics port (9090)
@@ -175,7 +178,7 @@ After switching to strict mode, watch for connection failures:
 kubectl logs -l app=my-service -c istio-proxy --tail=200 | grep "connection_termination"
 
 # Check Envoy stats for TLS errors
-kubectl exec deploy/my-service -c istio-proxy -- pilot-agent request GET /stats | grep ssl.connection_error
+kubectl exec deploy/my-service -c istio-proxy -- pilot-agent request GET stats | grep ssl.connection_error
 ```
 
 Also monitor your application error rates. A spike in 503 errors right after enabling strict mode usually means something is trying to connect without mTLS.
