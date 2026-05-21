@@ -166,10 +166,12 @@ spec:
     default: "0.99"
   steps:
   - name: check-metrics
-    image: curlimages/curl:latest
+    image: alpine:3.20
     script: |
       #!/bin/sh
       set -e
+
+      apk add --no-cache curl jq bc >/dev/null
 
       PROM_URL="http://prometheus.monitoring.svc.cluster.local:9090"
 
@@ -177,9 +179,9 @@ spec:
       sleep 60
 
       # Query success rate
-      QUERY="sum(rate(istio_requests_total{destination_service_name=\"$(params.service-name)\",response_code!~\"5.*\",namespace=\"$(params.namespace)\"}[2m]))/sum(rate(istio_requests_total{destination_service_name=\"$(params.service-name)\",namespace=\"$(params.namespace)\"}[2m]))"
+      QUERY="sum(rate(istio_requests_total{destination_service_name=\"$(params.service-name)\",response_code!~\"5.*\",destination_service_namespace=\"$(params.namespace)\"}[2m]))/sum(rate(istio_requests_total{destination_service_name=\"$(params.service-name)\",destination_service_namespace=\"$(params.namespace)\"}[2m]))"
 
-      RESULT=$(curl -s "${PROM_URL}/api/v1/query?query=${QUERY}" | grep -o '"value":\[.*\]' | grep -o '[0-9.]*"' | head -1 | tr -d '"')
+      RESULT=$(curl -sG --data-urlencode "query=${QUERY}" "${PROM_URL}/api/v1/query" | jq -r '.data.result[0].value[1] // "0"')
 
       echo "Success rate: ${RESULT}"
       echo "Threshold: $(params.threshold)"
@@ -322,7 +324,8 @@ metadata:
 spec:
   pipelineRef:
     name: istio-canary-deploy
-  serviceAccountName: tekton-deployer
+  taskRunTemplate:
+    serviceAccountName: tekton-deployer
   params:
   - name: image
     value: my-registry/my-app:v2
@@ -353,13 +356,11 @@ One thing to watch out for: Tekton task pods run in your cluster and might get I
 To avoid this, either exclude Tekton task pods from injection:
 
 ```yaml
-spec:
-  template:
-    metadata:
-      annotations:
-        sidecar.istio.io/inject: "false"
+metadata:
+  labels:
+    sidecar.istio.io/inject: "false"
 ```
 
-Or if using ambient mode, Tekton pods will work fine since there's no sidecar to manage.
+Or if using ambient mode, Tekton pods do not need sidecar injection, but make sure any L7 routing or telemetry checks you depend on are configured through waypoint proxies.
 
 The Tekton plus Istio combination gives you a fully Kubernetes-native deployment pipeline with traffic management. Everything is declarative, version-controlled, and runs entirely within your cluster without needing external CI/CD infrastructure.
