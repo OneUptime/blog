@@ -45,7 +45,7 @@ Valid port names for gRPC:
 - `grpc-web` - gRPC-Web protocol
 - `grpc-myservice` - gRPC with a custom suffix
 
-If the port is not named correctly, Istio treats the traffic as TCP and you lose gRPC-specific features like retries and load balancing per request.
+If the port is not named correctly and Istio cannot infer the protocol, Istio treats the traffic as TCP. At gateways, Istio also needs explicit protocol selection on the backend Service port to forward requests upstream as HTTP/2 instead of HTTP/1.1. Without that, you lose gRPC-specific features like retries and load balancing per request.
 
 ## gRPC Gateway with TLS (Recommended)
 
@@ -258,7 +258,37 @@ grpcurl -plaintext -d '{"name": "World"}' \
 
 ## gRPC-Web Support
 
-For browser clients that cannot use native gRPC (because browsers do not support HTTP/2 trailers), you can use gRPC-Web. Envoy has a built-in gRPC-Web filter, and Istio enables it by default:
+For browser clients that cannot use native gRPC (because browsers do not expose the HTTP/2 control that native gRPC needs), you can use gRPC-Web. Envoy has a built-in gRPC-Web filter, and in Istio you can add it to the ingress gateway with an EnvoyFilter:
+
+```yaml
+apiVersion: networking.istio.io/v1alpha3
+kind: EnvoyFilter
+metadata:
+  name: grpc-web-filter
+  namespace: istio-system
+spec:
+  workloadSelector:
+    labels:
+      istio: ingressgateway
+  configPatches:
+  - applyTo: HTTP_FILTER
+    match:
+      context: GATEWAY
+      listener:
+        filterChain:
+          filter:
+            name: envoy.filters.network.http_connection_manager
+            subFilter:
+              name: envoy.filters.http.router
+    patch:
+      operation: INSERT_BEFORE
+      value:
+        name: envoy.filters.http.grpc_web
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.filters.http.grpc_web.v3.GrpcWeb
+```
+
+Then route the gRPC-Web requests with a VirtualService:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -282,8 +312,13 @@ spec:
       - POST
       allowHeaders:
       - content-type
+      - grpc-timeout
       - x-grpc-web
       - x-user-agent
+      exposeHeaders:
+      - grpc-status
+      - grpc-message
+      - grpc-status-details-bin
       maxAge: "24h"
     route:
     - destination:
