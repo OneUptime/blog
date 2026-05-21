@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Helm, Kubernetes, Service Mesh, DevOps, Configuration
 
-Description: A practical guide to advanced Helm chart customization techniques for Istio, covering values overrides, subchart configuration, and post-render hooks.
+Description: A practical guide to advanced Helm chart customization techniques for Istio, covering values overrides, component chart configuration, and post-render hooks.
 
 ---
 
@@ -39,13 +39,13 @@ helm search repo istio/ --versions
 
 ## Understanding the Istio Helm Chart Structure
 
-Istio ships as three separate Helm charts:
+For the sidecar-based install path used in this guide, you normally work with three Istio Helm charts:
 
 1. **istio/base** - CRDs and cluster-wide resources
 2. **istio/istiod** - The control plane (Pilot, CA, etc.)
 3. **istio/gateway** - Ingress and egress gateways
 
-This separation is intentional. It lets you upgrade components independently and apply different configurations to each.
+This separation is intentional. Install `istio/base` before `istio/istiod`, and then add gateway releases as needed so you can upgrade components independently and apply different configurations to each.
 
 ## Custom Values Files
 
@@ -54,21 +54,20 @@ The real power of Helm comes from custom values files. Create a structured value
 ```yaml
 # values-istiod.yaml
 
-pilot:
-  autoscaleEnabled: true
-  autoscaleMin: 2
-  autoscaleMax: 5
-  resources:
-    requests:
-      cpu: 500m
-      memory: 2Gi
-    limits:
-      cpu: "2"
-      memory: 4Gi
-  env:
-    PILOT_TRACE_SAMPLING: "1.0"
-    PILOT_ENABLE_PROTOCOL_SNIFFING_FOR_INBOUND: "true"
-    PILOT_ENABLE_PROTOCOL_SNIFFING_FOR_OUTBOUND: "true"
+autoscaleEnabled: true
+autoscaleMin: 2
+autoscaleMax: 5
+traceSampling: 1.0
+resources:
+  requests:
+    cpu: 500m
+    memory: 2Gi
+  limits:
+    cpu: "2"
+    memory: 4Gi
+env:
+  PILOT_ENABLE_PROTOCOL_SNIFFING_FOR_INBOUND: "true"
+  PILOT_ENABLE_PROTOCOL_SNIFFING_FOR_OUTBOUND: "true"
 
 meshConfig:
   accessLogFile: /dev/stdout
@@ -106,6 +105,12 @@ global:
 Install with your custom values:
 
 ```bash
+helm upgrade --install istio-base istio/base \
+  -n istio-system \
+  --create-namespace \
+  --set defaultRevision=default \
+  --version 1.24.0
+
 helm install istiod istio/istiod \
   -n istio-system \
   -f values-istiod.yaml \
@@ -142,14 +147,13 @@ global:
 
 ```yaml
 # values-production.yaml
-pilot:
-  autoscaleEnabled: true
-  autoscaleMin: 3
-  autoscaleMax: 10
-  resources:
-    requests:
-      cpu: "1"
-      memory: 4Gi
+autoscaleEnabled: true
+autoscaleMin: 3
+autoscaleMax: 10
+resources:
+  requests:
+    cpu: "1"
+    memory: 4Gi
 
 meshConfig:
   defaultConfig:
@@ -214,6 +218,9 @@ resources:
     cpu: "2"
     memory: 1Gi
 
+labels:
+  istio: ingressgateway
+
 topologySpreadConstraints:
   - maxSkew: 1
     topologyKey: topology.kubernetes.io/zone
@@ -226,6 +233,7 @@ topologySpreadConstraints:
 ```bash
 helm install istio-ingress istio/gateway \
   -n istio-ingress \
+  --create-namespace \
   -f values-gateway-public.yaml \
   --version 1.24.0
 ```
@@ -239,7 +247,15 @@ Post-renderers let you modify the rendered manifests before they get applied. Th
 # post-render.sh
 # Adds a custom label to all resources
 
-cat <&0 | kubectl kustomize -
+set -euo pipefail
+
+tmpdir=$(mktemp -d)
+trap 'rm -rf "$tmpdir"' EXIT
+
+cat > "$tmpdir/all.yaml"
+cp kustomization.yaml "$tmpdir/kustomization.yaml"
+
+kubectl kustomize "$tmpdir"
 ```
 
 Create a kustomization file:
@@ -250,10 +266,12 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - all.yaml
-commonLabels:
-  company.io/managed-by: platform-team
-commonAnnotations:
-  company.io/cost-center: "infrastructure"
+labels:
+  - pairs:
+      company.io/managed-by: platform-team
+annotations:
+  - pairs:
+      company.io/cost-center: "infrastructure"
 ```
 
 Run Helm with the post-renderer:
@@ -273,11 +291,11 @@ Sometimes you need to override something that is not exposed through the values 
 helm upgrade --install istiod istio/istiod \
   -n istio-system \
   -f values-istiod.yaml \
-  --set pilot.nodeSelector."kubernetes\.io/os"=linux \
-  --set pilot.tolerations[0].key=dedicated \
-  --set pilot.tolerations[0].operator=Equal \
-  --set pilot.tolerations[0].value=istio \
-  --set pilot.tolerations[0].effect=NoSchedule
+  --set nodeSelector."kubernetes\.io/os"=linux \
+  --set tolerations[0].key=dedicated \
+  --set tolerations[0].operator=Equal \
+  --set tolerations[0].value=istio \
+  --set tolerations[0].effect=NoSchedule
 ```
 
 Though honestly, putting these in the values file is cleaner for anything beyond a quick test.
@@ -288,9 +306,8 @@ For production stability, pin your image tags explicitly:
 
 ```yaml
 # values-pinned.yaml
-pilot:
-  image: pilot
-  tag: 1.24.0
+image: pilot
+tag: 1.24.0
 
 global:
   hub: docker.io/istio
@@ -313,14 +330,17 @@ metadata:
   namespace: argocd
 spec:
   project: infrastructure
-  source:
-    repoURL: https://istio-release.storage.googleapis.com/charts
-    chart: istiod
-    targetRevision: 1.24.0
-    helm:
-      valueFiles:
-        - $values/istio/values-base.yaml
-        - $values/istio/values-production.yaml
+  sources:
+    - repoURL: https://istio-release.storage.googleapis.com/charts
+      chart: istiod
+      targetRevision: 1.24.0
+      helm:
+        valueFiles:
+          - $values/istio/values-base.yaml
+          - $values/istio/values-production.yaml
+    - repoURL: https://git.example.com/platform/cluster-config.git
+      targetRevision: main
+      ref: values
   destination:
     server: https://kubernetes.default.svc
     namespace: istio-system
