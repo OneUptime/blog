@@ -35,21 +35,21 @@ kubectl logs -n istio-system deploy/istiod --tail=50
 
 Look for any ERROR or WARN messages. Some warnings during startup are normal (like waiting for secrets), but persistent errors indicate a problem.
 
-## Using istioctl verify-install
+## Using istioctl install --verify
 
-Istio provides a built-in verification command:
-
-```bash
-istioctl verify-install
-```
-
-This checks that all expected resources are present and configured correctly. If you installed with a specific profile or IstioOperator manifest:
+If you are installing or upgrading with `istioctl`, add the built-in verification flag:
 
 ```bash
-istioctl verify-install -f your-istio-config.yaml
+istioctl install --verify
 ```
 
-The output will list each resource and whether it matches the expected state.
+This checks that the Istio control plane is ready after the install or in-place upgrade. If you installed with a specific profile or IstioOperator manifest:
+
+```bash
+istioctl install -f your-istio-config.yaml --verify
+```
+
+The output will report whether the installation completed successfully.
 
 ## Running istioctl analyze
 
@@ -83,7 +83,7 @@ Verify the mutating webhook is registered:
 kubectl get mutatingwebhookconfiguration | grep istio
 ```
 
-You should see `istio-sidecar-injector` (or a revision-specific name like `istio-sidecar-injector-1-24`).
+You should see `istio-sidecar-injector` (or a revision-specific name like `istio-sidecar-injector-<revision>`).
 
 Test injection by creating a test namespace and deploying a pod:
 
@@ -115,12 +115,6 @@ Check the mesh-wide mTLS policy:
 kubectl get peerauthentication -A
 ```
 
-Verify that traffic between services is encrypted:
-
-```bash
-istioctl proxy-config secret deploy/istiod -n istio-system
-```
-
 Deploy two test pods and verify mTLS is active:
 
 ```bash
@@ -128,10 +122,10 @@ kubectl create namespace mtls-test
 kubectl label namespace mtls-test istio-injection=enabled
 
 # Deploy httpbin
-kubectl apply -n mtls-test -f https://raw.githubusercontent.com/istio/istio/release-1.24/samples/httpbin/httpbin.yaml
+kubectl apply -n mtls-test -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/httpbin/httpbin.yaml
 
 # Deploy sleep
-kubectl apply -n mtls-test -f https://raw.githubusercontent.com/istio/istio/release-1.24/samples/sleep/sleep.yaml
+kubectl apply -n mtls-test -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/sleep/sleep.yaml
 ```
 
 Wait for pods to be ready, then check the connection:
@@ -144,11 +138,11 @@ kubectl exec -n mtls-test deploy/sleep -c sleep -- \
 Check if the connection used mTLS:
 
 ```bash
-kubectl exec -n mtls-test deploy/sleep -c istio-proxy -- \
-  curl -s localhost:15000/stats | grep ssl.handshake
+kubectl exec -n mtls-test deploy/sleep -c sleep -- \
+  curl -s http://httpbin.mtls-test:8000/headers | grep X-Forwarded-Client-Cert
 ```
 
-If `ssl.handshake` counter is greater than 0, mTLS is working.
+If the `X-Forwarded-Client-Cert` header is present, the request used Istio mutual TLS.
 
 ## Checking Proxy Status
 
@@ -207,13 +201,14 @@ The gateway should have an external IP or hostname:
 kubectl get svc -n istio-ingress -o jsonpath='{.items[0].status.loadBalancer.ingress[0]}'
 ```
 
-Test the gateway responds:
+Test the gateway responds, replacing the service name if your gateway was installed with a different name:
 
 ```bash
-GATEWAY_IP=$(kubectl get svc -n istio-ingress istio-ingress \
-  -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+GATEWAY_SERVICE=istio-ingressgateway
+GATEWAY_HOST=$(kubectl get svc -n istio-ingress "${GATEWAY_SERVICE}" \
+  -o jsonpath='{.status.loadBalancer.ingress[0].ip}{.status.loadBalancer.ingress[0].hostname}')
 
-curl -v http://${GATEWAY_IP}:80/
+curl -v http://${GATEWAY_HOST}:80/
 ```
 
 You should get a connection response (likely a 404 if no routes are configured, which is fine - it means the gateway is alive).
@@ -224,16 +219,16 @@ Check the Envoy configuration for a specific proxy:
 
 ```bash
 # List listeners
-istioctl proxy-config listener deploy/httpbin -n mtls-test
+istioctl proxy-config listener deployment/httpbin -n mtls-test
 
 # List routes
-istioctl proxy-config routes deploy/httpbin -n mtls-test
+istioctl proxy-config routes deployment/httpbin -n mtls-test
 
 # List clusters (upstream services)
-istioctl proxy-config cluster deploy/httpbin -n mtls-test
+istioctl proxy-config cluster deployment/httpbin -n mtls-test
 
 # List endpoints
-istioctl proxy-config endpoint deploy/httpbin -n mtls-test
+istioctl proxy-config endpoint deployment/httpbin -n mtls-test
 ```
 
 Each command should return reasonable output. Empty results might indicate istiod is not pushing configuration properly.
