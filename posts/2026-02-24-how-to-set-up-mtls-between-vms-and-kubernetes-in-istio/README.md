@@ -43,17 +43,17 @@ After the initial certificate is issued, the pilot agent automatically handles r
 sudo /usr/local/bin/pilot-agent request GET /certs
 ```
 
-Or check the certificate details:
+You can also inspect active certificates from Envoy admin:
 
 ```bash
 # On the VM
-openssl s_client -connect localhost:15000 2>/dev/null </dev/null | openssl x509 -text -noout
+curl -s localhost:15000/certs
 ```
 
-You can also check from the Kubernetes side:
+For a VM proxy, pass Envoy's config dump to `istioctl`:
 
 ```bash
-istioctl proxy-config secret <vm-workload-name> -n vm-apps
+curl -s localhost:15000/config_dump | istioctl proxy-config secret --file -
 ```
 
 ## Configuring PeerAuthentication for VMs
@@ -61,7 +61,7 @@ istioctl proxy-config secret <vm-workload-name> -n vm-apps
 PeerAuthentication policies apply equally to VMs and Kubernetes workloads. To enforce strict mTLS for your VM namespace:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: strict-mtls
@@ -78,7 +78,7 @@ This ensures that all traffic to workloads in the `vm-apps` namespace (both VM a
 When first onboarding VMs, you might want permissive mode to avoid breaking existing non-mesh traffic:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: permissive-mtls
@@ -92,10 +92,10 @@ In permissive mode, the sidecar accepts both plaintext and mTLS connections. Thi
 
 ### Port-Level mTLS Configuration
 
-If your VM runs multiple services on different ports, and some should not use mTLS:
+If your VM runs multiple services on different ports, and some should still accept plaintext during migration:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: mixed-mtls
@@ -113,14 +113,14 @@ spec:
       mode: PERMISSIVE
 ```
 
-Port 5432 (database) requires mTLS, while port 9090 (metrics endpoint) accepts plaintext.
+Port 5432 (database) requires mTLS, while port 9090 (metrics endpoint) accepts either plaintext or mTLS. The port numbers in `portLevelMtls` are workload ports, not Kubernetes Service ports.
 
 ## DestinationRule for mTLS to VMs
 
 When Kubernetes workloads call VM services, you might need a DestinationRule to ensure mTLS is used:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: legacy-db
@@ -134,7 +134,7 @@ spec:
 
 `ISTIO_MUTUAL` tells the client sidecar to use Istio's built-in mTLS with automatic certificate management. This is different from `MUTUAL` which requires you to specify certificate paths manually.
 
-In most cases, if you have mesh-wide mTLS enabled, you do not need explicit DestinationRules for mTLS. But they can be useful for:
+In most cases, Istio's automatic mTLS configures sidecars to use mTLS when they call workloads with sidecars, so you do not need explicit DestinationRules for mTLS. But they can be useful for:
 - Overriding a permissive mesh default for specific services
 - Configuring mTLS for ServiceEntry-based services
 
@@ -143,7 +143,7 @@ In most cases, if you have mesh-wide mTLS enabled, you do not need explicit Dest
 The VM's identity is determined by the service account specified in the WorkloadGroup or WorkloadEntry:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: WorkloadEntry
 metadata:
   name: legacy-db-vm1
@@ -164,7 +164,7 @@ spiffe://cluster.local/ns/vm-apps/sa/legacy-db-sa
 This identity is used in authorization policies:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: allow-from-k8s-frontend
@@ -192,11 +192,12 @@ This policy allows the frontend service (running in Kubernetes) to connect to th
 ### Check from the Kubernetes side
 
 ```bash
-# Verify mTLS is being used
-istioctl authn tls-check deployment/sleep.sample legacy-db.vm-apps.svc.cluster.local
+# Check the client-side cluster config
+istioctl proxy-config clusters deployment/sleep.sample --fqdn legacy-db.vm-apps.svc.cluster.local
 
-# Check the connection in proxy config
-istioctl proxy-config clusters deployment/sleep -n sample | grep legacy-db
+# Inspect the full cluster config and look for an Istio mutual TLS transport socket
+istioctl proxy-config clusters deployment/sleep.sample \
+  --fqdn legacy-db.vm-apps.svc.cluster.local -o json
 ```
 
 ### Check from the VM
@@ -248,7 +249,7 @@ If the VM's root-cert.pem does not match the mesh's root CA:
 openssl x509 -in /etc/certs/root-cert.pem -fingerprint -noout
 
 # On Kubernetes
-kubectl get secret cacerts -n istio-system -o jsonpath='{.data.root-cert\.pem}' | base64 -d | openssl x509 -fingerprint -noout
+kubectl get configmap istio-ca-root-cert -n vm-apps -o jsonpath='{.data.root-cert\.pem}' | openssl x509 -fingerprint -noout
 ```
 
 Fingerprints must match.
@@ -260,7 +261,7 @@ If connections between VM and Kubernetes are reset:
 ```bash
 # Check if mTLS is the issue by temporarily switching to permissive
 kubectl apply -f - <<EOF
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: debug-permissive
