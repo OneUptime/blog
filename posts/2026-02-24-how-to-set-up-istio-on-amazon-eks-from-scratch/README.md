@@ -20,6 +20,7 @@ Make sure you have these tools installed:
 - eksctl (the official EKS CLI tool)
 - kubectl
 - istioctl or Helm 3
+- AWS Load Balancer Controller if you plan to use the NLB annotations below
 
 Check your AWS CLI is configured:
 
@@ -34,7 +35,7 @@ If you don't already have an EKS cluster, create one with eksctl. This is the fa
 ```bash
 eksctl create cluster \
   --name istio-cluster \
-  --version 1.30 \
+  --version 1.33 \
   --region us-west-2 \
   --nodegroup-name standard-workers \
   --node-type m5.large \
@@ -66,8 +67,8 @@ aws eks update-kubeconfig --region us-west-2 --name istio-cluster
 Download and install Istio using istioctl:
 
 ```bash
-curl -L https://istio.io/downloadIstio | sh -
-cd istio-1.24.0
+curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.30.0 sh -
+cd istio-1.30.0
 export PATH=$PWD/bin:$PATH
 ```
 
@@ -80,12 +81,12 @@ istioctl x precheck
 Install with the default profile:
 
 ```bash
-istioctl install --set profile=default -y
+istioctl install --set profile=default --set values.global.platform=eks -y
 ```
 
 ## Step 4: Configure the AWS Load Balancer
 
-By default, Istio's ingress gateway creates a Classic Load Balancer on AWS. For production, you probably want a Network Load Balancer (NLB) instead. It offers better performance and supports static IPs.
+By default, Istio's ingress gateway creates a Classic Load Balancer on AWS if the legacy cloud provider handles the Service. For production, you probably want the AWS Load Balancer Controller to create a Network Load Balancer (NLB) instead. It offers better performance and supports static IPs.
 
 Create a custom configuration:
 
@@ -96,6 +97,9 @@ apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
   profile: default
+  values:
+    global:
+      platform: eks
   meshConfig:
     accessLogFile: /dev/stdout
   components:
@@ -104,14 +108,16 @@ spec:
         enabled: true
         k8s:
           serviceAnnotations:
-            service.beta.kubernetes.io/aws-load-balancer-type: nlb
+            service.beta.kubernetes.io/aws-load-balancer-type: external
+            service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: instance
             service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing
-            service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
+            service.beta.kubernetes.io/aws-load-balancer-attributes: load_balancing.cross_zone.enabled=true
 ```
 
 Apply it:
 
 ```bash
+kubectl delete svc istio-ingressgateway -n istio-system --ignore-not-found
 istioctl install -f istio-eks.yaml -y
 ```
 
@@ -174,14 +180,18 @@ apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
   profile: default
+  values:
+    global:
+      platform: eks
   components:
     ingressGateways:
       - name: istio-ingressgateway
         enabled: true
         k8s:
           serviceAnnotations:
-            service.beta.kubernetes.io/aws-load-balancer-type: nlb
-            service.beta.kubernetes.io/aws-load-balancer-ssl-cert: arn:aws:acm:us-west-2:123456789:certificate/abc-123
+            service.beta.kubernetes.io/aws-load-balancer-type: external
+            service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: instance
+            service.beta.kubernetes.io/aws-load-balancer-ssl-cert: arn:aws:acm:us-west-2:123456789012:certificate/abc-123
             service.beta.kubernetes.io/aws-load-balancer-ssl-ports: "443"
             service.beta.kubernetes.io/aws-load-balancer-backend-protocol: tcp
 ```
@@ -200,11 +210,9 @@ You can set resource limits in the mesh configuration:
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
-  meshConfig:
-    defaultConfig:
-      proxyMetadata: {}
   values:
     global:
+      platform: eks
       proxy:
         resources:
           requests:
@@ -213,6 +221,9 @@ spec:
           limits:
             cpu: 200m
             memory: 256Mi
+  meshConfig:
+    defaultConfig:
+      proxyMetadata: {}
 ```
 
 ## Monitoring with CloudWatch
@@ -236,11 +247,11 @@ EKS security groups need to allow traffic between nodes for Istio to work proper
 
 - Nodes can communicate with each other on all ports
 - The load balancer security group allows inbound traffic on ports 80 and 443
-- The control plane security group allows traffic from worker nodes on port 15017 (webhook) and 15012 (xDS)
+- The cluster security group allows the EKS control plane to reach the Istio webhook service on 443, and allows in-cluster workloads to reach istiod on 15012 (xDS)
 
 ## Troubleshooting EKS-Specific Issues
 
-If the NLB isn't getting provisioned, check that the AWS Load Balancer Controller is working or that the in-tree cloud provider is handling it. Look at the service events:
+If the NLB isn't getting provisioned, check that the AWS Load Balancer Controller is installed and working. Look at the service events:
 
 ```bash
 kubectl describe svc istio-ingressgateway -n istio-system
