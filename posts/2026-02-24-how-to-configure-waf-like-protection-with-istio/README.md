@@ -165,7 +165,7 @@ This Lua script checks for SQL injection patterns, XSS patterns, and known malic
 
 For production-grade WAF protection, the best approach is running an external authorization service. You can run a sidecar or standalone service that implements the Envoy ext_authz protocol and applies full WAF rule sets like OWASP Core Rule Set (CRS).
 
-First, deploy a WAF service (using something like Coraza, which is a Go implementation of ModSecurity):
+First, deploy a WAF service. This service must implement Envoy's ext_authz check API; for example, you could run a small gRPC service that wraps Coraza, ModSecurity, or another WAF engine and evaluates OWASP CRS rules:
 
 ```yaml
 apiVersion: apps/v1
@@ -185,12 +185,14 @@ spec:
     spec:
       containers:
         - name: waf
-          image: ghcr.io/corazawaf/coraza-proxy-wasm:latest
+          image: your-registry/waf-ext-authz:latest
           ports:
             - containerPort: 8080
           env:
             - name: PARANOIA_LEVEL
               value: "2"
+            - name: WAF_RULESET
+              value: "owasp-crs"
 ---
 apiVersion: v1
 kind: Service
@@ -222,6 +224,9 @@ data:
           port: 8080
           timeout: 0.5s
           failOpen: false
+          includeRequestBodyInCheck:
+            maxRequestBytes: 8192
+            allowPartialMessage: true
 ```
 
 Now apply the authorization policy to use this external provider:
@@ -334,7 +339,7 @@ kubectl exec -n istio-system deploy/istio-ingressgateway -- \
   pilot-agent request GET stats | grep "403"
 ```
 
-For the Lua-based approach, you can add custom stats using Lua's `request_handle:streamInfo()` methods, or simply log blocked requests and aggregate them with your logging stack.
+For the Lua-based approach, you can add custom counters with Lua's `request_handle:stats()` API, or simply log blocked requests and aggregate them with your logging stack.
 
 ## Layered Security Architecture
 
