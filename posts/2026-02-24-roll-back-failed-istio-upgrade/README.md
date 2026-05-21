@@ -41,7 +41,7 @@ The rollback approach depends on which of these you are dealing with.
 
 ## Emergency: Webhook Blocking Pod Creation
 
-If the sidecar injection webhook is broken and blocking pod creation across the cluster, this is the highest priority to fix. Your cluster might not be able to schedule new pods at all.
+If the sidecar injection webhook is broken and blocking pod creation in injected namespaces, this is the highest priority to fix. Those namespaces might not be able to schedule new pods at all.
 
 Quick fix - disable the webhook temporarily:
 
@@ -128,7 +128,7 @@ If you were doing a canary upgrade with revisions, rolling back is the simplest.
 
 ```bash
 # Point namespaces back to the stable revision
-kubectl label namespace my-app istio.io/rev=stable --overwrite
+kubectl label namespace my-app istio-injection- istio.io/rev=stable --overwrite
 
 # Restart workloads
 kubectl rollout restart deployment -n my-app
@@ -144,12 +144,21 @@ This is one of the main reasons canary upgrades are recommended for production. 
 
 ## Rolling Back the Data Plane
 
-After rolling back the control plane, your sidecar proxies are still running the newer version. Istio supports N-1 version skew between data plane and control plane, so the newer proxies should work with the older control plane for one minor version difference.
+After rolling back the control plane, your sidecar proxies are still running the newer version. Istio supports the control plane being one version ahead of the data plane, but the data plane should not be ahead of the control plane. Plan to restart workloads so the sidecars are re-injected with the rolled-back version.
 
 However, if you are experiencing proxy-related issues, restart workloads to get the old sidecar version:
 
 ```bash
 for ns in $(kubectl get ns -l istio-injection=enabled -o jsonpath='{.items[*].metadata.name}'); do
+  echo "Rolling back sidecars in $ns"
+  kubectl rollout restart deployment -n $ns
+done
+```
+
+If you use revision labels instead of `istio-injection=enabled`, restart those namespaces too:
+
+```bash
+for ns in $(kubectl get ns -l istio.io/rev -o jsonpath='{.items[*].metadata.name}'); do
   echo "Rolling back sidecars in $ns"
   kubectl rollout restart deployment -n $ns
 done
