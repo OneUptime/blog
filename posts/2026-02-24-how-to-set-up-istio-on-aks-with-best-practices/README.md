@@ -169,8 +169,15 @@ metadata:
   namespace: production
   annotations:
     azure.workload.identity/client-id: "<IDENTITY_CLIENT_ID>"
-  labels:
-    azure.workload.identity/use: "true"
+```
+
+Add the Workload Identity label to the application pod template so the webhook mutates the pod:
+
+```yaml
+template:
+  metadata:
+    labels:
+      azure.workload.identity/use: "true"
 ```
 
 Istio sidecars work with Workload Identity without any special configuration.
@@ -221,7 +228,7 @@ spec:
     tenantId: "<tenant-id>"
 ```
 
-Then reference the secret in the Istio Gateway:
+Mount this `SecretProviderClass` from a pod in `istio-system`, such as the ingress gateway, so the `secretObjects` entry syncs the Kubernetes TLS secret. Then reference the synced secret in the Istio Gateway:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -231,8 +238,7 @@ metadata:
   namespace: istio-system
 spec:
   selector:
-    matchLabels:
-      istio: ingressgateway
+    istio: ingressgateway
   servers:
   - port:
       number: 443
@@ -262,7 +268,7 @@ spec:
 
 ## Azure CNI Considerations
 
-With Azure CNI, pods get IP addresses from the VNet subnet. Make sure your subnet has enough IP addresses for all pods plus sidecars. Each pod with an Istio sidecar consumes one IP address.
+With Azure CNI node subnet mode, pods get IP addresses from the VNet subnet. Make sure your subnet has enough IP addresses for all pods and nodes. An Istio sidecar is another container in the same pod, so it does not consume an extra pod IP address.
 
 Calculate the needed IPs: (number of nodes * max pods per node) + number of nodes + a buffer. The default max pods per node on AKS is 30.
 
@@ -310,4 +316,4 @@ kubectl label namespace production istio-injection- istio.io/rev=1-20-0
 kubectl rollout restart deployment -n production
 ```
 
-Running Istio on AKS is a solid choice once you handle the Azure-specific details. Use Azure CNI for proper pod networking, set up Workload Identity for Azure service access, leverage Key Vault for certificate management, and size your subnets to account for sidecar pods. These foundations will serve you well as your mesh grows.
+Running Istio on AKS is a solid choice once you handle the Azure-specific details. Use Azure CNI for proper pod networking, set up Workload Identity for Azure service access, leverage Key Vault for certificate management, and size your subnets for your expected pod count. These foundations will serve you well as your mesh grows.
