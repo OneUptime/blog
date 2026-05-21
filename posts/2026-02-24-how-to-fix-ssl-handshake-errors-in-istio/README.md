@@ -8,7 +8,7 @@ Description: Resolve SSL and TLS handshake failures in Istio caused by certifica
 
 ---
 
-SSL handshake errors in Istio are particularly tricky because the mesh handles TLS in ways that are different from traditional setups. Istio automatically manages certificates for mTLS between services, configures TLS termination at gateways, and wraps all inter-service communication in encryption. When any piece of this breaks, you get cryptic handshake errors that are tough to parse.
+SSL handshake errors in Istio are particularly tricky because the mesh handles TLS in ways that are different from traditional setups. Istio automatically manages certificates for mTLS-capable mesh traffic, configures TLS termination at gateways, and can encrypt inter-service communication when mTLS is enabled for the workloads involved. When any piece of this breaks, you get cryptic handshake errors that are tough to parse.
 
 This guide covers the most common SSL/TLS handshake failures in Istio and how to fix each one.
 
@@ -50,7 +50,7 @@ kubectl get secret my-tls-cert -n istio-system -o jsonpath='{.data.tls\.crt}' | 
 **Check 2: Verify the Gateway references the correct secret**
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: main-gateway
@@ -121,12 +121,12 @@ This shows the certificate chain, root cert, and whether they are valid. Look fo
 **Check the root CA:**
 
 ```bash
-# Check the root CA certificate
-kubectl get secret istio-ca-secret -n istio-system -o jsonpath='{.data.ca-cert\.pem}' | \
-  base64 -d | openssl x509 -noout -dates -subject -issuer
+# Check the mesh root CA certificate distributed to workloads
+kubectl get configmap istio-ca-root-cert -n production -o jsonpath='{.data.root-cert\.pem}' | \
+  openssl x509 -noout -dates -subject -issuer
 ```
 
-If the root CA has expired, all mTLS communication in the mesh will fail. You need to rotate the CA certificate.
+If the root CA has expired, mTLS communication that trusts that CA will fail. You need to rotate the CA certificate. If you use a plugged-in CA, also inspect the `cacerts` secret in `istio-system`, which contains the CA inputs istiod uses.
 
 **Check certificate expiration on a workload:**
 
@@ -141,14 +141,18 @@ Istio automatically rotates workload certificates, but if istiod is down, rotati
 
 ## Mixed mTLS and Plaintext
 
-A very common handshake error scenario is when one side expects mTLS and the other sends plaintext:
+A very common handshake error scenario is when one side expects mTLS and the other sends plaintext. Start by checking the server-side PeerAuthentication policy and the client-side DestinationRule or cluster configuration:
 
 ```bash
-# Check mTLS status
-istioctl authn tls-check <pod-name>.production orders-service.production.svc.cluster.local
+# Check the server-side mTLS policy
+kubectl get peerauthentication -n production -o yaml
+
+# Check the client proxy cluster TLS settings for the destination
+istioctl proxy-config cluster <pod-name> -n production --fqdn orders-service.production.svc.cluster.local -o json | \
+  jq '.[].transportSocket'
 ```
 
-If the output shows a mismatch between client and server TLS modes, fix it:
+If the policy and cluster configuration show a mismatch between client and server TLS modes, fix it:
 
 ```yaml
 # If using STRICT mTLS but some clients do not have sidecars
@@ -167,7 +171,7 @@ Or if you have a DestinationRule forcing mTLS to a service that does not support
 
 ```yaml
 # Remove or change the TLS mode
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: legacy-service
@@ -198,11 +202,11 @@ kubectl delete pod <pod-name> -n production
 
 ## External Service TLS Errors
 
-When calling external services through the mesh, TLS errors can occur if Istio tries to do double encryption:
+When calling external services through the mesh, TLS errors can occur if Istio is configured to originate TLS for traffic that the application is already sending as HTTPS. If your application already uses HTTPS, a ServiceEntry with protocol `HTTPS` is the normal way to register the external service:
 
 ```yaml
-# Wrong: Istio will try to add mTLS on top of the application's TLS
-apiVersion: networking.istio.io/v1beta1
+# Application sends HTTPS; Istio passes through the TLS connection and can still apply SNI-based policy
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-api
@@ -212,12 +216,12 @@ spec:
   ports:
     - number: 443
       name: https
-      protocol: HTTPS  # This tells Istio the traffic is already HTTPS
+      protocol: HTTPS
   resolution: DNS
   location: MESH_EXTERNAL
 ```
 
-If your application is already handling TLS to the external service, use `TLS` protocol to tell Istio to pass through without adding encryption:
+If the traffic is opaque TLS that Istio should not parse as HTTP over TLS, use `TLS` protocol:
 
 ```yaml
   ports:
@@ -226,18 +230,38 @@ If your application is already handling TLS to the external service, use `TLS` p
       protocol: TLS
 ```
 
-With a DestinationRule to handle the TLS origination from the sidecar:
+Only configure TLS origination when the application sends plaintext HTTP and you want the sidecar to open HTTPS to the external service:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
+kind: ServiceEntry
+metadata:
+  name: external-api
+spec:
+  hosts:
+    - api.external.com
+  ports:
+    - number: 80
+      name: http
+      protocol: HTTP
+      targetPort: 443
+  resolution: DNS
+  location: MESH_EXTERNAL
+```
+
+```yaml
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: external-api
 spec:
   host: api.external.com
   trafficPolicy:
-    tls:
-      mode: SIMPLE  # Originate TLS from the sidecar
+    portLevelSettings:
+      - port:
+          number: 80
+        tls:
+          mode: SIMPLE  # Originate TLS from the sidecar
 ```
 
 ## TLS Version and Cipher Mismatches
@@ -253,7 +277,7 @@ istioctl proxy-config listeners <gateway-pod> -n istio-system -o json | \
 You can configure minimum TLS version and cipher suites in the Gateway:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: main-gateway
@@ -290,7 +314,8 @@ kubectl get secret <cert-name> -n istio-system
 kubectl get secret <cert-name> -n istio-system -o jsonpath='{.data.tls\.crt}' | base64 -d | openssl x509 -noout -dates
 
 # 3. For mTLS: Are both sides configured consistently?
-istioctl authn tls-check <pod>.production target.production.svc.cluster.local
+kubectl get peerauthentication -n production -o yaml
+istioctl proxy-config cluster <pod> -n production --fqdn target.production.svc.cluster.local -o json | jq '.[].transportSocket'
 
 # 4. Are certificates expired?
 istioctl proxy-config secret <pod> -n production
