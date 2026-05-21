@@ -298,21 +298,22 @@ public class ReactiveTracingConfig {
     @Bean
     public WebClient webClient() {
         return WebClient.builder()
-            .filter((request, next) -> {
-                return ServerWebExchangeContextFilter
-                    .get(request.attribute("org.springframework.web.server.ServerWebExchange"))
-                    .map(exchange -> {
-                        ClientRequest.Builder builder = ClientRequest.from(request);
-                        for (String header : TRACE_HEADERS) {
-                            String value = exchange.getRequest().getHeaders().getFirst(header);
-                            if (value != null) {
-                                builder.header(header, value);
+            .filter((request, next) ->
+                Mono.deferContextual(contextView -> {
+                    ClientRequest.Builder builder = ClientRequest.from(request);
+                    ServerWebExchangeContextFilter
+                        .getExchange(contextView)
+                        .ifPresent(exchange -> {
+                            for (String header : TRACE_HEADERS) {
+                                String value = exchange.getRequest().getHeaders().getFirst(header);
+                                if (value != null) {
+                                    builder.header(header, value);
+                                }
                             }
-                        }
-                        return next.exchange(builder.build());
-                    })
-                    .orElse(next.exchange(request));
-            })
+                        });
+                    return next.exchange(builder.build());
+                })
+            )
             .build();
     }
 }
@@ -346,21 +347,22 @@ FlaskInstrumentor().instrument_app(app)
 RequestsInstrumentor().instrument()
 ```
 
-This approach auto-propagates trace context for all instrumented HTTP clients without any manual header handling.
+This approach auto-propagates trace context for all instrumented HTTP clients without any manual header handling. By default, OpenTelemetry Python uses W3C Trace Context and W3C Baggage propagation. If your Istio/Zipkin setup requires B3 propagation, install the B3 propagator package and configure it, for example with `OTEL_PROPAGATORS=tracecontext,baggage,b3multi`.
 
 ## Testing Your Propagation
 
 To verify headers are being propagated correctly, use the httpbin service:
 
 ```bash
-# Deploy httpbin if not already present
+# Deploy httpbin and sleep if not already present
 kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.24/samples/httpbin/httpbin.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.24/samples/sleep/sleep.yaml
 
-# Send a request and check echoed headers
+# Send a request from a mesh-injected pod and check echoed headers
 kubectl exec deploy/sleep -- curl -s http://httpbin:8000/headers | python3 -m json.tool
 ```
 
-You should see B3 or W3C trace headers in the response. If your application calls httpbin, and httpbin's response shows the same trace ID that the original request had, propagation is working.
+You should see B3 or W3C trace headers in the response. This direct `sleep` to `httpbin` request confirms that the sidecar is adding tracing headers for that request. To verify your application propagation, point one of your application's downstream calls at `httpbin` and confirm that `httpbin` echoes the same trace ID that your application received.
 
 ## Common Mistakes
 
