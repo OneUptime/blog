@@ -71,7 +71,7 @@ metadata:
   namespace: argocd
 data:
   # Set session token expiry to 12 hours
-  server.sessionDuration: "12h"
+  users.session.duration: "12h"
 ```
 
 ## Method 2: Project Role JWT Tokens
@@ -132,7 +132,7 @@ Via the API:
 curl -s -k -H "Authorization: Bearer $ARGOCD_TOKEN" \
   -X POST "https://argocd.example.com/api/v1/projects/production/roles/ci-deploy/token" \
   -H "Content-Type: application/json" \
-  -d '{"expiresIn": "7776000"}'  # 90 days in seconds
+  -d '{"expiresIn": 7776000}'  # 90 days in seconds
 ```
 
 ### Step 3: Use the Token
@@ -150,15 +150,17 @@ curl -s -k -H "Authorization: Bearer $CI_TOKEN" \
 
 ## Method 3: SSO/OIDC Token Authentication
 
-If you use SSO with ArgoCD, you can pass OIDC tokens directly:
+If you use SSO with ArgoCD, you can pass OIDC ID tokens from the configured provider directly:
 
 ```bash
-# Get an OIDC token from your identity provider
+# Get an OIDC ID token from your identity provider
 OIDC_TOKEN=$(curl -s https://idp.example.com/oauth/token \
-  -d "grant_type=client_credentials" \
+  -d "grant_type=authorization_code" \
+  -d "code=$AUTHORIZATION_CODE" \
   -d "client_id=$CLIENT_ID" \
   -d "client_secret=$CLIENT_SECRET" \
-  -d "scope=openid" | jq -r '.access_token')
+  -d "redirect_uri=$REDIRECT_URI" \
+  | jq -r '.id_token')
 
 # Use the OIDC token with ArgoCD API
 curl -s -k -H "Authorization: Bearer $OIDC_TOKEN" \
@@ -200,12 +202,14 @@ Regularly rotate your automation tokens:
 PROJECT="production"
 ROLE="ci-deploy"
 
-# Delete old tokens (all of them)
-argocd proj role delete-token $PROJECT $ROLE --all
+# Delete old tokens
+argocd proj role list-tokens $PROJECT $ROLE --unixtime \
+  | awk 'NR > 1 {print $2}' \
+  | xargs -r -n1 argocd proj role delete-token $PROJECT $ROLE
 
 # Generate a new token with 90-day expiry
 NEW_TOKEN=$(argocd proj role create-token $PROJECT $ROLE \
-  --expires-in 2160h -o json | jq -r '.token')
+  --expires-in 2160h --token-only)
 
 # Store the new token in your secret manager
 # Example with AWS Secrets Manager
@@ -222,7 +226,7 @@ JWT tokens contain useful claims. Decode them to inspect permissions:
 
 ```bash
 # Decode a JWT token (using jq)
-echo "$ARGOCD_TOKEN" | cut -d'.' -f2 | base64 -d 2>/dev/null | jq .
+echo "$ARGOCD_TOKEN" | jq -R 'split(".")[1] | gsub("-"; "+") | gsub("_"; "/") | @base64d | fromjson'
 
 # Output shows claims like:
 # {
