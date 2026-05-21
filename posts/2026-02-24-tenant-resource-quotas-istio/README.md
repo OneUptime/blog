@@ -58,7 +58,7 @@ done
 
 ## Accounting for Sidecar Resources
 
-Here is something people often forget: every pod in an Istio mesh runs a sidecar proxy, and that sidecar consumes CPU and memory. If you set a resource quota of 50 pods with tight CPU limits, the sidecar resource usage can push you over the quota unexpectedly.
+Here is something people often forget: in Istio sidecar mode, every injected pod runs a sidecar proxy, and that sidecar consumes CPU and memory. If you set a resource quota of 50 pods with tight CPU limits, the sidecar resource usage can push you over the quota unexpectedly.
 
 By default, Istio injects a sidecar with these resource settings (which vary by Istio version, but typically):
 
@@ -69,7 +69,7 @@ By default, Istio injects a sidecar with these resource settings (which vary by 
 
 For 50 pods, that is an additional 5 CPU cores and 6.4Gi of memory just for the sidecars. Factor this into your quota calculations.
 
-You can customize sidecar resource limits per namespace using annotations on the namespace or through the Istio configuration:
+You can customize the default sidecar resource limits mesh-wide through the Istio configuration:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -90,7 +90,7 @@ spec:
             memory: 256Mi
 ```
 
-Or set sidecar resources per namespace using pod annotations in a mutating webhook or in the deployment template:
+Or set sidecar resources per workload using pod annotations in a mutating webhook or in the deployment template:
 
 ```yaml
 apiVersion: apps/v1
@@ -143,7 +143,7 @@ This ensures that every container in tenant-a has reasonable resource limits, ev
 
 ## Connection Pool Limits Per Tenant
 
-Istio's DestinationRule lets you limit the number of connections a tenant can open to any service. This is important for shared services where you want to prevent one tenant from exhausting the connection pool:
+Istio's DestinationRule lets you limit the number of connections from each client proxy to a service. This is important for shared services where you want to prevent one tenant workload from exhausting connection capacity:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -152,7 +152,7 @@ metadata:
   name: connection-limits
   namespace: tenant-a
 spec:
-  host: "*.shared-services.svc.cluster.local"
+  host: api.shared-services.svc.cluster.local
   trafficPolicy:
     connectionPool:
       tcp:
@@ -165,7 +165,7 @@ spec:
         maxRetries: 3
 ```
 
-With these limits, tenant-a can open at most 50 TCP connections and have at most 50 concurrent HTTP/2 requests to any service in the shared-services namespace.
+With these limits, each matching tenant-a client proxy can open at most 50 TCP connections and have at most 50 concurrent HTTP/2 requests to the `api.shared-services.svc.cluster.local` service. Repeat the policy for other shared services, or generate one rule per service as part of tenant provisioning.
 
 ## Bandwidth Limiting
 
@@ -270,7 +270,10 @@ status:
 Set up Prometheus alerts for quota utilization:
 
 ```promql
-kube_resourcequota{type="used"} / kube_resourcequota{type="hard"} > 0.8
+sum by (namespace, resource) (kube_resourcequota{type="used"})
+/
+sum by (namespace, resource) (kube_resourcequota{type="hard"} > 0)
+> 0.8
 ```
 
 This fires when any quota is more than 80% utilized, giving you time to either increase the quota or work with the tenant to optimize their resource usage.
