@@ -36,6 +36,7 @@ metadata:
   name: kafka
   namespace: messaging
 spec:
+  serviceName: kafka
   replicas: 3
   selector:
     matchLabels:
@@ -76,7 +77,7 @@ The port name prefix `tcp-` tells Istio to treat this as TCP traffic rather than
 Enable mTLS for Kafka connections to encrypt traffic between producers/consumers and the broker:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: kafka-mtls
@@ -99,7 +100,7 @@ This encrypts all connections to Kafka at the transport level. Your Kafka client
 Set up connection pooling and circuit breaking for Kafka:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: kafka-dr
@@ -120,16 +121,16 @@ spec:
 If your message broker runs outside the cluster (managed Kafka, Amazon MSK, CloudAMQP), register it as a ServiceEntry:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-kafka
   namespace: messaging
 spec:
+  addresses:
+  - 240.240.10.1
   hosts:
   - kafka-broker-1.example.com
-  - kafka-broker-2.example.com
-  - kafka-broker-3.example.com
   ports:
   - number: 9092
     name: tcp-kafka
@@ -137,7 +138,7 @@ spec:
   location: MESH_EXTERNAL
   resolution: DNS
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: external-kafka-dr
@@ -148,6 +149,8 @@ spec:
     tls:
       mode: SIMPLE
 ```
+
+For TCP ServiceEntries, the `addresses` entry is a virtual IP used by the sidecar to distinguish external TCP services on the same port. Repeat this pattern for each Kafka broker hostname that clients discover through Kafka metadata. If you rely on Istio DNS capture and automatic address allocation, Istio can allocate those virtual IPs for you.
 
 ## The HTTP Side of Event-Driven
 
@@ -161,7 +164,7 @@ While message broker traffic is TCP, event-driven architectures still have plent
 Configure these with standard Istio resources:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: order-events-api
@@ -203,7 +206,7 @@ spec:
 If you use webhooks for event delivery, configure the receiver with appropriate settings:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: webhook-receiver
@@ -234,7 +237,7 @@ Control which services can publish and consume events:
 ```yaml
 # Only order-service can produce to the order topic (through the producer API)
 
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: order-producer-authz
@@ -264,7 +267,7 @@ For Kafka-level authorization (topic-level access control), you'll need to use K
 The Command Query Responsibility Segregation (CQRS) pattern separates writes from reads. Istio makes this easy to implement at the routing level:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: order-api
@@ -315,7 +318,7 @@ For message broker metrics (consumer lag, partition assignment, throughput), use
 Event consumers often run as multiple replicas in a consumer group. Istio doesn't interfere with consumer group rebalancing because it operates at the TCP level. However, make sure your DestinationRule doesn't set connection limits too low:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: kafka-consumer-dr
