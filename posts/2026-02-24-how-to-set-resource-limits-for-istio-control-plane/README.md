@@ -87,14 +87,14 @@ spec:
 
 ## Setting Resource Limits via Helm
 
-If you use Helm to install Istio:
+If you use Helm to install Istio, after installing the base chart:
 
 ```bash
 helm install istiod istio/istiod -n istio-system \
-  --set pilot.resources.requests.cpu=500m \
-  --set pilot.resources.requests.memory=2Gi \
-  --set pilot.resources.limits.cpu=2 \
-  --set pilot.resources.limits.memory=4Gi
+  --set resources.requests.cpu=500m \
+  --set resources.requests.memory=2Gi \
+  --set resources.limits.cpu=2 \
+  --set resources.limits.memory=4Gi
 ```
 
 Or using a values file:
@@ -102,17 +102,16 @@ Or using a values file:
 ```yaml
 # values-production.yaml
 
-pilot:
-  resources:
-    requests:
-      cpu: 500m
-      memory: 2Gi
-    limits:
-      cpu: 2
-      memory: 4Gi
-  autoscaleEnabled: true
-  autoscaleMin: 2
-  autoscaleMax: 5
+resources:
+  requests:
+    cpu: 500m
+    memory: 2Gi
+  limits:
+    cpu: 2
+    memory: 4Gi
+autoscaleEnabled: true
+autoscaleMin: 2
+autoscaleMax: 5
 
 global:
   proxy:
@@ -136,40 +135,37 @@ Here are practical starting points based on cluster size:
 ### Small Clusters (up to 50 services, 200 pods)
 
 ```yaml
-pilot:
-  resources:
-    requests:
-      cpu: 200m
-      memory: 512Mi
-    limits:
-      cpu: 1
-      memory: 1Gi
+resources:
+  requests:
+    cpu: 200m
+    memory: 512Mi
+  limits:
+    cpu: 1
+    memory: 1Gi
 ```
 
 ### Medium Clusters (50-500 services, 2000 pods)
 
 ```yaml
-pilot:
-  resources:
-    requests:
-      cpu: 500m
-      memory: 2Gi
-    limits:
-      cpu: 2
-      memory: 4Gi
+resources:
+  requests:
+    cpu: 500m
+    memory: 2Gi
+  limits:
+    cpu: 2
+    memory: 4Gi
 ```
 
 ### Large Clusters (500+ services, 5000+ pods)
 
 ```yaml
-pilot:
-  resources:
-    requests:
-      cpu: 1
-      memory: 4Gi
-    limits:
-      cpu: 4
-      memory: 8Gi
+resources:
+  requests:
+    cpu: 1
+    memory: 4Gi
+  limits:
+    cpu: 4
+    memory: 8Gi
 ```
 
 These are starting points. Monitor actual usage and adjust accordingly.
@@ -213,8 +209,6 @@ spec:
             cpu: 2
             memory: 4Gi
         env:
-        - name: PILOT_ENABLE_CONFIG_DISTRIBUTION_TRACKING
-          value: "false"
         - name: PILOT_PUSH_THROTTLE
           value: "100"
 ```
