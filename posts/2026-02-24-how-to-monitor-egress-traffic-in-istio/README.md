@@ -16,8 +16,8 @@ Istio provides several mechanisms for egress traffic visibility: sidecar proxy m
 
 When a pod makes an outbound connection, its sidecar proxy generates metrics and logs for that traffic. The level of detail depends on how the external service is configured:
 
-- **With a ServiceEntry:** Istio knows the hostname, port, and protocol. You get full HTTP metrics (request count, latency, response codes) for HTTP/TLS services.
-- **Without a ServiceEntry (ALLOW_ANY mode):** Istio still reports the traffic but the destination shows as `PassthroughCluster`. You get basic TCP metrics but limited HTTP-level detail.
+- **With a ServiceEntry:** Istio knows the hostname, port, and protocol. You get HTTP metrics (request count, latency, response codes) for HTTP traffic. For application-originated HTTPS/TLS, Istio can identify the destination by SNI, but it cannot see HTTP methods, paths, or response codes unless the proxy originates or terminates TLS.
+- **Without a ServiceEntry (ALLOW_ANY mode):** Istio still passes the traffic through, but the destination is reported as `PassthroughCluster`. You get limited service attribution, and HTTP-level detail depends on protocol detection.
 - **Through an egress gateway:** You get metrics from both the sidecar and the egress gateway, giving you two points of visibility.
 
 ## Enabling Access Logging
@@ -71,12 +71,14 @@ Each log line includes:
 
 ## Key Prometheus Metrics for Egress
 
+The queries below assume external ServiceEntries are kept in a dedicated namespace named `external-services`, and include `unknown` for passthrough traffic. Adjust the namespace matcher to match where you define your ServiceEntries.
+
 ### Total Request Count by External Service
 
 ```promql
 sum(rate(istio_requests_total{
   reporter="source",
-  destination_service_namespace!~"default|kube-system|istio-system"
+  destination_service_namespace=~"external-services|unknown"
 }[5m])) by (destination_service_name, source_workload)
 ```
 
@@ -87,13 +89,13 @@ This shows which internal workloads are making requests to which external servic
 ```promql
 sum(rate(istio_requests_total{
   reporter="source",
-  destination_service=~".*external.*|.*api\\..*",
+  destination_service_namespace=~"external-services|unknown",
   response_code=~"5.."
 }[5m])) by (destination_service_name)
 /
 sum(rate(istio_requests_total{
   reporter="source",
-  destination_service=~".*external.*|.*api\\..*"
+  destination_service_namespace=~"external-services|unknown"
 }[5m])) by (destination_service_name)
 ```
 
@@ -103,7 +105,7 @@ sum(rate(istio_requests_total{
 histogram_quantile(0.99,
   sum(rate(istio_request_duration_milliseconds_bucket{
     reporter="source",
-    destination_service_namespace="unknown"
+    destination_service_namespace=~"external-services|unknown"
   }[5m])) by (le, destination_service_name)
 )
 ```
@@ -128,7 +130,7 @@ For non-HTTP egress traffic (databases, Redis, etc.), use TCP metrics:
 ```promql
 sum(rate(istio_tcp_connections_opened_total{
   reporter="source",
-  destination_service_namespace!~"default|kube-system|istio-system"
+  destination_service_namespace=~"external-services|unknown"
 }[5m])) by (destination_service_name, source_workload)
 ```
 
@@ -173,7 +175,7 @@ Create a Grafana dashboard with these panels:
 ```promql
 topk(10, sum(rate(istio_requests_total{
   reporter="source",
-  destination_service_namespace!~"default|kube-system|istio-system"
+  destination_service_namespace=~"external-services|unknown"
 }[5m])) by (destination_service_name))
 ```
 
@@ -184,7 +186,7 @@ Visualization: bar chart or table, showing the most-accessed external services.
 ```promql
 sum(rate(istio_requests_total{
   reporter="source",
-  destination_service_namespace!~"default|kube-system|istio-system",
+  destination_service_namespace=~"external-services|unknown",
   response_code=~"5.."
 }[5m])) by (destination_service_name)
 ```
@@ -196,7 +198,7 @@ Visualization: time series with threshold markers.
 ```promql
 sum(rate(istio_requests_total{
   reporter="source",
-  destination_service_namespace!~"default|kube-system|istio-system"
+  destination_service_namespace=~"external-services|unknown"
 }[5m])) by (source_workload)
 ```
 
@@ -217,7 +219,7 @@ This should be zero if you are in REGISTRY_ONLY mode. Any non-zero value means s
 ```promql
 sum(rate(istio_response_bytes_sum{
   reporter="source",
-  destination_service_namespace!~"default|kube-system|istio-system"
+  destination_service_namespace=~"external-services|unknown"
 }[5m])) by (destination_service_name)
 ```
 
@@ -248,9 +250,9 @@ spec:
 
     - alert: ExternalServiceHighErrorRate
       expr: |
-        sum(rate(istio_requests_total{reporter="source", destination_service_namespace!~"default|kube-system|istio-system", response_code=~"5.."}[5m])) by (destination_service_name)
+        sum(rate(istio_requests_total{reporter="source", destination_service_namespace=~"external-services|unknown", response_code=~"5.."}[5m])) by (destination_service_name)
         /
-        sum(rate(istio_requests_total{reporter="source", destination_service_namespace!~"default|kube-system|istio-system"}[5m])) by (destination_service_name)
+        sum(rate(istio_requests_total{reporter="source", destination_service_namespace=~"external-services|unknown"}[5m])) by (destination_service_name)
         > 0.1
       for: 10m
       labels:
@@ -260,7 +262,7 @@ spec:
 
     - alert: EgressBandwidthSpike
       expr: |
-        sum(rate(istio_response_bytes_sum{reporter="source", destination_service_namespace!~"default|kube-system|istio-system"}[5m]))
+        sum(rate(istio_response_bytes_sum{reporter="source", destination_service_namespace=~"external-services|unknown"}[5m]))
         > 100000000
       for: 5m
       labels:
