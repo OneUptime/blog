@@ -24,7 +24,7 @@ The Istio ingress gateway already has a health check endpoint built in on port 1
 kubectl exec <any-pod> -- curl -s http://istio-ingressgateway.istio-system:15021/healthz/ready
 ```
 
-This returns a 200 when the Envoy proxy in the gateway is ready to accept traffic. Configure your cloud load balancer to use this endpoint.
+This returns a 200 when the Envoy proxy in the gateway is ready to accept traffic. Configure your cloud load balancer to use this endpoint when your provider supports health checks against the gateway pod's target port.
 
 For AWS NLB:
 
@@ -35,7 +35,8 @@ metadata:
   name: istio-ingressgateway
   namespace: istio-system
   annotations:
-    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    service.beta.kubernetes.io/aws-load-balancer-type: "external"
+    service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: "ip"
     service.beta.kubernetes.io/aws-load-balancer-healthcheck-path: "/healthz/ready"
     service.beta.kubernetes.io/aws-load-balancer-healthcheck-port: "15021"
     service.beta.kubernetes.io/aws-load-balancer-healthcheck-protocol: "HTTP"
@@ -55,7 +56,7 @@ spec:
       targetPort: 15021
 ```
 
-For GCP:
+For GKE `LoadBalancer` Services, the cloud load balancer health check is answered by the node's `kube-proxy` or `cilium-agent`, not by the gateway pod. Use `externalTrafficPolicy: Local` if you want nodes without ready gateway pods to fail the load balancer health check:
 
 ```yaml
 apiVersion: v1
@@ -63,28 +64,21 @@ kind: Service
 metadata:
   name: istio-ingressgateway
   namespace: istio-system
-  annotations:
-    cloud.google.com/backend-config: '{"default": "istio-gateway-backend"}'
 spec:
   type: LoadBalancer
+  externalTrafficPolicy: Local
   selector:
     istio: ingressgateway
   ports:
     - name: http
       port: 80
+      targetPort: 8080
     - name: https
       port: 443
----
-apiVersion: cloud.google.com/v1
-kind: BackendConfig
-metadata:
-  name: istio-gateway-backend
-  namespace: istio-system
-spec:
-  healthCheck:
-    port: 15021
-    requestPath: /healthz/ready
-    type: HTTP
+      targetPort: 8443
+    - name: status-port
+      port: 15021
+      targetPort: 15021
 ```
 
 ## Application-Level Health Check Endpoints
@@ -96,7 +90,7 @@ The gateway health check only tells you if the Envoy proxy is running. It does n
 The simplest approach is to expose your application's health endpoint through the gateway:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: health-check-vs
@@ -205,7 +199,7 @@ spec:
 Route health check traffic to this aggregator:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: health-vs
@@ -276,7 +270,7 @@ This responds to `/gateway-health` directly from the gateway without forwarding 
 Health check requests can flood your access logs. Exclude them using telemetry configuration:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: disable-health-logging
@@ -296,7 +290,7 @@ This only logs requests that are either errors or not health checks.
 Health check endpoints should respond quickly. If they do not, the load balancer might mark the gateway as unhealthy. Configure strict timeouts:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: health-vs
@@ -325,7 +319,7 @@ If you have multiple Istio gateways (internal and external), each needs its own 
 
 ```yaml
 # External gateway health
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: external-health
@@ -344,7 +338,7 @@ spec:
 
 ---
 # Internal gateway health
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: internal-health
@@ -367,7 +361,7 @@ spec:
 If your health check endpoint reveals sensitive information (like service names and their status), restrict access to it:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: health-check-access
@@ -376,7 +370,7 @@ spec:
   selector:
     matchLabels:
       istio: ingressgateway
-  action: ALLOW
+  action: DENY
   rules:
     - to:
         - operation:
@@ -384,13 +378,13 @@ spec:
               - /healthz
       from:
         - source:
-            remoteIpBlocks:
+            notRemoteIpBlocks:
               - "10.0.0.0/8"
               - "172.16.0.0/12"
 ```
 
-This restricts the health check endpoint to internal IP ranges, preventing external users from probing your service health.
+This denies requests to the health check endpoint unless they come from the allowed internal IP ranges, preventing external users from probing your service health. Use `ipBlocks` or `notIpBlocks` instead if your gateway sees the packet source address directly, such as with a network load balancer and `externalTrafficPolicy: Local`.
 
 ## Summary
 
-Health check endpoints at the Istio gateway serve two purposes: telling load balancers that the gateway is ready (use the built-in /healthz/ready on port 15021) and telling monitoring services that your application is healthy (route through a VirtualService to your backend health endpoint or an aggregator). For simple gateway-level checks, an EnvoyFilter can return 200 directly without involving any backend. Always set strict timeouts, disable retries on health check routes, and consider excluding health check requests from access logs to keep them clean.
+Health check endpoints at the Istio gateway serve two purposes: telling load balancers that the gateway is ready (use the built-in /healthz/ready on port 15021 when your provider supports target-port health checks) and telling monitoring services that your application is healthy (route through a VirtualService to your backend health endpoint or an aggregator). For simple gateway-level checks, an EnvoyFilter can return 200 directly without involving any backend. Always set strict timeouts, disable retries on health check routes, and consider excluding health check requests from access logs to keep them clean.
