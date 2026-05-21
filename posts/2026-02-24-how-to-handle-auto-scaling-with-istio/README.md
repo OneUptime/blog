@@ -12,7 +12,7 @@ Auto-scaling with the Kubernetes Horizontal Pod Autoscaler (HPA) works out of th
 
 ## Basic HPA with Istio Sidecars
 
-A standard HPA based on CPU works with Istio, but the CPU metrics include both your application and the Envoy sidecar. This means scaling thresholds need to account for the sidecar's resource consumption.
+A standard HPA based on CPU works with Istio when the application container and Envoy sidecar both have resource requests. The CPU metrics include both your application and the Envoy sidecar. This means scaling thresholds need to account for the sidecar's resource consumption.
 
 ```yaml
 apiVersion: autoscaling/v2
@@ -42,7 +42,7 @@ spec:
         averageUtilization: 80
 ```
 
-The sidecar typically uses 50-100m CPU at idle and more under load. If your application requests 200m CPU and the sidecar requests 100m, the pod's total CPU request is 300m. The HPA calculates utilization against this total. So a 70% target means scaling happens when total pod CPU usage hits 210m, not when your app alone hits 140m.
+The sidecar uses CPU at idle and more under load. If your application requests 200m CPU and the sidecar requests 100m, the pod's total CPU request is 300m. The HPA calculates utilization against this total. So a 70% target means scaling happens when total pod CPU usage hits 210m, not when your app alone hits 140m.
 
 ## Accounting for Sidecar Resources
 
@@ -83,6 +83,8 @@ CPU-based scaling is simple but not always the best signal. Istio provides rich 
 First, make sure Prometheus is scraping Istio metrics. Then install the Prometheus Adapter:
 
 ```bash
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo update
 helm install prometheus-adapter prometheus-community/prometheus-adapter -n monitoring \
   -f prometheus-adapter-values.yaml
 ```
@@ -103,7 +105,7 @@ rules:
       matches: "^(.*)_total$"
       as: "${1}_per_second"
     metricsQuery: 'sum(rate(<<.Series>>{<<.LabelMatchers>>}[2m])) by (<<.GroupBy>>)'
-  - seriesQuery: 'istio_request_duration_milliseconds_bucket{destination_service_namespace!=""}'
+  - seriesQuery: 'istio_request_duration_milliseconds_bucket{destination_service_namespace!="",destination_service_name!=""}'
     resources:
       overrides:
         destination_service_namespace:
@@ -144,7 +146,7 @@ spec:
         value: 100
 ```
 
-This scales based on request rate: when the service receives more than 100 requests per second, scale up.
+This scales based on the service's total request rate: when the service receives more than 100 requests per second, scale up.
 
 ### Using KEDA
 
@@ -178,7 +180,7 @@ KEDA also supports scaling to zero, which is useful for serverless patterns.
 
 When the HPA triggers a scale-up, new pods need time to start and have their sidecars configured. During this window, existing pods handle all the traffic. To smooth this out:
 
-**Configure startup probes**: Make sure the HPA doesn't count pods as ready until both the application and the sidecar are healthy:
+**Configure startup and readiness probes**: Keep pods out of service until the application is healthy. Istio injects its own sidecar readiness probe, and the HPA treats not-yet-ready pod metrics conservatively during startup:
 
 ```yaml
 spec:
@@ -190,6 +192,11 @@ spec:
         port: 8080
       failureThreshold: 30
       periodSeconds: 2
+    readinessProbe:
+      httpGet:
+        path: /ready
+        port: 8080
+      periodSeconds: 5
 ```
 
 **Use preStop hooks**: Prevent pods from being terminated before they finish handling requests:
@@ -204,7 +211,7 @@ spec:
           command: ["sleep", "10"]
 ```
 
-**Configure PodDisruptionBudget**: Prevent too many pods from being removed at once during scale-down:
+**Configure PodDisruptionBudget**: Prevent too many pods from being evicted at once during voluntary disruptions such as node drains:
 
 ```yaml
 apiVersion: policy/v1
