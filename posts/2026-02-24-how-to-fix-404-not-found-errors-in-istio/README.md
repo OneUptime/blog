@@ -43,10 +43,10 @@ kubectl get gateway -n istio-system
 kubectl get virtualservice orders-routes -n production -o yaml
 ```
 
-The VirtualService must reference the Gateway with the full namespace/name:
+Because this Gateway is in a different namespace, the VirtualService must reference it with the full namespace/name:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: orders-routes
@@ -73,7 +73,7 @@ The hosts in the Gateway server must match (or be a superset of) the hosts in th
 
 ```yaml
 # Gateway allows *.example.com
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: main-gateway
@@ -187,7 +187,7 @@ Before the VirtualService, all traffic to `orders-service` gets routed there. Af
 Fix by adding a default route:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: orders-service
@@ -202,23 +202,20 @@ spec:
       route:
         - destination:
             host: orders-service
-            subset: v1
     - match:
         - uri:
             prefix: /api/v2
       route:
         - destination:
             host: orders-service
-            subset: v2
     - route:  # Default route catches everything else
         - destination:
             host: orders-service
-            subset: v1
 ```
 
 ## 404 Due to exportTo Restrictions
 
-If a VirtualService or Service has `exportTo` set to restrict visibility, services in other namespaces will not be able to see it:
+If a VirtualService has `exportTo` set to restrict visibility, workloads in other namespaces will not be affected by it:
 
 ```yaml
 # This VirtualService is only visible within the "team-a" namespace
@@ -227,7 +224,7 @@ spec:
     - "."
 ```
 
-If a service in `team-b` tries to call a service governed by this VirtualService, it might get a 404. Remove or expand the exportTo:
+If a workload in `team-b` depends on this VirtualService for routing, it might fall back to a different route or fail to match the intended route. Remove or expand the exportTo:
 
 ```yaml
 spec:
