@@ -8,24 +8,24 @@ Description: How to preserve the original client source IP address when using Is
 
 ---
 
-When Istio intercepts traffic, the default REDIRECT mode rewrites the source IP of incoming connections. Your application sees connections coming from 127.0.0.1 (localhost) instead of the actual client IP. For many applications this doesn't matter, but if you need the real client IP for logging, rate limiting, access control, or compliance, you need to take specific steps to preserve it.
+When Istio intercepts traffic, the default REDIRECT mode does not preserve the source IP all the way to the application. Your application typically sees connections coming from a loopback address, such as 127.0.0.1 or 127.0.0.6, instead of the actual client IP. For many applications this doesn't matter, but if you need the real client IP for logging, rate limiting, access control, or compliance, you need to take specific steps to preserve it.
 
 ## Why Source IP Gets Lost
 
-Istio uses iptables REDIRECT rules to send traffic to the Envoy proxy. The REDIRECT target in iptables changes the destination address of the packet to localhost and the connection's source address is also rewritten. When Envoy forwards the connection to your application on localhost, the application sees the source as 127.0.0.1 or ::1.
+Istio uses iptables REDIRECT rules to send traffic to the Envoy proxy. The REDIRECT target in iptables changes the destination address of the packet to the proxy listener. Envoy then opens a separate connection to your application, so the application sees the source as a loopback address such as 127.0.0.1, 127.0.0.6, or ::1.
 
 Here's the problem illustrated:
 
 ```text
 Client (10.0.1.5) -> Pod IP:8080 -> iptables REDIRECT -> Envoy:15006 -> App:8080
-                                                          (source becomes 127.0.0.1)
+                                                          (app sees a loopback source)
 ```
 
-Your app sees source IP as 127.0.0.1 instead of 10.0.1.5.
+Your app sees a loopback source IP instead of 10.0.1.5.
 
 ## Using HTTP Headers for Source IP
 
-For HTTP traffic, the easiest solution is to use the `X-Forwarded-For` or `X-Real-IP` headers. Envoy automatically adds these headers to HTTP requests.
+For HTTP traffic, the easiest solution is to use forwarding headers such as `X-Forwarded-For`. Istio gateways can append to `X-Forwarded-For` and set `X-Envoy-External-Address` based on your trusted proxy configuration.
 
 The `X-Forwarded-For` header contains the chain of IPs the request passed through:
 
@@ -33,9 +33,9 @@ The `X-Forwarded-For` header contains the chain of IPs the request passed throug
 X-Forwarded-For: 10.0.1.5, 10.244.0.3
 ```
 
-The `X-Envoy-Peer-Metadata` header also carries source workload information.
+The `X-Envoy-External-Address` header carries the trusted client address selected by the ingress gateway.
 
-To configure your application to trust these headers, you need to know how many proxies sit between the client and your app. In a typical setup with an ingress gateway and a sidecar, there are two hops.
+To configure your application to trust these headers, you need to know how many trusted proxies sit in front of the Istio ingress gateway. For example, if you have a cloud load balancer and a reverse proxy in front of the gateway, there are two trusted hops.
 
 You can configure the number of trusted hops in the mesh config:
 
@@ -49,7 +49,7 @@ spec:
         numTrustedProxies: 2
 ```
 
-This tells Envoy how many proxy hops to trust when reading X-Forwarded-For headers.
+This tells the gateway how many proxy hops to trust when deriving the client address from X-Forwarded-For headers.
 
 ## Preserving Source IP at the Gateway
 
@@ -133,7 +133,7 @@ TPROXY has stricter requirements than the default REDIRECT mode:
 - The pod needs to run with `NET_ADMIN` capability for the proxy container (not just the init container)
 - IP routing rules need to be set up correctly
 
-The init container will configure additional iptables rules and routing policy for TPROXY:
+The init container, or Istio CNI if you use it, will configure additional iptables rules and routing policy for TPROXY:
 
 ```bash
 kubectl exec -it <pod-name> -c istio-proxy -- iptables -t mangle -L -v -n
@@ -158,29 +158,16 @@ Another approach is to use the PROXY protocol at the load balancer level. The PR
 If your cloud provider's load balancer supports PROXY protocol, you can configure the Istio gateway to accept it:
 
 ```yaml
-apiVersion: networking.istio.io/v1
-kind: EnvoyFilter
-metadata:
-  name: proxy-protocol
-  namespace: istio-system
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
 spec:
-  workloadSelector:
-    labels:
-      app: istio-ingressgateway
-  configPatches:
-  - applyTo: LISTENER
-    match:
-      context: GATEWAY
-    patch:
-      operation: MERGE
-      value:
-        listenerFilters:
-        - name: envoy.filters.listener.proxy_protocol
-          typedConfig:
-            "@type": type.googleapis.com/envoy.extensions.filters.listener.proxy_protocol.v3.ProxyProtocol
+  meshConfig:
+    defaultConfig:
+      gatewayTopology:
+        proxyProtocol: {}
 ```
 
-This tells Envoy to parse the PROXY protocol header and extract the client IP from it.
+This tells the gateway to accept the PROXY protocol header and extract the client IP from it. Istio documents this for TCP traffic; don't use PROXY protocol for L7 traffic or for gateways behind L7 load balancers.
 
 ## Verifying Source IP Preservation
 
@@ -199,7 +186,7 @@ For TPROXY mode, check the source IP directly:
 kubectl exec -it echoserver -- ss -tnp
 ```
 
-You should see connections from the actual client IPs rather than 127.0.0.1.
+You should see connections from the actual client IPs rather than a loopback address.
 
 ## Choosing the Right Approach
 
