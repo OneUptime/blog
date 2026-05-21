@@ -14,9 +14,9 @@ Istio has an official version skew policy, and understanding it is the differenc
 
 ## Istio Version Compatibility Policy
 
-Istio supports one minor version of skew between the control plane and data plane. That means if your control plane is running 1.22, your sidecar proxies can be running 1.21 or 1.22. Running 1.20 sidecars with a 1.22 control plane is not supported and may cause unpredictable behavior.
+Istio supports the control plane being one minor version ahead of the data plane. That means if your control plane is running 1.22, your sidecar proxies can be running 1.21 or 1.22. Running 1.20 sidecars with a 1.22 control plane is not supported, and running newer sidecars than the control plane is not supported.
 
-For multi-cluster setups, Istio also supports one version of skew between control planes in different clusters. So if cluster A runs Istio 1.22 and cluster B runs Istio 1.21, that is fine. But cluster A on 1.22 and cluster B on 1.20 is not supported.
+For multi-cluster setups, apply that same control plane and data plane rule in every cluster. So if cluster A runs a 1.22 control plane and cluster B still has 1.21 proxies during a rolling upgrade, that is fine. But do not leave a 1.22 control plane managing 1.20 proxies, and do not move proxies ahead of the control plane that manages them.
 
 Check your current versions across clusters:
 
@@ -136,7 +136,7 @@ VERSIONS=()
 
 for cluster in "${CLUSTERS[@]}"; do
   version=$(istioctl version --context="$cluster" -o json 2>/dev/null | \
-    jq -r '.meshVersion[0].Info.version // "unknown"')
+    jq -r '.controlPlaneVersion[0].Info.version // .meshVersion[0].Info.version // "unknown"')
   VERSIONS+=("$cluster:$version")
   echo "Cluster $cluster: Istio $version"
 done
@@ -146,16 +146,29 @@ echo ""
 echo "Checking version skew..."
 
 minor_versions=()
+minor_numbers=()
 for entry in "${VERSIONS[@]}"; do
   cluster=$(echo "$entry" | cut -d: -f1)
   version=$(echo "$entry" | cut -d: -f2)
   minor=$(echo "$version" | cut -d. -f1-2)
+  major=$(echo "$version" | cut -d. -f1)
+  minor_number=$(echo "$version" | cut -d. -f2)
+
+  if [[ "$major" =~ ^[0-9]+$ && "$minor_number" =~ ^[0-9]+$ ]]; then
+    minor_numbers+=($((major * 1000 + minor_number)))
+  else
+    echo "WARNING: Could not parse Istio version for $cluster: $version"
+  fi
+
   minor_versions+=("$minor")
 done
 
 unique_versions=($(echo "${minor_versions[@]}" | tr ' ' '\n' | sort -u))
+sorted_numbers=($(printf "%s\n" "${minor_numbers[@]}" | sort -n))
 
-if [ ${#unique_versions[@]} -le 2 ]; then
+if [ ${#minor_numbers[@]} -eq 0 ]; then
+  echo "WARNING: No parseable Istio control plane versions found"
+elif [ $((${sorted_numbers[-1]} - ${sorted_numbers[0]})) -le 1 ]; then
   echo "Version skew is within acceptable range"
 else
   echo "WARNING: Version skew exceeds supported range!"
@@ -165,12 +178,12 @@ fi
 
 ## Dealing with Feature Gates
 
-Different Istio versions have different feature gates, and some features might be alpha in one version and beta in another. During version skew, only use features that are stable in both versions.
+Different Istio versions can have different installation options and feature flags, and some features might be alpha in one version and beta in another. During version skew, only use features that are stable in both versions.
 
-Check available features for each version:
+Review the release notes and rendered profile for each version. Run this with the `istioctl` binary for each Istio version you are comparing:
 
 ```bash
-istioctl profile dump --context=cluster-a | grep -A 5 "features"
+istioctl profile dump
 ```
 
 If you are using a feature that was recently promoted from alpha to beta, make sure both clusters support it before relying on it in cross-cluster configurations.
@@ -193,13 +206,12 @@ kubectl rollout restart deployment -n default --context=cluster-a
 istioctl uninstall --revision=1-22 --context=cluster-a
 ```
 
-For in-place upgrades, you would need to downgrade:
+For in-place upgrades, you would need to downgrade using the `istioctl` binary for the target version:
 
 ```bash
-istioctl install --set values.global.meshID=mesh1 \
+istioctl upgrade --set values.global.meshID=mesh1 \
   --set values.global.multiCluster.clusterName=cluster-a \
   --set values.global.network=network-a \
-  --set tag=1.21.0 \
   --context=cluster-a
 ```
 
@@ -220,7 +232,7 @@ sum(rate(istio_requests_total{response_code=~"5.*"}[5m])) by (source_cluster, de
 
 ## Best Practices
 
-- Never skip more than one minor version in an upgrade. If you are on 1.20, go to 1.21 first, then 1.22.
+- For in-place upgrades, do not skip more than one minor version. If you are on 1.20, go to 1.21 first, then 1.22. Revision-based canary upgrades allow larger jumps, but you still need to validate them carefully.
 - Always upgrade the control plane before the data plane. The control plane is backward compatible with older proxies, but newer proxies may not work with older control planes.
 - Test the upgrade process in a staging environment that mirrors your multi-cluster production setup.
 - Keep upgrade windows short. The longer you run with version skew, the more likely you are to hit compatibility issues.
