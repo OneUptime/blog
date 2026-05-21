@@ -8,7 +8,7 @@ Description: How to use DENY authorization policies in Istio to explicitly block
 
 ---
 
-DENY policies in Istio work like a blocklist. Instead of specifying what's allowed (like ALLOW policies), you specify what should be blocked. Everything that doesn't match a DENY rule passes through. This makes DENY policies perfect for situations where you have mostly open traffic but need to block specific patterns - certain IP ranges, particular paths, or traffic from specific sources.
+DENY policies in Istio work like a blocklist. Instead of specifying what's allowed (like ALLOW policies), you specify what should be blocked. Everything that doesn't match a DENY rule can pass through unless another CUSTOM or ALLOW policy denies it. This makes DENY policies perfect for situations where you have mostly open traffic but need to block specific patterns - certain IP ranges, particular paths, or traffic from specific sources.
 
 ## How DENY Policies Fit in the Evaluation Order
 
@@ -33,7 +33,7 @@ flowchart LR
 
 ## Basic DENY Policy
 
-Block all POST requests to a service:
+Block all write requests to a service:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -49,10 +49,11 @@ spec:
   rules:
     - to:
         - operation:
+            ports: ["8080"]
             methods: ["POST", "PUT", "PATCH", "DELETE"]
 ```
 
-Any write operation gets a 403 response. GET and HEAD requests pass through unaffected.
+Any write operation on port 8080 gets a 403 response. GET and HEAD requests pass through unaffected unless another policy denies them.
 
 ## Blocking Specific Source Namespaces
 
@@ -72,7 +73,7 @@ spec:
             namespaces: ["sandbox", "testing"]
 ```
 
-This blocks all traffic from the `sandbox` and `testing` namespaces to any service in the `production` namespace. Note that there's no selector, so it applies to every workload in the namespace.
+This blocks all traffic from the `sandbox` and `testing` namespaces to any service in the `production` namespace. Namespace matching is based on the peer certificate, so it requires mTLS. Note that there's no selector, so it applies to every workload in the namespace.
 
 ## Blocking Specific IP Ranges
 
@@ -97,7 +98,7 @@ spec:
               - "198.51.100.0/24"
 ```
 
-This is useful at the ingress gateway level where you can see real client IPs.
+This is useful at the ingress gateway level when the packet source address is the real client IP, such as with `externalTrafficPolicy: Local`. If the client IP comes from `X-Forwarded-For` or PROXY Protocol, use `remoteIpBlocks` instead and configure trusted proxies.
 
 ## Protecting Sensitive Paths
 
@@ -117,6 +118,7 @@ spec:
   rules:
     - to:
         - operation:
+            ports: ["8080"]
             paths:
               - "/admin*"
               - "/debug/*"
@@ -148,12 +150,13 @@ spec:
             notNamespaces: ["my-app"]
       to:
         - operation:
+            ports: ["8080"]
             methods: ["POST", "PUT", "PATCH", "DELETE"]
 ```
 
-This blocks write operations from outside the `my-app` namespace. Services within the namespace can still do writes. Notice the use of `notNamespaces` - this matches traffic from any namespace except `my-app`.
+This blocks write operations on port 8080 from outside the `my-app` namespace. Services within the namespace can still do writes. Notice the use of `notNamespaces` - this matches traffic from any namespace except `my-app`, and it requires mTLS because namespace identity is derived from the peer certificate.
 
-## Using notValues in DENY Policies
+## Using Negative Matches in DENY Policies
 
 The `not` variants of fields are powerful for creating exceptions:
 
@@ -175,10 +178,11 @@ spec:
               - "cluster.local/ns/my-app/sa/admin-service"
       to:
         - operation:
+            ports: ["8080"]
             paths: ["/admin/*"]
 ```
 
-This denies access to `/admin/*` for everyone except the admin-service. It's a clean way to protect sensitive endpoints.
+This denies access to `/admin/*` for everyone except the admin-service. It requires mTLS because the peer principal is derived from the peer certificate. It's a clean way to protect sensitive endpoints.
 
 ## Multiple Rules in a DENY Policy
 
@@ -199,10 +203,12 @@ spec:
     # Block requests without proper host header
     - to:
         - operation:
+            ports: ["8080"]
             notHosts: ["api.example.com", "api.example.com:443"]
     # Block requests to debug endpoints
     - to:
         - operation:
+            ports: ["8080"]
             paths: ["/debug/*"]
     # Block traffic from sandbox
     - from:
@@ -233,6 +239,7 @@ spec:
             requestPrincipals: ["*"]
       to:
         - operation:
+            ports: ["8080"]
             paths: ["/api/premium/*"]
       when:
         - key: request.auth.claims[plan]
@@ -258,6 +265,7 @@ spec:
   rules:
     - to:
         - operation:
+            ports: ["8080"]
             paths:
               - "/actuator/*"
               - "/env"
@@ -279,10 +287,10 @@ spec:
             namespaces: ["my-app", "frontend"]
       to:
         - operation:
-            paths: ["/api/*"]
+            paths: ["/*"]
 ```
 
-Because DENY is evaluated before ALLOW, the safety net blocks those paths even though the ALLOW policy has a broad `/api/*` match.
+Because DENY is evaluated before ALLOW, the safety net blocks those paths even though the ALLOW policy has a broad `/*` match.
 
 ## Testing DENY Policies
 
@@ -323,7 +331,7 @@ kubectl logs -n my-app deploy/my-service -c istio-proxy | grep "403"
 Common debugging steps:
 
 1. Check if the DENY rule is too broad. A rule with just `from` and no `to` blocks ALL operations from that source.
-2. Verify path matching. Remember that paths are case-sensitive and `/api` doesn't match `/api/` (trailing slash matters).
+2. Verify path matching. Remember that paths are case-sensitive, and trailing slashes matter unless you use a prefix match such as `/api*`.
 3. Check namespace spelling. A typo in the namespace name in `notNamespaces` could block everything.
 
 ## When to Choose DENY over ALLOW
