@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Sidecar Injection, Kubernetes, Pod Configuration, Service Mesh
 
-Description: How to control Istio sidecar injection and configuration at the individual pod level using annotations for fine-grained mesh control.
+Description: How to control Istio sidecar injection and configuration at the individual pod level using labels and annotations for fine-grained mesh control.
 
 ---
 
 While namespace-level injection is the default approach for most Istio deployments, there are plenty of situations where you need finer control. Maybe one pod in a namespace needs different sidecar resources. Maybe a job should opt out of injection. Maybe a specific deployment needs a custom proxy configuration.
 
-Pod-level injection gives you this control through annotations on the pod template. These annotations override namespace-level settings and let you customize sidecar behavior per workload.
+Pod-level injection gives you this control through labels and annotations on the pod template. These pod template settings let you customize sidecar behavior per workload.
 
 ## Enabling and Disabling Injection per Pod
 
@@ -23,9 +23,13 @@ metadata:
   name: my-service
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: my-service
   template:
     metadata:
-      annotations:
+      labels:
+        app: my-service
         sidecar.istio.io/inject: "true"
     spec:
       containers:
@@ -33,13 +37,13 @@ spec:
         image: my-service:latest
 ```
 
-Setting `sidecar.istio.io/inject: "true"` forces injection even if the namespace does not have injection enabled. Setting it to `"false"` prevents injection even if the namespace has it enabled.
+Setting the `sidecar.istio.io/inject: "true"` pod label enables injection when the namespace does not have injection enabled. Setting it to `"false"` prevents injection even if the namespace has it enabled.
 
 This is especially useful for:
 
 - Enabling injection for specific pods in a non-injected namespace
 - Disabling injection for specific pods that should not be in the mesh (like batch jobs or init pods)
-- Overriding namespace-level settings for individual workloads
+- Fine-tuning namespace-level behavior for individual workloads
 
 ## Customizing Sidecar Resources
 
@@ -52,8 +56,13 @@ metadata:
   name: high-traffic-api
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: high-traffic-api
   template:
     metadata:
+      labels:
+        app: high-traffic-api
       annotations:
         sidecar.istio.io/proxyCPU: "200m"
         sidecar.istio.io/proxyMemory: "256Mi"
@@ -76,8 +85,13 @@ metadata:
   name: admin-dashboard
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: admin-dashboard
   template:
     metadata:
+      labels:
+        app: admin-dashboard
       annotations:
         sidecar.istio.io/proxyCPU: "10m"
         sidecar.istio.io/proxyMemory: "40Mi"
@@ -111,8 +125,13 @@ kind: Deployment
 metadata:
   name: my-service
 spec:
+  selector:
+    matchLabels:
+      app: my-service
   template:
     metadata:
+      labels:
+        app: my-service
       annotations:
         proxy.istio.io/config: |
           concurrency: 2
@@ -152,7 +171,7 @@ annotations:
 
 This is useful for Prometheus scraping endpoints. Port 9090 traffic goes directly to the application without passing through the sidecar.
 
-**Include only specific outbound ports** (instead of intercepting all):
+**Include only specific outbound IP ranges** (instead of intercepting all):
 
 ```yaml
 annotations:
@@ -168,7 +187,7 @@ annotations:
   traffic.sidecar.istio.io/excludeOutboundIPRanges: "169.254.169.254/32"
 ```
 
-This is commonly needed for the AWS metadata endpoint (169.254.169.254). Without this exclusion, IMDS calls get routed through the sidecar, which can cause issues with IAM roles for service accounts.
+This is commonly needed when workloads intentionally access the AWS metadata endpoint (169.254.169.254). Without this exclusion, IMDS calls get routed through the sidecar, which can cause issues for workloads that depend on direct metadata-service access.
 
 ## Controlling Sidecar Image
 
@@ -176,7 +195,7 @@ Override the sidecar image per pod:
 
 ```yaml
 annotations:
-  sidecar.istio.io/proxyImage: "my-registry.example.com/istio/proxyv2:1.20.0-custom"
+  sidecar.istio.io/proxyImage: "my-registry.example.com/istio/proxyv2:1.30.0-custom"
 ```
 
 This is useful when you need a custom Envoy build (for example, with FIPS-compliant cryptography or additional Envoy filters).
@@ -193,22 +212,17 @@ annotations:
 
 This prevents the race condition where your application starts before the sidecar is ready.
 
-**Custom readiness probe on the sidecar:**
+**Custom readiness probe timing on the sidecar:**
 
-The sidecar exposes a health endpoint at port 15021. You can add readiness dependencies in your application that check this endpoint:
+The sidecar exposes a health endpoint at port 15021. You can tune the injected sidecar readiness probe with annotations:
 
 ```yaml
-containers:
-- name: my-service
-  readinessProbe:
-    httpGet:
-      path: /healthz/ready
-      port: 15021
-    initialDelaySeconds: 1
-    periodSeconds: 2
+annotations:
+  readiness.status.sidecar.istio.io/initialDelaySeconds: "1"
+  readiness.status.sidecar.istio.io/periodSeconds: "2"
 ```
 
-Wait, that checks the sidecar readiness from the application container's probe. Actually, the standard approach is to rely on `holdApplicationUntilProxyStarts` rather than custom probes.
+For startup ordering, the standard approach is still to rely on `holdApplicationUntilProxyStarts` rather than adding application probes that check the sidecar.
 
 ## Configuring Log Level
 
@@ -265,7 +279,7 @@ This is useful for debugging to confirm what was injected and which revision was
 
 ## Complete Example: Production API Service
 
-Here is a fully annotated pod template for a production API service:
+Here is a fully configured pod template for a production API service:
 
 ```yaml
 apiVersion: apps/v1
@@ -283,8 +297,8 @@ spec:
       labels:
         app: payment-api
         version: v2
-      annotations:
         sidecar.istio.io/inject: "true"
+      annotations:
         sidecar.istio.io/proxyCPU: "100m"
         sidecar.istio.io/proxyMemory: "128Mi"
         sidecar.istio.io/proxyCPULimit: "500m"
@@ -308,7 +322,7 @@ spec:
 ```
 
 This configuration:
-- Forces sidecar injection
+- Enables sidecar injection for this workload
 - Sets appropriate sidecar resources for a medium-traffic service
 - Excludes PostgreSQL port (5432) from interception (the database connection does not benefit from the sidecar)
 - Uses 2 Envoy worker threads
@@ -317,4 +331,4 @@ This configuration:
 
 ## Summary
 
-Pod-level injection annotations give you precise control over sidecar behavior. Use them to customize resources per workload, exclude specific traffic from interception, tune proxy settings, and debug injection issues. The annotations override namespace-level defaults, so you can have a baseline configuration at the namespace level and fine-tune individual workloads as needed.
+Pod-level injection labels and annotations give you precise control over sidecar behavior. Use them to customize resources per workload, exclude specific traffic from interception, tune proxy settings, and debug injection issues. You can have a baseline configuration at the namespace level and fine-tune individual workloads as needed.
