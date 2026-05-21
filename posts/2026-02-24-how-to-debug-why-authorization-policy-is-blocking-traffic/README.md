@@ -14,12 +14,13 @@ You deployed an AuthorizationPolicy and now legitimate traffic is getting blocke
 
 Before debugging, you need to understand the evaluation order:
 
-1. If no AuthorizationPolicy exists for a workload, all traffic is allowed (default allow)
+1. If any CUSTOM policy matches, the extension provider is evaluated first and can deny the request
 2. If any DENY policy matches, the request is denied (regardless of ALLOW policies)
-3. If an ALLOW policy exists but the request doesn't match any rule, it's denied
-4. If an ALLOW policy exists and the request matches a rule, it's allowed
+3. If no ALLOW policy exists for a workload, traffic is allowed (default allow)
+4. If an ALLOW policy exists but the request doesn't match any rule, it's denied
+5. If an ALLOW policy exists and the request matches a rule, it's allowed
 
-The third point is what catches most people. The moment you create an ALLOW policy for a workload, everything not explicitly allowed gets denied.
+The fourth point is what catches most people. The moment you create an ALLOW policy for a workload, everything not explicitly allowed gets denied.
 
 ## Step 1: Identify What's Being Blocked
 
@@ -58,18 +59,18 @@ Find every AuthorizationPolicy that could affect your workload:
 
 kubectl get authorizationpolicy -n production
 
-# Mesh-level policies (in root namespace)
+# Mesh-level policies (in the root namespace, often istio-system)
 kubectl get authorizationpolicy -n istio-system
 
 # Check all namespaces
 kubectl get authorizationpolicy --all-namespaces
 ```
 
-A common mistake is having a mesh-wide DENY policy in `istio-system` that you forgot about. Check for those first.
+A common mistake is having a mesh-wide DENY policy in the Istio root namespace (often `istio-system`) that you forgot about. Check for those first.
 
 ## Step 3: Check Policy Selector
 
-Each AuthorizationPolicy has an optional `selector` that determines which workloads it applies to. If the selector is empty, it applies to all workloads in the namespace:
+Each selector-based AuthorizationPolicy has an optional `selector` that determines which workloads it applies to. If the selector is empty, it applies to all workloads in the namespace, or to all namespaces when the policy is in the Istio root namespace:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -313,4 +314,4 @@ kubectl exec deploy/frontend -n production -c istio-proxy -- \
 istioctl proxy-config clusters deploy/frontend -n production --direction outbound | grep my-service
 ```
 
-Authorization policy debugging comes down to understanding the evaluation logic: DENY always wins, ALLOW policies implicitly deny everything not matched, and no policies means allow all. Use RBAC debug logging to see exactly what's happening, and verify that mTLS is working if you're using principal-based rules.
+Authorization policy debugging comes down to understanding the evaluation logic: CUSTOM can deny first, DENY wins over ALLOW, ALLOW policies implicitly deny everything not matched, and no policies means allow all. Use RBAC debug logging to see exactly what's happening, and verify that mTLS is working if you're using principal-based rules.
