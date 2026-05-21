@@ -37,7 +37,7 @@ Things you should NOT version control:
 
 ## Repository Organization
 
-There are two main approaches to organizing Istio configuration in Git:
+There are three common approaches to organizing Istio configuration in Git:
 
 ### Approach 1: Centralized Istio Repository
 
@@ -278,7 +278,7 @@ jobs:
 
       - name: Install istioctl
         run: |
-          curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.24.0 sh -
+          curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.30.0 sh -
           sudo mv istio-*/bin/istioctl /usr/local/bin/
 
       - name: YAML lint
@@ -287,7 +287,7 @@ jobs:
           yamllint -d relaxed istio/
 
       - name: Istio analysis
-        run: istioctl analyze -R istio/
+        run: istioctl analyze --use-kube=false istio/
 
       - name: Dry run
         run: |
@@ -318,8 +318,8 @@ Sometimes someone makes a manual change in the cluster that does not match what 
 
 ```bash
 # Export current config and diff against git
-kubectl get virtualservices -n production -o yaml > current-vs.yaml
-diff current-vs.yaml istio/services/production/virtual-services/
+kubectl get virtualservice payment-service -n production -o yaml > current-vs.yaml
+diff -u services/payment-service/virtual-service.yaml current-vs.yaml
 ```
 
 Better yet, use a GitOps controller that automatically detects and reconciles drift.
