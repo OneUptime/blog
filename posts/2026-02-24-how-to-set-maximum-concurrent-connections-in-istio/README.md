@@ -8,7 +8,7 @@ Description: How to configure maximum concurrent TCP and HTTP connections in Ist
 
 ---
 
-Every service has a limit to how many concurrent connections it can handle. Databases, legacy services, and even modern microservices can degrade or crash when they get more connections than they can manage. Istio lets you enforce connection limits at the mesh level through DestinationRule resources, so the service itself never sees more traffic than it can handle.
+Every service has a limit to how many concurrent connections it can handle. Databases, legacy services, and even modern microservices can degrade or crash when they get more connections than they can manage. Istio lets you enforce connection limits through DestinationRule resources, so each proxy can fail excess traffic quickly instead of forwarding unlimited traffic to an overloaded upstream host.
 
 ## Why Limit Concurrent Connections?
 
@@ -23,10 +23,10 @@ This is especially important for:
 
 ## Configuring TCP Connection Limits
 
-The `maxConnections` field in a DestinationRule controls the maximum number of TCP connections to a service:
+The `maxConnections` field in a DestinationRule controls the maximum number of TCP connections to an upstream host:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: database-proxy
@@ -40,7 +40,7 @@ spec:
         connectTimeout: 3s
 ```
 
-This limits the Envoy proxy to 50 concurrent TCP connections to the `database-proxy` service. The 51st connection attempt will receive a 503 Service Unavailable error.
+This limits Envoy's upstream connection pool to 50 concurrent TCP connections for each `database-proxy` upstream host. When that circuit breaker is exhausted, additional traffic that requires a new upstream connection can fail fast with a 503 Service Unavailable error.
 
 The `connectTimeout` sets how long Envoy waits for the TCP handshake to complete. If the upstream service is slow to accept connections (a sign of overload), this prevents callers from waiting too long.
 
@@ -49,7 +49,7 @@ The `connectTimeout` sets how long Envoy waits for the TCP handshake to complete
 For HTTP traffic, you have more fine-grained controls:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: api-service
@@ -67,11 +67,11 @@ spec:
 
 Here is what each setting does:
 
-**maxConnections** - Total TCP connections. This applies to both HTTP/1.1 and HTTP/2, but has different implications for each protocol.
+**maxConnections** - Maximum HTTP/1.1 or raw TCP connections to a destination host. This has different implications depending on the protocol.
 
-**http1MaxPendingRequests** - For HTTP/1.1, each connection handles one request at a time. When all connections are busy, new requests wait in a pending queue. This setting caps that queue. Once the queue is full, additional requests get an immediate 503.
+**http1MaxPendingRequests** - Maximum requests queued while waiting for a ready connection pool connection. This is most visible with HTTP/1.1, where each connection normally handles one active request at a time, but Istio's setting applies to HTTP/1.1 and HTTP/2. Once the queue is full, additional requests get an immediate 503.
 
-**http2MaxRequests** - For HTTP/2 (and gRPC), multiple requests are multiplexed over a single connection. This setting limits the total number of concurrent requests, regardless of how many connections exist.
+**http2MaxRequests** - Maximum number of active requests to a destination. For HTTP/2 and gRPC, multiple requests are multiplexed over a single connection, so this is usually the primary concurrency control.
 
 ## Understanding the Difference Between TCP and HTTP Limits
 
@@ -81,17 +81,18 @@ This trips people up. TCP and HTTP limits work together but at different layers.
 flowchart TD
     A[Incoming Request] --> B{TCP connections\n< maxConnections?}
     B -->|No| C[503 Overflow]
-    B -->|Yes - HTTP/1.1| D{Pending requests\n< http1MaxPendingRequests?}
-    B -->|Yes - HTTP/2| E{Active requests\n< http2MaxRequests?}
+    B -->|Yes| E{Active requests\n< http2MaxRequests?}
+    E -->|Yes - HTTP/1.1 busy| D{Pending requests\n< http1MaxPendingRequests?}
     D -->|No| C
     D -->|Yes| F[Queue request]
     E -->|No| C
-    E -->|Yes| G[Multiplex on connection]
+    E -->|Yes - HTTP/2| G[Multiplex on connection]
+    E -->|Yes - HTTP/1.1 ready| I[Send immediately]
     F --> H[Send when connection available]
     G --> I[Send immediately]
 ```
 
-For HTTP/1.1 services, the effective concurrency limit is `maxConnections` because each connection handles one request at a time. The `http1MaxPendingRequests` just controls how many extra requests can wait.
+For HTTP/1.1 services, the effective active request concurrency is often close to `maxConnections` because each connection normally handles one request at a time. The `http1MaxPendingRequests` setting controls how many extra requests can wait.
 
 For HTTP/2 services, `http2MaxRequests` is the primary concurrency control since many requests share few connections.
 
@@ -102,7 +103,7 @@ For HTTP/2 services, `http2MaxRequests` is the primary concurrency control since
 Database connections are expensive. Limit them tightly:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: postgres-proxy
@@ -125,7 +126,7 @@ Twenty connections is typical for a small database. The low pending request limi
 For a service that handles lots of concurrent requests:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: product-api
@@ -149,7 +150,7 @@ Higher limits for a service that is built to handle high concurrency. The `maxRe
 For a service that can only handle a few concurrent requests:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: legacy-billing
@@ -165,7 +166,7 @@ spec:
         http1MaxPendingRequests: 5
 ```
 
-Very tight limits. Only 5 concurrent connections and 5 pending requests. The legacy service gets at most 10 requests in its pipeline at any time.
+Very tight limits. Each proxy can open only 5 upstream connections and queue 5 pending requests for an upstream host, so excess traffic fails fast.
 
 ## How to Determine the Right Limits
 
@@ -177,7 +178,7 @@ Do not guess. Look at your current traffic:
 kubectl exec deploy/my-service -c istio-proxy -- \
   curl -s localhost:15000/stats | grep -E "cx_active|rq_active"
 
-# Check peak connection counts
+# Check cumulative connection creations
 kubectl exec deploy/my-service -c istio-proxy -- \
   curl -s localhost:15000/stats | grep "cx_total"
 ```
@@ -200,6 +201,7 @@ kubectl exec deploy/my-service -c istio-proxy -- \
 
 # Key metrics:
 # upstream_rq_pending_overflow - HTTP pending request overflow
+# upstream_rq_active_overflow - active request overflow
 # upstream_cx_overflow - TCP connection overflow
 ```
 
@@ -210,7 +212,7 @@ If `overflow` counts are high during normal traffic, your limits are too low. If
 Connection limits work best alongside outlier detection:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: payment-service
