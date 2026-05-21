@@ -8,7 +8,7 @@ Description: How to extend Istio's Envoy proxy with WebAssembly plugins using WA
 
 ---
 
-Istio's Envoy proxy can be extended with WebAssembly (Wasm) plugins. This lets you add custom logic to the data plane without modifying Envoy's source code or rebuilding the proxy. With WASI (WebAssembly System Interface) support, these plugins can interact with system resources in a standardized way, making them more portable and capable.
+Istio's Envoy proxy can be extended with WebAssembly (Wasm) plugins. This lets you add custom logic to the data plane without modifying Envoy's source code or rebuilding the proxy. With WASI (WebAssembly System Interface) support, these plugins can use supported WASI system calls in a standardized way, making them more portable and capable.
 
 If you need custom request/response transformation, specialized authentication, or business-specific traffic routing that Istio does not provide out of the box, Wasm plugins are the answer.
 
@@ -169,12 +169,12 @@ spec:
     max_header_size: "8192"
 ```
 
-### Option 2: Using a ConfigMap or HTTP Server
+### Option 2: Using an HTTP Server
 
-For development and testing, you can serve the Wasm module from an HTTP server:
+For development and testing, you can serve the Wasm module from an HTTP server. For example, you can store the module in a ConfigMap that an HTTP server pod mounts:
 
 ```bash
-# Start a simple file server
+# Store the Wasm module for a server pod to mount and serve
 kubectl create configmap wasm-plugin \
   --from-file=plugin.wasm=target/wasm32-wasip1/release/my_istio_plugin.wasm \
   -n production
@@ -213,10 +213,10 @@ spec:
   # Where to get the Wasm module
   url: oci://my-registry.com/my-plugin:v1
 
-  # When in the filter chain to run (AUTHN, AUTHZ, STATS, or UNSPECIFIED)
+  # When in the filter chain to run (AUTHN, AUTHZ, STATS, or UNSPECIFIED_PHASE)
   phase: AUTHN
 
-  # Priority within the phase (lower numbers run first)
+  # Priority within the phase (higher numbers run first)
   priority: 10
 
   # Configuration passed to the plugin
@@ -290,12 +290,16 @@ impl HttpContext for TransformFilter {
 impl HttpContext for MetricsFilter {
     fn on_http_response_headers(&mut self, _num_headers: usize, _end_of_stream: bool) -> Action {
         // Increment a custom counter
-        self.increment_metric(self.response_counter, 1);
+        let _ = proxy_wasm::hostcalls::increment_metric(self.response_counter, 1);
 
         // Record latency
         if let Some(start_time) = self.request_start_time {
-            let duration = self.get_current_time() - start_time;
-            self.record_metric(self.latency_histogram, duration.as_millis() as u64);
+            if let Ok(duration) = self.get_current_time().duration_since(start_time) {
+                let _ = proxy_wasm::hostcalls::record_metric(
+                    self.latency_histogram,
+                    duration.as_millis() as u64,
+                );
+            }
         }
 
         Action::Continue
