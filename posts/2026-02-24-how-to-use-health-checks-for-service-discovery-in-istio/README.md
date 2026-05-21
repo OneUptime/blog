@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Istio, Health Check, Service Discovery, Kubernetes, Envoy
 
-Description: Understand how health checks drive service discovery in Istio, from Kubernetes endpoints to Envoy's active and passive health checking mechanisms.
+Description: Understand how health checks drive service discovery in Istio, from Kubernetes endpoints to Envoy's passive outlier detection mechanisms.
 
 ---
 
@@ -14,13 +14,13 @@ Service discovery and health checking are tightly connected in Istio. When an en
 
 Traffic routing in Istio follows a chain of service discovery mechanisms:
 
-1. **Kubernetes Endpoints** - the kubelet runs readiness probes. Passing pods get added to the Endpoints resource. Failing pods get removed.
+1. **Kubernetes EndpointSlices** - the kubelet runs readiness probes. Passing pods are published through EndpointSlices (and legacy Endpoints). Failing pods are marked unready and removed from the ready serving set.
 
-2. **Istio Service Registry** - istiod watches Kubernetes Endpoints and maintains its own service registry. When endpoints change, istiod pushes updates to all Envoy proxies via xDS.
+2. **Istio Service Registry** - istiod watches Kubernetes services and endpoints and maintains its own service registry. When endpoints change, istiod pushes updates to Envoy proxies via xDS.
 
 3. **Envoy Load Balancing** - each Envoy sidecar has a list of healthy endpoints. It routes traffic based on this list and the configured load balancing algorithm.
 
-4. **Envoy Outlier Detection** - Envoy can independently detect unhealthy endpoints by tracking error rates and eject them from the load balancing pool, even before Kubernetes removes them from Endpoints.
+4. **Envoy Outlier Detection** - Envoy can independently detect unhealthy endpoints by tracking error rates and eject them from the load balancing pool, even before Kubernetes removes them from the ready endpoint set.
 
 ## Layer 1: Kubernetes Readiness Probes
 
@@ -36,22 +36,22 @@ readinessProbe:
   successThreshold: 1
 ```
 
-When this probe fails 3 times in a row (15 seconds), Kubernetes removes the pod from the Endpoints resource. This eventually propagates to Istio and Envoy.
+When this probe fails 3 times in a row, Kubernetes marks the pod unready and removes it from the ready endpoints for the Service. This eventually propagates to Istio and Envoy.
 
 The latency of this path is:
-- 15 seconds for probe failure detection (5s * 3)
-- 1-5 seconds for Kubernetes Endpoints update
-- 1-5 seconds for istiod to detect and push the xDS update
-- Total: roughly 17-25 seconds from failure to traffic cutoff
+- Up to about 15 seconds for probe failure detection after the first failed probe (5s * 3)
+- Additional time for Kubernetes to update EndpointSlices
+- Additional time for istiod to detect and push the xDS update
+- Total: often seconds to tens of seconds from failure to traffic cutoff, depending on timing and cluster load
 
-That is a lot of time. During those 17-25 seconds, traffic keeps going to the failing pod.
+That can be a lot of time. During that window, traffic can keep going to the failing pod.
 
 ## Layer 2: Envoy Outlier Detection
 
 Outlier detection is faster because it operates locally in each Envoy proxy. Configure it through a DestinationRule:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: backend-service
@@ -66,9 +66,9 @@ spec:
       maxEjectionPercent: 50
 ```
 
-Envoy checks every 5 seconds. After 3 consecutive 5xx errors, the endpoint gets ejected. The detection latency is:
-- 5 seconds for the interval check
+After 3 consecutive 5xx errors, the endpoint gets ejected. Envoy handles consecutive 5xx ejection inline; the `interval` controls periodic outlier detection sweeps and recovery checks, not the moment when consecutive 5xx failures are counted. The detection latency is:
 - However long it takes for 3 requests to fail
+- Any delay caused by `maxEjectionPercent` or load balancer panic behavior when too few healthy endpoints remain
 
 In practice, if you are sending steady traffic, outlier detection kicks in within seconds of a failure, much faster than the Kubernetes readiness probe path.
 
@@ -83,10 +83,17 @@ metadata:
   name: backend-service
   namespace: default
 spec:
+  selector:
+    matchLabels:
+      app: backend-service
   template:
+    metadata:
+      labels:
+        app: backend-service
     spec:
       containers:
         - name: backend-service
+          image: ghcr.io/example/backend-service:1.0
           readinessProbe:
             httpGet:
               path: /readyz
@@ -94,7 +101,7 @@ spec:
             periodSeconds: 5
             failureThreshold: 3
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: backend-service
@@ -123,10 +130,10 @@ After the `baseEjectionTime` expires, the endpoint is added back and starts rece
 
 ## Locality-Aware Health Checking
 
-If your cluster spans multiple zones, health checking interacts with locality-aware load balancing:
+If your cluster spans multiple zones or regions, health checking interacts with locality-aware load balancing:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: backend-service
@@ -138,8 +145,8 @@ spec:
       localityLbSetting:
         enabled: true
         failover:
-          - from: us-east-1a
-            to: us-east-1b
+          - from: us-east-1
+            to: us-west-2
     outlierDetection:
       consecutive5xxErrors: 3
       interval: 5s
@@ -147,7 +154,7 @@ spec:
       maxEjectionPercent: 50
 ```
 
-When all endpoints in the local zone are ejected by outlier detection, Istio fails over to the next zone. This requires outlier detection to be configured; locality load balancing without outlier detection cannot detect zone-level failures.
+When all endpoints in the local locality are ejected by outlier detection, Istio can fail over to another locality. The `failover` policy constrains cross-region failover; zone and sub-zone failover are supported by default. This requires outlier detection to be configured; locality failover without outlier detection cannot detect unhealthy endpoints.
 
 ## Custom Health Checks in Your Application
 
@@ -193,14 +200,14 @@ spec:
       port: 8080
 ```
 
-With headless Services, clients might cache DNS results, which can cause stale endpoints. Istio mitigates this because Envoy uses the xDS-provided endpoint list rather than DNS.
+With headless Services, clients that bypass the sidecar might cache DNS results, which can cause stale endpoints. For mesh traffic that goes through Envoy, Istio mitigates this because Envoy uses the xDS-provided endpoint list rather than relying only on application DNS caching.
 
 ## ServiceEntry Health Checks
 
 For external services registered via ServiceEntry, you can still use outlier detection:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-api
@@ -215,7 +222,7 @@ spec:
   resolution: DNS
   location: MESH_EXTERNAL
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: external-api
@@ -229,7 +236,7 @@ spec:
       baseEjectionTime: 60s
 ```
 
-This applies outlier detection to external API calls. If the external service returns 5 consecutive errors, Envoy stops sending traffic to it for 60 seconds.
+This applies outlier detection to external API calls. If the external service returns 5 consecutive errors, Envoy can eject that endpoint for 60 seconds. If there are no healthy alternatives, Envoy may still send traffic during panic or fail-open behavior.
 
 ## Monitoring Health Check Impact on Service Discovery
 
@@ -244,8 +251,8 @@ istioctl proxy-config endpoints <pod-name> | grep backend-service
 kubectl exec -it <pod-name> -c istio-proxy -- \
   pilot-agent request GET stats | grep outlier_detection
 
-# Watch Kubernetes endpoints
-kubectl get endpoints backend-service -w
+# Watch Kubernetes EndpointSlices
+kubectl get endpointslices -l kubernetes.io/service-name=backend-service -w
 ```
 
 In Prometheus:
