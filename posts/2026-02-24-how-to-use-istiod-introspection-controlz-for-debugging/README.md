@@ -37,18 +37,19 @@ This is probably the most useful feature. Istiod has dozens of logging scopes, e
 The scopes include:
 
 - **ads** - Aggregated Discovery Service (xDS push/pull)
+- **authn** - Authentication policy processing
 - **authorization** - Authorization policy processing
 - **default** - General logging
-- **grpcAdapter** - gRPC adapter communication
+- **kube** - Kubernetes client and service registry messages
 - **model** - Service model (services, endpoints)
-- **networking** - Networking configuration (VirtualService, DestinationRule)
+- **push** - Push triggers and push context updates
 - **security** - Certificate management and mTLS
 - **serviceentry** - ServiceEntry processing
 - **validation** - Config validation
 
 Each scope can be set to one of these levels: none, error, warn, info, debug.
 
-For example, if you're debugging why a VirtualService isn't being applied correctly, set the `networking` scope to `debug`. If you're investigating certificate issues, set `security` to `debug`.
+For example, if you're debugging why a VirtualService isn't being applied correctly, set the `push` or `ads` scope to `debug`. If you're investigating certificate issues, set `security` to `debug`.
 
 ### Changing Log Levels via API
 
@@ -56,34 +57,34 @@ You don't need the browser UI. You can change log levels through the ControlZ RE
 
 ```bash
 kubectl exec -n istio-system deployment/istiod -- \
-  curl -s -X PUT "localhost:9876/scopej/networking" \
-  -d '{"name":"networking","outputLevel":"debug"}'
+  curl -s -X PUT "localhost:9876/scopej/push" \
+  -d '{"name":"push","output_level":"debug","stack_trace_level":"none","log_callers":false}'
 ```
 
-Or through port-forwarding:
+If your Istio installation uses distroless images and `curl` is not available in the Istiod container, use port-forwarding instead:
 
 ```bash
 kubectl port-forward -n istio-system deployment/istiod 9876:9876 &
-curl -X PUT "localhost:9876/scopej/networking" \
-  -d '{"name":"networking","outputLevel":"debug"}'
+curl -X PUT "localhost:9876/scopej/push" \
+  -d '{"name":"push","output_level":"debug","stack_trace_level":"none","log_callers":false}'
 ```
 
 To check the current level:
 
 ```bash
 kubectl exec -n istio-system deployment/istiod -- \
-  curl -s "localhost:9876/scopej/networking"
+  curl -s "localhost:9876/scopej/push"
 ```
 
 Response:
 
 ```json
 {
-  "name": "networking",
-  "description": "networking scope",
-  "outputLevel": "debug",
-  "stackTraceLevel": "none",
-  "logCallers": false
+  "name": "push",
+  "description": "logs details about why Istio is triggering a push",
+  "output_level": "debug",
+  "stack_trace_level": "none",
+  "log_callers": false
 }
 ```
 
@@ -131,16 +132,18 @@ This confirms which version is actually running, which matters during upgrades w
 
 Istiod also exposes debug endpoints on port 15014. These aren't part of ControlZ but complement it well:
 
-```bash
-# List all debug endpoints
+The examples below use `kubectl exec`; if `curl` is not available in the container, port-forward port 15014 and run the same paths from your local machine.
 
-kubectl exec -n istio-system deployment/istiod -- curl -s localhost:15014/debug
+```bash
+# List all debug endpoints as JSON
+
+kubectl exec -n istio-system deployment/istiod -- curl -s localhost:15014/debug/list
 
 # Configuration distribution to proxies
-kubectl exec -n istio-system deployment/istiod -- curl -s localhost:15014/debug/config_distribution
+kubectl exec -n istio-system deployment/istiod -- curl -s localhost:15014/debug/adsz
 
 # All service endpoints
-kubectl exec -n istio-system deployment/istiod -- curl -s localhost:15014/debug/endpointz
+kubectl exec -n istio-system deployment/istiod -- curl -s localhost:15014/debug/endpointShardz
 
 # Config as known by Istiod
 kubectl exec -n istio-system deployment/istiod -- curl -s localhost:15014/debug/configz
@@ -154,15 +157,15 @@ kubectl exec -n istio-system deployment/istiod -- curl -s localhost:15014/debug/
 # Sync status for all proxies
 kubectl exec -n istio-system deployment/istiod -- curl -s localhost:15014/debug/syncz
 
-# Authentication debug info
-kubectl exec -n istio-system deployment/istiod -- curl -s localhost:15014/debug/authenticationz
+# Authorization policy debug info
+kubectl exec -n istio-system deployment/istiod -- curl -s localhost:15014/debug/authorizationz
 ```
 
 These return JSON that you can pipe through jq for readability:
 
 ```bash
 kubectl exec -n istio-system deployment/istiod -- \
-  curl -s localhost:15014/debug/endpointz | python3 -m json.tool
+  curl -s localhost:15014/debug/endpointShardz | python3 -m json.tool
 ```
 
 ## Practical Debugging Workflows
@@ -174,7 +177,7 @@ If proxies are showing STALE in `istioctl proxy-status`, enable debug logging on
 ```bash
 kubectl exec -n istio-system deployment/istiod -- \
   curl -s -X PUT "localhost:9876/scopej/ads" \
-  -d '{"name":"ads","outputLevel":"debug"}'
+  -d '{"name":"ads","output_level":"debug","stack_trace_level":"none","log_callers":false}'
 ```
 
 Then watch the logs:
@@ -188,7 +191,7 @@ You'll see detailed messages about config pushes, including which proxies receiv
 ```bash
 kubectl exec -n istio-system deployment/istiod -- \
   curl -s -X PUT "localhost:9876/scopej/ads" \
-  -d '{"name":"ads","outputLevel":"info"}'
+  -d '{"name":"ads","output_level":"info","stack_trace_level":"none","log_callers":false}'
 ```
 
 ### Debugging Certificate Issues
@@ -198,7 +201,7 @@ mTLS certificate problems are common during initial mesh setup. Enable security 
 ```bash
 kubectl exec -n istio-system deployment/istiod -- \
   curl -s -X PUT "localhost:9876/scopej/security" \
-  -d '{"name":"security","outputLevel":"debug"}'
+  -d '{"name":"security","output_level":"debug","stack_trace_level":"none","log_callers":false}'
 ```
 
 The logs will show certificate signing requests, CA operations, and certificate distribution to workloads. Look for errors related to CSR processing, certificate expiry, or CA bundle mismatches.
@@ -210,7 +213,7 @@ If Istiod isn't picking up new services or endpoints, turn up the model logging:
 ```bash
 kubectl exec -n istio-system deployment/istiod -- \
   curl -s -X PUT "localhost:9876/scopej/model" \
-  -d '{"name":"model","outputLevel":"debug"}'
+  -d '{"name":"model","output_level":"debug","stack_trace_level":"none","log_callers":false}'
 ```
 
 Check the registryz endpoint to see what services Istiod knows about:
@@ -224,7 +227,7 @@ If your service isn't in the list, there's a problem with Kubernetes service dis
 
 ## Security Considerations
 
-ControlZ and the debug endpoints expose sensitive information about your mesh configuration. They should not be accessible from outside the cluster. By default, they're only available through port-forwarding or from within the Istiod pod, which is safe.
+ControlZ and the debug endpoints expose sensitive information about your mesh configuration. They should not be accessible from outside the cluster. By default, ControlZ is accessed through port-forwarding, and Istio's debug endpoints require authentication for non-localhost requests.
 
 If you've set up any Ingress or LoadBalancer that might expose Istiod ports, make sure ports 9876 and 15014 are blocked from external access. Applying NetworkPolicies is a good practice:
 
