@@ -25,7 +25,7 @@ You need:
 
 - An Istio mesh with a Gateway configured for your domain
 - Backend services deployed with sidecar injection
-- A DestinationRule for each target service
+- A DestinationRule when you route to subsets such as `v1`, `v2`, or `v3`
 
 Here is a Gateway for the examples:
 
@@ -128,7 +128,7 @@ For complex patterns, use regular expressions:
 http:
 - match:
   - uri:
-      regex: "/api/v[0-9]+/users/[0-9]+"
+      regex: "^/api/v[0-9]+/users/[0-9]+$"
   route:
   - destination:
       host: user-service
@@ -371,7 +371,7 @@ istioctl proxy-config routes deploy/istio-ingressgateway -n istio-system -o json
 Send a test request and check the logs:
 
 ```bash
-# Enable access logging if not already enabled
+# Check access logs if they are enabled
 kubectl logs -n istio-system deploy/istio-ingressgateway --tail=20 | grep "myapp"
 ```
 
