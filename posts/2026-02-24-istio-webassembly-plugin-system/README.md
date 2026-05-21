@@ -8,7 +8,7 @@ Description: An overview of Istio's WebAssembly plugin system explaining how Was
 
 ---
 
-Istio's WebAssembly (Wasm) plugin system lets you extend the Envoy proxy with custom logic without rebuilding Envoy itself. You can write plugins in languages like Rust, Go, or C++ that compile to Wasm modules, then deploy those modules to Envoy sidecars or waypoint proxies. This gives you a way to add custom authentication, request transformation, logging, rate limiting, or any other traffic processing logic directly in the data plane.
+Istio's WebAssembly (Wasm) plugin system lets you extend the Envoy proxy with custom logic without rebuilding Envoy itself. You can write plugins in languages like Rust, Go, or C++ that compile to Wasm modules, then deploy those modules to Envoy sidecars, gateways, or waypoint proxies. This gives you a way to add custom authentication, request transformation, logging, rate limiting, or any other traffic processing logic directly in the data plane.
 
 ## Why Wasm Plugins
 
@@ -22,7 +22,7 @@ Wasm plugins offer a middle ground. You write your logic in a high-level languag
 
 ## How Wasm Works in Envoy
 
-Envoy has a built-in Wasm runtime (based on V8 or Wasmtime) that can load and execute Wasm modules. Each module runs in a sandboxed environment with controlled access to:
+Envoy can load and execute Wasm modules using supported runtimes such as V8, WAMR, or Wasmtime, depending on what is included in the Envoy distribution. Each module runs in a sandboxed environment with controlled access to:
 
 - Request headers, body, and trailers
 - Response headers, body, and trailers
@@ -35,10 +35,10 @@ The Wasm plugin lifecycle in Envoy follows this pattern:
 ```text
 1. Envoy loads the Wasm module
 2. For each request/response:
-   a. onRequestHeaders() - called when request headers arrive
-   b. onRequestBody() - called when request body chunks arrive
-   c. onResponseHeaders() - called when response headers arrive
-   d. onResponseBody() - called when response body chunks arrive
+   a. proxy_on_request_headers() - called when request headers arrive
+   b. proxy_on_request_body() - called when request body chunks arrive
+   c. proxy_on_response_headers() - called when response headers arrive
+   d. proxy_on_response_body() - called when response body chunks arrive
 3. Plugin can modify headers, body, or reject the request
 ```
 
@@ -67,7 +67,7 @@ The key fields are:
 - **selector**: Which workloads get the plugin (same as Istio's standard label matching)
 - **url**: Where to find the Wasm binary (OCI registry, HTTP URL, or local file)
 - **phase**: Where in the filter chain the plugin runs
-- **pluginConfig**: JSON configuration passed to the plugin at startup
+- **pluginConfig**: Structured configuration passed to the plugin at startup
 
 ## Plugin Phases
 
@@ -76,9 +76,9 @@ The `phase` field determines where your plugin runs in the Envoy filter chain:
 | Phase | Description |
 |-------|-------------|
 | AUTHN | Runs during authentication, before Istio's own authn filters |
-| AUTHZ | Runs during authorization, after authentication |
-| STATS | Runs during stats collection, after authorization |
-| UNSPECIFIED | Default phase, runs before the router filter |
+| AUTHZ | Runs before Istio's authorization filters, after authentication |
+| STATS | Runs before Istio's stats filters, after authorization |
+| UNSPECIFIED | Control plane decides, generally before the router filter |
 
 Choosing the right phase matters because it determines what information is available to your plugin and whether it can short-circuit the request before other filters run.
 
@@ -134,30 +134,30 @@ The ABI provides these host functions:
 
 ```text
 // Header manipulation
-get_header_map_value() / set_header_map_value()
-add_header_map_value() / remove_header_map_value()
+proxy_get_header_map_value() / proxy_replace_header_map_value()
+proxy_add_header_map_value() / proxy_remove_header_map_value()
 
 // Body manipulation
-get_buffer_bytes() / set_buffer_bytes()
+proxy_get_buffer_bytes() / proxy_set_buffer_bytes()
 
 // HTTP callouts
-dispatch_http_call()
+proxy_http_call()
 
 // Shared data
-get_shared_data() / set_shared_data()
+proxy_get_shared_data() / proxy_set_shared_data()
 
 // Logging
-log()
+proxy_log()
 
 // Metrics
-define_metric() / increment_metric() / record_metric()
+proxy_define_metric() / proxy_increment_metric() / proxy_record_metric()
 ```
 
 SDKs in different languages wrap these low-level functions into more ergonomic APIs. For example, the Rust SDK provides typed methods like `self.get_http_request_header("content-type")`.
 
 ## Plugin Configuration
 
-You pass configuration to your Wasm plugin through the `pluginConfig` field. This configuration is delivered to the plugin as a JSON string during initialization:
+You pass configuration to your Wasm plugin through the `pluginConfig` field. This structured configuration is delivered to the plugin during initialization:
 
 ```yaml
 apiVersion: extensions.istio.io/v1alpha1
@@ -212,13 +212,23 @@ spec:
       istio: ingressgateway
 ```
 
+**Waypoint proxies:**
+
+```yaml
+spec:
+  targetRefs:
+  - kind: Service
+    group: ""
+    name: my-service
+```
+
 ## Wasm Plugin Limitations
 
 There are important limitations to be aware of:
 
-- **Performance:** Wasm plugins add latency compared to native C++ Envoy filters. For most use cases the overhead is negligible (microseconds), but for extremely latency-sensitive paths, it can matter.
+- **Performance:** Wasm plugins add latency compared to native C++ Envoy filters. For many use cases the overhead may be acceptable, but for latency-sensitive paths, benchmark the specific plugin and runtime.
 
-- **Memory:** Each Wasm plugin instance has its own memory sandbox. Memory usage scales with the number of plugin instances (one per worker thread per proxy).
+- **Memory:** Wasm plugin execution instances have their own runtime memory. Memory usage scales with the number of plugins, VMs, and Envoy worker threads.
 
 - **No raw socket access:** Plugins cannot open raw TCP/UDP sockets. They can only make HTTP callouts through Envoy's async HTTP client.
 
