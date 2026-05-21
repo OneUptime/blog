@@ -206,7 +206,7 @@ When an OutOfSync alert fires, here is how to investigate:
 
 ```bash
 # List all OutOfSync applications
-argocd app list --sync-status OutOfSync
+argocd app list -o json | jq -r '.[] | select(.status.sync.status == "OutOfSync") | .metadata.name'
 
 # Get details on a specific OutOfSync app
 argocd app get my-app
