@@ -35,7 +35,7 @@ Istio uses these labels to determine which zone each pod belongs to. The Envoy s
 
 ## The Default Behavior
 
-Without any locality configuration, Istio distributes traffic round-robin across all healthy endpoints regardless of zone. A request from a pod in us-east-1a might go to us-east-1c, adding 1-2ms of cross-zone latency. For most services, this is fine. But for latency-sensitive services or high-traffic paths, those extra milliseconds and the cross-zone data transfer costs add up.
+Without outlier detection and without an explicit locality policy, Istio distributes traffic round-robin across all healthy endpoints regardless of zone. A request from a pod in us-east-1a might go to us-east-1c, adding 1-2ms of cross-zone latency. For most services, this is fine. But for latency-sensitive services or high-traffic paths, those extra milliseconds and the cross-zone data transfer costs add up.
 
 ## Keeping Traffic Zone-Local with Failover
 
@@ -110,16 +110,21 @@ In practice, zones rarely have identical capacity. Maybe you have more nodes in 
 Check your pod distribution:
 
 ```bash
-kubectl get pods -l app=my-service -o wide --no-headers \
-  | awk '{print $7}' | sort | uniq -c | sort -rn
+kubectl get pods -l app=my-service \
+  -o jsonpath='{range .items[*]}{.spec.nodeName}{"\n"}{end}' \
+  | while read node; do
+      kubectl get node "$node" \
+        -o jsonpath='{.metadata.labels.topology\.kubernetes\.io/zone}{"\n"}'
+    done \
+  | sort | uniq -c | sort -rn
 ```
 
 Output:
 
 ```text
-     15 node-1    (us-east-1a)
-     12 node-3    (us-east-1b)
-      5 node-5    (us-east-1c)
+     15 us-east-1a
+     12 us-east-1b
+      5 us-east-1c
 ```
 
 So you have roughly 47% in zone a, 37% in zone b, and 16% in zone c. Configure distribution to match:
@@ -240,10 +245,10 @@ Use Prometheus to track actual traffic distribution:
 sum(rate(istio_requests_total{
   destination_service="my-service.default.svc.cluster.local",
   reporter="source"
-}[5m])) by (destination_workload, source_workload)
+}[5m])) by (destination_workload, source_workload, destination_zone)
 ```
 
-For zone-level visibility, you may need to use destination pod labels or configure Istio to include zone information in metrics by customizing the telemetry configuration.
+For zone-level visibility, you may need to add a `destination_zone` dimension from destination pod labels or configure Istio to include zone information in metrics by customizing the telemetry configuration.
 
 ## Troubleshooting
 
