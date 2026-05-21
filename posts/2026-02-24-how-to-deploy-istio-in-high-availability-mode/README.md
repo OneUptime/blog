@@ -111,19 +111,24 @@ spec:
     pilot:
       k8s:
         replicaCount: 3
-        topologySpreadConstraints:
-        - maxSkew: 1
-          topologyKey: topology.kubernetes.io/zone
-          whenUnsatisfiable: ScheduleAnyway
-          labelSelector:
-            matchLabels:
-              app: istiod
-        - maxSkew: 1
-          topologyKey: kubernetes.io/hostname
-          whenUnsatisfiable: ScheduleAnyway
-          labelSelector:
-            matchLabels:
-              app: istiod
+        overlays:
+        - kind: Deployment
+          name: istiod
+          patches:
+          - path: spec.template.spec.topologySpreadConstraints
+            value:
+            - maxSkew: 1
+              topologyKey: topology.kubernetes.io/zone
+              whenUnsatisfiable: ScheduleAnyway
+              labelSelector:
+                matchLabels:
+                  app: istiod
+            - maxSkew: 1
+              topologyKey: kubernetes.io/hostname
+              whenUnsatisfiable: ScheduleAnyway
+              labelSelector:
+                matchLabels:
+                  app: istiod
 ```
 
 This ensures istiod replicas are evenly distributed across both zones and nodes.
@@ -239,7 +244,7 @@ spec:
 
 ## Leader Election
 
-When you have multiple istiod replicas, they use leader election for tasks that should only happen once (like webhook serving). Check leader status:
+When you have multiple istiod replicas, they use leader election before running controllers that should only happen once. Check leader status:
 
 ```bash
 kubectl get lease -n istio-system
@@ -275,11 +280,12 @@ kubectl apply -f test-virtualservice.yaml
 istioctl proxy-config routes test-pod -n default
 ```
 
-Also simulate a node failure:
+Also simulate node maintenance:
 
 ```bash
-# Cordon a node running istiod
+# Cordon and drain a node running istiod
 kubectl cordon node-xyz
+kubectl drain node-xyz --ignore-daemonsets --delete-emptydir-data
 
 # Verify istiod is still available
 kubectl get pods -n istio-system -l app=istiod -o wide
@@ -300,7 +306,7 @@ spec:
     rules:
     - alert: IstiodLowReplicaCount
       expr: |
-        count(kube_pod_status_ready{
+        sum(kube_pod_status_ready{
           namespace="istio-system",
           pod=~"istiod.*",
           condition="true"
@@ -313,9 +319,9 @@ spec:
 
     - alert: IstiodPodsNotSpread
       expr: |
-        count(distinct(
+        count(count by (node) (
           kube_pod_info{namespace="istio-system", pod=~"istiod.*"}
-        ) by (node)) < 2
+        )) < 2
       for: 15m
       labels:
         severity: warning
