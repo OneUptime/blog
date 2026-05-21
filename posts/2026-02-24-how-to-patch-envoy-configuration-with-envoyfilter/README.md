@@ -16,7 +16,7 @@ EnvoyFilter supports several patch operations, and choosing the right one is cri
 
 **MERGE**: Deeply merges your patch with the existing configuration. Fields you specify override the existing values. Fields you do not specify remain unchanged. This is the safest operation for modifying existing resources.
 
-**REPLACE**: Completely replaces the matched element with your patch. Everything that was there before is gone. Use with extreme caution.
+**REPLACE**: Replaces the contents of a matched HTTP or network filter with your patch. Everything that was there before is gone. Use with extreme caution.
 
 **ADD**: Adds a new element to a list. Used for adding new filters, clusters, or listeners that do not exist yet.
 
@@ -181,42 +181,38 @@ spec:
 
 ## REPLACE Operation
 
-REPLACE is more aggressive than MERGE. It completely replaces the matched element. Use it when you need to remove fields that MERGE cannot remove (since MERGE only adds or overrides fields).
+REPLACE is more aggressive than MERGE. It completely replaces the contents of the matched HTTP or network filter. Use it when you need to remove fields that MERGE cannot remove (since MERGE only adds or overrides fields).
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
 kind: EnvoyFilter
 metadata:
-  name: replace-access-log
+  name: replace-router-filter
   namespace: default
 spec:
   workloadSelector:
     labels:
       app: my-app
   configPatches:
-    - applyTo: NETWORK_FILTER
+    - applyTo: HTTP_FILTER
       match:
         context: SIDECAR_INBOUND
         listener:
           filterChain:
             filter:
               name: envoy.filters.network.http_connection_manager
+              subFilter:
+                name: envoy.filters.http.router
       patch:
-        operation: MERGE
+        operation: REPLACE
         value:
+          name: envoy.filters.http.router
           typed_config:
-            "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
-            access_log:
-              - name: envoy.access_loggers.file
-                typed_config:
-                  "@type": type.googleapis.com/envoy.extensions.access_loggers.file.v3.FileAccessLog
-                  path: /dev/stdout
-                  log_format:
-                    text_format_source:
-                      inline_string: "[%START_TIME%] %REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %RESPONSE_CODE% %RESPONSE_FLAGS% %DURATION%ms\n"
+            "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+            dynamic_stats: false
 ```
 
-Note: Even with MERGE, when you specify `access_log` as a list, it replaces the entire list because lists in protobuf are not deeply merged by field. This is a common gotcha.
+Note: REPLACE is only valid for `HTTP_FILTER` and `NETWORK_FILTER`. If you replace a network filter such as the HTTP connection manager, you must provide the full filter configuration, not just the fields you want to change.
 
 ## REMOVE Operation
 
@@ -282,9 +278,10 @@ This sets a 128KB per-connection buffer and enables exact connection balancing o
 
 When multiple EnvoyFilters modify the same resource, the order matters. Istio applies patches in this order:
 
-1. EnvoyFilters in the `istio-system` namespace (sorted by creation time)
-2. EnvoyFilters in the workload's namespace (sorted by creation time)
-3. Within the same namespace, by `priority` field (lower numbers first)
+1. EnvoyFilters in the config root namespace, which is usually `istio-system`
+2. Matching EnvoyFilters in the workload's namespace
+
+Within each namespace group, patch sets are sorted by `priority` first (lower numbers first), then by creation time, then by fully qualified resource name. Patches inside one EnvoyFilter are processed in the order they appear in `configPatches`.
 
 Use the `priority` field to control ordering:
 
@@ -370,7 +367,7 @@ istioctl proxy-config listeners deploy/my-app -n default --port 8080 -o json
 
 ## Common Patching Gotchas
 
-**List fields are replaced, not merged**: When you MERGE a field that contains a list (like `access_log` or `http_filters`), the entire list is replaced, not merged element by element.
+**List fields are appended, not merged by element**: MERGE uses protobuf merge semantics, so repeated fields such as `access_log` are appended to the existing list. They are not matched and updated element by element.
 
 **The @type field is required for typed_config**: Without it, Envoy does not know how to deserialize the configuration. Always include it.
 
@@ -382,4 +379,4 @@ istioctl proxy-config listeners deploy/my-app -n default --port 8080 -o json
 
 ## Summary
 
-Patching Envoy configuration with EnvoyFilter is the most common way to customize Istio's proxy settings beyond what the standard APIs expose. Use MERGE for modifying existing values, REPLACE for completely rewriting an element, REMOVE for deleting elements, and ADD for inserting new ones. Always scope patches with workloadSelector and match conditions. Use priority to control ordering when multiple patches target the same resource. Verify patches with istioctl proxy-config and check istiod logs for errors. Remember that patches create a maintenance burden during upgrades, so document why each patch exists and check for standard API alternatives with each Istio release.
+Patching Envoy configuration with EnvoyFilter is the most common way to customize Istio's proxy settings beyond what the standard APIs expose. Use MERGE for modifying existing values, REPLACE for completely rewriting HTTP or network filters, REMOVE for deleting elements, and ADD for inserting new ones. Always scope patches with workloadSelector and match conditions. Use priority to control ordering when multiple patches target the same resource. Verify patches with istioctl proxy-config and check istiod logs for errors. Remember that patches create a maintenance burden during upgrades, so document why each patch exists and check for standard API alternatives with each Istio release.
