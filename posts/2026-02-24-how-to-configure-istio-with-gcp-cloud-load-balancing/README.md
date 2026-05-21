@@ -38,7 +38,7 @@ spec:
         service:
           type: ClusterIP
         serviceAnnotations:
-          cloud.google.com/neg: '{"exposed_ports":{"8080":{"name":"istio-http-neg"},"8443":{"name":"istio-https-neg"}}}'
+          cloud.google.com/neg: '{"exposed_ports":{"80":{"name":"istio-http-neg"},"443":{"name":"istio-https-neg"}}}'
 ```
 
 The `cloud.google.com/neg` annotation tells GKE to create NEGs that the HTTP(S) load balancer can use as backends.
@@ -79,7 +79,8 @@ gcloud compute ssl-certificates create app-cert \
 # Create the HTTPS proxy
 gcloud compute target-https-proxies create istio-https-proxy \
   --url-map istio-url-map \
-  --ssl-certificates app-cert
+  --ssl-certificates app-cert \
+  --global
 
 # Create a global forwarding rule
 gcloud compute forwarding-rules create istio-https-rule \
@@ -98,11 +99,10 @@ metadata:
   namespace: istio-system
 spec:
   selector:
-    matchLabels:
-      istio: ingressgateway
+    istio: ingressgateway
   servers:
   - port:
-      number: 8080
+      number: 80
       name: http
       protocol: HTTP
     hosts:
@@ -121,12 +121,12 @@ gcloud compute security-policies create istio-waf-policy \
 # Add OWASP ModSecurity rules
 gcloud compute security-policies rules create 1000 \
   --security-policy istio-waf-policy \
-  --expression "evaluatePreconfiguredExpr('sqli-v33-stable')" \
+  --expression "evaluatePreconfiguredWaf('sqli-v33-stable', {'sensitivity': 3})" \
   --action deny-403
 
 gcloud compute security-policies rules create 1001 \
   --security-policy istio-waf-policy \
-  --expression "evaluatePreconfiguredExpr('xss-v33-stable')" \
+  --expression "evaluatePreconfiguredWaf('xss-v33-stable', {'sensitivity': 2})" \
   --action deny-403
 
 # Attach the policy to the backend service
@@ -204,7 +204,8 @@ gcloud compute backend-services add-backend istio-tcp-backend \
 
 # Create a TCP proxy
 gcloud compute target-tcp-proxies create istio-tcp-proxy \
-  --backend-service istio-tcp-backend
+  --backend-service istio-tcp-backend \
+  --global
 
 # Create the forwarding rule
 gcloud compute forwarding-rules create istio-tcp-rule \
@@ -226,16 +227,26 @@ spec:
   meshConfig:
     defaultConfig:
       gatewayTopology:
-        numTrustedProxies: 2
+        numTrustedProxies: 1
 ```
 
-Set numTrustedProxies to 2 because GCP's load balancer adds a hop and the gateway adds another.
+Set numTrustedProxies to 1 when the Google Cloud HTTP(S) load balancer is the only trusted proxy in front of the Istio gateway.
 
-For TCP/SSL proxy load balancers, enable PROXY protocol:
+For TCP/SSL proxy load balancers, enable PROXY protocol on the Google Cloud target proxy and configure the Istio gateway to accept it:
 
 ```bash
 gcloud compute target-tcp-proxies update istio-tcp-proxy \
   --proxy-header PROXY_V1
+```
+
+```yaml
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
+spec:
+  meshConfig:
+    defaultConfig:
+      gatewayTopology:
+        proxyProtocol: {}
 ```
 
 ## Cloud CDN Integration
