@@ -20,7 +20,13 @@ kind: Deployment
 metadata:
   name: reviews
 spec:
+  selector:
+    matchLabels:
+      app: reviews
   template:
+    metadata:
+      labels:
+        app: reviews
     spec:
       serviceAccountName: reviews
       containers:
@@ -115,7 +121,7 @@ istioctl proxy-config secret my-pod
 
 When pilot-agent receives the SDS request from Envoy, it:
 
-1. Generates an ECDSA P-256 private key (done in memory, never written to disk)
+1. Generates a private key (RSA by default, or ECDSA P-256/P-384 if ECC is configured)
 2. Creates a Certificate Signing Request (CSR) with the SPIFFE identity as the SAN
 3. Reads the service account token from the mounted volume
 
@@ -124,7 +130,7 @@ The CSR looks like this (conceptually):
 ```text
 Subject: (empty)
 Subject Alternative Name: URI:spiffe://cluster.local/ns/default/sa/reviews
-Public Key: <the generated ECDSA public key>
+Public Key: <the generated public key>
 ```
 
 ## Step 5: CSR Sent to Istiod
@@ -229,7 +235,7 @@ istioctl proxy-config secret my-pod
 
 # Step 4-6: Can pilot-agent reach Istiod?
 kubectl exec my-pod -c istio-proxy -- \
-  curl -s https://istiod.istio-system.svc:15012/debug/endpointz -k
+  curl -sS http://istiod.istio-system.svc:15014/version
 
 # Step 7: Check for certificate errors
 kubectl logs my-pod -c istio-proxy | grep -i "cert\|sds\|secret" | tail -20
