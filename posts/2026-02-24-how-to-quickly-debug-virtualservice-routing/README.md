@@ -34,7 +34,7 @@ This catches common problems like:
 
 ```text
 Warning [IST0101] (VirtualService default/my-vs) Referenced host not found: "my-service.wrong-namespace"
-Warning [IST0104] (VirtualService default/my-vs) Gateway not found: "missing-gateway"
+Error [IST0101] (VirtualService default/my-vs) Referenced gateway not found: "missing-gateway"
 ```
 
 ## Step 2: Check if the VirtualService Is Applied to the Proxy
@@ -183,11 +183,11 @@ kubectl exec deploy/my-app -n default -- \
   curl -v http://my-service:8080/api/data 2>&1
 ```
 
-Look at the response headers for the `x-envoy-upstream-service-time` header, which tells you the response came through the Envoy proxy. The `server: istio-envoy` header confirms the sidecar is handling the request.
+Look at the response headers for the `x-envoy-upstream-service-time` header, which tells you the response came through the Envoy proxy. A `server: envoy` or `server: istio-envoy` header is another sign that Envoy handled the request.
 
 ## Step 7: Check for Conflicting VirtualServices
 
-Multiple VirtualServices for the same host can cause unexpected behavior. Istio merges them, but the order of merging is not always obvious:
+Multiple VirtualServices for the same host can cause unexpected behavior. Istio supports merging VirtualServices attached to ingress gateways, but overlapping hosts on VirtualServices attached to the `mesh` gateway are conflicts:
 
 ```bash
 kubectl get virtualservices -A -o json | \
@@ -207,7 +207,7 @@ for host, vss in hosts.items():
 "
 ```
 
-If multiple VirtualServices target the same host, consider merging them into one.
+If multiple VirtualServices target the same mesh-internal host, consider merging them into one. For ingress gateway hosts, still verify the merged result with `istioctl proxy-config routes` so the final route order is what you expect.
 
 ## Step 8: Check DestinationRule Subsets
 
@@ -267,7 +267,7 @@ Look for response flags like:
 
 ## Step 10: Use istioctl describe
 
-The `describe` command gives you a summary of all Istio configuration affecting a specific pod:
+The experimental `describe` command gives you a summary of all Istio configuration affecting a specific pod:
 
 ```bash
 istioctl x describe pod my-app-abc123.default
