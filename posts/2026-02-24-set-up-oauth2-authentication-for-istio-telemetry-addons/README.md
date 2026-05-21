@@ -32,7 +32,7 @@ Create a Kubernetes Secret with your OAuth2 credentials:
 kubectl create secret generic oauth2-proxy-secret \
   --from-literal=client-id=YOUR_CLIENT_ID \
   --from-literal=client-secret=YOUR_CLIENT_SECRET \
-  --from-literal=cookie-secret=$(openssl rand -base64 32 | head -c 32) \
+  --from-literal=cookie-secret=$(openssl rand -base64 32 | tr -- '+/' '-_') \
   -n istio-system
 ```
 
@@ -66,6 +66,7 @@ spec:
             - --cookie-domain=.example.com
             - --whitelist-domain=.example.com
             - --set-xauthrequest=true
+            - --reverse-proxy=true
             - --github-org=your-org
           env:
             - name: OAUTH2_PROXY_CLIENT_ID
@@ -112,7 +113,7 @@ spec:
   meshConfig:
     extensionProviders:
       - name: oauth2-proxy
-        envoyExtAuthz:
+        envoyExtAuthzHttp:
           service: oauth2-proxy.istio-system.svc.cluster.local
           port: 4180
           includeRequestHeadersInCheck:
@@ -121,7 +122,10 @@ spec:
           headersToUpstreamOnAllow:
             - x-auth-request-user
             - x-auth-request-email
+          headersToDownstreamOnAllow:
+            - set-cookie
           headersToDownstreamOnDeny:
+            - content-type
             - set-cookie
             - location
 ```
@@ -255,7 +259,7 @@ You should see counters for `ext_authz.ok` (successful auth) and `ext_authz.deni
 
 One thing that trips people up is cookie domains. If your OAuth2 Proxy is on `oauth2.example.com` but your Grafana is on `grafana.example.com`, the cookie domain needs to be `.example.com` (note the leading dot) so it works across subdomains.
 
-Another common issue is redirect loops. This usually happens when the OAuth2 callback URL is also protected by the AuthorizationPolicy. Make sure to exclude the callback path:
+Another common issue is redirect loops. This usually happens when the OAuth2 callback URL is also protected by an authorization policy. Make sure the `/oauth2/*` routes for OAuth2 Proxy are reachable without sending them back through the same dashboard authorization check:
 
 ```yaml
 apiVersion: security.istio.io/v1
