@@ -41,10 +41,14 @@ This shows you the top consumers. But you need historical data to understand pea
 
 ```bash
 # CPU usage by workload
-curl -s "http://localhost:9090/api/v1/query?query=rate(container_cpu_usage_seconds_total{container='istio-proxy'}[5m])" | jq '.data.result[] | {pod: .metric.pod, cpu: .value[1]}'
+curl -sG "http://localhost:9090/api/v1/query" \
+  --data-urlencode 'query=rate(container_cpu_usage_seconds_total{container="istio-proxy"}[5m])' \
+  | jq '.data.result[] | {pod: .metric.pod, cpu: .value[1]}'
 
 # Memory usage by workload
-curl -s "http://localhost:9090/api/v1/query?query=container_memory_working_set_bytes{container='istio-proxy'}" | jq '.data.result[] | {pod: .metric.pod, memory_mb: (.value[1] | tonumber / 1048576 | round)}'
+curl -sG "http://localhost:9090/api/v1/query" \
+  --data-urlencode 'query=container_memory_working_set_bytes{container="istio-proxy"}' \
+  | jq '.data.result[] | {pod: .metric.pod, memory_mb: (.value[1] | tonumber / 1048576 | round)}'
 ```
 
 ## Set Appropriate Global Defaults
@@ -142,15 +146,17 @@ spec:
 CPU throttling on the proxy is a major performance issue. It directly increases request latency:
 
 ```bash
-# Check for throttled containers
-kubectl get pods -A -o jsonpath='{range .items[*]}{range .status.containerStatuses[?(@.name=="istio-proxy")]}{.name} restarts={.restartCount}{"\n"}{end}{end}'
+# Check which proxies have CPU limits that can cause throttling
+kubectl get pods -A -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}: {range .spec.containers[?(@.name=="istio-proxy")]}cpu_limit={.resources.limits.cpu}{"\n"}{end}{end}'
 ```
 
 A more precise check uses Prometheus:
 
 ```bash
 # Check throttling rate
-curl -s "http://localhost:9090/api/v1/query?query=rate(container_cpu_cfs_throttled_periods_total{container='istio-proxy'}[5m])/rate(container_cpu_cfs_periods_total{container='istio-proxy'}[5m])" | jq '.data.result[] | {pod: .metric.pod, throttle_pct: (.value[1] | tonumber * 100 | round)}'
+curl -sG "http://localhost:9090/api/v1/query" \
+  --data-urlencode 'query=rate(container_cpu_cfs_throttled_periods_total{container="istio-proxy"}[5m]) / rate(container_cpu_cfs_periods_total{container="istio-proxy"}[5m])' \
+  | jq '.data.result[] | {pod: .metric.pod, throttle_pct: (.value[1] | tonumber * 100 | round)}'
 ```
 
 If any proxy shows more than 10% throttling, increase its CPU limit.
@@ -160,14 +166,16 @@ If any proxy shows more than 10% throttling, increase its CPU limit.
 Memory issues with Envoy proxies usually manifest as OOM kills. Check for these:
 
 ```bash
-kubectl get events -A --field-selector reason=OOMKilled | grep istio-proxy
+kubectl get pods -A -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}: {range .status.containerStatuses[?(@.name=="istio-proxy")]}last_reason={.lastState.terminated.reason}{"\n"}{end}{end}' | grep OOMKilled
 ```
 
 Also check for pods that are consistently close to their memory limit:
 
 ```bash
 # Memory usage as percentage of limit
-curl -s "http://localhost:9090/api/v1/query?query=container_memory_working_set_bytes{container='istio-proxy'}/container_spec_memory_limit_bytes{container='istio-proxy'}*100" | jq '.data.result[] | select(.value[1] | tonumber > 80) | {pod: .metric.pod, memory_pct: (.value[1] | tonumber | round)}'
+curl -sG "http://localhost:9090/api/v1/query" \
+  --data-urlencode 'query=(container_memory_working_set_bytes{container="istio-proxy"} / container_spec_memory_limit_bytes{container="istio-proxy"} * 100) and on(namespace,pod,container) container_spec_memory_limit_bytes{container="istio-proxy"} > 0' \
+  | jq '.data.result[] | select(.value[1] | tonumber > 80) | {pod: .metric.pod, memory_pct: (.value[1] | tonumber | round)}'
 ```
 
 Any proxy using more than 80% of its memory limit is at risk of being OOM killed during traffic spikes.
@@ -223,11 +231,27 @@ This dramatically reduces the memory footprint of each proxy by limiting the ser
 Calculate the total resource overhead Istio adds to your cluster:
 
 ```bash
-# Total CPU requested by all istio-proxy containers
-kubectl get pods -A -o jsonpath='{range .items[*]}{range .spec.containers[?(@.name=="istio-proxy")]}{.resources.requests.cpu}{"\n"}{end}{end}' | paste -sd+ | bc
+# Total CPU requested by all istio-proxy containers, in millicores
+kubectl get pods -A -o json | jq '
+  def cpu_to_m:
+    if test("m$") then sub("m$"; "") | tonumber
+    else tonumber * 1000
+    end;
+  [ .items[].spec.containers[]? | select(.name == "istio-proxy") | (.resources.requests.cpu // "0") | cpu_to_m ] | add
+'
 
-# Total memory requested by all istio-proxy containers
-kubectl get pods -A -o jsonpath='{range .items[*]}{range .spec.containers[?(@.name=="istio-proxy")]}{.resources.requests.memory}{"\n"}{end}{end}'
+# Total memory requested by all istio-proxy containers, in MiB
+kubectl get pods -A -o json | jq '
+  def mem_to_mi:
+    if test("Ki$") then (sub("Ki$"; "") | tonumber) / 1024
+    elif test("Mi$") then sub("Mi$"; "") | tonumber
+    elif test("Gi$") then (sub("Gi$"; "") | tonumber) * 1024
+    elif test("M$") then (sub("M$"; "") | tonumber) * 1000000 / 1048576
+    elif test("G$") then (sub("G$"; "") | tonumber) * 1000000000 / 1048576
+    else tonumber / 1048576
+    end;
+  [ .items[].spec.containers[]? | select(.name == "istio-proxy") | (.resources.requests.memory // "0") | mem_to_mi ] | add
+'
 ```
 
 For capacity planning, assume each sidecar costs about 50-100m CPU and 128Mi memory at baseline. Multiply by the number of pods to get total mesh overhead. Make sure your cluster has enough headroom for this plus growth.
@@ -248,8 +272,12 @@ spec:
       rules:
         - alert: IstioProxyHighMemory
           expr: |
-            container_memory_working_set_bytes{container="istio-proxy"}
-            / container_spec_memory_limit_bytes{container="istio-proxy"} > 0.85
+            (
+              container_memory_working_set_bytes{container="istio-proxy"}
+              / container_spec_memory_limit_bytes{container="istio-proxy"}
+            ) > 0.85
+            and on(namespace,pod,container)
+            container_spec_memory_limit_bytes{container="istio-proxy"} > 0
           for: 10m
           labels:
             severity: warning
