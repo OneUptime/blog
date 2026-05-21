@@ -10,7 +10,7 @@ Description: Learn how to configure and customize Subject Alternative Name field
 
 Subject Alternative Name (SAN) fields in X.509 certificates are how Istio identifies workloads in the mesh. When two services establish a mutual TLS connection, they check each other's SAN to verify identity. Getting these fields right is essential for authorization policies, traffic routing, and overall mesh security.
 
-Istio uses SPIFFE-formatted URIs as the primary SAN type for workload certificates. But there are scenarios where you need additional SAN entries - DNS names for ingress gateways, custom identities for external integrations, or IP addresses for specific use cases.
+Istio uses SPIFFE-formatted URIs as the primary SAN type for workload certificates. But there are scenarios where you need to think about other SAN entries - DNS names for ingress gateways, identities expected by external integrations, or IP addresses for specific use cases.
 
 ## Default SAN Behavior in Istio
 
@@ -125,26 +125,24 @@ kubectl create secret tls my-tls-credential \
 
 ## Custom SAN for Workloads
 
-There are cases where you need workload certificates to include additional SAN entries beyond the default SPIFFE URI. For instance, when a service inside the mesh needs to present a certificate with a DNS name to an external system.
+Istio's built-in workload certificates use the SPIFFE identity format shown above. Pod proxy annotations do not add arbitrary DNS or IP SANs to those workload certificates.
 
-You can request additional SANs through proxy configuration annotations:
+If a service inside the mesh needs to present a certificate with a DNS name to an external system, use a separate application certificate, originate TLS through an egress gateway with the required client certificate, or integrate with an external identity system such as SPIRE while keeping Istio's required SPIFFE ID format for mesh identities. For example, an egress gateway can use a client credential when originating mutual TLS:
 
 ```yaml
-apiVersion: apps/v1
-kind: Deployment
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
 metadata:
-  name: my-service
+  name: external-system-mtls
 spec:
-  template:
-    metadata:
-      annotations:
-        proxy.istio.io/config: |
-          proxyMetadata:
-            ISTIO_META_TLS_CLIENT_CERTIFICATE_SAN: "DNS:my-service.example.com"
-    spec:
-      containers:
-        - name: my-service
-          image: my-service:latest
+  host: external-system.example.com
+  trafficPolicy:
+    tls:
+      mode: MUTUAL
+      credentialName: external-system-client-credential
+      sni: external-system.example.com
+      subjectAltNames:
+        - "external-system.example.com"
 ```
 
 ## SAN Validation in Destination Rules
@@ -161,48 +159,49 @@ spec:
   trafficPolicy:
     tls:
       mode: SIMPLE
+      caCertificates: system
+      sni: external-api.example.com
       subjectAltNames:
-        - "DNS:external-api.example.com"
-        - "DNS:*.example.com"
+        - "external-api.example.com"
+        - "*.example.com"
 ```
 
-If the server certificate does not have a matching SAN, the connection will fail. You can also use this for services within the mesh to enforce stricter identity verification:
+If the server certificate does not have a matching SAN, the connection will fail. For services within the mesh that use `ISTIO_MUTUAL`, leave the other TLS fields empty and enforce workload identity with authorization policy instead:
 
 ```yaml
-apiVersion: networking.istio.io/v1
-kind: DestinationRule
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
 metadata:
-  name: payment-service
+  name: allow-checkout-to-payment
   namespace: production
 spec:
-  host: payment-service.production.svc.cluster.local
-  trafficPolicy:
-    tls:
-      mode: ISTIO_MUTUAL
-      subjectAltNames:
-        - "spiffe://cluster.local/ns/production/sa/payment-api"
+  selector:
+    matchLabels:
+      app: payment-service
+  rules:
+    - from:
+        - source:
+            principals:
+              - "cluster.local/ns/checkout/sa/checkout-service"
 ```
 
-This ensures that even if mTLS is established, the connection only succeeds if the server has the exact identity you expect.
+This ensures that the payment service only accepts requests from the exact workload identity you expect.
 
 ## Multi-Cluster SAN Considerations
 
 In multi-cluster Istio setups, workloads in different clusters might have different trust domains. When configuring cross-cluster communication, you need to account for the remote cluster's SAN format:
 
 ```yaml
-apiVersion: networking.istio.io/v1
-kind: DestinationRule
-metadata:
-  name: remote-service
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
 spec:
-  host: remote-service.production.svc.cluster.local
-  trafficPolicy:
-    tls:
-      mode: ISTIO_MUTUAL
-      subjectAltNames:
-        - "spiffe://cluster-1.example.com/ns/production/sa/remote-service"
-        - "spiffe://cluster-2.example.com/ns/production/sa/remote-service"
+  meshConfig:
+    trustDomain: cluster-1.example.com
+    trustDomainAliases:
+      - cluster-2.example.com
 ```
+
+With trust domain aliases, Istio can treat identities from the listed trust domains as aliases for authorization checks during trust-domain migration or multi-cluster setups.
 
 ## Debugging SAN Issues
 
@@ -235,16 +234,18 @@ This will show the TLS context including the expected subject alt names for that
 
 ## Certificate Generation with Specific SANs
 
-If you are providing your own CA certificates (plug-in CA mode), make sure the intermediate CA certificate has appropriate SANs. Generate one with both URI and DNS SANs:
+If you are providing your own CA certificates (plug-in CA mode), the CA certificate signs workload certificates, but it is not where you put workload DNS or SPIFFE identities. Use Istio's plug-in CA flow to provide the CA certificate, key, root certificate, and certificate chain:
 
 ```bash
-openssl req -new -key ca-key.pem -out ca-csr.pem \
-  -subj "/O=MyOrg/CN=Istio Intermediate CA" \
-  -addext "subjectAltName=URI:spiffe://mycompany.example.com,DNS:istiod.istio-system.svc"
+make -f ../tools/certs/Makefile.selfsigned.mk root-ca
+make -f ../tools/certs/Makefile.selfsigned.mk cluster1-cacerts
 
-openssl x509 -req -in ca-csr.pem -CA root-cert.pem -CAkey root-key.pem \
-  -CAcreateserial -out ca-cert.pem -days 730 \
-  -extfile <(printf "subjectAltName=URI:spiffe://mycompany.example.com\nbasicConstraints=CA:TRUE\nkeyUsage=keyCertSign,cRLSign")
+kubectl create namespace istio-system
+kubectl create secret generic cacerts -n istio-system \
+  --from-file=cluster1/ca-cert.pem \
+  --from-file=cluster1/ca-key.pem \
+  --from-file=cluster1/root-cert.pem \
+  --from-file=cluster1/cert-chain.pem
 ```
 
 Getting SAN fields right is one of those things that seems straightforward until it breaks at 2 AM. Take the time to understand what SANs your workloads carry, what your authorization policies expect, and what your destination rules verify. It will save you hours of debugging later.
