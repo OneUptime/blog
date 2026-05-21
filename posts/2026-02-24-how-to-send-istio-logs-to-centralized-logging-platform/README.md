@@ -132,54 +132,75 @@ spec:
 
 ## Sending to Grafana Loki
 
-Loki is a popular choice because it's cheaper than Elasticsearch for log storage and integrates well with Grafana. Using Promtail to ship logs:
+Loki is a popular choice because it's cheaper than Elasticsearch for log storage and integrates well with Grafana. For new deployments, use Grafana Alloy to ship logs because Promtail reached end-of-life on March 2, 2026:
 
 ```yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: promtail-config
+  name: alloy-config
   namespace: logging
 data:
-  promtail.yaml: |
-    server:
-      http_listen_port: 9080
+  config.alloy: |
+    discovery.kubernetes "pods" {
+      role = "pod"
+    }
 
-    positions:
-      filename: /tmp/positions.yaml
+    discovery.relabel "istio_proxy" {
+      targets = discovery.kubernetes.pods.targets
 
-    clients:
-      - url: http://loki.logging.svc:3100/loki/api/v1/push
+      rule {
+        source_labels = ["__meta_kubernetes_pod_container_name"]
+        regex         = "istio-proxy"
+        action        = "keep"
+      }
 
-    scrape_configs:
-      - job_name: istio-proxy
-        pipeline_stages:
-          - cri: {}
-          - json:
-              expressions:
-                method: method
-                path: path
-                response_code: response_code
-                duration: duration
-                upstream_host: upstream_host
-          - labels:
-              method:
-              response_code:
-          - timestamp:
-              source: start_time
-              format: "2006-01-02T15:04:05.000Z"
-        kubernetes_sd_configs:
-          - role: pod
-        relabel_configs:
-          - source_labels: [__meta_kubernetes_pod_container_name]
-            regex: istio-proxy
-            action: keep
-          - source_labels: [__meta_kubernetes_namespace]
-            target_label: namespace
-          - source_labels: [__meta_kubernetes_pod_name]
-            target_label: pod
-          - source_labels: [__meta_kubernetes_pod_label_app]
-            target_label: app
+      rule {
+        source_labels = ["__meta_kubernetes_namespace"]
+        target_label  = "namespace"
+      }
+
+      rule {
+        source_labels = ["__meta_kubernetes_pod_name"]
+        target_label  = "pod"
+      }
+
+      rule {
+        source_labels = ["__meta_kubernetes_pod_label_app"]
+        target_label  = "app"
+      }
+    }
+
+    loki.source.kubernetes "istio_proxy" {
+      targets    = discovery.relabel.istio_proxy.output
+      forward_to = [loki.process.istio_proxy.receiver]
+    }
+
+    loki.process "istio_proxy" {
+      stage.json {
+        expressions = {
+          method        = "method"
+          response_code = "response_code"
+          duration      = "duration"
+          upstream_host = "upstream_host"
+        }
+      }
+
+      stage.labels {
+        values = {
+          method        = ""
+          response_code = ""
+        }
+      }
+
+      forward_to = [loki.write.default.receiver]
+    }
+
+    loki.write "default" {
+      endpoint {
+        url = "http://loki.logging.svc:3100/loki/api/v1/push"
+      }
+    }
 ```
 
 ## Using Istio's OpenTelemetry Access Log Provider
@@ -235,15 +256,15 @@ data:
         timeout: 10s
 
     exporters:
-      loki:
-        endpoint: http://loki.logging.svc:3100/loki/api/v1/push
+      otlphttp/loki:
+        endpoint: http://loki.logging.svc:3100/otlp
 
     service:
       pipelines:
         logs:
           receivers: [otlp]
           processors: [batch]
-          exporters: [loki]
+          exporters: [otlphttp/loki]
 ```
 
 ## Collecting Istiod Control Plane Logs
@@ -285,9 +306,9 @@ resource.labels.container_name="istio-proxy"
 **Azure Monitor**: AKS with Container Insights automatically collects container logs. You can query them in Log Analytics with KQL:
 
 ```text
-ContainerLog
-| where Name contains "istio-proxy"
-| where LogEntry contains "response_code"
+ContainerLogV2
+| where ContainerName == "istio-proxy"
+| where LogMessage contains "response_code"
 ```
 
 ## Verification
@@ -297,7 +318,7 @@ After setting up your logging pipeline, verify that logs are flowing:
 ```bash
 # Generate some traffic
 
-kubectl exec deploy/sleep -n default -- curl -s http://httpbin.default:8080/get
+kubectl exec deploy/sleep -n default -- curl -s http://httpbin.default:8000/get
 
 # Check Fluent Bit is processing
 kubectl logs -n logging daemonset/fluent-bit --tail=20
