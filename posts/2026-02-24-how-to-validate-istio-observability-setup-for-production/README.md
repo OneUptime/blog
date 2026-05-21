@@ -8,16 +8,16 @@ Description: How to validate that your Istio observability stack is properly con
 
 ---
 
-One of the biggest reasons teams adopt Istio is the observability it provides out of the box. Every request flowing through the mesh generates metrics, and you get distributed tracing and access logs without modifying your application code. But "out of the box" does not mean "production ready." There are several things that can go wrong between Istio generating telemetry data and that data showing up in your dashboards.
+One of the biggest reasons teams adopt Istio is the observability it provides out of the box. Every request flowing through the mesh generates metrics, and you can get distributed tracing and access logs without modifying your application instrumentation. But "out of the box" does not mean "production ready." There are several things that can go wrong between Istio generating telemetry data and that data showing up in your dashboards.
 
 Here is how to validate that your observability setup is actually working before you need it during an incident.
 
 ## Validate Metrics Collection
 
-Istio proxies expose metrics on port 15090 by default. First, confirm that your proxies are actually generating metrics:
+Istio workload metrics are exposed on `/stats/prometheus`, usually through the sidecar telemetry port 15020 for merged Istio, Envoy, and application metrics, or port 15090 for Envoy-only metrics. First, confirm that your proxies are actually generating metrics:
 
 ```bash
-kubectl exec deploy/my-service -c istio-proxy -- curl -s localhost:15090/stats/prometheus | head -50
+kubectl exec deploy/my-service -c istio-proxy -- curl -s localhost:15020/stats/prometheus | head -50
 ```
 
 You should see a wall of Prometheus-format metrics. If this returns nothing, the proxy is not configured to expose metrics.
@@ -66,8 +66,8 @@ curl -s "http://localhost:9090/api/v1/query?query=istio_tcp_sent_bytes_total" | 
 
 If any of these return 0 results, your metrics pipeline has a gap. Common causes include:
 
-- Prometheus not scraping the envoy sidecar ports
-- Network policies blocking port 15090
+- Prometheus not scraping the Istio sidecar telemetry ports
+- Network policies blocking port 15020 or 15090
 - Custom Istio telemetry configuration that filters out default metrics
 
 ## Validate Telemetry API Configuration
@@ -116,16 +116,21 @@ The headers your application needs to forward:
 - `x-b3-parentspanid`
 - `x-b3-sampled`
 - `x-b3-flags`
+- `b3`
 - `traceparent`
 - `tracestate`
 
 Test that traces are flowing by sending a request and checking your tracing backend:
 
 ```bash
-kubectl exec deploy/sleep -- curl -s -H "x-request-id: test-trace-123" http://httpbin:8000/get
+kubectl exec deploy/sleep -- curl -s \
+  -H "x-b3-traceid: 463ac35c9f6413ad48485a3953bb6124" \
+  -H "x-b3-spanid: a2fb4a1d1a96d312" \
+  -H "x-b3-sampled: 1" \
+  http://httpbin:8000/get
 ```
 
-Then search for this trace ID in your tracing backend (Jaeger, Zipkin, etc.).
+Then search for the trace ID in your tracing backend (Jaeger, Zipkin, etc.). If you use W3C trace context instead of B3 propagation, send a valid `traceparent` header and search for that trace ID instead.
 
 Check the tracing provider configuration:
 
@@ -140,9 +145,9 @@ apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
   meshConfig:
+    enableTracing: true
     defaultConfig:
-      tracing:
-        sampling: 1.0
+      tracing: {}
     extensionProviders:
       - name: zipkin
         zipkin:
@@ -190,10 +195,10 @@ spec:
     - providers:
         - name: envoy
       filter:
-        expression: "response.code >= 400"
+        expression: "!has(response.code) || response.code >= 400"
 ```
 
-This configuration only logs error responses, which significantly reduces log volume while still capturing the information you need for debugging.
+This configuration logs error responses and requests where no response code was produced, which significantly reduces log volume while still capturing the information you need for debugging.
 
 ## Validate Dashboards
 
@@ -261,7 +266,7 @@ Combine all checks into a single validation:
 echo "=== Validating Istio Observability ==="
 
 echo "Checking proxy metrics endpoint..."
-kubectl exec deploy/sleep -c istio-proxy -- curl -sf localhost:15090/stats/prometheus > /dev/null && echo "PASS" || echo "FAIL"
+kubectl exec deploy/sleep -c istio-proxy -- curl -sf localhost:15020/stats/prometheus > /dev/null && echo "PASS" || echo "FAIL"
 
 echo "Checking Prometheus targets..."
 TARGETS=$(curl -s http://localhost:9090/api/v1/targets | jq '[.data.activeTargets[] | select(.labels.job | contains("istio"))] | length')
