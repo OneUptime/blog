@@ -18,18 +18,18 @@ The standard architecture puts the ALB in front of the Istio ingress gateway. AW
 Internet -> ALB -> Target Group -> Istio Ingress Gateway Pods -> Mesh Services
 ```
 
-You need the AWS Load Balancer Controller installed in your EKS cluster. This controller watches for Kubernetes Ingress and Service resources with specific annotations and provisions ALBs automatically.
+You need the AWS Load Balancer Controller installed in your EKS cluster. This controller watches for Kubernetes Ingress and Service resources with specific annotations and provisions load balancers automatically.
 
 ## Installing the AWS Load Balancer Controller
 
 First, create an IAM policy for the controller:
 
 ```bash
-curl -o iam-policy.json https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v2.7.0/docs/install/iam_policy.json
+curl -o iam_policy.json https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v2.14.1/docs/install/iam_policy.json
 
 aws iam create-policy \
   --policy-name AWSLoadBalancerControllerIAMPolicy \
-  --policy-document file://iam-policy.json
+  --policy-document file://iam_policy.json
 ```
 
 Create a service account with IRSA (IAM Roles for Service Accounts):
@@ -40,6 +40,8 @@ eksctl create iamserviceaccount \
   --namespace=kube-system \
   --name=aws-load-balancer-controller \
   --attach-policy-arn=arn:aws:iam::111122223333:policy/AWSLoadBalancerControllerIAMPolicy \
+  --override-existing-serviceaccounts \
+  --region us-east-1 \
   --approve
 ```
 
@@ -53,7 +55,8 @@ helm install aws-load-balancer-controller eks/aws-load-balancer-controller \
   -n kube-system \
   --set clusterName=my-cluster \
   --set serviceAccount.create=false \
-  --set serviceAccount.name=aws-load-balancer-controller
+  --set serviceAccount.name=aws-load-balancer-controller \
+  --version 1.14.0
 ```
 
 ## Configuring the Istio Ingress Gateway
@@ -102,7 +105,6 @@ metadata:
   name: istio-ingress-alb
   namespace: istio-system
   annotations:
-    kubernetes.io/ingress.class: alb
     alb.ingress.kubernetes.io/scheme: internet-facing
     alb.ingress.kubernetes.io/target-type: ip
     alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
@@ -112,6 +114,7 @@ metadata:
     alb.ingress.kubernetes.io/healthcheck-port: "15021"
     alb.ingress.kubernetes.io/backend-protocol: HTTP
 spec:
+  ingressClassName: alb
   rules:
   - host: myapp.example.com
     http:
@@ -129,7 +132,7 @@ The `target-type: ip` annotation is important because it uses the pod IPs direct
 
 ## Adding TLS with ACM
 
-AWS Certificate Manager (ACM) certificates are free and auto-renewing. Reference them in the ALB Ingress annotation:
+AWS Certificate Manager (ACM) non-exportable public certificates for integrated AWS services are available at no additional cost and auto-renew. Reference them in the ALB Ingress annotation:
 
 ```yaml
 annotations:
@@ -148,14 +151,7 @@ The ALB terminates TLS and forwards plain HTTP to the Istio ingress gateway. Ins
 
 ## Enabling WAF
 
-One of the reasons to use ALB is AWS WAF integration. Associate a WAF WebACL with your ALB:
-
-```yaml
-annotations:
-  alb.ingress.kubernetes.io/waf-acl-id: your-waf-web-acl-id
-```
-
-Or with WAFv2:
+One of the reasons to use ALB is AWS WAF integration. Associate a regional WAFv2 WebACL with your ALB:
 
 ```yaml
 annotations:
@@ -210,8 +206,9 @@ aws route53 change-resource-record-sets \
 Or use external-dns to automate this:
 
 ```bash
-helm install external-dns bitnami/external-dns \
-  --set provider=aws \
+helm repo add --force-update external-dns https://kubernetes-sigs.github.io/external-dns/
+helm upgrade --install external-dns external-dns/external-dns \
+  --set provider.name=aws \
   --set domainFilters[0]=example.com \
   --set policy=sync
 ```
