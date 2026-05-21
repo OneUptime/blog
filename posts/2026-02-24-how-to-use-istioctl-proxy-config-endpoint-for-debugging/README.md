@@ -67,13 +67,14 @@ istioctl proxy-config endpoint productpage-v1-6b746f74dc-9rlmh.bookinfo \
   --cluster "outbound|9080||reviews.bookinfo.svc.cluster.local"
 ```
 
-If this returns nothing, the proxy does not know about any reviews pods. Verify the Kubernetes endpoints exist:
+If this returns nothing, the proxy does not know about any reviews pods. Verify the Kubernetes endpoints or EndpointSlices exist:
 
 ```bash
 kubectl get endpoints reviews -n bookinfo
+kubectl get endpointslices -n bookinfo -l kubernetes.io/service-name=reviews
 ```
 
-If the Kubernetes endpoints exist but Envoy does not have them, there might be a sync issue between istiod and the proxy:
+If the Kubernetes endpoints or EndpointSlices exist but Envoy does not have them, there might be a sync issue between istiod and the proxy:
 
 ```bash
 # Check proxy-status for EDS sync
@@ -179,30 +180,34 @@ istioctl proxy-config endpoint productpage-v1-6b746f74dc-9rlmh.bookinfo \
   --cluster "outbound|9080||reviews.bookinfo.svc.cluster.local" -o json
 ```
 
-Look for `locality` information in the endpoint metadata:
+Look for `locality` information in the locality-level endpoint entries:
 
 ```json
 {
-  "endpoint": {
-    "address": {
-      "socketAddress": {
-        "address": "10.244.0.17",
-        "portValue": 9080
-      }
-    }
-  },
-  "healthStatus": "HEALTHY",
-  "metadata": {
-    "filterMetadata": {
-      "istio": {
-        "workload": "reviews-v1"
-      }
-    }
-  },
   "locality": {
     "region": "us-east-1",
     "zone": "us-east-1a"
-  }
+  },
+  "lbEndpoints": [
+    {
+      "endpoint": {
+        "address": {
+          "socketAddress": {
+            "address": "10.244.0.17",
+            "portValue": 9080
+          }
+        }
+      },
+      "healthStatus": "HEALTHY",
+      "metadata": {
+        "filterMetadata": {
+          "istio": {
+            "workload": "reviews-v1"
+          }
+        }
+      }
+    }
+  ]
 }
 ```
 
