@@ -45,41 +45,42 @@ spec:
       patch:
         operation: INSERT_BEFORE
         value:
-          name: envoy.lua
+          name: envoy.filters.http.lua
           typed_config:
             "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-            inline_code: |
-              function envoy_on_request(request_handle)
-                local body = request_handle:body()
-                if body then
-                  local body_str = body:getBytes(0, body:length())
-                  -- Check for SQL injection patterns
-                  if string.find(body_str, "DROP TABLE") or
-                     string.find(body_str, "DELETE FROM") or
-                     string.find(body_str, "'; --") then
-                    request_handle:respond(
-                      {[":status"] = "403"},
-                      "Request blocked: suspicious content detected"
-                    )
-                    return
-                  end
-                  -- Check payload size
-                  if body:length() > 1048576 then
-                    request_handle:respond(
-                      {[":status"] = "413"},
-                      "Request body too large"
-                    )
-                    return
+            default_source_code:
+              inline_string: |
+                function envoy_on_request(request_handle)
+                  local body = request_handle:body()
+                  if body then
+                    local body_str = body:getBytes(0, body:length())
+                    -- Check for SQL injection patterns
+                    if string.find(body_str, "DROP TABLE") or
+                       string.find(body_str, "DELETE FROM") or
+                       string.find(body_str, "'; --") then
+                      request_handle:respond(
+                        {[":status"] = "403"},
+                        "Request blocked: suspicious content detected"
+                      )
+                      return
+                    end
+                    -- Check payload size
+                    if body:length() > 1048576 then
+                      request_handle:respond(
+                        {[":status"] = "413"},
+                        "Request body too large"
+                      )
+                      return
+                    end
                   end
                 end
-              end
 ```
 
 This filter intercepts inbound requests to pods labeled `app: my-service`, reads the body, and checks for basic SQL injection patterns. If suspicious content is found, it returns a 403 response without forwarding the request to the application.
 
 ## Enabling Request Buffering
 
-For the body inspection to work, Envoy needs to buffer the request body. By default, Envoy streams the body without buffering it entirely. You need to add a buffer filter before your inspection filter:
+Envoy normally streams request bodies. The Lua `body()` API can suspend script execution until the full body has been received in a buffer, but you can also add a buffer filter before your inspection filter when you want Envoy to enforce a hard request-size limit before later filters run:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -146,14 +147,14 @@ The Wasm module itself would be written in a language like Rust or Go using the 
 package main
 
 import (
-    "github.com/tetratelabs/proxy-wasm-go-sdk/proxywasm"
-    "github.com/tetratelabs/proxy-wasm-go-sdk/proxywasm/types"
     "strings"
+
+    "github.com/proxy-wasm/proxy-wasm-go-sdk/proxywasm"
+    "github.com/proxy-wasm/proxy-wasm-go-sdk/proxywasm/types"
 )
 
 type bodyInspector struct {
     proxywasm.DefaultHttpContext
-    totalBody []byte
 }
 
 func (ctx *bodyInspector) OnHttpRequestBody(bodySize int, endOfStream bool) types.Action {
@@ -163,26 +164,26 @@ func (ctx *bodyInspector) OnHttpRequestBody(bodySize int, endOfStream bool) type
         return types.ActionContinue
     }
 
-    ctx.totalBody = append(ctx.totalBody, body...)
+    if !endOfStream {
+        return types.ActionPause
+    }
 
-    if endOfStream {
-        bodyStr := string(ctx.totalBody)
-        // Check for blocked patterns
-        if strings.Contains(bodyStr, "DROP TABLE") ||
-           strings.Contains(bodyStr, "<script>") {
-            proxywasm.SendHttpResponse(403, nil,
-                []byte("Blocked: suspicious content"), -1)
-            return types.ActionPause
-        }
+    bodyStr := string(body)
+    // Check for blocked patterns
+    if strings.Contains(bodyStr, "DROP TABLE") ||
+       strings.Contains(bodyStr, "<script>") {
+        proxywasm.SendHttpResponse(403, nil,
+            []byte("Blocked: suspicious content"), -1)
+        return types.ActionPause
     }
 
     return types.ActionContinue
 }
 ```
 
-## JSON Schema Validation
+## JSON Body Validation
 
-A common use case is validating that JSON request bodies match an expected schema. Here is an EnvoyFilter that performs basic JSON structure validation:
+A common use case is validating JSON request bodies before they reach your service. Here is an EnvoyFilter that performs basic JSON structure validation:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -207,28 +208,29 @@ spec:
       patch:
         operation: INSERT_BEFORE
         value:
-          name: envoy.lua
+          name: envoy.filters.http.lua
           typed_config:
             "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-            inline_code: |
-              function envoy_on_request(request_handle)
-                local content_type = request_handle:headers():get("content-type")
-                if content_type and string.find(content_type, "application/json") then
-                  local body = request_handle:body()
-                  if body then
-                    local body_str = body:getBytes(0, body:length())
-                    -- Basic JSON validation
-                    if not (string.sub(body_str, 1, 1) == "{" or
-                            string.sub(body_str, 1, 1) == "[") then
-                      request_handle:respond(
-                        {[":status"] = "400"},
-                        "Invalid JSON body"
-                      )
-                      return
+            default_source_code:
+              inline_string: |
+                function envoy_on_request(request_handle)
+                  local content_type = request_handle:headers():get("content-type")
+                  if content_type and string.find(content_type, "application/json") then
+                    local body = request_handle:body()
+                    if body then
+                      local body_str = body:getBytes(0, body:length())
+                      -- Basic JSON validation
+                      if not (string.sub(body_str, 1, 1) == "{" or
+                              string.sub(body_str, 1, 1) == "[") then
+                        request_handle:respond(
+                          {[":status"] = "400"},
+                          "Invalid JSON body"
+                        )
+                        return
+                      end
                     end
                   end
                 end
-              end
 ```
 
 ## Logging Request Bodies for Auditing
@@ -258,19 +260,20 @@ spec:
       patch:
         operation: INSERT_BEFORE
         value:
-          name: envoy.lua
+          name: envoy.filters.http.lua
           typed_config:
             "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-            inline_code: |
-              function envoy_on_request(request_handle)
-                local body = request_handle:body()
-                if body then
-                  local size = body:length()
-                  request_handle:headers():add("x-body-size", tostring(size))
-                  request_handle:logInfo("Request body size: " .. tostring(size) ..
-                    " path: " .. request_handle:headers():get(":path"))
+            default_source_code:
+              inline_string: |
+                function envoy_on_request(request_handle)
+                  local body = request_handle:body()
+                  if body then
+                    local size = body:length()
+                    request_handle:headers():add("x-body-size", tostring(size))
+                    request_handle:logInfo("Request body size: " .. tostring(size) ..
+                      " path: " .. request_handle:headers():get(":path"))
+                  end
                 end
-              end
 ```
 
 ## Performance Considerations
