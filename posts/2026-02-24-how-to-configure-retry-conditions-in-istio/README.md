@@ -16,8 +16,8 @@ Istio's retry conditions are based on Envoy proxy's retry policies. When you con
 
 Here are the retry conditions you can use:
 
-- **5xx** - Retry on any 5xx response code
-- **gateway-error** - Retry on 502, 503, or 504 responses
+- **5xx** - Retry on any 5xx response code, or when the upstream does not respond because of a disconnect, reset, or read timeout
+- **gateway-error** - Retry on 502, 503, or 504 responses, or when the upstream does not respond because of a disconnect, reset, or read timeout
 - **connect-failure** - Retry when connection to upstream fails
 - **retriable-4xx** - Retry on retriable 4xx codes (currently just 409)
 - **refused-stream** - Retry when upstream resets the stream with a REFUSED_STREAM error
@@ -30,7 +30,7 @@ Here are the retry conditions you can use:
 The simplest retry configuration retries on 5xx errors:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service
@@ -50,14 +50,14 @@ spec:
         retryOn: "5xx"
 ```
 
-This tells Istio to retry up to 3 times whenever a 5xx response comes back, with each attempt timing out after 2 seconds.
+This tells Istio to allow up to 3 retries whenever a 5xx response comes back, with each attempt timing out after 2 seconds.
 
 ## Retrying on Gateway Errors
 
 If you only care about gateway-related errors (which is common when services sit behind load balancers or API gateways), use `gateway-error`:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: payment-service
@@ -77,14 +77,14 @@ spec:
         retryOn: "gateway-error"
 ```
 
-The `gateway-error` condition covers 502 (Bad Gateway), 503 (Service Unavailable), and 504 (Gateway Timeout). This is a safer option than retrying on all 5xx errors because it avoids retrying on things like 500 Internal Server Error, where the issue is more likely to be a bug in the application code rather than a transient infrastructure problem.
+The `gateway-error` condition covers 502 (Bad Gateway), 503 (Service Unavailable), 504 (Gateway Timeout), and cases where the upstream does not respond because of a disconnect, reset, or read timeout. This is a safer option than retrying on all 5xx errors because it avoids retrying on things like 500 Internal Server Error, where the issue is more likely to be a bug in the application code rather than a transient infrastructure problem.
 
 ## Combining Multiple Retry Conditions
 
 You can combine multiple conditions using a comma-separated string:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: order-service
@@ -108,10 +108,10 @@ This configuration retries on connection failures, refused streams, and gateway 
 
 ## Retrying on Specific Status Codes
 
-Sometimes you need to retry on very specific HTTP status codes. Use `retriable-status-codes` combined with a request header to define which codes trigger retries:
+Sometimes you need to retry on very specific HTTP status codes. In Istio, you can include those status codes directly in `retryOn`:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: inventory-service
@@ -128,11 +128,7 @@ spec:
       retries:
         attempts: 3
         perTryTimeout: 2s
-        retryOn: "retriable-status-codes"
-      headers:
-        request:
-          set:
-            x-envoy-retriable-status-codes: "503,429"
+        retryOn: "503,429"
 ```
 
 This setup retries only on 503 (Service Unavailable) and 429 (Too Many Requests) responses. The 429 retry is particularly useful for rate-limited APIs where backing off and retrying is the expected behavior.
@@ -142,7 +138,7 @@ This setup retries only on 503 (Service Unavailable) and 429 (Too Many Requests)
 Connection failures are among the most common transient errors in Kubernetes environments, especially during pod scaling events or rolling deployments:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: notification-service
