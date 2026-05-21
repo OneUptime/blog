@@ -8,7 +8,7 @@ Description: Learn how to interpret and resolve Istio configuration validation w
 
 ---
 
-When you run `istioctl analyze`, you'll probably see a bunch of warnings. They're not errors, so your configuration technically works, but they indicate potential problems or deviations from best practices. Ignoring warnings is tempting, but they often hint at issues that will bite you later. Here is how to interpret the most common warnings and decide what to do about each one.
+When you run `istioctl analyze`, you'll probably see a bunch of validation messages. Some are warnings, and others are errors or informational messages. Warnings are not errors, so your configuration technically works, but they indicate potential problems or deviations from best practices. Ignoring warnings is tempting, but they often hint at issues that will bite you later. Here is how to interpret the most common messages and decide what to do about each one.
 
 ## Warnings vs Errors
 
@@ -30,9 +30,9 @@ istioctl analyze --all-namespaces
 Info [IST0102] (Namespace default) The namespace is not enabled for Istio injection.
 ```
 
-This means the namespace doesn't have the `istio-injection=enabled` label. Pods in this namespace won't get sidecar proxies.
+This means the namespace doesn't have an injection label such as `istio-injection=enabled` or `istio.io/rev=<revision>`. Pods in this namespace won't get sidecar proxies.
 
-**When to fix**: If services in this namespace should be part of the mesh, add the label:
+**When to fix**: If services in this namespace should be part of the mesh, add the injection label:
 
 ```bash
 kubectl label namespace default istio-injection=enabled
@@ -46,34 +46,33 @@ To suppress this for intentionally non-injected namespaces:
 kubectl annotate namespace kube-system galley.istio.io/analyze-suppress=IST0102
 ```
 
-## IST0101: Referenced Host Not Found
+## IST0101: Referenced Resource Not Found
 
 ```text
-Warning [IST0101] (VirtualService default/my-vs) Referenced host not found: "api-service"
+Error [IST0101] (VirtualService default/httpbin) Referenced gateway not found: "httpbin-gateway-bogus"
 ```
 
-Your VirtualService references a host that doesn't match any Kubernetes Service. This is a warning because the host might appear later (maybe the service hasn't been deployed yet), but it often indicates a typo.
+Your Istio resource references another resource that does not exist. For example, a VirtualService might reference a Gateway that has not been created or has a typo in its name.
 
-**How to fix**: Check the host name matches exactly. For services in the same namespace, use the short name. For cross-namespace, use the FQDN:
+**How to fix**: Check the referenced resource name matches exactly. For a VirtualService that uses a Gateway in the same namespace, use the Gateway name. For a Gateway in another namespace, use `namespace/name`:
 
 ```yaml
 # Same namespace
+gateways:
+  - httpbin-gateway
 
-hosts:
-  - api-service
-
-# Cross namespace
-hosts:
-  - api-service.production.svc.cluster.local
+# Cross namespace Gateway
+gateways:
+  - istio-system/httpbin-gateway
 ```
 
-## IST0104: Gateway Port Not On Workload
+## IST0162: Gateway Port Not Defined On Service
 
 ```text
-Warning [IST0104] (Gateway default/my-gw) The gateway refers to a port that is not exposed
+Warning [IST0162] (Gateway default/my-gw) The gateway refers to a port that is not exposed on the workload service
 ```
 
-Your Gateway specifies a port that the ingress gateway pods don't expose.
+Your Gateway specifies a port that the Kubernetes Service for the selected gateway workload doesn't expose.
 
 **How to fix**: Check what ports the ingress gateway actually exposes:
 
@@ -84,7 +83,7 @@ kubectl get svc istio-ingressgateway -n istio-system -o jsonpath='{.spec.ports[*
 Then match your Gateway's port numbers:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: my-gateway
@@ -103,7 +102,7 @@ spec:
 ## IST0131: VirtualService Ineffective Match
 
 ```text
-Warning [IST0131] (VirtualService default/my-vs) This match clause is not used because a previous match is a superset
+Info [IST0131] (VirtualService default/my-vs) This match clause is not used because a previous match overlaps it
 ```
 
 A routing rule in your VirtualService will never be reached because a broader rule above it catches all the same traffic.
@@ -145,7 +144,7 @@ Your DestinationRule enables TLS but doesn't verify the server's certificate. Th
 **How to fix**: If you're using Istio's mTLS, use `ISTIO_MUTUAL` mode which handles certificate verification automatically:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-dr
@@ -178,19 +177,19 @@ An annotation on your resource that Istio doesn't recognize. Usually a typo.
 ```yaml
 # Wrong
 annotations:
-  sidecar.istio.io/proxyCPU: "100m"    # Wrong capitalization
+  sidecar.istio.io/proxyCpu: "100m"    # Wrong capitalization
 
 # Right
 annotations:
-  sidecar.istio.io/proxyCPU: "100m"    # Actually this is correct
+  sidecar.istio.io/proxyCPU: "100m"
 ```
 
 Look up the exact annotation names in the Istio resource annotations reference.
 
-## IST0139: Conflicting Sidecar Workload Selectors
+## IST0110: Conflicting Sidecar Workload Selectors
 
 ```text
-Warning [IST0139] (Sidecar default/sidecar-a) Sidecar has conflicting workload selector with sidecar-b
+Error [IST0110] (Sidecar default/sidecar-a) Sidecar has conflicting workload selector with sidecar-b
 ```
 
 Two Sidecar resources in the same namespace select the same pods. Only one will be applied, and the choice might not be deterministic.
@@ -199,7 +198,7 @@ Two Sidecar resources in the same namespace select the same pods. Only one will 
 
 ```yaml
 # Sidecar A: for frontend pods
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: frontend-sidecar
@@ -213,7 +212,7 @@ spec:
         - "istio-system/*"
 
 # Sidecar B: for backend pods
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: backend-sidecar
@@ -269,11 +268,11 @@ For warnings you've investigated and decided are acceptable, suppress them with 
 ```yaml
 metadata:
   annotations:
-    galley.istio.io/analyze-suppress: "IST0101,IST0102"
+    galley.istio.io/analyze-suppress: "IST0128,IST0162"
 ```
 
 Document why each suppression exists so the next person who sees it understands the reasoning.
 
 ## Summary
 
-Istio configuration warnings deserve attention even though they don't immediately break your mesh. The most common warnings involve missing hosts, unreachable match rules, namespace injection status, and TLS verification gaps. Prioritize fixing warnings that indicate real misconfiguration, suppress those that are intentional decisions, and track your warning count over time to prevent drift. Treating warnings seriously keeps your mesh configuration clean and prevents the slow accumulation of technical debt.
+Istio configuration warnings deserve attention even though they don't immediately break your mesh. The most common messages involve missing resources, unreachable match rules, namespace injection status, and TLS verification gaps. Prioritize fixing warnings that indicate real misconfiguration, suppress those that are intentional decisions, and track your warning count over time to prevent drift. Treating warnings seriously keeps your mesh configuration clean and prevents the slow accumulation of technical debt.
