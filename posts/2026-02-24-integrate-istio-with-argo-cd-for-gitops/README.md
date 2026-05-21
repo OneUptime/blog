@@ -21,7 +21,7 @@ If you do not have Argo CD installed yet:
 ```bash
 kubectl create namespace argocd
 
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+kubectl apply -n argocd --server-side --force-conflicts -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 ```
 
 Install the CLI:
@@ -45,7 +45,7 @@ kubectl port-forward svc/argocd-server -n argocd 8080:443
 Log in:
 
 ```bash
-argocd login localhost:8080
+argocd login localhost:8080 --insecure
 ```
 
 ## Repository Structure
@@ -153,20 +153,25 @@ The `selfHeal: true` option is especially important for Istio. If someone manual
 
 ## Managing Istio Installation with Argo CD
 
-You can also manage the Istio installation itself through Argo CD. Using the IstioOperator resource:
+You can also manage the Istio installation itself through Argo CD. For current Istio releases, use the official Helm charts. The in-cluster Istio operator was deprecated in Istio 1.23 and removed in later releases, so do not rely on applying a live `IstioOperator` resource for new GitOps installations. If these `Application` manifests are deployed by a parent app, the sync waves keep the base chart ahead of `istiod`.
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: istio-control-plane
+  name: istio-base
   namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
 spec:
   project: default
   source:
-    repoURL: https://github.com/your-org/k8s-config.git
-    targetRevision: main
-    path: base/istio-operator
+    repoURL: https://istio-release.storage.googleapis.com/charts
+    chart: base
+    targetRevision: 1.30.0
+    helm:
+      valuesObject:
+        defaultRevision: default
   destination:
     server: https://kubernetes.default.svc
     namespace: istio-system
@@ -174,36 +179,48 @@ spec:
     automated:
       selfHeal: true
     syncOptions:
-    - ServerSideApply=true
+    - CreateNamespace=true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: istiod
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  project: default
+  source:
+    repoURL: https://istio-release.storage.googleapis.com/charts
+    chart: istiod
+    targetRevision: 1.30.0
+    helm:
+      valuesObject:
+        meshConfig:
+          accessLogFile: /dev/stdout
+          enableTracing: true
+          defaultConfig:
+            tracing: {}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: istio-system
+  syncPolicy:
+    automated:
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true
 ```
 
-The `ServerSideApply` option is helpful for large Istio resources that can exceed the annotation size limit used by client-side apply.
+If you do enable Argo CD's `ServerSideApply=true` sync option for Istio Helm charts, set `base.validationFailurePolicy=Fail` when rendering the base chart to avoid field manager conflicts on the validation webhook.
 
-Your IstioOperator manifest in Git:
+Your Helm values in Git can carry the same mesh settings:
 
 ```yaml
-apiVersion: install.istio.io/v1alpha1
-kind: IstioOperator
-metadata:
-  name: istio-control-plane
-  namespace: istio-system
-spec:
-  profile: default
-  meshConfig:
-    accessLogFile: /dev/stdout
-    enableTracing: true
-    defaultConfig:
-      tracing:
-        sampling: 10
-  components:
-    ingressGateways:
-    - name: istio-ingressgateway
-      enabled: true
-      k8s:
-        resources:
-          requests:
-            cpu: 200m
-            memory: 256Mi
+meshConfig:
+  accessLogFile: /dev/stdout
+  enableTracing: true
+  defaultConfig:
+    tracing: {}
 ```
 
 ## Using Kustomize for Environment-Specific Config
