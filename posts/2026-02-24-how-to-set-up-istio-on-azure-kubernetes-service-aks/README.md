@@ -67,8 +67,8 @@ kubectl get nodes
 Download Istio:
 
 ```bash
-curl -L https://istio.io/downloadIstio | sh -
-cd istio-1.24.0
+curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.30.0 sh -
+cd istio-1.30.0
 export PATH=$PWD/bin:$PATH
 ```
 
@@ -172,6 +172,7 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: istio-ingress
+  namespace: istio-system
   annotations:
     kubernetes.io/ingress.class: azure/application-gateway
 spec:
@@ -190,7 +191,7 @@ spec:
 
 ## Azure Monitor Integration
 
-AKS integrates with Azure Monitor for container insights. You can also send Istio metrics to Azure Monitor:
+AKS integrates with Azure Monitor for container insights. To collect Istio's Prometheus metrics with Azure Monitor, enable Azure Monitor managed service for Prometheus separately.
 
 Enable monitoring on your cluster:
 
@@ -210,7 +211,7 @@ kubectl apply -f samples/addons/grafana.yaml
 
 ## Azure Active Directory Integration
 
-If you're using AKS with Azure AD for authentication, make sure your user or service principal has the right permissions for Istio installation:
+If you're using AKS with Microsoft Entra ID (formerly Azure AD) for authentication, make sure your user or service principal has the right permissions for Istio installation:
 
 ```bash
 az role assignment create \
@@ -261,7 +262,7 @@ If the load balancer IP isn't appearing, check your AKS networking configuration
 
 If you see `FailedCreatePodSandBox` errors after enabling Istio, your nodes might be running out of IP addresses. Azure CNI allocates an IP per pod, and the default subnet might be too small. You can resize the subnet or switch to Azure CNI with dynamic IP allocation.
 
-If istiod can't start because of webhook failures, check that the AKS API server can reach the webhook service. AKS uses authorized IP ranges by default in some configurations, and this can block webhook calls:
+If istiod can't start because of webhook failures, check that the AKS API server can reach the webhook service and that the istiod service has healthy endpoints. If you use API server authorized IP ranges, this command shows the configured ranges for Kubernetes API access:
 
 ```bash
 az aks show --resource-group istio-rg --name istio-cluster --query apiServerAccessProfile
