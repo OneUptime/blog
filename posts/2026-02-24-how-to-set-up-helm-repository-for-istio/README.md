@@ -106,6 +106,7 @@ ChartMuseum is a popular open-source Helm chart repository server. Deploy it to 
 helm repo add chartmuseum https://chartmuseum.github.io/charts
 helm install chartmuseum chartmuseum/chartmuseum \
   --set env.open.STORAGE=local \
+  --set env.open.DISABLE_API=false \
   --set persistence.enabled=true \
   --set persistence.size=10Gi \
   -n chartmuseum \
@@ -131,6 +132,9 @@ curl --data-binary "@istiod-1.22.0.tgz" \
   http://chartmuseum.example.com/api/charts
 
 curl --data-binary "@gateway-1.22.0.tgz" \
+  http://chartmuseum.example.com/api/charts
+
+curl --data-binary "@cni-1.22.0.tgz" \
   http://chartmuseum.example.com/api/charts
 ```
 
@@ -199,11 +203,11 @@ helm install istio-ingress ./istio-charts/gateway-1.22.0.tgz \
 
 ## Managing Multiple Repository Sources
 
-You might have the official repo for testing new versions and a private repo for production deployments. Helm handles this through repo naming:
+You might have the official repo for testing new versions and a private OCI registry for production deployments. Helm handles the chart repository by name, while OCI registries are used directly by their `oci://` reference:
 
 ```bash
 helm repo add istio-official https://istio-release.storage.googleapis.com/charts
-helm repo add istio-approved oci://registry.example.com/helm-charts
+helm registry login registry.example.com
 ```
 
 Install from whichever source is appropriate:
