@@ -14,7 +14,7 @@ This guide covers every common sidecar injection problem and how to fix it.
 
 ## How Sidecar Injection Works
 
-Before debugging, it helps to understand the mechanism. Istio uses a Kubernetes mutating admission webhook to automatically inject the sidecar container into pods at creation time. When you create a pod (usually through a Deployment), the Kubernetes API server sends the pod spec to the Istio webhook, which modifies it to add the `istio-init` container and the `istio-proxy` container.
+Before debugging, it helps to understand the mechanism. Istio uses a Kubernetes mutating admission webhook to automatically inject the sidecar container into pods at creation time. When you create a pod (usually through a Deployment), the Kubernetes API server sends the pod spec to the Istio webhook, which modifies it to add the `istio-proxy` container and, unless Istio CNI is handling traffic redirection, the `istio-init` container.
 
 For this to work, several things need to be in place:
 
@@ -106,20 +106,20 @@ kubectl logs -n istio-system deployment/istiod --previous
 
 ## Pod-Level Injection Control
 
-Even if namespace injection is enabled, individual pods can opt out (or opt in). Check for pod-level annotations:
+Even if namespace injection is enabled, individual pods can opt out (or opt in). Check for pod-level labels:
 
 ```bash
-# Check if the pod template has injection annotations
-kubectl get deployment my-app -n production -o jsonpath='{.spec.template.metadata.annotations}' | jq .
+# Check if the pod template has injection labels
+kubectl get deployment my-app -n production -o jsonpath='{.spec.template.metadata.labels}' | jq .
 ```
 
-The annotation `sidecar.istio.io/inject: "false"` will prevent injection for that pod. If you see this annotation and want injection, remove it:
+The label `sidecar.istio.io/inject: "false"` will prevent injection for that pod. If you see this label and want injection, remove it or set it to `"true"`:
 
 ```yaml
 spec:
   template:
     metadata:
-      annotations:
+      labels:
         sidecar.istio.io/inject: "true"
 ```
 
@@ -153,7 +153,7 @@ Change it back to `Fail` once istiod is healthy again.
 After fixing potential issues, verify that injection works:
 
 ```bash
-# Use istioctl to test injection
+# Use a server-side dry run to test automatic injection
 kubectl run test-injection --image=nginx --namespace=production --dry-run=server -o yaml | \
   grep -A 5 "istio-proxy"
 
@@ -179,13 +179,13 @@ It will warn you about things like:
 
 ## Common Injection Failures
 
-**1. init container fails**: The `istio-init` container sets up iptables rules. If it fails, check its logs:
+**1. init container fails**: In installations that do not use Istio CNI, the `istio-init` container sets up iptables rules. If it fails, check its logs:
 
 ```bash
 kubectl logs <pod-name> -c istio-init -n production
 ```
 
-Common causes include missing NET_ADMIN capability or AppArmor/seccomp profiles blocking iptables:
+Common causes include missing NET_ADMIN capability or AppArmor/seccomp profiles blocking iptables. If Istio CNI is enabled, traffic redirection is handled by the CNI node agent instead of a privileged init container:
 
 ```yaml
 # The init container needs these capabilities
