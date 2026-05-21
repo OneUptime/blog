@@ -16,8 +16,8 @@ This is one of those areas where getting the Istio configuration right is the di
 
 Consensus protocols work by having nodes exchange messages within strict timing windows. In Raft, for example:
 
-- The leader sends heartbeats to followers every 150ms (typical)
-- Followers start an election if they don't hear from the leader within the election timeout (e.g., 1000-3000ms)
+- The leader sends heartbeats to followers frequently, often on the order of tens or hundreds of milliseconds depending on the implementation
+- Followers start an election if they don't hear from the leader within the election timeout, which should be several times longer than normal message broadcast time
 - Votes must be exchanged and counted within the election timeout
 
 If the sidecar adds 50ms of latency to each message, that's 50ms added to every heartbeat round trip. If the sidecar briefly stalls (during an xDS configuration push, for example), a few hundred milliseconds of delay can trigger an unnecessary election.
@@ -101,7 +101,7 @@ spec:
 ```
 
 Important details:
-- `connectTimeout: 1s` - Consensus nodes need to establish connections quickly. A 30-second default timeout would cause the protocol to time out first.
+- `connectTimeout: 1s` - Consensus nodes need to establish connections quickly. Istio's default TCP connect timeout is 10 seconds, which may be longer than the protocol's own timeout.
 - Aggressive keepalive (10s/5s) to detect dead connections fast
 - `consecutive5xxErrors: 0` disables outlier detection. You do NOT want Istio ejecting a consensus member from its load balancing pool. The consensus protocol handles failure detection itself.
 
@@ -124,9 +124,9 @@ Setting errors to 0 effectively disables outlier detection. The proxy will alway
 
 ## Disabling Retries for Consensus Messages
 
-Retries are another feature that hurts consensus protocols. If a vote request is retried, a node might receive duplicate votes. If a log replication message is retried out of order, it can corrupt the replicated state.
+Retries are another feature that hurts consensus protocols. Correct consensus implementations should tolerate duplicate or delayed messages, but proxy-level retries can add latency and duplicate work outside the protocol's own retry and timeout logic.
 
-For gRPC-based consensus:
+For gRPC-based consensus, this only applies when the Service port is declared as `grpc` or `http2` (for example, `name: grpc-consensus` or `appProtocol: grpc`). If the port is declared as opaque TCP, Istio's HTTP retry policy does not apply.
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -145,10 +145,9 @@ spec:
         host: my-consensus-cluster.distributed.svc.cluster.local
     retries:
       attempts: 0
-    timeout: 0s
 ```
 
-Setting `retries.attempts: 0` disables retries. Setting `timeout: 0s` disables Envoy's request timeout so long-running streams aren't terminated.
+Setting `retries.attempts: 0` disables retries. Istio's HTTP route timeout is disabled by default, so leave `timeout` unset unless you need a specific request deadline.
 
 ## Excluding Consensus Ports from the Sidecar
 
@@ -291,4 +290,4 @@ histogram_quantile(0.99, rate(consensus_commit_latency_seconds_bucket[5m]))
 
 If leader elections correlate with Istio xDS pushes (which you can see in istiod logs), the sidecar is causing instability. In that case, consider excluding the consensus port from sidecar interception.
 
-The bottom line for consensus protocols in Istio: disable retries, disable outlier detection, use aggressive keepalives, and be prepared to exclude consensus ports from the sidecar if the latency overhead causes protocol instability.
+The bottom line for consensus protocols in Istio: disable HTTP/gRPC retries where they apply, disable outlier detection, use aggressive keepalives, and be prepared to exclude consensus ports from the sidecar if the latency overhead causes protocol instability.
