@@ -28,7 +28,12 @@ This shows the certificate chain, including expiration times. For a broader view
 
 ```bash
 istioctl proxy-config secret deploy/my-app -n my-namespace -o json | \
-  jq '.dynamicActiveSecrets[] | {name: .name, valid_from: .secret.tlsCertificate.certificateChain.inlineBytes}'
+  jq -r '.dynamicActiveSecrets[] |
+    select(.secret.tlsCertificate.certificateChain.inlineBytes) |
+    .secret.tlsCertificate.certificateChain.inlineBytes' | \
+  while read -r cert; do
+    echo "$cert" | base64 -d | openssl x509 -noout -dates -subject
+  done
 ```
 
 You can also check the root CA certificate directly:
@@ -53,7 +58,7 @@ citadel_server_csr_count
 citadel_server_success_cert_issuance_count
 
 # Number of CSR failures
-citadel_server_csr_sign_error_count
+citadel_server_csr_sign_err_count
 
 # Root certificate expiry timestamp (seconds since epoch)
 citadel_server_root_cert_expiry_timestamp
@@ -65,8 +70,9 @@ citadel_server_root_cert_expiry_timestamp
 # Certificate expiry timestamp on each proxy
 envoy_server_days_until_first_cert_expiring
 
-# SSL handshake failures (could indicate cert issues)
-envoy_cluster_ssl_handshake{cluster_name="outbound|443||my-service.my-namespace.svc.cluster.local"}
+# TLS connection errors and certificate verification failures
+envoy_cluster_ssl_connection_error{envoy_cluster_name="outbound|443||my-service.my-namespace.svc.cluster.local"}
+envoy_cluster_ssl_fail_verify_error{envoy_cluster_name="outbound|443||my-service.my-namespace.svc.cluster.local"}
 ```
 
 ## Setting Up Prometheus Alert Rules
@@ -110,7 +116,7 @@ spec:
 ```yaml
     - alert: IstioCertSigningFailures
       expr: |
-        rate(citadel_server_csr_sign_error_count[5m]) > 0
+        rate(citadel_server_csr_sign_err_count[5m]) > 0
       for: 10m
       labels:
         severity: critical
@@ -121,7 +127,7 @@ spec:
       expr: |
         rate(citadel_server_success_cert_issuance_count[1h]) == 0
         and
-        citadel_server_csr_count > 0
+        rate(citadel_server_csr_count[1h]) > 0
       for: 30m
       labels:
         severity: warning
@@ -153,7 +159,7 @@ Certificate rotation should happen seamlessly, but you want to verify it is work
       expr: |
         rate(citadel_server_success_cert_issuance_count[5m])
         /
-        rate(citadel_server_csr_count[5m])
+        clamp_min(rate(citadel_server_csr_count[5m]), 1)
 ```
 
 If this ratio drops below 1.0, something is preventing successful certificate issuance.
@@ -183,7 +189,7 @@ A Grafana dashboard for certificate health should show:
           "legendFormat": "Successful"
         },
         {
-          "expr": "rate(citadel_server_csr_sign_error_count[5m])",
+          "expr": "rate(citadel_server_csr_sign_err_count[5m])",
           "legendFormat": "Failed"
         }
       ]
@@ -229,11 +235,9 @@ fi
 
 # Check workload certificates across pods
 echo "Checking workload certificates..."
-for ns in $(kubectl get namespaces -l istio-injection=enabled -o name | cut -d/ -f2); do
-  for pod in $(kubectl get pods -n $ns -o name); do
-    CERT_INFO=$(kubectl exec $pod -n $ns -c istio-proxy -- \
-      cat /var/run/secrets/istio/cert-chain.pem 2>/dev/null | \
-      openssl x509 -noout -enddate 2>/dev/null)
+for ns in $( { kubectl get namespaces -l istio-injection=enabled -o name; kubectl get namespaces -l istio.io/rev -o name; } | cut -d/ -f2 | sort -u); do
+  for pod in $(kubectl get pods -n "$ns" -o name); do
+    CERT_INFO=$(istioctl proxy-config secret "$pod" -n "$ns" 2>/dev/null)
     if [ -n "$CERT_INFO" ]; then
       echo "  $ns/$pod: $CERT_INFO"
     fi
@@ -256,7 +260,7 @@ Add an alert specific to the intermediate CA:
 ```yaml
     - alert: IstioIntermediateCertExpiring
       expr: |
-        (citadel_server_root_cert_expiry_timestamp - time()) / 86400 < 7
+        (citadel_server_cert_chain_expiry_timestamp - time()) / 86400 < 7
       for: 1h
       labels:
         severity: critical
