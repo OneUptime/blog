@@ -214,47 +214,20 @@ spec:
           expr: histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket[5m])) by (destination_service, le))
 ```
 
-Then configure Thanos or Cortex for long-term storage of the downsampled data:
+Then configure Thanos Compactor for long-term storage retention:
 
-```yaml
-thanos:
-  store:
-    retentionResolutionRaw: 7d
-    retentionResolution5m: 30d
-    retentionResolution1h: 365d
+```bash
+thanos compact \
+  --retention.resolution-raw=7d \
+  --retention.resolution-5m=30d \
+  --retention.resolution-1h=365d
 ```
 
-This gives you 7 days of raw data, 30 days of 5-minute resolution, and a year of hourly data.
+This gives you 7 days of raw data, 30 days of Thanos 5-minute downsampled data, and a year of hourly downsampled data.
 
 ## Automating Retention Policy Enforcement
 
-Create a CronJob to clean up old telemetry data that might be missed by backend retention policies:
-
-```yaml
-apiVersion: batch/v1
-kind: CronJob
-metadata:
-  name: telemetry-cleanup
-  namespace: monitoring
-spec:
-  schedule: "0 2 * * *"
-  jobTemplate:
-    spec:
-      template:
-        spec:
-          containers:
-            - name: cleanup
-              image: curlimages/curl:latest
-              command:
-                - /bin/sh
-                - -c
-                - |
-                  # Clean old Prometheus TSDB blocks
-                  curl -X POST http://prometheus:9090/api/v1/admin/tsdb/clean_tombstones
-                  # Trigger compaction
-                  curl -X POST http://prometheus:9090/api/v1/admin/tsdb/snapshot
-          restartPolicy: OnFailure
-```
+Do not use the Prometheus admin API as a periodic retention job. The `clean_tombstones` endpoint only removes data that was already marked by `delete_series`, and the `snapshot` endpoint creates a backup snapshot rather than triggering compaction. For Prometheus, enforce retention with `retention` and `retentionSize`; for trace and log backends, enforce it in the backend retention settings.
 
 ## Monitoring Your Retention Policies
 
