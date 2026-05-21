@@ -19,8 +19,8 @@ You need Prometheus scraping Istio metrics and Grafana connected to that Prometh
 ```bash
 # Install the Grafana addon if you have not already
 
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.22/samples/addons/grafana.yaml
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.22/samples/addons/prometheus.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/grafana.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/prometheus.yaml
 ```
 
 Access Grafana:
@@ -43,9 +43,9 @@ Each section of your dashboard should cover one of these, with the ability to fi
 
 Before building panels, set up dashboard variables so users can filter interactively:
 
-1. **namespace** - Query: `label_values(istio_requests_total, destination_workload_namespace)`
-2. **service** - Query: `label_values(istio_requests_total{destination_workload_namespace="$namespace"}, destination_service)`
-3. **source** - Query: `label_values(istio_requests_total{destination_service="$service"}, source_workload)`
+1. **namespace** - Query type: Label values. Metric: `istio_requests_total{reporter="destination"}`. Label: `destination_workload_namespace`.
+2. **service** - Query type: Label values. Metric: `istio_requests_total{reporter="destination", destination_workload_namespace=~"$namespace"}`. Label: `destination_service`.
+3. **source** - Query type: Label values. Metric: `istio_requests_total{reporter="destination", destination_workload_namespace=~"$namespace", destination_service=~"$service"}`. Label: `source_workload`.
 
 Configure each variable with the "Multi-value" and "Include All" options enabled.
 
@@ -54,7 +54,7 @@ Configure each variable with the "Multi-value" and "Include All" options enabled
 ### Overall Request Rate
 
 ```promql
-sum(rate(istio_requests_total{destination_workload_namespace="$namespace"}[5m])) by (destination_service)
+sum(rate(istio_requests_total{reporter="destination", destination_workload_namespace=~"$namespace"}[5m])) by (destination_service)
 ```
 
 Panel type: Time series. Set the legend to `{{destination_service}}` and the Y-axis unit to "requests/sec".
@@ -62,7 +62,7 @@ Panel type: Time series. Set the legend to `{{destination_service}}` and the Y-a
 ### Request Rate by Response Code
 
 ```promql
-sum(rate(istio_requests_total{destination_service=~"$service"}[5m])) by (response_code)
+sum(rate(istio_requests_total{reporter="destination", destination_workload_namespace=~"$namespace", destination_service=~"$service"}[5m])) by (response_code)
 ```
 
 This is useful for seeing the distribution of 200s, 400s, 500s, etc. Use a stacked area chart for this one.
@@ -70,7 +70,7 @@ This is useful for seeing the distribution of 200s, 400s, 500s, etc. Use a stack
 ### Request Rate by Source
 
 ```promql
-sum(rate(istio_requests_total{destination_service=~"$service"}[5m])) by (source_workload)
+sum(rate(istio_requests_total{reporter="destination", destination_workload_namespace=~"$namespace", destination_service=~"$service"}[5m])) by (source_workload)
 ```
 
 Shows which services are sending the most traffic to the selected service. Helpful for understanding dependency patterns.
@@ -80,9 +80,9 @@ Shows which services are sending the most traffic to the selected service. Helpf
 ### Error Rate Percentage
 
 ```promql
-sum(rate(istio_requests_total{destination_service=~"$service", response_code=~"5.."}[5m]))
+sum(rate(istio_requests_total{reporter="destination", destination_workload_namespace=~"$namespace", destination_service=~"$service", response_code=~"5.."}[5m]))
 /
-sum(rate(istio_requests_total{destination_service=~"$service"}[5m]))
+sum(rate(istio_requests_total{reporter="destination", destination_workload_namespace=~"$namespace", destination_service=~"$service"}[5m]))
 * 100
 ```
 
@@ -92,9 +92,9 @@ Panel type: Stat or Gauge. Set thresholds at 1% (yellow) and 5% (red). Unit shou
 
 ```promql
 sort_desc(
-  sum(rate(istio_requests_total{destination_workload_namespace="$namespace", response_code=~"5.."}[5m])) by (destination_service)
+  sum(rate(istio_requests_total{reporter="destination", destination_workload_namespace=~"$namespace", response_code=~"5.."}[5m])) by (destination_service)
   /
-  sum(rate(istio_requests_total{destination_workload_namespace="$namespace"}[5m])) by (destination_service)
+  sum(rate(istio_requests_total{reporter="destination", destination_workload_namespace=~"$namespace"}[5m])) by (destination_service)
   * 100
 )
 ```
@@ -105,10 +105,10 @@ Panel type: Table. This gives you a quick ranking of which services have the hig
 
 ```promql
 # Client errors
-sum(rate(istio_requests_total{destination_service=~"$service", response_code=~"4.."}[5m]))
+sum(rate(istio_requests_total{reporter="destination", destination_workload_namespace=~"$namespace", destination_service=~"$service", response_code=~"4.."}[5m]))
 
 # Server errors
-sum(rate(istio_requests_total{destination_service=~"$service", response_code=~"5.."}[5m]))
+sum(rate(istio_requests_total{reporter="destination", destination_workload_namespace=~"$namespace", destination_service=~"$service", response_code=~"5.."}[5m]))
 ```
 
 Two queries on the same panel. This distinction matters because 4xx errors are usually client problems (bad requests, auth failures) while 5xx errors indicate server-side issues.
@@ -120,17 +120,17 @@ Two queries on the same panel. This distinction matters because 4xx errors are u
 ```promql
 # P50
 histogram_quantile(0.50,
-  sum(rate(istio_request_duration_milliseconds_bucket{destination_service=~"$service"}[5m])) by (le)
+  sum(rate(istio_request_duration_milliseconds_bucket{reporter="destination", destination_workload_namespace=~"$namespace", destination_service=~"$service"}[5m])) by (le)
 )
 
 # P90
 histogram_quantile(0.90,
-  sum(rate(istio_request_duration_milliseconds_bucket{destination_service=~"$service"}[5m])) by (le)
+  sum(rate(istio_request_duration_milliseconds_bucket{reporter="destination", destination_workload_namespace=~"$namespace", destination_service=~"$service"}[5m])) by (le)
 )
 
 # P99
 histogram_quantile(0.99,
-  sum(rate(istio_request_duration_milliseconds_bucket{destination_service=~"$service"}[5m])) by (le)
+  sum(rate(istio_request_duration_milliseconds_bucket{reporter="destination", destination_workload_namespace=~"$namespace", destination_service=~"$service"}[5m])) by (le)
 )
 ```
 
@@ -139,7 +139,7 @@ Put all three on a single time series panel. Set the Y-axis unit to "millisecond
 ### Latency Heatmap
 
 ```promql
-sum(increase(istio_request_duration_milliseconds_bucket{destination_service=~"$service"}[1m])) by (le)
+sum(increase(istio_request_duration_milliseconds_bucket{reporter="destination", destination_workload_namespace=~"$namespace", destination_service=~"$service"}[1m])) by (le)
 ```
 
 Panel type: Heatmap. This shows the distribution of request durations over time, which is much more informative than a single percentile line. You can spot bimodal distributions and tail latency issues that percentile lines would hide.
@@ -148,7 +148,7 @@ Panel type: Heatmap. This shows the distribution of request durations over time,
 
 ```promql
 histogram_quantile(0.99,
-  sum(rate(istio_request_duration_milliseconds_bucket{destination_service=~"$service"}[5m])) by (source_workload, le)
+  sum(rate(istio_request_duration_milliseconds_bucket{reporter="destination", destination_workload_namespace=~"$namespace", destination_service=~"$service"}[5m])) by (source_workload, le)
 )
 ```
 
@@ -156,11 +156,11 @@ Legend: `{{source_workload}}`. This reveals whether latency issues are specific 
 
 ## Service Mesh Overview Panel
 
-For a high-level dashboard, create a service map visualization using the node graph panel:
+For a high-level dashboard, start from the edge traffic between services. If you use Grafana's node graph panel, transform the result into an edge data frame with `id`, `source`, and `target` fields:
 
 ```promql
 # Edge traffic between services
-sum(rate(istio_requests_total{destination_workload_namespace="$namespace"}[5m])) by (source_workload, destination_workload)
+sum(rate(istio_requests_total{reporter="destination", destination_workload_namespace=~"$namespace"}[5m])) by (source_workload, destination_workload)
 ```
 
 You can also build a "traffic light" table:
@@ -168,16 +168,16 @@ You can also build a "traffic light" table:
 ```promql
 # For each service, show rate, error rate, and P99 latency
 # Rate
-sum(rate(istio_requests_total{destination_workload_namespace="$namespace"}[5m])) by (destination_service)
+sum(rate(istio_requests_total{reporter="destination", destination_workload_namespace=~"$namespace"}[5m])) by (destination_service)
 
 # Error %
-sum(rate(istio_requests_total{destination_workload_namespace="$namespace", response_code=~"5.."}[5m])) by (destination_service)
+sum(rate(istio_requests_total{reporter="destination", destination_workload_namespace=~"$namespace", response_code=~"5.."}[5m])) by (destination_service)
 /
-sum(rate(istio_requests_total{destination_workload_namespace="$namespace"}[5m])) by (destination_service) * 100
+sum(rate(istio_requests_total{reporter="destination", destination_workload_namespace=~"$namespace"}[5m])) by (destination_service) * 100
 
 # P99 latency
 histogram_quantile(0.99,
-  sum(rate(istio_request_duration_milliseconds_bucket{destination_workload_namespace="$namespace"}[5m])) by (destination_service, le)
+  sum(rate(istio_request_duration_milliseconds_bucket{reporter="destination", destination_workload_namespace=~"$namespace"}[5m])) by (destination_service, le)
 )
 ```
 
@@ -189,12 +189,12 @@ If you have non-HTTP services (databases, message queues), add TCP panels:
 
 ```promql
 # Active TCP connections
-sum(istio_tcp_connections_opened_total{destination_workload_namespace="$namespace"}) by (destination_service)
+sum(istio_tcp_connections_opened_total{reporter="destination", destination_workload_namespace=~"$namespace"}) by (destination_service)
 -
-sum(istio_tcp_connections_closed_total{destination_workload_namespace="$namespace"}) by (destination_service)
+sum(istio_tcp_connections_closed_total{reporter="destination", destination_workload_namespace=~"$namespace"}) by (destination_service)
 
 # TCP bytes sent rate
-sum(rate(istio_tcp_sent_bytes_total{destination_workload_namespace="$namespace"}[5m])) by (destination_service)
+sum(rate(istio_tcp_sent_bytes_total{reporter="destination", destination_workload_namespace=~"$namespace"}[5m])) by (destination_service)
 ```
 
 ## Control Plane Health
@@ -203,16 +203,16 @@ Do not forget to monitor istiod itself:
 
 ```promql
 # Pilot push latency
-histogram_quantile(0.99, sum(rate(pilot_proxy_convergence_time_bucket[5m])) by (le))
+histogram_quantile(0.99, sum(rate(pilot_xds_push_time_bucket[5m])) by (le))
 
 # Connected proxies
 pilot_xds
 
 # Config push errors
-sum(rate(pilot_xds_push_errors[5m]))
+sum(rate(pilot_total_xds_internal_errors[5m])) + sum(rate(pilot_total_xds_rejects[5m]))
 
 # Config validation errors
-sum(pilot_total_xds_rejects)
+sum(pilot_total_rejected_configs)
 ```
 
 ## Dashboard Organization Tips
