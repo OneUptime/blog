@@ -41,13 +41,12 @@ spec:
 ```
 
 Istio recognizes these prefixes:
-- `http`, `http2` for HTTP
+- `http` for HTTP/1.1 and `http2` for HTTP/2
 - `grpc`, `grpc-web` for gRPC
 - `tcp` for raw TCP
 - `tls` for passthrough TLS
-- `https` for HTTPS (TLS origination at sidecar)
-- `mongo`, `mysql`, `redis` for database protocols
-- `udp` for UDP
+- `https` for TLS-encrypted HTTP traffic; in sidecars this is handled like `tls` because the sidecar does not decrypt the connection
+- `mongo`, `mysql`, `redis` for experimental application protocol support when the corresponding Istio protocol options are enabled
 
 The `appProtocol` field is an alternative that does not require naming conventions:
 
@@ -71,9 +70,11 @@ spec:
     app: my-service
 ```
 
+If both `appProtocol` and a protocol-prefixed port name are set, Istio uses `appProtocol`.
+
 ## What Happens When Protocol Detection Is Wrong
 
-If Istio thinks a port is HTTP but the service actually speaks gRPC, you get subtle bugs. HTTP/1.1 routing rules get applied to HTTP/2 traffic. Load balancing might not work correctly. Retries might corrupt binary gRPC messages.
+If Istio thinks a port is HTTP/1.1 but the service actually speaks gRPC, you get subtle bugs. The proxy might not apply the expected HTTP/2 and gRPC handling, so routing and retry behavior can fail in surprising ways.
 
 If Istio thinks a port is TCP but it is actually HTTP, you lose all the Layer 7 features: no HTTP routing, no retries, no metrics broken down by path or status code, and no header-based authorization.
 
@@ -293,7 +294,7 @@ spec:
           - upgrade_type: websocket
 ```
 
-For VirtualService-level WebSocket support, it is simpler. Istio supports WebSocket upgrades by default on HTTP routes, but you can explicitly allow them:
+For VirtualService-level WebSocket support, it is simpler. Istio supports WebSocket upgrades by default on HTTP routes, so you normally route WebSocket paths like any other HTTP path:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -320,14 +321,14 @@ spec:
 When things are not working, check what protocol Istio detected for each port:
 
 ```bash
-istioctl proxy-config cluster deploy/multi-protocol-service -n my-namespace -o json | \
+istioctl proxy-config cluster deployment/multi-protocol-service -n my-namespace -o json | \
   jq '.[] | {name: .name, type: .type, metadata: .metadata}'
 ```
 
 Check the listeners to see how each port is configured:
 
 ```bash
-istioctl proxy-config listener deploy/multi-protocol-service -n my-namespace
+istioctl proxy-config listener deployment/multi-protocol-service -n my-namespace
 ```
 
 Look at the filter chain for each port. HTTP ports should have `envoy.filters.network.http_connection_manager` while TCP ports should have `envoy.filters.network.tcp_proxy`.
@@ -347,8 +348,6 @@ apiVersion: v1
 kind: Service
 metadata:
   name: my-service
-  annotations:
-    # This is not an actual annotation - use port naming instead
 spec:
   ports:
   - name: tcp-custom-protocol
