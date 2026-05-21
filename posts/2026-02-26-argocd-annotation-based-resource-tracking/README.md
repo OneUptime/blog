@@ -8,7 +8,7 @@ Description: Learn how ArgoCD annotation-based resource tracking works using the
 
 ---
 
-Annotation-based resource tracking is an alternative to the default label-based tracking in ArgoCD. Instead of using the `app.kubernetes.io/instance` label to associate resources with applications, it uses the `argocd.argoproj.io/tracking-id` annotation. This method was introduced to solve the label conflict problems that plague label-based tracking, and it provides more precise resource identification.
+Annotation-based resource tracking is the current default tracking method in ArgoCD. Instead of using the `app.kubernetes.io/instance` label to associate resources with applications, it uses the `argocd.argoproj.io/tracking-id` annotation. This method avoids the label conflict problems that plague label-based tracking, and it provides more precise resource identification.
 
 This guide covers how annotation tracking works, why it is better for most production environments, and how to configure it.
 
@@ -31,7 +31,7 @@ The tracking ID format is:
 For cluster-scoped resources (no namespace):
 
 ```text
-<application-name>:<group>/<kind>:<resource-name>
+<application-name>:<group>/<kind>:<application-destination-namespace>/<resource-name>
 ```
 
 This annotation uniquely identifies which ArgoCD application owns the resource, including the full API group and kind. This is much more precise than the label method, which only stores the application name.
@@ -55,8 +55,8 @@ With Helm:
 ```yaml
 # values.yaml for argo-cd chart
 
-server:
-  config:
+configs:
+  cm:
     application.resourceTrackingMethod: "annotation"
 ```
 
@@ -65,8 +65,8 @@ After applying the change:
 ```bash
 kubectl apply -f argocd-cm.yaml
 
-# Restart the application controller to pick up the change
-kubectl rollout restart deployment argocd-application-controller -n argocd
+# Sync applications again, or wait for reconciliation, so resources get the annotation
+argocd app sync my-app
 ```
 
 ## Advantages of Annotation Tracking
@@ -110,7 +110,7 @@ This precision helps ArgoCD correctly handle:
 
 ### Better Shared Resource Handling
 
-When a resource is referenced by multiple ArgoCD applications, annotation tracking handles it more gracefully because the tracking ID includes the full resource path.
+When resources with similar names exist across API groups or namespaces, annotation tracking handles them more accurately because the tracking ID includes the full resource path. A single Kubernetes resource should still be managed by only one ArgoCD application.
 
 ### No Impact on Label Selectors
 
@@ -178,7 +178,7 @@ metadata:
 # ClusterRole (no namespace)
 metadata:
   annotations:
-    argocd.argoproj.io/tracking-id: "my-app:rbac.authorization.k8s.io/ClusterRole:api-reader"
+    argocd.argoproj.io/tracking-id: "my-app:rbac.authorization.k8s.io/ClusterRole:production/api-reader"
 ```
 
 ### Core API Group Resources
@@ -209,22 +209,24 @@ When ArgoCD prunes resources (removes resources no longer in Git), it uses the t
 
 ### Orphaned Resource Detection
 
-With annotation tracking, orphaned resource detection looks for resources in the application's namespaces that do NOT have a tracking annotation. This is more precise than label-based detection.
+With annotation tracking, orphaned resource detection can identify top-level namespaced resources in the application's target namespaces that do not belong to any ArgoCD application.
 
 Resource Tree Building
 
-The resource tree in the UI is built by querying for resources with the tracking annotation. Resources without the annotation are not shown in the tree even if they are in the application's namespace.
+The resource tree in the UI is built from resources ArgoCD determines are tracked by the application. Resources without a matching self-referencing tracking annotation are not shown as managed resources, even if they are in the application's namespace.
 
 ## Comparing Tracking Annotation Values
 
-You can compare what ArgoCD expects with what is actually on the resource:
+You can compare the expected tracking ID format with what is actually on the resource:
 
 ```bash
-# What ArgoCD expects (from the manifest)
-argocd app manifests my-app --source live -o json | jq -r '.metadata.annotations["argocd.argoproj.io/tracking-id"] // empty'
+# What ArgoCD expects based on the resource identity
+EXPECTED='my-app:apps/Deployment:production/api-server'
 
 # What is actually on the resource
-kubectl get deployment api-server -n production -o jsonpath='{.metadata.annotations.argocd\.argoproj\.io/tracking-id}'
+ACTUAL=$(kubectl get deployment api-server -n production -o jsonpath='{.metadata.annotations.argocd\.argoproj\.io/tracking-id}')
+
+printf 'expected: %s\nactual:   %s\n' "$EXPECTED" "$ACTUAL"
 ```
 
 If these differ, the resource may show as OutOfSync.
@@ -234,10 +236,9 @@ If these differ, the resource may show as OutOfSync.
 If you are currently using label tracking and want to switch to annotation tracking:
 
 1. Set the tracking method to `annotation` in `argocd-cm`
-2. Restart the application controller
-3. Sync all applications (this adds the tracking annotation)
-4. Old label-based tracking metadata remains but is no longer used
-5. Resources may briefly show as OutOfSync during the transition
+2. Sync all applications, or wait for reconciliation (this adds the tracking annotation)
+3. Old label-based tracking metadata remains but is no longer used
+4. Resources may briefly show as OutOfSync during the transition
 
 For a detailed migration guide, see [how to migrate between resource tracking methods](https://oneuptime.com/blog/post/2026-02-26-argocd-migrate-resource-tracking/view).
 
@@ -248,6 +249,6 @@ Choose annotation tracking when:
 - You do not need `kubectl -l` queries for ArgoCD-managed resources
 - Your Helm charts or operators set `app.kubernetes.io/instance`
 - You want the cleanest separation between ArgoCD tracking and Kubernetes conventions
-- You run multiple ArgoCD instances on the same cluster
+- You run multiple ArgoCD instances on the same cluster and set a unique `installationID` for each instance
 
 For environments where you need both precise tracking and kubectl queryability, use `annotation+label` instead. See [how to use annotation+label resource tracking](https://oneuptime.com/blog/post/2026-02-26-argocd-annotation-label-resource-tracking/view).
