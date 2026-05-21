@@ -210,8 +210,8 @@ spec:
   {{- range .Values.istio.authorization.allowedServiceAccounts }}
   - from:
     - source:
-        principals:
-        - "cluster.local/ns/*/sa/{{ . }}"
+        serviceAccounts:
+        - {{ . | quote }}
   {{- end }}
   {{- range .Values.istio.authorization.allowedNamespaces }}
   - from:
@@ -244,18 +244,22 @@ spec:
 {{- end }}
 ```
 
-## Adding Sidecar Annotations
+## Adding Sidecar Metadata
 
-Modify the Deployment template to include Istio-specific annotations:
+Modify the Deployment template to include Istio-specific labels and annotations:
 
 ```yaml
 # In my-istio-app/templates/deployment.yaml, under spec.template.metadata
-annotations:
+labels:
+  {{- include "my-istio-app.selectorLabels" . | nindent 2 }}
   {{- if .Values.istio.enabled }}
   sidecar.istio.io/inject: "true"
+  {{- end }}
+{{ if .Values.istio.enabled }}
+annotations:
   proxy.istio.io/config: |
     holdApplicationUntilProxyStarts: true
-  {{- end }}
+{{- end }}
 ```
 
 ## Testing Your Chart
