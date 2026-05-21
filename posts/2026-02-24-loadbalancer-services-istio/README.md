@@ -223,8 +223,10 @@ spec:
       k8s:
         service:
           type: LoadBalancer
-          annotations:
-            service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
+        serviceAnnotations:
+          service.beta.kubernetes.io/aws-load-balancer-type: "external"
+          service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: "instance"
+          service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
     - name: istio-internal-gateway
       enabled: true
       label:
@@ -232,8 +234,10 @@ spec:
       k8s:
         service:
           type: LoadBalancer
-          annotations:
-            service.beta.kubernetes.io/aws-load-balancer-scheme: "internal"
+        serviceAnnotations:
+          service.beta.kubernetes.io/aws-load-balancer-type: "external"
+          service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: "instance"
+          service.beta.kubernetes.io/aws-load-balancer-scheme: "internal"
 ```
 
 Route traffic to the appropriate gateway:
