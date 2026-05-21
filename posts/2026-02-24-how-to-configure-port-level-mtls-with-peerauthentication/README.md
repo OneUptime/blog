@@ -140,17 +140,20 @@ spec:
       mode: DISABLE
 ```
 
-## Namespace-Wide Port-Level Overrides
+## Port-Level Overrides Require a Workload Selector
 
-Port-level overrides work on namespace-wide policies too, not just workload-specific ones:
+Port-level overrides only apply when the `PeerAuthentication` has a workload selector. Namespace-wide policies can set a default mTLS mode, but they cannot set per-port exceptions for every workload in the namespace.
 
 ```yaml
 apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
-  name: default
+  name: app-with-metrics
   namespace: backend
 spec:
+  selector:
+    matchLabels:
+      app: my-service
   mtls:
     mode: STRICT
   portLevelMtls:
@@ -158,7 +161,7 @@ spec:
       mode: DISABLE
 ```
 
-This makes every workload in the `backend` namespace use STRICT mTLS except on port 9090, which is open for plain text. This is useful when all services in a namespace expose metrics on the same port.
+This makes workloads with `app: my-service` in the `backend` namespace use STRICT mTLS except on workload port 9090, which is open for plain text. If multiple services in a namespace expose metrics on the same port, each selected workload needs its own workload-specific policy.
 
 ## Port-Level Overrides and Precedence
 
@@ -176,9 +179,6 @@ metadata:
 spec:
   mtls:
     mode: STRICT
-  portLevelMtls:
-    9090:
-      mode: DISABLE
 ---
 # Workload-specific policy (wins for this workload)
 apiVersion: security.istio.io/v1
@@ -195,10 +195,10 @@ spec:
 ```
 
 For `special-service`:
-- Port 9090: PERMISSIVE (not DISABLE! The namespace policy's portLevelMtls doesn't carry over)
+- Port 9090: PERMISSIVE
 - All other ports: PERMISSIVE
 
-The workload-specific policy completely replaces the namespace policy for that workload. If you want port 9090 to be DISABLE for `special-service`, you need to add it to the workload-specific policy:
+The workload-specific policy takes precedence over the namespace policy for that workload. If you want port 9090 to be DISABLE for `special-service`, you need to add it to the workload-specific policy:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -222,7 +222,7 @@ spec:
 Here's a production-like example with multiple services:
 
 ```yaml
-# Namespace default: STRICT with metrics exception
+# Namespace default: STRICT for workloads without their own policy
 apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
@@ -231,11 +231,8 @@ metadata:
 spec:
   mtls:
     mode: STRICT
-  portLevelMtls:
-    9090:
-      mode: PERMISSIVE
 ---
-# API gateway: STRICT on all ports, metrics handled by namespace default
+# API gateway: STRICT with metrics and health-check exceptions
 apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
@@ -252,7 +249,7 @@ spec:
       mode: STRICT
     9090:
       mode: PERMISSIVE
-    15021:
+    8081:
       mode: DISABLE
 ---
 # Database proxy: different ports for different protocols
@@ -320,7 +317,9 @@ kubectl exec test-no-sidecar -- curl -s http://my-service.backend:9090/metrics
 
 **Using Service ports instead of container ports.** The portLevelMtls field uses container ports. Double-check your pod spec.
 
-**Forgetting that workload policies don't inherit parent portLevelMtls.** If you create a workload-specific policy, you need to re-specify any port-level overrides you want.
+**Trying to put portLevelMtls on a namespace-wide policy.** Port-level mTLS settings only apply when a workload selector is specified. You can use namespace-wide policies for the default mTLS mode, but per-port exceptions need workload-specific policies.
+
+**Forgetting that the port must be bound by a Service.** Istio ignores port-level mTLS settings for ports that are not bound to a Kubernetes Service.
 
 **Setting DISABLE on sensitive ports.** Disabling mTLS on a port means anyone who can reach that port gets in without authentication. Only use DISABLE for ports that genuinely need unauthenticated access.
 
