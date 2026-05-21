@@ -23,6 +23,7 @@ You need at least two Kubernetes clusters with the following:
 - `kubectl` access to both clusters
 - Istio CLI (`istioctl`) installed
 - Clusters must be able to reach each other's API servers
+- For this same-network setup, workloads must have direct pod-to-pod connectivity across clusters, with non-overlapping pod and service CIDRs
 - A shared root CA or intermediate CAs from the same root
 
 Set up your context variables first:
@@ -71,14 +72,14 @@ kubectl create secret generic cacerts -n istio-system --context="${CTX_CLUSTER2}
 
 ## Step 2: Configure the Mesh Network
 
-Label each cluster with a mesh ID and network. For multi-primary on the same network:
+Set the default network for each cluster. For multi-primary on the same network:
 
 ```bash
 kubectl label namespace istio-system topology.istio.io/network=network1 --context="${CTX_CLUSTER1}"
 kubectl label namespace istio-system topology.istio.io/network=network1 --context="${CTX_CLUSTER2}"
 ```
 
-If your clusters are on different networks, use different network labels for each.
+If your clusters are on different networks, use different network labels for each and follow Istio's multi-network installation flow, including east-west gateways, instead of the same-network flow shown here.
 
 ## Step 3: Install Istio on Cluster 1
 
@@ -159,18 +160,18 @@ kubectl create namespace sample --context="${CTX_CLUSTER1}"
 kubectl label namespace sample istio-injection=enabled --context="${CTX_CLUSTER1}"
 
 kubectl apply -f samples/helloworld/helloworld.yaml \
-  -l version=v1 -n sample --context="${CTX_CLUSTER1}"
-kubectl apply -f samples/helloworld/helloworld.yaml \
   -l service=helloworld -n sample --context="${CTX_CLUSTER1}"
+kubectl apply -f samples/helloworld/helloworld.yaml \
+  -l version=v1 -n sample --context="${CTX_CLUSTER1}"
 
 # On cluster 2
 kubectl create namespace sample --context="${CTX_CLUSTER2}"
 kubectl label namespace sample istio-injection=enabled --context="${CTX_CLUSTER2}"
 
 kubectl apply -f samples/helloworld/helloworld.yaml \
-  -l version=v2 -n sample --context="${CTX_CLUSTER2}"
-kubectl apply -f samples/helloworld/helloworld.yaml \
   -l service=helloworld -n sample --context="${CTX_CLUSTER2}"
+kubectl apply -f samples/helloworld/helloworld.yaml \
+  -l version=v2 -n sample --context="${CTX_CLUSTER2}"
 ```
 
 Deploy the `sleep` client on either cluster and call the helloworld service:
