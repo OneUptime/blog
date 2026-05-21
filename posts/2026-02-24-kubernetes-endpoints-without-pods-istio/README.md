@@ -58,6 +58,7 @@ metadata:
   namespace: my-app
   labels:
     kubernetes.io/service-name: vm-service
+    endpointslice.kubernetes.io/managed-by: cluster-admins
 addressType: IPv4
 ports:
 - name: http-api
@@ -164,7 +165,7 @@ spec:
   serviceAccount: vm-service-sa
 ```
 
-Then associate WorkloadEntries with a Service using a WorkloadGroup and Service:
+Use a WorkloadGroup as the template for VM registration:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -184,6 +185,22 @@ spec:
       port: 8080
     initialDelaySeconds: 5
     periodSeconds: 10
+```
+
+Then associate the WorkloadEntries with a Service using a selector that matches their labels:
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: vm-service
+  namespace: my-app
+spec:
+  selector:
+    app: vm-service
+  ports:
+  - name: http-api
+    port: 8080
 ```
 
 With WorkloadEntry, the VMs get full Istio identity and can participate in mTLS.
@@ -264,7 +281,7 @@ subsets:
 EOF
 ```
 
-Run this as a CronJob every 30 seconds or so.
+Run this from a small controller, or as a CronJob every minute or so.
 
 ## Routing Between Pod and Non-Pod Endpoints
 
@@ -277,6 +294,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: my-service
+  namespace: my-app
 spec:
   selector:
     app: my-service
@@ -285,7 +303,7 @@ spec:
     port: 8080
 ```
 
-And use WorkloadEntry to add VM endpoints:
+Make sure the pods have a label such as `version: k8s`, and use WorkloadEntry to add VM endpoints:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -305,20 +323,36 @@ Use Istio traffic splitting to gradually shift traffic from VMs to pods:
 
 ```yaml
 apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: migration-subsets
+  namespace: my-app
+spec:
+  host: my-service.my-app.svc.cluster.local
+  subsets:
+  - name: k8s
+    labels:
+      version: k8s
+  - name: vm
+    labels:
+      version: vm
+---
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: migration-routing
+  namespace: my-app
 spec:
   hosts:
-  - my-service
+  - my-service.my-app.svc.cluster.local
   http:
   - route:
     - destination:
-        host: my-service
+        host: my-service.my-app.svc.cluster.local
         subset: k8s
       weight: 80
     - destination:
-        host: my-service
+        host: my-service.my-app.svc.cluster.local
         subset: vm
       weight: 20
 ```
