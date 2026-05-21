@@ -4,26 +4,28 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Istioctl, Kubernetes, Debugging, Service Mesh
 
-Description: Learn how to use the istioctl describe command to quickly understand what Istio configuration applies to a specific pod in your mesh.
+Description: Learn how to use the istioctl x describe command to quickly understand what Istio configuration applies to a specific pod in your mesh.
 
 ---
 
 You've got a pod running in your Istio mesh, and traffic isn't behaving the way you expect. Maybe requests are timing out, or they're hitting the wrong version of a service. The first question is always: what Istio configuration actually applies to this pod?
 
-That's exactly what `istioctl describe` answers. It gives you a human-readable summary of every Istio configuration affecting a specific pod, including VirtualServices, DestinationRules, mTLS settings, and more.
+That's exactly what `istioctl x describe` answers. It gives you a human-readable summary of the Services, VirtualServices, DestinationRules, and mTLS settings affecting a specific pod.
 
 ## Basic Usage
 
 The syntax is straightforward:
 
 ```bash
-istioctl describe pod <pod-name> -n <namespace>
+istioctl x describe pod <pod-name> -n <namespace>
 ```
+
+The command is listed in the Istio CLI reference under `istioctl experimental describe`; `x` is the short alias for `experimental`.
 
 For example:
 
 ```bash
-istioctl describe pod reviews-v1-545db77b95-abc12 -n default
+istioctl x describe pod reviews-v1-545db77b95-abc12 -n default
 ```
 
 You get output like:
@@ -56,7 +58,7 @@ This single command saves you from running five or six different kubectl and ist
 
 ## What the Output Tells You
 
-The `describe` output is broken into several sections. Here's what each one means.
+The `x describe` output is broken into several sections. Here's what each one means.
 
 ### Pod Information
 
@@ -125,10 +127,10 @@ This tells you whether mTLS is enforced for this workload. If it says STRICT but
 You can also describe a service instead of a pod:
 
 ```bash
-istioctl describe service reviews -n default
+istioctl x describe service reviews -n default
 ```
 
-This shows all the Istio configuration affecting that service across all its pods.
+This shows the Services, pods, DestinationRules, and VirtualServices affecting that service.
 
 ## Practical Debugging Examples
 
@@ -137,45 +139,45 @@ This shows all the Istio configuration affecting that service across all its pod
 You set up a VirtualService to send 80% of traffic to v1 and 20% to v2, but all traffic seems to go to v1.
 
 ```bash
-istioctl describe pod reviews-v2-abc123 -n default
+istioctl x describe pod reviews-v2-abc123 -n default
 ```
 
 Check the VirtualService section. If the weight distribution isn't listed, or if the subsets don't match, you've found the problem. Also check the DestinationRule section to make sure the v2 subset exists and its label selector matches the v2 pod.
 
 ### Scenario: 503 Errors After Deploying a DestinationRule
 
-You applied a DestinationRule with subsets, and now requests fail. The usual cause is that you have a DestinationRule with subsets but no VirtualService routing to those subsets. Envoy doesn't know which subset to pick.
+You applied a VirtualService route to a subset, changed or removed the matching DestinationRule, and now requests fail. A common cause is that the VirtualService routes to a subset that the DestinationRule no longer defines, or whose labels don't match any pods.
 
 ```bash
-istioctl describe pod productpage-v1-xyz789 -n default
+istioctl x describe pod productpage-v1-xyz789 -n default
 ```
 
-If the output shows a DestinationRule with subsets but no VirtualService with corresponding weight or match rules, that's the issue. Either add a VirtualService or remove the subsets from the DestinationRule.
+If the output warns that a route points to a subset with no matching DestinationRule, or that no destinations match the pod subsets, that's the issue. Add or fix the DestinationRule subset, update the VirtualService route, or correct the pod labels.
 
 ### Scenario: mTLS Failures Between Services
 
 Service A can't talk to Service B. You suspect mTLS settings.
 
 ```bash
-istioctl describe pod service-a-pod -n namespace-a
-istioctl describe pod service-b-pod -n namespace-b
+istioctl x describe pod service-a-pod -n namespace-a
+istioctl x describe pod service-b-pod -n namespace-b
 ```
 
-Compare the mTLS modes. If Service A is in PERMISSIVE mode and Service B is in STRICT mode, connections should work because PERMISSIVE accepts both plaintext and mTLS. But if Service B is STRICT and Service A is somehow not sending mTLS (maybe it's not in the mesh), you'll get connection failures.
+Compare the mTLS modes and any TLS warnings. PeerAuthentication controls what inbound traffic a workload accepts, while DestinationRules or auto mTLS control what clients send. If Service B is STRICT and Service A is in the mesh with auto mTLS working, connections should use mTLS. If Service A is not in the mesh, or a DestinationRule forces plaintext, you'll get connection failures.
 
 ### Scenario: Gateway Not Forwarding Traffic
 
 You've set up an Istio Gateway and VirtualService, but external traffic isn't reaching your service.
 
 ```bash
-istioctl describe pod my-app-pod -n default
+istioctl x describe pod my-app-pod -n default
 ```
 
 Check whether the output shows "Exposed on Ingress Gateway". If it doesn't, the VirtualService might not be correctly bound to the Gateway, or the Gateway might not be selecting the right ingress pod.
 
 ## Combining describe with Other Commands
 
-The `describe` command gives you the big picture. Once you know which configuration to investigate, use more specific commands:
+The `x describe` command gives you the big picture. Once you know which configuration to investigate, use more specific commands:
 
 ```bash
 # Found a suspicious VirtualService? Check its YAML
@@ -189,11 +191,11 @@ istioctl proxy-config routes reviews-v1-545db77b95-abc12.default -o json
 istioctl analyze -n default
 ```
 
-The typical workflow is: describe to understand what's applied, then proxy-config to see how Envoy interpreted it, then analyze to check for misconfigurations.
+The typical workflow is: `x describe` to understand what's applied, then proxy-config to see how Envoy interpreted it, then analyze to check for misconfigurations.
 
 ## Limitations
 
-The `describe` command doesn't show everything. It won't display:
+The `x describe` command doesn't show everything. It won't display:
 
 - EnvoyFilter resources (these are low-level and bypass the normal config path)
 - Telemetry configuration
@@ -204,4 +206,4 @@ For those, you'll need to check with kubectl directly or use `istioctl proxy-con
 
 ## Summary
 
-The `istioctl describe` command is the fastest way to understand what Istio is doing with a specific pod. It consolidates information from multiple sources into one readable output. Make it the first command you run when investigating traffic issues - it often points you straight to the problem without needing to dig through individual Envoy configs.
+The `istioctl x describe` command is the fastest way to understand what Istio is doing with a specific pod. It consolidates information from multiple sources into one readable output. Make it the first command you run when investigating traffic issues - it often points you straight to the problem without needing to dig through individual Envoy configs.
