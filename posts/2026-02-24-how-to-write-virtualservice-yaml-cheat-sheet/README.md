@@ -494,7 +494,7 @@ spec:
         - destination:
             host: api-service
             port:
-              number: 8080
+              number: 443
 ```
 
 ## Multiple Match Conditions (AND/OR)
