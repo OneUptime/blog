@@ -24,12 +24,12 @@ Here is how to choose:
 
 | Factor | Multi-Primary | Primary-Remote |
 |--------|--------------|----------------|
-| Control plane HA | Yes, each cluster is independent | No, single point of failure |
-| Resource overhead | Higher (Istiod per cluster) | Lower (one Istiod total) |
+| Control plane HA | Yes, each cluster is independent | Limited with a single primary; can be improved with multiple primaries |
+| Resource overhead | Higher (Istiod per cluster) | Lower (no Istiod in remote clusters) |
 | Operational complexity | Moderate | Lower |
-| Upgrade complexity | Higher (coordinate across control planes) | Lower (upgrade one Istiod) |
+| Upgrade complexity | Higher (coordinate across control planes) | Lower with a single primary |
 | Latency to control plane | Low (local) | Depends on network distance |
-| Configuration consistency | Must coordinate | Inherently consistent |
+| Configuration consistency | Must coordinate | Centralized in the primary or config cluster |
 
 **General recommendation**: Use multi-primary if you need high availability for the control plane or if your clusters are in different regions. Use primary-remote if you have a main cluster and smaller satellite clusters.
 
@@ -112,17 +112,20 @@ spec:
   generators:
   - clusters: {}
   template:
+    metadata:
+      name: '{{name}}-istio-config'
     spec:
       project: istio
       source:
         repoURL: https://github.com/org/istio-config
+        targetRevision: HEAD
         path: config
       destination:
         server: '{{server}}'
         namespace: istio-system
 ```
 
-**Istio's built-in config distribution**: In primary-remote setups, the primary's configuration is automatically distributed. No extra tooling needed.
+**Istio's built-in config distribution**: In primary-remote setups, the primary control plane reads configuration from the primary or config cluster and pushes proxy configuration to workloads in remote clusters. You do not need to duplicate the same Istio CRDs into every remote cluster.
 
 ## Decision 6: Ingress Strategy
 
@@ -164,7 +167,7 @@ Estimate the resource requirements for your multi-cluster mesh:
 | 5,000 - 10,000 | 2 CPU | 4Gi |
 | > 10,000 | 4 CPU | 8Gi |
 
-**East-West Gateway**: Each cross-cluster connection goes through this gateway. Size based on expected cross-cluster traffic volume.
+**East-West Gateway**: In multi-network deployments, cross-network service traffic goes through this gateway. Size based on expected cross-cluster traffic volume.
 
 **Sidecar proxies**: Each proxy holds configuration for all services it can reach. Use Sidecar resources to limit scope and reduce memory usage.
 
