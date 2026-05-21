@@ -8,7 +8,7 @@ Description: Practical techniques to reduce Prometheus CPU, memory, and disk usa
 
 ---
 
-Prometheus is the default metrics backend for Istio, and it works well until your mesh grows beyond a few dozen services. At that point, you start noticing Prometheus using gigabytes of memory, queries taking seconds instead of milliseconds, and disk usage climbing fast. The good news is that most of these problems are solvable with proper configuration.
+Istio exports its standard metrics in Prometheus format by default, and Prometheus works well until your mesh grows beyond a few dozen services. At that point, you start noticing Prometheus using gigabytes of memory, queries taking seconds instead of milliseconds, and disk usage climbing fast. The good news is that most of these problems are solvable with proper configuration.
 
 This guide covers the specific optimizations that make the biggest difference for Istio workloads.
 
@@ -42,14 +42,15 @@ Not every pod needs to be scraped individually. If you have replicas of the same
 ```yaml
 scrape_configs:
 - job_name: 'envoy-stats'
+  metrics_path: /stats/prometheus
   sample_limit: 20000
   scrape_interval: 30s
   kubernetes_sd_configs:
   - role: pod
   relabel_configs:
-  - source_labels: [__meta_kubernetes_pod_container_name]
+  - source_labels: [__meta_kubernetes_pod_container_port_name]
     action: keep
-    regex: istio-proxy
+    regex: '.*-envoy-prom'
   # Only scrape pods whose name hash ends in 0-3 (roughly 40% of pods)
   - source_labels: [__meta_kubernetes_pod_name]
     modulus: 10
@@ -60,7 +61,7 @@ scrape_configs:
     action: keep
 ```
 
-This reduces the number of scrape targets by 60%. You lose per-pod granularity but keep service-level visibility.
+This reduces the number of scrape targets by 60%. You lose per-pod granularity and exact aggregate totals, but keep sampled service-level visibility.
 
 ## Optimization 2: Increase Scrape Interval
 
@@ -88,7 +89,7 @@ metric_relabel_configs:
 
 # Or keep specific metrics
 - source_labels: [__name__]
-  regex: 'istio_requests_total|istio_request_duration_milliseconds_bucket|istio_tcp_sent_bytes_total|istio_tcp_received_bytes_total|pilot_xds_pushes|pilot_xds_push_time_bucket'
+  regex: 'istio_requests_total|istio_request_duration_milliseconds_bucket|istio_tcp_sent_bytes_total|istio_tcp_received_bytes_total'
   action: keep
 ```
 
@@ -215,7 +216,7 @@ For very large meshes, split the scraping workload across multiple Prometheus in
 apiVersion: monitoring.coreos.com/v1
 kind: Prometheus
 metadata:
-  name: prometheus-shard-0
+  name: prometheus
 spec:
   shards: 3
 ```
@@ -230,7 +231,7 @@ Expensive queries can spike Prometheus CPU and memory. Set query concurrency lim
 
 ```yaml
 spec:
-  queryLogFile: /dev/null  # Optional: log slow queries
+  queryLogFile: /prometheus/query.log  # Optional: log all queries while troubleshooting
   query:
     maxConcurrency: 10
     maxSamples: 50000000
@@ -252,7 +253,7 @@ prometheus_tsdb_head_series
 rate(prometheus_tsdb_head_samples_appended_total[5m])
 
 # Query latency
-histogram_quantile(0.99, rate(prometheus_engine_query_duration_seconds_bucket[5m]))
+histogram_quantile(0.99, sum by (le) (rate(prometheus_engine_query_duration_seconds_bucket[5m])))
 ```
 
 Create a dashboard to monitor Prometheus itself so you can see the impact of each optimization.
