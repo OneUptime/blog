@@ -31,19 +31,21 @@ Diagnose and resolve network connectivity issues in the Istio service mesh.
 Start by determining whether the issue is inside or outside the mesh:
 
 ```bash
-# Test from inside the sidecar (through the mesh)
-
+# Test from the app container (through the mesh)
 kubectl exec <pod> -c <app-container> -- \
   curl -s -o /dev/null -w "HTTP Status: %{http_code}\nTime: %{time_total}s\n" \
   http://<service>:<port>/health
 
-# Test bypassing the sidecar (direct to pod IP)
+# Test the destination Pod IP directly. This bypasses Kubernetes Service
+# discovery/load balancing, but it may still be intercepted by the sidecar.
 DEST_IP=$(kubectl get pod <dest-pod> -n <namespace> -o jsonpath='{.status.podIP}')
 kubectl exec <source-pod> -c <app-container> -- \
   curl -s -o /dev/null -w "HTTP Status: %{http_code}\n" \
   http://$DEST_IP:<container-port>/health
 
-# If direct works but mesh traffic fails, the issue is in Istio/Envoy configuration
+# To isolate Kubernetes networking from Istio, repeat the test from a pod
+# without sidecar injection. If that works but mesh traffic fails, focus on
+# Istio/Envoy configuration.
 ```
 
 ### Step 2: Check Sidecar Status
@@ -144,25 +146,26 @@ kubectl get endpoints <service> -n <namespace>
 kubectl get pods -n <namespace> -l <selector-labels>
 ```
 
-### Step 5: Diagnose 503 Errors
+### Step 5: Diagnose Envoy Response Flags
 
-503 errors from Envoy come with response flags that tell you why:
+Envoy-generated errors come with response flags that tell you why:
 
 ```bash
 # Check access logs for response flags
-kubectl logs <pod> -n <namespace> -c istio-proxy --tail=100 | grep "503"
+kubectl logs <pod> -n <namespace> -c istio-proxy --tail=100 | grep -E " 5[0-9][0-9] | 404 |UF|UH|UO|NR|DC|URX"
 
 # Common response flags:
 # UF = upstream connection failure
+# UH = no healthy upstream hosts
 # UO = upstream overflow (circuit breaker)
-# NR = no route configured
+# NR = no route configured (often returned with 404)
 # DC = downstream connection termination
 # URX = upstream retry limit exceeded
 ```
 
 For each flag:
 
-**UF (Upstream Failure):**
+**UF/UH (Upstream Failure or No Healthy Upstream):**
 ```bash
 # Check if destination pods are healthy
 kubectl get pods -n <dest-namespace> -l app=<dest-app>
@@ -214,9 +217,11 @@ istioctl analyze -n <namespace>
 Connection resets can be caused by protocol detection issues:
 
 ```bash
-# Check if the service port is named correctly
+# Check if the service port is named correctly or uses appProtocol
 kubectl get svc <service> -n <namespace> -o jsonpath='{.spec.ports[*].name}'
-# Port names should follow convention: http-*, grpc-*, tcp-*
+kubectl get svc <service> -n <namespace> -o jsonpath='{.spec.ports[*].appProtocol}'
+# Port names should follow convention: http-*, http2-*, grpc-*, tcp-*
+# In Kubernetes 1.18+, appProtocol can also explicitly set the protocol.
 
 # If port name is wrong, fix it
 kubectl patch svc <service> -n <namespace> --type=json \
@@ -226,18 +231,17 @@ kubectl patch svc <service> -n <namespace> --type=json \
 Check for protocol mismatch:
 
 ```bash
-# If your service uses HTTP/2 or gRPC, ensure DestinationRule specifies it
+# If HTTP/1.1 clients need upstream HTTP/2, configure h2UpgradePolicy.
+# For native gRPC, prefer an explicit grpc port name or appProtocol on the Service.
 kubectl apply -f - <<EOF
 apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
-  name: grpc-service
+  name: http2-upgrade
   namespace: <namespace>
 spec:
   host: <service>
   trafficPolicy:
-    tls:
-      mode: ISTIO_MUTUAL
     portLevelSettings:
       - port:
           number: 8080
@@ -264,20 +268,20 @@ kubectl get gateway -A -o yaml | grep -A10 "servers:"
 kubectl get virtualservice -A -o yaml | grep -A5 "gateways:"
 
 # Test from outside the cluster
-INGRESS_IP=$(kubectl get svc istio-ingressgateway -n istio-system -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-curl -v http://$INGRESS_IP -H "Host: myapp.example.com"
+INGRESS_HOST=$(kubectl get svc istio-ingressgateway -n istio-system -o jsonpath='{.status.loadBalancer.ingress[0].ip}{.status.loadBalancer.ingress[0].hostname}')
+curl -v http://$INGRESS_HOST -H "Host: myapp.example.com"
 ```
 
-### Step 8: Check iptables Rules
+### Step 8: Check Traffic Redirection Setup
 
 If sidecar is injected but traffic is not flowing through it:
 
 ```bash
-# Check iptables rules in the pod
-kubectl exec <pod> -c istio-proxy -- iptables -t nat -L -n -v
+# Check the init container logs when Istio CNI is not enabled
+kubectl logs <pod> -n <namespace> -c istio-init
 
-# Check the init container logs
-kubectl logs <pod> -c istio-init
+# If Istio CNI is enabled, check the CNI node agent logs instead
+kubectl logs -n istio-system ds/istio-cni-node --tail=100
 ```
 
 ### Network Troubleshooting Decision Tree
@@ -290,12 +294,12 @@ Traffic not working?
 ├── Is sidecar synced? (istioctl proxy-status)
 │   ├── STALE → Check istiod health
 │   └── SYNCED → Continue
-├── Can you reach the service directly (bypassing mesh)?
+├── Can you reach the destination from a pod without sidecar injection?
 │   ├── No → Kubernetes/network issue, not Istio
 │   └── Yes → Istio configuration issue
 ├── What HTTP status code?
-│   ├── 503 → Check response flags (UF, UO, NR)
-│   ├── 404 → Check routes (istioctl proxy-config route)
+│   ├── 503 → Check response flags (UF, UH, UO)
+│   ├── 404 → Check response flags/routes (NR, istioctl proxy-config route)
 │   ├── 403 → Check AuthorizationPolicy
 │   └── Connection reset → Check protocol, port naming
 └── Is it intermittent?
