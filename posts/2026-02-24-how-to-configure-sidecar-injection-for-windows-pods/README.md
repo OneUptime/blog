@@ -8,13 +8,13 @@ Description: Understanding the current state and workarounds for Istio sidecar i
 
 ---
 
-If you have landed on this post, you are probably trying to get Istio sidecar injection working with Windows pods and running into problems. The short answer is that native sidecar injection into Windows pods is not supported in Istio as of version 1.22. But there are workarounds that let you get many of the same benefits. This post explains the situation and walks through practical alternatives.
+If you have landed on this post, you are probably trying to get Istio sidecar injection working with Windows pods and running into problems. The short answer is that native sidecar injection into Windows pods is not supported by Istio's current sidecar data plane. But there are workarounds that let you get many of the same benefits. This post explains the situation and walks through practical alternatives.
 
 ## Why Sidecar Injection Does Not Work on Windows
 
 The Istio sidecar injection process adds two components to a pod: an init container (`istio-init`) that sets up iptables rules, and the sidecar container (`istio-proxy`) that runs Envoy. Both are Linux binaries. When these get injected into a Windows pod, the init container fails immediately because it tries to run Linux executables on a Windows node.
 
-Even if you could run Envoy on Windows (there is experimental Windows support in the Envoy project), the traffic interception mechanism relies on iptables, which is a Linux kernel feature. Windows uses HNS (Host Networking Service) and different mechanisms for packet redirection.
+Even if you could run Envoy on Windows, the Envoy project ended official Windows support in 2023 and Istio's traffic interception mechanism relies on Linux networking features such as iptables. Windows uses HNS (Host Networking Service) and different mechanisms for packet redirection.
 
 ## Preventing Injection Failures
 
@@ -35,9 +35,9 @@ kubectl create namespace windows-apps
 # No injection label
 ```
 
-### Method 2: Pod Annotation
+### Method 2: Pod Label
 
-If you have mixed Linux and Windows pods in the same namespace, use annotations:
+If you have mixed Linux and Windows pods in the same namespace, use pod labels:
 
 ```yaml
 apiVersion: apps/v1
@@ -46,11 +46,17 @@ metadata:
   name: windows-app
   namespace: mixed-apps
 spec:
+  selector:
+    matchLabels:
+      app: windows-app
   template:
     metadata:
-      annotations:
+      labels:
+        app: windows-app
         sidecar.istio.io/inject: "false"
     spec:
+      os:
+        name: windows
       nodeSelector:
         kubernetes.io/os: windows
       containers:
@@ -101,6 +107,8 @@ spec:
         app: windows-api-proxy
         sidecar.istio.io/inject: "true"
     spec:
+      os:
+        name: linux
       nodeSelector:
         kubernetes.io/os: linux
       containers:
@@ -191,18 +199,13 @@ spec:
         attempts: 3
         perTryTimeout: 3s
         retryOn: connect-failure,refused-stream,unavailable
-      fault:
-        delay:
-          percentage:
-            value: 0
-          fixedDelay: 0s
 ```
 
-When Linux pods with sidecars call this service, the calling sidecar applies the timeout, retry, and fault injection policies. The Windows pod does not need its own sidecar for this to work.
+When Linux pods with sidecars call this service, the calling sidecar applies the timeout and retry policies. The Windows pod does not need its own sidecar for this to work.
 
 ## Alternative: Using a Service Entry for Windows Services
 
-If your Windows services are deployed outside the typical mesh namespace, register them as ServiceEntry resources:
+If your Windows services are deployed outside the Kubernetes service registry, register them as ServiceEntry resources:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -212,15 +215,15 @@ metadata:
   namespace: linux-apps
 spec:
   hosts:
-    - windows-backend.windows-apps.svc.cluster.local
+    - windows-backend.corp.example.com
   location: MESH_INTERNAL
   ports:
     - number: 80
       name: http
       protocol: HTTP
-  resolution: DNS
+  resolution: STATIC
   endpoints:
-    - address: windows-backend.windows-apps.svc.cluster.local
+    - address: 10.0.10.25
 ```
 
 This makes the Windows service discoverable in the mesh, allowing Linux services to apply Istio policies when communicating with it.
