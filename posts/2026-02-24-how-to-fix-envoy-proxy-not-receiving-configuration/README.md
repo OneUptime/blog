@@ -12,7 +12,7 @@ When the Envoy sidecar proxy stops receiving configuration from the Istio contro
 
 ## How Envoy Gets Its Configuration
 
-Envoy doesn't read config files. Instead, it connects to Istiod via the xDS (discovery service) protocol and receives configuration dynamically. When you create a VirtualService, DestinationRule, or any Istio resource, Istiod processes it and pushes the relevant config to the connected Envoy proxies.
+In Istio, Envoy gets its mesh configuration dynamically. It starts with bootstrap configuration, then connects to Istiod via the xDS (discovery service) protocol and receives listeners, routes, clusters, endpoints, and secrets dynamically. When you create a VirtualService, DestinationRule, or any Istio resource, Istiod processes it and pushes the relevant config to the connected Envoy proxies.
 
 If this connection breaks, the proxy keeps running with its last known good configuration but won't receive updates.
 
@@ -66,13 +66,13 @@ Common errors you might see:
 
 The sidecar communicates with Istiod on port 15012 (secured with mTLS). If network policies, firewall rules, or service mesh misconfiguration block this, the proxy can't get config.
 
-Test connectivity from the pod:
+Test that the pod can reach Istiod's xDS port:
 
 ```bash
-kubectl exec <pod-name> -c istio-proxy -n my-namespace -- curl -s -o /dev/null -w "%{http_code}" https://istiod.istio-system.svc:15012/debug/connections
+kubectl exec <pod-name> -c istio-proxy -n my-namespace -- pilot-agent request GET clusters | grep xds-grpc
 ```
 
-If you get no response or a connection refused error, something is blocking the connection.
+You should see an `xds-grpc` cluster pointing to Istiod. If the cluster is missing, unhealthy, or showing connection failures in the proxy logs, something may be blocking or breaking the xDS connection.
 
 Check if there are NetworkPolicies that might be blocking egress to the istio-system namespace:
 
@@ -93,7 +93,7 @@ istioctl proxy-config all <pod-name> -n my-namespace -o json | wc -c
 If it's enormous (hundreds of megabytes), you need to use the Sidecar resource to limit what each proxy receives:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: my-service-sidecar
@@ -160,20 +160,7 @@ Check the init container status:
 kubectl describe pod <pod-name> -n my-namespace | grep -A 5 "istio-init"
 ```
 
-If istio-init failed, the pod's iptables rules aren't set up correctly. This usually happens because of security contexts or missing capabilities:
-
-```yaml
-spec:
-  template:
-    spec:
-      initContainers:
-      - name: istio-init
-        securityContext:
-          capabilities:
-            add:
-            - NET_ADMIN
-            - NET_RAW
-```
+If istio-init failed, the pod's iptables rules aren't set up correctly. This usually happens because the service account or cluster policy doesn't allow the injected init container to run with the `NET_ADMIN` and `NET_RAW` capabilities. Either allow those capabilities for injected sidecars or install the Istio CNI plugin, which sets up traffic redirection without requiring privileged init containers in every workload pod.
 
 ## Pilot-Agent Not Running
 
