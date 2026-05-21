@@ -48,7 +48,7 @@ Istio exports about 10-15 key metrics by default:
 - `istio_tcp_connections_opened_total`
 - `istio_tcp_connections_closed_total`
 
-Histograms are the expensive ones. A histogram with the default 20 buckets generates 20+2 time series (one per bucket plus sum and count) for each unique label combination.
+Histograms are the expensive ones. Istio's default Prometheus histogram configuration has 19 finite bucket boundaries, which produces 20 bucket series including the `+Inf` bucket, plus `_sum` and `_count` for each unique label combination.
 
 ```text
 For istio_request_duration_milliseconds:
@@ -80,7 +80,7 @@ count({__name__=~"istio_.*"})
 # Cardinality per Istio metric
 count by (__name__) ({__name__=~"istio_.*"})
 
-# Top label cardinality contributors
+# Top Istio metrics by series count
 topk(10, count by (__name__)({__name__=~"istio_.*"}))
 ```
 
@@ -93,12 +93,12 @@ curl -s http://prometheus:9090/api/v1/status/tsdb | jq '.data.headStats'
 
 ## The Storage Calculation
 
-Prometheus stores each sample (a timestamp + value pair) using approximately 1-2 bytes with compression (Prometheus uses a very efficient compression scheme called Gorilla encoding).
+Prometheus stores each sample (a timestamp + value pair) using approximately 1-2 bytes with compression.
 
 **Formula:**
 
 ```text
-Storage = Time_Series x Samples_Per_Series x Bytes_Per_Sample x Retention_Period
+Storage = Time_Series x Samples_Per_Series x Bytes_Per_Sample
 
 Where:
   Samples_Per_Series = Retention_Seconds / Scrape_Interval_Seconds
@@ -136,18 +136,18 @@ These numbers assume default Istio metrics with histogram buckets and a 15-secon
 
 ### 1. Reduce Histogram Buckets
 
-The default Envoy histogram buckets create many time series. You can customize them:
+The default Istio histogram buckets create many time series. You can customize them on workloads with the `sidecar.istio.io/statsHistogramBuckets` pod annotation:
 
 ```yaml
-apiVersion: install.istio.io/v1alpha1
-kind: IstioOperator
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: checkout
 spec:
-  meshConfig:
-    defaultConfig:
-      proxyStatsMatcher:
-        inclusionPrefixes:
-          - "istio_requests"
-          - "istio_request_duration"
+  template:
+    metadata:
+      annotations:
+        sidecar.istio.io/statsHistogramBuckets: '{"istio":[1,5,10,25,50,100,250,500,1000,2500,5000,10000]}'
 ```
 
 ### 2. Drop High-Cardinality Labels
@@ -155,7 +155,7 @@ spec:
 Remove labels you do not need:
 
 ```yaml
-apiVersion: networking.istio.io/v1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: reduce-cardinality
@@ -213,7 +213,7 @@ groups:
         expr: histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket[5m])) by (le, destination_service))
 ```
 
-Then use metric relabeling to drop the raw metrics after a short retention:
+If you no longer need the raw histogram bucket series in that Prometheus server, use metric relabeling to drop them before ingestion. Do this only after moving the aggregation to another Prometheus tier or removing rules that depend on the raw buckets:
 
 ```yaml
 # In Prometheus config - drop raw istio histogram metrics
@@ -276,11 +276,11 @@ rate(prometheus_tsdb_head_series_created_total[5m])
 prometheus_tsdb_compaction_duration_seconds
 ```
 
-Set up alerts for when storage is running low:
+Set up alerts for when storage is running low. If you use size-based retention, `prometheus_tsdb_retention_limit_bytes` can be used as the limit:
 
 ```yaml
 - alert: PrometheusStorageLow
-  expr: prometheus_tsdb_storage_blocks_bytes / prometheus_tsdb_retention_limit_bytes > 0.8
+  expr: (prometheus_tsdb_storage_blocks_bytes + prometheus_tsdb_wal_storage_size_bytes) / prometheus_tsdb_retention_limit_bytes > 0.8 and prometheus_tsdb_retention_limit_bytes > 0
   for: 10m
   labels:
     severity: warning
