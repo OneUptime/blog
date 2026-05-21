@@ -58,7 +58,7 @@ ports:
     appProtocol: grpc
 ```
 
-Getting the protocol right matters because Istio applies HTTP/2-specific features like stream-level load balancing, retries, and deadline propagation only when it knows the traffic is HTTP/2 or gRPC.
+Getting the protocol right matters because Istio applies HTTP/2-specific features like HTTP routing, retries, telemetry, and connection-pool settings only when it knows the traffic is HTTP/2 or gRPC.
 
 ## gRPC Routing with VirtualService
 
@@ -244,7 +244,7 @@ spec:
               number: 50051
 ```
 
-Note that gRPC requires HTTP/2, which in turn usually requires TLS for browser-based clients. If your gRPC clients are other backend services (not browsers), you can use plain-text HTTP/2 (h2c). In that case, set the gateway protocol to `HTTP2` instead of `GRPC`:
+Note that gRPC requires HTTP/2, which in turn usually requires TLS for browser-based clients. If your gRPC clients are other backend services (not browsers), you can use plain-text HTTP/2 (h2c). In that case, set the gateway protocol to `HTTP2` or `GRPC`:
 
 ```yaml
 servers:
@@ -258,7 +258,7 @@ servers:
 
 ## gRPC Health Checking
 
-Istio supports gRPC health checking through the standard gRPC health checking protocol. Your gRPC service should implement the `grpc.health.v1.Health` service. Then configure Kubernetes probes:
+Kubernetes supports gRPC health checking through the standard gRPC health checking protocol. Your gRPC service should implement the `grpc.health.v1.Health` service. Then configure Kubernetes probes:
 
 ```yaml
 apiVersion: apps/v1
@@ -293,7 +293,7 @@ spec:
             periodSeconds: 20
 ```
 
-The native gRPC health probe was introduced in Kubernetes 1.24. For older versions, you would use `grpc_health_probe` as an exec probe.
+The native gRPC health probe entered beta in Kubernetes 1.24 and became stable in Kubernetes 1.27. For older versions, you would use `grpc_health_probe` as an exec probe.
 
 ## Troubleshooting HTTP/2 and gRPC Issues
 
