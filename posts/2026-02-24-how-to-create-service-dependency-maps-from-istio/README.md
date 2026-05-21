@@ -12,7 +12,7 @@ One of the most valuable things a service mesh gives you is visibility into how 
 
 ## The Data Sources
 
-Istio provides dependency information from two places:
+Istio provides dependency information from three places:
 
 1. **Metrics (Prometheus)**: `istio_requests_total` and `istio_tcp_connections_opened_total` metrics contain source and destination labels that show service-to-service communication patterns.
 
@@ -46,14 +46,13 @@ echo "Data window: Last 24 hours"
 echo ""
 
 kubectl exec -n istio-system deploy/prometheus -- \
-  promtool query instant http://localhost:9090 \
-  'sum(rate(istio_requests_total[24h])) by (source_workload, source_workload_namespace, destination_service) > 0' \
-  2>/dev/null | grep -oP '"source_workload":"[^"]*"|"destination_service":"[^"]*"' | \
-  paste - - | sort -u | while read line; do
-    SRC=$(echo $line | grep -oP 'source_workload":"(\K[^"]*)')
-    DST=$(echo $line | grep -oP 'destination_service":"(\K[^"]*)')
-    echo "- $SRC -> $DST"
-  done
+  promtool query instant -o json http://localhost:9090 \
+  'sum(rate(istio_requests_total[24h])) by (source_workload, source_workload_namespace, destination_service, destination_service_namespace) > 0' \
+  2>/dev/null | jq -r '
+    .data.result[] |
+    .metric as $m |
+    "- \($m.source_workload_namespace)/\($m.source_workload) -> \($m.destination_service_namespace)/\($m.destination_service)"
+  ' | sort -u
 ```
 
 ## Generating a Mermaid Diagram
@@ -65,19 +64,18 @@ For a visual dependency map, generate Mermaid syntax:
 # dependency-map.py
 
 import json
+import re
 import subprocess
 
 def query_prometheus(query):
     cmd = [
         "kubectl", "exec", "-n", "istio-system", "deploy/prometheus", "--",
-        "promtool", "query", "instant", "http://localhost:9090", query
+        "promtool", "query", "instant", "-o", "json", "http://localhost:9090", query
     ]
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
         return []
-    # Parse the output
-    lines = result.stdout.strip().split('\n')
-    return lines
+    return json.loads(result.stdout).get("data", {}).get("result", [])
 
 def build_dependency_map():
     query = 'sum(rate(istio_requests_total[24h])) by (source_workload, source_workload_namespace, destination_service, destination_service_namespace) > 0'
@@ -86,28 +84,23 @@ def build_dependency_map():
     edges = []
     nodes = set()
 
-    for line in results:
+    for item in results:
         try:
-            # Parse the metric labels
-            parts = line.split('{')[1].split('}')[0] if '{' in line else ""
-            labels = {}
-            for pair in parts.split(','):
-                if '=' in pair:
-                    k, v = pair.split('=', 1)
-                    labels[k.strip()] = v.strip().strip('"')
+            labels = item.get("metric", {})
 
             src = labels.get('source_workload', 'unknown')
             src_ns = labels.get('source_workload_namespace', 'unknown')
             dst = labels.get('destination_service', 'unknown')
             dst_ns = labels.get('destination_service_namespace', 'unknown')
 
-            if src and dst and src != 'unknown':
+            if src and dst and src != 'unknown' and dst != 'unknown':
                 src_id = f"{src_ns}/{src}"
-                dst_id = dst.split('.')[0] if '.' in dst else dst
+                dst_name = dst.split('.')[0] if '.' in dst else dst
+                dst_id = f"{dst_ns}/{dst_name}"
                 nodes.add(src_id)
                 nodes.add(dst_id)
                 edges.append((src_id, dst_id))
-        except (IndexError, ValueError):
+        except (AttributeError, ValueError):
             continue
 
     return nodes, edges
@@ -116,12 +109,12 @@ def render_mermaid(nodes, edges):
     lines = ["```mermaid", "graph LR"]
 
     for node in sorted(nodes):
-        safe_id = node.replace('/', '_').replace('-', '_')
+        safe_id = re.sub(r'\W', '_', node)
         lines.append(f"    {safe_id}[{node}]")
 
     for src, dst in sorted(set(edges)):
-        src_id = src.replace('/', '_').replace('-', '_')
-        dst_id = dst.replace('/', '_').replace('-', '_')
+        src_id = re.sub(r'\W', '_', src)
+        dst_id = re.sub(r'\W', '_', dst)
         lines.append(f"    {src_id} --> {dst_id}")
 
     lines.append("```")
@@ -139,7 +132,7 @@ Kiali is the de facto UI for Istio service mesh visualization. If you have it in
 
 ```bash
 # Install Kiali if not already present
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/kiali.yaml
+kubectl apply -f samples/addons/kiali.yaml
 
 # Access the Kiali dashboard
 istioctl dashboard kiali
@@ -158,7 +151,7 @@ To export the graph data from Kiali's API:
 ```bash
 # Get the graph data as JSON
 kubectl exec -n istio-system deploy/kiali -- \
-  curl -s "http://localhost:20001/kiali/api/namespaces/graph?duration=86400s&graphType=workload" | \
+  curl -s "http://localhost:20001/kiali/api/namespaces/graph?namespaces=default&duration=86400s&graphType=workload" | \
   python3 -m json.tool > dependency-graph.json
 ```
 
@@ -218,16 +211,15 @@ echo '  node [shape=box, style=filled, fillcolor=lightblue];'
 
 # Internal dependencies from metrics
 kubectl exec -n istio-system deploy/prometheus -- \
-  promtool query instant http://localhost:9090 \
-  'sum(rate(istio_requests_total[24h])) by (source_workload, destination_service) > 0' \
-  2>/dev/null | while read line; do
-    SRC=$(echo $line | grep -oP 'source_workload="(\K[^"]*)')
-    DST=$(echo $line | grep -oP 'destination_service="(\K[^"]*)')
-    RPS=$(echo $line | grep -oP '=> (\K[\d.]+)')
-    if [ -n "$SRC" ] && [ -n "$DST" ]; then
-      echo "  \"$SRC\" -> \"$DST\" [label=\"${RPS} rps\"];"
-    fi
-  done
+  promtool query instant -o json http://localhost:9090 \
+  'sum(rate(istio_requests_total[24h])) by (source_workload, source_workload_namespace, destination_service, destination_service_namespace) > 0' \
+  2>/dev/null | jq -r '
+    .data.result[] |
+    .metric as $m |
+    .value[1] as $rps |
+    "  \"" + $m.source_workload_namespace + "/" + $m.source_workload + "\" -> \"" +
+    $m.destination_service_namespace + "/" + $m.destination_service + "\" [label=\"" + $rps + " rps\"];"
+  '
 
 # External dependencies from ServiceEntries
 kubectl get serviceentries -A -o json | jq -r '
@@ -264,7 +256,7 @@ spec:
     spec:
       template:
         metadata:
-          annotations:
+          labels:
             sidecar.istio.io/inject: "false"
         spec:
           serviceAccountName: dep-map-generator
