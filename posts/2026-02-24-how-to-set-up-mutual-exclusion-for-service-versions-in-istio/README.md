@@ -20,9 +20,9 @@ Another scenario is during API migrations. Your v1 API returns JSON with camelCa
 
 ## Approach 1: Header-Based Version Pinning
 
-The most reliable approach is to pin the version in a request header and route based on that header. The version is assigned on the first request and carried through all subsequent requests.
+The most reliable approach is to pin the version in a request header and route based on that header. The version is assigned by the client or gateway and carried through all subsequent requests.
 
-Set the version header at the ingress gateway:
+Set a default version header at the ingress gateway when the client does not provide one:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -50,19 +50,20 @@ spec:
         name: envoy.filters.http.lua
         typed_config:
           "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-          inline_code: |
-            function envoy_on_request(request_handle)
-              local version = request_handle:headers():get("x-service-version")
-              if version == nil or version == "" then
-                request_handle:headers():add("x-service-version", "v1")
+          defaultSourceCode:
+            inlineString: |
+              function envoy_on_request(request_handle)
+                local version = request_handle:headers():get("x-service-version")
+                if version == nil or version == "" then
+                  request_handle:headers():add("x-service-version", "v1")
+                end
               end
-            end
 ```
 
 Then route based on the header:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service
@@ -117,29 +118,31 @@ spec:
         name: envoy.filters.http.lua
         typed_config:
           "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-          inline_code: |
-            function envoy_on_request(request_handle)
-              local cookies = request_handle:headers():get("cookie") or ""
-              if not string.find(cookies, "service%-version=") then
-                request_handle:headers():add("x-assign-version", "true")
+          defaultSourceCode:
+            inlineString: |
+              function envoy_on_request(request_handle)
+                local cookies = request_handle:headers():get("cookie") or ""
+                if not string.find(cookies, "service%-version=") then
+                  request_handle:streamInfo():dynamicMetadata():set("envoy.filters.http.lua", "assign_version", "v1")
+                end
               end
-            end
 
-            function envoy_on_response(response_handle)
-              local assign = response_handle:headers():get("x-assign-version")
-              if assign then
-                response_handle:headers():add(
-                  "set-cookie",
-                  "service-version=v1; Path=/; Max-Age=86400; SameSite=Lax"
-                )
+              function envoy_on_response(response_handle)
+                local metadata = response_handle:streamInfo():dynamicMetadata():get("envoy.filters.http.lua") or {}
+                local version = metadata["assign_version"]
+                if version then
+                  response_handle:headers():add(
+                    "set-cookie",
+                    "service-version=" .. version .. "; Path=/; Max-Age=86400; SameSite=Lax"
+                  )
+                end
               end
-            end
 ```
 
 Route based on the cookie:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: frontend
@@ -168,10 +171,10 @@ The first request sets the cookie. Every following request carries it, ensuring 
 
 ## Approach 3: Consistent Hash Load Balancing
 
-Istio's consistent hash load balancing pins a client to a specific backend pod based on a hash key. While this is not exactly version-based mutual exclusion, it ensures a client always hits the same pod:
+Istio's consistent hash load balancing provides soft session affinity to a backend pod based on a hash key. While this is not version-based mutual exclusion, it can keep a client on the same pod within the destination that the route already selected:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service
@@ -184,7 +187,7 @@ spec:
         httpHeaderName: x-user-id
 ```
 
-Every request with the same `x-user-id` header goes to the same pod. If you deploy v1 and v2 as separate deployments with different pod sets, and use subsets with consistent hashing, a user will consistently hit the same version.
+Every request with the same `x-user-id` header is hashed to a backend host, but affinity can change when hosts are added or removed. If you deploy v1 and v2 as separate subsets, use a header or cookie match to select the subset first, then use consistent hashing only for pod-level stickiness inside that selected subset.
 
 ## Ensuring Version Consistency Across Multiple Services
 
@@ -213,7 +216,7 @@ def get_products():
 Then each downstream service has a matching VirtualService rule:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: inventory-service
@@ -241,7 +244,7 @@ spec:
 All the routing above depends on properly defined subsets:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service
@@ -256,7 +259,7 @@ spec:
     labels:
       version: v2
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: inventory-service
@@ -324,10 +327,12 @@ When you want to move users from v1 to v2, do it gradually:
 4. Once all v1 sessions expire (based on cookie TTL), all traffic goes to v2
 5. Decommission v1
 
-```yaml
+```lua
 # Update the Lua filter to assign new users to v2
 
 request_handle:headers():add("x-service-version", "v2")
+# or, for the cookie-based example:
+request_handle:streamInfo():dynamicMetadata():set("envoy.filters.http.lua", "assign_version", "v2")
 ```
 
 ## Testing Mutual Exclusion
@@ -341,7 +346,7 @@ curl -v http://api.example.com/api/products -c cookies.txt
 # Second request - should also hit v1 (using the cookie)
 curl -v http://api.example.com/api/products -b cookies.txt
 
-# Verify the routing
+# Verify the routing if your application adds an x-served-by response header
 curl -v http://api.example.com/api/products -b cookies.txt 2>&1 | grep "x-served-by"
 ```
 
