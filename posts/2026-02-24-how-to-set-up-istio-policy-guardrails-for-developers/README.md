@@ -19,7 +19,7 @@ The old model was having a platform team review every configuration change. This
 OPA Gatekeeper is the most popular policy engine for Kubernetes. It lets you define constraints that are enforced by an admission webhook. Install Gatekeeper:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/open-policy-agent/gatekeeper/v3.14.0/deploy/gatekeeper.yaml
+kubectl apply -f https://raw.githubusercontent.com/open-policy-agent/gatekeeper/v3.22.2/deploy/gatekeeper.yaml
 ```
 
 ## Policy: Require Timeouts on VirtualServices
@@ -58,21 +58,33 @@ spec:
         input.review.object.kind == "VirtualService"
         route := input.review.object.spec.http[_]
         route.timeout
-        timeout_seconds := time_to_seconds(route.timeout)
-        max_seconds := time_to_seconds(input.parameters.maxTimeout)
-        timeout_seconds > max_seconds
+        timeout_millis := duration_to_millis(route.timeout)
+        max_millis := duration_to_millis(input.parameters.maxTimeout)
+        timeout_millis > max_millis
         msg := sprintf("VirtualService '%v' timeout %v exceeds maximum allowed %v", [input.review.object.metadata.name, route.timeout, input.parameters.maxTimeout])
       }
 
-      time_to_seconds(t) = seconds {
-        endswith(t, "s")
-        seconds := to_number(trim_suffix(t, "s"))
+      duration_to_millis(t) = millis {
+        endswith(t, "ms")
+        millis := to_number(trim_suffix(t, "ms"))
       }
 
-      time_to_seconds(t) = seconds {
+      duration_to_millis(t) = millis {
+        endswith(t, "s")
+        seconds := to_number(trim_suffix(t, "s"))
+        millis := seconds * 1000
+      }
+
+      duration_to_millis(t) = millis {
         endswith(t, "m")
         minutes := to_number(trim_suffix(t, "m"))
-        seconds := minutes * 60
+        millis := minutes * 60 * 1000
+      }
+
+      duration_to_millis(t) = millis {
+        endswith(t, "h")
+        hours := to_number(trim_suffix(t, "h"))
+        millis := hours * 60 * 60 * 1000
       }
 ---
 apiVersion: constraints.gatekeeper.sh/v1beta1
@@ -118,12 +130,13 @@ spec:
     rego: |
       package istiosafeauthpolicy
 
-      # Deny ALLOW policies with no rules (allows everything)
+      # Deny ALLOW policies with an empty rule (allows everything)
       violation[{"msg": msg}] {
         input.review.object.kind == "AuthorizationPolicy"
-        input.review.object.spec.action == "ALLOW"
-        not input.review.object.spec.rules
-        msg := sprintf("AuthorizationPolicy '%v' with ALLOW action must have at least one rule", [input.review.object.metadata.name])
+        is_allow_action
+        rule := input.review.object.spec.rules[_]
+        rule == {}
+        msg := sprintf("AuthorizationPolicy '%v' cannot use an empty ALLOW rule", [input.review.object.metadata.name])
       }
 
       # Deny policies that allow all namespaces
@@ -134,6 +147,14 @@ spec:
         ns := source.namespaces[_]
         ns == "*"
         msg := sprintf("AuthorizationPolicy '%v' cannot use wildcard namespace", [input.review.object.metadata.name])
+      }
+
+      is_allow_action {
+        input.review.object.spec.action == "ALLOW"
+      }
+
+      is_allow_action {
+        not input.review.object.spec.action
       }
 ```
 
