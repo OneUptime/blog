@@ -12,6 +12,8 @@ Authorization policies that aren't tested are policies you can't trust. A single
 
 The tricky part about testing Istio authorization is that policies interact with each other. DENY policies override ALLOW policies. Namespace-level policies interact with workload-level policies. A change in one policy can affect the behavior of another. You need to test the full policy set, not just individual rules.
 
+If your policies match source namespaces or service accounts, make sure the test workloads are part of the mesh and using mutual TLS. Istio can only evaluate source workload identity attributes such as namespace and principal when that identity is available to the destination proxy.
+
 ## Building a Test Matrix
 
 Start by mapping out who should be able to access what. Create a matrix of source services, destination services, HTTP methods, and expected outcomes:
@@ -94,14 +96,7 @@ echo "=== Istio Authorization Policy Test Suite ==="
 echo "Started: $(date)"
 echo ""
 
-# Parse and run each test
-python3 -c "
-import yaml, sys
-with open('$TESTS_FILE') as f:
-    data = yaml.safe_load(f)
-for i, test in enumerate(data['tests']):
-    print(f\"{i}|{test['name']}|{test['source']['namespace']}|{test['source']['serviceAccount']}|{test['destination']['service']}|{test['destination']['port']}|{test['destination']['method']}|{test['destination']['path']}|{test['expected']}\")
-" | while IFS='|' read -r IDX NAME SRC_NS SRC_SA DEST_SVC DEST_PORT METHOD PATH EXPECTED; do
+while IFS='|' read -r IDX NAME SRC_NS SRC_SA DEST_SVC DEST_PORT METHOD PATH EXPECTED; do
     TOTAL=$((TOTAL + 1))
 
     # Create a test pod with the right service account if it doesn't exist
@@ -128,7 +123,13 @@ for i, test in enumerate(data['tests']):
         echo "FAIL: $NAME (expected=$EXPECTED, got=$ACTUAL)"
         FAIL_COUNT=$((FAIL_COUNT + 1))
     fi
-done
+done < <(python3 -c "
+import yaml, sys
+with open('$TESTS_FILE') as f:
+    data = yaml.safe_load(f)
+for i, test in enumerate(data['tests']):
+    print(f\"{i}|{test['name']}|{test['source']['namespace']}|{test['source']['serviceAccount']}|{test['destination']['service']}|{test['destination']['port']}|{test['destination']['method']}|{test['destination']['path']}|{test['expected']}\")
+")
 
 echo ""
 echo "Results: $PASS_COUNT passed, $FAIL_COUNT failed out of $TOTAL tests"
@@ -143,8 +144,20 @@ Before running tests, you need test pods with the right service accounts in each
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: test-runner
+  name: web-app
   namespace: frontend
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: checkout-service
+  namespace: frontend
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: admin-service
+  namespace: admin
 ---
 apiVersion: v1
 kind: Pod
@@ -220,7 +233,7 @@ istioctl analyze --all-namespaces
 
 Common issues it catches:
 - Policies targeting non-existent workloads
-- Conflicting policies
+- Ineffective policy selectors and other known misconfigurations
 - Syntax errors in rules
 
 ## Testing DENY Policies
@@ -337,17 +350,25 @@ jobs:
     - uses: actions/checkout@v4
 
     - name: Set up Kind cluster
-      uses: engineerd/setup-kind@v0.5.0
+      uses: engineerd/setup-kind@v0.6.0
+
+    - name: Install istioctl
+      run: |
+        curl -sL https://istio.io/downloadIstioctl | sh -
+        echo "$HOME/.istioctl/bin" >> "$GITHUB_PATH"
 
     - name: Install Istio
       run: |
         istioctl install --set profile=demo -y
-        kubectl label namespace default istio-injection=enabled
+        for ns in default frontend backend admin test; do
+          kubectl create namespace "$ns" --dry-run=client -o yaml | kubectl apply -f -
+        done
+        kubectl label namespace default frontend backend admin test istio-injection=enabled --overwrite
 
     - name: Deploy test services
       run: |
         kubectl apply -f tests/fixtures/test-services.yaml
-        kubectl wait --for=condition=Ready pods --all -n default --timeout=120s
+        kubectl wait --for=condition=Ready pods --all --all-namespaces --timeout=120s
 
     - name: Apply authorization policies
       run: kubectl apply -f k8s/istio/authorization/
@@ -399,7 +420,7 @@ kubectl apply -f /tmp/saved-policy.yaml
 
 ## Testing with Different Auth Contexts
 
-Test JWT-based policies with different token payloads:
+Test JWT-based policies with different token payloads. These tests require a matching `RequestAuthentication` policy for your test issuer, and any authorization rules that check the token claims should use the authenticated JWT fields such as `request.auth.claims[...]`:
 
 ```bash
 # Generate test tokens with different claims
