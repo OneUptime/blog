@@ -46,6 +46,12 @@ brew install argocd
 Log in:
 
 ```bash
+kubectl port-forward svc/argocd-server -n argocd 8080:443
+```
+
+In another terminal, log in:
+
+```bash
 argocd login localhost:8080 --insecure
 ```
 
@@ -106,7 +112,7 @@ spec:
   source:
     repoURL: https://istio-release.storage.googleapis.com/charts
     chart: base
-    targetRevision: 1.22.0
+    targetRevision: 1.30.0
     helm:
       valuesObject:
         defaultRevision: default
@@ -135,13 +141,16 @@ metadata:
     argocd.argoproj.io/sync-wave: "2"
 spec:
   project: default
-  source:
-    repoURL: https://istio-release.storage.googleapis.com/charts
-    chart: istiod
-    targetRevision: 1.22.0
-    helm:
-      valueFiles:
-        - $values/istio/installation/istiod/values.yaml
+  sources:
+    - repoURL: https://istio-release.storage.googleapis.com/charts
+      chart: istiod
+      targetRevision: 1.30.0
+      helm:
+        valueFiles:
+          - $values/istio/installation/istiod/values.yaml
+    - repoURL: https://github.com/your-org/istio-gitops.git
+      targetRevision: main
+      ref: values
   destination:
     server: https://kubernetes.default.svc
     namespace: istio-system
@@ -164,13 +173,16 @@ metadata:
     argocd.argoproj.io/sync-wave: "3"
 spec:
   project: default
-  source:
-    repoURL: https://istio-release.storage.googleapis.com/charts
-    chart: gateway
-    targetRevision: 1.22.0
-    helm:
-      valueFiles:
-        - $values/istio/installation/gateway/values.yaml
+  sources:
+    - repoURL: https://istio-release.storage.googleapis.com/charts
+      chart: gateway
+      targetRevision: 1.30.0
+      helm:
+        valueFiles:
+          - $values/istio/installation/gateway/values.yaml
+    - repoURL: https://github.com/your-org/istio-gitops.git
+      targetRevision: main
+      ref: values
   destination:
     server: https://kubernetes.default.svc
     namespace: istio-ingress
@@ -294,6 +306,14 @@ Configure Argo CD notifications to alert you when Istio configuration changes:
 
 ```yaml
 apiVersion: v1
+kind: Secret
+metadata:
+  name: argocd-notifications-secret
+  namespace: argocd
+stringData:
+  slack-token: <your-slack-bot-token>
+---
+apiVersion: v1
 kind: ConfigMap
 metadata:
   name: argocd-notifications-cm
@@ -309,7 +329,11 @@ data:
       Revision: {{.app.status.sync.revision}}
   service.slack: |
     token: $slack-token
-    channel: istio-alerts
+  subscriptions: |
+    - recipients:
+        - slack:istio-alerts
+      triggers:
+        - on-sync-succeeded
 ```
 
 ## Monitoring Sync Status
@@ -350,13 +374,13 @@ Use Argo CD sync windows to prevent changes during critical periods:
 apiVersion: argoproj.io/v1alpha1
 kind: AppProject
 metadata:
-  name: istio
+  name: default
   namespace: argocd
 spec:
   syncWindows:
     - kind: deny
       schedule: "0 0 * * 5"  # No Friday deployments
-      duration: 48h
+      duration: 24h
       applications:
         - "*"
 ```
