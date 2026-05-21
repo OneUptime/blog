@@ -8,15 +8,15 @@ Description: How to use Istio's dry-run mode for authorization policies to test 
 
 ---
 
-Rolling out authorization policies to production is nerve-wracking. One misconfigured rule and you've blocked legitimate traffic, causing an outage. Istio's dry-run mode lets you test authorization policies in production without enforcing them. The policies are evaluated, results are logged, but traffic flows through regardless of the verdict. This gives you confidence that your policies work correctly before you flip the switch to enforcement.
+Rolling out authorization policies to production is nerve-wracking. One misconfigured rule and you've blocked legitimate traffic, causing an outage. Istio's dry-run mode lets you test authorization policies in production without enforcing them. The policies are evaluated and the results can be inspected in proxy debug logs and metrics, but traffic flows through regardless of the verdict. This gives you confidence that your policies work correctly before you flip the switch to enforcement.
 
 ## How Dry-Run Works
 
 When you enable dry-run mode on an authorization policy, Istio's Envoy sidecar evaluates the policy against every matching request but doesn't enforce the result. Instead, it:
 
 1. Evaluates the policy rules against the incoming request
-2. Logs the result (would-be-allowed or would-be-denied) in the Envoy access log
-3. Records metrics for the dry-run evaluation
+2. Logs the result (would-be-allowed or would-be-denied) in the Envoy proxy debug log when RBAC debug logging is enabled
+3. Records Envoy RBAC metrics for the dry-run evaluation
 4. Allows the request to pass through regardless
 
 This is similar to how a firewall's "audit mode" works - you get to see what would happen without actually impacting traffic.
@@ -58,21 +58,10 @@ The policy is active (being evaluated) but not enforced (not blocking traffic).
 
 ## Checking Dry-Run Results in Logs
 
-Dry-run results appear in the Envoy access logs. To see them, you need to have access logging enabled:
+Dry-run results appear in the Envoy proxy debug logs. To see them, enable RBAC debug logging on the workload's proxy:
 
-```yaml
-apiVersion: telemetry.istio.io/v1
-kind: Telemetry
-metadata:
-  name: access-logging
-  namespace: my-app
-spec:
-  selector:
-    matchLabels:
-      app: my-service
-  accessLogging:
-    - providers:
-        - name: envoy
+```bash
+istioctl proxy-config log deploy/my-service.my-app --level "rbac:debug" | grep rbac
 ```
 
 Check the logs for dry-run results:
@@ -81,36 +70,39 @@ Check the logs for dry-run results:
 kubectl logs -n my-app deploy/my-service -c istio-proxy | grep "shadow"
 ```
 
-Dry-run policy results appear in the `rbac_access_logged_only` response flag. You'll see entries like:
+Dry-run policy results appear as RBAC debug log messages. You'll see entries like:
 
 ```text
-[2026-02-24T10:15:30.000Z] "GET /api/users HTTP/1.1" 200 - via_upstream - "-" 0 1234 15 14 "-" "curl/7.68.0" "abc-123" "my-service:8080" "10.0.0.5:8080" inbound|8080|| 10.0.0.1:54321 10.0.0.5:8080 10.0.0.1:54321 - default ALLOW shadow_denied
+2026-02-24T10:15:30.000000Z debug envoy rbac shadow denied, matched policy ns[my-app]-policy[test-policy]-rule[0]
 ```
 
-The `shadow_denied` flag indicates the dry-run policy would have denied this request. `shadow_allowed` means it would have been allowed.
+The `shadow denied` message indicates the dry-run policy would have denied this request. `shadow allowed` means it would have been allowed.
 
 ## Monitoring Dry-Run Metrics
 
-Istio exposes metrics for dry-run policy evaluations:
+Istio exposes Envoy RBAC metrics for dry-run policy evaluations. The metric name includes the inbound port, so adjust `8080` to your service port:
 
 ```promql
 # Requests that would be denied by dry-run policies
 
-sum(rate(istio_requests_total{
-  destination_service_name="my-service",
-  response_flags=~".*shadow_denied.*"
+sum(rate(envoy_http_inbound_0_0_0_0_8080_rbac{
+  kubernetes_namespace="my-app",
+  app="my-service",
+  authz_dry_run_result="denied"
 }[5m]))
 ```
 
 ```promql
 # Dry-run deny rate as percentage of total traffic
-sum(rate(istio_requests_total{
-  destination_service_name="my-service",
-  response_flags=~".*shadow_denied.*"
+sum(rate(envoy_http_inbound_0_0_0_0_8080_rbac{
+  kubernetes_namespace="my-app",
+  app="my-service",
+  authz_dry_run_result="denied"
 }[5m]))
 /
-sum(rate(istio_requests_total{
-  destination_service_name="my-service"
+sum(rate(envoy_http_inbound_0_0_0_0_8080_rbac{
+  kubernetes_namespace="my-app",
+  app="my-service"
 }[5m]))
 * 100
 ```
@@ -153,10 +145,10 @@ Wait for a meaningful traffic period (at least one business day) and check for t
 
 ```bash
 # Check how many requests would be denied
-kubectl logs -n backend deploy/api-service -c istio-proxy --since=1h | grep "shadow_denied" | wc -l
+kubectl logs -n backend deploy/api-service -c istio-proxy --since=1h | grep "shadow denied" | wc -l
 
 # See the details of would-be-denied requests
-kubectl logs -n backend deploy/api-service -c istio-proxy --since=1h | grep "shadow_denied" | head -20
+kubectl logs -n backend deploy/api-service -c istio-proxy --since=1h | grep "shadow denied" | head -20
 ```
 
 ### Step 3: Analyze the Results
@@ -203,11 +195,11 @@ spec:
 
 ### Step 5: Re-Monitor
 
-Check that the shadow_denied count drops to near zero (or an acceptable level):
+Check that the `shadow denied` count drops to near zero (or an acceptable level):
 
 ```bash
 # Should show very few or zero denials now
-kubectl logs -n backend deploy/api-service -c istio-proxy --since=1h | grep "shadow_denied" | wc -l
+kubectl logs -n backend deploy/api-service -c istio-proxy --since=1h | grep "shadow denied" | wc -l
 ```
 
 ### Step 6: Enable Enforcement
@@ -269,7 +261,7 @@ Monitor to see if any legitimate cross-namespace write traffic would be blocked 
 
 ## Alerting on Dry-Run Results
 
-Set up alerts to catch unexpected dry-run denials:
+Set up temporary rollout alerts to catch unexpected dry-run denials. Istio treats dry-run log and metric output as troubleshooting signals, so review these alerts after Istio upgrades:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
@@ -283,16 +275,16 @@ spec:
       rules:
         - alert: HighDryRunDenyRate
           expr: |
-            sum by (destination_service_name) (
-              rate(istio_requests_total{
-                response_flags=~".*shadow_denied.*"
+            sum by (kubernetes_namespace, app, authz_dry_run_action) (
+              rate({__name__=~"envoy_http_inbound_.*_rbac",
+                authz_dry_run_result="denied"
               }[5m])
             ) > 10
           for: 10m
           labels:
             severity: info
           annotations:
-            summary: "High dry-run deny rate for {{ $labels.destination_service_name }}"
+            summary: "High dry-run deny rate for {{ $labels.kubernetes_namespace }}/{{ $labels.app }}"
             description: "The dry-run authorization policy is denying more than 10 requests per second. Review the policy before enabling enforcement."
 ```
 
