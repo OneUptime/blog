@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Galley, Configuration Validation, Kubernetes, Webhook
 
-Description: Learn how Galley handles configuration validation in Istio, preventing invalid mesh configurations from being applied to your Kubernetes cluster.
+Description: Learn how Istio's validation webhook handles configuration validation, preventing invalid mesh configurations from being applied to your Kubernetes cluster.
 
 ---
 
-Galley is the configuration validation component in Istio. Its job is to catch bad configuration before it reaches the mesh. If you have ever applied an Istio VirtualService with a typo and wondered why nothing happened, or if you have seen a helpful error message telling you exactly what was wrong, that was Galley at work.
+Galley was the configuration validation component in earlier Istio releases. Its job was to catch bad configuration before it reached the mesh. If you have ever applied an Istio VirtualService with a typo and wondered why nothing happened, or if you have seen a helpful error message telling you exactly what was wrong, that was Istio's validation webhook at work.
 
 ## What Galley Does
 
-In the original Istio architecture (pre-1.5), Galley was a separate microservice that handled configuration ingestion, validation, and distribution. Today, it lives inside istiod as a module, but its core purpose remains the same: validate Istio configuration.
+In the original Istio architecture (pre-1.5), Galley was a separate microservice that handled configuration ingestion, validation, and distribution. Today, configuration validation is handled by istiod, but the core purpose remains the same: validate Istio configuration.
 
-Galley operates as a Kubernetes admission webhook. When you apply an Istio custom resource (VirtualService, DestinationRule, AuthorizationPolicy, etc.), the Kubernetes API server sends the resource to Galley for validation before storing it. If the validation fails, the resource is rejected and never makes it to etcd.
+Istiod operates as a Kubernetes admission webhook for Istio configuration. When you apply an Istio custom resource (VirtualService, DestinationRule, AuthorizationPolicy, etc.), the Kubernetes API server sends the resource to istiod for validation before storing it. If the validation fails, the resource is rejected and never makes it to etcd.
 
 ```bash
 # See the webhook configuration
@@ -48,7 +48,7 @@ https://istiod.istio-system.svc:443/validate
 
 ## What Gets Validated
 
-Galley validates all Istio custom resources:
+The validation webhook validates Istio custom resources in the Istio API groups, including:
 
 - VirtualService
 - DestinationRule
@@ -68,7 +68,7 @@ Each resource type has specific validation rules. Here are some common validatio
 ### VirtualService Validations
 
 ```yaml
-# Invalid: weights do not sum to 100
+# Invalid: all destination weights are zero
 apiVersion: networking.istio.io/v1beta1
 kind: VirtualService
 metadata:
@@ -81,14 +81,14 @@ spec:
     - destination:
         host: reviews
         subset: v1
-      weight: 60
+      weight: 0
     - destination:
         host: reviews
         subset: v2
-      weight: 30
+      weight: 0
 ```
 
-Error: `total destination weight 90 != 100`
+Error: `total destination weight = 0`
 
 ```yaml
 # Invalid: duplicate match conditions
@@ -114,7 +114,7 @@ spec:
         host: reviews-v2
 ```
 
-This would generate a warning about conflicting match rules.
+This would generate a warning such as `IST0130` or `IST0131` about an unreachable or ineffective match rule.
 
 ### DestinationRule Validations
 
@@ -131,12 +131,12 @@ spec:
       simple: FASTEST
 ```
 
-Error: `invalid load balancer simple type`
+Error: schema validation error for the unsupported `FASTEST` enum value.
 
 ### Gateway Validations
 
 ```yaml
-# Invalid: port conflict
+# Invalid: duplicate server port name
 apiVersion: networking.istio.io/v1beta1
 kind: Gateway
 metadata:
@@ -147,19 +147,19 @@ spec:
   servers:
   - port:
       number: 443
-      name: https-1
+      name: https
       protocol: HTTPS
     hosts:
     - "*.example.com"
   - port:
       number: 443
-      name: https-2
+      name: https
       protocol: HTTPS
     hosts:
     - "*.another.com"
 ```
 
-Galley checks for conflicting port/protocol combinations.
+Istio checks for duplicate server port names and conflicting gateway definitions.
 
 ## Using istioctl for Pre-Validation
 
@@ -190,7 +190,7 @@ istioctl analyze --all-namespaces
 istioctl analyze -n production
 
 # Analyze local files without a cluster
-istioctl analyze -f k8s/istio/ --use-kube=false
+istioctl analyze --use-kube=false k8s/istio/
 ```
 
 The analyzer catches issues that schema validation alone misses:
@@ -200,8 +200,8 @@ istioctl analyze -n default
 ```
 
 ```text
-Warning [IST0101] (VirtualService default/reviews) Referenced host not found: "reviews-v3"
-Warning [IST0104] (Gateway default/my-gateway) The gateway refers to a selector that does not match any deployment
+Error [IST0101] (VirtualService default/reviews) Referenced gateway not found: "reviews-gateway"
+Warning [IST0162] (Gateway default/my-gateway) Gateway port not exposed by service
 Info [IST0102] (Namespace default) The namespace is not enabled for Istio injection
 ```
 
@@ -209,12 +209,12 @@ Common analyzer messages:
 
 | Code | Description |
 |------|------------|
-| IST0101 | VirtualService references a host that does not exist |
+| IST0101 | Resource references another resource that does not exist |
 | IST0102 | Namespace does not have sidecar injection enabled |
-| IST0104 | Gateway selector does not match any deployment |
+| IST0130 | VirtualService rule will never be used because a previous rule uses the same match |
 | IST0106 | Schema validation error |
 | IST0108 | Unknown annotation on a resource |
-| IST0127 | No matching subset found in DestinationRule |
+| IST0127 | No workloads match a resource's workload selector |
 
 ## Webhook Failure Policy
 
@@ -235,17 +235,17 @@ If you change it to `Ignore`, resources will be accepted without validation when
 
 ## Bypassing Validation
 
-Sometimes during debugging, you might need to apply a resource that Galley rejects. You can bypass the webhook:
+Sometimes during debugging, you might need to check a resource that Istio's validation webhook rejects. Server-side dry run will still exercise admission validation:
 
 ```bash
 # Apply with dry-run to see what would happen
 kubectl apply -f my-resource.yaml --dry-run=server
 
-# Bypass the webhook (use with extreme caution)
+# Skip kubectl schema validation only; this does not bypass admission webhooks
 kubectl apply -f my-resource.yaml --validate=false
 ```
 
-Note that `--validate=false` only skips client-side Kubernetes validation, not the webhook. To truly bypass the webhook, you would need to delete the ValidatingWebhookConfiguration, which is strongly discouraged.
+Note that `--validate=false` only skips kubectl schema or field validation, not the webhook. To truly bypass the webhook, you would need to delete the ValidatingWebhookConfiguration, which is strongly discouraged.
 
 ## Custom Validation with CI/CD
 
@@ -266,7 +266,7 @@ for file in k8s/istio/*.yaml; do
 done
 
 echo "Running mesh analysis..."
-if ! istioctl analyze -f k8s/istio/ --use-kube=false 2>&1; then
+if ! istioctl analyze --use-kube=false k8s/istio/ 2>&1; then
     ERRORS=$((ERRORS + 1))
 fi
 
@@ -283,8 +283,9 @@ echo "All validations passed"
 Track webhook activity through metrics:
 
 ```bash
-kubectl exec -n istio-system deploy/istiod -- \
-    curl -s localhost:15014/metrics | grep galley
+kubectl -n istio-system port-forward deploy/istiod 15014:15014
+
+curl -s http://localhost:15014/metrics | grep galley
 ```
 
 Key metrics:
@@ -330,4 +331,4 @@ kubectl get validatingwebhookconfiguration istio-validator-istio-system \
 
 The CA bundle might be stale if istiod's certificates were rotated.
 
-Galley's configuration validation is your first line of defense against mesh misconfigurations. It catches obvious errors like invalid field values and weight mismatches, and through `istioctl analyze`, it catches more subtle issues like missing host references. Making validation part of your workflow - both in CI/CD and through the admission webhook - means fewer production incidents caused by configuration mistakes.
+Istio's configuration validation is your first line of defense against mesh misconfigurations. It catches obvious errors like invalid field values and invalid route weights, and through `istioctl analyze`, it catches more subtle issues like missing resource references. Making validation part of your workflow - both in CI/CD and through the admission webhook - means fewer production incidents caused by configuration mistakes.
