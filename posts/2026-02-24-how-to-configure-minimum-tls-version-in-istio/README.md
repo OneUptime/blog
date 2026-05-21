@@ -8,9 +8,9 @@ Description: How to enforce minimum TLS version requirements across your Istio s
 
 ---
 
-Running old TLS versions is a security risk. TLS 1.0 and 1.1 have known vulnerabilities, and most compliance frameworks (PCI DSS, HIPAA, SOC 2) require TLS 1.2 as a minimum. Istio gives you the ability to enforce minimum TLS versions at multiple levels - mesh-wide, per-gateway, and per-destination.
+Running old TLS versions is a security risk. TLS 1.0 and 1.1 have known vulnerabilities, and most compliance frameworks (PCI DSS, HIPAA, SOC 2) require TLS 1.2 as a minimum. Istio gives you the ability to enforce minimum TLS versions at multiple levels - mesh-wide, per-gateway, and for outbound TLS defaults.
 
-By default, Istio uses TLS 1.2 for sidecar-to-sidecar mTLS, which is good. But if you have gateways accepting external traffic or destination rules connecting to external services, you need to explicitly configure the minimum TLS version to prevent downgrade attacks.
+By default, Istio uses TLS 1.2 for sidecar-to-sidecar mTLS, which is good. But if you have gateways accepting external traffic or outbound TLS origination to external services, you need to explicitly configure the minimum TLS version to prevent downgrade attacks.
 
 ## Checking Your Current TLS Version
 
@@ -21,7 +21,7 @@ istioctl proxy-config listener istio-ingressgateway-xxxx -n istio-system -o json
   jq '.[].filterChains[].transportSocket.typedConfig.commonTlsContext.tlsParams'
 ```
 
-If this returns null or empty for `tlsMinimumProtocolVersion`, Envoy uses its default, which depends on the Envoy version but typically allows TLS 1.2 and above.
+If this returns null or empty for `tlsMinimumProtocolVersion`, Envoy uses its default minimum, which is TLS 1.2 in current Envoy versions.
 
 ## Mesh-Wide Minimum TLS Version
 
@@ -102,9 +102,9 @@ spec:
         - "modern-app.example.com"
 ```
 
-## DestinationRule TLS Version for Upstream Connections
+## Outbound TLS Version for Upstream Connections
 
-When your mesh connects to external services, you can specify the TLS version in the DestinationRule. This is important when connecting to legacy systems that might try to negotiate an older TLS version:
+When your mesh connects to external services, a DestinationRule can configure TLS origination settings such as mode and SNI:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -119,7 +119,18 @@ spec:
       sni: api.external.com
 ```
 
-Note that DestinationRule does not directly support `minProtocolVersion` in the same way Gateway does. To control TLS versions for outbound connections, you use EnvoyFilter:
+DestinationRule does not directly support `minProtocolVersion` in the same way Gateway does. For a mesh-wide default for non-`ISTIO_MUTUAL` outbound TLS, configure `tlsDefaults` in the mesh config:
+
+```yaml
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
+spec:
+  meshConfig:
+    tlsDefaults:
+      minProtocolVersion: TLSV1_2
+```
+
+To control TLS versions for a specific outbound cluster, use EnvoyFilter carefully:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -212,11 +223,13 @@ kubectl exec <pod-name> -c istio-proxy -- \
   pilot-agent request GET stats | grep "ssl.*version"
 ```
 
+Istio records a minimal set of Envoy statistics by default, so you may need to enable these `ssl.versions.*` stats with `proxyStatsMatcher` before they appear.
+
 In Prometheus, you can query:
 
 ```text
-envoy_listener_ssl_versions{envoy_ssl_version="TLSv1.2"}
-envoy_listener_ssl_versions{envoy_ssl_version="TLSv1.3"}
+envoy_listener_ssl_versions{envoy_ssl_version="TLSv1_2"}
+envoy_listener_ssl_versions{envoy_ssl_version="TLSv1_3"}
 ```
 
 If you see any connections using TLS 1.0 or 1.1, investigate the source and either update the client or block the connection.
