@@ -64,7 +64,13 @@ metadata:
   name: web-frontend
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: web-frontend
   template:
+    metadata:
+      labels:
+        app: web-frontend
     spec:
       serviceAccountName: web-frontend
       containers:
@@ -77,7 +83,13 @@ metadata:
   name: api-server
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: api-server
   template:
+    metadata:
+      labels:
+        app: api-server
     spec:
       serviceAccountName: api-server
       containers:
@@ -90,7 +102,7 @@ spec:
 Check what identity a pod received:
 
 ```bash
-istioctl proxy-config secret deploy/web-frontend -n production
+istioctl proxy-config secret deployment/web-frontend -n production
 ```
 
 This shows the certificates loaded by the sidecar, including the SPIFFE identity.
@@ -98,8 +110,10 @@ This shows the certificates loaded by the sidecar, including the SPIFFE identity
 You can also check from within the proxy:
 
 ```bash
-kubectl exec -n production deploy/web-frontend -c istio-proxy -- \
-  openssl x509 -text -noout -in /var/run/secrets/credential/cert-chain.pem | \
+istioctl proxy-config secret deployment/web-frontend -n production -o json | \
+  jq -r '.dynamicActiveSecrets[] | select(.name == "default") |
+    .secret.tlsCertificate.certificateChain.inlineBytes' | \
+  base64 --decode | openssl x509 -text -noout | \
   grep "Subject Alternative Name" -A 1
 ```
 
@@ -276,7 +290,13 @@ kind: Deployment
 metadata:
   name: {{ .Values.name }}
 spec:
+  selector:
+    matchLabels:
+      app: {{ .Values.name }}
   template:
+    metadata:
+      labels:
+        app: {{ .Values.name }}
     spec:
       serviceAccountName: {{ .Values.name }}
 ```
