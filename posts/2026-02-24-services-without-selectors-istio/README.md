@@ -26,7 +26,7 @@ spec:
   - port: 8080
 ```
 
-Kubernetes automatically creates and manages Endpoints based on pods that match the selector. When you remove the selector, Kubernetes does not create Endpoints automatically. You manage them yourself:
+Kubernetes automatically creates and manages EndpointSlices based on pods that match the selector. When you remove the selector, Kubernetes does not create EndpointSlices automatically. You manage them yourself:
 
 ```yaml
 apiVersion: v1
@@ -39,31 +39,17 @@ spec:
     port: 5432
     targetPort: 5432
 ---
-apiVersion: v1
-kind: Endpoints
-metadata:
-  name: external-database  # Must match the Service name
-subsets:
-- addresses:
-  - ip: 10.200.1.50
-  - ip: 10.200.1.51
-  ports:
-  - name: tcp-postgres
-    port: 5432
-```
-
-Or using the newer EndpointSlice API:
-
-```yaml
 apiVersion: discovery.k8s.io/v1
 kind: EndpointSlice
 metadata:
-  name: external-database-1
+  name: external-database-1  # Use the Service name as a prefix by convention
   labels:
     kubernetes.io/service-name: external-database
+    endpointslice.kubernetes.io/managed-by: manual
 addressType: IPv4
 ports:
 - name: tcp-postgres
+  protocol: TCP
   port: 5432
 endpoints:
 - addresses:
@@ -72,9 +58,11 @@ endpoints:
   - "10.200.1.51"
 ```
 
+The older `Endpoints` API can still work on many clusters, but it is deprecated in current Kubernetes. For manually managed selector-less services, prefer EndpointSlices.
+
 ## How Istio Sees Services Without Selectors
 
-Istio discovers endpoints through the Kubernetes API, just like kube-proxy. When a Service has manually defined Endpoints (or EndpointSlices), Istio picks them up and creates Envoy cluster entries for them.
+Istio discovers endpoints through the Kubernetes API, just like kube-proxy. When a Service has manually defined EndpointSlices, Istio picks them up and creates Envoy cluster entries for them.
 
 Check how Istio sees your selector-less service:
 
@@ -99,17 +87,22 @@ spec:
   - name: tcp-postgres
     port: 5432
 ---
-apiVersion: v1
-kind: Endpoints
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
 metadata:
-  name: production-db
+  name: production-db-1
   namespace: my-app
-subsets:
+  labels:
+    kubernetes.io/service-name: production-db
+    endpointslice.kubernetes.io/managed-by: manual
+addressType: IPv4
+ports:
+- name: tcp-postgres
+  protocol: TCP
+  port: 5432
+endpoints:
 - addresses:
-  - ip: 192.168.10.100
-  ports:
-  - name: tcp-postgres
-    port: 5432
+  - "192.168.10.100"
 ```
 
 **Legacy services on VMs:**
@@ -125,18 +118,24 @@ spec:
   - name: http-auth
     port: 8080
 ---
-apiVersion: v1
-kind: Endpoints
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
 metadata:
-  name: legacy-auth
+  name: legacy-auth-1
   namespace: my-app
-subsets:
+  labels:
+    kubernetes.io/service-name: legacy-auth
+    endpointslice.kubernetes.io/managed-by: manual
+addressType: IPv4
+ports:
+- name: http-auth
+  protocol: TCP
+  port: 8080
+endpoints:
 - addresses:
-  - ip: 10.0.5.20
-  - ip: 10.0.5.21
-  ports:
-  - name: http-auth
-    port: 8080
+  - "10.0.5.20"
+- addresses:
+  - "10.0.5.21"
 ```
 
 **Services in another cluster:**
@@ -152,23 +151,29 @@ spec:
   - name: http-api
     port: 80
 ---
-apiVersion: v1
-kind: Endpoints
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
 metadata:
-  name: remote-service
+  name: remote-service-1
   namespace: my-app
-subsets:
+  labels:
+    kubernetes.io/service-name: remote-service
+    endpointslice.kubernetes.io/managed-by: manual
+addressType: IPv4
+ports:
+- name: http-api
+  protocol: TCP
+  port: 80
+endpoints:
 - addresses:
-  - ip: 172.16.0.100
-  - ip: 172.16.0.101
-  ports:
-  - name: http-api
-    port: 80
+  - "172.16.0.100"
+- addresses:
+  - "172.16.0.101"
 ```
 
 ## Applying Istio Traffic Policies
 
-The great thing about using Service + Endpoints instead of direct IP connections is that Istio treats them like any other service. You can apply DestinationRules:
+The great thing about using Service + EndpointSlices instead of direct IP connections is that Istio treats them like any other service. You can apply DestinationRules:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -277,9 +282,9 @@ spec:
         - "cluster.local/ns/my-app/sa/backend"
 ```
 
-Wait, there is a problem. The `selector` field in AuthorizationPolicy matches pod labels. But services without selectors do not have pods, so the AuthorizationPolicy cannot target the external service itself. Instead, control access at the source side by restricting which pods can connect to the external service.
+Wait, there is a problem. The `selector` field in AuthorizationPolicy matches workload labels. But services without selectors do not have destination workloads in the mesh, so the AuthorizationPolicy cannot target the external service itself. Instead, limit the source side by restricting which services are configured for the source pods.
 
-You can do this with a Sidecar resource that limits egress:
+You can do this with a Sidecar resource that limits which egress hosts are exposed to the selected workloads:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -307,11 +312,13 @@ If `production-db` is in the same namespace, it is included in `./*`. If you wan
     - "istio-system/*"
 ```
 
+This is useful for configuration scoping, but it is not a replacement for a network firewall or an authorization policy enforced by the external service.
+
 ## Comparing with ServiceEntry
 
 Services without selectors overlap in functionality with Istio's ServiceEntry. Both let you route mesh traffic to external endpoints. Here is when to use each:
 
-**Use Service + Endpoints when:**
+**Use Service + EndpointSlices when:**
 - You want standard Kubernetes service discovery
 - Other non-Istio tools need to discover the service
 - You want the external service to look like a normal Kubernetes service
@@ -343,11 +350,11 @@ spec:
   - address: 192.168.10.101
 ```
 
-Both approaches work with Istio. The ServiceEntry approach gives you slightly more control over Istio-specific behavior, while the Service + Endpoints approach is more standard Kubernetes.
+Both approaches work with Istio. The ServiceEntry approach gives you slightly more control over Istio-specific behavior, while the Service + EndpointSlices approach is more standard Kubernetes.
 
 ## Dynamic Endpoint Management
 
-For services without selectors, you are responsible for keeping the Endpoints up to date. If an external service's IP changes and you do not update the Endpoints, traffic goes to the wrong place.
+For services without selectors, you are responsible for keeping the EndpointSlices up to date. If an external service's IP changes and you do not update the EndpointSlices, traffic goes to the wrong place.
 
 Automate this with a controller or a cron job:
 
@@ -356,19 +363,24 @@ Automate this with a controller or a cron job:
 # Resolve the current IP of the external service
 CURRENT_IP=$(dig +short mydb.internal.example.com | head -1)
 
-# Update the Endpoints
+# Update the EndpointSlice
 kubectl apply -f - <<EOF
-apiVersion: v1
-kind: Endpoints
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
 metadata:
-  name: production-db
+  name: production-db-1
   namespace: my-app
-subsets:
+  labels:
+    kubernetes.io/service-name: production-db
+    endpointslice.kubernetes.io/managed-by: manual
+addressType: IPv4
+ports:
+- name: tcp-postgres
+  protocol: TCP
+  port: 5432
+endpoints:
 - addresses:
-  - ip: $CURRENT_IP
-  ports:
-  - name: tcp-postgres
-    port: 5432
+  - "$CURRENT_IP"
 EOF
 ```
 
@@ -394,4 +406,4 @@ sum(rate(istio_tcp_sent_bytes_total{
 
 ## Summary
 
-Services without selectors are a straightforward way to bring external endpoints into the Kubernetes and Istio ecosystem. Manually define Endpoints (or EndpointSlices) to point at external IPs, then apply Istio traffic policies, TLS origination, and monitoring like you would for any other service. Keep endpoints up to date either manually or with automation. For more advanced use cases, consider using ServiceEntry instead, which gives you additional Istio-specific configuration options.
+Services without selectors are a straightforward way to bring external endpoints into the Kubernetes and Istio ecosystem. Manually define EndpointSlices to point at external IPs, then apply Istio traffic policies, TLS origination, and monitoring like you would for any other service. Keep endpoints up to date either manually or with automation. For more advanced use cases, consider using ServiceEntry instead, which gives you additional Istio-specific configuration options.
