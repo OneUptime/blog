@@ -36,11 +36,11 @@ OCI artifacts solve these problems by treating Kustomize bases like any other co
 
 ## The Flux OCI Approach
 
-Kustomize does not natively support OCI artifacts yet, but the Flux project created the `flux push artifact` and `flux pull artifact` commands that work with any OCI registry. Since ArgoCD supports OCI repositories, you can use this approach to share Kustomize bases.
+Kustomize does not natively support OCI artifacts yet, but the Flux project created the `flux push artifact` and `flux pull artifact` commands that work with any OCI registry. ArgoCD supports OCI repositories, but Flux artifacts use the Flux layer media type, so ArgoCD must be configured to accept that media type before it can consume artifacts pushed with `flux push artifact`.
 
 ### Install Flux CLI
 
-You only need the Flux CLI for pushing. ArgoCD handles pulling.
+You only need the Flux CLI for pushing. ArgoCD handles pulling after its repo-server is configured to accept the Flux OCI layer media type.
 
 ```bash
 # Install Flux CLI
@@ -82,16 +82,18 @@ Push it as an OCI artifact:
 
 ```bash
 # Login to your registry
-flux login ghcr.io -u USERNAME --password $GITHUB_TOKEN
+echo "$GITHUB_TOKEN" | docker login ghcr.io -u USERNAME --password-stdin
 
 # Push the Kustomize base as an OCI artifact
 flux push artifact oci://ghcr.io/my-org/k8s-bases/nginx-base:v1.0.0 \
   --path=./nginx-base \
   --source="$(git config --get remote.origin.url)" \
-  --revision="$(git rev-parse HEAD)"
+  --revision="$(git branch --show-current)@sha1:$(git rev-parse HEAD)"
 ```
 
 The `--source` and `--revision` flags embed provenance metadata in the artifact, making it traceable back to the source commit.
+
+Because Flux stores the content layer as `application/vnd.cncf.flux.content.v1.tar+gzip`, add that media type to the `ARGOCD_REPO_SERVER_OCI_LAYER_MEDIA_TYPES` environment variable on the ArgoCD repo-server before using these artifacts as native OCI sources.
 
 ### Tag Management
 
@@ -100,7 +102,7 @@ The `--source` and `--revision` flags embed provenance metadata in the artifact,
 flux push artifact oci://ghcr.io/my-org/k8s-bases/nginx-base:v1.1.0 \
   --path=./nginx-base \
   --source="$(git config --get remote.origin.url)" \
-  --revision="$(git rev-parse HEAD)"
+  --revision="$(git branch --show-current)@sha1:$(git rev-parse HEAD)"
 
 # Add a floating tag for the latest stable
 flux tag artifact oci://ghcr.io/my-org/k8s-bases/nginx-base:v1.1.0 \
@@ -121,10 +123,9 @@ brew install oras
 # Login
 oras login ghcr.io -u USERNAME --password $GITHUB_TOKEN
 
-# Push Kustomize base directory
+# Push Kustomize base directory with ArgoCD's default OCI layer media type
 oras push ghcr.io/my-org/k8s-bases/nginx-base:v1.0.0 \
-  --artifact-type application/vnd.cncf.kustomize.layer.v1 \
-  ./nginx-base/:application/vnd.cncf.kustomize.content.v1.tar+gzip
+  ./nginx-base/
 ```
 
 ## Automating Pushes with CI/CD
@@ -138,8 +139,6 @@ on:
   push:
     tags:
       - 'v*'
-    paths:
-      - 'bases/**'
 
 jobs:
   publish:
@@ -160,7 +159,7 @@ jobs:
       - name: Login to GHCR
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | \
-            flux login ghcr.io -u ${{ github.actor }} --password-stdin
+            docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
       - name: Push Kustomize base
         run: |
@@ -168,8 +167,8 @@ jobs:
           flux push artifact \
             oci://ghcr.io/${{ github.repository_owner }}/k8s-bases/${{ matrix.base }}:${VERSION} \
             --path=./bases/${{ matrix.base }} \
-            --source="${{ github.repositoryUrl }}" \
-            --revision="${{ github.sha }}"
+            --source="${{ github.server_url }}/${{ github.repository }}" \
+            --revision="${GITHUB_REF_NAME}@sha1:${{ github.sha }}"
 ```
 
 ## Consuming OCI Kustomize Bases in ArgoCD
@@ -189,8 +188,9 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: ghcr.io/my-org/k8s-bases/nginx-base
+    repoURL: oci://ghcr.io/my-org/k8s-bases/nginx-base
     targetRevision: v1.0.0
+    path: .
     # ArgoCD treats OCI artifacts as directories
     # and runs kustomize build on them
   destination:
@@ -206,7 +206,7 @@ spec:
 
 ### Approach 2: Multi-Source with OCI Base and Git Overlays
 
-The more powerful pattern combines an OCI-hosted base with Git-hosted overlays. Your base stays versioned in the registry, and environment-specific customizations live in Git:
+ArgoCD can combine multiple sources into one application by generating each source separately and reconciling the combined result. Your base stays versioned in the registry, and environment-specific resources live in Git:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -218,22 +218,19 @@ spec:
   project: default
   sources:
     # OCI base
-    - repoURL: ghcr.io/my-org/k8s-bases/nginx-base
+    - repoURL: oci://ghcr.io/my-org/k8s-bases/nginx-base
       targetRevision: v1.0.0
-      ref: base
+      path: .
     # Git overlay
     - repoURL: https://github.com/my-org/k8s-environments.git
       targetRevision: main
       path: overlays/production/nginx
-      kustomize:
-        # Reference the OCI base via $base
-        # This requires kustomize.yaml in the overlay to reference $base
   destination:
     server: https://kubernetes.default.svc
     namespace: nginx-production
 ```
 
-The overlay kustomization.yaml would reference the base:
+The overlay kustomization.yaml would contain only the environment-specific resources and overrides that should be rendered from Git:
 
 ```yaml
 # overlays/production/nginx/kustomization.yaml
@@ -241,7 +238,7 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
-  - $base
+  - namespace.yaml
 
 patches:
   - target:
@@ -256,6 +253,8 @@ images:
   - name: nginx
     newTag: 1.25-alpine
 ```
+
+If you need the Git overlay to patch resources from the OCI base in a single Kustomize build, package the overlay together with the base or use a config management plugin. ArgoCD's `$ref` source variables are for Helm value files, not Kustomize `resources`.
 
 ### Approach 3: Config Management Plugin
 
@@ -279,9 +278,12 @@ data:
         command: [sh, -c]
         args:
           - |
-            # Pull OCI bases referenced in kustomization.yaml
-            if grep -q "oci://" kustomization.yaml; then
-              flux pull artifact $(grep "oci://" kustomization.yaml | tr -d ' -') --output ./bases/
+            # Pull OCI bases listed as: <oci-url> <local-output-path>
+            if [ -f oci-bases.txt ]; then
+              while read -r url output; do
+                [ -z "$url" ] && continue
+                flux pull artifact "$url" --output "$output"
+              done < oci-bases.txt
             fi
       generate:
         command: [sh, -c]
@@ -303,9 +305,8 @@ metadata:
     argocd.argoproj.io/secret-type: repository
 type: Opaque
 stringData:
-  type: helm
-  url: ghcr.io
-  enableOCI: "true"
+  type: oci
+  url: oci://ghcr.io/my-org/k8s-bases/nginx-base
   username: "argocd-service"
   password: "<registry-token>"
 ```
@@ -321,14 +322,14 @@ v1.2.0 - Updated default resource limits
 v2.0.0 - Breaking change: renamed fields, restructured overlays
 ```
 
-In your ArgoCD applications, pin to minor versions for stability:
+In your ArgoCD applications, pin to exact versions for stability:
 
 ```yaml
 # Good: pinned to exact version
 targetRevision: v1.2.0
 
-# Acceptable: track latest patch in a minor
-targetRevision: "v1.2.*"
+# Avoid: floating tags make rollbacks and audits harder
+targetRevision: latest
 ```
 
 ## Troubleshooting
@@ -359,4 +360,4 @@ flux list artifacts oci://ghcr.io/my-org/k8s-bases/nginx-base
 
 ## Summary
 
-Packaging Kustomize bases as OCI artifacts gives you proper versioning, fast distribution, and simplified authentication for shared infrastructure components. The Flux CLI is the easiest tool for pushing Kustomize content to OCI registries, and ArgoCD can consume these artifacts directly or as part of multi-source applications. This pattern is especially powerful for platform teams that maintain shared bases consumed by multiple product teams.
+Packaging Kustomize bases as OCI artifacts gives you proper versioning, fast distribution, and simplified authentication for shared infrastructure components. The Flux CLI is a convenient tool for pushing Kustomize content to OCI registries when ArgoCD is configured for the Flux layer media type, and ORAS can push artifacts using ArgoCD's default OCI layer media type. This pattern is especially powerful for platform teams that maintain shared bases consumed by multiple product teams.

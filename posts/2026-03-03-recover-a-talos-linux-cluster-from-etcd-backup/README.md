@@ -74,7 +74,7 @@ talosctl reset --nodes <cp-node-3> \
   --reboot
 ```
 
-Wait for all nodes to reboot and for the etcd service to enter the "Preparing" state — that means the node is ready to be bootstrapped:
+Wait for all nodes to reboot and for the etcd service to enter the "Preparing" state - that means the node is ready to be bootstrapped:
 
 ```bash
 # Confirm etcd is "Preparing" on the first node

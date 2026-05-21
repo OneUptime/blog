@@ -91,7 +91,7 @@ For legacy BIOS PXE boot, you will use `lpxelinux` (the HTTP-capable variant of 
 # Install syslinux for BIOS PXE support
 sudo apt-get install syslinux pxelinux
 
-# Copy the necessary boot files (use lpxelinux.0 — it supports HTTP)
+# Copy the necessary boot files (use lpxelinux.0 - it supports HTTP)
 cp /usr/lib/PXELINUX/lpxelinux.0 /srv/tftp/
 cp /usr/lib/syslinux/modules/bios/ldlinux.c32 /srv/tftp/
 

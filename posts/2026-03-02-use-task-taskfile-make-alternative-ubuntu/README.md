@@ -200,7 +200,7 @@ tasks:
 
 ## Running Tasks in Parallel
 
-In Task, commands in `cmds` always run sequentially. To run things in parallel, use `deps` — dependencies always execute concurrently.
+In Task, commands in `cmds` always run sequentially. To run things in parallel, use `deps` - dependencies always execute concurrently.
 
 ```yaml
 version: '3'

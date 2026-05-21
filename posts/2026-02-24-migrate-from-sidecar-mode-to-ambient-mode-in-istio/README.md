@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Ambient Mode, Sidecar, Migration, Kubernetes
 
-Description: A step-by-step migration guide for moving Istio workloads from sidecar mode to ambient mode with zero-downtime strategies and rollback plans.
+Description: A step-by-step migration guide for moving Istio workloads from sidecar mode to ambient mode with low-risk strategies and rollback plans.
 
 ---
 
 If you are running Istio in sidecar mode and want to move to ambient mode, the good news is that you do not have to do it all at once. Istio supports running both modes simultaneously in the same cluster. You can migrate namespace by namespace, validate each step, and roll back if something goes wrong.
 
-This guide walks through a practical migration strategy that minimizes risk and avoids downtime.
+This guide walks through a practical migration strategy that minimizes risk and avoids downtime for L4-only configurations. If you use L7 policies or routing, plan for a maintenance window because there is currently a brief enforcement gap during migration.
 
 ## Before You Start
 
@@ -31,17 +31,16 @@ Your existing sidecar installation needs the additional ambient components - ztu
 Using istioctl:
 
 ```bash
-istioctl install --set profile=ambient \
-  --set components.ingressGateways[0].name=istio-ingressgateway \
-  --set components.ingressGateways[0].enabled=true \
-  -y
+istioctl upgrade --set profile=ambient
 ```
 
 Or using Helm (if that is how you installed):
 
 ```bash
-helm install istio-cni istio/cni -n istio-system --wait
-helm install ztunnel istio/ztunnel -n istio-system --wait
+helm upgrade istio-base istio/base -n istio-system
+helm upgrade istiod istio/istiod -n istio-system --set profile=ambient
+helm upgrade --install istio-cni istio/cni -n istio-system --set profile=ambient --wait
+helm upgrade --install ztunnel istio/ztunnel -n istio-system --wait
 ```
 
 Verify the new components are running alongside your existing installation:
@@ -50,7 +49,14 @@ Verify the new components are running alongside your existing installation:
 kubectl get pods -n istio-system
 ```
 
-You should see istiod (existing), the sidecar injector webhook (existing), ztunnel (new), and istio-cni (new).
+You should see istiod (existing), istio-cni (updated or new), and ztunnel (new). The sidecar injection webhook is managed by istiod rather than running as a separate pod.
+
+Restart sidecar-injected workloads before migrating any namespace so sidecars pick up the ambient profile's HBONE support:
+
+```bash
+kubectl rollout restart deployment -n sidecar-namespace
+kubectl rollout status deployment -n sidecar-namespace
+```
 
 ## Migration Strategy: Namespace by Namespace
 
@@ -75,14 +81,14 @@ kubectl get virtualservice -n target-namespace -o yaml > virtualservice-backup.y
 kubectl get destinationrule -n target-namespace -o yaml > destinationrule-backup.yaml
 ```
 
-Review your AuthorizationPolicies. Policies using `selector` need to be updated to use `targetRefs` for ambient mode:
+Review your AuthorizationPolicies. L4 policies that only match source principals, namespaces, IP ranges, or destination ports can keep using `selector` and are enforced by ztunnel. Policies with L7 rules, such as HTTP methods, paths, headers, or `CUSTOM`/`AUDIT` actions, need to be updated to use `targetRefs` and enforced by a waypoint:
 
 Before (sidecar style):
 ```yaml
 apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
-  name: allow-frontend
+  name: allow-frontend-get
   namespace: target-namespace
 spec:
   selector:
@@ -94,6 +100,9 @@ spec:
         - source:
             principals:
               - "cluster.local/ns/target-namespace/sa/frontend"
+      to:
+        - operation:
+            methods: ["GET"]
 ```
 
 After (ambient style):
@@ -101,7 +110,7 @@ After (ambient style):
 apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
-  name: allow-frontend
+  name: allow-frontend-get
   namespace: target-namespace
 spec:
   targetRefs:
@@ -114,13 +123,16 @@ spec:
         - source:
             principals:
               - "cluster.local/ns/target-namespace/sa/frontend"
+      to:
+        - operation:
+            methods: ["GET"]
 ```
 
-The `targetRefs` approach works with both sidecar and ambient mode, so you can update your policies before the migration.
+Keep the old selector-based L7 policy active until the pod restart, but delete it immediately after the pods come up without sidecars. Leaving selector-based L7 policies active after sidecars are removed can cause ztunnel to enforce the remaining L4 portion in a way that blocks traffic.
 
 ### Phase 3: Switch PeerAuthentication to PERMISSIVE
 
-If you have STRICT mTLS, temporarily switch to PERMISSIVE. This allows both mTLS (from sidecars) and HBONE (from ztunnel) during the transition:
+STRICT mTLS is not a blocker for ambient mode, but temporarily switching namespace policies to PERMISSIVE can make the transition easier if you still have non-mesh clients or need to allow plaintext while validating:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -135,14 +147,17 @@ spec:
 
 ### Phase 4: Disable Sidecar Injection
 
-Remove the sidecar injection label and add the ambient mode label:
+Add the ambient mode label first, verify enrollment, and then remove the sidecar injection label:
 
 ```bash
-# Remove sidecar injection
-kubectl label namespace target-namespace istio-injection-
-
 # Add ambient mode
 kubectl label namespace target-namespace istio.io/dataplane-mode=ambient
+
+# Verify enrollment
+istioctl ztunnel-config workloads -n istio-system | grep target-namespace
+
+# Remove sidecar injection
+kubectl label namespace target-namespace istio-injection-
 ```
 
 At this point, existing pods still have their sidecars. New pods will not get sidecars (because injection is disabled) and will be part of the ambient mesh instead.
@@ -168,7 +183,7 @@ As new pods come up without sidecars, they are immediately enrolled in the ambie
 Check that all workloads are enrolled:
 
 ```bash
-istioctl ztunnel-config workloads | grep target-namespace
+istioctl ztunnel-config workloads -n istio-system | grep target-namespace
 ```
 
 Test connectivity:
@@ -195,11 +210,14 @@ kubectl exec deploy/unauthorized-service -n target-namespace -- curl -s -o /dev/
 
 ### Phase 7: Deploy Waypoint Proxies (if needed)
 
-If the namespace had VirtualService routing rules, retries, or L7 policies, deploy a waypoint:
+If the namespace had L7 policies or routing rules, do this before Phase 5: deploy and activate a waypoint before restarting workloads without sidecars:
 
 ```bash
-istioctl waypoint apply -n target-namespace --enroll-namespace
+istioctl waypoint apply -n target-namespace
+kubectl label namespace target-namespace istio.io/use-waypoint=waypoint
 ```
+
+For stable ambient L7 traffic management, migrate `VirtualService` routing to Gateway API `HTTPRoute`. `VirtualService` support with waypoints is alpha.
 
 Verify routing rules work:
 
@@ -209,7 +227,7 @@ kubectl exec deploy/frontend -n target-namespace -- curl -s http://backend:8080/
 
 ### Phase 8: Switch Back to STRICT mTLS
 
-Once everything is validated:
+Once everything is validated, you can switch back to STRICT mTLS if you want to reject traffic that bypasses the mesh. Ambient mode already uses mTLS between mesh workloads through ztunnel:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -228,12 +246,12 @@ Repeat phases 1-8 for each namespace. Start with less critical namespaces and wo
 
 ## Handling Cross-Namespace Communication
 
-During migration, some namespaces use sidecars and others use ambient. Cross-mode communication works automatically:
+During migration, some namespaces use sidecars and others use ambient. Cross-mode communication works after sidecars have been restarted with the ambient profile's HBONE support:
 
-- Sidecar-to-ambient: The sidecar sends mTLS traffic, and ztunnel accepts it
-- Ambient-to-sidecar: ztunnel sends HBONE/mTLS traffic, and the sidecar accepts it
+- Sidecar-to-ambient: The sidecar tunnels traffic to the destination ztunnel using HBONE
+- Ambient-to-sidecar: ambient workloads and sidecar workloads interoperate within the same mesh
 
-As long as PeerAuthentication is PERMISSIVE in both namespaces during the transition, traffic flows. Once both sides are migrated, you can switch to STRICT.
+If the ambient destination uses a waypoint, traffic from sidecar-mode workloads bypasses that waypoint during an incremental migration. L7 policies attached to the waypoint are not enforced for those sidecar sources until they are also migrated.
 
 ## Rolling Back
 
@@ -272,12 +290,13 @@ Some behavioral differences between sidecar and ambient mode to be aware of:
 After all namespaces are migrated, you can clean up sidecar-related components:
 
 ```bash
-# Remove sidecar injector webhook (only after ALL namespaces are migrated)
-kubectl delete mutatingwebhookconfiguration istio-sidecar-injector
+# Remove sidecar injection labels from namespaces that no longer need them
+kubectl label namespace target-namespace istio-injection-
 
-# Optionally, remove the injector deployment if it is separate
+# If you used revision-based injection, remove the revision label instead
+kubectl label namespace target-namespace istio.io/rev-
 ```
 
-Be very careful with this step. Only do it after you have confirmed that no namespace still uses sidecar injection.
+Be very careful with this step. Only remove injection labels after you have confirmed that no namespace still uses sidecar injection. Do not delete the sidecar injector webhook from the active Istio control plane; it is managed by istiod and sidecars remain a supported Istio data plane mode.
 
 The migration from sidecar to ambient is a low-risk operation when done gradually. The ability to run both modes in parallel means you always have a fallback. Take it one namespace at a time, validate thoroughly, and you will end up with a lighter, simpler mesh.

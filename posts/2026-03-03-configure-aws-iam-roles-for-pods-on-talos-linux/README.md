@@ -63,7 +63,7 @@ aws s3api put-public-access-block \
 
 # Attach a bucket policy granting anonymous read access to the discovery objects.
 # Since April 2023, S3 buckets default to "Bucket owner enforced" object ownership,
-# which disables ACLs entirely — so --acl public-read is silently ignored and a
+# which disables ACLs entirely - so --acl public-read is silently ignored and a
 # bucket policy is the supported way to make objects publicly readable.
 cat > bucket-policy.json << 'POL'
 {
@@ -153,7 +153,7 @@ aws iam create-open-id-connect-provider \
   --thumbprint-list $THUMBPRINT
 ```
 
-Note: since July 2023, IAM automatically retrieves and validates the OIDC IdP's root CA against AWS's trusted CA library for well-known providers (including S3-hosted JWKS endpoints), so the thumbprint you supply is effectively cosmetic in this scenario — but the CLI still requires the parameter.
+Note: since July 2023, IAM automatically retrieves and validates the OIDC IdP's root CA against AWS's trusted CA library for well-known providers (including S3-hosted JWKS endpoints), so the thumbprint you supply is effectively cosmetic in this scenario - but the CLI still requires the parameter.
 
 ## Creating an IAM Role for a Service Account
 

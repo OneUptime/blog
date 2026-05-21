@@ -8,7 +8,7 @@ Description: Configure LoadBalancer type services to work with Istio including c
 
 ---
 
-LoadBalancer services are the standard way to expose Kubernetes services in cloud environments. When you create a Service with `type: LoadBalancer`, the cloud provider provisions an external load balancer (like an AWS NLB, GCP load balancer, or Azure Load Balancer) and routes traffic to your pods. When Istio is running, you need to think about how LoadBalancer services interact with the mesh, especially around source IPs, TLS, and whether traffic should go through the ingress gateway.
+LoadBalancer services are the standard way to expose Kubernetes services in cloud environments. When you create a Service with `type: LoadBalancer`, the cloud provider provisions an external load balancer (like an AWS NLB, GCP load balancer, or Azure Load Balancer) and routes traffic to your service through nodes or pod IPs, depending on the provider and load balancer controller. When Istio is running, you need to think about how LoadBalancer services interact with the mesh, especially around source IPs, TLS, and whether traffic should go through the ingress gateway.
 
 ## LoadBalancer Basics in an Istio Mesh
 
@@ -126,9 +126,10 @@ metadata:
   name: istio-ingressgateway
   namespace: istio-system
   annotations:
-    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    service.beta.kubernetes.io/aws-load-balancer-type: "external"
+    service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: "instance"
     service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
-    service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
+    service.beta.kubernetes.io/aws-load-balancer-attributes: "load_balancing.cross_zone.enabled=true"
 spec:
   type: LoadBalancer
   selector:
@@ -157,40 +158,28 @@ metadata:
 
 ## Preserving Source IP
 
-Cloud load balancers can either preserve or mask the client's source IP. For Istio authorization policies based on source IP, you need to preserve it.
+Cloud load balancers can either preserve or mask the client's source IP. For Istio authorization policies based on client IP, use `ipBlocks` with packet source addresses or `remoteIpBlocks` with addresses derived from `X-Forwarded-For` or PROXY protocol.
 
 On AWS NLB with proxy protocol:
 
 ```yaml
 metadata:
   annotations:
-    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    service.beta.kubernetes.io/aws-load-balancer-type: "external"
+    service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: "instance"
     service.beta.kubernetes.io/aws-load-balancer-proxy-protocol: "*"
 ```
 
 Then configure the ingress gateway to understand proxy protocol:
 
 ```yaml
-apiVersion: networking.istio.io/v1alpha3
-kind: EnvoyFilter
-metadata:
-  name: proxy-protocol
-  namespace: istio-system
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
 spec:
-  workloadSelector:
-    labels:
-      istio: ingressgateway
-  configPatches:
-  - applyTo: LISTENER
-    match:
-      context: GATEWAY
-    patch:
-      operation: MERGE
-      value:
-        listener_filters:
-        - name: envoy.filters.listener.proxy_protocol
-          typed_config:
-            "@type": type.googleapis.com/envoy.extensions.filters.listener.proxy_protocol.v3.ProxyProtocol
+  meshConfig:
+    defaultConfig:
+      gatewayTopology:
+        proxyProtocol: {}
 ```
 
 An alternative (and simpler) approach is using `externalTrafficPolicy: Local`:
@@ -205,35 +194,19 @@ This preserves source IPs without proxy protocol, but only routes traffic to nod
 
 ## Configuring X-Forwarded-For
 
-When the cloud load balancer sits in front of Istio, the client IP ends up in the `X-Forwarded-For` header. Configure Istio to trust this header:
+When an HTTP-aware cloud load balancer or reverse proxy sits in front of Istio and appends to the `X-Forwarded-For` header, configure Istio to trust the expected number of proxy hops:
 
 ```yaml
-apiVersion: networking.istio.io/v1alpha3
-kind: EnvoyFilter
-metadata:
-  name: xff-trust
-  namespace: istio-system
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
 spec:
-  workloadSelector:
-    labels:
-      istio: ingressgateway
-  configPatches:
-  - applyTo: NETWORK_FILTER
-    match:
-      context: GATEWAY
-      listener:
-        filterChain:
-          filter:
-            name: envoy.filters.network.http_connection_manager
-    patch:
-      operation: MERGE
-      value:
-        typed_config:
-          "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
-          xff_num_trusted_hops: 1
+  meshConfig:
+    defaultConfig:
+      gatewayTopology:
+        numTrustedProxies: 1
 ```
 
-The `xff_num_trusted_hops: 1` tells Envoy that there is one trusted proxy (the cloud load balancer) in front of it. Envoy will use the second-to-last IP in the `X-Forwarded-For` chain as the real client IP.
+The `numTrustedProxies: 1` tells Istio that there is one trusted proxy (the cloud load balancer) in front of it. Envoy will use the trusted address from the `X-Forwarded-For` chain to populate `X-Envoy-External-Address`.
 
 ## Multiple LoadBalancer Services
 
@@ -260,7 +233,7 @@ spec:
         service:
           type: LoadBalancer
           annotations:
-            service.beta.kubernetes.io/aws-load-balancer-internal: "true"
+            service.beta.kubernetes.io/aws-load-balancer-scheme: "internal"
 ```
 
 Route traffic to the appropriate gateway:
@@ -324,6 +297,7 @@ For AWS NLB:
 ```yaml
 metadata:
   annotations:
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-protocol: "HTTP"
     service.beta.kubernetes.io/aws-load-balancer-healthcheck-path: "/healthz/ready"
     service.beta.kubernetes.io/aws-load-balancer-healthcheck-port: "15021"
 ```
@@ -355,4 +329,4 @@ istioctl proxy-config listener deploy/istio-ingressgateway -n istio-system
 
 ## Summary
 
-LoadBalancer services work well with Istio, but the best practice is to use a LoadBalancer on the Istio ingress gateway rather than on individual application services. This gives you centralized traffic management, TLS termination, and observability at the entry point, while also saving on cloud load balancer costs. Configure source IP preservation using either proxy protocol or `externalTrafficPolicy: Local`, set up the right cloud provider annotations, and use health check ports to keep the load balancer routing correctly.
+LoadBalancer services work well with Istio, but the best practice is to use a LoadBalancer on the Istio ingress gateway rather than on individual application services. This gives you centralized traffic management, TLS termination, and observability at the entry point, while also saving on cloud load balancer costs. Configure source IP preservation using either proxy protocol, trusted proxy headers, or `externalTrafficPolicy: Local`, set up the right cloud provider annotations, and use health check ports to keep the load balancer routing correctly.

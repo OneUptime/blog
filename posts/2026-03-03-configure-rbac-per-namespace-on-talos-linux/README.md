@@ -111,7 +111,7 @@ metadata:
   namespace: team-backend
 rules:
   # Read access to most namespace resources.
-  # Note: RBAC is purely additive — there are no deny rules. To exclude
+  # Note: RBAC is purely additive - there are no deny rules. To exclude
   # secrets from read access, enumerate the allowed resources explicitly
   # rather than using "*".
   - apiGroups: [""]

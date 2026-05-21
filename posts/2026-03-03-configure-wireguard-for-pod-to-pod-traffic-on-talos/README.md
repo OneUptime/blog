@@ -201,7 +201,7 @@ Once WireGuard is encrypting your pod traffic, you will want to monitor the tunn
 
 ```bash
 # Inspect the WireGuard link status (peer state lives in COSI resources,
-# not in /proc — WireGuard exposes its state via generic netlink)
+# not in /proc - WireGuard exposes its state via generic netlink)
 talosctl -n 192.168.1.1 get links wg0 -o yaml
 
 # The output shows for each peer:

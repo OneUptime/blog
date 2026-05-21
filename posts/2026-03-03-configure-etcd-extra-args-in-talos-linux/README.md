@@ -96,7 +96,7 @@ Run defragmentation during low-traffic periods because it briefly pauses etcd op
 
 ## Security Configuration
 
-Talos manages most of etcd's TLS configuration itself and blocks several security-related flags from `extraArgs` — including `client-cert-auth`, `peer-client-cert-auth`, `tls-min-version`, and the cert/key/CA file paths. Mutual TLS between etcd members and client certificate authentication are already enabled by default, so you do not (and cannot) set those flags here.
+Talos manages most of etcd's TLS configuration itself and blocks several security-related flags from `extraArgs` - including `client-cert-auth`, `peer-client-cert-auth`, `tls-min-version`, and the cert/key/CA file paths. Mutual TLS between etcd members and client certificate authentication are already enabled by default, so you do not (and cannot) set those flags here.
 
 One TLS-related knob you can still tune through `extraArgs` is the cipher suite allowlist:
 

@@ -44,7 +44,7 @@ dmesg
 dmesg -t
 # Output: Kernel version 6.8.0...
 
-# Continuous output (like tail -f) — prints backlog then waits for new
+# Continuous output (like tail -f) - prints backlog then waits for new
 dmesg -w
 # or
 dmesg --follow

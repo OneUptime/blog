@@ -24,7 +24,7 @@ In Kubernetes, you apply AppArmor profiles to containers through annotations or 
 
 ## AppArmor on Talos Linux
 
-Talos Linux ships with AppArmor compiled into its kernel, but since Talos v1.10 the default Linux Security Module is **SELinux** (enabled in permissive mode). AppArmor and SELinux cannot run simultaneously, so to use AppArmor you have to switch the active LSM via kernel arguments (for example `lsm=lockdown,capability,yama,apparmor,bpf apparmor=1`). On Talos v1.10 and later, kernel arguments are baked into the Unified Kernel Image (UKI), so `.machine.install.extraKernelArgs` is ignored — you must rebuild the UKI through the Image Factory to change the LSM selection.
+Talos Linux ships with AppArmor compiled into its kernel, but since Talos v1.10 the default Linux Security Module is **SELinux** (enabled in permissive mode). AppArmor and SELinux cannot run simultaneously, so to use AppArmor you have to switch the active LSM via kernel arguments (for example `lsm=lockdown,capability,yama,apparmor,bpf apparmor=1`). On Talos v1.10 and later, kernel arguments are baked into the Unified Kernel Image (UKI), so `.machine.install.extraKernelArgs` is ignored - you must rebuild the UKI through the Image Factory to change the LSM selection.
 
 Talos is also immutable, so you cannot install AppArmor profiles the traditional way using `apparmor_parser` on the host. Instead, profiles need to be loaded through a privileged DaemonSet or a Talos system extension.
 

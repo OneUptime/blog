@@ -161,7 +161,7 @@ Return values available:
 
 ## Using Legacy .pkla Files
 
-Older documentation often references `.pkla` files. They are not the recommended approach for new configurations. On Ubuntu 24.04 and later (polkit 124+), the legacy backend has been split out into a separate package that is not installed by default — install it first if you need `.pkla` support:
+Older documentation often references `.pkla` files. They are not the recommended approach for new configurations. On Ubuntu 24.04 and later (polkit 124+), the legacy backend has been split out into a separate package that is not installed by default - install it first if you need `.pkla` support:
 
 ```bash
 sudo apt install polkitd-pkla

@@ -57,7 +57,7 @@ cluster:
       listen-metrics-urls: "http://0.0.0.0:2381"
 ```
 
-The `advertisedSubnets` setting is the most important one. It tells Talos which network to use when calculating the advertise address. If your node has multiple interfaces (for example, one for management and one for data), this setting ensures etcd advertises the correct IP. Talos derives the actual `listen-client-urls`, `listen-peer-urls`, `advertise-client-urls`, and `initial-advertise-peer-urls` from `listenSubnets` and `advertisedSubnets` — these flags are on a denylist and cannot be overridden through `extraArgs`.
+The `advertisedSubnets` setting is the most important one. It tells Talos which network to use when calculating the advertise address. If your node has multiple interfaces (for example, one for management and one for data), this setting ensures etcd advertises the correct IP. Talos derives the actual `listen-client-urls`, `listen-peer-urls`, `advertise-client-urls`, and `initial-advertise-peer-urls` from `listenSubnets` and `advertisedSubnets` - these flags are on a denylist and cannot be overridden through `extraArgs`.
 
 Apply the configuration:
 
@@ -120,7 +120,7 @@ This configuration ensures that:
 
 ## Configuring for High Availability
 
-In a 3-node or 5-node etcd cluster, every member needs to know the initial addresses of all other members. Talos handles this entirely through its own cluster discovery and bootstrap mechanism — the `initial-cluster`, `initial-cluster-state`, and `initial-cluster-token` etcd flags are on the `extraArgs` denylist and cannot be set from the machine configuration. The very first control plane node is promoted to bootstrap the etcd cluster via `talosctl bootstrap`, and every subsequent control plane joins as a learner using the discovery service.
+In a 3-node or 5-node etcd cluster, every member needs to know the initial addresses of all other members. Talos handles this entirely through its own cluster discovery and bootstrap mechanism - the `initial-cluster`, `initial-cluster-state`, and `initial-cluster-token` etcd flags are on the `extraArgs` denylist and cannot be set from the machine configuration. The very first control plane node is promoted to bootstrap the etcd cluster via `talosctl bootstrap`, and every subsequent control plane joins as a learner using the discovery service.
 
 What you can do for an HA cluster is make sure every control plane node has an `advertisedSubnets` value that resolves to a routable address on the shared cluster network:
 
@@ -191,7 +191,7 @@ cluster:
   etcd:
     advertisedSubnets:
       - 10.0.1.0/24
-    # Do NOT leave the defaults if you have public interfaces — listenSubnets
+    # Do NOT leave the defaults if you have public interfaces - listenSubnets
     # narrows the listen addresses to the chosen subnet.
     listenSubnets:
       - 10.0.1.0/24

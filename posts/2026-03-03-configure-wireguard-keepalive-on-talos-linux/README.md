@@ -194,7 +194,7 @@ machine:
 
 ## Monitoring Keepalive Status
 
-WireGuard does not expose a dedicated "last keepalive" counter — keepalives are transport data packets, not handshake messages, so they do not update the "latest handshake" timestamp shown by `wg show`. The cryptographic handshake is renegotiated separately, roughly every two minutes when traffic is flowing. What you can do on Talos is confirm the interface is configured and watch the link itself.
+WireGuard does not expose a dedicated "last keepalive" counter - keepalives are transport data packets, not handshake messages, so they do not update the "latest handshake" timestamp shown by `wg show`. The cryptographic handshake is renegotiated separately, roughly every two minutes when traffic is flowing. What you can do on Talos is confirm the interface is configured and watch the link itself.
 
 ```bash
 # Inspect the WireGuard link and its current state
@@ -204,7 +204,7 @@ talosctl -n 192.168.1.1 get links wg0 -o yaml
 talosctl -n 192.168.1.1 get links wg0 --watch
 ```
 
-If you need per-peer byte counters or a fresh handshake timestamp, run `wg show` from a peer that has the `wg(8)` userspace tool installed. From the Talos node's perspective, the most reliable signal that keepalive is doing its job is simply that traffic to the peer's allowed IPs continues to work after long idle periods. If connectivity drops after a minute or so of inactivity, the keepalive packets are not reaching the peer — typically because a firewall is blocking UDP, the endpoint is wrong, or the peer is offline.
+If you need per-peer byte counters or a fresh handshake timestamp, run `wg show` from a peer that has the `wg(8)` userspace tool installed. From the Talos node's perspective, the most reliable signal that keepalive is doing its job is simply that traffic to the peer's allowed IPs continues to work after long idle periods. If connectivity drops after a minute or so of inactivity, the keepalive packets are not reaching the peer - typically because a firewall is blocking UDP, the endpoint is wrong, or the peer is offline.
 
 ## Bandwidth Impact
 

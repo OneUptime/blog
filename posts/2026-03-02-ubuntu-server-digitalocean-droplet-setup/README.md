@@ -100,7 +100,7 @@ AllowUsers deploy
 Port 2222
 ```
 
-Restart SSH after making changes. On Ubuntu 22.10 and later (including 24.04), OpenSSH is socket-activated by default — `ssh.socket` holds the listener, and a systemd generator reads the `Port` from `sshd_config`. That means a port change requires reloading systemd and restarting the socket, not just the service:
+Restart SSH after making changes. On Ubuntu 22.10 and later (including 24.04), OpenSSH is socket-activated by default - `ssh.socket` holds the listener, and a systemd generator reads the `Port` from `sshd_config`. That means a port change requires reloading systemd and restarting the socket, not just the service:
 
 ```bash
 systemctl daemon-reload

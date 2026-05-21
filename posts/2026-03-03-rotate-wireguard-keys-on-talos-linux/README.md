@@ -191,7 +191,7 @@ done
 
 ## Pre-Shared Key Rotation
 
-WireGuard supports an optional pre-shared key (PSK) layered on top of the static keys, but as of Talos v1.7 the `DeviceWireguardPeer` machine config schema does not expose a `presharedKey` field — only `publicKey`, `endpoint`, `persistentKeepaliveInterval`, and `allowedIPs` are configurable through Talos's native WireGuard support. If you rely on PSKs, you'll need to manage WireGuard outside of Talos's machine config (for example, by running `wireguard-go` or a `wg-quick` container in a privileged `hostNetwork` pod with its own config secret).
+WireGuard supports an optional pre-shared key (PSK) layered on top of the static keys, but as of Talos v1.7 the `DeviceWireguardPeer` machine config schema does not expose a `presharedKey` field - only `publicKey`, `endpoint`, `persistentKeepaliveInterval`, and `allowedIPs` are configurable through Talos's native WireGuard support. If you rely on PSKs, you'll need to manage WireGuard outside of Talos's machine config (for example, by running `wireguard-go` or a `wg-quick` container in a privileged `hostNetwork` pod with its own config secret).
 
 The rotation principle is the same: generate the new PSK with `wg genpsk` and apply it to both peers in a relationship as close to simultaneously as possible. The tunnel will briefly drop while one side has the new PSK and the other still has the old one.
 

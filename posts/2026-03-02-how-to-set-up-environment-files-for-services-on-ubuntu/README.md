@@ -185,7 +185,7 @@ Environment files are better than embedding secrets in service files, but they s
 
 ### Using systemd Credentials (systemd 250+)
 
-For Ubuntu 22.10 and later (or any release with systemd 250 or newer — note that stock Ubuntu 22.04 LTS ships with systemd 249, so this is unavailable there), systemd credentials provide encrypted secret storage:
+For Ubuntu 22.10 and later (or any release with systemd 250 or newer - note that stock Ubuntu 22.04 LTS ships with systemd 249, so this is unavailable there), systemd credentials provide encrypted secret storage:
 
 ```bash
 # Set a credential value using systemd-creds

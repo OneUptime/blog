@@ -86,7 +86,7 @@ kubectl apply -f multus-daemonset-thick.yml
 kubectl get pods -n kube-system -l app=multus -o wide
 ```
 
-The upstream manifest pins a known-good Multus image (currently in the `v4.x` series) and includes the correct daemon command (`/usr/src/multus-cni/bin/multus-daemon`), an `install-multus-binary` init container that drops the Multus CNI binary into `/opt/cni/bin`, and the ConfigMap with the daemon settings — you do not need to assemble any of that yourself.
+The upstream manifest pins a known-good Multus image (currently in the `v4.x` series) and includes the correct daemon command (`/usr/src/multus-cni/bin/multus-daemon`), an `install-multus-binary` init container that drops the Multus CNI binary into `/opt/cni/bin`, and the ConfigMap with the daemon settings - you do not need to assemble any of that yourself.
 
 ## Step 3: Create Network Attachment Definitions
 

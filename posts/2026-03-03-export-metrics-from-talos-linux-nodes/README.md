@@ -32,7 +32,7 @@ talosctl -n 192.168.1.10 stats
 talosctl -n 192.168.1.10 dashboard
 ```
 
-These built-in views include basic system information like CPU usage, memory utilization, and per-container resource consumption. They provide a baseline level of monitoring without deploying anything into the cluster, but they are not a Prometheus scrape endpoint — for time-series collection, deploy the exporters described below.
+These built-in views include basic system information like CPU usage, memory utilization, and per-container resource consumption. They provide a baseline level of monitoring without deploying anything into the cluster, but they are not a Prometheus scrape endpoint - for time-series collection, deploy the exporters described below.
 
 ## Deploying Node Exporter
 

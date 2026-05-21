@@ -203,7 +203,7 @@ machine:
           size: 0                 # Use entire disk
 ```
 
-The most impactful isolation for cluster stability is putting etcd on its own fast device so that container image pulls and log writes do not interfere with etcd's critical fsync operations. Because `/var/lib/etcd` lives on EPHEMERAL and can't be remounted via `machine.disks`, the supported approach is to install Talos onto a dedicated fast disk (set `machine.install.disk` to the NVMe device), which places the EPHEMERAL partition — and therefore etcd's data directory — on that disk. Additional disks defined under `machine.disks` then host application data and Container Storage Interface (CSI) volumes such as Longhorn.
+The most impactful isolation for cluster stability is putting etcd on its own fast device so that container image pulls and log writes do not interfere with etcd's critical fsync operations. Because `/var/lib/etcd` lives on EPHEMERAL and can't be remounted via `machine.disks`, the supported approach is to install Talos onto a dedicated fast disk (set `machine.install.disk` to the NVMe device), which places the EPHEMERAL partition - and therefore etcd's data directory - on that disk. Additional disks defined under `machine.disks` then host application data and Container Storage Interface (CSI) volumes such as Longhorn.
 
 ## Filesystem Mount Options
 

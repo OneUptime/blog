@@ -172,7 +172,7 @@ machine:
 
 Cgroup v2 provides better IO isolation through a unified IO controller (`io.weight`, `io.max`, and the IO cost model). Kubernetes does not currently expose first-class IO weight or IOPS limits on pod specs, so per-pod IO tuning has to be handled at the container runtime layer.
 
-With containerd, IO priorities can be applied through NRI plugins or runtime-class configuration. With CRI-O, a `BlockIOClass` can be assigned per pod. Refer to your runtime's documentation for the exact mechanism — there is no portable Kubernetes-level annotation for setting blkio weight.
+With containerd, IO priorities can be applied through NRI plugins or runtime-class configuration. With CRI-O, a `BlockIOClass` can be assigned per pod. Refer to your runtime's documentation for the exact mechanism - there is no portable Kubernetes-level annotation for setting blkio weight.
 
 ## Enabling Pressure Stall Information (PSI)
 

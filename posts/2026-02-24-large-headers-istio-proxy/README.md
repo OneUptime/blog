@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Envoy, Header, Proxy Configuration, Troubleshooting
 
-Description: Fix issues with large HTTP headers being rejected by Istio's Envoy proxy by configuring header size limits, buffer sizes, and connection manager settings.
+Description: Fix issues with large HTTP headers being rejected by Istio's Envoy proxy by configuring header size limits and connection manager settings.
 
 ---
 
@@ -18,7 +18,7 @@ Envoy has a few settings that affect how large headers can be:
 
 - **max_request_headers_kb**: Maximum size of request headers. Default is 60 KB.
 - **max_headers_count**: Maximum number of headers. Default is 100.
-- **initial connection window size**: Affects HTTP/2 header handling.
+- **HTTP/2 codec limits**: Affect the maximum size of individual HTTP/2 header fields.
 
 For most APIs, 60 KB of headers is plenty. But if you are passing large JWT tokens, session cookies, or forwarding chains that add headers at each hop, you can hit the limit fast.
 
@@ -36,15 +36,17 @@ You might see entries like:
 
 ```text
 [2026-02-24T10:15:30.123Z] "GET /api/data HTTP/1.1" 431 - via_upstream - "-" 0 0 0 - "10.0.1.5" "Mozilla/5.0" "abc-123"
+[2026-02-24T10:15:30.123Z] "GET /api/data HTTP/1.1" 431 - http1.headers_too_large - "-" 0 0 0 - "10.0.1.5" "Mozilla/5.0" "abc-123"
 ```
 
 You can also check the Envoy stats for header-related rejections:
 
 ```bash
-istioctl proxy-config stats deploy/my-service -n my-namespace | grep "header_size"
+kubectl exec deploy/my-service -n my-namespace -c istio-proxy -- \
+  pilot-agent request GET stats | grep "headers_too_large\|too_many_headers\|header_overflow"
 ```
 
-Look for `downstream_rq_too_large` or `http1.response_flood` counters.
+Look for response code details such as `http1.headers_too_large`, `http1.too_many_headers`, or `http2.too_many_headers` in access logs, and codec counters such as `http2.header_overflow` in Envoy stats.
 
 ## Increasing Header Size Limits
 
@@ -165,9 +167,9 @@ spec:
             max_headers_count: 200
 ```
 
-## Handling HTTP/2 Header Compression
+## Handling Large HTTP/2 Header Fields
 
-HTTP/2 uses HPACK header compression, which has its own table size limit. If you are using HTTP/2 between services (which Istio enables by default for gRPC), you might need to adjust the HPACK table size:
+HTTP/2 uses HPACK header compression, and Envoy's nghttp2 codec also has a per-header-field size limit. If you are using HTTP/2 between services (which Istio enables by default for gRPC), you might need to adjust the per-header-field limit as well as the aggregate request header limit:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -192,12 +194,12 @@ spec:
       value:
         typed_config:
           "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+          max_request_headers_kb: 256
           http2_protocol_options:
-            max_header_list_size: 262144
-            initial_stream_window_size: 1048576
+            max_header_field_size_kb: 128
 ```
 
-The `max_header_list_size` sets the maximum size of the header list in bytes after decompression. The default is typically 64 KB.
+The `max_header_field_size_kb` setting controls the maximum wire-encoded size of an individual HTTP/2 header field accepted by nghttp2. Envoy's default is 64 KB for that per-field codec limit, and the aggregate request header size is still controlled by `max_request_headers_kb`.
 
 ## Mesh-Wide Header Size Configuration
 
@@ -225,7 +227,7 @@ spec:
           max_request_headers_kb: 128
 ```
 
-Applying in `istio-system` without a `workloadSelector` makes it apply to all proxies in the mesh.
+Applying in Istio's root namespace without a `workloadSelector` makes it apply to all proxies in the mesh. The root namespace is commonly `istio-system`, but it can be configured differently in `meshConfig`.
 
 ## Verifying the Configuration
 

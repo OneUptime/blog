@@ -55,7 +55,7 @@ openssl req -new -key backup.key -out backup.csr \
 
 ## 2. Restrict Network Access
 
-Limit which networks can reach the Talos and Kubernetes APIs. Talos ships with a built-in nftables-based ingress firewall (available in Talos 1.6+) that you configure via `NetworkDefaultActionConfig` and `NetworkRuleConfig` documents — don't try to shell out to `iptables`, as Talos has no shell to run it with.
+Limit which networks can reach the Talos and Kubernetes APIs. Talos ships with a built-in nftables-based ingress firewall (available in Talos 1.6+) that you configure via `NetworkDefaultActionConfig` and `NetworkRuleConfig` documents - don't try to shell out to `iptables`, as Talos has no shell to run it with.
 
 ```yaml
 # Machine configuration - network interfaces

@@ -41,7 +41,6 @@ Key ztunnel metrics:
 | `istio_tcp_connections_closed_total` | Total TCP connections closed |
 | `istio_tcp_sent_bytes_total` | Bytes sent over TCP connections |
 | `istio_tcp_received_bytes_total` | Bytes received over TCP connections |
-| `istio_tcp_connection_duration_seconds` | Duration of TCP connections |
 
 These metrics include labels for source and destination workloads, namespaces, and service accounts, which lets you build detailed dashboards.
 
@@ -77,6 +76,7 @@ To collect metrics from ambient mode components, configure Prometheus to scrape 
 # prometheus-config.yaml (additional scrape configs)
 scrape_configs:
 - job_name: 'ztunnel'
+  metrics_path: /metrics
   kubernetes_sd_configs:
   - role: pod
   relabel_configs:
@@ -93,6 +93,7 @@ scrape_configs:
     replacement: $1:15020
 
 - job_name: 'waypoint-proxies'
+  metrics_path: /stats/prometheus
   kubernetes_sd_configs:
   - role: pod
   relabel_configs:
@@ -106,7 +107,7 @@ scrape_configs:
     replacement: $1:15020
 ```
 
-If you are using the Prometheus Operator, create ServiceMonitor resources:
+If you are using the Prometheus Operator, create PodMonitor resources:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
@@ -119,7 +120,7 @@ spec:
     matchLabels:
       app: ztunnel
   podMetricsEndpoints:
-  - port: "15020"
+  - port: ztunnel-stats
     path: /metrics
     interval: 15s
 ---
@@ -133,7 +134,7 @@ spec:
     matchLabels:
       gateway.istio.io/managed: istio.io-mesh-controller
   podMetricsEndpoints:
-  - port: "15020"
+  - port: http-envoy-prom
     path: /stats/prometheus
     interval: 15s
 ```
@@ -180,8 +181,8 @@ The standard Istio Grafana dashboards work with ambient mode metrics, though som
 
 ```bash
 # If using the Istio addons
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.24/samples/addons/grafana.yaml
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.24/samples/addons/prometheus.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/grafana.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/prometheus.yaml
 ```
 
 For custom dashboards, focus on:
@@ -205,7 +206,7 @@ kubectl top pods -n istio-system -l app=ztunnel
 kubectl get pods -n istio-system -l app=ztunnel -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.containerStatuses[0].restartCount}{"\n"}{end}'
 ```
 
-Set up alerts for ztunnel pod restarts and resource usage:
+Set up alerts for ztunnel pod restarts and resource usage. If you configure memory limits, you can alert on percentage of the limit:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
@@ -225,7 +226,7 @@ spec:
       annotations:
         summary: "ztunnel pod {{ $labels.pod }} has restarted {{ $value }} times in the last hour"
     - alert: ZtunnelHighMemory
-      expr: container_memory_working_set_bytes{container="ztunnel"} / container_spec_memory_limit_bytes{container="ztunnel"} > 0.85
+      expr: (container_memory_working_set_bytes{container="ztunnel"} / container_spec_memory_limit_bytes{container="ztunnel"} > 0.85) and on(namespace, pod, container) container_spec_memory_limit_bytes{container="ztunnel"} > 0
       for: 10m
       labels:
         severity: warning
@@ -257,7 +258,7 @@ Kiali, the Istio observability dashboard, supports ambient mode. It can visualiz
 
 ```bash
 # Install Kiali
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.24/samples/addons/kiali.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/kiali.yaml
 
 # Access the dashboard
 kubectl port-forward svc/kiali -n istio-system 20001:20001

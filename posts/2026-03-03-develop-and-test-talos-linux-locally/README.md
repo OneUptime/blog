@@ -193,7 +193,7 @@ talosctl cluster destroy --name feature-test
 
 ### Workflow 3: Testing System Extensions
 
-Modern Talos releases bake system extensions into the installer image rather than installing them at runtime — the `.machine.install.extensions` field is deprecated. For local development, build a custom installer that includes the extension and then upgrade the node to that installer.
+Modern Talos releases bake system extensions into the installer image rather than installing them at runtime - the `.machine.install.extensions` field is deprecated. For local development, build a custom installer that includes the extension and then upgrade the node to that installer.
 
 ```bash
 # 1. Build your extension as an OCI image

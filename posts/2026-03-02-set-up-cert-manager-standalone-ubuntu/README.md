@@ -8,7 +8,7 @@ Description: Install and configure cert-manager as a standalone tool on Ubuntu t
 
 ---
 
-cert-manager is widely known as a Kubernetes operator for certificate management. It is implemented as a set of Kubernetes controllers and CRDs, so it requires a Kubernetes API server to run — there is no fully standalone mode that operates without Kubernetes. However, you can still get a "single-Ubuntu-server" cert-manager deployment by running a lightweight Kubernetes distribution like [k3s](https://k3s.io/) on the same host. Running cert-manager this way makes sense when you want to manage certificates using the same tooling across Kubernetes clusters and traditional servers, or when you're building infrastructure that will eventually move to Kubernetes and want consistent workflows.
+cert-manager is widely known as a Kubernetes operator for certificate management. It is implemented as a set of Kubernetes controllers and CRDs, so it requires a Kubernetes API server to run - there is no fully standalone mode that operates without Kubernetes. However, you can still get a "single-Ubuntu-server" cert-manager deployment by running a lightweight Kubernetes distribution like [k3s](https://k3s.io/) on the same host. Running cert-manager this way makes sense when you want to manage certificates using the same tooling across Kubernetes clusters and traditional servers, or when you're building infrastructure that will eventually move to Kubernetes and want consistent workflows.
 
 This guide covers installing k3s and cert-manager on a single Ubuntu host, installing the `cmctl` CLI for interacting with cert-manager, and configuring an ACME issuer that obtains certificates from Let's Encrypt.
 
@@ -16,7 +16,7 @@ This guide covers installing k3s and cert-manager on a single Ubuntu host, insta
 
 In this setup the cert-manager controllers run as pods inside a single-node k3s cluster. They watch cert-manager CRDs (`Issuer`, `ClusterIssuer`, `Certificate`, `CertificateRequest`, `Order`, `Challenge`) and reconcile them by talking to ACME servers and storing issued certificates in Kubernetes `Secret` objects. To make the certificates available to other services on the host (nginx, HAProxy, application processes), you extract them from the secrets to files on disk.
 
-The main CLI for working with cert-manager is `cmctl`. It is a Kubernetes-aware tool — it talks to a Kubernetes API server through your kubeconfig and is useful for inspecting cert-manager resources and triggering manual renewals.
+The main CLI for working with cert-manager is `cmctl`. It is a Kubernetes-aware tool - it talks to a Kubernetes API server through your kubeconfig and is useful for inspecting cert-manager resources and triggering manual renewals.
 
 ## Installing cmctl
 

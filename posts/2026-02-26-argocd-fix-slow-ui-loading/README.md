@@ -63,6 +63,7 @@ kubectl scale deployment argocd-server -n argocd --replicas=3
 Set appropriate resources:
 
 ```yaml
+# Deployment excerpt (merge into the existing argocd-server Deployment)
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -85,19 +86,25 @@ spec:
 
 ## Fix 2: Optimize Redis Performance
 
-Redis is critical for UI performance. It caches application state, user sessions, and computed diffs:
+Redis is critical for UI performance. Argo CD uses it as a disposable cache for application state, repo state, and other computed data:
 
 ```bash
+REDIS_PASSWORD=$(kubectl -n argocd get secret argocd-redis \
+  -o jsonpath='{.data.auth}' | base64 -d)
+
 # Check Redis memory usage
-kubectl exec -n argocd deployment/argocd-redis -- redis-cli info memory
+kubectl exec -n argocd deployment/argocd-redis -- \
+  env REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli info memory
 
 # Check Redis connection count
-kubectl exec -n argocd deployment/argocd-redis -- redis-cli info clients
+kubectl exec -n argocd deployment/argocd-redis -- \
+  env REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli info clients
 ```
 
 **Increase Redis resources:**
 
 ```yaml
+# Deployment excerpt (merge into the existing argocd-redis Deployment)
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -193,15 +200,15 @@ data:
 
 ## Fix 5: Enable Server-Side Diff
 
-By default, the UI computes diffs client-side, which can be slow for large manifests:
+If diff generation is a bottleneck for large manifests, enable Argo CD server-side diff at the application controller level:
 
 ```yaml
 # argocd-cmd-params-cm ConfigMap
 data:
-  server.diff.server.side: "true"
+  controller.diff.server.side: "true"
 ```
 
-This offloads diff computation to the server, making the UI more responsive.
+This changes diff calculation to use Kubernetes server-side apply dry-run when the diff cache is unavailable.
 
 ## Fix 6: Configure API Server Caching
 
@@ -246,8 +253,9 @@ annotations:
 **Use HTTP/2 for multiplexed connections:**
 
 ```yaml
-annotations:
-  nginx.ingress.kubernetes.io/use-http2: "true"
+# ingress-nginx controller ConfigMap
+data:
+  use-http2: "true"
 ```
 
 ## Fix 8: Browser-Side Optimizations
@@ -309,7 +317,7 @@ Set up monitoring to track UI performance:
 ```bash
 # Check API server metrics
 kubectl port-forward -n argocd deployment/argocd-server 8083:8083
-curl localhost:8083/metrics | grep argocd_app_reconcile
+curl localhost:8083/metrics | grep grpc_server_handled_total
 ```
 
 **Key metrics:**
@@ -318,13 +326,13 @@ curl localhost:8083/metrics | grep argocd_app_reconcile
 # API request duration
 argocd_redis_request_duration
 grpc_server_handled_total
-grpc_server_handling_seconds
+grpc_server_handling_seconds  # requires ARGOCD_ENABLE_GRPC_TIME_HISTOGRAM=true
 
-# Application count (impacts list loading time)
+# Application count (impacts list loading time; exposed by the application controller on port 8082)
 argocd_app_info
 ```
 
-**Set up alerts for slow API responses:**
+**Set up alerts for slow API responses** after enabling gRPC time histograms:
 
 ```yaml
 groups:

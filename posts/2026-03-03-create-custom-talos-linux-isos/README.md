@@ -176,7 +176,7 @@ Common kernel arguments for Talos include:
 
 ## Pointing the ISO at a Machine Configuration
 
-You can bake a `talos.config` kernel argument into the ISO so each node fetches its machine configuration automatically at boot. Note that `--extra-kernel-arg` only sets a kernel cmdline value — it does not copy a local file into the ISO. The booted node must be able to reach the URL you provide, so host the config on an HTTP(S) endpoint that is reachable from the network where the node boots.
+You can bake a `talos.config` kernel argument into the ISO so each node fetches its machine configuration automatically at boot. Note that `--extra-kernel-arg` only sets a kernel cmdline value - it does not copy a local file into the ISO. The booted node must be able to reach the URL you provide, so host the config on an HTTP(S) endpoint that is reachable from the network where the node boots.
 
 ```bash
 # Create a machine config patch

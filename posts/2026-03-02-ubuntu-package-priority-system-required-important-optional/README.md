@@ -111,7 +111,7 @@ The default priority numbers APT assigns (none of the defaults exceed 990):
 - **100** - The version that is already installed; also versions from archives marked `NotAutomatic: yes` and `ButAutomaticUpgrades: yes` (e.g., `*-backports`)
 - **1** - Versions from archives marked `NotAutomatic: yes` without `ButAutomaticUpgrades` (e.g., Debian `experimental`), and held-back phased updates
 
-Values above 990 (such as `1001`) are not used by default — they can only be set in a preferences file.
+Values above 990 (such as `1001`) are not used by default - they can only be set in a preferences file.
 
 ### Creating a Pin Priority File
 
@@ -148,7 +148,7 @@ P < 0          - Prevent the version from being installed
 P >= 1000      - Install even if this constitutes a downgrade
 ```
 
-Note: `P = 0` has undefined behaviour — do not use it.
+Note: `P = 0` has undefined behaviour - do not use it.
 
 ### Pinning a Specific Version
 

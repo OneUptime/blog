@@ -31,7 +31,7 @@ If your StorageClass does not have `allowVolumeExpansion: true`, you need to upd
 kubectl patch storageclass local-path -p '{"allowVolumeExpansion": true}'
 ```
 
-Second, your CSI driver must support the `EXPAND_VOLUME` controller capability. Most modern CSI drivers do, but you should verify. This capability is not exposed on the `CSIDriver` object — the canonical kubectl-level signal is whether the cluster admin has enabled `allowVolumeExpansion: true` on a StorageClass backed by that driver, and whether the driver's `external-resizer` sidecar is running.
+Second, your CSI driver must support the `EXPAND_VOLUME` controller capability. Most modern CSI drivers do, but you should verify. This capability is not exposed on the `CSIDriver` object - the canonical kubectl-level signal is whether the cluster admin has enabled `allowVolumeExpansion: true` on a StorageClass backed by that driver, and whether the driver's `external-resizer` sidecar is running.
 
 ```bash
 # Confirm the external-resizer sidecar is running for your driver

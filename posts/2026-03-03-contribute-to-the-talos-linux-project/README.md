@@ -225,7 +225,7 @@ talosctl cluster destroy --name pr-test
 
 ### Commit Messages
 
-Talos uses conventional commit messages. Follow this format, and note that **every commit must be signed off** with a Developer Certificate of Origin (DCO) line — this is enforced by CI.
+Talos uses conventional commit messages. Follow this format, and note that **every commit must be signed off** with a Developer Certificate of Origin (DCO) line - this is enforced by CI.
 
 ```bash
 # Format: type(scope): description

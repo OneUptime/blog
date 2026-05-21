@@ -140,7 +140,7 @@ Vagrant.configure("2") do |config|
   config.vm.hostname = "kvm-dev"
 
   # Network configuration
-  # Avoid 192.168.121.0/24 — that subnet is reserved for vagrant-libvirt's
+  # Avoid 192.168.121.0/24 - that subnet is reserved for vagrant-libvirt's
   # internal management network and using it here will cause IP conflicts.
   config.vm.network "private_network", ip: "192.168.50.10"
 
@@ -174,7 +174,7 @@ Vagrant.configure("2") do |config|
 
     # Use virtio for better disk performance
     libvirt.disk_bus = "virtio"
-    # disk_driver supersedes the older volume_cache option — don't set both
+    # disk_driver supersedes the older volume_cache option - don't set both
     libvirt.disk_driver :cache => "writeback"
 
     # Networking

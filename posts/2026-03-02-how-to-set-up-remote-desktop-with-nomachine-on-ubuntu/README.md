@@ -195,7 +195,7 @@ DisplayServerUseVideoFrameRate 1
 # DisplayServerExtraOptions ""
 ```
 
-NoMachine recommends leaving these at their defaults unless you know what you are changing — see [The server.cfg and node.cfg files explained](https://kb.nomachine.com/AR02N00877) for the authoritative reference.
+NoMachine recommends leaving these at their defaults unless you know what you are changing - see [The server.cfg and node.cfg files explained](https://kb.nomachine.com/AR02N00877) for the authoritative reference.
 
 ### On the Client
 

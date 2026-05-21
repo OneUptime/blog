@@ -52,7 +52,7 @@ docker run -d --name ome \
     airensoft/ovenmediaengine:latest
 ```
 
-Replace `YOUR_PUBLIC_IP` with your server's public IP address — OME uses this value to populate ICE candidates when the config references `${OME_HOST_IP}`.
+Replace `YOUR_PUBLIC_IP` with your server's public IP address - OME uses this value to populate ICE candidates when the config references `${OME_HOST_IP}`.
 
 ## Building from Source
 

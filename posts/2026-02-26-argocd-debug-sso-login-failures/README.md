@@ -238,7 +238,7 @@ data:
       -----END CERTIFICATE-----
 ```
 
-For Dex OIDC connectors, configure the connector with `caData` or `ca` as supported by Dex, and restart Dex after changing the connector configuration.
+For Dex OIDC connectors, configure the connector with `rootCAs` as supported by Dex, and restart Dex after changing the connector configuration.
 
 ### Check Certificate Chain
 
@@ -318,13 +318,8 @@ If you get a redirect loop:
 2. Try running ArgoCD in insecure mode behind the ingress:
 
 ```bash
-kubectl -n argocd patch deployment argocd-server --type json -p '[
-  {
-    "op": "add",
-    "path": "/spec/template/spec/containers/0/args/-",
-    "value": "--insecure"
-  }
-]'
+kubectl -n argocd patch configmap argocd-cmd-params-cm --type merge -p '{"data":{"server.insecure":"true"}}'
+kubectl -n argocd rollout restart deployment argocd-server
 ```
 
 ## Quick Diagnostic Checklist
@@ -375,7 +370,7 @@ kubectl -n argocd logs deploy/argocd-dex-server --tail=100 2>/dev/null | grep -i
 
 echo ""
 echo "9. OIDC TLS Settings:"
-kubectl -n argocd get configmap argocd-cm -o yaml | grep -E "rootCA|caData|oidc.tls.insecure.skip.verify" | head -10 || echo "No OIDC TLS overrides found"
+kubectl -n argocd get configmap argocd-cm -o yaml | grep -E "rootCA|rootCAs|oidc.tls.insecure.skip.verify" | head -10 || echo "No OIDC TLS overrides found"
 ```
 
 ## Summary

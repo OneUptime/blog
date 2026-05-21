@@ -10,7 +10,7 @@ Description: Learn how to install and use modern Fabric (2.x/3.x) on Ubuntu for 
 
 Fabric is a Python library and command-line tool for executing shell commands over SSH on remote servers. Where Ansible is a full configuration management system, Fabric sits at a lower level - it is essentially a nicer wrapper around Paramiko (Python SSH) with a task-based interface. If you are comfortable with Python and want programmatic control over SSH automation without the overhead of a full CM tool, Fabric fits well.
 
-This guide covers modern Fabric (2.x and 3.x — Fabric 3 has been the current major line since January 2023), which is substantially different from Fabric 1.x. The 2.x and 3.x APIs are largely compatible, so the examples below work on either.
+This guide covers modern Fabric (2.x and 3.x - Fabric 3 has been the current major line since January 2023), which is substantially different from Fabric 1.x. The 2.x and 3.x APIs are largely compatible, so the examples below work on either.
 
 ## Installation
 

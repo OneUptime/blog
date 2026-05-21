@@ -264,7 +264,7 @@ sudo cpupower idle-set -d 3  # Disable C3
 Some IRQs are marked as non-balanceable (via the kernel's `IRQF_NO_BALANCING` flag) and will not accept affinity changes:
 
 ```bash
-# View the driver's suggested affinity (advisory only — does not pin the IRQ)
+# View the driver's suggested affinity (advisory only - does not pin the IRQ)
 cat /proc/irq/<IRQ_NUMBER>/affinity_hint
 
 # If a write to smp_affinity returns -EIO, the IRQ has IRQF_NO_BALANCING set

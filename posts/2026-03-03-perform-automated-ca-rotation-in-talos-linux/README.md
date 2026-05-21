@@ -79,7 +79,7 @@ echo "Extracting current CAs from the cluster..."
 CONTROL_PLANE_IP="${CONTROL_PLANE_IP:-10.0.1.10}"
 
 # talosctl get machineconfig wraps the v1alpha1 config inside a COSI resource,
-# so the actual config lives under .spec — strip the wrapper before parsing.
+# so the actual config lives under .spec - strip the wrapper before parsing.
 talosctl -n "$CONTROL_PLANE_IP" get machineconfig -o yaml | yq '.spec' > current-config.yaml
 
 # Extract current Talos CA

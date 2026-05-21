@@ -212,7 +212,7 @@ On Talos Linux, ephemeral storage is particularly important because the OS parti
 
 ## Init Container Defaults
 
-LimitRange defaults also apply to init containers. The valid LimitRange types are `Container`, `Pod`, and `PersistentVolumeClaim` — there is no separate `InitContainer` type. The `Container` defaults you set will be applied to both regular containers and init containers in the namespace.
+LimitRange defaults also apply to init containers. The valid LimitRange types are `Container`, `Pod`, and `PersistentVolumeClaim` - there is no separate `InitContainer` type. The `Container` defaults you set will be applied to both regular containers and init containers in the namespace.
 
 ```yaml
 apiVersion: v1

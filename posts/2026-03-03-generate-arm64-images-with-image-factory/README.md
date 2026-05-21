@@ -201,7 +201,7 @@ wget "https://factory.talos.dev/image/${SCHEMATIC_ID}/${TALOS_VERSION}/oracle-ar
 
 ## Checking Extension Availability for ARM64
 
-Most official Talos system extensions are multi-arch container images that include both AMD64 and ARM64 variants — Image Factory pulls the right one based on the requested image architecture. A few extensions are inherently x86-only (for example `intel-ucode`, `amd-ucode`, and certain firmware blobs for x86-specific hardware) and will not be usable in an ARM64 schematic.
+Most official Talos system extensions are multi-arch container images that include both AMD64 and ARM64 variants - Image Factory pulls the right one based on the requested image architecture. A few extensions are inherently x86-only (for example `intel-ucode`, `amd-ucode`, and certain firmware blobs for x86-specific hardware) and will not be usable in an ARM64 schematic.
 
 List the extensions available for a given Talos version:
 
@@ -211,7 +211,7 @@ curl -s https://factory.talos.dev/version/${TALOS_VERSION}/extensions/official |
   jq '.[] | {name, ref, description}'
 ```
 
-If you include an extension that has no ARM64 build, Image Factory will return an error when you try to generate the ARM64 image — so when in doubt, submit the schematic and let the factory tell you.
+If you include an extension that has no ARM64 build, Image Factory will return an error when you try to generate the ARM64 image - so when in doubt, submit the schematic and let the factory tell you.
 
 ## Performance Considerations
 

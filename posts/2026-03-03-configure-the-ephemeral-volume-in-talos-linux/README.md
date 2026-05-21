@@ -109,7 +109,7 @@ Pick the selector that makes the most sense for your hardware. Bus path is the m
 
 The filesystem for EPHEMERAL is XFS, which works well for most workloads. XFS handles large files and concurrent writes efficiently, both of which are common patterns for container runtime data.
 
-The `VolumeConfig` document for system volumes like EPHEMERAL does not expose a field to change the filesystem type — XFS is used by Talos for the EPHEMERAL volume. If you need a different filesystem for workload data, the recommended approach is to provision a separate user volume (which supports XFS and ext4) and mount it where your workload needs it, rather than trying to change the EPHEMERAL filesystem.
+The `VolumeConfig` document for system volumes like EPHEMERAL does not expose a field to change the filesystem type - XFS is used by Talos for the EPHEMERAL volume. If you need a different filesystem for workload data, the recommended approach is to provision a separate user volume (which supports XFS and ext4) and mount it where your workload needs it, rather than trying to change the EPHEMERAL filesystem.
 
 ## Sizing the EPHEMERAL Volume
 

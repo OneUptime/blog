@@ -219,7 +219,7 @@ sudo nano /etc/smbldap-tools/smbldap.conf
 sudo smbldap-populate
 ```
 
-If some entries already exist, `smbldap-populate` prints a warning for each and continues — it skips entries that are already present.
+If some entries already exist, `smbldap-populate` prints a warning for each and continues - it skips entries that are already present.
 
 This creates default groups like `Domain Admins`, `Domain Users`, `Domain Guests`.
 

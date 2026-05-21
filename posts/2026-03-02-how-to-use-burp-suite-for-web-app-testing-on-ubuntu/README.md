@@ -65,7 +65,7 @@ Configure your browser to use the proxy:
 # Chromium and Chrome support a --proxy-server flag
 chromium --proxy-server="127.0.0.1:8080" &
 
-# Firefox does not accept a --proxy-server CLI flag — configure it via
+# Firefox does not accept a --proxy-server CLI flag - configure it via
 # Settings > Network Settings, the FoxyProxy extension, or environment
 # variables (http_proxy / https_proxy) for command-line tools.
 ```
@@ -108,7 +108,7 @@ Useful default keyboard shortcuts:
 - Ctrl+I - Send to Intruder
 - Ctrl+R - Send to Repeater
 
-Drop has no default shortcut — you can assign one under **Settings > User interface > Hotkeys**.
+Drop has no default shortcut - you can assign one under **Settings > User interface > Hotkeys**.
 
 ## Using the Repeater
 
@@ -156,7 +156,7 @@ Note: In Burp Community edition, Intruder attacks are throttled. Burp Profession
 
 ## Scanning with Burp Scanner
 
-Burp Scanner — including both active (crawling/auditing) and passive scanning — is a **Professional-only** feature. The Community edition does not ship a vulnerability scanner. Pro users start a scan from the **Dashboard > New scan** button, or queue a live passive task from **Dashboard > New live task**.
+Burp Scanner - including both active (crawling/auditing) and passive scanning - is a **Professional-only** feature. The Community edition does not ship a vulnerability scanner. Pro users start a scan from the **Dashboard > New scan** button, or queue a live passive task from **Dashboard > New live task**.
 
 For Community edition, use the target site map for manual coverage:
 
@@ -253,7 +253,7 @@ java -jar burpsuite_pro.jar \
   --config-file=scan_config.json
 ```
 
-If you need to point at a private Burp Collaborator server, configure that via **Settings > Project > Collaborator** and save it into the project / config file — there is no top-level CLI flag for the client-side collaborator location.
+If you need to point at a private Burp Collaborator server, configure that via **Settings > Project > Collaborator** and save it into the project / config file - there is no top-level CLI flag for the client-side collaborator location.
 
 A minimal scan configuration JSON:
 

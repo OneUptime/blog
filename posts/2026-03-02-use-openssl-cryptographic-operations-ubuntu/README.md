@@ -32,7 +32,7 @@ openssl dgst -list
 
 ## Symmetric Encryption and Decryption
 
-OpenSSL supports dozens of symmetric ciphers. AES-256-CBC is the most practical choice for the `enc` command — note that the `enc` utility does not support authenticated-encryption modes like AES-GCM or AES-CCM, so if you need AEAD you must use a different tool or program against the libcrypto API directly.
+OpenSSL supports dozens of symmetric ciphers. AES-256-CBC is the most practical choice for the `enc` command - note that the `enc` utility does not support authenticated-encryption modes like AES-GCM or AES-CCM, so if you need AEAD you must use a different tool or program against the libcrypto API directly.
 
 ### Encrypting Files
 

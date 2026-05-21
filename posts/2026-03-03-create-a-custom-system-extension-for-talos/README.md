@@ -15,7 +15,7 @@ Talos Linux system extensions are the official way to add functionality beyond t
 A Talos system extension is an OCI (Open Container Initiative) image with a specific structure. When Talos boots, it overlays the extension contents onto the root filesystem. The extension image contains:
 
 - A `manifest.yaml` file at the root describing the extension
-- A `rootfs/` directory containing files to be placed on the filesystem (binaries, configuration, kernel modules, etc.) — paths inside `rootfs/` mirror their final installation paths
+- A `rootfs/` directory containing files to be placed on the filesystem (binaries, configuration, kernel modules, etc.) - paths inside `rootfs/` mirror their final installation paths
 
 The extension is not a running container - it is a filesystem layer that gets merged with the base OS at boot time.
 
@@ -235,7 +235,7 @@ make REGISTRY=my-registry.com TAG=v1.0.0 custom/my-extension
 
 ### Local Testing
 
-Since Talos v1.5, system extensions are no longer installed via the machine configuration — they must be baked into the installer (or boot) image. For local testing, use the `imager` tool to build a custom installer image that includes your extension:
+Since Talos v1.5, system extensions are no longer installed via the machine configuration - they must be baked into the installer (or boot) image. For local testing, use the `imager` tool to build a custom installer image that includes your extension:
 
 ```bash
 # Build a custom installer image with your extension included
@@ -252,7 +252,7 @@ talosctl cluster create \
   --installer-image=ghcr.io/siderolabs/installer:v1.7.0
 ```
 
-Alternatively, push your extension to a public registry and use the [Talos Image Factory](https://factory.talos.dev) to build a custom installer image — the Image Factory returns a schematic ID you can reference as `factory.talos.dev/installer/<schematic-id>:v1.7.0`.
+Alternatively, push your extension to a public registry and use the [Talos Image Factory](https://factory.talos.dev) to build a custom installer image - the Image Factory returns a schematic ID you can reference as `factory.talos.dev/installer/<schematic-id>:v1.7.0`.
 
 ### Verification
 

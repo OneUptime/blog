@@ -140,7 +140,7 @@ Then reference it in an Image Factory schematic (or pass it to `imager` with `--
 Some software requires specific kernel modules that are not included in the default Talos kernel. Extensions can provide the module binaries, and the machine configuration tells Talos to load them at boot:
 
 ```yaml
-# schematic.yaml — submit to the Image Factory to build a custom installer
+# schematic.yaml - submit to the Image Factory to build a custom installer
 customization:
   systemExtensions:
     officialExtensions:
@@ -149,7 +149,7 @@ customization:
 ```
 
 ```yaml
-# machine configuration — tells Talos to load the module at boot
+# machine configuration - tells Talos to load the module at boot
 machine:
   kernel:
     modules:

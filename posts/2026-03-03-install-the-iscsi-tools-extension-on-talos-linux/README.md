@@ -56,7 +56,7 @@ curl -X POST https://factory.talos.dev/schematics \
 
 ### Method 2: Reference the Factory Installer in Machine Configuration
 
-System extensions are baked into the installer image built by the Image Factory, so you reference that installer image in your machine configuration. There is no longer a separate `install.extensions` field — it was deprecated in Talos v1.7.6 and removed (made a no-op) in v1.10:
+System extensions are baked into the installer image built by the Image Factory, so you reference that installer image in your machine configuration. There is no longer a separate `install.extensions` field - it was deprecated in Talos v1.7.6 and removed (made a no-op) in v1.10:
 
 ```yaml
 machine:

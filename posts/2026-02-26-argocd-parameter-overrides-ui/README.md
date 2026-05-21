@@ -23,7 +23,7 @@ The Source section shows the repository URL, revision, path, and any configured 
 
 ## Overriding Helm Parameters in the UI
 
-When viewing a Helm-based application, the Parameters section displays all configurable values from the chart.
+When viewing a Helm-based application, the Parameters section displays Helm parameters that Argo CD knows about and lets you add `--set` style overrides. It does not necessarily show the complete merged set of values from `values.yaml`, `valueFiles`, `values`, and `valuesObject`.
 
 ### Viewing Current Values
 
@@ -44,7 +44,7 @@ To override a Helm parameter through the UI:
 4. Enter the new value
 5. Click **Save**
 
-The application will immediately show as **OutOfSync** because the desired state (with the new override) differs from the live cluster state. You then need to sync the application to apply the change.
+If the override changes the rendered manifests, the application will show as **OutOfSync** because the desired state (with the new override) differs from the live cluster state. You then need to sync the application to apply the change.
 
 ### Adding a New Override
 
@@ -65,7 +65,7 @@ To remove an existing override and revert to the Git-defined value:
 2. Click the **Delete** or **Remove Override** button next to it
 3. Click **Save**
 
-The application will go OutOfSync again, and syncing will revert to the value defined in your Helm values file in Git.
+If removing the override changes the rendered manifests, the application will go OutOfSync again, and syncing will revert to the value defined by your Helm chart values in Git.
 
 ## Overriding Kustomize Parameters in the UI
 
@@ -81,12 +81,14 @@ For Kustomize-based applications, the UI offers different override options.
 
 ### Kustomize Settings
 
-In the source configuration, you can modify:
+In the source configuration, Argo CD supports Kustomize overrides such as:
 
 - **Name Prefix**: Adds a prefix to all resource names
 - **Name Suffix**: Adds a suffix to all resource names
 - **Namespace**: Overrides the target namespace
 - **Images**: List of image overrides
+- **Replicas**: List of replica count overrides
+- **Common Labels and Annotations**: Additional labels or annotations applied during Kustomize rendering
 
 To modify these:
 
@@ -175,11 +177,11 @@ To check if your application has diverged from what Git defines:
 
 ## Multi-Source Application Parameters
 
-For applications that use multiple sources (introduced in ArgoCD 2.6+), the UI shows parameters for each source separately:
+For applications that use multiple sources (introduced as a beta feature in Argo CD 2.6), source-level overrides are configured under the individual entries in `spec.sources`:
 
 1. Navigate to **App Details**
 2. You will see multiple **Source** sections, one for each source
-3. Each source has its own parameters that can be overridden independently
+3. Each source can have its own Helm, Kustomize, or other source configuration
 
 This is particularly useful when your Helm chart comes from one repository and your values file comes from another.
 

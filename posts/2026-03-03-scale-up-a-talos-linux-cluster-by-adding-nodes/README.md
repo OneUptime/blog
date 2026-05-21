@@ -146,7 +146,7 @@ Adding control plane nodes is more involved because they run etcd and need to jo
 ### Considerations for Control Plane Scaling
 
 - Always scale to an odd number of control plane nodes (1, 3, 5, 7)
-- Adding a fourth control plane node to a three-node cluster does not improve fault tolerance — both configurations still tolerate only one node failure, while quorum requirements grow from 2 to 3
+- Adding a fourth control plane node to a three-node cluster does not improve fault tolerance - both configurations still tolerate only one node failure, while quorum requirements grow from 2 to 3
 - The recommended number for production is 3 or 5 control plane nodes
 - Scaling from 1 to 3 is the most common operation
 

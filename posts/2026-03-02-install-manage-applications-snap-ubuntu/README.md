@@ -124,7 +124,7 @@ sudo snap set system refresh.timer=02:00-04:00
 sudo snap set system refresh.timer=sun,03:00-04:00
 
 # Hold all snap updates for a specific duration (60 days = 1440 hours)
-# The --hold flag accepts Go duration format (h, m, s) — there is no 'd' unit
+# The --hold flag accepts Go duration format (h, m, s) - there is no 'd' unit
 sudo snap refresh --hold=1440h
 
 # Hold a specific snap update

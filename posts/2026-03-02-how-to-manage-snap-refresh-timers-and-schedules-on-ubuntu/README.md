@@ -195,7 +195,7 @@ sudo snap set system refresh.timer="sun,05:00-07:00"
 
 ## Metered Connection Awareness
 
-Snapd can be configured to skip refreshes when the active network connection is metered (mobile hotspots, etc.). By default, refreshes happen normally even on metered connections — you have to opt in to the skip behavior by setting `refresh.metered=hold`:
+Snapd can be configured to skip refreshes when the active network connection is metered (mobile hotspots, etc.). By default, refreshes happen normally even on metered connections - you have to opt in to the skip behavior by setting `refresh.metered=hold`:
 
 ```bash
 # Check metered connection handling

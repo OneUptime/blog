@@ -40,7 +40,7 @@ PTP requires hardware support. Before proceeding, verify:
 
 PTP on Talos Linux is delivered through a system extension that ships `ptp4l` (the PTP daemon) and `phc2sys` (which synchronizes the system clock to the PTP hardware clock). Sidero Labs does not currently publish an official `ptp` / `linuxptp` extension in the [siderolabs/extensions](https://github.com/siderolabs/extensions) catalog, so the extension has to be built and hosted yourself (or sourced from a community fork) before it can be referenced from machine config.
 
-Once you have a built image — for example `ghcr.io/<your-org>/linuxptp:<tag>` — reference it the same way as any other extension:
+Once you have a built image - for example `ghcr.io/<your-org>/linuxptp:<tag>` - reference it the same way as any other extension:
 
 ```yaml
 # Machine configuration with a custom PTP extension

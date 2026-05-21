@@ -49,7 +49,7 @@ First, generate your machine configuration.
 talosctl gen config my-cluster https://10.0.0.1:6443
 ```
 
-Then edit the generated configuration to point at a custom installer image that already contains your extensions (generated via Image Factory — see the section below).
+Then edit the generated configuration to point at a custom installer image that already contains your extensions (generated via Image Factory - see the section below).
 
 ```yaml
 # controlplane.yaml or worker.yaml
@@ -72,7 +72,7 @@ The node will pull the custom installer image, which already contains the extens
 
 ## Adding Extensions to an Existing Cluster
 
-If you have a running cluster and need to add extensions after the fact, generate a new Image Factory schematic that includes the extra extensions, then trigger an upgrade pointing at the new custom installer image. Extensions are part of the immutable installer image, so adding them always requires an upgrade — there is no way to load them at runtime without rebooting into a new install image.
+If you have a running cluster and need to add extensions after the fact, generate a new Image Factory schematic that includes the extra extensions, then trigger an upgrade pointing at the new custom installer image. Extensions are part of the immutable installer image, so adding them always requires an upgrade - there is no way to load them at runtime without rebooting into a new install image.
 
 ```bash
 # Submit a schematic that includes the extensions you want
@@ -139,7 +139,7 @@ environment:
 
 ### Example: Configuring NVIDIA GPU
 
-NVIDIA extensions are now published in `-production` and `-lts` variants — pick the one matching your driver branch.
+NVIDIA extensions are now published in `-production` and `-lts` variants - pick the one matching your driver branch.
 
 ```yaml
 machine:
@@ -191,7 +191,7 @@ crane ls ghcr.io/siderolabs/iscsi-tools
 When upgrading Talos, make sure to generate a new Image Factory schematic that pins the matching extension versions and use the resulting custom installer for the upgrade.
 
 ```yaml
-# schematic.yaml — generate a new schematic ID when bumping Talos versions
+# schematic.yaml - generate a new schematic ID when bumping Talos versions
 customization:
   systemExtensions:
     officialExtensions:
@@ -211,7 +211,7 @@ talosctl -n 10.0.0.10 upgrade \
 
 ## Extension Dependencies
 
-Some extensions depend on others — for example, the NVIDIA container toolkit extension depends on the NVIDIA kernel module extension. When using Image Factory, include both in the same schematic; Image Factory will compose them into a single installer image.
+Some extensions depend on others - for example, the NVIDIA container toolkit extension depends on the NVIDIA kernel module extension. When using Image Factory, include both in the same schematic; Image Factory will compose them into a single installer image.
 
 ```yaml
 # schematic.yaml

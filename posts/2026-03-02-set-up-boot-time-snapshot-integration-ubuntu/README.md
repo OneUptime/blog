@@ -175,7 +175,7 @@ GRUB_BTRFS_LIMIT="10"
 GRUB_BTRFS_SUBVOLUME_SORT="-rootid"
 ```
 
-Note: there is no variable to set a snapshot search path — `grub-btrfs` scans the whole Btrfs root partition for read-only subvolumes. Use `GRUB_BTRFS_IGNORE_SPECIFIC_PATH` or `GRUB_BTRFS_IGNORE_PREFIX_PATH` to exclude paths you don't want listed.
+Note: there is no variable to set a snapshot search path - `grub-btrfs` scans the whole Btrfs root partition for read-only subvolumes. Use `GRUB_BTRFS_IGNORE_SPECIFIC_PATH` or `GRUB_BTRFS_IGNORE_PREFIX_PATH` to exclude paths you don't want listed.
 
 After changing config, regenerate GRUB:
 

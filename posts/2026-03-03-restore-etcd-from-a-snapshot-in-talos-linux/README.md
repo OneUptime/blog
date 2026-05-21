@@ -49,7 +49,7 @@ If the snapshot shows valid data (non-zero revision and key count), you can proc
 
 ## Scenario 1: Restoring a Single Control Plane Node
 
-If you have a single control plane node (common in development environments), the process is straightforward. Talos does not have a dedicated `etcd snapshot restore` command — recovery is performed via `talosctl bootstrap --recover-from`. First reset the node to wipe etcd's data, then bootstrap from the snapshot:
+If you have a single control plane node (common in development environments), the process is straightforward. Talos does not have a dedicated `etcd snapshot restore` command - recovery is performed via `talosctl bootstrap --recover-from`. First reset the node to wipe etcd's data, then bootstrap from the snapshot:
 
 ```bash
 # Step 1: Reset the node, wiping the EPHEMERAL partition where etcd data lives
@@ -71,7 +71,7 @@ After the restore, your Kubernetes API server will reconnect to etcd and start r
 
 ## Scenario 2: Restoring a Multi-Node etcd Cluster
 
-Restoring a multi-node etcd cluster is more involved because you need to bootstrap a new cluster from the snapshot. All existing control plane nodes must be reset first so that etcd is wiped on each of them — only then can you bootstrap a single node from the snapshot, and the remaining nodes will rejoin automatically once the control plane endpoint comes up. Here is the process for a 3-node control plane:
+Restoring a multi-node etcd cluster is more involved because you need to bootstrap a new cluster from the snapshot. All existing control plane nodes must be reset first so that etcd is wiped on each of them - only then can you bootstrap a single node from the snapshot, and the remaining nodes will rejoin automatically once the control plane endpoint comes up. Here is the process for a 3-node control plane:
 
 ```bash
 # Step 1: Take note of your current control plane node IPs
@@ -98,7 +98,7 @@ Now bootstrap a single node from the snapshot. The remaining control plane nodes
 # Step 4: Bootstrap the first control plane node from the snapshot
 talosctl -n 192.168.1.10 bootstrap --recover-from=./etcd-snapshot.db
 
-# Step 5: Watch the member list — the other nodes will rejoin once the
+# Step 5: Watch the member list - the other nodes will rejoin once the
 # control plane endpoint is available
 talosctl -n 192.168.1.10 etcd members
 
@@ -124,7 +124,7 @@ talosctl apply-config --insecure --nodes 192.168.1.12 --file controlplane.yaml
 talosctl -n 192.168.1.10 service etcd
 
 # Step 4: Bootstrap the first node directly from the snapshot.
-# Do NOT run a regular `talosctl bootstrap` first — that would create
+# Do NOT run a regular `talosctl bootstrap` first - that would create
 # an empty etcd cluster and prevent the restore.
 talosctl -n 192.168.1.10 bootstrap --recover-from=./etcd-snapshot.db
 

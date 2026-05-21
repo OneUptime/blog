@@ -106,7 +106,7 @@ talosctl -n 10.0.1.10 get securitystate
 
 ## Option 2: Using Custom Keys
 
-For maximum control, generate your own SecureBoot signing material and build the Talos boot assets locally with the `imager` container. The public Image Factory at `factory.talos.dev` does not accept user-supplied keys — its schematic only exposes `customization.secureboot.includeWellKnownCertificates` — so custom-key workflows have to use `imager` (or a self-hosted Image Factory) directly.
+For maximum control, generate your own SecureBoot signing material and build the Talos boot assets locally with the `imager` container. The public Image Factory at `factory.talos.dev` does not accept user-supplied keys - its schematic only exposes `customization.secureboot.includeWellKnownCertificates` - so custom-key workflows have to use `imager` (or a self-hosted Image Factory) directly.
 
 ### Generate Custom Keys
 
@@ -131,7 +131,7 @@ This produces `uki-signing-cert.pem` / `uki-signing-key.pem`, `pcr-signing-key.p
 
 ### Build Signed Talos Assets with `imager`
 
-Talos packages the kernel, initramfs, and command line into a single Unified Kernel Image (UKI). Both `systemd-boot` and the UKI are signed with the UKI signing certificate, so there is no separate kernel/bootloader signing step — you just point `imager` at the keys generated above:
+Talos packages the kernel, initramfs, and command line into a single Unified Kernel Image (UKI). Both `systemd-boot` and the UKI are signed with the UKI signing certificate, so there is no separate kernel/bootloader signing step - you just point `imager` at the keys generated above:
 
 ```bash
 # Build a SecureBoot ISO with your own signing key and enrollment database
@@ -156,7 +156,7 @@ Reference this image from `machine.install.image` in your machine configuration.
 
 ## Configuring Talos for SecureBoot
 
-SecureBoot in Talos is enabled by booting and installing from a SecureBoot installer image — there is no separate `features.secureboot` flag in the machine configuration. Point `machine.install.image` at the SecureBoot installer for your schematic:
+SecureBoot in Talos is enabled by booting and installing from a SecureBoot installer image - there is no separate `features.secureboot` flag in the machine configuration. Point `machine.install.image` at the SecureBoot installer for your schematic:
 
 ```yaml
 # Machine configuration with a SecureBoot installer
@@ -176,7 +176,7 @@ talosctl apply-config --insecure \
   --file secureboot-config.yaml
 
 # Moving an existing non-SecureBoot (GRUB) node to SecureBoot requires
-# a fresh install — the on-disk layout switches from GRUB to systemd-boot/UKI
+# a fresh install - the on-disk layout switches from GRUB to systemd-boot/UKI
 # and is not upgradable in place.
 talosctl -n 10.0.1.10 upgrade \
   --image factory.talos.dev/installer-secureboot/SCHEMATIC_ID:v1.9.0
@@ -249,7 +249,7 @@ Some UEFI firmware implementations have quirks with key enrollment. If automatic
 
 ## Integrating with TPM 2.0
 
-For additional security, combine SecureBoot with TPM 2.0 measured boot. SecureBoot is still selected by the installer image — the machine config just adds TPM-backed LUKS2 keys for the STATE and EPHEMERAL partitions:
+For additional security, combine SecureBoot with TPM 2.0 measured boot. SecureBoot is still selected by the installer image - the machine config just adds TPM-backed LUKS2 keys for the STATE and EPHEMERAL partitions:
 
 ```yaml
 # Machine configuration with TPM-sealed disk encryption

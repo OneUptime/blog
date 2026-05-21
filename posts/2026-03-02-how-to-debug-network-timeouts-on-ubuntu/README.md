@@ -59,9 +59,9 @@ A connection timeout means your SYN packet is not getting a response.
 sudo tcpdump -n -i any host 10.0.0.50 and port 5432
 
 # What to look for:
-# If you see SYN but no SYN-ACK: remote host is unreachable or not listening
+# If you see SYN but no SYN-ACK: the packet or reply is being dropped, filtered, or lost
 # If you see SYN then RST: remote host actively refused
-# If you see SYN then nothing for several seconds: firewall is dropping (not rejecting)
+# If you see SYN then nothing for several seconds: a firewall, routing issue, or packet loss is preventing a reply
 ```
 
 ### Firewall Silently Dropping Packets
@@ -146,7 +146,7 @@ curl -w "
 # time_ttfb (time_starttransfer): Time To First Byte - server processing time
 ```
 
-A high `time_namelookup` points to DNS issues. High `time_connect` points to network routing. High `time_ttfb` points to the server's application or backend.
+A high `time_namelookup` points to DNS issues. High `time_connect` points to network routing, filtering, or server-side connection handling. High `time_ttfb` points to the server's application or backend.
 
 ## TCP Retransmissions and Congestion
 
@@ -183,16 +183,16 @@ Too many connections in TIME_WAIT state can exhaust ports and cause "Cannot assi
 # Count TIME_WAIT connections
 ss -tan | grep TIME_WAIT | wc -l
 
-# If this number is in the thousands, you may be exhausting ephemeral ports
+# If this number is very high or near your ephemeral port range, you may be exhausting ports
 # View ephemeral port range
 cat /proc/sys/net/ipv4/ip_local_port_range
 
-# Enable TIME_WAIT socket reuse
+# Enable TIME_WAIT socket reuse for new outgoing connections when the kernel considers it safe
 sudo sysctl -w net.ipv4.tcp_tw_reuse=1
 
-# For short-lived services with many outbound connections, reduce TIME_WAIT duration
-# (only do this on internal networks)
-sudo sysctl -w net.ipv4.tcp_fin_timeout=30
+# For short-lived services with many outbound connections, increasing the ephemeral
+# port range is often safer than trying to shorten TCP state timers
+sudo sysctl -w net.ipv4.ip_local_port_range="10000 65535"
 ```
 
 ## Application-Level Timeout Investigation
@@ -246,8 +246,8 @@ sudo tcpdump -n -i eth0 port 5432 -w /tmp/postgres-capture.pcap
 # Capture and display in real time
 sudo tcpdump -n -i eth0 host 10.0.0.50 and port 443
 
-# Analyze the capture
-tcpdump -r /tmp/capture.pcap | grep -i 'retransmit\|RST\|timeout'
+# Review the capture text output for TCP flags, sequence numbers, and timing
+tcpdump -nn -tttt -r /tmp/capture.pcap
 ```
 
 ## Checking for MTU Issues

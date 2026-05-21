@@ -297,7 +297,7 @@ nc -zv <node-ip> 22      # Should fail (SSH is not running anyway)
 
 ## Debugging Dropped Traffic
 
-The Talos `NetworkRuleConfig` schema does not currently expose an in-rule logging primitive — there is no `log` verdict you can attach to a rule. To debug what is being dropped, your options are:
+The Talos `NetworkRuleConfig` schema does not currently expose an in-rule logging primitive - there is no `log` verdict you can attach to a rule. To debug what is being dropped, your options are:
 
 - Inspect the rendered nftables chains with `talosctl get nftableschain -o yaml` to confirm rules match what you expect.
 - Generate test traffic from a known source and observe whether it succeeds.
@@ -307,7 +307,7 @@ When iterating, always use `--mode=try` so a misconfigured rule does not lock yo
 
 ## Recovering from Firewall Lockout
 
-One risk with firewall rules is accidentally locking yourself out. Since Talos does not have SSH, you cannot fall back to a console login to fix things. Your best line of defense is `talosctl apply-config --mode=try`, which applies the config for a short window and automatically reverts it if you do not confirm — use it whenever you change firewall rules.
+One risk with firewall rules is accidentally locking yourself out. Since Talos does not have SSH, you cannot fall back to a console login to fix things. Your best line of defense is `talosctl apply-config --mode=try`, which applies the config for a short window and automatically reverts it if you do not confirm - use it whenever you change firewall rules.
 
 If you do end up locked out, here are your recovery options:
 
@@ -324,4 +324,4 @@ To avoid lockouts in the first place, always test new firewall rules on a single
 
 ## Conclusion
 
-The Talos Linux ingress firewall is clean and declarative. By appending `NetworkDefaultActionConfig` and `NetworkRuleConfig` documents to your machine configuration, you get reproducible host-level filtering that is applied consistently across your fleet. Start with the essential ports for Talos and Kubernetes, lock down etcd to only the control plane nodes, and remember that egress filtering is not part of this feature — handle that at the network or CNI layer. Always test on a single node with `--mode=try` first, and make sure you have a recovery path before applying restrictive rules to your entire cluster.
+The Talos Linux ingress firewall is clean and declarative. By appending `NetworkDefaultActionConfig` and `NetworkRuleConfig` documents to your machine configuration, you get reproducible host-level filtering that is applied consistently across your fleet. Start with the essential ports for Talos and Kubernetes, lock down etcd to only the control plane nodes, and remember that egress filtering is not part of this feature - handle that at the network or CNI layer. Always test on a single node with `--mode=try` first, and make sure you have a recovery path before applying restrictive rules to your entire cluster.

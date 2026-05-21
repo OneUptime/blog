@@ -50,16 +50,19 @@ sudo chown -R git:git /srv/git
 # Set permissions so fcgiwrap (running as www-data) can read repositories
 sudo chmod 755 /srv/git
 sudo usermod -aG git www-data
+
+# Restart fcgiwrap so it picks up the new group membership
+sudo systemctl restart fcgiwrap
 ```
 
 ### Create Bare Repositories
 
 ```bash
-# Create repositories that clients can clone from and push to
-sudo -u git git init --bare /srv/git/myproject.git
-sudo -u git git init --bare /srv/git/website.git
+# Create group-writable repositories that clients can clone from and push to
+sudo -u git git init --bare --shared=group /srv/git/myproject.git
+sudo -u git git init --bare --shared=group /srv/git/website.git
 
-# Enable push support - git-http-backend requires this config setting
+# Explicitly enable push support for this authenticated-only setup
 cd /srv/git/myproject.git
 sudo -u git git config http.receivepack true
 
@@ -112,10 +115,19 @@ server {
     root /srv/git;
 
     # Git HTTP backend location
-    location ~ ^(.*/objects/[0-9a-f]{2}/[0-9a-f]{38})$             { root /srv/git; }
-    location ~ ^(.*/objects/pack/pack-[0-9a-f]{40}\.(pack|idx))$    { root /srv/git; }
+    location ~ ^(.*/objects/[0-9a-f]{2}/[0-9a-f]{38})$ {
+        auth_basic "Git Repository Access";
+        auth_basic_user_file /etc/nginx/git-htpasswd;
+        root /srv/git;
+    }
 
-    location ~ ^(/.*.git/(HEAD|info/refs|objects/info/.*|git-(upload|receive)-pack))$ {
+    location ~ ^(.*/objects/pack/pack-[0-9a-f]{40}\.(pack|idx))$ {
+        auth_basic "Git Repository Access";
+        auth_basic_user_file /etc/nginx/git-htpasswd;
+        root /srv/git;
+    }
+
+    location ~ ^(/.*\.git/(HEAD|info/refs|objects/info/.*|git-(upload|receive)-pack))$ {
         # Require authentication
         auth_basic "Git Repository Access";
         auth_basic_user_file /etc/nginx/git-htpasswd;
@@ -215,7 +227,7 @@ server {
     root /srv/git;
 
     # Smart HTTP protocol for Git operations
-    location ~ ^(/.*.git/(HEAD|info/refs|objects/info/.*|git-(upload|receive)-pack))$ {
+    location ~ ^(/.*\.git/(HEAD|info/refs|objects/info/.*|git-(upload|receive)-pack))$ {
         auth_basic "Git Repository Access";
         auth_basic_user_file /etc/nginx/git-htpasswd;
 
@@ -258,22 +270,25 @@ server {
     # ... ssl config ...
 
     # Public read-only repository
-    location ~ ^(/public-project.git/(HEAD|info/refs|objects/info/.*|git-upload-pack))$ {
+    # Keep http.receivepack unset or false on this repository so anonymous pushes are not advertised.
+    location ~ ^(/public-project\.git/(HEAD|info/refs|objects/info/.*|git-upload-pack))$ {
         # No auth for reads, but push is still restricted
         fastcgi_pass unix:/var/run/fcgiwrap.socket;
         fastcgi_param SCRIPT_FILENAME  /usr/lib/git-core/git-http-backend;
+        fastcgi_param GIT_HTTP_EXPORT_ALL "";
         fastcgi_param GIT_PROJECT_ROOT /srv/git;
         fastcgi_param PATH_INFO        $uri;
         include fastcgi_params;
     }
 
     # Private repository - auth required for all operations
-    location ~ ^(/private-project.git/(HEAD|info/refs|objects/info/.*|git-(upload|receive)-pack))$ {
+    location ~ ^(/private-project\.git/(HEAD|info/refs|objects/info/.*|git-(upload|receive)-pack))$ {
         auth_basic "Private Repository";
         auth_basic_user_file /etc/nginx/private-htpasswd;
 
         fastcgi_pass unix:/var/run/fcgiwrap.socket;
         fastcgi_param SCRIPT_FILENAME  /usr/lib/git-core/git-http-backend;
+        fastcgi_param GIT_HTTP_EXPORT_ALL "";
         fastcgi_param GIT_PROJECT_ROOT /srv/git;
         fastcgi_param PATH_INFO        $uri;
         fastcgi_param REMOTE_USER      $remote_user;
@@ -287,8 +302,9 @@ server {
 To avoid entering the password repeatedly, configure Git's credential helper:
 
 ```bash
-# Store credentials in keyring (on desktop Linux with gnome-keyring)
-git config --global credential.helper /usr/lib/git-core/git-credential-gnome-keyring
+# Store credentials in a desktop keyring if a secure helper is installed
+git help -a | grep credential-
+git config --global credential.helper libsecret
 
 # Or use the file-based credential store (less secure - plaintext)
 git config --global credential.helper store
@@ -313,7 +329,7 @@ To allow creating repositories over HTTP, you'd need a web API wrapper (git-http
 REPO_NAME="$1"
 REPO_PATH="/srv/git/${REPO_NAME}.git"
 
-sudo -u git git init --bare "$REPO_PATH"
+sudo -u git git init --bare --shared=group "$REPO_PATH"
 sudo -u git git -C "$REPO_PATH" config http.receivepack true
 
 echo "Repository created: $REPO_PATH"

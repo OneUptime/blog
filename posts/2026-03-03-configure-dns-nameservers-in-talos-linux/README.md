@@ -29,7 +29,7 @@ machine:
 
 These nameservers are used by the Talos node itself for resolving external hostnames. They are not the same as the DNS servers used by Kubernetes pods (which use CoreDNS).
 
-Talos runs a host DNS proxy that forwards queries to the configured upstream nameservers. If one upstream fails or times out, the proxy will try the others, so listing multiple nameservers provides redundancy. Note that the order is not a strict primary-then-secondary failover — the host DNS proxy may select among healthy upstreams, so all listed servers should be ones you trust.
+Talos runs a host DNS proxy that forwards queries to the configured upstream nameservers. If one upstream fails or times out, the proxy will try the others, so listing multiple nameservers provides redundancy. Note that the order is not a strict primary-then-secondary failover - the host DNS proxy may select among healthy upstreams, so all listed servers should be ones you trust.
 
 ## Where Machine DNS Is Used
 

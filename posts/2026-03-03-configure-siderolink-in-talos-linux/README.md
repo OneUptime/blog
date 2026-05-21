@@ -52,7 +52,7 @@ kind: SideroLinkConfig
 apiUrl: https://sidero-management.example.com:8099?jointoken=secret-token
 ```
 
-The `apiUrl` field points to your Sidero management server's SideroLink endpoint and includes the join token that authorizes the node. The SideroLink interface on the node and its IPv6 address (allocated from the `fdae::/32` overlay range) are created automatically by Talos once it processes this document — you do not declare the `siderolink` interface or its address yourself under `machine.network.interfaces`.
+The `apiUrl` field points to your Sidero management server's SideroLink endpoint and includes the join token that authorizes the node. The SideroLink interface on the node and its IPv6 address (allocated from the `fdae::/32` overlay range) are created automatically by Talos once it processes this document - you do not declare the `siderolink` interface or its address yourself under `machine.network.interfaces`.
 
 ## Setting Up the Sidero Management Server
 
@@ -147,7 +147,7 @@ kubectl exec -n sidero-system deploy/siderolink -c siderolink -- wg show
 
 ## Performance Tuning
 
-WireGuard is known for its low overhead, but there are a few things to keep in mind for SideroLink performance in large clusters. The `siderolink` interface itself is fully managed by Talos — its MTU and addressing are configured automatically (Talos accounts for the WireGuard encapsulation overhead on top of the underlying link MTU), so you do not tune it through `machine.network.interfaces`. Instead, focus on the underlying physical interface that carries the WireGuard traffic: if you are running inside a cloud provider or nested virtualization with a reduced path MTU, adjust the MTU on that interface so the WireGuard packets are not fragmented.
+WireGuard is known for its low overhead, but there are a few things to keep in mind for SideroLink performance in large clusters. The `siderolink` interface itself is fully managed by Talos - its MTU and addressing are configured automatically (Talos accounts for the WireGuard encapsulation overhead on top of the underlying link MTU), so you do not tune it through `machine.network.interfaces`. Instead, focus on the underlying physical interface that carries the WireGuard traffic: if you are running inside a cloud provider or nested virtualization with a reduced path MTU, adjust the MTU on that interface so the WireGuard packets are not fragmented.
 
 For clusters with more than 100 nodes, consider monitoring the management server's CPU and memory usage, as maintaining many concurrent WireGuard tunnels does add some overhead.
 

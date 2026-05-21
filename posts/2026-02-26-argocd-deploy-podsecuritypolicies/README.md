@@ -14,7 +14,7 @@ PodSecurityPolicies (PSPs) were the original Kubernetes mechanism for controllin
 
 Here is the timeline:
 
-- **Kubernetes 1.0 to 1.24**: PodSecurityPolicies available
+- **Kubernetes 1.3 to 1.24**: PodSecurityPolicies available
 - **Kubernetes 1.21**: PSPs deprecated
 - **Kubernetes 1.22**: Pod Security Admission (PSA) introduced as alpha
 - **Kubernetes 1.23**: PSA moved to beta
@@ -37,7 +37,7 @@ graph LR
 
 - **Privileged**: No restrictions. Pods can do anything.
 - **Baseline**: Prevents known privilege escalations. Blocks hostNetwork, hostPID, privileged containers, etc.
-- **Restricted**: Heavily restricted. Requires running as non-root, read-only root filesystem, dropping all capabilities.
+- **Restricted**: Heavily restricted. Requires running as non-root, disabling privilege escalation, setting seccomp, and dropping all capabilities.
 
 ## Deploying Pod Security with ArgoCD
 
@@ -55,11 +55,11 @@ metadata:
     pod-security.kubernetes.io/enforce: restricted
     pod-security.kubernetes.io/enforce-version: latest
 
-    # Warn about baseline violations in audit logs
+    # Record restricted policy violations in audit logs
     pod-security.kubernetes.io/audit: restricted
     pod-security.kubernetes.io/audit-version: latest
 
-    # Show warnings to users for baseline violations
+    # Show warnings to users for restricted policy violations
     pod-security.kubernetes.io/warn: restricted
     pod-security.kubernetes.io/warn-version: latest
 ```
@@ -86,7 +86,7 @@ spec:
       selfHeal: true      # Revert label changes
 ```
 
-The `selfHeal: true` is important here. If someone removes the security labels to bypass restrictions, ArgoCD restores them immediately.
+The `selfHeal: true` is important here. If someone removes the security labels to bypass restrictions, ArgoCD attempts to restore them after it detects the drift.
 
 ## Different Security Levels Per Namespace
 
@@ -275,6 +275,9 @@ spec:
     automated:
       prune: true
       selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - Replace=true
 ---
 # Custom policy: Require specific labels
 apiVersion: kyverno.io/v1
@@ -282,7 +285,6 @@ kind: ClusterPolicy
 metadata:
   name: require-labels
 spec:
-  validationFailureAction: Enforce
   rules:
     - name: require-app-label
       match:
@@ -292,6 +294,7 @@ spec:
                 - Deployment
                 - StatefulSet
       validate:
+        failureAction: Enforce
         message: "The label 'app' is required"
         pattern:
           metadata:
@@ -304,7 +307,6 @@ kind: ClusterPolicy
 metadata:
   name: disallow-latest-tag
 spec:
-  validationFailureAction: Enforce
   rules:
     - name: validate-image-tag
       match:
@@ -315,6 +317,7 @@ spec:
                 - StatefulSet
                 - DaemonSet
       validate:
+        failureAction: Enforce
         message: "Using 'latest' tag is not allowed"
         pattern:
           spec:
@@ -346,6 +349,8 @@ spec:
     automated:
       prune: true
       selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
 ---
 # Template for required labels
 apiVersion: templates.gatekeeper.sh/v1

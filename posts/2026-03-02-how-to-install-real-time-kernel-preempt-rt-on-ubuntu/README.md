@@ -10,7 +10,7 @@ Description: Install the PREEMPT_RT real-time kernel on Ubuntu for deterministic
 
 The standard Linux kernel is designed for high throughput, not deterministic latency. For applications that require guaranteed response times - CNC machines, robotics, audio processing, telecommunications, and financial trading systems - the PREEMPT_RT patch set transforms Linux into a hard real-time operating system by making nearly all kernel code preemptible.
 
-Starting with kernel 6.12, PREEMPT_RT was merged into the mainline Linux kernel, which means upstream kernels now include RT support (note: Ubuntu's default stock kernel is still not built with CONFIG_PREEMPT_RT=y — you still need the realtime kernel from Ubuntu Pro or a custom build). This guide covers multiple installation methods.
+Starting with kernel 6.12, PREEMPT_RT was merged into the mainline Linux kernel, which means upstream kernels now include RT support (note: Ubuntu's default stock kernel is still not built with CONFIG_PREEMPT_RT=y - you still need the realtime kernel from Ubuntu Pro or a custom build). This guide covers multiple installation methods.
 
 ## Prerequisites
 

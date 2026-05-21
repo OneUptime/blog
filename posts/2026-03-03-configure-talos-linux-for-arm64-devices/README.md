@@ -211,7 +211,7 @@ machine:
 
 ARM64 processors often support multiple performance states. The Linux kernel default for most modern systems is the `schedutil` CPU frequency governor, which dynamically adjusts clock speeds. For Kubernetes workloads where consistent latency matters, you might prefer the `performance` governor.
 
-Talos does not expose the CPU frequency governor directly through the machine config — the governor is controlled by the kernel cpufreq subsystem (via `/sys/devices/system/cpu/cpu*/cpufreq/scaling_governor`) and depends on the cpufreq driver available for your hardware. You can disable energy-aware scheduling, which biases task placement toward energy efficiency on big.LITTLE systems, with a sysctl:
+Talos does not expose the CPU frequency governor directly through the machine config - the governor is controlled by the kernel cpufreq subsystem (via `/sys/devices/system/cpu/cpu*/cpufreq/scaling_governor`) and depends on the cpufreq driver available for your hardware. You can disable energy-aware scheduling, which biases task placement toward energy efficiency on big.LITTLE systems, with a sysctl:
 
 ```yaml
 machine:

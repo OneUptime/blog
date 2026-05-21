@@ -72,7 +72,7 @@ sum(rate(istio_tcp_connections_opened_total[5m])) by (destination_workload)
 sum(rate(istio_tcp_connections_closed_total[5m])) by (destination_workload)
 ```
 
-**envoy_cluster_upstream_cx_connect_fail** - Failed connection attempts from the proxy to upstream services:
+**envoy_cluster_upstream_cx_connect_fail** - Failed connection attempts from the proxy to upstream services, if you collect Envoy cluster stats:
 
 ```text
 sum(rate(envoy_cluster_upstream_cx_connect_fail[5m])) by (cluster_name)

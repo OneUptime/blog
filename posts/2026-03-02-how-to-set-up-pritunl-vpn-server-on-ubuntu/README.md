@@ -144,7 +144,7 @@ sudo pritunl set app.server_port 443
 sudo pritunl unset app.server_port
 ```
 
-The public server address (used when behind NAT or an elastic IP) is set in the web UI on the initial setup screen or under the host's Public Address field — there is no CLI command for it.
+The public server address (used when behind NAT or an elastic IP) is set in the web UI on the initial setup screen or under the host's Public Address field - there is no CLI command for it.
 
 ## Firewall Configuration
 

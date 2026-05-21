@@ -251,7 +251,7 @@ polkit.addRule(function(action, subject) {
 });
 ```
 
-Avoid adding the user to the `disk` group as a shortcut — that group grants raw read/write access to every block device on the system, including the root disk, and bypasses udisks entirely.
+Avoid adding the user to the `disk` group as a shortcut - that group grants raw read/write access to every block device on the system, including the root disk, and bypasses udisks entirely.
 
 ## Approach 3: usbmount Package
 

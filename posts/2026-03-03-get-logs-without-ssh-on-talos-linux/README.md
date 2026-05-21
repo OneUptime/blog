@@ -248,7 +248,7 @@ machine:
 
 This sends all Talos service logs (kubelet, etcd, apid, etc.) to the specified endpoint without needing any additional pods or DaemonSets.
 
-The only currently supported format is `json_lines` — newline-separated JSON messages (one per UDP packet, or newline-delimited over TCP). Supported endpoint protocols are `tcp` and `udp`.
+The only currently supported format is `json_lines` - newline-separated JSON messages (one per UDP packet, or newline-delimited over TCP). Supported endpoint protocols are `tcp` and `udp`.
 
 ```yaml
 # Multiple log destinations

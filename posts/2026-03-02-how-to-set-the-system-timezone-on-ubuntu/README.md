@@ -216,7 +216,7 @@ crontab -l
 
 # Ubuntu's default cron (Vixie/Debian cron) does NOT support per-user
 # timezones for scheduling. Setting TZ in a crontab only affects the
-# environment of the commands that are run — it does not change when
+# environment of the commands that are run - it does not change when
 # cron triggers them. Environment variables must also be on their own
 # line (not prepended to a schedule line).
 #
@@ -229,7 +229,7 @@ TZ=America/New_York
 
 # Some other cron implementations (e.g. cronie on RHEL/Fedora) support
 # CRON_TZ to control how schedule lines are interpreted. This is NOT
-# supported by Ubuntu's default cron — to schedule a job at a specific
+# supported by Ubuntu's default cron - to schedule a job at a specific
 # wall-clock time in a non-system timezone there, compute the equivalent
 # UTC/system-timezone time, or have the script itself check the local
 # time before running:

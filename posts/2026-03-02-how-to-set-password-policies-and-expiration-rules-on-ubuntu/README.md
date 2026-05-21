@@ -83,7 +83,7 @@ PASS_MIN_DAYS   7       # Minimum days between changes
 PASS_WARN_AGE   14      # Days before expiry to start warning
 ```
 
-Note: `PASS_MIN_LEN` is no longer honored by shadow-utils — password length is enforced by PAM (`pam_pwquality`, covered below). The default inactivity period for new accounts is configured separately in `/etc/default/useradd` (or via `useradd -D -f`):
+Note: `PASS_MIN_LEN` is no longer honored by shadow-utils - password length is enforced by PAM (`pam_pwquality`, covered below). The default inactivity period for new accounts is configured separately in `/etc/default/useradd` (or via `useradd -D -f`):
 
 ```bash
 # Set default inactivity to 30 days after password expiry
@@ -186,7 +186,7 @@ enforce_for_root = 1
 EOF
 ```
 
-Note: password reuse (the `remember=N` history) is configured on the `pam_unix.so` line in `/etc/pam.d/common-password`, not in `pwquality.conf` — see the next section.
+Note: password reuse (the `remember=N` history) is configured on the `pam_unix.so` line in `/etc/pam.d/common-password`, not in `pwquality.conf` - see the next section.
 
 ## Configuring PAM to Use the Policy
 

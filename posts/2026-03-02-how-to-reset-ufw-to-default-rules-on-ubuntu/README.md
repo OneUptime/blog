@@ -18,7 +18,7 @@ The `ufw reset` command:
 - Disables UFW completely
 - Removes all user-defined rules from the active ruleset
 - Creates backup copies of the rule files
-- Does not modify the default policies in `/etc/default/ufw` — they persist across the reset, but only take effect once UFW is re-enabled
+- Does not modify the default policies in `/etc/default/ufw` - they persist across the reset, but only take effect once UFW is re-enabled
 
 Critically, `ufw reset` does NOT:
 - Immediately re-enable UFW (you have to do that manually)

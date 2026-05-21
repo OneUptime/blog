@@ -60,7 +60,7 @@ Ubuntu Pro offers three FIPS-related services:
 - **fips-updates**: FIPS modules with security patches applied. The updates may affect the validated state but maintain security.
 - **fips-preview**: Modules currently in the NIST recertification queue. Useful for FedRAMP scenarios on newer LTS releases (e.g. 22.04 modules before they completed FIPS 140-3 certification).
 
-For strict FIPS compliance audits, `fips` is required. For environments where security is the primary concern and strict validation status is secondary, `fips-updates` is the better choice since it receives security fixes — Canonical also recommends `fips-updates` over plain `fips` for most production use.
+For strict FIPS compliance audits, `fips` is required. For environments where security is the primary concern and strict validation status is secondary, `fips-updates` is the better choice since it receives security fixes - Canonical also recommends `fips-updates` over plain `fips` for most production use.
 
 ```bash
 # View the description of each
@@ -264,7 +264,7 @@ cat /proc/sys/crypto/fips_enabled
 # Should return: 0
 ```
 
-Note that `pro disable fips` only removes the Ubuntu Pro APT sources for FIPS — it does not uninstall the FIPS packages or revert the kernel. Canonical does not provide a clean rollback path; fully reverting requires reinstalling the system. Disabling FIPS on a production system requires careful planning - services configured for FIPS algorithms will need their configuration reviewed, and the transition period may leave the system in a mixed state.
+Note that `pro disable fips` only removes the Ubuntu Pro APT sources for FIPS - it does not uninstall the FIPS packages or revert the kernel. Canonical does not provide a clean rollback path; fully reverting requires reinstalling the system. Disabling FIPS on a production system requires careful planning - services configured for FIPS algorithms will need their configuration reviewed, and the transition period may leave the system in a mixed state.
 
 ## Audit and Compliance Documentation
 

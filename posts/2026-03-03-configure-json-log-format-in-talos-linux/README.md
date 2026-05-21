@@ -41,7 +41,7 @@ talosctl -n 192.168.1.10 logs machined
 talosctl -n 192.168.1.10 logs machined -f
 ```
 
-`talosctl logs` does not transform the log output — there is no `-o json` flag on this command. If a service already emits JSON lines you can pipe its output directly into `jq`:
+`talosctl logs` does not transform the log output - there is no `-o json` flag on this command. If a service already emits JSON lines you can pipe its output directly into `jq`:
 
 ```bash
 # Pipe JSON logs into jq for filtering (works only when the service emits JSON)

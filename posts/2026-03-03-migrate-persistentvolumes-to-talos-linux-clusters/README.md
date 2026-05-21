@@ -153,7 +153,7 @@ kubectl exec -n production redis-0 -- redis-cli BGSAVE
 kubectl cp production/redis-0:/data/dump.rdb ./redis-dump.rdb
 kubectl cp ./redis-dump.rdb production/redis-0:/data/dump.rdb
 # Restart the pod so Redis loads the imported dump.rdb on startup.
-# Do not use `DEBUG RELOAD` without `NOSAVE` here — it would rdbSave the
+# Do not use `DEBUG RELOAD` without `NOSAVE` here - it would rdbSave the
 # current (empty) in-memory state first and overwrite the file you just copied.
 kubectl delete pod -n production redis-0
 
@@ -242,7 +242,7 @@ KUBECONFIG=./target-kubeconfig kubectl exec -n production rsync-target -- \
 # Option B: Stream a tar archive directly between the two clusters
 # (more efficient than staging a temp file on the local workstation).
 # This pipes `tar` stdout from a kubectl exec on the source cluster into
-# `tar` stdin of a kubectl exec on the target cluster — no intermediate file.
+# `tar` stdin of a kubectl exec on the target cluster - no intermediate file.
 KUBECONFIG=./source-kubeconfig kubectl exec -n production rsync-source -- \
   tar czf - -C /data . | \
   KUBECONFIG=./target-kubeconfig kubectl exec -i -n production rsync-target -- \

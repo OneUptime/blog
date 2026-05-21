@@ -49,7 +49,7 @@ ping -c 2 node2
 
 ## Step 2: Set Up SSH Keys Between Nodes (Optional)
 
-Pacemaker itself does not require SSH between nodes — cluster authentication goes through `pcsd` (port 2224) using the `hacluster` user configured in the next step. Passwordless SSH is only needed if you plan to use an SSH-based fence agent (e.g. `fence_virsh`) or simply want it for general administration:
+Pacemaker itself does not require SSH between nodes - cluster authentication goes through `pcsd` (port 2224) using the `hacluster` user configured in the next step. Passwordless SSH is only needed if you plan to use an SSH-based fence agent (e.g. `fence_virsh`) or simply want it for general administration:
 
 ```bash
 # On node1: generate and copy key to node2

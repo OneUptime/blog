@@ -72,8 +72,9 @@ nginx['enable'] = false
 # Set the external URL
 external_url 'https://gitlab.example.com'
 
-# Configure Puma to listen on a Unix socket (for Nginx to proxy to)
-gitlab_rails['initial_root_password'] = 'ChangeThis123!'
+# Tell GitLab Workhorse to listen on a TCP port for your external Nginx to proxy to
+gitlab_workhorse['listen_network'] = "tcp"
+gitlab_workhorse['listen_addr'] = "127.0.0.1:8181"
 ```
 
 ## Getting the Initial Root Password

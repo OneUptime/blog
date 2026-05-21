@@ -10,7 +10,7 @@ Description: Configure NFS mounts on Talos Linux for shared network storage acce
 
 NFS (Network File System) remains one of the most widely used shared storage protocols, and for good reason. It is simple, well-understood, and works across virtually every operating system. When running Talos Linux, NFS provides a way to serve persistent volumes to Kubernetes workloads and integrate with existing network storage infrastructure. This guide covers how to configure NFS mounts on Talos Linux through Kubernetes.
 
-Unlike traditional Linux distributions, Talos does **not** expose a way to mount arbitrary NFS shares at the OS level via the machine configuration. The Talos `v1alpha1` machine config has no `machine.mounts` field, and the kernel image does not include `mount.nfs` userspace tooling. NFS on Talos is therefore consumed exclusively through Kubernetes — either via a PersistentVolume, the NFS CSI driver, or an inline `nfs` volume on a pod.
+Unlike traditional Linux distributions, Talos does **not** expose a way to mount arbitrary NFS shares at the OS level via the machine configuration. The Talos `v1alpha1` machine config has no `machine.mounts` field, and the kernel image does not include `mount.nfs` userspace tooling. NFS on Talos is therefore consumed exclusively through Kubernetes - either via a PersistentVolume, the NFS CSI driver, or an inline `nfs` volume on a pod.
 
 ## NFS Use Cases on Talos Linux
 
@@ -26,14 +26,14 @@ Common reasons to use NFS with Talos Linux:
 
 The mount options below are passed through to the kernel NFS client by both `PersistentVolume.mountOptions` and the NFS CSI driver. They significantly affect performance and reliability:
 
-- `nfsvers=4.2` — NFSv4.2 provides better security and performance than v3
-- `rsize=1048576` / `wsize=1048576` — larger read/write buffers (1 MiB) improve throughput for large file operations
-- `hard` — NFS requests will retry forever rather than failing (use `soft` if you prefer timeout failures)
-- `timeo=600` — request timeout in deciseconds (60 seconds)
-- `retrans=3` — number of retries before reporting an error (only meaningful with `soft`)
-- `nolock` — disable file locking (sometimes required against NFSv3 servers without `rpc.statd`)
+- `nfsvers=4.2` - NFSv4.2 provides better security and performance than v3
+- `rsize=1048576` / `wsize=1048576` - larger read/write buffers (1 MiB) improve throughput for large file operations
+- `hard` - NFS requests will retry forever rather than failing (use `soft` if you prefer timeout failures)
+- `timeo=600` - request timeout in deciseconds (60 seconds)
+- `retrans=3` - number of retries before reporting an error (only meaningful with `soft`)
+- `nolock` - disable file locking (sometimes required against NFSv3 servers without `rpc.statd`)
 
-`noatime` is accepted on most filesystems but is **a no-op on NFS** per `nfs(5)` — atime handling is governed by the server. Leaving it out keeps the mount options honest.
+`noatime` is accepted on most filesystems but is **a no-op on NFS** per `nfs(5)` - atime handling is governed by the server. Leaving it out keeps the mount options honest.
 
 ## Kubernetes NFS Persistent Volumes
 
@@ -157,7 +157,7 @@ spec:
     - hard
 ```
 
-Because the mount happens through Kubernetes, you do not need to apply any per-node Talos config patch — scheduling a pod that uses the PVC is enough to bring the mount up on the right nodes.
+Because the mount happens through Kubernetes, you do not need to apply any per-node Talos config patch - scheduling a pod that uses the PVC is enough to bring the mount up on the right nodes.
 
 ## Performance Tuning
 
@@ -251,4 +251,4 @@ NFS has historically been weak on security. For Talos Linux deployments:
 
 ## Summary
 
-NFS on Talos Linux is consumed exclusively through Kubernetes — the machine config has no `mounts` field for OS-level NFS, and the kernel image does not ship `mount.nfs`. Workloads can use a static `PersistentVolume` with an `nfs` source, the NFS CSI driver for dynamic provisioning, or an inline `nfs` volume on a pod. Tune `mountOptions` for your workload pattern, ensure network reliability between nodes and the NFS server, and consider security implications when sharing data over the network.
+NFS on Talos Linux is consumed exclusively through Kubernetes - the machine config has no `mounts` field for OS-level NFS, and the kernel image does not ship `mount.nfs`. Workloads can use a static `PersistentVolume` with an `nfs` source, the NFS CSI driver for dynamic provisioning, or an inline `nfs` volume on a pod. Tune `mountOptions` for your workload pattern, ensure network reliability between nodes and the NFS server, and consider security implications when sharing data over the network.

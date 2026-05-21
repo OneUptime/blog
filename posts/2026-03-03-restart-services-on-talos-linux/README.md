@@ -83,8 +83,8 @@ When you restart kubelet:
 
 Talos runs two containerd instances as separate services:
 
-- **`containerd`** — the system containerd, used for Talos system extensions and other system-level containers.
-- **`cri`** — the containerd instance that kubelet talks to over the CRI for running Kubernetes pods.
+- **`containerd`** - the system containerd, used for Talos system extensions and other system-level containers.
+- **`cri`** - the containerd instance that kubelet talks to over the CRI for running Kubernetes pods.
 
 Restarting `cri` is the disruptive one because it affects every Kubernetes container on the node:
 

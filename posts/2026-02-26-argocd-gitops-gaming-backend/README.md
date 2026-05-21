@@ -116,7 +116,7 @@ spec:
   source:
     repoURL: https://agones.dev/chart/stable
     chart: agones
-    targetRevision: 1.38.0
+    targetRevision: 1.57.0
     helm:
       values: |
         agones:
@@ -308,7 +308,7 @@ data:
     }
 ```
 
-For rapid event deployment, use a separate ArgoCD Application with faster sync:
+For rapid event deployment, use a separate ArgoCD Application that can sync independently:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -352,7 +352,7 @@ spec:
     namespace: game-servers
   syncPolicy:
     automated:
-      prune: false    # Never auto-delete game servers
+      prune: false    # Do not delete resources just because they disappear from Git
       selfHeal: true
     syncOptions:
       - RespectIgnoreDifferences=true
@@ -449,6 +449,9 @@ spec:
     matchLabels:
       app: inventory
   template:
+    metadata:
+      labels:
+        app: inventory
     spec:
       containers:
         - name: inventory
@@ -488,7 +491,7 @@ spec:
     - name: game-servers
       rules:
         - alert: NoReadyGameServers
-          expr: agones_fleets_replicas_count{type="Ready"} < 3
+          expr: agones_fleets_replicas_count{type="ready"} < 3
           for: 2m
           labels:
             severity: critical
@@ -504,7 +507,7 @@ spec:
             summary: "Matchmaking queue depth is {{ $value }}"
 
         - alert: HighPlayerLatency
-          expr: histogram_quantile(0.95, game_server_player_latency_bucket) > 0.1
+          expr: histogram_quantile(0.95, sum by (le) (rate(game_server_player_latency_bucket[5m]))) > 0.1
           for: 5m
           labels:
             severity: warning
@@ -514,6 +517,6 @@ spec:
 
 ## Conclusion
 
-Gaming backends benefit enormously from GitOps because they combine rapid iteration (live events, balance patches) with critical stability requirements (active player sessions must not be interrupted). ArgoCD, combined with Agones for game server management and ApplicationSets for multi-region deployment, gives you the control and automation needed to run a gaming platform at scale. The key is treating game server fleets differently from stateless services and never allowing automatic pruning of active game servers.
+Gaming backends benefit enormously from GitOps because they combine rapid iteration (live events, balance patches) with critical stability requirements (active player sessions must not be interrupted). ArgoCD, combined with Agones for game server management and ApplicationSets for multi-region deployment, gives you the control and automation needed to run a gaming platform at scale. The key is treating game server fleets differently from stateless services and disabling automatic pruning for game-server Applications unless you have explicitly designed for that lifecycle.
 
 For monitoring player experience and infrastructure health, [OneUptime](https://oneuptime.com) provides real-time observability and alerting for gaming platforms.

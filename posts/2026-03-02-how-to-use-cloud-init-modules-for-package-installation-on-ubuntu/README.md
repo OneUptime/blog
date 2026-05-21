@@ -93,7 +93,7 @@ packages:
   - containerd.io
 ```
 
-Note that cloud-init's apt module does not support a `keyurl` option — for keys hosted only at an HTTP URL (not on a keyserver), use `runcmd` to download the key with `curl` and write it into `/etc/apt/keyrings/` before configuring the source.
+Note that cloud-init's apt module does not support a `keyurl` option - for keys hosted only at an HTTP URL (not on a keyserver), use `runcmd` to download the key with `curl` and write it into `/etc/apt/keyrings/` before configuring the source.
 
 ### Adding a Repository with an Inline Key
 
@@ -224,7 +224,7 @@ snap:
     - snap install lxd --channel=5.21/stable
 ```
 
-If you need to pre-load signed snap assertions (for example, to install snaps from a brand store) the `snap` module also accepts an `assertions` key alongside `commands`. There is no separate top-level `snaps` key — package installs are always expressed as `snap install ...` entries under `commands`.
+If you need to pre-load signed snap assertions (for example, to install snaps from a brand store) the `snap` module also accepts an `assertions` key alongside `commands`. There is no separate top-level `snaps` key - package installs are always expressed as `snap install ...` entries under `commands`.
 
 For more reliable snap installation, use `runcmd`:
 

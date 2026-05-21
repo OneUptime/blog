@@ -222,7 +222,7 @@ table: "100"
 action: unicast
 ```
 
-When a LoadBalancer service binds to the public IP (203.0.113.10), the rule above directs response traffic to table 100. Table 100 must hold a default route via 203.0.113.1 (added out-of-band — see the note in the basic setup section) so the reply leaves through eth0 to the internet-facing gateway.
+When a LoadBalancer service binds to the public IP (203.0.113.10), the rule above directs response traffic to table 100. Table 100 must hold a default route via 203.0.113.1 (added out-of-band - see the note in the basic setup section) so the reply leaves through eth0 to the internet-facing gateway.
 
 ## Handling Multiple IPs on the Same Interface
 

@@ -38,7 +38,7 @@ graph TB
     Handler --> Redis[Redis Cache]
 ```
 
-The gRPC API is the primary interface. The REST API is automatically generated from the gRPC definitions using grpc-gateway, so both APIs have the same capabilities.
+The gRPC API is the primary interface. The REST API is automatically generated from the gRPC definitions using grpc-gateway, so REST endpoints map to the same underlying services.
 
 You can explore the REST API directly:
 
@@ -66,25 +66,25 @@ curl -k -X POST https://argocd.example.com/api/v1/applications/my-app/sync \
 
 When a request arrives, the API Server first authenticates the caller. ArgoCD supports several authentication methods:
 
-**Local accounts** - username and password stored in ArgoCD's ConfigMap. Suitable for admin accounts and CI/CD service accounts.
+**Local accounts** - accounts and capabilities are defined in ArgoCD's `argocd-cm` ConfigMap, while passwords and token metadata are managed by ArgoCD. Suitable for admin accounts and CI/CD service accounts.
 
 ```bash
 # Login with local account
 argocd login argocd.example.com --username admin --password <password>
 
 # The CLI stores a JWT token locally after login
-cat ~/.argocd/config
+cat ~/.config/argocd/config
 ```
 
 **SSO/OIDC** - integration with identity providers like Okta, Azure AD, Google, or Keycloak. Users authenticate through the identity provider and receive a JWT token.
 
-**Dex** - ArgoCD's built-in identity broker. Dex connects to upstream identity providers (LDAP, SAML, GitHub, GitLab) and issues JWT tokens that ArgoCD understands. For details, see [how the ArgoCD Dex server handles authentication](https://oneuptime.com/blog/post/2026-02-26-argocd-dex-server-authentication/view).
+**Dex** - ArgoCD's built-in identity broker. Dex connects to upstream identity providers (LDAP, SAML, GitHub, GitLab) and participates in the SSO login flow that issues tokens ArgoCD understands. For details, see [how the ArgoCD Dex server handles authentication](https://oneuptime.com/blog/post/2026-02-26-argocd-dex-server-authentication/view).
 
 The authentication flow works like this:
 
-1. The user presents credentials (password, SSO token, or API token)
-2. The API Server validates the credentials against the configured auth method
-3. If valid, a JWT token is issued (or the existing JWT is validated)
+1. The user presents credentials or an existing JWT/API token
+2. For login, the API Server validates credentials directly for local users or uses the configured OIDC/Dex flow for SSO
+3. If valid, a JWT token is issued; on later API requests, the presented JWT is validated
 4. The JWT contains the username and group memberships
 5. This information is used for RBAC decisions
 
@@ -95,9 +95,10 @@ sequenceDiagram
     participant Dex as Dex/SSO
     participant RBAC as RBAC Engine
 
-    User->>API: Request with credentials
-    API->>Dex: Validate SSO token
-    Dex-->>API: User identity + groups
+    User->>API: Login request
+    API->>Dex: SSO/OIDC login flow
+    Dex-->>API: ID token with identity + groups
+    User->>API: API request with JWT
     API->>RBAC: Check permissions
     RBAC-->>API: Allow/Deny
     API-->>User: Response or 403
@@ -147,12 +148,12 @@ The API Server processes incoming webhooks from Git providers. When you push a c
 
 # You can configure a webhook secret in the argocd-secret
 kubectl edit secret argocd-secret -n argocd
-# Add: webhook.github.secret: <your-secret>
+# Add under stringData: webhook.github.secret: <your-secret>
 ```
 
 Webhook processing is much faster than polling. Instead of waiting up to 3 minutes for the next poll cycle, the Application Controller is notified immediately.
 
-Supported webhook providers include GitHub, GitLab, Bitbucket, Bitbucket Server, and Gogs.
+Supported webhook providers include GitHub, GitLab, Bitbucket, Bitbucket Server, Azure DevOps, and Gogs.
 
 ## Request Lifecycle
 
@@ -166,7 +167,7 @@ Let us trace a complete request - what happens when you run `argocd app sync my-
 
 4. **Application lookup** - the API Server reads the Application custom resource from the Kubernetes API to get its current state and configuration.
 
-5. **Sync operation creation** - the API Server creates a sync operation on the Application resource by updating its `spec.operation` field.
+5. **Sync operation creation** - the API Server creates a sync operation on the Application resource by setting its top-level `operation` field.
 
 6. **Controller pickup** - the Application Controller detects the operation and starts executing the sync (this happens asynchronously).
 
@@ -193,6 +194,9 @@ spec:
     spec:
       containers:
       - name: argocd-server
+        env:
+        - name: ARGOCD_API_SERVER_REPLICAS
+          value: "3"
         resources:
           requests:
             cpu: 250m
@@ -236,7 +240,7 @@ The API Server handles TLS termination by default. It generates a self-signed ce
 2. **TLS termination at the ingress** - run the API Server in insecure mode and let the ingress handle TLS
 3. **TLS passthrough** - let the ingress pass through TLS to the API Server
 
-```bash
+```yaml
 # Option 2: Run the API Server without TLS (ingress handles it)
 # Add to the argocd-server deployment
 containers:
@@ -255,9 +259,9 @@ The API Server exposes Prometheus metrics:
 kubectl port-forward deploy/argocd-server -n argocd 8083:8083
 
 # Key metrics to monitor
-# argocd_app_info - application state information
 # grpc_server_handled_total - gRPC request counts
-# grpc_server_handling_seconds - gRPC request durations
+# argocd_redis_request_total - Redis request counts from the API server
+# argocd_proxy_extension_request_duration_seconds - proxy extension request durations
 ```
 
 Watch the gRPC error rates. A spike in permission denied errors might indicate an RBAC misconfiguration. High latency might indicate the API Server is overloaded or the Kubernetes API is slow.
@@ -268,7 +272,7 @@ Watch the gRPC error rates. A spike in permission denied errors might indicate a
 
 ```bash
 # Test if a user can sync an application
-argocd account can-i sync applications my-app --as dev-user
+argocd account can-i sync applications default/my-app --as dev-user
 ```
 
 **"token is expired" errors** - Re-authenticate with `argocd login` or generate a new API token. Configure token expiry in the `argocd-cm` ConfigMap.

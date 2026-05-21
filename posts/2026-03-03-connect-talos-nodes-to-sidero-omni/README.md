@@ -116,7 +116,7 @@ dd if=talos-omni.iso of=/dev/sdb bs=4M status=progress
 # (use --pxe with omnictl download to fetch the PXE-ready assets)
 ```
 
-For cloud environments, download the appropriate image type for your platform from the Omni dashboard or `omnictl download` (Omni surfaces the image types its Image Factory supports — AWS AMI, GCP, Azure VHD, etc.). For example:
+For cloud environments, download the appropriate image type for your platform from the Omni dashboard or `omnictl download` (Omni surfaces the image types its Image Factory supports - AWS AMI, GCP, Azure VHD, etc.). For example:
 
 ```bash
 omnictl download "Amazon AWS" --arch amd64 --output talos-aws.raw.xz
@@ -184,7 +184,7 @@ machineClass:
 # Validate the template offline
 omnictl cluster template validate -f my-cluster.yaml
 
-# Push the template to Omni — this creates the cluster
+# Push the template to Omni - this creates the cluster
 omnictl cluster template sync -f my-cluster.yaml
 
 # Wait for the cluster to converge
@@ -213,7 +213,7 @@ omnictl apply -f control-plane-class.yaml
 Labels help organize your machines in Omni. The Machines view in the Omni UI is the primary place to add or remove labels on a connected machine; the same labels are what Machine Classes match against in their `matchlabels` selectors:
 
 ```yaml
-# worker-class.yaml — matches machines labeled environment=production
+# worker-class.yaml - matches machines labeled environment=production
 metadata:
   namespace: default
   type: MachineClasses.omni.sidero.dev
@@ -266,7 +266,7 @@ Ensure your firewall allows the node's outbound traffic to your Omni instance:
 ```text
 Required outbound ports:
 - TCP 443: Omni gRPC/HTTPS API (initial registration)
-- UDP <wireguard-port>: SideroLink tunnel — the port is assigned per Omni
+- UDP <wireguard-port>: SideroLink tunnel - the port is assigned per Omni
   account; check the SideroLink settings in the Omni UI for the exact value
 ```
 
@@ -277,7 +277,7 @@ No inbound ports need to be opened on the Talos nodes. The SideroLink tunnel is 
 For large-scale deployments, automate node registration declaratively. Omni itself is template-driven: define clusters and machine classes as YAML and check them into Git, then apply them with `omnictl cluster template sync` and `omnictl apply -f`:
 
 ```yaml
-# workers.yaml — a Workers MachineSet inside a cluster template
+# workers.yaml - a Workers MachineSet inside a cluster template
 kind: Workers
 machineClass:
   name: worker

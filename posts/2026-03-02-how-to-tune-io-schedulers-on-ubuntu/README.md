@@ -256,6 +256,6 @@ echo none | sudo tee /sys/block/vda/queue/scheduler
 
 You may see older guides recommend setting `GRUB_CMDLINE_LINUX="elevator=mq-deadline"` in `/etc/default/grub`. This parameter only ever applied to the legacy single-queue block layer and is **not honored by blk-mq**, which is what modern Ubuntu kernels (5.x+) use exclusively. Setting it on a current system has no effect.
 
-Use the per-device udev approach shown above instead — it's the supported way to set schedulers on blk-mq, and it's more flexible since different devices in the same system benefit from different schedulers.
+Use the per-device udev approach shown above instead - it's the supported way to set schedulers on blk-mq, and it's more flexible since different devices in the same system benefit from different schedulers.
 
 Monitoring the effect of scheduler changes with `iostat -xz 1` helps confirm whether your changes improved throughput and reduced await time as expected.

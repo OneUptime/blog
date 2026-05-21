@@ -87,7 +87,7 @@ A basic scan checks:
 - Login page exposure
 - Other interesting findings (response headers, exposed paths, wp-cron)
 
-Note: plugin enumeration and user enumeration are NOT performed by default — they require the `--enumerate` flag (see sections below).
+Note: plugin enumeration and user enumeration are NOT performed by default - they require the `--enumerate` flag (see sections below).
 
 ## Enumerating Plugins
 

@@ -8,7 +8,7 @@ Description: Set up MPLS forwarding on Ubuntu using kernel MPLS support and FRRo
 
 ---
 
-MPLS (Multiprotocol Label Switching) is a forwarding technology that routes traffic based on short labels rather than network layer addresses. It is the foundation for MPLS VPNs, traffic engineering, and segment routing in carrier and data center networks. Linux has supported MPLS in the kernel since version 4.3, and combined with FRRouting, Ubuntu can function as a full MPLS-capable router.
+MPLS (Multiprotocol Label Switching) is a forwarding technology that routes traffic based on short labels rather than network layer addresses. It is the foundation for MPLS VPNs, traffic engineering, and segment routing in carrier and data center networks. Linux has had basic MPLS support in the kernel since version 4.1, with additional capabilities added in 4.3 and 4.5, and combined with FRRouting, Ubuntu can function as a full MPLS-capable router.
 
 ## MPLS Fundamentals
 
@@ -18,7 +18,7 @@ In a traditional IP network, each router performs a longest-prefix match on the 
 2. Label Switching Routers (LSRs) in the core forward packets based solely on the label value, without examining the IP header
 3. An egress LER pops the label and delivers the original IP packet
 
-Labels are 32-bit values with: 20 bits label value, 3 bits traffic class (QoS), 1 bit bottom-of-stack, 8 bits TTL.
+MPLS label stack entries are 32-bit values with: 20 bits label value, 3 bits traffic class (QoS), 1 bit bottom-of-stack, 8 bits TTL.
 
 ## Prerequisites
 
@@ -54,7 +54,7 @@ sudo sysctl -w net.mpls.conf.eth0.input=1
 sudo sysctl -w net.mpls.conf.eth1.input=1
 sudo sysctl -w net.mpls.conf.lo.input=1
 
-# Set the maximum MPLS label stack depth
+# Set the number of platform label table entries
 sudo sysctl -w net.mpls.platform_labels=1048575
 
 # Make these settings persistent
@@ -97,10 +97,8 @@ sudo nano /etc/frr/daemons
 ```
 
 ```text
-zebra=yes
 ospfd=yes    # LDP needs an IGP for loopback reachability
 ldpd=yes     # Enable LDP daemon
-mpls_enabled=yes
 ```
 
 ```bash
@@ -112,7 +110,7 @@ sudo systemctl restart frr
 This example uses three Ubuntu routers in series:
 
 ```text
-Router A (10.0.0.1) --- eth1:192.168.12.1/24:eth1 --- Router B (10.0.0.2) --- eth2:192.168.23.1/24:eth1 --- Router C (10.0.0.3)
+Router A eth1:192.168.12.1/24 --- eth1:192.168.12.2/24 Router B eth2:192.168.23.1/24 --- eth1:192.168.23.2/24 Router C
 ```
 
 ### Router A Configuration
@@ -149,7 +147,7 @@ mpls ldp
  address-family ipv4
   !
   ! LDP transport address on loopback for stability
-  transport-address 10.0.0.1
+  discovery transport-address 10.0.0.1
   !
   ! Enable LDP on the interface toward Router B
   interface eth1
@@ -190,7 +188,7 @@ exit
 mpls ldp
  router-id 10.0.0.2
  address-family ipv4
-  transport-address 10.0.0.2
+  discovery transport-address 10.0.0.2
   interface eth1
   exit
   interface eth2
@@ -226,7 +224,7 @@ exit
 mpls ldp
  router-id 10.0.0.3
  address-family ipv4
-  transport-address 10.0.0.3
+  discovery transport-address 10.0.0.3
   interface eth1
   exit
  exit-address-family
@@ -264,18 +262,15 @@ ip -f mpls route show
 The kernel routing table shows entries like:
 
 ```text
-100 as to 10.0.0.3 via inet 192.168.12.2 dev eth1
+100 as to 200 via inet 192.168.12.2 dev eth1
 ```
 
-This means: incoming label 100, forward to 10.0.0.3 via 192.168.12.2 on eth1.
+This means: incoming label 100, swap to label 200, and forward via 192.168.12.2 on eth1.
 
 ### Check MPLS Interface Status
 
 ```bash
-# Verify MPLS is enabled on interfaces
-ip link show dev eth1 | grep MPLS
-
-# Check sysctl values
+# Verify MPLS input is enabled on interfaces
 sysctl net.mpls.conf.eth1.input
 ```
 
@@ -287,6 +282,7 @@ For testing, you can configure static MPLS forwarding without LDP:
 # Create a static MPLS forwarding entry
 # Incoming label 100 -> swap to label 200 and forward via 192.168.12.2
 sudo ip -f mpls route add 100 \
+  as 200 \
   via inet 192.168.12.2 \
   dev eth1
 
@@ -294,7 +290,7 @@ sudo ip -f mpls route add 100 \
 # Encapsulate traffic to 10.0.0.3 with label 100
 sudo ip route add 10.0.0.3/32 \
   encap mpls 100 \
-  via 192.168.12.2 dev eth1
+  via inet 192.168.12.2 dev eth1
 
 # Verify
 ip -f mpls route show
@@ -304,8 +300,8 @@ ip route show 10.0.0.3
 ## Testing MPLS Forwarding
 
 ```bash
-# On Router A, ping Router C's loopback
-ping 10.0.0.3 -I lo -c 5
+# On Router A, ping Router C's loopback from Router A's loopback address
+ping 10.0.0.3 -I 10.0.0.1 -c 5
 
 # Use traceroute to verify the path
 traceroute 10.0.0.3
@@ -324,6 +320,8 @@ configure terminal
 
 router ospf
  ospf router-id 10.0.0.1
+ capability opaque
+ router-info area
  network 10.0.0.1/32 area 0
 
  ! Enable Segment Routing
@@ -342,7 +340,7 @@ write memory
 Verify SR labels:
 
 ```bash
-sudo vtysh -c "show ip ospf segment-routing prefix"
+sudo vtysh -c "show ip ospf database segment-routing self-originate"
 sudo vtysh -c "show mpls table"
 ```
 
@@ -353,16 +351,15 @@ If LDP sessions are not forming:
 ```bash
 # Enable LDP debugging
 sudo vtysh
-debug mpls ldp events
-debug mpls ldp messages recv
-debug mpls ldp messages sent
+debug mpls ldp event
+debug mpls ldp messages
 
 # Common issues:
 # 1. LDP transport address not reachable via OSPF
 sudo vtysh -c "show ip ospf neighbor"
 
 # 2. LDP not enabled on the interface
-sudo vtysh -c "show mpls ldp interface"
+sudo vtysh -c "show mpls ldp ipv4 interface"
 
 # 3. MPLS not enabled in kernel
 sysctl net.mpls.conf.eth1.input

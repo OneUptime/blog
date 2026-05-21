@@ -103,7 +103,7 @@ spec:
       count: 5
       successCondition: result[0] < 0.05
       failureCondition: result[0] >= 0.10
-      failureLimit: 3
+      failureLimit: 1
       provider:
         prometheus:
           address: http://prometheus.monitoring:9090
@@ -198,8 +198,8 @@ spec:
 Key concepts:
 
 - `successCondition` - the metric must satisfy this for the check to pass
-- `failureCondition` - if this is met, the check fails immediately without waiting for more samples
-- `failureLimit` - how many consecutive failures before the analysis is considered failed
+- `failureCondition` - if this is met, the measurement is counted as failed
+- `failureLimit` - how many failed measurements cause the analysis to be considered failed
 - `count` - total number of measurements to take
 - `interval` - time between measurements
 
@@ -310,9 +310,6 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: api-server-ingress
-  annotations:
-    nginx.ingress.kubernetes.io/canary: "true"
-    nginx.ingress.kubernetes.io/canary-weight: "0"
 spec:
   ingressClassName: nginx
   rules:
@@ -352,11 +349,16 @@ spec:
     syncOptions:
       - RespectIgnoreDifferences=true
   ignoreDifferences:
-    - group: argoproj.io
-      kind: Rollout
+    - group: ""
+      kind: Service
+      name: api-server-stable
       jsonPointers:
-        - /spec/strategy/canary/steps
-        - /status
+        - /spec/selector/rollouts-pod-template-hash
+    - group: ""
+      kind: Service
+      name: api-server-canary
+      jsonPointers:
+        - /spec/selector/rollouts-pod-template-hash
 ```
 
 ## Step 6: Custom Analysis with Business Metrics
@@ -402,7 +404,7 @@ spec:
 
 ## Handling Analysis Failures
 
-When analysis fails, Argo Rollouts automatically rolls back. You can configure notifications:
+When analysis fails, Argo Rollouts aborts the rollout and shifts traffic back to the stable ReplicaSet. You can configure notifications:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -422,14 +424,14 @@ Track canary deployment health in Prometheus:
 ```yaml
 # Grafana dashboard query examples
 
-# Current canary weight
-argo_rollouts_info{name="api-server", namespace="api"}
+# Rollout phase and strategy
+rollout_info{name="api-server", namespace="api"}
 
 # Analysis run status
-argo_rollouts_analysis_run_info{rollout="api-server"}
+analysis_run_info{namespace="api"}
 
-# Time spent in canary
-argo_rollouts_info{name="api-server"} * on() group_left timestamp(argo_rollouts_info{name="api-server"})
+# Available replicas
+rollout_info_replicas_available{name="api-server", namespace="api"}
 ```
 
 ## Best Practices
@@ -440,7 +442,7 @@ argo_rollouts_info{name="api-server"} * on() group_left timestamp(argo_rollouts_
 
 3. **Use multiple metric types** - Check error rates, latency, throughput, and business metrics. A single metric can miss problems that others catch.
 
-4. **Set both success and failure conditions** - `failureCondition` triggers immediate rollback for obvious failures, while `successCondition` handles gradual degradation.
+4. **Set both success and failure conditions** - `failureCondition` marks bad measurements as failed, while `successCondition` handles gradual degradation.
 
 5. **Test your analysis templates** - Run the Prometheus queries manually first to verify they return expected results.
 

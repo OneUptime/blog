@@ -14,7 +14,7 @@ This guide covers how to design and implement ingress firewall rules in Talos Li
 
 ## How Talos Firewall Works
 
-Talos implements its firewall using nftables under the hood. The baseline behavior is set by a `NetworkDefaultActionConfig` document: when its `ingress` field is `accept` (the default), all traffic is allowed unless a rule blocks it; when set to `block`, all traffic is dropped unless a rule allows it. To get a default-deny posture you must explicitly set `ingress: block` — simply creating `NetworkRuleConfig` documents does not change the default action on its own.
+Talos implements its firewall using nftables under the hood. The baseline behavior is set by a `NetworkDefaultActionConfig` document: when its `ingress` field is `accept` (the default), all traffic is allowed unless a rule blocks it; when set to `block`, all traffic is dropped unless a rule allows it. To get a default-deny posture you must explicitly set `ingress: block` - simply creating `NetworkRuleConfig` documents does not change the default action on its own.
 
 The firewall operates on ingress traffic only - it controls what comes into the node. Egress traffic (outbound from the node) is not filtered by this mechanism.
 

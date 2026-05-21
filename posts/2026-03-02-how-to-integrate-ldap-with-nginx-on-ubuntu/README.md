@@ -202,7 +202,7 @@ For a modern solution, Vouch-Proxy integrates with identity providers that authe
 ### Install Vouch-Proxy
 
 Vouch-Proxy is distributed as a container image (recommended) or built from
-source — there are no prebuilt binary releases on GitHub. The Docker approach
+source - there are no prebuilt binary releases on GitHub. The Docker approach
 is simplest:
 
 ```bash

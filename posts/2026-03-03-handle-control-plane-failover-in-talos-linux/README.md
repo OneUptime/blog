@@ -244,7 +244,7 @@ talosctl shutdown --nodes 192.168.1.11
 kubectl get events -A --watch
 
 # Test 3: Verify recovery after bringing node back
-# Talos has no boot subcommand — power the node back on via your hypervisor or BMC
+# Talos has no boot subcommand - power the node back on via your hypervisor or BMC
 # Then verify the node rejoins
 talosctl etcd members --nodes 192.168.1.10
 ```

@@ -57,7 +57,7 @@ msf6 > db_status
 # Expected: [*] Connected to msf. Connection type: postgresql.
 
 # Update Metasploit to latest modules (msfupdate is a shell command,
-# not an msfconsole command — run it from your shell):
+# not an msfconsole command - run it from your shell):
 sudo /opt/metasploit-framework/bin/msfupdate
 ```
 

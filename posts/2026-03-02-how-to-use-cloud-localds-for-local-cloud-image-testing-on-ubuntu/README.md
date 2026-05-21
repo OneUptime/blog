@@ -326,7 +326,7 @@ cloud-localds \
     user-data.yaml
 
 # Specify the disk format explicitly (default is raw; other options include qcow2, vmdk)
-# The filesystem label is always "cidata" — cloud-localds sets this automatically
+# The filesystem label is always "cidata" - cloud-localds sets this automatically
 cloud-localds \
     --disk-format=qcow2 \
     seed.qcow2 \

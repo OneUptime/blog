@@ -126,7 +126,7 @@ talosctl gen crt --ca talos --csr admin.csr --name admin --hours 8760
 
 ## Performing the Rotation
 
-The rotation process trusts both the old and new CA certificates simultaneously during the transition. Talos exposes a dedicated `machine.acceptedCAs` field for additional trusted CAs — it is separate from `machine.ca`, which holds the single issuing CA cert and key. We add the new CA to `acceptedCAs` first, then later promote it to `machine.ca`, and finally remove the old CA from `acceptedCAs`.
+The rotation process trusts both the old and new CA certificates simultaneously during the transition. Talos exposes a dedicated `machine.acceptedCAs` field for additional trusted CAs - it is separate from `machine.ca`, which holds the single issuing CA cert and key. We add the new CA to `acceptedCAs` first, then later promote it to `machine.ca`, and finally remove the old CA from `acceptedCAs`.
 
 ### Step 4: Add the New CA to Accepted CAs
 

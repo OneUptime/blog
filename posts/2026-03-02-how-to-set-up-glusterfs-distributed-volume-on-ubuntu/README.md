@@ -234,7 +234,7 @@ sudo gluster volume rebalance gvol0 status
 # Check volume status including brick health
 sudo gluster volume status gvol0
 
-# Heal commands only apply to replicated/dispersed volumes — on a pure
+# Heal commands only apply to replicated/dispersed volumes - on a pure
 # distribute volume these will return "Volume gvol0 is not of type
 # replicate/disperse". Listed here for reference when you migrate to a
 # distributed-replicated layout:

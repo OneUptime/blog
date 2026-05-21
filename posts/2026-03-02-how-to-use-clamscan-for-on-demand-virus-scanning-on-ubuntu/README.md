@@ -105,7 +105,7 @@ Then use clamdscan which communicates with the running daemon:
 
 ```bash
 # Scan with clamdscan (much faster than clamscan)
-# Note: clamdscan recurses into directories by default — no -r needed
+# Note: clamdscan recurses into directories by default - no -r needed
 clamdscan /home/ubuntu/uploads/
 
 # Show only infected files
@@ -114,7 +114,7 @@ clamdscan --infected /home/ubuntu/uploads/
 # Multi-threaded scanning using all available CPUs
 clamdscan --multiscan /home/ubuntu/uploads/
 
-# Scan a file passed via stdin (useful for pipes) — use - as the filename
+# Scan a file passed via stdin (useful for pipes) - use - as the filename
 cat suspicious.file | clamdscan -
 ```
 

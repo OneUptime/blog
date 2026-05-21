@@ -246,7 +246,7 @@ ssh -v frequent-server 2>&1 | grep -i "mux\|control"
 #   "mux_client_request_session: master session id: ..."
 # If you instead see "ControlSocket ... already exists, disabling multiplexing",
 # it means ssh tried to become the master but the socket already exists
-# (often a stale socket) — multiplexing is being disabled for that attempt.
+# (often a stale socket) - multiplexing is being disabled for that attempt.
 ```
 
 ## Troubleshooting

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Automation, Observability
 
-Description: Learn how to automate ArgoCD deployment status reporting with scripts that track sync operations, deployment history, rollback events, and deliver reports to stakeholders.
+Description: Learn how to automate ArgoCD deployment status reporting with scripts that track sync operations, deployment history, and deliver reports to stakeholders.
 
 ---
 
@@ -110,7 +110,8 @@ log "DEPLOYMENT HISTORY (last 5 per app)"
 log "============================================="
 
 echo "${APPS_JSON}" | jq -r '.[] | .metadata.name' | head -20 | while read -r app_name; do
-  HISTORY=$(argocd app history "${app_name}" -o json 2>/dev/null || echo "[]")
+  APP_DETAILS=$(argocd app get "${app_name}" -o json 2>/dev/null || echo "{}")
+  HISTORY=$(echo "${APP_DETAILS}" | jq '.status.history // []')
   ENTRY_COUNT=$(echo "${HISTORY}" | jq 'length')
 
   if [[ ${ENTRY_COUNT} -gt 0 ]]; then
@@ -190,18 +191,13 @@ spec:
           restartPolicy: OnFailure
           containers:
             - name: reporter
-              image: bitnami/kubectl:1.28
+              image: your-registry/argocd-reporter:latest  # Include argocd, bash, jq, and mail/sendmail
               command: ["/bin/bash", "/scripts/deployment-status-report.sh"]
               env:
                 - name: REPORT_HOURS
                   value: "24"
                 - name: REPORT_DIR
                   value: "/reports"
-                - name: SLACK_WEBHOOK_URL
-                  valueFrom:
-                    secretKeyRef:
-                      name: reporting-secrets
-                      key: slack-webhook
               volumeMounts:
                 - name: scripts
                   mountPath: /scripts
@@ -219,7 +215,7 @@ spec:
 
 ## Tracking DORA Metrics
 
-For organizations tracking DORA (DevOps Research and Assessment) metrics, ArgoCD deployment data feeds directly into two key metrics:
+For organizations tracking DORA (DevOps Research and Assessment) metrics, ArgoCD deployment data can help approximate two key metrics:
 
 ```bash
 #!/bin/bash
@@ -235,16 +231,18 @@ echo "================================"
 # Deployment Frequency
 # Count sync operations per day
 TOTAL_SYNCS=0
-echo "${APPS_JSON}" | jq -r '.[] | .metadata.name' | while read -r app; do
-  HISTORY=$(argocd app history "${app}" -o json 2>/dev/null || echo "[]")
-  COUNT=$(echo "${HISTORY}" | jq "[.[] | select(.deployedAt > \"$(date -d "-${DAYS} days" -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -v-${DAYS}d -u +%Y-%m-%dT%H:%M:%SZ)\")] | length")
+CUTOFF=$(date -d "-${DAYS} days" -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -v-${DAYS}d -u +%Y-%m-%dT%H:%M:%SZ)
+while read -r app; do
+  APP_DETAILS=$(argocd app get "${app}" -o json 2>/dev/null || echo "{}")
+  HISTORY=$(echo "${APP_DETAILS}" | jq '.status.history // []')
+  COUNT=$(echo "${HISTORY}" | jq --arg cutoff "${CUTOFF}" '[.[] | select(.deployedAt > $cutoff)] | length')
   TOTAL_SYNCS=$((TOTAL_SYNCS + COUNT))
-done
+done < <(echo "${APPS_JSON}" | jq -r '.[] | .metadata.name')
 
 FREQ=$(echo "scale=1; ${TOTAL_SYNCS} / ${DAYS}" | bc 2>/dev/null || echo "N/A")
 echo "Deployment Frequency: ${FREQ} deployments/day"
 
-# Change Failure Rate
+# Approximate Change Failure Rate based on failed ArgoCD operations
 FAILED=$(echo "${APPS_JSON}" | jq '[.[] | select(.status.operationState.phase == "Failed")] | length')
 TOTAL=$(echo "${APPS_JSON}" | jq '[.[] | select(.status.operationState != null)] | length')
 if [[ ${TOTAL} -gt 0 ]]; then
@@ -266,7 +264,6 @@ For teams that prefer email reports:
 set -euo pipefail
 
 RECIPIENTS="${EMAIL_RECIPIENTS:?Set EMAIL_RECIPIENTS}"
-SMTP_SERVER="${SMTP_SERVER:-smtp.example.com}"
 
 # Generate report content
 APPS_JSON=$(argocd app list -o json)
@@ -292,15 +289,13 @@ BODY="<html><body>
 # Add degraded applications list
 if [[ ${DEGRADED} -gt 0 ]]; then
   BODY+="<h3>Degraded Applications</h3><ul>"
-  echo "${APPS_JSON}" | jq -r '.[] | select(.status.health.status == "Degraded") | .metadata.name' | while read -r app; do
-    BODY+="<li>${app}</li>"
-  done
+  BODY+=$(echo "${APPS_JSON}" | jq -r '.[] | select(.status.health.status == "Degraded") | "<li>\(.metadata.name)</li>"')
   BODY+="</ul>"
 fi
 
 BODY+="</body></html>"
 
-# Send via sendmail or curl to SMTP
+# Send via a locally configured mail command
 echo "${BODY}" | mail -s "${SUBJECT}" -a "Content-Type: text/html" "${RECIPIENTS}"
 
 echo "Email report sent to ${RECIPIENTS}"

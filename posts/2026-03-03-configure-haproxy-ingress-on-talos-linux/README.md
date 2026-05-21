@@ -230,7 +230,7 @@ data:
   "6379": "default/redis-service:6379"
 ```
 
-The ConfigMap alone is not enough — you also have to point the controller at it via the `--configmap-tcp-services` flag. Add this to your Helm values and upgrade the release:
+The ConfigMap alone is not enough - you also have to point the controller at it via the `--configmap-tcp-services` flag. Add this to your Helm values and upgrade the release:
 
 ```yaml
 controller:

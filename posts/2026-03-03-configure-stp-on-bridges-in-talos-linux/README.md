@@ -281,7 +281,7 @@ Important: the Linux kernel bridge only implements classic 802.1D STP. RSTP/MSTP
 
 ## Edge Ports (PortFast Equivalent)
 
-Ports connected to end devices (not other bridges) ideally should be treated as edge ports, transitioning to forwarding immediately without waiting for STP convergence. The Linux kernel STP implementation has no native edge-port designation — that concept lives in RSTP/MSTP and requires `mstpd`. With `mstpd` running, you would mark a port as edge with:
+Ports connected to end devices (not other bridges) ideally should be treated as edge ports, transitioning to forwarding immediately without waiting for STP convergence. The Linux kernel STP implementation has no native edge-port designation - that concept lives in RSTP/MSTP and requires `mstpd`. With `mstpd` running, you would mark a port as edge with:
 
 ```bash
 # Requires mstpd running on the node

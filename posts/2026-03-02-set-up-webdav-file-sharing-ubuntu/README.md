@@ -336,7 +336,7 @@ sudo awk '{print $3}' /var/log/apache2/webdav_access.log | sort | uniq -c | sort
 
 **Windows cannot map the drive**: Windows requires HTTPS for WebDAV connections to non-localhost addresses. Set up SSL.
 
-**Upload fails silently**: Check the upload size limit in your web server configuration — `LimitRequestBody` in Apache or `client_max_body_size` in Nginx. The Nginx default (1 MB) is often too low for large files.
+**Upload fails silently**: Check the upload size limit in your web server configuration - `LimitRequestBody` in Apache or `client_max_body_size` in Nginx. The Nginx default (1 MB) is often too low for large files.
 
 **davfs2 prompts for password on every mount**: Add credentials to `~/.davfs2/secrets` with permissions 600.
 

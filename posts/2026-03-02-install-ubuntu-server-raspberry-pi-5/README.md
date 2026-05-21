@@ -228,7 +228,7 @@ echo 'GOVERNOR="performance"' | sudo tee /etc/default/cpufrequtils
 
 ### Memory Allocation
 
-Unlike earlier Raspberry Pi models, the Pi 5 uses dynamic memory allocation managed by the firmware, so the legacy `gpu_mem` setting in `/boot/firmware/config.txt` has no effect. There is no manual split to tune for a headless server — the firmware allocates GPU memory only as needed, so all RAM is effectively available to userspace.
+Unlike earlier Raspberry Pi models, the Pi 5 uses dynamic memory allocation managed by the firmware, so the legacy `gpu_mem` setting in `/boot/firmware/config.txt` has no effect. There is no manual split to tune for a headless server - the firmware allocates GPU memory only as needed, so all RAM is effectively available to userspace.
 
 ### Monitoring Temperature
 

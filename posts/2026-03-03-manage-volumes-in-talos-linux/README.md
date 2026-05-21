@@ -76,7 +76,7 @@ provisioning:
   grow: false
 ```
 
-Setting size constraints helps when you need to reserve space on the system disk for other purposes. Note that volume configuration only applies when the volume has not been provisioned yet — resizing a provisioned EPHEMERAL volume requires wiping it first.
+Setting size constraints helps when you need to reserve space on the system disk for other purposes. Note that volume configuration only applies when the volume has not been provisioned yet - resizing a provisioned EPHEMERAL volume requires wiping it first.
 
 ## Resizing Volumes
 

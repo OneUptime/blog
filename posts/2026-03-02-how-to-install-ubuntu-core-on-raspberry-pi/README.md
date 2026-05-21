@@ -88,7 +88,7 @@ Alternatively, use the Raspberry Pi Imager application:
 
 Insert the microSD into the Pi, connect it to a display and keyboard (or to a serial console via the UART pins), connect it to your network via Ethernet, and power it on.
 
-Ubuntu Core runs an interactive first-boot setup called `console-conf` on the local console (HDMI/keyboard or serial line). It asks for the email address associated with your Ubuntu One account; snapd then imports the SSH keys you registered there. SSH access only becomes available after `console-conf` completes — you cannot SSH in before then.
+Ubuntu Core runs an interactive first-boot setup called `console-conf` on the local console (HDMI/keyboard or serial line). It asks for the email address associated with your Ubuntu One account; snapd then imports the SSH keys you registered there. SSH access only becomes available after `console-conf` completes - you cannot SSH in before then.
 
 The wizard on the local console looks like:
 

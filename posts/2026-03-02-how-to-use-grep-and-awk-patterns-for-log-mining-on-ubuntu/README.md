@@ -65,7 +65,7 @@ grep "^Mar 02" /var/log/syslog
 grep "Connection refused$" /var/log/app.log
 
 # Match specific HTTP status codes
-# Note the space between " and the digits — nginx combined format puts a space
+# Note the space between " and the digits - nginx combined format puts a space
 # between the closing quote of the request and the status code
 grep '" 5[0-9][0-9] ' /var/log/nginx/access.log  # 5xx errors
 grep '" 4[0-9][0-9] ' /var/log/nginx/access.log  # 4xx errors

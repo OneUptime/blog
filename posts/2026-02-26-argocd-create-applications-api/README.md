@@ -277,8 +277,8 @@ done
 For a more robust approach, use Python:
 
 ```python
+import os
 import requests
-import json
 
 class AppFactory:
     def __init__(self, server, token):
@@ -332,6 +332,7 @@ class AppFactory:
             raise Exception(f"Failed to create {name}: {resp.text}")
 
 # Usage
+token = os.environ["ARGOCD_TOKEN"]
 factory = AppFactory("https://argocd.example.com", token)
 
 # Create an application
@@ -358,7 +359,7 @@ RESPONSE=$(curl -s -k -H "Authorization: Bearer $ARGOCD_TOKEN" \
   -d "$APP_JSON")
 
 if echo "$RESPONSE" | jq -e '.code == 6' > /dev/null 2>&1; then
-  echo "Application already exists - use PATCH to update instead"
+  echo "Application already exists - use PUT to replace it instead"
 
   # Update existing application
   APP_NAME=$(echo "$APP_JSON" | jq -r '.metadata.name')
@@ -383,12 +384,12 @@ curl -s -k -H "Authorization: Bearer $ARGOCD_TOKEN" \
 
 This is particularly useful in CI/CD pipelines where you want idempotent operations - the same script can run multiple times without failing.
 
-## Validating Before Creation
+## Validating During Creation
 
-Use a dry-run approach by validating the application spec before creating it:
+Keep validation enabled when creating the application so ArgoCD validates repository and cluster access before saving it:
 
 ```bash
-# Validate the application spec first
+# Create the application with validation enabled
 curl -s -k -H "Authorization: Bearer $ARGOCD_TOKEN" \
   -X POST "https://argocd.example.com/api/v1/applications?validate=true" \
   -H "Content-Type: application/json" \

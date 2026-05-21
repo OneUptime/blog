@@ -8,7 +8,7 @@ Description: Learn how to measure and monitor Mean Time to Recovery (MTTR) for A
 
 ---
 
-Mean Time to Recovery (MTTR) measures how quickly your team can restore service after a production failure. It is one of the four DORA metrics that predict software delivery performance, and arguably the most directly tied to user experience. In a GitOps workflow with ArgoCD, MTTR encompasses the time from when a deployment failure is detected to when the service is restored to a healthy state.
+Mean Time to Recovery (MTTR) measures how quickly your team can restore service after a production failure. It is historically one of the four DORA metrics, and current DORA guidance measures the related deployment-specific metric as Failed Deployment Recovery Time. In a GitOps workflow with ArgoCD, MTTR encompasses the time from when a deployment failure is detected to when the service is restored to a healthy state.
 
 This guide covers how to measure, monitor, and reduce MTTR in ArgoCD environments.
 
@@ -44,7 +44,7 @@ A failure can be defined as any of these ArgoCD events:
 ```promql
 # Application sync failed
 
-argocd_app_sync_total{phase="Failed"}
+increase(argocd_app_sync_total{phase="Failed"}[5m]) > 0
 
 # Application health degraded
 argocd_app_info{health_status="Degraded"}
@@ -75,6 +75,12 @@ metadata:
   name: argocd-notifications-cm
   namespace: argocd
 data:
+  service.webhook.mttr-tracker: |
+    url: http://mttr-service.monitoring:8080
+    headers:
+    - name: Content-Type
+      value: application/json
+
   # Trigger when app becomes degraded
   trigger.on-health-degraded: |
     - when: app.status.health.status == 'Degraded'
@@ -93,8 +99,8 @@ data:
   template.failure-event: |
     webhook:
       mttr-tracker:
-        url: http://mttr-service.monitoring:8080/events
         method: POST
+        path: /events
         body: |
           {
             "app": "{{.app.metadata.name}}",
@@ -108,8 +114,8 @@ data:
   template.recovery-event: |
     webhook:
       mttr-tracker:
-        url: http://mttr-service.monitoring:8080/events
         method: POST
+        path: /events
         body: |
           {
             "app": "{{.app.metadata.name}}",
@@ -136,7 +142,7 @@ metadata:
 
 ### Method 2: Prometheus Recording Rules
 
-Use Prometheus recording rules to calculate MTTR from ArgoCD metrics:
+Use Prometheus recording rules to track the current ArgoCD failure and recovery state. Prometheus can identify these states from ArgoCD gauges, but you still need an event-based tracker, incident system, or another durable store to pair a failure start with the matching recovery event:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
@@ -149,17 +155,19 @@ spec:
     - name: argocd-mttr
       interval: 30s
       rules:
-        # Track when an app enters a failed state
-        - record: argocd:app_failure_timestamp
+        # Track apps currently in a failed state
+        - record: argocd:app_failure_state
           expr: |
-            argocd_app_info{health_status=~"Degraded|Missing"} * on(name)
-            group_left() (timestamp(argocd_app_info{health_status=~"Degraded|Missing"}) > 0)
+            max by (name, namespace, project) (
+              argocd_app_info{health_status=~"Degraded|Missing"} == 1
+            )
 
-        # Track when an app recovers
-        - record: argocd:app_recovery_timestamp
+        # Track apps currently recovered
+        - record: argocd:app_recovery_state
           expr: |
-            argocd_app_info{health_status="Healthy", sync_status="Synced"} * on(name)
-            group_left() (timestamp(argocd_app_info{health_status="Healthy", sync_status="Synced"}) > 0)
+            max by (name, namespace, project) (
+              argocd_app_info{health_status="Healthy", sync_status="Synced"} == 1
+            )
 ```
 
 ### Method 3: Custom MTTR Tracking Service
@@ -285,21 +293,32 @@ Create a Grafana dashboard with these essential panels:
 
 ```promql
 # Average MTTR across all applications
-avg(argocd_current_mttr_seconds) / 60
+sum(increase(argocd_mttr_seconds_sum[30d]))
+/
+sum(increase(argocd_mttr_seconds_count[30d]))
+/ 60
 ```
 
 **MTTR by Application:**
 
 ```promql
 # MTTR per application, sorted by worst performers
-sort_desc(argocd_current_mttr_seconds / 60)
+sort_desc(
+  sum by (app) (increase(argocd_mttr_seconds_sum[30d]))
+  /
+  sum by (app) (increase(argocd_mttr_seconds_count[30d]))
+  / 60
+)
 ```
 
 **MTTR Trend Over Time:**
 
 ```promql
 # Weekly average MTTR
-avg_over_time(argocd_current_mttr_seconds[7d]) / 60
+sum(increase(argocd_mttr_seconds_sum[7d]))
+/
+sum(increase(argocd_mttr_seconds_count[7d]))
+/ 60
 ```
 
 **Active Failures (currently unrecovered):**
@@ -313,9 +332,10 @@ argocd_app_info{health_status=~"Degraded|Missing"}
 
 ```promql
 # Percentage of failures recovered within 1 hour
-sum(rate(argocd_mttr_seconds_bucket{le="3600"}[30d]))
+100 *
+sum(increase(argocd_mttr_seconds_bucket{le="3600"}[30d]))
 /
-sum(rate(argocd_mttr_seconds_count[30d]))
+sum(increase(argocd_mttr_seconds_count[30d]))
 ```
 
 ## MTTR Breakdown Analysis
@@ -457,14 +477,23 @@ spec:
           labels:
             severity: warning
           annotations:
-            summary: "MTTR for {{ $labels.app }} exceeded 30 minutes"
+            summary: "Latest MTTR for {{ $labels.app }} exceeded 30 minutes"
             description: "Consider automating recovery or improving runbooks"
 
         - alert: MTTRTrendingUp
           expr: |
-            avg_over_time(argocd_current_mttr_seconds[7d])
+            (
+              sum by (app) (increase(argocd_mttr_seconds_sum[7d]))
+              /
+              sum by (app) (increase(argocd_mttr_seconds_count[7d]))
+            )
             >
-            1.5 * avg_over_time(argocd_current_mttr_seconds[30d])
+            1.5 *
+            (
+              sum by (app) (increase(argocd_mttr_seconds_sum[30d]))
+              /
+              sum by (app) (increase(argocd_mttr_seconds_count[30d]))
+            )
           for: 1d
           labels:
             severity: info
@@ -474,16 +503,18 @@ spec:
 
 ## MTTR Benchmarks
 
-DORA research shows these performance levels for time to restore service:
+DORA research questions commonly use these response ranges for time to restore service:
 
-| Performance Level | MTTR |
+| Response Range | MTTR |
 |---|---|
-| Elite | Less than 1 hour |
-| High | Less than 1 day |
-| Medium | 1 day to 1 week |
-| Low | More than 6 months |
+| Fastest | Less than 1 hour |
+| Fast | Less than 1 day |
+| Moderate | 1 day to 1 week |
+| Slow | 1 week to 1 month |
+| Slower | 1 month to 6 months |
+| Slowest | More than 6 months |
 
-With ArgoCD and GitOps, most recovery scenarios should fall in the Elite to High range because rollbacks are simple Git operations.
+With ArgoCD and GitOps, many recovery scenarios can fall in the faster ranges because rollbacks are simple Git operations.
 
 ## Monitoring MTTR with OneUptime
 
@@ -491,4 +522,4 @@ With ArgoCD and GitOps, most recovery scenarios should fall in the Elite to High
 
 ## Conclusion
 
-Mean Time to Recovery is a direct measure of your team's ability to respond to production issues. In an ArgoCD GitOps workflow, MTTR is influenced by monitoring coverage (detection time), operational readiness (response and diagnosis time), rollback capability (fix time), and ArgoCD configuration (sync time). By instrumenting failure and recovery events, building dashboards, and systematically reducing each phase, you can achieve Elite-level MTTR and minimize the impact of deployments that go wrong.
+Mean Time to Recovery is a direct measure of your team's ability to respond to production issues. In an ArgoCD GitOps workflow, MTTR is influenced by monitoring coverage (detection time), operational readiness (response and diagnosis time), rollback capability (fix time), and ArgoCD configuration (sync time). By instrumenting failure and recovery events, building dashboards, and systematically reducing each phase, you can reduce MTTR and minimize the impact of deployments that go wrong.

@@ -24,7 +24,7 @@ sudo apt install -y skopeo
 skopeo --version
 ```
 
-The distribution package is the recommended installation method. The OpenSUSE OBS `devel:kubic:libcontainers:stable` repository that older guides reference is no longer maintained for Ubuntu — use the Ubuntu package, or build from source (see https://github.com/containers/skopeo/blob/main/install.md) if you need a newer release than your distribution provides.
+The distribution package is the recommended installation method. The OpenSUSE OBS `devel:kubic:libcontainers:stable` repository that older guides reference is no longer maintained for Ubuntu - use the Ubuntu package, or build from source (see https://github.com/containers/skopeo/blob/main/install.md) if you need a newer release than your distribution provides.
 
 ## Inspecting Images Without Pulling
 

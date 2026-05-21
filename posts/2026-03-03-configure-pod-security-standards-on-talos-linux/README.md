@@ -399,7 +399,7 @@ cluster:
               - metallb-system
               - storage-system
             usernames:
-              # Exact match only — PSA does not support wildcards.
+              # Exact match only - PSA does not support wildcards.
               # Enumerate each service account explicitly.
               - system:serviceaccount:kube-system:daemon-set-controller
               - system:serviceaccount:kube-system:replicaset-controller

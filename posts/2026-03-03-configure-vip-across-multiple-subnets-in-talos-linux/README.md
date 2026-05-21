@@ -147,7 +147,7 @@ DNS-based failover is simpler than a load balancer but has limitations:
 
 ## Alternative 3: KubeSpan for Node-to-Node Connectivity
 
-If you enable KubeSpan in Talos Linux, it creates a WireGuard mesh network between all nodes. KubeSpan operates at Layer 3 (WireGuard tunnels), not Layer 2, so it does not on its own solve the VIP problem — gratuitous ARP cannot traverse WireGuard tunnels. However, KubeSpan can simplify multi-subnet clusters by giving every node a routable address on the mesh, which you can then combine with one of the other approaches:
+If you enable KubeSpan in Talos Linux, it creates a WireGuard mesh network between all nodes. KubeSpan operates at Layer 3 (WireGuard tunnels), not Layer 2, so it does not on its own solve the VIP problem - gratuitous ARP cannot traverse WireGuard tunnels. However, KubeSpan can simplify multi-subnet clusters by giving every node a routable address on the mesh, which you can then combine with one of the other approaches:
 
 ```yaml
 # Enable KubeSpan in machine config
@@ -219,7 +219,7 @@ Node 3 (AS 65000) -> Router: announces 10.0.0.100/32
 
 This requires BGP-capable routers and a more sophisticated network setup, but it provides true multi-subnet high availability with fast failover.
 
-You would not use Talos VIP in this case. Talos's `machine.network.interfaces` schema does not support attaching addresses to the `lo` interface directly, so the anycast address is typically managed by a BGP speaker running on the cluster — for example, kube-vip in BGP mode or MetalLB with a `LoadBalancer` Service for the API server. The BGP speaker advertises the same `/32` from every control plane node, and the upstream routers handle ECMP and withdrawal of routes from failed peers.
+You would not use Talos VIP in this case. Talos's `machine.network.interfaces` schema does not support attaching addresses to the `lo` interface directly, so the anycast address is typically managed by a BGP speaker running on the cluster - for example, kube-vip in BGP mode or MetalLB with a `LoadBalancer` Service for the API server. The BGP speaker advertises the same `/32` from every control plane node, and the upstream routers handle ECMP and withdrawal of routes from failed peers.
 
 Update the cluster endpoint to point at the anycast address:
 

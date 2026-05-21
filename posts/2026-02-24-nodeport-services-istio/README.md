@@ -61,7 +61,7 @@ spec:
     nodePort: 30080
 ```
 
-With `externalTrafficPolicy: Local`, kube-proxy only routes traffic to pods on the same node. It does not SNAT, so the client's original IP is preserved. The trade-off is that traffic is not distributed across all pods. If a node has no pods for this service, the NodePort on that node returns a connection refused error.
+With `externalTrafficPolicy: Local`, kube-proxy only routes traffic to pods on the same node. It does not SNAT, so the client's original IP is preserved. The trade-off is that traffic is not distributed across all pods. If a node has no pods for this service, traffic sent to the NodePort on that node is dropped.
 
 ## Istio Authorization with NodePort Services
 
@@ -183,9 +183,9 @@ spec:
     - "myapp.example.com"
 ```
 
-## Health Checks for NodePort Services
+## Health Checks for NodePort-backed LoadBalancers
 
-With `externalTrafficPolicy: Local`, nodes that do not have pods for the service will fail health checks from external load balancers. Kubernetes exposes a health check NodePort that external load balancers can use:
+With `externalTrafficPolicy: Local`, nodes that do not have pods for the service should fail health checks from external load balancers. For Kubernetes Services with `type: LoadBalancer` and `externalTrafficPolicy: Local`, Kubernetes exposes a health check NodePort that load balancers can use:
 
 ```yaml
 apiVersion: v1
@@ -193,7 +193,7 @@ kind: Service
 metadata:
   name: my-web-app
 spec:
-  type: NodePort
+  type: LoadBalancer
   externalTrafficPolicy: Local
   healthCheckNodePort: 30200
   selector:

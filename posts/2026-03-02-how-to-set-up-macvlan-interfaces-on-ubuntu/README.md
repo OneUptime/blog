@@ -88,7 +88,7 @@ sudo ip link set macvlan2 up
 
 ## Persistent Configuration with Netplan
 
-Netplan does not currently expose MacVLAN as a top-level device type (the supported device types are `ethernets`, `bonds`, `bridges`, `dummy-devices`, `modems`, `tunnels`, `virtual-ethernets`, `vlans`, `vrfs`, `wifis`, and `nm-devices`). On Ubuntu systems that use netplan with the `networkd` renderer, drop a systemd-networkd `.netdev` and `.network` snippet alongside your netplan-generated configuration as shown in the next section — netplan will leave non-netplan-managed networkd units in place.
+Netplan does not currently expose MacVLAN as a top-level device type (the supported device types are `ethernets`, `bonds`, `bridges`, `dummy-devices`, `modems`, `tunnels`, `virtual-ethernets`, `vlans`, `vrfs`, `wifis`, and `nm-devices`). On Ubuntu systems that use netplan with the `networkd` renderer, drop a systemd-networkd `.netdev` and `.network` snippet alongside your netplan-generated configuration as shown in the next section - netplan will leave non-netplan-managed networkd units in place.
 
 ## Persistent Configuration with systemd-networkd
 

@@ -49,11 +49,10 @@ The exact appearance depends on your ArgoCD version and theme.
 
 ### Step 4: Choose an Action
 
-Clicking the Actions dropdown shows all available actions for that resource type. For a Deployment with custom actions configured, you might see:
+Clicking the Actions dropdown shows all available actions for that resource type. For a Deployment, you might see:
 
 - restart
-- scale-up
-- scale-down
+- scale
 - pause
 - resume
 
@@ -108,10 +107,11 @@ kubectl logs -n argocd deployment/argocd-application-controller --tail=50
 
 1. Navigate to the Deployment resource
 2. Click "Actions"
-3. Select "scale-up" or "scale-down"
-4. Confirm
-5. The replica count updates in the resource summary
-6. New pods appear in the tree (for scale-up) or pods start terminating (for scale-down)
+3. Select "scale"
+4. Enter the desired replica count when prompted
+5. Confirm
+6. The replica count updates in the resource summary
+7. New pods appear in the tree if you scaled up, or pods start terminating if you scaled down
 
 ### Promoting an Argo Rollout
 
@@ -164,7 +164,7 @@ Check the top-level application status. After an action:
 
 If no actions appear in the dropdown:
 
-1. No actions are configured for this resource type in `argocd-cm`
+1. No built-in or custom actions are available for this resource type
 2. The discovery script returned an empty table for this specific resource
 3. Your RBAC role does not have permission to see actions
 
