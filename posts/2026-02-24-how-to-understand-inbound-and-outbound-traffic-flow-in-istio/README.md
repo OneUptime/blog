@@ -8,7 +8,7 @@ Description: A detailed walkthrough of how inbound and outbound traffic flows th
 
 ---
 
-When two services communicate in an Istio mesh, the traffic passes through four Envoy proxy instances - the sender's outbound proxy, the network, and the receiver's inbound proxy. Each step applies different policies, routing rules, and telemetry collection. Understanding this flow from end to end is the key to debugging connectivity problems and getting the most out of your mesh.
+When two services communicate in an Istio mesh, the traffic passes through two Envoy proxy instances - the sender's outbound proxy and the receiver's inbound proxy - with the network between them. Each step applies different policies, routing rules, and telemetry collection. Understanding this flow from end to end is the key to debugging connectivity problems and getting the most out of your mesh.
 
 ## The Two Envoy Listeners
 
@@ -36,7 +36,7 @@ Your application opens a connection to `service-b.default.svc.cluster.local:8080
 
 ### Step 2: iptables Redirects to Envoy
 
-The kernel's OUTPUT chain catches the packet and the `ISTIO_OUTPUT` chain redirects it to `127.0.0.1:15001` (the virtualOutbound listener). The original destination (`10.96.15.42:8080`) is preserved in the connection tracking table.
+The kernel's OUTPUT chain catches the packet and the `ISTIO_OUTPUT` chain redirects it to local port 15001 (the virtualOutbound listener). The original destination (`10.96.15.42:8080`) is preserved in the connection tracking table.
 
 ### Step 3: VirtualOutbound Listener
 
@@ -71,7 +71,7 @@ Say it picks `10.244.1.15:8080`.
 
 ### Step 6: mTLS Connection
 
-If mTLS is enabled (it is by default in STRICT mode), Envoy establishes a TLS connection to the destination Envoy. The client Envoy sends its SPIFFE identity certificate, and the server Envoy validates it. This all happens transparently.
+If mTLS is used, Envoy establishes a TLS connection to the destination Envoy. Istio uses auto mTLS by default for in-mesh traffic when no `DestinationRule` overrides it, while destination workloads accept both mTLS and plaintext in `PERMISSIVE` mode unless you configure `PeerAuthentication` with `STRICT` mode. The client Envoy sends its SPIFFE identity certificate, and the server Envoy validates it. This all happens transparently.
 
 ### Step 7: Request Forwarded
 
@@ -91,7 +91,7 @@ The virtualInbound listener on port 15006 has multiple filter chains. It matches
 
 - Destination port
 - Transport protocol (TLS or plaintext)
-- Application protocol (detected via ALPN)
+- Application protocol (detected from TLS metadata such as ALPN, or by protocol sniffing for plaintext traffic when enabled)
 
 ```bash
 istioctl proxy-config listener service-b-pod --port 15006 -o json
@@ -99,7 +99,7 @@ istioctl proxy-config listener service-b-pod --port 15006 -o json
 
 ### Step 3: mTLS Termination
 
-If the incoming connection is mTLS (which it will be from another mesh service), Envoy terminates the TLS connection. It validates the client's certificate and extracts the SPIFFE identity. This identity is used for authorization policies.
+If the incoming connection is mTLS (which it normally will be from another sidecar-injected mesh service using auto mTLS), Envoy terminates the TLS connection. It validates the client's certificate and extracts the SPIFFE identity. This identity is used for authorization policies.
 
 ### Step 4: Authorization Policy Check
 
@@ -128,7 +128,7 @@ If the request passes the authorization check, it proceeds. Otherwise, Envoy ret
 
 ### Step 5: Forward to Application
 
-Finally, Envoy forwards the request to the application container on `127.0.0.1:8080`. The application receives a plain HTTP request and has no idea it went through an Envoy proxy with mTLS, authorization checks, and telemetry collection.
+Finally, Envoy forwards the request to the local application endpoint, commonly the workload port such as `127.0.0.1:8080` or the pod IP on port 8080 depending on the listener configuration. The application receives the request without the Istio mTLS connection between sidecars and has no idea it went through an Envoy proxy with mTLS, authorization checks, and telemetry collection.
 
 ## Seeing the Full Picture
 
@@ -163,7 +163,7 @@ What about traffic to services outside the mesh? When `outboundTrafficPolicy` is
 2. iptables redirects to port 15001
 3. VirtualOutbound finds no matching listener for the original destination
 4. Traffic falls through to the `PassthroughCluster`
-5. Envoy connects directly to the original destination without any mesh features
+5. Envoy connects directly to the original destination without service-specific Istio routing or mesh mTLS
 
 ```bash
 # Check the PassthroughCluster config
