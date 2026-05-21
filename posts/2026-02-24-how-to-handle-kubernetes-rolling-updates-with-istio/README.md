@@ -57,7 +57,7 @@ This ensures that your application does not start accepting traffic before the E
 
 ## Configuring Proper Readiness Probes
 
-Kubernetes uses readiness probes to determine when a pod can receive traffic. With Istio, the readiness probe traffic also flows through the sidecar. Make sure your readiness probes are configured correctly:
+Kubernetes uses readiness probes to determine when a pod can receive traffic. With Istio, HTTP, TCP, and gRPC probes are rewritten by default so the kubelet sends the probe to the Istio sidecar agent, which then checks the application. Make sure your readiness probes are configured correctly:
 
 ```yaml
 apiVersion: apps/v1
@@ -89,7 +89,7 @@ The startup probe gives your application time to initialize without the readines
 
 ## Graceful Shutdown and Connection Draining
 
-When Kubernetes sends a SIGTERM to a pod during a rolling update, the Envoy sidecar needs time to drain existing connections. Configure this properly:
+When Kubernetes terminates a pod during a rolling update, the Envoy sidecar needs time to drain existing connections. Configure this properly:
 
 ```yaml
 apiVersion: apps/v1
@@ -108,9 +108,9 @@ spec:
               command: ["/bin/sh", "-c", "sleep 15"]
 ```
 
-The `preStop` hook adds a 15-second delay before the container starts shutting down. During this time:
+The `preStop` hook adds a 15-second delay before the container receives its termination signal. During this time:
 
-1. Kubernetes removes the pod from the Service endpoints
+1. Kubernetes marks the pod as terminating and removes it from the ready endpoints used for Service load balancing
 2. The endpoint update propagates to kube-proxy and Envoy
 3. New requests stop being sent to this pod
 4. After the sleep, the application starts its graceful shutdown
@@ -146,7 +146,7 @@ Setting `maxUnavailable: 0` ensures that no pods are removed until their replace
 
 If your application uses WebSockets, gRPC streaming, or other long-lived connections, you need to handle them specifically during rolling updates.
 
-Configure the Envoy drain duration:
+Configure the Envoy termination drain duration:
 
 ```yaml
 apiVersion: apps/v1
@@ -158,15 +158,14 @@ spec:
     metadata:
       annotations:
         proxy.istio.io/config: |
-          drainDuration: 45s
           terminationDrainDuration: 45s
 ```
 
-The `drainDuration` controls how long Envoy waits for existing connections to complete before forcefully closing them. Set this to a value that is long enough for your longest expected request but shorter than `terminationGracePeriodSeconds`.
+The `terminationDrainDuration` controls how long Istio allows Envoy to drain connections during proxy shutdown before forcefully closing them. Set this to a value that is long enough for your longest expected request but shorter than `terminationGracePeriodSeconds`.
 
 ## Coordinating Multiple Services
 
-When updating services that depend on each other, coordinate the rollouts to avoid compatibility issues. Use a PodDisruptionBudget to prevent too many pods from being updated at once:
+When updating services that depend on each other, coordinate the rollouts to avoid compatibility issues. Use a PodDisruptionBudget to limit voluntary disruptions such as node drains while rollouts are happening:
 
 ```yaml
 apiVersion: policy/v1
@@ -181,7 +180,7 @@ spec:
       app: my-app
 ```
 
-This ensures at least 80% of pods are always available during disruptions.
+This ensures at least 80% of pods are available during voluntary evictions. It does not limit how many pods a Deployment updates during a rolling update; use the Deployment's rolling update strategy for that.
 
 ## Monitoring Rolling Updates
 
