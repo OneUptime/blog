@@ -8,25 +8,25 @@ Description: How to properly handle sidecar container termination in Istio to pr
 
 ---
 
-Graceful shutdown is one of those things that's easy to get wrong with Istio. When a pod is terminated, both your application and the sidecar proxy receive SIGTERM at the same time. If the sidecar shuts down before your application finishes draining connections, you'll see dropped requests, failed outbound calls, and unhappy users. Here's how to configure termination properly.
+Graceful shutdown is one of those things that's easy to get wrong with Istio. When a pod is terminated, Kubernetes does not guarantee a shutdown order between regular containers, so your application and the sidecar proxy can receive SIGTERM in an order that is not useful for your workload. If the sidecar shuts down before your application finishes draining connections, you'll see dropped requests, failed outbound calls, and unhappy users. Here's how to configure termination properly.
 
 ## The Termination Sequence
 
 When Kubernetes decides to terminate a pod (due to a deployment update, scale-down, or node drain), this happens:
 
-1. The pod is removed from Service endpoints (so new traffic stops arriving)
-2. The pod's `preStop` hooks run on all containers simultaneously
-3. SIGTERM is sent to all containers simultaneously
+1. The pod is marked as terminating, and the control plane starts marking the pod's Service endpoints as terminating and not ready
+2. Each container's `preStop` hook runs before that container receives SIGTERM
+3. SIGTERM is sent to regular containers at different times and in an arbitrary order
 4. Containers have `terminationGracePeriodSeconds` to shut down
 5. After the grace period, SIGKILL is sent to any remaining containers
 
-The problem is that steps 1 and 2-3 happen asynchronously. There's a brief window where the pod is still receiving traffic even though it's being terminated. And the sidecar might exit before your application finishes handling those in-flight requests.
+The problem is that endpoint updates and local container shutdown happen asynchronously. There's a brief window where the pod is still receiving traffic even though it's being terminated. And the sidecar might exit before your application finishes handling those in-flight requests.
 
 ## The Default Behavior
 
 By default, Istio configures the sidecar with:
-- A `preStop` hook that sends a SIGTERM to the proxy
-- A drain duration (configurable, defaults to 5 seconds)
+- An agent that starts draining Envoy when the proxy container receives a termination signal
+- A termination drain duration (configurable, defaults to 5 seconds)
 
 During the drain period, the sidecar:
 - Stops accepting new connections
@@ -54,8 +54,13 @@ kind: Deployment
 metadata:
   name: my-app
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   template:
     metadata:
+      labels:
+        app: my-app
       annotations:
         proxy.istio.io/config: |
           terminationDrainDuration: 30s
@@ -69,7 +74,7 @@ Set this to at least as long as your application's shutdown time.
 
 ## EXIT_ON_ZERO_ACTIVE_CONNECTIONS
 
-A smarter approach is to have the sidecar exit only when all active connections are drained, rather than using a fixed timeout:
+A smarter approach is to have the sidecar exit when all active connections are drained, rather than always waiting for the full timeout:
 
 ```yaml
 apiVersion: apps/v1
@@ -77,8 +82,13 @@ kind: Deployment
 metadata:
   name: my-app
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   template:
     metadata:
+      labels:
+        app: my-app
       annotations:
         proxy.istio.io/config: |
           proxyMetadata:
@@ -89,7 +99,7 @@ spec:
         image: my-app:latest
 ```
 
-With this setting, the sidecar monitors active connections after receiving SIGTERM. Once all connections are closed (or the termination grace period expires), it exits. This is the most reliable way to ensure clean shutdown.
+With this setting, the sidecar monitors active connections after draining starts. Once all connections are closed (or `terminationDrainDuration` expires), it exits. This is the most reliable way to ensure clean shutdown.
 
 ## PreStop Hooks for Coordination
 
@@ -101,7 +111,13 @@ kind: Deployment
 metadata:
   name: my-app
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   template:
+    metadata:
+      labels:
+        app: my-app
     spec:
       terminationGracePeriodSeconds: 60
       containers:
@@ -134,7 +150,13 @@ kind: Deployment
 metadata:
   name: my-app
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   template:
+    metadata:
+      labels:
+        app: my-app
     spec:
       terminationGracePeriodSeconds: 60
       containers:
@@ -150,11 +172,11 @@ The 10-second sleep covers the typical endpoint propagation delay. After this, n
 
 ## Native Sidecar Termination Order
 
-With Kubernetes 1.28+ native sidecars, the termination order is guaranteed:
+With Kubernetes native sidecars, the termination order is guaranteed. Use Kubernetes 1.29 or later, where the `SidecarContainers` feature gate is beta and enabled by default. Kubernetes 1.28 had alpha support behind a feature gate, but its termination behavior was different.
 
 1. Application containers receive SIGTERM first
 2. After application containers exit, sidecar containers receive SIGTERM
-3. Sidecars have their own grace period to shut down
+3. Sidecars shut down within the pod's remaining grace period
 
 This eliminates the race condition entirely. Enable native sidecars:
 
@@ -168,7 +190,7 @@ spec:
         ENABLE_NATIVE_SIDECARS: "true"
 ```
 
-With native sidecars, your application can make outbound calls during its shutdown sequence without worrying that the sidecar has already exited.
+You can also opt individual pods in or out with the `sidecar.istio.io/nativeSidecar` annotation. With native sidecars, your application can make outbound calls during its shutdown sequence without worrying that the sidecar has already exited.
 
 ## Long-Running Connections
 
@@ -180,8 +202,13 @@ kind: Deployment
 metadata:
   name: websocket-service
 spec:
+  selector:
+    matchLabels:
+      app: websocket-service
   template:
     metadata:
+      labels:
+        app: websocket-service
       annotations:
         proxy.istio.io/config: |
           terminationDrainDuration: 120s
@@ -235,7 +262,7 @@ spec:
       restartPolicy: Never
 ```
 
-The `/quitquitquit` endpoint on port 15020 tells the sidecar to shut down cleanly.
+The `/quitquitquit` endpoint on port 15020 tells `pilot-agent` to exit so the Job can complete.
 
 ## Monitoring Termination Behavior
 
@@ -245,12 +272,12 @@ Check if pods are terminating cleanly by looking at pod events:
 kubectl describe pod my-app-xyz | grep -A 20 Events
 ```
 
-Look for events like `Killing` (SIGKILL sent, meaning the container didn't exit gracefully) or `BackOff` (container restarting after a crash).
+Look for events showing containers exceeded the grace period and were force killed, or repeated restarts during shutdown.
 
 Check the sidecar's drain statistics:
 
 ```bash
-kubectl exec -it deploy/my-app -c istio-proxy -- pilot-agent request GET stats | grep drain
+kubectl exec -it deploy/my-app -c istio-proxy -- pilot-agent request GET /stats | grep drain
 ```
 
 And monitor for 503 errors during deployments, which indicate the sidecar rejected requests during shutdown:
@@ -273,8 +300,13 @@ spec:
     rollingUpdate:
       maxSurge: 1
       maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: my-app
   template:
     metadata:
+      labels:
+        app: my-app
       annotations:
         proxy.istio.io/config: |
           terminationDrainDuration: 30s
@@ -297,4 +329,4 @@ This configuration:
 3. Allows a total of 60 seconds for the entire shutdown
 4. Uses zero maxUnavailable to maintain capacity during rolling updates
 
-Proper termination handling is essential for zero-downtime deployments with Istio. The key settings are `terminationDrainDuration`, `EXIT_ON_ZERO_ACTIVE_CONNECTIONS`, and a preStop sleep to cover endpoint propagation. If you're on Kubernetes 1.28+, native sidecars solve most of these issues automatically.
+Proper termination handling is essential for zero-downtime deployments with Istio. The key settings are `terminationDrainDuration`, `EXIT_ON_ZERO_ACTIVE_CONNECTIONS`, and a preStop sleep to cover endpoint propagation. If you're on Kubernetes 1.29+, native sidecars solve most of these issues automatically.
