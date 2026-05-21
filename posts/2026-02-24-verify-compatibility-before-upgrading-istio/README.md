@@ -19,12 +19,12 @@ Every Istio release supports specific Kubernetes versions. Running Istio on an u
 Check your Kubernetes version:
 
 ```bash
-kubectl version --short
+kubectl version
 ```
 
 Then check the Istio support matrix. Istio publishes supported Kubernetes versions for each release in its documentation. As a general rule:
 
-- Istio 1.20 supports Kubernetes 1.25 through 1.28
+- Istio 1.20 supports Kubernetes 1.25 through 1.29
 - Istio 1.21 supports Kubernetes 1.26 through 1.29
 - Istio 1.22 supports Kubernetes 1.27 through 1.30
 
@@ -83,7 +83,7 @@ Check what versions are stored:
 ```bash
 for crd in $(kubectl get crds -o name | grep istio.io); do
   echo "$crd:"
-  kubectl get $crd -o jsonpath='{.spec.versions[*].name}'
+  kubectl get $crd -o jsonpath='{.status.storedVersions[*]}'
   echo ""
 done
 ```
@@ -147,7 +147,10 @@ There is no automated way to check this. You need to compare your EnvoyFilter co
 Check the current proxy versions in your cluster:
 
 ```bash
-istioctl proxy-status -o json | jq -r '.[] | .proxy.istioVersion' | sort | uniq -c
+istioctl version
+
+# For per-proxy detail
+istioctl proxy-status
 ```
 
 If you already have proxies running mixed versions, make sure the upgrade will not push the version skew beyond one minor version:
@@ -243,7 +246,7 @@ kubectl get networkpolicies --all-namespaces -o yaml | grep -A10 "15012\|15014\|
 
 Verify the Istio ports have not changed in the new version. Common Istio ports:
 
-- 15012: istiod webhook
+- 15012: istiod XDS and CA services
 - 15014: istiod metrics
 - 15017: istiod injection webhook
 - 15021: sidecar health check
@@ -281,7 +284,7 @@ Document your findings in a report before proceeding:
 
 ### Add-on Compatibility
 - Prometheus: Compatible
-- Kiali: Needs upgrade to 1.75+
+- Kiali: Needs upgrade to 1.81+
 - Jaeger: Compatible
 
 ### Helm Values
