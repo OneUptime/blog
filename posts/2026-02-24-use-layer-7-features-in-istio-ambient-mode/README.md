@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Ambient Mode, Layer 7, Traffic Management, Waypoint
 
-Description: A hands-on guide to using Layer 7 features like HTTP routing, retries, rate limiting, and header-based policies in Istio ambient mode with waypoint proxies.
+Description: A hands-on guide to using Layer 7 features like HTTP routing, retries, and header-based policies in Istio ambient mode with waypoint proxies.
 
 ---
 
@@ -28,14 +28,16 @@ kubectl get gateway -n bookinfo
 
 ```text
 NAME                CLASS            ADDRESS       PROGRAMMED   AGE
-bookinfo-waypoint   istio-waypoint   10.96.10.50   True         1m
+waypoint            istio-waypoint   10.96.10.50   True         1m
 ```
 
-Now all L7 features are available for services in the `bookinfo` namespace.
+Now services in the `bookinfo` namespace are enrolled to use the waypoint for L7 processing.
 
 ## HTTP Request Routing
 
 Route traffic based on HTTP attributes like path, headers, or URI:
+
+In ambient mode, `VirtualService` support is currently alpha. If you use the subset-based examples below, make sure a matching `DestinationRule` defines the `v1`, `v2`, and `v3` subsets.
 
 ### Path-Based Routing
 
@@ -166,7 +168,6 @@ spec:
     - headers:
         request:
           set:
-            x-request-id: "%REQ(X-REQUEST-ID)%"
             x-forwarded-by: "istio-waypoint"
           remove:
             - x-internal-debug
@@ -342,7 +343,7 @@ spec:
     - corsPolicy:
         allowOrigins:
           - exact: "https://example.com"
-          - prefix: "https://*.example.com"
+          - regex: "https://.*\\.example\\.com"
         allowMethods:
           - GET
           - POST
