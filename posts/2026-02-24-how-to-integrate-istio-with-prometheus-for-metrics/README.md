@@ -15,13 +15,13 @@ Istio generates a rich set of metrics for every request flowing through the mesh
 If you just want to get Prometheus running with Istio for testing, use the sample addon:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/prometheus.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.29/samples/addons/prometheus.yaml
 ```
 
 This deploys Prometheus into the `istio-system` namespace with scrape configs already set up for Istio. Verify it's running:
 
 ```bash
-kubectl get pods -n istio-system -l app=prometheus
+kubectl get pods -n istio-system -l app.kubernetes.io/name=prometheus,app.kubernetes.io/component=server
 ```
 
 Access the Prometheus UI:
@@ -56,18 +56,11 @@ scrape_configs:
   metrics_path: /stats/prometheus
   kubernetes_sd_configs:
   - role: pod
+
   relabel_configs:
-  - source_labels: [__meta_kubernetes_pod_container_name]
+  - source_labels: [__meta_kubernetes_pod_container_port_name]
     action: keep
-    regex: istio-proxy
-  - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
-    action: drop
-    regex: false
-  - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
-    action: replace
-    regex: ([^:]+)(?::\d+)?;(\d+)
-    replacement: $1:15090
-    target_label: __address__
+    regex: '.*-envoy-prom'
   - action: labelmap
     regex: __meta_kubernetes_pod_label_(.+)
   - source_labels: [__meta_kubernetes_namespace]
@@ -90,7 +83,7 @@ scrape_configs:
     regex: istiod;http-monitoring
 ```
 
-If you're using the Prometheus Operator with ServiceMonitor resources:
+If you're using the Prometheus Operator with ServiceMonitor and PodMonitor resources:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
@@ -98,6 +91,9 @@ kind: ServiceMonitor
 metadata:
   name: istio-component-monitor
   namespace: istio-system
+  labels:
+    monitoring: istio-components
+    release: istio
 spec:
   jobLabel: istio
   targetLabels: [app]
@@ -108,8 +104,7 @@ spec:
       values:
       - pilot
   namespaceSelector:
-    matchNames:
-    - istio-system
+    any: true
   endpoints:
   - port: http-monitoring
     interval: 15s
@@ -120,21 +115,48 @@ kind: PodMonitor
 metadata:
   name: envoy-stats-monitor
   namespace: istio-system
+  labels:
+    monitoring: istio-proxies
+    release: istio
 spec:
   selector:
     matchExpressions:
-    - key: security.istio.io/tlsMode
-      operator: Exists
+    - key: istio-prometheus-ignore
+      operator: DoesNotExist
   namespaceSelector:
     any: true
+  jobLabel: envoy-stats
   podMetricsEndpoints:
   - path: /stats/prometheus
-    port: http-envoy-prom
     interval: 15s
     relabelings:
     - action: keep
       sourceLabels: [__meta_kubernetes_pod_container_name]
       regex: istio-proxy
+    - action: keep
+      sourceLabels: [__meta_kubernetes_pod_annotationpresent_prometheus_io_scrape]
+    - action: replace
+      regex: (\d+);(([A-Fa-f0-9]{1,4}::?){1,7}[A-Fa-f0-9]{1,4})
+      replacement: '[$2]:$1'
+      sourceLabels:
+      - __meta_kubernetes_pod_annotation_prometheus_io_port
+      - __meta_kubernetes_pod_ip
+      targetLabel: __address__
+    - action: replace
+      regex: (\d+);((([0-9]+?)(\.|$)){4})
+      replacement: $2:$1
+      sourceLabels:
+      - __meta_kubernetes_pod_annotation_prometheus_io_port
+      - __meta_kubernetes_pod_ip
+      targetLabel: __address__
+    - action: labeldrop
+      regex: "__meta_kubernetes_pod_label_(.+)"
+    - sourceLabels: [__meta_kubernetes_namespace]
+      action: replace
+      targetLabel: namespace
+    - sourceLabels: [__meta_kubernetes_pod_name]
+      action: replace
+      targetLabel: pod
 ```
 
 ## Key Istio Metrics
@@ -296,15 +318,25 @@ spec:
 
 In large meshes, Istio metrics can create high cardinality that overwhelms Prometheus. Common strategies:
 
-1. **Reduce labels.** Remove high-cardinality labels you don't need:
+1. **Reduce labels.** Avoid adding high-cardinality labels, and remove labels you don't need with the Telemetry API:
 
 ```yaml
-apiVersion: install.istio.io/v1alpha1
-kind: IstioOperator
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
+metadata:
+  name: remove-high-cardinality-tags
+  namespace: istio-system
 spec:
-  meshConfig:
-    defaultConfig:
-      extraStatTags: []
+  metrics:
+  - providers:
+    - name: prometheus
+    overrides:
+    - match:
+        metric: REQUEST_COUNT
+        mode: CLIENT_AND_SERVER
+      tagOverrides:
+        request_host:
+          operation: REMOVE
 ```
 
 2. **Use the Sidecar resource to limit scope.** Fewer services visible to each proxy means fewer metric label combinations.
@@ -340,7 +372,7 @@ Check that Prometheus is scraping your sidecars:
 istioctl dashboard prometheus
 ```
 
-Go to Status > Targets. You should see entries for `envoy-stats` and `istiod` with state `UP`.
+Go to Status > Targets. With the custom scrape configuration above, you should see entries for `envoy-stats` and `istiod` with state `UP`.
 
 Run a test query:
 
