@@ -51,7 +51,7 @@ With this configuration:
 - Traffic is load balanced across 10.0.1.50 and 10.0.1.51
 - You get Istio metrics and access logs for this traffic
 
-The hostname in `hosts` can be anything - it does not need to actually resolve in DNS. It serves as an identifier within the mesh.
+The hostname in `hosts` serves as the service identity that VirtualServices, DestinationRules, HTTP Host headers, and TLS SNI can match. `resolution: STATIC` only controls how Envoy resolves the upstream endpoints; your application still needs a way to connect to a captured address for that host, such as DNS capture, a real DNS record, or an HTTP proxy configuration.
 
 ## Specifying Ports Per Endpoint
 
@@ -207,13 +207,16 @@ metadata:
 spec:
   host: api.distributed-system.com
   trafficPolicy:
+    loadBalancer:
+      localityLbSetting:
+        enabled: true
     outlierDetection:
       consecutive5xxErrors: 3
       interval: 10s
       baseEjectionTime: 30s
 ```
 
-With outlier detection enabled, Envoy does locality-aware routing automatically. If you have pods in us-east-1, they prefer the 10.1.0.x endpoints. If those fail, Envoy falls over to us-west-2 endpoints.
+With locality load balancing and outlier detection enabled, Envoy can prefer endpoints in the same locality as the calling workload and detect unhealthy endpoints for failover. If you have pods in us-east-1, they prefer the 10.1.0.x endpoints. If those fail, Envoy falls over to other healthy endpoints.
 
 ## Network Field for Multi-Network Meshes
 
@@ -233,7 +236,7 @@ This tells Istio which gateway to use when routing to endpoints on different net
 
 ## Failover with Static Endpoints
 
-Set up failover between primary and backup static endpoints using priority levels in the DestinationRule:
+Set up failover between primary and backup static endpoints using failover priority in the DestinationRule:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -266,6 +269,11 @@ metadata:
 spec:
   host: critical-api.company.com
   trafficPolicy:
+    loadBalancer:
+      localityLbSetting:
+        enabled: true
+        failoverPriority:
+          - "tier=primary"
     outlierDetection:
       consecutive5xxErrors: 2
       interval: 10s
@@ -284,7 +292,7 @@ Check that your static endpoints are registered in Envoy:
 istioctl proxy-config endpoints deploy/my-app | grep legacy-system
 
 # Check cluster configuration
-istioctl proxy-config cluster deploy/my-app --fqdn "outbound|8443||api.legacy-system.internal" -o json
+istioctl proxy-config clusters deploy/my-app --fqdn api.legacy-system.internal --direction outbound -o json
 ```
 
 The endpoints output should show your static IPs with their health status.
@@ -307,7 +315,7 @@ Envoy picks up the changes within a few seconds. No pod restarts needed.
 
 ## Common Pitfalls
 
-**Forgetting the endpoints block.** With STATIC resolution, the endpoints block is mandatory. Without it, Envoy has no idea where to send traffic and connections fail silently.
+**Forgetting the endpoints block.** With STATIC resolution, define static endpoints directly, or use a workloadSelector for internal workloads. Without backing endpoints, Envoy has no upstream instances for the service.
 
 **Using STATIC when DNS would be better.** If the external service changes IPs regularly, STATIC resolution means you have to manually update the ServiceEntry every time. Use DNS instead unless you have a good reason.
 
