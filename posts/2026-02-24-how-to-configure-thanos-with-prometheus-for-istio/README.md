@@ -77,7 +77,7 @@ spec:
   replicas: 2
   retention: 4h  # Short local retention since Thanos handles long-term
   thanos:
-    version: v0.34.1
+    version: v0.41.0
     objectStorageConfig:
       key: objstore.yml
       name: thanos-objstore
@@ -101,6 +101,7 @@ metadata:
   name: thanos-store
   namespace: istio-system
 spec:
+  serviceName: thanos-store
   replicas: 1
   selector:
     matchLabels:
@@ -112,7 +113,7 @@ spec:
     spec:
       containers:
       - name: thanos-store
-        image: quay.io/thanos/thanos:v0.34.1
+        image: quay.io/thanos/thanos:v0.41.0
         args:
         - store
         - --data-dir=/data
@@ -148,6 +149,7 @@ metadata:
   name: thanos-store
   namespace: istio-system
 spec:
+  clusterIP: None
   selector:
     app: thanos-store
   ports:
@@ -179,13 +181,14 @@ spec:
     spec:
       containers:
       - name: thanos-query
-        image: quay.io/thanos/thanos:v0.34.1
+        image: quay.io/thanos/thanos:v0.41.0
         args:
         - query
         - --http-address=0.0.0.0:9090
         - --grpc-address=0.0.0.0:10901
-        - --store=dnssrv+_grpc._tcp.thanos-store.istio-system.svc.cluster.local
-        - --store=dnssrv+_grpc._tcp.prometheus-operated.istio-system.svc.cluster.local
+        - --endpoint=dnssrv+_grpc._tcp.thanos-store.istio-system.svc.cluster.local
+        - --endpoint=dnssrv+_grpc._tcp.prometheus-operated.istio-system.svc.cluster.local
+        - --query.replica-label=prometheus_replica
         - --query.auto-downsampling
         ports:
         - name: http
@@ -208,7 +211,7 @@ spec:
     port: 10901
 ```
 
-The `--store` flags point to the gRPC endpoints of the Store Gateway and the Prometheus Sidecar. The `dnssrv+` prefix tells Thanos to use DNS SRV records for service discovery.
+The `--endpoint` flags point to the gRPC endpoints of the Store Gateway and the Prometheus Sidecar. The `dnssrv+` prefix tells Thanos to use DNS SRV records for service discovery. The `--query.replica-label` flag deduplicates the two Prometheus replicas created by the Prometheus Operator.
 
 ## Step 5: Deploy the Compactor
 
@@ -221,6 +224,7 @@ metadata:
   name: thanos-compact
   namespace: istio-system
 spec:
+  serviceName: thanos-compact
   replicas: 1
   selector:
     matchLabels:
@@ -232,7 +236,7 @@ spec:
     spec:
       containers:
       - name: thanos-compact
-        image: quay.io/thanos/thanos:v0.34.1
+        image: quay.io/thanos/thanos:v0.41.0
         args:
         - compact
         - --data-dir=/data
@@ -258,6 +262,20 @@ spec:
       resources:
         requests:
           storage: 50Gi
+```
+
+Create the headless Service required by the StatefulSet:
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: thanos-compact
+  namespace: istio-system
+spec:
+  clusterIP: None
+  selector:
+    app: thanos-compact
 ```
 
 The retention flags control how long each resolution level is kept:
@@ -317,7 +335,7 @@ Istio generates high-cardinality metrics. Here are tuning tips specific to Istio
 Set a store API series limit to prevent runaway queries:
 
 ```text
---store.grpc.series-max-size=50000
+--store.limits.request-series=50000
 ```
 
 Enable index caching on the Store Gateway for faster lookups:
