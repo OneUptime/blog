@@ -16,10 +16,10 @@ Data loss can happen at multiple points in the pipeline: the Envoy proxy might s
 
 Before you can fix data loss, you need to detect it. Set up automated detection that catches gaps early.
 
-Check for gaps in expected metrics:
+Check for scrape targets that are flapping:
 
 ```bash
-# Query Prometheus for time series that suddenly stopped reporting
+# Query Prometheus for scrape targets that changed state repeatedly
 
 curl -s "http://prometheus:9090/api/v1/query?query=changes(up{job='kubernetes-pods'}[1h])" | \
   jq '.data.result[] | select(.value[1] | tonumber > 2)'
@@ -59,12 +59,18 @@ spec:
 
 ### Sidecar OOM Kills
 
-Envoy sidecars have memory limits. When they exceed those limits, Kubernetes kills them, and you lose any buffered telemetry data.
+Envoy sidecars may have memory limits. When they exceed those limits, Kubernetes kills them, and you lose any buffered telemetry data.
 
-Check for OOM events:
+Check for OOMKilled sidecars:
 
 ```bash
-kubectl get events --all-namespaces --field-selector reason=OOMKilled | grep istio-proxy
+kubectl get pods -A -o json | \
+  jq -r '.items[] |
+  .metadata as $m |
+  .status.containerStatuses[]? |
+  select(.name == "istio-proxy") |
+  select(.lastState.terminated.reason == "OOMKilled") |
+  "\($m.namespace)/\($m.name)"'
 ```
 
 Look at sidecar resource usage:
@@ -115,7 +121,7 @@ spec:
 
 ### Prometheus Scrape Failures
 
-Prometheus scrapes each pod's metrics endpoint every 15 seconds by default. If scrapes fail, you get gaps.
+Prometheus scrapes metrics endpoints on a configured interval. Many Kubernetes setups use 15 seconds, while Prometheus itself defaults to 1 minute unless you override `scrape_interval`. If scrapes fail, you get gaps.
 
 Check scrape target status:
 
@@ -172,7 +178,7 @@ spec:
       rules:
         - alert: PrometheusStorageFull
           expr: |
-            (prometheus_tsdb_storage_blocks_bytes + prometheus_tsdb_head_chunks_created_total)
+            (prometheus_tsdb_storage_blocks_bytes + prometheus_tsdb_wal_storage_size_bytes)
             / prometheus_tsdb_retention_limit_bytes > 0.9
           for: 5m
           labels:
@@ -220,7 +226,7 @@ data:
 
 ## Recovering from Data Loss
 
-Once you have fixed the root cause, you might need to backfill data. For metrics, Prometheus does not support backfilling directly, but you can use recording rules to reconstruct some derived metrics.
+Once you have fixed the root cause, you might need to backfill data. For metrics, Prometheus cannot recreate raw samples that were never collected, but you can use recording rules to reconstruct some derived metrics. For historical recording-rule data, `promtool tsdb create-blocks-from rules` can create backfill blocks that you move into the Prometheus data directory.
 
 Create a recording rule that fills gaps using available data:
 
@@ -324,8 +330,14 @@ curl -s http://prometheus:9090/api/v1/targets | jq '.data.activeTargets | length
 # 3. Check Prometheus storage
 kubectl exec -n monitoring prometheus-0 -- df -h /prometheus
 
-# 4. Check for OOM events
-kubectl get events -A --field-selector reason=OOMKilled --sort-by='.lastTimestamp' | tail -20
+# 4. Check for OOMKilled sidecars
+kubectl get pods -A -o json | \
+  jq -r '.items[] |
+  .metadata as $m |
+  .status.containerStatuses[]? |
+  select(.name == "istio-proxy") |
+  select(.lastState.terminated.reason == "OOMKilled") |
+  "\($m.namespace)/\($m.name)"'
 
 # 5. Check collector health
 kubectl logs -n observability deploy/otel-collector --tail=50
