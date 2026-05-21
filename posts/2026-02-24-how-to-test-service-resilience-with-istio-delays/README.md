@@ -20,8 +20,8 @@ Deploy a multi-service application. The Bookinfo sample works well because it ha
 kubectl create namespace delay-test
 kubectl label namespace delay-test istio-injection=enabled
 
-kubectl apply -n delay-test -f https://raw.githubusercontent.com/istio/istio/release-1.22/samples/bookinfo/platform/kube/bookinfo.yaml
-kubectl apply -n delay-test -f https://raw.githubusercontent.com/istio/istio/release-1.22/samples/bookinfo/networking/destination-rule-all.yaml
+kubectl apply -n delay-test -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/bookinfo/platform/kube/bookinfo.yaml
+kubectl apply -n delay-test -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/bookinfo/networking/destination-rule-all.yaml
 ```
 
 Wait for all pods:
@@ -65,7 +65,7 @@ time kubectl exec -n delay-test deploy/productpage-v1 -- \
   curl -s ratings:9080/ratings/0
 ```
 
-You should see the request take about 3 seconds longer than normal. The delay is added by the Envoy sidecar on the ratings service side before the request reaches the application.
+You should see the request take about 3 seconds longer than normal. The delay is added by the caller's Envoy sidecar before the request is forwarded to the ratings service.
 
 ## Partial Delay Injection
 
@@ -75,7 +75,7 @@ In production, degradation is rarely all-or-nothing. Inject delays into only a p
 apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
-  name: ratings-partial-delay
+  name: ratings-delay
   namespace: delay-test
 spec:
   hosts:
@@ -99,13 +99,13 @@ With this configuration, 25% of requests to the ratings service will have a 5-se
 
 ## Testing Timeout Configuration
 
-One of the most common uses for delay injection is verifying that your timeouts are configured correctly. Set a delay longer than your expected timeout:
+One of the most common uses for delay injection is verifying that your timeouts are configured correctly. Since `reviews:v1` does not call the ratings service, route reviews traffic to `reviews:v2` and set a delay longer than your expected timeout:
 
 ```yaml
 apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
-  name: reviews-timeout-test
+  name: reviews
   namespace: delay-test
 spec:
   hosts:
@@ -114,6 +114,7 @@ spec:
   - route:
     - destination:
         host: reviews
+        subset: v2
     timeout: 2s
 ```
 
@@ -123,7 +124,7 @@ Now inject a 5-second delay on the reviews service dependency:
 apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
-  name: ratings-slow
+  name: ratings-delay
   namespace: delay-test
 spec:
   hosts:
@@ -139,12 +140,12 @@ spec:
         host: ratings
 ```
 
-The reviews service calls ratings, but the productpage has a 2-second timeout on reviews. So the expected behavior is:
+The `reviews:v2` service calls ratings, but calls to reviews now have a 2-second Istio route timeout. So the expected behavior is:
 
 1. Productpage calls reviews
 2. Reviews calls ratings (which is delayed 5 seconds)
-3. After 2 seconds, productpage times out on reviews
-4. Productpage shows the page without reviews data
+3. After the reviews timeout budget is exceeded, productpage receives a timeout error from reviews
+4. Productpage shows the page with reviews unavailable
 
 Test it:
 
@@ -153,7 +154,7 @@ time kubectl exec -n delay-test deploy/productpage-v1 -- \
   curl -s -o /dev/null -w "%{http_code}" productpage:9080/productpage
 ```
 
-If the timeout is working, the request should complete in about 2 seconds, not 5.
+If the timeout is working, the request should complete faster than the 5-second ratings delay. The Bookinfo productpage service has a hard-coded retry for calls to reviews, so with a 2-second route timeout the end-to-end request may take roughly 4 seconds rather than exactly 2.
 
 ## Graduated Delay Testing
 
@@ -274,7 +275,7 @@ spec:
         http2MaxRequests: 20
 ```
 
-With a 5-second delay and only 10 max connections, requests will start queuing up quickly once you send more than 2 requests per second. This tests whether your services handle connection pool overflow gracefully with proper error codes (503) rather than hanging indefinitely.
+With a 5-second delay and low connection and request limits, requests will start queuing or overflowing once concurrent in-flight requests exceed the configured pool limits. This tests whether your services handle connection pool overflow gracefully with proper error codes (503) rather than hanging indefinitely.
 
 ## Monitoring the Impact
 
