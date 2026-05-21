@@ -138,7 +138,9 @@ spec:
     # Push errors
     - record: istio:pilot:push_error_rate:5m
       expr: |
-        sum(rate(pilot_xds_push_errors[5m]))
+        sum(rate(pilot_total_xds_internal_errors[5m]))
+        +
+        sum(rate(pilot_total_xds_rejects[5m]))
 
     # Connected proxies
     - record: istio:pilot:connected_proxies
@@ -237,14 +239,14 @@ data:
       repeat_interval: 4h
       routes:
       # Critical alerts go to PagerDuty
-      - match:
-          severity: critical
+      - matchers:
+        - severity="critical"
         receiver: pagerduty
         continue: true
 
       # All alerts go to Slack
-      - match_re:
-          severity: critical|warning
+      - matchers:
+        - severity=~"critical|warning"
         receiver: slack
 
     receivers:
@@ -254,7 +256,7 @@ data:
 
     - name: pagerduty
       pagerduty_configs:
-      - service_key: '<your-pagerduty-key>'
+      - routing_key: '<your-pagerduty-routing-key>'
         description: '{{ .CommonAnnotations.summary }}'
         details:
           description: '{{ .CommonAnnotations.description }}'
