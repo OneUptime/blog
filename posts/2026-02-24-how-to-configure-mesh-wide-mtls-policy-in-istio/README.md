@@ -58,7 +58,7 @@ spec:
 
 ### Disable
 
-Turns off mTLS mesh-wide. You almost never want this:
+In sidecar mode, turns off mTLS mesh-wide. You almost never want this. In ambient mode, `DISABLE` is not supported:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -134,17 +134,20 @@ In this setup, every namespace uses STRICT except legacy-apps, which uses PERMIS
 
 A good mental model: think of the mesh-wide policy as the "unless otherwise specified" rule. If a namespace does not have its own PeerAuthentication, it gets the mesh-wide one.
 
-## Mesh-Wide Policy with Port Exceptions
+## Policy with Port Exceptions
 
-You can include port-level mTLS settings in the mesh-wide policy, but this only makes sense for ports that are universally used across the mesh:
+Port-level mTLS settings only apply when the PeerAuthentication has a workload selector. The port number refers to the workload port, not the Kubernetes Service port:
 
 ```yaml
 apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
-  name: default
-  namespace: istio-system
+  name: metrics-exception
+  namespace: monitoring
 spec:
+  selector:
+    matchLabels:
+      app: metrics-exporter
   mtls:
     mode: STRICT
   portLevelMtls:
@@ -152,7 +155,7 @@ spec:
       mode: PERMISSIVE
 ```
 
-This sets STRICT as the default but allows port 9090 (commonly used for Prometheus metrics) to accept plain text across the entire mesh. Be careful with this because it opens that port on every service.
+This sets STRICT for the selected workloads but allows workload port 9090 to accept plain text. Be careful with this because it creates an explicit exception for that workload port.
 
 ## Verifying the Mesh-Wide Policy
 
