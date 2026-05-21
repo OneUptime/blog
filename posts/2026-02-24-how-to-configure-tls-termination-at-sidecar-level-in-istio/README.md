@@ -23,7 +23,7 @@ A few common scenarios:
 
 ## Basic Setup with Sidecar Resource
 
-The Sidecar resource in Istio controls the behavior of the Envoy sidecar for a specific workload. To set up TLS termination, you combine a Sidecar resource with the appropriate TLS configuration.
+The Sidecar resource in Istio controls the behavior of the Envoy sidecar for a specific workload. To set up TLS termination, you combine a Sidecar resource with the appropriate TLS configuration. This is an experimental Istio feature, so the control plane must be installed with `ENABLE_TLS_ON_SIDECAR_INGRESS=true`.
 
 First, create a Kubernetes secret with the TLS certificate:
 
@@ -32,6 +32,15 @@ kubectl create secret tls my-service-tls \
   --cert=server-cert.pem \
   --key=server-key.pem \
   -n production
+```
+
+Then mount the certificate into the Envoy sidecar. Istio does not currently support `credentialName` in sidecar ingress TLS settings, so the Sidecar resource references file paths inside the proxy container:
+
+```yaml
+metadata:
+  annotations:
+    sidecar.istio.io/userVolume: '{"tls-secret":{"secret":{"secretName":"my-service-tls","optional":true}}}'
+    sidecar.istio.io/userVolumeMount: '{"tls-secret":{"mountPath":"/etc/istio/tls-certs/","readOnly":true}}'
 ```
 
 Then configure the sidecar to use this certificate for inbound TLS:
@@ -54,7 +63,8 @@ spec:
       defaultEndpoint: 127.0.0.1:8080
       tls:
         mode: SIMPLE
-        credentialName: my-service-tls
+        privateKey: /etc/istio/tls-certs/tls.key
+        serverCertificate: /etc/istio/tls-certs/tls.crt
 ```
 
 This tells the sidecar to:
@@ -64,65 +74,10 @@ This tells the sidecar to:
 
 ## Using EnvoyFilter for Advanced TLS Termination
 
-For more control over TLS termination settings, use an EnvoyFilter:
+For more control over TLS termination settings, use an EnvoyFilter only when the Sidecar API cannot express the setting you need. EnvoyFilter patches are version-sensitive, so start by inspecting the generated inbound listener and patching that listener instead of adding a second listener on the same port:
 
-```yaml
-apiVersion: networking.istio.io/v1alpha3
-kind: EnvoyFilter
-metadata:
-  name: sidecar-tls-termination
-  namespace: production
-spec:
-  workloadSelector:
-    labels:
-      app: my-service
-  configPatches:
-    - applyTo: LISTENER
-      match:
-        context: SIDECAR_INBOUND
-        listener:
-          portNumber: 8443
-      patch:
-        operation: ADD
-        value:
-          name: custom-tls-listener
-          address:
-            socket_address:
-              address: 0.0.0.0
-              port_value: 8443
-          filter_chains:
-            - transport_socket:
-                name: envoy.transport_sockets.tls
-                typed_config:
-                  "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.DownstreamTlsContext
-                  common_tls_context:
-                    tls_certificate_sds_secret_configs:
-                      - name: my-service-tls
-                        sds_config:
-                          api_config_source:
-                            api_type: GRPC
-                            grpc_services:
-                              - envoy_grpc:
-                                  cluster_name: sds-grpc
-              filters:
-                - name: envoy.filters.network.http_connection_manager
-                  typed_config:
-                    "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
-                    stat_prefix: inbound_https_8443
-                    route_config:
-                      name: local_route
-                      virtual_hosts:
-                        - name: local_service
-                          domains: ["*"]
-                          routes:
-                            - match:
-                                prefix: "/"
-                              route:
-                                cluster: inbound|8080||
-                    http_filters:
-                      - name: envoy.filters.http.router
-                        typed_config:
-                          "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+```bash
+istioctl proxy-config listeners <pod-name> -n production --port 8443 -o json
 ```
 
 ## Mutual TLS Termination at the Sidecar
@@ -147,16 +102,23 @@ spec:
       defaultEndpoint: 127.0.0.1:8080
       tls:
         mode: MUTUAL
-        credentialName: my-service-tls
+        privateKey: /etc/istio/tls-certs/tls.key
+        serverCertificate: /etc/istio/tls-certs/tls.crt
+        caCertificates: /etc/istio/tls-ca-certs/ca.crt
 ```
 
-For mutual TLS, the secret needs to include the CA certificate for validating clients:
+For mutual TLS, create a separate secret for the CA certificate used to validate clients and mount it into the sidecar:
 
 ```bash
-kubectl create secret generic my-service-tls -n production \
-  --from-file=tls.crt=server-cert.pem \
-  --from-file=tls.key=server-key.pem \
+kubectl create secret generic my-service-tls-cacert -n production \
   --from-file=ca.crt=client-ca-cert.pem
+```
+
+```yaml
+metadata:
+  annotations:
+    sidecar.istio.io/userVolume: '{"tls-secret":{"secret":{"secretName":"my-service-tls","optional":true}},"tls-ca-secret":{"secret":{"secretName":"my-service-tls-cacert"}}}'
+    sidecar.istio.io/userVolumeMount: '{"tls-secret":{"mountPath":"/etc/istio/tls-certs/","readOnly":true},"tls-ca-secret":{"mountPath":"/etc/istio/tls-ca-certs/","readOnly":true}}'
 ```
 
 ## Combining with Istio mTLS
@@ -271,7 +233,7 @@ graph LR
 kubectl get secrets -n production | grep my-service-tls
 ```
 
-**Wrong certificate presented**: Check that the `credentialName` matches the secret name exactly. Also verify the secret has the correct key names (`tls.crt` and `tls.key` for TLS secrets).
+**Wrong certificate presented**: Check that the sidecar annotations mount the expected secret and that the `privateKey`, `serverCertificate`, and `caCertificates` paths match the mounted file paths. Also verify the TLS secret has the correct key names (`tls.crt` and `tls.key`).
 
 **Connection refused on the TLS port**: The sidecar listener might not be configured. Check with `istioctl proxy-config listener` and look at istiod logs for configuration push errors:
 
