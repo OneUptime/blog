@@ -105,7 +105,7 @@ Each pod gets DNS: `my-db-0.my-db-headless.database.svc.cluster.local`
 Make sure this DNS resolves from other pods in the mesh:
 
 ```bash
-kubectl exec my-db-0 -c istio-proxy -n database -- nslookup my-db-1.my-db-headless.database.svc.cluster.local
+kubectl run dns-test -n database --rm -it --restart=Never --image=busybox:1.36 --command -- nslookup my-db-1.my-db-headless.database.svc.cluster.local
 ```
 
 ## publishNotReadyAddresses
@@ -163,15 +163,15 @@ metadata:
 
 ## mTLS Between StatefulSet Pods
 
-When StatefulSet pods communicate with each other (for replication, consensus, etc.), mTLS works automatically if all pods have sidecars. Each pod gets its own certificate from Istio's CA.
+When StatefulSet pods communicate with each other (for replication, consensus, etc.), mTLS works automatically when Istio mutual TLS is enabled and all pods have sidecars. Each pod gets its own certificate from Istio's CA.
 
-Verify mTLS between pods:
+Inspect the client proxy config for the peer service:
 
 ```bash
-istioctl proxy-config endpoints my-db-0.database -o json | grep -A 5 "my-db-1"
+istioctl proxy-config clusters my-db-0.database --fqdn my-db-headless.database.svc.cluster.local --port 5432 -o json | grep -i "transportSocket"
 ```
 
-If your application does its own TLS for inter-node communication, you'll have double encryption. Choose one:
+If your application does its own TLS for inter-node communication, you'll have double encryption. If you don't want double encryption, choose one:
 
 **Option A: Let Istio handle encryption.** Disable the application's native TLS and rely on mTLS.
 
@@ -244,14 +244,14 @@ Sometimes the pragmatic solution is to not inject the sidecar into a StatefulSet
 spec:
   template:
     metadata:
-      annotations:
+      labels:
         sidecar.istio.io/inject: "false"
 ```
 
 If you do this, the StatefulSet pods won't have mTLS, observability, or traffic management from Istio. Other services connecting to these pods need to have their DestinationRules configured accordingly:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-db-no-mtls
