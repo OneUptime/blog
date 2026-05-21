@@ -63,7 +63,7 @@ Plaintext traffic will never match this rule because it has no principal. So thi
 
 ## Allowing Unauthenticated Traffic
 
-Sometimes you genuinely need to allow traffic from sources without an identity. Maybe you have external traffic coming through the ingress gateway, or you have legacy services without sidecars.
+Sometimes you genuinely need to allow traffic from sources without an identity. Maybe you have unauthenticated external traffic at an ingress gateway, or you have legacy services without sidecars.
 
 To allow all traffic regardless of identity, write a rule without the `from` field:
 
@@ -221,7 +221,7 @@ To see the request-level identity from JWTs, check the Envoy access logs:
 kubectl logs <pod-name> -c istio-proxy -n default
 ```
 
-The access log can include the authenticated principal if you configure the log format to include `%DOWNSTREAM_PEER_SUBJECT%` and `%REQ(X-Forwarded-Client-Cert)%`.
+The access log can include peer certificate details if you configure the log format to include fields such as `%DOWNSTREAM_PEER_URI_SAN%` or `%REQ(X-Forwarded-Client-Cert)%`. For JWT details, configure `RequestAuthentication` to copy the payload or specific claims into headers with `outputPayloadToHeader` or `outputClaimToHeaders`, then include those headers in the access log format.
 
 ## Best Practices
 
