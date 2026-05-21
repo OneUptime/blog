@@ -46,20 +46,20 @@ jobs:
 
       - name: Install kind
         run: |
-          curl -Lo kind https://kind.sigs.k8s.io/dl/v0.22.0/kind-linux-amd64
+          curl -Lo kind https://kind.sigs.k8s.io/dl/v0.31.0/kind-linux-amd64
           chmod +x kind
-          mv kind /usr/local/bin/
+          sudo mv kind /usr/local/bin/kind
 
       - name: Create cluster
         run: kind create cluster --config kind-config.yaml --name istio-test
 
       - name: Install Istio
         run: |
-          ISTIO_VERSION=1.22.0
+          ISTIO_VERSION=1.29.2
           curl -L https://istio.io/downloadIstio | ISTIO_VERSION=$ISTIO_VERSION sh -
           export PATH=$PWD/istio-$ISTIO_VERSION/bin:$PATH
           istioctl install --set profile=minimal -y
-          kubectl label namespace default istio-injection=enabled
+          kubectl label namespace default istio-injection=enabled --overwrite
 
       - name: Wait for Istio
         run: |
@@ -72,6 +72,11 @@ Create lightweight test services that you can use to validate mesh behavior:
 
 ```yaml
 # test-services.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: httpbin
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -88,11 +93,24 @@ spec:
       labels:
         app: httpbin
     spec:
+      serviceAccountName: httpbin
       containers:
         - name: httpbin
-          image: kennethreitz/httpbin
+          image: docker.io/kong/httpbin
+          command:
+            - pipenv
+            - run
+            - gunicorn
+            - -b
+            - 0.0.0.0:8080
+            - httpbin:app
+            - -k
+            - gevent
+          env:
+            - name: WORKON_HOME
+              value: /tmp
           ports:
-            - containerPort: 80
+            - containerPort: 8080
 ---
 apiVersion: v1
 kind: Service
@@ -104,7 +122,12 @@ spec:
   ports:
     - name: http
       port: 8000
-      targetPort: 80
+      targetPort: 8080
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: sleep
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -122,6 +145,7 @@ spec:
       labels:
         app: sleep
     spec:
+      serviceAccountName: sleep
       containers:
         - name: sleep
           image: curlimages/curl
@@ -172,6 +196,11 @@ Verify that VirtualService routing works correctly:
             - headers:
                 x-test:
                   exact: "route-to-v2"
+          route:
+            - destination:
+                host: httpbin
+                port:
+                  number: 8000
           fault:
             abort:
               httpStatus: 418
@@ -243,9 +272,11 @@ Verify that mTLS is enforced between services:
     echo "PASS: mTLS connection successful"
 
     # Verify mTLS is active
-    istioctl x describe pod "$SLEEP_POD" | grep -q "STRICT"
-    if [ $? -eq 0 ]; then
-      echo "PASS: STRICT mTLS is active"
+    if istioctl x describe pod "$SLEEP_POD" | grep -q "pod enforces mTLS"; then
+      echo "PASS: mTLS is active"
+    else
+      echo "FAIL: mTLS is not active"
+      exit 1
     fi
 ```
 
@@ -256,23 +287,24 @@ Verify that authorization policies correctly allow and deny traffic:
 ```yaml
 - name: Test authorization policy
   run: |
-    # Create a namespace without injection for testing denied access
-    kubectl create namespace no-mesh
+    # Create a second mesh-enabled namespace for testing denied access
+    kubectl create namespace other
+    kubectl label namespace other istio-injection=enabled
 
-    kubectl apply -n no-mesh -f - <<EOF
+    kubectl apply -n other -f - <<EOF
     apiVersion: apps/v1
     kind: Deployment
     metadata:
-      name: sleep-no-mesh
+      name: sleep-other
     spec:
       replicas: 1
       selector:
         matchLabels:
-          app: sleep-no-mesh
+          app: sleep-other
       template:
         metadata:
           labels:
-            app: sleep-no-mesh
+            app: sleep-other
         spec:
           containers:
             - name: sleep
@@ -280,7 +312,7 @@ Verify that authorization policies correctly allow and deny traffic:
               command: ["/bin/sleep", "infinity"]
     EOF
 
-    kubectl rollout status deployment/sleep-no-mesh -n no-mesh --timeout=60s
+    kubectl rollout status deployment/sleep-other -n other --timeout=60s
 
     # Apply AuthorizationPolicy
     cat <<EOF | kubectl apply -f -
@@ -298,7 +330,7 @@ Verify that authorization policies correctly allow and deny traffic:
         - from:
             - source:
                 principals:
-                  - cluster.local/ns/default/sa/default
+                  - cluster.local/ns/default/sa/sleep
     EOF
 
     sleep 10
@@ -313,6 +345,17 @@ Verify that authorization policies correctly allow and deny traffic:
       exit 1
     fi
     echo "PASS: Authorized request allowed"
+
+    # Test denied access (from another mesh identity)
+    OTHER_SLEEP_POD=$(kubectl get pod -n other -l app=sleep-other -o jsonpath='{.items[0].metadata.name}')
+    STATUS=$(kubectl exec -n other "$OTHER_SLEEP_POD" -c sleep -- \
+      curl -s -o /dev/null -w "%{http_code}" --max-time 5 http://httpbin.default:8000/get)
+
+    if [ "$STATUS" != "403" ]; then
+      echo "FAIL: Unauthorized request should return 403, got $STATUS"
+      exit 1
+    fi
+    echo "PASS: Unauthorized request denied"
 ```
 
 ## Test: Timeout Configuration
@@ -320,11 +363,13 @@ Verify that authorization policies correctly allow and deny traffic:
 ```yaml
 - name: Test timeout
   run: |
+    kubectl delete virtualservice httpbin --ignore-not-found
+
     cat <<EOF | kubectl apply -f -
     apiVersion: networking.istio.io/v1
     kind: VirtualService
     metadata:
-      name: httpbin-timeout
+      name: httpbin
     spec:
       hosts:
         - httpbin
@@ -377,12 +422,12 @@ setup() {
   [ "$result" = "503" ]
 }
 
-@test "retry policy handles transient failures" {
+@test "retry policy preserves the final upstream status" {
   kubectl apply -f test-fixtures/retry-vs.yaml
   sleep 5
   result=$(kubectl exec "$SLEEP_POD" -c sleep -- \
     curl -s -o /dev/null -w "%{http_code}" http://httpbin:8000/status/503)
-  # With retries, we should eventually get the response
+  # A consistently failing upstream still returns its final 503 response.
   [ "$result" = "503" ]
 }
 ```
@@ -421,10 +466,10 @@ Istio installation takes a few minutes, which adds up in CI. Some optimization s
 
 ```yaml
 - name: Cache Istio
-  uses: actions/cache@v3
+  uses: actions/cache@v4
   with:
-    path: istio-1.22.0
-    key: istio-1.22.0-${{ runner.os }}
+    path: istio-1.29.2
+    key: istio-1.29.2-${{ runner.os }}
 ```
 
 Integration tests with Istio in CI give you confidence that your mesh configuration works as expected. Start with basic routing and mTLS tests, then add tests for every Istio feature you depend on. The ephemeral cluster approach means tests are always clean and reproducible.
