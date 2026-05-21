@@ -33,10 +33,10 @@ After sidecar injection, Istio rewrites this to:
 livenessProbe:
   httpGet:
     path: /app-health/my-app/livez
-    port: 15021
+    port: 15020
 ```
 
-The Istio agent on port 15021 receives the plaintext request from the kubelet, then makes the actual request to your application on port 8080 through the local network (bypassing the mTLS requirement).
+The Istio agent on port 15020 receives the plaintext request from the kubelet, then makes the actual request to your application on port 8080 through the local network (bypassing the mTLS requirement).
 
 Check if your probes are being rewritten:
 
@@ -47,7 +47,7 @@ kubectl get pod my-pod -o yaml | grep -A 8 "livenessProbe"
 kubectl get pod my-pod -o yaml | grep -A 8 "readinessProbe"
 ```
 
-You should see port 15021 and paths like `/app-health/...` if rewriting is active.
+You should see port 15020 and paths like `/app-health/...` if rewriting is active.
 
 ## Enabling Probe Rewriting
 
@@ -61,8 +61,13 @@ kind: Deployment
 metadata:
   name: my-app
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   template:
     metadata:
+      labels:
+        app: my-app
       annotations:
         sidecar.istio.io/rewriteAppHTTPProbers: "true"
     spec:
@@ -101,11 +106,11 @@ spec:
 
 ## TCP and gRPC Probes
 
-Probe rewriting only works for HTTP probes. TCP and gRPC probes behave differently.
+Despite the annotation name, Istio probe rewriting handles HTTP, TCP, and gRPC probes by default. TCP and gRPC probes behave differently.
 
 ### TCP Probes
 
-TCP liveness probes check if a port is open. These generally work fine with Istio because the TCP connection succeeds even with mTLS. The sidecar accepts the connection on the inbound port.
+TCP liveness probes check if a port is open. They need Istio's probe rewrite because inbound traffic is redirected into the sidecar, which can make TCP ports appear open as long as the sidecar is running. With rewrite enabled, the Istio agent performs the TCP port check while avoiding the normal traffic redirection.
 
 ```yaml
 livenessProbe:
@@ -115,11 +120,11 @@ livenessProbe:
   periodSeconds: 10
 ```
 
-TCP probes do not need any special configuration for Istio.
+TCP probes do not need any special configuration as long as Istio probe rewriting is enabled.
 
 ### gRPC Probes
 
-Kubernetes supports native gRPC health checks. With Istio, these work if the kubelet's gRPC health check goes through the sidecar correctly.
+Kubernetes supports native gRPC health checks. With Istio, these are handled by the same probe rewrite mechanism by default.
 
 ```yaml
 livenessProbe:
@@ -152,7 +157,7 @@ containers:
 
 ## Exec Probes as a Fallback
 
-If HTTP probe rewriting is not working for your specific scenario, you can switch to exec probes. These run a command inside the container and bypass the network entirely:
+If HTTP probe rewriting is not working for your specific scenario, you can switch to exec probes. These run a command inside the container and bypass the kubelet-to-pod network probe path:
 
 ```yaml
 livenessProbe:
@@ -246,7 +251,7 @@ kubectl exec my-pod -c my-app -- curl -v http://localhost:8080/healthz
 kubectl exec my-pod -c istio-proxy -- curl -v http://localhost:8080/healthz
 
 # Step 5: Test the rewritten probe path
-kubectl exec my-pod -c istio-proxy -- curl -v http://localhost:15021/app-health/my-app/livez
+kubectl exec my-pod -c istio-proxy -- curl -v http://localhost:15020/app-health/my-app/livez
 
 # Step 6: Check istio-proxy logs for errors
 kubectl logs my-pod -c istio-proxy | grep -i "health\|probe\|error"
@@ -262,8 +267,13 @@ kind: Deployment
 metadata:
   name: my-app
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   template:
     metadata:
+      labels:
+        app: my-app
       annotations:
         traffic.sidecar.istio.io/excludeInboundPorts: "8081"
     spec:
