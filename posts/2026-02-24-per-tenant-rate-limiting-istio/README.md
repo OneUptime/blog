@@ -14,15 +14,18 @@ Rate limiting is one of those features that every multi-tenant system needs but 
 
 The simplest approach is local rate limiting, which runs entirely within the Envoy proxy. No external services needed. The downside is that limits are per-pod, not global, so if a service has 5 replicas with a limit of 100 requests/minute each, the effective limit is 500 requests/minute total.
 
-Here is an EnvoyFilter that applies a local rate limit based on a tenant header:
+Here is an EnvoyFilter that applies a local rate limit to the shared API workload:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
 kind: EnvoyFilter
 metadata:
   name: tenant-local-ratelimit
-  namespace: istio-system
+  namespace: shared-services
 spec:
+  workloadSelector:
+    labels:
+      app: shared-api
   configPatches:
   - applyTo: HTTP_FILTER
     match:
@@ -67,9 +70,9 @@ This applies a blanket rate limit to all inbound traffic. But it does not differ
 
 ## Adding Per-Tenant Descriptors
 
-To rate limit differently per tenant, you need to extract the tenant identity and use it as a rate limit descriptor. If tenants are identified by namespace (which is the case in namespace-based multi-tenancy), the source namespace is already available in mTLS metadata.
+To rate limit differently per tenant, you need to extract the tenant identity and use it as a rate limit descriptor. If tenants are identified by namespace, prefer a trusted identity signal from Istio authentication or an application-controlled header rather than accepting an arbitrary client-supplied tenant value.
 
-For header-based tenant identification, you can use route-level rate limit actions:
+For header-based tenant identification, you can use virtual-host rate limit actions:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -121,19 +124,32 @@ spec:
     spec:
       containers:
       - name: ratelimit
-        image: envoyproxy/ratelimit:latest
+        image: docker.io/envoyproxy/ratelimit:30a4ce1a
+        command: ["/bin/ratelimit"]
         ports:
         - containerPort: 8080
           name: http
         - containerPort: 8081
           name: grpc
+        - containerPort: 9090
+          name: metrics
         env:
         - name: RUNTIME_ROOT
           value: /data
         - name: RUNTIME_SUBDIRECTORY
           value: ratelimit
+        - name: RUNTIME_WATCH_ROOT
+          value: "false"
+        - name: RUNTIME_IGNOREDOTFILES
+          value: "true"
         - name: LOG_LEVEL
           value: debug
+        - name: USE_STATSD
+          value: "false"
+        - name: USE_PROMETHEUS
+          value: "true"
+        - name: PROMETHEUS_ADDR
+          value: ":9090"
         - name: REDIS_SOCKET_TYPE
           value: tcp
         - name: REDIS_URL
@@ -157,6 +173,8 @@ spec:
     port: 8080
   - name: grpc
     port: 8081
+  - name: metrics
+    port: 9090
   selector:
     app: ratelimit
 ```
@@ -243,13 +261,13 @@ apiVersion: networking.istio.io/v1alpha3
 kind: EnvoyFilter
 metadata:
   name: rate-limit-cluster
-  namespace: istio-system
+  namespace: shared-services
 spec:
+  workloadSelector:
+    labels:
+      app: shared-api
   configPatches:
   - applyTo: CLUSTER
-    match:
-      cluster:
-        service: ratelimit.istio-system.svc.cluster.local
     patch:
       operation: ADD
       value:
@@ -280,8 +298,11 @@ apiVersion: networking.istio.io/v1alpha3
 kind: EnvoyFilter
 metadata:
   name: rate-limit-filter
-  namespace: istio-system
+  namespace: shared-services
 spec:
+  workloadSelector:
+    labels:
+      app: shared-api
   configPatches:
   - applyTo: HTTP_FILTER
     match:
@@ -315,12 +336,12 @@ Setting `failure_mode_deny: false` means that if the rate limit service is down,
 Hit the service rapidly from a tenant namespace and verify that rate limiting kicks in:
 
 ```bash
-# Send 200 requests quickly from tenant-a
+# Send 120 requests quickly from an unknown tenant, which uses the 100 req/min default
 
-for i in $(seq 1 200); do
+for i in $(seq 1 120); do
   kubectl exec -n tenant-a deploy/sleep -- \
     curl -s -o /dev/null -w "%{http_code}\n" \
-    -H "x-tenant-id: tenant-a" \
+    -H "x-tenant-id: tenant-new" \
     http://shared-api.shared-services:8080/endpoint
 done | sort | uniq -c
 ```
@@ -329,17 +350,17 @@ You should see mostly `200` responses, and then `429` responses once the rate li
 
 ## Monitoring Rate Limit Metrics
 
-The rate limit service exposes metrics that you can scrape with Prometheus:
+The rate limit service can expose Prometheus metrics when `USE_PROMETHEUS` is enabled:
 
 ```bash
-kubectl port-forward -n istio-system svc/ratelimit 8080:8080
-curl http://localhost:8080/stats
+kubectl port-forward -n istio-system svc/ratelimit 9090:9090
+curl http://localhost:9090/metrics
 ```
 
-You can also monitor rate limiting from the Envoy side by looking at the `envoy_http_local_rate_limit_*` and `envoy_ratelimit_*` stats:
+You can also monitor rate limiting from the Envoy side by looking at the local rate limit stats and the cluster `ratelimit` stats. In Istio, custom Envoy stats may need to be enabled with `proxyStatsMatcher` before they appear:
 
 ```bash
-istioctl proxy-config stats deploy/shared-api -n shared-services | grep rate
+istioctl experimental envoy-stats deployment/shared-api.shared-services --output prom | grep -E 'http_local_rate_limit|ratelimit'
 ```
 
 ## Considerations and Trade-offs
