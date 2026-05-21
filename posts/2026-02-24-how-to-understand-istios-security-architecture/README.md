@@ -18,7 +18,7 @@ Istio's security rests on three pillars:
 2. **Authentication** - Verifying the identity of communicating parties (both peer and request-level)
 3. **Authorization** - Controlling what actions an authenticated identity can perform
 
-These three work together to create a zero-trust security model where no service trusts another by default, and every communication is verified and authorized.
+These three work together to support a zero-trust security model where service identity is verified and access can be explicitly authorized.
 
 ## Workload Identity
 
@@ -60,11 +60,11 @@ istioctl proxy-config secret my-pod
 
 Istiod acts as the CA for the mesh. It manages the entire certificate lifecycle:
 
-1. When a new pod starts, the Envoy sidecar generates a private key and sends a Certificate Signing Request (CSR) to Istiod
-2. Istiod verifies the CSR against the pod's Kubernetes service account
-3. Istiod signs the certificate and returns it to the Envoy sidecar
-4. The certificate is stored in Envoy's SDS (Secret Discovery Service) cache
-5. Before the certificate expires, Envoy automatically requests a renewal
+1. When a new pod starts, the Istio agent creates a private key and sends a Certificate Signing Request (CSR) to Istiod
+2. Istiod verifies the credentials carried with the CSR against the pod's Kubernetes service account
+3. Istiod signs the certificate and returns it to the Istio agent
+4. Envoy requests the certificate and private key from the Istio agent through SDS (Secret Discovery Service)
+5. Before the certificate expires, the Istio agent automatically requests a renewal
 
 Check the CA status:
 
@@ -159,7 +159,7 @@ spec:
       jwksUri: "https://my-auth-server.example.com/.well-known/jwks.json"
 ```
 
-RequestAuthentication validates JWT tokens but doesn't enforce them. A request without a token passes through (the token is simply not validated). To require a valid JWT, combine it with an AuthorizationPolicy:
+RequestAuthentication validates JWT tokens and rejects invalid tokens, but it doesn't require a token by itself. A request without a token passes through without an authenticated identity. To require a valid JWT, combine it with an AuthorizationPolicy:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -181,7 +181,7 @@ The `requestPrincipals: ["*"]` rule means "allow only requests that have a valid
 
 ## Authorization Policies
 
-AuthorizationPolicy is Istio's access control mechanism. It supports allow, deny, and custom actions:
+AuthorizationPolicy is Istio's access control mechanism. It supports allow, deny, custom, and audit actions:
 
 ```yaml
 # ALLOW: Only specific services can access the API
@@ -228,11 +228,11 @@ spec:
           notValues: ["admin-tools"]
 ```
 
-The evaluation order is: DENY policies are checked first. If any DENY rule matches, the request is rejected. Then ALLOW policies are checked. If no ALLOW policy exists, the request is allowed (default behavior). If ALLOW policies exist, at least one must match for the request to proceed.
+The evaluation order is: CUSTOM policies are checked first. If a matching CUSTOM policy returns deny, the request is rejected. Then DENY policies are checked. If any DENY rule matches, the request is rejected. Then ALLOW policies are checked. If no ALLOW policy exists, the request is allowed (default behavior). If ALLOW policies exist, at least one must match for the request to proceed. AUDIT policies can mark matching requests for audit logging, but they don't decide whether the request is allowed or denied.
 
 ## Security at the Data Plane
 
-All security enforcement happens in the Envoy sidecar (data plane), not in Istiod (control plane). This is important because:
+In sidecar mode, security enforcement happens in the Envoy sidecar (data plane), not in Istiod (control plane). In ambient mode, enforcement is handled by the ambient data-plane components such as ztunnel and waypoint proxies. This is important because:
 
 - Security policies work even if Istiod is temporarily down
 - Enforcement happens at the network level, so applications can't bypass it
