@@ -17,11 +17,12 @@ Istio supports several path matching patterns in the `paths` field of an Authori
 | Pattern | Matches | Example |
 |---------|---------|---------|
 | `/api/users` | Exact match only | `/api/users` (not `/api/users/`) |
-| `/api/*` | Single-level wildcard | `/api/users`, `/api/orders` |
+| `/api/*` | Prefix match | `/api/users`, `/api/orders/123` |
 | `/api/users/*` | Anything under /api/users/ | `/api/users/123`, `/api/users/search` |
+| `/api/users/{*}` | One path segment under /api/users/ | `/api/users/123` (not `/api/users/123/profile`) |
 | `*/info` | Suffix match | `/api/users/info`, `/health/info` |
 
-The `*` character is a wildcard that matches any string. When used at the end (`/api/*`), it matches any suffix. When used at the beginning (`*/health`), it matches any prefix.
+The `*` character is a wildcard for prefix, suffix, and presence matches. When used at the end (`/api/*`), it matches any suffix. When used at the beginning (`*/health`), it matches any prefix. For path-segment matching inside a path, use Istio's path template operators such as `{*}` and `{**}`.
 
 ## Basic Path-Based Policy
 
@@ -275,24 +276,24 @@ spec:
       to:
         - operation:
             methods: ["PATCH"]
-            paths: ["/api/orders/*/status"]
+            paths: ["/api/orders/{*}/status"]
 ```
 
 ## Path Normalization
 
 Istio normalizes paths before matching. This handles common path manipulation attacks:
 
-- Double slashes (`//api//users`) are collapsed to single slashes (`/api/users`)
 - Dot segments (`/api/./users`) are resolved
-- URL-encoded characters are decoded
+- Some URL-encoded characters, such as `%2e` for `.`, are decoded
+- Double slashes (`//api//users`) can be collapsed to single slashes (`/api/users`) when `MERGE_SLASHES` or `DECODE_AND_MERGE_SLASHES` is configured
 
-This normalization is enabled by default and protects against path traversal attempts. You can verify the normalization settings:
+The default normalization mode is `BASE`, which resolves dot segments and applies the base RFC 3986 path normalization. You can verify the normalization settings:
 
 ```bash
 kubectl get configmap istio -n istio-system -o yaml | grep -A 5 pathNormalization
 ```
 
-The default normalization mode is `BASE` which handles the most common cases. For stricter normalization, you can set it to `MERGE_SLASHES` or `DECODE_AND_MERGE_SLASHES` in the mesh config.
+For stricter normalization, you can set it to `MERGE_SLASHES` or `DECODE_AND_MERGE_SLASHES` in the mesh config.
 
 ## gRPC Path Patterns
 
