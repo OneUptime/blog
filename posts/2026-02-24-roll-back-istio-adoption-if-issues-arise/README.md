@@ -19,7 +19,7 @@ Think of Istio rollback in layers. Each layer is progressively more aggressive:
 1. **Remove specific configuration** - undo a VirtualService or policy
 2. **Disable sidecar for specific workloads** - opt individual pods out
 3. **Disable sidecar for a namespace** - remove injection for a whole namespace
-4. **Remove Istio CRDs and configuration** - clean up all Istio resources
+4. **Remove Istio custom resources and configuration** - clean up Istio resources while keeping the control plane
 5. **Uninstall Istio completely** - remove the control plane
 
 Start at the lightest level and only go deeper if needed.
@@ -63,17 +63,17 @@ metadata:
 spec:
   template:
     metadata:
-      annotations:
+      labels:
         sidecar.istio.io/inject: "false"
 ```
 
-Apply the change and restart the pod:
+Apply the change. Because this updates the pod template, Kubernetes will roll out new pods without the sidecar:
 
 ```bash
-kubectl patch deployment problematic-app -n my-namespace -p '{"spec":{"template":{"metadata":{"annotations":{"sidecar.istio.io/inject":"false"}}}}}'
+kubectl patch deployment problematic-app -n my-namespace -p '{"spec":{"template":{"metadata":{"labels":{"sidecar.istio.io/inject":"false"}}}}}'
 ```
 
-The pod will restart without the sidecar. If the namespace has strict mTLS, other meshed services might not be able to reach this pod. Switch the namespace to permissive mTLS first:
+The pod will restart without the sidecar. If traffic to this workload is governed by strict mTLS or a DestinationRule that forces Istio mutual TLS, other meshed services might not be able to reach this pod. Switch the workload or namespace to permissive mTLS first:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -92,9 +92,10 @@ To stop sidecar injection for an entire namespace:
 
 ```bash
 kubectl label namespace my-namespace istio-injection-
+kubectl label namespace my-namespace istio.io/rev-
 ```
 
-The dash at the end removes the label. Existing pods still have their sidecars until they are restarted:
+The dash at the end removes the label. Remove both labels if you use revision-based injection. Existing pods still have their sidecars until they are restarted:
 
 ```bash
 # Restart all deployments to remove sidecars
@@ -117,7 +118,7 @@ If you need to clean up Istio resources across the cluster but want to keep the 
 # List all Istio resources
 kubectl get virtualservices --all-namespaces
 kubectl get destinationrules --all-namespaces
-kubectl get gateways --all-namespaces
+kubectl get gateways.networking.istio.io --all-namespaces
 kubectl get authorizationpolicies --all-namespaces
 kubectl get peerauthentications --all-namespaces
 kubectl get serviceentries --all-namespaces
@@ -134,7 +135,7 @@ Before deleting, back up your configuration:
 
 ```bash
 # Export all Istio resources for backup
-for resource in virtualservices destinationrules gateways serviceentries authorizationpolicies peerauthentications envoyfilters; do
+for resource in virtualservices destinationrules gateways.networking.istio.io serviceentries authorizationpolicies peerauthentications envoyfilters; do
   kubectl get $resource --all-namespaces -o yaml > backup-$resource.yaml
 done
 ```
@@ -150,6 +151,11 @@ for ns in $(kubectl get namespaces -l istio-injection=enabled -o jsonpath='{.ite
   echo "Removing injection from $ns"
   kubectl label namespace $ns istio-injection-
 done
+
+for ns in $(kubectl get namespaces -l istio.io/rev -o jsonpath='{.items[*].metadata.name}'); do
+  echo "Removing revision-based injection from $ns"
+  kubectl label namespace $ns istio.io/rev-
+done
 ```
 
 ### Step 2: Restart All Workloads to Remove Sidecars
@@ -157,8 +163,8 @@ done
 ```bash
 for ns in $(kubectl get namespaces -o jsonpath='{.items[*].metadata.name}'); do
   if [[ "$ns" != "kube-system" && "$ns" != "istio-system" ]]; then
-    echo "Restarting deployments in $ns"
-    kubectl rollout restart deployment -n $ns 2>/dev/null
+    echo "Restarting workloads in $ns"
+    kubectl rollout restart deployment,statefulset,daemonset -n $ns 2>/dev/null
   fi
 done
 ```
@@ -166,7 +172,7 @@ done
 ### Step 3: Delete All Istio Custom Resources
 
 ```bash
-for resource in virtualservices destinationrules gateways serviceentries authorizationpolicies peerauthentications requestauthentications envoyfilters sidecars telemetries wasmplugins; do
+for resource in virtualservices destinationrules gateways.networking.istio.io serviceentries authorizationpolicies peerauthentications requestauthentications envoyfilters sidecars telemetries wasmplugins; do
   kubectl delete $resource --all-namespaces --all 2>/dev/null
 done
 ```
@@ -193,7 +199,7 @@ helm uninstall istio-base -n istio-system
 kubectl delete namespace istio-system
 
 # Remove Istio CRDs
-kubectl get crd | grep istio.io | awk '{print $1}' | xargs kubectl delete crd
+kubectl get crd -o name | grep --color=never 'istio.io' | xargs -r kubectl delete
 ```
 
 ### Step 6: Verify Cleanup
@@ -213,8 +219,8 @@ kubectl get validatingwebhookconfigurations | grep istio
 If any webhooks remain, delete them:
 
 ```bash
-kubectl delete mutatingwebhookconfigurations istio-sidecar-injector
-kubectl delete validatingwebhookconfigurations istio-validator-istio-system
+kubectl get mutatingwebhookconfigurations -o name | grep istio | xargs -r kubectl delete
+kubectl get validatingwebhookconfigurations -o name | grep istio | xargs -r kubectl delete
 ```
 
 Leftover webhooks are a common issue - they will prevent new pods from starting if the webhook endpoint (istiod) no longer exists.
@@ -223,25 +229,25 @@ Leftover webhooks are a common issue - they will prevent new pods from starting 
 
 ### Scenario: Latency Spike After Enabling Istio
 
-Check if the latency is from sidecar processing or from mTLS:
+Check sidecar access logs, if enabled, or Istio request-duration metrics:
 
 ```bash
 # Check sidecar latency
-istioctl proxy-config log <pod-name> --level debug
-kubectl logs <pod-name> -c istio-proxy | grep "response_duration"
+kubectl logs <pod-name> -c istio-proxy | grep -E ' HTTP/|grpc '
+istioctl experimental metrics <workload-name> -n my-namespace
 ```
 
 Quick fix: reduce the number of services in the mesh by disabling injection for non-critical namespaces.
 
 ### Scenario: Pods Stuck in Init State
 
-This usually means the istio-init container cannot set up iptables rules:
+On installs without Istio CNI, this can mean the istio-init container cannot set up iptables rules:
 
 ```bash
 kubectl logs <pod-name> -c istio-init
 ```
 
-Quick fix: add the pod annotation to disable sidecar injection for that workload.
+Quick fix: add the pod label to disable sidecar injection for that workload.
 
 ### Scenario: External Services Unreachable
 
