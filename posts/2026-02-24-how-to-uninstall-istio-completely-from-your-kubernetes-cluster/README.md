@@ -71,7 +71,7 @@ If you installed with `istioctl`:
 istioctl uninstall --purge -y
 ```
 
-The `--purge` flag removes everything, including the `istio-system` namespace resources. Without `--purge`, some resources like the `IstioOperator` custom resource might be left behind.
+The `--purge` flag removes all Istio resources, including cluster-scoped resources that may be shared with other Istio control planes. The control plane namespace, such as `istio-system`, is not removed by default.
 
 If you used a specific revision:
 
@@ -94,6 +94,9 @@ helm uninstall istiod -n istio-system
 
 # Remove CNI if installed
 helm uninstall istio-cni -n istio-system
+
+# Remove ztunnel if installed for ambient mode
+helm uninstall ztunnel -n istio-system
 
 # Remove base (CRDs)
 helm uninstall istio-base -n istio-system
@@ -185,11 +188,11 @@ Istio creates some cluster-scoped resources. Check for leftovers:
 ```bash
 # ClusterRoles
 kubectl get clusterroles | grep istio
-kubectl delete clusterroles -l app=istio-reader -l app=istiod
+kubectl delete clusterroles -l 'app in (istio-reader,istiod)'
 
 # ClusterRoleBindings
 kubectl get clusterrolebindings | grep istio
-kubectl delete clusterrolebindings -l app=istio-reader -l app=istiod
+kubectl delete clusterrolebindings -l 'app in (istio-reader,istiod)'
 
 # Check for stale service accounts in other namespaces
 kubectl get serviceaccounts -A | grep istio
@@ -263,8 +266,8 @@ The CNI DaemonSet should clean up after itself when deleted, but verify to be su
 After a complete removal, you can reinstall Istio cleanly:
 
 ```bash
-# Verify nothing is left
-istioctl verify-install 2>&1 | head -5
+# Check whether the cluster is ready for installation
+istioctl x precheck
 
 # Fresh install
 istioctl install --set profile=default -y
