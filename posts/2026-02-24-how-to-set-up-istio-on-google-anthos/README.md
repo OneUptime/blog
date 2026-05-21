@@ -4,18 +4,18 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Google Anthos, GKE, Kubernetes, Service Mesh
 
-Description: How to install and configure Istio on Google Anthos clusters including Anthos Service Mesh and manual installation options.
+Description: How to install and configure Istio on Google Anthos clusters including Cloud Service Mesh and manual installation options.
 
 ---
 
-Google Anthos is a hybrid and multi-cloud platform built on Kubernetes. It comes with Anthos Service Mesh (ASM), which is Google's managed distribution of Istio. ASM is tightly integrated with Anthos and includes features like managed certificates, fleet-wide mesh configuration, and integration with Google Cloud's monitoring and security tools.
+Google Anthos is a hybrid and multi-cloud platform built on Kubernetes. It integrates with Cloud Service Mesh, formerly Anthos Service Mesh (ASM), which is Google's managed service mesh based on Istio. Cloud Service Mesh is tightly integrated with Anthos and includes features like managed certificates, fleet-wide mesh configuration, and integration with Google Cloud's monitoring and security tools.
 
-You can use either ASM (recommended for Anthos) or install upstream Istio directly. This guide covers both approaches.
+You can use either Cloud Service Mesh (recommended for Anthos) or install upstream Istio directly. This guide covers both approaches.
 
-## Understanding Anthos Service Mesh
+## Understanding Cloud Service Mesh
 
-ASM is based on Istio but adds:
-- **Managed control plane** option where Google runs istiod for you
+Cloud Service Mesh is based on Istio APIs for GKE and Anthos environments but adds:
+- **Managed control plane** option where Google runs the control plane for you
 - **Fleet-wide configuration** that works across multiple clusters
 - **Integration with Google Cloud Monitoring** and Cloud Trace
 - **Certificate Authority Service** integration for certificate management
@@ -41,24 +41,20 @@ gcloud projects get-iam-policy $(gcloud config get-value project) \
 ```
 
 Required IAM roles:
-- `roles/container.admin`
-- `roles/meshconfig.admin`
 - `roles/gkehub.admin`
+- `roles/serviceusage.serviceUsageAdmin`
+- `roles/container.clusterAdmin` for Kubernetes cluster operations
+- `roles/privateca.admin` if you use Certificate Authority Service
 
 Enable the required APIs:
 
 ```bash
-gcloud services enable \
-  mesh.googleapis.com \
-  container.googleapis.com \
-  gkehub.googleapis.com \
-  monitoring.googleapis.com \
-  cloudtrace.googleapis.com
+gcloud services enable mesh.googleapis.com
 ```
 
-## Option 1: Managed Anthos Service Mesh
+## Option 1: Managed Cloud Service Mesh
 
-The managed ASM option is the simplest. Google manages the control plane, and you only need to configure the data plane.
+The managed Cloud Service Mesh option is the simplest. Google manages the control plane, and you only need to configure the data plane.
 
 **Register the cluster with a fleet:**
 
@@ -68,19 +64,20 @@ gcloud container fleet memberships register my-cluster \
   --enable-workload-identity
 ```
 
-**Enable ASM:**
+**Enable Cloud Service Mesh:**
 
 ```bash
 gcloud container fleet mesh enable --project=my-project
 ```
 
-**Apply managed ASM configuration:**
+**Apply managed Cloud Service Mesh configuration:**
 
 ```bash
 gcloud container fleet mesh update \
   --management automatic \
   --memberships my-cluster \
-  --project my-project
+  --project my-project \
+  --location us-central1
 ```
 
 Wait for the control plane to be provisioned:
@@ -89,7 +86,7 @@ Wait for the control plane to be provisioned:
 gcloud container fleet mesh describe --project my-project
 ```
 
-The managed control plane will show up as pods in the `istio-system` namespace, but they are managed by Google.
+Depending on the managed control plane implementation, `gcloud container fleet mesh describe` reports either a Google-managed Traffic Director implementation or a managed `istiod` implementation. New Google Cloud installations generally use the Traffic Director implementation, so you might not see `istiod` pods in the `istio-system` namespace.
 
 **Enable sidecar injection:**
 
@@ -97,23 +94,23 @@ The managed control plane will show up as pods in the `istio-system` namespace, 
 kubectl label namespace myapp istio-injection=enabled istio.io/rev- --overwrite
 ```
 
-Or for revision-based injection (recommended for managed ASM):
+Or for revision-based injection (recommended for managed Cloud Service Mesh):
 
 ```bash
 # Get the current revision
-kubectl get controlplanerevision -n istio-system
+kubectl -n istio-system get controlplanerevision
 
 # Label namespace with the revision
-kubectl label namespace myapp istio.io/rev=asm-managed --overwrite
+kubectl label namespace myapp istio-injection- istio.io/rev=asm-managed --overwrite
 ```
 
-## Option 2: In-Cluster ASM Installation
+## Option 2: In-Cluster Cloud Service Mesh Installation
 
-If you want more control, install ASM in-cluster using the asmcli tool:
+If you want more control, install Cloud Service Mesh in-cluster using the asmcli tool:
 
 ```bash
 # Download asmcli
-curl https://storage.googleapis.com/csm-artifacts/asm/asmcli_1.22 > asmcli
+curl https://storage.googleapis.com/csm-artifacts/asm/asmcli_1.27 > asmcli
 chmod +x asmcli
 ```
 
@@ -145,7 +142,7 @@ kubectl get pods -n istio-system
 
 ## Option 3: Upstream Istio on Anthos
 
-If you need features not available in ASM or want the latest upstream Istio version:
+If you need features not available in Cloud Service Mesh or want the latest upstream Istio version:
 
 ```bash
 curl -L https://istio.io/downloadIstio | sh -
@@ -156,11 +153,11 @@ istioctl install --set profile=default \
   --set meshConfig.accessLogFile=/dev/stdout
 ```
 
-Note that upstream Istio on Anthos will not integrate with Google Cloud's monitoring tools as seamlessly as ASM.
+Note that upstream Istio on Anthos will not integrate with Google Cloud's monitoring tools as seamlessly as Cloud Service Mesh.
 
 ## Configuring the Ingress Gateway
 
-For Anthos clusters running on GKE, the ingress gateway automatically gets a Google Cloud Load Balancer:
+For Anthos clusters running on GKE, an ingress gateway Service of type `LoadBalancer` gets a Google Cloud load balancer:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -203,13 +200,9 @@ spec:
 
 ## Integrating with Google Cloud Monitoring
 
-ASM automatically sends metrics to Google Cloud Monitoring. For upstream Istio, you need to configure the Stackdriver adapter.
+Cloud Service Mesh automatically sends supported metrics to Google Cloud Monitoring. For upstream Istio, configure the Stackdriver extension provider and then enable Stackdriver telemetry.
 
-For ASM, verify metrics are flowing:
-
-```bash
-gcloud monitoring dashboards list --filter="displayName:Anthos Service Mesh"
-```
+For Cloud Service Mesh, verify metrics in the Cloud Service Mesh pages in the Google Cloud Console.
 
 For upstream Istio, enable Stackdriver telemetry:
 
@@ -246,7 +239,13 @@ gcloud container fleet memberships register cluster-b \
 # Enable mesh on both
 gcloud container fleet mesh update \
   --management automatic \
-  --memberships cluster-a,cluster-b
+  --memberships cluster-a \
+  --location us-central1
+
+gcloud container fleet mesh update \
+  --management automatic \
+  --memberships cluster-b \
+  --location europe-west1
 ```
 
 Verify cross-cluster connectivity:
@@ -297,7 +296,7 @@ spec:
         methods: ["GET", "POST"]
 ```
 
-Note the principal format for Anthos: `PROJECT.svc.id.goog/ns/NAMESPACE/sa/SERVICE_ACCOUNT`. This is different from upstream Istio's `cluster.local/ns/NAMESPACE/sa/SERVICE_ACCOUNT`.
+Note the principal format for Cloud Service Mesh with Mesh CA: `PROJECT.svc.id.goog/ns/NAMESPACE/sa/SERVICE_ACCOUNT`. If you use in-cluster Cloud Service Mesh with Citadel CA, the trust domain is `cluster.local`.
 
 ## Using Certificate Authority Service
 
@@ -313,9 +312,10 @@ gcloud privateca pools create mesh-ca-pool \
 gcloud privateca roots create mesh-root-ca \
   --pool mesh-ca-pool \
   --location us-central1 \
-  --subject "CN=Mesh Root CA, O=My Org"
+  --subject "CN=Mesh Root CA, O=My Org" \
+  --auto-enable
 
-# Install ASM with CAS
+# Install Cloud Service Mesh with CAS
 ./asmcli install \
   --project_id my-project \
   --cluster_name my-cluster \
@@ -331,13 +331,13 @@ gcloud privateca roots create mesh-root-ca \
 kubectl create namespace bookinfo
 kubectl label namespace bookinfo istio-injection=enabled
 
-kubectl apply -n bookinfo -f https://raw.githubusercontent.com/istio/istio/release-1.22/samples/bookinfo/platform/kube/bookinfo.yaml
+kubectl apply -n bookinfo -f https://raw.githubusercontent.com/istio/istio/release-1.27/samples/bookinfo/platform/kube/bookinfo.yaml
 
 # Wait for pods
 kubectl get pods -n bookinfo -w
 
 # Create gateway
-kubectl apply -n bookinfo -f https://raw.githubusercontent.com/istio/istio/release-1.22/samples/bookinfo/networking/bookinfo-gateway.yaml
+kubectl apply -n bookinfo -f https://raw.githubusercontent.com/istio/istio/release-1.27/samples/bookinfo/networking/bookinfo-gateway.yaml
 
 # Get the gateway IP
 kubectl get svc istio-ingressgateway -n istio-system -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
@@ -345,10 +345,10 @@ kubectl get svc istio-ingressgateway -n istio-system -o jsonpath='{.status.loadB
 
 ## Viewing the Service Mesh Dashboard
 
-With ASM, you get a dedicated dashboard in the Google Cloud Console:
+With Cloud Service Mesh, you get a dedicated dashboard in the Google Cloud Console:
 
 1. Go to the Google Cloud Console
-2. Navigate to Anthos > Service Mesh
+2. Navigate to Service Mesh
 3. You will see the service topology, metrics, and SLOs
 
 The dashboard shows:
@@ -357,4 +357,4 @@ The dashboard shows:
 - mTLS status
 - Security policy compliance
 
-Setting up Istio on Anthos is straightforward, especially with the managed ASM option. The tight integration with Google Cloud's monitoring, security, and certificate management tools makes it a compelling choice for organizations already invested in the Google Cloud ecosystem. The main decision is whether to use managed ASM (simpler but less flexible) or in-cluster ASM (more control but more operational overhead).
+Setting up Istio on Anthos is straightforward, especially with the managed Cloud Service Mesh option. The tight integration with Google Cloud's monitoring, security, and certificate management tools makes it a compelling choice for organizations already invested in the Google Cloud ecosystem. The main decision is whether to use managed Cloud Service Mesh (simpler but less flexible) or in-cluster Cloud Service Mesh (more control but more operational overhead).
