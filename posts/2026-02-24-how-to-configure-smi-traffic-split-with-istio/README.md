@@ -8,7 +8,7 @@ Description: Step-by-step guide to configuring SMI Traffic Split with Istio for 
 
 ---
 
-Traffic splitting is one of the most practical features in any service mesh. It lets you gradually shift traffic between different versions of a service, making canary deployments and blue-green releases much safer. SMI Traffic Split provides a clean, portable API for this. When paired with Istio through the SMI adapter, your TrafficSplit resources get translated into Istio VirtualService and DestinationRule objects.
+Traffic splitting is one of the most practical features in any service mesh. It lets you gradually shift traffic between different versions of a service, making canary deployments and blue-green releases much safer. SMI Traffic Split provides a clean, portable API for this. When paired with Istio through the SMI adapter, your TrafficSplit resources get translated into Istio VirtualService objects.
 
 ## How SMI Traffic Split Works
 
@@ -18,14 +18,14 @@ This is different from Kubernetes' built-in load balancing, which distributes ev
 
 ## Setting Up the Environment
 
-Start with Istio and the SMI adapter:
+Start with Istio and the SMI adapter. The upstream SMI Istio adapter is archived and its bundled CRD manifest uses `apiextensions.k8s.io/v1beta1`, so these adapter manifests are only suitable for older Kubernetes clusters that still serve that API, such as Kubernetes 1.21 and earlier. For current Kubernetes and Istio installations, use Istio-native `VirtualService` routing instead.
 
 ```bash
 istioctl install --set profile=demo
 kubectl label namespace default istio-injection=enabled
 
-kubectl apply -f https://raw.githubusercontent.com/servicemeshinterface/smi-adapter-istio/master/deploy/crds.yaml
-kubectl apply -f https://raw.githubusercontent.com/servicemeshinterface/smi-adapter-istio/master/deploy/adapter.yaml
+kubectl apply -f https://raw.githubusercontent.com/servicemeshinterface/smi-adapter-istio/master/deploy/crds/crds.yaml
+kubectl apply -f https://raw.githubusercontent.com/servicemeshinterface/smi-adapter-istio/master/deploy/operator-and-rbac.yaml
 ```
 
 ## Deploying Service Versions
@@ -218,20 +218,19 @@ spec:
 
 ## What Istio Creates
 
-The SMI adapter translates your TrafficSplit into Istio-native resources. Check what was generated:
+The SMI adapter translates your TrafficSplit into an Istio-native resource. Check what was generated:
 
 ```bash
 kubectl get virtualservice -o yaml
-kubectl get destinationrule -o yaml
 ```
 
-You'll see a VirtualService that routes traffic for the `web-app` host with weighted destinations, and a DestinationRule that defines subsets for each version. The generated VirtualService looks approximately like:
+You'll see a VirtualService that routes traffic for the `web-app` host with weighted destinations. The adapter names the generated VirtualService by appending `-vs` to the TrafficSplit name, so the generated VirtualService looks approximately like:
 
 ```yaml
-apiVersion: networking.istio.io/v1
+apiVersion: networking.istio.io/v1alpha3
 kind: VirtualService
 metadata:
-  name: web-app-split
+  name: web-app-split-vs
 spec:
   hosts:
   - web-app
