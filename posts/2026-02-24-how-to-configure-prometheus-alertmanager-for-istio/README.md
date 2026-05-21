@@ -33,7 +33,7 @@ spec:
     spec:
       containers:
         - name: alertmanager
-          image: prom/alertmanager:v0.27.0
+          image: prom/alertmanager:v0.32.1
           args:
             - --config.file=/etc/alertmanager/alertmanager.yml
             - --storage.path=/alertmanager
@@ -88,13 +88,13 @@ data:
       group_interval: 5m
       repeat_interval: 4h
       routes:
-        - match:
-            severity: critical
+        - matchers:
+            - severity="critical"
           receiver: 'critical-alerts'
           group_wait: 10s
           repeat_interval: 1h
-        - match:
-            severity: warning
+        - matchers:
+            - severity="warning"
           receiver: 'warning-alerts'
           repeat_interval: 4h
 
@@ -221,7 +221,11 @@ Add alerts for istiod and the control plane:
 
           - alert: PilotPushErrors
             expr: |
-              sum(rate(pilot_xds_push_errors[5m])) > 0
+              (
+                sum(rate(pilot_total_xds_internal_errors[5m]))
+                +
+                sum(rate(pilot_xds_write_timeout[5m]))
+              ) > 0
             for: 5m
             labels:
               severity: critical
@@ -241,12 +245,12 @@ Add alerts for istiod and the control plane:
 
           - alert: ProxyNotSynced
             expr: |
-              pilot_proxy_convergence_time_count == 0
+              sum(increase(pilot_proxy_convergence_time_count[10m])) == 0
             for: 10m
             labels:
               severity: warning
             annotations:
-              summary: "No configuration pushes in 10 minutes"
+              summary: "No proxy convergence events in 10 minutes"
 ```
 
 ## Traffic-Related Alerts
@@ -281,10 +285,10 @@ Alert on traffic anomalies:
             annotations:
               summary: "Circuit breaker tripped for {{ $labels.destination_service }}"
 
-          - alert: HighRetryRate
+          - alert: HighRetryLimitExceededRate
             expr: |
               (
-                sum(rate(istio_requests_total{response_flags=~".*RR.*"}[5m])) by (destination_service)
+                sum(rate(istio_requests_total{response_flags=~".*URX.*"}[5m])) by (destination_service)
                 /
                 sum(rate(istio_requests_total[5m])) by (destination_service)
               ) * 100 > 10
@@ -292,7 +296,7 @@ Alert on traffic anomalies:
             labels:
               severity: warning
             annotations:
-              summary: "High retry rate for {{ $labels.destination_service }}"
+              summary: "High retry limit exceeded rate for {{ $labels.destination_service }}"
 ```
 
 ## Testing Your Alerts
@@ -308,10 +312,10 @@ kubectl port-forward -n istio-system svc/prometheus 9090:9090
 
 You should see your rules listed with their status (inactive, pending, or firing).
 
-To test an alert, you can temporarily create a faulty deployment:
+To test an alert, you can temporarily create a faulty pod:
 
 ```bash
-# Deploy a service that always returns 500
+# Run a pod that always returns 500
 kubectl run faulty-service --image=hashicorp/http-echo --port=5678 -- -text="error" -status-code=500
 ```
 
@@ -320,8 +324,11 @@ kubectl run faulty-service --image=hashicorp/http-echo --port=5678 -- -text="err
 When you're doing planned maintenance, silence alerts to avoid noise:
 
 ```bash
+# Forward Alertmanager locally first
+kubectl port-forward -n istio-system svc/alertmanager 9093:9093 &
+
 # Create a silence via Alertmanager API
-curl -X POST http://alertmanager.istio-system:9093/api/v2/silences \
+curl -X POST http://localhost:9093/api/v2/silences \
   -H "Content-Type: application/json" \
   -d '{
     "matchers": [
