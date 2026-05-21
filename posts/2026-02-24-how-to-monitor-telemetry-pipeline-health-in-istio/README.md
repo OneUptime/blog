@@ -179,14 +179,14 @@ spec:
   groups:
     - name: otel-collector
       rules:
-        - alert: OtelCollectorDroppingSpans
+        - alert: OtelCollectorEnqueueFailures
           expr: |
-            rate(otelcol_processor_dropped_spans[5m]) > 0
+            rate(otelcol_exporter_enqueue_failed_spans[5m]) > 0
           for: 5m
           labels:
             severity: warning
           annotations:
-            summary: "OTel Collector is dropping trace spans"
+            summary: "OTel Collector failed to enqueue trace spans"
         - alert: OtelCollectorExportFailures
           expr: |
             rate(otelcol_exporter_send_failed_spans[5m]) > 0
@@ -236,8 +236,8 @@ prometheus_tsdb_head_series
 # Query: Trace spans received per second
 rate(otelcol_receiver_accepted_spans[5m])
 
-# Query: Trace spans dropped per second
-rate(otelcol_processor_dropped_spans[5m])
+# Query: Trace spans failed to enqueue per second
+rate(otelcol_exporter_enqueue_failed_spans[5m])
 
 # Query: Average scrape duration
 avg(scrape_duration_seconds{job="kubernetes-pods"})
@@ -323,7 +323,7 @@ TARGETS_DOWN=$(curl -s http://prometheus:9090/api/v1/targets | \
 echo "Scrape targets down: $TARGETS_DOWN"
 
 # Check active series count
-SERIES=$(curl -s http://prometheus:9090/api/v1/query?query=prometheus_tsdb_head_series | \
+SERIES=$(curl -s "http://prometheus:9090/api/v1/query?query=prometheus_tsdb_head_series" | \
   jq '.data.result[0].value[1]')
 echo "Active time series: $SERIES"
 
