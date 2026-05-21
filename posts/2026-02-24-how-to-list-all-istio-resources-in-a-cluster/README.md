@@ -26,6 +26,7 @@ destinationrules               dr           networking.istio.io/v1              
 envoyfilters                   ef           networking.istio.io/v1alpha3          true         EnvoyFilter
 gateways                       gw           networking.istio.io/v1                true         Gateway
 peerauthentications            pa           security.istio.io/v1                  true         PeerAuthentication
+proxyconfigs                                networking.istio.io/v1beta1           true         ProxyConfig
 requestauthentications         ra           security.istio.io/v1                  true         RequestAuthentication
 serviceentries                 se           networking.istio.io/v1                true         ServiceEntry
 sidecars                       sc           networking.istio.io/v1                true         Sidecar
@@ -36,17 +37,17 @@ workloadentries                we           networking.istio.io/v1              
 workloadgroups                 wg           networking.istio.io/v1                true         WorkloadGroup
 ```
 
-Notice the short names column. These abbreviations make kubectl commands much faster to type.
+Notice the short names column. Where a resource has one, these abbreviations make kubectl commands much faster to type.
 
 ## Listing All Instances Across All Namespaces
 
 The simplest way to see all Istio resources is to query each type with the `-A` flag:
 
 ```bash
-kubectl get vs,dr,gw,se,sc,ef,we,wg,pa,ap,ra,telemetry -A
+kubectl get vs,dr,gw,se,sc,ef,we,wg,pa,ap,ra,telemetry,proxyconfigs -A
 ```
 
-This single command lists VirtualServices, DestinationRules, Gateways, ServiceEntries, Sidecars, EnvoyFilters, WorkloadEntries, WorkloadGroups, PeerAuthentications, AuthorizationPolicies, RequestAuthentications, and Telemetries across all namespaces.
+This single command lists VirtualServices, DestinationRules, Gateways, ServiceEntries, Sidecars, EnvoyFilters, WorkloadEntries, WorkloadGroups, PeerAuthentications, AuthorizationPolicies, RequestAuthentications, Telemetries, and ProxyConfigs across all namespaces.
 
 The output looks like:
 
@@ -70,7 +71,7 @@ For a quick inventory, count resources by type:
 
 ```bash
 echo "=== Istio Resource Inventory ==="
-for resource in virtualservices destinationrules gateways serviceentries sidecars envoyfilters workloadentries workloadgroups peerauthentications authorizationpolicies requestauthentications telemetries wasmplugins; do
+for resource in virtualservices destinationrules gateways serviceentries sidecars envoyfilters workloadentries workloadgroups peerauthentications authorizationpolicies requestauthentications telemetries wasmplugins proxyconfigs; do
   count=$(kubectl get $resource -A --no-headers 2>/dev/null | wc -l | tr -d ' ')
   if [ "$count" -gt 0 ]; then
     printf "%-30s %s\n" "$resource" "$count"
@@ -97,14 +98,14 @@ telemetries                    1
 To see Istio resources in a specific namespace:
 
 ```bash
-kubectl get vs,dr,gw,se,sc,pa,ap -n my-namespace
+kubectl get vs,dr,gw,se,sc,pa,ap,proxyconfigs -n my-namespace
 ```
 
 Or to get a per-namespace breakdown:
 
 ```bash
 for ns in $(kubectl get namespaces -o jsonpath='{.items[*].metadata.name}'); do
-  count=$(kubectl get vs,dr,gw,se,sc,pa,ap -n $ns --no-headers 2>/dev/null | wc -l | tr -d ' ')
+  count=$(kubectl get vs,dr,gw,se,sc,pa,ap,proxyconfigs -n $ns --no-headers 2>/dev/null | wc -l | tr -d ' ')
   if [ "$count" -gt 0 ]; then
     echo "$ns: $count resources"
   fi
@@ -166,10 +167,10 @@ The `istioctl` tool provides higher-level views of Istio configuration:
 istioctl x describe pod <pod-name> -n <namespace>
 ```
 
-This shows all the Istio resources that affect a specific workload, including inherited policies from parent namespaces.
+This shows the Istio resources that affect a specific workload, including applicable mesh-level and namespace-level policies.
 
 ```bash
-# Show proxy status for all sidecars
+# Show proxy status for all connected Envoy proxies
 istioctl proxy-status
 ```
 
@@ -232,7 +233,7 @@ done
 
 echo ""
 echo "## Resource Summary"
-for resource in virtualservices destinationrules gateways serviceentries sidecars envoyfilters peerauthentications authorizationpolicies requestauthentications telemetries wasmplugins workloadentries workloadgroups; do
+for resource in virtualservices destinationrules gateways serviceentries sidecars envoyfilters peerauthentications authorizationpolicies requestauthentications telemetries wasmplugins proxyconfigs workloadentries workloadgroups; do
   count=$(kubectl get $resource -A --no-headers 2>/dev/null | wc -l | tr -d ' ')
   printf "%-30s %s\n" "$resource" "$count"
 done
@@ -258,10 +259,10 @@ kubectl get vs,dr,gw,pa,ap -A --watch
 
 This streams updates as resources are created, modified, or deleted. Useful during deployments or when troubleshooting configuration propagation.
 
-For a more structured approach, you can watch events related to Istio resources:
+If your cluster records Kubernetes Events for Istio objects, you can watch events for a specific kind:
 
 ```bash
-kubectl get events -A --field-selector reason=Synced --watch
+kubectl get events -A --field-selector involvedObject.kind=VirtualService --watch
 ```
 
 Knowing how to quickly inventory and query your Istio resources is a foundational skill for mesh operations. These commands and scripts give you visibility into what's configured, where it's configured, and how it all fits together.
