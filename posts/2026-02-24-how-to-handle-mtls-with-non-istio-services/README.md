@@ -61,7 +61,7 @@ spec:
       mode: PERMISSIVE
 ```
 
-The non-mesh service connects on port 8081 (plain text allowed), while mesh services use port 8080 (strict mTLS). You will need to configure your Service to expose both ports:
+The non-mesh service connects on workload port 8081 (plain text allowed), while mesh services use workload port 8080 (strict mTLS). The port in `portLevelMtls` is the workload port, not the Kubernetes Service port, so the application needs to expose separate workload ports for this pattern. You will need to configure your Service to expose both ports:
 
 ```yaml
 apiVersion: v1
@@ -78,10 +78,10 @@ spec:
     targetPort: 8080
   - name: external-port
     port: 8081
-    targetPort: 8080
+    targetPort: 8081
 ```
 
-Both ports route to the same container port, but the sidecar applies different mTLS policies.
+Each Service port routes to a different workload port, and the sidecar applies different mTLS policies to those workload ports.
 
 ## Strategy 3: Use an Ingress Gateway
 
@@ -153,12 +153,13 @@ metadata:
 spec:
   template:
     metadata:
-      annotations:
+      labels:
         sidecar.istio.io/inject: "true"
+      annotations:
         # Exclude specific ports from sidecar interception
         traffic.sidecar.istio.io/excludeInboundPorts: "9042"
         traffic.sidecar.istio.io/excludeOutboundPorts: "9042"
-        # Increase sidecar resource limits for heavy traffic services
+        # Increase sidecar resource requests for heavy traffic services
         sidecar.istio.io/proxyCPU: "200m"
         sidecar.istio.io/proxyMemory: "256Mi"
 ```
@@ -252,7 +253,7 @@ spec:
       methods: ["GET", "POST"]
 ```
 
-This allows connections from mesh services (identified by SPIFFE principal) AND from a specific IP range (where the legacy service runs).
+This allows connections from mesh services (identified by SPIFFE principal) or from a specific IP range (where the legacy service runs).
 
 ## Monitoring Non-Mesh Traffic
 
@@ -262,7 +263,7 @@ Track the ratio of mTLS to plain text connections to understand your migration p
 sum(rate(istio_requests_total{connection_security_policy="none", reporter="destination"}[5m])) by (destination_service, source_workload)
 ```
 
-Each entry in this query represents a service receiving plain text traffic and the source workload responsible. Use this to prioritize which non-mesh services to migrate next.
+Each entry in this query represents a service receiving plain text traffic and the source workload responsible, when Istio has that source information. Use this to prioritize which non-mesh services to migrate next.
 
 ## Migration Path
 
