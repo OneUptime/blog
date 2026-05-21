@@ -8,7 +8,7 @@ Description: Configure Kiali to authenticate users through external providers li
 
 ---
 
-By default, Kiali uses either anonymous access or a basic login token. That's fine for development, but for production you need real authentication. Kiali supports several external authentication strategies including OpenID Connect (OIDC), OpenShift OAuth, token-based auth, and header-based auth for reverse proxy setups.
+By default, Kiali uses OpenShift OAuth on OpenShift clusters and Kubernetes service account token authentication on other Kubernetes clusters. That's fine for development, but for production you need real authentication. Kiali supports several external authentication strategies including OpenID Connect (OIDC), OpenShift OAuth, token-based auth, and header-based auth for reverse proxy setups.
 
 This guide walks through setting up each strategy so you can secure your Kiali installation properly.
 
@@ -20,7 +20,7 @@ Kiali supports these authentication strategies:
 - **token** - Users authenticate with a Kubernetes service account token.
 - **openid** - Users authenticate through an OIDC provider (Keycloak, Okta, Auth0, Google, etc.).
 - **openshift** - Uses OpenShift's built-in OAuth server.
-- **header** - Trusts authentication headers set by a reverse proxy (like OAuth2 Proxy).
+- **header** - Uses a bearer token, or impersonation headers with an authorized bearer token, injected by a reverse proxy (like OAuth2 Proxy).
 
 You set the strategy in the Kiali CR:
 
@@ -41,7 +41,7 @@ OIDC is the most common choice for production Kiali deployments. It works with a
 
 ### Step 1: Register Kiali with Your IdP
 
-Create an OIDC client in your identity provider. You'll need:
+Create an OIDC client in your identity provider. If you want Kiali to enforce namespace access with Kubernetes RBAC, your Kubernetes API server also needs to trust the same OIDC issuer, and Kiali's `client_id` and `issuer_uri` must match that cluster OIDC configuration. You'll need:
 
 - **Client ID**: A unique identifier (e.g., `kiali`)
 - **Client Secret**: A secret for the client
@@ -54,7 +54,7 @@ The exact steps depend on your provider. In Keycloak, for example, you'd create 
 Store the OIDC client secret in a Kubernetes secret:
 
 ```bash
-kubectl create secret generic kiali-oidc \
+kubectl create secret generic kiali \
   --namespace istio-system \
   --from-literal=oidc-secret=your-client-secret-here
 ```
@@ -79,8 +79,7 @@ spec:
         - "email"
       username_claim: "preferred_username"
   deployment:
-    accessible_namespaces:
-      - "**"
+    cluster_wide_access: true
 ```
 
 Apply this and wait for the Kiali pod to restart:
@@ -119,7 +118,7 @@ spec:
         access_type: "offline"
   server:
     web_fqdn: "kiali.example.com"
-    web_port: 443
+    web_port: "443"
     web_schema: "https"
     web_root: "/kiali"
 ```
@@ -151,17 +150,34 @@ Create a service account for each user or team:
 kubectl create serviceaccount kiali-user -n istio-system
 ```
 
-Grant it the necessary permissions:
+Grant it the necessary permissions for the namespaces it should access. First create a ClusterRole that lets Kiali authorize namespace access:
 
 ```yaml
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
+kind: ClusterRole
+metadata:
+  name: kiali-namespace-authorization
+rules:
+  - apiGroups: [""]
+    resources:
+      - namespaces
+      - pods/log
+    verbs:
+      - get
+```
+
+Then bind that role in each namespace the service account should see:
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
 metadata:
   name: kiali-user-binding
+  namespace: my-app
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: kiali-viewer
+  name: kiali-namespace-authorization
 subjects:
   - kind: ServiceAccount
     name: kiali-user
@@ -178,7 +194,7 @@ Users paste this token into Kiali's login screen. The token determines what they
 
 ## Setting Up Header-Based Authentication
 
-If you're running Kiali behind a reverse proxy that handles authentication (like OAuth2 Proxy, Authelia, or an identity-aware proxy), use the header strategy.
+If you're running Kiali behind a reverse proxy that handles authentication and can inject a Kubernetes-recognized bearer token or impersonation headers (like OAuth2 Proxy, Authelia, or an identity-aware proxy), use the header strategy.
 
 ### Step 1: Deploy OAuth2 Proxy
 
@@ -208,17 +224,23 @@ spec:
             - --oidc-issuer-url=https://keycloak.example.com/realms/istio
             - --client-id=kiali-proxy
             - --client-secret=$(CLIENT_SECRET)
+            - --cookie-secret=$(COOKIE_SECRET)
             - --email-domain=*
             - --upstream=http://kiali.istio-system:20001
             - --http-address=0.0.0.0:4180
             - --pass-user-headers=true
-            - --set-xauthrequest=true
+            - --pass-authorization-header=true
           env:
             - name: CLIENT_SECRET
               valueFrom:
                 secretKeyRef:
                   name: oauth2-proxy-secret
                   key: client-secret
+            - name: COOKIE_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: oauth2-proxy-secret
+                  key: cookie-secret
           ports:
             - containerPort: 4180
 ```
@@ -234,11 +256,9 @@ metadata:
 spec:
   auth:
     strategy: "header"
-    header:
-      name: "X-Auth-Request-User"
 ```
 
-Kiali trusts the `X-Auth-Request-User` header set by OAuth2 Proxy and uses its value as the authenticated username.
+Kiali's header strategy does not read an arbitrary username header. It expects the reverse proxy to send an `Authorization: Bearer TOKEN` header, where the token is recognized by the Kubernetes API server, or to send Kubernetes impersonation headers along with an authorized bearer token.
 
 ### Step 3: Route Traffic Through the Proxy
 
@@ -260,9 +280,9 @@ spec:
 
 ## RBAC with External Authentication
 
-Regardless of which auth strategy you use, Kiali uses Kubernetes RBAC to determine what users can see. When RBAC is enabled (`disable_rbac: false`), Kiali impersonates the authenticated user when making Kubernetes API calls.
+Regardless of which auth strategy you use, Kiali uses Kubernetes RBAC to determine which namespaces users can see. With strategies that support namespace access control, Kiali checks the authenticated user's Kubernetes permissions, or uses the token or impersonation headers provided by the reverse proxy.
 
-This means users only see the namespaces and resources they have access to in Kubernetes. To grant a user access to specific namespaces:
+This means users only see the namespaces they are authorized to access, while write operations still require the relevant Kubernetes RBAC permissions. To grant a user access to specific namespaces:
 
 ```yaml
 apiVersion: rbac.authorization.k8s.io/v1
@@ -273,16 +293,14 @@ metadata:
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: kiali-viewer
+  name: kiali-namespace-authorization
 subjects:
   - kind: User
     name: "user@example.com"
     apiGroup: rbac.authorization.k8s.io
 ```
 
-Kiali ships with two ClusterRoles:
-- `kiali-viewer` - Read-only access
-- `kiali` - Full access including configuration changes
+For read and write operations, create and bind a ClusterRole with the additional write privileges your users need. Kiali's documentation provides a `kiali-write-privileges` example that includes the Kubernetes and Istio resources Kiali can update.
 
 ## Troubleshooting Authentication Issues
 
@@ -290,7 +308,7 @@ Kiali ships with two ClusterRoles:
 
 **401 after OIDC login**: Verify the issuer URI matches exactly what your IdP expects. Trailing slashes matter.
 
-**Header auth shows wrong user**: Make sure the reverse proxy is actually setting the header specified in `auth.header.name`. Check with a curl request to the proxy.
+**Header auth fails**: Make sure the reverse proxy is sending an `Authorization: Bearer TOKEN` header that the Kubernetes API server accepts, or valid impersonation headers with an authorized bearer token. Check with a curl request to the proxy.
 
 **Token expires too quickly**: For token auth, generate tokens with longer durations using the `--duration` flag. For OIDC, check your IdP's token lifetime settings.
 
