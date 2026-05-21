@@ -33,7 +33,7 @@ Start with a high-level diagram of your mesh. This should show:
 
 You do not need fancy tools for this. A simple ASCII diagram or a Mermaid diagram in a markdown file works great:
 
-```markdown
+````markdown
 ## Mesh Architecture
 
 ```mermaid
@@ -46,7 +46,7 @@ graph LR
     Checkout --> Inventory[Inventory Service]
     Payments --> Stripe[External: Stripe API]
     Catalog --> DB[(PostgreSQL)]
-```bash
+```
 
 ### Namespaces
 - `frontend` - Web UI and BFF
@@ -54,7 +54,7 @@ graph LR
 - `payments` - Payment processing
 - `catalog` - Product catalog and search
 - `istio-system` - Istio control plane
-```text
+````
 
 Keep this diagram updated when services are added or removed. It should live in the same Git repository as your Istio configuration.
 
@@ -147,7 +147,7 @@ Store these alongside your Istio configuration in a `docs/decisions/` directory.
 Use Kubernetes annotations to document resources directly:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: checkout-routing
@@ -179,7 +179,7 @@ The advantage of inline annotations is that they live with the resource and are 
 
 Document the common patterns your team uses so that new team members do not reinvent the wheel:
 
-```markdown
+````markdown
 ## Istio Configuration Patterns
 
 ### Pattern: Canary Deployment
@@ -217,7 +217,7 @@ spec:
             host: <service>.svc.cluster.local
             subset: canary
           weight: 5
-```bash
+```
 
 ### Pattern: External Service Access
 
@@ -229,7 +229,7 @@ When an application needs to call an external API:
 
 Template:
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: <service-name>-<protocol>
@@ -243,8 +243,8 @@ spec:
       protocol: TLS
   resolution: DNS
   location: MESH_EXTERNAL
-```bash
-```text
+```
+````
 
 ## Troubleshooting Guide
 
