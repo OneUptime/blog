@@ -21,7 +21,7 @@ When traffic arrives at a pod, it follows this path:
 3. Envoy applies any configured policies (mTLS, authorization)
 4. Envoy forwards the traffic to the application on localhost
 
-Without explicit ingress configuration, Envoy creates listeners for ports defined in the Kubernetes Service that selects the pod. The Sidecar ingress section lets you customize this behavior.
+Without explicit ingress configuration, Envoy creates listeners based on workload information from the orchestration platform, such as exposed ports and services. If you specify Sidecar ingress listeners, the inbound ports are configured only when the workload instance is associated with a service. The Sidecar ingress section lets you customize this behavior.
 
 ## Basic Ingress Configuration
 
@@ -185,10 +185,10 @@ spec:
       captureMode: NONE
 ```
 
-The admin port (9090) uses `captureMode: NONE`, meaning Envoy does not intercept traffic on that port at all. Traffic goes directly to the application. This is useful for:
-- Health check endpoints that should bypass the proxy
-- Admin ports that do not need mesh features
-- Ports where proxy overhead is unacceptable
+The admin port (9090) uses `captureMode: NONE`, meaning traffic is not captured by iptables for that listener. With `NONE`, traffic must be sent directly to the Envoy listener address and the listener port must not already be in use by another process. This is useful for:
+- Workloads deployed without iptables-based traffic capture
+- Explicit listeners on a separate interface or port
+- Ports where the application can intentionally address the proxy listener
 
 ## Combining Ingress and Egress
 
@@ -228,7 +228,7 @@ spec:
         - "*/database.rds.amazonaws.com"
 ```
 
-This gives you complete control over both inbound and outbound traffic for the order-service.
+This gives you control over both inbound and outbound traffic for the order-service. The external hosts in the egress section must also exist in Istio's service registry, typically through matching `ServiceEntry` resources.
 
 ## Practical Use Case: Sidecar for a Java Application
 
@@ -268,7 +268,7 @@ The actuator port gets its own ingress listener so Envoy can handle it with the 
 Check what inbound listeners Envoy has:
 
 ```bash
-# List all listeners - inbound ones start with "virtualInbound"
+# List all listeners and look for the inbound listener on 15006 and the workload port
 
 istioctl proxy-config listener deploy/my-service -n backend
 
@@ -276,9 +276,9 @@ istioctl proxy-config listener deploy/my-service -n backend
 istioctl proxy-config listener deploy/my-service -n backend \
   --port 8080 -o json
 
-# Check routes for inbound traffic
+# Check route configuration and look for inbound route names
 istioctl proxy-config routes deploy/my-service -n backend \
-  --name "inbound|8080||"
+  | grep inbound
 ```
 
 ## Debugging Ingress Issues
@@ -306,34 +306,35 @@ Common issues:
 
 ## Health Checks Through Ingress
 
-Kubernetes health checks (liveness and readiness probes) go through the Envoy proxy by default. If the proxy is not ready, health checks fail even if the application is healthy.
+Kubernetes HTTP, TCP, and gRPC health checks need special handling with an Istio sidecar because inbound traffic can be redirected through the proxy and mTLS can block kubelet probes.
 
-Istio rewrites HTTP health check probes automatically. But for custom protocols or when you want probes to bypass Envoy:
+Istio rewrites HTTP, TCP, and gRPC health check probes by default so they are handled by the sidecar agent and forwarded safely to the application. For custom protocols, use command probes or disable probe rewriting and exclude the port from sidecar capture with pod annotations such as `traffic.sidecar.istio.io/excludeInboundPorts`:
 
 ```yaml
-apiVersion: networking.istio.io/v1
-kind: Sidecar
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: health-bypass
+  name: my-service
   namespace: backend
 spec:
-  workloadSelector:
-    labels:
+  selector:
+    matchLabels:
       app: my-service
-  ingress:
-    - port:
-        number: 8080
-        protocol: HTTP
-        name: http
-      defaultEndpoint: 127.0.0.1:8080
-    - port:
-        number: 8081
-        protocol: HTTP
-        name: http-health
-      defaultEndpoint: 127.0.0.1:8081
-      captureMode: NONE
+  template:
+    metadata:
+      labels:
+        app: my-service
+      annotations:
+        traffic.sidecar.istio.io/excludeInboundPorts: "8081"
+    spec:
+      containers:
+        - name: my-service
+          image: example/my-service:latest
+          ports:
+            - containerPort: 8080
+            - containerPort: 8081
 ```
 
-The health check port (8081) bypasses Envoy entirely with `captureMode: NONE`.
+The health check port (8081) bypasses Envoy because Istio does not capture inbound traffic on that port.
 
 Sidecar ingress listeners give you fine-grained control over how your workloads receive traffic. For most services, the default behavior works fine. But when you have multi-port services, custom TLS requirements, or need to bypass the proxy for specific ports, explicit ingress configuration is the tool you need.
