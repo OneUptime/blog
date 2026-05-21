@@ -54,11 +54,11 @@ spec:
 
 Set `xff_num_trusted_hops` to the number of proxy layers between the client and the Istio gateway. If you have one load balancer in front, set it to 1. If you have a CDN and a load balancer, set it to 2.
 
-Alternatively, if you are using an AWS or GCP load balancer with proxy protocol:
+Alternatively, if you are using a TCP load balancer with PROXY protocol:
 
 ```bash
-# For AWS NLB with proxy protocol
-istioctl install --set meshConfig.defaultConfig.gatewayTopology.numTrustedProxies=1
+# For a TCP load balancer with PROXY protocol
+istioctl install --set meshConfig.defaultConfig.gatewayTopology.proxyProtocol={}
 ```
 
 ## Creating an IP Allowlist
@@ -66,7 +66,7 @@ istioctl install --set meshConfig.defaultConfig.gatewayTopology.numTrustedProxie
 To restrict access to specific IP addresses, create an AuthorizationPolicy with ALLOW action:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: ip-allowlist
@@ -94,7 +94,7 @@ The `remoteIpBlocks` field uses the client's actual IP (accounting for XFF heade
 To block specific IPs while allowing everything else, use the DENY action:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: ip-denylist
@@ -113,10 +113,10 @@ spec:
               - "203.0.113.50/32"
 ```
 
-When using a DENY policy, you need a corresponding ALLOW policy or the default behavior will kick in. To allow all other traffic:
+When using only a DENY policy, requests that do not match the DENY rules are allowed by default. If you already have ALLOW policies on the same gateway, add an explicit allow-all policy to allow all other traffic:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: allow-all
@@ -138,7 +138,7 @@ You might want different IP restrictions for different hosts. For example, the a
 
 ```yaml
 # Deny all to admin panel except office IPs
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: admin-ip-restrict
@@ -167,7 +167,7 @@ This denies any request to `admin.example.com` that does not come from the speci
 You can combine IP restrictions with other conditions like paths or methods:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: api-ip-restrict
@@ -235,7 +235,7 @@ Common ranges you might want to block or allow:
 If you need to block entire countries, you can use country IP ranges from services like MaxMind. The approach is the same, just with larger CIDR blocks:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: geo-block
