@@ -290,7 +290,7 @@ spec:
 With these four policies applied to the same workload, Istio creates a layered access model:
 - `/health`, `/public/*` - anyone can access
 - `GET /api/v1/*` - any authenticated user
-- `POST/PUT/DELETE /api/v1/*` - authenticated users with write scope
+- `POST/PUT/PATCH/DELETE /api/v1/*` - authenticated users with write scope
 - `/admin/*` - authenticated users with admin role
 - Everything else - denied
 
@@ -344,7 +344,7 @@ When claims do not match as expected:
 
 ```bash
 # Decode the JWT to verify claims
-echo $TOKEN | cut -d'.' -f2 | base64 -d | jq .
+printf '%s\n' "$TOKEN" | jq -R 'split(".")[1] | @base64d | fromjson'
 
 # Check what Istio sees
 istioctl proxy-config log deploy/my-api -n default --level rbac:debug
