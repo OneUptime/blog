@@ -123,9 +123,19 @@ Create similar Sidecar resources for each tenant namespace.
 
 ## Authorization Policies for Cross-Tenant Isolation
 
-Even with network policies, you need Istio AuthorizationPolicies to enforce service-to-service access control:
+Even with network policies, you need Istio AuthorizationPolicies to enforce service-to-service access control. Namespace-based source matching depends on Istio identity, so require mTLS for the namespace:
 
 ```yaml
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: default
+  namespace: tenant-a
+spec:
+  mtls:
+    mode: STRICT
+
+---
 # Deny all traffic by default in tenant-a
 apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
@@ -153,6 +163,16 @@ spec:
 Do the same for tenant-b:
 
 ```yaml
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: default
+  namespace: tenant-b
+spec:
+  mtls:
+    mode: STRICT
+
+---
 apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
@@ -217,7 +237,7 @@ rules:
   resources: ["virtualservices", "destinationrules", "sidecars"]
   verbs: ["get", "list", "create", "update", "delete"]
 - apiGroups: ["security.istio.io"]
-  resources: ["authorizationpolicies", "requestauthentications"]
+  resources: ["authorizationpolicies", "peerauthentications", "requestauthentications"]
   verbs: ["get", "list", "create", "update", "delete"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -239,22 +259,7 @@ This gives the `tenant-a-admins` group permission to manage Istio resources only
 
 ## Per-Tenant Resource Limits
 
-Prevent one tenant's proxies from consuming too many resources by setting proxy resource limits per namespace:
-
-```yaml
-apiVersion: networking.istio.io/v1
-kind: Sidecar
-metadata:
-  name: default
-  namespace: tenant-a
-spec:
-  egress:
-  - hosts:
-    - "./*"
-    - "istio-system/*"
-```
-
-And use pod annotations for specific workloads:
+Prevent one tenant's proxies from consuming too many resources by setting proxy resource annotations on the workloads. The Sidecar resource limits configuration visibility, but CPU and memory requests and limits are set on the injected proxy through pod annotations:
 
 ```yaml
 apiVersion: apps/v1
@@ -274,7 +279,17 @@ spec:
 
 ## Per-Tenant Ingress
 
-Each tenant often needs their own ingress point. You can use separate Gateway resources per tenant:
+Each tenant often needs their own ingress point. You can use separate Gateway resources per tenant. If both Gateways select a shared `istio-ingressgateway` deployment in `istio-system`, create the referenced TLS secrets in the gateway workload's namespace, usually `istio-system`:
+
+```bash
+kubectl create -n istio-system secret tls tenant-a-cert \
+  --key=tenant-a.key \
+  --cert=tenant-a.crt
+
+kubectl create -n istio-system secret tls tenant-b-cert \
+  --key=tenant-b.key \
+  --cert=tenant-b.crt
+```
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -320,28 +335,60 @@ spec:
 
 ## Hard Multi-Tenancy with Revisions
 
-For stronger isolation, give each tenant their own istiod revision:
+For stronger isolation, give each tenant their own istiod revision and use discovery selectors so each control plane watches only that tenant's namespaces:
 
 ```bash
-# Install istiod for tenant-a
-istioctl install --set revision=tenant-a \
-  --set values.global.istioNamespace=istio-system \
-  --set meshConfig.defaultConfig.discoveryAddress=istiod-tenant-a.istio-system:15012
+kubectl create namespace istio-tenant-a
+kubectl label namespace istio-tenant-a tenant=tenant-a
+kubectl label namespace tenant-a tenant=tenant-a
 
-# Install istiod for tenant-b
-istioctl install --set revision=tenant-b \
-  --set values.global.istioNamespace=istio-system \
-  --set meshConfig.defaultConfig.discoveryAddress=istiod-tenant-b.istio-system:15012
+istioctl install -y -f - <<EOF
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
+metadata:
+  namespace: istio-tenant-a
+spec:
+  profile: minimal
+  revision: tenant-a
+  meshConfig:
+    discoverySelectors:
+    - matchLabels:
+        tenant: tenant-a
+  values:
+    global:
+      istioNamespace: istio-tenant-a
+EOF
+
+kubectl create namespace istio-tenant-b
+kubectl label namespace istio-tenant-b tenant=tenant-b
+kubectl label namespace tenant-b tenant=tenant-b
+
+istioctl install -y -f - <<EOF
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
+metadata:
+  namespace: istio-tenant-b
+spec:
+  profile: minimal
+  revision: tenant-b
+  meshConfig:
+    discoverySelectors:
+    - matchLabels:
+        tenant: tenant-b
+  values:
+    global:
+      istioNamespace: istio-tenant-b
+EOF
 ```
 
 Label namespaces to use specific revisions:
 
 ```bash
-kubectl label namespace tenant-a istio.io/rev=tenant-a
-kubectl label namespace tenant-b istio.io/rev=tenant-b
+kubectl label namespace tenant-a istio-injection- istio.io/rev=tenant-a
+kubectl label namespace tenant-b istio-injection- istio.io/rev=tenant-b
 ```
 
-Each tenant's proxies connect only to their own istiod instance, providing complete control plane isolation.
+Each tenant's proxies connect to their own istiod instance, and each istiod is scoped to the namespaces selected for that tenant.
 
 ## Monitoring Per-Tenant Metrics
 
@@ -360,4 +407,4 @@ sum(rate(istio_requests_total{
 
 ## Summary
 
-Multi-tenancy in Istio requires attention at multiple layers: use `exportTo` to restrict configuration visibility, Sidecar resources to limit proxy scope, AuthorizationPolicies for service-to-service isolation, and RBAC for configuration access control. Set mesh-wide defaults for export scope to prevent accidental cross-namespace leakage. For the strongest isolation, use Istio revisions to give each tenant their own control plane. The goal is to make it so that each tenant can only see and affect their own services while still sharing the underlying infrastructure efficiently.
+Multi-tenancy in Istio requires attention at multiple layers: use `exportTo` to restrict configuration visibility, Sidecar resources to limit proxy scope, AuthorizationPolicies for service-to-service isolation, and RBAC for configuration access control. Set mesh-wide defaults for export scope to prevent accidental cross-namespace leakage. For stronger isolation, use Istio revisions with discovery selectors to give each tenant their own scoped control plane. The goal is to make it so that each tenant can only see and affect their own services while still sharing the underlying infrastructure efficiently.
