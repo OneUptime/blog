@@ -4,18 +4,18 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Multi-Tenancy, Kubernetes, Control Plane, Service Mesh
 
-Description: How to run multiple independent Istio control planes in a single Kubernetes cluster for multi-tenancy, canary upgrades, and team isolation.
+Description: How to run multiple revisioned Istio control planes in a single Kubernetes cluster for canary upgrades, team separation, and scoped mesh management.
 
 ---
 
-Running multiple Istio control planes in a single cluster sounds unusual, but it solves some real problems. Maybe you need tenant isolation where different teams get their own mesh, or you want to canary test a new Istio version before rolling it out across the cluster. Istio supports this through revisions and revision tags.
+Running multiple Istio control planes in a single cluster sounds unusual, but it solves some real problems. Maybe you need team separation, or you want to canary test a new Istio version before rolling it out across the cluster. Istio supports this through revisions and revision tags. For strict tenant isolation, combine revisions with separate system namespaces and `discoverySelectors` so each control plane watches only its intended resources.
 
 ## Use Cases for Multiple Control Planes
 
 There are a few common scenarios:
 
 1. **Canary upgrades**: Run the new Istio version alongside the old one, gradually migrating workloads
-2. **Multi-tenancy**: Different teams or business units get independent mesh configurations
+2. **Multi-tenancy**: Different teams or business units get scoped mesh configurations when revisions are combined with discovery selectors
 3. **Testing**: Run a development Istio version for testing without affecting production workloads
 4. **Compliance**: Separate control planes for workloads with different compliance requirements
 
@@ -23,7 +23,7 @@ There are a few common scenarios:
 
 Istio revisions are the mechanism that makes multiple control planes possible. Each installation gets a unique revision name, and namespaces opt into a specific revision through labels.
 
-Without revisions, there is one global istiod and one webhook. With revisions, each istiod instance has its own webhook and only manages namespaces that reference its revision.
+Without revisions, there is one default istiod and one default injection webhook. With revisions, each istiod instance has its own revisioned webhook, and newly created pods in namespaces that reference that revision or tag are injected to connect to that control plane.
 
 ## Installing the First Control Plane (Stable)
 
@@ -107,7 +107,9 @@ With Helm, install each revision separately:
 
 ```bash
 # Install base CRDs (only once)
-helm install istio-base istio/base -n istio-system --create-namespace
+helm install istio-base istio/base -n istio-system \
+  --set defaultRevision=stable \
+  --create-namespace
 
 # Install stable revision
 helm install istiod-stable istio/istiod -n istio-system \
@@ -171,7 +173,7 @@ kubectl rollout restart deployment -n app-production
 
 ## Deploying Separate Gateways per Revision
 
-Each control plane should have its own gateway:
+For isolated teams or tenants, each control plane should have its own gateway. For a canary upgrade, you can either upgrade gateways in place or run revision-specific gateway instances:
 
 ```yaml
 # values-gateway-stable.yaml
@@ -253,17 +255,17 @@ istioctl tag set prod --revision 1-24
 kubectl rollout restart deployment -n prod-namespace
 
 # 7. Remove old control plane
-istioctl uninstall --revision stable
+istioctl uninstall --revision stable -y
 ```
 
-Resource Considerations
+## Resource Considerations
 
-Each control plane consumes resources. A typical istiod instance needs:
+Each control plane consumes resources. The current Istio chart defaults for a small istiod install request:
 
-- CPU: 500m request, 2 cores limit
-- Memory: 2Gi request, 4Gi limit
+- CPU: 500m
+- Memory: 2048Mi
 
-Multiply that by the number of control planes. Monitor usage:
+No CPU or memory limits are set by default for istiod, so set limits explicitly if your cluster policy requires them. Multiply requests and any limits you configure by the number of control planes. Monitor usage:
 
 ```bash
 kubectl top pods -n istio-system
@@ -280,10 +282,10 @@ Remove a specific revision:
 istioctl uninstall --revision canary -y
 
 # Remove the tag
-istioctl tag remove test
+istioctl tag remove test -y
 ```
 
-List all revisions:
+List all revision tags:
 
 ```bash
 istioctl tag list
