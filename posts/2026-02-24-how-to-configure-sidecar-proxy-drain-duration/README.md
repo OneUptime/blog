@@ -16,29 +16,30 @@ Getting this balance right is critical for zero-downtime deployments. Here's how
 
 To understand drain duration, you first need to know what happens when Kubernetes terminates a pod. The sequence goes like this:
 
-1. Kubernetes sends a SIGTERM to all containers in the pod
-2. Kubernetes removes the pod from Service endpoints
-3. The Envoy sidecar enters drain mode and stops accepting new connections
-4. Existing connections are allowed to complete until the drain period expires
-5. After `terminationGracePeriodSeconds`, Kubernetes sends SIGKILL
+1. Kubernetes marks the pod as terminating and starts the local shutdown process
+2. Kubernetes marks the pod's endpoints as terminating and not ready for regular Service traffic
+3. The kubelet runs any `preStop` hooks, then sends a SIGTERM to the containers
+4. The Envoy sidecar enters drain mode and stops accepting new connections
+5. Existing connections are allowed to complete until the drain period expires
+6. After `terminationGracePeriodSeconds`, Kubernetes sends SIGKILL to any remaining processes
 
-The drain duration controls step 4. It tells Envoy how long to wait for in-flight requests to finish before closing connections.
+The termination drain duration controls step 5. It tells `istio-agent` how long to let Envoy drain in-flight requests before stopping the proxy.
 
 ## Checking the Current Drain Duration
 
 You can see the current drain duration in your mesh configuration:
 
 ```bash
-kubectl get configmap istio-sidecar-injector -n istio-system -o jsonpath='{.data.values}' | jq '.global.proxy.drainDuration'
+kubectl get configmap istio -n istio-system -o jsonpath='{.data.mesh}' | grep terminationDrainDuration
 ```
 
 Or check it on a specific pod:
 
 ```bash
-istioctl proxy-config bootstrap my-pod -n my-namespace | grep drain
+kubectl get pod my-pod -n my-namespace -o jsonpath='{.metadata.annotations.proxy\.istio\.io/config}' | grep terminationDrainDuration
 ```
 
-The default drain duration in Istio is 45 seconds. For many workloads this is reasonable, but long-lived connections (WebSockets, gRPC streams, database connections) often need more time.
+The default termination drain duration in Istio is 5 seconds when it is not configured. For many workloads this is reasonable, but long-lived connections (WebSockets, gRPC streams, database connections) often need more time.
 
 ## Setting Drain Duration Globally
 
@@ -50,7 +51,7 @@ kind: IstioOperator
 spec:
   meshConfig:
     defaultConfig:
-      drainDuration: 30s
+      terminationDrainDuration: 30s
 ```
 
 Apply this with:
@@ -79,7 +80,7 @@ spec:
     metadata:
       annotations:
         proxy.istio.io/config: |
-          drainDuration: 120s
+          terminationDrainDuration: 120s
     spec:
       containers:
       - name: ws-server
@@ -90,9 +91,9 @@ This gives the WebSocket server's sidecar 120 seconds to drain, while other serv
 
 ## Coordinating with terminationGracePeriodSeconds
 
-Here's the most common mistake people make: they set a drain duration that's longer than the pod's `terminationGracePeriodSeconds`. If that happens, Kubernetes kills the pod (SIGKILL) before the sidecar finishes draining.
+Here's the most common mistake people make: they set a termination drain duration that's longer than the pod's `terminationGracePeriodSeconds`. If that happens, Kubernetes kills the pod (SIGKILL) before the sidecar finishes draining.
 
-The rule is simple: `terminationGracePeriodSeconds` must be greater than `drainDuration`. I recommend setting it to at least drain duration plus 5 seconds to give the process time to shut down cleanly after draining:
+The rule is simple: `terminationGracePeriodSeconds` must be greater than `terminationDrainDuration`. I recommend setting it to at least the termination drain duration plus 5 seconds to give the process time to shut down cleanly after draining:
 
 ```yaml
 apiVersion: apps/v1
@@ -104,7 +105,7 @@ spec:
     metadata:
       annotations:
         proxy.istio.io/config: |
-          drainDuration: 60s
+          terminationDrainDuration: 60s
     spec:
       terminationGracePeriodSeconds: 70
       containers:
@@ -114,34 +115,7 @@ spec:
 
 ## The EXIT_ON_ZERO_ACTIVE_CONNECTIONS Option
 
-Starting with Istio 1.12, there's an environment variable you can set on the sidecar that makes it exit as soon as all active connections have been drained, rather than waiting for the full drain duration:
-
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: my-service
-spec:
-  template:
-    metadata:
-      annotations:
-        proxy.istio.io/config: |
-          drainDuration: 120s
-    spec:
-      terminationGracePeriodSeconds: 130
-      containers:
-      - name: app
-        image: my-app:latest
-        env:
-        - name: ISTIO_QUIT_API
-          value: "true"
-      - name: istio-proxy
-        env:
-        - name: EXIT_ON_ZERO_ACTIVE_CONNECTIONS
-          value: "true"
-```
-
-Wait, you can't directly add an env var to the sidecar in the deployment spec since the sidecar is injected. Instead, use the injection template annotation approach or set it globally:
+Starting with Istio 1.12, there's an environment variable you can set on the sidecar that makes it exit as soon as all active connections have been drained, rather than waiting for the full termination drain duration. Since the sidecar is injected, set it through proxy metadata:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -149,17 +123,9 @@ kind: IstioOperator
 spec:
   meshConfig:
     defaultConfig:
-      drainDuration: 120s
-  values:
-    global:
-      proxy:
-        lifecycle:
-          preStop:
-            exec:
-              command:
-              - /bin/sh
-              - -c
-              - "while [ $(netstat -plunt 2>/dev/null | grep -c 'ESTABLISHED') -gt 0 ]; do sleep 1; done"
+      terminationDrainDuration: 120s
+      proxyMetadata:
+        EXIT_ON_ZERO_ACTIVE_CONNECTIONS: "true"
 ```
 
 The cleaner approach is to use the `EXIT_ON_ZERO_ACTIVE_CONNECTIONS` setting through the proxy config:
@@ -174,7 +140,7 @@ spec:
     metadata:
       annotations:
         proxy.istio.io/config: |
-          drainDuration: 120s
+          terminationDrainDuration: 120s
           proxyMetadata:
             EXIT_ON_ZERO_ACTIVE_CONNECTIONS: "true"
     spec:
@@ -193,28 +159,28 @@ Different types of services need different drain durations. Here are some practi
 **Short-lived HTTP APIs (REST endpoints):**
 ```yaml
 proxy.istio.io/config: |
-  drainDuration: 15s
+  terminationDrainDuration: 15s
 ```
 Most HTTP requests complete in under a second. 15 seconds handles slow requests and retries.
 
 **gRPC services with streaming RPCs:**
 ```yaml
 proxy.istio.io/config: |
-  drainDuration: 60s
+  terminationDrainDuration: 60s
 ```
 gRPC streams can last minutes. Give them time to finish or gracefully close.
 
 **WebSocket services:**
 ```yaml
 proxy.istio.io/config: |
-  drainDuration: 120s
+  terminationDrainDuration: 120s
 ```
 WebSocket connections are often long-lived. Clients typically reconnect when the connection drops, but a longer drain gives them time to finish current operations.
 
 **Batch processors and queue consumers:**
 ```yaml
 proxy.istio.io/config: |
-  drainDuration: 300s
+  terminationDrainDuration: 300s
 ```
 If a job takes 5 minutes to process a message, the sidecar needs to stay alive for the full duration.
 
@@ -264,7 +230,8 @@ Track these metrics to see if your drain configuration is working:
 sum(rate(istio_requests_total{response_code=~"5.*"}[5m])) by (destination_service)
 
 # Active connections on sidecar
-envoy_server_total_connections
+envoy_listener_downstream_cx_active
+envoy_cluster_upstream_cx_active
 
 # Connection close events
 envoy_cluster_upstream_cx_destroy
