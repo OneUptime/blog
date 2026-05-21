@@ -8,7 +8,7 @@ Description: How to configure Harness CD with Istio for traffic management durin
 
 ---
 
-Harness CD has built-in support for Istio traffic management, which makes it one of the easier CD platforms to integrate with a service mesh. Harness can automatically create and manage Istio VirtualServices and DestinationRules during deployments, handle canary traffic shifting, and use Istio metrics for deployment verification.
+Harness CD has built-in support for Istio traffic management, which makes it one of the easier CD platforms to integrate with a service mesh. Harness can automatically create and patch Istio VirtualServices during deployments, handle canary traffic shifting, and use Istio metrics for deployment verification.
 
 The nice thing about the Harness approach is that you don't need to manually create and manage VirtualService patches like you would with some other CD tools. Harness understands Istio natively and can manipulate the traffic routing as part of its deployment workflow.
 
@@ -17,19 +17,19 @@ The nice thing about the Harness approach is that you don't need to manually cre
 Before starting, you need:
 - A Kubernetes cluster with Istio installed
 - A Harness account with a Harness Delegate deployed to your cluster
-- Your application already running with Istio sidecar injection or ambient mode
+- Your application already running with Istio sidecar injection, or ambient mode with a waypoint proxy for L7 traffic management
 
 ## Connecting Harness to Your Cluster
 
-In Harness, set up a Kubernetes Cloud Provider that points to your cluster. The Harness Delegate running in the cluster handles communication.
+In Harness, set up a Kubernetes Cluster connector that points to your cluster. The Harness Delegate running in the cluster handles communication.
 
-Go to **Setup > Cloud Providers > Add Cloud Provider** and configure:
+Go to **Project Setup > Connectors > New Connector > Kubernetes Cluster** and configure:
 
 ```text
-Type: Kubernetes Cluster
+Connector Type: Kubernetes Cluster
 Name: production-cluster
-Authentication: Inherit from selected Delegate
-Delegate Name: my-cluster-delegate
+Authentication: Use the credentials of a specific Harness Delegate
+Delegate Tags: my-cluster-delegate
 ```
 
 Make sure the delegate's service account has permissions to manage Istio CRDs:
@@ -66,11 +66,11 @@ roleRef:
 
 ## Setting Up Istio Traffic Management in Harness
 
-In your Harness Service definition, enable Istio traffic management. Harness supports two modes:
+In your Harness Canary, Blue Green, or Traffic Routing step, configure Istio traffic management. Harness supports two modes:
 
 ### Option 1: Harness Manages Istio Resources
 
-Harness can automatically create and manage VirtualServices and DestinationRules. In your Harness service manifest, include:
+Harness can create a new VirtualService from the traffic routing step configuration. If you already use Istio subsets, keep the corresponding DestinationRule in your Harness service manifest:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -98,17 +98,17 @@ spec:
         maxConnections: 100
 ```
 
-During a canary deployment, Harness will automatically modify these resources to split traffic between the stable and canary versions.
+During a canary deployment, Harness will automatically create or patch the VirtualService to split traffic between the stable and canary versions.
 
 ### Option 2: Reference Existing Istio Resources
 
-If you already have VirtualServices and DestinationRules in your cluster, tell Harness to use them by specifying the Istio routing config in the workflow:
+If you already have VirtualServices and DestinationRules in your cluster, tell Harness to use them by specifying the Istio routing config in the pipeline:
 
-In the Harness workflow, add the Istio VirtualService name and routes that Harness should manage during the deployment.
+In the Harness traffic routing configuration, use the **Inherit** option to patch routes that were created by a previous Blue Green, Canary, or Traffic Routing step. If the VirtualService is included in your manifest, make sure the traffic routing resource name matches the VirtualService `metadata.name`.
 
 ## Configuring a Canary Deployment with Istio
 
-Create a Harness Canary Workflow. Here's how the phases work:
+Create a Harness Canary deployment. Here's how the phases work:
 
 **Phase 1: Deploy Canary (10% traffic)**
 
@@ -266,18 +266,24 @@ pipeline:
               identifier: istioTraffic10
               type: K8sTrafficRouting
               spec:
-                provider:
-                  type: Istio
+                type: config
+                trafficRouting:
+                  provider: istio
                   spec:
-                    virtualService:
-                      name: my-app-vsvc
-                    destinations:
-                    - host: my-app
-                      weight: 10
-                      routeType: canary
-                    - host: my-app
-                      weight: 90
-                      routeType: stable
+                    name: my-app-vsvc
+                    hosts:
+                    - my-app
+                    routes:
+                    - route:
+                        type: http
+                        name: primary
+                        destinations:
+                        - destination:
+                            host: my-app-canary
+                            weight: 10
+                        - destination:
+                            host: my-app-stable
+                            weight: 90
           - step:
               name: Verify Canary
               identifier: verify
