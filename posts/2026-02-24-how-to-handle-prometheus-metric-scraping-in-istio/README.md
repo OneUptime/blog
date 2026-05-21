@@ -12,7 +12,7 @@ Scraping metrics in an Istio mesh is not as straightforward as scraping a regula
 
 ## The Scraping Challenge with mTLS
 
-In a mesh with mTLS enabled, all traffic between pods is encrypted. This means Prometheus cannot just reach into a pod and scrape its metrics endpoint over plain HTTP. The scrape request gets rejected because Prometheus is not part of the mesh (unless it has a sidecar too).
+In a mesh with STRICT mTLS enabled, traffic between sidecars is encrypted. This means Prometheus cannot just reach into a pod and scrape its application metrics endpoint over plain HTTP. The scrape request gets rejected because Prometheus is not presenting Istio workload certificates.
 
 There are several ways to handle this.
 
@@ -50,14 +50,43 @@ scrape_configs:
 
 ### Option 2: Add a Sidecar to Prometheus
 
-If Prometheus itself has an Istio sidecar, it can scrape other sidecars over mTLS. This works but adds complexity. The Prometheus pod needs to be in the mesh:
+If Prometheus needs to scrape application metrics protected by STRICT mTLS, you can inject an Istio sidecar into Prometheus to write workload certificates to a shared volume. The sidecar should not intercept Prometheus traffic, because Prometheus needs direct endpoint access:
 
-```bash
-kubectl label namespace monitoring istio-injection=enabled
-kubectl rollout restart deployment prometheus -n monitoring
+```yaml
+spec:
+  template:
+    metadata:
+      annotations:
+        traffic.sidecar.istio.io/includeInboundPorts: ""
+        traffic.sidecar.istio.io/includeOutboundIPRanges: ""
+        proxy.istio.io/config: |
+          proxyMetadata:
+            OUTPUT_CERTS: /etc/istio-output-certs
+        sidecar.istio.io/userVolumeMount: '[{"name": "istio-certs", "mountPath": "/etc/istio-output-certs"}]'
+    spec:
+      containers:
+      - name: prometheus-server
+        volumeMounts:
+        - mountPath: /etc/prom-certs/
+          name: istio-certs
+      volumes:
+      - emptyDir:
+          medium: Memory
+        name: istio-certs
 ```
 
-The downside is that Prometheus now depends on the sidecar being healthy to scrape anything.
+Then configure the scrape job to use those certificates:
+
+```yaml
+scheme: https
+tls_config:
+  ca_file: /etc/prom-certs/root-cert.pem
+  cert_file: /etc/prom-certs/cert-chain.pem
+  key_file: /etc/prom-certs/key.pem
+  insecure_skip_verify: true
+```
+
+The downside is that Prometheus now depends on the sidecar being healthy to receive fresh certificates.
 
 ### Option 3: Use Envoy Stats Port
 
@@ -70,14 +99,9 @@ scrape_configs:
   kubernetes_sd_configs:
   - role: pod
   relabel_configs:
-  - source_labels: [__meta_kubernetes_pod_container_name]
+  - source_labels: [__meta_kubernetes_pod_container_port_name]
     action: keep
-    regex: istio-proxy
-  - source_labels: [__address__]
-    action: replace
-    regex: ([^:]+)(?::\d+)?
-    replacement: ${1}:15090
-    target_label: __address__
+    regex: '.*-envoy-prom'
 ```
 
 This gives you Envoy metrics but not your application metrics. You need a separate scrape config for application metrics.
@@ -113,14 +137,14 @@ Istio will read these annotations and configure the agent on port 15020 to scrap
 
 ### Without Merge
 
-If you do not use metrics merging, you need two scrape configs. One for Envoy metrics on port 15090, and one for your application metrics. For the application metrics, you either need Prometheus in the mesh or you need to use a port that bypasses mTLS.
+If you do not use metrics merging, you need two scrape configs. One for Envoy metrics on port 15090, and one for your application metrics. For the application metrics, you either need Prometheus configured with Istio certificates or you need to use a port that bypasses mTLS.
 
 You can exclude specific ports from Istio traffic interception:
 
 ```yaml
 metadata:
   annotations:
-    traffic.istio.io/excludeInboundPorts: "8080"
+    traffic.sidecar.istio.io/excludeInboundPorts: "8080"
 ```
 
 This tells the Istio sidecar not to intercept traffic on port 8080, so Prometheus can scrape it over plain HTTP. The downside is that all traffic to that port bypasses the sidecar, not just Prometheus scrapes.
@@ -221,7 +245,7 @@ curl -s 'localhost:9090/api/v1/targets' | jq '.data.activeTargets[] | select(.he
 
 **Missing application metrics**: If `enablePrometheusMerge` is true but your application metrics are not showing up, check that the prometheus.io annotations are on the pod template, not the Deployment metadata.
 
-**Stale metrics after pod deletion**: Prometheus keeps stale metrics for 5 minutes by default. If you see metrics from deleted pods, this is normal and they will disappear.
+**Stale metrics after pod deletion**: Prometheus marks time series as stale when a target is removed. For some query patterns, previously scraped samples can still appear until they fall outside the default 5-minute lookback window.
 
 **High memory usage in Prometheus**: Usually caused by too many unique time series from Envoy sidecars. Use metric relabeling to drop what you do not need.
 
