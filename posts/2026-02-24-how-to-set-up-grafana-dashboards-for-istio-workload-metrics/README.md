@@ -21,7 +21,7 @@ When you look at service-level metrics, you see aggregated numbers. Workload-lev
 Istio includes a pre-built workload dashboard. If you installed the Grafana addon:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/grafana.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/grafana.yaml
 ```
 
 Access it:
@@ -159,7 +159,7 @@ label_values(istio_requests_total{reporter="destination", destination_workload_n
 
 ## Adding Kubernetes Resource Metrics
 
-Workload dashboards benefit from including Kubernetes resource metrics alongside Istio metrics. If you have kube-state-metrics installed:
+Workload dashboards benefit from including Kubernetes resource metrics alongside Istio metrics. If Prometheus scrapes kubelet/cAdvisor metrics:
 
 ```promql
 # CPU usage per pod
@@ -226,7 +226,7 @@ Once you've built your dashboard, export it for version control:
 3. Copy the JSON
 4. Save it to your Git repository
 
-You can then provision it automatically:
+If your Grafana deployment uses a dashboard sidecar that watches ConfigMaps, you can then provision it automatically:
 
 ```yaml
 apiVersion: v1
