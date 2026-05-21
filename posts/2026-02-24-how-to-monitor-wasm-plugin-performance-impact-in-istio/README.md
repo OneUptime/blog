@@ -12,7 +12,7 @@ Running Wasm plugins in your Istio mesh is great for extensibility, but every pl
 
 ## Why Wasm Plugin Performance Matters
 
-Every HTTP request in an Istio mesh goes through at least two Envoy proxies (one on the client side, one on the server side). If your Wasm plugin adds 2ms of processing time per request, that is actually 4ms of added latency for each call. At high request rates, this adds up fast. You need visibility into exactly how much time your plugins consume.
+A typical sidecar-to-sidecar HTTP request in an Istio mesh goes through two Envoy proxies (one on the client side, one on the server side). If your Wasm plugin is deployed on both proxies and adds 2ms of processing time in each proxy, that is 4ms of added latency for each call. At high request rates, this adds up fast. You need visibility into exactly how much time your plugins consume.
 
 ## Key Metrics to Track
 
@@ -25,7 +25,7 @@ Envoy exposes several metrics related to Wasm execution. The ones you care about
 
 ## Setting Up Prometheus to Scrape Wasm Metrics
 
-If you already have Prometheus scraping your Istio mesh (which you should), Envoy's Wasm metrics are already being collected. You can verify by checking the raw metrics endpoint of any sidecar:
+If you already have Prometheus scraping your Istio mesh and collecting Envoy proxy stats, Envoy's Wasm metrics should be collected unless your scrape or relabeling configuration drops them. You can verify by checking the raw metrics endpoint of any sidecar:
 
 ```bash
 kubectl exec my-service-pod-xyz -c istio-proxy -- \
@@ -57,7 +57,7 @@ histogram_quantile(0.99,
 
 Run this query before deploying your Wasm plugin and again after. The difference tells you the latency cost.
 
-For a more granular view, you can use Envoy's built-in filter timing. Add stats tags to your WasmPlugin to make it easier to identify in metrics:
+Envoy does not expose a generic per-Wasm-plugin execution-time metric for every request. For a more granular operational view, set a stable `pluginName` in your WasmPlugin so the generated Envoy configuration and Wasm-related stats are easier to correlate:
 
 ```yaml
 apiVersion: extensions.istio.io/v1alpha1
@@ -71,13 +71,14 @@ spec:
       app: my-service
   url: oci://registry.example.com/wasm-plugins/custom:v1.0.0
   phase: STATS
+  pluginName: my-custom-plugin
   pluginConfig:
-    enable_timing: true
+    sample_rate: 100
 ```
 
 ## Tracking Wasm VM Memory Usage
 
-Each Wasm plugin runs inside a V8 virtual machine in Envoy. These VMs consume memory, and if you have many plugins or high concurrency, memory usage can grow significantly. Monitor the proxy container memory usage:
+Envoy's default Wasm runtime is typically the V8-based runtime in official builds, although Envoy also defines other runtimes. Wasm execution instances consume memory, and if you have many plugins or high concurrency, memory usage can grow significantly. Monitor the proxy container memory usage:
 
 ```promql
 container_memory_working_set_bytes{
@@ -123,29 +124,26 @@ Add panels for:
 3. **Wasm VM active count** to see how many VMs are running
 4. **Error rates** filtered by Wasm-related error codes
 
-## Using EnvoyFilter for Detailed Timing
+## Using Access Logs for Request Timing
 
-If you need more precise timing data, you can add an EnvoyFilter that enables Envoy's detailed filter timing stats:
+If you need more request-level timing data, enable Envoy access logs with Istio's Telemetry API. Access logs include total request duration through `%DURATION%` and upstream service time through `%RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)%` in the default Istio format:
 
 ```yaml
-apiVersion: networking.istio.io/v1alpha3
-kind: EnvoyFilter
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
 metadata:
-  name: enable-wasm-timing
+  name: my-service-access-logs
   namespace: istio-system
 spec:
-  configPatches:
-  - applyTo: LISTENER
-    match:
-      context: SIDECAR_INBOUND
-    patch:
-      operation: MERGE
-      value:
-        listener_filters_timeout: 5s
-        per_connection_buffer_limit_bytes: 32768
+  selector:
+    matchLabels:
+      app: my-service
+  accessLogging:
+  - providers:
+    - name: envoy
 ```
 
-This gives you more granular data about how long each filter in the chain takes to process requests.
+This does not isolate the Wasm filter's execution time by itself, but it gives you per-request proxy timing that you can compare before and after deploying the plugin.
 
 ## Load Testing to Measure Impact
 
@@ -229,7 +227,7 @@ kubectl exec my-service-pod-xyz -c istio-proxy -- \
 kubectl logs my-service-pod-xyz -c istio-proxy --tail=100
 ```
 
-3. Profile the proxy itself using Envoy's built-in profiling:
+3. Inspect Wasm-related proxy stats:
 
 ```bash
 kubectl exec my-service-pod-xyz -c istio-proxy -- \
@@ -250,7 +248,7 @@ Based on what you learn from monitoring, here are some optimization tips:
 - Keep your Wasm binary as small as possible. Strip debug symbols for production builds.
 - Minimize memory allocations in your plugin code. Reuse buffers where possible.
 - Avoid blocking operations in the plugin. Wasm plugins run synchronously in the request path.
-- Use `imagePullPolicy: IfNotPresent` to avoid re-downloading the binary on every proxy restart.
+- Use `imagePullPolicy: IfNotPresent` for OCI or HTTP Wasm modules referenced without a digest when you want to avoid re-downloading the binary on every proxy restart.
 - Test with realistic traffic patterns, not just synthetic benchmarks.
 
 ## Summary
