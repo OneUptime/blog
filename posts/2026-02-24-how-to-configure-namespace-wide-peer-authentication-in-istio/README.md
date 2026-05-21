@@ -40,7 +40,7 @@ Apply it:
 kubectl apply -f namespace-policy.yaml
 ```
 
-Every workload in the `backend` namespace now requires mTLS for incoming connections, regardless of the mesh-wide default.
+Every workload in the `backend` namespace now requires mTLS for incoming connections, regardless of the mesh-wide default, unless a workload-specific PeerAuthentication policy overrides it.
 
 ## When to Use Namespace-Wide Policies
 
@@ -77,7 +77,7 @@ spec:
 
 ## One Policy Per Namespace (Without Selector)
 
-A critical rule: you should only have one PeerAuthentication policy without a selector per namespace. If you create two or more, the behavior is undefined - Istio might use any of them. Always check before creating a new one:
+A critical rule: you should only have one PeerAuthentication policy without a selector per namespace. If you create two or more, Istio ignores the newer namespace-wide policies and uses the oldest one. Always check before creating a new one:
 
 ```bash
 kubectl get peerauthentication -n backend
@@ -137,7 +137,7 @@ spec:
   mtls:
     mode: PERMISSIVE
 ---
-# Namespace: monitoring - needs to disable mTLS for external scrapers
+# Namespace: monitoring - sidecar mode only, disables mTLS when you provide your own security controls
 apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
@@ -178,12 +178,11 @@ The output tells you which PeerAuthentication policy applies and the effective m
 
 ## Testing Cross-Namespace Communication
 
-When namespaces have different mTLS modes, cross-namespace communication can get interesting. Here are the rules:
+When namespaces have different mTLS modes, cross-namespace communication can get interesting. PeerAuthentication is evaluated on the destination workload, so the destination namespace's mode is what matters for incoming traffic:
 
-- **STRICT to STRICT**: Works fine. Both sides use mTLS.
-- **STRICT to PERMISSIVE**: Works fine. The source uses mTLS (auto mTLS kicks in), and the destination accepts it.
-- **PERMISSIVE to STRICT**: Works fine if the source has a sidecar (auto mTLS kicks in). Fails if the source doesn't have a sidecar.
-- **DISABLE to STRICT**: Fails. The source sends plain text, and the destination rejects it.
+- **Destination STRICT**: Works for callers in the mesh that can send Istio mTLS, usually through auto mTLS. Fails for plaintext callers without a sidecar or ambient mesh enrollment.
+- **Destination PERMISSIVE**: Works for both mTLS and plaintext callers, which is useful during migration.
+- **Destination DISABLE**: Accepts plaintext instead of Istio mTLS. Use this only when you have another security control, and do not use it in ambient mode because Istio does not support `DISABLE` there.
 
 Test cross-namespace connectivity:
 
@@ -193,7 +192,7 @@ kubectl exec -n catalog deploy/catalog-api -c catalog-api -- \
   curl -s http://payment-api.payments.svc.cluster.local:8080/health
 ```
 
-If the catalog pod has a sidecar, this works even though payments is STRICT - auto mTLS handles the upgrade.
+If the catalog pod has a sidecar and no DestinationRule disables mTLS for the payment service, this works even though payments is STRICT - auto mTLS handles the upgrade.
 
 ## Combining Namespace and Workload Policies
 
@@ -230,11 +229,11 @@ This pattern gives you a secure default for the namespace while allowing specifi
 
 **Forgetting to label pods correctly.** Workload-specific policies use label selectors. If your pod labels don't match, the policy is silently ignored and the namespace default applies.
 
-**Not checking for existing policies.** Creating a second namespace-wide policy (without a selector) leads to unpredictable behavior. Always check first.
+**Not checking for existing policies.** Creating a second namespace-wide policy (without a selector) means Istio ignores the newer namespace-wide policy. Always check first.
 
 **Assuming namespace policies affect outbound traffic.** PeerAuthentication only controls incoming connections. The outbound side is handled by auto mTLS and DestinationRules.
 
-**Missing sidecar injection.** A PeerAuthentication policy only works on pods with the Istio sidecar. If a pod in the namespace doesn't have a sidecar, the policy doesn't protect its incoming traffic at all.
+**Missing sidecar injection or ambient enrollment.** In sidecar mode, PeerAuthentication is enforced by the Istio sidecar. In ambient mode, it is enforced by ztunnel. If a pod is not part of the mesh, the policy doesn't protect its incoming traffic at all.
 
 ## Clean Up
 
