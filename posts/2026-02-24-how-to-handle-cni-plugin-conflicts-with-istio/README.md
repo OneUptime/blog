@@ -29,10 +29,10 @@ ls /etc/cni/net.d/
 10-calico.conflist
 ```
 
-The Istio CNI plugin should add itself to the Calico conflist as a chained plugin. Check if it did:
+The Istio CNI plugin should add itself to the Calico conflist as a chained plugin. Check if it did from the Istio CNI DaemonSet pod:
 
 ```bash
-kubectl exec -n kube-system $(kubectl get pods -n kube-system -l k8s-app=istio-cni-node -o jsonpath='{.items[0].metadata.name}') -- cat /etc/cni/net.d/10-calico.conflist
+kubectl exec -n istio-system $(kubectl get pods -n istio-system -l k8s-app=istio-cni-node -o jsonpath='{.items[0].metadata.name}') -- cat /host/etc/cni/net.d/10-calico.conflist
 ```
 
 You should see an `istio-cni` entry in the plugins array:
@@ -43,16 +43,13 @@ You should see an `istio-cni` entry in the plugins array:
   "cniVersion": "0.3.1",
   "plugins": [
     {
-      "type": "calico",
-      ...
+      "type": "calico"
     },
     {
-      "type": "bandwidth",
-      ...
+      "type": "bandwidth"
     },
     {
-      "type": "istio-cni",
-      ...
+      "type": "istio-cni"
     }
   ]
 }
@@ -82,11 +79,11 @@ spec:
 
 ## Common Conflict: Cilium and Istio
 
-Cilium is an eBPF-based CNI that handles networking, observability, and security. Running Cilium alongside Istio creates an interesting situation because both tools can handle L7 traffic management.
+Cilium is an eBPF-based CNI that handles networking, observability, and security. Running Cilium alongside Istio creates an interesting situation because both tools can handle L7 traffic policy.
 
-The main conflict here is with port redirection. Cilium can handle traffic redirection using eBPF, and so can Istio using iptables. If both try to redirect traffic, you get loops or dropped packets.
+The main compatibility issue is Cilium's CNI exclusivity and, when Cilium runs with full kube-proxy replacement, socket-based load balancing inside pod namespaces. Cilium's documentation recommends not using Cilium and Istio L7 HTTP policy controls for the same workloads at the same time, because that can create split-brain policy behavior.
 
-The solution is to tell Cilium to skip Istio-managed traffic. Add this to your Cilium configuration:
+The solution is to let Cilium coexist with other CNI plugins. Add this to your Cilium configuration:
 
 ```yaml
 apiVersion: v1
@@ -95,8 +92,15 @@ metadata:
   name: cilium-config
   namespace: kube-system
 data:
-  # Skip sidecar-managed pods
+  # Allow Cilium to coexist with other CNI plugins on the node
   cni-exclusive: "false"
+```
+
+If Cilium is installed with full kube-proxy replacement, also set `socketLB.hostNamespaceOnly=true` in Helm, which appears in the ConfigMap as:
+
+```yaml
+data:
+  bpf-lb-sock-hostns-only: "true"
 ```
 
 On the Istio side, when using Cilium, you have two options:
@@ -117,7 +121,7 @@ spec:
 
 **Option 2: Skip Istio CNI and use the init container**
 
-If chaining doesn't work reliably, you can fall back to using the istio-init container, which runs as an init container with NET_ADMIN capability:
+If chaining doesn't work reliably in sidecar mode, you can fall back to using the istio-init container, which requires the workload to be allowed to use `NET_ADMIN` and `NET_RAW` capabilities:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -139,7 +143,7 @@ spec:
 
 Flannel uses a simple overlay network, and its CNI configuration is straightforward. The conflict with Istio usually comes from the configuration file format.
 
-Flannel can use either a `.conf` file (single plugin) or a `.conflist` file (plugin chain). Istio's CNI plugin can only chain with `.conflist` files. If Flannel is using a `.conf` file, Istio CNI won't be able to chain.
+Flannel can use either a `.conf` file (single plugin) or a `.conflist` file (plugin chain). CNI plugin chains are represented with a `plugins` array, which is normally stored in a `.conflist` file. If Flannel is using a `.conf` file, convert it to a `.conflist` before relying on chained plugins.
 
 Check what format Flannel is using:
 
@@ -215,14 +219,14 @@ Look at the events section for CNI-related errors.
 **Step 5: Check iptables rules inside a pod**
 
 ```bash
-kubectl exec -it <pod-name> -c istio-proxy -- iptables -t nat -L -n -v
+kubectl debug -it <pod-name> --image=nicolaka/netshoot --target=istio-proxy --profile=netadmin -- iptables -t nat -L -n -v
 ```
 
 ## Race Conditions During Node Boot
 
 One subtle issue is race conditions when a node starts up. Both the primary CNI plugin and the Istio CNI DaemonSet need to initialize. If a pod gets scheduled before both are ready, it can end up with incomplete networking.
 
-The Istio CNI plugin has a readiness check. Make sure your DaemonSet has proper tolerations and priority:
+The Istio CNI DaemonSet has readiness checks and race-condition repair logic. The default install uses the `system-node-critical` priority class; if you customize scheduling, make sure the DaemonSet still runs on every Linux node where workloads can be scheduled:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -232,6 +236,7 @@ spec:
     cni:
       enabled: true
       k8s:
+        priorityClassName: system-node-critical
         affinity:
           nodeAffinity:
             requiredDuringSchedulingIgnoredDuringExecution:
@@ -241,6 +246,8 @@ spec:
                       operator: In
                       values:
                         - linux
+        tolerations:
+          - operator: Exists
 ```
 
 ## Prevention Tips
