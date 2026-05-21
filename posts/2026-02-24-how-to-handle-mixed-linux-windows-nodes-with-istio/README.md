@@ -96,11 +96,11 @@ kubectl create namespace shared-services
 kubectl label namespace shared-services istio-injection=enabled
 ```
 
-The key is to never enable sidecar injection on namespaces that contain Windows pods. If you accidentally label a Windows namespace for injection, the sidecar init container will fail because it is a Linux container.
+The key is to never enable sidecar injection on namespaces that contain Windows pods. If you accidentally label a Windows namespace for injection, the injected Linux proxy container will fail on Windows nodes.
 
 ## Preventing Accidental Injection on Windows Pods
 
-As an extra safety measure, add annotations to Windows deployments:
+As an extra safety measure, add labels to Windows deployments:
 
 ```yaml
 apiVersion: apps/v1
@@ -109,9 +109,14 @@ metadata:
   name: windows-app
   namespace: mixed-namespace
 spec:
+  selector:
+    matchLabels:
+      app: windows-app
   template:
     metadata:
-      annotations:
+      labels:
+        app: windows-app
+        kubernetes.io/os: windows
         sidecar.istio.io/inject: "false"
     spec:
       nodeSelector:
@@ -121,9 +126,9 @@ spec:
           image: my-windows-app:latest
 ```
 
-The `sidecar.istio.io/inject: "false"` annotation prevents injection even if the namespace has injection enabled.
+The `sidecar.istio.io/inject: "false"` label prevents injection even if the namespace has injection enabled.
 
-If you have a namespace with both Linux and Windows pods, use a webhook configuration to skip Windows pods automatically. Create an IstioOperator with injection rules:
+If you have a namespace with both Linux and Windows pods, label the Windows pod templates and use a webhook configuration to skip those pods automatically. The injector's `neverInjectSelector` matches pod labels, not the pod's `nodeSelector`. Create an IstioOperator with injection rules:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -198,7 +203,7 @@ spec:
   http:
     - match:
         - sourceLabels:
-            app: windows-caller
+            app: linux-caller
       route:
         - destination:
             host: shared-api
@@ -219,11 +224,11 @@ spec:
         perTryTimeout: 2s
 ```
 
-Windows callers get longer timeouts because they do not benefit from the sidecar's built-in retry logic.
+The source-label match applies to Linux callers that have an Istio sidecar. Unmeshed Windows callers do not have a client-side proxy where Istio can apply these outbound routing rules, so handle their retries and timeouts in the application or at an ingress/gateway proxy.
 
 ## Authorization in Mixed Environments
 
-Authorization policies that reference principals (mTLS identities) will not match Windows callers because they do not present mTLS certificates. Use IP-based or namespace-based rules instead:
+Authorization policies that reference principals or namespaces derived from mTLS identities will not match Windows callers because they do not present mTLS certificates. Use IP-based rules for direct pod-to-pod traffic from Windows workloads, or route Windows traffic through an ingress/gateway proxy that can authenticate it:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -239,10 +244,8 @@ spec:
   rules:
     - from:
         - source:
-            namespaces:
-              - windows-apps
-            notPrincipals:
-              - "*"
+            ipBlocks:
+              - 10.244.20.0/24
       to:
         - operation:
             ports: ["8080"]
@@ -252,7 +255,7 @@ spec:
               - "cluster.local/ns/linux-apps/sa/linux-caller"
 ```
 
-The first rule allows traffic from the windows-apps namespace without requiring a principal (since Windows pods will not have one). The second rule allows traffic from specific Linux service accounts with their mTLS identity.
+The first rule allows traffic from the Windows pod CIDR without requiring a principal (since Windows pods will not have one). Replace the example CIDR with the actual Windows pod or node CIDR for your cluster. The second rule allows traffic from specific Linux service accounts with their mTLS identity.
 
 ## Monitoring Mixed Workloads
 
@@ -280,10 +283,17 @@ metadata:
   name: linux-service
   namespace: linux-apps
 spec:
+  selector:
+    matchLabels:
+      app: linux-service
   template:
+    metadata:
+      labels:
+        app: linux-service
     spec:
       containers:
         - name: app
+          image: my-linux-app:latest
           livenessProbe:
             httpGet:
               path: /health
@@ -300,12 +310,20 @@ metadata:
   name: windows-service
   namespace: windows-apps
 spec:
+  selector:
+    matchLabels:
+      app: windows-service
   template:
+    metadata:
+      labels:
+        app: windows-service
+        kubernetes.io/os: windows
     spec:
       nodeSelector:
         kubernetes.io/os: windows
       containers:
         - name: app
+          image: my-windows-app:latest
           livenessProbe:
             tcpSocket:
               port: 8080
