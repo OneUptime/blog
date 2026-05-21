@@ -23,28 +23,37 @@ Even without malicious intent, a misconfigured CI/CD pipeline or monitoring tool
 
 ## Built-In Login Rate Limiting
 
-ArgoCD has built-in rate limiting for login attempts. Configure it through the `argocd-cmd-params-cm` ConfigMap:
+ArgoCD has built-in rate limiting for login attempts. Configure it with environment variables on the `argocd-server` Deployment:
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: argocd-cmd-params-cm
+  name: argocd-server
   namespace: argocd
-data:
-  # Maximum number of failed login attempts before lockout
-  server.login.attempts.max: "5"
-  # Lockout duration in seconds (300 = 5 minutes)
-  server.login.attempts.reset: "300"
+spec:
+  template:
+    spec:
+      containers:
+        - name: argocd-server
+          env:
+            # Maximum number of failed login attempts before Argo CD rejects more attempts
+            - name: ARGOCD_SESSION_FAILURE_MAX_FAIL_COUNT
+              value: "5"
+            # Failure window in seconds (300 = 5 minutes)
+            - name: ARGOCD_SESSION_FAILURE_WINDOW_SECONDS
+              value: "300"
+            # Maximum number of concurrent login requests
+            - name: ARGOCD_MAX_CONCURRENT_LOGIN_REQUESTS_COUNT
+              value: "50"
 ```
 
-This means after 5 failed login attempts from the same IP, the user is locked out for 5 minutes. This is your first line of defense against brute force attacks.
+This means ArgoCD starts rejecting login attempts after 5 failed attempts during the 5-minute failure window. This is your first line of defense against brute force attacks.
 
-Apply the configuration and restart:
+Apply the configuration:
 
 ```bash
-kubectl apply -f argocd-cmd-params-cm.yaml
-kubectl rollout restart deployment argocd-server -n argocd
+kubectl apply -f argocd-server.yaml
 ```
 
 ## Ingress-Level Rate Limiting
@@ -60,16 +69,14 @@ metadata:
   name: argocd-server
   namespace: argocd
   annotations:
-    nginx.ingress.kubernetes.io/ssl-passthrough: "true"
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
     # Rate limiting annotations
     nginx.ingress.kubernetes.io/limit-rps: "10"
     nginx.ingress.kubernetes.io/limit-rpm: "300"
     nginx.ingress.kubernetes.io/limit-connections: "5"
     nginx.ingress.kubernetes.io/limit-burst-multiplier: "3"
-    # Return 429 when rate limited
-    nginx.ingress.kubernetes.io/server-snippet: |
-      limit_req_status 429;
 spec:
+  ingressClassName: nginx
   tls:
     - hosts:
         - argocd.example.com
@@ -87,10 +94,12 @@ spec:
                   number: 443
 ```
 
+Do not use `nginx.ingress.kubernetes.io/ssl-passthrough` with these HTTP rate limiting annotations. SSL passthrough is layer 4 routing and invalidates the other Ingress annotations. To return 429 instead of the default 503 for rejected requests, set `limit-req-status-code: "429"` in the ingress-nginx controller ConfigMap.
+
 The settings above allow:
-- 10 requests per second per client IP
-- 300 requests per minute per client IP
-- Maximum 5 simultaneous connections per client IP
+- 10 requests per second per client IP per ingress-nginx controller replica
+- 300 requests per minute per client IP per ingress-nginx controller replica
+- Maximum 5 simultaneous connections per client IP per ingress-nginx controller replica
 - Burst multiplier of 3 (allows temporary spikes to 30 rps)
 
 ### Different Rates for Different Endpoints
@@ -104,9 +113,11 @@ metadata:
   name: argocd-server-login
   namespace: argocd
   annotations:
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
     nginx.ingress.kubernetes.io/limit-rps: "2"
     nginx.ingress.kubernetes.io/limit-burst-multiplier: "1"
 spec:
+  ingressClassName: nginx
   rules:
     - host: argocd.example.com
       http:
@@ -125,9 +136,11 @@ metadata:
   name: argocd-server-api
   namespace: argocd
   annotations:
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
     nginx.ingress.kubernetes.io/limit-rps: "20"
     nginx.ingress.kubernetes.io/limit-burst-multiplier: "5"
 spec:
+  ingressClassName: nginx
   rules:
     - host: argocd.example.com
       http:
@@ -174,6 +187,7 @@ spec:
       services:
         - name: argocd-server
           port: 443
+          scheme: https
 ```
 
 ## API Gateway Rate Limiting
@@ -192,7 +206,7 @@ plugin: rate-limiting
 config:
   minute: 300
   hour: 5000
-  policy: local
+  policy: redis
   fault_tolerant: true
   hide_client_headers: false
   redis_host: redis.argocd.svc
@@ -218,6 +232,8 @@ spec:
                 port:
                   number: 443
 ```
+
+If Kong connects to ArgoCD on the service's TLS port, annotate the `argocd-server` Service with `konghq.com/protocol: https` so Kong uses HTTPS for upstream traffic.
 
 ## Application-Level Rate Limiting with Envoy
 
@@ -253,9 +269,6 @@ data:
                                 prefix: "/"
                               route:
                                 cluster: argocd_server
-                          rate_limits:
-                            - actions:
-                                - remote_address: {}
                     http_filters:
                       - name: envoy.filters.http.local_ratelimit
                         typed_config:
@@ -265,6 +278,14 @@ data:
                             max_tokens: 100
                             tokens_per_fill: 10
                             fill_interval: 1s
+                          filter_enabled:
+                            default_value:
+                              numerator: 100
+                              denominator: HUNDRED
+                          filter_enforced:
+                            default_value:
+                              numerator: 100
+                              denominator: HUNDRED
                       - name: envoy.filters.http.router
                         typed_config:
                           "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
