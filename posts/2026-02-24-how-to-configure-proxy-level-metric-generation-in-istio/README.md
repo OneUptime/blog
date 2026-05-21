@@ -24,7 +24,7 @@ Separately, Envoy itself produces internal operational metrics about its own beh
 - DNS resolution stats
 - Load balancer metrics per upstream cluster
 
-By default, Istio only exposes a subset of these through Prometheus. The rest are available on the admin interface but not scraped.
+By default, Istio proxies create and expose only a subset of Envoy stats to reduce memory and CPU overhead. You can opt in to additional Envoy stats when you need them.
 
 ## Checking Current Proxy Metrics
 
@@ -40,11 +40,11 @@ That gives you a line count. For a typical service, you will see a few hundred t
 kubectl exec deploy/my-service -c istio-proxy -- curl -s localhost:15000/stats | wc -l
 ```
 
-The full stats output is usually much larger. The difference is all the internal Envoy stats that are not exposed to Prometheus by default.
+The full stats output is usually formatted differently and may include stats that are easier to inspect directly from the admin endpoint. Additional Envoy stats still need to be enabled with a stats matcher before they are created and exposed.
 
 ## Configuring Which Proxy Metrics to Generate
 
-The `proxyStatsMatcher` in the proxy configuration controls which additional Envoy metrics get included in the Prometheus output.
+The `proxyStatsMatcher` in the proxy configuration controls which additional Envoy stats get created and reported by the proxy.
 
 ### Mesh-Wide Configuration
 
@@ -71,6 +71,8 @@ spec:
         inclusionRegexps:
           - ".*circuit_breakers.*"
 ```
+
+Restart the affected proxies after changing this setting so they pick up the new stats matcher.
 
 The three matching options are:
 
@@ -150,42 +152,31 @@ spec:
 
 In this example, request duration is only recorded on the server side, which cuts the number of histogram time series in half. For latency monitoring, server-side metrics are usually more accurate anyway since they do not include network transit time.
 
-### Custom Metric Definitions
+### Custom Metric Dimensions
 
-You can define entirely custom metrics using the stats plugin configuration through EnvoyFilter:
+You can add custom dimensions to Istio metrics using the Telemetry API:
 
 ```yaml
-apiVersion: networking.istio.io/v1alpha3
-kind: EnvoyFilter
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
 metadata:
-  name: custom-metric
+  name: custom-metric-dimensions
   namespace: istio-system
 spec:
-  configPatches:
-    - applyTo: HTTP_FILTER
-      match:
-        context: SIDECAR_INBOUND
-        listener:
-          filterChain:
-            filter:
-              name: envoy.filters.network.http_connection_manager
-              subFilter:
-                name: envoy.filters.http.router
-      patch:
-        operation: INSERT_BEFORE
-        value:
-          name: istio.stats
-          typed_config:
-            "@type": type.googleapis.com/udpa.type.v1.TypedStruct
-            type_url: type.googleapis.com/stats.PluginConfig
-            value:
-              metrics:
-                - name: "custom_request_count"
-                  dimensions:
-                    source_app: "source.workload.name"
-                    destination_service: "destination.service.name"
-                    api_version: "request.headers['x-api-version']"
-                  type: COUNTER
+  metrics:
+    - providers:
+        - name: prometheus
+      overrides:
+        - match:
+            metric: REQUEST_COUNT
+            mode: CLIENT_AND_SERVER
+          tagOverrides:
+            source_app:
+              value: "source.workload.name"
+            destination_service:
+              value: "destination.service.name"
+            api_version:
+              value: "request.headers['x-api-version']"
 ```
 
 ## Configuring Histogram Buckets
@@ -193,35 +184,20 @@ spec:
 The default histogram buckets for request duration might not match your application's latency profile. You can customize them:
 
 ```yaml
-apiVersion: install.istio.io/v1alpha1
-kind: IstioOperator
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment-service
 spec:
-  meshConfig:
-    defaultConfig:
-      proxyHeaders:
-        metadataExchangeHeaders:
-          mode: IN_MESH
-  values:
-    telemetry:
-      v2:
-        prometheus:
-          configOverride:
-            inboundSidecar:
-              metrics:
-                - name: request_duration_milliseconds
-                  type: HISTOGRAM
-                  histogram_buckets_override:
-                    - 1
-                    - 5
-                    - 10
-                    - 25
-                    - 50
-                    - 100
-                    - 250
-                    - 500
-                    - 1000
-                    - 5000
-                    - 10000
+  template:
+    metadata:
+      annotations:
+        sidecar.istio.io/statsHistogramBuckets: |
+          {"istiocustom":[1,5,10,25,50,100,250,500,1000,5000,10000]}
+    spec:
+      containers:
+        - name: payment-service
+          image: payment-service:v2
 ```
 
 If your service responds in single-digit milliseconds, the default buckets waste resolution. Custom buckets let you see the distribution where it matters.
