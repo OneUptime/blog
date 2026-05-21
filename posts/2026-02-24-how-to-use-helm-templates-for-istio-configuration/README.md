@@ -376,7 +376,7 @@ for ENV in staging production; do
   kubectl apply --dry-run=client -f "/tmp/rendered-${ENV}.yaml"
 
   # Validate with istioctl
-  istioctl analyze --use-kube=false -f "/tmp/rendered-${ENV}.yaml"
+  istioctl analyze --use-kube=false "/tmp/rendered-${ENV}.yaml"
 done
 ```
 
