@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, WebAssembly, Rate Limiting, Envoy, Traffic Management
 
-Description: Building a custom rate limiting Wasm plugin for Istio with per-client limiting, sliding windows, and configurable thresholds.
+Description: Building a custom rate limiting Wasm plugin for Istio with per-client limiting, token buckets, and configurable thresholds.
 
 ---
 
@@ -16,9 +16,9 @@ Before building anything, it is important to understand the difference:
 
 **Global rate limiting** uses a shared backend (like Redis) so all proxy instances share the same counters. If your rate limit is 100 requests per minute, the total across all instances is 100.
 
-**Local rate limiting** maintains counters per proxy instance. If your rate limit is 100 requests per minute and you have 3 proxy replicas, the effective limit is 300 requests per minute.
+**Local rate limiting** maintains counters inside the proxy instead of in a shared backend. If your rate limit is 100 requests per minute and you have 3 proxy replicas, the effective limit is roughly 300 requests per minute. With a Wasm implementation that stores state in the proxy, the effective limit can also scale with the number of Envoy worker threads because each worker runs its own Wasm execution instance.
 
-Wasm plugins implement local rate limiting by default. For many use cases - protecting a single backend from overload, preventing abuse from specific clients, or enforcing fair usage - local rate limiting works well. You just need to account for the number of proxy instances when setting limits.
+Wasm plugins implement local rate limiting by default. For many use cases - protecting a single backend from overload, preventing abuse from specific clients, or enforcing fair usage - local rate limiting works well. You just need to account for the number of proxy instances and worker threads when setting limits.
 
 ## Building a Token Bucket Rate Limiter
 
@@ -27,7 +27,6 @@ The token bucket algorithm is a good choice for rate limiting. Tokens are added 
 ```rust
 use proxy_wasm::traits::*;
 use proxy_wasm::types::*;
-use std::collections::HashMap;
 use std::time::Duration;
 
 proxy_wasm::main! {{
@@ -58,7 +57,7 @@ impl RootContext for RateLimitRoot {
                 if let Some(max) = config["max_tokens"].as_u64() {
                     self.max_tokens = max;
                 }
-                if let Some(rate) = config["refill_rate"].as_u64() {
+                if let Some(rate) = config["refill_rate"].as_u64().filter(|rate| *rate > 0) {
                     self.refill_rate = rate;
                 }
                 if let Some(header) = config["key_header"].as_str() {
@@ -82,6 +81,8 @@ impl RootContext for RateLimitRoot {
             refill_rate: self.refill_rate,
             key_header: self.key_header.clone(),
             response_code: self.response_code,
+            remaining_tokens: None,
+            reset_at: 0,
         }))
     }
 
@@ -95,6 +96,8 @@ struct RateLimitHttp {
     refill_rate: u64,
     key_header: String,
     response_code: u32,
+    remaining_tokens: Option<u64>,
+    reset_at: u64,
 }
 
 impl Context for RateLimitHttp {}
@@ -127,7 +130,9 @@ impl HttpContext for RateLimitHttp {
 
         // Calculate tokens to add based on elapsed time
         let elapsed = now.saturating_sub(last_refill);
-        let new_tokens = (tokens + elapsed * self.refill_rate).min(self.max_tokens);
+        let new_tokens = tokens
+            .saturating_add(elapsed.saturating_mul(self.refill_rate))
+            .min(self.max_tokens);
 
         if new_tokens == 0 {
             // Rate limited
@@ -151,8 +156,10 @@ impl HttpContext for RateLimitHttp {
         bucket_data.extend_from_slice(&now.to_le_bytes());
         let _ = self.set_shared_data(&bucket_key, Some(&bucket_data), None);
 
-        // Add rate limit headers to the response
-        self.set_http_request_header("x-ratelimit-tokens", Some(&remaining.to_string()));
+        // Store rate limit state on this request context for response headers.
+        self.remaining_tokens = Some(remaining);
+        let tokens_to_full = self.max_tokens.saturating_sub(remaining);
+        self.reset_at = now + ((tokens_to_full + self.refill_rate - 1) / self.refill_rate);
 
         Action::Continue
     }
@@ -248,10 +255,10 @@ It is good practice to include rate limit information in response headers so cli
 
 ```rust
 fn on_http_response_headers(&mut self, _num_headers: usize, _end_of_stream: bool) -> Action {
-    if let Some(remaining) = self.get_http_request_header("x-ratelimit-tokens") {
+    if let Some(remaining) = self.remaining_tokens {
         self.add_http_response_header("x-ratelimit-limit", &self.max_tokens.to_string());
-        self.add_http_response_header("x-ratelimit-remaining", &remaining);
-        self.add_http_response_header("x-ratelimit-reset", &self.next_reset_time());
+        self.add_http_response_header("x-ratelimit-remaining", &remaining.to_string());
+        self.add_http_response_header("x-ratelimit-reset", &self.reset_at.to_string());
     }
     Action::Continue
 }
@@ -274,7 +281,7 @@ kubectl exec test-pod -n my-app -- curl -v -H "x-api-key: test-key" http://api-g
 
 ## Shared Data Limitations
 
-The `set_shared_data` and `get_shared_data` functions share data across Wasm plugin instances within the same Envoy process. However, this data is not shared across:
+The `set_shared_data` and `get_shared_data` functions share data within the same Wasm VM. Envoy workers run independent Wasm execution instances for HTTP filters by default, so this data is not shared across:
 
 - Different proxy pods (different Kubernetes pods)
 - Different worker threads (depending on Envoy's configuration)
@@ -286,21 +293,49 @@ For true global rate limiting, you would need to use HTTP callouts to a rate lim
 Define custom metrics to track rate limiting:
 
 ```rust
+struct RateLimitRoot {
+    // Existing fields...
+    allowed_counter: Option<u32>,
+    rejected_counter: Option<u32>,
+}
+
 impl RootContext for RateLimitRoot {
     fn on_configure(&mut self, _size: usize) -> bool {
-        self.allowed_counter = self.define_metric(
-            MetricType::Counter, "custom_ratelimit_allowed_total"
-        ).unwrap();
-        self.rejected_counter = self.define_metric(
-            MetricType::Counter, "custom_ratelimit_rejected_total"
-        ).unwrap();
+        self.allowed_counter = proxy_wasm::hostcalls::define_metric(
+            MetricType::Counter,
+            "custom_ratelimit_allowed_total",
+        ).ok();
+        self.rejected_counter = proxy_wasm::hostcalls::define_metric(
+            MetricType::Counter,
+            "custom_ratelimit_rejected_total",
+        ).ok();
         true
+    }
+}
+
+struct RateLimitHttp {
+    // Existing fields...
+    allowed_counter: Option<u32>,
+    rejected_counter: Option<u32>,
+}
+
+impl RateLimitHttp {
+    fn record_allowed(&self) {
+        if let Some(counter) = self.allowed_counter {
+            let _ = proxy_wasm::hostcalls::increment_metric(counter, 1);
+        }
+    }
+
+    fn record_rejected(&self) {
+        if let Some(counter) = self.rejected_counter {
+            let _ = proxy_wasm::hostcalls::increment_metric(counter, 1);
+        }
     }
 }
 ```
 
-These metrics show up in Envoy's stats endpoint and can be scraped by Prometheus.
+These metrics show up in Envoy's stats endpoint and can be scraped by Prometheus when your Istio/Prometheus configuration includes the custom Envoy stats.
 
 ## Summary
 
-Building a rate limiter as a Wasm plugin gives you complete control over limiting logic without requiring external dependencies like Redis. You can implement token bucket algorithms, per-endpoint limits, per-client tiers, and custom response headers. The tradeoff is that limiting is per-proxy instance rather than global, so you need to divide your limits by the number of proxy replicas. For many use cases, this local approach is simpler and faster than setting up a global rate limit service.
+Building a rate limiter as a Wasm plugin gives you complete control over limiting logic without requiring external dependencies like Redis. You can implement token bucket algorithms, per-endpoint limits, per-client tiers, and custom response headers. The tradeoff is that limiting is local rather than global, so you need to divide your limits by the number of proxy replicas and worker threads that can hold independent counters. For many use cases, this local approach is simpler and faster than setting up a global rate limit service.
