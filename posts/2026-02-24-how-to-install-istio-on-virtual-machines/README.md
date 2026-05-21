@@ -20,7 +20,7 @@ When you add a VM to the Istio mesh:
 2. The VM gets a mesh identity through a WorkloadEntry resource
 3. The sidecar connects to istiod for configuration
 4. Kubernetes services can call the VM service and vice versa
-5. mTLS is enforced between all mesh members
+5. mTLS is used between mesh members when Istio mutual TLS is enabled for the workloads
 
 ```mermaid
 flowchart LR
@@ -42,10 +42,11 @@ flowchart LR
 
 ## Prerequisites
 
-- A running Istio installation (version 1.14+)
+- A running, supported Istio installation (the package examples below use Istio 1.30.0)
 - An east-west gateway exposed outside the cluster
 - Network connectivity from the VM to the east-west gateway
 - DNS resolution from the VM to the gateway (or use IP directly)
+- If you use automatic WorkloadEntry registration and health checks, Istio must be installed with `PILOT_ENABLE_WORKLOAD_ENTRY_AUTOREGISTRATION=true` and `PILOT_ENABLE_WORKLOAD_ENTRY_HEALTHCHECKS=true`
 
 ## Step 1: Prepare the Kubernetes Side
 
@@ -113,9 +114,17 @@ spec:
         name: tls-istiod
         protocol: TLS
       tls:
-        mode: AUTO_PASSTHROUGH
+        mode: PASSTHROUGH
       hosts:
-        - "*.local"
+        - "*"
+    - port:
+        number: 15017
+        name: tls-istiodwebhook
+        protocol: TLS
+      tls:
+        mode: PASSTHROUGH
+      hosts:
+        - "*"
 ---
 apiVersion: networking.istio.io/v1
 kind: VirtualService
@@ -124,19 +133,28 @@ metadata:
   namespace: istio-system
 spec:
   hosts:
-    - istiod.istio-system.svc.cluster.local
+    - "*"
   gateways:
     - istiod-gateway
   tls:
     - match:
         - port: 15012
           sniHosts:
-            - istiod.istio-system.svc.cluster.local
+            - "*"
       route:
         - destination:
             host: istiod.istio-system.svc.cluster.local
             port:
               number: 15012
+    - match:
+        - port: 15017
+          sniHosts:
+            - "*"
+      route:
+        - destination:
+            host: istiod.istio-system.svc.cluster.local
+            port:
+              number: 443
 ```
 
 ```bash
@@ -191,6 +209,7 @@ istioctl x workload entry configure \
   -f workload-group.yaml \
   -o vm-files \
   --clusterID Kubernetes \
+  --capture-dns \
   --autoregister
 ```
 
@@ -214,7 +233,7 @@ SSH into the VM and install the Istio sidecar. On a Debian/Ubuntu VM:
 
 ```bash
 # Download the Istio sidecar package
-curl -LO https://storage.googleapis.com/istio-release/releases/1.24.0/deb/istio-sidecar.deb
+curl -LO https://storage.googleapis.com/istio-release/releases/1.30.0/deb/istio-sidecar.deb
 
 # Install it
 sudo dpkg -i istio-sidecar.deb
@@ -223,7 +242,7 @@ sudo dpkg -i istio-sidecar.deb
 For RPM-based systems:
 
 ```bash
-curl -LO https://storage.googleapis.com/istio-release/releases/1.24.0/rpm/istio-sidecar.rpm
+curl -LO https://storage.googleapis.com/istio-release/releases/1.30.0/rpm/istio-sidecar.rpm
 sudo rpm -i istio-sidecar.rpm
 ```
 
@@ -232,7 +251,7 @@ sudo rpm -i istio-sidecar.rpm
 Move the bootstrap files into the right locations:
 
 ```bash
-sudo mkdir -p /etc/certs /var/run/secrets/tokens /var/lib/istio/envoy
+sudo mkdir -p /etc/certs /var/run/secrets/tokens /var/lib/istio/envoy /etc/istio/config /etc/istio/proxy
 
 # Copy certificates
 sudo cp /tmp/istio-vm/root-cert.pem /etc/certs/root-cert.pem
@@ -250,7 +269,7 @@ sudo cp /tmp/istio-vm/mesh.yaml /etc/istio/config/mesh
 sudo sh -c 'cat /tmp/istio-vm/hosts >> /etc/hosts'
 
 # Set ownership
-sudo chown -R istio-proxy:istio-proxy /etc/certs /var/run/secrets /var/lib/istio /etc/istio
+sudo chown -R istio-proxy /etc/certs /var/run/secrets /var/lib/istio /etc/istio/config /etc/istio/proxy
 ```
 
 ## Step 6: Start the Sidecar
@@ -320,14 +339,14 @@ From the VM, call a Kubernetes service:
 curl -s http://httpbin.sample:8000/ip
 ```
 
-Both directions should work with mTLS encryption.
+Both directions should work with mTLS encryption when Istio mutual TLS is enabled for the workloads.
 
 ## Checking mTLS Between Kubernetes and VM
 
 Verify that traffic is encrypted:
 
 ```bash
-istioctl proxy-config secret -n vm-workloads my-vm-app-workloadentry
+curl -s localhost:15000/config_dump | istioctl proxy-config secret --file -
 ```
 
 You should see valid certificates issued by the Istio CA.
@@ -369,7 +388,7 @@ openssl x509 -in /etc/certs/root-cert.pem -text -noout | head -20
 **Token expired**: The istio-token has a limited lifetime. Regenerate it:
 
 ```bash
-istioctl x workload entry configure -f workload-group.yaml -o vm-files --autoregister
+istioctl x workload entry configure -f workload-group.yaml -o vm-files --clusterID Kubernetes --capture-dns --autoregister
 ```
 
 VM integration with Istio brings your non-Kubernetes workloads into the mesh, giving you consistent security and observability across your entire infrastructure. The setup is more involved than purely Kubernetes-based mesh, but it eliminates the need for separate solutions for VM-to-pod communication.
