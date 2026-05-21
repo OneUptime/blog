@@ -38,7 +38,7 @@ When you resolve `my-headless-service.default.svc.cluster.local`, instead of get
 
 Istio's sidecar (Envoy) intercepts all outbound traffic from a pod. For regular services, the interception is straightforward - traffic to the ClusterIP gets routed to a healthy backend pod. For headless services, Istio creates an Envoy cluster with all the individual pod endpoints.
 
-The key difference is how the Envoy proxy discovers the endpoints. With regular services, Envoy gets endpoint information from Istio's control plane (istiod), which watches the Kubernetes endpoints API. With headless services, it works the same way at the data plane level, but the DNS resolution behavior is different for the application.
+The key difference is how the Envoy proxy matches traffic to the endpoints. Istio gets service and endpoint information from its control plane (istiod), which watches the Kubernetes service discovery APIs, including EndpointSlices. With headless services, the discovery path is similar, but the DNS resolution behavior is different for the application.
 
 Here is where it gets tricky. If your application resolves the headless service DNS and connects to a specific pod IP directly, Istio's sidecar still intercepts that traffic. But since the destination is a specific pod IP rather than a service VIP, Istio has to figure out which service that pod belongs to.
 
@@ -125,7 +125,7 @@ spec:
           weight: 20
 ```
 
-This will work, but only when the client connects to the service hostname. If the client resolves DNS and connects directly to a pod IP, the VirtualService routing rules won't apply because the traffic is addressed to a pod IP, not the service hostname.
+This will work when the client connects using the service hostname. For HTTP services, Istio can still apply routing when the request is sent to a resolved pod IP as long as the HTTP `Host` or `:authority` header is the service hostname. If the client explicitly connects to a pod IP or pod-specific hostname, the VirtualService rules for the service hostname won't apply.
 
 ## StatefulSet Considerations
 
@@ -232,7 +232,7 @@ When something is not working right with headless services in Istio, start by ch
 ```bash
 # Check endpoints from Kubernetes perspective
 
-kubectl get endpoints my-headless-service -n default
+kubectl get endpointslice -n default -l kubernetes.io/service-name=my-headless-service
 
 # Check how Istio sees the endpoints
 istioctl proxy-config endpoint <client-pod> -n default | grep my-headless-service
@@ -241,7 +241,7 @@ istioctl proxy-config endpoint <client-pod> -n default | grep my-headless-servic
 istioctl proxy-config cluster <client-pod> -n default --fqdn my-headless-service.default.svc.cluster.local
 ```
 
-If the endpoints show up in Kubernetes but not in the Istio proxy config, check that the service ports are named correctly and that the pods have the right labels.
+If the EndpointSlices show up in Kubernetes but not in the Istio proxy config, check that the service ports are named correctly and that the pods have the right labels.
 
 Also check the listener configuration to make sure Istio is intercepting traffic to the headless service:
 
@@ -249,4 +249,4 @@ Also check the listener configuration to make sure Istio is intercepting traffic
 istioctl proxy-config listener <client-pod> -n default --port 8080
 ```
 
-Headless services in Istio work well once you understand the DNS and routing differences. The main thing to remember is that when clients connect to specific pod IPs (which is the whole point of headless services), some Istio routing features won't apply. Design your traffic management strategy accordingly.
+Headless services in Istio work well once you understand the DNS and routing differences. The main thing to remember is that when clients explicitly connect to specific pod IPs or pod-specific hostnames, some Istio routing features won't apply. Design your traffic management strategy accordingly.
