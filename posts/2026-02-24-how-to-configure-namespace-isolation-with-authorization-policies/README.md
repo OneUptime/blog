@@ -116,7 +116,7 @@ spec:
         methods:
         - "GET"
         paths:
-        - "/users/*/profile"
+        - "/users/{*}/profile"
 ```
 
 This allows all traffic from within `team-a`, plus read-only access to user profiles from the analytics service in `team-b`. The analytics service cannot access any other endpoint or use any other HTTP method.
@@ -145,7 +145,7 @@ spec:
         namespaces:
         - "istio-system"
 ---
-# Staging namespace - can talk to production read-only
+# Staging namespace - isolated to staging and Istio system traffic
 apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
@@ -182,7 +182,7 @@ spec:
         - "istio-system"
 ```
 
-Note that we allow traffic from `istio-system` in each case. This is needed for Istio's control plane to communicate with the sidecars.
+Only allow traffic from `istio-system` when in-mesh workloads there, such as an ingress gateway or observability component, need to call services in these namespaces. Istio's control plane communication with sidecars is not allowed by namespace inbound `AuthorizationPolicy` rules.
 
 ## Shared Services Pattern
 
@@ -286,6 +286,18 @@ spec:
         namespaces:
         - "team-a"
         - "gateway"
+---
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-team-b-analytics-to-api
+  namespace: team-a
+spec:
+  selector:
+    matchLabels:
+      app: api
+  action: ALLOW
+  rules:
   - from:
     - source:
         principals:
@@ -345,10 +357,10 @@ spec:
 
 ## Tips
 
-**Do not forget about Istio system namespaces.** The `istio-system` namespace needs to be allowed in most cases for the control plane to function.
+**Do not forget about Istio system namespaces.** Allow `istio-system` only when workloads in that namespace, such as gateways or observability tools, need to call your services.
 
 **Health checks work differently.** Kubernetes kubelet health probes are handled by Istio's probe rewriting, so they typically are not affected by authorization policies. But if you disabled this feature, you need to account for them.
 
-**Use labels for dynamic namespace grouping.** If you have many namespaces that should share access, consider using a convention like labeling namespaces with `team: a` and matching on that in your policies.
+**Use naming conventions or generated policies for dynamic namespace grouping.** If you have many namespaces that should share access, consider using a naming convention you can match in policy values, or generate policies from namespace labels with your GitOps tooling.
 
 Namespace isolation with Istio is a clean, declarative way to enforce boundaries between teams, environments, and applications in a shared cluster. Combined with mTLS, it gives you strong guarantees that traffic flows only through approved paths.
