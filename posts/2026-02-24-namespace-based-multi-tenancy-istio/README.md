@@ -36,7 +36,7 @@ kubectl label namespace tenant-b istio-injection=enabled
 kubectl label namespace tenant-b tenant=tenant-b
 ```
 
-The `tenant` label is important. You will use it later in authorization policies to identify which namespace belongs to which tenant.
+The `tenant` label is important. You will use it later in network policies to identify which namespace belongs to which tenant.
 
 ## Enforcing Namespace Isolation with AuthorizationPolicy
 
@@ -200,7 +200,7 @@ spec:
 
 ## Network Policies as a Second Layer
 
-Istio operates at Layer 7, but you should also add Kubernetes NetworkPolicies as a Layer 3/4 safety net. If the sidecar is somehow bypassed (init container failure, misconfigured pod), network policies still block cross-namespace traffic:
+Istio gives you mesh-level policy enforcement, but you should also add Kubernetes NetworkPolicies as a Layer 3/4 safety net. If the sidecar is somehow bypassed (init container failure, misconfigured pod), network policies still block cross-namespace traffic:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -218,6 +218,13 @@ spec:
     - namespaceSelector:
         matchLabels:
           tenant: tenant-a
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: istio-system
+      podSelector:
+        matchLabels:
+          istio: ingressgateway
   egress:
   - to:
     - namespaceSelector:
@@ -230,9 +237,21 @@ spec:
     ports:
     - protocol: UDP
       port: 53
+    - protocol: TCP
+      port: 53
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: istio-system
+      podSelector:
+        matchLabels:
+          app: istiod
+    ports:
+    - protocol: TCP
+      port: 15012
 ```
 
-Note the DNS egress rule. Without it, pods cannot resolve service names.
+Note the DNS and Istio control-plane egress rules. Without DNS, pods cannot resolve service names. Without access to istiod, sidecars may be unable to receive configuration or certificates.
 
 ## Automating Tenant Onboarding
 
