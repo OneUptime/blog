@@ -35,9 +35,9 @@ repos:
     hooks:
       - id: istio-validate
         name: Validate Istio Configuration
-        entry: bash -c 'istioctl validate -f "$@"' --
+        entry: bash -c 'for file in "$@"; do istioctl validate -f "$file" || exit 1; done' --
         language: system
-        files: '\.yaml$'
+        files: '\.ya?ml$'
         types: [file]
 ```
 
@@ -65,11 +65,12 @@ done)
 
 if [ -n "$ISTIO_FILES" ]; then
   echo "Validating Istio configuration..."
-  echo "$ISTIO_FILES" | xargs istioctl validate -f
-  if [ $? -ne 0 ]; then
+  echo "$ISTIO_FILES" | while IFS= read -r file; do
+    istioctl validate -f "$file" || exit 1
+  done || {
     echo "Istio validation failed. Fix the issues before committing."
     exit 1
-  fi
+  }
 fi
 ```
 
@@ -93,23 +94,23 @@ jobs:
 
       - name: Install istioctl
         run: |
-          ISTIO_VERSION=1.20.0
+          ISTIO_VERSION=1.29.2
           curl -L https://istio.io/downloadIstio | ISTIO_VERSION=$ISTIO_VERSION sh -
           sudo mv istio-$ISTIO_VERSION/bin/istioctl /usr/local/bin/
 
       - name: Validate Istio resources
         run: |
           echo "=== Schema Validation ==="
-          find k8s/istio -name '*.yaml' -exec istioctl validate -f {} +
+          istioctl validate -f k8s/istio/
 
       - name: Run istioctl analyze
         run: |
           echo "=== Configuration Analysis ==="
-          istioctl analyze -f k8s/istio/
+          istioctl analyze --use-kube=false k8s/istio/
 
       - name: Check for errors
         run: |
-          RESULT=$(istioctl analyze -f k8s/istio/ -o json 2>/dev/null || echo "[]")
+          RESULT=$(istioctl analyze --use-kube=false k8s/istio/ -o json 2>/dev/null || true)
           ERRORS=$(echo "$RESULT" | python3 -c "
           import json, sys
           try:
@@ -138,17 +139,14 @@ stages:
 
 istio-validation:
   stage: validate
-  image: istio/istioctl:1.20.0
+  image:
+    name: istio/istioctl:1.29.2
+    entrypoint: [""]
   script:
     - istioctl validate -f manifests/istio/
-    - istioctl analyze -f manifests/istio/
+    - istioctl analyze --use-kube=false manifests/istio/
     - |
-      ERRORS=$(istioctl analyze -f manifests/istio/ -o json 2>/dev/null | python3 -c "
-      import json, sys
-      data = json.load(sys.stdin)
-      print(sum(1 for m in data if m.get('level') == 'Error'))
-      ")
-      if [ "$ERRORS" -gt 0 ]; then
+      if ! istioctl analyze --use-kube=false manifests/istio/; then
         exit 1
       fi
   only:
@@ -160,9 +158,9 @@ istio-validation:
 
 For organizations with specific policies about Istio configuration, use Open Policy Agent (OPA) with Gatekeeper to enforce custom rules:
 
-```yaml
+```bash
 # Install Gatekeeper
-kubectl apply -f https://raw.githubusercontent.com/open-policy-agent/gatekeeper/v3.14.0/deploy/gatekeeper.yaml
+kubectl apply -f https://raw.githubusercontent.com/open-policy-agent/gatekeeper/v3.22.2/deploy/gatekeeper.yaml
 ```
 
 Create a constraint template that requires all VirtualServices to have a timeout:
@@ -177,6 +175,9 @@ spec:
     spec:
       names:
         kind: VirtualServiceTimeout
+      validation:
+        openAPIV3Schema:
+          type: object
   targets:
     - target: admission.k8s.gatekeeper.sh
       rego: |
@@ -214,6 +215,9 @@ spec:
     spec:
       names:
         kind: VirtualServiceRetries
+      validation:
+        openAPIV3Schema:
+          type: object
   targets:
     - target: admission.k8s.gatekeeper.sh
       rego: |
@@ -225,6 +229,16 @@ spec:
           not route.retries
           msg := sprintf("VirtualService %v must have retries configured", [input.review.object.metadata.name])
         }
+---
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: VirtualServiceRetries
+metadata:
+  name: require-vs-retries
+spec:
+  match:
+    kinds:
+      - apiGroups: ["networking.istio.io"]
+        kinds: ["VirtualService"]
 ```
 
 ## ArgoCD with Automated Validation
@@ -244,19 +258,13 @@ spec:
     spec:
       containers:
         - name: validate
-          image: istio/istioctl:1.20.0
+          image: istio/istioctl:1.29.2
           command:
             - sh
             - -c
             - |
-              istioctl analyze --all-namespaces
-              ERRORS=$(istioctl analyze --all-namespaces -o json 2>/dev/null | python3 -c "
-              import json, sys
-              data = json.load(sys.stdin)
-              print(sum(1 for m in data if m.get('level') == 'Error'))
-              ")
-              if [ "$ERRORS" -gt 0 ]; then
-                echo "Validation failed with $ERRORS errors"
+              if ! istioctl analyze --all-namespaces; then
+                echo "Validation failed"
                 exit 1
               fi
       restartPolicy: Never
@@ -284,20 +292,13 @@ spec:
           serviceAccountName: istio-reader
           containers:
             - name: analyzer
-              image: istio/istioctl:1.20.0
+              image: istio/istioctl:1.29.2
               command:
                 - sh
                 - -c
                 - |
-                  RESULT=$(istioctl analyze --all-namespaces -o json 2>/dev/null)
-                  ERRORS=$(echo "$RESULT" | python3 -c "
-                  import json, sys
-                  data = json.load(sys.stdin)
-                  errors = [m for m in data if m.get('level') == 'Error']
-                  print(len(errors))
-                  ")
-                  if [ "$ERRORS" -gt 0 ]; then
-                    echo "ALERT: Found $ERRORS configuration errors"
+                  if ! istioctl analyze --all-namespaces; then
+                    echo "ALERT: Found configuration errors"
                     # Send notification (webhook, Slack, etc.)
                   fi
           restartPolicy: OnFailure
