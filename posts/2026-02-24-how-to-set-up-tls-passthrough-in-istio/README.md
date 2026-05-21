@@ -58,7 +58,7 @@ spec:
         - "secure-app.example.com"
 ```
 
-Note the protocol is `TLS` (not `HTTPS`). This is important because HTTPS implies HTTP-level processing, while TLS means raw TCP with TLS.
+The `TLS` protocol is appropriate when you want Istio to treat the connection as raw TLS. For HTTPS services, Istio also supports `protocol: HTTPS` with `tls.mode: PASSTHROUGH`; in both cases, passthrough traffic is routed with a `tls` VirtualService route rather than an `http` route.
 
 ### Step 2: Create the VirtualService
 
@@ -221,7 +221,7 @@ spec:
 
 ## AUTO_PASSTHROUGH Mode
 
-Istio also supports AUTO_PASSTHROUGH, which routes traffic based on SNI without needing a VirtualService. This is primarily used in multi-cluster setups where the SNI encodes the destination cluster and service:
+Istio also supports AUTO_PASSTHROUGH, which routes traffic based on SNI without needing a VirtualService. This is primarily used in multi-cluster setups where the SNI encodes the destination service, subset, and port:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -247,9 +247,9 @@ AUTO_PASSTHROUGH uses Istio's internal SNI format (`outbound_.port_._.hostname_`
 
 ## TLS Passthrough with Sidecar Injection
 
-If the backend pod has an Istio sidecar, you need to be careful about double encryption. The client's TLS connection passes through the gateway to the sidecar, which might try to add its own mTLS layer.
+If the backend pod has an Istio sidecar, you need to be careful about how protocol selection and mesh mTLS interact with the passthrough connection. The client's TLS connection passes through the gateway; if mesh mTLS is enabled, Istio may also secure the gateway-to-sidecar hop with Istio mTLS before the sidecar forwards the original TLS connection to the application.
 
-To avoid issues, disable Istio's protocol detection for the passthrough port or explicitly mark the port protocol:
+To avoid protocol detection issues, explicitly mark the service port protocol:
 
 ```yaml
 apiVersion: v1
@@ -267,7 +267,7 @@ spec:
       appProtocol: tls
 ```
 
-Using `tls` as the port name prefix or setting `appProtocol: tls` tells Istio to treat this as an opaque TLS connection and not try to add mTLS on top.
+Using `tls` as the port name prefix or setting `appProtocol: tls` tells Istio to treat this as TLS-encrypted traffic rather than HTTP. It does not disable Istio mTLS by itself; if you need to avoid an additional mesh mTLS tunnel for this port, configure the workload's `PeerAuthentication` and any relevant `DestinationRule` TLS settings for that port.
 
 ## Testing TLS Passthrough
 
@@ -296,7 +296,7 @@ kubectl exec istio-ingressgateway-xxxx -n istio-system -- \
   openssl s_client -connect secure-app-service.default:8443 -servername secure-app.example.com
 ```
 
-**Wrong certificate presented**: If you see an Istio certificate instead of the backend's certificate, the gateway might be terminating TLS instead of passing through. Double-check the Gateway mode is PASSTHROUGH and the protocol is TLS.
+**Wrong certificate presented**: If you see an Istio certificate instead of the backend's certificate, the gateway might be terminating TLS instead of passing through. Double-check the Gateway mode is PASSTHROUGH and that the Gateway port protocol is `TLS` or `HTTPS`.
 
 **SNI routing not matching**: Ensure the client sends the correct SNI. Check the gateway logs:
 
@@ -304,6 +304,6 @@ kubectl exec istio-ingressgateway-xxxx -n istio-system -- \
 kubectl logs istio-ingressgateway-xxxx -n istio-system | grep "secure-app"
 ```
 
-**VirtualService not matching**: The `sniHosts` in the VirtualService must exactly match the hosts in the Gateway. Wildcards work in the Gateway hosts but the VirtualService sniHosts should match what the client sends.
+**VirtualService not matching**: The `sniHosts` in the VirtualService must fall within the VirtualService `hosts` and be allowed by the Gateway `hosts`. Wildcard prefixes can be used, but the route still needs to match the SNI value the client sends.
 
 TLS passthrough is a straightforward configuration in Istio, but it trades off HTTP-level features (path routing, header manipulation, retries) for end-to-end encryption integrity. Use it when you need the backend to own its TLS certificates and when you do not need HTTP-level gateway features for that particular traffic flow.
