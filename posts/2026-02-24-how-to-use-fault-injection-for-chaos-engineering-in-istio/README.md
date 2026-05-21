@@ -35,7 +35,7 @@ Structure your experiments with a consistent template:
 # Blast Radius: 20% of payment requests
 # Rollback: kubectl delete -f chaos-experiment.yaml
 
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: payment-chaos-experiment
@@ -72,7 +72,7 @@ kubectl delete virtualservices -A -l chaos-experiment
 **Hypothesis**: When the inventory service fails, the product catalog still loads with cached data.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: chaos-inventory-failure
@@ -104,7 +104,7 @@ spec:
 kubectl apply -f chaos-inventory-failure.yaml
 
 # Monitor error rates across all services
-watch -n 5 'kubectl exec -n istio-system deploy/prometheus -- curl -s "localhost:9090/api/v1/query?query=sum(rate(istio_requests_total\{response_code=~\"5.*\"\}[1m]))%20by%20(destination_service)" | jq ".data.result[] | {service: .metric.destination_service, error_rate: .value[1]}"'
+watch -n 5 'kubectl exec -n istio-system deploy/prometheus -- curl -sG --data-urlencode "query=sum(rate(istio_requests_total{response_code=~\"5.*\"}[1m])) by (destination_service)" "localhost:9090/api/v1/query" | jq ".data.result[] | {service: .metric.destination_service, error_rate: .value[1]}"'
 
 # Clean up after observation
 kubectl delete -f chaos-inventory-failure.yaml
@@ -115,7 +115,7 @@ kubectl delete -f chaos-inventory-failure.yaml
 **Hypothesis**: The API gateway times out after 3 seconds and returns a cached response when the product service is slow.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: chaos-product-latency
@@ -143,10 +143,10 @@ spec:
 
 ## Experiment 3: Partial Failure Under Load
 
-**Hypothesis**: With 30% of database queries failing, the retry mechanism keeps the effective error rate below 5%.
+**Hypothesis**: With 30% of database queries failing, the application retry mechanism keeps the effective error rate below 5%.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: chaos-db-proxy-failure
@@ -169,7 +169,7 @@ spec:
 
 **What to observe**:
 - What's the effective error rate at the API level?
-- Are retries working?
+- Are application-level retries working?
 - Is the database getting extra load from retries?
 - Do any operations fail that shouldn't (like writes that get retried and create duplicates)?
 
@@ -178,7 +178,7 @@ spec:
 **Hypothesis**: The system degrades gracefully when three services experience issues simultaneously.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: chaos-multi-1
@@ -198,7 +198,7 @@ spec:
         - destination:
             host: product-service
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: chaos-multi-2
@@ -218,7 +218,7 @@ spec:
         - destination:
             host: search-service
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: chaos-multi-3
@@ -301,8 +301,8 @@ Always have safety nets when running chaos experiments:
 Keep a cleanup command ready:
 
 ```bash
-# Nuclear option: remove ALL VirtualService fault injections
-kubectl get virtualservices -A -l chaos-experiment -o name | xargs kubectl delete -A
+# Nuclear option: remove all labeled chaos experiment VirtualServices
+kubectl delete virtualservices -A -l chaos-experiment
 ```
 
 ### Automated Circuit Breaker
@@ -316,7 +316,7 @@ Use a monitoring check that automatically removes experiments if error rates exc
 MAX_ERROR_RATE=5  # percent
 
 while true; do
-  error_rate=$(kubectl exec -n istio-system deploy/prometheus -- curl -s 'localhost:9090/api/v1/query?query=sum(rate(istio_requests_total{response_code=~"5.*"}[1m]))/sum(rate(istio_requests_total[1m]))*100' | jq -r '.data.result[0].value[1]' 2>/dev/null)
+  error_rate=$(kubectl exec -n istio-system deploy/prometheus -- curl -sG --data-urlencode 'query=sum(rate(istio_requests_total{response_code=~"5.*"}[1m])) / sum(rate(istio_requests_total[1m])) * 100' 'localhost:9090/api/v1/query' | jq -r '.data.result[0].value[1]' 2>/dev/null)
 
   if (( $(echo "$error_rate > $MAX_ERROR_RATE" | bc -l) )); then
     echo "ERROR RATE ${error_rate}% exceeds threshold ${MAX_ERROR_RATE}%!"
