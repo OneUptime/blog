@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Ambient Mesh, HBONE, Protocol, Networking
 
-Description: Understand the HBONE tunneling protocol used in Istio ambient mode, how it replaces sidecar proxies, and what it means for your network architecture.
+Description: Understand the HBONE tunneling protocol used in Istio ambient mode, how it reduces the need for sidecar proxies, and what it means for your network architecture.
 
 ---
 
-Istio's ambient mode introduces a fundamentally different approach to mesh networking. Instead of injecting sidecar proxies into every pod, ambient mode uses a node-level proxy called ztunnel and optional waypoint proxies. At the heart of this architecture is a tunneling protocol called HBONE (HTTP-Based Overlay Network Encapsulation). Understanding HBONE is key to understanding how ambient mode works under the hood.
+Istio's ambient mode introduces a fundamentally different approach to mesh networking. Instead of injecting sidecar proxies into every pod, ambient mode uses a node-level proxy called ztunnel and optional waypoint proxies. At the heart of this architecture is a tunneling protocol called HBONE (HTTP-Based Overlay Network Environment). Understanding HBONE is key to understanding how ambient mode works under the hood.
 
 ## What is HBONE
 
-HBONE stands for HTTP-Based Overlay Network Encapsulation. It is a tunneling protocol that encapsulates mesh traffic inside HTTP/2 CONNECT requests. Think of it as creating a tunnel through an HTTP/2 connection, where the tunnel carries the actual service-to-service traffic.
+HBONE stands for HTTP-Based Overlay Network Environment. It is a tunneling protocol that encapsulates mesh traffic inside HTTP/2 CONNECT requests. Think of it as creating a tunnel through an HTTP/2 connection, where the tunnel carries the actual service-to-service traffic.
 
-The basic idea is straightforward: instead of having each pod run its own proxy (sidecar model), the ztunnel proxy on each node creates HBONE tunnels to ztunnel proxies on other nodes. Service traffic flows through these tunnels, getting encrypted and authenticated along the way.
+The basic idea is straightforward: instead of having each pod run its own proxy (sidecar model), the ztunnel proxy creates HBONE tunnels for ambient workloads. Service traffic flows through these tunnels, getting encrypted and authenticated along the way.
 
 Here is what a request looks like at the network level in ambient mode:
 
@@ -37,16 +37,16 @@ The application sends a normal request. The ztunnel on the source node intercept
 
 An HBONE tunnel uses HTTP/2 CONNECT as the tunneling mechanism. When ztunnel on Node A wants to send traffic to a pod on Node B, it:
 
-1. Establishes (or reuses) an mTLS connection to the ztunnel on Node B
+1. Establishes (or reuses) an mTLS connection using the source and destination workload identities
 2. Sends an HTTP/2 CONNECT request with the destination pod's address
 3. The remote ztunnel accepts the CONNECT and creates a tunnel
 4. The original TCP stream flows through the tunnel
 5. The remote ztunnel delivers the traffic to the destination pod
 
-The HTTP/2 CONNECT method is defined in RFC 7540 and is commonly used for proxying. What makes HBONE special is the combination of:
+The HTTP/2 CONNECT method is defined in the HTTP/2 specification, currently RFC 9113, and is commonly used for proxying. What makes HBONE special is the combination of:
 
-- **mTLS authentication**: Both ztunnels present Istio-issued certificates
-- **SPIFFE identity**: The certificates carry SPIFFE identities for the source and destination workloads
+- **mTLS authentication**: ztunnel presents Istio-issued workload certificates on behalf of the source and destination workloads
+- **SPIFFE identity**: The certificates carry SPIFFE identities for those workloads
 - **Multiplexing**: Multiple tunnels share the same mTLS connection via HTTP/2 streams
 - **Port 15008**: HBONE uses port 15008 as the default tunnel port
 
@@ -56,9 +56,9 @@ You might wonder why Istio chose HTTP/2 CONNECT instead of just using raw mTLS c
 
 **Multiplexing**: HTTP/2 supports multiplexing multiple streams over a single TCP connection. This means ztunnel can carry traffic for many pods over one connection to the remote ztunnel, reducing connection overhead.
 
-**Metadata passing**: HTTP/2 headers can carry additional metadata like the destination address, SPIFFE identity, and other routing information. This is harder to do with raw TLS.
+**Metadata passing**: HTTP/2 headers can carry additional stream-level metadata like the destination address and other routing information without changing the original application traffic. This is harder to do with raw TLS.
 
-**Protocol detection**: The HBONE protocol makes it easier for intermediate infrastructure (firewalls, load balancers) to identify and handle mesh traffic without deep packet inspection.
+**Infrastructure interoperability**: Because HBONE is built from HTTP/2, HTTP CONNECT, and mTLS, it is easier to interoperate with common HTTP-aware load-balancing infrastructure than a custom raw TCP tunnel.
 
 **Connection management**: HTTP/2 has built-in flow control and connection management that works well for multiplexed tunnels.
 
@@ -105,13 +105,13 @@ Check the ztunnel logs on the source node:
 kubectl logs -n istio-system -l app=ztunnel --tail=20
 ```
 
-You will see log entries showing the HBONE tunnel being established:
+You will see log entries showing traffic sent through HBONE:
 
 ```text
-outbound tunnel request: src=10.244.1.5, dst=10.244.2.3:5000, via=10.244.2.1:15008
+2024-05-04T09:59:05.028771Z info access connection complete src.addr=10.244.1.12:58508 dst.addr=10.244.1.10:15008 dst.hbone_addr="10.244.1.10:9080" direction="outbound" bytes_sent=80 bytes_recv=175 duration="1ms"
 ```
 
-The `via` field shows the ztunnel address and port 15008, which is the HBONE tunnel endpoint.
+The `dst.addr` field shows the HBONE listener port, and `dst.hbone_addr` shows the original destination carried through the tunnel.
 
 ## HBONE Port 15008
 
@@ -142,7 +142,7 @@ Here is a comparison of the two approaches:
 | Aspect | Sidecar Model | HBONE (Ambient) |
 |--------|---------------|-----------------|
 | Proxy location | Per-pod sidecar | Per-node ztunnel |
-| Connection model | Direct mTLS between sidecars | HBONE tunnel between ztunnels |
+| Connection model | Direct mTLS between sidecars | HBONE tunnel using workload identities |
 | Resource overhead | Per-pod CPU/memory | Shared per-node |
 | L7 processing | Always available | Only with waypoint proxy |
 | Traffic interception | iptables redirect to sidecar | ztunnel captures on node |
@@ -163,7 +163,7 @@ HBONE is protocol-agnostic at the tunnel level. Since it encapsulates raw TCP st
 HBONE provides the same security guarantees as the sidecar model:
 
 - **Encryption**: All traffic through HBONE tunnels is encrypted with mTLS
-- **Authentication**: Both endpoints present SPIFFE identity certificates
+- **Authentication**: ztunnel presents SPIFFE identity certificates for the proxied workloads
 - **Authorization**: L4 authorization (source/destination identity) is enforced by ztunnel. L7 authorization requires a waypoint proxy.
 - **Certificate rotation**: ztunnel handles certificate rotation just like sidecars do
 
@@ -185,11 +185,9 @@ Each node should have one ztunnel pod.
 kubectl logs -n istio-system -l app=ztunnel | grep "error\|warn" | tail -20
 ```
 
-**Verify port 15008 connectivity between nodes:**
+**Verify port 15008 is allowed between nodes:**
 
-```bash
-kubectl exec -n istio-system $(kubectl get pod -n istio-system -l app=ztunnel --field-selector spec.nodeName=node1 -o name | head -1) -- curl -s http://NODE2_IP:15008
-```
+Because the HBONE listener expects mTLS and HTTP/2 CONNECT, a plain HTTP `curl` request is not a reliable test. Check your NetworkPolicy, security group, or firewall rules to make sure TCP port 15008 is allowed between ztunnel pods.
 
 **Check if the namespace is labeled correctly:**
 
