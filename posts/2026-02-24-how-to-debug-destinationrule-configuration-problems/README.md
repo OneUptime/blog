@@ -105,17 +105,17 @@ If the cluster exists but your settings are not reflected, there might be a conf
 kubectl get destinationrule -A | grep my-service
 ```
 
-Multiple DestinationRules for the same host in the same namespace cause undefined behavior.
+Multiple DestinationRules for the same host are merged with restrictions. Duplicate subset names and duplicate top-level traffic policies are not merged; the first one processed is used and later duplicates are discarded.
 
 ### Check 3: Wrong namespace
 
-DestinationRules are namespace-scoped. A DestinationRule in namespace A only applies to traffic originating from namespace A:
+DestinationRules are namespace-scoped, but Istio looks them up in this order: the client namespace, the service namespace, then the mesh root namespace (`istio-system` by default):
 
 ```bash
 kubectl get destinationrule -n <your-namespace>
 ```
 
-If the DestinationRule is in a different namespace from the client pod, it will not apply to that client.
+If the DestinationRule is in a namespace that is not on that lookup path, it will not apply to that client even if it is exported. For broad reuse, define the DestinationRule in the service namespace.
 
 ## Problem: TLS Configuration Mismatch
 
@@ -124,13 +124,10 @@ TLS issues typically manifest as connection resets or SSL handshake errors.
 ### Check the TLS status
 
 ```bash
-istioctl authn tls-check <pod-name> my-service.default.svc.cluster.local
+istioctl experimental describe pod <pod-name>
 ```
 
-This shows:
-- What TLS mode the client is using
-- What TLS mode the server expects
-- Whether they match
+This can show the DestinationRule TLS mode for traffic to the pod and warnings when PeerAuthentication and DestinationRule settings conflict.
 
 Common mismatches:
 - Client sends ISTIO_MUTUAL but server pod has no sidecar
@@ -139,7 +136,7 @@ Common mismatches:
 
 ### Fix: Align TLS settings
 
-If the server has no sidecar, set `mode: DISABLE` in the DestinationRule:
+By default, Istio's auto mTLS sends mTLS to workloads with sidecars and plaintext to workloads without sidecars. If you explicitly configured a DestinationRule to use mTLS for a server that has no sidecar, remove that TLS override or set `mode: DISABLE`:
 
 ```yaml
 trafficPolicy:
@@ -147,7 +144,7 @@ trafficPolicy:
     mode: DISABLE
 ```
 
-If the server requires mTLS, set `mode: ISTIO_MUTUAL`:
+If the server requires mTLS and auto mTLS is not handling it for you, set `mode: ISTIO_MUTUAL`:
 
 ```yaml
 trafficPolicy:
@@ -180,7 +177,7 @@ If `ejections_total` is 0, either:
 
 ### Check 3: Verify error type
 
-`consecutive5xxErrors` only counts HTTP 5xx status codes. If your service returns 4xx errors or connection resets, those might not trigger ejection. Use `consecutiveGatewayErrors` for gateway-type errors (502, 503, 504).
+For HTTP traffic, `consecutive5xxErrors` counts 5xx status codes. For opaque TCP traffic, connection timeouts, connection failures, and request failures also qualify. Use `consecutiveGatewayErrors` when you specifically want to count gateway-type errors such as HTTP 502, 503, and 504, or TCP connection errors.
 
 ## Useful Debugging Commands
 
@@ -251,13 +248,13 @@ kubectl exec <pod-name> -c istio-proxy -- \
 
 ## Problem: Conflicting DestinationRules
 
-Two DestinationRules for the same host cause unpredictable behavior:
+Two DestinationRules for the same host can produce surprising results if they define the same subset names or top-level traffic policy:
 
 ```bash
 kubectl get destinationrule -A -o custom-columns=NAME:.metadata.name,NAMESPACE:.metadata.namespace,HOST:.spec.host | sort -k3
 ```
 
-If you see two rules with the same host in the same namespace, delete one. If they are in different namespaces, the one in the client's namespace takes precedence.
+If you see two rules with the same host, make sure they do not define the same subset names or more than one top-level `trafficPolicy`. If they are in different namespaces, Istio uses the first matching rule on the lookup path: client namespace, service namespace, then the mesh root namespace.
 
 ## Systematic Debugging Checklist
 
