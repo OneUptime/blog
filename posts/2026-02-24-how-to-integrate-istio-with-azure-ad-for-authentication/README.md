@@ -23,7 +23,7 @@ Go to the Azure Portal and navigate to Microsoft Entra ID > App registrations > 
 - **Redirect URI**: Web - `https://app.mycompany.com/callback`
 
 After creation, note the:
-- **Application (client) ID**: Something like `12345678-abcd-efgh-ijkl-123456789012`
+- **Application (client) ID**: Something like `12345678-abcd-4ef0-8123-123456789012`
 - **Directory (tenant) ID**: Something like `abcdef01-2345-6789-abcd-ef0123456789`
 
 Create a client secret under Certificates & secrets > New client secret.
@@ -46,7 +46,7 @@ This ensures tokens use the v2 issuer format: `https://login.microsoftonline.com
 
 Go to Expose an API and set the Application ID URI to `api://istio-mesh` or any URI you prefer.
 
-Add scopes:
+Add scopes such as `read`, `write`, and `admin`. Clients request them by using the full scope URI:
 - `api://istio-mesh/read`
 - `api://istio-mesh/write`
 - `api://istio-mesh/admin`
@@ -66,19 +66,21 @@ spec:
     - issuer: "https://login.microsoftonline.com/abcdef01-2345-6789-abcd-ef0123456789/v2.0"
       jwksUri: "https://login.microsoftonline.com/abcdef01-2345-6789-abcd-ef0123456789/discovery/v2.0/keys"
       audiences:
-        - "api://istio-mesh"
+        - "12345678-abcd-4ef0-8123-123456789012"
       forwardOriginalToken: true
       outputPayloadToHeader: "x-jwt-payload"
 ```
 
-Replace the tenant ID with your actual Azure AD tenant ID.
+Replace the tenant ID with your actual Azure AD tenant ID and the audience with the Application (client) ID of the API app registration. For Microsoft Entra v2 access tokens, the `aud` claim is the client ID of the web API.
 
-For multi-tenant scenarios where you accept tokens from any Azure AD tenant:
+For multi-tenant scenarios, the Microsoft Entra `common` metadata endpoint uses an issuer template, but the actual tokens still have tenant-specific issuers. Istio matches the issuer exactly, so configure the tenants you trust explicitly:
 
 ```yaml
 jwtRules:
-  - issuer: "https://login.microsoftonline.com/common/v2.0"
-    jwksUri: "https://login.microsoftonline.com/common/discovery/v2.0/keys"
+  - issuer: "https://login.microsoftonline.com/abcdef01-2345-6789-abcd-ef0123456789/v2.0"
+    jwksUri: "https://login.microsoftonline.com/abcdef01-2345-6789-abcd-ef0123456789/discovery/v2.0/keys"
+  - issuer: "https://login.microsoftonline.com/11111111-2222-3333-4444-555555555555/v2.0"
+    jwksUri: "https://login.microsoftonline.com/11111111-2222-3333-4444-555555555555/discovery/v2.0/keys"
 ```
 
 ## Egress Configuration
@@ -219,10 +221,10 @@ User authentication (authorization code flow):
 
 ```text
 https://login.microsoftonline.com/abcdef01-2345-6789-abcd-ef0123456789/oauth2/v2.0/authorize?
-  client_id=12345678-abcd-efgh-ijkl-123456789012&
+  client_id=12345678-abcd-4ef0-8123-123456789012&
   response_type=code&
   redirect_uri=https://app.mycompany.com/callback&
-  scope=api://istio-mesh/read api://istio-mesh/write openid profile
+  scope=api://istio-mesh/read%20api://istio-mesh/write%20openid%20profile
 ```
 
 Exchange the code for tokens:
@@ -230,12 +232,12 @@ Exchange the code for tokens:
 ```bash
 TOKEN=$(curl -s -X POST \
   "https://login.microsoftonline.com/abcdef01-2345-6789-abcd-ef0123456789/oauth2/v2.0/token" \
-  -d "client_id=12345678-abcd-efgh-ijkl-123456789012" \
+  -d "client_id=12345678-abcd-4ef0-8123-123456789012" \
   -d "client_secret=your-client-secret" \
   -d "grant_type=authorization_code" \
   -d "code=the-auth-code" \
-  -d "redirect_uri=https://app.mycompany.com/callback" \
-  -d "scope=api://istio-mesh/read" | jq -r '.access_token')
+  --data-urlencode "redirect_uri=https://app.mycompany.com/callback" \
+  --data-urlencode "scope=api://istio-mesh/read" | jq -r '.access_token')
 ```
 
 Client credentials (service-to-service):
@@ -243,19 +245,19 @@ Client credentials (service-to-service):
 ```bash
 TOKEN=$(curl -s -X POST \
   "https://login.microsoftonline.com/abcdef01-2345-6789-abcd-ef0123456789/oauth2/v2.0/token" \
-  -d "client_id=12345678-abcd-efgh-ijkl-123456789012" \
+  -d "client_id=12345678-abcd-4ef0-8123-123456789012" \
   -d "client_secret=your-client-secret" \
   -d "grant_type=client_credentials" \
-  -d "scope=api://istio-mesh/.default" | jq -r '.access_token')
+  --data-urlencode "scope=api://istio-mesh/.default" | jq -r '.access_token')
 ```
 
 Note the `.default` scope for client credentials. Azure AD requires this for application permissions.
 
 ## Groups Overage
 
-Azure AD has a limit on how many groups can be included directly in the token (typically 200 for v2 tokens). If a user belongs to more groups than the limit, Azure AD includes a `_claim_names` object instead, pointing to a Microsoft Graph endpoint.
+Azure AD has a limit on how many groups can be included directly in the token (typically 200 for JWT tokens). If a user belongs to more groups than the limit, Azure AD includes an overage claim such as `_claim_names` instead. Do not rely on the URL in `_claim_sources`; some tokens can still reference legacy Azure AD Graph endpoints.
 
-To handle this, you either need a middleware that calls the Graph API to resolve groups, or you should use App Roles instead (which are not subject to the same limits).
+To handle this, you either need a middleware that detects the overage claim and calls Microsoft Graph to resolve groups, or you should use App Roles instead (which are not subject to the same limits).
 
 ## Testing
 
@@ -280,6 +282,6 @@ curl -s -o /dev/null -w "%{http_code}" \
 
 **NONCE error**: Azure AD v2 tokens sometimes include a `nonce` in the header that causes issues. Make sure you are using the correct JWKS endpoint for your token version.
 
-**Audience mismatch**: For client credentials, the audience is the Application ID URI (`api://istio-mesh`). For delegated permissions, it might be the client ID. Check the `aud` claim in your token.
+**Audience mismatch**: For v2 access tokens, the audience is the Application (client) ID of the web API. Check the `aud` claim in your token and use that value in the Istio `audiences` list.
 
 Azure AD integration gives Istio access to your existing enterprise identity infrastructure. Users, groups, roles, conditional access policies, and MFA all work through Azure AD, and Istio enforces authorization based on the identity data in the tokens.
