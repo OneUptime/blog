@@ -8,11 +8,13 @@ Description: Learn how to override traffic policies for specific subsets in Isti
 
 ---
 
-One of the most powerful features of Istio's DestinationRule is the ability to define different traffic policies for different subsets of a service. The top-level `trafficPolicy` acts as a default, and each subset can override any part of it. This lets you apply strict circuit breaking to a canary version while keeping relaxed settings for your stable version, or use different load balancing algorithms for different deployment groups.
+One of the most powerful features of Istio's DestinationRule is the ability to define different traffic policies for different subsets of a service. The top-level `trafficPolicy` acts as a default, and each subset can override specific policy fields. This lets you apply strict circuit breaking to a canary version while keeping relaxed settings for your stable version, or use different load balancing algorithms for different deployment groups.
 
 ## How Policy Inheritance Works
 
-When you define a traffic policy at the top level and also within a subset, the subset-level policy completely replaces the top-level policy for that subset. It is not a merge - it is a full override.
+When you define a traffic policy at the top level and also within a subset, the subset inherits the top-level policy. Settings specified at the subset level override the corresponding top-level settings for that subset.
+
+The merge happens at the main `TrafficPolicy` field level. For example, a subset-level `loadBalancer` replaces the top-level `loadBalancer`, but it does not remove the top-level `connectionPool`. If you override a nested block such as `connectionPool` or `outlierDetection`, include the settings from that block that you still want to keep.
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -38,16 +40,16 @@ spec:
     trafficPolicy:
       loadBalancer:
         simple: LEAST_REQUEST
-      # connectionPool is NOT inherited - it uses defaults
+      # connectionPool is still inherited from the top-level trafficPolicy
 ```
 
-In this example, v1 inherits both the ROUND_ROBIN load balancer and the maxConnections of 200. But v2 only gets LEAST_REQUEST load balancing. The connectionPool settings from the top level do NOT carry over to v2 because the subset defines its own trafficPolicy, which replaces the entire top-level policy.
+In this example, v1 inherits both the ROUND_ROBIN load balancer and the maxConnections of 200. The v2 subset overrides only the load balancer with LEAST_REQUEST, while still inheriting the top-level connectionPool settings.
 
-This is a common gotcha. If you want v2 to also have connection pool limits, you must explicitly define them in the v2 subset.
+This is a common gotcha. You only need to repeat settings when you override the same top-level policy block and want to keep some values from that block.
 
 ## Correct Way to Override Partially
 
-If you want to change only one aspect of the traffic policy for a subset while keeping everything else, you need to repeat the settings you want to keep:
+If you want to change only one top-level aspect of the traffic policy for a subset while keeping everything else, specify only that aspect. If you override a nested block, repeat the values from that block that you want to keep:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -78,18 +80,13 @@ spec:
     trafficPolicy:
       loadBalancer:
         simple: LEAST_REQUEST
-      connectionPool:
-        tcp:
-          maxConnections: 200
-        http:
-          http1MaxPendingRequests: 50
       outlierDetection:
         consecutive5xxErrors: 3
         interval: 5s
         baseEjectionTime: 60s
 ```
 
-Now v2 has a different load balancer and stricter outlier detection, but keeps the same connection pool settings.
+Now v2 has a different load balancer and stricter outlier detection, but keeps the same connection pool settings by inheriting the top-level `connectionPool`.
 
 ## Real-World Use Cases
 
@@ -287,7 +284,7 @@ This is useful when your service exposes multiple ports with different character
 
 ## Common Mistakes
 
-**Expecting inheritance**: The biggest mistake is thinking that subset traffic policies inherit from the top-level policy. They do not. When you define a trafficPolicy on a subset, it completely replaces the top-level one.
+**Expecting deep inheritance inside a policy block**: Subsets inherit top-level traffic policies, but a subset-level `connectionPool`, `outlierDetection`, `loadBalancer`, or `tls` block replaces the corresponding top-level block. If you override one of those blocks, include the values from that block that you still need.
 
 **Forgetting the VirtualService**: Defining subsets in a DestinationRule without a VirtualService that routes to them means the subsets are not used. Traffic goes to the top-level policy.
 
@@ -300,4 +297,4 @@ kubectl delete destinationrule api-service-canary
 kubectl delete virtualservice api-service-routing
 ```
 
-Per-subset traffic policies are essential for progressive delivery and multi-version management. The key thing to remember is that subset policies replace (not merge with) the top-level policy. Always define the complete traffic policy for each subset that needs custom settings.
+Per-subset traffic policies are essential for progressive delivery and multi-version management. The key thing to remember is that subset policies inherit the top-level policy, and subset-level blocks replace the corresponding top-level blocks. Define the complete block for each subset-level setting that needs custom values.
