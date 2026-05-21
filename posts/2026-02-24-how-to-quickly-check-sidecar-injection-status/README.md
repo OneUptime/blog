@@ -8,7 +8,7 @@ Description: Practical commands and techniques to verify Istio sidecar proxy inj
 
 ---
 
-Sidecar injection is one of the most fundamental parts of Istio. If a pod does not have the Istio sidecar (envoy proxy), it cannot participate in the mesh, which means no mTLS, no traffic management, and no telemetry. When something is not working right, checking sidecar injection status is usually one of the first things to do.
+Sidecar injection is one of the most fundamental parts of Istio sidecar mode. If a pod does not have the Istio sidecar (envoy proxy), it cannot participate in the sidecar-based mesh, which means no sidecar-based mTLS, traffic management, or telemetry. When something is not working right, checking sidecar injection status is usually one of the first things to do.
 
 Here are the quick and effective ways to verify that sidecars are being injected where they should be.
 
@@ -20,7 +20,7 @@ Istio uses namespace labels to control automatic sidecar injection. Check the la
 kubectl get namespace default --show-labels
 ```
 
-Look for `istio-injection=enabled` in the labels. If it is there, all new pods created in that namespace will get a sidecar automatically.
+Look for `istio-injection=enabled` in the labels. If it is there, all new eligible pods created in that namespace will get a sidecar automatically.
 
 To check all namespaces at once:
 
@@ -39,7 +39,7 @@ backend           Active   15d   enabled
 frontend          Active   15d   enabled
 ```
 
-Namespaces without the label in that column do not have automatic injection enabled.
+Namespaces without the label in that column do not have automatic injection enabled through the legacy namespace label. They might still use a revision label or an opt-out injection policy.
 
 ## Check Using the Revision Label
 
@@ -58,7 +58,7 @@ backend           Active   15d   1-22
 staging           Active   10d   1-21
 ```
 
-A namespace with a revision label gets injection from that specific Istio control plane revision.
+A namespace with a revision label gets injection from that specific Istio control plane revision. If both `istio-injection` and `istio.io/rev` are present on the same namespace, the `istio-injection` label takes precedence.
 
 ## Check if a Specific Pod Has a Sidecar
 
@@ -74,7 +74,7 @@ my-app-7f8c9d6b5-abc12   2/2     Running   0          1h
 db-client-5c8b7d-def34   1/1     Running   0          1h
 ```
 
-A pod showing `2/2` in the READY column has two containers (your app plus the istio-proxy sidecar). A pod showing `1/1` has only one container and is missing the sidecar.
+For a single-container app, a pod showing `2/2` in the READY column usually has two regular containers (your app plus the `istio-proxy` sidecar). A pod showing `1/1` has only one regular container and is missing the sidecar.
 
 For a more explicit check, list the containers in a pod:
 
@@ -119,10 +119,21 @@ for pod in data['items']:
 The `istioctl` tool has built-in commands for checking injection status:
 
 ```bash
-istioctl analyze -n default
+istioctl experimental check-inject -n default pod/my-app-abc123
 ```
 
-This will report any pods that should have sidecars but do not:
+This checks whether the configured webhooks will inject, or did inject, a specific workload and explains the matching decision:
+
+```text
+WEBHOOK                     REVISION  INJECTED  REASON
+istio-sidecar-injector      default   yes       Namespace label istio-injection=enabled matches
+```
+
+You can also use `istioctl analyze` to report configuration problems, including pods that should have sidecars but do not:
+
+```bash
+istioctl analyze -n default
+```
 
 ```text
 Warning [IST0103] (Pod my-app-abc123.default) The pod is missing the Istio proxy.
@@ -141,10 +152,14 @@ This lists every sidecar proxy that is connected to the control plane. If a pod 
 Sidecar injection is done by a mutating admission webhook. Verify it is configured:
 
 ```bash
-kubectl get mutatingwebhookconfiguration -l app=sidecar-injector
+kubectl get mutatingwebhookconfiguration istio-sidecar-injector
 ```
 
-If this returns nothing, the injection webhook is not installed, and no automatic injection will happen.
+If this returns a not found error, the default injection webhook is not installed under that name. Revisioned installations can create revision-specific webhook configurations, so list all webhook configurations if you use revisions:
+
+```bash
+kubectl get mutatingwebhookconfiguration
+```
 
 Check the webhook details:
 
@@ -159,7 +174,13 @@ Look at the `namespaceSelector` to see which namespaces the webhook applies to. 
 If a pod should have a sidecar but does not, check the pod's annotations for clues:
 
 ```bash
-kubectl get pod my-app-abc123 -n default -o jsonpath='{.metadata.annotations}' | python3 -m json.tool
+kubectl get pod my-app-abc123 -n default -o json | \
+  python3 -c "
+import sys, json
+pod = json.load(sys.stdin)
+status = pod.get('metadata', {}).get('annotations', {}).get('sidecar.istio.io/status')
+print(json.dumps(json.loads(status), indent=2) if status else 'MISSING')
+"
 ```
 
 Look for the `sidecar.istio.io/status` annotation. If injection succeeded, it contains JSON with details about the injected containers. If it is absent, injection did not happen.
@@ -176,12 +197,12 @@ Common reasons injection fails:
    kubectl rollout restart deployment my-app -n default
    ```
 
-3. **Pod has injection disabled**: Check for the annotation `sidecar.istio.io/inject: "false"` on the pod or deployment:
+3. **Pod has injection disabled**: Check for the label `sidecar.istio.io/inject: "false"` on the pod template:
    ```bash
-   kubectl get deploy my-app -n default -o jsonpath='{.spec.template.metadata.annotations}'
+   kubectl get deploy my-app -n default -o jsonpath='{.spec.template.metadata.labels}'
    ```
 
-4. **Host networking**: Pods using `hostNetwork: true` cannot have sidecars because the network namespace is shared with the host.
+4. **Host networking**: Automatic injection is ignored for pods using `hostNetwork: true` because the sidecar model assumes the iptables changes required for Envoy interception are inside the pod network namespace.
 
 5. **Init containers conflict**: In rare cases, init containers can interfere with the sidecar init container.
 
@@ -206,7 +227,14 @@ This returns something like `docker.io/istio/proxyv2:1.22.0`.
 While you are checking injection status, it is a good idea to also verify the sidecar resource limits:
 
 ```bash
-kubectl get pod my-app-abc123 -n default -o jsonpath='{.spec.containers[?(@.name=="istio-proxy")].resources}' | python3 -m json.tool
+kubectl get pod my-app-abc123 -n default -o json | \
+  python3 -c "
+import sys, json
+pod = json.load(sys.stdin)
+for container in pod['spec']['containers']:
+    if container['name'] == 'istio-proxy':
+        print(json.dumps(container.get('resources', {}), indent=2))
+"
 ```
 
 If resources are not set properly, the sidecar might be OOMKilled or throttled, which causes mesh connectivity problems.
