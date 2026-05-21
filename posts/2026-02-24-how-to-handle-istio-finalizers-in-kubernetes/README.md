@@ -38,10 +38,10 @@ Istio doesn't heavily use finalizers on its networking CRDs (VirtualService, Des
 
 - **Istio ambient mode**: The waypoint proxy controller uses finalizers on Gateway resources.
 - **Custom controllers**: If you run custom controllers or operators that manage Istio resources, they might add finalizers.
-- **Namespace deletion**: When deleting a namespace with Istio injection enabled, the namespace might get stuck in Terminating state due to finalizers on Istio-managed resources.
-- **Istio operator**: The IstioOperator resource used for installation has finalizers that the operator controller manages.
+- **Namespace deletion**: When deleting a namespace with Istio resources, the namespace might get stuck in Terminating state due to finalizers on resources in that namespace.
+- **Legacy Istio operator**: In older in-cluster operator installations, the IstioOperator resource has finalizers that the operator controller manages. The in-cluster Istio operator was deprecated in Istio 1.23 and removed from Istio core in Istio 1.24.
 
-The IstioOperator resource is the most common place you'll encounter finalizers:
+For legacy operator installations, check IstioOperator finalizers with:
 
 ```bash
 kubectl get istiooperator -n istio-system -o jsonpath='{range .items[*]}{.metadata.name}: {.metadata.finalizers}{"\n"}{end}'
@@ -49,10 +49,10 @@ kubectl get istiooperator -n istio-system -o jsonpath='{range .items[*]}{.metada
 
 ## Stuck Resource Deletion
 
-The most visible symptom of a finalizer issue is a resource stuck in the "Terminating" state:
+The most visible symptom of a finalizer issue is a resource stuck with a deletion timestamp:
 
 ```bash
-kubectl get vs -A | grep Terminating
+kubectl get vs -A -o jsonpath='{range .items[?(@.metadata.deletionTimestamp)]}{.metadata.namespace}/{.metadata.name}{"\n"}{end}'
 ```
 
 Or a namespace that won't delete:
@@ -104,19 +104,19 @@ When a namespace with Istio resources gets stuck in Terminating, it's usually be
 
 1. Istio resources in the namespace have finalizers
 2. The Istio control plane is gone or can't process the cleanup
-3. The validation webhook is blocking deletion
+3. API discovery or a controller needed for cleanup is unhealthy
 
 First, check what's stuck:
 
 ```bash
 kubectl get all -n stuck-namespace
-kubectl get vs,dr,gw,se,pa,ap -n stuck-namespace
+kubectl get vs,dr,gw,se,pa,ap,sidecar,envoyfilter,telemetry -n stuck-namespace
 ```
 
 Then check for finalizers on each resource type:
 
 ```bash
-for resource in vs dr gw se sc pa ap ra ef; do
+for resource in vs dr gw se sidecar pa ap ra envoyfilter telemetry; do
   kubectl get $resource -n stuck-namespace -o jsonpath='{range .items[*]}{.kind}/{.metadata.name}: {.metadata.finalizers}{"\n"}{end}' 2>/dev/null
 done
 ```
@@ -124,7 +124,7 @@ done
 Remove finalizers from all stuck resources:
 
 ```bash
-for resource in vs dr gw se sc pa ap ra ef telemetry; do
+for resource in vs dr gw se sidecar pa ap ra envoyfilter telemetry; do
   for item in $(kubectl get $resource -n stuck-namespace -o jsonpath='{range .items[?(@.metadata.deletionTimestamp)]}{.metadata.name}{"\n"}{end}' 2>/dev/null); do
     kubectl patch $resource $item -n stuck-namespace --type json -p '[{"op": "remove", "path": "/metadata/finalizers"}]' 2>/dev/null
   done
@@ -142,9 +142,9 @@ json.dump(ns, sys.stdout)
 " | kubectl replace --raw /api/v1/namespaces/stuck-namespace/finalize -f -
 ```
 
-## IstioOperator Finalizer Issues
+## Legacy IstioOperator Finalizer Issues
 
-The IstioOperator resource (used when installing via `istioctl install` or the operator) has a finalizer managed by the Istio operator controller:
+In legacy in-cluster operator installations, the IstioOperator resource has a finalizer managed by the Istio operator controller:
 
 ```yaml
 metadata:
@@ -152,22 +152,23 @@ metadata:
   - istio-finalizer.install.istio.io
 ```
 
-If you uninstall the Istio operator before removing the IstioOperator resource, the resource gets stuck. To fix:
+If you uninstall the Istio operator controller before removing the IstioOperator resource, the resource can get stuck. To fix:
 
 ```bash
 kubectl patch istiooperator installed-state -n istio-system --type json -p '[{"op": "remove", "path": "/metadata/finalizers"}]'
 ```
 
-The proper uninstall order is:
+For current `istioctl` installations, the proper uninstall order is:
 
 ```bash
-# First, uninstall Istio (which removes the IstioOperator resource)
-
+# First, uninstall Istio
 istioctl uninstall --purge
 
 # Then remove the namespace
 kubectl delete namespace istio-system
 ```
+
+An `IstioOperator` YAML passed to `istioctl install -f` is installation input; it is not normally stored as an IstioOperator resource in the cluster.
 
 ## Preventing Finalizer Issues
 
@@ -189,7 +190,7 @@ istioctl uninstall --purge
 kubectl delete namespace istio-system
 ```
 
-**Keep webhooks healthy**: Validation webhooks that are down can prevent both creation AND deletion of resources. If you're uninstalling Istio and things get stuck, removing the webhooks first can help:
+**Keep webhooks healthy**: Istio's validation webhook is configured for create and update operations on Istio resources, so a stale webhook can block cleanup changes even though it does not normally validate delete requests. If you're uninstalling Istio and kubectl operations fail with webhook errors, removing stale webhooks can help:
 
 ```bash
 kubectl delete validatingwebhookconfiguration istio-validator-istio-system
@@ -200,7 +201,7 @@ kubectl delete mutatingwebhookconfiguration istio-sidecar-injector
 
 ```bash
 # Check for stuck Istio resources
-stuck=$(kubectl get vs,dr,gw,se,pa,ap -A -o jsonpath='{range .items[?(@.metadata.deletionTimestamp)]}{.metadata.namespace}/{.metadata.name}{"\n"}{end}')
+stuck=$(kubectl get vs,dr,gw,se,sidecar,pa,ap,ra,envoyfilter,telemetry -A -o jsonpath='{range .items[?(@.metadata.deletionTimestamp)]}{.metadata.namespace}/{.metadata.name}{"\n"}{end}')
 if [ -n "$stuck" ]; then
   echo "WARNING: Stuck Istio resources found:"
   echo "$stuck"
@@ -219,4 +220,4 @@ When things work correctly, the deletion flow for an Istio resource is:
 
 When things break, step 3 or 4 fails, and the resource stays in Terminating state indefinitely. Knowing this flow helps you diagnose where the problem is.
 
-Finalizers are a safety mechanism, and removing them manually means skipping the cleanup they were supposed to trigger. In most cases with Istio resources, the cleanup is just updating configuration state, so removing finalizers is safe. But always understand what the finalizer was protecting before you remove it.
+Finalizers are a safety mechanism, and removing them manually means skipping the cleanup they were supposed to trigger. With Istio configuration resources this may be low-risk after the owning controller is gone, but always understand what the finalizer was protecting before you remove it.
