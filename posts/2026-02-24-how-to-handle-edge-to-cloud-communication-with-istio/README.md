@@ -29,7 +29,9 @@ mkdir -p certs
 openssl req -new -x509 -nodes -days 3650 \
   -keyout certs/root-key.pem \
   -out certs/root-cert.pem \
-  -subj "/O=MyOrg/CN=Root CA"
+  -subj "/O=MyOrg/CN=Root CA" \
+  -addext "basicConstraints=critical,CA:TRUE,pathlen:1" \
+  -addext "keyUsage=critical,keyCertSign,cRLSign"
 ```
 
 Create intermediate CAs for each cluster:
@@ -46,7 +48,10 @@ openssl x509 -req -days 1825 \
   -CAkey certs/root-key.pem \
   -CAcreateserial \
   -in certs/cloud-ca.csr \
-  -out certs/cloud-ca-cert.pem
+  -out certs/cloud-ca-cert.pem \
+  -extfile <(printf "basicConstraints=critical,CA:TRUE,pathlen:0\nkeyUsage=critical,keyCertSign,cRLSign\nsubjectKeyIdentifier=hash\nauthorityKeyIdentifier=keyid,issuer")
+
+cat certs/cloud-ca-cert.pem certs/root-cert.pem > certs/cloud-cert-chain.pem
 
 # Edge cluster intermediate CA
 openssl req -new -nodes \
@@ -59,7 +64,10 @@ openssl x509 -req -days 1825 \
   -CAkey certs/root-key.pem \
   -CAcreateserial \
   -in certs/edge-ca.csr \
-  -out certs/edge-ca-cert.pem
+  -out certs/edge-ca-cert.pem \
+  -extfile <(printf "basicConstraints=critical,CA:TRUE,pathlen:0\nkeyUsage=critical,keyCertSign,cRLSign\nsubjectKeyIdentifier=hash\nauthorityKeyIdentifier=keyid,issuer")
+
+cat certs/edge-ca-cert.pem certs/root-cert.pem > certs/edge-cert-chain.pem
 ```
 
 Install these certificates as secrets in each cluster:
@@ -71,7 +79,7 @@ kubectl create secret generic cacerts -n istio-system \
   --from-file=ca-cert.pem=certs/cloud-ca-cert.pem \
   --from-file=ca-key.pem=certs/cloud-ca-key.pem \
   --from-file=root-cert.pem=certs/root-cert.pem \
-  --from-file=cert-chain.pem=certs/cloud-ca-cert.pem
+  --from-file=cert-chain.pem=certs/cloud-cert-chain.pem
 
 # On the edge cluster
 kubectl create namespace istio-system
@@ -79,7 +87,7 @@ kubectl create secret generic cacerts -n istio-system \
   --from-file=ca-cert.pem=certs/edge-ca-cert.pem \
   --from-file=ca-key.pem=certs/edge-ca-key.pem \
   --from-file=root-cert.pem=certs/root-cert.pem \
-  --from-file=cert-chain.pem=certs/edge-ca-cert.pem
+  --from-file=cert-chain.pem=certs/edge-cert-chain.pem
 ```
 
 ## Installing Istio on Both Clusters
@@ -117,8 +125,10 @@ spec:
     defaultConfig:
       proxyMetadata:
         ISTIO_META_DNS_CAPTURE: "true"
-        ISTIO_META_DNS_AUTO_ALLOCATE: "true"
   values:
+    pilot:
+      env:
+        PILOT_ENABLE_IP_AUTOALLOCATE: "true"
     global:
       meshID: my-mesh
       multiCluster:
@@ -140,8 +150,9 @@ For the clusters to communicate, you need an east-west gateway on the cloud side
 
 ```bash
 # On the cloud cluster
-kubectl apply -f samples/multicluster/gen-eastwest-gateway.sh \
-  --network cloud-network
+samples/multicluster/gen-eastwest-gateway.sh \
+  --network cloud-network | \
+  istioctl install -y -f -
 ```
 
 Or manually create the gateway:
@@ -221,7 +232,13 @@ metadata:
   name: edge-processor
   namespace: edge-app
 spec:
+  selector:
+    matchLabels:
+      app: edge-processor
   template:
+    metadata:
+      labels:
+        app: edge-processor
     spec:
       containers:
         - name: processor
@@ -269,7 +286,7 @@ metadata:
   name: prefer-local
   namespace: edge-app
 spec:
-  host: shared-service
+  host: shared-service.edge-app.svc.cluster.local
   trafficPolicy:
     outlierDetection:
       consecutive5xxErrors: 3
@@ -279,11 +296,11 @@ spec:
       localityLbSetting:
         enabled: true
         failover:
-          - from: edge-site-1
-            to: cloud
+          - from: edge-region
+            to: cloud-region
 ```
 
-This keeps traffic local when possible and falls back to the cloud when the local instance is unhealthy.
+This keeps traffic local when possible and falls back to the cloud when the local instance is unhealthy, assuming your nodes are labeled with those regions.
 
 ## Monitoring Cross-Cluster Communication
 
