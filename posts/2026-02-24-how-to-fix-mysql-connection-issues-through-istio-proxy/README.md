@@ -12,9 +12,9 @@ Connecting to MySQL through an Istio sidecar should be transparent, but in pract
 
 ## MySQL Protocol and Istio
 
-MySQL connections start with a TCP handshake, followed by the MySQL protocol handshake (server greeting, authentication, etc.). Unlike HTTP traffic, Istio can't inspect the content of MySQL packets at the application layer. It treats MySQL as opaque TCP traffic.
+MySQL connections start with a TCP handshake, followed by the MySQL protocol handshake (server greeting, authentication, etc.). Unlike HTTP traffic, MySQL is a server-first protocol, so it is incompatible with Istio's automatic protocol selection. Unless Istio's experimental MySQL protocol support is explicitly enabled, it treats MySQL as opaque TCP traffic.
 
-For Istio to handle MySQL correctly, the service port must be named with the `mysql` or `tcp` prefix:
+For Istio to handle MySQL correctly, the service port must be named with the `mysql` or `tcp` protocol prefix. You can also set the Kubernetes `appProtocol` field; when both are set, Istio uses `appProtocol`:
 
 ```yaml
 apiVersion: v1
@@ -97,7 +97,7 @@ spec:
 
 ## Connection Pool Exhaustion
 
-Envoy has connection pool limits for TCP connections. If your application opens many MySQL connections, it might hit these limits:
+Envoy has configurable connection pool limits for TCP connections. If your application opens many MySQL connections and you have configured a low limit, it might hit these limits:
 
 ```yaml
 apiVersion: networking.istio.io/v1beta1
@@ -114,7 +114,7 @@ spec:
         connectTimeout: 10s
 ```
 
-The default `maxConnections` might be too low for database workloads. Set it higher than your application's connection pool size.
+Istio's default `maxConnections` is very high, but an explicitly configured lower value can be too low for database workloads. Set it higher than your application's connection pool size.
 
 Check current connections:
 
@@ -143,9 +143,9 @@ spec:
         idleTimeout: 3600s
 ```
 
-Set this longer than your MySQL connection pool's idle timeout and longer than MySQL's `wait_timeout` server variable.
+Set this longer than your MySQL connection pool's idle timeout, and make sure your application closes or validates idle connections before either Envoy's idle timeout or MySQL's `wait_timeout` server variable can close them unexpectedly.
 
-Also make sure your application's connection pool has keep-alive or validation queries enabled. Most connection pools support a "test on borrow" or "validation interval" setting that sends a query periodically to keep the connection alive.
+Also make sure your application's connection pool has keep-alive or validation queries enabled. Most connection pools support a "test on borrow" or "validation interval" setting that checks a connection before reuse or periodically keeps it active.
 
 ## External MySQL (Outside the Cluster)
 
