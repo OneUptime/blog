@@ -77,7 +77,7 @@ This installs only istiod (the control plane) without any ingress or egress gate
 Verify the installation:
 
 ```bash
-istioctl verify-install
+istioctl install --set profile=minimal --verify
 kubectl get pods -n istio-system
 ```
 
@@ -114,10 +114,12 @@ kubectl logs <pod-name> -n staging -c istio-proxy
 Install monitoring tools to see what Istio is doing:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.24/samples/addons/prometheus.yaml
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.24/samples/addons/kiali.yaml
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.24/samples/addons/grafana.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.29/samples/addons/prometheus.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.29/samples/addons/kiali.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.29/samples/addons/grafana.yaml
 ```
+
+These sample manifests are intended for quick starts and demonstrations. For production, use a managed or customized installation of Prometheus, Kiali, and Grafana.
 
 Port-forward Kiali to see the service graph:
 
