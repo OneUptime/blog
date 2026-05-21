@@ -8,7 +8,7 @@ Description: A runbook for recovering the Istio data plane from sidecar proxy fa
 
 ---
 
-The Istio data plane consists of all the Envoy sidecar proxies running alongside your application containers. When the data plane has issues, it is your application traffic that suffers directly. Unlike control plane problems which give you a grace period, data plane failures hit immediately. A crashing sidecar means the associated pod cannot send or receive mesh traffic.
+In Istio sidecar mode, the data plane consists of all the Envoy sidecar proxies running alongside your application containers. When the data plane has issues, it is your application traffic that suffers directly. Many control plane problems give existing proxies a grace period because they continue using their last accepted configuration, but data plane failures hit immediately. A crashing sidecar means the associated pod cannot send or receive mesh traffic.
 
 This runbook covers how to diagnose and recover from data plane failures.
 
@@ -89,7 +89,8 @@ When many sidecars are failing across the mesh:
 
 ```bash
 # Count pods with sidecar issues
-kubectl get pods --all-namespaces | grep -E "CrashLoopBackOff|Error" | grep -c "istio"
+kubectl get pods --all-namespaces -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}{" "}{range .status.containerStatuses[?(@.name=="istio-proxy")]}{.state.waiting.reason}{.lastState.terminated.reason}{"\n"}{end}{end}' | \
+  grep -E "CrashLoopBackOff|Error|OOMKilled" | wc -l
 
 # Check for a common error across sidecars
 for pod in $(kubectl get pods --all-namespaces --field-selector=status.phase!=Running -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}{"\n"}{end}' | head -10); do
@@ -129,8 +130,9 @@ If sidecars are causing a complete outage and you need to restore traffic immedi
 kubectl label namespace <namespace> istio-injection-
 kubectl rollout restart deployment -n <namespace>
 
-# Option 2: Scale down problematic workloads and back up without sidecars
-kubectl annotate deployment <name> -n <namespace> sidecar.istio.io/inject="false"
+# Option 2: Scale down problematic workloads and bring them back up without sidecars
+kubectl patch deployment <name> -n <namespace> --type=merge \
+  -p='{"spec":{"template":{"metadata":{"labels":{"sidecar.istio.io/inject":"false"}}}}}'
 kubectl rollout restart deployment <name> -n <namespace>
 ```
 
@@ -147,7 +149,8 @@ New pods are starting without sidecars:
 kubectl get mutatingwebhookconfiguration | grep istio
 
 # Check the webhook configuration
-kubectl get mutatingwebhookconfiguration istio-sidecar-injector -o yaml | grep -A 10 "webhooks:"
+INJECTOR=$(kubectl get mutatingwebhookconfiguration -o name | grep 'istio-sidecar-injector' | head -1)
+kubectl get "$INJECTOR" -o yaml | grep -A 10 "webhooks:"
 
 # Check if istiod (which handles injection) is healthy
 kubectl get pods -n istio-system -l app=istiod
@@ -194,8 +197,8 @@ kubectl logs <pod-name> -n <namespace> -c istio-init
 Fixes:
 
 ```bash
-# Check if PodSecurityPolicy or SecurityContext is blocking capabilities
-kubectl get psp
+# Check if Pod Security Admission or SecurityContext is blocking capabilities
+kubectl get namespace <namespace> --show-labels | grep pod-security.kubernetes.io
 kubectl get pod <pod-name> -n <namespace> -o yaml | grep -A 10 "securityContext"
 
 # If using Istio CNI plugin instead of init container:
@@ -259,10 +262,12 @@ NODE_NAME=<node-name>
 kubectl get pods --all-namespaces --field-selector spec.nodeName=$NODE_NAME
 
 # Verify sidecars on those pods are connected to istiod
-istioctl proxy-status | grep $NODE_NAME
+kubectl get pods --all-namespaces --field-selector spec.nodeName=$NODE_NAME -o jsonpath='{range .items[*]}{.metadata.name}{"."}{.metadata.namespace}{"\n"}{end}' | while read proxy; do
+  istioctl proxy-status | grep "$proxy" || echo "$proxy missing from proxy-status"
+done
 
 # If pods are running but sidecars are disconnected, restart them
-kubectl get pods --field-selector spec.nodeName=$NODE_NAME -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}{"\n"}{end}' | while read pod; do
+kubectl get pods --all-namespaces --field-selector spec.nodeName=$NODE_NAME -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}{"\n"}{end}' | while read pod; do
   ns=$(echo $pod | cut -d/ -f1)
   name=$(echo $pod | cut -d/ -f2)
   kubectl delete pod $name -n $ns
@@ -279,16 +284,17 @@ kubectl get pods --all-namespaces | grep -E "1/2|0/2"
 # Should return no results for meshed namespaces
 
 # 2. All proxies synced
-istioctl proxy-status | grep -v SYNCED
+istioctl proxy-status | awk 'NR > 1 && ($2 != "SYNCED" || $3 != "SYNCED" || $4 != "SYNCED" || $5 != "SYNCED")'
 # Should be empty
 
 # 3. Test connectivity between services
 kubectl exec <pod-a> -c <container> -- curl -s http://<service-b>:<port>/health
 
 # 4. Check metrics are flowing
-istioctl proxy-config listener <pod> -n <namespace> | head -10
+kubectl exec <pod> -n <namespace> -c istio-proxy -- \
+  curl -s localhost:15000/stats/prometheus | grep '^istio_requests_total' | head
 
-# 5. Verify mTLS
+# 5. Verify workload certificates for mTLS
 istioctl proxy-config secret <pod> -n <namespace> | head -5
 ```
 
