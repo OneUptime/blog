@@ -23,7 +23,7 @@ spiffe://<trust-domain>/ns/<namespace>/sa/<service-account>
 When two sidecars communicate, they perform a TLS handshake where both sides present their certificates. Each side validates:
 
 1. The certificate is signed by a trusted CA
-2. The SPIFFE identity is allowed by the authorization policy
+2. The peer identity is valid for the connection; the client checks the server identity through Istio secure naming, and the server can enforce authorization policies against the client identity
 
 In a multi-cluster mesh, the challenge is #1. Both clusters need to trust certificates issued by the other cluster's Istiod.
 
@@ -57,6 +57,7 @@ This creates:
 - `root-cert.pem` - the root certificate
 - `root-key.pem` - the root private key (protect this)
 - `root-ca.conf` - the OpenSSL configuration used
+- `root-cert.csr` - the generated CSR for the root certificate
 
 Generate intermediate CAs:
 
@@ -112,7 +113,7 @@ Istio supports three mTLS modes through PeerAuthentication resources:
 **STRICT** - only mTLS traffic is accepted:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -125,7 +126,7 @@ spec:
 **PERMISSIVE** - both plaintext and mTLS are accepted (default):
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -141,7 +142,7 @@ For cross-cluster communication, STRICT mode is recommended in production. Apply
 
 ```bash
 kubectl apply -f - --context="${CTX_CLUSTER1}" <<EOF
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -152,7 +153,7 @@ spec:
 EOF
 
 kubectl apply -f - --context="${CTX_CLUSTER2}" <<EOF
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -199,7 +200,7 @@ Inspect the actual certificate:
 
 ```bash
 istioctl proxy-config secret deployment/sleep -n sample --context="${CTX_CLUSTER1}" -o json | \
-  jq -r '.dynamicActiveSecrets[0].secret.tlsCertificate.certificateChain.inlineBytes' | \
+  jq -r '.dynamicActiveSecrets[] | select(.name == "default") | .secret.tlsCertificate.certificateChain.inlineBytes' | \
   base64 --decode | openssl x509 -text -noout
 ```
 
