@@ -8,7 +8,7 @@ Description: Step-by-step guide to migrating an existing Istio installation from
 
 ---
 
-The Istio Operator was deprecated starting with Istio 1.23. If you have been using the IstioOperator resource and the `istioctl operator init` workflow, it is time to migrate to Helm. Helm is now the officially recommended installation method, and it gives you more control, better integration with existing Kubernetes tooling, and a clearer upgrade path.
+The in-cluster Istio Operator was deprecated starting with Istio 1.23. If you have been using the IstioOperator resource and the `istioctl operator init` workflow, it is time to migrate to Helm. Helm is now the officially recommended installation method, and it gives you more control, better integration with existing Kubernetes tooling, and a clearer upgrade path.
 
 Migrating a running Istio installation from operator-based to Helm-based without downtime takes some planning, but the process is well-defined. Here is how to do it.
 
@@ -42,10 +42,10 @@ istioctl version
 kubectl get configmap istio -n istio-system -o yaml > istio-mesh-config.yaml
 ```
 
-Also export all Istio custom resources as a safety net:
+Also export the Istio custom resources you use as a safety net:
 
 ```bash
-kubectl get vs,dr,gw,se,pa,ra,ef,sidecar --all-namespaces -o yaml > istio-resources-backup.yaml
+kubectl get virtualservices,destinationrules,gateways,serviceentries,peerauthentications,requestauthentications,authorizationpolicies,envoyfilters,sidecars,telemetries,wasmplugins --all-namespaces -o yaml > istio-resources-backup.yaml
 ```
 
 ## Step 2: Map IstioOperator Values to Helm Values
@@ -140,15 +140,19 @@ Install the base chart (CRDs):
 
 ```bash
 helm install istio-base istio/base -n istio-system \
-  --version <your-current-istio-version>
+  --version <your-current-istio-version> \
+  --set defaultRevision=default \
+  --take-ownership
 ```
 
-Since the CRDs already exist from the operator installation, Helm will adopt them. If Helm complains about existing resources, use:
+Since the CRDs already exist from the operator installation, Helm needs to take ownership of them. If your Helm version does not support `--take-ownership`, add the Helm ownership metadata first:
 
 ```bash
-helm install istio-base istio/base -n istio-system \
-  --version <your-current-istio-version> \
-  --set defaultRevision=default
+for crd in $(kubectl get crds -l chart=istio -o name && kubectl get crds -l app.kubernetes.io/part-of=istio -o name); do
+  kubectl label "$crd" app.kubernetes.io/managed-by=Helm
+  kubectl annotate "$crd" meta.helm.sh/release-name=istio-base
+  kubectl annotate "$crd" meta.helm.sh/release-namespace=istio-system
+done
 ```
 
 Install istiod as a new revision:
@@ -167,13 +171,14 @@ Install the gateway:
 ```bash
 helm install istio-ingressgateway-helm istio/gateway -n istio-system \
   --version <your-current-istio-version> \
+  --set revision=helm \
   -f gateway-values.yaml
 ```
 
 Verify both control planes are running:
 
 ```bash
-kubectl get pods -n istio-system -l app=istiod
+kubectl get pods -n istio-system -l app=istiod -L istio.io/rev
 ```
 
 ## Step 5: Migrate Workloads to the Helm-Managed Revision
@@ -208,13 +213,14 @@ Once all workloads are migrated to the Helm-managed control plane:
 Remove the operator controller:
 
 ```bash
-istioctl operator remove
+kubectl delete deployment -n istio-system istio-operator
 ```
 
 Remove the IstioOperator resource:
 
 ```bash
 kubectl delete istiooperator installed-state -n istio-system
+kubectl delete customresourcedefinition istiooperators.install.istio.io
 ```
 
 Remove the old operator-managed istiod:
@@ -242,11 +248,11 @@ helm list -n istio-system
 
 ## Step 7: Adopt Existing Resources with Helm
 
-If you want Helm to manage resources that the operator originally created (like Services, ConfigMaps), you need to label them for Helm ownership:
+If you want Helm to manage resources that the operator originally created, the safer approach is to use `--take-ownership` when installing or upgrading the Helm release that renders those exact resources. Only manually label resources when you have verified that the resource name, namespace, and rendered manifest match the Helm chart output:
 
 ```bash
-kubectl label configmap istio -n istio-system app.kubernetes.io/managed-by=Helm
-kubectl annotate configmap istio -n istio-system meta.helm.sh/release-name=istiod-helm meta.helm.sh/release-namespace=istio-system
+kubectl label <resource-type> <resource-name> -n <namespace> app.kubernetes.io/managed-by=Helm
+kubectl annotate <resource-type> <resource-name> -n <namespace> meta.helm.sh/release-name=<helm-release-name> meta.helm.sh/release-namespace=<namespace>
 ```
 
 This tells Helm that it now owns these resources and should manage them during future upgrades.
@@ -275,15 +281,15 @@ Test traffic routing, mTLS, gateway ingress, and any other Istio features you us
 After migration, your future upgrades follow the standard Helm upgrade process:
 
 ```bash
-helm upgrade istio-base istio/base -n istio-system --version <new-version>
-helm upgrade istiod-helm istio/istiod -n istio-system --version <new-version> -f istiod-values.yaml --wait
-helm upgrade istio-ingressgateway-helm istio/gateway -n istio-system --version <new-version> -f gateway-values.yaml --wait
+helm upgrade istio-base istio/base -n istio-system --version <new-version> --set defaultRevision=helm
+helm upgrade istiod-helm istio/istiod -n istio-system --version <new-version> --set revision=helm -f istiod-values.yaml --wait
+helm upgrade istio-ingressgateway-helm istio/gateway -n istio-system --version <new-version> --set revision=helm -f gateway-values.yaml --wait
 ```
 
 Store your values files in version control. Use Helm diff to preview changes:
 
 ```bash
-helm diff upgrade istiod-helm istio/istiod -n istio-system --version <new-version> -f istiod-values.yaml
+helm diff upgrade istiod-helm istio/istiod -n istio-system --version <new-version> --set revision=helm -f istiod-values.yaml
 ```
 
 ## Common Migration Pitfalls

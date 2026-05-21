@@ -22,13 +22,13 @@ Here is the mapping between old and new resources:
 |---|---|
 | `Gateway` (networking.istio.io) | `Gateway` (gateway.networking.k8s.io) |
 | `VirtualService` | `HTTPRoute`, `TCPRoute`, `GRPCRoute` |
-| `DestinationRule` | No direct equivalent (some features in `BackendPolicy`) |
+| `DestinationRule` | No direct equivalent (some adjacent features in Gateway API policy resources such as `BackendTrafficPolicy` and `BackendTLSPolicy`) |
 
 The important thing to note: DestinationRule does not have a full replacement yet. Features like circuit breaking and connection pool settings still require Istio-specific configuration.
 
 ## Prerequisites
 
-Make sure you are running Istio 1.21 or later for the best Gateway API support. You also need the Gateway API CRDs installed:
+Make sure you are running Istio 1.22 or later for the best Gateway API support, especially if you plan to migrate mesh-internal routes. You also need the Gateway API CRDs installed:
 
 ```bash
 kubectl get crd gateways.gateway.networking.k8s.io
@@ -37,7 +37,7 @@ kubectl get crd gateways.gateway.networking.k8s.io
 If they are not installed:
 
 ```bash
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.2.0/standard-install.yaml
+kubectl apply --server-side -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.5.1/experimental-install.yaml
 ```
 
 Check your Istio version:
@@ -225,15 +225,15 @@ A few things changed:
 - `destination.host` becomes `backendRefs[].name`
 - Weights are specified directly in `backendRefs`
 - Timeouts moved to the `timeouts` field on the rule
-- Retry configuration is not yet in the standard Gateway API - you still need Istio-specific configuration for this
+- Retry configuration is available as an experimental Gateway API field in recent releases, so support depends on your installed Gateway API CRDs and Istio version
 
 ## Step 4: Handle Features Not Yet in Gateway API
 
-Some Istio VirtualService features do not have Gateway API equivalents yet. For these, you have two options:
+Some Istio traffic management features do not have Gateway API equivalents yet. For these, you have two options:
 
-### Option A: Use Istio Policy Attachments
+### Option A: Keep DestinationRule Where Needed
 
-Istio provides custom policy resources that attach to Gateway API objects:
+DestinationRule is still the Istio resource for service-level traffic policies such as connection pools, load balancing, and outlier detection:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -257,13 +257,13 @@ spec:
 
 DestinationRule still works alongside Gateway API routes. You can use HTTPRoute for routing and keep DestinationRule for circuit breaking and load balancing configuration.
 
-### Option B: Use Retry Filters (Istio Extension)
+### Option B: Handle Retry Configuration Carefully
 
-For retry policies, Istio supports attaching retry configuration via annotations or through the Telemetry API depending on the version.
+For retry policies, recent Gateway API versions include an experimental `retry` field on HTTPRoute rules. If your installed CRDs or Istio version do not support that field yet, keep the relevant VirtualService in place or use an Istio-specific extension for that route.
 
 ## Step 5: Migrate Mesh-Internal Routes
 
-For service-to-service routing within the mesh (not through an ingress gateway), the migration is slightly different. Legacy VirtualService resources with `mesh` gateway become HTTPRoute resources without a `parentRef`:
+For service-to-service routing within the mesh (not through an ingress gateway), the migration is slightly different. Legacy VirtualService resources with `mesh` gateway become HTTPRoute resources with a `parentRef` that points to a Kubernetes Service:
 
 **Legacy internal routing:**
 
@@ -338,7 +338,7 @@ After migrating each resource, check that Istio has picked it up correctly:
 
 ```bash
 # Check the proxy configuration
-istioctl proxy-config routes deploy/istio-ingressgateway -n istio-system
+istioctl proxy-config routes deploy/my-gateway-istio -n default
 
 # Verify the HTTPRoute status
 kubectl get httproute app-routes -o yaml | grep -A 10 status
@@ -348,7 +348,7 @@ The HTTPRoute status should show that the route has been accepted by the parent 
 
 ## Common Migration Gotchas
 
-**Header matching syntax**: In VirtualService, header matching uses nested objects (`exact`, `prefix`, `regex`). In HTTPRoute, you use `type` field with values like `Exact`, `RegularExpression`.
+**Header matching syntax**: In VirtualService, header matching uses nested objects (`exact`, `prefix`, `regex`). In HTTPRoute, exact matching is the default, `RegularExpression` matching is implementation-specific, and there is no core prefix header match.
 
 **Namespace boundaries**: Gateway API has stricter namespace isolation by default. If your routes are in a different namespace than the Gateway, you need to configure `allowedRoutes.namespaces` on the Gateway listener.
 
