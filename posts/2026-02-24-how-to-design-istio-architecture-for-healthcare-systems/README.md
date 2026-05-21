@@ -10,7 +10,7 @@ Description: A practical guide to designing Istio architecture for healthcare sy
 
 Healthcare systems deal with some of the most sensitive data there is. Patient health information (PHI) is protected by regulations like HIPAA in the United States, PIPEDA in Canada, and GDPR in Europe. A breach is not just a PR problem; it is a legal liability.
 
-Istio is a strong fit for healthcare architectures because it can enforce encryption, access control, and audit logging at the infrastructure level. This means application developers do not have to implement these controls themselves, and security teams can verify compliance by inspecting mesh configuration rather than auditing every application codebase.
+Istio is a strong fit for healthcare architectures because it can enforce encryption and access control, and generate infrastructure access logs, at the service mesh level. This means application developers do not have to implement every transport-level control themselves, and security teams can verify many compliance controls by inspecting mesh configuration rather than auditing every application codebase.
 
 ## Namespace Design for PHI Boundaries
 
@@ -36,7 +36,7 @@ Do not inject sidecars into the monitoring namespace unless you have specific re
 
 ## Encryption with Strict mTLS
 
-HIPAA requires encryption of PHI in transit. Istio's mTLS makes this automatic:
+HIPAA's transmission security standard requires safeguards for electronic PHI in transit, and encryption is the usual control for mesh traffic. Istio's mTLS makes this automatic:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -49,7 +49,7 @@ spec:
     mode: STRICT
 ```
 
-This ensures every service-to-service call within the mesh uses mutual TLS. There is no way for a service to accidentally send PHI in cleartext.
+This ensures service-to-service calls between meshed workloads use mutual TLS. A meshed service cannot accidentally send PHI to another meshed service in cleartext.
 
 For extra assurance on the PHI namespace, add a namespace-level policy as well:
 
@@ -108,10 +108,10 @@ The billing service can only read billing information, not full patient records.
 
 ## Audit Logging for HIPAA Compliance
 
-HIPAA requires an audit trail of who accessed what PHI and when. Configure detailed access logs for the PHI namespace:
+HIPAA requires audit controls for systems that contain or use electronic PHI. Configure detailed access logs for the PHI namespace so you can record and examine mesh-level activity:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: phi-access-logging
@@ -124,7 +124,7 @@ spec:
       expression: "true"
 ```
 
-For a more structured approach, configure the mesh-wide access log format to include all the fields HIPAA auditors look for:
+For a more structured approach, configure mesh-wide access logs as JSON:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -133,17 +133,16 @@ spec:
   meshConfig:
     accessLogFile: /dev/stdout
     accessLogEncoding: JSON
-    enableAutoMtls: true
 ```
 
-Ship these logs to a tamper-proof store. Healthcare organizations typically use WORM (Write Once, Read Many) storage for audit logs. Services like AWS CloudWatch Logs with retention policies or Azure Immutable Blob Storage work well.
+Ship these logs to an immutable or tightly controlled store. Healthcare organizations typically use WORM (Write Once, Read Many) storage for audit logs. Services like Amazon S3 Object Lock, CloudWatch Logs exported to immutable storage, or Azure Immutable Blob Storage work well.
 
 ## FHIR and HL7 Integration
 
-Healthcare systems need to exchange data with external systems using standards like HL7 FHIR. Configure ServiceEntry and strict TLS for these external endpoints:
+Healthcare systems need to exchange data with external systems using standards like HL7 FHIR. Configure a ServiceEntry for these external TLS endpoints:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-ehr-system
@@ -158,7 +157,7 @@ spec:
   resolution: DNS
   location: MESH_EXTERNAL
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: external-ehr-tls
@@ -166,8 +165,6 @@ metadata:
 spec:
   host: ehr.partnerhospital.org
   trafficPolicy:
-    tls:
-      mode: SIMPLE
     connectionPool:
       tcp:
         maxConnections: 20
@@ -179,7 +176,7 @@ spec:
 Route external integration traffic through an egress gateway so you can monitor and control all outbound PHI flows:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: phi-egress
@@ -196,6 +193,52 @@ spec:
     - ehr.partnerhospital.org
     tls:
       mode: PASSTHROUGH
+---
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: egressgateway-for-ehr
+  namespace: integration
+spec:
+  host: istio-egressgateway.istio-system.svc.cluster.local
+  subsets:
+  - name: external-ehr
+---
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: external-ehr-through-egress
+  namespace: integration
+spec:
+  hosts:
+  - ehr.partnerhospital.org
+  gateways:
+  - mesh
+  - istio-system/phi-egress
+  tls:
+  - match:
+    - gateways:
+      - mesh
+      port: 443
+      sniHosts:
+      - ehr.partnerhospital.org
+    route:
+    - destination:
+        host: istio-egressgateway.istio-system.svc.cluster.local
+        subset: external-ehr
+        port:
+          number: 443
+  - match:
+    - gateways:
+      - istio-system/phi-egress
+      port: 443
+      sniHosts:
+      - ehr.partnerhospital.org
+    route:
+    - destination:
+        host: ehr.partnerhospital.org
+        port:
+          number: 443
 ```
 
 ## Circuit Breakers for Clinical Systems
@@ -203,7 +246,7 @@ spec:
 Clinical systems need to be reliable. If the patient record service is overloaded, you do not want the entire clinical workflow to hang:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: patient-record-service
@@ -227,7 +270,7 @@ spec:
 
 ## Request Authentication for External Access
 
-Clinicians and patients access the system through web and mobile apps. Configure JWT authentication at the gateway:
+Clinicians and patients access the system through web and mobile apps. Configure JWT authentication at the patient portal workload:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -335,7 +378,7 @@ spec:
           kubernetes.io/metadata.name: phi-services
 ```
 
-Even if an Istio authorization policy is misconfigured, the network policy prevents unauthorized network-level access to PHI services.
+Even if an Istio authorization policy is misconfigured, the network policy limits network-level access to PHI services to approved namespaces.
 
 ## Summary
 
