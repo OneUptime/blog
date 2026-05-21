@@ -8,7 +8,7 @@ Description: Step-by-step instructions for deploying Istio on Google Kubernetes 
 
 ---
 
-Google Cloud and Istio have a close relationship - Google was one of the original creators of Istio. That said, setting up Istio on GKE yourself (rather than using the managed Anthos Service Mesh) gives you more control and keeps you on the upstream Istio release.
+Google Cloud and Istio have a close relationship - Google was one of the original creators of Istio. That said, setting up Istio on GKE yourself (rather than using managed Cloud Service Mesh) gives you more control and keeps you on the upstream Istio release.
 
 This guide covers setting up a GKE cluster and installing open-source Istio on it, with all the GCP-specific tweaks you need along the way.
 
@@ -71,7 +71,7 @@ kubectl create clusterrolebinding cluster-admin-binding \
 
 ```bash
 curl -L https://istio.io/downloadIstio | sh -
-cd istio-1.24.0
+cd istio-1.30.0
 export PATH=$PWD/bin:$PATH
 ```
 
@@ -157,7 +157,6 @@ spec:
         k8s:
           serviceAnnotations:
             cloud.google.com/neg: '{"ingress": true}'
-            cloud.google.com/backend-config: '{"default": "istio-backendconfig"}'
 ```
 
 ### Workload Identity
@@ -168,6 +167,11 @@ If your mesh services need to access GCP APIs (like Cloud Storage or BigQuery), 
 gcloud container clusters update istio-cluster \
   --zone us-central1-a \
   --workload-pool=YOUR_PROJECT_ID.svc.id.goog
+
+gcloud container node-pools update default-pool \
+  --cluster=istio-cluster \
+  --zone us-central1-a \
+  --workload-metadata=GKE_METADATA
 ```
 
 Create a Kubernetes service account and bind it to a GCP service account:
@@ -218,12 +222,28 @@ kind: IstioOperator
 spec:
   meshConfig:
     enableTracing: true
+    defaultConfig:
+      tracing: {}
     extensionProviders:
       - name: cloud-trace
         stackdriver:
           maxNumberOfAnnotations: 200
           maxNumberOfAttributes: 200
           maxNumberOfMessageEvents: 200
+```
+
+Then enable that provider for the mesh with the Telemetry API:
+
+```yaml
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
+metadata:
+  name: mesh-default
+  namespace: istio-system
+spec:
+  tracing:
+    - providers:
+        - name: cloud-trace
 ```
 
 ## TLS with Google-Managed Certificates
@@ -240,7 +260,7 @@ spec:
     - myapp.example.com
 ```
 
-Then configure the Istio Gateway to use it through the appropriate annotations and gateway configuration.
+Then attach it to a GKE Ingress by adding the `networking.gke.io/managed-certificates: istio-cert` annotation to the Ingress. Google-managed certificates are managed by GKE Ingress for external Application Load Balancers; if you expose Istio with a plain `LoadBalancer` Service, terminate TLS with an Istio Gateway secret or put a GKE Ingress in front of the gateway Service.
 
 ## Scaling Considerations
 
@@ -273,6 +293,6 @@ gcloud compute project-info describe --project YOUR_PROJECT_ID
 
 If you get RBAC errors during installation, make sure you ran the cluster-admin binding command. GKE doesn't automatically give you full admin access even if you created the cluster.
 
-If sidecars aren't injecting on Autopilot clusters, note that Autopilot has specific restrictions on mutating webhooks. Make sure you're running a compatible Autopilot version.
+If sidecars aren't injecting on Autopilot clusters, make sure you're running a compatible Istio and GKE version. Istio CNI is not available on GKE Autopilot, so use the default init-container mode instead.
 
 Getting Istio running on GKE is a smooth experience overall. The tight integration between GKE's networking features and Kubernetes standards means most things work out of the box with minimal GCP-specific configuration.
