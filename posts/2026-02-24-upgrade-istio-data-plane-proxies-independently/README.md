@@ -14,7 +14,7 @@ Maybe you upgraded the control plane during a maintenance window but could not r
 
 ## Control Plane vs Data Plane Version Skew
 
-Istio officially supports the control plane being one minor version ahead of the data plane. If your control plane is 1.21, your proxies can be 1.20 or 1.21. Running proxies at 1.19 with a 1.21 control plane is not supported.
+Istio officially supports the control plane being one minor version ahead of the data plane. If your control plane is 1.30, your proxies can be 1.29 or 1.30. Running proxies at 1.28 with a 1.30 control plane is not supported, and the data plane should not run ahead of the control plane.
 
 Check your current version skew:
 
@@ -23,9 +23,9 @@ istioctl version
 ```
 
 ```text
-client version: 1.21.0
-control plane version: 1.21.0
-data plane version: 1.20.5 (45 proxies), 1.21.0 (12 proxies)
+client version: 1.30.0
+control plane version: 1.30.0
+data plane version: 1.29.5 (45 proxies), 1.30.0 (12 proxies)
 ```
 
 This output tells you that 45 proxies are still on the old version and 12 have been updated. The mixed state is fine as long as the skew is within one minor version.
@@ -44,13 +44,13 @@ For a cleaner summary:
 
 ```bash
 # Count proxies by version
-istioctl proxy-status -o json | jq -r '.[] | .proxy.istioVersion' | sort | uniq -c
+istioctl proxy-status | awk 'NR > 1 { count[$4]++ } END { for (version in count) print count[version], version }'
 ```
 
 To see which namespaces still need updating:
 
 ```bash
-istioctl proxy-status -o json | jq -r '.[] | select(.proxy.istioVersion != "1.21.0") | .proxy.metadata.namespace' | sort | uniq -c
+istioctl proxy-status | awk 'NR > 1 && $4 != "1.30.0" { split($1, parts, "."); print parts[2] }' | sort | uniq -c
 ```
 
 ## Method 1: Rolling Restart by Namespace
@@ -121,7 +121,7 @@ kubectl logs -n my-app my-service-<new-pod-id> -c istio-proxy --tail=50
 
 ## Method 3: Using Proxy Image Annotation
 
-You can force a specific proxy version at the pod level using annotations, without upgrading the control plane:
+You can force a specific compatible proxy image at the pod level using annotations:
 
 ```yaml
 apiVersion: apps/v1
@@ -132,10 +132,10 @@ spec:
   template:
     metadata:
       annotations:
-        sidecar.istio.io/proxyImage: docker.io/istio/proxyv2:1.21.0
+        sidecar.istio.io/proxyImage: docker.io/istio/proxyv2:1.30.0
 ```
 
-This overrides the default proxy image that the control plane injects. It is useful for testing a new proxy version with specific workloads before updating the control plane.
+This overrides the default proxy image that the control plane injects. It is useful for pinning a compatible proxy image for specific workloads, but it should not be used to run a data plane version ahead of the control plane.
 
 Apply the change:
 
@@ -148,7 +148,7 @@ The deployment will roll out new pods with the specified proxy version.
 Remove the annotation after the control plane catches up:
 
 ```bash
-kubectl annotate deployment my-service -n my-app sidecar.istio.io/proxyImage-
+kubectl patch deployment my-service -n my-app --type=json -p='[{"op":"remove","path":"/spec/template/metadata/annotations/sidecar.istio.io~1proxyImage"}]'
 kubectl rollout restart deployment my-service -n my-app
 ```
 
@@ -233,10 +233,10 @@ During a mixed-version rollout, older proxies and newer proxies need to communic
 
 ```bash
 # Test from an old-version pod to a new-version pod
-kubectl exec -n my-app old-pod -c istio-proxy -- curl -s new-service.my-app:80
+kubectl exec -n my-app old-pod -c <app-container> -- curl -s new-service.my-app.svc.cluster.local:80
 
 # Test from a new-version pod to an old-version pod
-kubectl exec -n my-app new-pod -c istio-proxy -- curl -s old-service.my-app:80
+kubectl exec -n my-app new-pod -c <app-container> -- curl -s old-service.my-app.svc.cluster.local:80
 ```
 
 Both directions should work. If you see TLS errors, there might be a certificate compatibility issue between versions.
