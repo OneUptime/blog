@@ -8,15 +8,14 @@ Description: How to properly size and configure CPU and memory resources for the
 
 ---
 
-Every pod in your Istio mesh gets a sidecar proxy injected, and that sidecar consumes CPU and memory. In a large cluster with hundreds or thousands of pods, the cumulative resource consumption of all those sidecars can be significant. Getting the resource allocation right is important both for performance (too little and requests get slow) and for cost (too much and you're wasting cluster resources).
+Every pod in your Istio sidecar-mode mesh gets a sidecar proxy injected, and that sidecar consumes CPU and memory. In a large cluster with hundreds or thousands of pods, the cumulative resource consumption of all those sidecars can be significant. Getting the resource allocation right is important both for performance (too little and requests get slow) and for cost (too much and you're wasting cluster resources).
 
 ## Default Sidecar Resources
 
-Istio's default resource settings depend on the installation profile:
+Istio's default sidecar proxy resource settings can be overridden by installation profile and values, but the current chart defaults are:
 
-- **default profile**: requests 100m CPU and 128Mi memory, no limits
-- **demo profile**: requests 10m CPU and 40Mi memory
-- **minimal profile**: similar to default
+- **requests**: 100m CPU and 128Mi memory
+- **limits**: 2000m CPU and 1024Mi memory
 
 Check your current settings:
 
@@ -156,7 +155,7 @@ These are starting points. Always measure actual usage and adjust.
 The Sidecar resource can dramatically reduce memory usage by limiting the services each proxy knows about:
 
 ```yaml
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -173,7 +172,7 @@ In a mesh with 500 services, each sidecar gets configuration for all 500 service
 
 ## Concurrency Settings
 
-Envoy uses worker threads to process requests. By default, it uses 2 threads. For high-throughput services, you might want more:
+Envoy uses worker threads to process requests. By default, Istio determines proxy concurrency from the CPU limit when it is unset. For high-throughput services, you might want to set it explicitly:
 
 ```yaml
 apiVersion: apps/v1
@@ -207,22 +206,22 @@ spec:
     accessLogFile: ""
 ```
 
-### Reduce Stats Collection
+### Disable Selected Metrics
 ```yaml
-apiVersion: apps/v1
-kind: Deployment
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
 metadata:
-  name: my-app
+  name: remove-request-count
+  namespace: istio-system
 spec:
-  template:
-    metadata:
-      annotations:
-        sidecar.istio.io/statsInclusionPrefixes: ""
-        sidecar.istio.io/statsInclusionSuffixes: ""
-    spec:
-      containers:
-      - name: my-app
-        image: my-app:latest
+  metrics:
+  - providers:
+    - name: prometheus
+    overrides:
+    - disabled: true
+      match:
+        mode: CLIENT_AND_SERVER
+        metric: REQUEST_COUNT
 ```
 
 ### Use Sidecar Discovery Selectors
@@ -257,7 +256,7 @@ spec:
     kind: Deployment
     name: my-app
   updatePolicy:
-    updateMode: Auto
+    updateMode: Recreate
   resourcePolicy:
     containerPolicies:
     - containerName: istio-proxy
@@ -276,7 +275,7 @@ spec:
         memory: 1Gi
 ```
 
-VPA will observe the actual resource usage over time and adjust the requests accordingly.
+VPA will observe the actual resource usage over time and adjust the requests accordingly. With `Recreate` mode, those changes are applied by recreating pods.
 
 ## Cost Impact Analysis
 
@@ -286,6 +285,7 @@ To understand the total cost of your sidecars:
 # Total CPU requested by all sidecars
 kubectl get pods -A -o json | python3 -c "
 import json, sys
+from decimal import Decimal
 data = json.load(sys.stdin)
 total_cpu = 0
 for pod in data['items']:
@@ -294,6 +294,8 @@ for pod in data['items']:
             req = c.get('resources', {}).get('requests', {}).get('cpu', '0m')
             if req.endswith('m'):
                 total_cpu += int(req[:-1])
+            else:
+                total_cpu += int(Decimal(req) * 1000)
 print(f'Total sidecar CPU requests: {total_cpu}m ({total_cpu/1000:.1f} cores)')
 "
 ```
