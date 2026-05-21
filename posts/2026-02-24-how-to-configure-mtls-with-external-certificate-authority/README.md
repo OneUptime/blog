@@ -14,7 +14,7 @@ Istio supports plugging in external CAs through several mechanisms. This guide c
 
 ## Option 1: Plug-In CA Certificates
 
-The simplest way to use an external CA is to provide your own root certificate and signing key to Istio. Istiod will use these to sign workload certificates instead of generating its own.
+The simplest way to use an external CA is to provide your own root certificate plus an intermediate signing certificate and key to Istio. Istiod will use these to sign workload certificates instead of generating its own.
 
 ### Generate or Obtain Your CA Certificate
 
@@ -94,18 +94,19 @@ cert-manager is a popular Kubernetes tool for managing certificates. Istio can u
 ### Install cert-manager
 
 ```bash
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.0/cert-manager.yaml
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml
 ```
 
 ### Set Up an Issuer
 
-Create a cert-manager Issuer that will sign Istio certificates. This example uses a self-signed root, but you can use any cert-manager issuer type (Vault, ACME, etc.):
+Create a cert-manager Issuer that will sign Istio certificates. This example uses a self-signed root, but you can use any cert-manager issuer type that can issue certificates with Istio's SPIFFE URI SANs (Vault, CA, or an external issuer; ACME issuers will not work for this):
 
 ```yaml
 apiVersion: cert-manager.io/v1
-kind: ClusterIssuer
+kind: Issuer
 metadata:
-  name: istio-ca
+  name: selfsigned
+  namespace: istio-system
 spec:
   selfSigned: {}
 ---
@@ -120,14 +121,15 @@ spec:
   secretName: istio-ca-secret
   commonName: istio-ca
   issuerRef:
-    name: istio-ca
-    kind: ClusterIssuer
+    name: selfsigned
+    kind: Issuer
     group: cert-manager.io
 ---
 apiVersion: cert-manager.io/v1
-kind: ClusterIssuer
+kind: Issuer
 metadata:
   name: istio-issuer
+  namespace: istio-system
 spec:
   ca:
     secretName: istio-ca-secret
@@ -138,11 +140,12 @@ spec:
 istio-csr sits between Istio and cert-manager, handling certificate signing requests:
 
 ```bash
-helm repo add jetstack https://charts.jetstack.io
-helm install istio-csr jetstack/cert-manager-istio-csr \
-  -n istio-system \
+helm upgrade cert-manager-istio-csr oci://quay.io/jetstack/charts/cert-manager-istio-csr \
+  --install \
+  --namespace cert-manager \
+  --wait \
   --set "app.certmanager.issuer.name=istio-issuer" \
-  --set "app.certmanager.issuer.kind=ClusterIssuer" \
+  --set "app.certmanager.issuer.kind=Issuer" \
   --set "app.certmanager.issuer.group=cert-manager.io"
 ```
 
@@ -154,7 +157,7 @@ kind: IstioOperator
 spec:
   values:
     global:
-      caAddress: cert-manager-istio-csr.istio-system.svc:443
+      caAddress: cert-manager-istio-csr.cert-manager.svc:443
   components:
     pilot:
       k8s:
@@ -202,37 +205,43 @@ vault write pki_int/intermediate/set-signed certificate=@signed_certificate.pem
 
 # Create a role for Istio
 vault write pki_int/roles/istio \
-  allowed_domains="svc.cluster.local" \
-  allow_subdomains=true \
+  allowed_uri_sans="spiffe://cluster.local/*" \
+  allow_ip_sans=false \
   max_ttl=72h
 ```
 
 ### Configure cert-manager with Vault
 
+This assumes you have a `vault-issuer` service account in the `istio-system` namespace and have configured Vault Kubernetes auth to trust it.
+
 ```yaml
 apiVersion: cert-manager.io/v1
-kind: ClusterIssuer
+kind: Issuer
 metadata:
   name: vault-issuer
+  namespace: istio-system
 spec:
   vault:
     path: pki_int/sign/istio
     server: https://vault.vault-system.svc.cluster.local:8200
     auth:
       kubernetes:
-        role: cert-manager
+        role: vault-issuer-role
         mountPath: /v1/auth/kubernetes
         serviceAccountRef:
-          name: cert-manager
+          name: vault-issuer
 ```
 
 Then install istio-csr pointing to the Vault issuer:
 
 ```bash
-helm install istio-csr jetstack/cert-manager-istio-csr \
-  -n istio-system \
+helm upgrade cert-manager-istio-csr oci://quay.io/jetstack/charts/cert-manager-istio-csr \
+  --install \
+  --namespace cert-manager \
+  --wait \
   --set "app.certmanager.issuer.name=vault-issuer" \
-  --set "app.certmanager.issuer.kind=ClusterIssuer"
+  --set "app.certmanager.issuer.kind=Issuer" \
+  --set "app.certmanager.issuer.group=cert-manager.io"
 ```
 
 ## Verifying External CA Integration
