@@ -72,7 +72,7 @@ spec:
 kubectl apply -f emergency-deny-all.yaml
 
 # Verify the policy is in effect
-kubectl exec <source-pod> -c <container> -- \
+kubectl exec <source-pod> -n <source-namespace> -c <container> -- \
   curl -s -o /dev/null -w "%{http_code}" http://<affected-service>:<port>/
 # Should return 403
 ```
@@ -84,9 +84,9 @@ kubectl exec <source-pod> -c <container> -- \
 kubectl logs <affected-pod> -n <namespace> -c istio-proxy | grep "rbac_access_denied\|rbac_allowed"
 
 # Check the identity of the source
-istioctl proxy-config secret <source-pod> -o json | \
-  jq -r '.dynamicActiveSecrets[0].secret.tlsCertificate.certificateChain.inlineBytes' | \
-  base64 -d | openssl x509 -noout -subject
+istioctl proxy-config secret <source-pod> -n <source-namespace> -o json | \
+  jq -r '.dynamicActiveSecrets[] | select(.name == "default") | .secret.tlsCertificate.certificateChain.inlineBytes' | \
+  base64 -d | openssl x509 -noout -ext subjectAltName
 
 # Check PeerAuthentication mode
 kubectl get peerauthentication --all-namespaces
@@ -161,12 +161,15 @@ kubectl create secret generic cacerts -n istio-system \
 kubectl rollout restart deployment/istiod -n istio-system
 kubectl rollout status deployment/istiod -n istio-system --timeout=120s
 
-# Step 4: Force all workloads to get new certificates
-for ns in $(kubectl get namespaces -l istio-injection=enabled -o jsonpath='{.items[*].metadata.name}'); do
+# Step 4: Force injected workloads to get new certificates
+for ns in $( \
+  { kubectl get namespaces -l istio-injection=enabled -o jsonpath='{.items[*].metadata.name}'; echo; \
+    kubectl get namespaces -l istio.io/rev -o jsonpath='{.items[*].metadata.name}'; } | tr ' ' '\n' | sort -u \
+); do
   kubectl rollout restart deployment -n $ns
 done
 
-# Step 5: Enforce strict mTLS to prevent old certificates
+# Step 5: Enforce mesh-wide strict mTLS to reject plaintext traffic during rotation
 kubectl apply -f - <<EOF
 apiVersion: security.istio.io/v1
 kind: PeerAuthentication
@@ -187,7 +190,7 @@ for pod in $(kubectl get pods --all-namespaces -l security.istio.io/tlsMode=isti
   ns=$(echo $pod | cut -d/ -f1)
   name=$(echo $pod | cut -d/ -f2)
   issuer=$(istioctl proxy-config secret $name -n $ns -o json 2>/dev/null | \
-    jq -r '.dynamicActiveSecrets[0].secret.tlsCertificate.certificateChain.inlineBytes' | \
+    jq -r '.dynamicActiveSecrets[] | select(.name == "default") | .secret.tlsCertificate.certificateChain.inlineBytes' | \
     base64 -d 2>/dev/null | openssl x509 -noout -issuer 2>/dev/null)
   echo "$pod: $issuer"
 done
@@ -203,13 +206,13 @@ Traffic is flowing without mTLS in a namespace that should be STRICT.
 # Check PeerAuthentication policies
 kubectl get peerauthentication --all-namespaces -o yaml
 
-# Check for plaintext traffic
+# Check TLS-related connection stats
 kubectl exec <pod> -n <namespace> -c istio-proxy -- \
   curl -s localhost:15000/stats | grep "ssl\|tls"
+```
 
-# Look for non-mTLS connections
-kubectl exec <pod> -n <namespace> -c istio-proxy -- \
-  curl -s localhost:15000/stats | grep "cx_total\|cx_destroy"
+```promql
+sum(rate(istio_requests_total{destination_workload="<workload>", connection_security_policy!="mutual_tls"}[5m])) by (source_workload, connection_security_policy)
 ```
 
 #### Containment
@@ -237,14 +240,15 @@ istioctl proxy-config listener <pod> -n <namespace> --port <port> -o json | \
 Check for pods that might not have sidecars:
 
 ```bash
-# Find pods without sidecars in meshed namespaces
+# Find pods without an istio-proxy container in namespaces that should be meshed
 kubectl get pods --all-namespaces -o json | \
-  jq -r '.items[] | select(.metadata.namespace | test("istio-system") | not) | select(.spec.containers | length == 1) | "\(.metadata.namespace)/\(.metadata.name)"'
+  jq -r '.items[] | select(.metadata.namespace != "istio-system") | select([.spec.containers[].name] | index("istio-proxy") | not) | "\(.metadata.namespace)/\(.metadata.name)"'
 
 # Check for sidecar injection exceptions
 kubectl get namespaces -l istio-injection=enabled
+kubectl get namespaces -l istio.io/rev
 kubectl get pods --all-namespaces -o json | \
-  jq -r '.items[] | select(.metadata.annotations["sidecar.istio.io/inject"] == "false") | "\(.metadata.namespace)/\(.metadata.name)"'
+  jq -r '.items[] | select(.metadata.labels["sidecar.istio.io/inject"] == "false" or .metadata.annotations["sidecar.istio.io/inject"] == "false") | "\(.metadata.namespace)/\(.metadata.name)"'
 ```
 
 ### Incident Type 4: Suspicious Traffic Patterns
