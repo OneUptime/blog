@@ -80,7 +80,7 @@ If one side is STRICT and the other does not have a sidecar, the handshake fails
 Option 1: Set PERMISSIVE mode to allow both mTLS and plaintext:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: permissive
@@ -99,7 +99,7 @@ kubectl rollout restart deployment my-service
 
 ## Step 3: Check Certificate Health
 
-Istio sidecars get their certificates from istiod (using the Citadel component). Certificates can expire or fail to rotate.
+Istio sidecars get their certificates from the Istio CA in istiod. Certificates can expire or fail to rotate.
 
 Check the certificate on a specific proxy:
 
@@ -194,7 +194,7 @@ istioctl proxy-config listeners my-app-xxxxx.default -o json | grep -A 10 "tls_p
 To set minimum TLS version on a Gateway:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: my-gateway
