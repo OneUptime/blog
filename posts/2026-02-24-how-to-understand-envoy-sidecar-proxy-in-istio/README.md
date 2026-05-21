@@ -14,7 +14,7 @@ Envoy is the engine that makes Istio work. Every feature you use in Istio - traf
 
 Envoy is a high-performance proxy written in C++ that was originally built at Lyft. It is designed to be a universal data plane for service mesh architectures. Istio chose Envoy as its sidecar proxy because of its extensibility, performance, and rich feature set.
 
-In Istio, Envoy runs as a sidecar container called `istio-proxy` in every pod. It intercepts all inbound and outbound network traffic for the application container in the same pod.
+In Istio sidecar mode, Envoy runs as a sidecar container called `istio-proxy` in each injected workload pod. It intercepts inbound and outbound application traffic for the application container in the same pod, except for traffic that is explicitly excluded from capture.
 
 ```bash
 # Look at the Envoy version running in your mesh
@@ -81,7 +81,7 @@ Routes map incoming requests to upstream clusters based on matching rules:
 istioctl proxy-config routes deploy/my-app -n default
 ```
 
-This shows the routing table that Envoy uses to decide where to send requests. The routes are generated from your VirtualService definitions.
+This shows the routing table that Envoy uses to decide where to send requests. The routes are generated from your VirtualService definitions and service discovery information.
 
 ### Clusters
 
@@ -91,7 +91,7 @@ Clusters represent upstream services that Envoy can send traffic to:
 istioctl proxy-config clusters deploy/my-app -n default
 ```
 
-Each Kubernetes Service becomes an Envoy cluster. The cluster configuration includes load balancing policy, circuit breaker settings, and TLS context.
+Each Kubernetes Service is typically represented by one or more Envoy clusters. The cluster configuration includes load balancing policy, circuit breaker settings, and TLS context.
 
 ### Endpoints
 
@@ -154,7 +154,7 @@ kubectl exec deploy/my-app -c istio-proxy -- \
     curl localhost:15000/logging
 ```
 
-For access logs, check the istio-proxy container logs:
+If access logging is enabled, check the istio-proxy container logs:
 
 ```bash
 kubectl logs deploy/my-app -c istio-proxy --tail=20
@@ -170,7 +170,7 @@ The fields include: timestamp, method, path, protocol, response code, upstream c
 
 ## Envoy Metrics
 
-Each sidecar exposes Prometheus metrics on port 15020:
+Istio exposes merged Prometheus metrics for the workload on port 15020:
 
 ```bash
 kubectl exec deploy/my-app -c istio-proxy -- \
@@ -217,16 +217,16 @@ This will show you the SPIFFE identity, validity period, and issuer of the workl
 
 Resource Consumption
 
-Each Envoy sidecar consumes resources. The defaults in Istio are:
+Each Envoy sidecar consumes resources. The default Istio chart values for the proxy container are:
 
 ```yaml
 resources:
   requests:
-    cpu: 10m
-    memory: 40Mi
+    cpu: 100m
+    memory: 128Mi
   limits:
     cpu: 2000m
-    memory: 1Gi
+    memory: 1024Mi
 ```
 
 For production, tune these based on your traffic patterns. A sidecar handling 1000 RPS might use 50-100m CPU and 60-80 MB memory.
@@ -259,16 +259,19 @@ spec:
         filterChain:
           filter:
             name: envoy.filters.network.http_connection_manager
+            subFilter:
+              name: envoy.filters.http.router
     patch:
       operation: INSERT_BEFORE
       value:
         name: envoy.filters.http.lua
         typed_config:
           "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-          inlineCode: |
-            function envoy_on_request(request_handle)
-              request_handle:headers():add("x-custom-header", "added-by-envoy")
-            end
+          defaultSourceCode:
+            inlineString: |
+              function envoy_on_request(request_handle)
+                request_handle:headers():add("x-custom-header", "added-by-envoy")
+              end
 ```
 
 Use EnvoyFilter sparingly, as it couples your configuration to specific Envoy internals and can break during Istio upgrades.
