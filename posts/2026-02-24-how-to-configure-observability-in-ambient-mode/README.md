@@ -26,7 +26,6 @@ The ztunnel metrics endpoint is on port 15020. Key L4 metrics include:
 - `istio_tcp_connections_closed_total` - Closed connections
 - `istio_tcp_sent_bytes_total` - Outbound bytes
 - `istio_tcp_received_bytes_total` - Inbound bytes
-- `istio_tcp_connection_duration_milliseconds` - Connection duration
 
 These metrics have labels for source and destination workload, namespace, and security principal, giving you a clear view of who is talking to whom.
 
@@ -47,7 +46,7 @@ spec:
     matchLabels:
       app: ztunnel
   podMetricsEndpoints:
-  - port: http-monitoring
+  - port: ztunnel-stats
     path: /metrics
     interval: 15s
     relabelings:
@@ -111,7 +110,7 @@ spec:
     matchLabels:
       gateway.networking.k8s.io/gateway-name: waypoint
   podMetricsEndpoints:
-  - port: http-envoy-prom
+  - port: metrics
     path: /stats/prometheus
     interval: 15s
 ```
@@ -154,7 +153,7 @@ To import these into Grafana, create a ConfigMap-based dashboard or use Grafana'
 
 ## Distributed Tracing
 
-Tracing in ambient mode works through the waypoint proxy. The waypoint injects trace headers into HTTP traffic, similar to how sidecars did it.
+Tracing in ambient mode works through the waypoint proxy. The waypoint participates in distributed tracing for HTTP traffic, similar to how sidecars did it, but your applications still need to propagate trace headers on outbound requests for multi-service traces to be joined correctly.
 
 First, install Jaeger or your preferred tracing backend:
 
@@ -169,6 +168,7 @@ apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
   meshConfig:
+    enableTracing: true
     defaultConfig:
       tracing:
         sampling: 100
@@ -186,8 +186,12 @@ apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: tracing-config
-  namespace: istio-system
+  namespace: default
 spec:
+  targetRefs:
+  - group: gateway.networking.k8s.io
+    kind: Gateway
+    name: waypoint
   tracing:
   - providers:
     - name: jaeger
@@ -209,6 +213,10 @@ metadata:
   name: access-logging
   namespace: default
 spec:
+  targetRefs:
+  - group: gateway.networking.k8s.io
+    kind: Gateway
+    name: waypoint
   accessLogging:
   - providers:
     - name: envoy
@@ -224,18 +232,19 @@ For ztunnel logs, you can adjust the verbosity:
 
 ```bash
 ZTUNNEL_POD=$(kubectl get pods -n istio-system -l app=ztunnel -o jsonpath='{.items[0].metadata.name}')
-istioctl ztunnel-config log $ZTUNNEL_POD --level info
+istioctl ztunnel-config log $ZTUNNEL_POD.istio-system --level info
 ```
 
 ## OpenTelemetry Integration
 
-If you're using OpenTelemetry Collector, you can route both metrics and traces through it:
+If you're using OpenTelemetry Collector, you can route traces through it and scrape Istio metrics with the collector's Prometheus receiver:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
   meshConfig:
+    enableTracing: true
     extensionProviders:
     - name: otel
       opentelemetry:
@@ -250,15 +259,16 @@ apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: otel-config
-  namespace: istio-system
+  namespace: default
 spec:
+  targetRefs:
+  - group: gateway.networking.k8s.io
+    kind: Gateway
+    name: waypoint
   tracing:
   - providers:
     - name: otel
     randomSamplingPercentage: 5
-  metrics:
-  - providers:
-    - name: prometheus
 ```
 
 ## Verifying Everything Works
@@ -271,11 +281,13 @@ After setting up observability, run a quick test to make sure data flows through
 kubectl run test-client -n default --image=curlimages/curl --rm -it -- sh -c 'for i in $(seq 1 100); do curl -s http://my-app.default.svc.cluster.local:8080/health; done'
 
 # Check ztunnel metrics
-kubectl exec -n istio-system $ZTUNNEL_POD -- curl -s localhost:15020/metrics | grep istio_tcp
+kubectl port-forward -n istio-system pod/$ZTUNNEL_POD 15020:15020 &
+curl -s localhost:15020/metrics | grep istio_tcp
 
 # Check waypoint metrics
 WAYPOINT_POD=$(kubectl get pods -n default -l gateway.networking.k8s.io/gateway-name=waypoint -o jsonpath='{.items[0].metadata.name}')
-kubectl exec -n default $WAYPOINT_POD -c istio-proxy -- curl -s localhost:15020/stats/prometheus | grep istio_requests
+kubectl port-forward -n default pod/$WAYPOINT_POD 15022:15020 &
+curl -s localhost:15022/stats/prometheus | grep istio_requests
 ```
 
 If ztunnel metrics show TCP connections but waypoint metrics are empty, either the waypoint isn't processing traffic or the metrics endpoint is misconfigured. Double-check that the namespace waypoint enrollment is correct.
