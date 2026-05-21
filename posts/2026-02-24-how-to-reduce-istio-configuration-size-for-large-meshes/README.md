@@ -14,29 +14,29 @@ As your mesh grows, the amount of configuration that istiod pushes to each sidec
 
 The xDS protocol is how istiod communicates configuration to Envoy sidecars. It includes:
 
-- CDS (Cluster Discovery Service): One entry per service endpoint group
-- EDS (Endpoint Discovery Service): One entry per pod/VM IP for each service
+- CDS (Cluster Discovery Service): Cluster definitions for upstream services, ports, and subsets
+- EDS (Endpoint Discovery Service): Endpoint assignments for clusters
 - LDS (Listener Discovery Service): Listener configurations for inbound and outbound traffic
-- RDS (Route Discovery Service): Routing rules
+- RDS (Route Discovery Service): Route configurations used by HTTP listeners
 
 To see how big your current configuration is:
 
 ```bash
-# Count clusters (services) known to a proxy
+# Count clusters known to a proxy
 
-istioctl proxy-config cluster deploy/my-app -n my-namespace | wc -l
+istioctl proxy-config cluster deploy/my-app -n my-namespace | tail -n +2 | wc -l
 
 # Count endpoints
-istioctl proxy-config endpoint deploy/my-app -n my-namespace | wc -l
+istioctl proxy-config endpoint deploy/my-app -n my-namespace | tail -n +2 | wc -l
 
 # Count listeners
-istioctl proxy-config listener deploy/my-app -n my-namespace | wc -l
+istioctl proxy-config listener deploy/my-app -n my-namespace | tail -n +2 | wc -l
 
 # Count routes
-istioctl proxy-config route deploy/my-app -n my-namespace | wc -l
+istioctl proxy-config route deploy/my-app -n my-namespace | tail -n +2 | wc -l
 
 # Get the full config dump and check its size
-kubectl exec deploy/my-app -c istio-proxy -n my-namespace -- curl -s localhost:15000/config_dump | wc -c
+istioctl proxy-config all deploy/my-app -n my-namespace -o json | wc -c
 ```
 
 If the config dump is more than 1-2MB, you have room for optimization.
@@ -48,7 +48,7 @@ This is the most impactful change. Without Sidecar resources, every proxy gets c
 Start with a namespace-wide default:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -65,7 +65,7 @@ This alone can reduce configuration size by 80% if your namespace only has a fra
 For even more aggressive scoping, use workload-specific Sidecar resources:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: frontend-sidecar
@@ -89,7 +89,7 @@ spec:
 
 ## Use Discovery Selectors
 
-Discovery selectors tell istiod which namespaces to watch. Namespaces that are not selected are completely invisible to the mesh:
+Discovery selectors tell istiod which namespaces to watch and process when computing sidecar configuration. Namespaces that are not selected will not have their services, pods, and endpoints included in sidecar configuration, but this is not a security boundary:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -118,10 +118,10 @@ kubectl label namespace staging istio-discovery=enabled
 
 ## Reduce the Number of Exported Services
 
-By default, services in a namespace are exported to all namespaces. The `exportTo` field on VirtualService, DestinationRule, and ServiceEntry resources controls visibility:
+By default, services and Istio configuration are exported to all namespaces. The `exportTo` field on VirtualService, DestinationRule, and ServiceEntry resources controls visibility. For Kubernetes Services, use the mesh-wide default shown below or the `networking.istio.io/exportTo` annotation:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: internal-api
@@ -131,11 +131,11 @@ spec:
   - "."
   - "frontend"
   hosts:
-  - internal-api
+  - internal-api.backend.svc.cluster.local
   http:
   - route:
     - destination:
-        host: internal-api
+        host: internal-api.backend.svc.cluster.local
 ```
 
 Setting `exportTo: ["."]` makes the VirtualService visible only within its own namespace. This prevents other namespaces from receiving this configuration.
@@ -221,7 +221,7 @@ If you have many ServiceEntries for external services, consider consolidating th
 ```yaml
 # Instead of multiple ServiceEntries
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: api-one
@@ -235,7 +235,7 @@ spec:
   resolution: DNS
   location: MESH_EXTERNAL
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: api-two
@@ -251,7 +251,7 @@ spec:
 
 # Consolidate into one
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-apis
@@ -274,15 +274,15 @@ Fewer resources means fewer xDS updates and less configuration overhead.
 Set up monitoring to track configuration growth:
 
 ```bash
-# Prometheus metric for xDS push size
+# Prometheus metrics for xDS pushes
 pilot_xds_pushes{type="cds"}
 pilot_xds_pushes{type="eds"}
 pilot_xds_pushes{type="lds"}
 pilot_xds_pushes{type="rds"}
 
-# Configuration size per proxy
+# Configuration size and convergence distributions
 pilot_proxy_convergence_time_bucket
-pilot_xds_config_size_bytes
+pilot_xds_config_size_bytes_bucket
 ```
 
 Create alerts for when configuration size exceeds thresholds:
@@ -290,7 +290,7 @@ Create alerts for when configuration size exceeds thresholds:
 ```yaml
 # Alert rule example
 - alert: LargeXDSConfig
-  expr: pilot_xds_config_size_bytes > 5000000
+  expr: histogram_quantile(0.95, sum(rate(pilot_xds_config_size_bytes_bucket[5m])) by (le)) > 5000000
   for: 15m
   labels:
     severity: warning
