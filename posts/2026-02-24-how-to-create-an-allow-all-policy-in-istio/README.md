@@ -136,7 +136,7 @@ spec:
             namespaces: ["frontend"]
 ```
 
-This allows all traffic from the `frontend` namespace to `backend-api`, regardless of method, path, or identity. It's an "allow-all from a specific source" pattern.
+This allows all traffic from workloads identified as being in the `frontend` namespace to `backend-api`, regardless of method or path. The namespace match is derived from the peer certificate, so it requires mTLS to be enabled. It's an "allow-all from a specific source" pattern.
 
 ## Gradual Lockdown Strategy
 
@@ -243,13 +243,14 @@ spec:
   rules:
     - to:
         - operation:
+            ports: ["8080"]
             paths: ["/admin/*", "/internal/*"]
     - from:
         - source:
             namespaces: ["untrusted"]
 ```
 
-Everything is allowed except admin/internal paths and traffic from the untrusted namespace. This is a useful pattern when you want a mostly-open environment with specific blocks.
+Everything is allowed except admin/internal HTTP paths on port 8080 and traffic identified by mTLS as coming from the untrusted namespace. This is a useful pattern when you want a mostly-open environment with specific blocks.
 
 ## Development Environment Setup
 
