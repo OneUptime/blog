@@ -24,7 +24,7 @@ Think of it this way: ztunnel on node A needs to send traffic on behalf of pod X
 
 ### Transport Layer
 
-HBONE uses HTTP/2 CONNECT over mTLS on port 15008. The TLS connection between ztunnel instances uses the ztunnel's own identity for transport security. The application workload identity is carried inside the tunnel.
+HBONE uses HTTP/2 CONNECT over mTLS on port 15008. Ztunnel manages workload certificates on behalf of the pods it proxies, and the workload identities are used to establish the encrypted channel.
 
 ```text
 Source Pod -> Source ztunnel -> [HBONE tunnel over mTLS on port 15008] -> Dest ztunnel -> Dest Pod
@@ -35,9 +35,8 @@ Source Pod -> Source ztunnel -> [HBONE tunnel over mTLS on port 15008] -> Dest z
 HTTP/2 CONNECT creates a bidirectional byte stream tunnel. In HBONE, the CONNECT request includes metadata about the source and destination workloads:
 
 ```text
-CONNECT 10.0.2.5:8080 HTTP/2
-:authority: 10.0.2.5:8080
 :method: CONNECT
+:authority: 10.0.2.5:8080
 ```
 
 The `:authority` field identifies the destination workload. Additional metadata like the source identity is carried through the mTLS certificate presented during the TLS handshake.
@@ -54,28 +53,25 @@ The destination ztunnel validates this certificate against the Istio CA trust ch
 
 ## Port 15008
 
-HBONE uses port 15008 by default. This is the port that ztunnel listens on for incoming HBONE connections from other nodes.
+HBONE uses port 15008 by default. This is the port that ztunnel and other HBONE-capable proxies expose for incoming HBONE connections.
 
-If you are running Istio ambient mode and have network policies or firewall rules between nodes, make sure port 15008 is open:
+If you are running Istio ambient mode and have network policies or firewall rules between workloads or nodes, make sure port 15008 is open. For Kubernetes `NetworkPolicy`, add port 15008 to the policies that select ambient workloads receiving traffic:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: allow-hbone
-  namespace: istio-system
+  name: my-app-allow-ingress-web
 spec:
   podSelector:
     matchLabels:
-      app: ztunnel
+      app.kubernetes.io/name: my-app
   ingress:
     - ports:
+        - port: 8080
+          protocol: TCP
         - port: 15008
           protocol: TCP
-      from:
-        - podSelector:
-            matchLabels:
-              app: ztunnel
 ```
 
 On cloud providers with security groups:
@@ -105,7 +101,6 @@ The ztunnel on node 1:
 - Identifies pod A as the source workload
 - Looks up pod A's SPIFFE identity (from its ServiceAccount)
 - Resolves the destination service IP to pod B on node 2
-- Checks L4 AuthorizationPolicies (source-side)
 - Checks if a waypoint proxy should be in the path
 
 ### 4. HBONE tunnel establishment
@@ -124,13 +119,13 @@ Pod B's response flows back through the same HBONE tunnel to the source ztunnel 
 
 ## Same-Node Traffic
 
-When both pods are on the same node, ztunnel still handles the traffic but can optimize the path. Instead of creating an HBONE tunnel to itself, it can forward traffic directly within its own process:
+When both pods are on the same node, ztunnel still handles the traffic, but the traffic does not have to cross a node boundary:
 
 ```text
-Pod A -> ztunnel (local processing) -> Pod B
+Pod A -> local ztunnel -> Pod B
 ```
 
-The mTLS certificates are still validated even for local traffic. The identity-based access control works the same way regardless of whether pods are on the same node or different nodes.
+The identity-based access control and L4 telemetry work the same way regardless of whether pods are on the same node or different nodes.
 
 ## HBONE vs Other Tunneling Protocols
 
@@ -145,16 +140,16 @@ HBONE is unique in carrying workload-level (not node-level) identity. This means
 
 ## Debugging HBONE Traffic
 
-### Check HBONE listener status
+### Check workload HBONE configuration
 
 ```bash
-kubectl exec -n istio-system -l app=ztunnel -- curl -s localhost:15020/healthz/ready
+istioctl ztunnel-config workloads
 ```
 
-### Look at HBONE connection stats
+### Look at ztunnel connection metrics
 
 ```bash
-kubectl exec -n istio-system ztunnel-xxxxx -- curl -s localhost:15020/stats | grep hbone
+kubectl exec -n istio-system ztunnel-xxxxx -- curl -s localhost:15020/metrics | grep istio_tcp
 ```
 
 ### Capture HBONE traffic
@@ -194,7 +189,7 @@ HBONE adds some overhead compared to direct connections:
 
 In practice, the overhead is similar to regular mTLS. HTTP/2 connection multiplexing helps reduce handshake overhead when there are many connections between the same pair of nodes.
 
-Throughput benchmarks show HBONE performing within a few percent of direct mTLS connections, which is already within a few percent of plaintext. For most applications, the performance difference is not noticeable.
+Istio's ambient performance benchmarks show ztunnel providing high encrypted throughput, but the exact overhead depends on workload shape, hardware, TLS libraries, and connection reuse. For most applications, the performance difference is not noticeable.
 
 ## Key Takeaways
 
