@@ -70,7 +70,7 @@ For well-known protocols, Istio has dedicated prefixes:
   targetPort: 6379
 ```
 
-These protocol-specific prefixes tell Istio to use the appropriate protocol filter, which gives slightly better metrics and connection handling than generic TCP.
+Istio recognizes these protocol-specific names, but `mongo`, `mysql`, and `redis` protocol support is experimental and must be enabled explicitly in Istio. If it is not enabled, Istio treats the traffic as opaque TCP. For most database deployments, the generic `tcp-` prefix is the safer default.
 
 ## Database Services
 
@@ -207,7 +207,7 @@ spec:
       weight: 100
 ```
 
-For read replicas, route different subsets:
+For read replicas, route different subsets. Istio cannot inspect SQL statements to split reads from writes, so clients must connect to different service names or ports for primary and read-only traffic:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -304,7 +304,7 @@ spec:
     mode: STRICT
 ```
 
-One common issue is that some database clients send a TLS negotiation as part of the connection setup. If the client tries to negotiate TLS and the sidecar is already doing mTLS, you get a double-encryption conflict. Tell your database client to use plain TCP (no SSL) and let Istio handle encryption:
+Application-level TLS can still work with Istio mTLS; it is just encrypted again inside the sidecar-to-sidecar mTLS connection. If you do not need database-level TLS inside the mesh, you can tell your database client to use plain TCP and let Istio handle workload-to-workload encryption:
 
 ```bash
 # PostgreSQL connection string without SSL (Istio handles encryption)
@@ -333,19 +333,17 @@ spec:
 apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
-  name: external-postgres-tls
+  name: external-postgres-policy
 spec:
   host: external-db.example.com
   trafficPolicy:
-    tls:
-      mode: SIMPLE
     connectionPool:
       tcp:
         maxConnections: 20
         connectTimeout: 5s
 ```
 
-The `tls.mode: SIMPLE` tells Istio to originate TLS when connecting to the external database. This is different from mTLS (which is for mesh-internal traffic).
+For an external PostgreSQL database that requires TLS, configure the PostgreSQL client to use TLS, for example with `sslmode=require`. Istio `tls.mode: SIMPLE` originates a standard TLS connection from the proxy to the upstream, but that only works for protocols where the upstream expects TLS from the first byte; it is not a generic replacement for PostgreSQL's own SSL negotiation.
 
 ## Monitoring Non-HTTP Services
 
@@ -384,4 +382,4 @@ This makes database connections bypass the sidecar entirely, eliminating the pro
 
 ## Summary
 
-Non-HTTP services in Istio get less functionality than HTTP services, but you still get mTLS, authorization, connection pool management, and basic metrics. Name your ports correctly, configure TCP-specific VirtualService and DestinationRule resources, and use service account-based authorization to control access. For database connections, disable application-level TLS and let Istio handle encryption. And consider excluding high-throughput TCP ports from the sidecar if the proxy overhead is not acceptable for your use case.
+Non-HTTP services in Istio get less functionality than HTTP services, but you still get mTLS, authorization, connection pool management, and basic metrics. Name your ports correctly, configure TCP-specific VirtualService and DestinationRule resources, and use service account-based authorization to control access. For database connections, decide whether application-level TLS is still needed or whether Istio mTLS is enough for your environment. And consider excluding high-throughput TCP ports from the sidecar if the proxy overhead is not acceptable for your use case.
