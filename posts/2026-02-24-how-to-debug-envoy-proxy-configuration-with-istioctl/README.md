@@ -194,7 +194,7 @@ istioctl proxy-config listeners productpage-v1-abc123.default -o json | \
 For real-time debugging, you can access Envoy's admin interface directly:
 
 ```bash
-istioctl dashboard envoy productpage-v1-abc123.default
+istioctl dashboard proxy productpage-v1-abc123.default
 ```
 
 This opens the admin page where you can see active connections, recent stats, config dumps, and even toggle logging levels on the fly. The `/stats` endpoint is particularly useful for seeing error counts and latencies.
@@ -203,7 +203,7 @@ You can also hit the admin API through kubectl:
 
 ```bash
 kubectl exec productpage-v1-abc123 -c istio-proxy -- \
-  curl -s localhost:15000/stats | grep "upstream_cx"
+  pilot-agent request GET stats | grep "upstream_cx"
 ```
 
 ## Final Thoughts
