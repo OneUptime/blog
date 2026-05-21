@@ -14,12 +14,12 @@ Traffic policies in a federated setup cover routing rules, load balancing across
 
 ## Basic Cross-Mesh Routing with VirtualService
 
-The most common scenario is routing traffic to a service that exists in both meshes. Maybe you have a `checkout` service running in mesh-west and mesh-east, and you want traffic to prefer the local instance but fall back to the remote one if it goes down.
+The most common scenario is routing traffic to a service that exists in both meshes. Maybe you have a `checkout` service running in mesh-west and mesh-east, and you want one routing policy to cover both local and remote endpoints.
 
 First, make sure the service is discoverable in both meshes (either through remote secrets or ServiceEntry). Then set up a VirtualService:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: checkout-routing
@@ -46,7 +46,7 @@ This applies to all traffic hitting the checkout service, whether the endpoints 
 If you want to split traffic between meshes intentionally (maybe for a canary deployment across regions), you can use subset-based routing:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: checkout-subsets
@@ -68,7 +68,7 @@ spec:
 Then reference the subsets in your VirtualService:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: checkout-split
@@ -95,7 +95,7 @@ This sends 90% of traffic to the local mesh and 10% to the remote mesh. Useful f
 Remote endpoints are inherently less reliable than local ones. Network partitions, gateway failures, and increased latency are all more likely. Circuit breaking helps prevent cascading failures.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: checkout-circuit-breaker
@@ -126,7 +126,7 @@ Setting `maxEjectionPercent` to less than 100 ensures you always have some endpo
 Locality-aware routing is probably the most useful feature for federated meshes. It automatically prefers local endpoints and only fails over to remote ones when necessary.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: checkout-locality
@@ -143,9 +143,6 @@ spec:
       failover:
         - from: us-west-1
           to: us-east-1
-      failoverPriority:
-        - "topology.kubernetes.io/region"
-        - "topology.kubernetes.io/zone"
 ```
 
 For this to work, your nodes need proper locality labels:
@@ -206,14 +203,14 @@ spec:
                   denominator: HUNDRED
 ```
 
-This limits the east-west gateway to 1000 requests per second with a refill rate of 100 per second.
+This allows a burst of up to 1000 requests at the east-west gateway, then refills the bucket at 100 requests per second.
 
 ## Timeout Adjustments for Cross-Mesh Traffic
 
 Cross-mesh calls have higher latency than in-cluster calls. Your timeout configurations need to account for this. A timeout that works fine for in-cluster communication might cause premature failures for cross-mesh requests.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: checkout-timeouts
@@ -224,7 +221,7 @@ spec:
   http:
     - match:
         - sourceLabels:
-            mesh: west
+            topology.istio.io/cluster: cluster-west
       route:
         - destination:
             host: checkout.shop.svc.cluster.local
