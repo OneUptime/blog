@@ -76,7 +76,7 @@ sum(rate(istio_requests_total[5m])) by (
 For detailed per-request tracking, enable access logging:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: mesh-access-logs
@@ -135,10 +135,25 @@ kubectl logs -n shop -l app=frontend -c istio-proxy --tail=1000 | \
 
 ## Tracking with Distributed Traces
 
-Distributed traces show you the full path of a request across multiple services. Configure tracing:
+Distributed traces show you the full path of a request across multiple services when applications propagate tracing headers. First configure a tracing provider:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
+spec:
+  meshConfig:
+    enableTracing: true
+    extensionProviders:
+      - name: zipkin
+        zipkin:
+          service: zipkin.istio-system.svc.cluster.local
+          port: 9411
+```
+
+Then enable tracing with the Telemetry API:
+
+```yaml
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: mesh-tracing
@@ -153,7 +168,7 @@ spec:
 Setting the sampling to 100% captures every request, which is useful for complete communication tracking but generates a lot of data. In production, you might want to sample selectively:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: selective-tracing
@@ -168,7 +183,7 @@ spec:
 Make sure your tracing backend is deployed:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/jaeger.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.29/samples/addons/jaeger.yaml
 ```
 
 ## Building a Service Communication Map
@@ -176,7 +191,7 @@ kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samp
 Combine metrics data to build a complete map of service communication. Kiali does this automatically:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/kiali.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.29/samples/addons/kiali.yaml
 ```
 
 Access the Kiali dashboard:
@@ -269,7 +284,7 @@ spec:
         data-classification: internal
 ```
 
-These labels appear in metrics and logs, making it easier to filter and analyze communication by team, version, or data classification.
+The standard `app` and `version` labels appear in Istio metrics as dimensions such as `source_app`, `destination_app`, `source_version`, and `destination_version`. Arbitrary labels such as `team` and `data-classification` do not automatically appear in Istio standard metrics or access logs; add them through Telemetry metric tag overrides or your log pipeline if you want to filter by those fields.
 
 ## Exporting Communication Reports
 
