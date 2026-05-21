@@ -66,7 +66,7 @@ spec:
         http2MaxRequests: 1
 ```
 
-Inject a delay to slow responses and cause requests to queue up:
+Inject a delay so the client-side proxy releases requests toward the upstream at the same time and they compete for the same small connection pool:
 
 ```yaml
 apiVersion: networking.istio.io/v1beta1
@@ -99,7 +99,7 @@ done
 wait
 ```
 
-With `http1MaxPendingRequests: 1` and `http2MaxRequests: 1`, only one request is actively being processed and one can be pending. The other 8 requests should get immediate 503 errors with the `UO` (upstream overflow) response flag.
+With `http1MaxPendingRequests: 1` and `http2MaxRequests: 1`, only one request can be active and one request can wait for a ready connection pool connection. The other requests should get immediate 503 errors with the `UO` (upstream overflow) response flag.
 
 Check the access logs to confirm:
 
@@ -170,7 +170,7 @@ spec:
 
 After the bad instance returns 3 consecutive 5xx errors, outlier detection ejects it for 30 seconds. Subsequent requests only go to the healthy instances.
 
-Alternatively, use fault injection with a VirtualService that targets a specific subset:
+Alternatively, route some traffic to a specific faulty subset so the upstream hosts in that subset return the errors:
 
 ```yaml
 apiVersion: networking.istio.io/v1beta1
@@ -192,6 +192,25 @@ spec:
       consecutive5xxErrors: 3
       interval: 10s
       baseEjectionTime: 30s
+---
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: payment-service
+  namespace: production
+spec:
+  hosts:
+    - payment-service
+  http:
+    - route:
+        - destination:
+            host: payment-service
+            subset: healthy
+          weight: 80
+        - destination:
+            host: payment-service
+            subset: faulty
+          weight: 20
 ```
 
 ## Test 3: Verifying Ejection and Recovery
@@ -226,7 +245,7 @@ ENDPOINT         STATUS      OUTLIER CHECK   CLUSTER
 10.1.2.5:8080    UNHEALTHY   FAILED          outbound|8080||payment-service
 ```
 
-After `baseEjectionTime` (30 seconds), the ejected instance is added back and given another chance.
+After `baseEjectionTime` (30 seconds for the first ejection), the ejected instance is added back and given another chance. If the same host is ejected repeatedly, Envoy can increase the ejection duration.
 
 ## Test 4: Combining Fault Injection with Circuit Breaking
 
@@ -275,10 +294,10 @@ spec:
 ```
 
 This creates a complex failure scenario:
-- 40% of requests get immediate 503 errors
-- 30% of remaining requests are delayed by 2 seconds
-- Delayed requests may pile up and hit connection pool limits
-- Repeated 503s trigger outlier detection on affected endpoints
+- 40% of requests are aborted with 503 errors by the proxy
+- 30% of requests are delayed by 2 seconds before being forwarded upstream
+- Requests that reach the upstream together may pile up and hit connection pool limits
+- Upstream 5xx responses, such as responses from a faulty backend subset, trigger outlier detection on affected endpoints
 
 Monitor the combined behavior:
 
