@@ -84,6 +84,8 @@ spec:
       ports:
         - port: 53
           protocol: UDP
+        - port: 53
+          protocol: TCP
 ```
 
 This ensures that even without Istio, pods can only communicate with other mesh members.
@@ -132,7 +134,7 @@ spec:
       outputPayloadToHeader: x-jwt-payload
 ```
 
-This validates JWT tokens on incoming requests before they reach authorization checks.
+This validates JWT tokens on incoming requests when they are present. Use an authorization policy, like the one below, to require a valid JWT for protected paths.
 
 ## Layer 4: Fine-Grained Authorization
 
@@ -227,7 +229,7 @@ spec:
       maxEjectionPercent: 50
 ```
 
-For more sophisticated rate limiting, use Istio's rate limiting with an external rate limit service:
+For per-instance rate limiting in the sidecar, use Envoy's local rate limit filter:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -252,12 +254,24 @@ spec:
         value:
           name: envoy.filters.http.local_ratelimit
           typed_config:
-            "@type": type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit
-            stat_prefix: http_local_rate_limiter
-            token_bucket:
-              max_tokens: 1000
-              tokens_per_fill: 100
-              fill_interval: 1s
+            "@type": type.googleapis.com/udpa.type.v1.TypedStruct
+            type_url: type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit
+            value:
+              stat_prefix: http_local_rate_limiter
+              token_bucket:
+                max_tokens: 1000
+                tokens_per_fill: 100
+                fill_interval: 1s
+              filter_enabled:
+                runtime_key: local_rate_limit_enabled
+                default_value:
+                  numerator: 100
+                  denominator: HUNDRED
+              filter_enforced:
+                runtime_key: local_rate_limit_enforced
+                default_value:
+                  numerator: 100
+                  denominator: HUNDRED
 ```
 
 ## Layer 6: Security Headers and Input Validation
@@ -307,7 +321,7 @@ Each layer should have its own monitoring. Set up alerts for:
 # NetworkPolicy violations (requires CNI that exports metrics)
 # mTLS failures
 - alert: MTLSFailure
-  expr: rate(istio_requests_total{connection_security_policy="none", namespace="production"}[5m]) > 0
+  expr: rate(istio_requests_total{connection_security_policy!="mutual_tls", reporter="destination", namespace="production"}[5m]) > 0
   labels:
     severity: critical
 
