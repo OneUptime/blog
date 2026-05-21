@@ -26,10 +26,18 @@ Configure your identity providers. Here is how to set up email/password and Goog
 
 ```bash
 # Enable email/password provider
-
-gcloud identity-platform config update \
-  --project=your-project-id \
-  --enable-email-signin
+curl -X PATCH \
+  "https://identitytoolkit.googleapis.com/admin/v2/projects/your-project-id/config?updateMask=signIn.email" \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "signIn": {
+      "email": {
+        "enabled": true,
+        "passwordRequired": true
+      }
+    }
+  }'
 
 # The Google provider is configured through the console
 # Navigate to: Identity Platform > Providers > Add Provider > Google
@@ -90,6 +98,8 @@ spec:
       forwardOriginalToken: true
     - issuer: "https://accounts.google.com"
       jwksUri: "https://www.googleapis.com/oauth2/v3/certs"
+      audiences:
+        - "your-project-id"
       forwardOriginalToken: true
 ```
 
@@ -106,7 +116,8 @@ metadata:
 spec:
   hosts:
     - "www.googleapis.com"
-    - "securetoken.google.com"
+    - "identitytoolkit.googleapis.com"
+    - "securetoken.googleapis.com"
     - "accounts.google.com"
   ports:
     - number: 443
@@ -166,6 +177,7 @@ curl -s -X POST \
   -H "Content-Type: application/json" \
   -d '{
     "localId": "user-uid-here",
+    "targetProjectId": "your-project-id",
     "customAttributes": "{\"role\": \"admin\", \"team\": \"engineering\"}"
   }'
 ```
@@ -239,7 +251,7 @@ TOKEN=$(gcloud auth print-identity-token \
 
 ## Multi-Tenant Configuration
 
-Identity Platform supports multi-tenancy. If you use tenants, the issuer changes:
+Identity Platform supports multi-tenancy. Tenant ID tokens still use the project issuer, so the JWT validation rule stays the same:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -274,13 +286,13 @@ spec:
         - operation:
             paths: ["/api/tenant-a/*"]
       when:
-        - key: request.auth.claims[firebase.tenant]
+        - key: request.auth.claims[firebase][tenant]
           values: ["tenant-a-id"]
 ```
 
 ## Using Workload Identity on GKE
 
-If you are running on GKE, you can combine Identity Platform (for user auth) with GKE Workload Identity (for service auth). This gives you a unified identity model:
+If you are running on GKE, you can combine Identity Platform (for user auth) with Google service account ID tokens for service auth. If your workloads obtain those tokens through service account impersonation or Workload Identity, add a second rule:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -299,6 +311,8 @@ spec:
     # Service account tokens from Google
     - issuer: "https://accounts.google.com"
       jwksUri: "https://www.googleapis.com/oauth2/v3/certs"
+      audiences:
+        - "your-project-id"
       forwardOriginalToken: true
 ```
 
@@ -313,7 +327,7 @@ TOKEN=$(curl -s -X POST \
   | jq -r '.idToken')
 
 # Inspect token
-echo $TOKEN | cut -d'.' -f2 | base64 -d 2>/dev/null | jq .
+jq -R 'split(".")[1] | gsub("-"; "+") | gsub("_"; "/") | @base64d | fromjson' <<< "$TOKEN"
 
 # Test authenticated access
 curl -H "Authorization: Bearer $TOKEN" https://app.mycompany.com/api/data
