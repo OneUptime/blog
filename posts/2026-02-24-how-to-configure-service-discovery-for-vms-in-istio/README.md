@@ -49,7 +49,7 @@ spec:
 
 ## Creating a WorkloadGroup
 
-A WorkloadGroup defines the properties for VMs that will join the mesh. It's like a Deployment spec for VMs:
+A WorkloadGroup defines the properties for VMs that will join the mesh. It's like a Deployment spec for VMs. Save this as `workloadgroup.yaml`:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -76,6 +76,7 @@ spec:
 Create the corresponding service account:
 
 ```bash
+kubectl create namespace backend
 kubectl create serviceaccount legacy-api -n backend
 ```
 
@@ -103,12 +104,13 @@ spec:
 Generate the files the VM needs to join the mesh:
 
 ```bash
+kubectl apply -f workloadgroup.yaml
+
 istioctl x workload entry configure \
-  --name legacy-api-vm1 \
+  --name legacy-api \
   --namespace backend \
   --clusterID cluster1 \
   --externalIP 10.0.5.50 \
-  --serviceAccount legacy-api \
   --output vm-files/
 ```
 
@@ -128,7 +130,7 @@ Copy the generated files to the VM and install the Istio sidecar:
 # On the VM
 
 # Download the Istio sidecar package
-curl -LO https://storage.googleapis.com/istio-release/releases/1.22.0/deb/istio-sidecar.deb
+curl -LO https://storage.googleapis.com/istio-release/releases/1.30.0/deb/istio-sidecar.deb
 sudo dpkg -i istio-sidecar.deb
 ```
 
@@ -145,6 +147,9 @@ sudo cp cluster.env /var/lib/istio/envoy/cluster.env
 sudo cp mesh.yaml /etc/istio/config/mesh
 
 sudo sh -c 'cat hosts >> /etc/hosts'
+
+sudo mkdir -p /etc/istio/proxy
+sudo chown -R istio-proxy /var/lib/istio /etc/certs /etc/istio/proxy /etc/istio/config /var/run/secrets
 ```
 
 Start the Istio agent:
@@ -215,6 +220,18 @@ spec:
 
 With auto-registration, when a VM agent connects to istiod, a WorkloadEntry is automatically created based on the WorkloadGroup template.
 
+Generate the VM files with `--autoregister` so the VM requests automatic registration:
+
+```bash
+istioctl x workload entry configure \
+  --name legacy-api \
+  --namespace backend \
+  --clusterID cluster1 \
+  --externalIP 10.0.5.50 \
+  --autoregister \
+  --output vm-files/
+```
+
 ## Verifying VM Service Discovery
 
 Check that the VM workload is registered:
@@ -223,10 +240,11 @@ Check that the VM workload is registered:
 kubectl get workloadentry -n backend
 ```
 
-Verify the endpoints:
+Verify the service endpoints from Istio's service registry:
 
 ```bash
-kubectl get endpoints legacy-api -n backend
+FRONTEND_POD=$(kubectl get pod -n frontend -l app=frontend -o jsonpath='{.items[0].metadata.name}')
+istioctl proxy-config endpoints "$FRONTEND_POD" -n frontend | grep legacy-api
 ```
 
 You should see the VM's IP address listed alongside any Kubernetes pod endpoints.
@@ -309,7 +327,7 @@ Verify the VM can reach istiod:
 
 ```bash
 # On the VM
-curl -k https://istiod.istio-system.svc:15012/debug/endpointz
+curl -s http://istiod.istio-system.svc:15014/debug/endpointz
 ```
 
 VM integration with Istio brings your entire infrastructure into one mesh. It's more work to set up than pure Kubernetes workloads, but the payoff is consistent security, observability, and traffic management across your hybrid environment.
