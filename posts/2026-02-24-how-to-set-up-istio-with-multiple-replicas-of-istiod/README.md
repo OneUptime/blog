@@ -36,6 +36,9 @@ spec:
     pilot:
       k8s:
         replicaCount: 3
+        hpaSpec:
+          minReplicas: 3
+          maxReplicas: 5
         resources:
           requests:
             cpu: 500m
@@ -72,7 +75,8 @@ If you manage Istio with Helm:
 
 ```bash
 helm upgrade istiod istio/istiod -n istio-system \
-  --set replicaCount=3 \
+  --set autoscaleMin=3 \
+  --set autoscaleMax=5 \
   --set resources.requests.cpu=500m \
   --set resources.requests.memory=1Gi \
   --set resources.limits.cpu=2000m \
@@ -92,21 +96,21 @@ istioctl proxy-status
 The output shows which istiod instance each proxy is connected to:
 
 ```text
-NAME                     CLUSTER   CDS   LDS   EDS   RDS   ECDS   ISTIOD
-app-1-pod.default        ...       SYNCED SYNCED SYNCED SYNCED ...    istiod-7b69f6b4c8-abc12
-app-2-pod.default        ...       SYNCED SYNCED SYNCED SYNCED ...    istiod-7b69f6b4c8-def34
-app-3-pod.default        ...       SYNCED SYNCED SYNCED SYNCED ...    istiod-7b69f6b4c8-ghi56
+NAME                     CLUSTER   CDS      LDS      EDS      RDS      ECDS   ISTIOD                       VERSION
+app-1-pod.default        ...       SYNCED   SYNCED   SYNCED   SYNCED   ...    istiod-7b69f6b4c8-abc12      1.29.2
+app-2-pod.default        ...       SYNCED   SYNCED   SYNCED   SYNCED   ...    istiod-7b69f6b4c8-def34      1.29.2
+app-3-pod.default        ...       SYNCED   SYNCED   SYNCED   SYNCED   ...    istiod-7b69f6b4c8-ghi56      1.29.2
 ```
 
 For a count of proxies per istiod replica:
 
 ```bash
-istioctl proxy-status | awk '{print $NF}' | sort | uniq -c | sort -rn
+istioctl proxy-status | awk 'NR > 1 {print $(NF-1)}' | sort | uniq -c | sort -rn
 ```
 
 ## Load Balancing Considerations
 
-Kubernetes Services use round-robin for new connections. Since gRPC connections are long-lived, you might see uneven distribution. This is normal and usually not a problem because:
+Kubernetes Services load-balance new connections across ready endpoints, but the exact algorithm depends on the cluster's kube-proxy or service implementation. Since gRPC connections are long-lived, you might see uneven distribution. This is normal and usually not a problem because:
 
 1. Each istiod replica can handle many proxies
 2. When pods restart, they reconnect and naturally rebalance
@@ -192,29 +196,29 @@ kubectl get pdb -n istio-system
 Istiod replicas use leader election for certain tasks. Check the current leader:
 
 ```bash
-kubectl get lease -n istio-system
+kubectl get lease,configmap -n istio-system | grep -E 'istio-.*leader|istio-.*election'
 ```
 
 Typical output:
 
 ```text
-NAME                                           HOLDER                               AGE
-istio-leader                                   istiod-7b69f6b4c8-abc12              2h
+configmap/istio-leader                         1      2h
+lease.coordination.k8s.io/istio-gateway-status-leader   istiod-7b69f6b4c8-abc12   2h
 ```
 
 Only the leader handles certain coordination tasks. All replicas handle xDS configuration pushes independently. This means losing the leader temporarily is not critical - a new leader will be elected quickly.
 
-## Configuring Readiness and Liveness Probes
+## Configuring Readiness Probes
 
 Make sure probes are properly configured so unhealthy replicas are removed from the Service:
 
 ```bash
-kubectl describe deployment istiod -n istio-system | grep -A15 "Readiness\|Liveness"
+kubectl describe deployment istiod -n istio-system | grep -A8 "Readiness"
 ```
 
 The default configuration includes:
-- Liveness probe on port 15014
-- Readiness probe on port 15014
+- Readiness probe on `/ready` on port 8080
+- Metrics and debug endpoints on port 15014
 
 If a replica becomes unhealthy, the readiness probe fails, Kubernetes removes it from the Service, and proxies connected to it reconnect to healthy replicas.
 
@@ -252,7 +256,7 @@ container_memory_working_set_bytes{
 }
 
 # Connected proxies per replica
-pilot_xds{type="ads"}
+pilot_xds
 ```
 
 Set up alerts for uneven load:
@@ -268,7 +272,7 @@ spec:
     rules:
     - alert: IstiodReplicaDown
       expr: |
-        count(kube_pod_status_ready{
+        sum(kube_pod_status_ready{
           namespace="istio-system",
           pod=~"istiod.*",
           condition="true"
