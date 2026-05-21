@@ -31,7 +31,7 @@ The most important job of istiod is converting your Istio configuration into Env
 When you create a VirtualService:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: product-service
@@ -60,7 +60,7 @@ Istiod watches the Kubernetes API server for this resource. When it detects the 
 3. Generates Envoy-specific configuration (routes, clusters, listeners)
 4. Pushes the configuration to all relevant sidecars using the xDS protocol
 
-The xDS push is incremental when possible. If only a route changed, istiod sends just the route update rather than the entire configuration.
+The xDS push is incremental when possible. Since Istio 1.22, Delta xDS is enabled by default, so istiod can send changed resources instead of the entire state of the world. Some updates may still include unchanged configuration as part of the delta response.
 
 You can track configuration pushes:
 
@@ -75,7 +75,7 @@ kubectl exec -n istio-system deploy/istiod -- \
 Istiod maintains a service registry that contains every service in the mesh. It builds this registry by watching Kubernetes resources:
 
 - **Services** - Defines the service name and ports
-- **Endpoints** - The actual pod IPs behind each Service
+- **EndpointSlices** or **Endpoints** - The actual pod IPs behind each Service
 - **Pods** - For label information used in routing
 
 When a new pod starts up or an old one terminates, istiod updates its registry and pushes new endpoint information to the sidecars. This is how your sidecars always know the current set of healthy backends for each service.
@@ -126,12 +126,12 @@ Istiod registers a Kubernetes validating admission webhook that catches invalid 
 kubectl get validatingwebhookconfiguration -l app=istiod
 ```
 
-Try applying an invalid VirtualService and you will see Galley reject it:
+Try applying an invalid VirtualService and you will see istiod's validation webhook reject it:
 
 ```bash
-# This has an invalid weight (over 100%)
+# This has invalid weights (outside the 0..100 range)
 cat <<EOF | kubectl apply -f -
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: bad-config
@@ -143,9 +143,13 @@ spec:
     - destination:
         host: test
         subset: v1
-      weight: 150
+      weight: 999
+    - destination:
+        host: test
+        subset: v2
+      weight: 888
 EOF
-# Error: total destination weight 150 != 100
+# Error: Schema validation error: percentage 888 is not in range 0..100
 ```
 
 ## Responsibility 5: Sidecar Injection
@@ -158,7 +162,7 @@ kubectl get mutatingwebhookconfiguration -l app=istiod
 
 When a pod is created in a namespace with `istio-injection=enabled`, istiod's webhook modifies the pod spec to add:
 - The `istio-proxy` container (Envoy sidecar)
-- The `istio-init` container (sets up iptables rules)
+- The `istio-init` container that sets up iptables rules, unless Istio CNI is enabled
 - Volumes for certificates and configuration
 
 ## Monitoring Istiod
@@ -174,7 +178,7 @@ Important metrics:
 
 ```text
 # Number of connected proxies
-pilot_xds_pushes{type="cds"}
+pilot_xds
 
 # Configuration push latency
 pilot_proxy_convergence_time_bucket
@@ -183,10 +187,10 @@ pilot_proxy_convergence_time_bucket
 citadel_server_csr_count
 
 # Certificate signing errors
-citadel_server_csr_sign_error_count
+citadel_server_csr_sign_err_count
 
-# Number of connected xDS clients
-pilot_xds
+# XDS push time
+pilot_xds_push_time_bucket
 ```
 
 ## Istiod Health Checks
@@ -198,8 +202,8 @@ Istiod exposes health and readiness endpoints:
 kubectl exec -n istio-system deploy/istiod -- curl -s localhost:8080/ready
 
 # Debug endpoints
-kubectl exec -n istio-system deploy/istiod -- curl -s localhost:15014/debug/endpointz
-kubectl exec -n istio-system deploy/istiod -- curl -s localhost:15014/debug/configz
+kubectl exec -n istio-system deploy/istiod -- curl -s localhost:15014/debug/registryz
+kubectl exec -n istio-system deploy/istiod -- curl -s localhost:15014/debug/config_dump
 kubectl exec -n istio-system deploy/istiod -- curl -s localhost:15014/debug/syncz
 ```
 
@@ -230,7 +234,7 @@ spec:
             memory: 4Gi
 ```
 
-All istiod replicas are active and can serve any sidecar. There is no leader election for configuration distribution. Each sidecar connects to one istiod instance and will failover to another if its current connection drops.
+All istiod replicas are active for xDS serving and can serve any sidecar. Istiod still uses leader election for some controllers, but configuration distribution is not handled by a single active replica. Each sidecar connects to one istiod instance and will failover to another if its current connection drops.
 
 For the CA functionality, the signing key is stored in a Kubernetes Secret, so all instances can sign certificates.
 
