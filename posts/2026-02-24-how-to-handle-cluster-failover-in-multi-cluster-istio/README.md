@@ -49,7 +49,7 @@ kubectl apply -f samples/helloworld/helloworld.yaml -n sample --context="${CTX_C
 Create a DestinationRule with locality failover settings:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: helloworld
@@ -72,11 +72,11 @@ spec:
       simple: ROUND_ROBIN
 ```
 
-Apply this to all clusters:
+Apply this to each cluster. For example, apply it to cluster1, then repeat the same command with `--context="${CTX_CLUSTER2}"`:
 
 ```bash
 kubectl apply -f - -n sample --context="${CTX_CLUSTER1}" <<EOF
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: helloworld
@@ -134,42 +134,23 @@ kubectl scale deployment helloworld-v1 -n sample --replicas=1 --context="${CTX_C
 
 ## Simulating Failures Without Scaling Down
 
-For a more realistic test, use Istio fault injection to make local endpoints return errors:
+For a more realistic test, drain the Envoy sidecar proxy for one of the local service pods. This makes new requests to that endpoint fail, which lets outlier detection eject it without scaling the workload down:
 
-```yaml
-apiVersion: networking.istio.io/v1beta1
-kind: VirtualService
-metadata:
-  name: helloworld-fault
-  namespace: sample
-spec:
-  hosts:
-  - helloworld
-  http:
-  - fault:
-      abort:
-        httpStatus: 503
-        percentage:
-          value: 100
-    match:
-    - sourceLabels:
-        app: sleep
-      headers:
-        x-test-failover:
-          exact: "true"
-    route:
-    - destination:
-        host: helloworld
+```bash
+kubectl exec -n sample --context="${CTX_CLUSTER1}" \
+  "$(kubectl get pod -n sample --context="${CTX_CLUSTER1}" \
+    -l app=helloworld -o jsonpath='{.items[0].metadata.name}')" \
+  -c istio-proxy -- curl -sS -X POST 127.0.0.1:15000/drain_listeners
 ```
 
-This injects 503 errors only when the `x-test-failover` header is present, letting you test failover without affecting other traffic.
+The first request after draining may fail, and subsequent requests should shift once the local endpoint is ejected.
 
 ## Zone-Level Failover
 
-Failover does not have to be at the region level. If your clusters span multiple availability zones within a region, you can set up zone-level failover:
+Failover does not have to jump directly to another region. If your clusters span multiple availability zones within a region, Istio's locality priority order handles zone and sub-zone failover by default, and you only need an explicit `failover` policy for regional failover:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: reviews
@@ -185,23 +166,19 @@ spec:
     loadBalancer:
       localityLbSetting:
         failover:
-        - from: us-east-1/us-east-1a
-          to: us-east-1/us-east-1b
-        - from: us-east-1/us-east-1b
-          to: us-east-1/us-east-1a
         - from: us-east-1
           to: us-west-2
       simple: ROUND_ROBIN
 ```
 
-This fails over first to another zone in the same region, then to a different region entirely.
+With endpoints in multiple zones, traffic from `us-east-1/us-east-1a` prefers matching local endpoints first, then other zones in `us-east-1`, and finally follows the regional failover policy to `us-west-2` when the region is unhealthy.
 
 ## Failover Timing
 
 How fast does failover happen? It depends on your outlier detection settings:
 
-- With `consecutive5xxErrors: 3` and `interval: 5s`, the earliest an endpoint gets ejected is after 3 consecutive errors checked at 5-second intervals, which is about 15 seconds in the worst case.
-- In practice, the errors happen during normal traffic, so ejection can happen faster.
+- With `consecutive5xxErrors: 3` and `interval: 5s`, an endpoint can be ejected after 3 consecutive qualifying errors. The `interval` controls how often Envoy runs the ejection sweep, so the observed time also depends on request rate and where the errors fall relative to that sweep.
+- In practice, high-traffic services can trigger ejection quickly, while low-traffic services may take longer because the proxy needs to observe enough failures.
 
 For faster failover:
 
@@ -217,7 +194,7 @@ Be careful with aggressive settings. A single network hiccup could trigger failo
 
 ## Handling Partial Failures
 
-Sometimes a cluster does not go completely down but becomes degraded (high latency, partial errors). For this, use the `consecutiveGatewayErrors` setting:
+Sometimes a cluster does not go completely down but becomes degraded through partial errors or timeout-related failures. For this, use the `consecutiveGatewayErrors` setting:
 
 ```yaml
 outlierDetection:
@@ -228,7 +205,7 @@ outlierDetection:
   maxEjectionPercent: 100
 ```
 
-Gateway errors include 502, 503, and 504, plus connection timeouts. These often indicate infrastructure problems rather than application bugs.
+For HTTP upstreams, gateway errors include 502, 503, and 504 responses. For opaque TCP upstreams, connection timeouts and connection failures also qualify. These often indicate infrastructure problems rather than application bugs.
 
 ## Monitoring Failover Events
 
