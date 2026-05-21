@@ -92,8 +92,6 @@ spec:
       k8s:
         service:
           type: LoadBalancer
-          annotations:
-            service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
         resources:
           requests:
             cpu: 200m
@@ -149,17 +147,13 @@ spec:
       k8s:
         service:
           type: LoadBalancer
-          annotations:
-            # NSX-T specific annotations
-            ncp/internal_ip_for_policy: "100.64.0.0/16"
-        serviceAnnotations:
-          service.beta.kubernetes.io/nsx-lb-type: "layer4"
 ```
 
 If NSX-T is providing the load balancer, verify it gets an external IP:
 
 ```bash
 kubectl get svc istio-ingressgateway -n istio-system -w
+kubectl get svc istio-ingressgateway -n istio-system -o jsonpath='{.metadata.annotations["ncp/internal_ip_for_policy"]}{"\n"}'
 ```
 
 ## Excluding TKG System Namespaces
@@ -180,7 +174,7 @@ done
 
 ## Pod Security Policy Considerations
 
-Older TKG versions use PodSecurityPolicies. If your cluster has PSP enforcement, you need to create a PSP that allows Istio components:
+Kubernetes removed PodSecurityPolicy in v1.25, so current TKG clusters should use Pod Security Admission. Older TKG clusters running Kubernetes v1.24 or earlier might still have PSP enforcement. In that case, you need to ensure the service accounts used by meshed workloads can use a PSP that allows Istio's init container capabilities, or use Istio CNI to avoid those capabilities on application pods.
 
 ```yaml
 apiVersion: policy/v1beta1
@@ -237,9 +231,13 @@ spec:
     rule: RunAsAny
 ```
 
-Newer TKG versions use Pod Security Admission instead. Label namespaces appropriately:
+For Kubernetes v1.25 and newer, use Pod Security Admission instead. When Istio CNI is installed in `istio-system`, label that namespace as privileged. If you install the CNI DaemonSet in `kube-system` as shown earlier, make sure `kube-system` is already exempted or allowed to run privileged system pods. Label application namespaces according to your workload requirements:
 
 ```bash
+kubectl label --overwrite namespace istio-system \
+  pod-security.kubernetes.io/enforce=privileged \
+  pod-security.kubernetes.io/enforce-version=latest
+
 kubectl label namespace myapp \
   pod-security.kubernetes.io/enforce=baseline \
   pod-security.kubernetes.io/warn=restricted
