@@ -45,10 +45,11 @@ When deploying from scratch, apply resources in this order:
 #!/bin/bash
 NAMESPACE="production"
 
-echo "Step 1: Namespace and core resources"
+echo "Step 1: Namespace and core Kubernetes resources"
 kubectl apply -f namespace.yaml
+kubectl apply -f k8s/$NAMESPACE/core/
 
-echo "Step 2: PeerAuthentication (mesh-wide mTLS)"
+echo "Step 2: PeerAuthentication (namespace-wide mTLS)"
 kubectl apply -f istio-config/base/peer-authentication.yaml
 
 echo "Step 3: Secrets (TLS certs, etc.)"
@@ -179,7 +180,7 @@ metadata:
     argocd.argoproj.io/sync-wave: "4"
 spec:
   hosts:
-    - order-service
+    - orders.example.com
   gateways:
     - main-gateway
   http:
@@ -283,7 +284,7 @@ The solution is to apply both AuthorizationPolicies at the same time:
 kubectl apply -f service-a-authz.yaml -f service-b-authz.yaml
 ```
 
-Or combine them in a single file to ensure atomic application.
+Or combine them in a single file so they are applied by the same command.
 
 ## Detecting Missing Dependencies
 
@@ -294,7 +295,7 @@ Build a validation script that checks for missing dependencies before deployment
 ERRORS=0
 
 # Check that VirtualService gateway references exist
-for VS_FILE in $(find istio-config -name "*virtual-service*" -o -name "*vs*"); do
+for VS_FILE in $(find istio-config \( -name "*virtual-service*" -o -name "*vs*" \) -type f); do
   GATEWAYS=$(yq eval '.spec.gateways[]' "$VS_FILE" 2>/dev/null)
   for GW in $GATEWAYS; do
     if [ "$GW" = "mesh" ]; then continue; fi
@@ -308,16 +309,26 @@ for VS_FILE in $(find istio-config -name "*virtual-service*" -o -name "*vs*"); d
 done
 
 # Check that VirtualService subset references have matching DestinationRules
-for VS_FILE in $(find istio-config -name "*virtual-service*" -o -name "*vs*"); do
-  SUBSETS=$(yq eval '.. | select(has("subset")) | .subset' "$VS_FILE" 2>/dev/null)
-  HOST=$(yq eval '.spec.http[0].route[0].destination.host' "$VS_FILE" 2>/dev/null)
-  for SUBSET in $SUBSETS; do
-    DR_FILE=$(find istio-config -name "*.yaml" -exec grep -l "kind: DestinationRule" {} \; | \
-      xargs grep -l "name: $SUBSET" 2>/dev/null)
+for VS_FILE in $(find istio-config \( -name "*virtual-service*" -o -name "*vs*" \) -type f); do
+  DESTINATIONS=$(yq eval '.. | select(has("destination")) | .destination | select(has("host") and has("subset")) | [.host, .subset] | @tsv' "$VS_FILE" 2>/dev/null)
+  while IFS=$'\t' read -r HOST SUBSET; do
+    if [ -z "$HOST" ] || [ -z "$SUBSET" ]; then continue; fi
+    DR_FILE=$(find istio-config -name "*.yaml" -type f -exec sh -c '
+      HOST="$1"
+      SUBSET="$2"
+      shift 2
+      for file do
+        DR_HOST=$(yq eval "select(.kind == \"DestinationRule\") | .spec.host" "$file" 2>/dev/null)
+        if [ "$DR_HOST" = "$HOST" ] && yq eval "select(.kind == \"DestinationRule\") | .spec.subsets[]?.name" "$file" 2>/dev/null | grep -Fxq "$SUBSET"; then
+          echo "$file"
+        fi
+      done
+    ' sh "$HOST" "$SUBSET" {} +)
     if [ -z "$DR_FILE" ]; then
-      echo "WARNING: VirtualService $VS_FILE uses subset '$SUBSET' - verify DestinationRule exists"
+      echo "ERROR: VirtualService $VS_FILE routes to $HOST subset '$SUBSET' without a matching DestinationRule"
+      ERRORS=$((ERRORS + 1))
     fi
-  done
+  done <<< "$DESTINATIONS"
 done
 
 if [ $ERRORS -gt 0 ]; then
