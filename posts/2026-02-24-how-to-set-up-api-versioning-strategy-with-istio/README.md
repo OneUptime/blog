@@ -171,45 +171,7 @@ curl -H "Accept: application/vnd.myapi.v2+json" https://api.example.com/users
 
 ## Query Parameter Versioning
 
-Some APIs accept the version as a query parameter: `/users?version=2`. Istio does not natively support query parameter matching in VirtualService, but you can handle this with an EnvoyFilter:
-
-```yaml
-apiVersion: networking.istio.io/v1alpha3
-kind: EnvoyFilter
-metadata:
-  name: query-param-versioning
-  namespace: istio-system
-spec:
-  workloadSelector:
-    labels:
-      istio: ingressgateway
-  configPatches:
-    - applyTo: HTTP_FILTER
-      match:
-        context: GATEWAY
-        listener:
-          filterChain:
-            filter:
-              name: envoy.filters.network.http_connection_manager
-              subFilter:
-                name: envoy.filters.http.router
-      patch:
-        operation: INSERT_BEFORE
-        value:
-          name: envoy.filters.http.lua
-          typed_config:
-            "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-            inlineCode: |
-              function envoy_on_request(request_handle)
-                local path = request_handle:headers():get(":path")
-                local version = path:match("[?&]version=(%d+)")
-                if version then
-                  request_handle:headers():add("x-api-version", version)
-                end
-              end
-```
-
-Then route based on the extracted header:
+Some APIs accept the version as a query parameter: `/users?version=2`. Istio supports query parameter matching in VirtualService:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -223,16 +185,16 @@ spec:
     - api-gateway
   http:
     - match:
-        - headers:
-            x-api-version:
+        - queryParams:
+            version:
               exact: "2"
       route:
         - destination:
             host: api-service
             subset: v2
     - match:
-        - headers:
-            x-api-version:
+        - queryParams:
+            version:
               exact: "1"
       route:
         - destination:
@@ -433,8 +395,8 @@ spec:
           headers:
             response:
               add:
-                deprecation: "true"
-                sunset: "Sat, 01 Jun 2026 00:00:00 GMT"
+                deprecation: "@1780272000"
+                sunset: "Mon, 01 Jun 2026 00:00:00 GMT"
                 link: '<https://api.example.com/api/v2>; rel="successor-version"'
 ```
 
