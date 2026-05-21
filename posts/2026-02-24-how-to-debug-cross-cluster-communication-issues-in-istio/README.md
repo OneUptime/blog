@@ -51,7 +51,7 @@ Common error patterns:
 
 - `"Failed to create remote cluster client"` - the kubeconfig in the remote secret is invalid
 - `"Unable to connect to cluster"` - network connectivity issue between Istiod and the remote API server
-- `"Unauthorized"` - the service account token in the remote secret has expired or lacks permissions
+- `"Unauthorized"` - the credentials in the remote secret were invalidated or lack permissions
 
 If Istiod cannot reach the remote API server, check the API server URL:
 
@@ -100,7 +100,7 @@ kubectl get pods -n istio-system -l app=istio-eastwestgateway --context="${CTX_C
 kubectl get svc istio-eastwestgateway -n istio-system --context="${CTX_CLUSTER2}"
 
 # Are services exposed through it?
-kubectl get gateway -n istio-system --context="${CTX_CLUSTER2}"
+kubectl get gateway.networking.istio.io -n istio-system --context="${CTX_CLUSTER2}"
 ```
 
 ## Step 5: Test Network Connectivity
@@ -114,38 +114,38 @@ REMOTE_IP=$(kubectl get pod -n sample -l app=helloworld -o jsonpath='{.items[0].
 # Try to reach it from a pod in cluster1
 kubectl exec -n sample -c sleep \
   "$(kubectl get pod -n sample -l app=sleep -o jsonpath='{.items[0].metadata.name}' --context=${CTX_CLUSTER1})" \
-  --context="${CTX_CLUSTER1}" -- curl -v ${REMOTE_IP}:5000/hello
+  --context="${CTX_CLUSTER1}" -- curl -v http://${REMOTE_IP}:5000/hello
 ```
 
 For different-network setups, test connectivity to the east-west gateway:
 
 ```bash
-EW_IP=$(kubectl get svc istio-eastwestgateway -n istio-system --context="${CTX_CLUSTER2}" -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+EW_ADDRESS=$(kubectl get svc istio-eastwestgateway -n istio-system --context="${CTX_CLUSTER2}" -o jsonpath='{.status.loadBalancer.ingress[0].ip}{.status.loadBalancer.ingress[0].hostname}')
 
 kubectl exec -n sample -c sleep \
   "$(kubectl get pod -n sample -l app=sleep -o jsonpath='{.items[0].metadata.name}' --context=${CTX_CLUSTER1})" \
-  --context="${CTX_CLUSTER1}" -- curl -v ${EW_IP}:15443
+  --context="${CTX_CLUSTER1}" -- curl -v ${EW_ADDRESS}:15443
 ```
 
 ## Step 6: Check Certificate Trust
 
-If connectivity works but TLS handshakes fail, the issue is certificate trust. Verify both clusters share the same root CA:
+If connectivity works but TLS handshakes fail, the issue is certificate trust. Verify both clusters trust the same root CA:
 
 ```bash
 # Cluster 1 root cert fingerprint
-kubectl get secret cacerts -n istio-system --context="${CTX_CLUSTER1}" -o jsonpath='{.data.root-cert\.pem}' | base64 -d | openssl x509 -fingerprint -noout
+kubectl get configmap istio-ca-root-cert -n istio-system --context="${CTX_CLUSTER1}" -o jsonpath='{.data.root-cert\.pem}' | openssl x509 -fingerprint -noout
 
 # Cluster 2 root cert fingerprint
-kubectl get secret cacerts -n istio-system --context="${CTX_CLUSTER2}" -o jsonpath='{.data.root-cert\.pem}' | base64 -d | openssl x509 -fingerprint -noout
+kubectl get configmap istio-ca-root-cert -n istio-system --context="${CTX_CLUSTER2}" -o jsonpath='{.data.root-cert\.pem}' | openssl x509 -fingerprint -noout
 ```
 
-If the fingerprints do not match, you need to redistribute certificates from a shared root CA.
+If the fingerprints do not match in a multi-primary mesh, you need to redistribute certificates from a shared root CA. If you installed Istio with plugged-in CA certificates, you can also compare the `root-cert.pem` value in the `cacerts` secret.
 
 Check the workload certificate chain:
 
 ```bash
 istioctl proxy-config secret deployment/sleep -n sample --context="${CTX_CLUSTER1}" -o json | \
-  jq -r '.dynamicActiveSecrets[0].secret.tlsCertificate.certificateChain.inlineBytes' | \
+  jq -r '.dynamicActiveSecrets[] | select(.secret.tlsCertificate.certificateChain.inlineBytes != null) | .secret.tlsCertificate.certificateChain.inlineBytes' | \
   base64 --decode | openssl x509 -text -noout
 ```
 
@@ -203,11 +203,11 @@ istioctl proxy-config log deployment/sleep -n sample --context="${CTX_CLUSTER1}"
 
 2. **Cluster name collision**: Each cluster must have a unique `clusterName`. Duplicates cause undefined behavior.
 
-3. **Expired remote secret tokens**: Service account tokens can expire. Regenerate the remote secret periodically.
+3. **Stale remote secret credentials**: API server certificate rotation, service account changes, or RBAC changes can invalidate a remote secret. Regenerate it when those credentials change.
 
-4. **Firewall rules**: East-west gateways need port 15443 open. Istiod needs ports 15010, 15012, and 15017.
+4. **Firewall rules**: East-west gateways need port 15443 reachable between networks. Remote clusters also need to reach the exposed Istiod endpoint when using a primary-remote or external control plane topology, and primary control planes need access to the remote Kubernetes API server for endpoint discovery.
 
-5. **DNS issues**: In multi-network setups, the east-west gateway IP needs to be resolvable. If your DNS is not set up correctly, Istio might not route traffic through the gateway.
+5. **DNS issues**: Service DNS must resolve in each cluster, which usually means deploying the Kubernetes Service object in every cluster. In multi-network setups, the east-west gateway address also needs to be reachable from the other network.
 
 ## Summary
 
