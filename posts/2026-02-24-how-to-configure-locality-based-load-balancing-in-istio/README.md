@@ -10,11 +10,11 @@ Description: Configure Istio locality-based load balancing to route traffic to t
 
 When your Kubernetes cluster spans multiple zones or regions, you do not want a request from a pod in us-east-1a to hit a service instance running in eu-west-1b if there is a perfectly good instance right next door in us-east-1a. That extra network hop adds latency and costs money.
 
-Istio's locality load balancing solves this by preferring service instances that are topologically close to the caller. Requests stay local when possible and only spill over to other zones or regions when local capacity is not enough.
+Istio's locality load balancing solves this by preferring service instances that are topologically close to the caller. Requests stay local when possible and only spill over to other zones or regions when local endpoints are unavailable or ejected as unhealthy.
 
 ## How Locality Works in Kubernetes and Istio
 
-Every Kubernetes node has topology labels that identify its region and zone:
+Kubernetes nodes can have topology labels that identify their region and zone:
 
 ```bash
 kubectl get nodes --show-labels | grep -E "topology.kubernetes.io"
@@ -27,7 +27,7 @@ topology.kubernetes.io/region=us-east-1
 topology.kubernetes.io/zone=us-east-1a
 ```
 
-Istio reads these labels automatically. When a sidecar proxy needs to route a request, it knows which region and zone the calling pod is in, and it knows which region and zone each destination pod is in. With locality load balancing enabled, Istio uses this information to prefer nearby endpoints.
+Istio reads these labels automatically when they are present. When a sidecar proxy needs to route a request, it knows which region and zone the calling pod is in, and it knows which region and zone each destination pod is in. With locality load balancing enabled, Istio uses this information to prefer nearby endpoints.
 
 ## Locality Hierarchy
 
@@ -47,11 +47,11 @@ Traffic prefers endpoints in this order:
 
 ## Enabling Locality Load Balancing
 
-Locality load balancing is controlled through DestinationRule resources. There are two modes: **failover** and **distribute**.
+Locality load balancing is controlled through DestinationRule resources. The two most common modes are **failover** and **distribute**.
 
 ### Failover Mode
 
-In failover mode, traffic goes to the local zone first. If there are not enough healthy endpoints locally, it fails over to the next closest locality.
+In failover mode, traffic goes to the local zone first. Zone and sub-zone failover are handled by default. If there are not enough healthy endpoints in the local region, the `failover` section can restrict which region traffic should use next.
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -118,7 +118,7 @@ This keeps 80% of traffic in the local zone and sends 20% to another zone. You m
 
 ## A Complete Example
 
-Suppose you have a `user-profile` service deployed across two regions and three zones:
+Suppose you have a `user-profile` service deployed across two zones, with another region available for failover:
 
 ```yaml
 # us-east-1a deployment
@@ -236,6 +236,6 @@ graph TD
 
 **Uneven traffic distribution.** If one zone has 10 pods and another has 2, the zone with 2 pods can get overwhelmed when traffic spills over. Make sure replica counts are roughly proportional across zones.
 
-**Sub-zone labels missing.** Sub-zones are not standard Kubernetes labels. If you need sub-zone routing, you have to add custom labels to your nodes and configure Istio to recognize them.
+**Sub-zone labels missing.** Sub-zones are not standard Kubernetes labels. If you need sub-zone routing, add Istio's `topology.istio.io/subzone` label to your nodes.
 
 Locality load balancing is one of those Istio features that is easy to configure but makes a big difference in production. Lower latency, lower network costs, and automatic failover across zones and regions - all from a DestinationRule configuration.
