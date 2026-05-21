@@ -15,7 +15,7 @@ Request and response transformation is about modifying HTTP messages as they pas
 The simplest form of transformation is header manipulation using VirtualService route-level headers:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: header-transform
@@ -171,6 +171,7 @@ spec:
                   if request_handle:headers():get("content-type") == "application/json" then
                     local wrapped = '{"timestamp":' .. tostring(os.time()) .. ',"data":' .. body_str .. '}'
                     request_handle:body():setBytes(wrapped)
+                    request_handle:headers():replace("content-length", tostring(#wrapped))
                   end
                 end
               end
@@ -196,8 +197,8 @@ spec:
 
 Important notes about Lua body access:
 
-- Body access requires buffering. If the body is not buffered, `request_handle:body()` returns nil
-- For body access to work, you may need the buffer filter enabled (see the request buffering post)
+- Body access buffers the full body before the Lua script continues
+- Buffering is limited by the HTTP connection manager's configured limits
 - Large bodies consume memory when buffered
 - Always update the `content-length` header when modifying the body
 
