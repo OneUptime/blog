@@ -103,6 +103,13 @@ No code changes needed.
 Set up a permanent learning environment where developers can experiment without risk:
 
 ```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: istio-playground
+  labels:
+    istio-injection: enabled
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -123,6 +130,18 @@ spec:
         image: kong/httpbin:latest
         ports:
         - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: httpbin
+  namespace: istio-playground
+spec:
+  selector:
+    app: httpbin
+  ports:
+  - port: 8080
+    targetPort: 80
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -155,7 +174,7 @@ During the first week, show developers how to use the observability tools:
 ## Understanding Your Service Metrics
 
 ### The RED Method
-Istio automatically collects three key metrics for every service:
+Istio automatically collects three key metrics for meshed HTTP, HTTP/2, and gRPC traffic:
 - **R**ate: requests per second
 - **E**rrors: percentage of failed requests (5xx)
 - **D**uration: how long requests take (p50, p95, p99)
@@ -173,13 +192,13 @@ Key panels to watch:
 
 ### Reading Access Logs
 
-Access logs are available for failed requests. View them:
+If your platform enables Envoy access logs, you can view them from the Istio proxy container:
 
 \```bash
 kubectl logs deploy/your-service -c istio-proxy --tail=20
 \```
 
-Each log line includes:
+Istio's default access log format includes values for:
 - response_code: HTTP status code
 - response_flags: why the response was what it was
 - upstream_cluster: which service handled the request
@@ -193,8 +212,10 @@ Open Jaeger: https://jaeger.internal.company.com
 2. Click "Find Traces"
 3. Click on a trace to see the full request path
 
-Traces show you exactly which services a request touched
-and how long each hop took.
+Traces can show you which services a request touched
+and how long each hop took. For a complete multi-service trace,
+applications must propagate trace context headers between incoming
+and outgoing requests.
 ```
 
 ## Month 1: Traffic Management
