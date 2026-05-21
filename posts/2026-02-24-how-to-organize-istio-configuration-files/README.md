@@ -145,7 +145,7 @@ order-service-authorization-policy.yaml
 
 ## Separating Mesh-Wide vs Namespace Config
 
-Always separate mesh-wide configuration (applied in `istio-system`) from namespace-level configuration:
+Always separate mesh-wide configuration (applied in Istio's root namespace, commonly `istio-system`) from namespace-level configuration:
 
 ```yaml
 # base/peer-authentication.yaml
@@ -338,7 +338,7 @@ for FILE in $(find istio-config -name "*.yaml" -type f); do
 done
 
 # Run istioctl analyze
-istioctl analyze istio-config/ --recursive 2>&1
+istioctl analyze istio-config/ 2>&1
 ANALYZE_EXIT=$?
 if [ $ANALYZE_EXIT -ne 0 ]; then
   ERRORS=$((ERRORS + ANALYZE_EXIT))
