@@ -14,7 +14,7 @@ The ztunnel (zero-trust tunnel) is the foundational component of Istio's ambient
 
 At its core, ztunnel is a lightweight, purpose-built proxy that handles:
 
-- Mutual TLS (mTLS) encryption and termination between nodes
+- Mutual TLS (mTLS) encryption and authentication for workload-to-workload traffic
 - L4 authorization policy enforcement
 - TCP traffic routing and load balancing
 - Telemetry collection for L4 metrics (bytes sent/received, connection counts)
@@ -52,12 +52,12 @@ ztunnel-ghi56   1/1     Running   node-3
 
 ## Traffic Interception
 
-ztunnel intercepts traffic from pods in ambient-enrolled namespaces. The interception mechanism uses the Istio CNI plugin, which sets up network rules when pods are created. Here is the flow:
+ztunnel intercepts traffic from pods in ambient-enrolled namespaces. The interception mechanism uses the Istio CNI plugin, which sets up in-pod network redirection rules when pods are created or added to the mesh. Here is the flow:
 
 1. A pod in an ambient namespace sends traffic
-2. The CNI-configured iptables/eBPF rules redirect the traffic to the local ztunnel
+2. The CNI-configured iptables rules redirect the traffic to the local ztunnel
 3. ztunnel looks up the destination, applies L4 policies, and forwards the traffic
-4. On the receiving side, the destination node's ztunnel decrypts and delivers the traffic
+4. On the receiving side, the destination ztunnel decapsulates the HBONE traffic and delivers it to the destination pod
 
 You can check that traffic interception is working by examining the ztunnel logs:
 
@@ -68,9 +68,9 @@ kubectl logs -n istio-system -l app=ztunnel --field-selector spec.nodeName=node-
 
 ## HBONE Tunneling
 
-ztunnel uses HBONE (HTTP-Based Overlay Network Encapsulation) to create encrypted tunnels between nodes. HBONE wraps TCP streams inside HTTP/2 CONNECT requests, with mTLS applied at the transport layer.
+ztunnel uses HBONE (HTTP-Based Overlay Network Environment) to create encrypted tunnels for workload traffic. HBONE wraps TCP streams inside HTTP/2 CONNECT requests, with mTLS applied at the transport layer.
 
-The connection between two ztunnel instances looks like this:
+The connection path managed by ztunnel looks like this:
 
 ```text
 Source Pod -> [captured by CNI] -> Source ztunnel
@@ -89,12 +89,12 @@ kubectl exec -n istio-system $(kubectl get pod -n istio-system -l app=ztunnel -o
 
 ## Identity and Certificates
 
-Each ztunnel manages SPIFFE identities for the pods on its node. When a pod is enrolled in the ambient mesh, ztunnel requests a certificate from istiod on behalf of that pod's service account. This means ztunnel holds multiple identities simultaneously, one for each service account running on its node.
+Each ztunnel manages SPIFFE identities for the pods on its node. When a pod is enrolled in the ambient mesh, ztunnel requests a certificate from istiod on behalf of that pod's service account. This means ztunnel holds multiple workload identities simultaneously, one for each unique service account used by node-local pods.
 
 The certificate workflow:
 
 1. Pod starts on a node in an ambient namespace
-2. ztunnel detects the new pod through Kubernetes API watches
+2. ztunnel learns about the workload from the control plane configuration
 3. ztunnel requests a certificate from istiod for the pod's service account
 4. istiod issues an X.509 SVID certificate
 5. ztunnel uses this certificate when proxying traffic for that pod
@@ -103,7 +103,7 @@ You can inspect the certificates ztunnel is managing:
 
 ```bash
 # Check ztunnel certificate status
-istioctl proxy-config secret $(kubectl get pod -n istio-system -l app=ztunnel -o jsonpath='{.items[0].metadata.name}') -n istio-system
+istioctl ztunnel-config certificates $(kubectl get pod -n istio-system -l app=ztunnel -o jsonpath='{.items[0].metadata.name}').istio-system
 ```
 
 ## L4 Authorization Policies
@@ -135,7 +135,7 @@ spec:
 
 This policy allows traffic from the `frontend-sa` service account to port 8080 in the backend namespace. Since it only looks at identity and port, ztunnel handles it without needing a waypoint proxy.
 
-Policies that reference HTTP methods, paths, or headers will NOT be enforced by ztunnel. Those require a waypoint proxy.
+Policies that reference HTTP methods, paths, or headers require a waypoint proxy. If those L7 attributes are targeted to ztunnel for enforcement, ztunnel fails safe and denies the connection.
 
 Resource Usage
 
