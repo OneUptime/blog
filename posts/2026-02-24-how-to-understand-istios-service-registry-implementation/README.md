@@ -62,7 +62,7 @@ kubectl logs deploy/istiod -n istio-system | grep "Watch"
 
 When istiod receives a change event, it updates its internal data structures. The key ones are:
 
-**ServiceStore**: Maps service hostnames to their definitions (ports, labels, metadata).
+**ServiceIndex**: Maps service hostnames to their definitions (ports, labels, metadata) inside the current push context.
 
 **EndpointIndex**: Maps service hostnames to their endpoints (IP addresses, ports, health status, locality).
 
@@ -79,7 +79,7 @@ kubectl exec deploy/istiod -n istio-system -- curl -s localhost:15014/debug/regi
 And the endpoint index:
 
 ```bash
-kubectl exec deploy/istiod -n istio-system -- curl -s localhost:15014/debug/endpointz
+kubectl exec deploy/istiod -n istio-system -- curl -s localhost:15014/debug/endpointShardz
 ```
 
 And the config store:
@@ -125,7 +125,7 @@ When the registry changes, istiod needs to push updated configuration to affecte
 3. **Compute affected proxies**: Not every change affects every proxy. Istiod determines which proxies need the update
 4. **Generate configuration**: For each affected proxy, istiod generates the relevant xDS resources
 5. **Push via gRPC stream**: Each proxy has a persistent gRPC connection to istiod. The update is sent through this connection
-6. **Proxy ACK**: The proxy applies the configuration and sends an acknowledgment back
+6. **Proxy ACK/NACK**: The proxy accepts valid configuration with an ACK or rejects invalid configuration with a NACK
 
 Monitor push activity:
 
@@ -138,18 +138,18 @@ pilot_xds_pushes{type="rds"}
 
 ## Incremental vs Full Push
 
-Istiod tries to minimize the amount of data pushed. For endpoint changes (which are the most frequent), it uses incremental EDS updates. Only the changed endpoints are sent, not the entire endpoint list.
+Istiod tries to minimize the amount of data pushed. For endpoint changes (which are the most frequent), it uses incremental EDS updates. Endpoint-only changes can be pushed without rebuilding all xDS resource types, and delta xDS can send only the endpoint resources that changed.
 
 For cluster, listener, and route changes (which happen less frequently), istiod does a state-of-the-world push where it sends the complete configuration.
 
 You can tell the difference by looking at the push metrics:
 
 ```text
-pilot_xds_pushes{type="eds_senderr"}  # EDS push errors
-pilot_xds_pushes{type="cds"}          # Full CDS pushes
+pilot_xds_pushes{type="eds"}  # EDS pushes
+pilot_xds_pushes{type="cds"}  # CDS pushes
 ```
 
-EDS pushes should far outnumber CDS pushes in a healthy mesh. If you're seeing many CDS pushes, it might indicate frequent VirtualService or DestinationRule changes.
+EDS pushes often outnumber CDS pushes in a healthy mesh. If you're seeing many CDS pushes, it might indicate frequent Service, ServiceEntry, or DestinationRule changes. Labels such as `eds_senderr` indicate send errors, not normal pushes.
 
 ## ServiceEntry Integration
 
@@ -172,9 +172,9 @@ spec:
   location: MESH_EXTERNAL
 ```
 
-Istiod adds this to the ServiceStore alongside Kubernetes services. The proxy configuration generation treats it the same way. From the proxy's perspective, there's no difference between a Kubernetes service and a ServiceEntry.
+Istiod adds this to the service registry alongside Kubernetes services. The proxy configuration generation treats it as another service entry and emits the corresponding xDS resources.
 
-For `resolution: DNS`, istiod periodically resolves the hostname and updates the endpoint list. For `resolution: STATIC`, the endpoints are fixed and taken directly from the ServiceEntry spec.
+For `resolution: DNS`, the proxy periodically resolves the hostname and load balances across the results. For `resolution: STATIC`, the endpoints are fixed and taken directly from the ServiceEntry spec.
 
 ## Multi-Cluster Registry
 
@@ -240,7 +240,7 @@ When things go wrong, trace the issue through the registry layers:
 
 1. Is the service in Kubernetes? `kubectl get svc -n namespace`
 2. Is it in istiod's registry? Check `/debug/registryz`
-3. Are the endpoints correct? Check `/debug/endpointz`
+3. Are the endpoints correct? Check `/debug/endpointShardz`
 4. Is the proxy configuration correct? `istioctl proxy-config cluster/endpoint/listener/route`
 5. Is the proxy in sync? `istioctl proxy-status`
 
