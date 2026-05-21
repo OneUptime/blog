@@ -176,14 +176,16 @@ spec:
   portLevelMtls:
     9090:
       mode: PERMISSIVE
-    15014:
+    8081:
       mode: DISABLE
 ```
 
 This configuration:
 - Requires mTLS on all ports by default
 - Allows both mTLS and plain text on port 9090 (metrics)
-- Disables mTLS entirely on port 15014 (Istio control plane port)
+- Disables mTLS entirely on workload port 8081 (for a plain-text legacy endpoint)
+
+The port numbers in `portLevelMtls` are workload/container ports, not Kubernetes Service ports. Istio only applies port-level mTLS settings when the port is bound to a Service.
 
 ## Verifying Service-Specific Policies
 
@@ -263,9 +265,12 @@ EOF
 Then label your sensitive services:
 
 ```bash
-kubectl label deployment payment-service -n production security-tier=high
-kubectl label deployment user-service -n production security-tier=high
-kubectl label deployment auth-service -n production security-tier=high
+kubectl patch deployment payment-service -n production \
+  -p '{"spec":{"template":{"metadata":{"labels":{"security-tier":"high"}}}}}'
+kubectl patch deployment user-service -n production \
+  -p '{"spec":{"template":{"metadata":{"labels":{"security-tier":"high"}}}}}'
+kubectl patch deployment auth-service -n production \
+  -p '{"spec":{"template":{"metadata":{"labels":{"security-tier":"high"}}}}}'
 ```
 
 ### Gradual Rollout by Team
