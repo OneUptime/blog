@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Service Resolution, ServiceEntry, DNS, Kubernetes
 
-Description: How to configure different service resolution strategies in Istio including DNS, STATIC, and NONE modes for internal and external services.
+Description: How to configure different service resolution strategies in Istio including DNS, DNS_ROUND_ROBIN, STATIC, and NONE modes for internal and external services.
 
 ---
 
@@ -14,12 +14,12 @@ For Kubernetes services within the mesh, resolution is mostly automatic. But for
 
 ## Resolution Strategies Overview
 
-Istio supports three resolution strategies, configured through the `resolution` field on `ServiceEntry` resources:
+This post covers several resolution strategies configured through the `resolution` field on `ServiceEntry` resources:
 
 - **NONE** - No resolution. Traffic is forwarded to the IP address specified by the caller.
 - **STATIC** - Endpoints are explicitly defined. No DNS lookup.
-- **DNS** - Endpoints are resolved via DNS. Envoy performs DNS queries and caches the results.
-- **DNS_ROUND_ROBIN** - Similar to DNS but uses all returned A records for round-robin load balancing.
+- **DNS** - Endpoints are resolved via DNS. Envoy performs DNS queries and uses the refreshed results for requests.
+- **DNS_ROUND_ROBIN** - Similar to DNS but uses the first returned IP address when creating a new connection and avoids connection churn when DNS results change frequently.
 
 For regular Kubernetes services, Istio uses EDS (Endpoint Discovery Service) automatically and you don't need to set a resolution strategy. The strategies above apply to `ServiceEntry` resources.
 
@@ -81,7 +81,7 @@ With `STATIC` resolution:
 - No DNS lookups happen
 - Envoy load balances across the provided endpoints
 - You can assign weights to endpoints
-- Health checking works against the specified IPs
+- DestinationRule policies such as outlier detection and connection settings can apply to the specified IPs
 
 Adding weights and labels:
 
@@ -121,9 +121,9 @@ spec:
 
 With `DNS` resolution:
 - Envoy performs DNS lookups for the hostname
-- Results are cached based on the DNS TTL
-- When multiple A records are returned, Envoy picks one (not all)
-- DNS failures result in the endpoint being removed
+- Envoy periodically refreshes DNS results asynchronously
+- When multiple A records are returned, Envoy can load balance across all results
+- If DNS returns no usable records, Envoy has no endpoint to route to
 
 You can specify the addresses to resolve separately from the hostname:
 
@@ -150,7 +150,7 @@ Here, Envoy resolves `api-us.stripe.com` and `api-eu.stripe.com` separately and 
 
 ## DNS_ROUND_ROBIN Resolution
 
-`DNS_ROUND_ROBIN` is similar to `DNS` but uses all returned DNS A records for load balancing:
+`DNS_ROUND_ROBIN` is similar to `DNS` but uses the first IP address returned when a new connection needs to be created:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -168,9 +168,9 @@ spec:
   location: MESH_EXTERNAL
 ```
 
-If `backend.external.example.com` resolves to 3 IPs, all three are used as endpoints. With plain `DNS` mode, Envoy would pick the first IP from the DNS response. With `DNS_ROUND_ROBIN`, it distributes across all of them.
+If `backend.external.example.com` resolves to 3 IPs, Envoy uses the first returned IP for a new connection. With plain `DNS` mode, Envoy uses the complete DNS results and can drain connection pools when the DNS records change. With `DNS_ROUND_ROBIN`, existing connections are retained even if DNS records change frequently.
 
-This is particularly useful when an external service uses DNS for load balancing (returning multiple A records).
+This is particularly useful for large external services that rely on DNS and change records frequently.
 
 ## Combining with DestinationRule
 
@@ -185,9 +185,9 @@ spec:
   hosts:
     - external-service.example.com
   ports:
-    - number: 443
-      name: https
-      protocol: TLS
+    - number: 80
+      name: http
+      protocol: HTTP
   resolution: DNS
   location: MESH_EXTERNAL
 ---
@@ -204,8 +204,6 @@ spec:
         connectTimeout: 5s
       http:
         h2UpgradePolicy: UPGRADE
-    tls:
-      mode: SIMPLE
     loadBalancer:
       simple: ROUND_ROBIN
 ```
@@ -227,6 +225,7 @@ spec:
       name: http
       protocol: HTTP
   resolution: STATIC
+  location: MESH_INTERNAL
   workloadSelector:
     labels:
       app: vm-service
@@ -293,4 +292,4 @@ Common issues:
 - STATIC endpoints not reachable: Check network connectivity to the specified IPs
 - NONE resolution with wrong IP: Check that the application's DNS resolver is working
 
-Choosing the right resolution strategy comes down to: use STATIC when you know the IPs, DNS when the IPs are dynamic, DNS_ROUND_ROBIN when you need to load balance across all DNS results, and NONE for wildcards or when the application handles resolution.
+Choosing the right resolution strategy comes down to: use STATIC when you know the IPs, DNS when the IPs are dynamic, DNS_ROUND_ROBIN when frequent DNS changes would otherwise cause connection churn, and NONE for wildcards or when the application handles resolution.
