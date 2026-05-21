@@ -26,16 +26,15 @@ aws cognito-idp create-user-pool \
 
 Note the User Pool ID from the output (something like `us-east-1_aBcDeFgHi`).
 
-Create a User Pool Client (this is the OAuth2 client your services will use):
+Create a User Pool Client for user sign-in:
 
 ```bash
 aws cognito-idp create-user-pool-client \
   --user-pool-id us-east-1_aBcDeFgHi \
-  --client-name mesh-client \
-  --generate-secret \
+  --client-name mesh-web-client \
   --explicit-auth-flows ALLOW_USER_PASSWORD_AUTH ALLOW_REFRESH_TOKEN_AUTH \
   --supported-identity-providers COGNITO \
-  --allowed-o-auth-flows code client_credentials \
+  --allowed-o-auth-flows code \
   --allowed-o-auth-flows-user-pool-client \
   --allowed-o-auth-scopes openid email profile \
   --callback-urls "https://app.mycompany.com/callback"
@@ -51,6 +50,18 @@ aws cognito-idp create-resource-server \
   --scopes "ScopeName=read,ScopeDescription=Read access" \
           "ScopeName=write,ScopeDescription=Write access" \
           "ScopeName=admin,ScopeDescription=Admin access"
+```
+
+Create a separate client for machine-to-machine tokens. Cognito requires `client_credentials` to be the only OAuth flow on that app client:
+
+```bash
+aws cognito-idp create-user-pool-client \
+  --user-pool-id us-east-1_aBcDeFgHi \
+  --client-name mesh-m2m-client \
+  --generate-secret \
+  --allowed-o-auth-flows client_credentials \
+  --allowed-o-auth-flows-user-pool-client \
+  --allowed-o-auth-scopes https://api.mycompany.com/read https://api.mycompany.com/write
 ```
 
 Set up the domain for Cognito's hosted UI:
@@ -90,7 +101,7 @@ spec:
       outputPayloadToHeader: "x-jwt-payload"
 ```
 
-One important detail with Cognito: by default, Cognito access tokens include a `client_id` claim but not a standard `aud` claim. ID tokens do include `aud`. If you want to validate the audience, you might need to use ID tokens or handle this in your authorization policies:
+One important detail with Cognito: by default, Cognito access tokens include a `client_id` claim but not a standard `aud` claim. ID tokens do include `aud`. If you need app-client checks for access tokens, match the `client_id` claim in your authorization policies instead of configuring Istio's `audiences` field:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -110,7 +121,7 @@ spec:
 Istio needs to reach Cognito's JWKS endpoint to fetch signing keys. If you have strict egress policies, add a ServiceEntry:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: cognito
@@ -205,16 +216,18 @@ To include custom attributes in the access token, you need a Pre Token Generatio
 
 ```python
 def handler(event, context):
-    event['response']['claimsOverrideDetails'] = {
-        'claimsToAddOrOverride': {
-            'department': event['request']['userAttributes'].get('custom:department', ''),
-            'team': event['request']['userAttributes'].get('custom:team', '')
+    event['response']['claimsAndScopeOverrideDetails'] = {
+        'accessTokenGeneration': {
+            'claimsToAddOrOverride': {
+                'department': event['request']['userAttributes'].get('custom:department', ''),
+                'team': event['request']['userAttributes'].get('custom:team', '')
+            }
         }
     }
     return event
 ```
 
-After attaching this Lambda to the User Pool, the tokens will include your custom attributes, which you can reference in Istio authorization policies.
+After attaching this Lambda to the User Pool with a version 2.0 or later Pre Token Generation event, access tokens will include your custom attributes, which you can reference in Istio authorization policies.
 
 ## Getting Tokens
 
@@ -253,7 +266,7 @@ curl -s -o /dev/null -w "%{http_code}" \
   https://app.mycompany.com/api/data
 
 # Inspect token contents
-echo $TOKEN | cut -d'.' -f2 | base64 -d 2>/dev/null | jq .
+python3 -c 'import base64,json,sys; p=sys.argv[1].split(".")[1]; p += "=" * (-len(p) % 4); print(json.dumps(json.loads(base64.urlsafe_b64decode(p)), indent=2))' "$TOKEN"
 ```
 
 ## Token Refresh
@@ -272,7 +285,7 @@ aws cognito-idp initiate-auth \
 **Tokens rejected by Istio**: Check the issuer URL. Cognito's issuer does not have a trailing slash. Verify by decoding the token:
 
 ```bash
-echo $TOKEN | cut -d'.' -f2 | base64 -d 2>/dev/null | jq .iss
+python3 -c 'import base64,json,sys; p=sys.argv[1].split(".")[1]; p += "=" * (-len(p) % 4); print(json.loads(base64.urlsafe_b64decode(p))["iss"])' "$TOKEN"
 ```
 
 **Groups claim not present**: Make sure the user is actually assigned to a Cognito group. The `cognito:groups` claim only appears when the user belongs to at least one group.
