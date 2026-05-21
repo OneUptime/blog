@@ -8,13 +8,13 @@ Description: How to use maxRequestsPerConnection in Istio DestinationRule to for
 
 ---
 
-When Envoy opens a connection to an upstream service, it can reuse that connection for many requests. This is efficient because it avoids the overhead of TCP handshakes, but it creates a problem: long-lived connections can get "stuck" to specific pods, leading to uneven load distribution. The `maxRequestsPerConnection` setting tells Envoy to close a connection after a certain number of requests and open a new one, which triggers a fresh load balancing decision.
+When Envoy opens a connection to an upstream endpoint, it can reuse that connection for many requests. This is efficient because it avoids the overhead of TCP handshakes and, in Istio mTLS meshes, TLS handshakes. The `maxRequestsPerConnection` setting tells Envoy to drain and replace a connection after a certain number of requests, which bounds how long any single upstream connection stays in use.
 
 ## Why Connection Recycling Matters
 
-Picture this scenario. You have a service with 3 pods. Envoy opens connections to all three and starts sending requests. Now you scale up to 6 pods. The existing connections still point to the original 3 pods. The new pods sit idle while the original ones handle all the traffic.
+Picture this scenario. You have a service with 3 pods. Envoy opens connections to upstream endpoints as requests arrive. Now you scale up to 6 pods. Envoy can select the new endpoints for new requests, but long-lived connections to the original pods can still keep a lot of active traffic on those pods, especially with HTTP/2 streams or clients that maintain steady traffic.
 
-This is not a hypothetical problem. It happens all the time with HTTP/1.1 keep-alive connections and HTTP/2 long-lived connections. Setting `maxRequestsPerConnection` forces periodic reconnection, which means the load balancer gets a chance to pick new (possibly freshly scaled) pods.
+This is not a hypothetical problem. It can happen with HTTP/1.1 keep-alive connections and HTTP/2 long-lived connections. Setting `maxRequestsPerConnection` forces periodic connection draining, which keeps upstream connections from living indefinitely.
 
 ```mermaid
 sequenceDiagram
@@ -26,9 +26,9 @@ sequenceDiagram
     Note over E,P3: maxRequestsPerConnection: 5
 
     E->>P1: Requests 1-5
-    Note over E,P1: Connection closed after 5 requests
-    E->>P3: Requests 6-10 (new connection, new LB decision)
-    Note over E,P3: Traffic reaches new pod!
+    Note over E,P1: Connection drained after 5 requests
+    E->>P3: Requests 6-10 (new endpoint selected)
+    Note over E,P3: Traffic can reach new pod
 ```
 
 ## Basic Configuration
@@ -36,7 +36,7 @@ sequenceDiagram
 Set `maxRequestsPerConnection` in the DestinationRule:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: backend-service
@@ -51,18 +51,18 @@ spec:
         maxRequestsPerConnection: 100
 ```
 
-After every 100 requests on a connection, Envoy closes it and opens a new one. The next request triggers a fresh load balancing decision.
+After every 100 requests on a connection, Envoy drains that connection and uses a new connection for later requests.
 
 ## Setting the Right Value
 
-A value of 0 (the default) means unlimited requests per connection. Connections stay open indefinitely.
+A value of 0 (the default) means unlimited requests per connection, up to Envoy's implementation limit. Connections can still close for other reasons, such as idle timeout, endpoint health changes, or normal shutdown.
 
 The right value depends on your situation:
 
-**Frequently scaling services** - Use a low value like 10-50. Connections get recycled often, so new pods get traffic quickly.
+**Frequently scaling services** - Use a low value like 10-50. Connections get recycled often, so traffic can move across changing pod sets more steadily.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: autoscaling-service
@@ -78,7 +78,7 @@ spec:
 **Stable services with fixed pod counts** - Use a higher value like 500-1000 or leave it at 0. Connection setup overhead is not worth it if the pod set rarely changes.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: stable-service
@@ -94,7 +94,7 @@ spec:
 **Services with memory leaks in connection handling** - Use a low value. Some applications leak memory per connection. Recycling connections periodically can keep memory usage in check.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: leaky-service
@@ -111,12 +111,12 @@ spec:
 
 The behavior differs between HTTP versions.
 
-For **HTTP/1.1**, each connection handles one request at a time. Setting `maxRequestsPerConnection: 100` means the connection closes after handling 100 sequential requests. The overhead is relatively low because HTTP/1.1 connection setup is cheap.
+For **HTTP/1.1**, Envoy does not use upstream pipelining, so each connection handles one request at a time. Setting `maxRequestsPerConnection: 100` means the connection is drained after handling 100 sequential requests. The overhead depends on whether the upstream connection uses plain TCP or TLS/mTLS.
 
-For **HTTP/2** (and gRPC), a single connection handles many concurrent requests. Setting `maxRequestsPerConnection: 100` means the connection closes after 100 total requests have completed on it. Since HTTP/2 connections are more expensive to set up (TLS negotiation, SETTINGS frame exchange), you might want a higher value:
+For **HTTP/2** (and gRPC), a single connection handles many concurrent requests. Setting `maxRequestsPerConnection: 100` means the connection is drained after 100 total requests have been sent on it. Since HTTP/2 connections can carry many streams and may involve TLS negotiation plus HTTP/2 SETTINGS exchange, you might want a higher value:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: grpc-service
@@ -148,7 +148,7 @@ Here is a rough guide:
 `maxRequestsPerConnection` works best as part of a complete connection pool configuration:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: order-service
@@ -173,9 +173,9 @@ spec:
 
 This configuration:
 - Allows up to 200 TCP connections
-- Queues up to 100 pending HTTP/1.1 requests
-- Allows up to 400 concurrent HTTP/2 requests
-- Recycles connections after 100 requests
+- Queues up to 100 pending requests while waiting for a ready connection
+- Allows up to 400 active requests to the destination
+- Drains and replaces connections after 100 requests
 - Ejects unhealthy instances after 5 consecutive errors
 
 ## Monitoring Connection Recycling
@@ -196,16 +196,16 @@ kubectl exec deploy/order-service -c istio-proxy -- \
 # maxRequestsPerConnection might be too low
 ```
 
-You can calculate the effective connection rate. If your service handles 1000 RPS and `maxRequestsPerConnection` is 100, Envoy creates roughly 10 new connections per second. At 10, it would be 100 new connections per second. That overhead can be significant.
+You can estimate the effective connection churn. If one Envoy proxy sends 1000 RPS to a destination and `maxRequestsPerConnection` is 100, that proxy may create roughly 10 replacement upstream connections per second for that destination. At 10, it could be around 100 replacement connections per second. The exact number depends on endpoint count, protocol, concurrency, worker threads, and existing connection-pool capacity.
 
 ## Rolling Deployments and Connection Recycling
 
-One of the most practical uses of `maxRequestsPerConnection` is ensuring smooth rolling deployments. When old pods terminate and new pods start, connections to old pods break. If you rely on long-lived connections, you will see errors during every deployment.
+One practical use of `maxRequestsPerConnection` is limiting how long upstream connections live during rolling deployments. When old pods terminate and new pods start, connections to old pods must drain or close. If you rely on very long-lived connections without graceful shutdown, you can see errors during deployments.
 
-Setting `maxRequestsPerConnection` to a reasonable value means connections naturally cycle to new pods as they become available, reducing deployment-related errors:
+Setting `maxRequestsPerConnection` to a reasonable value means connections naturally cycle over time as pods change, which can reduce deployment-related errors when combined with graceful termination and health checking:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: web-frontend
@@ -222,6 +222,6 @@ spec:
       baseEjectionTime: 15s
 ```
 
-The combination of connection recycling every 50 requests and aggressive outlier detection (eject after just 2 consecutive errors, check every 5 seconds) gives you fast failover during deployments.
+The combination of connection recycling every 50 requests and aggressive outlier detection (eject after just 2 consecutive errors, with a 5-second analysis interval) can give you faster failover during deployments.
 
-Connection recycling through `maxRequestsPerConnection` is a simple setting with a big impact on load distribution and deployment smoothness. If you are running autoscaling services or doing frequent deployments, this is one of the first things to configure.
+Connection recycling through `maxRequestsPerConnection` is a simple setting that can improve connection turnover, load distribution, and deployment smoothness. If you are running autoscaling services or doing frequent deployments, this is one of the first things to consider.
