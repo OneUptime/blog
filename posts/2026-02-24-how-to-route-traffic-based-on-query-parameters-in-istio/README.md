@@ -12,12 +12,12 @@ Routing based on query parameters is useful when you want to control traffic flo
 
 ## How Query Parameter Matching Works
 
-Istio VirtualService supports matching on query parameters through the `queryParams` field in the match condition. You can match using exact values, prefix matching, or regex patterns.
+Istio VirtualService supports matching on query parameters through the `queryParams` field in the match condition. You can match using exact values, prefix matching, or RE2-style regex patterns.
 
 The basic structure looks like this:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -44,10 +44,10 @@ With this configuration, a request to `http://my-app?version=2` goes to v2, whil
 
 ## Prerequisites
 
-You need a DestinationRule that defines the subsets:
+You need a DestinationRule that defines any subsets you reference:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-app
@@ -70,7 +70,7 @@ And of course, two deployments with the appropriate version labels.
 The simplest case is an exact match. The query parameter value must match exactly:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -100,7 +100,7 @@ Hitting `http://my-app/api/data?env=staging` routes to the staging subset. Note 
 For more flexible matching, use regex:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -130,7 +130,7 @@ This matches any of the listed feature flag values and routes them to the experi
 You can combine query parameter matching with header matching, URI matching, and more. When conditions are in the same match block, they are all required (AND logic):
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -161,7 +161,7 @@ This routes to the debug subset only when both `?debug=true` is in the URL AND t
 For OR logic, use separate match blocks:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -194,7 +194,7 @@ Now either the query parameter OR the header is enough to trigger the route.
 A practical use case is implementing feature flags. Different teams can test different features by appending query parameters:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -234,7 +234,7 @@ QA testers hit `http://my-app/checkout?feature=checkout-v2` to test the new chec
 You can match on multiple query parameters simultaneously:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -266,7 +266,7 @@ A request to `http://my-app?version=2&region=eu` matches the first rule. Both pa
 Sometimes you do not know the exact value but know it starts with something specific:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -318,7 +318,7 @@ There are a few things to be aware of when routing on query parameters:
 
 2. **Order of parameters does not matter** - `?a=1&b=2` and `?b=2&a=1` both match the same rules.
 
-3. **URL encoding** - Query parameter values are matched after URL decoding. So `%20` is treated as a space.
+3. **URL encoding** - Query parameters are matched in their URL-encoded form. For example, a value encoded as `%20` should be matched as `%20`, not as a literal space.
 
 4. **No negation** - You cannot say "route if this parameter is NOT present." You can only match on what is there.
 
