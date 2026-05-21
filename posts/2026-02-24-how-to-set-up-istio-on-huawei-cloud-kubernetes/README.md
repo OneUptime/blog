@@ -47,9 +47,10 @@ curl -X POST "https://cce.cn-north-4.myhuaweicloud.com/api/v3/projects/{project_
       "name": "istio-cluster"
     },
     "spec": {
+      "category": "CCE",
       "type": "VirtualMachine",
       "flavor": "cce.s2.medium",
-      "version": "v1.30",
+      "version": "v1.31",
       "hostNetwork": {
         "vpc": "vpc-id",
         "subnet": "subnet-id"
@@ -78,8 +79,8 @@ kubectl get nodes
 ## Step 3: Install Istio
 
 ```bash
-curl -L https://istio.io/downloadIstio | sh -
-cd istio-1.24.0
+curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.29.2 sh -
+cd istio-1.29.2
 export PATH=$PWD/bin:$PATH
 ```
 
@@ -207,9 +208,12 @@ If you're in a China region, pulling images from the default Istio registry migh
 
 ```bash
 # Pull Istio images and push to SWR
-docker pull docker.io/istio/proxyv2:1.24.0
-docker tag docker.io/istio/proxyv2:1.24.0 swr.cn-north-4.myhuaweicloud.com/istio/proxyv2:1.24.0
-docker push swr.cn-north-4.myhuaweicloud.com/istio/proxyv2:1.24.0
+docker pull docker.io/istio/pilot:1.29.2
+docker pull docker.io/istio/proxyv2:1.29.2
+docker tag docker.io/istio/pilot:1.29.2 swr.cn-north-4.myhuaweicloud.com/istio/pilot:1.29.2
+docker tag docker.io/istio/proxyv2:1.29.2 swr.cn-north-4.myhuaweicloud.com/istio/proxyv2:1.29.2
+docker push swr.cn-north-4.myhuaweicloud.com/istio/pilot:1.29.2
+docker push swr.cn-north-4.myhuaweicloud.com/istio/proxyv2:1.29.2
 ```
 
 Then configure Istio to use SWR:
@@ -219,7 +223,7 @@ apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
   hub: swr.cn-north-4.myhuaweicloud.com/istio
-  tag: 1.24.0
+  tag: 1.29.2
 ```
 
 ## Security Groups
@@ -277,12 +281,13 @@ When upgrading Istio on CCE, follow the standard process:
 
 ```bash
 # Download the new version
-curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.25.0 sh -
-cd istio-1.25.0
+NEW_ISTIO_VERSION=1.29.2
+curl -L https://istio.io/downloadIstio | ISTIO_VERSION=$NEW_ISTIO_VERSION sh -
+cd istio-$NEW_ISTIO_VERSION
 export PATH=$PWD/bin:$PATH
 
 # Upgrade
-istioctl upgrade -y
+istioctl upgrade -f istio-cce.yaml -y
 
 # Restart workloads to get new sidecar version
 kubectl rollout restart deployment -n default
