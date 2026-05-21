@@ -10,19 +10,14 @@ Description: Build and use Kubernetes operators to manage Istio custom resource 
 
 Kubernetes operators extend the cluster with custom controllers that watch for changes and reconcile desired state. For Istio, an operator can automate common tasks like creating VirtualServices when new services appear, enforcing security policies across namespaces, or managing canary rollouts based on metrics.
 
-The Istio project itself ships an operator (the IstioOperator), but you can also build your own operators that manage Istio CRDs to implement your organization's specific patterns. This guide covers both approaches.
+Istio still supports the IstioOperator API for installation configuration through `istioctl`, but the in-cluster Istio operator was deprecated in Istio 1.23 and removed in Istio 1.24. You can also build your own operators that manage Istio CRDs to implement your organization's specific patterns. This guide covers both approaches.
 
-## The Istio Operator
+## The IstioOperator API
 
-Istio includes a built-in operator that manages the installation and configuration of Istio itself. Install it:
+Istio supports an IstioOperator configuration resource for installing and configuring Istio with `istioctl`. Create an `istio-operator.yaml` file:
 
 ```bash
-istioctl operator init
-```
-
-This deploys the operator controller into the `istio-operator` namespace. Now you can manage Istio through an IstioOperator resource:
-
-```yaml
+cat > istio-operator.yaml <<'EOF'
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 metadata:
@@ -58,19 +53,26 @@ spec:
             maxReplicas: 10
           service:
             type: LoadBalancer
+EOF
 ```
 
-Apply it:
+Install Istio with that configuration:
 
 ```bash
-kubectl apply -f istio-operator.yaml
+istioctl install -f istio-operator.yaml
 ```
 
-The operator watches for changes to this resource and reconciles the Istio installation automatically. Change a value and the operator handles the upgrade.
+The same file can be reused for later configuration changes:
+
+```bash
+istioctl install -f istio-operator.yaml
+```
+
+`istioctl` validates the IstioOperator configuration, applies the rendered Kubernetes resources, and prunes resources that are no longer part of the installation.
 
 ## Why Build Custom Operators for Istio CRDs
 
-The built-in operator manages Istio installation. But what about managing the day-to-day Istio resources your services use? That is where custom operators come in.
+The IstioOperator API manages Istio installation configuration. But what about managing the day-to-day Istio resources your services use? That is where custom operators come in.
 
 Common use cases:
 - Automatically create VirtualService and DestinationRule when a new Service is deployed
@@ -115,8 +117,8 @@ type ServiceMeshStatus struct {
 	LastReconciled         string `json:"lastReconciled,omitempty"`
 }
 
-// +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:object:root=true
 
 type ServiceMesh struct {
 	metav1.TypeMeta   `json:",inline"`
@@ -125,6 +127,18 @@ type ServiceMesh struct {
 	Spec   ServiceMeshSpec   `json:"spec,omitempty"`
 	Status ServiceMeshStatus `json:"status,omitempty"`
 }
+
+// +kubebuilder:object:root=true
+
+type ServiceMeshList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+	Items           []ServiceMesh `json:"items"`
+}
+
+func init() {
+	SchemeBuilder.Register(&ServiceMesh{}, &ServiceMeshList{})
+}
 ```
 
 ## Implementing the Reconciler
@@ -132,17 +146,14 @@ type ServiceMesh struct {
 The reconciler watches ServiceMesh resources and creates/updates the corresponding Istio CRDs:
 
 ```go
-// controllers/servicemesh_controller.go
-package controllers
+// internal/controller/servicemesh_controller.go
+package controller
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	meshv1alpha1 "github.com/example/istio-config-operator/api/v1alpha1"
-	networkingv1 "istio.io/client-go/pkg/apis/networking/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -189,6 +200,16 @@ func (r *ServiceMeshReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	return ctrl.Result{}, nil
+}
+
+func (r *ServiceMeshReconciler) reconcileVirtualService(ctx context.Context, serviceMesh *meshv1alpha1.ServiceMesh) error {
+	// Create or update the networking.istio.io/v1 VirtualService here.
+	return nil
+}
+
+func (r *ServiceMeshReconciler) reconcileDestinationRule(ctx context.Context, serviceMesh *meshv1alpha1.ServiceMesh) error {
+	// Create or update the networking.istio.io/v1 DestinationRule here.
+	return nil
 }
 
 func (r *ServiceMeshReconciler) SetupWithManager(mgr ctrl.Manager) error {
