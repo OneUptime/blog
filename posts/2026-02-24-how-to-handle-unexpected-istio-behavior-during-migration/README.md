@@ -25,9 +25,9 @@ kubectl get pod my-pod -o jsonpath='{.spec.containers[*].name}'
 # Check sidecar logs for errors
 kubectl logs my-pod -c istio-proxy --tail=50
 
-# Temporarily bypass the sidecar for debugging
-kubectl annotate pod my-pod sidecar.istio.io/inject="false" --overwrite
-# Then delete the pod to recreate without sidecar
+# Temporarily bypass the sidecar for a Deployment-managed pod
+kubectl patch deployment my-app -p '{"spec":{"template":{"metadata":{"labels":{"sidecar.istio.io/inject":"false"}}}}}'
+# This updates the pod template and starts a new rollout without the sidecar
 ```
 
 If the problem goes away without the sidecar, you know Istio is involved. If it persists, look elsewhere.
@@ -97,7 +97,7 @@ istioctl analyze -n my-namespace
 
 ## Intermittent Timeouts
 
-Timeouts that appear randomly after migration often point to circuit breaking or outlier detection being too aggressive with default settings.
+Timeouts that appear randomly after migration often point to circuit breaking or outlier detection being configured too aggressively.
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -124,7 +124,7 @@ spec:
       maxEjectionPercent: 50
 ```
 
-The defaults for `http1MaxPendingRequests` and `http2MaxRequests` can be quite low for high-traffic services. If your service handles thousands of requests per second, those defaults will cause request queuing and timeouts.
+Explicitly configured limits like `http1MaxPendingRequests`, `http2MaxRequests`, and `maxRequestsPerConnection` can be too low for high-traffic services. If your service handles thousands of requests per second, overly tight limits can cause request queuing and timeouts.
 
 ## Health Check Failures
 
@@ -164,8 +164,8 @@ spec:
 After migration, you might see DNS resolution failures, especially for external services. Istio intercepts outbound traffic and may not know how to route it.
 
 ```bash
-# Check if DNS is resolving inside the mesh
-kubectl exec my-pod -c istio-proxy -- curl -v http://external-api.com
+# Check if the application container can reach the external service
+kubectl exec my-pod -c my-app -- curl -v https://external-api.com
 
 # Check Envoy's cluster configuration for the external service
 istioctl proxy-config clusters my-pod | grep external
@@ -185,7 +185,7 @@ spec:
   ports:
   - number: 443
     name: https
-    protocol: HTTPS
+    protocol: TLS
   location: MESH_EXTERNAL
   resolution: DNS
 ```
