@@ -148,21 +148,37 @@ on:
   push:
     branches: [main]
 
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}/my-app
+
 jobs:
   canary:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v4
 
+      - name: Log in to the container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Build and push image
         run: |
-          docker build -t my-app:${{ github.sha }} .
-          docker push my-app:${{ github.sha }}
+          IMAGE="${REGISTRY}/${IMAGE_NAME}:${GITHUB_SHA}"
+          docker build -t "$IMAGE" .
+          docker push "$IMAGE"
 
       - name: Deploy canary
         run: |
+          IMAGE="${REGISTRY}/${IMAGE_NAME}:${GITHUB_SHA}"
           kubectl set image deployment/my-app-canary \
-            my-app=my-app:${{ github.sha }} -n app
+            my-app="$IMAGE" -n app
           kubectl rollout status deployment/my-app-canary -n app --timeout=120s
 
       - name: Route 10% to canary
@@ -208,8 +224,9 @@ jobs:
 
       - name: Promote to stable
         run: |
+          IMAGE="${REGISTRY}/${IMAGE_NAME}:${GITHUB_SHA}"
           kubectl set image deployment/my-app-stable \
-            my-app=my-app:${{ github.sha }} -n app
+            my-app="$IMAGE" -n app
           kubectl rollout status deployment/my-app-stable -n app --timeout=300s
 
           kubectl patch virtualservice my-app -n app --type=merge -p '
