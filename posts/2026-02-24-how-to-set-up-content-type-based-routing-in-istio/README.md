@@ -54,7 +54,7 @@ Requests with `Content-Type: application/json` go to the JSON service. XML reque
 
 ## Handling Content-Type Variations
 
-In practice, Content-Type headers are not always clean. Clients might send `application/json; charset=utf-8` or `Application/JSON`. Use prefix or regex matching to handle these variations:
+In practice, Content-Type headers are not always clean. Clients might send `application/json; charset=utf-8` or `Application/JSON`. Use prefix matching for parameters or regex matching for case-insensitive variations:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -70,7 +70,7 @@ spec:
     - match:
         - headers:
             content-type:
-              prefix: "application/json"
+              regex: "(?i)^application/json(?:;.*)?$"
       route:
         - destination:
             host: json-api-service
@@ -79,7 +79,7 @@ spec:
     - match:
         - headers:
             content-type:
-              regex: "application/xml.*"
+              regex: "(?i)^application/xml(?:;.*)?$"
       route:
         - destination:
             host: xml-api-service
@@ -88,7 +88,7 @@ spec:
     - match:
         - headers:
             content-type:
-              prefix: "multipart/form-data"
+              regex: "(?i)^multipart/form-data(?:;.*)?$"
       route:
         - destination:
             host: upload-service
@@ -101,7 +101,7 @@ spec:
               number: 8080
 ```
 
-The `prefix` matcher handles `application/json; charset=utf-8` correctly because it just checks that the header starts with `application/json`.
+The `prefix` matcher handles `application/json; charset=utf-8` correctly because it just checks that the header starts with `application/json`. Regex matching with `(?i)` handles case-insensitive media type variations.
 
 ## Routing File Uploads
 
@@ -122,7 +122,7 @@ spec:
         - headers:
             content-type:
               prefix: "multipart/form-data"
-        - uri:
+          uri:
             prefix: /api/upload
       route:
         - destination:
@@ -153,7 +153,7 @@ spec:
     - match:
         - headers:
             accept:
-              regex: ".*application/json.*"
+              regex: "(?i).*application/json.*"
       route:
         - destination:
             host: json-api-service
@@ -166,7 +166,7 @@ spec:
     - match:
         - headers:
             accept:
-              regex: ".*application/xml.*"
+              regex: "(?i).*application/xml.*"
       route:
         - destination:
             host: xml-api-service
@@ -179,7 +179,7 @@ spec:
     - match:
         - headers:
             accept:
-              regex: ".*text/html.*"
+              regex: "(?i).*text/html.*"
       route:
         - destination:
             host: web-service
@@ -280,20 +280,22 @@ spec:
           name: envoy.filters.http.lua
           typed_config:
             "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-            inlineCode: |
-              function envoy_on_request(request_handle)
-                local ct = request_handle:headers():get("content-type")
-                if ct then
-                  -- Normalize to lowercase
-                  ct = ct:lower()
-                  -- Strip charset and other parameters for routing
-                  local base_type = ct:match("^([^;]+)")
-                  if base_type then
-                    base_type = base_type:gsub("%s+$", "")
-                    request_handle:headers():add("x-normalized-content-type", base_type)
+            defaultSourceCode:
+              inlineString: |
+                function envoy_on_request(request_handle)
+                  request_handle:headers():remove("x-normalized-content-type")
+                  local ct = request_handle:headers():get("content-type")
+                  if ct then
+                    -- Normalize to lowercase
+                    ct = ct:lower()
+                    -- Strip charset and other parameters for routing
+                    local base_type = ct:match("^([^;]+)")
+                    if base_type then
+                      base_type = base_type:gsub("^%s+", ""):gsub("%s+$", "")
+                      request_handle:headers():replace("x-normalized-content-type", base_type)
+                    end
                   end
                 end
-              end
 ```
 
 Then route based on the normalized header:
