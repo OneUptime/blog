@@ -24,51 +24,58 @@ For most production setups, multi-primary on separate networks is the recommende
 
 Before setting up multi-cluster service discovery, you need:
 
-- Two or more Kubernetes clusters with Istio installed
+- Two or more Kubernetes clusters
 - Network connectivity between clusters (VPN, peering, or public endpoints)
 - A shared root CA for mTLS (or Istio's built-in CA with shared root certificates)
 
-Create the shared root certificate:
+Create the shared root certificate from the root of the Istio release directory:
 
 ```bash
-# Generate root CA
-
-mkdir -p certs
-openssl req -new -newkey rsa:4096 -x509 -sha256 \
-  -days 3650 -nodes -out certs/root-cert.pem \
-  -keyout certs/root-key.pem \
-  -subj "/O=example Inc./CN=Root CA"
+make -f tools/certs/Makefile.selfsigned.mk \
+  ROOTCA_CN="Root CA" \
+  ROOTCA_ORG=istio.io \
+  root-ca
 ```
 
 Generate intermediate CAs for each cluster:
 
 ```bash
 # For cluster1
-openssl req -new -newkey rsa:4096 -nodes \
-  -out certs/cluster1-ca-cert.csr \
-  -keyout certs/cluster1-ca-key.pem \
-  -subj "/O=example Inc./CN=Cluster1 Intermediate CA"
+make -f tools/certs/Makefile.selfsigned.mk \
+  INTERMEDIATE_CN="Cluster 1 Intermediate CA" \
+  INTERMEDIATE_ORG=istio.io \
+  cluster1-cacerts
 
-openssl x509 -req -days 730 -CA certs/root-cert.pem \
-  -CAkey certs/root-key.pem -CAcreateserial \
-  -in certs/cluster1-ca-cert.csr \
-  -out certs/cluster1-ca-cert.pem
+# For cluster2
+make -f tools/certs/Makefile.selfsigned.mk \
+  INTERMEDIATE_CN="Cluster 2 Intermediate CA" \
+  INTERMEDIATE_ORG=istio.io \
+  cluster2-cacerts
 ```
 
 Create the cacerts secret in each cluster:
 
 ```bash
+kubectl create namespace istio-system --context=cluster1
 kubectl create secret generic cacerts -n istio-system \
-  --from-file=ca-cert.pem=certs/cluster1-ca-cert.pem \
-  --from-file=ca-key.pem=certs/cluster1-ca-key.pem \
-  --from-file=root-cert.pem=certs/root-cert.pem \
-  --from-file=cert-chain.pem=certs/cluster1-cert-chain.pem \
+  --from-file=ca-cert.pem=cluster1/ca-cert.pem \
+  --from-file=ca-key.pem=cluster1/ca-key.pem \
+  --from-file=root-cert.pem=cluster1/root-cert.pem \
+  --from-file=cert-chain.pem=cluster1/cert-chain.pem \
   --context=cluster1
+
+kubectl create namespace istio-system --context=cluster2
+kubectl create secret generic cacerts -n istio-system \
+  --from-file=ca-cert.pem=cluster2/ca-cert.pem \
+  --from-file=ca-key.pem=cluster2/ca-key.pem \
+  --from-file=root-cert.pem=cluster2/root-cert.pem \
+  --from-file=cert-chain.pem=cluster2/cert-chain.pem \
+  --context=cluster2
 ```
 
 ## Setting Up Multi-Primary on Different Networks
 
-Label each cluster with its network and cluster name:
+Label each Istio system namespace with its network:
 
 ```bash
 # On cluster1
@@ -183,9 +190,34 @@ These secrets allow each cluster's istiod to watch the Kubernetes API of the rem
 
 ## Verifying Service Discovery
 
-Deploy a test service in cluster2:
+Create the sample namespace in each cluster and enable sidecar injection:
 
 ```bash
+kubectl create namespace sample --context=cluster1
+kubectl create namespace sample --context=cluster2
+
+kubectl label namespace sample istio-injection=enabled --context=cluster1
+kubectl label namespace sample istio-injection=enabled --context=cluster2
+```
+
+Create the service in both clusters so DNS lookups succeed from either cluster:
+
+```bash
+kubectl apply --context=cluster1 -n sample -f - <<EOF
+apiVersion: v1
+kind: Service
+metadata:
+  name: hello-service
+  labels:
+    app: hello
+spec:
+  ports:
+  - port: 8080
+    name: http
+  selector:
+    app: hello
+EOF
+
 kubectl apply --context=cluster2 -n sample -f - <<EOF
 apiVersion: v1
 kind: Service
@@ -199,7 +231,13 @@ spec:
     name: http
   selector:
     app: hello
----
+EOF
+```
+
+Deploy a test service workload in cluster2:
+
+```bash
+kubectl apply --context=cluster2 -n sample -f - <<EOF
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -217,10 +255,16 @@ spec:
       containers:
       - name: hello
         image: hashicorp/http-echo:0.2.3
-        args: ["-text=hello from cluster2"]
+        args: ["-listen=:8080", "-text=hello from cluster2"]
         ports:
         - containerPort: 8080
 EOF
+```
+
+Deploy a client pod in cluster1:
+
+```bash
+kubectl apply --context=cluster1 -n sample -f samples/sleep/sleep.yaml
 ```
 
 From cluster1, call the service:
@@ -233,17 +277,17 @@ If multi-cluster service discovery is working, you should see "hello from cluste
 
 ## Checking the Service Registry
 
-Verify that services from both clusters appear in the proxy configuration:
+Verify that the remote service appears in the proxy configuration:
 
 ```bash
 istioctl proxy-config endpoint deploy/sleep -n sample --context=cluster1 | grep hello-service
 ```
 
-You should see endpoints from both clusters listed.
+You should see the cluster2 endpoint listed.
 
 ## Locality-Aware Routing
 
-With multi-cluster service discovery, Istio can route traffic preferentially to local endpoints. Configure locality load balancing:
+With multi-cluster service discovery, Istio can route traffic preferentially to local endpoints. Configure outlier detection and explicit locality load balancing:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -254,16 +298,17 @@ metadata:
 spec:
   host: hello-service.sample.svc.cluster.local
   trafficPolicy:
-    connectionPool:
-      http:
-        h2UpgradePolicy: DEFAULT
+    loadBalancer:
+      simple: LEAST_REQUEST
+      localityLbSetting:
+        enabled: true
     outlierDetection:
       consecutive5xxErrors: 1
       interval: 5s
       baseEjectionTime: 30s
 ```
 
-With outlier detection enabled, Istio will prefer local endpoints but fail over to remote endpoints if the local ones become unhealthy.
+With locality load balancing and outlier detection enabled, Istio can prefer nearby healthy endpoints and eject unhealthy endpoints from the load-balancing pool.
 
 ## Troubleshooting Multi-Cluster Discovery
 
