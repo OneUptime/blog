@@ -16,7 +16,7 @@ When you set STRICT mTLS, only connections that present a valid client certifica
 
 - Pods without the Istio sidecar
 - External services that call into the mesh
-- Health checks from tools outside the mesh
+- Health checks from tools outside the mesh, or Kubernetes probes if probe rewrite is disabled
 - Monitoring agents like Prometheus (if running without a sidecar)
 - Kubernetes Jobs and CronJobs that might not have sidecars
 
@@ -53,7 +53,7 @@ Check DestinationRules that might have explicit TLS settings:
 
 ```bash
 kubectl get destinationrules --all-namespaces -o json | \
-  jq '.items[] | select(.spec.trafficPolicy.tls != null) | {name: .metadata.name, ns: .metadata.namespace, tls: .spec.trafficPolicy.tls}'
+  jq '.items[] | select((.spec.trafficPolicy.tls? != null) or ([.spec.trafficPolicy.portLevelSettings[]?.tls?] | any(. != null))) | {name: .metadata.name, ns: .metadata.namespace, tls: .spec.trafficPolicy.tls, portLevelTls: [.spec.trafficPolicy.portLevelSettings[]? | select(.tls? != null) | {port: .port, tls: .tls}]}'
 ```
 
 ### Step 2: Set Mesh-Wide PERMISSIVE Explicitly
@@ -70,6 +70,8 @@ spec:
   mtls:
     mode: PERMISSIVE
 ```
+
+This assumes `istio-system` is your Istio root namespace. If your installation uses a different root namespace, apply the mesh-wide policy there instead.
 
 ```bash
 kubectl apply -f mesh-permissive.yaml
@@ -165,7 +167,7 @@ Apply and validate each one before moving to the next.
 Some workloads might need exceptions. Create workload-specific or port-level overrides:
 
 ```yaml
-# Prometheus metrics port needs plain text
+# Prometheus metrics workload port needs plain text
 apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
@@ -182,6 +184,8 @@ spec:
       mode: PERMISSIVE
 ```
 
+The `portLevelMtls` key is the workload/container port, not the Kubernetes Service port.
+
 ### Step 8: Flip the Mesh-Wide Default to STRICT
 
 Once all namespaces are individually STRICT and validated:
@@ -196,6 +200,8 @@ spec:
   mtls:
     mode: STRICT
 ```
+
+Again, use your configured Istio root namespace if it is not `istio-system`.
 
 ```bash
 kubectl apply -f mesh-strict.yaml
