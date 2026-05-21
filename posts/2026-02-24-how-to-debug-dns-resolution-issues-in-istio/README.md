@@ -48,7 +48,7 @@ search default.svc.cluster.local svc.cluster.local cluster.local
 options ndots:5
 ```
 
-If the nameserver IP doesn't match your CoreDNS service IP, that's your first clue. When DNS proxy is enabled, you might see the nameserver redirected to the sidecar.
+If the nameserver IP doesn't match your CoreDNS service IP, that's your first clue. When DNS proxy is enabled, `/etc/resolv.conf` usually still points at the normal cluster DNS server; Istio transparently redirects DNS requests to the sidecar or ztunnel and forwards anything it cannot answer upstream using the standard `/etc/resolv.conf` configuration.
 
 ## Step 3: Test DNS from the Sidecar
 
@@ -60,13 +60,13 @@ kubectl exec -it deploy/my-app -c istio-proxy -- pilot-agent request GET stats |
 
 This shows you DNS proxy statistics. Look for:
 - High values in failure counters
-- Whether queries are being forwarded or resolved locally
-- Cache hit rates
+- Whether request and response counters change when you make a lookup
+- Whether queries are being forwarded upstream or answered locally
 
-You can also try resolving directly:
+You can also trigger a fresh lookup from the application container and then re-check the sidecar stats. With DNS capture enabled, the application's DNS request is redirected through the proxy:
 
 ```bash
-kubectl exec -it deploy/my-app -c istio-proxy -- nslookup my-service.default.svc.cluster.local localhost
+kubectl exec -it deploy/my-app -c my-app -- nslookup my-service.default.svc.cluster.local
 ```
 
 ## Step 4: Check CoreDNS
@@ -160,7 +160,7 @@ spec:
 
 If you've created a ServiceEntry but the hostname doesn't resolve:
 
-1. Check if DNS proxy is enabled (required for ServiceEntry DNS resolution):
+1. Check if DNS proxy is enabled. Kubernetes DNS does not know about custom `ServiceEntry` hosts, so DNS proxying is needed if you expect the application to resolve a ServiceEntry-only hostname through Istio:
 ```bash
 istioctl proxy-config bootstrap deploy/my-app | grep DNS_CAPTURE
 ```
@@ -170,7 +170,7 @@ istioctl proxy-config bootstrap deploy/my-app | grep DNS_CAPTURE
 istioctl proxy-config cluster deploy/my-app | grep external-service
 ```
 
-3. Make sure `ISTIO_META_DNS_AUTO_ALLOCATE` is enabled if you're using TCP services without explicit addresses.
+3. For TCP services without explicit addresses, make sure Istio IP auto-allocation is enabled. In current Istio versions this uses the status-based auto-allocation controller, controlled globally by `PILOT_ENABLE_IP_AUTOALLOCATE` and per ServiceEntry with the `networking.istio.io/enable-autoallocate-ip` label; the older `ISTIO_META_DNS_AUTO_ALLOCATE` proxy metadata setting is deprecated.
 
 ### Problem: Cross-Namespace Resolution Fails
 
