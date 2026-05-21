@@ -8,9 +8,9 @@ Description: How to configure Istio to properly handle Redis protocol traffic, i
 
 ---
 
-Redis is the go-to choice for caching, session management, and pub/sub messaging in Kubernetes applications. When you add Istio to the picture, you need to make sure the sidecar proxy handles Redis traffic correctly. Redis uses its own text-based protocol (RESP - Redis Serialization Protocol), which is neither HTTP nor raw binary TCP.
+Redis is the go-to choice for caching, session management, and pub/sub messaging in Kubernetes applications. When you add Istio to the picture, you need to make sure the sidecar proxy handles Redis traffic correctly. Redis uses its own binary-safe protocol (RESP - Redis Serialization Protocol), which is neither HTTP nor a generic opaque TCP stream.
 
-Istio recognizes Redis as a specific protocol and can provide protocol-aware handling when configured properly. This means better observability and smarter traffic management compared to treating Redis as generic TCP.
+Istio recognizes Redis as an experimental application protocol and can provide protocol-aware handling when configured properly. This means better observability and smarter traffic management compared to treating Redis as generic TCP.
 
 ## Port Naming for Redis
 
@@ -31,7 +31,7 @@ spec:
       targetPort: 6379
 ```
 
-Alternatives that also work:
+If you want Istio to treat the traffic as generic TCP instead, use a `tcp` prefix:
 
 ```yaml
 ports:
@@ -40,7 +40,7 @@ ports:
     targetPort: 6379
 ```
 
-Or with `appProtocol`:
+You can also identify Redis with `appProtocol`:
 
 ```yaml
 ports:
@@ -50,7 +50,7 @@ ports:
     appProtocol: redis
 ```
 
-When Istio detects the `redis` protocol, it uses a specialized Redis proxy filter in Envoy instead of a generic TCP proxy. This filter understands the RESP protocol and can provide per-command metrics and routing.
+When Istio detects the `redis` protocol and `PILOT_ENABLE_REDIS_FILTER` is enabled for istiod, it uses a specialized Redis proxy filter in Envoy instead of a generic TCP proxy. This filter understands the RESP protocol and can provide per-command metrics and routing. If the Redis filter is not enabled, Istio treats the traffic as an opaque TCP stream.
 
 ## Basic Redis Deployment with Istio
 
@@ -92,7 +92,7 @@ spec:
             - "allkeys-lru"
 ```
 
-Redis is a client-first protocol (the client sends commands, the server responds), so Istio's protocol sniffing works reasonably well for Redis. But explicit configuration is still preferred because it avoids the sniffing delay and enables the Redis-specific filter.
+Redis is a client-first protocol (the client sends commands, the server responds), but Istio's automatic protocol detection only detects HTTP and HTTP/2 traffic. Use explicit Redis configuration, and enable the Redis filter in istiod if you need Redis-specific Envoy handling.
 
 ## Connection Pool Configuration
 
@@ -227,7 +227,7 @@ spec:
   location: MESH_EXTERNAL
   ports:
     - number: 6379
-      name: redis
+      name: tcp-redis
       protocol: TCP
   resolution: DNS
 ```
