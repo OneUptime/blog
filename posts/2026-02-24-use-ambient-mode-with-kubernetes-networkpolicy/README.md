@@ -44,30 +44,30 @@ This allows only pods labeled `app: frontend` to connect to pods labeled `app: b
 
 ## How Ambient Mode Changes the Picture
 
-In ambient mode, traffic from enrolled pods goes through ztunnel before reaching the destination. This changes the source IP that NetworkPolicy sees.
+In ambient mode, traffic from enrolled pods goes through ztunnel before reaching the destination. The important NetworkPolicy change is that secured mesh traffic reaches the destination pod as HBONE on port 15008, and is then proxied back to the original destination port.
 
-### The Source IP Problem
+### The Port 15008 Problem
 
 Without ambient mode:
 ```text
 frontend (10.0.1.5) -> backend (10.0.1.6)
-NetworkPolicy sees: source IP = 10.0.1.5
+NetworkPolicy sees: destination port = 8080
 ```
 
 With ambient mode:
 ```text
-frontend (10.0.1.5) -> ztunnel (node IP) -> [HBONE] -> ztunnel (node IP) -> backend (10.0.1.6)
+frontend (10.0.1.5) -> ztunnel -> [HBONE] -> backend (10.0.1.6:15008) -> backend app port 8080
 ```
 
-The NetworkPolicy on the destination side may see the ztunnel pod's IP (or the node IP) as the source, not the original frontend pod's IP. This breaks podSelector-based NetworkPolicies.
+NetworkPolicy is enforced outside the pod, before ambient redirects the HBONE traffic back to the original application port. If an existing ingress NetworkPolicy allows only port 8080, it can block ambient traffic until you also allow port 15008.
 
 ### Same-Node Traffic
 
-When source and destination are on the same node, ztunnel handles the traffic locally. Depending on how the CNI and ztunnel interact, the NetworkPolicy may see the original pod IP or the ztunnel IP.
+When source and destination are on the same node, traffic still traverses ztunnel. NetworkPolicy still applies to traffic reaching the pod, so port restrictions need to account for HBONE on port 15008.
 
 ### Cross-Node Traffic
 
-For cross-node traffic, the HBONE tunnel means the destination NetworkPolicy enforcement point sees traffic arriving from the destination node's ztunnel, not from the original source pod on another node.
+For cross-node traffic, the HBONE tunnel means the destination NetworkPolicy enforcement point must allow the secured overlay traffic on port 15008 before the destination pod can receive and redirect it to the original application port.
 
 ## Strategy 1: Use NetworkPolicy for Broad Controls, Istio for Fine-Grained
 
@@ -94,7 +94,12 @@ spec:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: istio-system
-      # Allow traffic from same namespace and istio-system (for ztunnel)
+      # Allow traffic from the same namespace and ambient HBONE traffic
+      ports:
+        - port: 15008
+          protocol: TCP
+        - port: 8080
+          protocol: TCP
   egress:
     - to:
         - namespaceSelector:
@@ -103,6 +108,11 @@ spec:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: istio-system
+      ports:
+        - port: 15008
+          protocol: TCP
+        - port: 8080
+          protocol: TCP
     - to:  # Allow DNS
         - namespaceSelector: {}
       ports:
@@ -134,15 +144,15 @@ spec:
 
 NetworkPolicy handles the "what namespaces can talk to what" question. Istio handles "what specific service identities are allowed."
 
-## Strategy 2: Allow ztunnel in NetworkPolicy
+## Strategy 2: Allow HBONE in NetworkPolicy
 
-If you want to keep pod-level NetworkPolicies, you need to allow ztunnel traffic:
+If you want to keep pod-level NetworkPolicies, you need to allow HBONE traffic to enrolled workloads:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: allow-ztunnel
+  name: allow-ambient-hbone
   namespace: bookinfo
 spec:
   podSelector: {}
@@ -150,19 +160,17 @@ spec:
     - Ingress
   ingress:
     - from:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: istio-system
-          podSelector:
-            matchLabels:
-              app: ztunnel
+        - namespaceSelector: {}
+      ports:
+        - port: 15008
+          protocol: TCP
 ```
 
-This allows all ztunnel pods to send traffic to any pod in the namespace. The fine-grained access control is then handled by Istio's AuthorizationPolicy.
+This allows ambient's secure overlay traffic to reach pods in the namespace. The fine-grained access control is then handled by Istio's AuthorizationPolicy.
 
-## Strategy 3: IP Block Based NetworkPolicy
+## Strategy 3: Port-Based NetworkPolicy
 
-For cross-node traffic, use IP block rules that cover the node CIDR:
+For cross-node traffic, make the application allowlist include the HBONE port as well as any direct plaintext traffic you intentionally allow:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -176,28 +184,33 @@ spec:
     - Ingress
   ingress:
     - from:
-        - ipBlock:
-            cidr: 10.0.0.0/8
-      ports:
-        - port: 15008
-          protocol: TCP
-    - from:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: bookinfo
+      ports:
+        - port: 15008
+          protocol: TCP
+        - port: 8080
+          protocol: TCP
+    - from:
+        - ipBlock:
+            cidr: 169.254.7.127/32
+        - ipBlock:
+            cidr: fd16:9254:7127:1337:ffff:ffff:ffff:ffff/128
 ```
 
-This allows HBONE traffic (port 15008) from the cluster network and direct traffic from the same namespace.
+This allows HBONE traffic (port 15008) and direct traffic (port 8080) from the same namespace, plus the link-local addresses Istio ambient uses for kubelet health probes.
 
 ## What Must Be Allowed in NetworkPolicy
 
 For ambient mode to work, your NetworkPolicies must allow:
 
-1. **ztunnel to workload pods**: ztunnel needs to send decrypted traffic to destination pods
-2. **Workload pods to ztunnel**: istio-cni redirects outbound traffic to ztunnel
-3. **ztunnel to ztunnel on port 15008**: HBONE tunnels between nodes
+1. **HBONE to workload pods on port 15008**: secured ambient traffic reaches destination pods on this port
+2. **Workload egress to destination pods on port 15008**: istio-cni redirects outbound traffic to ztunnel, which sends it using HBONE
+3. **Application ports for intentional plaintext or non-mesh traffic**: existing direct traffic still needs explicit allows if the pod is isolated
 4. **ztunnel to istiod on port 15012**: Configuration and certificate updates
 5. **Workload pods to waypoint proxies** (if deployed): Traffic flows through waypoints
+6. **Ambient health probe link-local addresses**: allow `169.254.7.127/32` and, on IPv6 or dual-stack clusters, `fd16:9254:7127:1337:ffff:ffff:ffff:ffff/128`
 
 Here is a comprehensive NetworkPolicy for the `istio-system` namespace:
 
@@ -223,7 +236,7 @@ spec:
   egress:
     - to:
         - namespaceSelector: {}
-    - ports:
+      ports:
         - port: 15008
           protocol: TCP
         - port: 15012
@@ -272,18 +285,19 @@ Cilium uses eBPF for NetworkPolicy enforcement, which can be more efficient. Whe
 
 ```bash
 # Check Cilium's view of traffic
-kubectl exec -n kube-system -l k8s-app=cilium -- cilium monitor --type drop
+CILIUM_POD=$(kubectl -n kube-system get pod -l k8s-app=cilium -o jsonpath='{.items[0].metadata.name}')
+kubectl -n kube-system exec -ti "$CILIUM_POD" -- cilium-dbg monitor --type drop
 ```
 
 ### AWS VPC CNI
 
-The VPC CNI supports NetworkPolicy through the Network Policy Agent. It enforces policies at the ENI level, which happens before Istio's traffic interception. This means NetworkPolicy works at the pod IP level, which is generally the behavior you want.
+The VPC CNI supports NetworkPolicy through the Network Policy Agent. It enforces Kubernetes NetworkPolicy for pods on their primary interface, with some EKS-specific considerations such as standard versus strict startup behavior and unsupported Fargate or Windows nodes.
 
 ## Recommendations
 
 1. Start with namespace-level NetworkPolicy for isolation
 2. Add Istio AuthorizationPolicy for identity-based controls
-3. Always allow ztunnel traffic in NetworkPolicy
+3. Always allow ambient HBONE traffic in NetworkPolicy
 4. Do not try to replicate Istio policies in NetworkPolicy (or vice versa)
 5. Use NetworkPolicy as a safety net, Istio as the primary access control
 
