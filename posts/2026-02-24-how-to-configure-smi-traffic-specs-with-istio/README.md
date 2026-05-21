@@ -8,27 +8,30 @@ Description: A hands-on guide to configuring SMI Traffic Specs with Istio to def
 
 ---
 
-SMI Traffic Specs define the shape of traffic flowing between services in your mesh. They are the building blocks that other SMI resources reference when they need to describe what kind of requests should be allowed, routed, or measured. When you pair Traffic Specs with Istio through the SMI adapter, these specs get translated into the matching criteria used by Istio's VirtualServices and AuthorizationPolicies.
+SMI Traffic Specs define the shape of traffic flowing between services in your mesh. They are the building blocks that other SMI resources reference when they need to describe what kind of requests should be allowed, routed, or measured. Istio does not implement SMI APIs natively, and the original SMI adapter for Istio is archived and targets older Istio and SMI API versions. If you use a compatible SMI controller or adapter, these specs can be translated into the implementation's matching criteria.
 
 ## What Are Traffic Specs?
 
-Traffic Specs belong to the `specs.smi-spec.io` API group and come in two flavors:
+Traffic Specs belong to the `specs.smi-spec.io` API group and come in three flavors:
 
 - **HTTPRouteGroup** - describes HTTP traffic patterns including methods, paths, and headers
 - **TCPRoute** - describes TCP-level traffic by port numbers
+- **UDPRoute** - describes UDP-level traffic by port numbers
 
 Think of them as reusable traffic pattern definitions. You define a set of patterns once, then reference them from TrafficTarget (for access control) or other SMI resources. This separation keeps your configs DRY and easier to manage.
 
 ## Prerequisites
 
-You need a Kubernetes cluster with Istio and the SMI adapter installed:
+You need a Kubernetes cluster with Istio and SMI CRDs installed. The SMI project and the original Istio adapter are archived, so make sure the controller you use supports the SMI API versions in this guide:
 
 ```bash
 istioctl install --set profile=demo
 kubectl label namespace default istio-injection=enabled
 
-kubectl apply -f https://raw.githubusercontent.com/servicemeshinterface/smi-adapter-istio/master/deploy/crds.yaml
-kubectl apply -f https://raw.githubusercontent.com/servicemeshinterface/smi-adapter-istio/master/deploy/adapter.yaml
+kubectl apply -f https://raw.githubusercontent.com/servicemeshinterface/smi-sdk-go/main/crds/httproutegroup.yaml
+kubectl apply -f https://raw.githubusercontent.com/servicemeshinterface/smi-sdk-go/main/crds/tcproute.yaml
+kubectl apply -f https://raw.githubusercontent.com/servicemeshinterface/smi-sdk-go/main/crds/udproute.yaml
+kubectl apply -f https://raw.githubusercontent.com/servicemeshinterface/smi-sdk-go/main/crds/access.yaml
 ```
 
 Verify the SMI CRDs are registered:
@@ -37,7 +40,7 @@ Verify the SMI CRDs are registered:
 kubectl get crd | grep smi
 ```
 
-You should see `httproutegroups.specs.smi-spec.io` and `tcproutes.specs.smi-spec.io` in the list.
+You should see `httproutegroups.specs.smi-spec.io`, `tcproutes.specs.smi-spec.io`, `udproutes.specs.smi-spec.io`, and `traffictargets.access.smi-spec.io` in the list.
 
 ## HTTPRouteGroup Basics
 
@@ -85,7 +88,7 @@ metadata:
 spec:
   matches:
   - name: exact-health
-    pathRegex: "/health"
+    pathRegex: "/health$"
     methods:
     - GET
   - name: api-v1-all
@@ -109,10 +112,11 @@ spec:
 
 A few things to keep in mind about path matching:
 
-- The regex is matched against the full path, so `/api/v1/.*` matches `/api/v1/users`, `/api/v1/orders`, etc.
+- The regex is anchored to the beginning of the URI, so `/api/v1/.*` matches `/api/v1/users`, `/api/v1/orders`, etc.
 - Use `.*` at the end to match any suffix
+- Use `$` at the end if you need an exact path match
 - Escape dots if you need literal dots: `/api\\.json`
-- The adapter converts these regex patterns into Istio-compatible path matching
+- A compatible implementation converts these regex patterns into its own path matching configuration
 
 ## HTTP Methods
 
@@ -153,22 +157,22 @@ spec:
     methods:
     - "*"
     headers:
-      x-api-version: "v1"
+    - x-api-version: "v1"
   - name: api-v2
     pathRegex: "/api/.*"
     methods:
     - "*"
     headers:
-      x-api-version: "v2"
+    - x-api-version: "v2"
   - name: internal-only
     pathRegex: "/internal/.*"
     methods:
     - "*"
     headers:
-      x-internal-token: ".*"
+    - x-internal-token: ".*"
 ```
 
-Header values also support regex patterns. The adapter maps these to Istio's header matching capabilities.
+Header values also support regex patterns. In the current SMI CRD schema, `headers` is represented as a list of single-entry header maps. A compatible implementation maps these to its own header matching capabilities.
 
 ## TCPRoute for Non-HTTP Traffic
 
@@ -296,7 +300,7 @@ spec:
 
 ## Verifying Traffic Spec Translation
 
-Check what Istio resources the adapter created from your specs:
+Check the SMI resources and any implementation-specific resources your controller created from your specs:
 
 ```bash
 # List all HTTPRouteGroups
@@ -306,11 +310,8 @@ kubectl get httproutegroups
 # Describe a specific one
 kubectl describe httproutegroup order-service-routes
 
-# Check the generated Istio resources
-kubectl get authorizationpolicy -o yaml
-
-# Check adapter logs
-kubectl logs -n istio-system -l app=smi-adapter-istio --tail=50
+# If your controller emits Istio resources, inspect them
+kubectl get virtualservice,authorizationpolicy -A
 ```
 
 ## Debugging Tips
@@ -320,11 +321,11 @@ If your traffic specs aren't working as expected:
 1. Make sure the HTTPRouteGroup name in the TrafficTarget matches exactly
 2. Verify that the match names referenced in the TrafficTarget exist in the HTTPRouteGroup
 3. Check the path regex syntax - some complex patterns may not translate perfectly
-4. Look at the adapter logs for translation errors
-5. Inspect the generated Istio AuthorizationPolicy to see what the adapter actually created
+4. Look at your controller logs for translation errors
+5. Inspect the generated implementation-specific resources to see what the controller actually created
 
 ```bash
-kubectl logs -n istio-system -l app=smi-adapter-istio | grep -i error
+kubectl logs -n istio-system -l app=smi-controller | grep -i error
 ```
 
 ## Limitations
@@ -334,7 +335,7 @@ SMI Traffic Specs have some limitations compared to native Istio capabilities:
 - No support for gRPC-specific matching (like service/method patterns)
 - Header matching is more limited than Istio's native header match options
 - No support for query parameter matching
-- Regex patterns may behave slightly differently after translation to Envoy regex
+- Regex patterns are anchored to the beginning of the URI and may behave slightly differently after translation to Envoy regex
 
 For most REST API patterns, SMI Traffic Specs cover what you need. If you find yourself needing more complex matching rules, you can always create Istio-native resources alongside your SMI configuration, keeping in mind that conflicts are possible when both systems manage the same workloads.
 
