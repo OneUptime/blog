@@ -8,7 +8,7 @@ Description: Learn how to validate and tune Istio performance settings for produ
 
 ---
 
-Istio adds a proxy sidecar to every pod, and that proxy handles all network traffic. If the proxy is misconfigured, you get added latency, dropped connections, and frustrated users. The good news is that Istio can be tuned to add minimal overhead, but you have to get the configuration right before production traffic hits it.
+In sidecar mode, Istio adds a proxy sidecar to each injected pod, and that proxy handles the pod's network traffic. If the proxy is misconfigured, you get added latency, dropped connections, and frustrated users. The good news is that Istio can be tuned to add minimal overhead, but you have to get the configuration right before production traffic hits it.
 
 Here is a practical approach to validating your Istio performance configuration.
 
@@ -26,7 +26,7 @@ kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.22/samp
 kubectl exec deploy/sleep -- curl -o /dev/null -s -w "time_total: %{time_total}s\n" http://httpbin:8000/get
 ```
 
-Run this multiple times and average the results. Istio typically adds 1-3ms of latency per hop. If you are seeing significantly more, something is misconfigured.
+Run this multiple times and average the results. Istio's own performance benchmarks show low millisecond overhead in tested environments, but the exact overhead depends on traffic shape, enabled features, and cluster infrastructure. If you are seeing significantly more than your baseline and SLOs allow, something might be misconfigured.
 
 ## Validate Proxy Resource Allocation
 
@@ -59,7 +59,7 @@ spec:
 For high-throughput services, you might need more. Check actual usage with:
 
 ```bash
-kubectl top pods -n production --containers | grep istio-proxy | sort -k4 -rn | head -20
+kubectl top pods -n production --containers | grep istio-proxy | sort -k3 -rn | head -20
 ```
 
 If proxies are consistently hitting their CPU limits, increase them. CPU throttling on the proxy directly translates to request latency.
@@ -83,7 +83,7 @@ metadata:
   name: api-server
   namespace: production
 spec:
-  host: api-server
+  host: api-server.production.svc.cluster.local
   trafficPolicy:
     connectionPool:
       tcp:
@@ -101,7 +101,7 @@ The `maxRequestsPerConnection` setting is often overlooked. Setting it to a reas
 
 ## Validate Concurrency Settings
 
-The `concurrency` setting controls how many worker threads the Envoy proxy uses. The default of 2 works for most cases, but high-throughput services may need more:
+The `concurrency` setting controls how many worker threads the Envoy proxy uses. Istio recommends leaving it unset so the value is automatically determined from CPU requests and limits, but high-throughput services may need an explicit value:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -127,13 +127,13 @@ spec:
           concurrency: 4
 ```
 
-Setting concurrency to 0 means Envoy will use all available CPU cores, but this can lead to excessive CPU consumption. Start with 2 and increase based on observed metrics.
+Setting concurrency to 0 means Envoy will use all cores on the machine and ignore CPU requests or limits, which can lead to major performance issues when CPU limits are also set. Start with an explicit value like 2 only when metrics show you need to tune it, then increase based on observed results.
 
 ## Check for Protocol Detection Issues
 
 Istio tries to detect the protocol of each connection. If detection fails, it falls back to TCP, which means you lose HTTP-level features like retries and routing. This also impacts performance because Envoy cannot do connection multiplexing.
 
-Name your service ports correctly:
+Name your service ports correctly, or set `appProtocol` on Kubernetes 1.18 and newer:
 
 ```yaml
 apiVersion: v1
@@ -142,12 +142,13 @@ metadata:
   name: api-server
 spec:
   ports:
-    - name: http-api    # Must start with http, grpc, tcp, etc.
+    - name: http-api    # Must start with http, grpc, tcp, etc. unless appProtocol is set
       port: 8080
       targetPort: 8080
     - name: grpc-internal
       port: 9090
       targetPort: 9090
+      appProtocol: grpc
 ```
 
 Check for unnamed or incorrectly named ports:
@@ -163,12 +164,14 @@ istiod pushes configuration to every proxy in the mesh. If the control plane is 
 Check istiod metrics:
 
 ```bash
-kubectl exec -n istio-system deploy/istiod -- curl -s localhost:15014/metrics | grep pilot_xds_push
+kubectl port-forward -n istio-system deploy/istiod 15014:15014
+curl -s localhost:15014/metrics | grep 'pilot_.*push'
 ```
 
 Key metrics to watch:
 
-- `pilot_xds_pushes` - total number of config pushes
+- `pilot_push_triggers` - total number of times a push was triggered, labeled by reason
+- `pilot_xds_push_time` - time Pilot takes to push LDS, RDS, CDS, and EDS
 - `pilot_proxy_convergence_time` - time for proxies to receive updated config
 - `pilot_conflict_outbound_listener_tcp_over_current_tcp` - conflicting listeners
 
@@ -217,10 +220,12 @@ This tells proxies in the production namespace to only receive configuration for
 There is no substitute for actual load testing. Run your performance tests with the mesh enabled and compare against your SLOs:
 
 ```bash
-# Using fortio (Istio's own load testing tool)
+# Using fortio
 kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.22/samples/httpbin/httpbin.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.22/samples/httpbin/sample-client/fortio-deploy.yaml
 
-fortio load -c 50 -qps 1000 -t 60s http://httpbin.production.svc.cluster.local:8000/get
+export FORTIO_POD=$(kubectl get pods -l app=fortio -o 'jsonpath={.items[0].metadata.name}')
+kubectl exec "$FORTIO_POD" -c fortio -- /usr/bin/fortio load -c 50 -qps 1000 -t 60s http://httpbin:8000/get
 ```
 
 Look at p50, p95, and p99 latencies. If p99 is significantly higher than p50, you likely have a resource contention issue. Check proxy CPU usage during the test:
