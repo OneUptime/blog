@@ -31,7 +31,7 @@ The most common reason a DestinationRule doesn't apply is a mismatch between the
 The host field must match exactly. For services within the same namespace, you can use the short name:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service-dr
@@ -64,7 +64,7 @@ If you're using subsets in your DestinationRule, the labels must match actual po
 Here's a typical DestinationRule with subsets:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service-dr
@@ -93,7 +93,7 @@ If the pods don't have a `version` label, the subset will match zero endpoints a
 A DestinationRule with subsets won't do much on its own. You need a VirtualService that references those subsets:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service-vs
@@ -113,7 +113,7 @@ spec:
       weight: 20
 ```
 
-Without the VirtualService, Istio uses default round-robin routing and ignores the subsets. The traffic policy part of the DestinationRule (like connection pool settings) still applies globally, but subsets need the VirtualService to be useful.
+Without the VirtualService, Istio uses its default load balancing policy and ignores the subsets. The traffic policy part of the DestinationRule (like connection pool settings) still applies globally, but subsets need the VirtualService to be useful.
 
 ## Namespace Scope Issues
 
@@ -135,7 +135,7 @@ Then only services in `my-namespace` can use this DestinationRule.
 
 ## Conflicting DestinationRules
 
-Having multiple DestinationRules for the same host in the same namespace is a recipe for trouble. Unlike VirtualServices, DestinationRules do not merge. If there's a conflict, the behavior is undefined.
+Having multiple DestinationRules for the same host in the same namespace is a recipe for trouble. DestinationRules can be fragmented, but duplicate subset definitions are not merged and only one top-level `trafficPolicy` is used.
 
 Find duplicates:
 
@@ -172,7 +172,7 @@ istioctl proxy-config clusters <pod-name> -n my-namespace -o json
 A very common issue with DestinationRules is mTLS configuration conflicts. If you set `ISTIO_MUTUAL` in the DestinationRule but the target doesn't have a sidecar, or if there's a PeerAuthentication policy that conflicts, you'll get connection failures.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service-dr
@@ -235,7 +235,7 @@ spec:
         httpHeaderName: x-user-id
 ```
 
-Make sure the header `x-user-id` is actually present in your requests. If it's missing, Envoy falls back to random load balancing.
+Make sure the header `x-user-id` is actually present in your requests. If it's missing, Envoy has no stable header value to hash, so you won't get useful session affinity from that setting.
 
 ## Summary
 
