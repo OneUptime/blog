@@ -8,7 +8,7 @@ Description: Practical techniques for monitoring CPU, memory, and network resour
 
 ---
 
-Every pod in your Istio mesh runs an Envoy sidecar proxy alongside your application container. That sidecar consumes CPU, memory, and network resources. For a few pods, the overhead is negligible. But when you have hundreds or thousands of pods, sidecar resource usage adds up fast and can become a real cost and performance concern.
+Every sidecar-injected pod in your Istio mesh runs an Envoy proxy alongside your application container. That sidecar consumes CPU, memory, and network resources. For a few pods, the overhead is negligible. But when you have hundreds or thousands of pods, sidecar resource usage adds up fast and can become a real cost and performance concern.
 
 ## Baseline Resource Consumption
 
@@ -34,13 +34,13 @@ sum(rate(container_cpu_usage_seconds_total{container="istio-proxy"}[5m])) by (po
 # Total CPU consumed by all sidecars
 sum(rate(container_cpu_usage_seconds_total{container="istio-proxy"}[5m]))
 
-# CPU usage relative to requests
+# Sidecar CPU usage relative to application CPU usage
 sum(rate(container_cpu_usage_seconds_total{container="istio-proxy"}[5m])) by (namespace)
 /
 sum(rate(container_cpu_usage_seconds_total{container!="istio-proxy",container!="POD",container!=""}[5m])) by (namespace)
 ```
 
-The last query tells you what percentage of your total CPU budget goes to sidecars. If this ratio is climbing, your sidecars might need tuning.
+The last query tells you how sidecar CPU usage compares with application container CPU usage. If this ratio is climbing, your sidecars might need tuning.
 
 ### Memory Usage
 
@@ -61,12 +61,14 @@ avg(container_memory_working_set_bytes{container="istio-proxy"}) / 1024 / 1024
 ### Network Usage
 
 ```promql
-# Bytes received by sidecars
-sum(rate(container_network_receive_bytes_total{pod=~".*",namespace!="kube-system"}[5m])) by (pod, namespace)
+# Bytes received by sidecar-injected pods
+sum(rate(container_network_receive_bytes_total{namespace!="kube-system"}[5m]) * on(namespace, pod) group_left kube_pod_container_info{container="istio-proxy"}) by (pod, namespace)
 
-# Bytes transmitted by sidecars
-sum(rate(container_network_transmit_bytes_total{pod=~".*",namespace!="kube-system"}[5m])) by (pod, namespace)
+# Bytes transmitted by sidecar-injected pods
+sum(rate(container_network_transmit_bytes_total{namespace!="kube-system"}[5m]) * on(namespace, pod) group_left kube_pod_container_info{container="istio-proxy"}) by (pod, namespace)
 ```
+
+These Kubernetes network metrics are pod-level metrics, not per-container sidecar metrics. They are still useful for sidecar-injected workloads because mesh traffic is intercepted by the proxy, but use Envoy metrics when you need proxy-specific network detail.
 
 ## Envoy-Internal Resource Metrics
 
@@ -151,10 +153,12 @@ spec:
     rules:
     - alert: SidecarHighMemory
       expr: |
-        container_memory_working_set_bytes{container="istio-proxy"}
-        /
-        kube_pod_container_resource_limits{container="istio-proxy",resource="memory"}
-        > 0.85
+        (
+          container_memory_working_set_bytes{container="istio-proxy"}
+          /
+          on(namespace, pod, container)
+          kube_pod_container_resource_limits{container="istio-proxy",resource="memory",unit="byte"}
+        ) > 0.85
       for: 5m
       labels:
         severity: warning
@@ -163,10 +167,12 @@ spec:
         description: "Pod {{ $labels.pod }} in {{ $labels.namespace }} sidecar is using {{ $value | humanizePercentage }} of its memory limit"
     - alert: SidecarHighCPU
       expr: |
-        rate(container_cpu_usage_seconds_total{container="istio-proxy"}[5m])
-        /
-        kube_pod_container_resource_limits{container="istio-proxy",resource="cpu"}
-        > 0.80
+        (
+          rate(container_cpu_usage_seconds_total{container="istio-proxy"}[5m])
+          /
+          on(namespace, pod, container)
+          kube_pod_container_resource_limits{container="istio-proxy",resource="cpu",unit="core"}
+        ) > 0.80
       for: 10m
       labels:
         severity: warning
@@ -275,11 +281,11 @@ This dramatically reduces memory usage because the proxy only needs configuratio
 
 ### Tune Concurrency
 
-By default, Envoy uses 2 worker threads. For low-traffic services, reducing this to 1 saves CPU:
+If concurrency is unset, Istio determines the number of Envoy worker threads from the proxy CPU limit. For low-traffic services, explicitly setting it to 1 can save CPU:
 
 ```yaml
 annotations:
-  sidecar.istio.io/concurrency: "1"
+  proxy.istio.io/config: '{ "concurrency": 1 }'
 ```
 
 ### Adjust Stats Collection
