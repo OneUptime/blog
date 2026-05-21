@@ -36,12 +36,12 @@ kubectl top pods --containers --all-namespaces | grep istio-proxy | sort -k4 -rn
 # Check istiod resource usage
 kubectl top pods -n istio-system -l app=istiod
 
-# Check for CPU throttling on sidecars
-kubectl get pods --all-namespaces -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}{"\n"}{end}' | head -10 | while read pod; do
+# Check sidecar concurrency setting on a sample of pods
+kubectl get pods --all-namespaces -o custom-columns=NAMESPACE:.metadata.namespace,NAME:.metadata.name,CONTAINERS:.spec.containers[*].name --no-headers | awk '$0 ~ /istio-proxy/ {print $1 "/" $2}' | head -10 | while read pod; do
   ns=$(echo $pod | cut -d/ -f1)
   name=$(echo $pod | cut -d/ -f2)
   echo "=== $pod ==="
-  kubectl exec $name -n $ns -c istio-proxy -- curl -s localhost:15000/stats | grep "cfs_throttled" 2>/dev/null
+  kubectl exec $name -n $ns -c istio-proxy -- pilot-agent request GET stats | grep "server.concurrency"
 done
 
 # Check config push status
@@ -52,21 +52,23 @@ istioctl proxy-status | grep -v "SYNCED"
 
 #### Check the Envoy Stats
 
+Detailed Envoy stats may need to be enabled with `proxyStatsMatcher` before they appear in `/stats`.
+
 ```bash
 POD_NAME=<affected-pod>
 NAMESPACE=<namespace>
 
 # Request duration stats
 kubectl exec $POD_NAME -n $NAMESPACE -c istio-proxy -- \
-  curl -s localhost:15000/stats | grep "downstream_rq_time\|upstream_rq_time"
+  pilot-agent request GET stats | grep "downstream_rq_time\|upstream_rq_time"
 
 # Connection pool stats
 kubectl exec $POD_NAME -n $NAMESPACE -c istio-proxy -- \
-  curl -s localhost:15000/stats | grep "upstream_cx_active\|upstream_cx_overflow\|upstream_rq_pending"
+  pilot-agent request GET stats | grep "upstream_cx_active\|upstream_cx_overflow\|upstream_rq_pending"
 
 # Check for connection timeouts
 kubectl exec $POD_NAME -n $NAMESPACE -c istio-proxy -- \
-  curl -s localhost:15000/stats | grep "upstream_cx_connect_timeout\|upstream_rq_timeout"
+  pilot-agent request GET stats | grep "upstream_cx_connect_timeout\|upstream_rq_timeout"
 ```
 
 #### Check for CPU Throttling
@@ -120,19 +122,19 @@ kubectl exec -n istio-system deploy/istiod -- \
 
 # Config distribution latency
 kubectl exec -n istio-system deploy/istiod -- \
-  curl -s localhost:15014/metrics | grep "pilot_proxy_convergence_time"
+  curl -s localhost:15014/metrics | grep "pilot_xds_send_time"
 
 # Push queue depth
 kubectl exec -n istio-system deploy/istiod -- \
-  curl -s localhost:15014/metrics | grep "pilot_push_triggers\|pilot_xds_pushes"
+  curl -s localhost:15014/metrics | grep "pilot_worker_queue_depth\|pilot_push_triggers\|pilot_xds_pushes"
 ```
 
 ```promql
 # Push P99 latency
 histogram_quantile(0.99, sum(rate(pilot_xds_push_time_bucket[5m])) by (le))
 
-# Config convergence time
-histogram_quantile(0.99, sum(rate(pilot_proxy_convergence_time_bucket[5m])) by (le))
+# Config send time
+histogram_quantile(0.99, sum(rate(pilot_xds_send_time_bucket[5m])) by (le))
 ```
 
 If push times are high (> 5 seconds), istiod is overloaded:
@@ -167,11 +169,11 @@ istioctl proxy-config endpoint <pod-name> | wc -l
 ```bash
 # Check connection overflow (indicates connection limit reached)
 kubectl exec $POD_NAME -n $NAMESPACE -c istio-proxy -- \
-  curl -s localhost:15000/stats | grep upstream_cx_overflow
+  pilot-agent request GET stats | grep upstream_cx_overflow
 
-# Check pending requests
+# Check pending or active request overflows
 kubectl exec $POD_NAME -n $NAMESPACE -c istio-proxy -- \
-  curl -s localhost:15000/stats | grep upstream_rq_pending_overflow
+  pilot-agent request GET stats | grep "upstream_rq_pending_overflow\|upstream_rq_active_overflow"
 ```
 
 Fix by adjusting DestinationRule:
@@ -202,7 +204,7 @@ Check if endpoints are being ejected too aggressively:
 ```bash
 # Check for ejected endpoints
 kubectl exec $POD_NAME -n $NAMESPACE -c istio-proxy -- \
-  curl -s localhost:15000/clusters | grep "health_flags\|outlier"
+  pilot-agent request GET clusters | grep "health_flags\|outlier"
 ```
 
 Adjust outlier detection if needed:
@@ -230,17 +232,17 @@ Telemetry can add significant CPU overhead:
 ```bash
 # Check how many stats Envoy is tracking
 kubectl exec $POD_NAME -n $NAMESPACE -c istio-proxy -- \
-  curl -s localhost:15000/stats | wc -l
+  pilot-agent request GET stats | wc -l
 
-# Check metrics endpoint response time
+# Check Prometheus stats generation time
 time kubectl exec $POD_NAME -n $NAMESPACE -c istio-proxy -- \
-  curl -s localhost:15090/stats/prometheus > /dev/null
+  pilot-agent request GET stats/prometheus > /dev/null
 ```
 
 Reduce telemetry overhead:
 
 ```yaml
-apiVersion: networking.istio.io/v1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: reduce-overhead
