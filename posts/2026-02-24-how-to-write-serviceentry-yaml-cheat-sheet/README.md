@@ -45,6 +45,7 @@ spec:
 - `DNS`: Resolve the hostname using DNS. Use for external services with domain names.
 - `STATIC`: Use the provided `endpoints` list. Use when you know the exact IPs.
 - `NONE`: No resolution needed. Use with wildcard hosts.
+- `DYNAMIC_DNS`: Resolve the hostname from the HTTP Host header or TLS SNI. Use for wildcard hosts when you want the proxy to resolve the matched hostname.
 
 ## External HTTPS API
 
@@ -208,9 +209,9 @@ spec:
     - api.external-service.com
   location: MESH_EXTERNAL
   ports:
-    - number: 443
-      name: https
-      protocol: HTTPS
+    - number: 80
+      name: http
+      protocol: HTTP
   resolution: DNS
 ---
 apiVersion: networking.istio.io/v1
@@ -234,7 +235,7 @@ spec:
 
 ## ServiceEntry with VirtualService
 
-Add retries, timeouts, and fault injection to external service calls:
+Add retries and timeouts to external service calls:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -246,9 +247,9 @@ spec:
     - payments.external-provider.com
   location: MESH_EXTERNAL
   ports:
-    - number: 443
-      name: https
-      protocol: HTTPS
+    - number: 80
+      name: http
+      protocol: HTTP
   resolution: DNS
 ---
 apiVersion: networking.istio.io/v1
@@ -268,7 +269,7 @@ spec:
         - destination:
             host: payments.external-provider.com
             port:
-              number: 443
+              number: 80
 ```
 
 ## TLS Origination
@@ -288,6 +289,7 @@ spec:
     - number: 80
       name: http-port
       protocol: HTTP
+      targetPort: 443
     - number: 443
       name: https-port
       protocol: HTTPS
@@ -305,22 +307,6 @@ spec:
           number: 80
         tls:
           mode: SIMPLE
----
-apiVersion: networking.istio.io/v1
-kind: VirtualService
-metadata:
-  name: tls-origination-vs
-spec:
-  hosts:
-    - api.example.com
-  http:
-    - match:
-        - port: 80
-      route:
-        - destination:
-            host: api.example.com
-            port:
-              number: 443
 ```
 
 Your app calls `http://api.example.com:80`, Envoy upgrades it to HTTPS and connects to the external service on port 443.
@@ -422,14 +408,14 @@ metadata:
 spec:
   hosts:
     - internal-services.local
+  addresses:
+    - 10.10.0.0/16
   location: MESH_EXTERNAL
   ports:
     - number: 443
-      name: https
-      protocol: HTTPS
-  resolution: STATIC
-  endpoints:
-    - address: 10.10.0.0/16
+      name: tcp
+      protocol: TCP
+  resolution: NONE
 ```
 
 ## Full Production Example
@@ -445,9 +431,10 @@ spec:
     - api.stripe.com
   location: MESH_EXTERNAL
   ports:
-    - number: 443
-      name: https
-      protocol: HTTPS
+    - number: 80
+      name: http
+      protocol: HTTP
+      targetPort: 443
   resolution: DNS
   exportTo:
     - "."
@@ -464,8 +451,11 @@ spec:
       tcp:
         maxConnections: 100
         connectTimeout: 5s
-    tls:
-      mode: SIMPLE
+    portLevelSettings:
+      - port:
+          number: 80
+        tls:
+          mode: SIMPLE
 ---
 apiVersion: networking.istio.io/v1
 kind: VirtualService
@@ -485,7 +475,7 @@ spec:
         - destination:
             host: api.stripe.com
             port:
-              number: 443
+              number: 80
 ```
 
-This registers the Stripe API as an external service, limits connections, adds timeouts and retries, and restricts visibility to just the `checkout` namespace. It is a solid pattern for any external API dependency.
+This registers the Stripe API as an external service, originates TLS from the sidecar, limits connections, adds timeouts and retries, and restricts visibility to just the `checkout` namespace. It is a solid pattern for any external API dependency when the application sends HTTP to the sidecar and lets Envoy originate TLS.
