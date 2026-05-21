@@ -17,7 +17,7 @@ Alerts in the Prometheus ecosystem flow through three stages: Prometheus evaluat
 If you installed kube-prometheus-stack, Alertmanager is already running. Configure receivers:
 
 ```yaml
-apiVersion: monitoring.coreos.com/v1alpha1
+apiVersion: monitoring.coreos.com/v1beta1
 kind: AlertmanagerConfig
 metadata:
   name: istio-alerts-config
@@ -25,7 +25,7 @@ metadata:
 spec:
   route:
     receiver: default-receiver
-    groupBy: ['alertname', 'namespace', 'service']
+    groupBy: ['alertname', 'namespace', 'destination_service_namespace', 'destination_service_name']
     groupWait: 30s
     groupInterval: 5m
     repeatInterval: 4h
@@ -63,6 +63,8 @@ spec:
       sendResolved: true
 ```
 
+AlertmanagerConfig resources apply to alerts with a matching `namespace` label by default, so the example alert rules below include `namespace: monitoring`.
+
 ## Service Error Rate Alerts
 
 The most fundamental alert: catch when services start returning errors.
@@ -90,6 +92,7 @@ spec:
       for: 5m
       labels:
         severity: critical
+        namespace: monitoring
       annotations:
         summary: "High error rate on {{ $labels.destination_service_name }}"
         description: "Service {{ $labels.destination_service_name }} in namespace {{ $labels.destination_service_namespace }} has a 5xx error rate above 5% for the last 5 minutes. Current value: {{ $value | humanizePercentage }}"
@@ -104,6 +107,7 @@ spec:
       for: 10m
       labels:
         severity: warning
+        namespace: monitoring
       annotations:
         summary: "Elevated error rate on {{ $labels.destination_service_name }}"
         description: "Service {{ $labels.destination_service_name }} has an error rate above 1% for the last 10 minutes."
@@ -133,6 +137,7 @@ spec:
       for: 5m
       labels:
         severity: warning
+        namespace: monitoring
       annotations:
         summary: "High P99 latency on {{ $labels.destination_service_name }}"
         description: "P99 latency for {{ $labels.destination_service_name }} is above 1 second. Current value: {{ $value }}ms"
@@ -145,6 +150,7 @@ spec:
       for: 10m
       labels:
         severity: warning
+        namespace: monitoring
       annotations:
         summary: "High median latency on {{ $labels.destination_service_name }}"
         description: "Median latency for {{ $labels.destination_service_name }} is above 500ms."
@@ -161,9 +167,10 @@ spec:
       for: 5m
       labels:
         severity: critical
+        namespace: monitoring
       annotations:
         summary: "Latency spike on {{ $labels.destination_service_name }}"
-        description: "P99 latency has spiked to 3x the hourly average."
+        description: "P99 latency has spiked to 3x the one-hour baseline."
 ```
 
 The latency spike alert is particularly useful because it catches relative degradation rather than absolute thresholds. A service that normally responds in 50ms suddenly taking 150ms is notable even though 150ms is not inherently slow.
@@ -191,6 +198,7 @@ spec:
       for: 10m
       labels:
         severity: critical
+        namespace: monitoring
       annotations:
         summary: "Traffic drop on {{ $labels.destination_service_name }}"
         description: "Traffic to {{ $labels.destination_service_name }} has dropped to less than 10% of the hourly average."
@@ -201,6 +209,7 @@ spec:
       for: 5m
       labels:
         severity: critical
+        namespace: monitoring
       annotations:
         summary: "No traffic to critical-service"
         description: "No requests have been received by critical-service for the last 5 minutes."
@@ -228,6 +237,7 @@ spec:
       for: 2m
       labels:
         severity: critical
+        namespace: monitoring
       annotations:
         summary: "Istiod is down"
         description: "The Istio control plane (istiod) is not running."
@@ -240,19 +250,21 @@ spec:
       for: 5m
       labels:
         severity: warning
+        namespace: monitoring
       annotations:
         summary: "Slow Istio configuration push"
         description: "P99 configuration push time is above 10 seconds."
 
-    - alert: IstioXDSPushErrors
+    - alert: IstioXDSInternalErrors
       expr: |
-        sum(rate(pilot_xds_push_errors[5m])) > 0
+        sum(rate(pilot_total_xds_internal_errors[5m])) > 0
       for: 5m
       labels:
         severity: warning
+        namespace: monitoring
       annotations:
-        summary: "Istio xDS push errors"
-        description: "Istiod is experiencing errors pushing configuration to proxies."
+        summary: "Istio xDS internal errors"
+        description: "Istiod is experiencing internal xDS errors."
 
     - alert: IstioPilotConflicts
       expr: |
@@ -260,6 +272,7 @@ spec:
       for: 5m
       labels:
         severity: warning
+        namespace: monitoring
       annotations:
         summary: "Istio configuration conflicts detected"
         description: "There are listener conflicts in the Istio configuration."
@@ -272,13 +285,14 @@ Catch certificates before they expire:
 ```yaml
 - alert: IstioCertificateExpiring
   expr: |
-    (citadel_server_root_cert_expiry_timestamp - time()) / 86400 < 30
+    istio_agent_cert_expiry_seconds < 30 * 86400
   for: 1h
   labels:
     severity: warning
+    namespace: monitoring
   annotations:
-    summary: "Istio root certificate expiring soon"
-    description: "The Istio root certificate will expire in less than 30 days."
+    summary: "Istio workload certificate expiring soon"
+    description: "An Istio workload certificate will expire in less than 30 days."
 ```
 
 ## Sidecar Injection Alerts
@@ -292,6 +306,7 @@ Make sure sidecars are being injected properly:
   for: 5m
   labels:
     severity: warning
+    namespace: monitoring
   annotations:
     summary: "Istio sidecar injection failures"
     description: "Sidecar injection is failing. New pods may not be part of the mesh."
@@ -312,6 +327,7 @@ kubectl port-forward svc/prometheus-kube-prometheus-prometheus -n monitoring 909
 You can also use `promtool` to test rules locally:
 
 ```bash
+# Use Prometheus' native rule-file format with top-level "groups:", not a Kubernetes PrometheusRule manifest.
 promtool check rules istio-alert-rules.yaml
 promtool test rules test-cases.yaml
 ```
