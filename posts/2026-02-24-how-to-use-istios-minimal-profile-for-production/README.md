@@ -29,8 +29,8 @@ What you don't get:
 ## Installing the Minimal Profile
 
 ```bash
-curl -L https://istio.io/downloadIstio | sh -
-cd istio-1.24.0
+curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.30.0 sh -
+cd istio-1.30.0
 export PATH=$PWD/bin:$PATH
 ```
 
@@ -70,9 +70,11 @@ spec:
     accessLogFile: /dev/stdout
     accessLogEncoding: JSON
 
-    # Strict mTLS mesh-wide
+    # Wait for the sidecar before starting application containers
     defaultConfig:
       holdApplicationUntilProxyStarts: true
+      tracing:
+        sampling: 1.0
 
     # Only allow traffic to known services
     outboundTrafficPolicy:
@@ -80,9 +82,6 @@ spec:
 
     # Enable tracing at a reasonable sample rate
     enableTracing: true
-    defaultConfig:
-      tracing:
-        sampling: 1.0
 
   components:
     pilot:
@@ -206,11 +205,14 @@ You might start with the minimal profile and later decide you need an ingress ga
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
-  profile: minimal
+  profile: empty
   components:
     ingressGateways:
       - name: istio-ingressgateway
+        namespace: istio-ingress
         enabled: true
+        label:
+          istio: ingressgateway
         k8s:
           resources:
             requests:
@@ -225,12 +227,15 @@ spec:
 ```
 
 ```bash
+kubectl create namespace istio-ingress
 istioctl install -f updated-config.yaml -y
 ```
 
 Alternatively, use the Istio gateway Helm chart independently:
 
 ```bash
+helm repo add istio https://istio-release.storage.googleapis.com/charts
+helm repo update
 helm install istio-ingress istio/gateway -n istio-ingress --create-namespace
 ```
 
@@ -282,8 +287,8 @@ This configures timeouts, retries, connection pooling, and circuit breaking for 
 Install Prometheus and Grafana for observability:
 
 ```bash
-kubectl apply -f samples/addons/prometheus.yaml
-kubectl apply -f samples/addons/grafana.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/prometheus.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/grafana.yaml
 ```
 
 Or if you already have a monitoring stack, configure it to scrape Istio metrics. The sidecar proxies expose metrics on port 15090:
@@ -328,8 +333,8 @@ Upgrading the minimal profile is the same as any other:
 
 ```bash
 # Download new version
-curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.25.0 sh -
-cd istio-1.25.0
+curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.30.0 sh -
+cd istio-1.30.0
 export PATH=$PWD/bin:$PATH
 
 # Upgrade
