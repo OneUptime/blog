@@ -8,7 +8,7 @@ Description: Complete guide to installing Istio 1.20 on Kubernetes with step-by-
 
 ---
 
-Istio 1.20 was a significant release that brought improvements to the ambient mesh mode, enhanced the waypoint proxy architecture, and refined the overall stability of the control plane. If you are setting up a fresh Istio 1.20 installation or upgrading from an earlier version, this guide walks you through the entire process.
+Istio 1.20 was a significant release that brought improvements to the ambient mesh mode, enhanced the waypoint proxy architecture, and refined the overall stability of the control plane. As of May 21, 2026, Istio 1.20 is no longer in the active support window, so use this guide for legacy clusters or test environments. If you are setting up a fresh Istio 1.20 installation or upgrading from an earlier version, this guide walks you through the entire process.
 
 ## Prerequisites
 
@@ -22,7 +22,7 @@ Before installing Istio 1.20, make sure your environment meets the requirements:
 Check your cluster version:
 
 ```bash
-kubectl version --short
+kubectl version
 ```
 
 ## Downloading Istio 1.20
@@ -191,7 +191,7 @@ kubectl rollout restart deployment -n default
 
 ## Configuring the Ingress Gateway
 
-Set up a basic Gateway and VirtualService:
+Set up a basic Gateway:
 
 ```yaml
 apiVersion: networking.istio.io/v1beta1
@@ -284,6 +284,9 @@ Test connectivity:
 
 ```bash
 INGRESS_HOST=$(kubectl -n istio-system get service istio-ingressgateway -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+if [ -z "$INGRESS_HOST" ]; then
+  INGRESS_HOST=$(kubectl -n istio-system get service istio-ingressgateway -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+fi
 curl -s "http://$INGRESS_HOST/productpage" | head -20
 ```
 
