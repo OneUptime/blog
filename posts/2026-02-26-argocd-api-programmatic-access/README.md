@@ -8,7 +8,7 @@ Description: Learn how to interact with the ArgoCD REST and gRPC APIs programmat
 
 ---
 
-ArgoCD exposes a comprehensive API that you can use to automate everything the UI and CLI can do. Whether you need to trigger syncs from CI/CD pipelines, build custom dashboards, or create automated workflows, the ArgoCD API gives you full control. This guide covers authentication, common API endpoints, and practical examples using curl, Python, and Go.
+ArgoCD exposes a comprehensive API that you can use to automate everything the UI and CLI can do. Whether you need to trigger syncs from CI/CD pipelines, build custom dashboards, or create automated workflows, the ArgoCD API gives you full control. This guide covers authentication, common API endpoints, and practical examples using curl and Python.
 
 ## ArgoCD API Overview
 
@@ -61,6 +61,7 @@ Get a session token by authenticating with username and password:
 ```bash
 # Get a session token
 ARGOCD_TOKEN=$(curl -s https://argocd.example.com/api/v1/session \
+  -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"your-password"}' \
   | jq -r '.token')
 
