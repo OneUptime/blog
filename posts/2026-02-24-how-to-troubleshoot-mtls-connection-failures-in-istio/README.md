@@ -45,7 +45,7 @@ This output tells you the effective mTLS mode. If it says STRICT but the caller 
 
 ## Step 2: Verify Sidecar Presence
 
-Both the source and destination pods need sidecars for mTLS to work:
+In sidecar mode, both the source and destination pods need sidecars for Istio-managed mTLS between workloads:
 
 ```bash
 # Check source pod
@@ -59,9 +59,9 @@ Both should include `istio-proxy` in the list. If either one is missing, that is
 
 A pod without a sidecar:
 - Cannot send mTLS traffic (its connections are plain text)
-- Cannot receive mTLS traffic (there is no proxy to handle TLS termination)
+- Cannot receive Istio-managed mTLS traffic (there is no proxy to handle TLS termination)
 
-If the destination requires STRICT mTLS and the source has no sidecar, the connection will fail.
+If the destination requires STRICT mTLS and the source has no sidecar, the connection will fail. If the destination has no sidecar in a sidecar-mode mesh, PeerAuthentication is not enforced by a destination proxy, and auto mTLS clients may treat it as a plaintext endpoint.
 
 ## Step 3: Check Sidecar Proxy Logs
 
@@ -109,7 +109,7 @@ ROOTCA            CA             ACTIVE     true           def456...         203
 Check:
 - `VALID CERT` should be `true`
 - `NOT AFTER` should be in the future (certificate not expired)
-- Both source and destination should have the same ROOTCA
+- Both source and destination should have the same ROOTCA trust bundle
 
 Check the destination too:
 
@@ -117,7 +117,7 @@ Check the destination too:
 istioctl proxy-config secret <dest-pod> -n <dest-namespace>
 ```
 
-If the ROOTCA serial numbers differ between source and destination, they are using different root CAs and will not trust each other.
+If the ROOTCA trust bundles differ between source and destination, they may be using different root CAs and fail to trust each other.
 
 ## Step 5: Check for DestinationRule Conflicts
 
@@ -189,15 +189,15 @@ kubectl exec <source-pod> -c <app-container> -n <source-namespace> -- \
 
 The `-v` flag shows connection details. If the connection fails, the error message gives hints about what went wrong.
 
-To test without mTLS (bypassing the sidecar):
+To compare with a plaintext client, run the same request from a pod without a sidecar:
 
 ```bash
-# From a pod, connect directly to the destination pod IP (bypasses both sidecars)
+# From a pod without a sidecar, connect directly to the destination pod IP
 DEST_IP=$(kubectl get pod <dest-pod> -n <dest-namespace> -o jsonpath='{.status.podIP}')
-kubectl exec <source-pod> -c <app-container> -- curl -v http://$DEST_IP:<container-port>/health
+kubectl exec <plain-pod> -n <plain-namespace> -- curl -v http://$DEST_IP:<container-port>/health
 ```
 
-If this works in STRICT mode, something is off because direct pod-IP connections should not be going through the sidecar's mTLS handling.
+If this works against a sidecar-injected destination in STRICT mode, something is off because inbound traffic to the destination should be captured by the destination sidecar and require mTLS unless traffic capture has been explicitly excluded.
 
 ## Common Fixes
 
