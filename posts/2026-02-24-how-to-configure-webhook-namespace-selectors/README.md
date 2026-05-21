@@ -19,24 +19,37 @@ The Istio sidecar injector is a MutatingAdmissionWebhook. Kubernetes checks the 
 Check your current selector:
 
 ```bash
-kubectl get mutatingwebhookconfiguration istio-sidecar-injector -o jsonpath='{.webhooks[0].namespaceSelector}' | jq .
+kubectl get mutatingwebhookconfiguration istio-sidecar-injector -o json | \
+  jq '.webhooks[] | {name, namespaceSelector, objectSelector}'
 ```
 
-The default output looks something like:
+The namespace-based default webhook output looks something like:
 
 ```json
 {
-  "matchExpressions": [
-    {
-      "key": "istio-injection",
-      "operator": "In",
-      "values": ["enabled"]
-    }
-  ]
+  "name": "namespace.sidecar-injector.istio.io",
+  "namespaceSelector": {
+    "matchExpressions": [
+      {
+        "key": "istio-injection",
+        "operator": "In",
+        "values": ["enabled"]
+      }
+    ]
+  },
+  "objectSelector": {
+    "matchExpressions": [
+      {
+        "key": "sidecar.istio.io/inject",
+        "operator": "NotIn",
+        "values": ["false"]
+      }
+    ]
+  }
 }
 ```
 
-This means only namespaces with the label `istio-injection=enabled` will have the webhook applied.
+This webhook applies to namespaces with the label `istio-injection=enabled`. Recent Istio installs may also include separate webhook entries for pod-level injection and revision-based injection.
 
 ## The Opt-In Model (Default)
 
@@ -54,25 +67,20 @@ kubectl get namespaces -l istio-injection=enabled
 
 ## The Opt-Out Model
 
-Some teams prefer an opt-out model where injection is on by default and you explicitly exclude namespaces. This requires changing the namespace selector on the webhook.
+Some teams prefer an opt-out model where injection is on by default and you explicitly exclude namespaces. This requires changing the Istio injector settings.
 
 First, label the namespaces you want to exclude:
 
 ```bash
 kubectl label namespace kube-system istio-injection=disabled
+kubectl label namespace kube-public istio-injection=disabled
 kubectl label namespace istio-system istio-injection=disabled
 kubectl label namespace kube-node-lease istio-injection=disabled
 ```
 
-Then update the webhook selector to match all namespaces except those labeled disabled:
+Then update the Istio installation config to enable namespace injection by default. Avoid manually applying the same namespace selector to every generated webhook entry, because recent Istio installs use multiple webhook entries for namespace, object, and revision matching.
 
-```bash
-kubectl get mutatingwebhookconfiguration istio-sidecar-injector -o json | \
-  jq '.webhooks[].namespaceSelector = {"matchExpressions": [{"key": "istio-injection", "operator": "NotIn", "values": ["disabled"]}]}' | \
-  kubectl apply -f -
-```
-
-With the IstioOperator, you can configure this during installation:
+With the IstioOperator, you can configure this during installation or upgrade:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -83,7 +91,7 @@ spec:
       enableNamespacesByDefault: true
 ```
 
-When `enableNamespacesByDefault` is true, Istio configures the webhook to inject into all namespaces unless they are explicitly excluded.
+When `enableNamespacesByDefault` is true, Istio injects pods that do not have injection or revision labels, except in namespaces that are explicitly excluded.
 
 ## Revision-Based Selectors
 
@@ -104,7 +112,7 @@ namespaceSelector:
     - 1-20
 ```
 
-Important: `istio-injection=enabled` and `istio.io/rev` are mutually exclusive. If both labels exist on a namespace, `istio-injection` takes precedence. So if you are migrating from default injection to revision-based injection, make sure to remove the old label:
+Important: `istio-injection=enabled` and `istio.io/rev` should not both be used on the same namespace. If both labels exist on a namespace, `istio-injection` takes precedence. So if you are migrating from default injection to revision-based injection, make sure to remove the old label:
 
 ```bash
 kubectl label namespace my-app istio-injection-
@@ -158,9 +166,10 @@ namespaceSelector:
     - kube-system
     - kube-public
     - kube-node-lease
+    - istio-system
 ```
 
-The `kubernetes.io/metadata.name` label is automatically set by Kubernetes 1.21+ to the namespace name, making it convenient for exclusion rules.
+The `kubernetes.io/metadata.name` label is automatically set by Kubernetes 1.22+ to the namespace name, making it convenient for exclusion rules.
 
 ## Configuring via Helm
 
@@ -169,10 +178,10 @@ When installing Istio with Helm, you can customize the namespace selector:
 ```bash
 helm install istiod istio/istiod \
   --namespace istio-system \
-  --set sidecarInjectorWebhook.enableNamespacesByDefault=false
+  --set sidecarInjectorWebhook.enableNamespacesByDefault=true
 ```
 
-For more granular control, you can provide custom webhook YAML through Helm values. However, for most setups the label-based approach is sufficient.
+For more granular control, render the Helm chart and use a Helm post-renderer such as Kustomize to patch the generated webhook YAML. However, for most setups the label-based approach is sufficient.
 
 ## Testing Selector Changes
 
