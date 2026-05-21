@@ -85,14 +85,14 @@ spec:
       name: http
 ```
 
-The Service selects pods with `app: product-api`, which matches both v1 and v2. Without Istio routing rules, Kubernetes distributes traffic across both versions equally.
+The Service selects pods with `app: product-api`, which matches both v1 and v2. Without Istio routing rules, Kubernetes sends traffic across all matching pods, so both versions can receive traffic.
 
 ## Defining Subsets with DestinationRule
 
 Create a DestinationRule that defines version subsets:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: product-api
@@ -115,7 +115,7 @@ Each subset filters pods by their labels. The subset name is what you reference 
 Route requests to different versions based on a custom header:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: product-api
@@ -156,7 +156,7 @@ curl -H "x-api-version: v2" http://product-api:8080/products
 Route different API paths to different backends:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: product-api
@@ -207,10 +207,10 @@ uri:
 
 ## Routing Based on Query Parameters
 
-You can match on query parameters using headers matching with the authority or by using the URI regex. Istio doesn't have a dedicated query parameter match field, but you can use URI regex:
+You can match on query parameters using the `queryParams` match field:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: product-api
@@ -238,7 +238,7 @@ spec:
 You can combine multiple conditions. Within a single match block, conditions are AND-ed. Multiple match blocks in the same rule are OR-ed:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: product-api
@@ -273,7 +273,7 @@ spec:
 Split traffic between versions by percentage:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: product-api
@@ -293,7 +293,7 @@ spec:
           weight: 10
 ```
 
-This sends 90% of traffic to v1 and 10% to v2. Weights must add up to 100.
+This sends 90% of traffic to v1 and 10% to v2. Weights are relative, so each destination receives `weight / sum-of-all-weights` traffic.
 
 You can combine weighted routing with match conditions for more sophisticated patterns:
 
@@ -325,7 +325,7 @@ http:
 When routing to different backends, you might need to rewrite the URI:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: product-api
