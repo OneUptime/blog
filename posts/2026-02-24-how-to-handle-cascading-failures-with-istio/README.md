@@ -31,7 +31,7 @@ Without Istio, each service has to implement its own protection. With Istio, you
 Circuit breakers are the primary defense against cascading failures. When a service starts failing, the circuit breaker trips and stops sending new requests to it, returning errors immediately instead of waiting for timeouts:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: service-b-dr
@@ -62,7 +62,7 @@ The `outlierDetection` settings eject unhealthy endpoints from the load balancin
 Every service-to-service call should have a timeout. Without timeouts, a slow downstream service will hold connections open indefinitely:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: service-b-vs
@@ -84,7 +84,7 @@ Set timeouts from the innermost service outward, with each layer having a slight
 
 # Service A calling Service B
 
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: service-b-vs
@@ -99,7 +99,7 @@ spec:
 
 ---
 # Frontend calling Service A
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: service-a-vs
@@ -118,7 +118,7 @@ spec:
 Retries are helpful for transient errors but dangerous during cascading failures. If a service is overloaded and you retry every failed request, you just doubled the load on it. Limit retries strictly:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: service-b-vs
@@ -172,7 +172,7 @@ spec:
               stat_prefix: http_local_rate_limiter
               token_bucket:
                 max_tokens: 500
-                tokens_per_fill: 50
+                tokens_per_fill: 500
                 fill_interval: 1s
               filter_enabled:
                 runtime_key: local_rate_limit_enabled
@@ -195,10 +195,10 @@ This limits each Service B pod to 500 requests per second. Excess requests get a
 
 ## Strategy 5: Fallback Responses
 
-For non-critical services, you can configure Envoy to return a fallback response when the upstream is down:
+For non-critical services, you can configure Istio to fail quickly when the upstream is down so the caller can return a fallback response:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: recommendations-vs
@@ -225,7 +225,7 @@ Here is a complete configuration for a three-service chain (Frontend, Service A,
 
 ```yaml
 # Service B circuit breaker
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: service-b-dr
@@ -245,7 +245,7 @@ spec:
       maxEjectionPercent: 50
 ---
 # Service B timeout and retry
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: service-b-vs
@@ -263,7 +263,7 @@ spec:
         retryOn: connect-failure
 ---
 # Service A circuit breaker
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: service-a-dr
@@ -283,7 +283,7 @@ spec:
       maxEjectionPercent: 50
 ---
 # Service A timeout and retry
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: service-a-vs
@@ -303,13 +303,13 @@ spec:
 
 ## Testing with Chaos Engineering
 
-Validate your cascading failure protection by injecting failures:
+Validate your cascading failure protection by temporarily adding fault injection to the same Service B `VirtualService`:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
-  name: service-b-chaos
+  name: service-b-vs
 spec:
   hosts:
     - service-b.default.svc.cluster.local
