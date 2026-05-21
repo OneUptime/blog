@@ -36,7 +36,7 @@ T+5.0s: All sidecars have removed pod-1
 Meanwhile, between T+0 and T+5, other pods are still sending requests to pod-1.
 ```
 
-That 5-second window is where requests get dropped. The sending pod's sidecar doesn't know pod-1 is shutting down yet.
+That 5-second window is illustrative, and the exact timing depends on your cluster and control-plane propagation. It is where requests can get dropped if a sending pod's sidecar has not yet observed that pod-1 is terminating.
 
 ## Strategy 1: Delay Application Shutdown
 
@@ -48,8 +48,13 @@ kind: Deployment
 metadata:
   name: order-service
 spec:
+  selector:
+    matchLabels:
+      app: order-service
   template:
     metadata:
+      labels:
+        app: order-service
       annotations:
         proxy.istio.io/config: |
           terminationDrainDuration: 20s
@@ -67,7 +72,7 @@ spec:
               - "sleep 7"
 ```
 
-The 7-second preStop sleep keeps the application alive while Kubernetes propagates the endpoint removal. During this time, the sidecar is draining (sending Connection: close headers), so no new connections are established. But existing connections can still complete their requests.
+The 7-second preStop sleep keeps the application process from receiving its stop signal while Kubernetes propagates the endpoint removal. The Istio proxy's `terminationDrainDuration` controls how long Envoy is allowed to drain once proxy shutdown begins, discouraging new connections and allowing existing connections to complete.
 
 ## Strategy 2: Application-Level Drain
 
@@ -79,8 +84,13 @@ kind: Deployment
 metadata:
   name: order-service
 spec:
+  selector:
+    matchLabels:
+      app: order-service
   template:
     metadata:
+      labels:
+        app: order-service
       annotations:
         proxy.istio.io/config: |
           terminationDrainDuration: 25s
@@ -99,7 +109,7 @@ spec:
                 # Tell the app to stop accepting new requests
                 curl -s -X POST http://localhost:8080/admin/shutdown
                 # Wait for in-flight requests to finish
-                while curl -s http://localhost:8080/admin/inflight | grep -q '"count":[^0]'; do
+                while curl -s http://localhost:8080/admin/inflight | grep -Eq '"count"[[:space:]]*:[[:space:]]*[1-9]'; do
                   sleep 1
                 done
 ```
@@ -111,7 +121,7 @@ This approach uses a shutdown endpoint that tells the application to stop accept
 On the client side, configure retries so that requests that fail due to pod shutdown are automatically retried on a healthy pod:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: order-service
@@ -126,11 +136,11 @@ spec:
     retries:
       attempts: 3
       perTryTimeout: 5s
-      retryOn: connect-failure,refused-stream,unavailable,cancelled,retriable-status-codes
+      retryOn: connect-failure,refused-stream,unavailable,cancelled
       retryRemoteLocalities: true
 ```
 
-The `connect-failure` and `refused-stream` conditions catch the exact errors that happen when a request hits a draining pod. The `retryRemoteLocalities` option ensures retries go to pods in a different zone if the local pods are all draining.
+The `connect-failure` and `refused-stream` conditions catch common errors that can happen when a request hits a draining pod. The `retryRemoteLocalities` option allows retries to other localities when the retry policy and load-balancing configuration can use them.
 
 Important note: only configure retries for idempotent operations. Retrying a non-idempotent request (like a payment charge) can cause duplicate processing.
 
@@ -144,7 +154,13 @@ kind: Deployment
 metadata:
   name: order-service
 spec:
+  selector:
+    matchLabels:
+      app: order-service
   template:
+    metadata:
+      labels:
+        app: order-service
     spec:
       containers:
       - name: order-service
@@ -163,12 +179,12 @@ spec:
               - "-c"
               - |
                 # Make readiness probe fail
-                rm /tmp/ready
+                rm -f /tmp/ready
                 # Wait for endpoint removal and in-flight completion
                 sleep 15
 ```
 
-With `failureThreshold: 1` and `periodSeconds: 2`, the pod becomes not-ready within 2 seconds of the preStop hook running. Kubernetes removes it from endpoints right away, and other pods stop sending traffic to it.
+With `failureThreshold: 1` and `periodSeconds: 2`, the pod becomes not-ready after the next failed readiness probe. Kubernetes then updates EndpointSlices, and other pods stop sending traffic after they observe that endpoint update.
 
 Your `/ready` endpoint should check for the existence of `/tmp/ready`:
 
@@ -190,12 +206,17 @@ kind: Deployment
 metadata:
   name: order-service
 spec:
+  selector:
+    matchLabels:
+      app: order-service
   strategy:
     rollingUpdate:
       maxSurge: 1
       maxUnavailable: 0
   template:
     metadata:
+      labels:
+        app: order-service
       annotations:
         proxy.istio.io/config: |
           terminationDrainDuration: 20s
@@ -217,14 +238,14 @@ spec:
               - "/bin/sh"
               - "-c"
               - |
-                rm /tmp/ready
+                rm -f /tmp/ready
                 sleep 10
 ```
 
 Combined with a VirtualService retry policy:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: order-service
@@ -251,22 +272,22 @@ Test your setup under realistic load:
 # Start a load test that checks for errors
 
 kubectl run loadtest --image=fortio/fortio --rm -it -- \
-  load -c 20 -qps 200 -t 300s -abort-on 1 \
+  load -c 20 -qps 200 -t 300s -abort-on 503 \
   http://order-service.default.svc.cluster.local:8080/api/orders
 
 # While the load test is running, trigger a deployment
 kubectl rollout restart deploy/order-service -n default
 ```
 
-The `-abort-on 1` flag tells fortio to stop if it sees any error percentage above 1%. If the test completes without aborting, your in-flight request handling is working correctly.
+The `-abort-on 503` flag tells fortio to stop if it receives an HTTP 503 response. Use `-abort-on -1` instead if you specifically want socket errors to abort the run immediately. If the test completes without aborting and the final status-code/error summary is clean, your in-flight request handling is working correctly.
 
 Check the Envoy stats after the test:
 
 ```bash
 kubectl exec deploy/order-service -c istio-proxy -- \
-  pilot-agent request GET /stats | grep "retry\|cx_destroy\|rq_error"
+  pilot-agent request GET stats | grep "retry\|cx_destroy\|rq_error"
 ```
 
-Retries are expected and fine. Connection destroy and request errors during the deployment window should be zero (or near zero with retries handling the remainder).
+Retries are expected and fine. Connection destroy and request errors during the deployment window should be zero or low enough that retries cover the remaining failures.
 
 The bottom line: handling in-flight requests during shutdown requires coordination between Kubernetes endpoint removal, Istio sidecar draining, application lifecycle hooks, and client-side retry policies. No single mechanism is sufficient by itself.
