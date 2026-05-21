@@ -32,11 +32,14 @@ data:
   configuration.yml: |
     theme: light
     server:
-      host: 0.0.0.0
-      port: 9091
+      address: tcp://0.0.0.0:9091/
 
     log:
       level: info
+
+    identity_validation:
+      reset_password:
+        jwt_secret: replace_with_a_random_jwt_secret
 
     totp:
       issuer: mycompany.com
@@ -48,17 +51,20 @@ data:
     access_control:
       default_policy: deny
       rules:
-        - domain: "*.mycompany.com"
-          policy: one_factor
         - domain: "admin.mycompany.com"
           policy: two_factor
+        - domain: "*.mycompany.com"
+          policy: one_factor
 
     session:
+      secret: replace_with_a_random_session_secret
       name: authelia_session
-      domain: mycompany.com
-      expiration: 3600
-      inactivity: 300
-      remember_me_duration: 1M
+      expiration: 1h
+      inactivity: 5m
+      remember_me: 1M
+      cookies:
+        - domain: mycompany.com
+          authelia_url: https://auth.mycompany.com
 
     regulation:
       max_retries: 3
@@ -66,6 +72,7 @@ data:
       ban_time: 300
 
     storage:
+      encryption_key: replace_with_a_random_storage_encryption_key
       local:
         path: /data/db.sqlite3
 
@@ -163,7 +170,7 @@ spec:
 
 ## Configuring Istio External Authorization
 
-Register Authelia as an external authorization provider in your Istio mesh config. Authelia supports the Envoy ext_authz protocol through its verify endpoint:
+Register Authelia as an external authorization provider in your Istio mesh config. Authelia supports the Envoy ext_authz protocol through its authorization endpoint:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -174,25 +181,31 @@ spec:
       - name: authelia
         envoyExtAuthzHttp:
           service: authelia.authelia.svc.cluster.local
-          port: "9091"
-          pathPrefix: "/api/verify"
+          port: 9091
+          pathPrefix: "/api/authz/ext-authz/"
+          includeRequestHeadersInCheck:
+            - accept
+            - cookie
+            - location
+            - authorization
+            - proxy-authorization
           headersToUpstreamOnAllow:
-            - remote-user
-            - remote-groups
-            - remote-name
-            - remote-email
+            - remote-*
+            - authelia-*
           headersToDownstreamOnDeny:
             - set-cookie
-          includeRequestHeadersInCheck:
-            - cookie
-            - authorization
+          headersToDownstreamOnAllow:
+            - set-cookie
+          includeAdditionalHeadersInCheck:
+            X-Forwarded-Proto: "%REQ(:SCHEME)%"
 ```
 
 The key headers here are:
 
-- `headersToUpstreamOnAllow`: When Authelia approves the request, it adds these headers with user information. Your backend services can read them to know who the user is.
+- `headersToUpstreamOnAllow`: When Authelia approves the request, it adds matching remote and Authelia headers with user information. Your backend services can read them to know who the user is.
 - `headersToDownstreamOnDeny`: When denied, Authelia sends back cookies for session management.
-- `includeRequestHeadersInCheck`: Forward the cookie and authorization headers to Authelia so it can check existing sessions.
+- `headersToDownstreamOnAllow`: When allowed, Authelia can refresh cookies and send them back to the client.
+- `includeRequestHeadersInCheck`: Forward the request headers Authelia needs to validate sessions, authorization headers, and redirect metadata.
 
 ## Creating Authorization Policies
 
@@ -211,10 +224,10 @@ spec:
   rules:
     - to:
         - operation:
-            paths: ["/*"]
+            hosts: ["app.mycompany.com"]
 ```
 
-This enforces Authelia authentication on all services in the default namespace. Any request without a valid Authelia session will be redirected to the login portal.
+This enforces Authelia authentication for requests to `app.mycompany.com` in the default namespace. Any request without a valid Authelia session will be redirected to the login portal.
 
 To exclude certain paths (like health checks or public APIs):
 
@@ -231,7 +244,8 @@ spec:
   rules:
     - to:
         - operation:
-            notPaths: ["/healthz", "/readyz", "/public/*"]
+            hosts: ["app.mycompany.com"]
+            notPaths: ["/healthz", "/readyz", "/public/{**}"]
 ```
 
 ## Setting Up the Istio Gateway and Virtual Services
@@ -340,13 +354,14 @@ For production, replace the file-based user backend with LDAP:
 ```yaml
 authentication_backend:
   ldap:
-    url: ldap://openldap.default.svc.cluster.local
+    address: ldap://openldap.default.svc.cluster.local
     base_dn: dc=mycompany,dc=com
-    username_attribute: uid
     additional_users_dn: ou=users
     additional_groups_dn: ou=groups
     users_filter: "(&(|({username_attribute}={input})({mail_attribute}={input}))(objectClass=person))"
     groups_filter: "(&(member={dn})(objectClass=groupOfNames))"
+    attributes:
+      username: uid
     user: cn=admin,dc=mycompany,dc=com
     password: your-ldap-admin-password
 ```
@@ -355,9 +370,9 @@ Replace the local SQLite storage with PostgreSQL:
 
 ```yaml
 storage:
+  encryption_key: replace_with_a_random_storage_encryption_key
   postgres:
-    host: postgres.default.svc.cluster.local
-    port: 5432
+    address: tcp://postgres.default.svc.cluster.local:5432
     database: authelia
     username: authelia
     password: your-db-password
