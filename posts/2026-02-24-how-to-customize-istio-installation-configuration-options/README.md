@@ -12,7 +12,7 @@ Every Istio installation starts with a profile, but the real power comes from cu
 
 ## The IstioOperator API
 
-All Istio configuration is expressed through the IstioOperator custom resource. The structure has three main sections:
+Istio installation configuration can be expressed through the IstioOperator custom resource. The structure has four main sections:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -96,7 +96,7 @@ defaultConfig:
 
 ### Proxy Configuration
 
-The `defaultConfig` section in meshConfig controls the default behavior of all Envoy sidecar proxies:
+The `defaultConfig` section in meshConfig controls the default behavior of Envoy sidecar and gateway proxies:
 
 ```yaml
 meshConfig:
@@ -305,23 +305,33 @@ values:
     imagePullPolicy: IfNotPresent
 ```
 
-## Namespace-Level Customization
+## Workload-Level Customization
 
-You can override sidecar settings per namespace using annotations on the namespace or individual pods:
+You can override sidecar settings for specific workloads using annotations on the pod template or individual pods:
 
 ```yaml
-apiVersion: v1
-kind: Namespace
+apiVersion: apps/v1
+kind: Deployment
 metadata:
   name: high-traffic
-  labels:
-    istio-injection: enabled
-  annotations:
-    # Custom sidecar resource limits for this namespace
-    sidecar.istio.io/proxyCPU: "200m"
-    sidecar.istio.io/proxyMemory: "256Mi"
-    sidecar.istio.io/proxyCPULimit: "1000m"
-    sidecar.istio.io/proxyMemoryLimit: "512Mi"
+spec:
+  selector:
+    matchLabels:
+      app: high-traffic
+  template:
+    metadata:
+      labels:
+        app: high-traffic
+      annotations:
+        # Custom sidecar resource limits for this workload
+        sidecar.istio.io/proxyCPU: "200m"
+        sidecar.istio.io/proxyMemory: "256Mi"
+        sidecar.istio.io/proxyCPULimit: "1000m"
+        sidecar.istio.io/proxyMemoryLimit: "512Mi"
+    spec:
+      containers:
+        - name: app
+          image: example/app:latest
 ```
 
 Or per-pod:
@@ -330,12 +340,17 @@ Or per-pod:
 apiVersion: v1
 kind: Pod
 metadata:
+  name: high-traffic-pod
   annotations:
     sidecar.istio.io/proxyCPU: "500m"
     sidecar.istio.io/proxyMemory: "512Mi"
     proxy.istio.io/config: |
       concurrency: 4
       holdApplicationUntilProxyStarts: true
+spec:
+  containers:
+    - name: app
+      image: example/app:latest
 ```
 
 ## Applying Multiple Configuration Files
@@ -384,7 +399,7 @@ Before applying changes, review what will be installed:
 istioctl manifest generate -f my-config.yaml > generated.yaml
 
 # Diff against what's currently installed
-istioctl manifest generate -f my-config.yaml | istioctl verify-install -f -
+kubectl diff -f generated.yaml
 ```
 
 You can also diff two configuration files:
