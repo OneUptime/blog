@@ -8,7 +8,7 @@ Description: Learn how to identify, diagnose, and resolve conflicting Istio conf
 
 ---
 
-One of the trickiest problems in Istio is when two or more configurations conflict with each other. You have a VirtualService that routes traffic one way, and another VirtualService in a different namespace that routes the same traffic a different way. Istio does not always throw an error. Instead, it picks one configuration over the other using precedence rules that are not always obvious, and your services start behaving in ways nobody expects.
+One of the trickiest problems in Istio is when two or more configurations conflict with each other. You have a VirtualService that routes traffic one way, and another VirtualService in a different namespace that routes the same traffic a different way. Istio does not always throw an error. Depending on the resource type, it may reject the overlap, merge fragments with caveats, or apply lookup and evaluation rules that are not always obvious, and your services start behaving in ways nobody expects.
 
 Here is how to find these conflicts, understand Istio's resolution rules, and fix them properly.
 
@@ -35,34 +35,34 @@ istioctl analyze --all-namespaces
 Example output when conflicts exist:
 
 ```text
-Warning [IST0109] (VirtualService frontend/my-app-vs) The VirtualService
+Error [IST0109] (VirtualService frontend/my-app-vs) The VirtualService
   has a conflict with VirtualService backend/my-app-vs: both target host
   "my-app.example.com"
 
-Warning [IST0101] (Gateway default/my-gateway) Referenced credentials not
+Error [IST0161] (Gateway default/my-gateway) Referenced credentials not
   found: my-tls-secret
 ```
 
 You can also analyze local files before applying them:
 
 ```bash
-istioctl analyze -f new-virtual-service.yaml --use-kube=true
+istioctl analyze new-virtual-service.yaml --use-kube=true
 ```
 
 The `--use-kube=true` flag means it will also check against the current cluster state, catching conflicts between your new file and existing resources.
 
 ## VirtualService Conflicts
 
-This is the most common type. When two VirtualServices target the same host, Istio uses these rules to resolve the conflict:
+This is the most common type. When two VirtualServices target the same host, Istio handles the overlap differently depending on where the VirtualServices apply:
 
-1. VirtualServices in the same namespace as the Gateway's namespace take precedence
-2. Among equally-scoped VirtualServices, the one created first typically wins
-3. VirtualServices bound to a Gateway take precedence over mesh-internal VirtualServices
+1. VirtualServices attached to the reserved `mesh` gateway conflict when they export the same host, and `istioctl analyze` reports IST0109
+2. VirtualServices bound to an ingress gateway can be split across multiple resources, and Istio merges their route rules
+3. The order of rules from different VirtualService resources is undefined, so overlapping matches across fragments still cause unpredictable behavior
 
 Here is an example conflict. Team A creates:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-routes
@@ -84,7 +84,7 @@ spec:
 Team B creates:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-routes
@@ -103,14 +103,14 @@ spec:
             host: api-v1.team-b.svc.cluster.local
 ```
 
-Both target the same host and URI prefix but route to different backends. The behavior is undefined in this case.
+Both target the same host and URI prefix but route to different backends. Because the cross-resource route order is undefined for ingress gateway fragments, the behavior is unpredictable in this case.
 
 ### Resolution: Use a Single VirtualService or Delegate
 
 Option 1 is to merge the routes into a single VirtualService:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-routes
@@ -135,10 +135,10 @@ spec:
             host: api-v1.team-b.svc.cluster.local
 ```
 
-Option 2 is to use VirtualService delegation (Istio 1.8+):
+Option 2 is to use VirtualService delegation:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-root
@@ -166,7 +166,7 @@ spec:
 Then each team owns their own delegated VirtualService:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: team-a-routes
@@ -198,7 +198,7 @@ istioctl proxy-config listeners istio-ingressgateway-xxxxx -n istio-system
 
 ## DestinationRule Conflicts
 
-When multiple DestinationRules target the same host, Istio merges them in some cases and picks one in others. The general rule is that a DestinationRule in the same namespace as the service takes precedence.
+When multiple DestinationRules target the same host, Istio can merge them, but the lookup path is what decides which namespaces are considered: the client namespace, then the service namespace, then the mesh root namespace. When the same host has duplicate subset names or duplicate top-level `trafficPolicy` settings, the first processed definition is used and later duplicates are discarded.
 
 Find conflicting DestinationRules:
 
@@ -210,7 +210,7 @@ kubectl get destinationrules --all-namespaces -o json | \
 If two DestinationRules target the same host, merge them into one:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service
@@ -234,9 +234,9 @@ spec:
 
 Security policies follow a strict precedence order:
 
-1. Workload-level policies override namespace-level policies
-2. Namespace-level policies override mesh-level policies
-3. DENY policies are evaluated before ALLOW policies
+1. Workload-level PeerAuthentication policies override namespace-level policies
+2. Namespace-level PeerAuthentication policies override mesh-level policies
+3. CUSTOM AuthorizationPolicies are evaluated first, then DENY policies, then ALLOW policies
 
 A common conflict is when a namespace PeerAuthentication requires STRICT mTLS but a workload-level policy sets it to PERMISSIVE:
 
@@ -250,7 +250,7 @@ Check for conflicting scopes:
 istioctl x describe pod my-pod-xxxxx -n my-namespace
 ```
 
-This shows all policies affecting a specific pod, making conflicts visible.
+This shows the Istio configuration affecting a specific pod and can report TLS conflicts, making mTLS problems visible.
 
 ## Preventing Conflicts
 
@@ -266,18 +266,23 @@ An OPA policy to prevent duplicate VirtualService hosts:
 ```rego
 package main
 
-deny[msg] {
-    input.kind == "VirtualService"
-    host := input.spec.hosts[_]
+violation[{"msg": msg}] {
+    input.review.kind.kind == "VirtualService"
+    host := input.review.object.spec.hosts[_]
 
     # This requires data from the cluster, which Gatekeeper can provide
-    other := data.inventory.namespace[_]["networking.istio.io/v1beta1"]["VirtualService"][_]
-    other.metadata.name != input.metadata.name
+    other := data.inventory.namespace[_]["networking.istio.io/v1"]["VirtualService"][_]
+    not same_object(other)
     other_host := other.spec.hosts[_]
     host == other_host
 
-    msg := sprintf("VirtualService '%s' conflicts with existing VirtualService '%s' on host '%s'", [input.metadata.name, other.metadata.name, host])
+    msg := sprintf("VirtualService '%s' conflicts with existing VirtualService '%s' on host '%s'", [input.review.object.metadata.name, other.metadata.name, host])
+}
+
+same_object(other) {
+    other.metadata.namespace == input.review.object.metadata.namespace
+    other.metadata.name == input.review.object.metadata.name
 }
 ```
 
-Conflicts in Istio are inevitable in multi-team environments, but they are manageable. Use `istioctl analyze` to find them, understand the precedence rules so you can predict which config wins, and set up guardrails with delegation and admission policies so the same problems do not keep recurring.
+Conflicts in Istio are inevitable in multi-team environments, but they are manageable. Use `istioctl analyze` to find them, understand the merge, lookup, and evaluation rules so you can predict how configuration is applied, and set up guardrails with delegation and admission policies so the same problems do not keep recurring.
