@@ -38,7 +38,7 @@ With `REGISTRY_ONLY`, unknown destinations are blocked. This is more secure but 
 The primary way to add external services to Istio's service discovery is ServiceEntry:
 
 ```yaml
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: aws-s3
@@ -51,13 +51,13 @@ spec:
   - number: 443
     name: https
     protocol: TLS
-  resolution: DNS
+  resolution: NONE
   location: MESH_EXTERNAL
 ```
 
 This registers AWS S3 as a known service. Now every sidecar in the mesh knows about it and can:
 - Report traffic metrics for S3 calls
-- Apply circuit breaking and retry policies
+- Apply traffic policies such as circuit breaking
 - Enforce access control
 
 ## Resolution Strategies Explained
@@ -71,13 +71,17 @@ spec:
   - api.example.com
   resolution: DNS
 ```
-The sidecar resolves the hostname via DNS and uses the returned IP addresses as endpoints. DNS results are cached based on TTL. Good for: cloud services, APIs behind load balancers.
+The sidecar periodically resolves the hostname via DNS and uses the returned IP addresses as endpoints. Good for: cloud services, APIs behind load balancers.
 
 ### Static Resolution
 ```yaml
 spec:
   hosts:
   - legacy-database.internal
+  ports:
+  - number: 3306
+    name: mysql
+    protocol: TCP
   resolution: STATIC
   endpoints:
   - address: 10.0.1.50
@@ -100,7 +104,7 @@ The sidecar uses whatever IP the application resolved. Good for: wildcard entrie
 HTTP services are easy because the Host header tells Envoy where the traffic should go. TCP is trickier because there's no hostname in the protocol. For TCP services, you need either a unique IP per service or DNS proxy with auto-allocation:
 
 ```yaml
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-postgres
@@ -121,14 +125,14 @@ spec:
       tcp-postgres: 5432
 ```
 
-The `addresses` field assigns a virtual IP (VIP) to this service. Applications connect to the VIP, and Envoy routes to the real endpoint. Alternatively, enable `ISTIO_META_DNS_AUTO_ALLOCATE` and let Istio assign VIPs automatically.
+The `addresses` field assigns a virtual IP (VIP) to this service. Applications connect to the VIP, and Envoy routes to the real endpoint. Alternatively, enable Istio DNS proxying and address auto-allocation so Istio can assign VIPs automatically.
 
 ## Using WorkloadEntry for VM Integration
 
-For external services running on VMs that you want to integrate more deeply into the mesh, use WorkloadEntry combined with a Kubernetes Service:
+For external services running on VMs that you want to integrate more deeply into the mesh, use WorkloadEntry combined with a ServiceEntry:
 
 ```yaml
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: WorkloadEntry
 metadata:
   name: legacy-app-vm1
@@ -139,7 +143,7 @@ spec:
     app: legacy-app
     version: v1
 ---
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: WorkloadEntry
 metadata:
   name: legacy-app-vm2
@@ -150,27 +154,33 @@ spec:
     app: legacy-app
     version: v1
 ---
-apiVersion: v1
-kind: Service
+apiVersion: networking.istio.io/v1
+kind: ServiceEntry
 metadata:
   name: legacy-app
   namespace: default
 spec:
+  hosts:
+  - legacy-app.default.svc.cluster.local
+  location: MESH_INTERNAL
   ports:
-  - port: 8080
+  - number: 8080
     name: http
-  selector:
-    app: legacy-app
+    protocol: HTTP
+  resolution: STATIC
+  workloadSelector:
+    labels:
+      app: legacy-app
 ```
 
-WorkloadEntry makes the VMs look like Kubernetes pods to the rest of the mesh. They show up in service discovery, get health checked, and can participate in traffic splitting.
+WorkloadEntry makes the VMs look like mesh workloads to the rest of the mesh. They show up in service discovery through the matching ServiceEntry, report workload status when connected to istiod, and can participate in traffic splitting.
 
 ## Configuring Health Checks for External Services
 
-You can add outlier detection to external services so unhealthy endpoints get removed from the rotation:
+You can add outlier detection to external services so endpoints with observed failures get temporarily removed from the rotation:
 
 ```yaml
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: external-api-resilience
@@ -196,7 +206,7 @@ spec:
 By default, every sidecar gets the full service registry, which includes all Kubernetes services and all ServiceEntries. In a large mesh, this can be a lot of configuration data. Use the Sidecar resource to limit what each workload sees:
 
 ```yaml
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: team-a-sidecar
@@ -240,7 +250,7 @@ Istio generates metrics for all discovered services, including external ones:
 ```bash
 # Check if traffic is being tracked
 
-istioctl proxy-config stats deploy/my-app | grep external-service
+kubectl exec deploy/my-app -c istio-proxy -- pilot-agent request GET stats | grep external-service
 ```
 
 In Prometheus, look for metrics like:
