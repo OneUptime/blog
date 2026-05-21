@@ -38,12 +38,12 @@ When an Istio-related alert fires, start here:
 kubectl get pods -n istio-system -l app=istiod
 
 # Check if gateways are running
-kubectl get pods -n istio-system -l app=istio-ingressgateway
+kubectl get pods -n istio-system -l istio=ingressgateway
 
 # Quick health check of the mesh
 istioctl proxy-status | head -20
 
-# Count pods not in Ready state
+# Count pods not in Running phase
 kubectl get pods --all-namespaces --field-selector=status.phase!=Running | wc -l
 ```
 
@@ -63,14 +63,16 @@ kubectl top pods -n istio-system
 #### Step 3: Determine if the Issue is Istio or Application
 
 ```bash
-# Bypass the sidecar to test direct connectivity
-kubectl exec <pod> -c <app-container> -- curl -s --connect-timeout 5 http://<service>:<port>/health
+# Test service connectivity from a temporary pod without sidecar injection
+kubectl run mesh-bypass-test -n <namespace> --rm -i --restart=Never \
+  --image=curlimages/curl --annotations=sidecar.istio.io/inject=false -- \
+  curl -sS --connect-timeout 5 http://<service>.<namespace>.svc.cluster.local:<port>/health
 
 # Check if the app container itself is healthy
 kubectl exec <pod> -c <app-container> -- curl -s localhost:<app-port>/health
 
-# If direct connectivity works but mesh traffic fails, the issue is Istio
-# If direct connectivity also fails, the issue might be application or network
+# If connectivity from a non-injected pod works but mesh traffic fails, the issue is likely Istio
+# If connectivity from a non-injected pod also fails, the issue might be application or network
 ```
 
 ### Diagnostic Procedures by Symptom
@@ -87,8 +89,11 @@ kubectl describe pods -n istio-system -l app=istiod
 # Check if sidecar injection webhook is present
 kubectl get mutatingwebhookconfiguration | grep istio
 
-# Verify the Istio root certificate
-kubectl get secret istio-ca-secret -n istio-system
+# Verify the Istio root certificate bundle
+kubectl get configmap istio-ca-root-cert -n <namespace> -o yaml
+
+# If using a plugged-in CA, check the CA secret
+kubectl get secret cacerts -n istio-system
 istioctl proxy-config secret <any-pod> | head -10
 
 # Check for certificate expiry
@@ -100,8 +105,8 @@ Mitigation:
 # If istiod is down, restart it
 kubectl rollout restart deployment/istiod -n istio-system
 
-# If certificates are expired, restart istiod to trigger reissuance
-kubectl delete pods -n istio-system -l app=istiod
+# If workload certificates are expired after confirming the CA is healthy, restart affected workloads
+kubectl rollout restart deployment/<name> -n <namespace>
 
 # Nuclear option: disable mTLS temporarily
 kubectl apply -f - <<EOF
@@ -120,18 +125,18 @@ EOF
 
 ```bash
 # Check the gateway pod
-kubectl get pods -n istio-system -l app=istio-ingressgateway
-kubectl logs -n istio-system -l app=istio-ingressgateway --tail=50
+kubectl get pods -n istio-system -l istio=ingressgateway
+kubectl logs -n istio-system -l istio=ingressgateway -c istio-proxy --tail=50
 
 # Check Gateway resource configuration
-kubectl get gateways --all-namespaces
-istioctl analyze -n istio-system
+kubectl get gateways.networking.istio.io --all-namespaces
+istioctl analyze --all-namespaces
 
 # Check the gateway's listener configuration
-istioctl proxy-config listener deploy/istio-ingressgateway -n istio-system
+istioctl proxy-config listener deployment/istio-ingressgateway -n istio-system
 
 # Check routes on the gateway
-istioctl proxy-config route deploy/istio-ingressgateway -n istio-system
+istioctl proxy-config route deployment/istio-ingressgateway -n istio-system
 
 # Verify the external IP/hostname
 kubectl get svc istio-ingressgateway -n istio-system
@@ -143,7 +148,7 @@ Mitigation:
 kubectl rollout restart deployment/istio-ingressgateway -n istio-system
 
 # If routes are missing, check VirtualService resources
-kubectl get virtualservices --all-namespaces
+kubectl get virtualservices.networking.istio.io --all-namespaces
 
 # If the Service is missing its external IP, check cloud provider integration
 kubectl describe svc istio-ingressgateway -n istio-system
@@ -155,13 +160,14 @@ kubectl describe svc istio-ingressgateway -n istio-system
 # Check sidecar CPU throttling
 kubectl top pods --containers --all-namespaces | grep istio-proxy | sort -k4 -rn | head -20
 
-# Check istiod push latency
-kubectl exec -n istio-system deploy/istiod -- \
-  curl -s localhost:15014/metrics | grep pilot_xds_push_time
+# In one terminal, forward the istiod monitoring port
+kubectl port-forward -n istio-system deploy/istiod 15014:15014
+
+# Check istiod push latency from another terminal
+curl -s localhost:15014/metrics | grep pilot_xds_push_time
 
 # Check for configuration churn
-kubectl exec -n istio-system deploy/istiod -- \
-  curl -s localhost:15014/metrics | grep pilot_push_triggers
+curl -s localhost:15014/metrics | grep pilot_push_triggers
 
 # Look at Envoy stats for connection issues
 kubectl exec <high-latency-pod> -c istio-proxy -- \
