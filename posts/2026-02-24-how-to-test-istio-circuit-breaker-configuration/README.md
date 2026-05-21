@@ -65,7 +65,7 @@ spec:
         maxRequestsPerConnection: 1
 ```
 
-These values are intentionally very low to make it easy to trigger the circuit breaker. With maxConnections set to 1, any concurrent requests beyond the first one should be rejected.
+These values are intentionally very low to make it easy to trigger the circuit breaker. With `maxConnections` and pending request limits set to 1, concurrent requests beyond the available connection and queue capacity should be rejected.
 
 First, verify that a single request works:
 
@@ -104,11 +104,11 @@ kubectl exec -n circuit-test deploy/fortio -c istio-proxy -- \
 Look for these key metrics:
 
 ```text
-cluster.outbound|8000||httpbin.circuit-test.svc.cluster.local.upstream_rq_pending_overflow: 10
-cluster.outbound|8000||httpbin.circuit-test.svc.cluster.local.upstream_rq_pending_total: 30
+cluster.outbound|8000||httpbin.circuit-test.svc.cluster.local;.upstream_rq_pending_overflow: 10
+cluster.outbound|8000||httpbin.circuit-test.svc.cluster.local;.upstream_rq_pending_total: 30
 ```
 
-The `upstream_rq_pending_overflow` counter shows how many requests were rejected by the circuit breaker. This is the definitive way to confirm the circuit breaker is working.
+The `upstream_rq_pending_overflow` counter shows how many requests were rejected by the circuit breaker. This is the best way to confirm the connection pool circuit breaker is working.
 
 ## Testing Outlier Detection
 
@@ -135,7 +135,7 @@ spec:
       maxEjectionPercent: 100
 ```
 
-This configuration ejects an endpoint after 3 consecutive 5xx errors, checks every 5 seconds, and ejects the endpoint for 30 seconds.
+This configuration ejects an endpoint after 3 consecutive 5xx errors, checks every 5 seconds, and starts with a 30 second ejection time. Envoy can increase the ejection duration if the same endpoint is ejected repeatedly.
 
 To test it, make httpbin return errors using the /status endpoint:
 
@@ -148,7 +148,7 @@ for i in $(seq 1 5); do
 done
 ```
 
-After 3 consecutive 500 responses, the endpoint should be ejected. Check:
+After 3 consecutive 500 responses and the ejection evaluation, the endpoint should be ejected. Check:
 
 ```bash
 kubectl exec -n circuit-test deploy/fortio -c istio-proxy -- \
@@ -158,8 +158,8 @@ kubectl exec -n circuit-test deploy/fortio -c istio-proxy -- \
 Look for:
 
 ```text
-cluster.outbound|8000||httpbin.circuit-test.svc.cluster.local.outlier_detection.ejections_active: 1
-cluster.outbound|8000||httpbin.circuit-test.svc.cluster.local.outlier_detection.ejections_total: 1
+cluster.outbound|8000||httpbin.circuit-test.svc.cluster.local;.outlier_detection.ejections_active: 1
+cluster.outbound|8000||httpbin.circuit-test.svc.cluster.local;.outlier_detection.ejections_total: 1
 ```
 
 ## Testing with Multiple Replicas
@@ -170,7 +170,7 @@ Circuit breaking is more interesting with multiple backend replicas where some a
 kubectl scale deployment httpbin -n circuit-test --replicas=3
 ```
 
-Now use a VirtualService to inject faults on a percentage of requests, simulating one unhealthy replica:
+Now use a VirtualService to inject faults on a percentage of requests, simulating intermittent upstream-looking failures:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -192,14 +192,14 @@ spec:
         host: httpbin
 ```
 
-With outlier detection configured, the "failing" endpoint should get ejected, and subsequent requests should all go to healthy endpoints:
+With this configuration, you can verify how clients experience intermittent failures:
 
 ```bash
 kubectl exec -n circuit-test deploy/fortio -c fortio -- \
   fortio load -c 5 -qps 10 -t 60s http://httpbin:8000/status/200
 ```
 
-Watch the error rate decrease over time as outlier detection kicks in and ejects the problematic endpoint.
+You should see roughly the injected error percentage. Do not expect this VirtualService fault to eject one `httpbin` pod: Istio applies the fault policy at the client side, so an abort fault is not the same as one backend endpoint returning real 5xx responses. To test per-endpoint outlier ejection with multiple replicas, make one backend instance or subset return real 5xx responses while the others return 200.
 
 ## Tuning Circuit Breaker Parameters
 
@@ -237,7 +237,7 @@ Some guidelines for tuning:
 
 ## Verifying Recovery After Ejection
 
-After an endpoint is ejected, it should automatically return to the pool after `baseEjectionTime`. Test this:
+After an endpoint is ejected, it should automatically return to the pool after its ejection time. For the first ejection, that is `baseEjectionTime`. Test this:
 
 ```bash
 # Cause ejection
