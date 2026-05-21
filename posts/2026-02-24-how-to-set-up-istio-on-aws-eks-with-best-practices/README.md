@@ -20,7 +20,7 @@ Before installing Istio, make sure your EKS cluster is set up properly:
 eksctl create cluster \
   --name my-mesh-cluster \
   --region us-east-1 \
-  --version 1.28 \
+  --version 1.35 \
   --nodegroup-name standard-workers \
   --node-type m5.xlarge \
   --nodes 3 \
@@ -62,7 +62,6 @@ spec:
       holdApplicationUntilProxyStarts: true
       proxyMetadata:
         ISTIO_META_DNS_CAPTURE: "true"
-        ISTIO_META_DNS_AUTO_ALLOCATE: "true"
     enableTracing: true
     outboundTrafficPolicy:
       mode: ALLOW_ANY
@@ -72,9 +71,10 @@ spec:
       enabled: true
       k8s:
         serviceAnnotations:
-          service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+          service.beta.kubernetes.io/aws-load-balancer-type: "external"
+          service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: "instance"
           service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
-          service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
+          service.beta.kubernetes.io/aws-load-balancer-attributes: "load_balancing.cross_zone.enabled=true"
         hpaSpec:
           minReplicas: 2
           maxReplicas: 5
@@ -109,8 +109,8 @@ istioctl install -f istio-eks-config.yaml -y
 A few things to note in this configuration:
 
 - `holdApplicationUntilProxyStarts` prevents application containers from starting before the sidecar is ready. This avoids race conditions where your app tries to make network calls before Istio is intercepting traffic.
-- DNS capture and auto-allocate make ServiceEntry resolution work properly.
-- The NLB annotation tells AWS to create a Network Load Balancer instead of the default Classic Load Balancer.
+- DNS capture makes Istio's sidecar DNS proxy handle ServiceEntry resolution without custom DNS server changes.
+- The NLB annotations tell the AWS Load Balancer Controller to create a Network Load Balancer. If your cluster is not using EKS Auto Mode, make sure the AWS Load Balancer Controller is installed.
 - Cross-zone load balancing distributes traffic evenly across availability zones.
 
 ## Configuring IAM Roles for Service Accounts (IRSA)
@@ -133,7 +133,7 @@ eksctl create iamserviceaccount \
   --approve
 ```
 
-Istio sidecars do not interfere with IRSA token exchange since the AWS SDK communicates with the EC2 metadata service, which Istio proxies handle correctly.
+Istio sidecars do not interfere with IRSA token exchange since the AWS SDK uses the projected web identity token in the pod and calls AWS STS `AssumeRoleWithWebIdentity`, which works through normal outbound HTTPS traffic.
 
 ## Setting Up Namespace Injection
 
@@ -156,8 +156,7 @@ metadata:
   namespace: istio-system
 spec:
   selector:
-    matchLabels:
-      istio: ingressgateway
+    istio: ingressgateway
   servers:
   - port:
       number: 443
