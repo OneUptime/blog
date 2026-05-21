@@ -18,7 +18,7 @@ Istio's Helm charts are split into three separate charts, each handling a differ
 
 **istio/istiod**: Installs the Istiod control plane. This is the main chart that deploys the discovery service, certificate authority, and configuration distribution.
 
-**istio/gateway**: Installs ingress and egress gateways. These are optional and can be installed in any namespace.
+**istio/gateway**: Installs ingress and egress gateways. These are optional and can be installed in any namespace that does not disable sidecar injection.
 
 ## Adding the Istio Helm Repository
 
@@ -44,7 +44,7 @@ kubectl create namespace istio-system
 
 helm install istio-base istio/base \
   -n istio-system \
-  --version 1.24.0
+  --version 1.30.0
 ```
 
 Verify the CRDs are installed:
@@ -58,7 +58,7 @@ kubectl get crd | grep istio.io | wc -l
 ```bash
 helm install istiod istio/istiod \
   -n istio-system \
-  --version 1.24.0 \
+  --version 1.30.0 \
   --wait
 ```
 
@@ -75,7 +75,7 @@ kubectl create namespace istio-ingress
 
 helm install istio-ingress istio/gateway \
   -n istio-ingress \
-  --version 1.24.0
+  --version 1.30.0
 ```
 
 ## Viewing Default Values
@@ -131,13 +131,13 @@ global:
         memory: 256Mi
 ```
 
-Install with the custom values:
+Apply the custom values to an existing release:
 
 ```bash
-helm install istiod istio/istiod \
+helm upgrade istiod istio/istiod \
   -n istio-system \
   -f istiod-values.yaml \
-  --version 1.24.0
+  --version 1.30.0
 ```
 
 ## Managing Releases
@@ -174,7 +174,7 @@ helm upgrade istiod istio/istiod \
 helm upgrade istiod istio/istiod \
   -n istio-system \
   -f istiod-values.yaml \
-  --version 1.24.0
+  --version 1.30.0
 ```
 
 The `--reuse-values` flag keeps all previously set values and only changes what you specify. Without it, Helm resets everything to defaults plus what you provide.
@@ -239,14 +239,13 @@ metadata:
   namespace: argocd
 spec:
   project: default
-  source:
-    repoURL: https://istio-release.storage.googleapis.com/charts
-    chart: istiod
-    targetRevision: 1.24.0
-    helm:
-      valueFiles:
-        - $values/helm/istiod-values.yaml
   sources:
+    - repoURL: https://istio-release.storage.googleapis.com/charts
+      chart: istiod
+      targetRevision: 1.30.0
+      helm:
+        valueFiles:
+          - $values/helm/istiod-values.yaml
     - repoURL: https://github.com/myorg/istio-config.git
       targetRevision: main
       ref: values
