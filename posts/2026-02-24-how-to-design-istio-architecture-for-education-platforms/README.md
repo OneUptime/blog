@@ -47,7 +47,7 @@ Education platforms typically serve multiple school districts, each with their o
 Header-based routing lets you direct traffic to district-specific backends when needed:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: content-service
@@ -69,7 +69,7 @@ spec:
         host: content-service
         subset: shared
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: content-service
@@ -140,7 +140,7 @@ The grading and reporting services can read student data. Only the API gateway (
 The first week of school can bring 5-10x normal traffic. Configure connection pools and circuit breakers to handle this gracefully:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: enrollment-service
@@ -166,10 +166,10 @@ spec:
 
 ## Exam Period Configuration
 
-During exams, the assessment service is on the critical path. Students cannot afford service interruptions. Configure aggressive retries and circuit breakers:
+During exams, the assessment service is on the critical path. Students cannot afford service interruptions. Configure careful retries and timeouts:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: assessment-service
@@ -207,7 +207,7 @@ Exam submissions have no retries (the application handles idempotency) but a gen
 Education content includes videos, PDFs, images, and interactive elements. The content service can benefit from Istio's traffic splitting for A/B testing new content delivery approaches:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: content-delivery
@@ -226,7 +226,7 @@ spec:
         subset: optimized
       weight: 10
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: content-delivery
@@ -267,6 +267,11 @@ spec:
   meshConfig:
     accessLogFile: ""
     enableTracing: true
+    extensionProviders:
+    - name: otel-tracing
+      opentelemetry:
+        port: 4317
+        service: opentelemetry-collector.observability.svc.cluster.local
     defaultConfig:
       tracing:
         sampling: 5.0
@@ -281,16 +286,26 @@ spec:
           limits:
             cpu: 200m
             memory: 128Mi
+---
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
+metadata:
+  name: mesh-default
+  namespace: istio-system
+spec:
+  tracing:
+  - providers:
+    - name: otel-tracing
 ```
 
-Access logging is disabled to save on storage costs. Trace sampling is at 5%, which is enough to debug issues without generating massive amounts of data.
+Access logging is disabled to save on storage costs. The OpenTelemetry provider is enabled through the Telemetry API, and trace sampling is at 5%, which is enough to debug issues without generating massive amounts of data.
 
 ## Sidecar Scoping
 
 Reduce sidecar memory usage by limiting what each namespace can see:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -305,7 +320,7 @@ spec:
     - "edu-admin/*"
     - "istio-system/*"
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -318,7 +333,7 @@ spec:
     - "edu-content/*"
     - "istio-system/*"
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -341,12 +356,12 @@ Configure different authentication rules for students, teachers, and administrat
 apiVersion: security.istio.io/v1
 kind: RequestAuthentication
 metadata:
-  name: edu-auth
-  namespace: edu-api
+  name: admin-auth
+  namespace: edu-admin
 spec:
   selector:
     matchLabels:
-      app: api-gateway
+      app: admin-service
   jwtRules:
   - issuer: "https://auth.eduplatform.example.com"
     jwksUri: "https://auth.eduplatform.example.com/.well-known/jwks.json"
@@ -358,6 +373,9 @@ metadata:
   name: admin-only-endpoints
   namespace: edu-admin
 spec:
+  selector:
+    matchLabels:
+      app: admin-service
   rules:
   - from:
     - source:
