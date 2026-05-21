@@ -35,18 +35,19 @@ Common error patterns and what they mean:
 The root cause of most connection drops is the delay between when a pod starts shutting down and when other pods stop sending it traffic. Measure this gap:
 
 ```bash
-# Watch endpoint changes in real time
-kubectl get endpoints web-api -n default -w
+# Watch EndpointSlice changes in real time
+kubectl get endpointslice -n default \
+  -l kubernetes.io/service-name=web-api -w
 
 # In another terminal, delete a pod
 kubectl delete pod web-api-xxxx -n default
 ```
 
-Note the time between when you delete the pod and when the endpoints list updates. Then check how long it takes for sidecars to receive the update:
+Note the time between when you delete the pod and when the EndpointSlice shows the endpoint as not ready or terminating. Then check how long it takes for sidecars to receive the update:
 
 ```bash
 # Check when the sidecar received the endpoint update
-istioctl proxy-config endpoints deploy/frontend -n default | grep web-api
+istioctl proxy-config endpoints deployment/frontend -n default | grep web-api
 ```
 
 If there's a multi-second gap, that's your problem window. During that gap, the frontend sidecar is still sending traffic to the terminating pod.
@@ -57,7 +58,7 @@ Check if the draining pod's sidecar has the right drain settings:
 
 ```bash
 # Get the proxy configuration for the terminating workload
-istioctl proxy-config bootstrap deploy/web-api -n default -o json | \
+istioctl proxy-config bootstrap deployment/web-api -n default -o json | \
   jq '.bootstrap.staticResources'
 
 # Check the drain duration setting
@@ -73,7 +74,7 @@ Turn up the log level on the sidecar to see exactly what's happening during shut
 
 ```bash
 # Set connection manager to debug level
-istioctl proxy-config log deploy/web-api -n default \
+istioctl proxy-config log deployment/web-api -n default \
   --level connection:debug,http:debug,pool:debug
 
 # Tail the logs during a deployment
@@ -104,7 +105,7 @@ kubectl get pod web-api-xxxx -n default -o json | \
 kubectl describe pod web-api-xxxx -n default | grep -A5 "State:\|Last State:"
 ```
 
-If you see `Reason: OOMKilled` or if the pod transitions directly from Running to Terminated without going through the drain sequence, the grace period is too short.
+If the pod stays `Terminating` until the grace period expires and the containers are then killed, or if the last state shows termination consistent with a forced `SIGKILL`, the grace period is too short. `Reason: OOMKilled` points to memory pressure instead, not a normal grace-period expiry.
 
 Here's a diagnostic checklist:
 
