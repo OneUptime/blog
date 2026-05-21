@@ -32,7 +32,7 @@ This means your telemetry comes from different sources depending on the layer:
 First, make sure your Istio installation has ambient mode enabled:
 
 ```bash
-istioctl install --set profile=ambient
+istioctl install --set profile=ambient --skip-confirmation
 ```
 
 Or with an IstioOperator:
@@ -60,7 +60,8 @@ The ztunnel component exposes Prometheus metrics by default. To scrape them, you
 Check what metrics ztunnel exposes:
 
 ```bash
-kubectl exec -n istio-system ds/ztunnel -- curl -s localhost:15020/stats/prometheus | head -50
+ZTUNNEL=$(kubectl get pod -n istio-system -l app=ztunnel -o jsonpath='{.items[0].metadata.name}')
+kubectl debug -n istio-system "$ZTUNNEL" --image=curlimages/curl -- curl -s localhost:15020/stats/prometheus | head -50
 ```
 
 Key ztunnel metrics include:
@@ -70,7 +71,7 @@ Key ztunnel metrics include:
 - `istio_tcp_sent_bytes_total` - Bytes sent
 - `istio_tcp_received_bytes_total` - Bytes received
 
-These metrics include standard Istio labels like `source_workload`, `destination_workload`, `source_namespace`, and `destination_namespace`.
+These metrics include standard Istio labels like `source_workload`, `destination_workload`, `source_workload_namespace`, and `destination_workload_namespace`.
 
 Set up Prometheus scraping for ztunnel:
 
@@ -84,16 +85,17 @@ data:
   prometheus.yml: |
     scrape_configs:
       - job_name: 'ztunnel'
+        metrics_path: /stats/prometheus
         kubernetes_sd_configs:
           - role: pod
         relabel_configs:
           - source_labels: [__meta_kubernetes_pod_label_app]
             regex: ztunnel
             action: keep
-          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
+          - source_labels: [__address__]
             action: replace
             target_label: __address__
-            regex: (.+)
+            regex: ([^:]+)(?::\d+)?
             replacement: ${1}:15020
 ```
 
@@ -102,6 +104,9 @@ data:
 To get L7 telemetry, you need waypoint proxies. Deploy them per namespace:
 
 ```bash
+kubectl get crd gateways.gateway.networking.k8s.io &> /dev/null || \
+  kubectl apply --server-side -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.5.1/experimental-install.yaml
+
 istioctl waypoint apply -n my-app --enroll-namespace
 ```
 
@@ -151,7 +156,7 @@ spec:
           tagOverrides:
             custom_label:
               operation: UPSERT
-              value: "connection.id"
+              value: "string(connection.id)"
 ```
 
 For L7 metrics (waypoint proxies handle these):
@@ -211,7 +216,7 @@ Keep in mind that without waypoint proxies, you will not get any trace spans fro
 
 ## Access Logging in Ambient Mode
 
-Access logs work through both ztunnel (L4 logs) and waypoint proxies (L7 logs):
+The Telemetry API configures Envoy access logs for waypoint proxies. ztunnel emits its own L4 traffic logs to the ztunnel pod logs:
 
 ```yaml
 apiVersion: telemetry.istio.io/v1
@@ -228,7 +233,7 @@ spec:
 For ztunnel logs, check the ztunnel pod logs directly:
 
 ```bash
-kubectl logs -n istio-system ds/ztunnel | tail -20
+kubectl logs -n istio-system -l app=ztunnel --tail=20
 ```
 
 For waypoint proxy logs:
@@ -261,10 +266,10 @@ Key things to watch:
 kubectl top pods -n istio-system -l app=ztunnel
 
 # Check ztunnel logs for errors
-kubectl logs -n istio-system ds/ztunnel --tail=50
+kubectl logs -n istio-system -l app=ztunnel --tail=50
 
-# Check ztunnel connections
-kubectl exec -n istio-system ds/ztunnel -- curl -s localhost:15020/stats | grep "cx_active"
+# Check the workload state ztunnel has received from istiod
+istioctl ztunnel-config workloads
 ```
 
 ## Grafana Dashboards for Ambient
@@ -272,7 +277,7 @@ kubectl exec -n istio-system ds/ztunnel -- curl -s localhost:15020/stats | grep 
 Istio provides updated Grafana dashboards for ambient mode. Import them from the Istio addons:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.24/samples/addons/grafana.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/grafana.yaml
 ```
 
 The ambient-specific dashboards show:
@@ -303,7 +308,8 @@ kubectl get pods -n istio-system -l app=ztunnel -o wide
 
 4. Check the ztunnel admin interface:
 ```bash
-kubectl exec -n istio-system ds/ztunnel -- curl -s localhost:15000/config_dump
+ZTUNNEL=$(kubectl get pod -n istio-system -l app=ztunnel -o jsonpath='{.items[0].metadata.name}')
+kubectl debug -n istio-system "$ZTUNNEL" --image=curlimages/curl -- curl -s localhost:15000/config_dump
 ```
 
 Ambient mode telemetry gives you a cleaner separation between L4 and L7 observability. The tradeoff is that you need to understand which component generates which telemetry and deploy waypoint proxies for namespaces where you need full L7 visibility.
