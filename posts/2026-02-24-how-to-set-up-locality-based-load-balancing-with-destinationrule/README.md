@@ -13,7 +13,7 @@ Locality-based load balancing in Istio routes traffic to the closest available s
 Kubernetes nodes have built-in locality labels that Istio uses:
 - `topology.kubernetes.io/region` (e.g., us-east-1)
 - `topology.kubernetes.io/zone` (e.g., us-east-1a)
-- `topology.kubernetes.io/subzone` (optional, often not set)
+- `topology.istio.io/subzone` (optional Istio-specific label, often not set)
 
 Istio reads these labels and groups endpoints by their locality for load balancing decisions.
 
@@ -176,9 +176,6 @@ spec:
             "us-east-1/us-east-1b/*": 70
             "us-east-1/us-east-1a/*": 20
             "us-east-1/us-east-1c/*": 10
-        failover:
-        - from: us-east-1
-          to: us-west-2
     connectionPool:
       tcp:
         maxConnections: 200
@@ -193,7 +190,6 @@ spec:
 This configuration:
 - Distributes traffic with 70% local preference
 - Spreads 30% across other zones in the same region
-- Falls over to us-west-2 if all us-east-1 endpoints are unhealthy
 - Uses least request for the actual load balancing within a locality
 - Has connection limits and outlier detection for circuit breaking
 
