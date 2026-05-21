@@ -19,22 +19,50 @@ The collector has four main components:
 - **Exporters** - send data to backends
 - **Pipelines** - connect receivers, processors, and exporters together
 
-For Istio, you typically need to handle three types of data: traces from the Envoy proxies, metrics from Prometheus endpoints, and access logs from the sidecar containers.
+For Istio, you typically need to handle traces from the Envoy proxies and metrics from Prometheus endpoints. Access logs can also be exported to OpenTelemetry, but they require an Istio access log provider and a logs pipeline in the collector.
 
 ## Deployment Strategy
 
 There are two main patterns for deploying the collector:
 
-**Gateway mode** - a centralized deployment that all proxies send to:
+**Gateway mode** - a centralized deployment that proxies send traces to and that can scrape mesh metrics:
 
 ```yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: otel-collector
+  namespace: istio-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: otel-collector
+rules:
+- apiGroups: [""]
+  resources: ["pods", "namespaces", "endpoints", "services"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: otel-collector
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: otel-collector
+subjects:
+- kind: ServiceAccount
+  name: otel-collector
+  namespace: istio-system
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: otel-collector-gateway
   namespace: istio-system
 spec:
-  replicas: 3
+  replicas: 1
   selector:
     matchLabels:
       app: otel-collector
@@ -47,9 +75,10 @@ spec:
       annotations:
         sidecar.istio.io/inject: "false"
     spec:
+      serviceAccountName: otel-collector
       containers:
       - name: collector
-        image: otel/opentelemetry-collector-contrib:0.96.0
+        image: otel/opentelemetry-collector-contrib:0.151.0
         args: ["--config=/etc/otel/config.yaml"]
         resources:
           requests:
@@ -95,9 +124,10 @@ spec:
       annotations:
         sidecar.istio.io/inject: "false"
     spec:
+      serviceAccountName: otel-collector
       containers:
       - name: collector
-        image: otel/opentelemetry-collector-contrib:0.96.0
+        image: otel/opentelemetry-collector-contrib:0.151.0
         args: ["--config=/etc/otel/config.yaml"]
         resources:
           requests:
@@ -118,11 +148,11 @@ spec:
           name: otel-agent-config
 ```
 
-For most Istio deployments, the gateway mode with 2-3 replicas works well. Switch to agent mode when you have very high telemetry volumes or need to reduce network traversal.
+For most Istio deployments, gateway mode works well. If the gateway uses a Prometheus receiver with the same scrape configuration, run a single scraping replica or shard scraping with the OpenTelemetry Target Allocator to avoid duplicate scrapes. Switch to agent mode when you have very high telemetry volumes or need to reduce network traversal.
 
 ## Complete Collector Configuration
 
-Here is a production-grade configuration for collecting all Istio telemetry:
+Here is a production-grade configuration for collecting Istio traces and metrics:
 
 ```yaml
 apiVersion: v1
@@ -146,32 +176,22 @@ data:
           scrape_configs:
           - job_name: 'istiod'
             kubernetes_sd_configs:
-            - role: pod
+            - role: endpoints
               namespaces:
                 names: [istio-system]
             relabel_configs:
-            - source_labels: [__meta_kubernetes_pod_label_app]
+            - source_labels: [__meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
               action: keep
-              regex: istiod
-            - source_labels: [__address__]
-              action: replace
-              target_label: __address__
-              regex: ([^:]+)(?::\d+)?
-              replacement: ${1}:15014
+              regex: istiod;http-monitoring
 
           - job_name: 'istio-proxies'
             metrics_path: /stats/prometheus
             kubernetes_sd_configs:
             - role: pod
             relabel_configs:
-            - source_labels: [__meta_kubernetes_pod_container_name]
+            - source_labels: [__meta_kubernetes_pod_container_port_name]
               action: keep
-              regex: istio-proxy
-            - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
-              action: replace
-              regex: ([^:]+)(?::\d+)?;(\d+)
-              replacement: ${1}:15020
-              target_label: __address__
+              regex: '.*-envoy-prom'
             metric_relabel_configs:
             - source_labels: [__name__]
               action: keep
@@ -250,7 +270,7 @@ data:
 
 ## Key Receiver Configuration
 
-**OTLP Receiver** - handles trace and metric data pushed from Istio proxies:
+**OTLP Receiver** - handles trace data pushed from Istio proxies:
 
 ```yaml
 receivers:
@@ -332,9 +352,15 @@ spec:
   - port: 8889
     name: prometheus
     targetPort: 8889
+  - port: 8888
+    name: collector-metrics
+    targetPort: 8888
   - port: 13133
     name: health
     targetPort: 13133
+  - port: 55679
+    name: zpages
+    targetPort: 55679
 ```
 
 ## Monitoring the Collector Itself
@@ -371,7 +397,7 @@ otelcol_exporter_queue_capacity
 
 ## Scaling Considerations
 
-For high-traffic meshes, consider:
+For high-traffic meshes that use the gateway for pushed OTLP data, or that shard Prometheus scraping with the OpenTelemetry Target Allocator, consider:
 
 ```yaml
 apiVersion: autoscaling/v2
