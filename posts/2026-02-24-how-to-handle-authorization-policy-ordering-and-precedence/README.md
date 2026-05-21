@@ -18,15 +18,15 @@ Istio evaluates authorization policies in a strict order based on the action typ
 2. **DENY** policies are evaluated second
 3. **ALLOW** policies are evaluated last
 
-This is not configurable. You cannot change the order. It does not matter in which order you applied the policies or what their names are. The action type determines the evaluation order.
+This is not configurable. You cannot change the order. It does not matter in which order you applied the policies or what their names are. The action type determines the evaluation order. Istio also supports the **AUDIT** action, but AUDIT policies only mark matching requests for audit and do not affect whether the request is allowed or denied.
 
 ```mermaid
 flowchart TD
-    A[Request arrives] --> B{Any CUSTOM policies?}
-    B -->|Yes| C{CUSTOM allows?}
+    A[Request arrives] --> B{Any CUSTOM policy matches?}
+    B -->|Yes| C{CUSTOM evaluation allows?}
     C -->|Denied| D[403 Denied]
     C -->|Allowed| E{Any DENY policies match?}
-    B -->|No CUSTOM policies| E
+    B -->|No match| E
     E -->|Yes, DENY matches| F[403 Denied]
     E -->|No DENY matches| G{Any ALLOW policies exist?}
     G -->|No ALLOW policies| H[Request Allowed]
@@ -60,7 +60,7 @@ spec:
         namespaces:
         - "backend"
 ---
-# This DENY policy blocks DELETE requests
+# This DENY policy blocks DELETE requests on port 8080
 apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
@@ -76,9 +76,11 @@ spec:
     - operation:
         methods:
         - "DELETE"
+        ports:
+        - "8080"
 ```
 
-A DELETE request from the `backend` namespace will be denied. Even though the ALLOW policy matches, the DENY policy also matches, and DENY wins.
+A DELETE request from the `backend` namespace to port `8080` will be denied. Even though the ALLOW policy matches, the DENY policy also matches, and DENY wins.
 
 ## The "No ALLOW Policies" Default
 
@@ -216,9 +218,10 @@ spec:
   - to:
     - operation:
         methods: ["DELETE"]
+        ports: ["8080"]
 ```
 
-A request is denied if it comes from the bad IP range OR if it uses the DELETE method. Both DENY policies are independently evaluated.
+A request is denied if it comes from the bad IP range OR if it uses the DELETE method on port `8080`. Both DENY policies are independently evaluated.
 
 ## Common Mistakes
 
@@ -287,4 +290,4 @@ metadata:
     description: "Allows order-service and refund-service to access payment-service"
 ```
 
-Understanding policy ordering and precedence is essential for managing Istio authorization at scale. The rules are straightforward once you internalize them: CUSTOM beats DENY beats ALLOW, DENY always wins, and adding the first ALLOW policy flips the default from allow-all to deny-all.
+Understanding policy ordering and precedence is essential for managing Istio authorization at scale. The rules are straightforward once you internalize them: matching CUSTOM policies are checked before DENY and ALLOW, DENY always wins over ALLOW, and adding the first ALLOW policy flips the default from allow-all to deny-all.
