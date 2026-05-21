@@ -28,7 +28,7 @@ First, create an integration in PagerDuty:
 
 1. Go to your PagerDuty service (or create a new one for Istio)
 2. Navigate to the Integrations tab
-3. Add a new integration and select "Prometheus" or "Events API v2"
+3. Add a new integration and select "Events API v2"
 4. Copy the Integration Key (also called the routing key)
 
 Store this key as a Kubernetes secret:
@@ -62,18 +62,17 @@ data:
       repeat_interval: 4h
       receiver: default-receiver
       routes:
-      - match:
-          severity: critical
-        receiver: pagerduty-critical
-        continue: true
-      - match:
-          severity: warning
-          team: platform
-        receiver: pagerduty-warning
-      - match_re:
-          alertname: Istio.*
+      - matchers:
+        - alertname=~"Istio.*"
         receiver: istio-pagerduty
         group_by: ['alertname', 'destination_workload']
+      - matchers:
+        - severity="critical"
+        receiver: pagerduty-critical
+      - matchers:
+        - severity="warning"
+        - team="platform"
+        receiver: pagerduty-warning
 
     receivers:
     - name: default-receiver
@@ -81,7 +80,7 @@ data:
 
     - name: pagerduty-critical
       pagerduty_configs:
-      - service_key_file: /etc/alertmanager/secrets/integration-key
+      - routing_key_file: /etc/alertmanager/secrets/pagerduty-config/integration-key
         severity: critical
         description: '{{ template "pagerduty.description" . }}'
         details:
@@ -91,13 +90,13 @@ data:
 
     - name: pagerduty-warning
       pagerduty_configs:
-      - service_key_file: /etc/alertmanager/secrets/integration-key
+      - routing_key_file: /etc/alertmanager/secrets/pagerduty-config/integration-key
         severity: warning
         description: '{{ template "pagerduty.description" . }}'
 
     - name: istio-pagerduty
       pagerduty_configs:
-      - service_key_file: /etc/alertmanager/secrets/integration-key
+      - routing_key_file: /etc/alertmanager/secrets/pagerduty-config/integration-key
         severity: '{{ if eq (index .CommonLabels "severity") "critical" }}critical{{ else }}warning{{ end }}'
         description: '{{ .CommonAnnotations.summary }}'
         details:
@@ -153,9 +152,9 @@ spec:
     rules:
     - alert: IstioServiceDown
       expr: |
-        sum(rate(istio_requests_total{reporter="destination"}[5m])) by (destination_workload, destination_workload_namespace) == 0
-        and
         sum(rate(istio_requests_total{reporter="destination"}[5m] offset 1h)) by (destination_workload, destination_workload_namespace) > 0
+        unless
+        sum(rate(istio_requests_total{reporter="destination"}[5m])) by (destination_workload, destination_workload_namespace) > 0
       for: 5m
       labels:
         severity: critical
@@ -229,7 +228,9 @@ spec:
 
     - alert: IstioProxySyncStale
       expr: |
-        pilot_proxy_convergence_time{quantile="0.99"} > 30
+        histogram_quantile(0.99,
+          sum(rate(pilot_proxy_convergence_time_bucket[5m])) by (le)
+        ) > 30
       for: 10m
       labels:
         severity: warning
