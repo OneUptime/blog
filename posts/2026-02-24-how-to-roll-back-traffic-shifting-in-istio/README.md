@@ -10,11 +10,11 @@ Description: Learn how to quickly roll back traffic shifting in Istio when a new
 
 Things go wrong. You spent a week testing v2 in staging, did a careful canary rollout, and everything looked fine at 10% traffic. Then you bumped it to 50% and error rates spiked. Now you need to get back to v1 as fast as possible.
 
-Rolling back traffic in Istio is quick and safe because you are not redeploying anything. You are just changing routing rules. The old version is still running, still has its pods warm, and can handle 100% of traffic immediately. This is one of the huge advantages of weight-based traffic shifting - rollback is a config change, not a deployment.
+Rolling back traffic in Istio is quick and safe because you are not redeploying anything. You are just changing routing rules. If the old version is still running and sized for the load, its pods are already warm and can take traffic again. This is one of the huge advantages of weight-based traffic shifting - rollback is a config change, not a deployment.
 
 ## The Fast Rollback
 
-If you are in the middle of an incident, here is the quickest way to roll back. Apply a VirtualService that sends everything to v1:
+If you are in the middle of an incident, here is the quickest way to roll back. Assuming your DestinationRule already defines the `v1` subset for this service, apply a VirtualService that sends everything to v1:
 
 ```bash
 kubectl apply -f - <<EOF
@@ -34,7 +34,7 @@ spec:
 EOF
 ```
 
-That is it. Within seconds, Envoy proxies across your mesh pick up the new configuration and stop sending traffic to v2. No pods restart, no deployments change, no downtime.
+That is it. Within seconds, the affected Envoy proxies pick up the new configuration and stop sending traffic to v2. No pods restart and no deployments change. If v1 has enough ready endpoints, users should not see downtime from the routing change itself.
 
 You can verify the rollback took effect:
 
@@ -52,7 +52,7 @@ If v2 logs stop showing new requests, your rollback worked.
 
 ## Understanding What Happens During Rollback
 
-When you change the VirtualService weights, Istio pushes the updated configuration to all Envoy sidecars in the mesh. This propagation typically takes 1-5 seconds depending on mesh size.
+When you change the VirtualService weights, Istio pushes the updated configuration to the affected Envoy proxies. This propagation is usually quick, but the exact timing depends on mesh size and control plane load.
 
 ```mermaid
 sequenceDiagram
@@ -63,7 +63,7 @@ sequenceDiagram
     participant Service v2
     You->>Istio Control Plane: Apply VirtualService (100% to v1)
     Istio Control Plane->>Envoy Sidecars: Push new config
-    Note over Envoy Sidecars: Config update (~1-5 seconds)
+    Note over Envoy Sidecars: Config update propagates
     Envoy Sidecars->>Service v1: All new requests
     Note over Service v2: No new requests
     Note over Service v2: In-flight requests complete
@@ -285,4 +285,4 @@ Once the immediate fire is out:
 4. Update your runbook with the specific rollback steps
 5. Consider adding automated rollback triggers for future deployments
 
-Rollbacks in Istio are fast, safe, and non-disruptive. The key is being prepared: keep your v1 deployment running, store your routing configs in version control, and make sure your team knows how to apply a rollback under pressure. When things go sideways at 2 AM, a one-command rollback is exactly what you want.
+Rollbacks in Istio are fast, safe, and non-disruptive when the previous version is still available and has enough capacity. The key is being prepared: keep your v1 deployment running, store your routing configs in version control, and make sure your team knows how to apply a rollback under pressure. When things go sideways at 2 AM, a one-command rollback is exactly what you want.
