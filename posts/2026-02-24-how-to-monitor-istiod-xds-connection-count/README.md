@@ -8,33 +8,33 @@ Description: How to monitor the number of xDS connections between Envoy proxies 
 
 ---
 
-Every Envoy sidecar in your mesh maintains a persistent gRPC connection to istiod. These xDS connections are how configuration updates flow from the control plane to the data plane. If connections drop, proxies stop receiving updates. If too many connections pile up on one istiod replica, it gets overloaded. Monitoring the connection count gives you visibility into the health of the control plane to data plane communication channel.
+Every Istio proxy in your mesh needs a persistent xDS stream to receive configuration from istiod. In current Istio sidecars, Envoy connects to the local pilot-agent, and pilot-agent maintains the upstream gRPC connection to istiod. These xDS connections are how configuration updates flow from the control plane to the data plane. If connections drop, proxies stop receiving updates. If too many connections pile up on one istiod replica, it gets overloaded. Monitoring the connection count gives you visibility into the health of the control plane to data plane communication channel.
 
 ## Checking Connection Count
 
 The most direct way to see how many proxies are connected:
 
 ```bash
-kubectl exec -n istio-system deploy/istiod -- curl -s localhost:15014/metrics | grep pilot_xds
+kubectl exec -n istio-system deploy/istiod -- curl -s localhost:15014/metrics | grep '^pilot_xds{'
 ```
 
 The key metric is:
 
 ```text
-pilot_xds_connected 247
+pilot_xds{version="1.29.2"} 247
 ```
 
-This tells you that 247 Envoy proxies currently have active xDS connections to this istiod replica. If you run multiple istiod replicas, check each one to get the total.
+This tells you that 247 Istio proxies currently have active xDS connections to this istiod replica. If you run multiple istiod replicas, check each one to get the total.
 
 For a cluster-wide view:
 
 ```promql
-sum(pilot_xds_connected)
+sum(pilot_xds)
 ```
 
 ## Expected Connection Count
 
-The number of xDS connections should match the number of pods with Istio sidecars. Calculate the expected count:
+The number of xDS connections should roughly match the number of running Istio proxies, including sidecars and gateways. Calculate the expected sidecar count:
 
 ```bash
 # Count pods with the istio-proxy container
@@ -48,14 +48,14 @@ Or use Prometheus:
 count(count by (pod)(container_cpu_usage_seconds_total{container="istio-proxy"}))
 ```
 
-If the actual connection count from `pilot_xds_connected` is significantly lower than the expected count, some proxies are not connected. If it is higher, you might have stale connections that have not been cleaned up.
+If the actual connection count from `pilot_xds` is significantly lower than the expected count, some proxies are not connected. If it is higher, you might have stale connections that have not been cleaned up.
 
 ## Connection Distribution Across Replicas
 
 When running multiple istiod replicas, connections should be roughly evenly distributed. Check each replica:
 
 ```promql
-pilot_xds_connected
+pilot_xds
 ```
 
 This shows the count per istiod pod. If one replica has 500 connections and another has 50, the distribution is uneven. This happens when:
@@ -78,41 +78,42 @@ Or configure istiod to periodically terminate long-lived connections:
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
-  meshConfig:
-    defaultConfig:
-      proxyMetadata:
-        XDS_STREAM_TIMEOUT: "3600s"
+  values:
+    pilot:
+      keepaliveMaxServerConnectionAge: 3600s
 ```
 
-Setting `XDS_STREAM_TIMEOUT` causes the proxy to reconnect after the specified duration, helping distribute connections more evenly over time.
+Setting `values.pilot.keepaliveMaxServerConnectionAge` configures istiod's maximum gRPC server connection age, causing clients to reconnect after the specified duration and helping distribute connections more evenly over time.
 
 ## Monitoring Connection Lifecycle
 
 ### New Connections
 
 ```promql
-sum(rate(pilot_xds_connection_terminations[5m]))
+deriv(pilot_xds[5m])
 ```
 
-Wait, that is terminations. For new connections, look at the connection count changes:
+For new connections, look at the connection count changes:
 
 ```promql
-deriv(pilot_xds_connected[5m])
+deriv(pilot_xds[5m])
 ```
 
 A positive derivative means connections are increasing (new proxies joining). A negative derivative means connections are dropping (proxies leaving or disconnecting).
 
 ### Connection Terminations
 
+Istiod does not expose a `pilot_xds_connection_terminations` metric. If you scrape istio-agent metrics from proxies, use the agent-side istiod connection termination counter:
+
 ```promql
-sum(rate(pilot_xds_connection_terminations[5m]))
+sum(rate(istiod_connection_terminations[5m]))
 ```
 
 Some terminations are normal (pod deletion, rolling updates). But a high termination rate without corresponding pod changes indicates problems:
 
 ```promql
 # Alert on unexpected disconnections
-sum(rate(pilot_xds_connection_terminations[5m])) > 5
+sum(rate(istiod_connection_terminations[5m])) > 5
 ```
 
 ## Setting Up Alerts
@@ -133,8 +134,8 @@ spec:
     rules:
     - alert: IstiodXDSConnectionDrop
       expr: |
-        (sum(pilot_xds_connected offset 10m) - sum(pilot_xds_connected))
-        / sum(pilot_xds_connected offset 10m) > 0.2
+        (sum(pilot_xds offset 10m) - sum(pilot_xds))
+        / sum(pilot_xds offset 10m) > 0.2
       for: 5m
       labels:
         severity: warning
@@ -146,7 +147,7 @@ spec:
 
 ```yaml
     - alert: IstiodNoXDSConnections
-      expr: sum(pilot_xds_connected) == 0
+      expr: sum(pilot_xds) == 0
       for: 2m
       labels:
         severity: critical
@@ -159,7 +160,7 @@ spec:
 ```yaml
     - alert: IstiodXDSConnectionImbalance
       expr: |
-        max(pilot_xds_connected) / min(pilot_xds_connected) > 3
+        max(pilot_xds) / min(pilot_xds) > 3
       for: 30m
       labels:
         severity: warning
@@ -171,7 +172,7 @@ spec:
 
 ```yaml
     - alert: IstiodHighDisconnectionRate
-      expr: sum(rate(pilot_xds_connection_terminations[5m])) > 10
+      expr: sum(rate(istiod_connection_terminations[5m])) > 10
       for: 5m
       labels:
         severity: warning
@@ -185,27 +186,27 @@ Key panels for monitoring xDS connections:
 
 **Total Connected Proxies (Single Stat)**:
 ```promql
-sum(pilot_xds_connected)
+sum(pilot_xds)
 ```
 
 **Connections Per Replica (Time Series)**:
 ```promql
-pilot_xds_connected
+pilot_xds
 ```
 
 **Connection Rate of Change (Time Series)**:
 ```promql
-deriv(sum(pilot_xds_connected)[5m:])
+deriv(sum(pilot_xds)[5m:])
 ```
 
 **Disconnection Rate (Time Series)**:
 ```promql
-sum(rate(pilot_xds_connection_terminations[5m]))
+sum(rate(istiod_connection_terminations[5m]))
 ```
 
 **Connection Distribution (Pie Chart)**:
 ```promql
-pilot_xds_connected
+pilot_xds
 ```
 
 ## Debugging Connection Issues
@@ -214,7 +215,7 @@ pilot_xds_connected
 
 If the connection count is lower than expected:
 
-1. Check if istiod is reachable:
+1. Check the proxy's local xDS cluster:
 
 ```bash
 kubectl exec my-pod -c istio-proxy -- curl -s localhost:15000/clusters | grep xds-grpc
