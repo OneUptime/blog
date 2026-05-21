@@ -48,7 +48,7 @@ The `spec` section of a PeerAuthentication policy has three optional fields:
 
 1. **selector** - A label selector that targets specific workloads. If omitted, the policy applies to all workloads in the namespace.
 2. **mtls** - The mTLS settings for the policy. Contains a single `mode` field.
-3. **portLevelMtls** - Per-port mTLS overrides, useful when a single workload needs different mTLS modes on different ports.
+3. **portLevelMtls** - Per-port mTLS overrides, useful when a single workload needs different mTLS modes on different ports. These overrides only apply when you use a workload selector, and the port number is the workload's port, not the Kubernetes Service port.
 
 Here is an example with all three:
 
@@ -156,10 +156,11 @@ istioctl x describe pod <pod-name> -n default
 
 This shows whether a pod is receiving mTLS traffic and which PeerAuthentication policies apply to it.
 
-You can also check the authentication policy for a specific service:
+You can also inspect the Envoy cluster configuration for a specific service from a source pod:
 
 ```bash
-istioctl authn tls-check <pod-name> my-service.default.svc.cluster.local
+istioctl proxy-config clusters <pod-name> -n default \
+  --fqdn my-service.default.svc.cluster.local
 ```
 
 ## Common Mistakes
