@@ -79,19 +79,19 @@ kubectl rollout restart deployment/my-service
 
 ## Step 3: Verify Backend Connectivity
 
-The sidecar needs to reach the tracing backend. Test connectivity:
+The sidecar needs to reach the tracing backend. Test connectivity from a container in the workload pod that has `curl` or `nc` installed:
 
 ```bash
 # For Zipkin backend
-kubectl exec deploy/my-service -c istio-proxy -- \
+kubectl exec deploy/my-service -c my-service -- \
   curl -s -o /dev/null -w "%{http_code}" http://zipkin.observability:9411/health
 
-# For Jaeger backend
-kubectl exec deploy/my-service -c istio-proxy -- \
-  curl -s -o /dev/null -w "%{http_code}" http://jaeger-collector.observability:9411/
+# For Jaeger backend using Istio's OpenTelemetry provider over OTLP/gRPC
+kubectl exec deploy/my-service -c my-service -- \
+  nc -vz jaeger-collector.observability 4317
 
-# For OpenTelemetry Collector
-kubectl exec deploy/my-service -c istio-proxy -- \
+# For OpenTelemetry Collector using OTLP/HTTP
+kubectl exec deploy/my-service -c my-service -- \
   curl -s -o /dev/null -w "%{http_code}" http://otel-collector.observability:4318/v1/traces
 ```
 
@@ -110,7 +110,7 @@ kubectl get networkpolicy -A
 
 ## Step 4: Check the Sampling Rate
 
-A sampling rate of 0 means no traces get collected. This is a surprisingly common issue when the default config is left at 0:
+A sampling rate of 0 means no traces get collected unless an incoming request already contains a sampling decision. This is a surprisingly common issue because Telemetry API tracing defaults to 0% when no sampling decision has already been made:
 
 ```bash
 # Check effective sampling rate from the proxy
@@ -132,7 +132,7 @@ spec:
       randomSamplingPercentage: 100
 ```
 
-Or force-trace a specific request:
+Or force-trace a specific request when using B3 propagation:
 
 ```bash
 kubectl exec deploy/sleep -- curl -H "X-B3-Sampled: 1" -s http://my-service:8080/api/test
@@ -166,7 +166,7 @@ kubectl exec deploy/sleep -- curl -s \
   http://httpbin:8000/headers
 ```
 
-Check if the B3 headers appear in the output. They should - Envoy adds them. But if your service sits between sleep and httpbin, the headers should also pass through your service.
+Check if the B3 headers appear in the output. When using B3 propagation, they should - Envoy adds them. But if your service sits between sleep and httpbin, the headers should also pass through your service.
 
 ## Step 6: Verify the Sidecar Is Injected
 
@@ -195,15 +195,15 @@ kubectl rollout restart deployment -n my-namespace
 Envoy keeps statistics about tracing:
 
 ```bash
-kubectl exec deploy/my-service -c istio-proxy -- \
+kubectl exec deploy/my-service -c my-service -- \
   curl -s localhost:15000/stats | grep tracing
 ```
 
 Look for:
 
-- `tracing.random_sampling` - Number of randomly sampled requests
-- `tracing.not_traceable` - Requests skipped for tracing
-- `tracing.health_check` - Health check requests (not traced)
+- `http.<stat_prefix>.tracing.random_sampling` - Number of randomly sampled requests
+- `http.<stat_prefix>.tracing.not_traceable` - Requests skipped for tracing
+- `http.<stat_prefix>.tracing.health_check` - Health check requests (not traced)
 
 If `random_sampling` is 0 but you're sending traffic, sampling might be disabled.
 
@@ -238,7 +238,7 @@ Check which format is configured:
 kubectl get configmap istio -n istio-system -o yaml | grep -A5 extensionProviders
 ```
 
-If you're using the `zipkin` provider, Envoy generates B3 headers. If you're using `opentelemetry`, Envoy generates W3C `traceparent` headers. Your application's propagation code needs to match.
+If you're using the `zipkin` provider, Envoy uses B3 headers by default, unless `traceContextOption` is configured for B3 and W3C propagation. If you're using `opentelemetry`, make sure your application forwards W3C `traceparent` and `tracestate` headers. Your application's propagation code needs to match.
 
 ## Step 10: Enable Debug Logging
 
@@ -279,7 +279,7 @@ kubectl get telemetry -n istio-system -o yaml | grep randomSamplingPercentage
 kubectl get pod -l app=my-service -o jsonpath='{.items[0].spec.containers[*].name}'
 
 # 6. Backend reachable?
-kubectl exec deploy/my-service -c istio-proxy -- curl -s http://zipkin.observability:9411/health
+kubectl exec deploy/my-service -c my-service -- curl -s http://zipkin.observability:9411/health
 
 # 7. Backend receiving spans?
 kubectl logs deploy/zipkin -n observability --tail=5
