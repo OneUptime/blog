@@ -32,7 +32,7 @@ Steps 3-5 are where the delay happens. The time depends on:
 Smaller configurations load faster. Use Sidecar resources to limit what the proxy receives:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: fast-start-sidecar
@@ -82,9 +82,9 @@ spec:
 
 This reorders the container startup so that the sidecar starts first and the application container waits until the proxy is ready.
 
-## Use the Native Sidecar Container (Kubernetes 1.28+)
+## Use the Native Sidecar Container (Kubernetes 1.29+)
 
-Kubernetes 1.28 introduced native sidecar containers using the `restartPolicy: Always` field on init containers. Istio supports this:
+Kubernetes 1.28 introduced native sidecar containers as an alpha feature using the `restartPolicy: Always` field on init containers. The feature is enabled by default starting in Kubernetes 1.29, and Istio supports it:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -116,11 +116,11 @@ spec:
       - kube-system
 ```
 
-With the CNI plugin, pods do not need an init container at all. This removes one step from the startup sequence and slightly reduces startup time.
+With the CNI plugin, pods do not need the privileged `istio-init` traffic redirection container. Istio may still inject an `istio-validation` init container to detect CNI race conditions, but this removes the iptables setup step from the pod startup path and slightly reduces startup time.
 
-## Pre-warm Envoy Configuration
+## Gate Readiness During Startup
 
-If you know what services your pod will call, you can pre-warm the connections at startup. Add a startup probe that verifies the proxy is ready:
+If your application needs extra time to initialize before serving traffic, add a readiness probe for the application. Istio also configures readiness for the proxy, and Kubernetes only marks the pod ready when all containers are ready:
 
 ```yaml
 apiVersion: apps/v1
@@ -132,17 +132,17 @@ spec:
     spec:
       containers:
       - name: my-app
-        startupProbe:
+        readinessProbe:
           httpGet:
             path: /healthz
             port: 8080
-          failureThreshold: 30
+          failureThreshold: 3
           periodSeconds: 1
       - name: istio-proxy
-        # Proxy startup probe is automatically configured by Istio
+        # Proxy readiness is automatically configured by Istio
 ```
 
-The application's startup probe gives the sidecar time to become ready before Kubernetes considers the pod ready.
+The application's readiness probe prevents Kubernetes from routing Service traffic to the pod until both the application and the sidecar are ready.
 
 ## Tune istiod for Faster Initial Config Delivery
 
@@ -167,9 +167,9 @@ spec:
 
 Multiple istiod replicas distribute the connection load. During cluster-wide restarts or large scaling events, a single istiod instance might get overwhelmed with initial connection requests.
 
-## Optimize Envoy Bootstrap
+## Reduce Extra Envoy Stats
 
-Envoy's bootstrap configuration affects startup time. You can configure the readiness delay:
+Envoy's bootstrap configuration affects startup cost. Istio already records a reduced default set of Envoy stats, so avoid enabling broad custom stats. If you need extra Envoy stats, match only the names you actually use:
 
 ```yaml
 apiVersion: apps/v1
@@ -182,11 +182,11 @@ spec:
       annotations:
         proxy.istio.io/config: |
           proxyStatsMatcher:
-            inclusionPrefixes:
-            - "cluster.outbound"
+            inclusionSuffixes:
+            - "upstream_rq_timeout"
 ```
 
-Reducing the amount of stats Envoy collects at startup slightly speeds up initialization.
+Keeping the custom stats matcher narrow reduces the amount of additional stats Envoy creates.
 
 ## Measure Startup Time
 
@@ -201,7 +201,7 @@ kubectl describe pod my-pod -n my-namespace | grep -A5 "istio-proxy"
 kubectl get events -n my-namespace --field-selector involvedObject.name=my-pod
 
 # Check Envoy startup metrics
-kubectl exec my-pod -c istio-proxy -- curl -s localhost:15000/stats | grep "server.initialization_time_ms"
+kubectl exec my-pod -c istio-proxy -- pilot-agent request GET stats | grep "server.initialization_time_ms"
 ```
 
 The `server.initialization_time_ms` stat tells you exactly how long Envoy took to initialize.
@@ -210,10 +210,10 @@ You can also monitor aggregate startup times through Prometheus:
 
 ```text
 # Average proxy startup time across all pods
-avg(envoy_server_initialization_time_ms)
+sum(envoy_server_initialization_time_ms_sum) / sum(envoy_server_initialization_time_ms_count)
 
-# p99 proxy startup time
-histogram_quantile(0.99, sum(rate(envoy_server_initialization_time_ms_bucket[1h])) by (le))
+# Per-proxy p99 startup time reported by Envoy
+envoy_server_initialization_time_ms{quantile="0.99"}
 ```
 
 ## Handling Batch Jobs and CronJobs
