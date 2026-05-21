@@ -73,14 +73,14 @@ curl -XPOST "localhost:15000/logging?level=debug"
 curl -XPOST "localhost:15000/logging?connection=debug"
 
 # View current levels
-curl -s "localhost:15000/logging"
+curl -s -XPOST "localhost:15000/logging"
 ```
 
 Or without port-forwarding, use kubectl exec:
 
 ```bash
 kubectl exec my-pod -n my-namespace -c istio-proxy -- \
-  curl -s -XPOST "localhost:15000/logging?level=debug"
+  pilot-agent request POST "logging?level=debug"
 ```
 
 ## Setting Debug Level at Pod Startup
@@ -197,13 +197,13 @@ Envoy debug logs are pretty dense. Here's what a typical debug output looks like
 kubectl logs my-pod -n my-namespace -c istio-proxy -f
 
 # Filter for just connection events
-kubectl logs my-pod -n my-namespace -c istio-proxy | grep "\[C\["
+kubectl logs my-pod -n my-namespace -c istio-proxy | grep "\[C[0-9]"
 
 # Filter for HTTP events
-kubectl logs my-pod -n my-namespace -c istio-proxy | grep "\[C\[" | grep "request\|response"
+kubectl logs my-pod -n my-namespace -c istio-proxy | grep "\[C[0-9]" | grep "request\|response"
 ```
 
-Envoy uses bracketed identifiers like `[C[123]]` for connections and `[S[456]]` for streams. You can trace a single request by following its connection and stream IDs through the log.
+Envoy uses bracketed identifiers like `[C123]` for connections and `[C123][S456]` for streams. You can trace a single request by following its connection and stream IDs through the log.
 
 ## Log Volume Considerations
 
