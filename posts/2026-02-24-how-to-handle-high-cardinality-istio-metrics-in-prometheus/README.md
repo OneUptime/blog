@@ -8,18 +8,23 @@ Description: Strategies for identifying and reducing high-cardinality Istio metr
 
 ---
 
-High cardinality is the number one performance killer for Prometheus in Istio environments. Every unique combination of label values creates a separate time series. With Istio, you get labels for source service, destination service, response code, namespace, pod name, and more. In a mesh with 100 services, the cross-product of all these labels creates millions of time series.
+High cardinality is the number one performance killer for Prometheus in Istio environments. Every unique combination of label values creates a separate time series. With Istio, you get labels for source workload, destination service, response code, namespace, app, version, and more. In a mesh with 100 services, the cross-product of all these labels creates millions of time series.
 
 If you have noticed Prometheus using too much memory, queries taking forever, or scrapes timing out, cardinality is probably the cause.
 
 ## Understanding the Problem
 
-A single Istio metric like `istio_requests_total` has these labels:
+A single Istio metric like `istio_requests_total` commonly includes labels such as:
 
+- `reporter`
 - `source_workload`
 - `source_workload_namespace`
+- `source_app`
+- `source_version`
 - `destination_workload`
 - `destination_workload_namespace`
+- `destination_app`
+- `destination_version`
 - `destination_service`
 - `destination_service_name`
 - `destination_service_namespace`
@@ -30,7 +35,9 @@ A single Istio metric like `istio_requests_total` has these labels:
 - `destination_principal`
 - `request_protocol`
 - `source_canonical_service`
+- `source_canonical_revision`
 - `destination_canonical_service`
+- `destination_canonical_revision`
 
 With 100 source services, 100 destination services, 10 response codes, and other label variations, the math gets ugly fast:
 
@@ -89,7 +96,7 @@ metric_relabel_configs:
   action: labeldrop
 ```
 
-Each dropped label can reduce cardinality by an order of magnitude.
+Each dropped label can reduce cardinality substantially when that label has many unique values.
 
 ## Strategy 2: Configure Istio to Generate Fewer Labels
 
@@ -136,29 +143,27 @@ This is better than dropping labels in Prometheus because the labels are never g
 
 ## Strategy 3: Aggregate Response Codes
 
-Instead of tracking every individual HTTP status code, group them into classes:
+Instead of graphing every individual HTTP status code, group them into classes in a recording rule:
 
 ```yaml
-metric_relabel_configs:
-- source_labels: [response_code]
-  regex: '2..'
-  target_label: response_code
-  replacement: '2xx'
-- source_labels: [response_code]
-  regex: '3..'
-  target_label: response_code
-  replacement: '3xx'
-- source_labels: [response_code]
-  regex: '4..'
-  target_label: response_code
-  replacement: '4xx'
-- source_labels: [response_code]
-  regex: '5..'
-  target_label: response_code
-  replacement: '5xx'
+groups:
+- name: istio-response-classes
+  interval: 30s
+  rules:
+  - record: istio:service_requests_by_response_class:rate5m
+    expr: |
+      sum by (destination_service, response_code_class) (
+        label_replace(
+          rate(istio_requests_total{response_code=~"[1-5].."}[5m]),
+          "response_code_class",
+          "$1xx",
+          "response_code",
+          "([1-5]).."
+        )
+      )
 ```
 
-This collapses dozens of response code values into 4-5 classes, significantly reducing cardinality.
+This collapses individual response code values into five classes for dashboards and alerts. Avoid doing this with `metric_relabel_configs`: relabeling does not aggregate samples, and replacing `200`, `201`, and `204` with the same `2xx` label can create duplicate label sets for the same metric.
 
 ## Strategy 4: Use Recording Rules for Pre-Aggregation
 
@@ -190,19 +195,21 @@ Use these recorded metrics in your dashboards and alerts instead of the raw high
 
 Histogram metrics are the biggest cardinality contributors because each bucket is a separate time series. Istio's `istio_request_duration_milliseconds` has many default buckets.
 
-You can customize the buckets at the Envoy level:
+You can customize the buckets per pod with the Istio proxy annotation:
 
 ```yaml
-apiVersion: install.istio.io/v1alpha1
-kind: IstioOperator
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment-service
 spec:
-  meshConfig:
-    defaultConfig:
-      proxyMetadata:
-        ISTIO_METAJSON_STATS_HISTOGRAM_BUCKETS: '{"istio_request_duration_milliseconds":{"buckets":[1,5,10,50,100,500,1000,5000]}}'
+  template:
+    metadata:
+      annotations:
+        sidecar.istio.io/statsHistogramBuckets: '{"istio_request_duration_milliseconds":[1,5,10,50,100,500,1000,5000]}'
 ```
 
-Reducing from the default 20+ buckets to 8 cuts histogram cardinality by more than half.
+Reducing from the default 19 buckets to 8 cuts histogram cardinality by more than half for the affected workloads.
 
 ## Strategy 6: Scope Metrics to Specific Workloads
 
@@ -281,9 +288,9 @@ Graph this over time to see if cardinality is growing steadily (new services bei
 
 If you need to reduce cardinality right now:
 
-1. Drop `source_principal` and `destination_principal` labels (saves 2x cardinality)
+1. Drop `source_principal` and `destination_principal` labels when you do not use them
 2. Drop `connection_security_policy` and `response_flags` labels
-3. Aggregate response codes into classes
+3. Use recording rules to aggregate response codes into classes for dashboards
 4. Increase scrape interval from 15s to 30s (does not reduce cardinality but reduces load)
 5. Use the Telemetry API to disable histogram metrics for non-critical namespaces
 
