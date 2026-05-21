@@ -58,7 +58,7 @@ Port 9042 (the CQL client port) still goes through Istio, so you get mTLS and ob
 If you want replication traffic to flow through the mesh but need to tune how Istio handles it, DestinationRules are your friend:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: cassandra-replication
@@ -70,6 +70,7 @@ spec:
       tcp:
         maxConnections: 500
         connectTimeout: 30s
+        idleTimeout: 0s
         tcpKeepalive:
           time: 300s
           interval: 60s
@@ -83,13 +84,14 @@ spec:
         tcp:
           maxConnections: 100
           connectTimeout: 10s
+          idleTimeout: 0s
 ```
 
-The key settings here are the TCP keepalive configuration and the connection pool limits. Storage replication often holds connections open for extended periods, and without proper keepalive settings, Envoy might close them prematurely.
+The key settings here are the TCP idle timeout, TCP keepalive configuration, and the connection pool limits. Storage replication often holds connections open for extended periods, so set `idleTimeout` to a value that matches your storage system's behavior, or `0s` to disable Envoy's TCP idle timeout for that traffic. Keepalive helps detect dead peers and keep stateful network devices from silently dropping idle connections.
 
 ## Handling Large Data Transfers
 
-Replication often involves transferring large chunks of data, especially during initial sync or recovery operations. Envoy has buffer limits that can cause issues with these transfers. You can adjust them using an EnvoyFilter:
+Replication often involves transferring large chunks of data, especially during initial sync or recovery operations. Envoy's per-connection buffer limit is a soft limit on buffered bytes, not a maximum transfer size, so raise it only if you have measured backpressure or connection problems caused by the default. You can adjust it using an EnvoyFilter:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -108,7 +110,7 @@ spec:
     patch:
       operation: MERGE
       value:
-        per_connection_buffer_limit_bytes: 32768
+        per_connection_buffer_limit_bytes: 4194304
 ```
 
 ## Setting Up a Dedicated ServiceEntry for External Replication
@@ -116,7 +118,7 @@ spec:
 If your storage replication spans clusters or reaches external nodes, you need ServiceEntry resources:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-cassandra-nodes
@@ -135,14 +137,14 @@ spec:
   location: MESH_EXTERNAL
 ```
 
-This tells Istio about the external replication endpoints so traffic can flow properly. Without this, outbound connections to external replication peers get blocked or misrouted by the mesh.
+This tells Istio about the external replication endpoints so traffic can flow properly. Without this, outbound connections to external replication peers can be blocked when the mesh uses `REGISTRY_ONLY` outbound traffic policy, and even in `ALLOW_ANY` mode Istio will not have service-aware configuration for those endpoints.
 
 ## PeerAuthentication for Storage Namespaces
 
 If you're running strict mTLS across your cluster, storage replication ports might need special treatment:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: storage-mtls
@@ -171,12 +173,12 @@ Even if you bypass the sidecar for replication traffic, you can still monitor it
 
 kubectl exec -n istio-system deploy/prometheus -- \
   promtool query instant http://localhost:9090 \
-  'istio_tcp_connections_opened_total{destination_service="cassandra.storage.svc.cluster.local",destination_port="7000"}'
+  'istio_tcp_connections_opened_total{destination_service="cassandra.storage.svc.cluster.local"}'
 
-# Monitor bytes transferred on replication ports
+# Monitor bytes transferred for the Cassandra service
 kubectl exec -n istio-system deploy/prometheus -- \
   promtool query instant http://localhost:9090 \
-  'istio_tcp_sent_bytes_total{destination_port="7000"}'
+  'istio_tcp_sent_bytes_total{destination_service_name="cassandra",destination_service_namespace="storage"}'
 ```
 
 ## Network Policies to Complement Istio
@@ -232,7 +234,7 @@ annotations:
 Sometimes the best approach is to not mesh your storage pods at all. If you're running a storage system that handles its own encryption, authentication, and is only accessed by internal services, the mesh adds overhead without much benefit. You can exclude entire pods:
 
 ```yaml
-annotations:
+labels:
   sidecar.istio.io/inject: "false"
 ```
 
