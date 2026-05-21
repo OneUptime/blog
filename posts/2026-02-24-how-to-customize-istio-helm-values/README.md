@@ -36,31 +36,30 @@ The most important customization for production is setting appropriate resource 
 
 ```yaml
 # istiod-values.yaml
-pilot:
-  resources:
-    requests:
-      cpu: 500m
-      memory: 2Gi
-    limits:
-      cpu: "2"
-      memory: 4Gi
+resources:
+  requests:
+    cpu: 500m
+    memory: 2Gi
+  limits:
+    cpu: "2"
+    memory: 4Gi
 
-  # Run multiple replicas for HA
-  replicaCount: 2
+# Run multiple replicas for HA when autoscaling is disabled
+replicaCount: 2
 
-  # Enable autoscaling
-  autoscaleEnabled: true
-  autoscaleMin: 2
-  autoscaleMax: 5
-  autoscaleBehavior:
-    scaleDown:
-      stabilizationWindowSeconds: 300
-    scaleUp:
-      stabilizationWindowSeconds: 60
+# Enable autoscaling
+autoscaleEnabled: true
+autoscaleMin: 2
+autoscaleMax: 5
+autoscaleBehavior:
+  scaleDown:
+    stabilizationWindowSeconds: 300
+  scaleUp:
+    stabilizationWindowSeconds: 60
 
-  # CPU target for HPA
-  cpu:
-    targetAverageUtilization: 80
+# CPU target for HPA
+cpu:
+  targetAverageUtilization: 80
 ```
 
 The resource requirements depend on your cluster size. As a rough guide:
@@ -94,8 +93,8 @@ global:
             - -c
             - "sleep 5"
 
-    # Concurrency (0 = auto-detect based on CPU limits)
-    concurrency: 0
+    # Concurrency is auto-detected when unset; set a positive value only when needed
+    concurrency: 2
 
     # Privileged mode (avoid in production)
     privileged: false
@@ -103,15 +102,6 @@ global:
     # Log level
     logLevel: warning
     componentLogLevel: "misc:error"
-
-  proxy_init:
-    resources:
-      requests:
-        cpu: 10m
-        memory: 10Mi
-      limits:
-        cpu: 100m
-        memory: 50Mi
 ```
 
 The `holdApplicationUntilProxyStarts` setting is important for production. It prevents your application container from starting before the sidecar is ready, which avoids startup race conditions.
@@ -170,6 +160,10 @@ service:
     service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
     service.beta.kubernetes.io/aws-load-balancer-backend-protocol: tcp
   ports:
+    - name: status-port
+      port: 15021
+      protocol: TCP
+      targetPort: 15021
     - name: http2
       port: 80
       protocol: TCP
@@ -225,8 +219,10 @@ sidecarInjectorWebhook:
     prometheus.io/port: "15020"
     prometheus.io/path: "/stats/prometheus"
 
+global:
   # Default injection policy
-  defaultInjectionPolicy: enabled
+  proxy:
+    autoInject: enabled
 ```
 
 ## Security Settings
@@ -236,20 +232,21 @@ Harden the installation:
 ```yaml
 global:
   # Use distroless images (smaller attack surface)
-  tag: "1.24.0-distroless"
+  tag: "1.24.0"
+  variant: distroless
 
   # Pilot security settings
   pilotCertProvider: istiod
 
 meshConfig:
-  # Enable strict mTLS
+  # Enable auto mTLS
   enableAutoMtls: true
 
   # Trust domain
   trustDomain: cluster.local
 
-  # Certificate TTL
-  certificates: []
+  # Additional root certificates for workload-to-workload communication
+  caCertificates: []
 ```
 
 ## Monitoring Integration
@@ -260,15 +257,9 @@ Configure Prometheus scraping and monitoring:
 meshConfig:
   enablePrometheusMerge: true
 
-pilot:
-  env:
-    # Enable monitoring
-    ENABLE_LEGACY_FSGROUP_INJECTION: "false"
-
-global:
-  proxy:
-    # Enable Prometheus metrics
-    enableCoreDump: false
+env:
+  # Disable legacy fsGroup injection for newer Kubernetes versions
+  ENABLE_LEGACY_FSGROUP_INJECTION: "false"
 ```
 
 ## Environment-Specific Values
@@ -277,13 +268,12 @@ Use different values files for different environments:
 
 ```yaml
 # values-development.yaml
-pilot:
-  replicaCount: 1
-  autoscaleEnabled: false
-  resources:
-    requests:
-      cpu: 100m
-      memory: 256Mi
+replicaCount: 1
+autoscaleEnabled: false
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
 
 global:
   proxy:
@@ -301,18 +291,17 @@ meshConfig:
 
 ```yaml
 # values-production.yaml
-pilot:
-  replicaCount: 3
-  autoscaleEnabled: true
-  autoscaleMin: 3
-  autoscaleMax: 7
-  resources:
-    requests:
-      cpu: "1"
-      memory: 2Gi
-    limits:
-      cpu: "2"
-      memory: 4Gi
+replicaCount: 3
+autoscaleEnabled: true
+autoscaleMin: 3
+autoscaleMax: 7
+resources:
+  requests:
+    cpu: "1"
+    memory: 2Gi
+  limits:
+    cpu: "2"
+    memory: 4Gi
 
 global:
   proxy:
@@ -347,7 +336,7 @@ For quick one-off changes, use `--set`:
 # Change a single value
 helm upgrade istiod istio/istiod \
   -n istio-system \
-  --set pilot.replicaCount=3 \
+  --set replicaCount=3 \
   --reuse-values
 
 # Set nested values
