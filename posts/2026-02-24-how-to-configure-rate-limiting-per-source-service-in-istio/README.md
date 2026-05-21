@@ -18,19 +18,19 @@ With per-source limits, you can give the checkout service 500 requests per minut
 
 ## How Source Identity Works in Istio
 
-When mTLS is enabled (which is the default in Istio), every request between services carries a client certificate. This certificate contains the service account identity in the SPIFFE format:
+Istio automatically configures sidecars to use mTLS when calling other mesh workloads, while destination workloads default to `PERMISSIVE` mode unless you configure `STRICT` mTLS with a `PeerAuthentication` policy. When a request uses mTLS, the client certificate contains the service account identity in the SPIFFE format:
 
 ```text
 spiffe://cluster.local/ns/default/sa/checkout-service
 ```
 
-Envoy has access to this identity through the `x-forwarded-client-cert` (XFCC) header and through filter metadata. You can use this to build rate limit descriptors.
+Envoy can expose this identity through the `x-forwarded-client-cert` (XFCC) header when the HTTP connection manager is configured to forward the URI SAN, or through connection attributes such as `connection.uri_san_peer_certificate`. You can use this to build rate limit descriptors.
 
-## Using Local Rate Limiting with Source Headers
+## Preparing Source Headers
 
-For a simpler approach without an external rate limit service, you can use local rate limiting with source-specific headers. First, your source services need to identify themselves. Envoy automatically sets the `x-forwarded-client-cert` header, but extracting the service identity from it for rate limiting requires some work.
+Before either local or global rate limiting can use source-specific descriptors, the destination proxy needs a stable value for the caller identity. First, your source services need to identify themselves. Istio configures Envoy to populate the `x-forwarded-client-cert` header for mesh mTLS traffic, but extracting the service identity from it for rate limiting requires some work.
 
-A more practical approach is to use Istio's ability to set custom headers based on source identity. Apply an EnvoyFilter on the destination service:
+A practical approach is to use a Lua filter to set a custom header based on the source identity. Apply an EnvoyFilter on the destination service:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -58,19 +58,20 @@ spec:
         name: envoy.filters.http.lua
         typed_config:
           "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-          inline_code: |
-            function envoy_on_request(request_handle)
-              local xfcc = request_handle:headers():get("x-forwarded-client-cert")
-              if xfcc then
-                local uri = string.match(xfcc, "URI=([^;,]+)")
-                if uri then
-                  local sa = string.match(uri, "/sa/(.+)$")
-                  if sa then
-                    request_handle:headers():add("x-source-service", sa)
+          default_source_code:
+            inline_string: |
+              function envoy_on_request(request_handle)
+                local xfcc = request_handle:headers():get("x-forwarded-client-cert")
+                if xfcc then
+                  local uri = string.match(xfcc, "URI=([^;,]+)")
+                  if uri then
+                    local sa = string.match(uri, "/sa/(.+)$")
+                    if sa then
+                      request_handle:headers():replace("x-source-service", sa)
+                    end
                   end
                 end
               end
-            end
 ```
 
 This Lua filter extracts the service account name from the XFCC header and puts it in a simpler `x-source-service` header.
@@ -148,29 +149,9 @@ spec:
           rate_limit_service:
             grpc_service:
               envoy_grpc:
-                cluster_name: rate_limit_cluster
+                cluster_name: outbound|8081||ratelimit.rate-limit.svc.cluster.local
+                authority: ratelimit.rate-limit.svc.cluster.local
             transport_api_version: V3
-  - applyTo: CLUSTER
-    match:
-      context: SIDECAR_INBOUND
-    patch:
-      operation: ADD
-      value:
-        name: rate_limit_cluster
-        type: STRICT_DNS
-        connect_timeout: 0.5s
-        lb_policy: ROUND_ROBIN
-        protocol_selection: USE_CONFIGURED_PROTOCOL
-        http2_protocol_options: {}
-        load_assignment:
-          cluster_name: rate_limit_cluster
-          endpoints:
-          - lb_endpoints:
-            - endpoint:
-                address:
-                  socket_address:
-                    address: ratelimit.rate-limit.svc.cluster.local
-                    port_value: 8081
 ```
 
 ## Adding Rate Limit Actions with Source Header
@@ -212,15 +193,15 @@ kubectl apply -f ratelimit-source-filter.yaml
 kubectl apply -f ratelimit-source-actions.yaml
 ```
 
-## Alternative: Using Peer Metadata
+## Alternative: Using Connection Attributes
 
-Instead of the Lua filter approach, you can use Envoy's built-in metadata. Istio populates peer metadata that includes the source service identity. Use a metadata-based descriptor:
+Instead of the Lua filter approach, you can use Envoy's computed descriptor extension with the documented downstream TLS connection attributes. This uses the full SPIFFE URI as the descriptor value, so the rate limit service descriptors must use full SPIFFE values instead of just service account names:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
 kind: EnvoyFilter
 metadata:
-  name: ratelimit-peer-actions
+  name: ratelimit-connection-actions
   namespace: default
 spec:
   workloadSelector:
@@ -240,15 +221,15 @@ spec:
       value:
         rate_limits:
         - actions:
-          - metadata:
-              metadata_key:
-                key: envoy.filters.http.rbac
-                path:
-                - key: source.principal
-              descriptor_key: source_service
+          - extension:
+              name: envoy.rate_limit_descriptors.expr
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.rate_limit_descriptors.expr.v3.Descriptor
+                descriptor_key: source_service
+                text: connection.uri_san_peer_certificate
 ```
 
-This extracts the source principal directly from the connection metadata, avoiding the need for a Lua filter.
+This extracts the URI SAN directly from the downstream mTLS connection, avoiding the need for a Lua filter.
 
 ## Combining Source and Path Limits
 
@@ -269,6 +250,19 @@ descriptors:
     rate_limit:
       unit: minute
       requests_per_unit: 50
+```
+
+Then send both descriptor entries from the route configuration:
+
+```yaml
+rate_limits:
+- actions:
+  - request_headers:
+      header_name: x-source-service
+      descriptor_key: source_service
+  - request_headers:
+      header_name: ":path"
+      descriptor_key: path
 ```
 
 This limits the reporting service to only 10 requests per minute on the transactions endpoint while allowing 50 per minute on other endpoints.
@@ -311,4 +305,4 @@ kubectl exec -n rate-limit deploy/redis -- redis-cli keys "*source_service*"
 
 ## Summary
 
-Per-source-service rate limiting in Istio protects downstream services from noisy upstream consumers. You extract the source service identity from the mTLS certificate chain (via the XFCC header or peer metadata) and use it as a rate limit descriptor. Different source services get different rate budgets, ensuring that critical real-time services are not starved by batch or analytics workloads. This pattern is one of the most valuable rate limiting configurations in a microservices mesh because it directly addresses the uneven traffic patterns that naturally emerge as systems grow.
+Per-source-service rate limiting in Istio protects downstream services from noisy upstream consumers. You extract the source service identity from the mTLS certificate chain (via the XFCC header or connection attributes) and use it as a rate limit descriptor. Different source services get different rate budgets, ensuring that critical real-time services are not starved by batch or analytics workloads. This pattern is one of the most valuable rate limiting configurations in a microservices mesh because it directly addresses the uneven traffic patterns that naturally emerge as systems grow.
