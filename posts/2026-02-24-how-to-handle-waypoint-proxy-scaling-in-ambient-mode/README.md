@@ -22,7 +22,7 @@ ztunnel (source) --HBONE--> Waypoint Proxy --HBONE--> ztunnel (destination)
 
 Waypoint proxies can be scoped to:
 - **A namespace**: Handles L7 traffic for all services in that namespace
-- **A specific service account**: Handles L7 traffic only for workloads using that service account
+- **A specific service or workload**: Handles L7 traffic only for traffic to that service or workload
 
 ## Creating a Waypoint Proxy
 
@@ -36,13 +36,20 @@ This creates a Kubernetes Gateway resource and the corresponding Envoy deploymen
 
 ```bash
 kubectl get gateways -n default
-kubectl get pods -n default -l istio.io/gateway-name=waypoint
+kubectl get pods -n default -l gateway.networking.k8s.io/gateway-name=waypoint
 ```
 
-You can also create a waypoint for a specific service account:
+To make the namespace use the waypoint, label the namespace:
 
 ```bash
-istioctl waypoint apply --namespace default --service-account my-service
+kubectl label namespace default istio.io/use-waypoint=waypoint
+```
+
+You can also create a waypoint for a specific service and label only that service to use it:
+
+```bash
+istioctl waypoint apply --namespace default --name my-service-waypoint
+kubectl label service my-service -n default istio.io/use-waypoint=my-service-waypoint
 ```
 
 To see the generated Gateway resource:
@@ -67,23 +74,36 @@ By default, a waypoint proxy creates a single replica. For production, you want 
 
 ### Manual Scaling
 
-Scale the waypoint deployment directly:
+Scale the waypoint deployment directly for a quick manual adjustment:
 
 ```bash
 kubectl scale deployment waypoint -n default --replicas=3
 ```
 
-Or edit the Gateway resource to set the number of replicas using an annotation:
+Or edit the Gateway resource to set the number of replicas using an infrastructure parameters `ConfigMap`:
 
 ```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: waypoint-options
+  namespace: default
+data:
+  deployment: |
+    spec:
+      replicas: 3
+---
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
   name: waypoint
   namespace: default
-  annotations:
-    istio.io/gateway-replicas: "3"
 spec:
+  infrastructure:
+    parametersRef:
+      group: ""
+      kind: ConfigMap
+      name: waypoint-options
   gatewayClassName: istio-waypoint
   listeners:
   - name: mesh
@@ -139,7 +159,7 @@ spec:
   minAvailable: 1
   selector:
     matchLabels:
-      istio.io/gateway-name: waypoint
+      gateway.networking.k8s.io/gateway-name: waypoint
 ```
 
 This ensures at least one waypoint pod is always running, even during node drains or upgrades.
@@ -149,21 +169,37 @@ Resource Configuration
 Waypoint proxies are Envoy instances, so they need appropriate resources. Set requests and limits based on your traffic profile:
 
 ```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: waypoint-options
+  namespace: default
+data:
+  deployment: |
+    spec:
+      template:
+        spec:
+          containers:
+          - name: istio-proxy
+            resources:
+              requests:
+                cpu: 500m
+                memory: 256Mi
+              limits:
+                cpu: "2"
+                memory: 1Gi
+---
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
   name: waypoint
   namespace: default
-  annotations:
-    proxy.istio.io/config: |
-      resources:
-        requests:
-          cpu: 500m
-          memory: 256Mi
-        limits:
-          cpu: "2"
-          memory: 1Gi
 spec:
+  infrastructure:
+    parametersRef:
+      group: ""
+      kind: ConfigMap
+      name: waypoint-options
   gatewayClassName: istio-waypoint
   listeners:
   - name: mesh
@@ -188,7 +224,8 @@ You can run different waypoint proxies for different purposes. For example, one 
 istioctl waypoint apply --namespace default --name general-waypoint
 
 # Service-specific waypoint for a high-traffic service
-istioctl waypoint apply --namespace default --service-account payment-service --name payment-waypoint
+istioctl waypoint apply --namespace default --name payment-waypoint
+kubectl label service payment-service -n default istio.io/use-waypoint=payment-waypoint
 ```
 
 This lets you scale the payment service waypoint independently from the general one.
@@ -207,8 +244,9 @@ Track waypoint proxy performance with these metrics:
 
 ```promql
 sum(rate(istio_requests_total{
-  app="waypoint"
-}[5m])) by (destination_workload)
+  reporter="source",
+  source_workload="waypoint"
+}[5m])) by (destination_service)
 ```
 
 **Latency added by the waypoint:**
@@ -216,7 +254,8 @@ sum(rate(istio_requests_total{
 ```promql
 histogram_quantile(0.99,
   sum(rate(istio_request_duration_milliseconds_bucket{
-    app="waypoint"
+    reporter="source",
+    source_workload="waypoint"
   }[5m])) by (le)
 )
 ```
@@ -239,27 +278,46 @@ container_memory_working_set_bytes{pod=~"waypoint.*"}
 Spread waypoint replicas across nodes and zones for resilience:
 
 ```yaml
-apiVersion: apps/v1
-kind: Deployment
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: waypoint-options
+  namespace: default
+data:
+  deployment: |
+    spec:
+      template:
+        spec:
+          topologySpreadConstraints:
+          - maxSkew: 1
+            topologyKey: kubernetes.io/hostname
+            whenUnsatisfiable: DoNotSchedule
+            labelSelector:
+              matchLabels:
+                gateway.networking.k8s.io/gateway-name: waypoint
+          - maxSkew: 1
+            topologyKey: topology.kubernetes.io/zone
+            whenUnsatisfiable: ScheduleAnyway
+            labelSelector:
+              matchLabels:
+                gateway.networking.k8s.io/gateway-name: waypoint
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
 metadata:
   name: waypoint
   namespace: default
 spec:
-  template:
-    spec:
-      topologySpreadConstraints:
-      - maxSkew: 1
-        topologyKey: kubernetes.io/hostname
-        whenUnsatisfiable: DoNotSchedule
-        labelSelector:
-          matchLabels:
-            istio.io/gateway-name: waypoint
-      - maxSkew: 1
-        topologyKey: topology.kubernetes.io/zone
-        whenUnsatisfiable: ScheduleAnyway
-        labelSelector:
-          matchLabels:
-            istio.io/gateway-name: waypoint
+  infrastructure:
+    parametersRef:
+      group: ""
+      kind: ConfigMap
+      name: waypoint-options
+  gatewayClassName: istio-waypoint
+  listeners:
+  - name: mesh
+    port: 15008
+    protocol: HBONE
 ```
 
 This distributes waypoint pods evenly across nodes (strictly) and across zones (best effort).
@@ -285,14 +343,34 @@ If your service only needs mTLS and basic L4 authorization, skip the waypoint to
 When scaling down waypoint proxies, you need to handle in-flight requests. Configure the termination grace period:
 
 ```yaml
-apiVersion: apps/v1
-kind: Deployment
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: waypoint-options
+  namespace: default
+data:
+  deployment: |
+    spec:
+      template:
+        spec:
+          terminationGracePeriodSeconds: 30
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
 metadata:
   name: waypoint
+  namespace: default
 spec:
-  template:
-    spec:
-      terminationGracePeriodSeconds: 30
+  infrastructure:
+    parametersRef:
+      group: ""
+      kind: ConfigMap
+      name: waypoint-options
+  gatewayClassName: istio-waypoint
+  listeners:
+  - name: mesh
+    port: 15008
+    protocol: HBONE
 ```
 
 This gives Envoy 30 seconds to drain active connections before shutting down. Combine this with the drain duration in Envoy configuration for smooth scaling.
