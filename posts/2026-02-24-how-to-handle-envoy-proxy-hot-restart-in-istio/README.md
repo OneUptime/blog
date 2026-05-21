@@ -8,7 +8,7 @@ Description: Understand how Envoy proxy hot restart works in Istio, when it happ
 
 ---
 
-Envoy proxy supports a mechanism called "hot restart" that allows a new Envoy process to take over from an old one without dropping connections. In the Istio context, this comes into play during sidecar updates, configuration changes, and pod lifecycle events. Understanding how it works helps you avoid unexpected connection drops and plan for zero-downtime deployments.
+Envoy proxy supports a mechanism called "hot restart" that allows a new Envoy process to take over from an old one without dropping connections. In the Istio sidecar context, Envoy is normally started by `pilot-agent` with hot restart disabled, so most operational work is about graceful draining during pod termination rather than a true two-process Envoy hot restart. Understanding the difference helps you avoid unexpected connection drops and plan for zero-downtime deployments.
 
 ## What Hot Restart Actually Is
 
@@ -22,13 +22,13 @@ During the overlap period, the old process shares its listen sockets with the ne
 
 ## When Hot Restart Happens in Istio
 
-In practice, Envoy hot restart in Istio occurs in these scenarios:
+In practice, most Istio sidecar restarts are not Envoy hot restarts. These are the common scenarios people usually mean when they talk about sidecar restarts:
 
-**Pod termination** - When Kubernetes sends a SIGTERM to a pod, the Envoy sidecar enters its drain phase before shutting down.
+**Pod termination** - When Kubernetes terminates a pod, the `istio-proxy` container receives a stop signal and `pilot-agent` tells Envoy to drain before shutting down.
 
-**Sidecar injection updates** - When Istio is upgraded and pods are restarted, the new sidecar replaces the old one.
+**Sidecar injection updates** - When Istio is upgraded and workloads are restarted, Kubernetes creates new pods with the new sidecar image or configuration. This is a rolling replacement, not a hot restart inside the old pod.
 
-**Configuration updates** - Normally, Envoy handles config changes via xDS (dynamic configuration) without restarting. But certain changes (like bootstrap configuration) require a restart.
+**Configuration updates** - Normally, Envoy handles config changes via xDS (dynamic configuration) without restarting. But fields that affect bootstrap or proxy startup require the workload to be restarted so the sidecar is reinjected or the proxy is relaunched with the new settings.
 
 Most of the time in Istio, you're dealing with the drain phase during pod termination rather than a true hot restart between two Envoy processes. The drain mechanism is the more important thing to configure correctly.
 
@@ -70,7 +70,7 @@ For long-lived connections (WebSockets, gRPC streams), you might want a longer d
 
 ## The Termination Drain Duration
 
-There's another setting that controls how long the sidecar waits during pod termination specifically. This is the `terminationDrainDuration`:
+There's another setting that controls how long the sidecar waits during pod termination specifically. This is the `terminationDrainDuration`. If it is not set, Istio uses a default of 5 seconds:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -107,11 +107,11 @@ The math should work out like this: leave at least 5 seconds of buffer between `
 
 When a pod gets terminated, here's the detailed sequence:
 
-1. Kubernetes sends SIGTERM to all containers in the pod
+1. Kubernetes runs any configured `preStop` hooks and then sends a stop signal, typically SIGTERM, to the containers in the pod
 2. The application container starts shutting down
 3. The istio-proxy container receives SIGTERM
-4. Envoy stops accepting new connections on inbound listeners
-5. Envoy starts draining existing connections (sending connection: close headers for HTTP/1.1, GOAWAY for HTTP/2)
+4. `pilot-agent` asks Envoy to start graceful draining on inbound listeners
+5. Envoy discourages new connections and starts draining existing connections (sending connection: close headers for HTTP/1.1, GOAWAY for HTTP/2)
 6. Envoy waits for `terminationDrainDuration`
 7. After the drain period, Envoy shuts down
 8. If `terminationGracePeriodSeconds` expires, Kubernetes sends SIGKILL
@@ -136,7 +136,7 @@ spec:
               command: ["/bin/sh", "-c", "sleep 5"]
 ```
 
-The 5-second sleep gives Envoy time to start draining before the application begins its shutdown.
+The 5-second sleep delays the application's TERM signal so the proxy can begin draining first. Remember that Kubernetes starts the termination grace period before running `preStop`, so include this sleep time in `terminationGracePeriodSeconds`.
 
 ## EXIT_ON_ZERO_ACTIVE_CONNECTIONS
 
@@ -160,7 +160,7 @@ spec:
         image: my-service:latest
 ```
 
-This is really helpful for services with short-lived connections. Instead of always waiting the full drain duration, Envoy exits as soon as it's done. This speeds up deployments because pods terminate faster.
+This is really helpful for services with short-lived connections. Instead of always waiting the full drain duration, the sidecar can exit after active connections reach zero. Istio also has a `MINIMUM_DRAIN_DURATION` setting, which defaults to 5 seconds, before it starts checking for zero active connections.
 
 ## Monitoring Drain Behavior
 
@@ -170,7 +170,7 @@ To see what's happening during the drain phase, check the Envoy access logs:
 kubectl logs <pod-name> -c istio-proxy --follow
 ```
 
-During draining, you'll see log entries about connections being closed and the drain manager's status.
+During draining, you'll see the `pilot-agent` drain messages and access log entries for requests or connections that complete while the proxy is draining.
 
 You can also check the Envoy admin interface to see the current server state:
 
@@ -178,7 +178,7 @@ You can also check the Envoy admin interface to see the current server state:
 kubectl exec -it <pod-name> -c istio-proxy -- curl -s localhost:15000/server_info | python3 -m json.tool
 ```
 
-The `state` field will show `LIVE`, `DRAINING`, or `PRE_INITIALIZING`.
+The `state` field can show values such as `PRE_INITIALIZING`, `INITIALIZING`, `LIVE`, or `DRAINING`.
 
 To see active connections during drain:
 
@@ -232,17 +232,17 @@ The `--previous` flag shows logs from the terminated container.
 
 **Port conflicts during restart:**
 
-If you see errors about ports being in use, it usually means the old Envoy process didn't release the socket in time. This is rare but can happen if the shared memory used for hot restart coordination gets corrupted. Deleting and recreating the pod resolves it.
+If you see errors about ports being in use in an Istio sidecar, first check whether another process in the pod is using an Envoy-reserved port such as 15000, 15001, 15006, 15020, or 15021, or whether the proxy process failed to exit cleanly. Deleting and recreating the pod usually clears the stuck process state.
 
 ## Shared Memory and Hot Restart
 
-Envoy uses shared memory segments for hot restart coordination. In Kubernetes, these are stored in the container's filesystem. You can see them by checking:
+Envoy uses shared memory regions for hot restart coordination, but Istio sidecars normally start Envoy with hot restart disabled. If you are debugging a custom Envoy hot restart setup, you can inspect shared memory inside the container with:
 
 ```bash
 kubectl exec -it <pod-name> -c istio-proxy -- ls -la /dev/shm/
 ```
 
-The `--parent-shutdown-time-s` and `--drain-time-s` flags in the Envoy binary control the hot restart timing. In Istio, these are set by the pilot-agent process that manages the Envoy lifecycle.
+The `--parent-shutdown-time-s` and `--drain-time-s` flags in the Envoy binary control hot restart timing when hot restart is enabled. In Istio sidecars, `pilot-agent` sets Envoy's `--drain-time-s` from `drainDuration` and separately uses `terminationDrainDuration` to decide how long to wait during proxy shutdown.
 
 ## Best Practices
 
