@@ -16,7 +16,7 @@ If you've ever seen requests getting stuck, uneven load distribution, or mysteri
 
 These are two different things, and confusing them is a common mistake.
 
-**HTTP Keep-Alive** (also called persistent connections) means reusing the same TCP connection for multiple HTTP requests. In HTTP/1.1, this is the default behavior. The `Connection: keep-alive` header tells the server not to close the connection after responding.
+**HTTP Keep-Alive** (also called persistent connections) means reusing the same TCP connection for multiple HTTP requests. In HTTP/1.1, this is the default behavior; clients normally use `Connection: close` when they want the connection closed after the response. The older `Connection: keep-alive` header is mainly relevant to HTTP/1.0 compatibility.
 
 **TCP Keep-Alive** is a mechanism where the operating system sends periodic probe packets on idle TCP connections to detect if the remote end is still reachable. It has nothing to do with HTTP.
 
@@ -63,7 +63,7 @@ connectionPool:
     maxRequestsPerConnection: 100
 ```
 
-After 100 requests, Envoy closes the connection and creates a new one. This helps with load balancing because new connections can be distributed to different backends. Without this limit, a long-lived connection might keep sending traffic to the same backend even after scaling events.
+After 100 requests, Envoy drains the connection and creates a new one. This helps with load balancing because new connections can be distributed to different backends. Without this limit, a long-lived connection might keep sending traffic to the same backend even after scaling events.
 
 Setting it to 0 means unlimited requests per connection (the default).
 
@@ -136,19 +136,15 @@ trafficPolicy:
     simple: LEAST_REQUEST
 ```
 
-## Configuring Keep-Alive at the Mesh Level
+## Configuring TCP Keep-Alive at the Mesh Level
 
-You can set default keep-alive behavior for the entire mesh:
+You can set default TCP keep-alive behavior for the entire mesh:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
   meshConfig:
-    defaultConfig:
-      proxyMetadata:
-        # Set these via proxy metadata
-        ISTIO_META_IDLE_TIMEOUT: "300s"
     tcpKeepalive:
       time: 300s
       interval: 30s
@@ -157,7 +153,7 @@ spec:
 
 ## Handling Load Balancer Keep-Alive
 
-External load balancers have their own keep-alive timeouts. If the load balancer's idle timeout is shorter than Envoy's, you'll see connection resets. If it's longer, you'll see Envoy closing connections that the load balancer thinks are still alive.
+External load balancers have their own keep-alive timeouts. If Envoy closes an idle target-side connection before the load balancer does, the load balancer might try to reuse a connection that Envoy has already closed.
 
 For AWS ALB, the default idle timeout is 60 seconds. Make sure your Envoy idle timeout is longer:
 
@@ -182,13 +178,13 @@ spec:
       patch:
         operation: MERGE
         value:
-          typedConfig:
+          typed_config:
             "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
-            commonHttpProtocolOptions:
-              idleTimeout: 90s
+            common_http_protocol_options:
+              idle_timeout: 90s
 ```
 
-Setting Envoy's idle timeout to 90 seconds (higher than ALB's 60 seconds) means the ALB will close idle connections first, which is the correct behavior. If Envoy closes first, the ALB might try to send a request on a closed connection.
+Setting Envoy's idle timeout to 90 seconds (higher than ALB's 60 seconds) means the ALB will close idle target connections first, which is the correct behavior for avoiding this class of 502 errors.
 
 ## Diagnosing Keep-Alive Issues
 
@@ -225,7 +221,7 @@ kubectl exec my-pod -c istio-proxy -- \
 
 1. Always set `maxRequestsPerConnection` for HTTP services to ensure connection rotation
 2. Enable TCP keep-alive probes for services behind NAT or firewalls
-3. Set `idleTimeout` to less than your load balancer's idle timeout
+3. Set target-side `idleTimeout` values higher than your load balancer's idle timeout
 4. For gRPC services, use `maxRequestsPerConnection` to force periodic reconnection for better load balancing
 5. Monitor connection pool metrics in your Envoy dashboards
 
