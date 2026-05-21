@@ -64,6 +64,27 @@ spec:
                 type: integer
                 minimum: 0
                 maximum: 10
+          status:
+            type: object
+            properties:
+              state:
+                type: string
+              message:
+                type: string
+              lastUpdated:
+                type: string
+                format: date-time
+              istioResources:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    kind:
+                      type: string
+                    name:
+                      type: string
+    subresources:
+      status: {}
   scope: Namespaced
   names:
     plural: trafficroutes
@@ -97,7 +118,6 @@ A controller watches TrafficRoute resources and creates the corresponding Istio 
 ```python
 import kopf
 from kubernetes import client, config
-import yaml
 
 config.load_incluster_config()
 custom_api = client.CustomObjectsApi()
@@ -112,7 +132,7 @@ def handle_traffic_route(spec, name, namespace, **kwargs):
 
     # Build VirtualService
     vs = {
-        'apiVersion': 'networking.istio.io/v1beta1',
+        'apiVersion': 'networking.istio.io/v1',
         'kind': 'VirtualService',
         'metadata': {
             'name': f'{service}-managed',
@@ -147,7 +167,7 @@ def handle_traffic_route(spec, name, namespace, **kwargs):
 
     # Build DestinationRule
     dr = {
-        'apiVersion': 'networking.istio.io/v1beta1',
+        'apiVersion': 'networking.istio.io/v1',
         'kind': 'DestinationRule',
         'metadata': {
             'name': f'{service}-managed',
@@ -171,28 +191,32 @@ def handle_traffic_route(spec, name, namespace, **kwargs):
     # Apply VirtualService
     try:
         custom_api.create_namespaced_custom_object(
-            'networking.istio.io', 'v1beta1', namespace,
+            'networking.istio.io', 'v1', namespace,
             'virtualservices', vs
         )
     except client.exceptions.ApiException as e:
         if e.status == 409:
             custom_api.patch_namespaced_custom_object(
-                'networking.istio.io', 'v1beta1', namespace,
+                'networking.istio.io', 'v1', namespace,
                 'virtualservices', f'{service}-managed', vs
             )
+        else:
+            raise
 
     # Apply DestinationRule
     try:
         custom_api.create_namespaced_custom_object(
-            'networking.istio.io', 'v1beta1', namespace,
+            'networking.istio.io', 'v1', namespace,
             'destinationrules', dr
         )
     except client.exceptions.ApiException as e:
         if e.status == 409:
             custom_api.patch_namespaced_custom_object(
-                'networking.istio.io', 'v1beta1', namespace,
+                'networking.istio.io', 'v1', namespace,
                 'destinationrules', f'{service}-managed', dr
             )
+        else:
+            raise
 ```
 
 ## Self-Service Authorization Policies
@@ -328,6 +352,8 @@ webhooks:
     operations: ["CREATE", "UPDATE"]
     apiVersions: ["v1"]
   failurePolicy: Fail
+  admissionReviewVersions: ["v1"]
+  sideEffects: None
 ```
 
 The webhook validates things like:
@@ -338,6 +364,18 @@ The webhook validates things like:
 - Developers only configure resources in their own namespace
 
 ```python
+import re
+
+def parse_duration(value):
+    match = re.fullmatch(r"(\d+)(ms|s|m|h)", value)
+    if not match:
+        raise ValueError(f"Invalid duration: {value}")
+
+    amount = int(match.group(1))
+    unit = match.group(2)
+    multipliers = {"ms": 0.001, "s": 1, "m": 60, "h": 3600}
+    return amount * multipliers[unit]
+
 def validate_traffic_route(spec):
     errors = []
 
