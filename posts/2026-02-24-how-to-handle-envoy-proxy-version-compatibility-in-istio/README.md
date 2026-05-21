@@ -44,12 +44,12 @@ Check for version mismatches across your mesh:
 istioctl proxy-status
 ```
 
-This shows every sidecar and its sync status with the control plane. Look for the `PROXY-VERSION` column:
+This shows every sidecar and its sync status with the control plane. Look for the `VERSION` column:
 
 ```text
-NAME                                    CLUSTER        CDS    LDS    EDS    RDS    ECDS   ISTIOD                     PROXY-VERSION
-frontend-7b9d8c5f66-abc12.production    Kubernetes     SYNCED SYNCED SYNCED SYNCED        istiod-5d4f8b6c99-xyz.     1.24.0
-backend-6c7d9e4f55-def34.production     Kubernetes     SYNCED SYNCED SYNCED SYNCED        istiod-5d4f8b6c99-xyz.     1.23.2
+NAME                                    CLUSTER        CDS    LDS    EDS    RDS    ECDS      ISTIOD                     VERSION
+frontend-7b9d8c5f66-abc12.production    Kubernetes     SYNCED SYNCED SYNCED SYNCED NOT SENT  istiod-5d4f8b6c99-xyz.     1.24.0
+backend-6c7d9e4f55-def34.production     Kubernetes     SYNCED SYNCED SYNCED SYNCED NOT SENT  istiod-5d4f8b6c99-xyz.     1.23.2
 ```
 
 If you see a mix of proxy versions, some pods haven't been restarted since the upgrade.
@@ -85,8 +85,10 @@ istioctl proxy-status | grep staging
 Once all namespaces are migrated, remove the old control plane:
 
 ```bash
-istioctl uninstall --revision=default
+istioctl uninstall --revision=1-23
 ```
+
+If the old control plane was installed without a revision, uninstall it with the same installation options or IstioOperator file you used originally.
 
 ## EnvoyFilter Compatibility
 
@@ -115,7 +117,7 @@ After an upgrade, verify that Envoy is accepting the configuration without error
 istioctl proxy-status
 ```
 
-If the `CDS`, `LDS`, `EDS`, or `RDS` columns show `STALE` instead of `SYNCED`, Envoy rejected the configuration update. This usually means the config references something that's not valid in the new Envoy version.
+If the `CDS`, `LDS`, `EDS`, or `RDS` columns show `STALE` instead of `SYNCED`, istiod sent an update that Envoy has not acknowledged. One common cause is a rejected configuration update, especially when the config references something that's not valid in the new Envoy version.
 
 Get more details:
 
@@ -157,8 +159,8 @@ kubectl rollout restart deployment -n production
 # If using revisions
 istioctl install --set revision=1-23
 
-# Or reinstall the old version
-istioctl install --set tag=1.23.2
+# Or reinstall with the old istioctl/manifests and your original install options
+istioctl install -f istio-operator-1.23.yaml
 ```
 
 **Emergency: Disable sidecar injection temporarily:**
@@ -188,7 +190,7 @@ This shows what would change without actually applying anything.
 For EnvoyFilter compatibility, you can validate individual filters:
 
 ```bash
-istioctl experimental envoyfilter-check <pod-name> -n <namespace>
+istioctl analyze --use-kube=false envoyfilter.yaml
 ```
 
 ## Best Practices for Version Management
