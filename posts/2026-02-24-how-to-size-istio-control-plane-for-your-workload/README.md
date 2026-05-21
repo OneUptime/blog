@@ -37,7 +37,7 @@ kubectl top pod -n istio-system -l app=istiod
 kubectl exec -n istio-system deploy/istiod -- curl -s localhost:15014/debug/connections | wc -l
 
 # Check config push metrics
-kubectl exec -n istio-system deploy/istiod -- curl -s localhost:15014/metrics | grep pilot_xds_pushes
+kubectl exec -n istio-system deploy/istiod -- curl -s localhost:15014/metrics | grep pilot_push_triggers
 ```
 
 For Prometheus-based monitoring:
@@ -210,13 +210,13 @@ Monitor push metrics:
 
 ```promql
 # Push rate
-rate(pilot_xds_pushes[5m])
+rate(pilot_push_triggers[5m])
 
 # Push latency
-pilot_proxy_convergence_time
+histogram_quantile(0.99, sum(rate(pilot_proxy_convergence_time_bucket[5m])) by (le))
 
 # Queue time (how long pushes wait before being processed)
-pilot_proxy_queue_time
+histogram_quantile(0.99, sum(rate(pilot_proxy_queue_time_bucket[5m])) by (le))
 ```
 
 If push latency or queue time is consistently high, increase CPU.
@@ -245,9 +245,9 @@ spec:
 
 This tells proxies in `my-app` to only know about services in their own namespace, the istio-system namespace, and one specific service in another namespace. This dramatically reduces memory usage and push sizes.
 
-### Reduce Endpoints with Locality
+### Prefer Local Endpoints with Locality
 
-If you have services with many endpoints, enable locality load balancing so each proxy only gets endpoints in its zone:
+If you have services with endpoints spread across zones, enable locality load balancing so proxies prefer endpoints in their own zone:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -275,7 +275,7 @@ After setting your resource limits, validate them:
 kubectl top pod -n istio-system -l app=istiod --containers
 
 # Check for OOM kills
-kubectl get events -n istio-system --field-selector reason=OOMKilled
+kubectl get pods -n istio-system -l app=istiod -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{range .status.containerStatuses[*]}{.name}{"\t"}{.lastState.terminated.reason}{"\n"}{end}{end}'
 
 # Check push performance
 istioctl proxy-status | grep -v SYNCED
