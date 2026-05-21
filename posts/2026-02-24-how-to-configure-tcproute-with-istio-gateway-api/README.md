@@ -8,7 +8,7 @@ Description: Learn how to configure TCPRoute resources with Istio and the Kubern
 
 ---
 
-Not everything speaks HTTP. Databases, message queues, custom binary protocols, and legacy services all use raw TCP connections. TCPRoute is the Kubernetes Gateway API resource for routing these non-HTTP TCP connections through your gateway. In Istio, it replaces the TCP routing capabilities that were previously handled by VirtualService.
+Not everything speaks HTTP. Databases, message queues, custom binary protocols, and legacy services all use raw TCP connections. TCPRoute is the Kubernetes Gateway API resource for routing these non-HTTP TCP connections through your gateway. In Istio, it provides a standardized alternative to the TCP routing capabilities that are also available through VirtualService.
 
 ## When You Need TCPRoute
 
@@ -26,13 +26,19 @@ If your service speaks HTTP or HTTPS, use HTTPRoute instead. If it's encrypted T
 TCPRoute is part of the experimental Gateway API channel:
 
 ```bash
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.2.0/experimental-install.yaml
+kubectl apply --server-side -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.5.1/experimental-install.yaml
 ```
 
 Verify the CRD is installed:
 
 ```bash
 kubectl get crd tcproutes.gateway.networking.k8s.io
+```
+
+Because TCPRoute is an alpha Gateway API resource, configure Istio to read alpha Gateway API resources:
+
+```bash
+istioctl install --set values.pilot.env.PILOT_ENABLE_ALPHA_GATEWAY_API=true --set profile=minimal -y
 ```
 
 ## Setting Up a TCP Gateway Listener
@@ -209,7 +215,7 @@ Here the gateway listens on port 5432 but forwards to PgBouncer on port 6432.
 
 ## Cross-Namespace TCP Routing
 
-To route TCP traffic to services in other namespaces, set up the Gateway to allow cross-namespace routes and create a ReferenceGrant:
+To attach TCPRoutes from other namespaces to the Gateway, set up the Gateway to allow cross-namespace routes:
 
 ```yaml
 apiVersion: gateway.networking.k8s.io/v1
@@ -230,14 +236,14 @@ spec:
       - kind: TCPRoute
 ```
 
-TCPRoute in the application namespace:
+TCPRoute in the application namespace, forwarding to a Service in the `database` namespace:
 
 ```yaml
 apiVersion: gateway.networking.k8s.io/v1alpha2
 kind: TCPRoute
 metadata:
   name: db-route
-  namespace: database
+  namespace: app
 spec:
   parentRefs:
   - name: tcp-gateway
@@ -245,22 +251,23 @@ spec:
   rules:
   - backendRefs:
     - name: postgres-cluster
+      namespace: database
       port: 5432
 ```
 
-ReferenceGrant in the database namespace (if routing to a different namespace than the TCPRoute):
+No ReferenceGrant is needed for the cross-namespace Route-to-Gateway attachment above; that is governed by `allowedRoutes`. If the TCPRoute references a backend Service in a different namespace, create a ReferenceGrant in the backend Service's namespace:
 
 ```yaml
-apiVersion: gateway.networking.k8s.io/v1beta1
+apiVersion: gateway.networking.k8s.io/v1
 kind: ReferenceGrant
 metadata:
-  name: allow-tcp-from-ingress
+  name: allow-tcp-from-database
   namespace: database
 spec:
   from:
   - group: gateway.networking.k8s.io
     kind: TCPRoute
-    namespace: istio-ingress
+    namespace: app
   to:
   - group: ""
     kind: Service
