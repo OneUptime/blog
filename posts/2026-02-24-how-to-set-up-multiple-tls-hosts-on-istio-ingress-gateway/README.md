@@ -214,7 +214,7 @@ spec:
         - "*.example.com"
 ```
 
-All subdomains of example.com share the same certificate. You still create separate VirtualServices for each subdomain to route to different backends.
+All matching subdomains of example.com share the same certificate. For a standard wildcard certificate, `*.example.com` covers names like `api.example.com` and `app.example.com`, but not `example.com` or nested names like `v1.api.example.com`. You still create separate VirtualServices for each subdomain to route to different backends.
 
 ## Mixing Wildcard and Specific Certificates
 
@@ -251,7 +251,7 @@ spec:
         - "*.example.com"
 ```
 
-Istio matches the most specific hostname first. Requests to api.example.com use the specific cert, and all other subdomains use the wildcard.
+Istio matches the most specific hostname first. Requests to api.example.com use the specific cert, and other matching subdomains use the wildcard.
 
 ## Automating with cert-manager
 
@@ -332,6 +332,15 @@ spec:
         credentialName: app-tls
       hosts:
         - "app.example.com"
+    - port:
+        number: 443
+        name: https-admin
+        protocol: HTTPS
+      tls:
+        mode: SIMPLE
+        credentialName: admin-tls
+      hosts:
+        - "admin.example.com"
     # HTTP redirect for all domains
     - port:
         number: 80
