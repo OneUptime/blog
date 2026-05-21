@@ -23,7 +23,7 @@ Before diving into diagnostics, here are the symptoms that usually point to cert
 
 ## Step 1: Check the Sidecar Proxy Logs
 
-Start with the destination service's sidecar logs:
+Start with the source and destination service sidecar logs:
 
 ```bash
 kubectl logs <pod-name> -c istio-proxy -n <namespace> | grep -i "tls\|cert\|ssl\|x509\|secret"
@@ -83,8 +83,17 @@ istioctl proxy-config secret <pod-name> -n <namespace> -o json | \
   jq -r '.dynamicActiveSecrets[] | select(.name=="ROOTCA") | .secret.validationContext.trustedCa.inlineBytes' | \
   base64 -d > /tmp/root-ca.pem
 
+# Split the leaf certificate from any intermediate certificates
+: > /tmp/workload-intermediates.pem
+awk 'BEGIN {n=0} /BEGIN CERTIFICATE/ {n++} {print > (n==1 ? "/tmp/workload-leaf.pem" : "/tmp/workload-intermediates.pem")}' \
+  /tmp/workload-chain.pem
+
 # Verify the chain
-openssl verify -CAfile /tmp/root-ca.pem /tmp/workload-chain.pem
+if [ -s /tmp/workload-intermediates.pem ]; then
+  openssl verify -CAfile /tmp/root-ca.pem -untrusted /tmp/workload-intermediates.pem /tmp/workload-leaf.pem
+else
+  openssl verify -CAfile /tmp/root-ca.pem /tmp/workload-leaf.pem
+fi
 ```
 
 If this outputs an error, the chain is broken. Common reasons:
@@ -123,12 +132,12 @@ kubectl get secret cacerts -n istio-system -o jsonpath='{.data.ca-cert\.pem}' | 
   base64 -d | openssl x509 -text -noout | grep -E "Not Before|Not After|Subject|Issuer"
 
 # Check key matches certificate
-CA_CERT_MOD=$(kubectl get secret cacerts -n istio-system -o jsonpath='{.data.ca-cert\.pem}' | \
-  base64 -d | openssl x509 -noout -modulus | md5sum)
-CA_KEY_MOD=$(kubectl get secret cacerts -n istio-system -o jsonpath='{.data.ca-key\.pem}' | \
-  base64 -d | openssl rsa -noout -modulus | md5sum)
+CA_CERT_PUB=$(kubectl get secret cacerts -n istio-system -o jsonpath='{.data.ca-cert\.pem}' | \
+  base64 -d | openssl x509 -pubkey -noout | openssl pkey -pubin -outform DER | openssl dgst -sha256)
+CA_KEY_PUB=$(kubectl get secret cacerts -n istio-system -o jsonpath='{.data.ca-key\.pem}' | \
+  base64 -d | openssl pkey -pubout -outform DER | openssl dgst -sha256)
 
-if [ "$CA_CERT_MOD" = "$CA_KEY_MOD" ]; then
+if [ "$CA_CERT_PUB" = "$CA_KEY_PUB" ]; then
   echo "CA key matches certificate"
 else
   echo "ERROR: CA key does NOT match certificate!"
@@ -147,7 +156,7 @@ kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}: {.status.condi
 kubectl exec <pod-name> -c istio-proxy -- date
 ```
 
-If the clock is off by more than the certificate's validity period, TLS will fail. NTP synchronization issues are more common than you might think, especially in virtual environments.
+If the clock is outside the certificate's `Not Before` and `Not After` validity window, TLS will fail. NTP synchronization issues are more common than you might think, especially in virtual environments.
 
 ## Step 7: Common Fixes
 
@@ -211,8 +220,8 @@ kubectl get pods -n istio-system -l app=istiod
 # Check if istiod can process CSRs
 kubectl logs deployment/istiod -n istio-system | grep -i "csr"
 
-# Check network connectivity from the pod to istiod
-kubectl exec <pod-name> -c istio-proxy -- curl -k https://istiod.istio-system:15012/debug/endpointz
+# Check whether the proxy is connected to istiod
+istioctl proxy-status <pod-name>.<namespace>
 ```
 
 Common causes:
