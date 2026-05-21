@@ -60,7 +60,7 @@ kubectl cluster-info
 
 ```bash
 curl -L https://istio.io/downloadIstio | sh -
-cd istio-1.24.0
+cd istio-*
 export PATH=$PWD/bin:$PATH
 ```
 
@@ -224,7 +224,8 @@ istio-integration:
     - curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
     - chmod +x kubectl && mv kubectl /usr/local/bin/
     - curl -L https://istio.io/downloadIstio | sh -
-    - export PATH=$PWD/istio-*/bin:$PATH
+    - export ISTIO_DIR="$(echo "$PWD"/istio-*)"
+    - export PATH="$ISTIO_DIR/bin:$PATH"
   script:
     - k3d cluster create test --k3s-arg "--disable=traefik@server:0"
     - istioctl install --set profile=demo -y
