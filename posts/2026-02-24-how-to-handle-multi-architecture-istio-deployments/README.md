@@ -102,7 +102,7 @@ spec:
                 topologyKey: kubernetes.io/arch
 ```
 
-This configuration spreads istiod and gateway replicas across different architectures. If one architecture has issues, the other keeps serving.
+This configuration asks Kubernetes to prefer spreading istiod and gateway replicas across different architectures. If one architecture has node-level issues, replicas on the other architecture can keep serving.
 
 Install it:
 
@@ -127,9 +127,10 @@ build-multiarch:
     - docker:24-dind
   script:
     - docker buildx create --use
-    - docker buildx build
-        --platform linux/amd64,linux/arm64
-        --tag $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
+    - |
+      docker buildx build \
+        --platform linux/amd64,linux/arm64 \
+        --tag $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA \
         --push .
 
 test-x86:
@@ -138,6 +139,7 @@ test-x86:
     - x86
   script:
     - kubectl apply -f k8s/test-deployment.yaml
+    - kubectl patch deployment/test-app --type merge -p '{"spec":{"template":{"spec":{"nodeSelector":{"kubernetes.io/arch":"amd64"}}}}}'
     - kubectl wait --for=condition=available deployment/test-app --timeout=120s
     - ./run-integration-tests.sh
 
@@ -147,6 +149,7 @@ test-arm:
     - arm64
   script:
     - kubectl apply -f k8s/test-deployment.yaml
+    - kubectl patch deployment/test-app --type merge -p '{"spec":{"template":{"spec":{"nodeSelector":{"kubernetes.io/arch":"arm64"}}}}}'
     - kubectl wait --for=condition=available deployment/test-app --timeout=120s
     - ./run-integration-tests.sh
 
@@ -156,7 +159,7 @@ deploy:
     - kubectl set image deployment/my-service app=$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
 ```
 
-## Handling Architecture-Specific ConfigMaps
+## Handling Architecture-Specific Configuration
 
 Sometimes your application needs architecture-specific configuration. Use Kustomize overlays for this:
 
@@ -170,8 +173,8 @@ resources:
 # overlays/arm64/kustomization.yaml
 resources:
 - ../../base
-patchesStrategicMerge:
-- deployment-patch.yaml
+patches:
+- path: deployment-patch.yaml
 
 # overlays/arm64/deployment-patch.yaml
 apiVersion: apps/v1
@@ -269,13 +272,13 @@ spec:
 Set up Prometheus queries that help you compare performance across architectures:
 
 ```bash
-# Average latency by architecture
-sum(rate(istio_request_duration_milliseconds_sum[5m])) by (destination_workload, node_name)
+# Average latency by workload and version
+sum(rate(istio_request_duration_milliseconds_sum{reporter="destination"}[5m])) by (destination_workload, destination_version)
 /
-sum(rate(istio_request_duration_milliseconds_count[5m])) by (destination_workload, node_name)
+sum(rate(istio_request_duration_milliseconds_count{reporter="destination"}[5m])) by (destination_workload, destination_version)
 ```
 
-Create Grafana dashboards that show latency and error rates split by node architecture. This makes it immediately visible if one architecture is underperforming.
+Create Grafana dashboards that show latency and error rates split by workload labels that identify the architecture, such as separate `destination_version` values or a custom Istio telemetry tag. This makes it immediately visible if one architecture is underperforming.
 
 ## Handling Third-Party Images
 
@@ -306,7 +309,7 @@ Istio will still inject the multi-arch sidecar, so this workload participates in
 
 ## Automating Architecture Detection
 
-Create an admission webhook or use OPA/Gatekeeper to enforce multi-arch image requirements:
+Create an admission webhook or use OPA/Gatekeeper with a custom ConstraintTemplate to enforce multi-arch image requirements. For example, after defining the matching template and policy logic, a custom constraint might look like this:
 
 ```yaml
 apiVersion: constraints.gatekeeper.sh/v1beta1
@@ -326,7 +329,7 @@ spec:
     - arm64
 ```
 
-This prevents deploying single-architecture images to production namespaces.
+The backing webhook or Gatekeeper template must inspect the referenced image manifest list and reject images that do not include all required architectures. This prevents deploying single-architecture images to production namespaces.
 
 ## Summary
 
