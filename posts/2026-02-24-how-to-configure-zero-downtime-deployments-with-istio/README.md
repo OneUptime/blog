@@ -128,7 +128,7 @@ spec:
 
 The retry covers the small window where a client sidecar hasn't received the endpoint update yet and sends a request to a draining pod. The `connect-failure` condition catches the case where the pod has already closed its listener. The next retry goes to a healthy pod.
 
-Note: the `timeout` of 20 seconds is the total timeout including all retries. With 3 attempts at 5 seconds each, the maximum time is 15 seconds, which fits within the 20-second total.
+Note: the `timeout` of 20 seconds is the total timeout including the initial request and all retries. With 3 retries at 5 seconds each, the maximum time is 20 seconds, which fits within the 20-second total.
 
 ## Connection Pool Configuration
 
@@ -174,7 +174,7 @@ spec:
       app: payment-api
 ```
 
-This protects against node drains and other voluntary disruptions removing too many pods at once. Combined with the deployment strategy, it ensures capacity is always maintained.
+This protects against node drains and other voluntary disruptions removing too many pods at once. Combined with the deployment strategy, it helps maintain capacity during planned maintenance.
 
 ## Testing Zero Downtime
 
