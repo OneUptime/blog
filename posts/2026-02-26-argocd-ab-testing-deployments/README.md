@@ -80,12 +80,17 @@ spec:
       stableService: my-app-stable
       canaryService: my-app-canary
       trafficRouting:
+        managedRoutes:
+          - name: beta-users
         istio:
           virtualServices:
             - name: my-app-vsvc
               routes:
                 - primary
       steps:
+        # Scale the canary ReplicaSet before sending matched traffic to it
+        - setCanaryScale:
+            replicas: 1
         # Step 1: Route header-matched traffic to canary
         - setHeaderRoute:
             name: beta-users
@@ -190,14 +195,15 @@ spec:
       trafficRouting:
         nginx:
           stableIngress: my-app-ingress
+          additionalIngressAnnotations:
+            canary-by-header: X-Canary
+            canary-by-header-value: "true"
       steps:
-        # Route users with specific header to canary
-        - setHeaderRoute:
-            name: beta-route
-            match:
-              - headerName: X-Canary
-                headerValue:
-                  exact: "true"
+        # Keep percentage-based canary traffic at 0; the NGINX header rule routes matching requests
+        - setWeight: 0
+        - setCanaryScale:
+            replicas: 1
+        # Pause while NGINX routes matching header traffic to canary
         - pause: {}
 ---
 # ingress.yaml
@@ -279,8 +285,10 @@ You can also route based on cookies, which is more user-friendly for browser-bas
 
 ```yaml
 steps:
+  - setCanaryScale:
+      replicas: 1
   - setHeaderRoute:
-      name: beta-route
+      name: beta-users
       match:
         - headerName: Cookie
           headerValue:
@@ -307,21 +315,30 @@ metadata:
   name: ab-test-analysis
   namespace: production
 spec:
+  args:
+    - name: stable-hash
+    - name: canary-hash
   metrics:
     # Compare error rates between stable and canary
     - name: error-rate-comparison
       interval: 60s
       count: 30
-      successCondition: result[0] <= result[1] * 1.1
+      successCondition: result[0] <= 1.1
       provider:
         prometheus:
           address: http://prometheus.monitoring:9090
           query: |
-            # Canary error rate should not be more than 10% higher than stable
+            # Ratio of canary error rate to stable error rate; must stay within 10%
             (
               sum(rate(http_requests_total{app="my-app",rollouts_pod_template_hash="{{args.canary-hash}}",status=~"5.."}[5m]))
               /
               sum(rate(http_requests_total{app="my-app",rollouts_pod_template_hash="{{args.canary-hash}}"}[5m]))
+            )
+            /
+            (
+              sum(rate(http_requests_total{app="my-app",rollouts_pod_template_hash="{{args.stable-hash}}",status=~"5.."}[5m]))
+              /
+              sum(rate(http_requests_total{app="my-app",rollouts_pod_template_hash="{{args.stable-hash}}"}[5m]))
             )
     # Compare response times
     - name: latency-comparison
@@ -352,7 +369,7 @@ kubectl argo rollouts promote my-app -n production
 kubectl argo rollouts abort my-app -n production
 ```
 
-After promotion, the header route is removed and all traffic goes to the new version.
+After promotion, the test routing is removed and all traffic goes to the new version.
 
 ## Monitoring the A/B Test
 
@@ -369,4 +386,4 @@ kubectl get virtualservice my-app-vsvc -n production -o yaml
 
 ## Summary
 
-A/B testing with ArgoCD and Argo Rollouts gives you precise control over which users see which version of your application. Use `setHeaderRoute` steps to route traffic based on HTTP headers or cookies, combine with AnalysisTemplates for automated comparison metrics, and let ArgoCD manage the entire workflow through Git. This strategy is ideal for feature testing with specific user segments. For random percentage-based traffic splitting, use [canary deployments](https://oneuptime.com/blog/post/2026-02-26-argocd-canary-deployments-argo-rollouts/view) instead.
+A/B testing with ArgoCD and Argo Rollouts gives you precise control over which users see which version of your application. Use `setHeaderRoute` with Istio, or NGINX canary annotations with NGINX Ingress, to route traffic based on HTTP headers or cookies. Combine this with AnalysisTemplates for automated comparison metrics, and let ArgoCD manage the entire workflow through Git. This strategy is ideal for feature testing with specific user segments. For random percentage-based traffic splitting, use [canary deployments](https://oneuptime.com/blog/post/2026-02-26-argocd-canary-deployments-argo-rollouts/view) instead.
