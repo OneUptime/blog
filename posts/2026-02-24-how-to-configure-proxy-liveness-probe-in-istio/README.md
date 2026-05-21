@@ -14,7 +14,7 @@ Liveness probes tell Kubernetes whether a container is still alive and functioni
 
 By default, Istio does not add a liveness probe to the sidecar proxy container. The reasoning is that Envoy rarely crashes or becomes unresponsive, and a misconfigured liveness probe can cause unnecessary restarts that actually hurt availability.
 
-However, you can and should add one for production workloads. The proxy exposes a liveness endpoint at `/healthz/ready` on port 15021, or you can use the `/server_info` endpoint on port 15000.
+However, you can consider adding one for workloads where restarting a stuck proxy is preferable to leaving the pod running. The proxy exposes a health endpoint at `/healthz/ready` on port 15021, or you can use the `/server_info` endpoint on port 15000 for diagnostic checks.
 
 ## Adding a Liveness Probe via Annotations
 
@@ -25,30 +25,39 @@ Istio doesn't have built-in annotations specifically for the proxy liveness prob
 You can create a custom injection template that includes a liveness probe:
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
 metadata:
-  name: istio-sidecar-injector
-  namespace: istio-system
-data:
-  config: |
-    policy: enabled
-    template: |
-      containers:
-      - name: istio-proxy
-        livenessProbe:
-          httpGet:
-            path: /healthz/ready
-            port: 15021
-          initialDelaySeconds: 10
-          periodSeconds: 15
-          timeoutSeconds: 3
-          failureThreshold: 5
+  name: istio
+spec:
+  values:
+    sidecarInjectorWebhook:
+      templates:
+        proxy-liveness: |
+          spec:
+            containers:
+            - name: istio-proxy
+              livenessProbe:
+                httpGet:
+                  path: /healthz/ready
+                  port: 15021
+                initialDelaySeconds: 10
+                periodSeconds: 15
+                timeoutSeconds: 3
+                failureThreshold: 5
 ```
 
-**Approach 2: Using ProxyConfig with custom bootstrap**
+Then apply it to selected pods together with the default sidecar template:
 
-For Istio 1.18+, you can use a ProxyConfig to influence the sidecar configuration, though direct liveness probe configuration through annotations is limited. The more practical approach is using the injection template method.
+```yaml
+metadata:
+  annotations:
+    inject.istio.io/templates: "sidecar,proxy-liveness"
+```
+
+**Approach 2: Adding an `istio-proxy` override to the pod spec**
+
+For individual workloads, you can add an `istio-proxy` container override to the pod template. Istio treats fields you define there as overrides to the injected sidecar template.
 
 ## Application Liveness Probes Through the Proxy
 
@@ -86,20 +95,20 @@ spec:
           failureThreshold: 3
 ```
 
-After injection, Istio rewrites the probe to go through port 15021:
+After injection, Istio rewrites the probe to go through the sidecar agent status port:
 
 ```yaml
 livenessProbe:
   httpGet:
     path: /app-health/my-service/livez
-    port: 15021
+    port: 15020
   initialDelaySeconds: 15
   periodSeconds: 20
   timeoutSeconds: 5
   failureThreshold: 3
 ```
 
-The proxy receives the health check request on port 15021 and forwards it to your application on port 8080 at the `/healthz` path.
+The sidecar agent receives the health check request on port 15020 and forwards it to your application on port 8080 at the `/healthz` path.
 
 ## Controlling Probe Rewriting
 
@@ -112,8 +121,8 @@ apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
   values:
-    sidecar_injector:
-      rewriteAppHTTPProbers: false
+    sidecarInjectorWebhook:
+      rewriteAppHTTPProbe: false
 ```
 
 **Disable rewriting per pod:**
@@ -124,11 +133,11 @@ metadata:
     sidecar.istio.io/rewriteAppHTTPProbers: "false"
 ```
 
-When probe rewriting is disabled, the kubelet sends health check requests directly to your application container, bypassing the proxy. The request still goes through the iptables rules, so it reaches the proxy, but the proxy is configured to pass it through without the rewrite step.
+When probe rewriting is disabled, the kubelet keeps sending health check requests to the original application port and path. In an injected pod, those requests can still be affected by Istio's inbound traffic capture unless you explicitly exclude the relevant ports.
 
 ## Why Probe Rewriting Matters
 
-Probe rewriting serves an important purpose. When mTLS is strict, the kubelet cannot directly send HTTP requests to your application because it doesn't have the mesh certificates. The probe rewrite routes health checks through the proxy, which handles the mTLS for you.
+Probe rewriting serves an important purpose. When mTLS is strict, the kubelet cannot directly send HTTP requests to your application because it doesn't have the mesh certificates. The probe rewrite routes health checks to the sidecar agent's status port, which can safely perform the local application check.
 
 If you disable probe rewriting and have `PeerAuthentication` set to STRICT, your liveness probes will fail:
 
@@ -187,11 +196,11 @@ spec:
       periodSeconds: 20
 ```
 
-TCP probes are not rewritten by Istio. The kubelet opens a TCP connection to the specified port, and if the connection succeeds, the probe passes. This works fine with mTLS because the TCP connection check happens at the iptables level before the proxy layer.
+TCP probes are rewritten by Istio by default. Without rewriting, Istio's inbound redirection can make TCP ports appear open as long as the sidecar is running, so the sidecar agent performs the TCP port check while avoiding that redirection problem.
 
 ## gRPC Liveness Probes
 
-Kubernetes 1.24+ supports native gRPC health checks:
+Kubernetes gRPC probes are stable as of Kubernetes 1.27:
 
 ```yaml
 spec:
@@ -262,7 +271,7 @@ When liveness probes fail unexpectedly:
 POD=$(kubectl get pod -l app=my-service -o jsonpath='{.items[0].metadata.name}')
 
 # Test through the proxy rewrite path
-kubectl exec $POD -c istio-proxy -- curl -s localhost:15021/app-health/my-service/livez
+kubectl exec $POD -c istio-proxy -- curl -s localhost:15020/app-health/my-service/livez
 
 # Test the app directly
 kubectl exec $POD -c my-service -- curl -s localhost:8080/healthz
