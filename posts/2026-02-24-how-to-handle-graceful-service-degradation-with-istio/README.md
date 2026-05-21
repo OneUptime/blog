@@ -38,7 +38,7 @@ spec:
       maxEjectionPercent: 50
 ```
 
-When a recommendation-service pod returns 3 consecutive 5xx errors (checked every 10 seconds), it gets ejected from the pool for 30 seconds. Up to 50% of pods can be ejected simultaneously. This prevents the failing pods from dragging down the entire service.
+When a recommendation-service pod returns 3 consecutive 5xx errors, it gets ejected from the pool for at least 30 seconds. The 10-second interval controls Envoy's ejection analysis sweeps and recovery checks. Up to 50% of pods can be ejected simultaneously. This prevents the failing pods from dragging down the entire service.
 
 ## Timeouts: Fail Fast
 
@@ -153,9 +153,28 @@ spec:
       consecutive5xxErrors: 3
       interval: 10s
       baseEjectionTime: 60s
+---
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: recommendation-service
+  namespace: production
+spec:
+  hosts:
+  - recommendation-service
+  http:
+  - route:
+    - destination:
+        host: recommendation-service
+        subset: primary
+      weight: 95
+    - destination:
+        host: recommendation-service
+        subset: fallback
+      weight: 5
 ```
 
-When all primary pods get ejected due to errors, traffic automatically flows to the fallback pods because they are still healthy in the load balancing pool. This happens naturally through Envoy's load balancing - you do not need special routing rules.
+This keeps a small amount of traffic on the fallback path so you know it works before an incident. The `DestinationRule` defines the primary and fallback subsets, and the `VirtualService` decides how much traffic each subset receives. If the primary subset is unhealthy, requests assigned to that subset can still fail; Istio does not automatically rewrite them to the fallback subset just because the subset exists. The application-level fallback below is what keeps the user experience graceful when the primary call fails.
 
 ## Using Fault Injection for Degradation Testing
 
