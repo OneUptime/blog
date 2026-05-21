@@ -87,6 +87,11 @@ With this setup, workload certificates in cluster 1 are signed by Cluster1 Inter
 
 In a multi-primary setup where each cluster is on a different network, configure Istio to use east-west gateways for cross-cluster traffic:
 
+```bash
+kubectl --context=cluster1 label namespace istio-system topology.istio.io/network=network1
+kubectl --context=cluster2 label namespace istio-system topology.istio.io/network=network2
+```
+
 ```yaml
 # Cluster 1
 apiVersion: install.istio.io/v1alpha1
@@ -121,8 +126,8 @@ Install the east-west gateway in each cluster:
 
 ```bash
 # Generate and install east-west gateway
-samples/multicluster/gen-eastwest-gateway.sh --network network1 | istioctl install -y --context=cluster1 -f -
-samples/multicluster/gen-eastwest-gateway.sh --network network2 | istioctl install -y --context=cluster2 -f -
+samples/multicluster/gen-eastwest-gateway.sh --network network1 | istioctl --context=cluster1 install -y -f -
+samples/multicluster/gen-eastwest-gateway.sh --network network2 | istioctl --context=cluster2 install -y -f -
 ```
 
 Expose services through the east-west gateway:
@@ -166,22 +171,30 @@ This creates Kubernetes secrets that contain the kubeconfig for the remote clust
 Deploy a test service in both clusters and verify they can communicate:
 
 ```bash
-# Deploy in cluster 1
-kubectl apply -f samples/helloworld/helloworld.yaml -l version=v1 --context=cluster1
-kubectl apply -f samples/helloworld/helloworld.yaml -l service=helloworld --context=cluster1
+# Create and label the sample namespace
+kubectl create --context=cluster1 namespace sample
+kubectl create --context=cluster2 namespace sample
+kubectl label --context=cluster1 namespace sample istio-injection=enabled
+kubectl label --context=cluster2 namespace sample istio-injection=enabled
 
-# Deploy in cluster 2
-kubectl apply -f samples/helloworld/helloworld.yaml -l version=v2 --context=cluster2
-kubectl apply -f samples/helloworld/helloworld.yaml -l service=helloworld --context=cluster2
+# Deploy the HelloWorld service in both clusters
+kubectl apply --context=cluster1 -f samples/helloworld/helloworld.yaml -l service=helloworld -n sample
+kubectl apply --context=cluster2 -f samples/helloworld/helloworld.yaml -l service=helloworld -n sample
 
-# Deploy sleep in cluster 1
-kubectl apply -f samples/sleep/sleep.yaml --context=cluster1
+# Deploy v1 in cluster 1 and v2 in cluster 2
+kubectl apply --context=cluster1 -f samples/helloworld/helloworld.yaml -l version=v1 -n sample
+kubectl apply --context=cluster2 -f samples/helloworld/helloworld.yaml -l version=v2 -n sample
+
+# Deploy curl in cluster 1
+kubectl apply --context=cluster1 -f samples/curl/curl.yaml -n sample
 ```
 
 Test cross-cluster communication:
 
 ```bash
-kubectl exec --context=cluster1 deploy/sleep -- curl -s helloworld:5000/hello
+kubectl exec --context=cluster1 -n sample -c curl \
+  "$(kubectl get pod --context=cluster1 -n sample -l app=curl -o jsonpath='{.items[0].metadata.name}')" \
+  -- curl -sS helloworld.sample:5000/hello
 ```
 
 If cross-cluster mTLS is working, you should see responses from both v1 (local) and v2 (remote) when calling repeatedly.
@@ -189,7 +202,9 @@ If cross-cluster mTLS is working, you should see responses from both v1 (local) 
 Check that the traffic is encrypted:
 
 ```bash
-istioctl proxy-config secret --context=cluster1 deploy/sleep
+istioctl proxy-config secret --context=cluster1 \
+  "$(kubectl get pod --context=cluster1 -n sample -l app=curl -o jsonpath='{.items[0].metadata.name}')" \
+  -n sample
 ```
 
 The certificate should be signed by Cluster1 Intermediate CA and trusted by Cluster2 because they share the same root.
