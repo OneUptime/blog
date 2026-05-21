@@ -33,7 +33,7 @@ Here is a script that creates the cluster and installs Istio:
 set -euo pipefail
 
 CLUSTER_NAME="istio-e2e-test"
-ISTIO_VERSION="1.20.0"
+ISTIO_VERSION="1.29.2"
 
 # Create kind cluster
 
@@ -139,7 +139,8 @@ spec:
   selector:
     app: test-server
   ports:
-  - port: 8080
+  - name: http
+    port: 8080
     targetPort: 8080
 ```
 
@@ -198,7 +199,7 @@ run_test() {
 # Test 1: Verify all traffic goes to v1 by default
 echo "=== Test: Default routing ==="
 kubectl apply -n $NAMESPACE -f - <<EOF
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: test-server
@@ -212,7 +213,7 @@ spec:
         subset: v1
       weight: 100
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: test-server
@@ -236,7 +237,7 @@ run_test "All traffic to v1" "v1" "$RESPONSE"
 # Test 2: Verify header-based routing
 echo "=== Test: Header-based routing ==="
 kubectl apply -n $NAMESPACE -f - <<EOF
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: test-server
@@ -271,7 +272,7 @@ run_test "Canary header routes to v2" "v2" "$RESPONSE_CANARY"
 # Test 3: Verify fault injection
 echo "=== Test: Fault injection ==="
 kubectl apply -n $NAMESPACE -f - <<EOF
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: test-server
@@ -299,7 +300,7 @@ run_test "Fault injection returns 503" "503" "$HTTP_CODE"
 # Test 4: Verify timeout configuration
 echo "=== Test: Request timeout ==="
 kubectl apply -n $NAMESPACE -f - <<EOF
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: test-server
@@ -338,7 +339,7 @@ echo "=== Test: mTLS enforcement ==="
 
 # Apply strict mTLS policy
 kubectl apply -n $NAMESPACE -f - <<EOF
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: strict-mtls
@@ -376,7 +377,7 @@ jobs:
 
     - name: Install kind
       run: |
-        curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.20.0/kind-linux-amd64
+        curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.31.0/kind-linux-amd64
         chmod +x ./kind
         sudo mv ./kind /usr/local/bin/kind
 
