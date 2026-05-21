@@ -14,7 +14,7 @@ This is particularly important in multi-team environments where different teams 
 
 ## The Default State: No Isolation
 
-Without any Istio security policies, all services in the mesh can communicate freely across namespaces. A pod in the `staging` namespace can call services in the `production` namespace, and a pod in `team-a` can access `team-b` services. The only thing Istio adds by default is mTLS encryption between all services.
+Without any Istio security policies, all services in the mesh can communicate freely across namespaces. A pod in the `staging` namespace can call services in the `production` namespace, and a pod in `team-a` can access `team-b` services. By default, Istio sidecars accept both mTLS and plaintext inbound traffic, while Auto mTLS makes sidecars use mTLS for mesh-to-mesh traffic when possible.
 
 To verify this, try calling a service across namespaces:
 
@@ -27,7 +27,7 @@ Without isolation policies, this call succeeds.
 
 ## Step 1: Enable Strict mTLS Per Namespace
 
-Start by ensuring all traffic in and out of each namespace uses mTLS:
+Start by ensuring incoming traffic to workloads in each namespace uses mTLS:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -58,17 +58,17 @@ spec:
     mode: STRICT
 ```
 
-With strict mTLS, only services with valid Istio certificates can communicate. This blocks any traffic from pods without sidecars, adding a baseline security layer.
+With strict mTLS, only clients with valid Istio certificates can connect to these workloads through the sidecar. This blocks traffic from pods without sidecars, adding a baseline security layer.
 
 ## Step 2: Deny All Cross-Namespace Traffic
 
-Apply a deny-all policy to each namespace you want to isolate:
+Apply an allow-nothing policy to each namespace you want to isolate:
 
 ```yaml
 apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
-  name: deny-all
+  name: allow-nothing
   namespace: production
 spec:
   {}
@@ -76,7 +76,7 @@ spec:
 apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
-  name: deny-all
+  name: allow-nothing
   namespace: staging
 spec:
   {}
@@ -120,7 +120,7 @@ Services within `production` can talk to each other, and services within `stagin
 
 ## Step 4: Allow Health Checks
 
-Kubernetes kubelet health checks come from outside the mesh (no sidecar), so they get blocked by the deny-all policy. Allow them:
+With Istio sidecar injection, HTTP, TCP, and gRPC health probes are rewritten to the sidecar agent by default so kubelet probes keep working with strict mTLS. If you expose health endpoints through normal mesh traffic, allow those paths explicitly:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -140,7 +140,7 @@ spec:
               - GET
 ```
 
-A rule without a `from` clause matches all sources, including the kubelet.
+A rule without a `from` clause matches all sources that can reach the workload through the mesh.
 
 ## Step 5: Allow Ingress Gateway Traffic
 
@@ -167,7 +167,7 @@ This allows only the ingress gateway to reach the frontend service in production
 
 ## Step 6: Allow Controlled Cross-Namespace Traffic
 
-Sometimes namespaces need to communicate. For example, a monitoring namespace might need to scrape metrics from production:
+Sometimes namespaces need to communicate. For example, a monitoring namespace with Istio identity might need to scrape application metrics from production:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -184,12 +184,14 @@ spec:
       to:
         - operation:
             ports:
-              - "15020"
+              - "9090"
+            paths:
+              - /metrics
             methods:
               - GET
 ```
 
-Port 15020 is where Istio exposes Prometheus metrics. This allows the monitoring namespace to scrape metrics but nothing else.
+This allows GET access from workloads in the monitoring namespace to the application's metrics endpoint. If you scrape Istio's own merged metrics on port 15020, remember that the default telemetry endpoint is plain text; use Istio's secure metrics scraping pattern or NetworkPolicy to protect direct access to that port.
 
 ## Sidecar Resource for Configuration Isolation
 
@@ -209,12 +211,12 @@ spec:
         - "monitoring/*"
 ```
 
-This tells sidecars in the `production` namespace to only load configuration for services in:
-- `./` - the current namespace (production)
+This tells sidecars in the `production` namespace to load configuration for services in:
+- `./*` - the current namespace (production)
 - `istio-system` - the Istio control plane
 - `monitoring` - the monitoring namespace
 
-Sidecars won't know about services in `staging`, `team-a`, or any other namespace. This reduces memory usage and speeds up configuration propagation.
+Sidecars won't receive Istio service configuration for `staging`, `team-a`, or any other namespace. This reduces memory usage and speeds up configuration propagation, but it does not by itself enforce an outbound traffic block.
 
 For the staging namespace:
 
@@ -231,7 +233,7 @@ spec:
         - "istio-system/*"
 ```
 
-Staging only knows about its own services and the Istio system namespace.
+Staging sidecars only receive configuration for their own services and the Istio system namespace.
 
 ## Combining Network Policies with Istio Policies
 
@@ -273,7 +275,7 @@ spec:
 
 The egress rule for UDP port 53 allows DNS resolution. Without it, pods can't resolve service names.
 
-This NetworkPolicy provides L3/L4 isolation even if someone bypasses the Istio sidecar (for example, by using `hostNetwork: true`).
+This NetworkPolicy provides L3/L4 isolation for pod-network traffic even if an application bypasses the Istio sidecar. Behavior for `hostNetwork: true` pods depends on the network plugin, and many implementations treat that traffic as node traffic instead of normal pod traffic.
 
 ## Testing Isolation
 
