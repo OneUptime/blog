@@ -22,7 +22,7 @@ The control plane never touches actual traffic. It only configures the proxies. 
 
 ## Istiod: The Control Plane
 
-In modern Istio versions, the entire control plane is a single binary called `istiod`. It runs as a Deployment in the `istio-system` namespace. Internally, istiod combines several logical components:
+In modern Istio versions, the control plane is a single binary called `istiod`. It runs as a Deployment in the `istio-system` namespace. Internally, istiod handles several logical responsibilities:
 
 ### Pilot
 
@@ -37,7 +37,7 @@ istioctl proxy-config listeners my-service-pod-xyz -n default
 istioctl proxy-config endpoints my-service-pod-xyz -n default
 ```
 
-### Citadel (Certificate Authority)
+### Certificate Authority
 
 The built-in CA handles mTLS certificate issuance. When a new proxy starts up, it generates a CSR (Certificate Signing Request) and sends it to istiod. Istiod signs it and returns the certificate. These certificates are rotated automatically before they expire.
 
@@ -47,9 +47,9 @@ Check certificate status:
 istioctl proxy-config secret my-service-pod-xyz -n default
 ```
 
-### Galley (Configuration Validation)
+### Configuration Validation
 
-Galley validates your Istio configuration before it is applied. If you try to create an invalid VirtualService, Galley's webhook rejects it. This prevents bad configuration from reaching your proxies.
+Istiod validates your Istio configuration before it is applied through Istio's validating admission webhook. If you try to create an invalid VirtualService, the validation webhook can reject it. This prevents bad configuration from reaching your proxies.
 
 Test your configuration before applying:
 
