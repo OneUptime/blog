@@ -43,11 +43,7 @@ To see the effective mesh configuration in a readable format:
 kubectl get configmap istio -n istio-system -o jsonpath='{.data.mesh}' | yq .
 ```
 
-Or with `istioctl`:
-
-```bash
-istioctl mesh-config
-```
+For revisioned control planes, the ConfigMap name may include the revision, such as `istio-<revision>`.
 
 ## Common MeshConfig Settings
 
@@ -97,7 +93,7 @@ meshConfig:
     mode: REGISTRY_ONLY
 ```
 
-`REGISTRY_ONLY` blocks all traffic to services not in the mesh registry. `ALLOW_ANY` (the default) lets traffic to unknown destinations pass through. For production, `REGISTRY_ONLY` is more secure because it forces you to explicitly define external services through ServiceEntry.
+`REGISTRY_ONLY` drops unknown outbound traffic to services not in the mesh registry. `ALLOW_ANY` (the default) lets traffic to unknown destinations pass through. For production, `REGISTRY_ONLY` is useful for detecting missing ServiceEntry configuration and forcing you to explicitly define external services, but it should not be treated as an outbound firewall or security policy.
 
 ### Trust Domain
 
@@ -118,7 +114,7 @@ You have three ways to modify MeshConfig:
 kubectl edit configmap istio -n istio-system
 ```
 
-Changes take effect within a few seconds as Istiod watches the ConfigMap for changes. Existing sidecars get updated configuration through xDS pushes. This is quick but not tracked in version control.
+Most MeshConfig changes take effect within a few seconds as Istiod watches the ConfigMap for changes and pushes dynamic configuration through xDS. Settings under `meshConfig.defaultConfig` are applied during sidecar injection, so changes to those fields require affected workloads to be restarted. Direct edits are quick but not tracked in version control.
 
 ### Option 2: Use istioctl
 
@@ -151,7 +147,7 @@ This is the recommended approach for production because the IstioOperator YAML c
 
 ## Per-Workload Overrides
 
-Many MeshConfig settings can be overridden per workload using pod annotations. This is useful when a specific service needs different settings from the mesh defaults:
+ProxyConfig settings under `meshConfig.defaultConfig` can be overridden per workload using pod annotations. This is useful when a specific service needs different proxy settings from the mesh defaults:
 
 ```yaml
 apiVersion: apps/v1
@@ -178,7 +174,7 @@ There is an important distinction between `meshConfig` and `meshConfig.defaultCo
 - `meshConfig` controls mesh-wide settings like access logging, outbound policy, and discovery selectors
 - `meshConfig.defaultConfig` (which maps to `ProxyConfig`) controls per-proxy settings like concurrency, tracing, and proxy metadata
 
-Settings in `defaultConfig` can be overridden per workload. Settings at the `meshConfig` level generally cannot be overridden per workload (they are truly mesh-wide).
+Settings in `defaultConfig` can be overridden per workload. Most settings at the `meshConfig` level cannot be overridden per workload, although a few have specific override mechanisms such as the Sidecar API for outbound traffic policy.
 
 ## Validating MeshConfig Changes
 
@@ -208,7 +204,7 @@ If a MeshConfig change causes problems, you can roll back by:
 1. Reverting the ConfigMap to its previous value
 2. Running `istioctl install` with the previous IstioOperator configuration
 
-Changes propagate to all sidecars within seconds. If specific pods are stuck with old configuration, restart them:
+Dynamic MeshConfig changes propagate to sidecars within seconds. Changes to `meshConfig.defaultConfig` require affected workloads to be restarted:
 
 ```bash
 kubectl rollout restart deployment -n affected-namespace
