@@ -72,15 +72,11 @@ Validate resources against the Istio CRD schemas using kubeconform:
 # Install kubeconform
 go install github.com/yannh/kubeconform/cmd/kubeconform@latest
 
-# Download Istio CRD schemas
-mkdir -p /tmp/istio-schemas
-kubectl get crd -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' | \
-  grep istio | while read crd; do
-    kubectl get crd $crd -o json | jq '.spec.versions[0].schema.openAPIV3Schema' > /tmp/istio-schemas/${crd}.json
-  done
-
-# Validate
-kubeconform -schema-location /tmp/istio-schemas istio/
+# Validate Kubernetes resources and look up Istio CRD schemas
+kubeconform \
+  -schema-location default \
+  -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+  istio/
 ```
 
 ## Layer 2: Dry Run
@@ -114,19 +110,19 @@ helm template my-release ./istio-chart -f values-production.yaml | kubectl apply
 Use Open Policy Agent (OPA) with Conftest to write unit tests for your configuration:
 
 ```bash
-pip install conftest
-# or
 brew install conftest
+# or
+CGO_ENABLED=0 go install github.com/open-policy-agent/conftest@latest
 ```
 
 Write policy tests:
 
 ```rego
-# policy/istio_test.rego
+# policy/istio.rego
 package istio
 
 # All VirtualServices must have a timeout
-deny[msg] {
+deny contains msg if {
   input.kind == "VirtualService"
   route := input.spec.http[_]
   not route.timeout
@@ -134,7 +130,7 @@ deny[msg] {
 }
 
 # Retry attempts must be 5 or fewer
-deny[msg] {
+deny contains msg if {
   input.kind == "VirtualService"
   route := input.spec.http[_]
   route.retries.attempts > 5
@@ -142,14 +138,14 @@ deny[msg] {
 }
 
 # DestinationRules must have outlier detection
-deny[msg] {
+deny contains msg if {
   input.kind == "DestinationRule"
   not input.spec.trafficPolicy.outlierDetection
   msg := sprintf("DestinationRule %s is missing outlierDetection", [input.metadata.name])
 }
 
 # AuthorizationPolicies must not use wildcard principals
-deny[msg] {
+deny contains msg if {
   input.kind == "AuthorizationPolicy"
   rule := input.spec.rules[_]
   source := rule.from[_].source
@@ -159,7 +155,7 @@ deny[msg] {
 }
 
 # EnvoyFilters must have workloadSelector
-deny[msg] {
+deny contains msg if {
   input.kind == "EnvoyFilter"
   not input.spec.workloadSelector
   input.metadata.namespace != "istio-system"
@@ -170,7 +166,7 @@ deny[msg] {
 Run the tests:
 
 ```bash
-conftest test istio/ -p policy/
+conftest test istio/ -p policy/ --namespace istio
 ```
 
 ## Layer 4: Staging Environment Testing
@@ -348,7 +344,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: YAML lint
-        run: yamllint -d relaxed istio/
+        run: |
+          pip install yamllint
+          yamllint -d relaxed istio/
       - name: Install istioctl
         run: |
           curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.24.0 sh -
@@ -356,24 +354,38 @@ jobs:
       - name: Istio analyze
         run: istioctl analyze -R istio/
       - name: Policy tests
-        run: conftest test istio/ -p policy/
+        run: |
+          CGO_ENABLED=0 go install github.com/open-policy-agent/conftest@latest
+          conftest test istio/ -p policy/ --namespace istio
 
   dry-run:
     needs: static-analysis
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Configure kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          printf '%s' "$STAGING_KUBECONFIG" > "$HOME/.kube/config"
+          chmod 600 "$HOME/.kube/config"
+        env:
+          STAGING_KUBECONFIG: ${{ secrets.STAGING_KUBECONFIG }}
       - name: Server-side dry run
         run: |
           kustomize build istio/overlays/staging | kubectl apply --dry-run=server -f -
-        env:
-          KUBECONFIG: ${{ secrets.STAGING_KUBECONFIG }}
 
   staging-test:
     needs: dry-run
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Configure kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          printf '%s' "$STAGING_KUBECONFIG" > "$HOME/.kube/config"
+          chmod 600 "$HOME/.kube/config"
+        env:
+          STAGING_KUBECONFIG: ${{ secrets.STAGING_KUBECONFIG }}
       - name: Deploy to staging
         run: kustomize build istio/overlays/staging | kubectl apply -f -
       - name: Wait for propagation
