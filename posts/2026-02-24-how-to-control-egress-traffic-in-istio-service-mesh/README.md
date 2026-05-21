@@ -10,13 +10,13 @@ Description: How to control outbound traffic from your Istio service mesh includ
 
 By default, Istio allows all outbound traffic from pods in the mesh. Any pod can reach any external IP or domain without restriction. For development, that is convenient. For production, it is a security risk. A compromised pod can exfiltrate data, connect to command-and-control servers, or make unauthorized API calls to external services.
 
-Controlling egress traffic means deciding which external services your mesh can talk to and routing that traffic through monitored channels.
+Controlling egress traffic means deciding which external services your mesh can talk to and routing that traffic through monitored channels. Istio's sidecar-based egress controls are useful for visibility and preventing accidental dependencies, but they are not a strong outbound firewall by themselves.
 
 ## Understanding Istio's Egress Modes
 
 Istio has a mesh-wide setting called `outboundTrafficPolicy` that controls what happens when a pod tries to reach an external service. It has two modes:
 
-**ALLOW_ANY (default):** Pods can access any external service. Istio passthrough proxies the traffic without applying any policies.
+**ALLOW_ANY (default):** Pods can access any external service. Istio passthrough proxies traffic to unknown destinations with reduced observability and traffic-control features.
 
 **REGISTRY_ONLY:** Pods can only access services that are registered in Istio's service registry (Kubernetes services and ServiceEntry resources). Anything else is blocked.
 
@@ -45,15 +45,14 @@ Apply the change:
 istioctl install -f istio-config.yaml
 ```
 
-Or patch the configmap directly:
+Or set the value directly with `istioctl`:
 
 ```bash
-kubectl get configmap istio -n istio-system -o yaml | \
-  sed 's/mode: ALLOW_ANY/mode: REGISTRY_ONLY/' | \
-  kubectl apply -f -
+istioctl install <flags-you-used-to-install-Istio> \
+  --set meshConfig.outboundTrafficPolicy.mode=REGISTRY_ONLY
 ```
 
-After switching, any pod trying to reach an external service not registered via ServiceEntry will get a 502 Bad Gateway response (for HTTP) or a connection refused (for TCP).
+After switching, any pod trying to reach an external service not registered via ServiceEntry will be blocked. HTTP traffic may get a 502 Bad Gateway response, while TCP or TLS traffic usually fails at the connection level.
 
 ## Allowing Specific External Services with ServiceEntry
 
@@ -72,7 +71,7 @@ spec:
   ports:
   - number: 443
     name: https
-    protocol: TLS
+    protocol: HTTPS
   resolution: DNS
   location: MESH_EXTERNAL
 ```
@@ -89,7 +88,7 @@ spec:
   ports:
   - number: 443
     name: https
-    protocol: TLS
+    protocol: HTTPS
   resolution: DNS
   location: MESH_EXTERNAL
 ```
@@ -110,7 +109,7 @@ spec:
   ports:
   - number: 443
     name: https
-    protocol: TLS
+    protocol: HTTPS
   resolution: DNS
   location: MESH_EXTERNAL
   exportTo:
@@ -159,7 +158,7 @@ spec:
 
 ### HTTPS Services
 
-For HTTPS, use `TLS` protocol so Istio does not try to inspect the encrypted traffic:
+For normal HTTPS services, use the `HTTPS` protocol so Istio can match the encrypted connection by SNI without decrypting it:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -172,7 +171,7 @@ spec:
   ports:
   - number: 443
     name: https
-    protocol: TLS
+    protocol: HTTPS
   resolution: DNS
   location: MESH_EXTERNAL
 ```
@@ -212,7 +211,7 @@ spec:
   ports:
   - number: 8443
     name: https
-    protocol: TLS
+    protocol: HTTPS
   resolution: STATIC
   location: MESH_EXTERNAL
   endpoints:
@@ -244,7 +243,7 @@ Switching from ALLOW_ANY to REGISTRY_ONLY all at once can break things if you do
 3. Monitor egress traffic for a few weeks to catalog external dependencies
 4. Create ServiceEntry resources for all discovered external services
 5. Switch to REGISTRY_ONLY mode
-6. Watch for 502 errors that indicate missed services
+6. Watch for 502 errors or failed connections that indicate missed services
 
 Enable access logging to discover external dependencies:
 
@@ -285,12 +284,12 @@ This overrides the mesh-wide REGISTRY_ONLY setting for pods in the `tooling` nam
 
 ## Common Pitfalls
 
-**DNS resolution failures.** When you switch to REGISTRY_ONLY, DNS resolution still works for registered hosts. But some applications resolve DNS and cache the IP, then connect to the IP directly. If the ServiceEntry uses `resolution: DNS`, the IP might not be in Istio's service registry. Use `resolution: NONE` for such cases.
+**DNS resolution failures.** When you switch to REGISTRY_ONLY, DNS resolution still works for registered hosts. But some applications resolve DNS and cache the IP, then connect to the IP directly. If the ServiceEntry uses `resolution: DNS`, the original destination IP might not match the way Istio routes the service. Use `addresses` with `STATIC` endpoints for fixed IPs, or use `resolution: NONE` carefully when the application must connect to the IP it resolved.
 
-**Init containers.** Init containers run before the sidecar proxy is ready. If your init container needs to reach an external service, it will fail in REGISTRY_ONLY mode. Use `holdApplicationUntilProxyStarts` in the pod annotation, or exclude init container traffic from the mesh.
+**Init containers.** Init containers run before regular containers, including the sidecar proxy. If an init container needs to reach an external service and its traffic is redirected through Istio, it can fail because the proxy is not ready. `holdApplicationUntilProxyStarts` helps regular application containers wait for the proxy, but it does not make init containers wait for the sidecar. Use Istio CNI, avoid external calls from init containers, or exclude that traffic from the mesh.
 
 **Wildcard hosts.** You can use wildcards in ServiceEntry hosts, but only `*.example.com` format is supported. You cannot use `*` alone to allow all hosts.
 
 ## Summary
 
-Controlling egress traffic in Istio starts with understanding the `outboundTrafficPolicy` setting. Switch to REGISTRY_ONLY mode and use ServiceEntry resources to explicitly allow external service access. Roll it out gradually by monitoring traffic first, creating ServiceEntries for known dependencies, and then flipping the switch. This approach gives you visibility into what your mesh is talking to and the ability to block unauthorized outbound connections.
+Controlling egress traffic in Istio starts with understanding the `outboundTrafficPolicy` setting. Switch to REGISTRY_ONLY mode and use ServiceEntry resources to explicitly allow external service access. Roll it out gradually by monitoring traffic first, creating ServiceEntries for known dependencies, and then flipping the switch. This approach gives you visibility into what your mesh is talking to and the ability to block unregistered outbound connections.
