@@ -45,13 +45,13 @@ The ServiceEntry is just a Kubernetes resource. What matters is whether istiod p
 ```bash
 # Check for the cluster (Envoy term for a backend service)
 
-istioctl proxy-config cluster deploy/my-app | grep external-api
+istioctl proxy-config cluster deployment/my-app | grep external-api
 
 # Check for routes
-istioctl proxy-config routes deploy/my-app | grep external-api
+istioctl proxy-config routes deployment/my-app | grep external-api
 
 # Check for endpoints
-istioctl proxy-config endpoints deploy/my-app | grep external-api
+istioctl proxy-config endpoints deployment/my-app | grep external-api
 ```
 
 If the cluster does not appear in the output, the ServiceEntry configuration did not make it to Envoy. Common reasons:
@@ -74,15 +74,16 @@ kubectl exec deploy/my-app -c my-app -- \
   nc -zv database.example.com 5432
 
 # For DNS resolution
-kubectl exec deploy/my-app -c istio-proxy -- \
+kubectl exec deploy/my-app -c my-app -- \
   nslookup api.example.com
 ```
 
 The `-v` flag on curl gives you detailed output including connection attempts, TLS handshake details, and response headers.
+Application DNS resolution is separate from Envoy's DNS resolution for `resolution: DNS` ServiceEntries, but this confirms what the workload itself can resolve.
 
 ## Step 4: Check Envoy Access Logs
 
-Envoy access logs show what happened at the proxy level:
+If Envoy access logging is enabled, the logs show what happened at the proxy level:
 
 ```bash
 kubectl logs deploy/my-app -c istio-proxy --tail=100 | grep "api.example.com"
@@ -113,7 +114,7 @@ This means Envoy knows about the host but cannot find healthy endpoints.
 
 ```bash
 # Check endpoint health
-istioctl proxy-config endpoints deploy/my-app \
+istioctl proxy-config endpoints deployment/my-app \
   --cluster "outbound|443||api.example.com"
 ```
 
@@ -129,7 +130,7 @@ If no endpoints appear:
 ### Issue: Connection Timeout
 
 ```bash
-# Check if the destination is reachable from the node
+# Check if the destination is reachable from the proxy container
 kubectl exec deploy/my-app -c istio-proxy -- \
   curl -m 5 -v https://api.example.com
 ```
@@ -143,8 +144,8 @@ One of the sneakiest bugs. If you set `protocol: HTTP` but the service uses HTTP
 Check your port protocol:
 
 ```bash
-istioctl proxy-config cluster deploy/my-app \
-  --fqdn "outbound|443||api.example.com" -o json | grep -A5 "protocol"
+kubectl get serviceentry my-external-api -n default \
+  -o jsonpath='{range .spec.ports[*]}{.number}{" "}{.name}{" "}{.protocol}{"\n"}{end}'
 ```
 
 Common protocol mistakes:
@@ -155,7 +156,7 @@ Common protocol mistakes:
 
 ### Issue: Namespace Visibility
 
-ServiceEntries are namespace-scoped by default. Check the exportTo setting:
+ServiceEntries are Kubernetes namespace-scoped resources, but they are exported to all namespaces by default unless `exportTo` restricts them. Check the exportTo setting:
 
 ```bash
 kubectl get serviceentry my-api -n production -o jsonpath='{.spec.exportTo}'
@@ -208,7 +209,7 @@ istioctl analyze -n default
 This reports problems like:
 - ServiceEntries with conflicting hosts
 - Missing DestinationRules referenced by VirtualServices
-- Protocol mismatches
+- Invalid or inconsistent protocol configuration
 
 ## Step 7: Check istiod Logs
 
@@ -238,7 +239,7 @@ Fix: Set protocol to HTTPS or TLS for encrypted connections. Check SNI settings 
 Fix: Check namespace of ServiceEntry and exportTo settings. Check if a Sidecar resource is filtering the host.
 
 **Problem: Intermittent failures**
-Fix: Check DNS TTL and refresh rate. The external service might be changing IPs and Envoy has stale DNS cache.
+Fix: Check DNS TTL and remember that Envoy resolves `resolution: DNS` ServiceEntries periodically, with a fixed 30-second interval. The external service might be changing IPs between Envoy DNS refreshes.
 
 **Problem: Works without Istio sidecar but fails with it**
 Fix: Check the outbound traffic policy. In REGISTRY_ONLY mode, you need a ServiceEntry. In ALLOW_ANY mode, the ServiceEntry might have wrong protocol settings that confuse Envoy.
@@ -262,13 +263,13 @@ echo "=== ServiceEntry Check ==="
 kubectl get serviceentry -n $NAMESPACE | grep -i $(echo $HOST | cut -d. -f1)
 
 echo "=== Cluster Check ==="
-istioctl proxy-config cluster deploy/$DEPLOY -n $NAMESPACE | grep $HOST
+istioctl proxy-config cluster deployment/$DEPLOY -n $NAMESPACE | grep $HOST
 
 echo "=== Endpoint Check ==="
-istioctl proxy-config endpoints deploy/$DEPLOY -n $NAMESPACE | grep $HOST
+istioctl proxy-config endpoints deployment/$DEPLOY -n $NAMESPACE | grep $HOST
 
 echo "=== Route Check ==="
-istioctl proxy-config routes deploy/$DEPLOY -n $NAMESPACE | grep $HOST
+istioctl proxy-config routes deployment/$DEPLOY -n $NAMESPACE | grep $HOST
 
 echo "=== Recent Logs ==="
 kubectl logs deploy/$DEPLOY -n $NAMESPACE -c istio-proxy --tail=20 | grep $HOST
