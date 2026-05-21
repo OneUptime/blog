@@ -14,11 +14,11 @@ This post covers the key architectural decisions you need to make and the tradeo
 
 ## Federation vs Multi-Cluster: Picking the Right Model
 
-First, make sure federation is actually what you need. Istio supports two main multi-cluster models:
+First, make sure federation is actually what you need. Istio supports two broad multi-cluster models:
 
-**Multi-cluster with shared control plane**: All clusters share a single Istio control plane (or a replicated one). Services across clusters are in the same mesh. This is simpler to operate but requires tight coupling between clusters.
+**Multi-cluster single mesh**: Clusters are part of the same Istio mesh and may use one or more primary control planes, or a primary-remote model. Services across clusters are in the same mesh. This is simpler to operate but requires tighter coupling between clusters.
 
-**Federation (separate control planes)**: Each cluster has its own independent Istio mesh. The meshes are connected but maintain separate control planes, trust domains, and policies.
+**Federation (multiple meshes)**: Each cluster or group of clusters has its own independent Istio mesh. The meshes are connected but can maintain separate control planes, trust domains, and policies.
 
 Choose federation when:
 
@@ -76,7 +76,7 @@ For most organizations, the hierarchical approach strikes the best balance betwe
 
 Your trust model is one of the most important architectural decisions. You have three main options:
 
-**Shared root CA**: Generate a root CA that all meshes trust, and derive intermediate CAs for each mesh. This is the simplest approach and what Istio documentation recommends.
+**Shared root CA**: Generate a root CA that all meshes trust, and derive intermediate CAs for each mesh. Istio documentation commonly uses this model for multicluster meshes and recommends keeping the root CA on a secure offline machine while issuing intermediate certificates to the Istio CAs running in each cluster.
 
 ```text
            Root CA
@@ -105,7 +105,7 @@ Plan your naming conventions before deploying anything. In a federated setup, yo
 
 Common approaches:
 
-**Suffix-based**: Local services use `.svc.cluster.local`, remote services use `.global` or `.federation`:
+**Suffix-based**: Local services use `.svc.cluster.local`, and exported or imported remote services use a suffix you control, such as `.global` or `.federation`:
 
 ```text
 checkout.shop.svc.cluster.local  -> local service
@@ -126,18 +126,16 @@ Pick a convention and document it. Make sure all teams follow it. Name collision
 
 East-west gateways handle all cross-mesh traffic, so they need to be sized appropriately. Consider:
 
-**Throughput**: Estimate the total cross-mesh traffic volume. Start with current numbers and project growth. Each gateway pod can handle roughly 1-2 Gbps of throughput depending on message sizes.
+**Throughput**: Estimate the total cross-mesh traffic volume. Start with current numbers and project growth. Gateway capacity depends on CPU, TLS settings, message sizes, telemetry configuration, and load balancer behavior, so benchmark your own workload instead of relying on a fixed per-pod throughput number.
 
-**High availability**: Deploy at least 2-3 gateway pods per mesh with pod anti-affinity rules:
+**High availability**: Deploy at least 2-3 gateway pods per mesh and include pod anti-affinity in the gateway Deployment template:
 
 ```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: istio-eastwestgateway
 spec:
-  replicas: 3
   template:
+    metadata:
+      labels:
+        istio: eastwestgateway
     spec:
       affinity:
         podAntiAffinity:
@@ -153,7 +151,7 @@ spec:
                 topologyKey: kubernetes.io/hostname
 ```
 
-**Resource allocation**: Start with these resource requests and adjust based on monitoring:
+**Resource allocation**: For a small or medium gateway, start with resource requests like these and adjust based on monitoring and load testing:
 
 ```yaml
 resources:
@@ -180,7 +178,7 @@ Design a failure matrix:
 | Component | Impact | Mitigation |
 |-----------|--------|------------|
 | East-west gateway | Cross-mesh traffic stops | Multi-replica, anti-affinity |
-| Remote API server | Discovery stops updating | Cache TTLs, manual ServiceEntry |
+| Remote API server | Discovery stops updating | Restore API access, predefine critical remote services with ServiceEntry where appropriate |
 | Network partition | Remote endpoints unreachable | Circuit breaking, local fallback |
 | CA/certificate issue | mTLS failures | Cert monitoring, rotation automation |
 
@@ -200,7 +198,7 @@ Before going to production, prepare runbooks for common scenarios:
 
 ## Version Compatibility
 
-Istio supports federation between meshes running different versions, but with limitations. Generally, you should keep meshes within one minor version of each other (e.g., 1.19 and 1.20). Test cross-version compatibility in a staging environment before upgrading production meshes.
+Version skew matters inside each mesh and at cross-mesh boundaries. Keep participating meshes on supported Istio releases and avoid large version gaps; adjacent supported minor versions such as 1.29 and 1.30 are a safer target than older unsupported releases. Test cross-version compatibility in a staging environment before upgrading production meshes.
 
 Create an upgrade schedule:
 
