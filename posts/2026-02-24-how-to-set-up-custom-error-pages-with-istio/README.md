@@ -12,9 +12,9 @@ When a user hits a 404 or 503 error in your application, the default Envoy error
 
 Istio does not have a built-in feature for custom error pages, but there are several approaches to get this done. We will cover the most practical ones.
 
-## Approach 1: Custom Error Service with VirtualService
+## Approach 1: Custom Error Service
 
-The simplest approach is to deploy a dedicated error page service and route errors to it. First, create a simple NGINX deployment that serves your custom error pages:
+The simplest approach is to deploy a dedicated error page service and have the gateway fetch pages from it when an error response is returned. First, create a simple NGINX deployment that serves your custom error pages:
 
 ```yaml
 apiVersion: v1
@@ -51,12 +51,22 @@ data:
       <p>Something went wrong on our end. We are working on it.</p>
     </body>
     </html>
+  504.html: |
+    <!DOCTYPE html>
+    <html>
+    <head><title>Gateway Timeout</title></head>
+    <body>
+      <h1>504 - Gateway Timeout</h1>
+      <p>The request took too long to complete. Please try again.</p>
+    </body>
+    </html>
   default.conf: |
     server {
       listen 8080;
-      location /404.html { root /usr/share/nginx/html; internal; }
-      location /503.html { root /usr/share/nginx/html; internal; }
-      location /502.html { root /usr/share/nginx/html; internal; }
+      location /404.html { root /usr/share/nginx/html; }
+      location /503.html { root /usr/share/nginx/html; }
+      location /502.html { root /usr/share/nginx/html; }
+      location /504.html { root /usr/share/nginx/html; }
       location /healthz { return 200 'ok'; }
       location / {
         return 404;
@@ -94,6 +104,9 @@ spec:
             - name: error-pages
               mountPath: /usr/share/nginx/html/502.html
               subPath: 502.html
+            - name: error-pages
+              mountPath: /usr/share/nginx/html/504.html
+              subPath: 504.html
             - name: error-pages
               mountPath: /etc/nginx/conf.d/default.conf
               subPath: default.conf
@@ -142,20 +155,24 @@ spec:
           name: envoy.filters.http.lua
           typed_config:
             "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-            inline_code: |
-              function envoy_on_response(response_handle)
-                local status = response_handle:headers():get(":status")
-                if status == "404" then
-                  response_handle:headers():replace("content-type", "text/html")
-                  response_handle:body():setBytes("<html><body><h1>404 - Page Not Found</h1><p>The page you requested does not exist.</p></body></html>")
-                elseif status == "503" then
-                  response_handle:headers():replace("content-type", "text/html")
-                  response_handle:body():setBytes("<html><body><h1>503 - Service Unavailable</h1><p>Please try again later.</p></body></html>")
-                elseif status == "502" then
-                  response_handle:headers():replace("content-type", "text/html")
-                  response_handle:body():setBytes("<html><body><h1>502 - Bad Gateway</h1><p>Something went wrong.</p></body></html>")
+            defaultSourceCode:
+              inlineString: |
+                function envoy_on_response(response_handle)
+                  local status = response_handle:headers():get(":status")
+                  if status == "404" then
+                    response_handle:headers():replace("content-type", "text/html")
+                    response_handle:headers():remove("content-length")
+                    response_handle:body(true):setBytes("<html><body><h1>404 - Page Not Found</h1><p>The page you requested does not exist.</p></body></html>")
+                  elseif status == "503" then
+                    response_handle:headers():replace("content-type", "text/html")
+                    response_handle:headers():remove("content-length")
+                    response_handle:body(true):setBytes("<html><body><h1>503 - Service Unavailable</h1><p>Please try again later.</p></body></html>")
+                  elseif status == "502" then
+                    response_handle:headers():replace("content-type", "text/html")
+                    response_handle:headers():remove("content-length")
+                    response_handle:body(true):setBytes("<html><body><h1>502 - Bad Gateway</h1><p>Something went wrong.</p></body></html>")
+                  end
                 end
-              end
 ```
 
 This filter runs on the gateway and intercepts responses. When it sees a 404, 503, or 502 status code, it replaces the response body with custom HTML.
@@ -189,27 +206,29 @@ spec:
           name: envoy.filters.http.lua
           typed_config:
             "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-            inline_code: |
-              function envoy_on_response(response_handle)
-                local status = response_handle:headers():get(":status")
-                local error_codes = {["404"]=true, ["502"]=true, ["503"]=true, ["504"]=true}
-                if error_codes[status] then
-                  local headers, body = response_handle:httpCall(
-                    "outbound|80||error-page-server.default.svc.cluster.local",
-                    {
-                      [":method"] = "GET",
-                      [":path"] = "/" .. status .. ".html",
-                      [":authority"] = "error-page-server.default.svc.cluster.local"
-                    },
-                    "",
-                    5000
-                  )
-                  if headers and headers[":status"] == "200" then
-                    response_handle:headers():replace("content-type", "text/html")
-                    response_handle:body():setBytes(body)
+            defaultSourceCode:
+              inlineString: |
+                function envoy_on_response(response_handle)
+                  local status = response_handle:headers():get(":status")
+                  local error_codes = {["404"]=true, ["502"]=true, ["503"]=true, ["504"]=true}
+                  if error_codes[status] then
+                    local headers, body = response_handle:httpCall(
+                      "outbound|80||error-page-server.default.svc.cluster.local",
+                      {
+                        [":method"] = "GET",
+                        [":path"] = "/" .. status .. ".html",
+                        [":authority"] = "error-page-server.default.svc.cluster.local"
+                      },
+                      "",
+                      5000
+                    )
+                    if headers and headers[":status"] == "200" then
+                      response_handle:headers():replace("content-type", "text/html")
+                      response_handle:headers():remove("content-length")
+                      response_handle:body(true):setBytes(body)
+                    end
                   end
                 end
-              end
 ```
 
 This Lua script catches error responses at the gateway, makes an internal HTTP call to the error page server to fetch the appropriate error page, and replaces the response body with it. The `httpCall` function takes a cluster name (the Envoy cluster format for the error page service), headers, body, and timeout in milliseconds.
@@ -300,17 +319,20 @@ spec:
           name: envoy.filters.http.lua
           typed_config:
             "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-            inline_code: |
-              function envoy_on_response(response_handle)
-                local status = response_handle:headers():get(":status")
-                if status == "404" then
-                  response_handle:headers():replace("content-type", "application/json")
-                  response_handle:body():setBytes('{"error": "Not Found", "code": 404}')
-                elseif status == "503" then
-                  response_handle:headers():replace("content-type", "application/json")
-                  response_handle:body():setBytes('{"error": "Service Unavailable", "code": 503}')
+            defaultSourceCode:
+              inlineString: |
+                function envoy_on_response(response_handle)
+                  local status = response_handle:headers():get(":status")
+                  if status == "404" then
+                    response_handle:headers():replace("content-type", "application/json")
+                    response_handle:headers():remove("content-length")
+                    response_handle:body(true):setBytes('{"error": "Not Found", "code": 404}')
+                  elseif status == "503" then
+                    response_handle:headers():replace("content-type", "application/json")
+                    response_handle:headers():remove("content-length")
+                    response_handle:body(true):setBytes('{"error": "Service Unavailable", "code": 503}')
+                  end
                 end
-              end
 ```
 
 ## Testing Your Error Pages
