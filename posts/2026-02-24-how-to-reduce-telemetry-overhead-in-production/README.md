@@ -61,6 +61,8 @@ spec:
               operation: REMOVE
 ```
 
+If you apply multiple mesh-wide telemetry changes, merge them into a single selector-less `Telemetry` resource in `istio-system`. Istio only allows one selector-less `Telemetry` resource per namespace, including the root configuration namespace.
+
 In most meshes, `connection_security_policy` is always `mutual_tls`, so it adds cardinality without information. Same for `request_protocol` if all your traffic is HTTP/2 or gRPC.
 
 ## Strategy 2: Disable Unused Metrics
@@ -167,10 +169,10 @@ spec:
     - providers:
         - name: envoy
       filter:
-        expression: "response.code >= 400 || response.duration > 1000"
+        expression: "!has(response.code) || response.code >= 400"
 ```
 
-This only logs errors and slow requests. In a healthy system, that is maybe 1-5% of all traffic instead of 100%.
+This only logs failed connections and error responses. In a healthy system, that is maybe 1-5% of all traffic instead of 100%.
 
 You can also disable access logging entirely for namespaces that do not need it:
 
@@ -277,13 +279,22 @@ After making changes, measure again:
 
 ```bash
 # Compare proxy memory before and after
-kubectl top pods -A --containers | grep istio-proxy | awk '{sum += $4} END {print sum " Mi total"}'
+kubectl top pods -A --containers --no-headers | awk '$3 == "istio-proxy" {
+  value=$5
+  if (value ~ /Ki$/) sum += value / 1024
+  else if (value ~ /Mi$/) sum += value
+  else if (value ~ /Gi$/) sum += value * 1024
+} END {printf "%.1f Mi total\n", sum}'
 
 # Check Prometheus cardinality
 curl -s http://prometheus:9090/api/v1/status/tsdb | jq '.data.headStats.numSeries'
 
 # Compare CPU usage
-kubectl top pods -A --containers | grep istio-proxy | awk '{sum += $3} END {print sum " total CPU"}'
+kubectl top pods -A --containers --no-headers | awk '$3 == "istio-proxy" {
+  value=$4
+  if (value ~ /m$/) sum += value
+  else sum += value * 1000
+} END {printf "%.0f mCPU total\n", sum}'
 ```
 
 A well-optimized telemetry configuration can reduce overhead by 50-80% compared to the defaults with everything enabled. The key is being intentional about what you collect rather than collecting everything and hoping something useful is in there.
