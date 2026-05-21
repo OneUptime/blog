@@ -161,16 +161,28 @@ spec:
 
 This sets defaults for all sidecars. Individual pods can override with annotations.
 
-**Namespace-level proxy config via annotation:**
+**Namespace-level proxy config via ProxyConfig:**
 
-You can set proxy configuration defaults at the namespace level by using the Telemetry API or EnvoyFilter resources that target the namespace. But the primary way to configure all sidecars in a namespace is through the global MeshConfig plus per-pod annotation overrides.
+You can set proxy configuration defaults at the namespace level by creating a selector-less `ProxyConfig` resource in the namespace:
+
+```yaml
+apiVersion: networking.istio.io/v1beta1
+kind: ProxyConfig
+metadata:
+  name: default
+  namespace: production
+spec:
+  concurrency: 2
+```
+
+Changes to `ProxyConfig` are not applied dynamically. Restart workloads in the namespace after changing proxy configuration.
 
 ## Scoping Sidecar Visibility per Namespace
 
 Use the Sidecar resource to limit what services each namespace's sidecars can see:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -187,7 +199,7 @@ This is a namespace-level configuration that applies to all pods in `production`
 
 ## Handling Multiple Injection Webhooks
 
-If you have multiple Istio revisions installed, you may have multiple mutating webhooks. Kubernetes processes them in order of their webhook configuration names.
+If you have multiple Istio revisions installed, you may have multiple mutating webhooks. Kubernetes does not guarantee a consistent invocation order for mutating webhooks, so do not rely on webhook names to control injection order.
 
 List all injection webhooks:
 
@@ -195,7 +207,7 @@ List all injection webhooks:
 kubectl get mutatingwebhookconfigurations | grep istio
 ```
 
-Each revision creates its own webhook. The namespace label determines which webhook processes the injection. If a namespace has `istio.io/rev=1-20`, only the `1-20` webhook will inject into it.
+Each revision creates its own webhook. The namespace label determines which webhook matches the pod. If a namespace has `istio.io/rev=1-20`, the `1-20` webhook is the one that should inject into it.
 
 ## Troubleshooting Namespace Injection
 
@@ -207,11 +219,17 @@ Check the namespace label:
 kubectl get namespace production --show-labels
 ```
 
-Check if the webhook is configured and has the right namespace selector:
+Check which injector webhook matches the namespace and pod:
 
 ```bash
-kubectl get mutatingwebhookconfiguration istio-sidecar-injector -o json | \
-  jq '.webhooks[0].namespaceSelector'
+istioctl experimental check-inject -n production deploy/your-deployment
+```
+
+You can also inspect the injector webhook configuration directly by listing the Istio webhooks and then checking the matching one:
+
+```bash
+kubectl get mutatingwebhookconfigurations | grep istio
+kubectl get mutatingwebhookconfiguration <webhook-name> -o yaml | grep -A 20 namespaceSelector
 ```
 
 Check if istiod is running and the webhook service endpoint is healthy:
