@@ -16,10 +16,10 @@ The good news is that Istio has built-in automatic certificate rotation. The bad
 
 Every workload in the Istio mesh gets an X.509 certificate issued by Istiod (the Istio control plane). The process works like this:
 
-1. The Envoy sidecar generates a private key and Certificate Signing Request (CSR)
+1. The istio-agent generates a private key and Certificate Signing Request (CSR)
 2. The istio-agent (pilot-agent) sends the CSR to Istiod
 3. Istiod signs the CSR using its CA and returns the certificate
-4. The sidecar uses the certificate for mTLS with other sidecars
+4. The agent provides the certificate to Envoy over SDS, and the sidecar uses it for mTLS with other sidecars
 5. Before the certificate expires, the agent requests a new one
 
 By default, workload certificates are valid for 24 hours and are automatically rotated when 80% of their lifetime has passed (roughly every 19 hours).
@@ -35,13 +35,13 @@ istioctl proxy-config secret deploy/my-service -n default
 This shows the certificate chain, expiration time, and the SPIFFE identity. You can also get more details:
 
 ```bash
-istioctl proxy-config secret deploy/my-service -n default -o json | jq '.dynamicActiveSecrets[0].secret.tlsCertificate.certificateChain'
+istioctl proxy-config secret deploy/my-service -n default -o json | jq -r '.dynamicActiveSecrets[0].secret.tlsCertificate.certificateChain.inlineBytes' | base64 --decode
 ```
 
 To check the actual certificate details:
 
 ```bash
-kubectl exec deploy/my-service -n default -c istio-proxy -- cat /var/run/secrets/istio/cert-chain.pem | openssl x509 -text -noout
+istioctl proxy-config secret deploy/my-service -n default -o json | jq -r '.dynamicActiveSecrets[0].secret.tlsCertificate.certificateChain.inlineBytes' | base64 --decode | openssl x509 -text -noout
 ```
 
 ## Adjusting Certificate Lifetime
@@ -82,12 +82,22 @@ This is the more involved scenario. When you need to rotate the root CA that Ist
 
 The safe approach involves an overlap period where both the old and new root CAs are trusted.
 
-### Step 1: Generate the New Root CA
+### Step 1: Generate the New Root CA and Intermediate CA
+
+Istio's `cacerts` secret expects a signing certificate and key in `ca-cert.pem` and `ca-key.pem`, the root of trust in `root-cert.pem`, and the signing certificate chain in `cert-chain.pem`. In production, keep the root key offline and use the root to sign an intermediate CA for Istiod.
 
 ```bash
-# Generate new root CA key and certificate
-
+# Generate new root CA key and certificate.
 openssl req -x509 -newkey rsa:4096 -keyout new-root-key.pem -out new-root-cert.pem -days 3650 -nodes -subj "/O=my-org/CN=my-new-root-ca"
+
+# Generate a new intermediate CA key and CSR for Istiod.
+openssl req -newkey rsa:4096 -keyout new-ca-key.pem -out new-ca.csr -nodes -subj "/O=my-org/CN=my-new-istio-ca"
+
+# Sign the intermediate CA with the new root.
+openssl x509 -req -in new-ca.csr -CA new-root-cert.pem -CAkey new-root-key.pem -CAcreateserial -out new-ca-cert.pem -days 3650 -sha256 -extfile <(printf "basicConstraints=critical,CA:TRUE,pathlen:0\nkeyUsage=critical,keyCertSign,cRLSign")
+
+# Istiod's cert-chain.pem should contain the signing CA chain, not the root alone.
+cp new-ca-cert.pem new-cert-chain.pem
 ```
 
 ### Step 2: Create a Combined CA Bundle
@@ -124,7 +134,7 @@ The combined trust bundle needs to propagate to all sidecars. This happens autom
 
 ```bash
 # Check a workload to see if it has the new trust bundle
-kubectl exec deploy/my-service -n default -c istio-proxy -- cat /var/run/secrets/istio/root-cert.pem | openssl x509 -text -noout | grep "Issuer"
+kubectl exec deploy/my-service -n default -c istio-proxy -- grep -c "BEGIN CERTIFICATE" /var/run/secrets/istio/root-cert.pem
 ```
 
 Wait until all workloads have received the updated trust bundle. You can monitor this by checking certificates across your deployments.
@@ -136,7 +146,7 @@ Now update the secret to use the new CA for signing while keeping the combined t
 ```bash
 kubectl create secret generic cacerts -n istio-system \
   --from-file=ca-cert.pem=new-ca-cert.pem \
-  --from-file=ca-key.pem=new-root-key.pem \
+  --from-file=ca-key.pem=new-ca-key.pem \
   --from-file=root-cert.pem=combined-root-cert.pem \
   --from-file=cert-chain.pem=new-cert-chain.pem \
   --dry-run=client -o yaml | kubectl apply -f -
@@ -156,9 +166,9 @@ Wait for all workload certificates to be renewed (which happens automatically wi
 
 ```bash
 # Check when certificates were last issued
-for pod in $(kubectl get pods -n default -o name); do
+for pod in $(kubectl get pods -n default -o jsonpath='{.items[*].metadata.name}'); do
   echo "$pod:"
-  kubectl exec $pod -n default -c istio-proxy -- cat /var/run/secrets/istio/cert-chain.pem 2>/dev/null | openssl x509 -noout -dates
+  istioctl proxy-config secret "$pod" -n default -o json | jq -r '.dynamicActiveSecrets[0].secret.tlsCertificate.certificateChain.inlineBytes' | base64 --decode | openssl x509 -noout -dates
 done
 ```
 
@@ -169,7 +179,7 @@ Once all certificates have been renewed with the new CA:
 ```bash
 kubectl create secret generic cacerts -n istio-system \
   --from-file=ca-cert.pem=new-ca-cert.pem \
-  --from-file=ca-key.pem=new-root-key.pem \
+  --from-file=ca-key.pem=new-ca-key.pem \
   --from-file=root-cert.pem=new-root-cert.pem \
   --from-file=cert-chain.pem=new-cert-chain.pem \
   --dry-run=client -o yaml | kubectl apply -f -
@@ -186,12 +196,19 @@ kubectl rollout restart deployment/istiod -n istio-system
 For automated CA management, you can integrate Istio with cert-manager using the istio-csr project:
 
 ```bash
-helm repo add jetstack https://charts.jetstack.io
-helm install cert-manager jetstack/cert-manager --namespace cert-manager --create-namespace --set installCRDs=true
-helm install istio-csr jetstack/cert-manager-istio-csr --namespace cert-manager
+helm install cert-manager oci://quay.io/jetstack/charts/cert-manager \
+  --namespace cert-manager \
+  --create-namespace \
+  --set crds.enabled=true
+
+# Create an Issuer or ClusterIssuer for Istio certificates before starting istio-csr.
+helm upgrade cert-manager-istio-csr oci://quay.io/jetstack/charts/cert-manager-istio-csr \
+  --install \
+  --namespace cert-manager \
+  --wait
 ```
 
-With this setup, cert-manager handles CA rotation and certificate issuance, and Istio's workload certificates are managed through cert-manager's renewal pipeline.
+With this setup, cert-manager handles CA rotation and certificate issuance, and Istio's workload certificates are managed through cert-manager's renewal pipeline. You also need to install Istio with its built-in CA server disabled and `caAddress` pointing at the istio-csr service, otherwise workloads will continue requesting certificates from Istiod.
 
 ## Monitoring Certificate Health
 
@@ -214,7 +231,10 @@ groups:
 Check certificate expiry across the mesh:
 
 ```bash
-istioctl proxy-config secret --all -n default | grep "Not After"
+for pod in $(kubectl get pods -n default -o jsonpath='{.items[*].metadata.name}'); do
+  echo "$pod:"
+  istioctl proxy-config secret "$pod" -n default | grep "Not After"
+done
 ```
 
 ## Troubleshooting
