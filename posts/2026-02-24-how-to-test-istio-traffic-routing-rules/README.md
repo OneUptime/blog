@@ -8,7 +8,7 @@ Description: A hands-on guide to systematically testing Istio traffic routing ru
 
 ---
 
-Traffic routing is one of the most powerful features Istio provides, and also one of the easiest to misconfigure. A VirtualService with a wrong match condition or a DestinationRule pointing to a nonexistent subset can silently drop traffic or route it to the wrong backend. Testing your routing rules before they hit production is not optional if you want reliable services.
+Traffic routing is one of the most powerful features Istio provides, and also one of the easiest to misconfigure. A VirtualService with a wrong match condition or a DestinationRule pointing to a nonexistent subset can fail traffic or route it to the wrong backend. Testing your routing rules before they hit production is not optional if you want reliable services.
 
 This guide covers practical techniques for verifying that your Istio routing rules actually do what you think they do.
 
@@ -184,7 +184,7 @@ kubectl exec -n routing-test deploy/sleep -c sleep -- \
 
 ## Testing Weighted Traffic Splits
 
-Weighted routing splits traffic between destinations by percentage. Testing it requires sending enough requests to see the statistical distribution:
+Weighted routing splits traffic between destinations by relative weight. When the weights add up to 100, they read like percentages. Testing it requires sending enough requests to see the statistical distribution:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -243,7 +243,7 @@ With 200 requests and a 80/20 split, you should see roughly 160 v1 and 40 v2 res
 
 ## Testing URI-Based Routing
 
-You can route different URL paths to different services:
+You can route different URL paths to different subsets:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -355,7 +355,7 @@ spec:
         subset: v1
 ```
 
-If the backend takes longer than 1 second to respond, you should get a 504 Gateway Timeout. Combine this with a delay fault to simulate a slow backend.
+If the backend takes longer than 1 second to respond, you should get a 504 Gateway Timeout. Use a backend that actually waits longer than 1 second to test this; do not use Istio fault injection on the same route, because Istio does not enable timeouts or retries when client-side faults are configured.
 
 ## Automating Route Tests
 
