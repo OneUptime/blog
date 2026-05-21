@@ -30,7 +30,7 @@ By default, every sidecar in the mesh gets configuration for every service in th
 Use the Sidecar resource to limit what each workload sees:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: my-app-sidecar
@@ -51,7 +51,7 @@ This tells the sidecar for `my-app` to only load configuration for services in i
 For a namespace-wide default:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -65,7 +65,7 @@ spec:
 
 ## Tune Envoy Concurrency
 
-Envoy uses worker threads to process requests. By default, it creates one worker thread per CPU core. If your pods have resource limits that restrict CPU, the default might create too many or too few threads.
+Envoy uses worker threads to process requests. By default, Istio automatically determines the worker count from the proxy CPU requests and limits. If your pods have unusual resource settings, the default might create too many or too few threads.
 
 Set the concurrency explicitly through proxy configuration:
 
@@ -93,20 +93,20 @@ spec:
           concurrency: 2
 ```
 
-For most workloads, 2 worker threads are sufficient. Setting this too high wastes CPU cycles on thread context switching. Setting it too low bottlenecks throughput.
+For many modest workloads, 2 worker threads are a reasonable starting point. Setting this too high wastes CPU cycles on thread context switching. Setting it too low bottlenecks throughput.
 
 ## Optimize mTLS Performance
 
 mTLS is one of the bigger contributors to sidecar overhead. Each new connection requires a TLS handshake. You can reduce the impact by keeping connections alive longer:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: connection-keepalive
   namespace: my-namespace
 spec:
-  host: "*.my-namespace.svc.cluster.local"
+  host: my-service.my-namespace.svc.cluster.local
   trafficPolicy:
     connectionPool:
       tcp:
@@ -118,17 +118,18 @@ spec:
           probes: 9
       http:
         h2UpgradePolicy: DEFAULT
+        idleTimeout: 0s
         maxRequestsPerConnection: 0
 ```
 
-Setting `maxRequestsPerConnection: 0` means connections are never closed due to request count limits. Combined with TCP keepalive settings, this minimizes the number of TLS handshakes.
+Setting `maxRequestsPerConnection: 0` means connections are not closed due to request count limits, and `idleTimeout: 0s` disables the default idle timeout. Combined with TCP keepalive settings, this minimizes the number of TLS handshakes.
 
 ## Enable HTTP/2 for Internal Communication
 
 HTTP/2 multiplexes multiple requests over a single connection, which means fewer TLS handshakes and better resource utilization:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: enable-h2
@@ -148,7 +149,7 @@ This is especially effective for services that make many small requests to each 
 Telemetry collection adds latency and CPU usage. If you do not need all the default telemetry, you can selectively disable it:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: reduce-telemetry
@@ -176,7 +177,7 @@ Reducing the number of metric labels (tags) significantly reduces the cardinalit
 To disable access logging for specific workloads:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: disable-access-log
