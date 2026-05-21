@@ -40,7 +40,7 @@ kubectl logs deploy/my-app -n default -c istio-proxy --previous
 
 ## Understanding the Access Log Format
 
-By default, Istio configures Envoy to log each request in a text format. A typical log line looks like:
+When access logging is enabled and no custom format is specified, Istio configures Envoy to log each request in a text format. A typical log line looks like:
 
 ```text
 [2024-03-15T10:30:45.123Z] "GET /api/users HTTP/1.1" 200 - via_upstream - "-" 0 1234 15 14 "-" "curl/7.88.1" "abc-def-123" "my-service.default.svc.cluster.local:8080" "10.244.1.15:8080" inbound|8080|| 10.244.2.20:54321 10.244.1.15:8080 10.244.2.20:0 - default
@@ -51,7 +51,9 @@ Breaking that down:
 - `[2024-03-15T10:30:45.123Z]` - Timestamp
 - `"GET /api/users HTTP/1.1"` - Request method, path, and protocol
 - `200` - Response status code
-- `via_upstream` - Response flags
+- `-` - Response flags
+- `via_upstream` - Response code details
+- `-` - Connection termination details
 - `0` - Bytes received
 - `1234` - Bytes sent
 - `15` - Duration in milliseconds
@@ -168,10 +170,10 @@ kubectl logs deploy/my-app -n default -c istio-proxy | grep '" 5[0-9][0-9] '
 kubectl logs deploy/my-app -n default -c istio-proxy | grep "/api/users"
 
 # Show only requests with response flags (errors)
-kubectl logs deploy/my-app -n default -c istio-proxy | grep -v '" - "'
+kubectl logs deploy/my-app -n default -c istio-proxy | awk '$6 != "-"'
 
 # Show requests that took longer than 1 second
-kubectl logs deploy/my-app -n default -c istio-proxy | awk '{if ($(NF-5) > 1000) print $0}'
+kubectl logs deploy/my-app -n default -c istio-proxy | awk '$12 ~ /^[0-9]+$/ && $12 > 1000'
 ```
 
 ## JSON Log Format
@@ -207,7 +209,7 @@ Do not forget about the control plane logs. If sidecars are not getting configur
 kubectl logs deploy/istiod -n istio-system --tail=100
 ```
 
-For debug-level control plane logs:
+To look for errors in the control plane logs:
 
 ```bash
 kubectl logs deploy/istiod -n istio-system --tail=100 | grep -i error
@@ -239,7 +241,7 @@ kubectl logs deploy/my-app -n default -c istio-proxy | grep "no_healthy_upstream
 When a deployment has multiple replicas, you want logs from all of them:
 
 ```bash
-kubectl logs deploy/my-app -n default -c istio-proxy --all-containers=false --prefix=true
+kubectl logs deploy/my-app -n default -c istio-proxy --all-pods=true --prefix=true
 ```
 
 The `--prefix=true` flag adds the pod name to each log line, so you can tell which pod generated each message.
@@ -268,11 +270,11 @@ kubectl logs deploy/$DEPLOY -n $NS -c istio-proxy --tail=$LINES | grep -E '" [45
 
 echo ""
 echo "--- Response flags (non-normal) ---"
-kubectl logs deploy/$DEPLOY -n $NS -c istio-proxy --tail=$LINES | grep -vE '" - "|- via_upstream -' | tail -10
+kubectl logs deploy/$DEPLOY -n $NS -c istio-proxy --tail=$LINES | awk '$6 != "-"' | tail -10
 
 echo ""
 echo "--- Slow requests (>1s) ---"
-kubectl logs deploy/$DEPLOY -n $NS -c istio-proxy --tail=$LINES | awk '{for(i=1;i<=NF;i++) if ($i ~ /^[0-9]+$/ && $i > 1000) {print; break}}' | tail -10
+kubectl logs deploy/$DEPLOY -n $NS -c istio-proxy --tail=$LINES | awk '$12 ~ /^[0-9]+$/ && $12 > 1000' | tail -10
 ```
 
 Save it as `proxy-logs.sh` and run with `./proxy-logs.sh my-app default 500`. This gives you a focused view of problematic requests from the proxy logs.
