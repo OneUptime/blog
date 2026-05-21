@@ -20,7 +20,7 @@ The safest and most common approach is to do a rolling restart of the entire dep
 kubectl rollout restart deployment my-app -n default
 ```
 
-This performs a zero-downtime rolling update. Kubernetes creates new pods with new sidecars before terminating the old ones. Your service stays available throughout the process.
+This can perform a zero-downtime rolling update when your deployment has enough replicas and readiness checks. Kubernetes creates new pods with new sidecars before terminating the old ones, according to the deployment's rolling update settings.
 
 Watch the rollout progress:
 
@@ -30,31 +30,31 @@ kubectl rollout status deployment my-app -n default
 
 The downside is that this restarts your application containers too, not just the sidecar. If your application has a long startup time or expensive initialization, this might not be ideal.
 
-## Method 2: Send SIGHUP to the Pilot Agent
+## Method 2: Restart the Proxy Container
 
-Inside the sidecar container, the pilot-agent process manages the Envoy proxy. You can send it a SIGHUP signal to trigger a hot restart:
-
-```bash
-kubectl exec deploy/my-app -n default -c istio-proxy -- \
-  kill -HUP 1
-```
-
-This tells the pilot-agent to restart Envoy gracefully. The old Envoy process continues handling existing connections while the new one starts up. Once the new process is ready, existing connections drain to it.
-
-This is less disruptive than restarting the entire pod because your application container keeps running.
-
-Verify the sidecar restarted by checking its uptime:
+Inside the sidecar container, the pilot-agent process manages the Envoy proxy. Modern Istio starts Envoy with hot restart disabled, so sending `SIGHUP` to PID 1 is not a supported way to hot restart Envoy. If you need to restart only the sidecar container, you can terminate the pilot-agent process and let Kubernetes restart the `istio-proxy` container:
 
 ```bash
 kubectl exec deploy/my-app -n default -c istio-proxy -- \
-  curl -s localhost:15000/server_info | python3 -c "import sys,json; print(json.load(sys.stdin)['uptime_current_epoch'])"
+  kill -TERM 1
 ```
 
-The uptime should be low (near zero) if the proxy just restarted.
+This tells pilot-agent to gracefully drain Envoy and exit. Kubernetes then restarts the sidecar container because pods managed by deployments normally use `restartPolicy: Always`.
 
-## Method 3: Use the Envoy Admin API for Hot Restart
+This avoids restarting your application container, but traffic through the pod can be interrupted while the proxy container exits and starts again.
 
-You can trigger a graceful drain and restart through the Envoy admin API:
+Verify the sidecar container restarted by checking its restart count:
+
+```bash
+kubectl get pod my-app-abc123 -n default \
+  -o jsonpath='{.status.containerStatuses[?(@.name=="istio-proxy")].restartCount}'
+```
+
+The restart count should increase after the proxy container restarts.
+
+## Method 3: Use the Envoy Admin API to Drain Listeners
+
+You can trigger a graceful drain through the Envoy admin API:
 
 ```bash
 # Start draining existing connections
@@ -67,7 +67,7 @@ kubectl exec deploy/my-app -n default -c istio-proxy -- \
   curl -s localhost:15000/stats | grep drain
 ```
 
-Note that this drains listeners but does not fully restart the proxy. It is useful when you want to stop accepting new connections on the current process.
+Note that this drains inbound listeners but does not restart the proxy. It is useful when you want to stop accepting new inbound connections on the current process.
 
 ## Method 4: Delete the Pod
 
@@ -79,7 +79,7 @@ kubectl delete pod my-app-abc123 -n default
 
 Kubernetes will create a new pod with a fresh sidecar based on your deployment spec. This is more disruptive than a rolling restart for that particular pod, but it is fast and simple.
 
-If you have multiple replicas, deleting one pod at a time keeps the service available.
+If you have multiple ready replicas, deleting one pod at a time helps keep the service available.
 
 ## Method 5: Restart Specific Pods by Label
 
@@ -160,7 +160,7 @@ If the `istio-proxy` container is using significantly more memory than expected,
 
 ### After Certificate Issues
 
-If mTLS is failing due to expired or invalid certificates, restarting the sidecar forces it to request new certificates from the control plane:
+Istio rotates workload certificates automatically, so certificate renewal normally does not require an Envoy restart. If mTLS is failing because the sidecar is stuck with expired or invalid secrets, restarting the sidecar can force it to reconnect to the control plane and fetch fresh certificates:
 
 ```bash
 # Check certificate validity
