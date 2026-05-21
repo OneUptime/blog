@@ -42,10 +42,10 @@ ADDRESS       PORT  MATCH                        DESTINATION
 10.96.0.1     443   ALL                          Cluster: outbound|443||kubernetes.default.svc.cluster.local
 ```
 
-There are two special ports you'll always see:
+In the default sidecar redirection mode, there are two special ports you'll usually see:
 
-- **15001** - The outbound listener. All outgoing traffic from your pod gets redirected here by iptables rules. From here, Envoy matches the original destination and routes accordingly.
-- **15006** - The inbound listener. All incoming traffic to your pod arrives here first.
+- **15001** - The outbound listener. Outgoing traffic from your pod is redirected here by iptables rules unless it is excluded from interception. From here, Envoy matches the original destination and routes accordingly.
+- **15006** - The inbound listener. Incoming traffic to your pod is redirected here first unless the port or address is excluded from interception.
 
 To get more detail about a specific listener, use the `-o json` flag:
 
@@ -138,13 +138,13 @@ A few things to notice:
 
 There are a few built-in clusters worth knowing about:
 
-**BlackHoleCluster** - Traffic sent here gets dropped. If Envoy can't find a matching route, traffic may end up here.
+**BlackHoleCluster** - Traffic sent here gets dropped. In `REGISTRY_ONLY` mode, unknown outbound traffic may end up here when there is no matching service registry entry.
 
-**PassthroughCluster** - Traffic gets forwarded to its original destination without any load balancing or policy enforcement. This is used when Istio doesn't have explicit configuration for a destination.
+**PassthroughCluster** - Traffic gets forwarded to its original destination without the normal service-registry routing and load balancing. This is used when Istio allows traffic to an unknown destination.
 
 **InboundPassthroughCluster** - Similar to PassthroughCluster but for inbound traffic.
 
-If your traffic is unexpectedly hitting PassthroughCluster, it usually means Istio doesn't have a ServiceEntry or Kubernetes Service for that destination.
+If your traffic is unexpectedly hitting PassthroughCluster, it usually means Istio doesn't have a ServiceEntry or Kubernetes Service for that destination and the sidecar's outbound traffic policy allows unknown destinations.
 
 ## Inspecting Cluster Endpoints
 
@@ -216,7 +216,7 @@ kubectl exec -it <pod-name> -c istio-proxy -- curl -s localhost:15000/clusters |
 
 Istio's control plane (istiod) watches Kubernetes resources like Services, Endpoints, VirtualServices, and DestinationRules. It translates these into Envoy configuration and pushes it to each sidecar via the xDS API.
 
-A Kubernetes Service becomes an Envoy cluster. The Service's endpoints become the cluster's endpoints. A VirtualService modifies the route configuration for a listener. A DestinationRule modifies the cluster configuration (adding circuit breakers, connection pools, subsets, etc.).
+A Kubernetes Service typically becomes one or more Envoy clusters, depending on ports, subsets, and traffic direction. The Service's endpoints become the cluster's endpoints. A VirtualService contributes to the route configuration used by a listener. A DestinationRule modifies the cluster configuration (adding circuit breakers, connection pools, subsets, etc.).
 
 Understanding this mapping makes it much easier to reason about why Envoy is configured a certain way. If something looks wrong in the Envoy config, you can trace it back to the Istio resource that generated it.
 
