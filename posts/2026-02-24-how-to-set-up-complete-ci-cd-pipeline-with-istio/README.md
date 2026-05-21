@@ -68,8 +68,11 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
+    - name: Install kubectl
+      uses: azure/setup-kubectl@v4
+
     - name: Configure kubectl
-      uses: azure/k8s-set-context@v3
+      uses: azure/k8s-set-context@v4
       with:
         kubeconfig: ${{ secrets.KUBECONFIG }}
 
@@ -84,6 +87,11 @@ jobs:
 
         # Wait for rollout
         kubectl rollout status deployment/myapp -n staging --timeout=300s
+
+    - name: Install istioctl
+      run: |
+        curl -L https://istio.io/downloadIstio | sh -
+        sudo cp istio-*/bin/istioctl /usr/local/bin/
 
     - name: Validate Istio configuration
       run: |
@@ -114,9 +122,22 @@ This is where Istio comes in. Deploy the new version alongside the old one and u
     steps:
     - uses: actions/checkout@v4
 
+    - name: Install kubectl
+      uses: azure/setup-kubectl@v4
+
+    - name: Configure kubectl
+      uses: azure/k8s-set-context@v4
+      with:
+        kubeconfig: ${{ secrets.KUBECONFIG }}
+
     - name: Deploy canary version
       run: |
         TAG=${{ needs.build.outputs.image_tag }}
+
+        # Ensure the existing stable pods match the stable subset
+        kubectl patch deployment/myapp -n production \
+          -p '{"spec":{"template":{"metadata":{"labels":{"version":"stable"}}}}}'
+        kubectl rollout status deployment/myapp -n production --timeout=300s
 
         # Create or update the canary deployment
         kubectl apply -f - <<EOF
@@ -207,14 +228,27 @@ After the canary is deployed, gradually increase traffic. This step includes met
     needs: deploy-canary
     runs-on: ubuntu-latest
     steps:
+    - name: Install kubectl
+      uses: azure/setup-kubectl@v4
+
+    - name: Configure kubectl
+      uses: azure/k8s-set-context@v4
+      with:
+        kubeconfig: ${{ secrets.KUBECONFIG }}
+
+    - name: Connect to Prometheus
+      run: |
+        kubectl -n istio-system port-forward svc/prometheus 9090:9090 >/tmp/prometheus-port-forward.log 2>&1 &
+        sleep 5
+
     - name: Wait and check metrics at 10%
       run: |
         echo "Canary at 10% - waiting 5 minutes to collect metrics"
         sleep 300
 
         # Check error rate of canary
-        ERROR_RATE=$(curl -s "http://prometheus:9090/api/v1/query" \
-          --data-urlencode 'query=sum(rate(istio_requests_total{destination_workload="myapp-canary",response_code=~"5.*",namespace="production"}[5m])) / sum(rate(istio_requests_total{destination_workload="myapp-canary",namespace="production"}[5m]))' \
+        ERROR_RATE=$(curl -s "http://localhost:9090/api/v1/query" \
+          --data-urlencode 'query=sum(rate(istio_requests_total{destination_workload="myapp-canary",response_code=~"5.*",destination_workload_namespace="production"}[5m])) / sum(rate(istio_requests_total{destination_workload="myapp-canary",destination_workload_namespace="production"}[5m]))' \
           | jq -r '.data.result[0].value[1] // "0"')
 
         echo "Canary error rate: $ERROR_RATE"
@@ -251,8 +285,8 @@ After the canary is deployed, gradually increase traffic. This step includes met
         echo "Canary at 30% - waiting 5 minutes"
         sleep 300
 
-        ERROR_RATE=$(curl -s "http://prometheus:9090/api/v1/query" \
-          --data-urlencode 'query=sum(rate(istio_requests_total{destination_workload="myapp-canary",response_code=~"5.*",namespace="production"}[5m])) / sum(rate(istio_requests_total{destination_workload="myapp-canary",namespace="production"}[5m]))' \
+        ERROR_RATE=$(curl -s "http://localhost:9090/api/v1/query" \
+          --data-urlencode 'query=sum(rate(istio_requests_total{destination_workload="myapp-canary",response_code=~"5.*",destination_workload_namespace="production"}[5m])) / sum(rate(istio_requests_total{destination_workload="myapp-canary",destination_workload_namespace="production"}[5m]))' \
           | jq -r '.data.result[0].value[1] // "0"')
 
         if (( $(echo "$ERROR_RATE > 0.05" | bc -l) )); then
@@ -286,8 +320,8 @@ After the canary is deployed, gradually increase traffic. This step includes met
         sleep 300
 
         # Final metric check before full promotion
-        ERROR_RATE=$(curl -s "http://prometheus:9090/api/v1/query" \
-          --data-urlencode 'query=sum(rate(istio_requests_total{destination_workload="myapp-canary",response_code=~"5.*",namespace="production"}[5m])) / sum(rate(istio_requests_total{destination_workload="myapp-canary",namespace="production"}[5m]))' \
+        ERROR_RATE=$(curl -s "http://localhost:9090/api/v1/query" \
+          --data-urlencode 'query=sum(rate(istio_requests_total{destination_workload="myapp-canary",response_code=~"5.*",destination_workload_namespace="production"}[5m])) / sum(rate(istio_requests_total{destination_workload="myapp-canary",destination_workload_namespace="production"}[5m]))' \
           | jq -r '.data.result[0].value[1] // "0"')
 
         if (( $(echo "$ERROR_RATE > 0.05" | bc -l) )); then
@@ -300,9 +334,17 @@ After the canary is deployed, gradually increase traffic. This step includes met
 
 ```yaml
   promote:
-    needs: progressive-rollout
+    needs: [build, progressive-rollout]
     runs-on: ubuntu-latest
     steps:
+    - name: Install kubectl
+      uses: azure/setup-kubectl@v4
+
+    - name: Configure kubectl
+      uses: azure/k8s-set-context@v4
+      with:
+        kubeconfig: ${{ secrets.KUBECONFIG }}
+
     - name: Promote canary to stable
       run: |
         TAG=${{ needs.build.outputs.image_tag }}
@@ -341,9 +383,17 @@ And the rollback job:
 ```yaml
   rollback:
     needs: progressive-rollout
-    if: failure()
+    if: ${{ always() && needs['progressive-rollout'].result == 'failure' }}
     runs-on: ubuntu-latest
     steps:
+    - name: Install kubectl
+      uses: azure/setup-kubectl@v4
+
+    - name: Configure kubectl
+      uses: azure/k8s-set-context@v4
+      with:
+        kubeconfig: ${{ secrets.KUBECONFIG }}
+
     - name: Rollback canary
       run: |
         # Route 100% back to stable
