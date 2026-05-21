@@ -47,9 +47,11 @@ The `--enroll-namespace` flag does two things: it creates the waypoint Gateway r
 You can also do this manually by creating the Gateway resource and applying the label yourself:
 
 ```yaml
-apiVersion: gateway.networking.k8s.io/v1beta1
+apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
+  labels:
+    istio.io/waypoint-for: service
   name: waypoint
   namespace: my-app
 spec:
@@ -78,7 +80,7 @@ After creating the waypoint, check that it is running:
 
 ```bash
 # Check the waypoint pod
-kubectl get pods -n my-app -l gateway.istio.io/managed=istio.io-mesh-controller
+kubectl get pods -n my-app -l gateway.networking.k8s.io/gateway-name=waypoint
 
 # Check the Gateway status
 kubectl get gateway waypoint -n my-app -o yaml
@@ -118,43 +120,49 @@ Once the waypoint is in place, you can start using L7-level Istio features. Here
 apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
-  name: require-jwt
+  name: allow-api
   namespace: my-app
 spec:
+  targetRefs:
+  - kind: Gateway
+    group: gateway.networking.k8s.io
+    name: waypoint
+  action: ALLOW
   rules:
   - from:
     - source:
-        requestPrincipals: ["*"]
+        namespaces: ["my-app"]
     to:
     - operation:
         methods: ["GET", "POST"]
         paths: ["/api/*"]
 ```
 
-**Virtual Service for Traffic Routing:**
+**HTTPRoute for Traffic Routing:**
 
 ```yaml
-apiVersion: networking.istio.io/v1
-kind: VirtualService
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
 metadata:
   name: reviews-routing
   namespace: my-app
 spec:
-  hosts:
-  - reviews
-  http:
-  - match:
+  parentRefs:
+  - group: ""
+    kind: Service
+    name: reviews
+    port: 9080
+  rules:
+  - matches:
     - headers:
-        x-canary:
-          exact: "true"
-    route:
-    - destination:
-        host: reviews
-        subset: v2
-  - route:
-    - destination:
-        host: reviews
-        subset: v1
+      - name: x-canary
+        value: "true"
+    backendRefs:
+    - name: reviews-v2
+      port: 9080
+  - backendRefs:
+    - name: reviews-v1
+      port: 9080
 ```
 
 **Destination Rule with Connection Pool Settings:**
@@ -191,7 +199,7 @@ To adjust resources, you can patch the deployment after it is created:
 
 ```bash
 # Get the waypoint deployment name
-kubectl get deployment -n my-app -l gateway.istio.io/managed=istio.io-mesh-controller
+kubectl get deployment -n my-app -l gateway.networking.k8s.io/gateway-name=waypoint
 
 # Patch resource limits
 kubectl patch deployment waypoint -n my-app --type=json -p='[
@@ -238,10 +246,10 @@ To confirm traffic is flowing through the waypoint, you can check the waypoint p
 
 ```bash
 # Watch waypoint logs
-kubectl logs -n my-app -l gateway.istio.io/managed=istio.io-mesh-controller -f
+kubectl logs -n my-app -l gateway.networking.k8s.io/gateway-name=waypoint -f
 
 # Or check waypoint stats
-WAYPOINT_POD=$(kubectl get pod -n my-app -l gateway.istio.io/managed=istio.io-mesh-controller -o jsonpath='{.items[0].metadata.name}')
+WAYPOINT_POD=$(kubectl get pod -n my-app -l gateway.networking.k8s.io/gateway-name=waypoint -o jsonpath='{.items[0].metadata.name}')
 kubectl exec -n my-app $WAYPOINT_POD -- curl -s localhost:15000/stats | grep downstream_rq
 ```
 
@@ -280,10 +288,10 @@ After removing the waypoint, traffic will still be encrypted by ztunnel (L4), bu
 
 **Waypoint not receiving traffic:** Check that the namespace label `istio.io/use-waypoint` is set correctly and matches the Gateway name. Also verify that the namespace is enrolled in ambient mode with `istio.io/dataplane-mode=ambient`.
 
-**L7 policies not being enforced:** Make sure the policies are in the same namespace as the waypoint. Also check that the waypoint Gateway status shows `Programmed: True`.
+**L7 policies not being enforced:** Make sure the policies are in the same namespace as the waypoint and use `targetRefs` to attach to the waypoint or to a service that uses it. Also check that the waypoint Gateway status shows `Programmed: True`.
 
 **High latency:** A namespace waypoint processes traffic for all services, so if you have high-throughput services, the waypoint can become a bottleneck. Scale up the waypoint replicas or consider per-service waypoints for heavy-traffic services.
 
 ## Summary
 
-Per-namespace waypoint proxies give you L7 traffic management for all services in a namespace through a single shared proxy. They are the simplest way to get started with L7 features in ambient mode. Create them with `istioctl waypoint apply --enroll-namespace`, apply your VirtualService and AuthorizationPolicy resources as usual, and scale the waypoint deployment based on your traffic needs.
+Per-namespace waypoint proxies give you L7 traffic management for all services in a namespace through a single shared proxy. They are the simplest way to get started with L7 features in ambient mode. Create them with `istioctl waypoint apply --enroll-namespace`, attach your HTTPRoute and AuthorizationPolicy resources to the waypoint or services that use it, and scale the waypoint deployment based on your traffic needs.
