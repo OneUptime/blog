@@ -29,7 +29,7 @@ Gets rewritten to:
 livenessProbe:
   httpGet:
     path: /app-health/my-app/livez
-    port: 15021
+    port: 15020
 ```
 
 Pilot-agent then forwards the request to the original path and port. This rewriting happens automatically and usually works fine. But when it breaks, here's how to fix it.
@@ -42,19 +42,19 @@ Look at the actual pod spec to see what the probe was rewritten to:
 kubectl get pod <pod-name> -n my-namespace -o yaml | grep -A 5 "livenessProbe\|readinessProbe"
 ```
 
-If you see probes pointing to port 15021 with paths like `/app-health/...`, the rewriting is active.
+If you see probes pointing to port 15020 with paths like `/app-health/...`, the rewriting is active.
 
 Test the health endpoint manually:
 
 ```bash
-kubectl exec <pod-name> -c istio-proxy -n my-namespace -- curl -s localhost:15021/app-health/my-app/livez
+kubectl exec <pod-name> -c istio-proxy -n my-namespace -- curl -s localhost:15020/app-health/my-app/livez
 ```
 
 If this returns an error, the problem is in the forwarding between pilot-agent and your application.
 
 ## mTLS Blocking Health Checks
 
-When you have STRICT mTLS enabled, the kubelet (which doesn't have an Istio certificate) can't make direct HTTPS/HTTP calls to the pod's application port. This is why Istio rewrites probes to go through the pilot-agent on port 15021, which is excluded from mTLS.
+When you have STRICT mTLS enabled, the kubelet (which doesn't have an Istio certificate) can't make direct HTTPS/HTTP calls to the pod's application port. This is why Istio rewrites probes to go through the pilot-agent on port 15020, which is excluded from mTLS.
 
 If probe rewriting is disabled (either globally or per pod), health checks will fail with STRICT mTLS because the kubelet sends plaintext HTTP but the sidecar expects mTLS.
 
@@ -64,13 +64,12 @@ Check if probe rewriting is enabled globally:
 kubectl get configmap istio-sidecar-injector -n istio-system -o yaml | grep rewriteAppHTTPProbe
 ```
 
-If it's set to `false`, enable it:
+If it's set to `false`, enable it with the same Istio installation mechanism you use for your cluster:
 
 ```yaml
-data:
-  values: |
-    sidecarInjectorWebhook:
-      rewriteAppHTTPProbe: true
+values:
+  sidecarInjectorWebhook:
+    rewriteAppHTTPProbe: true
 ```
 
 Or enable it per pod with an annotation:
@@ -91,9 +90,9 @@ livenessProbe:
     port: 8080
 ```
 
-TCP probes usually work fine with Istio because the kubelet connects from localhost and the sidecar's inbound listener handles the connection. But if the sidecar isn't ready yet (during startup), TCP probes to application ports will fail because the iptables rules redirect the connection to the sidecar, which isn't listening.
+TCP probes need special care with Istio. The kubelet makes the TCP check from the node to the Pod IP, and Istio redirects inbound traffic through the sidecar. If probe rewriting is disabled, TCP probes can incorrectly succeed as long as the sidecar is running, even when the application port is not open.
 
-The fix is to use startup probes with generous timeouts:
+Keep Istio probe rewriting enabled for TCP probes so the sidecar agent performs the port check without being fooled by traffic redirection. If startup timing is the issue, use startup probes with generous timeouts:
 
 ```yaml
 startupProbe:
@@ -136,7 +135,7 @@ livenessProbe:
   periodSeconds: 10
 ```
 
-Since this runs inside the container, it uses localhost and bypasses the iptables rules (usually). However, exec probes have higher overhead because they spawn a new process each time.
+Since this runs inside the container, it does not require Istio's network probe rewriting. However, exec probes have higher overhead because they spawn a new process each time.
 
 ## Port Exclusion for Health Checks
 
