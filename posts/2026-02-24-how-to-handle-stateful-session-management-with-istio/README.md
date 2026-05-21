@@ -12,7 +12,7 @@ Stateless applications are the ideal for Kubernetes, but the real world is messy
 
 ## Understanding Session Affinity in Istio
 
-Kubernetes has built-in session affinity (sessionAffinity: ClientIP on Services), but Istio overrides Kubernetes load balancing. When Istio's sidecar is present, it handles all routing decisions, so you need to configure session affinity through Istio's DestinationRule, not through the Kubernetes Service.
+Kubernetes has built-in session affinity (sessionAffinity: ClientIP on Services), but mesh traffic handled by an Istio sidecar is load balanced by Envoy. For that traffic, configure session affinity through Istio's DestinationRule instead of relying on the Kubernetes Service.
 
 Istio supports consistent hash-based load balancing, which routes requests to the same backend based on a hash key derived from the request. The hash key can come from:
 - HTTP headers
@@ -39,7 +39,7 @@ spec:
           ttl: 3600s
 ```
 
-When a client makes its first request without the `ISTIO_SESSION` cookie, Envoy picks a backend using the hash ring, routes the request, and adds a `Set-Cookie: ISTIO_SESSION=<hash>` header to the response. Subsequent requests from the same client include this cookie, and Envoy routes them to the same backend.
+When a client makes its first request without the `ISTIO_SESSION` cookie, Envoy picks a backend using consistent hashing, routes the request, and adds a generated `Set-Cookie: ISTIO_SESSION=<value>` header to the response. Subsequent requests from the same client include this cookie, and Envoy routes them to the same backend as long as the backend set remains stable.
 
 The `ttl` controls how long the cookie is valid. After it expires, the client might be routed to a different backend. Set this to match your application's session timeout.
 
@@ -79,7 +79,7 @@ spec:
         useSourceIp: true
 ```
 
-Keep in mind that in Kubernetes, the source IP seen by the sidecar is the pod IP of the calling service. So all requests from the same client pod go to the same backend. If you have a high-traffic frontend pod, all its requests to this service will hit a single backend, creating an imbalance.
+Keep in mind that for in-mesh Kubernetes traffic, the source IP seen by the sidecar is typically the pod IP of the calling workload. So all requests from the same client pod go to the same backend. If you have a high-traffic frontend pod, all its requests to this service will hit a single backend, creating an imbalance.
 
 ## Combining Affinity with VirtualService
 
@@ -136,7 +136,7 @@ This setup uses cookie-based affinity for session-related endpoints and round-ro
 
 The biggest challenge with session affinity is what happens when you scale your backend. Consistent hashing minimizes disruption, but when a pod is added or removed, some sessions will be remapped to different backends.
 
-Consistent hashing distributes keys across a hash ring. When a backend is added, only keys in the adjacent segment of the ring need to move. With Istio's default ring size, roughly 1/N of sessions get redistributed when a pod is added (where N is the number of pods).
+Consistent hashing distributes keys across a hash ring. When a backend is added or removed, only some keys need to move. Istio documents this as soft session affinity: any host addition or removal can break affinity for roughly 1/backends requests.
 
 To handle this gracefully:
 
@@ -171,7 +171,7 @@ spec:
         maxRetries: 3
 ```
 
-Setting `maxRequestsPerConnection: 0` (unlimited) is important for session affinity. If connections are closed and re-established, the new connection might not include the affinity cookie in the initial connection setup (for HTTP/2).
+`maxRequestsPerConnection: 0` is the default and means "unlimited" in Istio. It is useful when you do not want to cap request reuse on upstream connections, but cookie-based affinity is still determined from HTTP request data rather than the lifetime of a single connection.
 
 ## Testing Session Affinity
 
