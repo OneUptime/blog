@@ -8,13 +8,13 @@ Description: A practical guide to fine-tuning Istio sidecar proxy ports and prot
 
 ---
 
-Istio's sidecar proxy intercepts all traffic going in and out of your pods. By default, it tries to automatically detect protocols and handle ports, but that automatic detection doesn't always get it right. When it doesn't, you end up with traffic being treated as plain TCP when it should be HTTP, or ports getting intercepted when they shouldn't be.
+Istio's sidecar proxy intercepts TCP traffic going in and out of your pods. By default, it tries to automatically detect protocols and handle ports, but that automatic detection doesn't always get it right. When it doesn't, you end up with traffic being treated as plain TCP when it should be HTTP, or ports getting intercepted when they shouldn't be.
 
 Fine-tuning your sidecar proxy ports and protocols gives you explicit control over how traffic flows through the mesh. This post covers the practical details of getting that right.
 
 ## How Istio Handles Ports and Protocols by Default
 
-When a pod joins the mesh, the sidecar proxy (Envoy) sets up iptables rules to intercept all inbound and outbound traffic. For inbound traffic, Istio looks at the Kubernetes Service definitions to determine what protocol each port uses.
+When a pod joins the mesh, the sidecar proxy (Envoy) sets up iptables rules to intercept inbound and outbound TCP traffic. For inbound traffic, Istio looks at the Kubernetes Service definitions to determine what protocol each port uses.
 
 Istio uses a naming convention on Service ports to detect protocols. If your service port is named `http-api` or `grpc-backend`, Istio picks up the prefix and configures the proxy accordingly. If the port name doesn't follow this convention, Istio falls back to protocol sniffing or treats it as TCP.
 
@@ -28,6 +28,8 @@ Here's the naming convention:
 | `redis-` | Redis |
 | `mysql-` | MySQL |
 | `tcp-` | TCP |
+
+MongoDB, Redis, and MySQL protocol support is experimental in Istio and requires the corresponding protocol environment variables to be enabled. Otherwise, those ports are treated as opaque TCP streams.
 
 You can also set the `appProtocol` field on the Service port, which is the more modern approach:
 
@@ -51,7 +53,7 @@ spec:
 The Sidecar resource's `ingress` field lets you explicitly declare which ports accept inbound traffic and what protocol they use:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: my-api-sidecar
@@ -88,7 +90,7 @@ Each ingress entry specifies:
 Sometimes your application uses non-standard ports that Istio might not handle correctly by default. For example, if you have an application running a custom binary protocol on port 4444, you want to make sure Istio treats it as TCP and doesn't try to parse it as HTTP:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: custom-protocol-sidecar
@@ -112,7 +114,7 @@ This prevents Istio from trying to do HTTP protocol detection on that port, whic
 The egress section of the Sidecar resource controls outbound traffic. You can specify particular ports for outbound listeners:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: restricted-egress-sidecar
@@ -127,7 +129,7 @@ spec:
         protocol: HTTPS
         name: https-external
       hosts:
-        - "~/*"
+        - "*/api.example.com"
     - port:
         number: 3306
         protocol: TCP
@@ -136,7 +138,7 @@ spec:
         - "./mysql.default.svc.cluster.local"
 ```
 
-When you specify a port in the egress section, the sidecar only creates listeners for those specific ports. Traffic on other ports gets handled by the catch-all listener.
+When you specify a port in the egress section, the sidecar uses that port as the default destination port for the imported hosts. If you omit the port, Istio infers listener ports from the imported hosts. Unknown outbound traffic is handled according to the mesh's outbound traffic policy.
 
 ## Protocol Detection and Sniffing
 
@@ -152,7 +154,7 @@ spec:
     protocolDetectionTimeout: 100ms
 ```
 
-The `protocolDetectionTimeout` controls how long the proxy waits to detect the protocol. If detection times out, the connection is treated as TCP. The default is 0s for outbound (instant detection) and 5s for server-side detection.
+The `protocolDetectionTimeout` controls how long the proxy waits to detect the protocol. If detection times out, the connection is treated as plain TCP. The current default is `0s`, which disables the timeout.
 
 If you find that protocol sniffing is causing issues, like delays on connection setup for non-HTTP protocols, explicitly declaring protocols in your Service definitions or Sidecar resources is the fix.
 
@@ -161,7 +163,7 @@ If you find that protocol sniffing is causing issues, like delays on connection 
 You might need different protocol handling for different destinations. For example, if your service talks HTTP to an API but uses a binary protocol to a message queue:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: mixed-protocol-sidecar
@@ -209,7 +211,7 @@ The output shows you each listener, the address it binds to, the port, and the p
 
 A common symptom of protocol mismatch is getting 503 errors or connection resets. Here are the usual causes:
 
-**HTTP treated as TCP**: Your application sends HTTP traffic, but the proxy treats the port as TCP. You lose HTTP-level features like retries, routing rules, and telemetry. Fix this by adding the correct protocol annotation to your Service port name or appProtocol field.
+**HTTP treated as TCP**: Your application sends HTTP traffic, but the proxy treats the port as TCP. You lose HTTP-level features like retries, routing rules, and telemetry. Fix this by adding the correct protocol to your Service port name or appProtocol field.
 
 **TCP treated as HTTP**: The proxy tries to parse non-HTTP traffic as HTTP, causing connection failures. The proxy logs will show parse errors. Fix this by explicitly declaring the port as TCP.
 
