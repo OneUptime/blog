@@ -28,7 +28,7 @@ The speculative retry approach is the most practical with Istio because it uses 
 
 ## Speculative Retries (Budget Hedging)
 
-This is the closest thing to hedging that Istio supports natively. Set a short per-try timeout and allow retries. If the first attempt is slow, the retry fires quickly and might hit a faster backend:
+This is the closest thing to hedging that Istio supports natively. Set a short per-try timeout and allow retries. If the first attempt times out, Envoy cancels that attempt and retries quickly against another backend:
 
 ```yaml
 apiVersion: networking.istio.io/v1beta1
@@ -52,7 +52,7 @@ spec:
 
 With this configuration:
 - First attempt has 200ms to respond
-- If it doesn't respond in 200ms, a second attempt goes out (likely to a different pod due to load balancing)
+- If it doesn't respond in 200ms, a second attempt goes out (usually to a different pod due to Istio's default retry host selection)
 - If the second is also slow, a third attempt fires
 - The overall timeout is 500ms
 
@@ -84,11 +84,11 @@ spec:
 
 Outlier detection helps by removing slow/broken pods from the pool, so retries are less likely to hit the same problematic instance.
 
-## Implementing True Hedging with EnvoyFilter
+## Implementing Timeout-Based Hedging with EnvoyFilter
 
 For true request hedging (sending to multiple backends simultaneously), you can use Envoy's request mirroring combined with application-level logic. However, this approach has limitations because Istio's mirroring discards the mirror response.
 
-A more practical approach uses an EnvoyFilter to configure Envoy's hedge retry policy:
+A more practical proxy-level approach uses an EnvoyFilter to configure Envoy's hedge retry policy. Envoy's current hedge policy sends a hedged retry when the per-try timeout is hit; it does not send all copies immediately:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -111,15 +111,14 @@ spec:
       operation: MERGE
       value:
         hedge_policy:
-          initial_requests: 1
-          additional_requests: 1
+          hedge_on_per_try_timeout: true
         retry_policy:
           retry_on: "5xx,reset"
           num_retries: 2
           per_try_timeout: 0.2s
 ```
 
-Note that Envoy's hedge policy is still evolving and may not be available in all versions. Check your Envoy version for support.
+Note that EnvoyFilter patches depend on Envoy's xDS API, so check your Istio proxy's Envoy version and validate the generated route configuration after upgrades.
 
 ## Application-Level Hedging with Istio Support
 
@@ -163,7 +162,7 @@ async def delayed_fetch(session, url, delay):
 
 The first request goes immediately. After 100ms (the hedge delay), a second request fires. Whichever responds first wins.
 
-Istio's load balancing ensures the two requests go to different pods:
+Istio's load balancing can send the two requests to different pods, but it does not guarantee it:
 
 ```yaml
 apiVersion: networking.istio.io/v1beta1
@@ -255,14 +254,14 @@ Track how hedging affects your latency distribution:
 
 ```bash
 # P50 vs P99 latency for hedged service
-histogram_quantile(0.50, rate(istio_request_duration_milliseconds_bucket{destination_workload="search-service"}[5m]))
-histogram_quantile(0.99, rate(istio_request_duration_milliseconds_bucket{destination_workload="search-service"}[5m]))
+histogram_quantile(0.50, sum by (le) (rate(istio_request_duration_milliseconds_bucket{destination_workload="search-service",reporter="destination"}[5m])))
+histogram_quantile(0.99, sum by (le) (rate(istio_request_duration_milliseconds_bucket{destination_workload="search-service",reporter="destination"}[5m])))
 
-# Retry rate (indicates how often hedging kicks in)
-sum(rate(istio_requests_total{destination_workload="search-service",response_flags=~".*URX.*"}[5m]))
+# Requests that exhausted the retry policy
+sum(rate(istio_requests_total{destination_workload="search-service",reporter="source",response_flags=~".*URX.*"}[5m]))
 ```
 
-The `URX` response flag indicates that the response came from a retry. If you see a high retry rate, your perTryTimeout might be too aggressive. If you see very few retries but high tail latency, increase the retry attempts or shorten the timeout.
+The `URX` response flag indicates that the upstream retry limit was exceeded, not that a retry succeeded. If you see many `URX` responses, your perTryTimeout might be too aggressive or the retry budget too small. If you see very few exhausted retries but high tail latency, increase the retry attempts or shorten the timeout.
 
 ## Cost of Hedging
 
@@ -270,10 +269,10 @@ Hedging uses more resources. Monitor the total request rate to understand the ov
 
 ```bash
 # Total requests including retries
-sum(rate(istio_requests_total{destination_workload="search-service"}[5m]))
+sum(rate(istio_requests_total{destination_workload="search-service",reporter="destination"}[5m]))
 
 # Compared to unique requests (from the caller's perspective)
-sum(rate(istio_requests_total{source_workload="frontend",destination_workload="search-service"}[5m]))
+sum(rate(istio_requests_total{source_workload="frontend",destination_workload="search-service",reporter="source"}[5m]))
 ```
 
 If the total is 2x the unique requests, you're effectively hedging every request. Consider increasing the perTryTimeout to reduce unnecessary retries.
