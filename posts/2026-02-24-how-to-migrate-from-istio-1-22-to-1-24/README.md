@@ -24,7 +24,7 @@ This guide covers the complete migration path, including changes from both 1.23 
 ### Istio 1.24 Changes
 
 - **Ambient mesh GA**: The ztunnel and ambient mode are production-ready.
-- **istioctl install deprecated**: Helm is now the official installation method. istioctl install is in maintenance mode.
+- **Helm CRD upgrades improved**: Istio CRDs are templated by default and can be installed and upgraded with the `istio-base` Helm chart.
 - **Enhanced ztunnel**: Better performance and more features in the per-node proxy.
 - **HBONE protocol**: The HTTP-Based Overlay Network Encapsulation protocol is fully supported.
 - **Minimum Kubernetes version 1.28**: Another bump in the required Kubernetes version.
@@ -55,7 +55,7 @@ kubectl get virtualservices,destinationrules,gateways,envoyfilters,authorization
 This is critical. Istio 1.24 requires Kubernetes 1.28 at minimum:
 
 ```bash
-kubectl version --short
+kubectl version
 ```
 
 If you are on 1.27, upgrade Kubernetes before proceeding. Running Istio 1.24 on unsupported Kubernetes versions can cause subtle issues that are hard to debug.
@@ -171,6 +171,7 @@ global:
 helm install istiod-1-24 istio/istiod \
   --namespace istio-system \
   --version 1.24.0 \
+  --set profile=ambient \
   -f istiod-1-24-values.yaml \
   --wait
 ```
@@ -192,8 +193,8 @@ Make sure all your resources use the latest API versions:
 apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 
-# Use v1beta1 for networking APIs
-apiVersion: networking.istio.io/v1beta1
+# Use v1 for networking APIs
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 ```
 
@@ -209,10 +210,10 @@ Test each one. The Envoy version in 1.24 is newer than 1.22, and filter configur
 
 ### Gateway API Updates
 
-Update Gateway API CRDs to v1.1:
+Update Gateway API CRDs to v1.2:
 
 ```bash
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.1.0/standard-install.yaml
+kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.2.0/standard-install.yaml
 ```
 
 If you are using Gateway API resources, update them to v1:
@@ -233,7 +234,7 @@ Start with a test namespace:
 
 ```bash
 kubectl label namespace test istio-injection- --overwrite 2>/dev/null
-kubectl label namespace test istio.io/rev=1-24
+kubectl label namespace test istio.io/rev=1-24 --overwrite
 kubectl rollout restart deployment -n test
 ```
 
@@ -251,7 +252,7 @@ Migrate remaining namespaces:
 for ns in staging default production; do
   echo "=== Migrating $ns ==="
   kubectl label namespace $ns istio-injection- --overwrite 2>/dev/null
-  kubectl label namespace $ns istio.io/rev=1-24
+  kubectl label namespace $ns istio.io/rev=1-24 --overwrite
   kubectl rollout restart deployment -n $ns
   sleep 60
 
