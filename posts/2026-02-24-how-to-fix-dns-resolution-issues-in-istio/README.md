@@ -8,16 +8,16 @@ Description: Diagnose and fix DNS resolution failures in Istio service mesh incl
 
 ---
 
-DNS resolution problems in Istio are sneaky. Services that resolve fine from a pod without a sidecar suddenly fail when the sidecar is present. Or external hostnames that used to work stop resolving after adding a ServiceEntry. The sidecar intercepts all network traffic including DNS queries, and when that interception interacts with Kubernetes DNS in unexpected ways, you get resolution failures.
+DNS resolution problems in Istio are sneaky. Services that resolve fine from a pod without a sidecar suddenly fail when the sidecar is present. Or external hostnames that used to work stop resolving after adding a ServiceEntry. The sidecar normally intercepts application TCP traffic, and Istio can also capture DNS queries when DNS proxying is enabled. When that interception interacts with Kubernetes DNS in unexpected ways, you get resolution failures.
 
 This guide covers how DNS works in an Istio mesh and how to fix the common problems.
 
 ## How DNS Works with Istio
 
-In a standard Kubernetes setup, DNS queries go directly from the application to CoreDNS via the cluster DNS service (usually 10.96.0.10:53). With Istio, traffic interception can affect DNS in two ways:
+In a standard Kubernetes setup, DNS queries go directly from the application to CoreDNS via the cluster DNS service. With Istio, traffic interception can affect DNS in two ways:
 
-1. **Without DNS proxy**: DNS UDP traffic passes through iptables rules. By default, Istio excludes port 53 from interception, so DNS usually works normally.
-2. **With DNS proxy enabled**: Istio intercepts DNS queries at the sidecar and can resolve them locally using Istio's service registry.
+1. **Without DNS proxy**: Standard sidecar redirection is TCP-based, so normal UDP DNS queries usually go directly to the pod's configured DNS server. TCP DNS traffic can still be affected by outbound capture settings.
+2. **With DNS proxy enabled**: Istio intercepts DNS queries at the sidecar or ztunnel and can resolve them locally using Istio's service registry, forwarding unresolved queries upstream according to `/etc/resolv.conf`.
 
 Check if DNS proxy is enabled:
 
@@ -25,7 +25,7 @@ Check if DNS proxy is enabled:
 kubectl get configmap istio -n istio-system -o yaml | grep proxyMetadata -A 5
 ```
 
-Look for `ISTIO_META_DNS_CAPTURE: "true"` or `ISTIO_META_DNS_AUTO_ALLOCATE: "true"`.
+Look for `ISTIO_META_DNS_CAPTURE: "true"`. Older installs might also use the deprecated `ISTIO_META_DNS_AUTO_ALLOCATE` setting for DNS auto-allocation.
 
 ## Basic DNS Troubleshooting
 
@@ -43,7 +43,7 @@ kubectl exec <pod-name> -c istio-proxy -n production -- nslookup orders-service
 kubectl exec <pod-name> -c my-app -n production -- nslookup api.example.com
 ```
 
-If DNS works from the sidecar but not from the application container (or vice versa), the issue is with how iptables routes DNS traffic.
+If DNS works from the sidecar but not from the application container (or vice versa), compare the containers' DNS configuration and the pod's traffic capture rules.
 
 Check the iptables rules:
 
@@ -59,12 +59,14 @@ If DNS queries are timing out (not getting a "not found" but simply hanging):
 # Check if CoreDNS is healthy
 kubectl get pods -n kube-system -l k8s-app=kube-dns
 
-# Check if CoreDNS service is reachable from the pod
-kubectl exec <pod-name> -c istio-proxy -n production -- \
-  curl -v telnet://10.96.0.10:53 2>&1 | head -5
+# Check the cluster DNS service IP
+kubectl get svc kube-dns -n kube-system
+
+# Check a DNS lookup against the cluster DNS service IP
+kubectl exec <pod-name> -c my-app -n production -- nslookup kubernetes.default <cluster-dns-ip>
 ```
 
-If CoreDNS is healthy but DNS queries still time out, the sidecar might be intercepting DNS traffic and not forwarding it correctly.
+If CoreDNS is healthy but DNS queries still time out, DNS proxying or TCP DNS capture might be intercepting DNS traffic and not forwarding it correctly.
 
 Try excluding port 53 from interception:
 
@@ -74,7 +76,7 @@ metadata:
     traffic.sidecar.istio.io/excludeOutboundPorts: "53"
 ```
 
-This tells the init container to not intercept UDP/TCP port 53, allowing DNS queries to go directly to CoreDNS.
+This tells the init container to not redirect outbound TCP port 53 to Envoy. Normal UDP DNS traffic is not handled by standard sidecar TCP redirection, but DNS proxying can still capture DNS when it is enabled.
 
 ## Fix 2: ServiceEntry DNS Resolution
 
@@ -107,7 +109,7 @@ kubectl exec <pod-name> -c istio-proxy -n production -- nslookup api.external-se
 istioctl proxy-config endpoints <pod-name> -n production | grep external-service
 ```
 
-If the external DNS name cannot be resolved from within the cluster, you might need to configure the DNS resolution source or use a static IP:
+If the external DNS name cannot be resolved by the proxy's configured DNS resolver, you might need to configure the DNS resolution source or use a static IP:
 
 ```yaml
 apiVersion: networking.istio.io/v1beta1
@@ -124,7 +126,7 @@ spec:
       protocol: TLS
   resolution: STATIC
   endpoints:
-    - address: 203.0.113.10
+    - address: <static-ip-address>
 ```
 
 ## Fix 3: Headless Service DNS Issues
@@ -148,7 +150,7 @@ kubectl get endpoints my-headless-service -n production
 istioctl proxy-config endpoints <client-pod> -n production | grep my-headless-service
 ```
 
-Headless services with Istio might require the `resolution: NONE` in a DestinationRule:
+Istio treats headless services similarly to services with `resolution: NONE`: the proxy uses the original IP address resolved by the client. If Envoy has the right endpoints but the application still connects to the wrong pod, check any `DestinationRule` load-balancing policy for that host:
 
 ```yaml
 apiVersion: networking.istio.io/v1beta1
@@ -175,10 +177,9 @@ spec:
     defaultConfig:
       proxyMetadata:
         ISTIO_META_DNS_CAPTURE: "true"
-        ISTIO_META_DNS_AUTO_ALLOCATE: "true"
 ```
 
-When DNS capture is enabled, the sidecar intercepts all DNS queries and handles them locally. This is useful for resolving ServiceEntry hosts that do not exist in Kubernetes DNS:
+When DNS capture is enabled, the sidecar intercepts DNS queries and handles them locally when possible, forwarding other queries upstream. This is useful for resolving ServiceEntry hosts that do not exist in Kubernetes DNS:
 
 ```bash
 # Verify DNS proxy is working
@@ -194,6 +195,8 @@ metadata:
       proxyMetadata:
         ISTIO_META_DNS_CAPTURE: "false"
 ```
+
+In ambient mode on Istio 1.25 and later, DNS proxying is enabled by default. Individual pods can opt out with the `ambient.istio.io/dns-capture=false` annotation.
 
 ## Fix 5: Cross-Namespace Service Resolution
 
@@ -245,7 +248,7 @@ options ndots:5
 
 With `ndots:5`, a name like `api.external-service.com` has 2 dots, which is less than 5, so Kubernetes DNS will first try appending each search domain before trying the name as-is. This causes 5 DNS queries before the real one.
 
-While this is a Kubernetes setting (not Istio-specific), the extra queries are amplified when the sidecar proxies each one. To fix, either use FQDNs (with a trailing dot) or reduce ndots:
+While this is a Kubernetes setting (not Istio-specific), the extra queries add load when DNS proxying is enabled. To fix, either use FQDNs (with a trailing dot) or reduce ndots:
 
 ```yaml
 spec:
@@ -294,4 +297,4 @@ kubectl exec <pod> -c istio-proxy -n production -- iptables -t nat -L -n | grep 
 kubectl get pods -n kube-system -l k8s-app=kube-dns
 ```
 
-DNS issues in Istio usually come down to traffic interception affecting DNS queries, Sidecar resources limiting service visibility, or ServiceEntry resolution configuration. Start by testing basic DNS resolution and work your way up to more complex scenarios. Most problems can be solved by either excluding port 53 from interception or properly configuring the DNS proxy feature.
+DNS issues in Istio usually come down to DNS proxy configuration, Sidecar resources limiting service visibility, or ServiceEntry resolution configuration. Start by testing basic DNS resolution and work your way up to more complex scenarios. Most problems can be solved by checking DNS proxy behavior, confirming the upstream resolver works, or making the ServiceEntry and Sidecar configuration match the intended destination.
