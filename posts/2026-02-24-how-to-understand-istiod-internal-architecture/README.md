@@ -42,7 +42,7 @@ The Config Controller watches Kubernetes API server for Istio custom resources:
 
 When any of these resources change, the Config Controller converts them into Istio's internal configuration model and notifies the xDS server that a push is needed.
 
-You can see the config the controller has loaded:
+You can see whether connected proxies have acknowledged the latest config:
 
 ```bash
 istioctl proxy-status
@@ -88,7 +88,7 @@ This is the core of istiod. The xDS (x Discovery Service) server implements the 
 - **RDS (Route Discovery Service)**: Configures HTTP routing rules (VirtualService rules become routes)
 - **CDS (Cluster Discovery Service)**: Configures upstream clusters (services that Envoy can connect to)
 - **EDS (Endpoint Discovery Service)**: Provides the actual IP addresses for each cluster
-- **SDS (Secret Discovery Service)**: Distributes TLS certificates for mTLS
+- **SDS (Secret Discovery Service)**: Supplies TLS secrets to Envoy; for workload certificates, Envoy gets the secrets from the local Istio agent after the agent obtains certificates from istiod
 
 When a configuration change occurs (a VirtualService is updated, an endpoint changes, a new pod joins the mesh), istiod triggers an xDS push. The push process:
 
@@ -111,7 +111,7 @@ productpage-v1-abc123.default Kubernetes     SYNCED     SYNCED     SYNCED     SY
 reviews-v1-def456.default     Kubernetes     SYNCED     SYNCED     SYNCED     SYNCED     NOT SENT
 ```
 
-`SYNCED` means the proxy has received the latest configuration. `STALE` means a push is pending or failed.
+`SYNCED` means Envoy has acknowledged the latest configuration istiod sent to it. `STALE` means istiod sent an update but has not received an acknowledgement.
 
 ## Certificate Authority
 
@@ -120,10 +120,11 @@ The built-in CA (formerly Citadel) handles workload identity in the mesh. Every 
 The process works like this:
 
 1. When a sidecar starts, the pilot-agent process generates a CSR (Certificate Signing Request)
-2. The CSR is sent to istiod over the SDS (Secret Discovery Service) connection
+2. The CSR is sent to istiod's CA gRPC service with the workload's credentials
 3. Istiod signs the certificate using its CA key
-4. The signed certificate is sent back to the sidecar
-5. Certificates are rotated automatically before expiration
+4. The signed certificate is sent back to the Istio agent
+5. Envoy requests the certificate and key from the Istio agent over SDS (Secret Discovery Service)
+6. Certificates are rotated automatically before expiration
 
 Check CA status:
 
@@ -134,7 +135,7 @@ kubectl exec -n istio-system deploy/istiod -- curl -s localhost:15014/metrics | 
 Key metrics:
 - `citadel_server_csr_count`: Total CSRs processed
 - `citadel_server_success_cert_issuance_count`: Successful certificate issuances
-- `citadel_server_csr_sign_error_count`: CSR signing errors
+- `citadel_server_csr_sign_err_count`: CSR signing errors
 
 ## Injection Webhook
 
@@ -145,7 +146,7 @@ Istiod then:
 2. Renders the template with the pod's metadata and mesh configuration
 3. Returns a JSON patch that adds the sidecar container, init container, and volumes
 
-The webhook handler runs on port 443 (the webhook service port) and shares the same TLS certificate infrastructure as the rest of istiod.
+The webhook is exposed through service port 443, while istiod serves the injection and validation HTTPS handler on its webhook port (15017 by default).
 
 ## Internal Communication Flow
 
