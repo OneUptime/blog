@@ -20,9 +20,9 @@ Progressive delivery strategies range from simple to complex:
 2. **Canary**: Gradually shift traffic percentage to the new version.
 3. **Traffic Mirroring**: Send a copy of production traffic to the new version without affecting users.
 4. **Header-Based Routing**: Route specific users to the new version based on request headers.
-5. **Feature Flags**: Enable features for specific user segments.
+5. **Feature Flags**: Enable application features for specific user segments.
 
-Istio supports all of these through VirtualService routing rules. You can combine them for a multi-stage delivery pipeline.
+Istio supports the traffic routing parts of these strategies through VirtualService routing rules. Feature flags still need to be implemented in your application or feature-flag platform, but they can be combined with Istio routing for a multi-stage delivery pipeline.
 
 ## Stage 1: Traffic Mirroring
 
@@ -212,7 +212,9 @@ spec:
 Update the stable subset to point to the new version:
 
 ```bash
-kubectl patch deployment my-api -n production -p '{"spec":{"template":{"metadata":{"labels":{"version":"v2"}}}}}'
+kubectl patch destinationrule my-api -n production --type='json' -p='[
+  {"op": "replace", "path": "/spec/subsets/0/labels/version", "value": "v2"}
+]'
 ```
 
 ## Automating the Pipeline
@@ -325,4 +327,4 @@ sum(rate(istio_requests_total{destination_workload="my-api", response_code=~"5.*
 histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{destination_workload="my-api"}[5m])) by (le, destination_version))
 ```
 
-Progressive delivery with Istio turns deployments from binary events (works or doesn't) into a graduated, observable process. You start with zero risk (mirroring), progress through increasing exposure, and either promote with confidence or roll back before damage is done.
+Progressive delivery with Istio turns deployments from binary events (works or doesn't) into a graduated, observable process. You start with low user-facing risk (mirroring), progress through increasing exposure, and either promote with confidence or roll back before damage is done.
