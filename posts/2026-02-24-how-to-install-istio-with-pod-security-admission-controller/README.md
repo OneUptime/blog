@@ -8,7 +8,7 @@ Description: Learn how to install and configure Istio to work properly with Kube
 
 ---
 
-Kubernetes Pod Security Admission (PSA) replaced the old PodSecurityPolicy in Kubernetes 1.25. If your cluster enforces pod security standards, installing Istio requires some adjustments because the Envoy sidecar and init containers need specific capabilities that the restricted profile does not allow by default.
+Kubernetes Pod Security Admission (PSA) replaced the old PodSecurityPolicy in Kubernetes 1.25. If your cluster enforces pod security standards, installing Istio requires some adjustments because the init container used for sidecar traffic redirection needs specific capabilities that the restricted profile does not allow by default.
 
 This guide shows you how to get Istio running cleanly with PSA enforcement.
 
@@ -20,7 +20,7 @@ Kubernetes defines three security levels:
 - **Baseline** - Prevents known privilege escalations
 - **Restricted** - Follows current pod hardening best practices
 
-The tricky part with Istio is that the `istio-init` container needs `NET_ADMIN` and `NET_RAW` capabilities to set up iptables rules for traffic interception. These capabilities are not allowed under the restricted profile and are borderline under baseline.
+The tricky part with Istio is that the `istio-init` container needs `NET_ADMIN` and `NET_RAW` capabilities to set up iptables rules for traffic interception. These capabilities are not allowed under the restricted or baseline profiles.
 
 ## Checking Your Current PSA Configuration
 
@@ -57,8 +57,7 @@ spec:
         - istio-system
         - kube-system
     sidecarInjectorWebhook:
-      injectedAnnotations:
-        "container.apparmor.security.beta.kubernetes.io/istio-proxy": "unconfined"
+      injectedAnnotations: {}
 ```
 
 Install:
@@ -67,11 +66,11 @@ Install:
 istioctl install -f istio-cni-psa.yaml -y
 ```
 
-With CNI in place, the istio-system namespace can run at baseline level:
+The CNI DaemonSet itself is privileged, so the namespace where you install it must allow privileged pods or be exempted from PSA. If you install it in `istio-system`, label that namespace accordingly:
 
 ```bash
 kubectl label namespace istio-system \
-  pod-security.kubernetes.io/enforce=baseline \
+  pod-security.kubernetes.io/enforce=privileged \
   pod-security.kubernetes.io/warn=baseline \
   pod-security.kubernetes.io/audit=baseline
 ```
@@ -102,12 +101,12 @@ For application namespaces with sidecars:
 
 ```bash
 kubectl label namespace my-app \
-  pod-security.kubernetes.io/enforce=baseline \
+  pod-security.kubernetes.io/enforce=privileged \
   pod-security.kubernetes.io/warn=restricted \
   pod-security.kubernetes.io/audit=restricted
 ```
 
-This configuration enforces baseline (which allows `NET_ADMIN`), but warns and audits against the restricted standard so you can track how far off you are.
+This configuration allows `istio-init` to request `NET_ADMIN` and `NET_RAW`, but warns and audits against the restricted standard so you can track how far off you are.
 
 ## Helm Installation with CNI for PSA Compliance
 
@@ -119,20 +118,19 @@ helm install istio-base istio/base -n istio-system --create-namespace
 
 # Install CNI DaemonSet
 helm install istio-cni istio/cni -n istio-system \
-  --set cni.cniBinDir=/opt/cni/bin \
-  --set cni.cniConfDir=/etc/cni/net.d
+  --set cniBinDir=/opt/cni/bin \
+  --set cniConfDir=/etc/cni/net.d
 
 # Install istiod with CNI enabled
 helm install istiod istio/istiod -n istio-system \
-  --set istio_cni.enabled=true \
-  --set istio_cni.chained=true
+  --set pilot.cni.enabled=true
 ```
 
 Label the namespace:
 
 ```bash
 kubectl label namespace istio-system \
-  pod-security.kubernetes.io/enforce=baseline \
+  pod-security.kubernetes.io/enforce=privileged \
   pod-security.kubernetes.io/warn=baseline
 ```
 
@@ -179,6 +177,8 @@ securityContext:
   runAsGroup: 1337
   runAsNonRoot: true
   fsGroup: 1337
+  seccompProfile:
+    type: RuntimeDefault
 
 containerSecurityContext:
   allowPrivilegeEscalation: false
@@ -212,10 +212,11 @@ After installation, check for any PSA warnings:
 kubectl get events -n istio-system --field-selector reason=FailedCreate
 ```
 
-Run a dry-run to test if pods would be admitted:
+Run a server-side dry-run to test if pods would be admitted:
 
 ```bash
-kubectl auth can-i --list --as=system:serviceaccount:my-app:default -n my-app
+kubectl label --dry-run=server --overwrite namespace my-app \
+  pod-security.kubernetes.io/enforce=restricted
 ```
 
 Deploy a test pod and watch for warnings:
@@ -227,10 +228,31 @@ kubectl label namespace psa-test \
   pod-security.kubernetes.io/warn=restricted \
   istio-injection=enabled
 
-kubectl run test --image=busybox --restart=Never -n psa-test -- sleep 3600
+kubectl apply --dry-run=server -n psa-test -f - <<'EOF'
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test
+spec:
+  securityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: test
+      image: busybox:1.36
+      command: ["sleep", "3600"]
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop:
+            - ALL
+        runAsNonRoot: true
+        runAsUser: 1000
+EOF
 ```
 
-If the pod is created without warnings, your setup is clean.
+If the dry-run is accepted without warnings, your setup is clean.
 
 ## Audit Mode for Gradual Migration
 
@@ -243,10 +265,11 @@ kubectl label namespace my-app \
   pod-security.kubernetes.io/audit=restricted
 ```
 
-Check the audit logs for violations:
+Preview restricted enforcement with a server-side dry-run:
 
 ```bash
-kubectl logs -n kube-system -l component=kube-apiserver | grep "pod-security"
+kubectl label --dry-run=server --overwrite namespace my-app \
+  pod-security.kubernetes.io/enforce=restricted
 ```
 
 This lets you see what would break before actually enforcing the restricted level.
@@ -259,10 +282,10 @@ Here are the most frequent violations you will encounter and how to fix them:
 
 **2. Privilege escalation**: The `istio-init` container needs `allowPrivilegeEscalation: true` for iptables. Using CNI eliminates this.
 
-**3. Capabilities**: Without CNI, `NET_ADMIN` and `NET_RAW` are required. With CNI, no special capabilities are needed.
+**3. Capabilities**: Without CNI, `NET_ADMIN` and `NET_RAW` are required by `istio-init`. With CNI, application pods do not need those Istio-specific capabilities.
 
 **4. Read-only root filesystem**: Envoy needs to write to `/etc/istio/proxy` for certificates and configuration. This path is typically a mounted volume, so read-only root filesystem should still work.
 
 ## Summary
 
-The cleanest path to running Istio with strict Pod Security Admission is to use the Istio CNI plugin. It removes the need for init containers with elevated privileges, letting your application namespaces run at the restricted security level. If CNI is not an option, baseline enforcement with restricted auditing gives you a reasonable middle ground while still flagging potential issues.
+The cleanest path to running Istio with strict Pod Security Admission is to use the Istio CNI plugin. It removes the need for init containers with elevated privileges, letting your application namespaces run at the restricted security level. If CNI is not an option, privileged enforcement with restricted auditing gives you a migration path while still flagging potential issues.
