@@ -8,7 +8,7 @@ Description: Practical migration guide from Istio 1.20 to 1.22 covering breaking
 
 ---
 
-Upgrading from Istio 1.20 to 1.22 is a two-version jump that stays within the supported upgrade path (Istio supports skipping one minor version). The 1.21 and 1.22 releases brought important changes including ambient mesh beta, stronger Gateway API integration, and shifts in how installations are managed. This guide covers everything you need to know to make this migration smooth.
+Upgrading from Istio 1.20 to 1.22 is a two-version jump that stays within the supported upgrade path for revision-based upgrades (Istio supports skipping one minor version with canary upgrades). The 1.21 and 1.22 releases brought important changes including ambient mesh beta, stronger Gateway API integration, and shifts in how installations are managed. This guide covers everything you need to know to make this migration smooth.
 
 ## Pre-Migration Checklist
 
@@ -24,6 +24,7 @@ istioctl proxy-status
 
 # Current configuration
 istioctl analyze --all-namespaces
+istioctl x precheck --from-version=1.20
 
 # Current Helm values (if using Helm)
 helm get values istiod -n istio-system > current-values.yaml
@@ -35,28 +36,28 @@ kubectl get virtualservices,destinationrules,gateways,serviceentries,envoyfilter
 
 ## Breaking Changes: 1.20 to 1.21
 
-**Helm became the primary installation method.** While istioctl install still works, Helm is now recommended. If you are switching from istioctl to Helm during this migration, plan for that transition.
+**Helm installation support improved.** While `istioctl install` still works, Helm gained support for installation profiles and remains a recommended production installation path. If you are switching from `istioctl` to Helm during this migration, plan for that transition.
 
-**Gateway deployment model changed.** The recommended practice moved to deploying gateways in their own namespace rather than in istio-system. If your gateways are in istio-system, consider moving them.
+**Gateway API labels changed.** If you use Kubernetes Gateway API to manage Istio gateways, the gateway name label changed from `istio.io/gateway-name` to `gateway.networking.k8s.io/gateway-name`. The old label remained for compatibility, but scripts and policies should move to the new label.
 
 **Minimum Kubernetes version bumped to 1.26.** Make sure your cluster meets this requirement.
 
-**API version changes.** Several Istio APIs shifted from v1alpha3 to v1beta1. While v1alpha3 still works, you should update your manifests.
+**Behavior changes were gated by compatibility versions.** Istio 1.21 introduced `compatibilityVersion`, which can retain 1.20 behavior for changes such as automatic SNI, TLS verification for TLS origination, and ExternalName handling while you complete the upgrade.
 
 ## Breaking Changes: 1.21 to 1.22
 
-**Ambient mesh reached beta.** The ambient APIs stabilized, but if you were using the alpha ambient mode from 1.20, the configuration changed significantly.
+**Ambient mesh reached beta.** Ambient mode moved to beta, but if you were using the alpha ambient mode from 1.20, the configuration changed significantly.
 
-**Gateway API became more integrated.** Istio 1.22 works better with Gateway API v1 (not just v1beta1). Update your Gateway API CRDs.
+**Gateway API became more integrated.** Istio 1.22 supports Gateway API v1.1, including stable service mesh support. Update your Gateway API CRDs.
 
-**Telemetry filter expression support.** The Telemetry API gained filter expressions for access logging, which changes how some existing configurations behave.
+**Default tracing changed.** Istio no longer automatically configures tracing to `zipkin.istio-system.svc`. If you relied on implicit tracing, explicitly configure a tracing provider or use `compatibilityVersion=1.21` during the migration.
 
-**ProxyConfig API updates.** Some proxyConfig fields were restructured.
+**Delta xDS is enabled by default.** Istio 1.22 switches configuration distribution to Delta xDS by default. This should be transparent, but it is a control-plane behavior change to watch during validation.
 
 ## Verify Kubernetes Version
 
 ```bash
-kubectl version --short
+kubectl version
 ```
 
 You need Kubernetes 1.27 or newer for Istio 1.22. If you are on 1.26, it might still work but is not officially supported. Upgrade Kubernetes first if needed.
@@ -167,7 +168,7 @@ Update API versions in your Istio resources:
 kubectl get virtualservices --all-namespaces -o jsonpath='{range .items[*]}{.apiVersion}{"\t"}{.metadata.namespace}/{.metadata.name}{"\n"}{end}'
 ```
 
-Update from v1alpha3 to v1beta1:
+Update stable Istio APIs from older versions to v1 where supported:
 
 ```yaml
 # Old
@@ -175,7 +176,7 @@ apiVersion: networking.istio.io/v1alpha3
 kind: VirtualService
 
 # New
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 ```
 
@@ -194,7 +195,7 @@ Start with a non-critical namespace:
 ```bash
 # Switch to new revision
 kubectl label namespace staging istio-injection- --overwrite
-kubectl label namespace staging istio.io/rev=1-22
+kubectl label namespace staging istio.io/rev=1-22 --overwrite
 
 # Restart workloads
 kubectl rollout restart deployment -n staging
@@ -218,7 +219,7 @@ NAMESPACES="default production api-services"
 for ns in $NAMESPACES; do
   echo "Migrating namespace: $ns"
   kubectl label namespace $ns istio-injection- --overwrite 2>/dev/null
-  kubectl label namespace $ns istio.io/rev=1-22
+  kubectl label namespace $ns istio.io/rev=1-22 --overwrite
   kubectl rollout restart deployment -n $ns
   echo "Waiting 60 seconds for stabilization..."
   sleep 60
@@ -242,7 +243,8 @@ Or if you are deploying the gateway to its own namespace (recommended for 1.22):
 helm install istio-gateway-1-22 istio/gateway \
   --namespace istio-ingress \
   --create-namespace \
-  --version 1.22.0
+  --version 1.22.0 \
+  --set revision=1-22
 ```
 
 Update your Gateway resources to point to the new gateway if you created a new one.
@@ -273,7 +275,7 @@ kubectl rollout restart deployment -n default
 ### Update Gateway API CRDs
 
 ```bash
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.0.0/standard-install.yaml
+kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.1.0/standard-install.yaml
 ```
 
 ### Verify Everything
