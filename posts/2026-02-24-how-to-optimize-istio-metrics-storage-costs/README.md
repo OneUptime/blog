@@ -26,7 +26,7 @@ The standard Istio metrics are usually what you need. The Envoy native metrics a
 
 ## Step 1: Disable Envoy Stats You Do Not Need
 
-By default, Envoy exposes a large number of internal metrics. Most teams never look at the majority of them. You can control which stats Envoy collects using `proxyStatsMatcher`:
+Envoy can expose a large number of internal metrics. Current Istio releases configure Envoy to collect a minimal default set, but if you have enabled additional Envoy stats you should keep the matcher narrow. You can control which extra stats Envoy collects using `proxyStatsMatcher`:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -41,7 +41,7 @@ spec:
         - "http.inbound"
 ```
 
-This tells Envoy to only collect metrics that match the specified prefixes. Everything else is dropped before it even reaches Prometheus.
+This tells Envoy to collect additional metrics that match the specified prefixes. Metrics outside the default set and your matcher are not collected before they ever reach Prometheus.
 
 To be more selective, use inclusion regexps:
 
@@ -56,14 +56,14 @@ meshConfig:
       - ".*downstream_cx.*"
 ```
 
-This captures connection and request metrics (the most useful ones) while dropping everything else.
+For meshes that previously enabled broad Envoy stats, this keeps the additional connection and request metrics (the most useful ones) while avoiding a much wider Envoy metric set.
 
 ## Step 2: Use Telemetry API to Control Metric Generation
 
 Istio's Telemetry API gives you fine-grained control over which metrics are generated:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: reduce-metrics
@@ -92,7 +92,7 @@ Each label (tag) on a metric multiplies the number of time series. Removing labe
 Not every service needs full metrics. Internal batch jobs, cron workloads, and low-priority services can run without Istio metrics:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: disable-metrics
@@ -118,10 +118,10 @@ High-cardinality labels are the number one cause of metrics storage bloat. The w
 - `destination_service` (one series per destination)
 - `source_workload` and `destination_workload` (one per source-destination pair)
 
-You cannot remove `destination_service` without losing most of the value. But you can aggregate response codes:
+You cannot remove `destination_service` without losing most of the value. But for low-value workloads where per-status detail is not useful, you can remove `response_code`:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: optimize-labels
@@ -138,7 +138,7 @@ spec:
           operation: REMOVE
 ```
 
-If you remove `response_code`, you can still use `response_code_class` (which groups into 2xx, 3xx, 4xx, 5xx) that Istio provides as a separate label with much lower cardinality.
+Istio does not provide `response_code_class` as a default label. If you need status classes, keep `response_code` long enough to aggregate it in a recording rule, or use Istio's response classification approach to rewrite `response_code` into a smaller set such as `2xx`, `3xx`, `4xx`, and `5xx`.
 
 ## Step 5: Configure Prometheus Scrape Settings
 
@@ -189,14 +189,14 @@ groups:
   interval: 1m
   rules:
   - record: istio:request_rate:1m
-    expr: sum(rate(istio_requests_total[1m])) by (destination_service, response_code_class)
+    expr: sum(label_replace(rate(istio_requests_total[1m]), "response_code_class", "$1xx", "response_code", "([0-9])..")) by (destination_service, response_code_class)
   - record: istio:request_duration_p99:1m
     expr: histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket[1m])) by (destination_service, le))
   - record: istio:request_errors:1m
     expr: sum(rate(istio_requests_total{response_code=~"5.."}[1m])) by (destination_service)
 ```
 
-Then configure retention policies to drop the raw metrics after a short period (e.g., 2 hours) while keeping the aggregated recording rules for weeks or months.
+Then use your long-term metrics backend, remote-write pipeline, or a separate Prometheus setup to keep the aggregated recording rules for weeks or months while retaining raw metrics for only a short period. In vanilla Prometheus, retention applies to the whole TSDB, not to individual metrics.
 
 ## Step 7: Tiered Storage for Long-Term Retention
 
@@ -249,7 +249,7 @@ After implementing these optimizations:
 
 | Optimization | Typical Reduction |
 |---|---|
-| Disable unused Envoy stats | 40-60% of time series |
+| Limit additional Envoy stats | 40-60% of Envoy time series when extra stats were previously enabled |
 | Remove unnecessary labels | 20-30% additional |
 | Increase scrape interval to 30s | 50% of data points |
 | Recording rules + short retention | 80%+ of long-term storage |
