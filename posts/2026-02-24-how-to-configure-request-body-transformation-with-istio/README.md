@@ -8,7 +8,7 @@ Description: How to transform HTTP request and response bodies using Istio Envoy
 
 ---
 
-Header transformation in Istio is straightforward with VirtualService. Body transformation is a different story. Istio does not have a native, first-class mechanism for modifying request or response bodies. You have to drop down to EnvoyFilter with Lua scripting or use Envoy's built-in transformation filters. It is more work, but it is doable when you need it.
+Header transformation in Istio is straightforward with VirtualService. Body transformation is a different story. Istio does not have a native, first-class mechanism for modifying request or response bodies. You have to drop down to EnvoyFilter with Lua scripting or use Envoy filters such as External Processing. It is more work, but it is doable when you need it.
 
 ## Why Body Transformation?
 
@@ -51,26 +51,28 @@ spec:
           name: envoy.filters.http.lua
           typed_config:
             "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-            inlineCode: |
-              function envoy_on_request(request_handle)
-                local content_type = request_handle:headers():get("content-type")
-                if content_type and content_type:find("application/json") then
-                  local body = request_handle:body()
-                  if body then
-                    local body_str = body:getBytes(0, body:length())
-                    -- Simple JSON field injection (before the closing brace)
-                    local modified = body_str:gsub("}$", ', "injected_by": "istio-proxy"}')
-                    request_handle:body():setBytes(modified)
+            defaultSourceCode:
+              inlineString: |
+                function envoy_on_request(request_handle)
+                  local content_type = request_handle:headers():get("content-type")
+                  if content_type and content_type:find("application/json") then
+                    local body = request_handle:body()
+                    if body then
+                      local body_str = body:getBytes(0, body:length())
+                      -- Simple JSON field injection (before the closing brace)
+                      local modified = body_str:gsub("}$", ', "injected_by": "istio-proxy"}')
+                      body:setBytes(modified)
+                      request_handle:headers():replace("content-length", tostring(#modified))
+                    end
                   end
                 end
-              end
 ```
 
-There is an important caveat here. For the Lua filter to access the body, the entire body must be buffered in memory. You need to configure body buffering explicitly.
+There is an important caveat here. Calling `body()` makes Envoy wait until the entire body has been received in a buffer, subject to the connection manager's configured buffering and flow-control limits.
 
 ## Enabling Body Buffering
 
-To buffer the request body so Lua can access it, you need to tell Envoy to wait for the full body before invoking the filter. This is done through the `per_route` configuration or by using `request_handle:body()` with the body buffering mode:
+To access the request body from Lua, call `request_handle:body()`. Passing `true` does not change the buffering behavior; it tells Envoy to return a body object even when the original request body is empty:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -101,7 +103,7 @@ spec:
             defaultSourceCode:
               inlineString: |
                 function envoy_on_request(request_handle)
-                  -- This call buffers the entire request body
+                  -- This call buffers the request body and returns a buffer object
                   local body = request_handle:body(true)
                   if body then
                     local body_str = body:getBytes(0, body:length())
@@ -140,22 +142,23 @@ spec:
           name: envoy.filters.http.lua
           typed_config:
             "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-            inlineCode: |
-              function envoy_on_response(response_handle)
-                local content_type = response_handle:headers():get("content-type")
-                if content_type and content_type:find("application/json") then
-                  local body = response_handle:body(true)
-                  if body then
-                    local body_str = body:getBytes(0, body:length())
-                    -- Remove sensitive fields from response
-                    local modified = body_str:gsub('"ssn"%s*:%s*"[^"]*"', '"ssn":"***REDACTED***"')
-                    modified = modified:gsub('"password"%s*:%s*"[^"]*"', '"password":"***REDACTED***"')
-                    response_handle:body():setBytes(modified)
-                    -- Update content-length header
-                    response_handle:headers():replace("content-length", tostring(#modified))
+            defaultSourceCode:
+              inlineString: |
+                function envoy_on_response(response_handle)
+                  local content_type = response_handle:headers():get("content-type")
+                  if content_type and content_type:find("application/json") then
+                    local body = response_handle:body(true)
+                    if body then
+                      local body_str = body:getBytes(0, body:length())
+                      -- Remove sensitive fields from response
+                      local modified = body_str:gsub('"ssn"%s*:%s*"[^"]*"', '"ssn":"***REDACTED***"')
+                      modified = modified:gsub('"password"%s*:%s*"[^"]*"', '"password":"***REDACTED***"')
+                      body:setBytes(modified)
+                      -- Update content-length header
+                      response_handle:headers():replace("content-length", tostring(#modified))
+                    end
                   end
                 end
-              end
 ```
 
 This example redacts `ssn` and `password` fields from JSON responses. The content-length header is updated to reflect the modified body size.
@@ -190,31 +193,32 @@ spec:
           name: envoy.filters.http.lua
           typed_config:
             "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-            inlineCode: |
-              function envoy_on_request(request_handle)
-                local method = request_handle:headers():get(":method")
-                if method == "POST" or method == "PUT" then
-                  local body = request_handle:body(true)
-                  if body then
-                    local body_str = body:getBytes(0, body:length())
-                    -- Add audit metadata to the request body
-                    local timestamp = os.time()
-                    local modified = body_str:gsub(
-                      "^{",
-                      '{"_audit_timestamp":' .. timestamp .. ','
-                    )
-                    request_handle:body():setBytes(modified)
-                    request_handle:headers():replace("content-length", tostring(#modified))
+            defaultSourceCode:
+              inlineString: |
+                function envoy_on_request(request_handle)
+                  local method = request_handle:headers():get(":method")
+                  if method == "POST" or method == "PUT" then
+                    local body = request_handle:body(true)
+                    if body then
+                      local body_str = body:getBytes(0, body:length())
+                      -- Add audit metadata to the request body
+                      local timestamp = os.time()
+                      local modified = body_str:gsub(
+                        "^{",
+                        '{"_audit_timestamp":' .. timestamp .. ','
+                      )
+                      body:setBytes(modified)
+                      request_handle:headers():replace("content-length", tostring(#modified))
+                    end
                   end
                 end
-              end
 ```
 
 ## Limitations and Considerations
 
 **Memory usage**: Body buffering loads the entire request or response body into memory. For large payloads (file uploads, bulk data), this can consume significant memory on the Envoy proxy.
 
-Set a body size limit to prevent memory issues:
+Skip transformation for requests that advertise a large body:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -242,27 +246,28 @@ spec:
           name: envoy.filters.http.lua
           typed_config:
             "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-            inlineCode: |
-              function envoy_on_request(request_handle)
-                local content_length = request_handle:headers():get("content-length")
-                if content_length and tonumber(content_length) > 1048576 then
-                  -- Skip body transformation for requests over 1MB
-                  return
+            defaultSourceCode:
+              inlineString: |
+                function envoy_on_request(request_handle)
+                  local content_length = request_handle:headers():get("content-length")
+                  if content_length and tonumber(content_length) > 1048576 then
+                    -- Skip body transformation for requests over 1MB
+                    return
+                  end
+                  local body = request_handle:body(true)
+                  if body then
+                    -- Transform small bodies only
+                    local body_str = body:getBytes(0, body:length())
+                    request_handle:logInfo("Processing body of size: " .. body:length())
+                  end
                 end
-                local body = request_handle:body(true)
-                if body then
-                  -- Transform small bodies only
-                  local body_str = body:getBytes(0, body:length())
-                  request_handle:logInfo("Processing body of size: " .. body:length())
-                end
-              end
 ```
 
 **Latency**: Buffering the body adds latency because Envoy cannot start forwarding the request until the entire body is received. For streaming workloads, this is a deal-breaker.
 
 **JSON parsing**: Lua does not have a built-in JSON parser. The string manipulation approach shown above works for simple cases, but for complex JSON transformations you would need to include a Lua JSON library or use a different approach entirely.
 
-**Content-Length header**: If you modify the body, you must update the `content-length` header. If the header does not match the actual body length, the downstream service may fail to parse the response.
+**Content-Length header**: If you modify the body and keep a `content-length` header, you must update it to match the new body size. If the header does not match the actual body length, the downstream service may fail to parse the response.
 
 ## Alternative: External Processing
 
