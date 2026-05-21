@@ -28,22 +28,21 @@ A certificate contains several important fields:
 
 When a pod starts up with an Istio sidecar, here is what happens:
 
-1. The Envoy sidecar generates a private key and a Certificate Signing Request (CSR)
+1. The Istio agent generates a private key and a Certificate Signing Request (CSR)
 2. The istio-agent (pilot-agent) in the sidecar sends the CSR to istiod
 3. istiod validates that the request is legitimate (using the Kubernetes service account token)
 4. istiod signs the certificate using its CA private key
-5. The signed certificate is sent back to the sidecar
-6. The sidecar uses this certificate for all mTLS connections
+5. The signed certificate is sent back to the Istio agent
+6. Envoy requests the certificate and key from the Istio agent through Envoy SDS and uses them for mTLS connections
 
 You can see this in action by checking the certificates on a running pod:
 
 ```bash
 # Get the certificate from a sidecar
-
 istioctl proxy-config secret <pod-name> -o json
 ```
 
-This shows you the full certificate chain, including the root CA cert, the workload cert, and the certificate chain.
+This shows you the workload certificate chain and the root CA secret that Envoy is using.
 
 ## SPIFFE Identities
 
@@ -72,7 +71,7 @@ To actually look at the certificates Istio issues, you can extract them from a r
 ```bash
 # Get the certificate chain
 istioctl proxy-config secret <pod-name> -o json | \
-  jq -r '.dynamicActiveSecrets[0].secret.tlsCertificate.certificateChain.inlineBytes' | \
+  jq -r '[.dynamicActiveSecrets[] | select(.name == "default")][0].secret.tlsCertificate.certificateChain.inlineBytes' | \
   base64 -d | openssl x509 -text -noout
 ```
 
@@ -114,11 +113,11 @@ Istio uses a chain of trust:
 
 ```text
 Root CA Certificate
-  └── Intermediate CA Certificate (istiod's CA)
+  └── Optional Intermediate CA Certificate (Istio CA)
        └── Workload Certificate (sidecar)
 ```
 
-When two services establish an mTLS connection, they each verify the other's certificate chain up to the shared root CA. If both certificates chain back to the same root, the connection is trusted.
+When two services establish an mTLS connection, they each verify the other's certificate chain up to a trusted root CA. With Istio's default self-signed CA, the root CA signs workload certificates directly. In production, a root CA often issues an intermediate certificate to the Istio CA, and the Istio CA signs the workload certificates.
 
 You can view the root certificate:
 
@@ -128,7 +127,7 @@ kubectl get cm istio-ca-root-cert -n default -o jsonpath='{.data.root-cert\.pem}
   openssl x509 -text -noout
 ```
 
-The `istio-ca-root-cert` ConfigMap is automatically created in every namespace. It contains the root CA certificate that sidecars use to verify peer certificates.
+The `istio-ca-root-cert` ConfigMap is automatically created in namespaces managed by the Istio control plane. It contains the root CA certificate that sidecars use to verify peer certificates.
 
 ## Certificate Lifetimes
 
@@ -141,7 +140,7 @@ spec:
   meshConfig:
     defaultConfig:
       proxyMetadata:
-        SECRET_TTL: 48h0m0s
+        SECRET_TTL: "48h0m0s"
 ```
 
 Or configure it on istiod:
@@ -170,15 +169,20 @@ spec:
   meshConfig:
     defaultConfig:
       proxyMetadata:
-        ISTIO_META_WORKLOAD_CERT_KEY_TYPE: EC
-        ISTIO_META_WORKLOAD_CERT_KEY_SIZE: "256"
+        ECC_SIGNATURE_ALGORITHM: ECDSA
+        ECC_CURVE: P256
 ```
 
 For RSA keys:
 
 ```yaml
-ISTIO_META_WORKLOAD_CERT_KEY_TYPE: RSA
-ISTIO_META_WORKLOAD_CERT_KEY_SIZE: "2048"
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
+spec:
+  meshConfig:
+    defaultConfig:
+      proxyMetadata:
+        WORKLOAD_RSA_KEY_SIZE: "2048"
 ```
 
 ## Debugging Certificate Issues
@@ -188,13 +192,18 @@ When mTLS connections fail, it is usually a certificate problem. Here are the co
 ```bash
 # Check if the certificate is valid
 istioctl proxy-config secret <pod-name> -o json | \
-  jq '.dynamicActiveSecrets[0].secret.tlsCertificate.certificateChain.inlineBytes' | \
-  tr -d '"' | base64 -d | openssl x509 -dates -noout
+  jq -r '[.dynamicActiveSecrets[] | select(.name == "default")][0].secret.tlsCertificate.certificateChain.inlineBytes' | \
+  base64 -d | openssl x509 -dates -noout
 
 # Verify the certificate chain
 istioctl proxy-config secret <pod-name> -o json | \
-  jq -r '.dynamicActiveSecrets[] | select(.name=="default") | .secret.tlsCertificate.certificateChain.inlineBytes' | \
-  base64 -d | openssl verify -CAfile <(kubectl get cm istio-ca-root-cert -o jsonpath='{.data.root-cert\.pem}')
+  jq -r '[.dynamicActiveSecrets[] | select(.name == "default")][0].secret.tlsCertificate.certificateChain.inlineBytes' | \
+  base64 -d > /tmp/workload-cert-chain.pem
+awk 'BEGIN {n=0} /BEGIN CERTIFICATE/ {n++} {print > "/tmp/workload-cert-" n ".pem"}' /tmp/workload-cert-chain.pem
+openssl verify \
+  -CAfile <(kubectl get cm istio-ca-root-cert -n <namespace> -o jsonpath='{.data.root-cert\.pem}') \
+  -untrusted /tmp/workload-cert-chain.pem \
+  /tmp/workload-cert-1.pem
 
 # Check if istiod is healthy and serving certificates
 kubectl logs -n istio-system deploy/istiod | grep -i "certificate"
