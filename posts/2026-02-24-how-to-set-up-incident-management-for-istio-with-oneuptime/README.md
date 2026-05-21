@@ -201,9 +201,9 @@ Every common incident type should have a runbook. Store these in OneUptime and l
 2. Check gateway logs:
    kubectl logs -n istio-system -l istio=ingressgateway --tail=50
 3. Check gateway configuration:
-   istioctl proxy-config routes deploy/istio-ingressgateway -n istio-system
+   istioctl proxy-config routes deployment/istio-ingressgateway -n istio-system
 4. Check if the gateway has the right certificates:
-   istioctl proxy-config secret deploy/istio-ingressgateway -n istio-system
+   istioctl proxy-config secret deployment/istio-ingressgateway -n istio-system
 
 ## Common Fixes
 - Gateway pod OOMKilled: Increase memory limits
@@ -227,12 +227,12 @@ Every common incident type should have a runbook. Store these in OneUptime and l
 3. Verify certificates:
    istioctl proxy-config secret <pod-name>
 4. Check if both pods have sidecars:
-   kubectl get pods -o jsonpath='{.spec.containers[*].name}'
+   kubectl get pod <pod-name> -n <namespace> -o jsonpath='{.spec.containers[*].name}'
 
 ## Common Fixes
 - Mismatched mTLS modes: Align PeerAuthentication and DestinationRule
 - Missing sidecar: Re-enable injection and restart the pod
-- Expired certificate: Restart istiod to trigger cert rotation
+- Expired workload certificate: Check istiod health and restart affected workloads if rotation is stuck
 ```
 
 ## Post-Mortem Process
@@ -258,8 +258,8 @@ After every SEV-1 and SEV-2 incident, run a blameless post-mortem. OneUptime's i
 
 ## Root Cause
 An AuthorizationPolicy was applied that denied all traffic to the payments
-namespace. The policy was missing a "from" rule, which caused it to deny
-all sources instead of allowing specific ones.
+namespace. The policy had an empty spec, which caused it to deny all requests
+instead of allowing the intended sources.
 
 ## What Went Well
 - Alert fired within 2 minutes
