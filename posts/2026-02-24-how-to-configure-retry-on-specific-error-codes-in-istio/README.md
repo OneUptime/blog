@@ -15,7 +15,7 @@ Retrying failed requests is one of the most effective ways to handle transient e
 The simplest retry configuration in Istio looks like this:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service-vs
@@ -32,7 +32,7 @@ spec:
         perTryTimeout: 2s
 ```
 
-Without specifying `retryOn`, Istio defaults to retrying on `connect-failure,refused-stream`. That means it only retries when the connection fails entirely or the server refuses the stream. It does not retry on 500 or 503 errors by default.
+Without specifying `retryOn`, Istio defaults to retrying on `connect-failure,refused-stream,unavailable,cancelled`. That means it retries on connection failures, refused streams, and the listed gRPC status conditions. It does not retry on HTTP 500 or 503 responses by default.
 
 ## The retryOn Field
 
@@ -47,7 +47,7 @@ retries:
 
 Here is what each value means:
 
-**5xx** - Retry on any 5xx response code. This includes 500, 502, 503, 504, etc.
+**5xx** - Retry on any 5xx response code, or when the upstream does not respond because of a disconnect, reset, or read timeout. This includes 500, 502, 503, 504, etc.
 
 **reset** - Retry when the upstream resets the connection (TCP RST).
 
@@ -57,42 +57,31 @@ Here is what each value means:
 
 **retriable-4xx** - Currently only retries 409 Conflict. This is useful for optimistic concurrency scenarios where a retry might succeed.
 
-**gateway-error** - Retry on 502, 503, or 504 responses. This is more specific than `5xx` if you only care about gateway errors.
+**gateway-error** - Retry on 502, 503, or 504 responses, or when the upstream does not respond. This is more specific than `5xx` if you only care about gateway errors.
 
-**retriable-status-codes** - Used with `retryRemoteLocalities` to specify custom status codes.
+**retriable-status-codes** - Used in Envoy retry policies with `retriable_status_codes` to specify custom status codes. In Istio VirtualService, you can also put numeric status codes directly in `retryOn`, such as `retryOn: "503,reset"`.
 
 ## Retrying Only on Specific Status Codes
 
-If you want to retry only on specific HTTP status codes (for example, 503 but not 500), you need to use an EnvoyFilter because the VirtualService retryOn does not support individual status codes directly:
+If you want to retry only on specific HTTP status codes (for example, 503 but not 500), put the numeric status code directly in the VirtualService `retryOn` field:
 
 ```yaml
-apiVersion: networking.istio.io/v1alpha3
-kind: EnvoyFilter
+apiVersion: networking.istio.io/v1
+kind: VirtualService
 metadata:
-  name: retry-on-503
+  name: my-service-vs
   namespace: default
 spec:
-  workloadSelector:
-    labels:
-      app: my-client-service
-  configPatches:
-    - applyTo: HTTP_ROUTE
-      match:
-        context: SIDECAR_OUTBOUND
-        routeConfiguration:
-          vhost:
-            route:
-              name: default
-      patch:
-        operation: MERGE
-        value:
-          route:
-            retry_policy:
-              retry_on: "retriable-status-codes"
-              retriable_status_codes:
-                - 503
-              num_retries: 3
-              per_try_timeout: 2s
+  hosts:
+    - my-service.default.svc.cluster.local
+  http:
+    - route:
+        - destination:
+            host: my-service.default.svc.cluster.local
+      retries:
+        attempts: 3
+        perTryTimeout: 2s
+        retryOn: "503"
 ```
 
 This only retries when the upstream returns exactly a 503. A 500 or 502 would not trigger a retry.
@@ -100,10 +89,7 @@ This only retries when the upstream returns exactly a 503. A 500 or 502 would no
 You can specify multiple status codes:
 
 ```yaml
-retriable_status_codes:
-  - 503
-  - 429
-  - 502
+retryOn: "503,429,502"
 ```
 
 ## Combining retryOn with Specific Codes
@@ -111,30 +97,22 @@ retriable_status_codes:
 You can combine the high-level retry policies with specific status codes:
 
 ```yaml
-apiVersion: networking.istio.io/v1alpha3
-kind: EnvoyFilter
+apiVersion: networking.istio.io/v1
+kind: VirtualService
 metadata:
   name: combined-retry
   namespace: default
 spec:
-  workloadSelector:
-    labels:
-      app: my-client-service
-  configPatches:
-    - applyTo: HTTP_ROUTE
-      match:
-        context: SIDECAR_OUTBOUND
-      patch:
-        operation: MERGE
-        value:
-          route:
-            retry_policy:
-              retry_on: "connect-failure,reset,retriable-status-codes"
-              retriable_status_codes:
-                - 503
-                - 429
-              num_retries: 3
-              per_try_timeout: 5s
+  hosts:
+    - my-service.default.svc.cluster.local
+  http:
+    - route:
+        - destination:
+            host: my-service.default.svc.cluster.local
+      retries:
+        attempts: 3
+        perTryTimeout: 5s
+        retryOn: "connect-failure,reset,503,429"
 ```
 
 This retries on connection failures, resets, 503, and 429. It will not retry on 500 or other status codes.
@@ -144,7 +122,7 @@ This retries on connection failures, resets, 503, and 429. It will not retry on 
 Retrying on 429 Too Many Requests is a common need, but you have to be careful not to make things worse. If a service is rate limiting you, hammering it with retries is counterproductive. Use a longer per-try timeout and fewer attempts:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: rate-limited-service-vs
@@ -159,17 +137,18 @@ spec:
       retries:
         attempts: 2
         perTryTimeout: 5s
-        retryOn: retriable-4xx
+        backoff: 1s
+        retryOn: "429"
 ```
 
-Unfortunately, Istio does not support retry backoff configuration directly in the VirtualService. Envoy uses a default jittered exponential backoff starting at 25ms. If you need longer backoff (which you do for rate limiting), you would need to handle that in your application code.
+Istio supports a `backoff` field in the VirtualService retry policy. If you do not set it, Envoy uses a default jittered exponential backoff with a 25ms base interval.
 
 ## Retrying on gRPC Errors
 
 For gRPC services, the retry configuration uses gRPC-specific status codes:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: grpc-service-vs
@@ -199,7 +178,7 @@ gRPC retry values include:
 You can configure different retry behavior for different endpoints within the same service:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-service-vs
@@ -211,9 +190,8 @@ spec:
     - match:
         - uri:
             prefix: /api/read
-        - headers:
-            ":method":
-              exact: GET
+          method:
+            exact: GET
       route:
         - destination:
             host: api-service.default.svc.cluster.local
@@ -245,7 +223,7 @@ GET requests get aggressive retries, write endpoints get no retries, and everyth
 In some cases, you want to explicitly disable retries. For example, for a service that is not idempotent:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: payment-service-vs
@@ -300,4 +278,4 @@ A few things I have learned the hard way about retries:
 
 ## Summary
 
-Configuring retries on specific error codes in Istio requires understanding the `retryOn` field in VirtualService and knowing when to use EnvoyFilter for more granular control. Use `5xx` for broad error retries, `gateway-error` for just 502/503/504, and `retriable-status-codes` via EnvoyFilter for individual status codes. Always pair retries with appropriate timeouts and monitor the retry metrics to make sure you are actually improving reliability rather than amplifying failures.
+Configuring retries on specific error codes in Istio requires understanding the `retryOn` field in VirtualService. Use `5xx` for broad error retries, `gateway-error` for gateway failures, and numeric status codes such as `503` or `429` for individual status codes. Always pair retries with appropriate timeouts and monitor the retry metrics to make sure you are actually improving reliability rather than amplifying failures.
