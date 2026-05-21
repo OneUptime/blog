@@ -12,7 +12,7 @@ ARM processors like AWS Graviton offer excellent price-performance ratios, but t
 
 ## Understanding ARM Performance Characteristics
 
-ARM chips like Graviton 3 have more cores but each core runs at a lower clock speed compared to equivalent x86 instances. This means workloads that scale well across cores perform great on ARM, while single-threaded workloads might see different numbers.
+ARM chips like Graviton 3 have a different core and vCPU model than many x86 instances. This means workloads that scale well across cores perform great on ARM, while single-threaded workloads might see different numbers.
 
 Envoy proxy, which is what Istio uses as its sidecar, is designed to be highly concurrent. It uses an event-driven architecture with worker threads. This is good news for ARM because Envoy can take advantage of the extra cores.
 
@@ -24,7 +24,7 @@ kubectl get nodes -o custom-columns=NAME:.metadata.name,CPU:.status.capacity.cpu
 
 ## Tuning Envoy Worker Threads
 
-By default, Envoy sets the number of worker threads equal to the number of CPU cores available to it. On ARM instances with many cores, this can actually be too many threads for a sidecar that handles moderate traffic.
+In current Istio releases, if proxy concurrency is unset, Istio automatically determines the number of Envoy worker threads from the proxy CPU requests and limits. If you explicitly set `concurrency: 0`, Envoy uses all cores on the machine, which can be too many threads for a sidecar that handles moderate traffic on high-core-count ARM nodes.
 
 Configure the concurrency through Istio's proxy configuration:
 
@@ -56,7 +56,7 @@ spec:
         image: myapp:latest
 ```
 
-Setting concurrency explicitly prevents Envoy from spinning up too many threads on high-core-count ARM nodes, which wastes memory and CPU.
+Setting concurrency explicitly can prevent Envoy from spinning up too many threads on high-core-count ARM nodes, which wastes memory and CPU. Avoid `concurrency: 0` for sidecars with CPU limits unless you have measured that it improves performance.
 
 ## Optimizing Resource Requests and Limits
 
@@ -93,7 +93,7 @@ ARM processors handle network I/O efficiently. Take advantage of this by making 
 Configure DestinationRules to use HTTP/2:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service-dr
@@ -126,7 +126,7 @@ Istio uses the port name prefix to determine the protocol. Naming the port `grpc
 ARM nodes often handle more concurrent connections thanks to their higher core counts. Tune the connection pool settings:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: backend-dr
@@ -152,7 +152,7 @@ One of the most impactful optimizations on any architecture is reducing the side
 Use Sidecar resources to limit scope:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: frontend-sidecar
@@ -160,26 +160,31 @@ metadata:
 spec:
   egress:
   - hosts:
-    - "./backend-api.backend.svc.cluster.local"
-    - "./auth-service.auth.svc.cluster.local"
+    - "backend/backend-api.backend.svc.cluster.local"
+    - "auth/auth-service.auth.svc.cluster.local"
     - "istio-system/*"
 ```
 
 This tells the frontend namespace sidecars to only load configuration for the backend API, auth service, and Istio system components. On ARM nodes with tighter memory constraints, this can significantly reduce memory usage per sidecar.
 
-## Enabling Protocol Sniffing
+## Prefer Explicit Protocol Selection
 
-Istio supports automatic protocol detection, which avoids the overhead of running unnecessary protocol-specific filters. Make sure it is not disabled in your mesh:
+Istio supports automatic protocol detection for HTTP and HTTP/2, but explicit protocol selection is more predictable and avoids protocol detection delays for traffic that cannot be detected. Prefer naming service ports or setting `appProtocol` where possible:
 
 ```yaml
-apiVersion: install.istio.io/v1alpha1
-kind: IstioOperator
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-http-service
 spec:
-  meshConfig:
-    protocolDetectionTimeout: 100ms
+  ports:
+  - name: http-api
+    appProtocol: http
+    port: 8080
+    targetPort: 8080
 ```
 
-A short detection timeout ensures quick fallback to TCP if the protocol cannot be determined, reducing latency for non-HTTP traffic.
+If the protocol cannot be determined automatically, Istio treats the traffic as plain TCP. Server-first protocols such as MySQL are incompatible with automatic protocol selection, so declare those protocols explicitly or treat them as TCP.
 
 ## Profiling with Envoy Admin Interface
 
@@ -232,10 +237,11 @@ ARM-based istiod might need slightly more CPU allocation due to lower per-core p
 Use fortio to benchmark your mesh on ARM:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/httpbin/httpbin.yaml
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/sleep/sleep.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/httpbin/httpbin.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/httpbin/sample-client/fortio-deploy.yaml
 
-kubectl exec deploy/sleep -- fortio load -c 32 -qps 0 -t 30s http://httpbin:8000/get
+FORTIO_POD=$(kubectl get pod -l app=fortio -o jsonpath='{.items[0].metadata.name}')
+kubectl exec "$FORTIO_POD" -c fortio -- /usr/bin/fortio load -c 32 -qps 0 -t 30s http://httpbin:8000/get
 ```
 
 Run this on both ARM and x86 nodes and compare the results. Look at p50, p99, and max latency plus throughput (requests per second).
