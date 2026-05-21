@@ -84,9 +84,11 @@ Without the VirtualService, Istio falls back to default routing (round-robin to 
 For AuthorizationPolicies that are blocking traffic:
 
 ```bash
-# Delete the policy to allow all traffic
+# Delete the policy to remove that restriction
 kubectl delete authorizationpolicy restrictive-policy -n my-namespace
 ```
+
+If no other AuthorizationPolicies match the workload, Istio allows traffic by default. If other matching CUSTOM, DENY, or ALLOW policies exist, those policies still apply.
 
 ## Rollback Using Snapshots
 
@@ -139,7 +141,7 @@ kubectl apply -f old-virtualservice.yaml
 
 **AuthorizationPolicy rollback:**
 ```bash
-# Emergency: delete to allow all traffic
+# Emergency: delete the policy to remove that restriction
 kubectl delete authorizationpolicy my-policy -n my-namespace
 
 # Or apply the previous version
@@ -168,6 +170,8 @@ EOF
 ## Canary Configuration Changes
 
 The best rollback is one you never need. Use canary deployments for configuration changes:
+
+This example assumes you already have a DestinationRule defining the `v1` and `v2` subsets.
 
 ```yaml
 # Instead of changing the main VirtualService,
@@ -217,7 +221,7 @@ Prevent the need for rollbacks by validating configuration before it goes live:
 kubectl apply -f new-virtualservice.yaml --dry-run=server
 
 # Use istioctl analyze to check for issues
-istioctl analyze -f new-virtualservice.yaml
+istioctl analyze new-virtualservice.yaml
 
 # Validate the YAML syntax
 istioctl validate -f new-virtualservice.yaml
