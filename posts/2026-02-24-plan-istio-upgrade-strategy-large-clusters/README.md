@@ -22,10 +22,10 @@ Before planning any upgrade, you need a clear picture of what you are working wi
 # How many namespaces have sidecar injection
 
 kubectl get ns -l istio-injection=enabled --no-headers | wc -l
-kubectl get ns -L istio.io/rev | grep -v "<none>" | wc -l
+kubectl get ns -L istio.io/rev --no-headers | awk '$NF != "<none>" { count++ } END { print count + 0 }'
 
 # How many pods have sidecars
-istioctl proxy-status | wc -l
+istioctl proxy-status | tail -n +2 | wc -l
 
 # What proxy versions are running
 istioctl version
@@ -208,10 +208,11 @@ Set up dashboards specifically for the upgrade. You need visibility into:
 
 ```bash
 # Key metrics to watch
-# pilot_xds_pushes - Config push rate
+# pilot_push_triggers - Config push trigger rate
 # pilot_proxy_convergence_time - Time for proxies to get new config
 # pilot_conflict_inbound_listener - Configuration conflicts
-# pilot_xds_push_errors - Push failures
+# pilot_total_xds_internal_errors - Internal XDS errors
+# pilot_total_xds_rejects - XDS responses rejected by proxies
 ```
 
 **Data Plane Health:**
@@ -264,7 +265,7 @@ while IFS= read -r namespace; do
 
   # Capture pre-migration metrics
   ERROR_RATE_BEFORE=$(kubectl exec -n istio-system deploy/prometheus -- \
-    promtool query instant 'sum(rate(istio_requests_total{response_code=~"5.*",destination_workload_namespace="'$namespace'"}[5m]))' 2>/dev/null || echo "0")
+    promtool query instant http://localhost:9090 'sum(rate(istio_requests_total{response_code=~"5.*",destination_workload_namespace="'$namespace'"}[5m]))' 2>/dev/null || echo "0")
 
   # Migrate
   kubectl label namespace $namespace istio-injection- --overwrite 2>/dev/null || true
@@ -279,9 +280,9 @@ while IFS= read -r namespace; do
   # Validate
   sleep 120  # Wait 2 minutes for metrics to stabilize
 
-  # Check error rate did not spike
+  # Capture post-migration metrics
   ERROR_RATE_AFTER=$(kubectl exec -n istio-system deploy/prometheus -- \
-    promtool query instant 'sum(rate(istio_requests_total{response_code=~"5.*",destination_workload_namespace="'$namespace'"}[5m]))' 2>/dev/null || echo "0")
+    promtool query instant http://localhost:9090 'sum(rate(istio_requests_total{response_code=~"5.*",destination_workload_namespace="'$namespace'"}[5m]))' 2>/dev/null || echo "0")
 
   echo "$(date): $namespace migrated. Error rate: before=$ERROR_RATE_BEFORE after=$ERROR_RATE_AFTER"
 
