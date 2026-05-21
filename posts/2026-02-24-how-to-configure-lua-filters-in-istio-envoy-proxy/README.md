@@ -24,9 +24,9 @@ Lua filters are a good fit when:
 They are NOT a good fit when:
 
 - You need complex business logic (use Wasm instead)
-- You need to make external HTTP calls (Lua has limited async support in Envoy)
+- You need arbitrary network I/O beyond Envoy's `httpCall()` API
 - Performance is absolutely critical (Wasm is faster for compute-heavy tasks)
-- You need to share state across requests
+- You need consistent shared state across worker threads or requests
 
 ## Basic Lua Filter Setup
 
@@ -58,10 +58,11 @@ spec:
           name: envoy.filters.http.lua
           typed_config:
             "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-            inline_code: |
-              function envoy_on_response(response_handle)
-                response_handle:headers():add("x-powered-by", "istio-mesh")
-              end
+            defaultSourceCode:
+              inlineString: |
+                function envoy_on_response(response_handle)
+                  response_handle:headers():add("x-powered-by", "istio-mesh")
+                end
 ```
 
 The `INSERT_BEFORE` operation puts the Lua filter before the router filter, which is where it needs to be.
@@ -103,59 +104,62 @@ spec:
           name: envoy.filters.http.lua
           typed_config:
             "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-            inline_code: |
-              function envoy_on_request(request_handle)
-                -- Read a header
-                local api_key = request_handle:headers():get("x-api-key")
+            defaultSourceCode:
+              inlineString: |
+                function envoy_on_request(request_handle)
+                  -- Read a header
+                  local api_key = request_handle:headers():get("x-api-key")
 
-                -- Add a header
-                request_handle:headers():add("x-request-received", os.date("!%Y-%m-%dT%H:%M:%SZ"))
+                  -- Add a header
+                  request_handle:headers():add("x-request-received", os.date("!%Y-%m-%dT%H:%M:%SZ"))
 
-                -- Remove a header
-                request_handle:headers():remove("x-internal-debug")
+                  -- Remove a header
+                  request_handle:headers():remove("x-internal-debug")
 
-                -- Replace a header
-                request_handle:headers():replace("user-agent", "custom-agent/1.0")
+                  -- Replace a header
+                  request_handle:headers():replace("user-agent", "custom-agent/1.0")
 
-                -- Log something
-                request_handle:logInfo("Processing request with API key present: " .. tostring(api_key ~= nil))
-              end
+                  -- Log something
+                  request_handle:logInfo("Processing request with API key present: " .. tostring(api_key ~= nil))
+                end
 ```
 
 ### Working with Response Headers
 
 ```yaml
-inline_code: |
-  function envoy_on_response(response_handle)
-    -- Get the status code
-    local status = response_handle:headers():get(":status")
+defaultSourceCode:
+  inlineString: |
+    function envoy_on_response(response_handle)
+      -- Get the status code
+      local status = response_handle:headers():get(":status")
 
-    -- Add security headers
-    response_handle:headers():add("x-content-type-options", "nosniff")
-    response_handle:headers():add("x-frame-options", "DENY")
-    response_handle:headers():add("strict-transport-security", "max-age=31536000; includeSubDomains")
+      -- Add security headers
+      response_handle:headers():add("x-content-type-options", "nosniff")
+      response_handle:headers():add("x-frame-options", "DENY")
+      response_handle:headers():add("strict-transport-security", "max-age=31536000; includeSubDomains")
 
-    -- Add cache control based on status
-    if status == "200" then
-      response_handle:headers():add("cache-control", "public, max-age=300")
-    else
-      response_handle:headers():add("cache-control", "no-store")
+      -- Add cache control based on status
+      if status == "200" then
+        response_handle:headers():add("cache-control", "public, max-age=300")
+      else
+        response_handle:headers():add("cache-control", "no-store")
+      end
     end
-  end
 ```
 
 ### Working with the Request Body
 
 ```yaml
-inline_code: |
-  function envoy_on_request(request_handle)
-    -- Get the body (this buffers the entire body)
-    local body = request_handle:body()
-    if body then
-      local body_str = body:getBytes(0, body:length())
-      request_handle:logInfo("Request body length: " .. tostring(body:length()))
+defaultSourceCode:
+  inlineString: |
+    function envoy_on_request(request_handle)
+      -- Get the body (this buffers the entire body)
+      local body = request_handle:body()
+      if body then
+        local body_str = body:getBytes(0, body:length())
+        request_handle:logInfo("Request body length: " .. tostring(body:length()))
+      end
     end
-  end
 ```
 
 Be careful with body access. Calling `body()` buffers the entire request body in memory, which can be expensive for large payloads.
@@ -190,20 +194,23 @@ spec:
           name: envoy.filters.http.lua
           typed_config:
             "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-            inline_code: |
-              function envoy_on_request(request_handle)
-                local existing_id = request_handle:headers():get("x-request-id")
-                if existing_id then
-                  request_handle:headers():add("x-original-request-id", existing_id)
+            defaultSourceCode:
+              inlineString: |
+                function envoy_on_request(request_handle)
+                  local existing_id = request_handle:headers():get("x-request-id")
+                  if existing_id then
+                    request_handle:headers():add("x-original-request-id", existing_id)
+                    request_handle:streamInfo():dynamicMetadata():set("envoy.filters.http.lua", "request_id", existing_id)
+                  end
                 end
-              end
 
-              function envoy_on_response(response_handle)
-                local request_id = response_handle:headers():get("x-request-id")
-                if request_id then
-                  response_handle:headers():add("x-correlation-id", request_id)
+                function envoy_on_response(response_handle)
+                  local metadata = response_handle:streamInfo():dynamicMetadata():get("envoy.filters.http.lua")
+                  local request_id = metadata and metadata["request_id"]
+                  if request_id then
+                    response_handle:headers():add("x-correlation-id", request_id)
+                  end
                 end
-              end
 ```
 
 ### Path-Based Rate Limit Headers
@@ -234,41 +241,43 @@ spec:
           name: envoy.filters.http.lua
           typed_config:
             "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-            inline_code: |
-              function envoy_on_request(request_handle)
-                local path = request_handle:headers():get(":path")
+            defaultSourceCode:
+              inlineString: |
+                function envoy_on_request(request_handle)
+                  local path = request_handle:headers():get(":path")
 
-                -- Tag requests by API category
-                if string.find(path, "^/api/v1/") then
-                  request_handle:headers():add("x-rate-group", "api-v1")
-                elseif string.find(path, "^/api/v2/") then
-                  request_handle:headers():add("x-rate-group", "api-v2")
-                else
-                  request_handle:headers():add("x-rate-group", "default")
+                  -- Tag requests by API category
+                  if string.find(path, "^/api/v1/") then
+                    request_handle:headers():add("x-rate-group", "api-v1")
+                  elseif string.find(path, "^/api/v2/") then
+                    request_handle:headers():add("x-rate-group", "api-v2")
+                  else
+                    request_handle:headers():add("x-rate-group", "default")
+                  end
                 end
-              end
 ```
 
 ### Conditional Response Modification
 
 ```yaml
-inline_code: |
-  function envoy_on_response(response_handle)
-    local status = response_handle:headers():get(":status")
-    local content_type = response_handle:headers():get("content-type")
+defaultSourceCode:
+  inlineString: |
+    function envoy_on_response(response_handle)
+      local status = response_handle:headers():get(":status")
+      local content_type = response_handle:headers():get("content-type")
 
-    -- Add CORS headers only for JSON responses
-    if content_type and string.find(content_type, "application/json") then
-      response_handle:headers():add("access-control-allow-origin", "*")
-      response_handle:headers():add("access-control-allow-methods", "GET, POST, PUT, DELETE, OPTIONS")
-      response_handle:headers():add("access-control-allow-headers", "Content-Type, Authorization")
-    end
+      -- Add CORS headers only for JSON responses
+      if content_type and string.find(content_type, "application/json") then
+        response_handle:headers():add("access-control-allow-origin", "*")
+        response_handle:headers():add("access-control-allow-methods", "GET, POST, PUT, DELETE, OPTIONS")
+        response_handle:headers():add("access-control-allow-headers", "Content-Type, Authorization")
+      end
 
-    -- Add error tracking header for server errors
-    if tonumber(status) >= 500 then
-      response_handle:headers():add("x-error-tracking", "enabled")
+      -- Add error tracking header for server errors
+      if tonumber(status) >= 500 then
+        response_handle:headers():add("x-error-tracking", "enabled")
+      end
     end
-  end
 ```
 
 ## Applying to Gateway vs Sidecar
@@ -310,7 +319,7 @@ Use `request_handle:logInfo()` and `request_handle:logWarn()` for debugging. The
 
 ## Performance Considerations
 
-Lua filters run in the main Envoy thread. If your Lua code is slow, it blocks request processing for all connections on that thread.
+Lua filters run on the Envoy worker thread handling the stream. If your Lua code is slow, it blocks request processing for other work on that thread.
 
 Keep your Lua code simple and fast:
 
@@ -319,6 +328,6 @@ Keep your Lua code simple and fast:
 - Keep the logic short, ideally under 50 lines
 - Use Wasm for anything compute-intensive
 
-For most header manipulation tasks, Lua filters add negligible latency - well under 1 millisecond per request. But buffering and processing large request bodies can add significant latency.
+For most header manipulation tasks, Lua filters add small latency, but you should measure the impact in your own environment. Buffering and processing large request bodies can add significant latency.
 
 Lua filters are the pragmatic choice for simple proxy customization. They are easy to write, easy to deploy, and easy to understand. Just keep them small and focused.
