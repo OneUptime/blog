@@ -161,7 +161,7 @@ kubectl describe pod -n istio-system -l app=istiod | grep -A5 "Last State"
 
 ## Environment Variables for Memory Tuning
 
-Istiod (written in Go) responds to several environment variables that affect memory behavior:
+Istiod (written in Go) responds to Go runtime environment variables that affect memory behavior:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -172,14 +172,10 @@ spec:
       k8s:
         env:
         - name: GOMEMLIMIT
-          value: "3750MiB"
-        - name: PILOT_ENABLE_CONFIG_DISTRIBUTION_TRACKING
-          value: "false"
+          value: "3686MiB"
 ```
 
-`GOMEMLIMIT` tells Go's garbage collector about your memory budget. Setting it to about 90% of your memory limit helps avoid OOM kills by making GC more aggressive as memory approaches the limit. If your limit is 4Gi, set GOMEMLIMIT to about 3.75Gi.
-
-`PILOT_ENABLE_CONFIG_DISTRIBUTION_TRACKING` tracks which proxies have received which configs. Disabling it saves memory in large meshes.
+`GOMEMLIMIT` tells Go's garbage collector about your memory budget. Setting it to about 90% of your memory limit helps avoid OOM kills by making GC more aggressive as memory approaches the limit. If your limit is 4Gi, set GOMEMLIMIT to about 3686MiB.
 
 ## Configuring Sidecar Resource Limits
 
