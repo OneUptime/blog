@@ -228,7 +228,7 @@ This gives you network-level segmentation even if someone somehow bypasses the I
 Once your segments are in place, you need to monitor them. Check for denied requests using Istio telemetry:
 
 ```bash
-kubectl logs -n istio-system -l app=istiod | grep "RBAC: access denied"
+kubectl logs -n backend -l app=api-service -c istio-proxy | grep "RBAC: access denied"
 ```
 
 You can also use Kiali to visualize your service graph and see which communication paths are active. This is really useful for verifying that your segmentation matches your intended architecture.
@@ -249,11 +249,11 @@ kubectl run test-pod --image=curlimages/curl -n frontend -- sleep 3600
 kubectl exec test-pod -n frontend -- curl -s -o /dev/null -w "%{http_code}" http://postgres.data-tier.svc.cluster.local:5432
 ```
 
-You should get a connection refused or a 403. If you get a 200, something is wrong with your policies.
+For a TCP service like Postgres, you should get a connection failure or an HTTP code of `000` from curl. For HTTP services, denied requests should return a 403. If an HTTP endpoint returns 200 when it should be blocked, something is wrong with your policies.
 
 ## Common Pitfalls
 
-A few things to watch out for. First, remember that the deny-all policy with an empty spec only works if there are no other ALLOW policies that are too broad. Second, make sure your health check endpoints are accessible - Kubernetes needs to reach liveness and readiness probes. You might need to carve out exceptions:
+A few things to watch out for. First, remember that the deny-all policy with an empty spec only works if there are no other ALLOW policies that are too broad. Second, make sure your health check endpoints are accessible. Istio rewrites Kubernetes HTTP, TCP, and gRPC liveness and readiness probes by default, but in-mesh health checks from other services may still need a narrow exception:
 
 ```yaml
 apiVersion: security.istio.io/v1
