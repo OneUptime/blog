@@ -10,7 +10,7 @@ Description: A hands-on guide to integrating Dex as an OpenID Connect identity p
 
 Dex is a lightweight, open-source OpenID Connect (OIDC) identity provider that acts as a bridge to other identity providers. Instead of integrating directly with GitHub, Google, LDAP, or SAML providers, your services authenticate through Dex, and Dex handles the upstream identity federation. Pair it with Istio, and you get a centralized identity layer for your entire mesh without touching application code.
 
-The approach here is to use Dex as the OIDC issuer and configure Istio's JWT-based request authentication to validate tokens issued by Dex. This gives you identity propagation across service-to-service calls without each service needing to know about Dex directly.
+The approach here is to use Dex as the OIDC issuer and configure Istio's JWT-based request authentication to validate tokens issued by Dex. This lets services that receive and forward the token consume the same identity without each service needing to know about Dex directly.
 
 ## Deploying Dex
 
@@ -209,7 +209,7 @@ spec:
 
 ## Configuring Istio JWT Authentication
 
-Now configure Istio to validate JWTs issued by Dex. This is the core integration point. Istio will check every incoming request for a valid Dex-issued JWT:
+Now configure Istio to validate JWTs issued by Dex. This is the core integration point. Istio will validate a Dex-issued JWT whenever one is presented on an incoming request:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -250,7 +250,7 @@ spec:
 
 This denies any request that does not have a valid JWT (indicated by `notRequestPrincipals: ["*"]`), except for health check and public paths.
 
-For more granular control, you can enforce group-based access:
+For more granular control, you can deny non-admin access to admin paths:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -259,17 +259,20 @@ metadata:
   name: admin-only
   namespace: default
 spec:
-  action: ALLOW
+  action: DENY
   rules:
     - from:
         - source:
-            requestPrincipals: ["https://dex.mycompany.com/*"]
+            notRequestPrincipals: ["*"]
       to:
+        - operation:
+            paths: ["/admin/*"]
+    - to:
         - operation:
             paths: ["/admin/*"]
       when:
         - key: request.auth.claims[groups]
-          values: ["admins"]
+          notValues: ["admins"]
 ```
 
 ## Setting Up the Authentication Flow
@@ -282,39 +285,44 @@ Users need a way to actually get a JWT from Dex. In a web application, this typi
 4. Dex issues a JWT and redirects back to your app
 5. Your app stores the JWT and includes it in requests
 
-For service-to-service authentication, you can use Dex's static password or service account connectors:
+For non-interactive test clients, you can enable Dex's static password database and password grant. Password grants are not recommended for production service-to-service authentication, but they are useful for simple demos:
 
 ```yaml
 enablePasswordDB: true
 staticPasswords:
   - email: "service-account@mycompany.com"
-    hash: "$2a$10$hash_here"
+    hash: "$2a$10$2b2cU8CPhOTaGrs1HRQuAueS7JTT5ZHsHSzYiFPm1leZck7Mc8T4W"
     username: "service-account"
     userID: "service-account-001"
+oauth2:
+  grantTypes:
+    - authorization_code
+    - refresh_token
+    - password
+  passwordConnector: local
+  skipApprovalScreen: true
 ```
 
-Then services can get a token using the password grant:
+Then a test client can get a token using the password grant:
 
 ```bash
 curl -X POST https://dex.mycompany.com/token \
-  -d "grant_type=password" \
-  -d "username=service-account@mycompany.com" \
-  -d "password=service-password" \
-  -d "client_id=istio-mesh" \
-  -d "client_secret=mesh-client-secret" \
-  -d "scope=openid email groups"
+  -u "istio-mesh:mesh-client-secret" \
+  --data-urlencode "grant_type=password" \
+  --data-urlencode "username=service-account@mycompany.com" \
+  --data-urlencode "password=password" \
+  --data-urlencode "scope=openid email profile offline_access"
 ```
 
 ## Token Refresh and Lifecycle
 
-JWTs from Dex have an expiration time. You need to handle token refresh in your application. Dex issues refresh tokens alongside access tokens when the `offline_access` scope is requested:
+JWTs from Dex have an expiration time. You need to handle token refresh in your application. Dex issues refresh tokens alongside access and ID tokens when the `offline_access` scope is requested during the initial authorization flow:
 
 ```bash
 curl -X POST https://dex.mycompany.com/token \
-  -d "grant_type=refresh_token" \
-  -d "refresh_token=$REFRESH_TOKEN" \
-  -d "client_id=istio-mesh" \
-  -d "client_secret=mesh-client-secret"
+  -u "istio-mesh:mesh-client-secret" \
+  --data-urlencode "grant_type=refresh_token" \
+  --data-urlencode "refresh_token=$REFRESH_TOKEN"
 ```
 
 ## Reading Identity in Backend Services
