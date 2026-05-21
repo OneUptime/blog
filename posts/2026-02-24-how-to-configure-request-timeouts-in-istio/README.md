@@ -14,7 +14,7 @@ Istio lets you configure timeouts at the mesh level without changing any applica
 
 ## How Timeouts Work in Istio
 
-When you configure a timeout on a VirtualService route, the sidecar proxy starts a timer when it sends the request to the upstream. If the upstream doesn't send a complete response within the timeout period, the proxy terminates the connection and returns a 504 Gateway Timeout to the caller.
+When you configure a timeout on a VirtualService route, the sidecar proxy starts a timer after it has received the complete downstream request. If the upstream doesn't send a complete response within the timeout period, the proxy terminates the request and returns a 504 Gateway Timeout to the caller.
 
 ```mermaid
 sequenceDiagram
@@ -37,7 +37,7 @@ The timeout applies to the entire request lifecycle as seen by the proxy, includ
 Configure a timeout in a VirtualService:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: product-service
@@ -62,7 +62,7 @@ The timeout field accepts duration strings:
 
 ## Default Timeout Behavior
 
-If you don't set a timeout in your VirtualService, Istio does not enforce any request timeout by default. Requests can hang indefinitely if the upstream never responds.
+If you don't set a timeout in your VirtualService, Istio does not enforce a route-level request timeout by default. Other connection, idle, or application-level timeouts may still apply, but the VirtualService route will not set an overall response deadline.
 
 There's a subtle caveat here. If you have retries configured but no explicit timeout, Istio applies a default timeout of 0s (no timeout) for the overall request. But the per-retry timeout defaults to the same as the overall timeout. This means retries can run indefinitely too.
 
@@ -111,7 +111,7 @@ From the user's perspective, how long is acceptable?
 Different routes can have different timeouts:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: product-service
@@ -147,7 +147,7 @@ The search endpoint has a tight 2-second timeout because users expect fast searc
 When you combine timeouts with retries, the timeout applies to the total request duration, including all retry attempts:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: product-service
@@ -170,36 +170,55 @@ In this configuration:
 - Each individual attempt has a 3-second timeout (perTryTimeout)
 - The total timeout for all attempts combined is 10 seconds
 - If the first attempt takes 3s (times out), the first retry takes 3s (times out), and the second retry takes 3s (times out), the total is 9 seconds - within the 10-second overall timeout
-- If the first attempt takes 3s, the second takes 3s, the third takes 3s, and there's a fourth retry that would push past 10s, it gets cut off
+- If the third retry would push the total past 10s, it gets cut off
 
-This is why you want `timeout >= attempts * perTryTimeout`.
+The maximum possible number of requests is `1 + attempts`, because `attempts` is the retry count. If you want every try to be able to use the full per-try timeout, set the overall timeout to at least `(attempts + 1) * perTryTimeout`, plus room for retry backoff.
 
 ## Testing Timeouts with Fault Injection
 
 Validate your timeout configuration by injecting delays:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
-  name: product-service
+  name: backend-service
   namespace: production
 spec:
   hosts:
-    - product-service
+    - backend-service
   http:
     - fault:
         delay:
           fixedDelay: 10s
           percentage:
             value: 100.0
+      route:
+        - destination:
+            host: backend-service
+---
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: test-client-timeout
+  namespace: production
+spec:
+  hosts:
+    - product-service
+  http:
+    - match:
+        - sourceLabels:
+            app: test-client
       timeout: 3s
       route:
         - destination:
             host: product-service
+    - route:
+        - destination:
+            host: product-service
 ```
 
-Every request gets a 10-second delay, but the timeout is 3 seconds. The client should get a 504 after 3 seconds:
+Every request from `product-service` to `backend-service` gets a 10-second delay, while requests from `test-client` to `product-service` have a 3-second timeout. Keep the fault injection and timeout on separate routes because Istio does not enable timeouts or retries on a route where client-side faults are configured. The client should get a 504 after 3 seconds:
 
 ```bash
 time kubectl exec deploy/test-client -n production -- curl -v http://product-service:8080/products
@@ -240,7 +259,7 @@ http:
           host: product-service
 ```
 
-A timeout of 0s means no timeout - requests can take as long as they need.
+A timeout of 0s disables the route-level request timeout for that route.
 
 ## Common Timeout Mistakes
 
