@@ -16,7 +16,7 @@ HTTPRoute supports three ways to match URL paths:
 
 1. **PathPrefix** - Matches the beginning of the path
 2. **Exact** - Matches the entire path exactly
-3. **RegularExpression** - Matches against a regex pattern
+3. **RegularExpression** - Matches against a regex pattern, if supported by your Gateway API implementation
 
 Each has its use cases, and understanding when to use which one will save you from subtle routing bugs.
 
@@ -43,7 +43,7 @@ spec:
 
 ## Prefix-Based Routing
 
-PathPrefix is the most commonly used match type. It matches any path that starts with the specified prefix:
+PathPrefix is the most commonly used match type. It matches a path prefix on path segment boundaries:
 
 ```yaml
 apiVersion: gateway.networking.k8s.io/v1
@@ -93,7 +93,7 @@ With this config:
 - `/static/css/main.css` goes to cdn-service
 - `/about`, `/login`, or any other path goes to frontend-service
 
-The `/` prefix is a catch-all that matches everything. Put it last because rules are evaluated in order, and the first match wins.
+The `/` prefix is a catch-all that matches everything. More specific exact and prefix matches take priority over it, and rule order only decides ties within the same HTTPRoute.
 
 ## Prefix Matching Behavior
 
@@ -154,7 +154,7 @@ spec:
 
 ## Regular Expression Matching
 
-For more complex patterns, use RegularExpression:
+For more complex patterns, use RegularExpression when your Gateway API implementation supports it:
 
 ```yaml
 apiVersion: gateway.networking.k8s.io/v1
@@ -193,7 +193,7 @@ spec:
 
 The first rule matches `/api/v1/users`, `/api/v2/users`, `/api/v99/users`, etc. The file rule matches paths like `/files/a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6`.
 
-Use regex sparingly - it's more computationally expensive than prefix or exact matching. For simple cases, prefer PathPrefix.
+Use regex sparingly because regex dialect and precedence are implementation-specific. For simple cases, prefer PathPrefix.
 
 ## Combining Path Matching with Other Conditions
 
@@ -227,7 +227,7 @@ spec:
     backendRefs:
     - name: users-write-service
       port: 80
-  # /api/users with beta header goes to beta service
+  # Non-GET/POST /api/users requests with beta header go to beta service
   - matches:
     - path:
         type: PathPrefix
@@ -340,11 +340,15 @@ spec:
 
 ## Route Priority and Ordering
 
-Rules within an HTTPRoute are evaluated in order. Across multiple HTTPRoutes, the Gateway API has specificity rules:
+HTTPRoute matching is based on Gateway API precedence rules across all applicable routes:
 
 1. Exact matches take priority over prefix matches
 2. Longer prefixes take priority over shorter ones
-3. If two routes are equally specific, the one with more matching criteria (headers, query params) wins
+3. Method matches take priority next
+4. Routes with more header matches take priority
+5. Routes with more query parameter matches take priority
+
+RegularExpression path precedence is implementation-specific. If matches are still tied across multiple HTTPRoutes, the older route wins, then the route whose `{namespace}/{name}` comes first alphabetically. If matches are still tied within a single HTTPRoute, the first matching rule wins.
 
 This means you can safely define your routes in separate HTTPRoute resources:
 
