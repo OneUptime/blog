@@ -84,7 +84,7 @@ spec:
             requestPrincipals: ["*"]
 ```
 
-With this in place, unauthenticated gRPC calls receive a gRPC status code `PERMISSION_DENIED` (code 7) instead of the HTTP 403 you'd see with REST APIs. Istio translates the HTTP status codes to gRPC status codes automatically because it knows the traffic is HTTP/2 with gRPC content type.
+With this in place, gRPC calls without a JWT receive a gRPC status code `PERMISSION_DENIED` (code 7) instead of the HTTP 403 you'd see with REST APIs. Requests with an invalid JWT can surface as `UNAUTHENTICATED` (code 16), because the JWT authentication filter rejects them before the authorization policy is evaluated.
 
 ## gRPC Path Format for Fine-Grained Policies
 
@@ -279,8 +279,8 @@ func (s *server) GetUser(ctx context.Context, req *pb.GetUserRequest) (*pb.User,
     if ok {
         payload := md.Get("x-jwt-payload")
         if len(payload) > 0 {
-            // base64 decode and parse JSON
-            decoded, _ := base64.StdEncoding.DecodeString(payload[0])
+            // base64url decode and parse JSON
+            decoded, _ := base64.RawURLEncoding.DecodeString(payload[0])
             var claims map[string]interface{}
             json.Unmarshal(decoded, &claims)
             userID := claims["sub"].(string)
