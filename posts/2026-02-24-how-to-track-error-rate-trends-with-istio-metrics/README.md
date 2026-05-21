@@ -12,7 +12,7 @@ Errors happen. The question is whether they are getting better or worse. A stead
 
 ## The Error Rate Metric
 
-Istio tracks every request through `istio_requests_total`. Errors are identified by their HTTP response code:
+Istio tracks HTTP requests through `istio_requests_total`. Errors are identified by their HTTP response code:
 
 - **4xx** - Client errors (bad requests, unauthorized, not found)
 - **5xx** - Server errors (internal error, bad gateway, service unavailable)
@@ -232,7 +232,7 @@ When investigating error rate increases, check if a deployment happened:
 
 ```bash
 # Check recent deployments
-kubectl get events -n default --sort-by='.lastTimestamp' | grep -i "rolling\|scaled\|created"
+kubectl get events -n default --sort-by='.metadata.creationTimestamp' | grep -i "rolling\|scaled\|created"
 
 # Check rollout history
 kubectl rollout history deployment/payment-service -n default
@@ -246,7 +246,7 @@ When you spot an error rate increase, dig deeper:
 
 ```bash
 # Check the proxy access logs for errors
-kubectl logs deploy/payment-service -c istio-proxy | grep "response_code\":5"
+kubectl logs deploy/payment-service -c istio-proxy | grep -E '" 5[0-9]{2} |"response_code": ?"?5'
 
 # Check the application logs
 kubectl logs deploy/payment-service -c payment-service | grep -i "error\|exception\|panic"
