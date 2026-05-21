@@ -45,6 +45,16 @@ description: Standard Istio configuration for a service
 version: 1.0.0
 ```
 
+`templates/_helpers.tpl`:
+
+```yaml
+{{- define "istio-service.labels" -}}
+app.kubernetes.io/name: {{ .Values.service.name | quote }}
+app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
+helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | quote }}
+{{- end }}
+```
+
 `values.yaml`:
 
 ```yaml
@@ -100,7 +110,7 @@ sidecar:
 
 ```yaml
 {{- if .Values.routing.enabled }}
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: {{ .Values.service.name }}
@@ -133,7 +143,7 @@ spec:
 `templates/destinationrule.yaml`:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: {{ .Values.service.name }}
@@ -186,7 +196,7 @@ spec:
   - from:
     - source:
         principals:
-        - "cluster.local/ns/{{ .namespace }}/sa/{{ .service }}"
+        - "cluster.local/ns/{{ .namespace }}/sa/{{ .serviceAccount }}"
     {{- if .paths }}
     to:
     - operation:
@@ -235,9 +245,9 @@ security:
   authorization:
     enabled: true
     allowFrom:
-    - service: frontend
+    - serviceAccount: frontend
       namespace: team-frontend
-    - service: mobile-bff
+    - serviceAccount: mobile-bff
       namespace: team-mobile
       paths: ["/api/v1/cart/*"]
 
@@ -280,10 +290,10 @@ resources:
 `istio-base/virtualservice.yaml`:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
-  name: SERVICE_NAME
+  name: service-routing
 spec:
   hosts:
   - SERVICE_NAME
@@ -325,20 +335,22 @@ patches:
 `my-service/patches/routing-patch.yaml`:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
-  name: SERVICE_NAME
+  name: service-routing
 spec:
+  hosts:
+  - checkout-api.team-checkout.svc.cluster.local
   http:
   - timeout: 5s
     route:
     - destination:
-        host: checkout-api
+        host: checkout-api.team-checkout.svc.cluster.local
         subset: stable
       weight: 80
     - destination:
-        host: checkout-api
+        host: checkout-api.team-checkout.svc.cluster.local
         subset: canary
       weight: 20
 ```
@@ -372,24 +384,28 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - name: Install istioctl
-      run: curl -L https://istio.io/downloadIstio | sh -
+      run: curl -sL https://istio.io/downloadIstioctl | sh -
+    - name: Install kubeconform
+      run: |
+        curl -L https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz | tar xz
+        sudo mv kubeconform /usr/local/bin/
     - name: Render templates
       run: helm template my-service ./istio-service-template -f values.yaml > rendered.yaml
     - name: Validate with istioctl
-      run: istioctl analyze --use-kube=false rendered.yaml
-    - name: Validate with kubeval
-      run: kubeval rendered.yaml --strict
+      run: $HOME/.istioctl/bin/istioctl analyze --use-kube=false rendered.yaml
+    - name: Validate with kubeconform
+      run: kubeconform -strict -ignore-missing-schemas rendered.yaml
 ```
 
 ## Publishing Templates
 
-Host your Helm charts in a chart repository:
+Host your Helm charts in a chart repository or OCI registry:
 
 ```bash
 # Package the chart
 helm package istio-service-template
 
-# Push to a chart museum or OCI registry
+# Push to an OCI registry
 helm push istio-service-template-1.0.0.tgz oci://myregistry.io/charts
 ```
 
@@ -401,10 +417,11 @@ As Istio versions change, your templates need to keep up. Create a test suite th
 
 ```bash
 #!/bin/bash
-for version in 1.18 1.19 1.20; do
+for version in 1.28.4 1.29.0 1.30.0; do
   echo "Testing against Istio $version"
+  curl -sL https://istio.io/downloadIstio | ISTIO_VERSION=$version sh -
   helm template test ./istio-service-template -f test-values.yaml | \
-    istioctl analyze --use-kube=false --istioNamespace istio-system -
+    ./istio-$version/bin/istioctl analyze --use-kube=false --istioNamespace istio-system -
 done
 ```
 
