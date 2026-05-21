@@ -25,8 +25,8 @@ The access logs are the most valuable for operational visibility because they gi
 Deploy Elasticsearch on Kubernetes using the ECK (Elastic Cloud on Kubernetes) operator:
 
 ```bash
-kubectl create -f https://download.elastic.co/downloads/eck/2.11.0/crds.yaml
-kubectl apply -f https://download.elastic.co/downloads/eck/2.11.0/operator.yaml
+kubectl create -f https://download.elastic.co/downloads/eck/3.4.0/crds.yaml
+kubectl apply -f https://download.elastic.co/downloads/eck/3.4.0/operator.yaml
 ```
 
 Create an Elasticsearch cluster:
@@ -38,7 +38,7 @@ metadata:
   name: mesh-logs
   namespace: elastic-system
 spec:
-  version: 8.12.0
+  version: 9.4.0
   nodeSets:
   - name: default
     count: 3
@@ -73,7 +73,7 @@ metadata:
   name: mesh-kibana
   namespace: elastic-system
 spec:
-  version: 8.12.0
+  version: 9.4.0
   count: 1
   elasticsearchRef:
     name: mesh-logs
@@ -110,7 +110,7 @@ spec:
         "upstream_service_time": "%RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)%",
         "upstream_host": "%UPSTREAM_HOST%",
         "upstream_cluster": "%UPSTREAM_CLUSTER%",
-        "source_app": "%REQ(X-FORWARDED-FOR)%",
+        "source_ip": "%REQ(X-FORWARDED-FOR)%",
         "destination_service": "%REQ(:AUTHORITY)%",
         "request_id": "%REQ(X-REQUEST-ID)%",
         "user_agent": "%REQ(USER-AGENT)%"
@@ -131,19 +131,51 @@ metadata:
   namespace: istio-system
 spec:
   accessLogging:
-  - providers:
-    - name: envoy
-    filter:
-      expression: "response.code >= 400 || connection.mtls == false"
+  - filter:
+      expression: "!has(response.code) || response.code >= 400 || connection.mtls == false"
 ```
 
-The filter expression lets you control which requests get logged. In this example, only error responses and non-mTLS connections are logged, which reduces log volume significantly.
+The filter expression lets you control which requests get logged. In this example, connection failures, error responses, and non-mTLS connections are logged, which reduces log volume significantly.
 
 ## Shipping Logs to Elasticsearch
 
 You need a log collector to get logs from the Envoy sidecars into Elasticsearch. Filebeat is the most common choice for Elasticsearch:
 
 ```yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: filebeat
+  namespace: elastic-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: filebeat
+rules:
+- apiGroups: [""]
+  resources:
+  - pods
+  - namespaces
+  - nodes
+  verbs:
+  - get
+  - watch
+  - list
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: filebeat
+subjects:
+- kind: ServiceAccount
+  name: filebeat
+  namespace: elastic-system
+roleRef:
+  kind: ClusterRole
+  name: filebeat
+  apiGroup: rbac.authorization.k8s.io
+---
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -161,9 +193,13 @@ spec:
       serviceAccountName: filebeat
       containers:
       - name: filebeat
-        image: docker.elastic.co/beats/filebeat:8.12.0
+        image: docker.elastic.co/beats/filebeat:9.4.0
         args: ["-c", "/etc/filebeat/filebeat.yml", "-e"]
         env:
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
         - name: ELASTICSEARCH_HOST
           value: "mesh-logs-es-http.elastic-system.svc"
         - name: ELASTICSEARCH_PORT
@@ -209,20 +245,22 @@ data:
       providers:
       - type: kubernetes
         node: ${NODE_NAME}
-        hints.enabled: true
         templates:
         - condition:
             contains:
               kubernetes.container.name: istio-proxy
           config:
-          - type: container
+          - type: filestream
+            id: istio-proxy-${data.kubernetes.container.id}
+            prospector.scanner.symlinks: true
             paths:
-            - /var/log/containers/*${data.kubernetes.container.id}.log
-            processors:
-            - decode_json_fields:
-                fields: ["message"]
+            - /var/log/containers/*-${data.kubernetes.container.id}.log
+            parsers:
+            - container: ~
+            - ndjson:
                 target: "istio"
-                overwrite_keys: true
+                add_error_key: true
+                message_key: message
 
     output.elasticsearch:
       hosts: ["https://${ELASTICSEARCH_HOST}:${ELASTICSEARCH_PORT}"]
@@ -231,26 +269,30 @@ data:
       ssl.verification_mode: none
       index: "istio-access-logs-%{+yyyy.MM.dd}"
 
+    setup.ilm.enabled: false
+
     setup.template:
       name: "istio-access-logs"
       pattern: "istio-access-logs-*"
+      settings:
+        index.lifecycle.name: "istio-logs-policy"
 ```
 
 ## Creating Kibana Dashboards
 
-Once logs are flowing into Elasticsearch, create an index pattern in Kibana:
+Once logs are flowing into Elasticsearch, create a data view in Kibana:
 
-1. Open Kibana and go to Stack Management > Index Patterns
-2. Create a pattern for `istio-access-logs-*`
+1. Open Kibana and go to Discover or Lens
+2. Create a data view for `istio-access-logs-*`
 3. Select `@timestamp` as the time field
 
 Build useful dashboards with these visualizations:
 
 **Request Volume Over Time** - A line chart showing requests per second grouped by destination service.
 
-**Error Rate** - A visualization filtering on `response_code >= 400` grouped by service and path.
+**Error Rate** - A visualization filtering on `istio.response_code >= 400` grouped by service and path.
 
-**Latency Distribution** - A histogram of the `duration` field to see response time distribution.
+**Latency Distribution** - A histogram of the `istio.duration` field to see response time distribution.
 
 **Top Error Paths** - A table showing the most common request paths with 5xx errors.
 
@@ -264,19 +306,12 @@ curl -X PUT "https://elasticsearch:9200/_ilm/policy/istio-logs-policy" -H 'Conte
   "policy": {
     "phases": {
       "hot": {
-        "actions": {
-          "rollover": {
-            "max_age": "1d",
-            "max_size": "50gb"
-          }
-        }
+        "actions": {}
       },
       "warm": {
         "min_age": "7d",
         "actions": {
-          "shrink": {
-            "number_of_shards": 1
-          }
+          "readonly": {}
         }
       },
       "delete": {
@@ -290,7 +325,7 @@ curl -X PUT "https://elasticsearch:9200/_ilm/policy/istio-logs-policy" -H 'Conte
 }'
 ```
 
-This keeps hot data for 7 days, warm data for 30 days, and then deletes it.
+The Filebeat template setting above attaches this policy to new `istio-access-logs-*` indices. This keeps indices hot for 7 days, moves them to the warm phase, and deletes them after 30 days.
 
 ## Searching and Analyzing Logs
 
