@@ -28,9 +28,9 @@ Each event is separated by a blank line. The connection stays open indefinitely 
 
 ## The Problem with Default Istio Settings
 
-With default Istio configuration, SSE connections will get terminated after about 5 minutes due to the `stream_idle_timeout`. Even though data is flowing from server to client, Envoy may consider the stream "idle" from the request perspective since the client is not sending any data.
+With default Envoy/Istio configuration, quiet SSE connections can get terminated after about 5 minutes due to the `stream_idle_timeout`. Envoy resets this timer when request or response headers/data are processed, so streams that send events or heartbeat comments more frequently than the timeout will stay active. Streams with long gaps between events need either periodic heartbeats or a longer idle timeout.
 
-Additionally, the response buffering behavior in Envoy can cause events to be delayed rather than delivered immediately.
+Additionally, if an Envoy buffer filter is configured for the route, response buffering can cause events to be delayed rather than delivered immediately.
 
 ## Adjusting Stream Timeouts
 
@@ -57,6 +57,7 @@ spec:
       patch:
         operation: MERGE
         value:
+          name: envoy.filters.network.http_connection_manager
           typed_config:
             "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
             stream_idle_timeout: 0s
@@ -74,10 +75,10 @@ This gives SSE connections up to 1 hour before they time out from inactivity.
 
 ## VirtualService Timeout
 
-The VirtualService timeout also applies to SSE connections. Disable or extend it for SSE routes:
+If you have configured a VirtualService timeout, it also applies to SSE connections. Disable or extend it for SSE routes:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: sse-routes
@@ -129,6 +130,7 @@ spec:
       patch:
         operation: MERGE
         value:
+          name: envoy.filters.network.http_connection_manager
           typed_config:
             "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
             stream_idle_timeout: 0s
@@ -138,7 +140,7 @@ Note: setting this on the gateway affects ALL traffic through the gateway. To ta
 
 ## Disabling Response Buffering
 
-Envoy can buffer response data, which delays SSE event delivery. Make sure response buffering is not interfering:
+Envoy's buffer filter can buffer response data, which delays SSE event delivery. If you have enabled the buffer filter, make sure response buffering is not interfering:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -167,7 +169,7 @@ spec:
               disabled: true
 ```
 
-This disables the buffer filter for SSE routes, ensuring events are streamed through immediately.
+This disables the buffer filter for the matched routes, ensuring events are streamed through immediately. In production, match the specific virtual host or route for the SSE endpoint instead of applying the patch broadly.
 
 ## Load Balancing for SSE
 
@@ -176,7 +178,7 @@ SSE connections are long-lived, which creates a problem with load balancing. If 
 To distribute connections more evenly:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: sse-service
@@ -200,7 +202,7 @@ However, be aware that once an SSE connection is established, it stays on that p
 SSE connections should not be retried at the proxy level. Clients typically implement their own reconnection logic using the `EventSource` API:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: sse-routes
@@ -254,7 +256,7 @@ The `drainDuration` gives existing SSE connections time to finish or reconnect b
 Long-lived SSE connections count toward connection limits. Adjust the DestinationRule to accommodate:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: sse-service
@@ -310,7 +312,7 @@ kubectl exec <pod> -c istio-proxy -- curl -s localhost:15000/stats | grep downst
 ## Complete SSE Configuration
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: sse-service
@@ -336,7 +338,7 @@ spec:
             port:
               number: 8080
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: sse-service
@@ -373,9 +375,10 @@ spec:
       patch:
         operation: MERGE
         value:
+          name: envoy.filters.network.http_connection_manager
           typed_config:
             "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
             stream_idle_timeout: 0s
 ```
 
-SSE through Istio works well once you address the timeout and buffering issues. The key settings are disabling the stream idle timeout and the route timeout for SSE endpoints while keeping them active for your regular API routes.
+SSE through Istio works well once you address the timeout and buffering issues. The key settings are disabling or extending the stream idle timeout for quiet SSE streams and disabling or extending any route timeout configured for SSE endpoints while keeping normal timeout behavior for your regular API routes.
