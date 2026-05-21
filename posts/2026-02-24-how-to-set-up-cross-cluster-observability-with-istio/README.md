@@ -29,12 +29,30 @@ Prometheus federation works for small setups but struggles at scale. Thanos give
 **Deploy Prometheus with Thanos sidecar in each cluster:**
 
 ```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  namespace: monitoring
+spec:
+  clusterIP: None
+  selector:
+    app: prometheus
+  ports:
+  - name: grpc
+    port: 10901
+    targetPort: 10901
+  - name: http
+    port: 9090
+    targetPort: 9090
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: prometheus
   namespace: monitoring
 spec:
+  serviceName: prometheus
   replicas: 1
   selector:
     matchLabels:
@@ -47,20 +65,20 @@ spec:
     spec:
       containers:
       - name: prometheus
-        image: prom/prometheus:v2.48.0
+        image: prom/prometheus:v3.11.3
         args:
         - --config.file=/etc/prometheus/prometheus.yml
         - --storage.tsdb.path=/prometheus
         - --storage.tsdb.min-block-duration=2h
         - --storage.tsdb.max-block-duration=2h
-        - --web.enable-lifecycle
+        - --web.enable-admin-api
         volumeMounts:
         - name: config
           mountPath: /etc/prometheus
         - name: data
           mountPath: /prometheus
       - name: thanos-sidecar
-        image: thanosio/thanos:v0.34.0
+        image: thanosio/thanos:v0.41.0
         args:
         - sidecar
         - --tsdb.path=/prometheus
@@ -110,14 +128,9 @@ data:
       kubernetes_sd_configs:
       - role: pod
       relabel_configs:
-      - source_labels: [__meta_kubernetes_pod_container_name]
+      - source_labels: [__meta_kubernetes_pod_container_port_name]
         action: keep
-        regex: istio-proxy
-      - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
-        action: replace
-        regex: ([^:]+)(?::\d+)?;(\d+)
-        replacement: $1:$2
-        target_label: __address__
+        regex: '.*-envoy-prom'
     - job_name: istiod
       kubernetes_sd_configs:
       - role: endpoints
@@ -149,7 +162,7 @@ spec:
     spec:
       containers:
       - name: thanos-query
-        image: thanosio/thanos:v0.34.0
+        image: thanosio/thanos:v0.41.0
         args:
         - query
         - --http-address=0.0.0.0:9090
@@ -176,8 +189,7 @@ spec:
   meshConfig:
     enableTracing: true
     defaultConfig:
-      tracing:
-        sampling: 10.0
+      tracing: {}
     extensionProviders:
     - name: otel-tracing
       opentelemetry:
@@ -205,7 +217,7 @@ spec:
     spec:
       containers:
       - name: collector
-        image: otel/opentelemetry-collector-contrib:0.91.0
+        image: otel/opentelemetry-collector-contrib:0.152.1
         ports:
         - containerPort: 4317
           name: otlp-grpc
@@ -307,7 +319,7 @@ spec:
     spec:
       containers:
       - name: fluent-bit
-        image: fluent/fluent-bit:2.2
+        image: fluent/fluent-bit:5.0.5
         volumeMounts:
         - name: varlog
           mountPath: /var/log
