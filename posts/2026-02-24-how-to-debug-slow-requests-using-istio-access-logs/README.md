@@ -21,10 +21,10 @@ If access logs are in JSON format, use jq to find slow requests:
 ```bash
 # Find requests slower than 2 seconds
 
-kubectl logs deploy/my-service -c istio-proxy | jq 'select((.duration_ms | tonumber) > 2000)'
+kubectl logs deploy/my-service -c istio-proxy | jq 'select(((.duration_ms // .duration) | tonumber) > 2000)'
 
 # Find slow requests to a specific path
-kubectl logs deploy/my-service -c istio-proxy | jq 'select((.duration_ms | tonumber) > 1000 and (.path | startswith("/api/")))'
+kubectl logs deploy/my-service -c istio-proxy | jq 'select(((.duration_ms // .duration) | tonumber) > 1000 and (.path | startswith("/api/")))'
 ```
 
 With TEXT format logs, the duration is the field after bytes_sent:
@@ -57,7 +57,7 @@ spec:
     - providers:
         - name: envoy
       filter:
-        expression: "response.duration > duration('1s')"
+        expression: "request.duration > duration('1s')"
 ```
 
 This dramatically reduces log volume while capturing exactly the requests you care about.
@@ -78,7 +78,7 @@ The time the upstream pod took to process the request and return the response he
 
 The difference between Duration and Upstream Service Time represents:
 - Time spent in the Envoy proxy processing (usually microseconds)
-- Network latency between the sidecar and the upstream pod (should be minimal since they are on the same node for the inbound case, but can be significant for outbound)
+- Network latency between proxies and upstream pods (for inbound traffic, the sidecar forwards to the application container in the same pod; for outbound traffic, this can include cross-node network latency)
 - TLS handshake time
 - Queue wait time if the circuit breaker is holding requests
 - Time to receive and transmit the full request/response bodies
@@ -99,18 +99,21 @@ meshConfig:
             response_code: "%RESPONSE_CODE%"
             total_duration_ms: "%DURATION%"
             request_receive_ms: "%REQUEST_DURATION%"
+            request_send_ms: "%REQUEST_TX_DURATION%"
             upstream_response_ms: "%RESPONSE_DURATION%"
             response_send_ms: "%RESPONSE_TX_DURATION%"
             upstream_service_time_ms: "%RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)%"
+            upstream_attempts: "%UPSTREAM_REQUEST_ATTEMPT_COUNT%"
             upstream_host: "%UPSTREAM_HOST%"
             request_id: "%REQ(X-REQUEST-ID)%"
 ```
 
 - `REQUEST_DURATION` - Time to receive the complete request from the downstream
-- `RESPONSE_DURATION` - Time waiting for the upstream response
-- `RESPONSE_TX_DURATION` - Time to transmit the response to the downstream
+- `REQUEST_TX_DURATION` - Time from request start until the last byte is sent upstream
+- `RESPONSE_DURATION` - Time from request start until the first byte is read from the upstream
+- `RESPONSE_TX_DURATION` - Time from the first byte read from the upstream until the last byte is sent downstream
 
-These three should roughly add up to the total `DURATION`.
+`RESPONSE_DURATION` and `RESPONSE_TX_DURATION` should roughly add up to the total `DURATION`.
 
 ## Step-by-Step Debugging Process
 
@@ -118,7 +121,7 @@ These three should roughly add up to the total `DURATION`.
 
 ```bash
 # Get P50 and P99 from recent logs
-kubectl logs deploy/my-service -c istio-proxy --tail=1000 | jq '[.duration_ms | tonumber] | sort | {
+kubectl logs deploy/my-service -c istio-proxy --tail=1000 | jq -s '[.[] | ((.duration_ms // .duration) | tonumber)] | sort | {
   count: length,
   p50: .[length/2 | floor],
   p90: .[length*0.9 | floor],
@@ -135,14 +138,14 @@ Check the outbound log on the calling service:
 
 ```bash
 # Outbound logs from the caller
-kubectl logs deploy/calling-service -c istio-proxy | jq 'select(.authority == "my-service.default.svc.cluster.local" and (.duration_ms | tonumber) > 2000) | {path, duration_ms, upstream_host, response_flags}'
+kubectl logs deploy/calling-service -c istio-proxy | jq 'select(.authority == "my-service.default.svc.cluster.local" and ((.duration_ms // .duration) | tonumber) > 2000) | {path, duration_ms: (.duration_ms // .duration), upstream_host, response_flags}'
 ```
 
 Check the inbound log on the destination:
 
 ```bash
 # Inbound logs on the destination
-kubectl logs deploy/my-service -c istio-proxy | jq 'select((.duration_ms | tonumber) > 2000) | {path, duration_ms, upstream_service_time_ms, response_flags}'
+kubectl logs deploy/my-service -c istio-proxy | jq 'select(((.duration_ms // .duration) | tonumber) > 2000) | {path, duration_ms: (.duration_ms // .duration), upstream_service_time_ms: (.upstream_service_time_ms // .upstream_service_time), response_flags}'
 ```
 
 Compare the durations:
@@ -154,7 +157,7 @@ Compare the durations:
 
 ```bash
 # Group slow requests by upstream host (pod IP)
-kubectl logs deploy/calling-service -c istio-proxy | jq 'select(.authority == "my-service.default.svc.cluster.local" and (.duration_ms | tonumber) > 1000) | .upstream_host' | sort | uniq -c | sort -rn
+kubectl logs deploy/calling-service -c istio-proxy | jq 'select(.authority == "my-service.default.svc.cluster.local" and ((.duration_ms // .duration) | tonumber) > 1000) | .upstream_host' | sort | uniq -c | sort -rn
 ```
 
 If one pod has significantly more slow requests than others:
@@ -166,7 +169,7 @@ If one pod has significantly more slow requests than others:
 # Check which node the slow pod is on
 kubectl get pod <slow-pod> -o wide
 
-# Check CPU throttling
+# Check current CPU and memory usage
 kubectl top pod <slow-pod>
 
 # Check node resource usage
@@ -176,7 +179,7 @@ kubectl top node <node-name>
 ### Step 4: Check If Specific Paths Are Slow
 
 ```bash
-kubectl logs deploy/my-service -c istio-proxy | jq 'select((.duration_ms | tonumber) > 1000) | .path' | sort | uniq -c | sort -rn
+kubectl logs deploy/my-service -c istio-proxy | jq 'select(((.duration_ms // .duration) | tonumber) > 1000) | .path' | sort | uniq -c | sort -rn
 ```
 
 If specific paths are slow, the issue is likely in the application logic for those endpoints rather than infrastructure.
@@ -198,7 +201,7 @@ retries:
   retryOn: 5xx,connect-failure
 ```
 
-With this config, if the first two attempts fail with 5s timeouts and the third succeeds in 100ms, the total duration is 10.1 seconds. The access log shows a single request with a 10100ms duration and no indication that retries happened (unless you look at the response flags for `URX` when all retries fail).
+With this config, if the first two attempts fail with 5s timeouts and the third succeeds in 100ms, the total duration is 10.1 seconds. Istio's default access log shows a single request with a 10100ms duration and does not include the retry attempt count unless you add fields such as `%UPSTREAM_REQUEST_ATTEMPT_COUNT%` or `%UPSTREAM_HOSTS_ATTEMPTED%` to the log format. The response flag `URX` appears when the upstream retry limit is reached.
 
 ### Step 6: Look for Connection Establishment Delays
 
@@ -207,9 +210,9 @@ A large gap between total duration and upstream service time might indicate slow
 ```bash
 kubectl logs deploy/calling-service -c istio-proxy | jq 'select(.authority == "my-service.default.svc.cluster.local") | {
   path: .path,
-  total: (.duration_ms // .total_duration_ms),
-  upstream: (.upstream_service_time_ms // "N/A"),
-  gap: ((.duration_ms // .total_duration_ms | tonumber) - (.upstream_service_time_ms // "0" | tonumber))
+  total: (.duration_ms // .total_duration_ms // .duration),
+  upstream: (.upstream_service_time_ms // .upstream_service_time // "N/A"),
+  gap: ((.duration_ms // .total_duration_ms // .duration | tonumber) - (.upstream_service_time_ms // .upstream_service_time // "0" | tonumber))
 } | select(.gap > 500)'
 ```
 
@@ -227,7 +230,7 @@ REQUEST_ID="abc-123-def-456"
 
 # Find this request across all sidecars
 for deploy in $(kubectl get deploy -o name); do
-  result=$(kubectl logs $deploy -c istio-proxy 2>/dev/null | jq "select(.request_id == \"$REQUEST_ID\") | {deploy: \"$deploy\", path, duration_ms, upstream_service_time_ms, upstream_host}" 2>/dev/null)
+  result=$(kubectl logs $deploy -c istio-proxy 2>/dev/null | jq "select(.request_id == \"$REQUEST_ID\") | {deploy: \"$deploy\", path, duration_ms: (.duration_ms // .duration), upstream_service_time_ms: (.upstream_service_time_ms // .upstream_service_time), upstream_host}" 2>/dev/null)
   if [ -n "$result" ]; then
     echo "$result"
   fi
@@ -240,7 +243,7 @@ This shows the request at each hop with its duration, letting you identify which
 
 **Application processing time**: If upstream_service_time is high, the fix is in the application (optimize queries, add caching, fix algorithms).
 
-**CPU throttling**: Kubernetes CPU limits cause throttling that shows up as inconsistent latency. Check with `kubectl top pod` and consider increasing CPU limits or using burstable QoS.
+**CPU throttling**: Kubernetes CPU limits cause throttling that shows up as inconsistent latency. Use `kubectl top pod` for a quick CPU usage check, and use container throttling metrics from your monitoring system to confirm throttling before increasing CPU limits or using burstable QoS.
 
 **Connection pool exhaustion**: If many requests show high duration but low upstream_service_time, requests might be queueing up waiting for connections. Increase `maxConnections` in the DestinationRule.
 
