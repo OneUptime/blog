@@ -20,7 +20,7 @@ This guide focuses on the practical side: how to get access logs quickly and use
 kubectl logs <pod-name> -c istio-proxy --tail=100
 ```
 
-The `-c istio-proxy` flag targets the sidecar container. Without it, you would get the application container logs instead.
+The `-c istio-proxy` flag targets the sidecar container. Without it, `kubectl` may choose another container, such as the application container.
 
 ### Get Logs from a Deployment
 
@@ -75,7 +75,7 @@ kubectl delete -f debug-logging.yaml
 You can also enable debug-level logging on a specific proxy without access logs:
 
 ```bash
-istioctl proxy-config log deploy/my-service --level debug
+istioctl proxy-config log deployment/my-service --level debug
 ```
 
 This produces much more output than access logs and should only be used for short periods.
@@ -95,6 +95,7 @@ Breaking this down:
 - **Response code**: `503`
 - **Response flags**: `UF` (upstream connection failure)
 - **Response code details**: `via_upstream`
+- **Connection termination details**: `-`
 - **Upstream failure reason**: `-`
 - **Bytes received/sent**: `0` / `91`
 - **Duration**: `3005` ms
@@ -123,30 +124,23 @@ kubectl logs deploy/my-service -c istio-proxy | grep -E '" 5[0-9]{2} '
 503 errors in Istio usually come with response flags that tell you the cause. Look for the flags field:
 
 ```bash
-kubectl logs deploy/my-service -c istio-proxy | grep '" 503 ' | awk '{print $7}'
+kubectl logs deploy/my-service -c istio-proxy | grep '" 503 ' | awk '{print $6}'
 ```
 
-Common 503 response flags:
+Common failure response flags:
 - `UF` - Upstream connection failure (the destination pod could not be reached)
 - `UH` - No healthy upstream (all pods are marked unhealthy)
 - `UC` - Upstream connection termination (connection was reset)
 - `UT` - Upstream request timeout
-- `NR` - No route configured (missing VirtualService or DestinationRule)
+- `NR` - No route configured (often a missing or mismatched VirtualService route)
 
 ### Debugging Latency Issues
 
-Find slow requests by looking at the duration field:
+Find slow requests by looking at the duration field in the default text format:
 
 ```bash
 # Find requests slower than 1 second (duration > 1000ms)
-kubectl logs deploy/my-service -c istio-proxy | awk '{
-  for(i=1;i<=NF;i++) {
-    if($i ~ /^[0-9]+$/ && $(i-1) ~ /^[0-9]+$/) {
-      duration=$i
-      if(duration > 1000) print $0
-    }
-  }
-}'
+kubectl logs deploy/my-service -c istio-proxy | awk '$12 > 1000'
 ```
 
 With JSON access logs, this is easier:
@@ -163,7 +157,7 @@ Check which upstream host is handling requests:
 kubectl logs deploy/my-service -c istio-proxy | grep '/api/users' | awk '{for(i=1;i<=NF;i++) if($i ~ /^"[0-9]+\.[0-9]+/) print $i}'
 ```
 
-If all requests are going to the same pod when you expect load balancing, check your DestinationRule for session affinity settings.
+If all requests are going to the same pod when you expect load balancing, check your DestinationRule for consistent hash load balancing settings.
 
 ### Tracing a Request Across Services
 
@@ -178,7 +172,7 @@ kubectl logs -l app=user-service -c istio-proxy | grep "a1b2c3d4-e5f6-7890"
 kubectl logs -l app=database-proxy -c istio-proxy | grep "a1b2c3d4-e5f6-7890"
 ```
 
-The request ID is propagated by Istio through the `x-request-id` header, so you can follow a request through the entire call chain.
+The request ID is carried in the `x-request-id` header. To follow a request through the entire call chain, applications must forward this header from incoming requests to any outgoing requests they make.
 
 ## Using istioctl for Log Analysis
 
@@ -189,16 +183,16 @@ The `istioctl` tool has some useful commands for proxy debugging:
 istioctl proxy-status
 
 # Look at listener configuration
-istioctl proxy-config listener deploy/my-service
+istioctl proxy-config listener deployment/my-service
 
 # Check cluster (upstream) configuration
-istioctl proxy-config cluster deploy/my-service
+istioctl proxy-config cluster deployment/my-service
 
 # Check routes
-istioctl proxy-config route deploy/my-service
+istioctl proxy-config route deployment/my-service
 
 # Check endpoints
-istioctl proxy-config endpoint deploy/my-service --cluster "outbound|8080||user-service.default.svc.cluster.local"
+istioctl proxy-config endpoint deployment/my-service --cluster "outbound|8080||user-service.default.svc.cluster.local"
 ```
 
 These commands show the Envoy configuration that determines how requests are routed. If access logs show unexpected routing behavior, comparing the proxy config with your Istio resources (VirtualService, DestinationRule) will reveal misconfigurations.
