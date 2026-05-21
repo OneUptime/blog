@@ -74,22 +74,37 @@ This requires users to authenticate through your OIDC provider (like Keycloak, O
 
 ### Kiali RBAC
 
-Kiali supports role-based access control that maps to your OIDC claims:
+Kiali uses Kubernetes RBAC for per-user namespace access control. With OIDC, make sure your Kubernetes API server trusts the same identity provider, then bind users or groups from your OIDC claims to the Kubernetes Roles or ClusterRoles that should be allowed to view mesh resources:
 
 ```yaml
-spec:
-  auth:
-    openid:
-      role_claim: "groups"
-      role_mapping:
-        admin:
-          - "platform-team"
-        viewer:
-          - "developers"
-          - "sre-team"
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kiali-namespace-authorization
+rules:
+  - apiGroups: [""]
+    resources:
+      - namespaces
+      - pods/log
+    verbs:
+      - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: kiali-developers-view
+  namespace: bookinfo
+subjects:
+  - kind: Group
+    name: developers
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: kiali-namespace-authorization
+  apiGroup: rbac.authorization.k8s.io
 ```
 
-This gives the platform team full admin access while developers and SREs get read-only access.
+This gives members of the `developers` group read access to the `bookinfo` namespace in Kiali. Bind a broader or more privileged role only for the platform team members who need it.
 
 ### Alternative: Token-Based Authentication
 
@@ -106,9 +121,10 @@ Users must provide a Kubernetes service account token to log in. Create a servic
 ```bash
 kubectl create serviceaccount kiali-user -n istio-system
 
-kubectl create clusterrolebinding kiali-user-binding \
-  --clusterrole=kiali-viewer \
-  --serviceaccount=istio-system:kiali-user
+kubectl create rolebinding kiali-user-bookinfo \
+  --clusterrole=kiali-namespace-authorization \
+  --serviceaccount=istio-system:kiali-user \
+  -n bookinfo
 ```
 
 Generate a token:
@@ -162,14 +178,14 @@ data:
 
 Make sure anonymous access is disabled:
 
-```yaml
+```ini
 [auth.anonymous]
 enabled = false
 ```
 
 ## Step 4: Secure Prometheus
 
-Prometheus does not have built-in authentication. You need to add it externally.
+Prometheus supports basic authentication and TLS for its web UI and HTTP API, but it does not provide built-in OIDC or SSO login flows. For production dashboard access, put it behind an authentication layer such as OAuth2 Proxy.
 
 ### Use OAuth2 Proxy
 
@@ -220,9 +236,9 @@ spec:
 
 ## Step 5: Secure Jaeger/Tracing
 
-Jaeger traces can contain sensitive information. Apply the same OAuth2 proxy pattern or use Jaeger's built-in authentication if available.
+Jaeger traces can contain sensitive information. Apply the same OAuth2 proxy pattern, or use platform-specific ingress authentication when your Jaeger Operator installation supports it.
 
-For Jaeger with OIDC:
+On OpenShift, the Jaeger Operator can secure the ingress with the OpenShift OAuth proxy:
 
 ```yaml
 apiVersion: jaegertracing.io/v1
@@ -320,7 +336,7 @@ spec:
               - "grafana.internal.example.com"
 ```
 
-This restricts dashboard access to internal IP ranges.
+This restricts dashboard access to internal IP ranges when the ingress gateway sees the original packet source IP. If your gateway is behind an HTTP/HTTPS load balancer that passes the client address in `X-Forwarded-For`, configure trusted proxies and use `remoteIpBlocks` instead of `ipBlocks`.
 
 ## Step 7: Use kubectl Port-Forward for Development
 
