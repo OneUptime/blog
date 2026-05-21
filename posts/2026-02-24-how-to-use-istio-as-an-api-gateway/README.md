@@ -156,7 +156,7 @@ Requests to `/v1/users/123` get forwarded to the user service as `/users/123`.
 
 ## JWT Authentication
 
-Add JWT validation at the gateway so only authenticated requests reach your services:
+Add JWT validation at the gateway so invalid tokens are rejected before requests reach your services:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -175,7 +175,7 @@ spec:
     outputPayloadToHeader: "x-jwt-payload"
 ```
 
-This validates JWT tokens in the Authorization header. Invalid tokens get a 401 response. The `forwardOriginalToken` setting passes the token to backend services so they can also inspect it.
+This validates JWT tokens in the Authorization header. Invalid tokens get a 401 response, while requests without a token are allowed unless you add an AuthorizationPolicy to require authentication. The `forwardOriginalToken` setting passes the token to backend services so they can also inspect it.
 
 ## Authorization Based on JWT Claims
 
@@ -354,24 +354,34 @@ spec:
               max_tokens: 500
               tokens_per_fill: 500
               fill_interval: 60s
+            filter_enabled:
+              runtime_key: local_rate_limit_enabled
+              default_value:
+                numerator: 100
+                denominator: HUNDRED
+            filter_enforced:
+              runtime_key: local_rate_limit_enforced
+              default_value:
+                numerator: 100
+                denominator: HUNDRED
 ```
 
-This limits the gateway to 500 requests per minute. For per-user or per-API-key rate limiting, you'll need an external rate limiting service.
+This limits each gateway proxy instance to 500 requests per minute. For per-user or per-API-key rate limiting, you'll need an external rate limiting service.
 
 ## Monitoring the API Gateway
 
 Use Prometheus to monitor your gateway:
 
 ```text
-# Request rate by path
+# Request rate by backend service
 
-sum(rate(istio_requests_total{reporter="destination",destination_service_name="istio-ingressgateway"}[5m])) by (request_url_path)
+sum(rate(istio_requests_total{reporter="source",source_workload="istio-ingressgateway",source_workload_namespace="istio-system"}[5m])) by (destination_service)
 
 # Error rate
-sum(rate(istio_requests_total{reporter="destination",destination_service_name="istio-ingressgateway",response_code=~"5.."}[5m]))
+sum(rate(istio_requests_total{reporter="source",source_workload="istio-ingressgateway",source_workload_namespace="istio-system",response_code=~"5.."}[5m]))
 
 # Latency P99
-histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{reporter="destination",destination_service_name="istio-ingressgateway"}[5m])) by (le))
+histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{reporter="source",source_workload="istio-ingressgateway",source_workload_namespace="istio-system"}[5m])) by (le))
 ```
 
 Using Istio as an API gateway works well for many use cases and eliminates the need for a separate gateway product. You get native integration with the mesh, consistent configuration, and one less component to manage. For advanced features like API key management, developer portals, or complex rate limiting, you might still want a dedicated API gateway, but for traffic management and security, Istio handles it well.
