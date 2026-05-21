@@ -24,7 +24,7 @@ Unlike routing rules, which mostly affect performance and availability, security
 AuthorizationPolicies are the primary access control mechanism in Istio. Here's how to document them effectively:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: payment-service-access
@@ -90,19 +90,27 @@ kubectl get authorizationpolicies -A -o json | jq -r '
   .items[] |
   "### " + .metadata.name + " (ns: " + .metadata.namespace + ")\n" +
   "**Action:** " + (.spec.action // "ALLOW") + "\n" +
-  "**Applied to:** " + (.spec.selector.matchLabels | to_entries | map(.key + "=" + .value) | join(", ")) + "\n" +
+  "**Applied to:** " + ((.spec.selector.matchLabels // {}) | if length == 0 then "all workloads in policy namespace" else to_entries | map(.key + "=" + .value) | join(", ") end) + "\n" +
   "**Owner:** " + (.metadata.annotations["docs.security/owner"] // "Unknown") + "\n" +
   "**Compliance:** " + (.metadata.annotations["docs.security/compliance"] // "N/A") + "\n" +
   "\n| Source | Methods | Paths |\n|--------|---------|-------|\n" +
   (
-    .spec.rules[]? |
-    "| " +
-    ((.from[0].source.principals // ["any"]) | join(", ")) +
-    " | " +
-    ((.to[0].operation.methods // ["*"]) | join(", ")) +
-    " | " +
-    ((.to[0].operation.paths // ["/*"]) | join(", ")) +
-    " |"
+    if ((.spec.rules // []) | length) == 0 then
+      "| (no rules) | - | - |"
+    else
+      [
+        .spec.rules[] |
+        (.from // [{}])[] as $from |
+        (.to // [{}])[] as $to |
+        "| " +
+        (($from.source.principals // $from.source.namespaces // ["any"]) | join(", ")) +
+        " | " +
+        (($to.operation.methods // ["*"]) | join(", ")) +
+        " | " +
+        (($to.operation.paths // ["/*"]) | join(", ")) +
+        " |"
+      ] | join("\n")
+    end
   ) +
   "\n"
 '
@@ -117,7 +125,7 @@ kubectl get peerauthentications -A -o json | jq -r '
   (
     if .spec.portLevelMtls then
       "**Port-Level Settings:**\n" +
-      (.spec.portLevelMtls | to_entries[] | "- Port " + .key + ": " + .value.mode)
+      (.spec.portLevelMtls | to_entries | map("- Port " + .key + ": " + .value.mode) | join("\n"))
     else ""
     end
   ) +
@@ -127,23 +135,26 @@ kubectl get peerauthentications -A -o json | jq -r '
 
 ## Documenting PeerAuthentication
 
-PeerAuthentication controls mTLS between services. Document the mTLS posture of each namespace:
+PeerAuthentication controls mTLS between services. Document the mTLS posture of each namespace and any workload-specific exceptions:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
-  name: production-mtls
+  name: mysql-mtls
   namespace: production
   annotations:
     docs.security/description: |
-      Enforces strict mTLS for all services in production namespace.
+      Enforces strict mTLS for MySQL workloads in production namespace.
       Exception: Port 3306 for MySQL uses PERMISSIVE because the
       MySQL client library does not support Istio mTLS directly.
       The MySQL connection uses its own TLS (configured in the client).
     docs.security/approved-by: "security-team"
     docs.security/exception-ticket: "SEC-2024-089"
 spec:
+  selector:
+    matchLabels:
+      app: mysql
   mtls:
     mode: STRICT
   portLevelMtls:
@@ -158,7 +169,7 @@ The annotation on the exception is especially important. Auditors will ask why p
 RequestAuthentication handles JWT validation for end-user authentication:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: RequestAuthentication
 metadata:
   name: jwt-auth
@@ -167,7 +178,7 @@ metadata:
     docs.security/description: |
       Validates JWT tokens from our Auth0 tenant.
       Tokens are expected in the Authorization header as Bearer tokens.
-      The JWKS endpoint is cached by Envoy with a 5-minute TTL.
+      Remote JWKS keys are cached by Envoy according to its configured cache duration.
     docs.security/auth-provider: "Auth0"
     docs.security/auth-tenant: "company.auth0.com"
 spec:
@@ -199,13 +210,16 @@ kubectl get authorizationpolicies -A -o json | jq -r '
   .items[] |
   .metadata.name as $policy |
   .metadata.namespace as $ns |
+  ((.spec.selector.matchLabels // {}) | if length == 0 then "all workloads" else to_entries | map(.key + "=" + .value) | join(", ") end) as $destination |
   .spec.rules[]? |
   . as $rule |
-  (($rule.from // [{}])[0].source.principals // ["any"])[] as $source |
-  (($rule.to // [{}])[0].operation.methods // ["*"]) as $methods |
-  (($rule.to // [{}])[0].operation.paths // ["/*"]) as $paths |
+  ($rule.from // [{}])[] as $from |
+  ($rule.to // [{}])[] as $to |
+  ($from.source.principals // $from.source.namespaces // ["any"])[] as $source |
+  ($to.operation.methods // ["*"]) as $methods |
+  ($to.operation.paths // ["/*"]) as $paths |
   "| " + $source +
-  " | " + $ns + "/" + ($rule | tostring | split(",")[0]) +
+  " | " + $ns + "/" + $destination +
   " | " + ($methods | join(", ")) +
   " | " + ($paths | join(", ")) +
   " | " + $policy + " |"
