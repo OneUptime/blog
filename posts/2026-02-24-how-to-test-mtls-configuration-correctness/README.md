@@ -36,13 +36,14 @@ Then query the metrics:
 
 ```promql
 istio_requests_total{
+  reporter="destination",
   source_workload="sleep",
   destination_workload="my-service",
   connection_security_policy="mutual_tls"
 }
 ```
 
-If `connection_security_policy` is `mutual_tls`, the connection is encrypted. If it is `none`, the traffic is plaintext.
+On destination-side telemetry, if `connection_security_policy` is `mutual_tls`, the connection is encrypted. If it is `none`, the traffic is plaintext. Source-side telemetry may report this label as `unknown`, so filter on `reporter="destination"` when using this label to validate mTLS.
 
 ## Test 2: Verify Plaintext is Rejected (Strict Mode)
 
@@ -95,7 +96,7 @@ For a broader view:
 istioctl x authz check deploy/my-service
 ```
 
-This shows the authorization and authentication policies in effect.
+This shows the AuthorizationPolicy configuration in effect for the workload. Use `istioctl x describe` to check mTLS and PeerAuthentication status.
 
 ## Test 4: Check the Proxy Configuration Directly
 
@@ -123,7 +124,7 @@ Check that the certificate presented by a workload has the correct SPIFFE identi
 
 ```bash
 istioctl proxy-config secret deploy/my-service -o json | \
-  jq -r '.dynamicActiveSecrets[0].secret.tlsCertificate.certificateChain.inlineBytes' | \
+  jq -r '.dynamicActiveSecrets[] | select(.name == "default") | .secret.tlsCertificate.certificateChain.inlineBytes' | \
   base64 -d | openssl x509 -text -noout | grep "URI:"
 ```
 
@@ -155,6 +156,8 @@ spec:
     8081:
       mode: PERMISSIVE
 ```
+
+The `portLevelMtls` key is the workload's container port, not the Kubernetes Service port, and the port must be bound by a Service for Istio to apply the setting.
 
 Test the strict port from a non-mesh pod (should fail):
 
@@ -205,7 +208,7 @@ fi
 # Test 2: non-mesh plaintext should be rejected
 echo -n "Test 2: Plaintext rejection (strict mode)... "
 RESULT=$(kubectl exec no-sidecar-test -- curl -s -o /dev/null -w "%{http_code}" --connect-timeout 5 http://my-service:8080 2>/dev/null)
-if [ "$RESULT" = "000" ] || [ "$RESULT" = "056" ]; then
+if [ "$RESULT" = "000" ]; then
   echo "PASS (connection rejected)"
   ((PASS++))
 else
@@ -233,9 +236,9 @@ echo "Results: $PASS passed, $FAIL failed"
 Run a Prometheus query to check the ratio of mTLS to plaintext traffic across your entire mesh:
 
 ```promql
-sum(rate(istio_requests_total{connection_security_policy="mutual_tls"}[5m]))
+sum(rate(istio_requests_total{reporter="destination", connection_security_policy="mutual_tls"}[5m]))
 /
-sum(rate(istio_requests_total[5m]))
+sum(rate(istio_requests_total{reporter="destination"}[5m]))
 ```
 
 This gives you the percentage of requests using mTLS. In a fully strict mesh, this should be close to 1.0 (100%).
@@ -243,7 +246,7 @@ This gives you the percentage of requests using mTLS. In a fully strict mesh, th
 For a per-service breakdown:
 
 ```promql
-sum(rate(istio_requests_total[5m])) by (destination_workload, connection_security_policy)
+sum(rate(istio_requests_total{reporter="destination"}[5m])) by (destination_workload, connection_security_policy)
 ```
 
 Any service showing `connection_security_policy="none"` traffic needs investigation.
