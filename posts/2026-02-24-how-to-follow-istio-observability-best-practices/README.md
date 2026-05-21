@@ -156,7 +156,7 @@ spec:
     - providers:
         - name: envoy
       filter:
-        expression: "response.code >= 400 || response.duration > 5000"
+        expression: 'response.code >= 400 || response.duration > duration("5s")'
 ```
 
 This logs only errors and slow requests. When you need full access logs for debugging, enable them temporarily on a specific workload:
@@ -190,7 +190,7 @@ Do not just monitor your application traffic. Monitor Istio itself:
 # pilot_total_xds_rejects
 
 # Connected proxies - should match your expected pod count
-# pilot_xds_pushes
+# pilot_xds
 
 # Conflict detection
 # pilot_conflict_inbound_listener
@@ -209,7 +209,7 @@ Set up alerts:
 
 # Alert if convergence time is high
 - alert: IstioConvergenceSlow
-  expr: histogram_quantile(0.99, rate(pilot_proxy_convergence_time_bucket[5m])) > 10
+  expr: histogram_quantile(0.99, sum(rate(pilot_proxy_convergence_time_bucket[5m])) by (le)) > 10
   for: 10m
   labels:
     severity: warning
@@ -220,7 +220,7 @@ Set up alerts:
 Use the official Istio Grafana dashboards as a starting point:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.24/samples/addons/grafana.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/grafana.yaml
 ```
 
 The key dashboards:
@@ -237,7 +237,7 @@ Customize them to match your team's needs. Add panels for your SLOs and remove p
 Kiali provides a topology graph of your mesh that is incredibly useful for understanding traffic flow:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.24/samples/addons/kiali.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/kiali.yaml
 ```
 
 Kiali shows you:
@@ -253,7 +253,7 @@ It is the best tool for getting a quick visual understanding of your mesh health
 
 The real power of observability comes from correlating signals. When you see an error rate spike in metrics, you want to jump to the traces that show the failing requests, and then to the logs that show the error details.
 
-Set up exemplars in Prometheus to link metrics to traces:
+Enable tracing so Grafana can link metrics to traces:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
