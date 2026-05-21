@@ -14,7 +14,7 @@ This post covers how to set up Istio's RequestAuthentication with several popula
 
 ## How OIDC and Istio Work Together
 
-OIDC providers issue JWT tokens following the OpenID Connect specification. These tokens are signed with keys that the provider publishes at a well-known JWKS (JSON Web Key Set) endpoint. Istio's RequestAuthentication resource tells the Envoy sidecar where to find these keys so it can verify incoming tokens.
+OIDC providers issue JWT tokens following the OpenID Connect specification. These tokens are signed with keys that the provider publishes at a well-known JWKS (JSON Web Key Set) endpoint. Istio's RequestAuthentication resource tells Istio where to find these keys so the proxy can verify incoming tokens.
 
 The flow looks like this:
 
@@ -22,13 +22,15 @@ The flow looks like this:
 sequenceDiagram
     participant Client
     participant OIDC as OIDC Provider
+    participant Istio as Istio JWKS Resolver
     participant Envoy as Envoy Sidecar
     participant App as Application
 
     Client->>OIDC: Authenticate (username/password, OAuth flow)
     OIDC->>Client: JWT Token
     Client->>Envoy: Request + JWT in Authorization header
-    Envoy->>OIDC: Fetch JWKS (cached)
+    Istio->>OIDC: Fetch JWKS (cached)
+    Istio->>Envoy: Provide validation keys/config
     Envoy->>Envoy: Validate JWT signature + claims
     Envoy->>App: Forward request (valid token)
     Envoy->>Client: 401 Unauthorized (invalid token)
@@ -82,7 +84,7 @@ spec:
         - "my-client-id"
 ```
 
-With Keycloak, the issuer URL includes the realm path. If you're running Keycloak inside your cluster, you might hit a common problem: the issuer URL in the token uses an external hostname, but the sidecar can't reach that external hostname to fetch JWKS.
+With Keycloak, the issuer URL includes the realm path. If you're running Keycloak inside your cluster, you might hit a common problem: the issuer URL in the token uses an external hostname, but Istio can't reach that external hostname to fetch JWKS.
 
 In that case, use the internal service URL for the JWKS while keeping the external issuer:
 
@@ -101,9 +103,9 @@ spec:
       jwksUri: "http://keycloak.keycloak-ns.svc.cluster.local:8080/realms/my-realm/protocol/openid-connect/certs"
 ```
 
-## Configuring Google Identity Platform
+## Configuring Google Sign-In
 
-For Google-issued tokens (GCP service accounts or Google Sign-In):
+For Google Sign-In ID tokens:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -122,7 +124,26 @@ spec:
         - "your-google-client-id.apps.googleusercontent.com"
 ```
 
-Google rotates their signing keys regularly, but Istio caches the JWKS and refreshes it based on the Cache-Control headers returned by the JWKS endpoint.
+Google rotates their signing keys regularly, and Istio caches the JWKS instead of fetching it on every request.
+
+For Firebase Authentication or Google Cloud Identity Platform ID tokens, use the Firebase issuer and audience instead:
+
+```yaml
+apiVersion: security.istio.io/v1
+kind: RequestAuthentication
+metadata:
+  name: firebase-jwt
+  namespace: my-app
+spec:
+  selector:
+    matchLabels:
+      app: my-service
+  jwtRules:
+    - issuer: "https://securetoken.google.com/your-project-id"
+      jwksUri: "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com"
+      audiences:
+        - "your-project-id"
+```
 
 ## Configuring Azure AD (Microsoft Entra ID)
 
@@ -172,7 +193,7 @@ spec:
         - "your-google-client-id.apps.googleusercontent.com"
 ```
 
-Istio will try each rule in order and accept the token if it matches any of the configured issuers.
+Istio will accept a valid token if it matches one of the configured issuers.
 
 ## Forwarding Claims to Your Application
 
@@ -233,7 +254,7 @@ kubectl logs -n my-app deploy/my-service -c istio-proxy | grep -i jwt
 
 # Decode your token to verify issuer and audience claims
 # (paste your token at jwt.io or use)
-echo $TOKEN | cut -d. -f2 | base64 -d 2>/dev/null | jq .
+python3 -c 'import base64,json,os; p=os.environ["TOKEN"].split(".")[1]; p += "=" * (-len(p) % 4); print(json.dumps(json.loads(base64.urlsafe_b64decode(p)), indent=2))'
 ```
 
 Common issues include:
@@ -248,7 +269,7 @@ Common issues include:
 
 ## JWKS Caching Behavior
 
-Istio caches JWKS responses to avoid hammering the OIDC provider on every request. The cache duration is based on the HTTP Cache-Control headers returned by the JWKS endpoint. Most providers set this to several hours.
+Istio caches JWKS responses to avoid hammering the OIDC provider on every request. With the default Istio resolver, istiod fetches public keys from `jwksUri` and refreshes them on its configured refresh interval. If you configure Istio to let Envoy fetch remote JWKS directly, Envoy uses its remote JWKS cache duration.
 
 If you rotate keys on your OIDC provider, there will be a window where the old cached keys are still used. Plan key rotations accordingly - keep the old key active for at least as long as the JWKS cache TTL.
 
