@@ -23,7 +23,7 @@ Every Istio runbook should follow the same structure so on-call engineers can fi
 
 ## Runbook: High Error Rate Between Services
 
-**Alert**: `istio_requests_5xx_rate > 0.05 for 5 minutes`
+**Alert**: `sum(rate(istio_requests_total{response_code=~"5.."}[5m])) / sum(rate(istio_requests_total[5m])) > 0.05 for 5 minutes`
 
 **Impact**: Service-to-service communication failing. Users may see errors.
 
@@ -75,7 +75,7 @@ Look for proxies marked as STALE, which means they have not received the latest 
 
 ## Runbook: mTLS Handshake Failures
 
-**Alert**: `envoy_cluster_ssl_handshake_error > 0` or services returning 503
+**Alert**: mTLS-related Envoy SSL errors increasing, or services returning 503
 
 **Impact**: Services cannot establish mTLS connections. Communication between specific services is broken.
 
@@ -84,10 +84,10 @@ Look for proxies marked as STALE, which means they have not received the latest 
 Step 1: Check the mTLS configuration:
 
 ```bash
-istioctl authn tls-check deploy/<service> -n <namespace>
+istioctl x describe pod <pod-name> -n <namespace>
 ```
 
-Look for mismatched TLS modes. The source should use `ISTIO_MUTUAL` and the destination should accept mTLS.
+Look for mTLS warnings or mismatched TLS modes. Clients should use mTLS when the destination requires it, and the destination should accept mTLS.
 
 Step 2: Check certificate validity:
 
@@ -114,7 +114,7 @@ Look for policies that might have changed recently.
 
 **Remediation**:
 
-- If certificates are expired: Restart istiod to trigger certificate rotation: `kubectl rollout restart deploy/istiod -n istio-system`
+- If workload certificates are expired: Restart the affected workload pod so its sidecar requests fresh certificates. If many workloads are affected, check istiod and the configured CA before restarting workloads broadly.
 - If mTLS mode mismatch: Change PeerAuthentication to PERMISSIVE temporarily, then investigate:
 
 ```yaml
@@ -208,10 +208,10 @@ Step 3: Check istiod logs for injection errors:
 kubectl logs deploy/istiod -n istio-system | grep -i inject
 ```
 
-Step 4: Check if the pod has injection annotations:
+Step 4: Check if the pod has injection labels:
 
 ```bash
-kubectl get pod <pod-name> -n <namespace> -o jsonpath='{.metadata.annotations}'
+kubectl get pod <pod-name> -n <namespace> -o jsonpath='{.metadata.labels}'
 ```
 
 **Remediation**:
@@ -219,7 +219,7 @@ kubectl get pod <pod-name> -n <namespace> -o jsonpath='{.metadata.annotations}'
 - If namespace label is missing: `kubectl label namespace <namespace> istio-injection=enabled`
 - If webhook is not configured: Istiod may have failed to register. Restart istiod.
 - If pod has `sidecar.istio.io/inject: "false"`: This is intentional, check with the service owner.
-- If init container is failing: Check init container logs: `kubectl logs <pod> -c istio-init`
+- If init container is failing: Check init container logs: `kubectl logs <pod> -n <namespace> -c istio-init`
 
 ## Runbook: Configuration Drift
 
@@ -296,12 +296,14 @@ kubectl exec deploy/<service> -c istio-proxy -- \
 
 **Remediation**:
 
-- If sidecar CPU is high: Increase sidecar resource limits in the pod annotation:
+- If sidecar CPU is high: Increase sidecar resource requests and limits in the pod annotations:
 
 ```yaml
 annotations:
   sidecar.istio.io/proxyCPU: "500m"
+  sidecar.istio.io/proxyCPULimit: "1000m"
   sidecar.istio.io/proxyMemory: "256Mi"
+  sidecar.istio.io/proxyMemoryLimit: "512Mi"
 ```
 
 - If circuit breaker overflow: Increase connection limits in the DestinationRule.
