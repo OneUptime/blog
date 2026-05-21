@@ -41,7 +41,7 @@ The most common issue is mutating webhooks adding fields or modifying values tha
 
 ### Istio Sidecar Injection
 
-Istio's mutating webhook injects a sidecar container and init container into every pod:
+Istio's mutating webhook injects a sidecar container and init container into pods when automatic sidecar injection is enabled for the namespace or pod. If ArgoCD directly manages pod manifests, those injected fields can appear as live-state differences:
 
 ```yaml
 # What ArgoCD applies (from Git)
@@ -72,16 +72,16 @@ metadata:
   name: myapp
 spec:
   ignoreDifferences:
-    - group: apps
-      kind: Deployment
+    - group: ""
+      kind: Pod
       jqPathExpressions:
-        - .spec.template.spec.containers[] | select(.name == "istio-proxy")
-        - .spec.template.spec.initContainers[] | select(.name == "istio-init")
-        - .spec.template.spec.volumes[] | select(.name | startswith("istio"))
-        - .spec.template.metadata.annotations["sidecar.istio.io/status"]
-        - .spec.template.metadata.labels["security.istio.io/tlsMode"]
-        - .spec.template.metadata.labels["service.istio.io/canonical-name"]
-        - .spec.template.metadata.labels["service.istio.io/canonical-revision"]
+        - .spec.containers[] | select(.name == "istio-proxy")
+        - .spec.initContainers[] | select(.name == "istio-init")
+        - .spec.volumes[] | select(.name | startswith("istio"))
+        - .metadata.annotations["sidecar.istio.io/status"]
+        - .metadata.labels["security.istio.io/tlsMode"]
+        - .metadata.labels["service.istio.io/canonical-name"]
+        - .metadata.labels["service.istio.io/canonical-revision"]
   syncPolicy:
     syncOptions:
       - RespectIgnoreDifferences=true
@@ -113,7 +113,7 @@ ignoreDifferences:
     kind: Deployment
     jqPathExpressions:
       - .metadata.labels["app.kubernetes.io/managed-by"]
-      - .spec.template.metadata.labels["policies.kyverno.io/last-applied-patches"]
+      - .metadata.annotations["policies.kyverno.io/last-applied-patches"]
 ```
 
 ## Problem 2: Validating Webhooks Reject ArgoCD Syncs
@@ -162,17 +162,16 @@ spec:
 
 ArgoCD performs a dry-run before syncing. If validating webhooks are called during dry-run and they depend on external services that are unavailable, the sync fails before it even starts.
 
-Fix by configuring ArgoCD to use server-side dry-run or skip it:
+If the dry-run fails because a custom resource is synced before its CRD is known to the API server, configure ArgoCD to skip that missing-resource dry-run check:
 
 ```yaml
 spec:
   syncPolicy:
     syncOptions:
-      # Skip client-side dry-run
       - SkipDryRunOnMissingResource=true
-      # Use server-side apply which has better webhook handling
-      - ServerSideApply=true
 ```
+
+If the dry-run reaches a validating webhook and the webhook service is unavailable, fix the webhook availability or failure policy instead of skipping dry-run.
 
 ## Problem 3: Webhook Ordering and Timing Issues
 
@@ -224,7 +223,7 @@ metadata:
 
 ## Problem 4: Webhook Failures Block All Syncs
 
-If a webhook server goes down, it can block all ArgoCD syncs because every resource creation goes through the webhook. This is especially dangerous with `failurePolicy: Fail`.
+If a webhook server goes down, it can block ArgoCD syncs for resources that match the webhook rules. This is especially dangerous with `failurePolicy: Fail`.
 
 ### Fix: Configure Webhook Failure Policy
 
@@ -239,6 +238,7 @@ webhooks:
   - name: non-critical.example.com
     failurePolicy: Ignore  # Don't block if webhook is unavailable
     timeoutSeconds: 5       # Short timeout
+    # clientConfig, rules, admissionReviewVersions, and sideEffects are also required
 ```
 
 For critical webhooks, ensure high availability:
@@ -268,6 +268,7 @@ Prevent webhooks from interfering with ArgoCD's own resources:
 ```yaml
 webhooks:
   - name: my-webhook.example.com
+    # clientConfig, rules, admissionReviewVersions, and sideEffects are also required
     namespaceSelector:
       matchExpressions:
         # Exclude the argocd namespace
@@ -282,23 +283,23 @@ webhooks:
 
 When using server-side apply, mutating webhooks can cause field ownership conflicts. The webhook modifies a field, and then ArgoCD tries to claim ownership of the same field.
 
-### Fix: Use Force Apply for Conflicting Resources
+### Fix: Let Server-Side Apply Resolve Conflicts
 
 ```yaml
 syncPolicy:
   syncOptions:
     - ServerSideApply=true
-    # Force apply resolves ownership conflicts
-    - Force=true
 ```
 
-Or handle it per-resource with annotations:
+Or enable server-side apply per-resource with annotations:
 
 ```yaml
 metadata:
   annotations:
-    argocd.argoproj.io/sync-options: ServerSideApply=true,Force=true
+    argocd.argoproj.io/sync-options: ServerSideApply=true
 ```
+
+Do not use `Force=true` for normal field ownership conflicts. In ArgoCD, `Force=true` performs a delete/create sync and is intended for resources that need to be recreated, such as rerunnable Jobs.
 
 ## Debugging Webhook Issues
 
@@ -319,6 +320,6 @@ kubectl logs -n webhook-namespace deployment/webhook-server
 kubectl apply --dry-run=server -f resource.yaml -v=6
 ```
 
-The `-v=6` flag on kubectl shows the full API request and response, including webhook modifications.
+The `--dry-run=server` flag sends the request to the API server and runs admission without persisting the resource; `-v=6` increases kubectl request logging so you can inspect the API interaction.
 
 Admission webhooks add complexity to GitOps workflows, but they are essential for security and compliance. The key is to identify which webhooks are mutating your resources, configure ArgoCD to ignore the mutated fields, and use sync waves to ensure webhooks are deployed before the resources they process. With these patterns in place, ArgoCD and admission webhooks work together smoothly.
