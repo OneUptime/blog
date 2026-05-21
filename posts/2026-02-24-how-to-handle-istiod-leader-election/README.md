@@ -16,20 +16,20 @@ Istiod uses Kubernetes leader election to designate one replica as the leader fo
 
 Not everything in istiod requires a leader. The xDS server, certificate signing, and sidecar injection run on all replicas simultaneously. Proxies connect to any replica and receive configuration from it.
 
-Leader election is used for:
+Leader election is used for controllers that should not run concurrently across all istiod replicas, including:
 
-- **Status updates**: Writing status back to Istio custom resources (like VirtualService status)
-- **Namespace controller**: Managing namespace-level operations
-- **Endpoint cleanup**: Cleaning up stale endpoints from services
-- **Config validation**: Running certain validation webhooks that should only fire once
+- **Status updates**: Writing status back to Istio and Gateway API resources
+- **Namespace controller**: Managing namespace-level root certificate distribution
+- **Gateway controllers**: Updating Gateway status and, when enabled, creating derived Gateway resources
+- **Analysis controller**: Running in-cluster config analysis when analysis is enabled
 
 The leader performs these tasks while other replicas stand by. If the leader dies, a new leader is elected within seconds.
 
 ## How Leader Election Works
 
-Istiod uses Kubernetes Lease objects for leader election. A Lease is a lightweight Kubernetes resource that acts as a distributed lock.
+Istiod uses Kubernetes leader election locks. In current Istio releases, some locks are Kubernetes Lease objects while older controller locks still use ConfigMaps with a leader-election annotation.
 
-Check the current leader:
+Check the current Lease-based leaders:
 
 ```bash
 kubectl get lease -n istio-system
@@ -39,33 +39,40 @@ Example output:
 
 ```text
 NAME                                           HOLDER                                   AGE
-istio-namespace-controller-election            istiod-7f4b8c6d9f-abc12_a1b2c3d4         5d
-istiod-election                                istiod-7f4b8c6d9f-abc12_a1b2c3d4         5d
+istio-status-leader                            istiod-7f4b8c6d9f-abc12                  5d
+istio-gateway-deployment-default               istiod-7f4b8c6d9f-abc12                  5d
 ```
 
 The `HOLDER` field shows which istiod pod currently holds the lease. You can get more details:
 
 ```bash
-kubectl get lease istiod-election -n istio-system -o yaml
+kubectl get lease istio-status-leader -n istio-system -o yaml
 ```
 
 ```yaml
 apiVersion: coordination.k8s.io/v1
 kind: Lease
 metadata:
-  name: istiod-election
+  name: istio-status-leader
   namespace: istio-system
 spec:
   acquireTime: "2026-02-19T10:30:00Z"
-  holderIdentity: istiod-7f4b8c6d9f-abc12_a1b2c3d4
-  leaseDurationSeconds: 15
+  holderIdentity: istiod-7f4b8c6d9f-abc12
+  leaseDurationSeconds: 30
   leaseTransitions: 3
   renewTime: "2026-02-24T14:22:30Z"
 ```
 
+For ConfigMap-based locks, inspect the leader-election annotation:
+
+```bash
+kubectl get configmap istio-namespace-controller-election -n istio-system \
+  -o go-template='{{ index .metadata.annotations "control-plane.alpha.kubernetes.io/leader" }}'
+```
+
 Key fields:
 - **holderIdentity**: The pod holding the lease
-- **leaseDurationSeconds**: How long the lease is valid without renewal (15 seconds)
+- **leaseDurationSeconds**: How long the lease is valid without renewal
 - **renewTime**: The last time the lease was renewed
 - **leaseTransitions**: How many times the leader has changed
 
@@ -73,14 +80,14 @@ Key fields:
 
 The leader renews its lease periodically. If it fails to renew within the lease duration, other replicas can acquire the lease.
 
-Default timing:
-- **Lease duration**: 15 seconds
-- **Renew deadline**: 10 seconds
-- **Retry period**: 2 seconds
+Istio's default leader-election TTL is 30 seconds. Internally, istiod sets:
+- **Lease duration**: 30 seconds
+- **Renew deadline**: 15 seconds
+- **Retry period**: 7.5 seconds
 
-This means after a leader failure, a new leader is elected within approximately 15 seconds (the lease duration). During this gap, tasks that require a leader are paused.
+This means after a leader failure, a new leader is elected after the old lock is observed as expired, typically within roughly 30 seconds. During this gap, tasks that require a leader are paused.
 
-You can customize these timings through istiod environment variables, though the defaults are usually fine:
+You can enable or disable istiod leader election with the `ENABLE_LEADER_ELECTION` environment variable. The default is enabled:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -90,12 +97,8 @@ spec:
     pilot:
       k8s:
         env:
-        - name: LEADER_ELECTION_LEASE_DURATION
-          value: "15s"
-        - name: LEADER_ELECTION_RENEW_DEADLINE
-          value: "10s"
-        - name: LEADER_ELECTION_RETRY_PERIOD
-          value: "2s"
+        - name: ENABLE_LEADER_ELECTION
+          value: "true"
 ```
 
 ## Troubleshooting Leader Election Issues
@@ -105,7 +108,7 @@ spec:
 If the Lease has no holder or the `renewTime` is stale, no istiod is acting as leader:
 
 ```bash
-kubectl get lease istiod-election -n istio-system -o jsonpath='{.spec.holderIdentity}'
+kubectl get lease istio-status-leader -n istio-system -o jsonpath='{.spec.holderIdentity}'
 ```
 
 If empty, check if istiod pods have permission to manage Leases:
@@ -114,10 +117,10 @@ If empty, check if istiod pods have permission to manage Leases:
 kubectl auth can-i update leases.coordination.k8s.io --as=system:serviceaccount:istio-system:istiod -n istio-system
 ```
 
-If this returns `no`, the RBAC for istiod is misconfigured. Check the ClusterRole:
+If this returns `no`, the RBAC for istiod is misconfigured. Check the Role:
 
 ```bash
-kubectl get clusterrole istiod-istio-system -o yaml | grep -A 5 "coordination"
+kubectl get role istiod -n istio-system -o yaml | grep -A 5 "coordination"
 ```
 
 It should include:
@@ -125,7 +128,7 @@ It should include:
 ```yaml
 - apiGroups: ["coordination.k8s.io"]
   resources: ["leases"]
-  verbs: ["get", "create", "update"]
+  verbs: ["get", "update", "patch", "create"]
 ```
 
 ### Frequent Leader Transitions
@@ -133,7 +136,7 @@ It should include:
 If `leaseTransitions` is increasing rapidly, leaders are being elected and losing their lease frequently:
 
 ```bash
-kubectl get lease istiod-election -n istio-system -o jsonpath='{.spec.leaseTransitions}'
+kubectl get lease istio-status-leader -n istio-system -o jsonpath='{.spec.leaseTransitions}'
 ```
 
 Common causes:
@@ -155,27 +158,27 @@ If the leader is elected but its tasks are not running (status not updating, cle
 ```bash
 # Find the leader
 
-LEADER=$(kubectl get lease istiod-election -n istio-system -o jsonpath='{.spec.holderIdentity}' | cut -d'_' -f1)
+LEADER=$(kubectl get lease istio-status-leader -n istio-system -o jsonpath='{.spec.holderIdentity}')
 kubectl logs -n istio-system $LEADER | grep -i "leader\|election"
 ```
 
 You should see messages like:
 
 ```text
-Successfully acquired lease istio-system/istiod-election
+leader election lock obtained: istio-status-leader
 ```
 
 If you see:
 
 ```text
-Failed to acquire lease
+leader election lock lost: istio-status-leader
 ```
 
-The pod thinks it is not the leader, even though the Lease says it is. This can happen if the pod name does not match the holder identity (for example, after a restart where the pod kept the same name but got a new identity).
+The pod lost the lock and another replica should take over. If the Lease still shows that pod as the holder for longer than the lease duration, check API server connectivity and istiod health.
 
 ### Multiple Leaders (Split Brain)
 
-This is rare but possible if there are clock skew issues between nodes. Each pod thinks its lease is still valid because its local clock is different from the API server's clock.
+This is rare. Kubernetes leader election does not rely on timestamps written by other clients being accurate, but severe clock-rate skew or API server latency can still cause unstable leadership.
 
 Check for clock skew:
 
@@ -185,25 +188,25 @@ for pod in $(kubectl get pods -n istio-system -l app=istiod -o name); do
 done
 ```
 
-Compare with the API server time. If there is more than a few seconds of skew, fix NTP on the affected nodes.
+Compare with the API server time. If there is significant skew or drift, fix time synchronization on the affected nodes.
 
 ## Monitoring Leader Election
 
-Set up Prometheus metrics to monitor leader election health:
+Set up Prometheus metrics to monitor leader election health. If you run kube-state-metrics with Lease metrics enabled, you can monitor the Lease holder and renewal time:
 
 ```promql
-# Current leader (from istiod metrics)
-pilot_leader
+# Current holder for the status leader Lease
+kube_lease_owner{namespace="istio-system", lease="istio-status-leader"}
 
-# If no leader, this will be 0 across all replicas
-sum(pilot_leader)
+# Last renewal timestamp
+kube_lease_renew_time{namespace="istio-system", lease="istio-status-leader"}
 ```
 
-Alert when there is no leader:
+Alert when the status leader Lease is not being renewed:
 
 ```yaml
 - alert: IstiodNoLeader
-  expr: sum(pilot_leader) == 0
+  expr: time() - kube_lease_renew_time{namespace="istio-system", lease="istio-status-leader"} > 60
   for: 30s
   labels:
     severity: critical
@@ -215,7 +218,7 @@ Alert on frequent transitions:
 
 ```yaml
 - alert: IstiodFrequentLeaderChanges
-  expr: increase(leader_election_master_status_changes_total[1h]) > 5
+  expr: count(count_over_time(kube_lease_owner{namespace="istio-system", lease="istio-status-leader"}[1h]) by (lease_holder)) > 5
   for: 5m
   labels:
     severity: warning
@@ -231,16 +234,16 @@ When the leader is lost and a new one has not been elected yet:
 - **Sidecar injection continues normally**: All replicas handle webhooks
 - **Certificate signing continues normally**: All replicas sign certificates
 - **Status updates pause**: VirtualService and other resource statuses are not updated
-- **Cleanup tasks pause**: Stale endpoint cleanup stops temporarily
+- **Leader-gated controllers pause**: Gateway status, namespace root certificate distribution, and similar singleton controller tasks stop temporarily
 
 The impact of a brief leader gap is minimal for day-to-day mesh operation. The critical path (xDS, injection, certificates) does not depend on leader election. Problems arise only if the leader gap is prolonged, which indicates a deeper issue with istiod health.
 
 ## Best Practices
 
-1. Run at least 3 istiod replicas so leadership can transfer quickly
-2. Monitor the `pilot_leader` metric and alert when it drops to 0
+1. Run multiple istiod replicas, commonly at least 3, for better availability during maintenance and failures
+2. Monitor the relevant Lease or ConfigMap lock and alert when it stops renewing
 3. Keep istiod resource limits adequate to prevent OOM kills that cause leader transitions
-4. Verify RBAC allows istiod to manage Lease objects during installation
+4. Verify RBAC allows istiod to manage Lease objects and ConfigMaps during installation
 5. Check `leaseTransitions` periodically to detect instability
 
 Leader election in istiod is a background mechanism that usually just works. When it does not, the debugging steps above will help you find the root cause quickly.
