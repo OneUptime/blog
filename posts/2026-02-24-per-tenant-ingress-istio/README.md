@@ -158,6 +158,29 @@ kind: ServiceAccount
 metadata:
   name: tenant-a-gateway
   namespace: tenant-a
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: tenant-a-gateway-sds
+  namespace: tenant-a
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get", "watch", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: tenant-a-gateway-sds
+  namespace: tenant-a
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: tenant-a-gateway-sds
+subjects:
+- kind: ServiceAccount
+  name: tenant-a-gateway
 ```
 
 Then create the Gateway and VirtualService resources pointing to this dedicated deployment:
@@ -318,7 +341,7 @@ spec:
         - tenant-a
 ```
 
-This allows traffic from the ingress gateway and from within the tenant namespace, but blocks everything else.
+This allows traffic from the ingress gateway and from within the tenant namespace, but blocks everything else. The principal and namespace matches require mTLS so Istio can derive the source identity.
 
 ## Per-Tenant TLS Certificates
 
