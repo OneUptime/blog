@@ -8,7 +8,7 @@ Description: Monitor the four golden signals of service health in Istio - latenc
 
 ---
 
-Google's SRE book introduced the concept of four golden signals for monitoring: latency, traffic, errors, and saturation. These four metrics tell you almost everything you need to know about whether a service is healthy. Istio generates all four automatically through its Envoy sidecars, which means you get service-level monitoring without adding a single line of instrumentation code to your applications.
+Google's SRE book introduced the concept of four golden signals for monitoring: latency, traffic, errors, and saturation. These four metrics tell you almost everything you need to know about whether a service is healthy. Istio generates the request-level signals automatically through its Envoy sidecars, which means you get service-level monitoring for latency, traffic, and errors without adding a single line of instrumentation code to your applications.
 
 ## The Four Golden Signals
 
@@ -90,7 +90,7 @@ histogram_quantile(0.95,
 
 ## Monitoring Traffic
 
-Traffic is measured using `istio_requests_total`, which counts every request.
+Traffic is measured using `istio_requests_total`, which counts every HTTP, HTTP/2, and gRPC request handled by an Istio proxy.
 
 ### Total Request Rate
 
@@ -102,7 +102,7 @@ sum(rate(istio_requests_total{
 }[5m]))
 ```
 
-### Request Rate by HTTP Method
+### Request Rate by Request Protocol
 
 ```promql
 sum(rate(istio_requests_total{
@@ -179,12 +179,14 @@ For gRPC services, use the `grpc_response_status` label:
 sum(rate(istio_requests_total{
   reporter="destination",
   destination_workload="my-grpc-service",
+  request_protocol="grpc",
   grpc_response_status!="0"
 }[5m]))
 /
 sum(rate(istio_requests_total{
   reporter="destination",
-  destination_workload="my-grpc-service"
+  destination_workload="my-grpc-service",
+  request_protocol="grpc"
 }[5m]))
 ```
 
@@ -198,7 +200,7 @@ Sometimes errors aren't just HTTP status codes. Envoy adds response flags that i
 sum(rate(istio_requests_total{
   reporter="destination",
   destination_workload="my-service",
-  response_flags!~"-|0"
+  response_flags!="-"
 }[5m])) by (response_flags)
 ```
 
@@ -216,10 +218,10 @@ Saturation is the trickiest signal because Istio doesn't directly measure it. Yo
 
 ### Connection Pool Saturation
 
-If you've configured connection pool limits in DestinationRules, track how close you are to hitting them:
+If you've configured connection pool limits in DestinationRules, track active upstream connections and compare them with the `maxConnections` value you configured:
 
 ```promql
-# Active connections vs limit
+# Active connections to compare with the configured maxConnections value
 
 envoy_cluster_upstream_cx_active{cluster_name="outbound|8080||my-service.production.svc.cluster.local"}
 ```
@@ -253,7 +255,7 @@ sum(kube_pod_container_resource_requests{
 })
 ```
 
-Values approaching 1.0 mean the service is running at its CPU request limit.
+Values approaching 1.0 mean the service is using about as much CPU as it requested. CPU requests are not hard limits; if you set CPU limits, also monitor limit usage and throttling.
 
 ### Memory Saturation
 
@@ -285,7 +287,7 @@ graph TD
     B --> B1[P50/P95/P99 Time Series]
     B --> B2[Latency by Source]
     C --> C1[Request Rate]
-    C --> C2[Rate by Method]
+    C --> C2[Rate by Protocol]
     D --> D1[Error Rate Gauge]
     D --> D2[Errors by Code]
     E --> E1[CPU Usage]
@@ -332,8 +334,8 @@ spec:
 
         - alert: TrafficDrop
           expr: |
-            sum(rate(istio_requests_total{reporter="destination"}[5m])) by (destination_workload)
-            < 0.1 * sum(rate(istio_requests_total{reporter="destination"}[5m] offset 1h)) by (destination_workload)
+            sum(rate(istio_requests_total{reporter="destination"}[5m])) by (destination_workload, destination_workload_namespace)
+            < 0.1 * sum(rate(istio_requests_total{reporter="destination"}[5m] offset 1h)) by (destination_workload, destination_workload_namespace)
           for: 10m
           labels:
             severity: warning
