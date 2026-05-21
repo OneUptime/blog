@@ -116,9 +116,9 @@ Total duration of the request in milliseconds, from when Envoy received the firs
 -
 ```
 
-The time in milliseconds that the upstream service took to process the request and send back the response headers. This comes from the `x-envoy-upstream-service-time` response header. A dash means it was not available (common when the upstream did not respond or the connection failed).
+The time in milliseconds spent by the upstream host processing the request, including network latency between Envoy and the upstream host. This comes from the `x-envoy-upstream-service-time` response header. A dash means it was not available (common when the upstream did not respond or the connection failed).
 
-The difference between Duration and Upstream Service Time represents the network and proxy overhead.
+The difference between Duration and Upstream Service Time represents downstream-side latency, queue waiting, and proxy overhead outside the upstream request/response time.
 
 ### Field 12: X-Forwarded-For
 
@@ -142,7 +142,7 @@ The User-Agent header from the request.
 "f47ac10b-58cc-4372-a567-0e02b2c3d479"
 ```
 
-The unique request ID assigned by Istio. This is propagated through the entire call chain, making it possible to trace a request across multiple services. This value is in the `x-request-id` header.
+The unique request ID from the `x-request-id` header. Envoy can generate this value when the request does not already have one, and it can be propagated through the call chain to help trace a request across multiple services.
 
 ### Field 15: Authority
 
@@ -169,8 +169,8 @@ outbound|8080||order-service.production.svc.cluster.local
 The Envoy cluster name. This tells you the routing context:
 - `outbound|PORT||SERVICE` - An outbound request to a service
 - `inbound|PORT||` - An inbound request received by this pod
-- `BlackHoleCluster` - No route matched (request was dropped)
-- `PassthroughCluster` - Traffic bypassing the mesh
+- `BlackHoleCluster` - Unknown outbound traffic was blocked
+- `PassthroughCluster` - Unknown outbound traffic was passed through without service-registry routing
 
 ### Field 18: Upstream Local Address
 
@@ -223,7 +223,7 @@ These flags tell you why a request failed or was handled in a specific way:
 | `UC` | Upstream connection termination | Connection was reset by the upstream |
 | `UT` | Upstream request timeout | Request exceeded the configured timeout |
 | `UO` | Upstream overflow (circuit breaker) | Too many pending requests to the upstream |
-| `NR` | No route configured | Missing VirtualService or destination not found |
+| `NR` | No route configured | Missing route or no matching listener/filter chain |
 | `URX` | Upstream retry limit exceeded | Retries failed after the maximum attempts |
 | `DI` | Request with delay injection | Fault injection is active |
 | `FI` | Request with fault injection | Abort fault injection is active |
@@ -231,7 +231,7 @@ These flags tell you why a request failed or was handled in a specific way:
 | `DC` | Downstream connection termination | The caller closed the connection |
 | `LH` | Local service failed health check | The local Envoy instance is unhealthy |
 | `UAEX` | Unauthorized by external auth | External authorization denied the request |
-| `RLSE` | Rate limited by service extension | Envoy rate limit service rejected the request |
+| `RLSE` | Rate limit service error | Envoy could not get a successful response from the rate limit service |
 | `IH` | Invalid request, strict header check | Request has invalid headers |
 
 Multiple flags can appear together. For example, `URX,UC` means retries were exhausted and the upstream connection was terminated.
@@ -243,10 +243,10 @@ Multiple flags can appear together. For example, `URX,UC` means retries were exh
 ```bash
 # Get response code and flags for all requests
 
-kubectl logs deploy/my-service -c istio-proxy | awk '{print $6, $7}'
+kubectl logs deploy/my-service -c istio-proxy | awk '{print $5, $6}'
 
 # Get path, response code, and duration
-kubectl logs deploy/my-service -c istio-proxy | awk -F'"' '{split($2, req, " "); print req[2], $3}' | awk '{print $1, $2, $5}'
+kubectl logs deploy/my-service -c istio-proxy | awk -F'"' '{split($2, req, " "); split($3, pre, " "); split($5, post, " "); print req[2], pre[1], post[3]}'
 ```
 
 ### Parse JSON Logs with jq
@@ -256,7 +256,7 @@ kubectl logs deploy/my-service -c istio-proxy | awk -F'"' '{split($2, req, " ");
 kubectl logs deploy/my-service -c istio-proxy --tail=1 | jq .
 
 # Get a summary table
-kubectl logs deploy/my-service -c istio-proxy --tail=100 | jq -r '[.method, .path, .response_code, .response_flags, .duration_ms] | @tsv'
+kubectl logs deploy/my-service -c istio-proxy --tail=100 | jq -r '[.method, .path, .response_code, .response_flags, .duration] | @tsv'
 
 # Count by response code
 kubectl logs deploy/my-service -c istio-proxy | jq -s 'group_by(.response_code) | map({code: .[0].response_code, count: length})'
@@ -264,7 +264,7 @@ kubectl logs deploy/my-service -c istio-proxy | jq -s 'group_by(.response_code) 
 
 ## Key Relationships Between Fields
 
-**Duration vs Upstream Service Time:** If duration is 5000ms but upstream_service_time is 50ms, the remaining 4950ms was spent in the network, TLS handshake, queue waiting, or proxy processing. A large gap here suggests network issues or proxy overload.
+**Duration vs Upstream Service Time:** If duration is 5000ms but upstream_service_time is 50ms, the remaining 4950ms was spent outside the upstream request/response time, such as downstream-side latency, queue waiting, or proxy processing. A large gap here suggests client-side network issues, request upload delays, or proxy overload.
 
 **Response Code vs Response Flags:** A 503 with `-` (no flags) means the upstream service itself returned 503. A 503 with `UF` means Envoy could not connect to the upstream and generated the 503. A 503 with `UH` means no healthy endpoints were available.
 
