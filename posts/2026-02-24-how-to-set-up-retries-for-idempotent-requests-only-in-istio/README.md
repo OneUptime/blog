@@ -213,8 +213,11 @@ spec:
               number: 8080
       retries:
         attempts: 0
-    # GET, PUT, DELETE - retries enabled
-    - route:
+    # Idempotent methods - retries enabled
+    - match:
+        - method:
+            regex: "^(GET|HEAD|PUT|DELETE|OPTIONS|TRACE)$"
+      route:
         - destination:
             host: payment-service
             port:
@@ -223,6 +226,14 @@ spec:
         attempts: 3
         perTryTimeout: 2s
         retryOn: "gateway-error,connect-failure,refused-stream"
+    # Everything else - no retries
+    - route:
+        - destination:
+            host: payment-service
+            port:
+              number: 8080
+      retries:
+        attempts: 0
 ```
 
 The regex match `.+` checks that the `idempotency-key` header exists and has a non-empty value. If it does, retries are enabled for that POST request.
@@ -262,4 +273,4 @@ kubectl exec deploy/sleep -c istio-proxy -- \
   curl -s localhost:15000/stats | grep retry
 ```
 
-The right approach depends on your specific situation, but the important thing is to think about it at all. The default behavior of retrying everything is fine for read-heavy services, but it can cause real damage for services that handle writes and state changes.
+The right approach depends on your specific situation, but the important thing is to think about it at all. Istio's default retry policy can apply regardless of HTTP method, which is fine for read-heavy services but can cause real damage for services that handle writes and state changes.
