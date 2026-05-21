@@ -10,7 +10,7 @@ Description: Practical guide to safely downgrading Istio to a previous version w
 
 Sometimes an Istio upgrade just does not work out. Maybe the new version introduced a bug that affects your traffic routing. Maybe a configuration change breaks mTLS between services. Maybe performance took a hit and you need to go back while you figure out the root cause. Whatever the reason, knowing how to downgrade Istio safely is a skill worth having before you actually need it.
 
-Downgrading Istio is not as straightforward as upgrading. Istio does not officially support downgrades in the same way, and there are real pitfalls. But it is doable if you follow the right steps.
+Downgrading Istio is not as straightforward as upgrading. Istio supports in-place downgrades for `istioctl` installations, but only within documented version-skew limits, and there are real pitfalls. But it is doable if you follow the right steps.
 
 ## The Risks of Downgrading
 
@@ -21,7 +21,7 @@ Before starting, understand what you are getting into:
 - **Sidecar-control plane version skew.** During the downgrade, some proxies will be on the newer version talking to an older control plane.
 - **Webhooks and validation.** The mutating and validating webhooks need to match the control plane version.
 
-Istio guarantees compatibility between a control plane version N and data plane versions N and N-1. But a control plane at version N-1 talking to proxies at version N is not part of that guarantee. In practice, it usually works for patch versions, but minor version differences can cause problems.
+Istio allows the control plane to be one minor version ahead of the data plane, but the data plane should not be ahead of the control plane. During a downgrade, move proxies back to the older version promptly after the control plane downgrade. Patch versions within the same minor release are usually lower risk, but minor version differences can cause problems.
 
 ## Step 1: Document the Current State
 
@@ -67,17 +67,19 @@ If you find resources using fields that do not exist in the target version, you 
 
 ## Step 4: Downgrade Using istioctl
 
-With the older version of istioctl, run the install command. This effectively overwrites the current installation:
+With the older version of `istioctl`, run the upgrade command. Despite the name, Istio uses this command for in-place downgrades too:
 
 ```bash
-istioctl install --set profile=default -y
+istioctl upgrade --set profile=default -y
 ```
 
 If you had custom settings, apply them:
 
 ```bash
-istioctl install -f your-old-istiooperator.yaml -y
+istioctl upgrade -f your-old-istiooperator.yaml -y
 ```
+
+Alternatively, `istioctl install` can be used to apply an older control plane version, but `istioctl upgrade` performs additional upgrade and downgrade checks.
 
 Watch the rollout:
 
@@ -158,8 +160,9 @@ istioctl proxy-status
 # Check for errors in istiod logs
 kubectl logs -n istio-system -l app=istiod --tail=200 | grep -i error
 
-# Verify mTLS is working
-istioctl authn tls-check <pod-name>.<namespace>
+# Verify mTLS is working for an HTTP workload
+kubectl exec "$(kubectl get pod -l app=curl -n foo -o jsonpath='{.items[0].metadata.name}')" -c curl -n foo -- \
+  curl -s http://httpbin.foo:8000/headers | jq '.headers["X-Forwarded-Client-Cert"]'
 ```
 
 Test your applications. Make HTTP requests to your services and verify:
