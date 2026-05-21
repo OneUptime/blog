@@ -14,7 +14,7 @@ Every request that flows through Istio passes through a chain of Envoy filters. 
 
 Envoy organizes its processing pipeline into three layers:
 
-1. **Listener Filters** - Run when a new connection arrives, before any data is read
+1. **Listener Filters** - Run when a new connection arrives, before a filter chain is selected
 2. **Network Filters** - Process the raw byte stream of the connection
 3. **HTTP Filters** - Process individual HTTP requests (only present when the network filter is the HTTP Connection Manager)
 
@@ -59,7 +59,7 @@ Common listener filters in Istio:
 - **envoy.filters.listener.http_inspector** - Detects if the connection is HTTP by looking at the first bytes. Used for protocol detection.
 - **envoy.filters.listener.original_dst** - Retrieves the original destination address from the iptables REDIRECT (using SO_ORIGINAL_DST).
 
-The order matters. TLS inspector must run before HTTP inspector because if the connection is TLS, you need to do TLS termination before you can detect the HTTP protocol inside.
+The order matters. TLS inspector should run before HTTP inspector so TLS connections are identified from the ClientHello and can expose SNI and ALPN for filter-chain matching; HTTP inspector is used for plaintext HTTP protocol detection.
 
 ## Filter Chain Selection
 
@@ -88,7 +88,7 @@ Another chain might match plaintext traffic to the same port:
 }
 ```
 
-Envoy evaluates these matches in order and uses the most specific match. If no filter chain matches, the connection hits the default filter chain (if one exists) or gets rejected.
+Envoy uses the most specific matching filter chain based on criteria such as destination port, destination IP, SNI, transport protocol, and application protocols. If no filter chain matches, the connection hits the default filter chain (if one exists) or gets rejected.
 
 ## Network Filters
 
@@ -133,17 +133,17 @@ for fc in data[0].get('filterChains', []):
 "
 ```
 
-Typical HTTP filters in Istio (in order):
+Typical HTTP filters in Istio include:
 
 1. **envoy.filters.http.wasm / istio.metadata_exchange** - Exchanges workload identity metadata between proxies
-2. **envoy.filters.http.rbac** - HTTP-level authorization policy enforcement
-3. **envoy.filters.http.jwt_authn** - JWT token validation (if configured)
+2. **envoy.filters.http.jwt_authn** - JWT token validation (if configured)
+3. **envoy.filters.http.rbac** - HTTP-level authorization policy enforcement
 4. **istio.stats** - Collects request-level telemetry
 5. **envoy.filters.http.fault** - Fault injection (if configured)
 6. **envoy.filters.http.cors** - CORS handling
 7. **envoy.filters.http.router** - The final filter that performs routing and forwards the request upstream
 
-The order is significant. Authorization (rbac) runs before the router, so unauthorized requests are rejected before any routing happens. Fault injection runs before routing so it can inject delays or aborts.
+The order is significant, although the exact chain varies by Istio version and workload configuration. Authentication filters run before authorization filters, authorization (rbac) runs before the router, so unauthorized requests are rejected before any routing happens. Fault injection runs before routing so it can inject delays or aborts.
 
 ## The Router Filter
 
@@ -187,7 +187,7 @@ spec:
         operation: INSERT_BEFORE
         value:
           name: envoy.filters.http.lua
-          typedConfig:
+          typed_config:
             "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
             defaultSourceCode:
               inlineString: |
