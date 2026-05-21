@@ -53,13 +53,13 @@ Verify Istiod is running:
 kubectl get pods -n istio-system -l app=istiod
 ```
 
-Check that the istiod service is reachable from the pod:
+Check whether the proxy is connected to Istiod:
 
 ```bash
-kubectl exec <pod-name> -c istio-proxy -n my-namespace -- curl -s https://istiod.istio-system.svc:15012/debug/connections -k
+istioctl proxy-status <pod-name>.my-namespace
 ```
 
-If the connection fails, check for NetworkPolicies blocking egress:
+If the proxy is missing from the output or shows `STALE`, check for NetworkPolicies blocking egress to Istiod:
 
 ```bash
 kubectl get networkpolicy -n my-namespace
@@ -107,13 +107,13 @@ Compare with the node time and your system time.
 
 ## "Envoy Process Died" Errors
 
-If Envoy crashes, pilot-agent detects it and restarts the container:
+If Envoy crashes, pilot-agent detects it and the sidecar container exits so Kubernetes can restart it:
 
 ```text
 envoy process exited with error: signal: killed
 ```
 
-This usually means Envoy ran out of memory. Check the container resource limits:
+This often means Envoy ran out of memory. Check the container resource limits:
 
 ```bash
 kubectl get pod <pod-name> -n my-namespace -o jsonpath='{.spec.containers[?(@.name=="istio-proxy")].resources}'
@@ -148,13 +148,13 @@ Pilot-agent generates the Envoy bootstrap config on startup. If the environment 
 failed to generate bootstrap config
 ```
 
-Check that the required environment variables are set:
+Check the proxy environment variables:
 
 ```bash
-kubectl exec <pod-name> -c istio-proxy -n my-namespace -- env | grep -i istio
+kubectl exec <pod-name> -c istio-proxy -n my-namespace -- env | grep -E 'ISTIO|POD_'
 ```
 
-Key variables include:
+Useful variables often include:
 - `ISTIO_META_CLUSTER_ID`
 - `ISTIO_META_MESH_ID`
 - `ISTIO_META_NETWORK`
@@ -175,10 +175,10 @@ Pilot-agent exposes health check endpoints on port 15021. If something else in t
 kubectl exec <pod-name> -c istio-proxy -n my-namespace -- ss -tlnp | grep 15021
 ```
 
-The health endpoint should return 200:
+The health endpoint should return HTTP 200:
 
 ```bash
-kubectl exec <pod-name> -c istio-proxy -n my-namespace -- curl -s localhost:15021/healthz/ready
+kubectl exec <pod-name> -c istio-proxy -n my-namespace -- curl -s -o /dev/null -w "%{http_code}\n" localhost:15021/healthz/ready
 ```
 
 If it returns an error, pilot-agent isn't healthy.
@@ -199,7 +199,7 @@ Common causes:
 You can check the ready status directly:
 
 ```bash
-kubectl exec <pod-name> -c istio-proxy -n my-namespace -- curl -s localhost:15021/healthz/ready
+kubectl exec <pod-name> -c istio-proxy -n my-namespace -- curl -s -o /dev/null -w "%{http_code}\n" localhost:15021/healthz/ready
 ```
 
 ## Drain and Shutdown Issues
