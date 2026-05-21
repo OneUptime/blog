@@ -31,7 +31,7 @@ sum(kube_pod_container_resource_requests{namespace="istio-system", resource="cpu
 sum(kube_pod_container_resource_requests{namespace="istio-system", resource="memory"}) / 1024 / 1024 / 1024
 ```
 
-Convert the CPU and memory numbers to your cloud provider's pricing. For example, on AWS with m5.xlarge instances ($0.192/hour), each core of reserved CPU costs roughly $140/month.
+Convert the CPU and memory numbers to your cloud provider's pricing. For example, on AWS with m5.xlarge instances ($0.192/hour), each instance costs roughly $140/month, or about $35/month per vCPU.
 
 ## Consolidate Ingress Gateways
 
@@ -148,7 +148,7 @@ The result is lower CPU and memory usage for istiod, and smaller xDS configurati
 
 Sidecars add a fixed CPU and memory overhead to every pod. This changes the optimal node size for your cluster.
 
-Consider a pod that requests 500m CPU and 512Mi memory. With a sidecar requesting 100m CPU and 128Mi memory, the total is 600m and 640Mi. That is a 20% increase in resources per pod.
+Consider a pod that requests 500m CPU and 512Mi memory. With a sidecar requesting 100m CPU and 128Mi memory, the total is 600m and 640Mi. That is a 20% increase in CPU and a 25% increase in memory per pod.
 
 If your nodes are small (4 CPU, 16 GB), the sidecar overhead is more noticeable because you fit fewer pods per node. Larger nodes (8 CPU, 32 GB) amortize the per-node overhead better.
 
