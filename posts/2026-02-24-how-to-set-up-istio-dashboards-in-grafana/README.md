@@ -15,20 +15,27 @@ Prometheus collects your Istio metrics, but staring at raw PromQL queries isn't 
 If you already have Grafana running (maybe from kube-prometheus-stack), you can skip this part. Otherwise, the quickest setup:
 
 ```bash
-helm repo add grafana https://grafana.github.io/helm-charts
+helm repo add grafana-community https://grafana-community.github.io/helm-charts
 helm repo update
 
-helm install grafana grafana/grafana \
+helm install grafana grafana-community/grafana \
   --namespace monitoring \
   --create-namespace \
   --set adminPassword='your-secure-password' \
   --set persistence.enabled=true \
-  --set persistence.size=10Gi
+  --set persistence.size=10Gi \
+  --set sidecar.dashboards.enabled=true \
+  --set-string sidecar.dashboards.labelValue=1 \
+  --set sidecar.datasources.enabled=true \
+  --set-string sidecar.datasources.labelValue=1
 ```
 
 Or if you're using kube-prometheus-stack, Grafana is already included:
 
 ```bash
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo update
+
 helm install monitoring prometheus-community/kube-prometheus-stack \
   --namespace monitoring \
   --create-namespace
@@ -45,7 +52,7 @@ metadata:
   name: grafana-datasources
   namespace: monitoring
   labels:
-    grafana_datasource: "true"
+    grafana_datasource: "1"
 data:
   prometheus.yaml: |
     apiVersion: 1
@@ -59,7 +66,7 @@ data:
           timeInterval: 30s
 ```
 
-You can also add it through the Grafana UI: go to Configuration > Data Sources > Add data source > Prometheus, and enter the URL `http://prometheus-operated.monitoring.svc:9090`.
+You can also add it through the Grafana UI: go to Connections > Data sources > Add new connection > Prometheus, and enter the URL `http://prometheus-operated.monitoring.svc:9090`.
 
 ## Importing Istio's Pre-Built Dashboards
 
@@ -74,15 +81,22 @@ Create ConfigMaps with the dashboard JSON and label them so Grafana's sidecar pi
 
 ISTIO_VERSION=1.24.0
 
-for dashboard in mesh workload service pilot; do
-  curl -sL "https://raw.githubusercontent.com/istio/istio/refs/tags/${ISTIO_VERSION}/manifests/addons/dashboards/${dashboard}-dashboard.json" \
-    -o "${dashboard}-dashboard.json"
+declare -A dashboards=(
+  [istio-mesh-dashboard.json]=istio-mesh-dashboard.gen.json
+  [istio-workload-dashboard.json]=istio-workload-dashboard.json
+  [istio-service-dashboard.json]=istio-service-dashboard.json
+  [pilot-dashboard.json]=pilot-dashboard.gen.json
+)
+
+for output in "${!dashboards[@]}"; do
+  curl -sL "https://raw.githubusercontent.com/istio/istio/${ISTIO_VERSION}/manifests/addons/dashboards/${dashboards[$output]}" \
+    -o "${output}"
 done
 
 # Create ConfigMaps
-for dashboard in mesh workload service pilot; do
+for dashboard in istio-mesh-dashboard istio-workload-dashboard istio-service-dashboard pilot-dashboard; do
   kubectl create configmap "istio-grafana-${dashboard}" \
-    --from-file="${dashboard}-dashboard.json" \
+    --from-file="${dashboard}.json" \
     --namespace monitoring
   kubectl label configmap "istio-grafana-${dashboard}" \
     grafana_dashboard=1 \
@@ -161,7 +175,7 @@ sum(rate(istio_requests_total{reporter="destination"}[5m])) by (destination_work
 
 Set the panel type to "Time series" and add a threshold at 0.01 (1% error rate) to highlight problematic services.
 
-### Latency Heatmap
+### P99 Latency Panel
 
 ```promql
 # P99 latency by service
@@ -171,7 +185,7 @@ histogram_quantile(0.99,
 )
 ```
 
-Use a "Heatmap" panel type to visualize latency distributions over time.
+Use a "Time series" panel type to visualize P99 latency over time.
 
 ### Service Topology Panel
 
@@ -180,7 +194,7 @@ Use a "Heatmap" panel type to visualize latency distributions over time.
 sum(rate(istio_requests_total{reporter="destination"}[5m])) by (source_workload, destination_workload)
 ```
 
-Use the "Node Graph" panel type to create a service dependency map.
+Use this query as the source for a table or graph panel, or transform the query results into the source and target fields required by the "Node Graph" panel type.
 
 ### mTLS Coverage Panel
 
@@ -222,14 +236,14 @@ This lets users select a namespace and workload from dropdowns instead of editin
 
 ## Alerting from Grafana
 
-Grafana can trigger alerts based on dashboard panels. Go to a panel, click the Alert tab, and set conditions:
+Grafana can trigger alerts based on dashboard panels. Open the panel menu, choose More > New alert rule, and set conditions:
 
 ```text
 WHEN avg() OF query(A) IS ABOVE 0.05
 FOR 5m
 ```
 
-This would alert when the error rate exceeds 5% for 5 minutes. Configure notification channels (Slack, PagerDuty, email) under Alerting > Notification channels.
+This would alert when the error rate exceeds 5% for 5 minutes. Configure contact points (Slack, PagerDuty, email) under Alerting > Contact points.
 
 For production environments, it's usually better to define alerting rules in Prometheus directly (using PrometheusRule resources) since Prometheus alerting is more reliable for critical alerts. Grafana alerting works well for less critical notifications.
 
@@ -275,7 +289,7 @@ data:
     }
 ```
 
-The Grafana sidecar (included in the Helm chart) watches for ConfigMaps with the `grafana_dashboard` label and automatically loads them.
+The Grafana sidecar (available in the Helm chart and enabled in the install command above) watches for ConfigMaps with the `grafana_dashboard` label and automatically loads them.
 
 ## Performance Considerations
 
