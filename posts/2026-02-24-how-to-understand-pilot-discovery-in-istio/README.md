@@ -77,7 +77,7 @@ The translation from Kubernetes/Istio resources to Envoy configuration is where 
 For example, when Pilot-Discovery sees this VirtualService:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: reviews
@@ -99,7 +99,7 @@ spec:
         subset: v1
 ```
 
-It generates Envoy route configuration with two routes: one matching the `end-user: jason` header that routes to the v2 cluster, and a default route to the v1 cluster.
+Assuming a corresponding DestinationRule defines the `v1` and `v2` subsets, it generates Envoy route configuration with two routes: one matching the `end-user: jason` header that routes to the v2 cluster, and a default route to the v1 cluster.
 
 You can see the generated Envoy routes:
 
@@ -116,7 +116,9 @@ Once the configuration is generated, Pilot-Discovery pushes it to sidecars using
 - **RDS** (Route Discovery Service) - Route configuration
 - **CDS** (Cluster Discovery Service) - Upstream cluster configuration
 - **EDS** (Endpoint Discovery Service) - Endpoint addresses
-- **SDS** (Secret Discovery Service) - TLS certificates
+- **SDS** (Secret Discovery Service) - TLS secrets in Envoy's xDS API
+
+In Istio sidecar mode, workload certificates are normally delivered to Envoy by the local Istio agent over SDS, while Pilot-Discovery's main configuration pushes are LDS, RDS, CDS, and EDS.
 
 Pilot-Discovery decides which xDS types need to be pushed based on what changed. If only endpoints changed (a pod was added/removed), it pushes just EDS. If a VirtualService changed, it pushes RDS and possibly CDS.
 
@@ -151,13 +153,13 @@ my-app-abc.default                   SYNCED SYNCED SYNCED SYNCED -      istiod-x
 payment-def.payment                  SYNCED SYNCED SYNCED SYNCED -      istiod-xyz.istio-system   1.20.0
 ```
 
-The SYNCED status means the proxy has the latest configuration. STALE means a push failed or the proxy disconnected.
+The SYNCED status means Envoy has acknowledged the latest configuration Istiod sent to it. STALE means Istiod sent an update but has not received an acknowledgement.
 
 Check the number of connected proxies:
 
 ```bash
 kubectl exec -n istio-system deploy/istiod -- \
-    curl -s localhost:15014/metrics | grep pilot_xds_connected
+    curl -s localhost:15014/metrics | grep '^pilot_xds '
 ```
 
 ## Configuration Debugging
@@ -220,7 +222,7 @@ spec:
 The single biggest optimization for Pilot-Discovery is using Sidecar resources to limit what each proxy receives:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
