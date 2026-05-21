@@ -26,7 +26,7 @@ Install the kubectl plugin for easier management:
 ```bash
 curl -LO https://github.com/argoproj/argo-rollouts/releases/latest/download/kubectl-argo-rollouts-linux-amd64
 chmod +x kubectl-argo-rollouts-linux-amd64
-mv kubectl-argo-rollouts-linux-amd64 /usr/local/bin/kubectl-argo-rollouts
+sudo mv kubectl-argo-rollouts-linux-amd64 /usr/local/bin/kubectl-argo-rollouts
 ```
 
 Verify the installation:
@@ -274,7 +274,7 @@ spec:
         - pause: { duration: 5m }
 ```
 
-The analysis step runs after the first weight increase. If the success rate drops below 99% or latency exceeds 500ms for 3 consecutive checks, the rollout is aborted and traffic returns to stable.
+The analysis step runs after the first weight increase. If the success rate drops below 99% or latency exceeds 500ms for 3 failed checks, the rollout is aborted and traffic returns to stable.
 
 ## Background Analysis
 
@@ -374,7 +374,7 @@ jobs:
         run: |
           curl -LO https://github.com/argoproj/argo-rollouts/releases/latest/download/kubectl-argo-rollouts-linux-amd64
           chmod +x kubectl-argo-rollouts-linux-amd64
-          mv kubectl-argo-rollouts-linux-amd64 /usr/local/bin/kubectl-argo-rollouts
+          sudo mv kubectl-argo-rollouts-linux-amd64 /usr/local/bin/kubectl-argo-rollouts
 
       - name: Update image
         run: |
@@ -394,34 +394,29 @@ jobs:
 
 ## ArgoCD Integration
 
-If you use ArgoCD, it natively supports Argo Rollouts. Your Application manifest stays the same, and ArgoCD detects Rollout resources automatically. You can view and manage rollouts directly from the ArgoCD UI.
+If you use ArgoCD, it supports Argo Rollouts health checks and resource actions. Your Application manifest stays the same, and ArgoCD detects Rollout resources automatically.
 
-Enable the Argo Rollouts extension in ArgoCD:
+If your ArgoCD version does not already include the Rollout health check, add a resource customization:
 
 ```yaml
 # argocd-cm ConfigMap
 
 data:
-  resource.customizations: |
-    argoproj.io/Rollout:
-      health.lua: |
-        hs = {}
-        if obj.status ~= nil then
-          if obj.status.phase == "Healthy" then
-            hs.status = "Healthy"
-            hs.message = "Rollout is healthy"
-          elseif obj.status.phase == "Degraded" then
-            hs.status = "Degraded"
-            hs.message = "Rollout is degraded"
-          elseif obj.status.phase == "Paused" then
-            hs.status = "Suspended"
-            hs.message = "Rollout is paused"
-          else
-            hs.status = "Progressing"
-            hs.message = "Rollout is progressing"
-          end
-        end
-        return hs
+  resource.customizations.health.argoproj.io_Rollout: |
+    hs = {}
+    hs.status = "Progressing"
+    hs.message = "Waiting for rollout"
+    if obj.status ~= nil and obj.status.phase ~= nil then
+      if obj.status.phase == "Paused" then
+        hs.status = "Suspended"
+      else
+        hs.status = obj.status.phase
+      end
+      if obj.status.message ~= nil then
+        hs.message = obj.status.message
+      end
+    end
+    return hs
 ```
 
 ## Header-Based Routing
