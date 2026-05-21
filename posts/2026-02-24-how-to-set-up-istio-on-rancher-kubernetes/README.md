@@ -8,13 +8,13 @@ Description: Step-by-step guide to installing and configuring Istio on Rancher-m
 
 ---
 
-Rancher is one of the most popular Kubernetes management platforms, and it has built-in support for Istio. But the built-in option is not always the best choice. Depending on your version of Rancher, the bundled Istio might be outdated or configured in ways that do not match your needs. This guide covers both the Rancher UI approach and the manual installation approach, so you can pick what works best for your situation.
+Rancher is one of the most popular Kubernetes management platforms, and it has offered built-in support for Istio. But the built-in option is not always the best choice. Depending on your version of Rancher, the bundled Istio might be outdated or configured in ways that do not match your needs. Rancher-Istio is also deprecated in Rancher v2.12.0 and later, so check your Rancher version before choosing this path. This guide covers both the Rancher UI approach and the manual installation approach, so you can pick what works best for your situation.
 
 ## Prerequisites
 
 Before installing Istio, make sure your Rancher-managed cluster meets these requirements:
 
-- Kubernetes version 1.25 or newer
+- A Kubernetes version supported by the Istio version you are installing. For example, Istio 1.30 supports Kubernetes 1.32 through 1.36.
 - At least 4 CPUs and 8 GB RAM available for Istio components
 - The kubectl context is set to your Rancher cluster
 - Helm 3 is installed
@@ -24,7 +24,7 @@ Verify your cluster:
 ```bash
 # Check Kubernetes version
 
-kubectl version --short
+kubectl version
 
 # Check available resources
 kubectl top nodes
@@ -46,8 +46,10 @@ Rancher provides an Istio integration through its Apps & Marketplace. This is th
 The Rancher UI will let you configure basic options. But for production use, you should customize the values:
 
 ```yaml
-# Custom values for Rancher Istio chart
-istio:
+# Rancher Istio overlay file
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
+spec:
   components:
     ingressGateways:
     - name: istio-ingressgateway
@@ -104,7 +106,6 @@ spec:
     defaultConfig:
       proxyMetadata:
         ISTIO_META_DNS_CAPTURE: "true"
-        ISTIO_META_DNS_AUTO_ALLOCATE: "true"
   components:
     pilot:
       k8s:
@@ -136,18 +137,18 @@ spec:
       - cattle-fleet-system
 ```
 
-Notice the `cattle-system` and `cattle-fleet-system` namespaces in the CNI exclusion list. These are Rancher system namespaces that should not have Istio sidecars injected.
+Notice the `cattle-system` and `cattle-fleet-system` namespaces in the CNI exclusion list. These are Rancher system namespaces that should not be processed by Istio CNI, and they should also not be labeled for sidecar injection.
 
 Install Istio:
 
 ```bash
-istioctl install -f istio-config.yaml
+istioctl install -f istio-config.yaml --verify
 ```
 
 Verify the installation:
 
 ```bash
-istioctl verify-install
+istioctl analyze -n istio-system
 kubectl get pods -n istio-system
 ```
 
@@ -183,23 +184,43 @@ spec:
     protocol: TCP
     destination:
       ports:
+      - 443
       - 15001
       - 15006
+      - 15008
       - 15010
       - 15012
       - 15014
       - 15017
+      - 15020
       - 15021
       - 15090
+  - action: Allow
+    protocol: UDP
+    destination:
+      ports:
+      - 15053
   egress:
   - action: Allow
     protocol: TCP
     destination:
       ports:
+      - 443
       - 15001
       - 15006
+      - 15008
       - 15010
       - 15012
+      - 15014
+      - 15017
+      - 15020
+      - 15021
+      - 15090
+  - action: Allow
+    protocol: UDP
+    destination:
+      ports:
+      - 15053
 ```
 
 ## Excluding Rancher System Namespaces
@@ -381,7 +402,7 @@ If you installed via Rancher UI, upgrade through the Apps marketplace. If you us
 
 ```bash
 # Download new version
-curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.22.1 sh -
+curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.30.0 sh -
 
 # Run pre-upgrade check
 istioctl x precheck
