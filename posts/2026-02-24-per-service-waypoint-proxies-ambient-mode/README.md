@@ -28,7 +28,7 @@ To create a waypoint for a specific service, you use istioctl with the `--for` f
 ```bash
 # Create a waypoint for a specific service
 
-istioctl waypoint apply -n my-app --name reviews-waypoint
+istioctl waypoint apply -n my-app --name reviews-waypoint --for service
 ```
 
 Then label the service to use that waypoint:
@@ -40,11 +40,13 @@ kubectl label service reviews -n my-app istio.io/use-waypoint=reviews-waypoint
 You can also do this declaratively with a Gateway resource:
 
 ```yaml
-apiVersion: gateway.networking.k8s.io/v1beta1
+apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
   name: reviews-waypoint
   namespace: my-app
+  labels:
+    istio.io/waypoint-for: service
 spec:
   gatewayClassName: istio-waypoint
   listeners:
@@ -66,7 +68,7 @@ Check that the waypoint is running and the service is correctly associated:
 
 ```bash
 # See the waypoint pod
-kubectl get pods -n my-app -l istio.io/gateway-name=reviews-waypoint
+kubectl get pods -n my-app -l gateway.networking.k8s.io/gateway-name=reviews-waypoint
 
 # Check the service label
 kubectl get service reviews -n my-app -o jsonpath='{.metadata.labels.istio\.io/use-waypoint}'
@@ -103,7 +105,7 @@ Services without a waypoint label will not get L7 processing - they will only ha
 kubectl get gateway -n my-app
 
 # List all waypoint pods
-kubectl get pods -n my-app -l gateway.istio.io/managed=istio.io-mesh-controller
+kubectl get pods -n my-app -l gateway.networking.k8s.io/gateway-class-name=istio-waypoint
 ```
 
 ## Applying Policies to Per-Service Waypoints
@@ -131,31 +133,27 @@ spec:
         paths: ["/reviews/*"]
 ```
 
-Similarly, VirtualService rules targeting the reviews service will be processed by the reviews waypoint:
+Similarly, HTTPRoute rules attached to the reviews service will be processed by the reviews waypoint:
 
 ```yaml
-apiVersion: networking.istio.io/v1
-kind: VirtualService
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
 metadata:
-  name: reviews-vs
+  name: reviews-route
   namespace: my-app
 spec:
-  hosts:
-  - reviews
-  http:
-  - fault:
-    delay:
-      percentage:
-        value: 10
-      fixedDelay: 2s
-    route:
-    - destination:
-        host: reviews
-        subset: v1
+  parentRefs:
+  - group: ""
+    kind: Service
+    name: reviews
+    port: 9080
+  rules:
+  - backendRefs:
+    - name: reviews-v1
+      port: 9080
       weight: 80
-    - destination:
-        host: reviews
-        subset: v2
+    - name: reviews-v2
+      port: 9080
       weight: 20
 ```
 
@@ -240,7 +238,7 @@ To debug a specific service's waypoint, target its pod:
 
 ```bash
 # Get the reviews waypoint pod
-REVIEWS_WP=$(kubectl get pod -n my-app -l istio.io/gateway-name=reviews-waypoint -o jsonpath='{.items[0].metadata.name}')
+REVIEWS_WP=$(kubectl get pod -n my-app -l gateway.networking.k8s.io/gateway-name=reviews-waypoint -o jsonpath='{.items[0].metadata.name}')
 
 # Check its configuration
 istioctl proxy-config route $REVIEWS_WP -n my-app
