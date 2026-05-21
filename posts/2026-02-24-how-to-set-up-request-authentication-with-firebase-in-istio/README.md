@@ -155,11 +155,11 @@ Key claims:
 You can use Istio's AuthorizationPolicy to check Firebase token claims:
 
 ```yaml
-# Only allow verified email users
+# Only allow users from a specific email domain
 apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
-  name: require-verified-email
+  name: require-company-email
   namespace: backend
 spec:
   selector:
@@ -168,8 +168,8 @@ spec:
   action: ALLOW
   rules:
     - when:
-        - key: request.auth.claims[email_verified]
-          values: ["true"]
+        - key: request.auth.claims[email]
+          values: ["*@example.com"]
 ```
 
 Or restrict to specific users:
@@ -202,7 +202,7 @@ Set custom claims (server-side):
 ```python
 from firebase_admin import auth
 
-auth.set_custom_user_claims('user-uid', {'admin': True, 'role': 'editor'})
+auth.set_custom_user_claims('user-uid', {'admin': 'true', 'role': 'editor'})
 ```
 
 Then validate with Istio:
@@ -308,7 +308,7 @@ spec:
 kubectl logs deploy/api-server -n backend -c istio-proxy --tail=50 | grep -i jwt
 
 # Decode a Firebase token to check claims
-echo "$TOKEN" | cut -d. -f2 | base64 -d 2>/dev/null | python3 -m json.tool
+python3 -c 'import base64,json,sys; p=sys.argv[1].split(".")[1]; p += "=" * (-len(p) % 4); print(json.dumps(json.loads(base64.urlsafe_b64decode(p)), indent=2))' "$TOKEN"
 
 # Verify the JWKS endpoint is reachable
 kubectl exec deploy/sleep -c sleep -- \
