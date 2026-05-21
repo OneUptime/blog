@@ -14,11 +14,11 @@ The integration follows the standard OIDC pattern: Okta issues JWTs, and Istio v
 
 ## Setting Up Okta
 
-You need an Okta developer account or an existing Okta org. Log into the Okta Admin Console and set up the following:
+You need an Okta Integrator Free Plan org or an existing Okta org with API Access Management. Log into the Okta Admin Console and set up the following:
 
 **Create an Authorization Server:**
 
-Go to Security > API and check if you want to use the default authorization server or create a custom one. For most cases, a custom authorization server gives you more control:
+Go to Security > API and check if you want to use the default custom authorization server or create another custom one. For most cases, a custom authorization server gives you the control you need for mesh APIs:
 
 - **Name**: Mesh Services
 - **Audience**: `https://api.mycompany.com`
@@ -75,13 +75,15 @@ spec:
       outputPayloadToHeader: "x-jwt-payload"
 ```
 
-If you are using Okta's default authorization server, the URLs look slightly different:
+If you are using Okta's default custom authorization server, the URLs use `default` as the authorization server ID:
 
 ```yaml
 jwtRules:
-  - issuer: "https://mycompany.okta.com"
-    jwksUri: "https://mycompany.okta.com/oauth2/v1/keys"
+  - issuer: "https://mycompany.okta.com/oauth2/default"
+    jwksUri: "https://mycompany.okta.com/oauth2/default/v1/keys"
 ```
+
+Use a custom authorization server, including Okta's default custom authorization server, for mesh APIs that need custom scopes, claims, and access policies. Okta's org authorization server is intended for Okta APIs and basic OIDC SSO, not for protecting your own resource servers with custom API scopes.
 
 Apply the configuration:
 
@@ -119,7 +121,7 @@ metadata:
   name: write-requires-scope
   namespace: default
 spec:
-  action: ALLOW
+  action: DENY
   rules:
     - from:
         - source:
@@ -130,7 +132,7 @@ spec:
             paths: ["/api/*"]
       when:
         - key: request.auth.claims[scp]
-          values: ["mesh.write"]
+          notValues: ["mesh.write"]
 ```
 
 ## Using Okta Groups for Authorization
@@ -194,10 +196,9 @@ Get a token using client credentials:
 ```bash
 TOKEN=$(curl -s -X POST \
   "https://mycompany.okta.com/oauth2/aus1234567/v1/token" \
+  -u "your-client-id:your-client-secret" \
   -H "Content-Type: application/x-www-form-urlencoded" \
   -d "grant_type=client_credentials" \
-  -d "client_id=your-client-id" \
-  -d "client_secret=your-client-secret" \
   -d "scope=mesh.read mesh.write" | jq -r '.access_token')
 ```
 
@@ -242,10 +243,9 @@ Exchange the code for tokens:
 
 ```bash
 curl -s -X POST "https://mycompany.okta.com/oauth2/aus1234567/v1/token" \
+  -u "your-client-id:your-client-secret" \
   -H "Content-Type: application/x-www-form-urlencoded" \
   -d "grant_type=authorization_code" \
-  -d "client_id=your-client-id" \
-  -d "client_secret=your-client-secret" \
   -d "code=the-authorization-code" \
   -d "redirect_uri=https://app.mycompany.com/callback"
 ```
@@ -279,7 +279,7 @@ Common issues and how to fix them:
 ```bash
 # Decode and check the issuer
 
-echo $TOKEN | cut -d'.' -f2 | base64 -d 2>/dev/null | jq .iss
+echo "$TOKEN" | cut -d'.' -f2 | tr '_-' '/+' | awk '{ while (length($0) % 4) $0 = $0 "="; print }' | base64 -d | jq .iss
 ```
 
 **JWKS fetch timeout**: Istio needs to reach Okta's JWKS endpoint. If you have strict egress policies, add a ServiceEntry:
