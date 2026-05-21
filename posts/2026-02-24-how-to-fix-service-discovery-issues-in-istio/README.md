@@ -8,7 +8,7 @@ Description: Diagnose and fix service discovery problems in Istio including miss
 
 ---
 
-Service discovery in Istio builds on top of Kubernetes service discovery but adds its own layer of complexity. Istio's control plane (istiod) watches the Kubernetes API for Services and Endpoints, then pushes that information to every Envoy sidecar in the mesh. When this pipeline breaks, the sidecar might not know about a service, might have stale endpoints, or might route to the wrong destination entirely.
+Service discovery in Istio builds on top of Kubernetes service discovery but adds its own layer of complexity. Istio's control plane (istiod) watches the Kubernetes API for Services and EndpointSlices, then pushes that information to every Envoy sidecar in the mesh. When this pipeline breaks, the sidecar might not know about a service, might have stale endpoints, or might route to the wrong destination entirely.
 
 This guide walks through how to diagnose and fix service discovery problems at every level.
 
@@ -16,14 +16,14 @@ This guide walks through how to diagnose and fix service discovery problems at e
 
 Service discovery flows through these steps:
 
-1. Kubernetes registers Services and Endpoints
+1. Kubernetes registers Services and EndpointSlices
 2. istiod watches the Kubernetes API and builds an internal registry
 3. istiod pushes configuration (EDS - Endpoint Discovery Service) to Envoy sidecars
 4. Each Envoy sidecar maintains its own list of endpoints for each service
 
 A problem at any step causes discovery issues. The debugging approach is to check each step.
 
-## Step 1: Check Kubernetes Service and Endpoints
+## Step 1: Check Kubernetes Service and EndpointSlices
 
 Start at the source:
 
@@ -32,14 +32,14 @@ Start at the source:
 
 kubectl get svc orders-service -n production
 
-# Check if the service has endpoints
-kubectl get endpoints orders-service -n production
+# Check if the service has endpoint slices
+kubectl get endpointslice -n production -l kubernetes.io/service-name=orders-service
 
 # Check endpoint details
-kubectl describe endpoints orders-service -n production
+kubectl describe endpointslice -n production -l kubernetes.io/service-name=orders-service
 ```
 
-If the endpoints list is empty, the service selector does not match any running pods:
+If the EndpointSlice list is empty or has no ready addresses, the service selector does not match any running ready pods:
 
 ```bash
 # Check the service selector
@@ -63,7 +63,7 @@ Verify that istiod has picked up the service:
 kubectl exec -n istio-system deployment/istiod -- curl -s localhost:15014/debug/registryz | jq '.[] | select(.hostname | contains("orders-service"))'
 
 # Check the endpoints istiod knows about
-kubectl exec -n istio-system deployment/istiod -- curl -s localhost:15014/debug/endpointz | jq '.[] | select(.[] | .service | contains("orders-service"))'
+kubectl exec -n istio-system deployment/istiod -- curl -s localhost:15014/debug/endpointz | grep orders-service
 ```
 
 If istiod does not have the service or endpoints, there might be a problem with its Kubernetes API watch:
@@ -72,9 +72,9 @@ If istiod does not have the service or endpoints, there might be a problem with 
 # Check istiod logs for watch errors
 kubectl logs -n istio-system deployment/istiod | grep "error\|failed\|watch"
 
-# Check if istiod has RBAC to read services and endpoints
+# Check if istiod has RBAC to read services and endpoint slices
 kubectl auth can-i list services --as=system:serviceaccount:istio-system:istiod -n production
-kubectl auth can-i list endpoints --as=system:serviceaccount:istio-system:istiod -n production
+kubectl auth can-i list endpointslices.discovery.k8s.io --as=system:serviceaccount:istio-system:istiod -n production
 ```
 
 ## Step 3: Check the Sidecar's View
@@ -137,7 +137,7 @@ kubectl get sidecar -n production -o yaml
 If the Sidecar limits egress hosts, only listed services are visible:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -164,15 +164,16 @@ If orders-service is in a different namespace and not listed, add it:
 If the proxy has stale endpoints (pointing to pods that no longer exist):
 
 ```bash
-# Compare Kubernetes endpoints with Envoy endpoints
-kubectl get endpoints orders-service -n production -o jsonpath='{.subsets[0].addresses[*].ip}'
+# Compare Kubernetes endpoint slices with Envoy endpoints
+kubectl get endpointslice -n production -l kubernetes.io/service-name=orders-service \
+  -o jsonpath='{range .items[*].endpoints[*]}{.addresses[*]}{" "}{end}'
 
 istioctl proxy-config endpoints <client-pod> -n production \
   --cluster "outbound|8080||orders-service.production.svc.cluster.local" -o json | \
   jq '.[].hostStatuses[].address.socketAddress.address'
 ```
 
-If Envoy has IPs that are not in the Kubernetes endpoints, the configuration has not been updated. This usually resolves itself within a few seconds. If it persists:
+If Envoy has IPs that are not in the Kubernetes EndpointSlices, the configuration has not been updated. This usually resolves itself within a few seconds. If it persists:
 
 ```bash
 # Check istiod push status
@@ -184,10 +185,10 @@ kubectl delete pod <client-pod> -n production
 
 ## External Service Discovery
 
-For services outside the mesh (external APIs, databases, etc.), Istio needs ServiceEntries:
+For services outside the mesh (external APIs, databases, etc.) that you want Istio to discover and manage explicitly, configure ServiceEntries:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-database
@@ -223,10 +224,10 @@ kubectl get configmap istio -n istio-system -o yaml | grep outboundTrafficPolicy
 
 ## WorkloadEntry for Non-Kubernetes Services
 
-For services running outside Kubernetes (VMs, bare metal), use WorkloadEntry:
+For services running outside Kubernetes (VMs, bare metal), use WorkloadEntry with a matching ServiceEntry:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: WorkloadEntry
 metadata:
   name: legacy-service-vm1
@@ -238,15 +239,23 @@ spec:
     version: v1
   serviceAccount: legacy-service
 ---
-apiVersion: v1
-kind: Service
+apiVersion: networking.istio.io/v1
+kind: ServiceEntry
 metadata:
   name: legacy-service
   namespace: production
 spec:
+  hosts:
+    - legacy-service.production.svc.cluster.local
+  location: MESH_INTERNAL
   ports:
     - name: http
-      port: 8080
+      number: 8080
+      protocol: HTTP
+  resolution: STATIC
+  workloadSelector:
+    labels:
+      app: legacy-service
 ```
 
 Verify the WorkloadEntry is being discovered:
@@ -286,7 +295,7 @@ Aggressive outlier detection can remove healthy endpoints:
 
 ```yaml
 # Relax outlier detection
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: orders-service
@@ -303,8 +312,8 @@ spec:
 ## Debugging Summary
 
 ```bash
-# 1. Kubernetes endpoints exist?
-kubectl get endpoints <service> -n production
+# 1. Kubernetes endpoint slices exist?
+kubectl get endpointslice -n production -l kubernetes.io/service-name=<service>
 
 # 2. istiod has the service?
 kubectl exec -n istio-system deploy/istiod -- curl -s localhost:15014/debug/registryz | jq '. | length'
@@ -322,4 +331,4 @@ kubectl get sidecar -n production
 istioctl analyze -n production
 ```
 
-Service discovery issues in Istio usually trace back to one of three things: Kubernetes endpoints not being registered (pod labels or readiness), Sidecar resources limiting visibility, or stale proxy configuration. Check each step of the pipeline from Kubernetes to istiod to the sidecar proxy, and you will find where the chain breaks.
+Service discovery issues in Istio usually trace back to one of three things: Kubernetes endpoint slices not being registered (pod labels or readiness), Sidecar resources limiting visibility, or stale proxy configuration. Check each step of the pipeline from Kubernetes to istiod to the sidecar proxy, and you will find where the chain breaks.
