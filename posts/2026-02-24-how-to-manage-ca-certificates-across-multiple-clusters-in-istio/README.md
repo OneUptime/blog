@@ -45,10 +45,11 @@ cd certs
 openssl genrsa -out root-key.pem 4096
 
 # Generate root CA certificate
-openssl req -new -x509 -key root-key.pem -out root-cert.pem -days 3650 \
+openssl req -new -x509 -sha256 -key root-key.pem -out root-cert.pem -days 3650 \
   -subj "/O=MyOrganization/CN=Root CA" \
+  -addext "subjectKeyIdentifier=hash" \
   -addext "basicConstraints=critical,CA:TRUE" \
-  -addext "keyUsage=critical,keyCertSign,cRLSign"
+  -addext "keyUsage=critical,digitalSignature,nonRepudiation,keyEncipherment,keyCertSign,cRLSign"
 ```
 
 Verify the root certificate:
@@ -65,13 +66,13 @@ For each cluster, generate a unique intermediate CA certificate signed by the ro
 # Cluster 1 intermediate CA
 openssl genrsa -out cluster1-ca-key.pem 4096
 
-openssl req -new -key cluster1-ca-key.pem -out cluster1-ca-csr.pem \
+openssl req -new -sha256 -key cluster1-ca-key.pem -out cluster1-ca-csr.pem \
   -subj "/O=MyOrganization/CN=Cluster 1 Intermediate CA"
 
-openssl x509 -req -in cluster1-ca-csr.pem \
+openssl x509 -req -sha256 -in cluster1-ca-csr.pem \
   -CA root-cert.pem -CAkey root-key.pem -CAcreateserial \
   -out cluster1-ca-cert.pem -days 730 \
-  -extfile <(printf "basicConstraints=critical,CA:TRUE,pathlen:0\nkeyUsage=critical,keyCertSign,cRLSign\nsubjectAltName=URI:spiffe://cluster.local")
+  -extfile <(printf "subjectKeyIdentifier=hash\nbasicConstraints=critical,CA:TRUE,pathlen:0\nkeyUsage=critical,digitalSignature,nonRepudiation,keyEncipherment,keyCertSign,cRLSign\nsubjectAltName=DNS:istiod.istio-system.svc")
 
 # Create the certificate chain
 cat cluster1-ca-cert.pem root-cert.pem > cluster1-cert-chain.pem
@@ -82,13 +83,13 @@ Repeat for Cluster 2:
 ```bash
 openssl genrsa -out cluster2-ca-key.pem 4096
 
-openssl req -new -key cluster2-ca-key.pem -out cluster2-ca-csr.pem \
+openssl req -new -sha256 -key cluster2-ca-key.pem -out cluster2-ca-csr.pem \
   -subj "/O=MyOrganization/CN=Cluster 2 Intermediate CA"
 
-openssl x509 -req -in cluster2-ca-csr.pem \
+openssl x509 -req -sha256 -in cluster2-ca-csr.pem \
   -CA root-cert.pem -CAkey root-key.pem -CAcreateserial \
   -out cluster2-ca-cert.pem -days 730 \
-  -extfile <(printf "basicConstraints=critical,CA:TRUE,pathlen:0\nkeyUsage=critical,keyCertSign,cRLSign\nsubjectAltName=URI:spiffe://cluster.local")
+  -extfile <(printf "subjectKeyIdentifier=hash\nbasicConstraints=critical,CA:TRUE,pathlen:0\nkeyUsage=critical,digitalSignature,nonRepudiation,keyEncipherment,keyCertSign,cRLSign\nsubjectAltName=DNS:istiod.istio-system.svc")
 
 cat cluster2-ca-cert.pem root-cert.pem > cluster2-cert-chain.pem
 ```
