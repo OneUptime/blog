@@ -30,7 +30,7 @@ CURRENT_VERSION=$(istioctl version --short --remote=false)
 # Ensure Kubernetes version is supported by the target Istio version
 
 # 3. Download the target version of istioctl
-TARGET_VERSION=1.24.0
+TARGET_VERSION=1.30.0
 curl -L https://istio.io/downloadIstio | ISTIO_VERSION=$TARGET_VERSION sh -
 export PATH=$PWD/istio-$TARGET_VERSION/bin:$PATH
 
@@ -65,8 +65,11 @@ kubectl get pods --all-namespaces --field-selector=status.phase!=Running,status.
 # Backup the current IstioOperator configuration
 kubectl get istiooperator -n istio-system -o yaml > istio-operator-backup.yaml
 
-# Backup all Istio configuration resources
-for resource in virtualservices destinationrules gateways serviceentries authorizationpolicies peerauthentications; do
+# Backup Istio configuration resources
+for resource in $(kubectl api-resources --api-group=networking.istio.io -o name; \
+                  kubectl api-resources --api-group=security.istio.io -o name; \
+                  kubectl api-resources --api-group=telemetry.istio.io -o name; \
+                  kubectl api-resources --api-group=extensions.istio.io -o name); do
   kubectl get $resource --all-namespaces -o yaml > backup-$resource.yaml
 done
 
@@ -81,7 +84,7 @@ The canary approach installs the new version alongside the current version with 
 ```bash
 # Create the IstioOperator config for the new version
 # Use a revision label to distinguish it from the current version
-TARGET_REVISION=1-24-0
+TARGET_REVISION=1-30-0
 
 istioctl install --set revision=$TARGET_REVISION \
   --set components.pilot.k8s.resources.requests.cpu=500m \
@@ -121,7 +124,9 @@ kubectl label namespace test-namespace istio-injection- istio.io/rev=$TARGET_REV
 kubectl rollout restart deployment -n test-namespace
 
 # Wait for rollout
-kubectl rollout status deployment --all -n test-namespace --timeout=300s
+for deployment in $(kubectl get deployment -n test-namespace -o name); do
+  kubectl rollout status "$deployment" -n test-namespace --timeout=300s
+done
 
 # Verify pods are running with the new sidecar
 istioctl proxy-status | grep test-namespace
@@ -171,7 +176,9 @@ kubectl get namespace -l istio-injection=enabled
 NAMESPACE=my-namespace
 kubectl label namespace $NAMESPACE istio-injection- istio.io/rev=$TARGET_REVISION
 kubectl rollout restart deployment -n $NAMESPACE
-kubectl rollout status deployment --all -n $NAMESPACE --timeout=300s
+for deployment in $(kubectl get deployment -n $NAMESPACE -o name); do
+  kubectl rollout status "$deployment" -n $NAMESPACE --timeout=300s
+done
 
 # Validate after each namespace
 istioctl proxy-status | grep $NAMESPACE
@@ -187,18 +194,17 @@ Gateways need to be migrated separately:
 # Check current gateway version
 kubectl get pods -n istio-system -l app=istio-ingressgateway -o jsonpath='{.items[0].spec.containers[0].image}'
 
-# The canary install should have created a new gateway deployment
+# A canary control plane install does not automatically create a separate gateway deployment in the default profile
 kubectl get deploy -n istio-system | grep gateway
 ```
 
 If using in-place upgrade for gateways:
 
 ```bash
-# Update the gateway to use the new revision
-istioctl install --set revision=$TARGET_REVISION \
-  --set components.ingressGateways[0].name=istio-ingressgateway \
-  --set components.ingressGateways[0].enabled=true \
-  -y
+# Update the gateway pod template to use the new revision
+kubectl patch deployment istio-ingressgateway -n istio-system -p \
+  "{\"spec\":{\"template\":{\"metadata\":{\"labels\":{\"istio.io/rev\":\"$TARGET_REVISION\"}}}}}"
+kubectl rollout status deployment/istio-ingressgateway -n istio-system --timeout=300s
 ```
 
 ### Step 8: Remove the Old Control Plane
@@ -210,11 +216,11 @@ After all workloads are migrated and validated:
 istioctl proxy-status
 # All proxies should show the new version
 
-# Remove the old control plane
-istioctl uninstall --revision default -y
+# Remove the old control plane if it had a specific revision
+istioctl uninstall --revision <old-revision> -y
 
-# Or if the old version had a specific revision:
-# istioctl uninstall --revision <old-revision> -y
+# If the old control plane did not have a revision label, uninstall it using its original IstioOperator file:
+# istioctl uninstall -f <old-istio-operator.yaml> -y
 
 # Verify only the new istiod remains
 kubectl get pods -n istio-system -l app=istiod
@@ -233,7 +239,7 @@ istioctl proxy-status
 istioctl analyze --all-namespaces
 
 # Verify certificate issuance
-istioctl proxy-config secret deploy/<any-pod> | head -10
+istioctl proxy-config secret <pod-name>.<namespace> | head -10
 ```
 
 ### Rollback Procedure
