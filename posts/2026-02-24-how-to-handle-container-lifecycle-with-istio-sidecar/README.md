@@ -12,9 +12,9 @@ When Istio injects a sidecar into your pod, it fundamentally changes the contain
 
 ## The Pod Lifecycle with Istio
 
-A normal Kubernetes pod lifecycle looks like: init containers run, then all containers start simultaneously. With Istio, the story is more complex:
+A normal Kubernetes pod lifecycle looks like: init containers run, then all application containers start. With Istio sidecar injection, the story is more complex:
 
-1. Kubernetes init containers run (including `istio-init` which sets up iptables rules)
+1. Kubernetes init containers run (including `istio-init` which sets up iptables rules when Istio CNI is not being used)
 2. The `istio-proxy` container starts
 3. Your application container starts
 4. Both containers run until the pod is terminated
@@ -61,18 +61,16 @@ This adds a `postStart` hook to the sidecar that blocks until the proxy is ready
 
 ### Kubernetes Native Sidecar Containers
 
-Starting with Kubernetes 1.28 (beta), there's native support for sidecar containers using the `restartPolicy: Always` field on init containers. Istio can use this feature:
+Kubernetes added native sidecar containers as an alpha feature in 1.28, enabled it by default as beta in 1.29, and marked it stable in 1.33. Native sidecars use the `restartPolicy: Always` field on init containers. Istio 1.27 and later enables native sidecars by default for eligible pods; on older Istio versions, you can enable them with:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
   values:
-    global:
-      proxy:
-        startupProbe:
-          failureThreshold: 30
-          periodSeconds: 1
+    pilot:
+      env:
+        ENABLE_NATIVE_SIDECARS: "true"
 ```
 
 With native sidecars, Kubernetes guarantees the sidecar starts before the application container and stops after it.
@@ -81,7 +79,7 @@ With native sidecars, Kubernetes guarantees the sidecar starts before the applic
 
 ### Application Probes Through the Sidecar
 
-Istio can rewrite your application's health check probes to go through the sidecar. This is controlled by the `rewriteAppHTTPProbers` setting:
+Istio can rewrite your application's health check probes to go through the sidecar agent. This is controlled globally by the `rewriteAppHTTPProbe` setting:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -92,10 +90,10 @@ spec:
       holdApplicationUntilProxyStarts: true
   values:
     sidecarInjectorWebhook:
-      rewriteAppHTTPProbers: true
+      rewriteAppHTTPProbe: true
 ```
 
-When enabled, the kubelet sends health check requests to the sidecar's port 15020, which forwards them to your application. This means health checks go through the full Istio pipeline including mTLS.
+When enabled, the kubelet sends health check requests to the sidecar agent's port 15020, which redirects HTTP and gRPC probes to your application and returns only the response code. This lets probes work even when strict mTLS would otherwise block direct kubelet probes.
 
 The original probe:
 
@@ -166,7 +164,7 @@ Here's what can happen:
 3. Application tries to make a database call during its graceful shutdown
 4. The call fails because the sidecar is already gone
 
-### Solution: Exit on Zero Active Connections
+### Solution: Set a Termination Drain Duration
 
 Configure the sidecar to wait for active connections to drain:
 
@@ -179,7 +177,7 @@ spec:
       terminationDrainDuration: 30s
 ```
 
-This tells the sidecar to keep running for up to 30 seconds after receiving SIGTERM, waiting for active connections to complete.
+This tells `istio-agent` to start Envoy draining when it receives SIGTERM or SIGINT, sleep for up to 30 seconds, and then kill any remaining Envoy processes.
 
 ### Solution: PreStop Hook on Application
 
@@ -195,7 +193,7 @@ containers:
         command: ["/bin/sh", "-c", "sleep 5"]
 ```
 
-The 5-second sleep gives the sidecar time to stop accepting new connections while your application finishes processing in-flight requests.
+The 5-second sleep delays application shutdown while endpoint removal and connection draining begin, reducing the chance that new requests arrive during termination.
 
 ### Solution: Customize the Sidecar PreStop
 
@@ -289,6 +287,6 @@ And through the sidecar's admin interface:
 kubectl exec -it deploy/my-app -c istio-proxy -- pilot-agent request GET server_info
 ```
 
-This shows the proxy's current drain state and connection counts.
+This shows Envoy server information. Use Envoy stats or config dump endpoints through `pilot-agent request` when you need detailed drain state or connection counts.
 
 Managing the container lifecycle with Istio sidecars requires attention to startup ordering, probe configuration, and graceful shutdown. The key settings to remember are `holdApplicationUntilProxyStarts` for startup, `terminationDrainDuration` for shutdown, and the `/quitquitquit` endpoint for Jobs. Getting these right eliminates most of the lifecycle-related issues people run into with Istio.
