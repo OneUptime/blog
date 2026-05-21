@@ -114,18 +114,57 @@ package istio_test
 
 import (
     "context"
-    "fmt"
+    "os"
+    "path/filepath"
     "strings"
     "testing"
-    "time"
 
     corev1 "k8s.io/api/core/v1"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/client-go/kubernetes"
-    "k8s.io/client-go/tools/clientcmd"
     "k8s.io/client-go/kubernetes/scheme"
+    "k8s.io/client-go/rest"
+    "k8s.io/client-go/tools/clientcmd"
     "k8s.io/client-go/tools/remotecommand"
+    "k8s.io/client-go/util/homedir"
 )
+
+func kubeClient(t *testing.T) (*kubernetes.Clientset, *rest.Config) {
+    t.Helper()
+
+    kubeconfig := os.Getenv("KUBECONFIG")
+    if kubeconfig == "" {
+        kubeconfig = filepath.Join(homedir.HomeDir(), ".kube", "config")
+    }
+
+    config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
+    if err != nil {
+        t.Fatalf("Failed to load kubeconfig: %v", err)
+    }
+
+    clientset, err := kubernetes.NewForConfig(config)
+    if err != nil {
+        t.Fatalf("Failed to create Kubernetes client: %v", err)
+    }
+
+    return clientset, config
+}
+
+func sleepPodName(t *testing.T, clientset *kubernetes.Clientset, namespace string) string {
+    t.Helper()
+
+    pods, err := clientset.CoreV1().Pods(namespace).List(context.TODO(), metav1.ListOptions{
+        LabelSelector: "app=sleep",
+    })
+    if err != nil {
+        t.Fatalf("Failed to list sleep pods: %v", err)
+    }
+    if len(pods.Items) == 0 {
+        t.Fatal("No sleep pods found")
+    }
+
+    return pods.Items[0].Name
+}
 
 func execInPod(clientset *kubernetes.Clientset, config *rest.Config,
     namespace, pod, container string, command []string) (string, error) {
@@ -156,8 +195,11 @@ func execInPod(clientset *kubernetes.Clientset, config *rest.Config,
 }
 
 func TestAuthorizationPolicyAllowsGetStatus(t *testing.T) {
+    clientset, config := kubeClient(t)
+    pod := sleepPodName(t, clientset, "istio-test")
+
     output, err := execInPod(clientset, config, "istio-test",
-        "sleep-pod-name", "sleep",
+        pod, "sleep",
         []string{"curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
             "http://httpbin:8000/status/200"})
     if err != nil {
@@ -169,8 +211,11 @@ func TestAuthorizationPolicyAllowsGetStatus(t *testing.T) {
 }
 
 func TestAuthorizationPolicyDeniesPost(t *testing.T) {
+    clientset, config := kubeClient(t)
+    pod := sleepPodName(t, clientset, "istio-test")
+
     output, err := execInPod(clientset, config, "istio-test",
-        "sleep-pod-name", "sleep",
+        pod, "sleep",
         []string{"curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
             "-X", "POST", "http://httpbin:8000/status/200"})
     if err != nil {
@@ -196,16 +241,17 @@ TOTAL=100
 for i in $(seq 1 $TOTAL); do
   RESPONSE=$(kubectl exec -n $NAMESPACE deploy/sleep -c sleep -- \
     curl -s http://reviews:9080/reviews/1)
-  if echo "$RESPONSE" | grep -q '"version":"v1"'; then
-    V1_COUNT=$((V1_COUNT + 1))
-  elif echo "$RESPONSE" | grep -q '"version":"v2"'; then
+  if echo "$RESPONSE" | grep -q '"ratings"'; then
     V2_COUNT=$((V2_COUNT + 1))
+  elif echo "$RESPONSE" | grep -q '"reviews"'; then
+    V1_COUNT=$((V1_COUNT + 1))
   fi
 done
 
 echo "v1: $V1_COUNT, v2: $V2_COUNT out of $TOTAL"
 
-# For a 90/10 split, v1 should be roughly 85-95
+# In the Bookinfo sample, reviews v1 has no ratings and reviews v2 includes ratings.
+# For a 90/10 split, use a broad range so the test does not fail on normal variance.
 
 if [ $V1_COUNT -ge 75 ] && [ $V1_COUNT -le 100 ]; then
   echo "PASS: Traffic split looks correct"
@@ -256,6 +302,17 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
+    - name: Install kind
+      run: |
+        curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.29.0/kind-linux-amd64
+        chmod +x ./kind
+        sudo mv ./kind /usr/local/bin/kind
+
+    - name: Install istioctl
+      run: |
+        curl -L https://istio.io/downloadIstio | sh -
+        echo "$PWD"/istio-*/bin >> "$GITHUB_PATH"
+
     - name: Create kind cluster
       run: kind create cluster --name istio-test
 
@@ -274,7 +331,7 @@ jobs:
 
     - name: Wait for readiness
       run: |
-        kubectl wait --for=condition=ready pod --all -n istio-test --timeout=180s
+        kubectl wait --for=condition=Ready pod --all -n istio-test --timeout=180s
         sleep 10
 
     - name: Run integration tests
