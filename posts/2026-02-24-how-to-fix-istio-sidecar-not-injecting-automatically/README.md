@@ -50,7 +50,7 @@ kubectl label namespace production istio-injection-
 kubectl label namespace production istio.io/rev=1-20
 ```
 
-Having both labels simultaneously can cause the webhook to behave unpredictably.
+If both labels are present, the `istio-injection` label takes precedence over `istio.io/rev`, which can make the pod use a different injection path than you expected.
 
 ## Check the Mutating Webhook
 
@@ -114,24 +114,24 @@ kubectl get mutatingwebhookconfiguration istio-sidecar-injector -o jsonpath='{.w
 Individual pods can opt out of injection:
 
 ```bash
-# Check for the injection annotation on the deployment
-kubectl get deployment my-app -n production -o jsonpath='{.spec.template.metadata.annotations}' | jq .
-```
-
-If you see `sidecar.istio.io/inject: "false"`, the sidecar will not be injected for that pod. Remove the annotation:
-
-```bash
-kubectl patch deployment my-app -n production --type json \
-  -p='[{"op": "remove", "path": "/spec/template/metadata/annotations/sidecar.istio.io~1inject"}]'
-```
-
-Also check for labels:
-
-```bash
+# Check for the injection label on the deployment
 kubectl get deployment my-app -n production -o jsonpath='{.spec.template.metadata.labels}' | jq .
 ```
 
-The label `sidecar.istio.io/inject: "false"` also prevents injection.
+If you see `sidecar.istio.io/inject: "false"`, the sidecar will not be injected for that pod. Remove the label:
+
+```bash
+kubectl patch deployment my-app -n production --type json \
+  -p='[{"op": "remove", "path": "/spec/template/metadata/labels/sidecar.istio.io~1inject"}]'
+```
+
+Older manifests might use the deprecated annotation form. Check annotations too:
+
+```bash
+kubectl get deployment my-app -n production -o jsonpath='{.spec.template.metadata.annotations}' | jq .
+```
+
+The annotation `sidecar.istio.io/inject: "false"` can also prevent injection, but the label is the current supported form.
 
 ## Existing Pods Do Not Get Sidecars
 
@@ -222,10 +222,10 @@ Look for the `policy` field:
 ```yaml
 data:
   config: |
-    policy: enabled  # Can be "enabled", "disabled", or "always_inject"
+    policy: enabled  # Can be "enabled" or "disabled"
 ```
 
-If policy is `disabled`, injection is off by default and only pods with `sidecar.istio.io/inject: "true"` get sidecars.
+If policy is `disabled`, injection is off by default and only pods with the `sidecar.istio.io/inject: "true"` label get sidecars.
 
 ## Debugging with Webhook Audit Logs
 
