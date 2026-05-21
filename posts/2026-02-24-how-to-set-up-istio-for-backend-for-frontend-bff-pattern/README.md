@@ -112,7 +112,8 @@ spec:
   selector:
     app: web-bff
   ports:
-  - port: 80
+  - name: http
+    port: 80
     targetPort: 8080
 ---
 apiVersion: v1
@@ -124,7 +125,8 @@ spec:
   selector:
     app: mobile-bff
   ports:
-  - port: 80
+  - name: http
+    port: 80
     targetPort: 8080
 ---
 apiVersion: v1
@@ -136,7 +138,8 @@ spec:
   selector:
     app: api-bff
   ports:
-  - port: 80
+  - name: http
+    port: 80
     targetPort: 8080
 ```
 
@@ -145,7 +148,7 @@ spec:
 The simplest approach uses different path prefixes for each client type:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: bff-routing
@@ -195,7 +198,7 @@ The `rewrite` strips the client-type prefix before forwarding. The web app calls
 A cleaner approach uses a custom header set by each client:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: bff-routing
@@ -281,7 +284,7 @@ User-Agent matching is less reliable than custom headers because User-Agent stri
 Each BFF has different traffic characteristics and needs different policies:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: mobile-bff
@@ -300,7 +303,7 @@ spec:
       interval: 10s
       baseEjectionTime: 15s
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: web-bff
@@ -319,7 +322,7 @@ spec:
       interval: 10s
       baseEjectionTime: 15s
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: api-bff
@@ -346,7 +349,7 @@ Mobile gets the largest connection pool (more clients, more concurrent requests)
 Mobile clients are sensitive to latency. Web clients can tolerate a bit more. API clients expect reliability:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: bff-timeouts
@@ -401,7 +404,7 @@ Each BFF calls the same underlying microservices but might call them differently
 Configure the internal routes for microservices called by BFFs:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: product-service
@@ -434,10 +437,10 @@ When the mobile BFF calls the product service, it gets a tighter timeout than wh
 
 ## Versioning BFF Services
 
-Different client versions might need different BFF versions. A v2 mobile app might use a different API than v1:
+Different client versions might need different BFF versions. A v2 mobile app might use a different API than v1. Make sure the versioned BFF pods have matching `version: v1` and `version: v2` labels:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: mobile-bff
