@@ -12,13 +12,13 @@ Calico is one of the most popular CNI plugins for Kubernetes, known for its netw
 
 ## How Calico and Istio Interact
 
-Calico handles Layer 3/4 networking: IP address management, pod-to-pod routing, and Kubernetes NetworkPolicy enforcement. Istio operates at Layer 7: HTTP routing, load balancing, mTLS, and observability.
+Calico handles Layer 3/4 networking: IP address management when using Calico IPAM, pod-to-pod routing, and Kubernetes NetworkPolicy enforcement. Istio operates at Layer 7: HTTP routing, load balancing, mTLS, and observability.
 
 The interaction points are:
 
-1. **Traffic interception**: Istio uses iptables rules to redirect traffic through the sidecar proxy. Calico also uses iptables for network policy enforcement. The order of these rules matters.
+1. **Traffic interception**: Istio uses iptables rules to redirect traffic through the sidecar proxy. Calico also uses iptables for network policy enforcement in its standard Linux dataplane. The order of these rules matters.
 2. **Network policies**: Calico enforces NetworkPolicy resources. Istio adds its own AuthorizationPolicy layer. Both need to allow traffic for services to communicate.
-3. **IP address management**: Calico assigns pod IPs. Istio needs these IPs for service discovery and routing.
+3. **IP address management**: Calico IPAM assigns pod IPs when it is used. Istio needs pod IPs for service discovery and routing.
 
 ## Prerequisites
 
@@ -69,7 +69,7 @@ spec:
 istioctl install -f istio-calico.yaml -y
 ```
 
-This works fine with Calico in most cases. Calico's iptables rules are in the `filter` table, while Istio's rules are in the `nat` table, so they do not conflict directly.
+This works fine with Calico in most cases. Calico's policy rules and Istio's traffic redirection rules are installed in separate chains for different purposes, so they usually do not conflict directly.
 
 ### Option 2: Using Istio CNI Plugin (Recommended for Restricted Environments)
 
@@ -109,7 +109,7 @@ kubectl logs -n istio-system -l k8s-app=istio-cni-node --tail=20
 
 ## Configuring Network Policies for Istio
 
-Calico's network policy enforcement happens before traffic reaches the Istio sidecar. You need to make sure Calico allows the traffic that Istio needs:
+Calico's network policy enforcement applies at the pod level, including pods with Istio sidecars. You need to make sure Calico allows the traffic that Istio needs:
 
 ### Allow istiod Communication
 
@@ -155,7 +155,7 @@ spec:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: istio-system
-        - podSelector:
+          podSelector:
             matchLabels:
               app: istiod
       ports:
@@ -273,11 +273,13 @@ kubectl get networkpolicies --all-namespaces
 ### Issue: iptables Rule Conflicts
 
 ```bash
-# Check iptables rules on a pod
-kubectl exec <pod> -c istio-proxy -- iptables -t nat -L -n -v
+# Check iptables rules in a pod network namespace with a debug container
+kubectl debug <pod> -it --image=gcr.io/istio-release/base --profile=netadmin -- \
+  iptables-save
 
 # Check Calico's iptables rules
-kubectl exec <pod> -c istio-proxy -- iptables -L -n -v | grep cali
+kubectl debug <pod> -it --image=gcr.io/istio-release/base --profile=netadmin -- \
+  iptables-save | grep cali
 ```
 
 ### Issue: DNS Resolution Fails
@@ -319,7 +321,7 @@ spec:
 Running both Calico and Istio means traffic passes through two enforcement points. Calico processes packets at the kernel level (or eBPF if configured), while Istio processes at the user-space proxy level. The combined overhead is generally acceptable, but be aware:
 
 - Calico's eBPF mode can sometimes conflict with Istio's iptables rules. If using Calico eBPF dataplane, test thoroughly.
-- Calico's WireGuard encryption and Istio mTLS are redundant. Use one or the other, not both.
+- Calico's WireGuard encryption and Istio mTLS protect traffic at different layers. They can overlap, so decide whether to use one or both based on your threat model and performance testing.
 
 ```bash
 # Check if Calico is using eBPF
