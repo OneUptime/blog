@@ -109,10 +109,7 @@ spec:
   meshConfig:
     enableTracing: true
     defaultConfig:
-      tracing:
-        sampling: 100.0
-        zipkin:
-          address: zipkin.istio-system.svc:9411
+      tracing: {} # disable legacy MeshConfig tracing options
     extensionProviders:
     - name: zipkin
       zipkin:
@@ -186,7 +183,7 @@ Or manually port-forward:
 kubectl port-forward -n istio-system svc/zipkin 9411:9411
 ```
 
-Open `http://localhost:9411` in your browser.
+Open `http://localhost:9411/zipkin` in your browser.
 
 ## Using the Zipkin UI
 
@@ -221,7 +218,7 @@ Click on any span to see details:
 
 ### Dependency Graph
 
-Zipkin can show a dependency graph of your services. Click the "Dependencies" link in the navigation. This shows which services call which, with line thickness indicating traffic volume.
+Zipkin can show a dependency graph of your services. Click the "Dependencies" link in the navigation. This shows which services call which, with line thickness indicating traffic volume. With persistent storage such as Elasticsearch or Cassandra, schedule the `zipkin-dependencies` job so Zipkin has dependency links to display.
 
 ## Propagating Trace Headers in Your Application
 
@@ -319,7 +316,7 @@ func apiHandler(w http.ResponseWriter, r *http.Request) {
 
 ## Production Setup with Persistent Storage
 
-For production, use Zipkin with Elasticsearch or Cassandra instead of in-memory storage.
+For production, use Zipkin with Elasticsearch or Cassandra instead of in-memory storage. If you rely on the dependency graph, also run `zipkin-dependencies` against the same storage backend.
 
 ### Zipkin with Elasticsearch
 
