@@ -197,7 +197,7 @@ spec:
   action: ALLOW
   rules:
   # Only the checkout service can initiate payments,
-  # and only for users with a verified account
+  # and only when account_verified is a string claim set to "true"
   - from:
     - source:
         principals: ["cluster.local/ns/checkout/sa/checkout-service"]
@@ -252,6 +252,7 @@ spec:
   # Deny requests to admin paths without admin claim
   - to:
     - operation:
+        ports: ["8080"]
         paths: ["/api/admin/*"]
     when:
     - key: request.auth.claims[role]
