@@ -46,7 +46,6 @@ spec:
     metadata:
       labels:
         app: fluent-bit
-      annotations:
         sidecar.istio.io/inject: "false"
     spec:
       containers:
@@ -131,7 +130,7 @@ metadata:
 spec:
   template:
     metadata:
-      annotations:
+      labels:
         sidecar.istio.io/inject: "false"  # Must disable
     spec:
       hostNetwork: true
@@ -144,7 +143,7 @@ If you need mesh features for a host-network DaemonSet, you have a few options:
 
 1. Remove `hostNetwork: true` if possible
 2. Use a separate non-host-network pod as a proxy
-3. Configure Istio ambient mode (if available in your version)
+3. Keep the host-network DaemonSet outside the mesh and expose it through a mesh-aware non-host-network workload when needed
 
 ## DaemonSet Update Strategy
 
@@ -193,7 +192,7 @@ spec:
     name: http
 ```
 
-With a headless Service, each DaemonSet pod gets its own DNS record. This is useful when clients need to talk to the specific DaemonSet pod on their own node.
+With a headless Service, DNS returns records that point directly to the DaemonSet pod IPs instead of a single ClusterIP. This is useful when clients need to discover individual DaemonSet pod endpoints.
 
 For a regular Service that load-balances across all DaemonSet pods:
 
@@ -213,7 +212,7 @@ spec:
 
 ## Routing Traffic to the Local DaemonSet Pod
 
-A common pattern is for a service to communicate only with the DaemonSet pod on the same node. Use Istio's locality-aware routing or Kubernetes topology-aware routing:
+A common pattern is for a service to communicate only with the DaemonSet pod on the same node. Use Kubernetes Service internal traffic policy:
 
 ```yaml
 apiVersion: v1
@@ -221,17 +220,16 @@ kind: Service
 metadata:
   name: my-daemon
   namespace: my-namespace
-  annotations:
-    service.kubernetes.io/topology-mode: Auto
 spec:
   selector:
     app: my-daemon
   ports:
   - port: 8080
     name: http
+  internalTrafficPolicy: Local
 ```
 
-With topology-aware routing, traffic is preferentially routed to endpoints on the same node.
+With `internalTrafficPolicy: Local`, cluster-internal traffic is routed only to endpoints on the same node. If a node has no local endpoint for the Service, the Service behaves as if it has no endpoints from pods on that node.
 
 ## Applying AuthorizationPolicies to DaemonSets
 
@@ -280,14 +278,14 @@ kubectl top pods -l app=my-daemon --containers | grep istio-proxy
 
 ## Handling DaemonSet Pods During Node Drain
 
-When a node is drained (for maintenance or scaling down), the DaemonSet pod on that node is terminated. Istio handles this through the normal pod termination process:
+When a node is drained (for maintenance or scaling down), `kubectl drain` does not delete DaemonSet-managed pods:
 
 ```bash
 kubectl drain node-name --ignore-daemonsets --delete-emptydir-data
 ```
 
-Note the `--ignore-daemonsets` flag. By default, `kubectl drain` refuses to delete DaemonSet pods. With this flag, DaemonSet pods are ignored during drain (they stay running). If you actually want the DaemonSet pod to be removed during drain, you need to delete it manually after the drain.
+Note the `--ignore-daemonsets` flag. By default, `kubectl drain` refuses to delete DaemonSet pods. With this flag, DaemonSet pods are ignored during drain (they stay running). If you actually want the DaemonSet pod removed, update the DaemonSet so it no longer targets that node or stop the node; simply deleting the pod can cause the DaemonSet controller to recreate it.
 
 ## Wrapping Up
 
-Using Istio with DaemonSets is straightforward once you decide whether sidecar injection makes sense for your use case. System-level agents typically should not have sidecars. Application-level DaemonSets that participate in service-to-service communication benefit from being in the mesh. Pay attention to resource overhead since it multiplies across every node, disable injection for host-network pods, and use topology-aware routing when you need node-local communication.
+Using Istio with DaemonSets is straightforward once you decide whether sidecar injection makes sense for your use case. System-level agents typically should not have sidecars. Application-level DaemonSets that participate in service-to-service communication benefit from being in the mesh. Pay attention to resource overhead since it multiplies across every node, disable injection for host-network pods, and use Service internal traffic policy when you need node-local communication.
