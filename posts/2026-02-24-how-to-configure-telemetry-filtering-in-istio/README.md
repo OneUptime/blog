@@ -19,7 +19,7 @@ The Telemetry API is the primary way to filter metrics in Istio. You can control
 If you do not need certain metrics at all, you can disable them:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: filter-metrics
@@ -58,7 +58,7 @@ Available metric names you can filter:
 Labels are the biggest driver of metric cardinality. Each unique label value multiplies the number of time series. Remove labels you do not use:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: label-filter
@@ -88,7 +88,7 @@ spec:
 Instead of removing a label entirely, you can transform its value to reduce cardinality:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: transform-labels
@@ -118,7 +118,7 @@ Each sidecar generates metrics from two perspectives:
 If you only need one perspective, disable the other:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: server-metrics-only
@@ -135,7 +135,7 @@ spec:
 
 This cuts the number of Istio metrics roughly in half by only reporting server-side metrics. You still get request counts, latency, and error rates, but only from the destination's perspective.
 
-The trade-off: you lose visibility into which callers are sending traffic to a service. Server-mode metrics show you who is being called but not who is doing the calling.
+The trade-off: you lose the source proxy's view of outbound traffic. Server-mode metrics still include source labels when Istio can identify the caller, but you no longer get client-side reporting for requests leaving the source workload.
 
 ## Per-Namespace Metric Filtering
 
@@ -144,7 +144,7 @@ Apply different filtering rules to different namespaces:
 ```yaml
 # Production: minimal metrics for efficiency
 
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: production-metrics
@@ -165,7 +165,7 @@ spec:
           operation: REMOVE
 ---
 # Staging: full metrics for debugging
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: staging-metrics
@@ -183,7 +183,7 @@ Production strips unnecessary labels for efficiency, while staging keeps everyth
 For noisy or high-traffic workloads, apply aggressive filtering:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: high-traffic-filter
@@ -207,11 +207,11 @@ spec:
       tagOverrides:
         source_workload:
           operation: REMOVE
-        source_namespace:
+        source_workload_namespace:
           operation: REMOVE
 ```
 
-The API gateway handles many different callers, making `source_workload` and `source_namespace` very high cardinality. Removing these labels from the gateway's metrics reduces cardinality significantly.
+The API gateway handles many different callers, making `source_workload` and `source_workload_namespace` very high cardinality. Removing these labels from the gateway's metrics reduces cardinality significantly.
 
 ## Filtering Envoy-Native Stats
 
@@ -258,7 +258,7 @@ spec:
 ### Disable Access Logs for Specific Workloads
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: disable-noisy-logs
@@ -275,63 +275,26 @@ spec:
 
 ### Filter Access Logs by Response Code
 
-Use an EnvoyFilter to only log errors:
+Use the Telemetry API to only log errors:
 
 ```yaml
-apiVersion: networking.istio.io/v1alpha3
-kind: EnvoyFilter
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
 metadata:
   name: error-only-access-log
   namespace: default
 spec:
-  workloadSelector:
-    labels:
+  selector:
+    matchLabels:
       app: my-service
-  configPatches:
-  - applyTo: NETWORK_FILTER
-    match:
-      context: SIDECAR_INBOUND
-      listener:
-        filterChain:
-          filter:
-            name: envoy.filters.network.http_connection_manager
-    patch:
-      operation: MERGE
-      value:
-        typed_config:
-          "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
-          access_log:
-          - name: envoy.access_loggers.file
-            typed_config:
-              "@type": type.googleapis.com/envoy.extensions.access_loggers.file.v3.FileAccessLog
-              path: /dev/stdout
-              log_format:
-                json_format:
-                  start_time: "%START_TIME%"
-                  method: "%REQ(:METHOD)%"
-                  path: "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%"
-                  response_code: "%RESPONSE_CODE%"
-                  response_flags: "%RESPONSE_FLAGS%"
-                  duration: "%DURATION%"
-                  upstream_host: "%UPSTREAM_HOST%"
-            filter:
-              or_filter:
-                filters:
-                - status_code_filter:
-                    comparison:
-                      op: GE
-                      value:
-                        default_value: 400
-                        runtime_key: access_log_min_status_error
-                - duration_filter:
-                    comparison:
-                      op: GE
-                      value:
-                        default_value: 1000
-                        runtime_key: access_log_min_duration
+  accessLogging:
+  - providers:
+    - name: envoy
+    filter:
+      expression: "response.code >= 400"
 ```
 
-This logs only requests that either returned a 400+ status code or took more than 1 second. For most production services, this captures the interesting events while dramatically reducing log volume.
+This logs only requests that returned a 400+ status code. For most production services, this captures the interesting events while dramatically reducing log volume.
 
 ## Filtering Traces
 
@@ -340,7 +303,7 @@ This logs only requests that either returned a 400+ status code or took more tha
 The simplest trace filter is the sampling rate:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: trace-filter
@@ -357,7 +320,7 @@ spec:
 Override sampling for specific workloads:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: high-sample-debug
