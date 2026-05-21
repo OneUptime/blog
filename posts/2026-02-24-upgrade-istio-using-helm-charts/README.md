@@ -35,6 +35,7 @@ You need:
 
 - Helm 3.6 or later
 - kubectl with cluster admin access
+- istioctl for pre-upgrade and post-upgrade checks
 - The Istio Helm repository added
 
 Add or update the Istio Helm repo:
@@ -50,6 +51,8 @@ Check available versions:
 helm search repo istio --versions
 ```
 
+Choose a currently supported Istio version. The examples below use `1.30.0`.
+
 Check what you currently have installed:
 
 ```bash
@@ -57,6 +60,12 @@ helm list -n istio-system
 ```
 
 This shows you the installed chart versions and their status.
+
+Run Istio's pre-upgrade checks before changing anything:
+
+```bash
+istioctl x precheck
+```
 
 ## Step 1: Back Up Your Values
 
@@ -75,13 +84,13 @@ If a chart returns `null` for values, it means you are using all defaults, which
 The base chart contains Istio's Custom Resource Definitions. Upgrading this first makes sure the cluster recognizes any new or changed resource types before the control plane starts using them.
 
 ```bash
-helm upgrade istio-base istio/base -n istio-system --version 1.21.0
+helm upgrade istio-base istio/base -n istio-system --version 1.30.0
 ```
 
 If you have custom values for the base chart:
 
 ```bash
-helm upgrade istio-base istio/base -n istio-system --version 1.21.0 -f base-values.yaml
+helm upgrade istio-base istio/base -n istio-system --version 1.30.0 -f base-values.yaml
 ```
 
 Verify the CRDs are updated:
@@ -90,14 +99,14 @@ Verify the CRDs are updated:
 kubectl get crds | grep istio
 ```
 
-You should see CRDs like `virtualservices.networking.istio.io`, `destinationrules.networking.istio.io`, and others. Their creation timestamps will not change, but their stored versions will be updated.
+You should see CRDs like `virtualservices.networking.istio.io`, `destinationrules.networking.istio.io`, and others. Their creation timestamps will not change, but their schemas and served versions will be updated.
 
 ## Step 3: Upgrade istiod
 
 This is the main control plane upgrade. The istiod chart manages the istiod deployment, webhooks, RBAC, and related resources.
 
 ```bash
-helm upgrade istiod istio/istiod -n istio-system --version 1.21.0 --wait
+helm upgrade istiod istio/istiod -n istio-system --version 1.30.0 --wait
 ```
 
 The `--wait` flag tells Helm to wait until the deployment is fully rolled out before marking the upgrade as complete. This is important because you want to confirm istiod is healthy before moving on.
@@ -105,7 +114,7 @@ The `--wait` flag tells Helm to wait until the deployment is fully rolled out be
 If you have custom values:
 
 ```bash
-helm upgrade istiod istio/istiod -n istio-system --version 1.21.0 -f istiod-values.yaml --wait
+helm upgrade istiod istio/istiod -n istio-system --version 1.30.0 -f istiod-values.yaml --wait
 ```
 
 Common custom values people set include:
@@ -117,13 +126,12 @@ meshConfig:
   accessLogFile: /dev/stdout
   defaultConfig:
     holdApplicationUntilProxyStarts: true
-pilot:
-  resources:
-    requests:
-      cpu: 500m
-      memory: 2Gi
-  autoscaleMin: 2
-  autoscaleMax: 5
+resources:
+  requests:
+    cpu: 500m
+    memory: 2Gi
+autoscaleMin: 2
+autoscaleMax: 5
 ```
 
 Check the upgrade status:
@@ -144,13 +152,13 @@ kubectl get pods -n istio-system -l app=istiod -o jsonpath='{.items[*].spec.cont
 If you installed gateways through Helm (which is the recommended approach), upgrade them next:
 
 ```bash
-helm upgrade istio-ingressgateway istio/gateway -n istio-system --version 1.21.0 --wait
+helm upgrade istio-ingressgateway istio/gateway -n istio-system --version 1.30.0 --wait
 ```
 
 If you have an egress gateway:
 
 ```bash
-helm upgrade istio-egressgateway istio/gateway -n istio-system --version 1.21.0 --wait
+helm upgrade istio-egressgateway istio/gateway -n istio-system --version 1.30.0 --wait
 ```
 
 Verify the gateway pods are running the new version:
@@ -188,7 +196,7 @@ For a canary-style upgrade with Helm, you can install the new version as a separ
 ```bash
 helm install istiod-canary istio/istiod -n istio-system \
   --set revision=canary \
-  --version 1.21.0
+  --version 1.30.0
 ```
 
 Then migrate namespaces by changing labels:
@@ -202,6 +210,7 @@ After validation, remove the old release:
 
 ```bash
 helm delete istiod -n istio-system
+helm upgrade istio-base istio/base -n istio-system --set defaultRevision=canary --version 1.30.0
 ```
 
 ## Handling Upgrade Failures
