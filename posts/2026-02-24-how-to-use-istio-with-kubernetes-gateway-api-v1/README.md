@@ -8,7 +8,7 @@ Description: A practical guide to using the Kubernetes Gateway API v1 with Istio
 
 ---
 
-The Kubernetes Gateway API has reached v1 GA status, and Istio has full support for it. If you have been using Istio's classic networking APIs (Gateway, VirtualService, DestinationRule), you might be wondering whether it is time to switch. The short answer is that Gateway API is the future of Kubernetes networking, and Istio is fully on board.
+The Kubernetes Gateway API has reached v1 GA status, and Istio supports it. If you have been using Istio's classic networking APIs (Gateway, VirtualService, DestinationRule), you might be wondering whether it is time to switch. The short answer is that Gateway API is the future of Kubernetes networking, and Istio is fully on board.
 
 This guide covers how to set up and use the Kubernetes Gateway API v1 with Istio in practical terms.
 
@@ -16,14 +16,14 @@ This guide covers how to set up and use the Kubernetes Gateway API v1 with Istio
 
 The original Ingress resource in Kubernetes was limited. It handled basic HTTP routing but could not express things like header-based routing, traffic splitting, or TLS passthrough without vendor-specific annotations. The Gateway API was designed from the ground up to solve these problems with a role-oriented, portable, and expressive API.
 
-For Istio users specifically, Gateway API provides a standardized way to do what VirtualService and Gateway resources already do, but with resources that work across different implementations. You could theoretically swap out Istio for another Gateway API implementation and keep your routing configuration intact.
+For Istio users specifically, Gateway API provides a standardized way to do many of the things VirtualService and Gateway resources already do, but with resources that work across different implementations. You could theoretically swap out Istio for another Gateway API implementation and keep much of your routing configuration intact, subject to that implementation's conformance and supported features.
 
 ## Installing the Gateway API CRDs
 
 If your cluster does not already have the Gateway API CRDs installed, you need to add them first:
 
 ```bash
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.2.0/standard-install.yaml
+kubectl apply --server-side -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.5.1/standard-install.yaml
 ```
 
 Verify the CRDs are installed:
@@ -57,7 +57,7 @@ istio   istio.io/gateway-controller   True       30s
 
 ## Creating a Gateway
 
-With the Gateway API, a Gateway resource replaces both the Istio Gateway and the associated Service/Deployment. When you create a Gateway, Istio automatically provisions a load balancer deployment and service for it.
+With the Gateway API, a Gateway resource can replace both the Istio Gateway and the associated Service/Deployment. In Istio's default deployment mode, when you create a Gateway, Istio automatically provisions a load balancer deployment and service for it.
 
 ```yaml
 apiVersion: gateway.networking.k8s.io/v1
@@ -246,7 +246,7 @@ spec:
 Gateway API has a built-in model for cross-namespace routing using ReferenceGrant. If your backend service is in a different namespace, the owner of that namespace must explicitly allow it:
 
 ```yaml
-apiVersion: gateway.networking.k8s.io/v1beta1
+apiVersion: gateway.networking.k8s.io/v1
 kind: ReferenceGrant
 metadata:
   name: allow-gateway-ref
