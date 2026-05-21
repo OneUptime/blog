@@ -8,7 +8,7 @@ Description: Automatically generate network topology diagrams and documentation 
 
 ---
 
-Network topology documentation tends to become outdated the moment someone draws it. Services get added, removed, or reconfigured, and the diagram on the wiki stops reflecting reality. With Istio, you can generate topology documentation automatically from the mesh's actual state. The mesh knows exactly which services exist, how they communicate, what gateways they use, and what external dependencies they have.
+Network topology documentation tends to become outdated the moment someone draws it. Services get added, removed, or reconfigured, and the diagram on the wiki stops reflecting reality. With Istio, you can generate topology documentation automatically from the mesh's configuration and telemetry. The mesh configuration shows which services are registered, how routing is configured, what gateways they use, and what external dependencies have been declared; telemetry adds observed traffic volume and request paths.
 
 ## What Network Topology Includes
 
@@ -48,7 +48,7 @@ kubectl get gateways -A -o json | jq -r '
   ) + "\n"
 '
 
-echo "## Internal Services"
+echo "## VirtualService Routes"
 echo ""
 
 kubectl get virtualservices -A -o json | jq -r '
@@ -75,6 +75,21 @@ kubectl get serviceentries -A -o json | jq -r '
   "Ports:\n" +
   (.spec.ports[] | "- " + (.number | tostring) + "/" + .protocol + " (" + .name + ")") + "\n"
 '
+
+echo "## Load Balancing Policies"
+echo ""
+
+kubectl get destinationrules -A -o json | jq -r '
+  .items[] |
+  "### " + .metadata.name + " (ns: " + .metadata.namespace + ")\n" +
+  "Host: " + .spec.host + "\n" +
+  "Load balancer: " +
+  ((.spec.trafficPolicy.loadBalancer // {}) |
+    if has("simple") then .simple
+    elif has("consistentHash") then "CONSISTENT_HASH"
+    else "DEFAULT"
+    end) + "\n"
+'
 ```
 
 ## Generating a Visual Topology Diagram
@@ -86,7 +101,24 @@ Create a comprehensive DOT file that includes all topology elements:
 # topology-diagram.py
 
 import json
+import re
 import subprocess
+
+def dot_id(*parts):
+    return re.sub(r"[^A-Za-z0-9_]", "_", "_".join(parts))
+
+def gateway_node_id(gateway_ref, default_namespace):
+    if "/" in gateway_ref:
+        namespace, name = gateway_ref.split("/", 1)
+    else:
+        namespace, name = default_namespace, gateway_ref
+    return dot_id("gw", name, namespace)
+
+def destination_node_id(host, default_namespace):
+    parts = host.split(".")
+    name = parts[0]
+    namespace = parts[1] if len(parts) >= 4 and parts[2] == "svc" else default_namespace
+    return dot_id("svc", name, namespace)
 
 def kubectl_get_json(resource):
     result = subprocess.run(
@@ -115,7 +147,7 @@ def generate_dot():
     for gw in gateways.get("items", []):
         name = gw["metadata"]["name"]
         ns = gw["metadata"]["namespace"]
-        gw_id = f"gw_{name}_{ns}".replace("-", "_")
+        gw_id = gateway_node_id(name, ns)
         hosts = [s.get("hosts", []) for s in gw["spec"].get("servers", [])]
         flat_hosts = [h for sublist in hosts for h in sublist]
         lines.append(f'  {gw_id} [shape=trapezium, style=filled, fillcolor=orange, label="GW: {name}\\n{", ".join(flat_hosts[:3])}"];')
@@ -133,7 +165,7 @@ def generate_dot():
         namespaces[ns].append(vs)
 
     for ns, services in namespaces.items():
-        ns_id = ns.replace("-", "_")
+        ns_id = dot_id(ns)
         lines.append(f"  subgraph cluster_{ns_id} {{")
         lines.append(f'    label="{ns}";')
         lines.append("    style=filled;")
@@ -141,21 +173,20 @@ def generate_dot():
 
         for vs in services:
             name = vs["metadata"]["name"]
-            svc_id = f"svc_{name}_{ns}".replace("-", "_")
-            lines.append(f'    {svc_id} [shape=box, style=filled, fillcolor=lightblue, label="{name}"];')
+            svc_id = dot_id("vs", name, ns)
+            lines.append(f'    {svc_id} [shape=box, style=filled, fillcolor=lightblue, label="VS: {name}"];')
 
             # Connect gateways to services
             for gw_name in vs["spec"].get("gateways", []):
                 if gw_name != "mesh":
-                    gw_id = f"gw_{gw_name}_{ns}".replace("-", "_")
+                    gw_id = gateway_node_id(gw_name, ns)
                     lines.append(f'    {gw_id} -> {svc_id};')
 
             # Connect services to destinations
             for http_route in vs["spec"].get("http", []):
                 for route in http_route.get("route", []):
                     dest = route["destination"]["host"]
-                    dest_short = dest.split(".")[0]
-                    dest_id = f"svc_{dest_short}_{ns}".replace("-", "_")
+                    dest_id = destination_node_id(dest, ns)
                     if dest_id != svc_id:
                         lines.append(f'    {svc_id} -> {dest_id};')
 
@@ -172,7 +203,7 @@ def generate_dot():
 
         for se in se_list.get("items", []):
             name = se["metadata"]["name"]
-            se_id = f"ext_{name}".replace("-", "_")
+            se_id = dot_id("ext", name)
             hosts = se["spec"].get("hosts", [])
             lines.append(f'    {se_id} [shape=box, style=filled, fillcolor=lightyellow, label="{hosts[0] if hosts else name}"];')
 
@@ -205,14 +236,16 @@ echo "# TLS Topology"
 echo ""
 echo "## mTLS Between Services"
 echo ""
-echo "| Source Namespace | Destination Namespace | mTLS Mode |"
-echo "|-----------------|---------------------|-----------|"
+echo "| Policy | Namespace | Scope | mTLS Mode |"
+echo "|--------|-----------|-------|-----------|"
 
 # Get PeerAuthentication policies
 
 kubectl get peerauthentications -A -o json | jq -r '
   .items[] |
-  "| * | " + .metadata.namespace + " | " + (.spec.mtls.mode // "UNSET") + " |"
+  "| " + .metadata.name + " | " + .metadata.namespace + " | " +
+  (if .spec.selector.matchLabels then "workload: " + (.spec.selector.matchLabels | to_entries | map(.key + "=" + (.value | tostring)) | join(",")) else "namespace/default" end) +
+  " | " + (.spec.mtls.mode // "UNSET") + " |"
 '
 
 echo ""
@@ -233,7 +266,7 @@ kubectl get gateways -A -o json | jq -r '
 
 Document the network boundaries between namespaces:
 
-```yaml
+```markdown
 # namespace-boundaries.md content
 
 ## Namespace Boundaries
@@ -260,7 +293,15 @@ Generate this automatically:
 echo "# Namespace Network Boundaries"
 echo ""
 
-for NS in $(kubectl get ns -l istio-injection=enabled -o jsonpath='{.items[*].metadata.name}'); do
+for NS in $(
+  {
+    kubectl get ns -l istio-injection=enabled -o jsonpath='{.items[*].metadata.name}'
+    echo
+    kubectl get ns -l istio.io/rev -o jsonpath='{.items[*].metadata.name}'
+    echo
+    kubectl get ns -l istio.io/dataplane-mode=ambient -o jsonpath='{.items[*].metadata.name}'
+  } | tr ' ' '\n' | sort -u
+); do
   echo "## $NS"
   echo ""
 
@@ -312,9 +353,11 @@ spec:
             - /bin/bash
             - -c
             - |
-              pip install kubernetes
+              apt-get update && apt-get install -y ca-certificates curl graphviz
+              curl -L -o /usr/local/bin/kubectl \
+                "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+              chmod +x /usr/local/bin/kubectl
               python3 /scripts/topology-diagram.py > /tmp/topology.dot
-              apt-get update && apt-get install -y graphviz
               dot -Tsvg /tmp/topology.dot -o /tmp/topology.svg
               # Push to documentation system
               kubectl create configmap network-topology \
@@ -333,25 +376,26 @@ Store topology snapshots to track changes:
 #!/bin/bash
 # snapshot-topology.sh
 
-DATE=$(date +%Y%m%d)
+DATE=$(date -u +%Y%m%dT%H%M%SZ)
 SNAPSHOT_DIR="topology-snapshots"
-mkdir -p $SNAPSHOT_DIR
+mkdir -p "$SNAPSHOT_DIR"
 
 # Save current state
-kubectl get virtualservices -A -o yaml > $SNAPSHOT_DIR/vs-$DATE.yaml
-kubectl get destinationrules -A -o yaml > $SNAPSHOT_DIR/dr-$DATE.yaml
-kubectl get gateways -A -o yaml > $SNAPSHOT_DIR/gw-$DATE.yaml
-kubectl get serviceentries -A -o yaml > $SNAPSHOT_DIR/se-$DATE.yaml
+kubectl get virtualservices -A -o yaml > "$SNAPSHOT_DIR/vs-$DATE.yaml"
+kubectl get destinationrules -A -o yaml > "$SNAPSHOT_DIR/dr-$DATE.yaml"
+kubectl get gateways -A -o yaml > "$SNAPSHOT_DIR/gw-$DATE.yaml"
+kubectl get serviceentries -A -o yaml > "$SNAPSHOT_DIR/se-$DATE.yaml"
 
 # Generate and save diagram
-python3 topology-diagram.py > $SNAPSHOT_DIR/topology-$DATE.dot
+python3 topology-diagram.py > "$SNAPSHOT_DIR/topology-$DATE.dot"
 
 # Compare with previous snapshot
-PREV=$(ls $SNAPSHOT_DIR/vs-*.yaml | sort | tail -2 | head -1)
-if [ -n "$PREV" ]; then
+PREV=$(ls "$SNAPSHOT_DIR"/vs-*.yaml 2>/dev/null | sort | tail -2 | head -1)
+CURRENT="$SNAPSHOT_DIR/vs-$DATE.yaml"
+if [ -n "$PREV" ] && [ "$PREV" != "$CURRENT" ]; then
   echo "Changes since last snapshot:"
-  diff $PREV $SNAPSHOT_DIR/vs-$DATE.yaml || echo "VirtualService changes detected"
+  diff "$PREV" "$CURRENT" || echo "VirtualService changes detected"
 fi
 ```
 
-Network topology documentation that's generated from live configuration is always accurate. The diagrams might not be as pretty as hand-drawn ones, but they're trustworthy, which matters a lot more for operations and compliance.
+Network topology documentation that's generated from live configuration and telemetry is much less likely to drift. The diagrams might not be as pretty as hand-drawn ones, but they're trustworthy, which matters a lot more for operations and compliance.
