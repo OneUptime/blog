@@ -14,7 +14,7 @@ When all connections to a service are busy, new requests have to wait. The quest
 
 With HTTP/1.1, each TCP connection handles one request at a time. If you have `maxConnections: 10` and all 10 connections are busy processing requests, the 11th request has to wait for one of those connections to free up. That waiting request is "pending."
 
-Without a pending request limit, the queue can grow without bound. During a traffic spike, thousands of requests could pile up, consuming memory and adding latency. When the service finally processes them, many will have already timed out on the client side, wasting work.
+Without a practical pending request limit, the queue can grow very large. During a traffic spike, thousands of requests could pile up, consuming memory and adding latency. When the service finally processes them, many will have already timed out on the client side, wasting work.
 
 ```mermaid
 flowchart LR
@@ -39,7 +39,7 @@ flowchart LR
 The setting lives in the DestinationRule under `connectionPool.http`:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: catalog-service
@@ -57,7 +57,7 @@ spec:
 This means:
 - Up to 50 TCP connections can be active
 - Up to 25 requests can wait for a connection
-- Request number 76 (50 active + 25 pending + 1) gets a 503
+- For a single client proxy's outbound pool, request number 76 (50 active + 25 pending + 1) gets a 503
 
 ## Choosing the Right Value
 
@@ -66,7 +66,7 @@ The right value for `http1MaxPendingRequests` depends on your traffic pattern an
 **For fast services** (response times under 50ms), a higher pending queue is fine because requests move through quickly:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: cache-service
@@ -84,7 +84,7 @@ spec:
 **For slow services** (response times over 500ms), keep the pending queue small. Requests will wait a long time, and by the time they get processed, the caller may have already timed out:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: report-service
@@ -102,7 +102,7 @@ spec:
 **For bursty traffic patterns**, set the pending queue high enough to absorb short bursts but low enough that sustained overload gets rejected quickly:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: event-processor
@@ -119,10 +119,10 @@ spec:
 
 ## HTTP/2 Is Different
 
-For HTTP/2 and gRPC services, `http1MaxPendingRequests` is not the main control. HTTP/2 multiplexes multiple requests over a single connection, so the concept of "pending" requests waiting for a connection is less relevant. Use `http2MaxRequests` instead:
+For HTTP/2 and gRPC services, `http1MaxPendingRequests` is not the main concurrency control. HTTP/2 multiplexes multiple requests over a single connection, so requests are usually limited by active stream capacity instead of waiting for an HTTP/1.1 connection to free up. Use `http2MaxRequests` instead:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: grpc-service
@@ -135,17 +135,17 @@ spec:
         http2MaxRequests: 200
 ```
 
-`http2MaxRequests` limits the total number of concurrent requests, whether they are active or pending. It is the HTTP/2 equivalent of `maxConnections + http1MaxPendingRequests` combined.
+`http2MaxRequests` limits the maximum number of active requests to a destination. Despite the name, Istio documents it as applying to both HTTP/1.1 and HTTP/2; for HTTP/2 and gRPC it is the setting you normally use to cap concurrent in-flight streams.
 
 ## Monitoring Pending Request Overflows
 
-When requests get rejected because the pending queue is full, Envoy records it:
+When requests get rejected because the pending queue is full, Envoy records it on the source workload's sidecar, because DestinationRule connection-pool circuit breakers are enforced by the client proxy:
 
 ```bash
 # Check pending request overflows
 
-kubectl exec deploy/catalog-service -c istio-proxy -- \
-  curl -s localhost:15000/stats | grep "pending"
+kubectl exec deploy/fortio -c istio-proxy -- \
+  pilot-agent request GET stats | grep "catalog-service" | grep "pending"
 
 # Key metrics to watch:
 # upstream_rq_pending_active - current pending requests
@@ -162,7 +162,7 @@ If `upstream_rq_pending_active` is consistently near the limit, you are close to
 Here is a realistic configuration for a user-facing API service that handles about 500 requests per second with average latency of 100ms:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: user-api
@@ -184,7 +184,7 @@ spec:
       maxEjectionPercent: 30
 ```
 
-At 500 RPS with 100ms latency, you need about 50 connections handling requests at any time. Setting `maxConnections` to 200 gives 4x headroom. The `http1MaxPendingRequests` of 100 allows brief spikes up to about 300 concurrent requests (200 active + 100 pending) before overflow kicks in.
+At 500 RPS with 100ms latency, you need about 50 concurrent requests in flight. For HTTP/1.1 traffic, setting `maxConnections` to 200 gives 4x headroom. The `http1MaxPendingRequests` of 100 allows brief spikes up to about 300 requests in the active and pending pools (200 active + 100 pending) before overflow kicks in.
 
 ## Testing Pending Request Limits
 
@@ -192,10 +192,10 @@ You can use a simple load test to verify your limits work:
 
 ```bash
 # Install fortio (Istio's load testing tool)
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/httpbin/sample-client/fortio/fortio-deploy.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.29/samples/httpbin/sample-client/fortio-deploy.yaml
 
 # Run a test with high concurrency
-kubectl exec deploy/fortio -- fortio load \
+kubectl exec deploy/fortio -c fortio -- /usr/bin/fortio load \
   -c 100 \
   -qps 0 \
   -t 30s \
@@ -207,8 +207,8 @@ In the output, look for the percentage of 503 responses. If your pending request
 
 ```bash
 # Check overflow stats after the load test
-kubectl exec deploy/catalog-service -c istio-proxy -- \
-  curl -s localhost:15000/stats | grep -E "pending_overflow|pending_active"
+kubectl exec deploy/fortio -c istio-proxy -- \
+  pilot-agent request GET stats | grep "catalog-service" | grep -E "pending_overflow|pending_active"
 ```
 
 ## Relationship to Other Settings
@@ -217,7 +217,7 @@ Pending request limits do not work in isolation. Here is how they interact with 
 
 | Setting | Relationship to Pending Requests |
 |---------|--------------------------------|
-| maxConnections | Determines how many requests can be active (not pending) |
+| maxConnections | Determines how many HTTP/1.1 or TCP connections can be open |
 | timeout | Long timeouts mean connections stay busy longer, increasing pending |
 | retries | Retries count against pending limits too |
 | outlierDetection | Ejecting instances reduces capacity, increasing pending pressure |
