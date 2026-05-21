@@ -85,7 +85,8 @@ spec:
   selector:
     app: my-app
   ports:
-    - port: 80
+    - name: http
+      port: 80
       targetPort: 8080
 ```
 
@@ -94,7 +95,7 @@ spec:
 The DestinationRule defines subsets that the VirtualService can reference:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-app
@@ -115,7 +116,7 @@ spec:
 Start small. Send just 5% of traffic to the canary:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -142,7 +143,7 @@ kubectl apply -f virtualservice-canary.yaml
 
 # Verify the config
 
-istioctl proxy-config routes deploy/my-app-v1 --name "80" -o json
+istioctl proxy-config routes deployment/my-app-v1 --name "80" -o json
 ```
 
 ## Monitoring the Canary
@@ -151,13 +152,13 @@ Before you increase the traffic percentage, make sure the canary is healthy. Che
 
 ```bash
 # Check error rates using istioctl
-istioctl experimental dashboard prometheus
+istioctl dashboard prometheus
 
 # Or query Prometheus directly
 # Error rate for canary
-rate(istio_requests_total{destination_version="v2", response_code=~"5.*"}[5m])
+sum(rate(istio_requests_total{destination_version="v2", response_code=~"5.*"}[5m]))
 /
-rate(istio_requests_total{destination_version="v2"}[5m])
+sum(rate(istio_requests_total{destination_version="v2"}[5m]))
 ```
 
 You can also use Kiali to visualize the traffic flow:
@@ -173,7 +174,7 @@ If the canary looks good, increase the percentage step by step. Here is a typica
 **Phase 2 - 25% to canary:**
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -196,7 +197,7 @@ spec:
 **Phase 3 - 50/50 split:**
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -219,7 +220,7 @@ spec:
 **Phase 4 - Full rollout (100% to v2):**
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -240,7 +241,7 @@ spec:
 If the canary shows problems at any phase, roll back immediately by sending 100% to v1:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -256,11 +257,11 @@ spec:
           weight: 100
 ```
 
-The rollback is instant because you are just changing routing rules. No pods need to restart, no images need to be pulled. Traffic shifts immediately.
+The rollback is fast because you are just changing routing rules. No pods need to restart, no images need to be pulled. Traffic shifts as soon as the updated configuration propagates to the proxies.
 
 ## Automating with Flagger
 
-If you want to automate the progressive rollout, Flagger works well with Istio. It monitors metrics and automatically adjusts the traffic split:
+If you want to automate the progressive rollout, Flagger works well with Istio. With Flagger, point the Canary at a single Deployment named `my-app`; Flagger creates and manages the primary and canary resources for you. It monitors metrics and automatically adjusts the traffic split:
 
 ```yaml
 apiVersion: flagger.app/v1beta1
@@ -299,7 +300,7 @@ Flagger will automatically increase the canary weight by 10% every minute, as lo
 Sometimes you want to test the canary with internal traffic first before exposing it to external users. You can do this by combining header-based routing with weight-based routing:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
