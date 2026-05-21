@@ -70,6 +70,8 @@ spec:
 
 Now create targeted allow rules for each legitimate cross-namespace path.
 
+These namespace and principal matches are derived from the caller's peer certificate, so make sure mTLS is enabled for the workloads you want to authorize this way.
+
 Allow the `frontend` namespace to call `backend`:
 
 ```yaml
@@ -196,7 +198,7 @@ spec:
 
 ## Using Sidecar Resources for Visibility Control
 
-AuthorizationPolicy controls who can call your service. The Sidecar resource controls what your service can see. This is equally important for cross-namespace communication.
+AuthorizationPolicy controls who can call your service. The Sidecar resource controls which services are included in a workload's sidecar proxy configuration. This is useful for cross-namespace communication planning, but it is not a replacement for authorization policy or Kubernetes NetworkPolicy enforcement.
 
 By default, every Envoy proxy gets configuration for every service in the mesh. This means every pod "knows about" services in every namespace. You can restrict this with Sidecar resources:
 
@@ -214,7 +216,7 @@ spec:
     - "istio-system/*"
 ```
 
-This tells pods in the `frontend` namespace that they can only reach services in their own namespace, the api-gateway in the backend namespace, and services in istio-system. Even if someone tries to call a database service from the frontend, the proxy won't have a route for it.
+This tells Istio to configure pods in the `frontend` namespace with service discovery information for their own namespace, the api-gateway in the backend namespace, and services in istio-system. If someone tries to call a database service from the frontend, that destination will be outside the configured service scope. Depending on your mesh outbound traffic policy, unmatched outbound traffic may still be passed through, so use AuthorizationPolicy or NetworkPolicy when you need to enforce a hard boundary.
 
 This also has a performance benefit. With fewer services in the proxy configuration, memory usage and config push times go down.
 
@@ -252,7 +254,11 @@ Check if the authorization policy is blocking the request:
 kubectl logs deploy/api-gateway -c istio-proxy -n backend | grep "rbac"
 ```
 
-Look for RBAC access denied messages. They'll tell you which policy blocked the request.
+Look for RBAC access denied messages, then check which authorization policies apply to the workload:
+
+```bash
+istioctl x authz check deployment/api-gateway -n backend
+```
 
 Verify the caller's identity:
 
@@ -266,7 +272,7 @@ Check the proxy configuration to make sure the destination is known:
 istioctl proxy-config endpoint deploy/web-app -n frontend | grep api-gateway
 ```
 
-If the endpoint isn't listed, a Sidecar resource might be filtering it out.
+If the endpoint isn't listed, a Sidecar resource, service discovery issue, or export visibility setting might be filtering it out.
 
 Run a connectivity test:
 
@@ -274,7 +280,7 @@ Run a connectivity test:
 kubectl exec deploy/web-app -n frontend -- curl -v http://api-gateway.backend.svc.cluster.local:8080/health
 ```
 
-A 403 means Istio authorization blocked it. A connection timeout means either NetworkPolicy or a Sidecar resource is preventing the connection.
+A 403 usually means Istio authorization blocked it. A connection timeout points to a lower-level connectivity problem such as NetworkPolicy, routing, DNS, or the destination application not responding.
 
 ## Policy Ordering and Precedence
 
