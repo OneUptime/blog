@@ -66,7 +66,7 @@ metadata:
 spec:
   accessLogging:
   - providers:
-    - name: otel
+    - name: envoy
     filter:
       expression: "response.code >= 400"
 ```
@@ -83,6 +83,37 @@ For log collection, you need the collector running on every node so it can read 
 
 ```yaml
 apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: otel-collector
+  namespace: istio-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: otel-collector
+rules:
+- apiGroups: [""]
+  resources: ["pods", "namespaces", "nodes"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["apps"]
+  resources: ["replicasets"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: otel-collector
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: otel-collector
+subjects:
+- kind: ServiceAccount
+  name: otel-collector
+  namespace: istio-system
+---
+apiVersion: v1
 kind: ConfigMap
 metadata:
   name: otel-log-collector-config
@@ -90,11 +121,19 @@ metadata:
 data:
   config.yaml: |
     receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
       filelog:
         include:
           - /var/log/containers/*istio-proxy*.log
           - /var/log/containers/*istiod*.log
+        include_file_path: true
+        include_file_name: false
         operators:
+          - type: container
+            id: container-parser
           - type: router
             routes:
               - output: parse_json
@@ -130,9 +169,11 @@ data:
             - k8s.node.name
 
     exporters:
-      otlp/oneuptime:
-        endpoint: "https://otlp.oneuptime.com"
+      otlphttp/oneuptime:
+        endpoint: "https://oneuptime.com/otlp"
+        encoding: json
         headers:
+          Content-Type: application/json
           x-oneuptime-token: "${ONEUPTIME_TOKEN}"
         tls:
           insecure: false
@@ -140,9 +181,22 @@ data:
     service:
       pipelines:
         logs:
-          receivers: [filelog]
+          receivers: [filelog, otlp]
           processors: [memory_limiter, k8sattributes, resource, batch]
-          exporters: [otlp/oneuptime]
+          exporters: [otlphttp/oneuptime]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: otel-collector
+  namespace: istio-system
+spec:
+  selector:
+    app: otel-log-collector
+  ports:
+  - name: otlp-grpc
+    port: 4317
+    targetPort: 4317
 ---
 apiVersion: apps/v1
 kind: DaemonSet
@@ -211,16 +265,16 @@ spec:
   meshConfig:
     extensionProviders:
     - name: otel
-      opentelemetry:
+      envoyOtelAls:
         port: 4317
         service: otel-collector.istio-system.svc.cluster.local
-        logging:
+        logFormat:
           labels:
-            source_workload: "%SOURCE_WORKLOAD%"
-            destination_workload: "%DESTINATION_WORKLOAD%"
+            method: "%REQ(:METHOD)%"
+            path: "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%"
             response_code: "%RESPONSE_CODE%"
-    defaultConfig:
-      accessLogFile: ""  # Disable file-based logging since we're using OTel directly
+            request_id: "%REQ(X-REQUEST-ID)%"
+    accessLogFile: ""  # Disable file-based logging since we're using OTel directly
 ```
 
 Then activate it with a Telemetry resource:
@@ -288,7 +342,7 @@ spec:
   - providers:
     - name: otel
     filter:
-      expression: "request.url_path != '/healthz' && request.url_path != '/ready'"
+      expression: "!has(request.url_path) || (request.url_path != '/healthz' && request.url_path != '/ready')"
 ```
 
 ## Verifying Log Collection
@@ -315,16 +369,23 @@ kubectl logs -l app=otel-log-collector -n istio-system --tail=20
 
 ## Correlating Logs with Traces
 
-One of the biggest advantages of sending both logs and traces to OneUptime is correlation. When Istio generates an access log, it includes the `x-request-id` header and trace context. This means you can click from a log entry directly to its corresponding trace in OneUptime.
+One of the biggest advantages of sending both logs and traces to OneUptime is correlation. Istio's default access log format includes the `x-request-id` header, and you can add trace headers to the log format when your mesh propagates them. This means you can click from a log entry directly to its corresponding trace in OneUptime.
 
 Make sure your logging configuration preserves the trace correlation fields:
 
-```json
-{
-  "request_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-  "trace_id": "abc123def456",
-  "span_id": "789xyz"
-}
+```yaml
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
+spec:
+  meshConfig:
+    accessLogFile: /dev/stdout
+    accessLogEncoding: JSON
+    accessLogFormat: |
+      {
+        "request_id": "%REQ(X-REQUEST-ID)%",
+        "trace_id": "%REQ(X-B3-TRACEID)%",
+        "span_id": "%REQ(X-B3-SPANID)%"
+      }
 ```
 
 With logs, metrics, and traces all flowing into OneUptime, you have the complete picture of what's happening in your Istio service mesh. When something goes wrong, you can start with an alert, look at the metrics to understand the scope, drill into traces to find the failing request path, and read the logs to get the specific error details.
