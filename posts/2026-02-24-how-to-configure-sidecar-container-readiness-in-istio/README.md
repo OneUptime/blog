@@ -64,12 +64,12 @@ kind: IstioOperator
 spec:
   values:
     sidecarInjectorWebhook:
-      rewriteAppHTTPProbers: true
+      rewriteAppHTTPProbe: true
 ```
 
-When enabled, your application's HTTP health probes are rewritten to go through the sidecar's agent on port 15020. This has two benefits:
+When enabled, your application's HTTP, TCP, and gRPC health probes are rewritten to go through the sidecar's agent on port 15020. This has two benefits:
 - Health checks work even with strict mTLS enabled (the kubelet can't do mTLS)
-- The health check validates that the full traffic path works, including the sidecar
+- TCP health checks avoid false positives caused by Istio redirecting inbound traffic to the sidecar
 
 The rewrite transforms:
 
@@ -109,14 +109,9 @@ spec:
   template:
     metadata:
       annotations:
-        proxy.istio.io/config: |
-          readinessProbe:
-            httpGet:
-              path: /healthz/ready
-              port: 15021
-            initialDelaySeconds: 0
-            periodSeconds: 5
-            failureThreshold: 2
+        readiness.status.sidecar.istio.io/initialDelaySeconds: "0"
+        readiness.status.sidecar.istio.io/periodSeconds: "5"
+        readiness.status.sidecar.istio.io/failureThreshold: "2"
     spec:
       containers:
       - name: my-app
@@ -192,7 +187,7 @@ containers:
     periodSeconds: 10
 ```
 
-TCP probes are not rewritten by Istio since they don't go through the sidecar's health check rewriting.
+TCP probes are rewritten by Istio by default. The sidecar agent performs the port check while avoiding Istio's inbound traffic redirection, which would otherwise make TCP ports appear open as long as the sidecar is running.
 
 ### gRPC Readiness
 ```yaml
