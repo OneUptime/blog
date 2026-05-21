@@ -64,6 +64,19 @@ spec:
         image: my-registry/my-app:v2
         ports:
         - containerPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-app
+  namespace: default
+spec:
+  selector:
+    app: my-app
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8080
 ```
 
 Set up the Istio resources:
