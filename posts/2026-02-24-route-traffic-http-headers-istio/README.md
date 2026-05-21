@@ -31,7 +31,7 @@ sequenceDiagram
     Proxy->>Client: Response
 ```
 
-The header check happens at the proxy level, so it is fast and does not add measurable latency.
+The header check happens at the proxy level, so it is fast and typically adds very little overhead compared with application-level routing.
 
 ## Prerequisites
 
@@ -295,6 +295,8 @@ Istio does not automatically propagate custom headers. Your application code nee
 
 ```text
 x-request-id
+traceparent
+tracestate
 x-b3-traceid
 x-b3-spanid
 x-b3-parentspanid
@@ -369,7 +371,7 @@ http:
 - match:
   - headers:
       content-type:
-        exact: "application/grpc"
+        prefix: "application/grpc"
   route:
   - destination:
       host: grpc-backend
@@ -384,10 +386,10 @@ When header routing does not work as expected:
 
 ```bash
 # Check what the proxy has
-istioctl proxy-config routes deploy/my-service -n my-app -o json
+istioctl proxy-config routes deployment/my-service -n my-app -o json
 
 # Look for the specific route
-istioctl proxy-config routes deploy/my-service -n my-app -o json | jq '.[].virtualHosts[].routes[] | select(.match.headers)'
+istioctl proxy-config routes deployment/my-service -n my-app -o json | jq '.[].virtualHosts[].routes[] | select(.match.headers)'
 
 # Analyze for issues
 istioctl analyze -n my-app
@@ -395,7 +397,7 @@ istioctl analyze -n my-app
 
 Common problems:
 
-- **Header name case sensitivity**: Header names in Istio matches are case-insensitive, but make sure your application sends them correctly.
+- **Header name casing in configuration**: Header keys in Istio match rules must be lowercase and use hyphens, and header values are case-sensitive for exact and prefix matches.
 - **Missing default route**: If no match condition hits and there is no default route, the request may fail.
 - **Rule ordering**: More specific rules must come before less specific ones.
 
