@@ -10,16 +10,16 @@ Description: Strategies for integrating legacy applications that cannot support 
 
 Not every application in your cluster can handle mTLS. You might have legacy services that use older TLS libraries, applications that do their own certificate management, or third-party software that you cannot modify. When you roll out Istio with strict mTLS enforcement, these legacy applications can break.
 
-The good news is that Istio provides several mechanisms to handle this gracefully. You do not have to choose between full mTLS enforcement and no security at all. This guide covers practical strategies for dealing with legacy applications in an mTLS-enabled mesh.
+The good news is that Istio provides several mechanisms to handle this gracefully. You do not have to choose between full mTLS enforcement and no security at all. This guide covers practical strategies for dealing with legacy applications in a sidecar-based, mTLS-enabled mesh.
 
 ## Understanding the Problem
 
-When Istio is configured with `STRICT` mTLS, every connection between services must use mutual TLS. Both the client and the server present certificates, and both verify each other's identity. This works transparently when both sides have Istio sidecars because the sidecars handle all the TLS negotiation.
+When Istio is configured with `STRICT` mTLS in sidecar mode, every connection accepted by a destination sidecar must use mutual TLS. Both the client and the server proxies present certificates, and both verify each other's identity. This works transparently when both sides have Istio sidecars because the sidecars handle all the Istio mTLS negotiation.
 
 Problems arise when:
 - A service does not have a sidecar (no Istio injection)
 - A service has a sidecar but the application also does TLS (double encryption)
-- A legacy service expects plain HTTP and breaks when it receives TLS
+- A legacy service is reached without a compatible sidecar or client TLS configuration
 - A service uses a protocol that the sidecar cannot parse correctly
 
 ## Strategy 1: Use PERMISSIVE Mode
@@ -63,7 +63,7 @@ spec:
       mode: STRICT
 ```
 
-This enforces strict mTLS on port 8443 but allows plaintext on port 8080. Useful when a legacy service has some endpoints that can handle mTLS and others that cannot.
+This enforces strict mTLS on workload port 8443 but allows plaintext on workload port 8080. Useful when a legacy service has some ports that should stay reachable from non-mesh clients during migration.
 
 ## Strategy 2: Exclude the Legacy Service from the Mesh
 
@@ -103,13 +103,13 @@ spec:
       mode: DISABLE
 ```
 
-This tells the calling service's sidecar to not use mTLS when connecting to the legacy app.
+This tells the calling service's sidecar to not use Istio mTLS when connecting to the legacy app. If you already rely on Istio auto mTLS and the destination has no sidecar, Istio normally sends plaintext automatically; an explicit `DestinationRule` is useful when an existing destination rule would otherwise force TLS.
 
 ## Strategy 3: Handle Double TLS
 
-Some legacy applications implement their own TLS. When Istio adds its mTLS layer on top, you get double encryption, which wastes CPU and can cause protocol detection issues.
+Some legacy applications implement their own TLS. When Istio also uses mTLS between sidecars, you get TLS inside Istio mTLS, which can add CPU overhead and reduce protocol-level observability.
 
-To handle this, configure the sidecar to pass through TLS traffic on the legacy application's port without wrapping it in another layer of mTLS:
+To avoid wrapping application TLS in Istio mTLS, configure the client sidecar to send the application's TLS stream as-is. The destination must either have no sidecar or have `PERMISSIVE`/plaintext-compatible peer authentication on that workload port:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -145,7 +145,7 @@ spec:
     appProtocol: tls
 ```
 
-Using the `tls` appProtocol tells Istio to treat this port as opaque TCP/TLS and not try to parse it as HTTP.
+Using the `tls` appProtocol tells Istio to treat this port as TLS-encrypted traffic and not try to parse it as HTTP.
 
 ## Strategy 4: Use a Sidecar with Custom Configuration
 
@@ -229,7 +229,7 @@ sum(rate(istio_requests_total{
 }[5m]))
 ```
 
-The first query shows mTLS-encrypted requests, and the second shows plaintext requests. If you are trying to migrate to strict mTLS, the plaintext count should trend toward zero over time.
+The first query shows mTLS-encrypted requests. The second query shows plaintext requests when the destination proxy reports them with `connection_security_policy="none"`; source-side reports use `unknown` for this label. If you are trying to migrate to strict mTLS, the destination-reported plaintext count should trend toward zero over time.
 
 ## Planning the Migration
 
