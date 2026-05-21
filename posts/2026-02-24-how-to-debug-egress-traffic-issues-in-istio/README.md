@@ -57,19 +57,19 @@ Key things to look for in the log line:
 
 - **Response code 502**: Envoy could not connect to the upstream
 - **Response code 503**: No cluster or no healthy endpoints
-- **Response flags `NR`**: No route configured for this destination
+- **Response flags `NR`**: No route configured for this destination or no matching filter chain
 - **Response flags `UH`**: No healthy upstream hosts
 - **Response flags `UF`**: Upstream connection failure
 - **Response flags `DC`**: Downstream connection termination
 
-A 503 with `NR` in REGISTRY_ONLY mode means you need a ServiceEntry.
+A 502 from the `BlackHoleCluster` in REGISTRY_ONLY mode usually means you need a ServiceEntry.
 
 ## Create a ServiceEntry
 
 For HTTPS services:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: httpbin-ext
@@ -88,7 +88,7 @@ spec:
 For HTTP services:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: httpbin-http
@@ -168,7 +168,7 @@ istioctl proxy-config clusters my-app-xxxxx.default | grep httpbin
 Expected output:
 
 ```text
-outbound|443||httpbin.org    httpbin.org    443    -    EDS
+httpbin.org    443    -    outbound    STRICT_DNS
 ```
 
 If the cluster is not there, the ServiceEntry is not applied correctly or has not synced yet.
@@ -190,7 +190,7 @@ The typical egress gateway setup requires three resources:
 ### 1. A Gateway for the egress gateway pod
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: egress-gateway
@@ -212,7 +212,7 @@ spec:
 ### 2. A VirtualService routing traffic through the egress gateway
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: httpbin-through-egress
@@ -250,7 +250,7 @@ spec:
 ### 3. A ServiceEntry for the external service
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: httpbin
