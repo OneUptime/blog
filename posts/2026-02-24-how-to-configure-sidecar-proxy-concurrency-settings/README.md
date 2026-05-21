@@ -18,12 +18,12 @@ Envoy uses an event-driven architecture with multiple worker threads. Each worke
 
 The key points:
 
-- Each worker thread is pinned to handle its connections independently (no sharing between threads)
+- Each worker thread owns and processes its assigned connections independently
 - More threads means more parallelism and higher throughput
 - Each thread consumes roughly similar memory for its connection state
-- The default behavior in Istio is to use the number of CPU cores available to the container
+- The default behavior in Istio is to automatically determine concurrency from the proxy container's CPU requests and limits
 
-If your sidecar proxy container has a CPU limit of 2 cores, Envoy defaults to 2 worker threads. If the limit is 4 cores, it uses 4 threads. If there's no limit set, Envoy can detect all CPU cores on the node and spin up a thread for each one, which is usually way too many.
+If your sidecar proxy container has a CPU limit of 2 cores, Envoy defaults to 2 worker threads. If the limit is 4 cores, it uses 4 threads. If there's no limit set, Envoy can use more of the cores visible to the container, so make sure your CPU requests and limits reflect what you want the proxy to consume.
 
 ## Setting Concurrency Globally
 
@@ -40,16 +40,17 @@ spec:
 
 This tells every sidecar proxy to use exactly 2 worker threads, regardless of the CPU limit on the container.
 
-If you want to restore the default behavior (auto-detect based on CPU limit), set concurrency to 0:
+If you want to restore the default behavior (auto-detect based on CPU requests and limits), remove the `concurrency` field so it is unset:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
   meshConfig:
-    defaultConfig:
-      concurrency: 0
+    defaultConfig: {}
 ```
+
+Do not use `concurrency: 0` for the default behavior. In Istio, `0` means use all cores on the machine, ignoring CPU requests and limits, which can cause performance problems when limits are set.
 
 ## Setting Concurrency per Workload
 
@@ -92,6 +93,8 @@ spec:
       app: high-traffic-api
   concurrency: 4
 ```
+
+ProxyConfig fields are not dynamically configured, so changes require the affected workloads to restart before they take effect.
 
 ## Choosing the Right Concurrency Value
 
@@ -217,11 +220,11 @@ If the proxy's CPU usage is consistently near the limit and p99 latency is highe
 
 If CPU usage is low and you have concurrency set high, you're wasting resources. Lower it.
 
-## The Admin Thread
+## The Main Thread
 
-Envoy also has an admin thread that handles the admin interface (port 15000), health checks, and stats collection. This thread runs separately from worker threads. It doesn't count toward the concurrency setting, but it does use some CPU.
+Envoy also has a main thread that handles coordination tasks such as configuration updates, stats flushing, and the admin interface (port 15000). This thread runs separately from worker threads. It doesn't count toward the concurrency setting, but it does use some CPU.
 
-In most cases you don't need to worry about the admin thread. But in very high-throughput scenarios where stats collection becomes expensive, the admin thread can become noticeable.
+In most cases you don't need to worry about the main thread. But in very high-throughput scenarios where stats collection becomes expensive, main-thread work can become noticeable.
 
 ## Production Recommendations
 
