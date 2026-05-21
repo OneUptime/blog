@@ -14,7 +14,7 @@ When Istio validates a JWT, it's not just checking that the token looks right. T
 
 When a request arrives with a JWT, Istio's Envoy proxy checks the following:
 
-1. **Token format** - Is this a properly formatted JWT with three base64-encoded parts (header, payload, signature)?
+1. **Token format** - Is this a properly formatted JWT with three base64url-encoded parts (header, payload, signature)?
 2. **Signature** - Does the token's signature match using the public keys from the configured JWKS?
 3. **Issuer (iss)** - Does the token's `iss` claim match the expected issuer in the RequestAuthentication?
 4. **Audience (aud)** - If audiences are configured, does the token's `aud` claim match at least one?
@@ -48,8 +48,8 @@ spec:
 
 The most critical part of JWT validation is the signature check. Here's how it works:
 
-1. Istio fetches the JWKS from the `jwksUri` endpoint. This JSON document contains one or more public keys.
-2. The JWT header contains a `kid` (Key ID) field that identifies which key was used to sign the token.
+1. Istio fetches the JWKS from the `jwksUri` endpoint, either through istiod or Envoy depending on your remote JWKS mode. This JSON document contains one or more public keys.
+2. The JWT header usually contains a `kid` (Key ID) field that identifies which key was used to sign the token.
 3. Istio finds the matching key in the JWKS and uses it to verify the signature.
 
 The JWKS endpoint typically returns something like:
@@ -73,6 +73,8 @@ Istio supports these signature algorithms:
 - RS256, RS384, RS512 (RSA)
 - ES256, ES384, ES512 (ECDSA)
 - PS256, PS384, PS512 (RSA-PSS)
+- HS256, HS384, HS512 (HMAC)
+- EdDSA (Edwards-curve)
 
 ## Using Inline JWKS
 
@@ -105,7 +107,7 @@ spec:
         }
 ```
 
-The downside of inline JWKS is that you need to update the Kubernetes resource whenever keys rotate. With `jwksUri`, Envoy fetches fresh keys automatically.
+The downside of inline JWKS is that you need to update the Kubernetes resource whenever keys rotate. With `jwksUri`, Istio refreshes keys automatically.
 
 ## Validating Claims
 
@@ -158,17 +160,17 @@ Common issues with expiration:
 - **Short-lived tokens** - If your tokens expire in 5 minutes and there's even slight clock skew, you might see intermittent 401s.
 - **Clock skew between nodes** - Different Kubernetes nodes might have slightly different clocks. Make sure NTP is configured across all nodes.
 
-There's no built-in clock skew tolerance in Istio's JWT validation. If clock skew is a problem, your token issuer should add a small buffer to the `exp` claim.
+Istio's JWT validation has a built-in 60-second clock skew tolerance: tokens become valid 60 seconds before `nbf` and remain valid 60 seconds after `exp`. RequestAuthentication does not expose a field to tune that value directly, so keep node clocks synchronized and account for that tolerance in your token lifetimes.
 
 ## Testing Token Validation
 
 Generate a test token using a tool like `jwt.io` or the `jwt` CLI, then test:
 
 ```bash
-# Valid token
+# Valid token generated with the configured issuer, audience, and signing key
 
 curl -s -o /dev/null -w "%{http_code}" \
-  -H "Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6ImtleS0xIn0.eyJpc3MiOiJodHRwczovL2F1dGgubXljb21wYW55LmNvbSIsInN1YiI6InVzZXIxIiwiYXVkIjoiYXBpLm15Y29tcGFueS5jb20iLCJleHAiOjk5OTk5OTk5OTl9.signature" \
+  -H "Authorization: Bearer <valid-token>" \
   http://api-gateway.api/endpoint
 
 # Expired token
@@ -213,11 +215,11 @@ kubectl exec <pod-name> -c istio-proxy -- \
 
 ## JWKS Caching and Key Rotation
 
-Envoy caches JWKS keys to avoid fetching them on every request. The cache is refreshed periodically (approximately every 5 minutes by default). When you rotate keys at the issuer:
+Istio caches JWKS keys to avoid fetching them on every request. The default refresh behavior depends on your JWKS resolver mode: istiod fetches remote JWKS by default and refreshes them every 20 minutes, while Envoy remote JWKS mode uses Envoy's JWKS cache duration, which defaults to 10 minutes if not otherwise configured. When you rotate keys at the issuer:
 
 1. Add the new key to the JWKS endpoint while keeping the old one.
 2. Start issuing tokens with the new key.
-3. Wait for all Envoy proxies to refresh their cache (at least 5-10 minutes).
+3. Wait for all proxies to receive refreshed keys based on your configured JWKS refresh mode and interval.
 4. Remove the old key from the JWKS endpoint.
 
 This overlap ensures tokens signed with either key are valid during the rotation window.
