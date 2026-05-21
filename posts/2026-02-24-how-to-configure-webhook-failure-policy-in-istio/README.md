@@ -57,15 +57,28 @@ There are several ways to change this setting depending on how you manage your I
 
 ### Using IstioOperator
 
-If you install Istio with the IstioOperator, you can set the failure policy in the values:
+Istio does not expose a `sidecarInjectorWebhook.failurePolicy` value in the current istiod chart. If you install Istio with the IstioOperator, use an overlay to patch the rendered mutating webhook configuration:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
-  values:
-    sidecarInjectorWebhook:
-      failurePolicy: Ignore
+  components:
+    pilot:
+      k8s:
+        overlays:
+        - apiVersion: admissionregistration.k8s.io/v1
+          kind: MutatingWebhookConfiguration
+          name: istio-sidecar-injector
+          patches:
+          - path: webhooks.[name:namespace.sidecar-injector.istio.io].failurePolicy
+            value: Ignore
+          - path: webhooks.[name:object.sidecar-injector.istio.io].failurePolicy
+            value: Ignore
+          - path: webhooks.[name:rev.namespace.sidecar-injector.istio.io].failurePolicy
+            value: Ignore
+          - path: webhooks.[name:rev.object.sidecar-injector.istio.io].failurePolicy
+            value: Ignore
 ```
 
 Apply this with:
@@ -76,12 +89,12 @@ istioctl install -f my-config.yaml
 
 ### Using Helm
 
-If you use Helm to install Istio, pass the value during installation:
+If you use Helm to install Istio, there is no dedicated Helm value for this setting. Render the chart and post-process the `MutatingWebhookConfiguration`, or patch it after Helm installation:
 
 ```bash
 helm install istiod istio/istiod \
   --namespace istio-system \
-  --set sidecarInjectorWebhook.failurePolicy=Ignore
+  --wait
 ```
 
 ### Direct kubectl Patch
@@ -89,9 +102,9 @@ helm install istiod istio/istiod \
 For a quick change without reinstalling, you can patch the webhook directly:
 
 ```bash
-kubectl patch mutatingwebhookconfiguration istio-sidecar-injector \
-  --type='json' \
-  -p='[{"op": "replace", "path": "/webhooks/0/failurePolicy", "value": "Ignore"}]'
+kubectl get mutatingwebhookconfiguration istio-sidecar-injector -o json \
+  | jq '.webhooks |= map(.failurePolicy = "Ignore")' \
+  | kubectl apply -f -
 ```
 
 Be aware that this change will be overwritten the next time you upgrade or reconcile Istio. So this approach is mostly useful for emergency situations.
@@ -103,7 +116,7 @@ The right choice depends on your priorities.
 ### Use Fail (the default) when:
 
 - You have strict security requirements and cannot allow pods to run without the sidecar
-- Your mTLS policies are set to STRICT mode, meaning unsidecared pods would lose connectivity anyway
+- Your mTLS policies are set to STRICT mode, meaning unsidecared pods may lose connectivity to workloads that enforce STRICT mTLS
 - You have good istiod availability (multiple replicas, pod disruption budgets)
 
 ### Use Ignore when:
@@ -121,11 +134,11 @@ If you switch to `Ignore`, you need a way to know when pods slip through without
 kubectl get pods -n my-namespace -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.containers[*].name}{"\n"}{end}' | grep -v istio-proxy
 ```
 
-You can also set up a Prometheus alert based on the `istio_build` metric. If a pod is in the mesh, its sidecar will report this metric. Pods missing from this metric are candidates for investigation.
+You can also set up monitoring based on pod metadata, such as the presence of the `istio-proxy` container or the `sidecar.istio.io/status` annotation. Pods missing those signals are candidates for investigation.
 
 ## Combining Failure Policy with Namespace Selectors
 
-A common pattern is to keep the failure policy as `Fail` but narrow down which namespaces the webhook applies to. That way, critical system namespaces like `kube-system` are not affected by webhook failures.
+A common pattern is to keep the failure policy as `Fail` but narrow down which namespaces the webhook applies to. That way, namespaces that do not match the injector selectors are not affected by webhook failures.
 
 The webhook configuration already has namespace selectors:
 
@@ -141,16 +154,16 @@ webhooks:
       - enabled
 ```
 
-With this setup, only namespaces labeled with `istio-injection=enabled` will be affected by the webhook. If istiod goes down, pod creation in other namespaces continues normally.
+With this selector, namespaces labeled with `istio-injection=enabled` are affected by that webhook entry. Istio may also create other webhook entries for revision labels or pod-level injection labels, so check the full `namespaceSelector` and `objectSelector` set in your cluster.
 
 ## Using reinvocationPolicy
 
 Kubernetes also supports a `reinvocationPolicy` field on webhooks. This controls whether the webhook gets called again if a later webhook modifies the pod. Istio sets this to `Never` by default, which is fine for most setups. If you have other mutating webhooks that add containers or volumes that Istio needs to be aware of, you might consider setting it to `IfNeeded`:
 
 ```bash
-kubectl patch mutatingwebhookconfiguration istio-sidecar-injector \
-  --type='json' \
-  -p='[{"op": "replace", "path": "/webhooks/0/reinvocationPolicy", "value": "IfNeeded"}]'
+kubectl get mutatingwebhookconfiguration istio-sidecar-injector -o json \
+  | jq '.webhooks |= map(.reinvocationPolicy = "IfNeeded")' \
+  | kubectl apply -f -
 ```
 
 ## Handling Upgrades
@@ -182,9 +195,9 @@ spec:
 The `timeoutSeconds` field on the webhook controls how long Kubernetes waits for a response before applying the failure policy. The default is 10 seconds. You can reduce this to make failures faster:
 
 ```bash
-kubectl patch mutatingwebhookconfiguration istio-sidecar-injector \
-  --type='json' \
-  -p='[{"op": "replace", "path": "/webhooks/0/timeoutSeconds", "value": 5}]'
+kubectl get mutatingwebhookconfiguration istio-sidecar-injector -o json \
+  | jq '.webhooks |= map(.timeoutSeconds = 5)' \
+  | kubectl apply -f -
 ```
 
 A shorter timeout means pod creation latency is lower when istiod is having issues, but it also increases the chance of false failures if istiod is just slow.
