@@ -26,7 +26,7 @@ spec:
       jwksUri: "https://auth.example.com/.well-known/jwks.json"
 ```
 
-When a request comes in with a JWT, Istio extracts the `iss` claim from the token payload and compares it to the configured issuers. If there's a match, Istio uses the corresponding JWKS to validate the signature. If there's no match, the token is treated as if it belongs to an unconfigured issuer.
+When a request comes in with a JWT, Istio extracts the `iss` claim from the token payload and compares it to the configured issuers. If there's a match, Istio uses the corresponding JWKS to validate the signature. If there's no match, the JWT is rejected because the issuer is not configured.
 
 ## Issuer Matching Rules
 
@@ -42,7 +42,7 @@ Check what your token actually contains:
 ```bash
 # Decode a JWT to see the issuer
 
-echo "<your-jwt-token>" | cut -d. -f2 | base64 -d 2>/dev/null | python3 -m json.tool
+python3 -c 'import base64,json,sys; part=sys.argv[1].split(".")[1]; part += "=" * (-len(part) % 4); print(json.dumps(json.loads(base64.urlsafe_b64decode(part)), indent=2))' "<your-jwt-token>"
 ```
 
 Look at the `iss` field in the output and use that exact string in your RequestAuthentication.
@@ -72,12 +72,12 @@ Common JWKS URIs for popular providers:
 
 The JWKS endpoint must:
 
-1. **Be reachable from the Envoy sidecar.** The proxy fetches keys at runtime. If it's behind a firewall or VPN that the sidecar can't access, validation fails.
+1. **Be reachable by the component that fetches JWKS.** Istio fetches JWKS through istiod by default. If `PILOT_JWT_ENABLE_REMOTE_JWKS` is set to `envoy`, `true`, or `hybrid`, Envoy may fetch keys at runtime. If the JWKS endpoint is behind a firewall or VPN that the fetcher can't access, validation fails.
 2. **Serve valid JSON.** The response must be a properly formatted JWKS document.
 3. **Use HTTPS.** While HTTP technically works, production setups should always use HTTPS.
-4. **Respond reasonably fast.** Slow JWKS endpoints cause request latency the first time keys are fetched.
+4. **Respond reasonably fast.** Slow JWKS endpoints can delay configuration updates or, when Envoy remote JWKS fetching is enabled, add request latency the first time keys are fetched.
 
-Test reachability from inside the cluster:
+Test reachability from inside the cluster, and make sure istiod or the proxy can use the same network path your Istio configuration relies on:
 
 ```bash
 kubectl exec deploy/sleep -c sleep -- curl -s https://auth.example.com/.well-known/jwks.json | python3 -m json.tool
@@ -148,7 +148,7 @@ spec:
       jwksUri: "https://www.googleapis.com/oauth2/v3/certs"
 ```
 
-When a JWT arrives, Istio matches the `iss` claim against the configured issuers and uses the corresponding JWKS. If the issuer doesn't match any entry, and no other RequestAuthentication handles it, the request passes through (with no principal set).
+When a JWT arrives, Istio matches the `iss` claim against the configured issuers and uses the corresponding JWKS. If the issuer doesn't match any configured entry, the request is rejected. A request with no authentication credentials is accepted by RequestAuthentication alone, but no principal is set unless a valid token is provided.
 
 ## OpenID Connect Discovery
 
@@ -174,13 +174,13 @@ Use the value from `jwks_uri` in your RequestAuthentication's `jwksUri` field.
 
 ## JWKS Caching Behavior
 
-Envoy caches the JWKS to avoid fetching it on every request. The cache behavior:
+Istio caches JWKS to avoid fetching it on every request. The cache behavior depends on which component fetches the keys:
 
-- Keys are fetched on the first request that needs validation.
-- The cache is refreshed approximately every 5 minutes.
-- If the JWKS endpoint becomes unreachable after initial fetch, Envoy continues using cached keys until they're purged.
+- By default, istiod fetches JWKS from `jwksUri` and refreshes the public keys on its `PILOT_JWT_PUB_KEY_REFRESH_INTERVAL`, which defaults to 20 minutes.
+- If Envoy remote JWKS fetching is enabled with `PILOT_JWT_ENABLE_REMOTE_JWKS`, Envoy can fetch keys on demand and cache them according to its remote JWKS cache duration.
+- If the JWKS endpoint becomes unreachable after an initial fetch, the last cached keys may continue to be used until the cache expires or the next refresh fails.
 
-This means there's a window during key rotation where old tokens might still be accepted. Plan your key rotation accordingly - keep old keys in the JWKS for at least 10 minutes after stopping their use for signing.
+This means there's a window during key rotation where old tokens might still be accepted or new tokens might be rejected until refreshed keys are available. Plan your key rotation accordingly - keep old keys in the JWKS for at least as long as your JWKS refresh interval and token lifetime require.
 
 ## Debugging Issuer and JWKS Issues
 
@@ -188,7 +188,7 @@ This means there's a window during key rotation where old tokens might still be 
 
 ```bash
 # Check what issuer the token has
-echo "<token>" | cut -d. -f2 | base64 -d 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin)['iss'])"
+python3 -c 'import base64,json,sys; part=sys.argv[1].split(".")[1]; part += "=" * (-len(part) % 4); print(json.loads(base64.urlsafe_b64decode(part))["iss"])' "<token>"
 
 # Compare with configured issuer
 kubectl get requestauthentication -n api -o jsonpath='{.items[*].spec.jwtRules[*].issuer}'
@@ -210,7 +210,7 @@ Look for `jwks_fetch_success` and `jwks_fetch_failed` counters.
 
 ```bash
 # Check the kid in the token header
-echo "<token>" | cut -d. -f1 | base64 -d 2>/dev/null | python3 -m json.tool
+python3 -c 'import base64,json,sys; part=sys.argv[1].split(".")[0]; part += "=" * (-len(part) % 4); print(json.dumps(json.loads(base64.urlsafe_b64decode(part)), indent=2))' "<token>"
 
 # Check available kids in the JWKS
 curl -s https://auth.example.com/.well-known/jwks.json | python3 -c "import json,sys; [print(k['kid']) for k in json.load(sys.stdin)['keys']]"
@@ -223,7 +223,7 @@ If the `kid` in the token doesn't match any key in the JWKS, validation fails.
 1. **Always use `jwksUri` in production** - it handles key rotation automatically.
 2. **Verify the issuer string exactly** - copy it from a decoded token, don't guess.
 3. **Test JWKS reachability from inside the cluster** before deploying the RequestAuthentication.
-4. **Keep old keys in JWKS during rotation** for at least 10 minutes.
+4. **Keep old keys in JWKS during rotation** for at least as long as your JWKS refresh interval and token lifetime require.
 5. **Use OpenID Connect Discovery** to find the correct JWKS URI for your provider.
 
 Getting the issuer and JWKS configuration right means JWT validation just works. Get it wrong and you'll spend hours wondering why perfectly good tokens are being rejected. Take the time to verify both values before deploying.
