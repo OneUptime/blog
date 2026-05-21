@@ -64,7 +64,7 @@ Certificate rotation should happen automatically. If it is not happening:
 
 ```bash
 kubectl exec productpage-v1-6b746f74dc-9rlmh -c istio-proxy -n bookinfo -- \
-  curl -s -o /dev/null -w "%{http_code}" https://istiod.istio-system.svc:15012/debug/endpointz
+  curl -sS istiod.istio-system:15014/version
 ```
 
 2. Check the pilot-agent logs for rotation errors:
@@ -93,7 +93,7 @@ If there is no output, the SDS (Secret Discovery Service) connection to the loca
 # Check pilot-agent health
 
 kubectl exec productpage-v1-6b746f74dc-9rlmh -c istio-proxy -n bookinfo -- \
-  pilot-agent request GET /healthz/ready
+  curl -sS localhost:15021/healthz/ready
 
 # Check SDS connection
 kubectl exec productpage-v1-6b746f74dc-9rlmh -c istio-proxy -n bookinfo -- \
@@ -140,28 +140,10 @@ If the SPIFFE ID does not match the expected service account, the wrong service 
 If two services cannot establish mTLS, they might have different root CAs. This happens in multi-cluster setups or after a CA rotation:
 
 ```bash
-# Check root CA on service A
-istioctl proxy-config secret pod-a.namespace -o json | \
-  python3 -c "
-import json, sys
-data = json.load(sys.stdin)
-for item in data.get('dynamicActiveSecrets', []):
-    if item.get('name') == 'ROOTCA':
-        print(item.get('secret', {}).get('validationContext', {}).get('trustedCa', {}).get('inlineBytes', '')[:50])
-"
-
-# Check root CA on service B
-istioctl proxy-config secret pod-b.namespace -o json | \
-  python3 -c "
-import json, sys
-data = json.load(sys.stdin)
-for item in data.get('dynamicActiveSecrets', []):
-    if item.get('name') == 'ROOTCA':
-        print(item.get('secret', {}).get('validationContext', {}).get('trustedCa', {}).get('inlineBytes', '')[:50])
-"
+istioctl proxy-config rootca-compare pod-a.namespace pod-b.namespace
 ```
 
-If the first 50 characters of the base64-encoded root CA are different, the services have different trust roots and cannot authenticate each other.
+If the root CA values are different, the services have different trust roots and cannot authenticate each other.
 
 ## Monitoring Certificate Rotation
 
@@ -205,11 +187,6 @@ If a certificate is stuck and not rotating, you can force a rotation by restarti
 kubectl rollout restart deployment productpage-v1 -n bookinfo
 ```
 
-Or by sending a signal to pilot-agent to trigger SDS refresh (this is less disruptive than a full restart):
-
-```bash
-kubectl exec productpage-v1-6b746f74dc-9rlmh -c istio-proxy -n bookinfo -- \
-  pilot-agent request POST /debug/force_disconnect
-```
+There is no supported `pilot-agent` command to force only the SDS certificate refresh.
 
 The `proxy-config secret` command is essential for debugging mTLS issues. When connections between services fail with TLS errors, checking the certificate status on both sides is the fastest way to identify whether it is a certificate problem, and if so, what specifically is wrong.
