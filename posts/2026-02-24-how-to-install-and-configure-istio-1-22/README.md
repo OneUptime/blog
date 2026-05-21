@@ -68,6 +68,7 @@ pilot:
   autoscaleMax: 5
   env:
     PILOT_ENABLE_AMBIENT: "true"
+    CA_TRUSTED_NODE_ACCOUNTS: "istio-system/ztunnel,kube-system/ztunnel"
 
 meshConfig:
   accessLogFile: /dev/stdout
@@ -76,10 +77,13 @@ meshConfig:
     mode: REGISTRY_ONLY
   defaultConfig:
     holdApplicationUntilProxyStarts: true
+    proxyMetadata:
+      ISTIO_META_ENABLE_HBONE: "true"
     tracing:
       sampling: 1.0
 
 global:
+  variant: distroless
   proxy:
     resources:
       requests:
@@ -95,6 +99,7 @@ global:
 helm install istiod istio/istiod \
   --namespace istio-system \
   --version 1.22.0 \
+  --set profile=ambient \
   -f istiod-values.yaml \
   --wait
 ```
@@ -179,7 +184,7 @@ spec:
 Istio 1.22 has strong support for the Kubernetes Gateway API, which is the future direction for traffic management:
 
 ```bash
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.0.0/standard-install.yaml
+kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.1.0/standard-install.yaml
 ```
 
 Create a Gateway using the Gateway API:
@@ -251,7 +256,7 @@ spec:
 ## Telemetry Configuration
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: mesh-defaults
@@ -305,11 +310,13 @@ kubectl get pods -w
 Enable DNS proxying for ServiceEntry resolution:
 
 ```yaml
-meshConfig:
-  defaultConfig:
-    proxyMetadata:
-      ISTIO_META_DNS_CAPTURE: "true"
-      ISTIO_META_DNS_AUTO_ALLOCATE: "true"
+cni:
+  ambient:
+    dnsCapture: true
+
+pilot:
+  env:
+    PILOT_ENABLE_IP_AUTOALLOCATE: "true"
 ```
 
 Set the protocol detection timeout:
