@@ -33,7 +33,7 @@ This identity is assigned by Istio's CA (istiod) and cannot be spoofed by the wo
 Before setting up workload authorization, make sure:
 
 1. Sidecar injection is enabled in the relevant namespaces
-2. mTLS is active (PERMISSIVE or STRICT mode)
+2. mTLS is active (STRICT mode is recommended when policies match `principals`; PERMISSIVE is mainly useful during migration)
 3. Each workload uses its own service account
 
 ```bash
@@ -165,7 +165,7 @@ spec:
     to:
     - operation:
         methods: ["PUT"]
-        paths: ["/orders/*/status"]
+        paths: ["/orders/{*}/status"]
 ```
 
 Each rule gives a different level of access to a different caller. This is fine-grained workload authorization in action.
@@ -333,4 +333,4 @@ istio_requests_total{response_code="403",reporter="destination"}
 
 Set up alerts for unexpected spikes in 403 responses, which could indicate a misconfigured policy or a service that was not granted access.
 
-Workload-to-workload authorization is the backbone of a secure service mesh. By mapping out your service dependencies, creating dedicated service accounts, and writing explicit ALLOW policies, you create a cluster where every service call is verified and unauthorized access is blocked at the network level.
+Workload-to-workload authorization is the backbone of a secure service mesh. By mapping out your service dependencies, creating dedicated service accounts, and writing explicit ALLOW policies, you create a cluster where every service call is verified and unauthorized access is blocked at the Envoy proxy layer.
