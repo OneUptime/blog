@@ -12,11 +12,11 @@ Managing TLS certificates is one of those tasks that nobody enjoys but everybody
 
 ## GCP Certificate Manager Overview
 
-Certificate Manager supports three types of certificates:
+Certificate Manager supports these common certificate options:
 
 - **Google-managed certificates**: GCP provisions and renews certificates automatically via DNS or load balancer authorization
 - **Self-managed certificates**: You upload your own certificate and key
-- **Certificate Authority Service certificates**: Certificates issued by GCP's private CA
+- **Google-managed certificates issued through Certificate Authority Service**: Certificates issued from a GCP private CA pool
 
 For Istio, the most interesting option is Google-managed certificates since they automate the entire lifecycle.
 
@@ -32,17 +32,23 @@ Create a certificate map:
 gcloud certificate-manager dns-authorizations create app-dns-auth \
   --domain="app.example.com"
 
+gcloud certificate-manager dns-authorizations create api-dns-auth \
+  --domain="api.example.com"
+
 # Get the CNAME record to add to your DNS
 gcloud certificate-manager dns-authorizations describe app-dns-auth \
   --format="value(dnsResourceRecord.name, dnsResourceRecord.type, dnsResourceRecord.data)"
+
+gcloud certificate-manager dns-authorizations describe api-dns-auth \
+  --format="value(dnsResourceRecord.name, dnsResourceRecord.type, dnsResourceRecord.data)"
 ```
 
-Add the CNAME record to your DNS zone, then create the certificate:
+Add the CNAME records to your DNS zone, then create the certificate:
 
 ```bash
 gcloud certificate-manager certificates create app-cert \
   --domains="app.example.com,api.example.com" \
-  --dns-authorizations=app-dns-auth
+  --dns-authorizations=app-dns-auth,api-dns-auth
 ```
 
 Create a certificate map and map entry:
@@ -78,7 +84,7 @@ spec:
         service:
           type: ClusterIP
         serviceAnnotations:
-          cloud.google.com/neg: '{"exposed_ports":{"8080":{"name":"istio-neg"}}}'
+          cloud.google.com/neg: '{"exposed_ports":{"80":{"name":"istio-neg"}}}'
 ```
 
 Create the load balancer with the certificate map:
@@ -129,11 +135,10 @@ metadata:
   namespace: istio-system
 spec:
   selector:
-    matchLabels:
-      istio: ingressgateway
+    istio: ingressgateway
   servers:
   - port:
-      number: 8080
+      number: 80
       name: http
       protocol: HTTP
     hosts:
@@ -164,7 +169,7 @@ spec:
     value: istio-gateway-ip
 ```
 
-This creates a managed HTTP(S) load balancer that uses the certificate map. Traffic is forwarded to your Istio ingress gateway.
+This creates a managed HTTP(S) load balancer that uses the certificate map. Traffic must then be routed to a backend Service, such as your Istio ingress gateway Service, with HTTPRoute resources.
 
 ## Approach 3: Using GCP CA Service with Istio
 
@@ -180,17 +185,46 @@ gcloud privateca pools create istio-ca-pool \
 gcloud privateca roots create istio-root-ca \
   --pool istio-ca-pool \
   --location us-central1 \
-  --subject "CN=My Istio CA,O=MyCompany"
+  --subject "CN=My Istio CA,O=MyCompany" \
+  --auto-enable
 ```
 
 Install cert-manager with the Google CAS issuer:
 
 ```bash
-helm repo add jetstack https://charts.jetstack.io
-helm install cert-manager jetstack/cert-manager -n cert-manager --create-namespace --set installCRDs=true
+helm install cert-manager oci://quay.io/jetstack/charts/cert-manager \
+  --version v1.20.2 \
+  -n cert-manager \
+  --create-namespace \
+  --set crds.enabled=true
 
 # Install the Google CAS issuer
-kubectl apply -f https://github.com/jetstack/google-cas-issuer/releases/latest/download/google-cas-issuer.yaml
+helm upgrade -i cert-manager-google-cas-issuer \
+  oci://quay.io/jetstack/charts/cert-manager-google-cas-issuer \
+  -n cert-manager \
+  --wait
+```
+
+If you are using Workload Identity, grant the Google CAS issuer permission to request certificates from the CA pool:
+
+```bash
+gcloud iam service-accounts create sa-google-cas-issuer
+
+gcloud privateca pools add-iam-policy-binding istio-ca-pool \
+  --location us-central1 \
+  --role roles/privateca.certificateRequester \
+  --member "serviceAccount:sa-google-cas-issuer@my-project.iam.gserviceaccount.com"
+
+gcloud iam service-accounts add-iam-policy-binding \
+  --role roles/iam.workloadIdentityUser \
+  --member "serviceAccount:my-project.svc.id.goog[cert-manager/ksa-google-cas-issuer]" \
+  sa-google-cas-issuer@my-project.iam.gserviceaccount.com
+
+kubectl annotate serviceaccount \
+  --namespace cert-manager \
+  ksa-google-cas-issuer \
+  iam.gke.io/gcp-service-account=sa-google-cas-issuer@my-project.iam.gserviceaccount.com \
+  --overwrite=true
 ```
 
 Create the issuer:
@@ -237,8 +271,7 @@ metadata:
   namespace: istio-system
 spec:
   selector:
-    matchLabels:
-      istio: ingressgateway
+    istio: ingressgateway
   servers:
   - port:
       number: 443
