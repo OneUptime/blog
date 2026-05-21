@@ -104,7 +104,7 @@ spec:
 Istio equivalent:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: my-app-gateway
@@ -131,7 +131,7 @@ spec:
       mode: SIMPLE
       credentialName: app-tls
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app-vs
@@ -161,7 +161,7 @@ Remember to copy TLS secrets to the istio-system namespace:
 
 ```bash
 kubectl get secret app-tls -n default -o yaml | \
-  sed 's/namespace: default/namespace: istio-system/' | \
+  yq 'del(.metadata.uid, .metadata.resourceVersion, .metadata.creationTimestamp, .metadata.managedFields, .metadata.annotations."kubectl.kubernetes.io/last-applied-configuration") | .metadata.namespace = "istio-system"' | \
   kubectl apply -f -
 ```
 
@@ -201,7 +201,7 @@ http:
 With the DestinationRule:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: app-service-dr
@@ -301,7 +301,7 @@ spec:
 Istio:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: api-service-dr
@@ -344,12 +344,13 @@ http:
     attempts: 3
     perTryTimeout: 2s
     retryOn: 5xx,reset,connect-failure
+    backoff: 100ms
   route:
   - destination:
       host: api-service
 ```
 
-Istio doesn't support exponential backoff through VirtualService config. It adds jitter to retry timing automatically.
+Istio supports retry backoff through the VirtualService `backoff` field. If you leave it unset, Istio uses a default minimum duration as the base interval for exponential backoff.
 
 ## Step 5: Migration Strategy
 
@@ -362,7 +363,8 @@ Run both Traefik and Istio simultaneously and migrate services one at a time:
 ISTIO_IP=$(kubectl get svc -n istio-system istio-ingressgateway \
   -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
 
-curl -H "Host: app.example.com" https://$ISTIO_IP/api/health
+curl --resolve "app.example.com:443:$ISTIO_IP" \
+  https://app.example.com/api/health
 ```
 
 3. Once verified, update DNS to point to the Istio gateway
