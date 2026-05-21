@@ -284,8 +284,11 @@ from:
   - source:
       notPrincipals: []
       notNamespaces: []
+      notServiceAccounts: []
       notIpBlocks: []
+      notRemoteIpBlocks: []
       notRequestPrincipals: []
+      notTrustDomains: []
 ```
 
 In the `operation` section:
@@ -337,9 +340,9 @@ spec:
             hosts: ["app.example.com"]
 ```
 
-## Audit Action (Dry Run)
+## Audit Action
 
-AUDIT policies log matches without enforcing them:
+AUDIT policies mark matches for audit without enforcing them:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -397,7 +400,7 @@ meshConfig:
 
 ## Mesh-Wide Policy
 
-Apply to all workloads in the mesh by placing it in `istio-system` with no selector:
+Apply to all workloads in the mesh by placing it in the root namespace with no selector. In many Istio installations, the root namespace is `istio-system`:
 
 ```yaml
 apiVersion: security.istio.io/v1
