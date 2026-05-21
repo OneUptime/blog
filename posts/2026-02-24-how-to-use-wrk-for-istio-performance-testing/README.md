@@ -8,7 +8,7 @@ Description: How to use the wrk HTTP benchmarking tool to measure and optimize I
 
 ---
 
-While Fortio is the "official" load testing tool from the Istio ecosystem, wrk is another popular choice that has been around much longer. wrk is an HTTP benchmarking tool capable of generating significant load from a single thread using epoll/kqueue. It is extremely efficient, scriptable with Lua, and produces clean latency histograms.
+While Fortio is the "official" load testing tool from the Istio ecosystem, wrk is another popular choice that has been around much longer. wrk is an HTTP benchmarking tool capable of generating significant load from a single multi-core machine using epoll/kqueue. It is extremely efficient, scriptable with Lua, and produces clean latency statistics.
 
 Here is how to use wrk to performance test services running inside an Istio service mesh.
 
@@ -176,9 +176,12 @@ end
 ```lua
 -- report.lua
 done = function(summary, latency, requests)
+  local total_errors = summary.errors.connect + summary.errors.read +
+                       summary.errors.write + summary.errors.status +
+                       summary.errors.timeout
   io.write("--- Custom Report ---\n")
   io.write(string.format("Total requests: %d\n", summary.requests))
-  io.write(string.format("Total errors:   %d\n", summary.errors.status))
+  io.write(string.format("Total errors:   %d\n", total_errors))
   io.write(string.format("Avg latency:    %.2fms\n", latency.mean / 1000))
   io.write(string.format("Max latency:    %.2fms\n", latency.max / 1000))
   io.write(string.format("p50 latency:    %.2fms\n", latency:percentile(50) / 1000))
@@ -251,7 +254,7 @@ spec:
 
 ### Rate Limiting Behavior
 
-Test how the service handles requests beyond the rate limit:
+If you already have an Istio or Envoy rate limit policy configured for the service, test how it handles requests beyond that limit:
 
 ```bash
 kubectl exec -n perf-test wrk-client -- \
