@@ -37,7 +37,7 @@ If the EXTERNAL-IP is `<pending>`, your load balancer isn't provisioned. This is
 The Gateway resource defines which ports and hosts the Ingress Gateway listens on:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: my-gateway
@@ -70,7 +70,7 @@ kubectl get pod -n istio-system -l istio=ingressgateway --show-labels
 The VirtualService routes traffic from the Gateway to your backend. This is where things go wrong most often.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app-vs
@@ -104,10 +104,10 @@ kubectl get pods -n my-namespace -l app=my-service
 Check the endpoints:
 
 ```bash
-kubectl get endpoints my-service -n my-namespace
+kubectl get endpointslice -n my-namespace -l kubernetes.io/service-name=my-service
 ```
 
-If endpoints are empty, the service selector doesn't match any pods.
+If the EndpointSlices have no ready addresses, the service selector doesn't match any ready pods.
 
 Also check if the backend service port matches what the VirtualService references:
 
@@ -117,7 +117,7 @@ kubectl get svc my-service -n my-namespace -o yaml
 
 ## 503 with "Upstream Connect Error"
 
-This typically means a mTLS mismatch. The gateway is trying to connect one way and the backend expects another.
+This can be caused by a mTLS mismatch, a wrong backend port, a network policy, or a backend that is not listening. For mTLS, the gateway is trying to connect one way and the backend expects another.
 
 If you have STRICT mTLS on the backend namespace but the DestinationRule for the gateway-to-backend connection has TLS disabled, you'll get connection failures.
 
@@ -136,7 +136,7 @@ kubectl get destinationrule -n my-namespace -o yaml
 With auto mTLS (default), you typically don't need to set anything special. Remove any DestinationRule TLS settings and let Istio handle it:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service-dr
@@ -149,9 +149,9 @@ spec:
         maxConnections: 100
 ```
 
-## 503 with "NR" (No Route)
+## "NR" (No Route)
 
-If you see NR in the Envoy access logs, the gateway doesn't have a route configured for the request:
+If you see NR in the Envoy access logs, the gateway doesn't have a route configured for the request. Envoy usually returns this as a 404 for HTTP requests, but it is still useful to check while debugging gateway routing:
 
 ```bash
 kubectl logs -l app=istio-ingressgateway -n istio-system | grep "NR"
@@ -189,7 +189,7 @@ Look for your service in the clusters output. If it's not there, the gateway doe
 
 ## Service Port Naming
 
-Istio requires service ports to be named with the protocol prefix. If the port isn't named correctly, Istio may not route traffic properly:
+Istio uses the Kubernetes service port name or `appProtocol` to determine the protocol, and may also use automatic protocol detection in some cases. To avoid routing surprises, name service ports with the protocol prefix:
 
 ```yaml
 apiVersion: v1
@@ -199,19 +199,19 @@ metadata:
   namespace: my-namespace
 spec:
   ports:
-  - name: http-web  # Must start with http, grpc, tcp, etc.
+  - name: http-web  # Common prefixes include http, grpc, tcp, etc.
     port: 8080
     targetPort: 8080
 ```
 
-If the port name is just `web` or `8080`, Istio treats it as plain TCP and may not apply HTTP routing rules.
+If the port name is just `web`, Istio may treat it as opaque TCP traffic and may not apply HTTP routing rules. Kubernetes service port names also must be valid DNS labels, so `8080` is not a valid port name.
 
 ## Gateway TLS Configuration
 
 If you're using HTTPS on the gateway, the TLS certificate must be valid and present:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: my-gateway
@@ -237,7 +237,7 @@ The secret must be in the same namespace as the Ingress Gateway (usually `istio-
 kubectl get secret myapp-tls-secret -n istio-system
 ```
 
-If the secret doesn't exist or has the wrong format, the gateway will fail to set up the TLS listener and return 503.
+If the secret doesn't exist or has the wrong format, the gateway will not be able to load the TLS credentials correctly, and HTTPS requests can fail before they reach your VirtualService.
 
 Create the secret if needed:
 
@@ -280,4 +280,4 @@ It catches many common misconfigurations that lead to 503s.
 
 ## Summary
 
-When the Istio Ingress Gateway returns 503, start by checking if the Gateway pod is healthy, then verify the Gateway and VirtualService configuration. Check that backend pods are running and have healthy endpoints. Look at Envoy access logs for response flags (NR, UH, UF) that tell you exactly what went wrong. Most 503s come from missing routes, mTLS mismatches, or backend services being down.
+When the Istio Ingress Gateway returns 503, start by checking if the Gateway pod is healthy, then verify the Gateway and VirtualService configuration. Check that backend pods are running and have healthy endpoints. Look at Envoy access logs for response flags such as UH, UF, UO, and sometimes NR while debugging routing. Most 503s come from unhealthy upstreams, connection failures, mTLS mismatches, or backend services being down.
