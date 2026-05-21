@@ -30,7 +30,7 @@ Check the init container status:
 kubectl get pod <pod-name> -n production -o jsonpath='{.status.initContainerStatuses[?(@.name=="istio-init")].state}'
 
 # Check the exit code
-kubectl get pod <pod-name> -n production -o jsonpath='{.status.initContainerStatuses[?(@.name=="istio-init")].lastState.terminated.exitCode}'
+kubectl get pod <pod-name> -n production -o jsonpath='{.status.initContainerStatuses[?(@.name=="istio-init")].state.terminated.exitCode}'
 ```
 
 ## Permission Denied Errors
@@ -66,11 +66,11 @@ If a PodSecurityPolicy or Pod Security Admission is stripping these:
 # Check Pod Security Admission labels
 kubectl get namespace production --show-labels | grep pod-security
 
-# If the namespace enforces "restricted"
-kubectl label namespace production pod-security.kubernetes.io/enforce=baseline --overwrite
+# If you are not using Istio CNI, the namespace must allow the injected capabilities
+kubectl label namespace production pod-security.kubernetes.io/enforce=privileged --overwrite
 ```
 
-The `baseline` security standard allows NET_ADMIN for init containers. The `restricted` standard does not.
+The `baseline` and `restricted` security standards do not allow NET_ADMIN or NET_RAW for init containers. If you need to enforce `baseline` or `restricted` in workload namespaces, use Istio CNI instead of the privileged `istio-init` model.
 
 ## Using Istio CNI Instead of Init Containers
 
@@ -192,8 +192,8 @@ metadata:
 Check what iptables rules were created:
 
 ```bash
-# If the pod is running, check iptables rules
-kubectl exec <pod-name> -c istio-proxy -n production -- iptables -t nat -L -n
+# If the pod is running and your cluster supports ephemeral containers, check iptables rules
+kubectl debug -it <pod-name> -n production --image=nicolaka/netshoot --target=istio-proxy --profile=netadmin -- iptables -t nat -L -n
 ```
 
 ## Init Container Timeout
@@ -227,9 +227,9 @@ If the init container completes but traffic is not being intercepted correctly, 
 
 ```bash
 # Check the NAT table rules
-kubectl exec <pod-name> -c istio-proxy -n production -- iptables -t nat -L ISTIO_INBOUND -n -v
-kubectl exec <pod-name> -c istio-proxy -n production -- iptables -t nat -L ISTIO_OUTPUT -n -v
-kubectl exec <pod-name> -c istio-proxy -n production -- iptables -t nat -L ISTIO_REDIRECT -n -v
+kubectl debug -it <pod-name> -n production --image=nicolaka/netshoot --target=istio-proxy --profile=netadmin -- iptables -t nat -L ISTIO_INBOUND -n -v
+kubectl debug -it <pod-name> -n production --image=nicolaka/netshoot --target=istio-proxy --profile=netadmin -- iptables -t nat -L ISTIO_OUTPUT -n -v
+kubectl debug -it <pod-name> -n production --image=nicolaka/netshoot --target=istio-proxy --profile=netadmin -- iptables -t nat -L ISTIO_REDIRECT -n -v
 ```
 
 Expected rules should show:
@@ -258,7 +258,7 @@ kubectl get namespace production --show-labels
 kubectl get pods -n istio-system -l k8s-app=istio-cni-node
 
 # 6. Verify iptables rules (on running pod)
-kubectl exec <pod-name> -c istio-proxy -n production -- iptables -t nat -L -n
+kubectl debug -it <pod-name> -n production --image=nicolaka/netshoot --target=istio-proxy --profile=netadmin -- iptables -t nat -L -n
 ```
 
 Init container issues are almost always permission-related. If you are in a restricted environment, switching to Istio CNI is usually the cleanest solution. For less restricted environments, making sure the init container has NET_ADMIN and NET_RAW capabilities resolves the vast majority of problems.
