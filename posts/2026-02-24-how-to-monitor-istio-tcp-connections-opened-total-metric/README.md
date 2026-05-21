@@ -34,7 +34,7 @@ istio_tcp_connections_opened_total{
 } 4521
 ```
 
-Since this is TCP traffic, you won't see HTTP-specific labels like `response_code` or `request_protocol`.
+Since this is TCP traffic, you won't see HTTP-only labels like `response_code`. The `request_protocol` label may still be present and set to the connection protocol.
 
 ## The Related Metric: istio_tcp_connections_closed_total
 
@@ -49,7 +49,7 @@ istio_tcp_connections_closed_total{
 } 4519
 ```
 
-A small difference between opened and closed indicates long-lived connections (like connection pools). A close match between the rates of opened and closed suggests short-lived connections.
+The difference between opened and closed is an estimate of currently open connections for the matching label set. A stable non-zero difference with low open and close rates is typical for long-lived connections like connection pools. A close match between high rates of opened and closed suggests short-lived connection churn.
 
 ## Basic Connection Rate Queries
 
@@ -338,7 +338,7 @@ When you see unexpected connection patterns, use these steps:
 ```bash
 # Dump connection stats for a specific pod
 kubectl exec <pod-name> -c istio-proxy -- \
-  curl -s localhost:15000/stats | grep cx
+  pilot-agent request GET stats | grep cx
 ```
 
 The `istio_tcp_connections_opened_total` metric might seem simple, but it's your window into the health of database connections, cache interactions, and message queue connectivity across your mesh. Watch for connection pools that aren't working, connection storms during deployments, and services that can't reach their backing services.
