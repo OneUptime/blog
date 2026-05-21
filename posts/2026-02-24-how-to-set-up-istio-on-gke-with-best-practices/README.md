@@ -8,14 +8,14 @@ Description: Production-ready guide for installing and configuring Istio on Goog
 
 ---
 
-Google Kubernetes Engine has a unique relationship with Istio since Google is one of the original creators of the project. GKE even offers a managed Istio option (now Anthos Service Mesh), but many teams prefer running open-source Istio for full control. Either way, there are GKE-specific considerations that affect how you install, configure, and operate Istio.
+Google Kubernetes Engine has a unique relationship with Istio since Google is one of the original creators of the project. GKE even offers a managed Istio-based option through Cloud Service Mesh, formerly Anthos Service Mesh, but many teams prefer running open-source Istio for full control. Either way, there are GKE-specific considerations that affect how you install, configure, and operate Istio.
 
-## Choosing Between Open-Source Istio and Anthos Service Mesh
+## Choosing Between Open-Source Istio and Cloud Service Mesh
 
 GKE gives you three options:
 
 - **Open-source Istio**: You install and manage everything yourself. Full control but you own the upgrades.
-- **Anthos Service Mesh (ASM)**: Google's managed distribution of Istio. It is basically Istio with a Google-managed control plane and integrated Cloud Monitoring.
+- **Cloud Service Mesh**: Google's managed service mesh offering based on open-source Istio. It can provide a Google-managed control plane, optional managed data plane, and integrated Cloud Monitoring.
 - **GKE Gateway API**: GKE's built-in implementation of the Kubernetes Gateway API, which handles some of what Istio does without a full mesh.
 
 This guide focuses on open-source Istio since that gives you the most flexibility.
@@ -160,8 +160,7 @@ metadata:
   namespace: istio-system
 spec:
   selector:
-    matchLabels:
-      istio: ingressgateway
+    istio: ingressgateway
   servers:
   - port:
       number: 443
@@ -217,7 +216,7 @@ spec:
 
 GKE's VPC-native networking means pod IPs are routable within the VPC. This is good for Istio because it simplifies multi-cluster setups where clusters in the same VPC can route directly to each other's pods.
 
-However, you need to make sure firewall rules allow Istio traffic between nodes:
+GKE creates firewall rules for essential node, Pod, and control plane communication by default. If your organization manages VPC firewall rules manually or uses higher-priority hierarchical or network firewall policies, make sure those policies allow the Istio ports your mesh uses:
 
 ```bash
 # Allow Istio control plane communication
@@ -237,7 +236,7 @@ gcloud compute firewall-rules create allow-istio-mtls \
 
 ## Integrating with Cloud Monitoring
 
-GKE automatically collects metrics through Cloud Monitoring. You can configure Istio to export metrics there too:
+GKE can send system metrics to Cloud Monitoring, and Google Cloud Managed Service for Prometheus can collect Prometheus-style metrics from workloads such as Istio. The following IstioOperator snippet configures trace sampling, not metrics export:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -250,7 +249,7 @@ spec:
         sampling: 10
 ```
 
-Deploy Prometheus for Istio-specific metrics:
+For evaluation, you can deploy the Istio sample addons for Istio-specific metrics and dashboards:
 
 ```bash
 kubectl apply -f samples/addons/prometheus.yaml
@@ -258,7 +257,7 @@ kubectl apply -f samples/addons/kiali.yaml
 kubectl apply -f samples/addons/grafana.yaml
 ```
 
-You can also set up Cloud Trace for distributed tracing by configuring the trace exporter in Istio:
+You can also set up a Zipkin-compatible tracing backend by configuring the legacy MeshConfig Zipkin tracer in Istio:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -306,4 +305,4 @@ istioctl uninstall --revision default
 
 This gives you a zero-downtime upgrade path where you can roll back by switching the namespace label back to the old revision.
 
-Running Istio on GKE is a solid combination. The VPC-native networking, Workload Identity integration, and Cloud Monitoring support make GKE one of the smoother platforms for Istio. Size your nodes appropriately, use Workload Identity instead of JSON key files, and take advantage of GKE's revision-based upgrades for smooth control plane updates.
+Running Istio on GKE is a solid combination. The VPC-native networking, Workload Identity integration, and Cloud Monitoring support make GKE one of the smoother platforms for Istio. Size your nodes appropriately, use Workload Identity instead of JSON key files, and take advantage of Istio's revision-based upgrades for smooth control plane updates.
