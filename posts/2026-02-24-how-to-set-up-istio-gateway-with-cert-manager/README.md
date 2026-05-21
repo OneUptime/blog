@@ -31,15 +31,14 @@ The Istio Gateway references the secret by name via `credentialName`, and Istio'
 Install cert-manager using the official manifests:
 
 ```bash
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.4/cert-manager.yaml
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml
 ```
 
 Or with Helm:
 
 ```bash
-helm repo add jetstack https://charts.jetstack.io
-helm repo update
-helm install cert-manager jetstack/cert-manager \
+helm install cert-manager oci://quay.io/jetstack/charts/cert-manager \
+  --version v1.20.2 \
   --namespace cert-manager \
   --create-namespace \
   --set crds.enabled=true
@@ -82,7 +81,7 @@ spec:
     solvers:
     - http01:
         ingress:
-          class: istio
+          ingressClassName: istio
 ```
 
 ### Let's Encrypt with DNS-01 (for wildcards)
@@ -147,7 +146,7 @@ spec:
 ```
 
 Key points:
-- The Certificate must be in the `istio-system` namespace so the secret ends up there
+- The Certificate must be in the same namespace as the Istio ingress gateway deployment, commonly `istio-system`, so the secret ends up there
 - `secretName` is what you reference in the Gateway `credentialName`
 - `duration` and `renewBefore` control the certificate lifetime and renewal timing
 - `dnsNames` lists all domains the certificate covers
@@ -175,7 +174,7 @@ kubectl get order -n istio-system
 kubectl get challenge -n istio-system
 ```
 
-The certificate goes through these states: Issuing -> Challenge -> Valid. Once READY shows True, the secret is created and ready to use.
+During ACME issuance, cert-manager creates related Order and Challenge resources for validation. Once READY shows True on the Certificate, the secret is created and ready to use.
 
 ## Configuring the Istio Gateway
 
@@ -325,7 +324,7 @@ Common cause: HTTP-01 challenge cannot reach the temporary validation endpoint. 
 
 **Secret created but gateway not using it**
 
-Verify the secret is in `istio-system`:
+Verify the secret is in the same namespace as the Istio ingress gateway deployment:
 
 ```bash
 kubectl get secret app-tls-credential -n istio-system -o yaml
@@ -346,10 +345,10 @@ kubectl delete secret app-tls-credential -n istio-system
 # cert-manager will detect the missing secret and re-issue
 ```
 
-Or update the Certificate resource to trigger a new issuance:
+Or use the cert-manager CLI plugin to trigger a new issuance:
 
 ```bash
-kubectl annotate certificate app-tls -n istio-system cert-manager.io/renew="true"
+kubectl cert-manager renew app-tls -n istio-system
 ```
 
 Using cert-manager with Istio Gateway is the production-standard approach for TLS management. It eliminates certificate-related outages and gives you a consistent, declarative way to manage certificates across your entire cluster. Set it up once and you can stop worrying about certificate expiration for good.
