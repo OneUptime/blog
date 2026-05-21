@@ -74,21 +74,21 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install istioctl
         run: |
-          curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.22.0 sh -
-          echo "$PWD/istio-1.22.0/bin" >> $GITHUB_PATH
+          curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.29.2 TARGET_ARCH=x86_64 sh -
+          echo "$PWD/istio-1.29.2/bin" >> $GITHUB_PATH
 
       - name: Analyze production config
         run: |
           # Build complete production config
           for svc in services/*/overlays/production/; do
             kubectl kustomize "${svc}"
-          done | istioctl analyze -
+          done | istioctl analyze --use-kube=false -
 
       - name: Analyze staging config
         run: |
           for svc in services/*/overlays/staging/; do
             kubectl kustomize "${svc}"
-          done | istioctl analyze -
+          done | istioctl analyze --use-kube=false -
 
   policy-check:
     runs-on: ubuntu-latest
@@ -97,8 +97,9 @@ jobs:
 
       - name: Install OPA/Conftest
         run: |
-          wget -q https://github.com/open-policy-agent/conftest/releases/download/v0.46.0/conftest_0.46.0_Linux_x86_64.tar.gz
-          tar xzf conftest_0.46.0_Linux_x86_64.tar.gz
+          LATEST_VERSION=0.66.0
+          wget -q "https://github.com/open-policy-agent/conftest/releases/download/v${LATEST_VERSION}/conftest_${LATEST_VERSION}_Linux_x86_64.tar.gz"
+          tar xzf conftest_${LATEST_VERSION}_Linux_x86_64.tar.gz
           sudo mv conftest /usr/local/bin/
 
       - name: Run policy checks
@@ -117,28 +118,30 @@ Write Open Policy Agent (OPA) policies that enforce your organization's rules:
 # policy/virtualservice.rego
 package main
 
-deny[msg] {
+import rego.v1
+
+deny contains msg if {
     input.kind == "VirtualService"
     route := input.spec.http[_].route[_]
     not route.destination.port.number
     msg := sprintf("VirtualService %s: all routes must specify a port number", [input.metadata.name])
 }
 
-deny[msg] {
+deny contains msg if {
     input.kind == "VirtualService"
     http := input.spec.http[_]
     not http.timeout
     msg := sprintf("VirtualService %s: all HTTP routes must have a timeout", [input.metadata.name])
 }
 
-deny[msg] {
+deny contains msg if {
     input.kind == "VirtualService"
     http := input.spec.http[_]
     not http.retries
     msg := sprintf("VirtualService %s: all HTTP routes must have retry configuration", [input.metadata.name])
 }
 
-deny[msg] {
+deny contains msg if {
     input.kind == "DestinationRule"
     not input.spec.trafficPolicy.outlierDetection
     msg := sprintf("DestinationRule %s: must include outlier detection", [input.metadata.name])
@@ -149,15 +152,25 @@ deny[msg] {
 # policy/security.rego
 package main
 
-deny[msg] {
-    input.kind == "AuthorizationPolicy"
+import rego.v1
+
+is_allow_policy if {
+    not input.spec.action
+}
+
+is_allow_policy if {
     input.spec.action == "ALLOW"
+}
+
+deny contains msg if {
+    input.kind == "AuthorizationPolicy"
+    is_allow_policy
     rule := input.spec.rules[_]
     not rule.from
     msg := sprintf("AuthorizationPolicy %s: ALLOW rules must specify sources", [input.metadata.name])
 }
 
-deny[msg] {
+deny contains msg if {
     input.kind == "PeerAuthentication"
     input.spec.mtls.mode == "DISABLE"
     msg := sprintf("PeerAuthentication %s: disabling mTLS is not allowed", [input.metadata.name])
@@ -171,6 +184,9 @@ Add a step that shows exactly what will change when the PR is merged:
 ```yaml
   diff-report:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -193,7 +209,7 @@ Add a step that shows exactly what will change when the PR is merged:
           done
 
       - name: Post comment
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const fs = require('fs');
