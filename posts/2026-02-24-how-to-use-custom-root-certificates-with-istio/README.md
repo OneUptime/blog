@@ -61,7 +61,7 @@ openssl req -new -x509 -key root-key.pem -out root-cert.pem \
 Verify the root certificate:
 
 ```bash
-openssl x509 -in root-cert.pem -text -noout | head -20
+openssl x509 -in root-cert.pem -text -noout
 ```
 
 You should see:
@@ -120,21 +120,21 @@ Should output `ca-cert.pem: OK`.
 Create the `cacerts` secret in the `istio-system` namespace:
 
 ```bash
+kubectl create namespace istio-system --dry-run=client -o yaml | kubectl apply -f -
+
 kubectl create secret generic cacerts -n istio-system \
   --from-file=ca-cert.pem \
   --from-file=ca-key.pem \
   --from-file=root-cert.pem \
-  --from-file=cert-chain.pem
+  --from-file=cert-chain.pem \
+  --dry-run=client -o yaml | kubectl apply -f -
 ```
 
 If you have not installed Istio yet, just install it normally. Istiod will detect the `cacerts` secret and use it instead of generating a self-signed root.
 
-If Istio is already running:
+If Istio is already running, changing the CA typically requires reinstalling Istio or following a planned CA migration. Re-run the same `istioctl install`, Helm upgrade, or GitOps workflow you used for the current control plane so istiod reads the `cacerts` secret. For a lab mesh, restart workloads afterward so they get new certificates:
 
 ```bash
-# Restart istiod to use the new certificates
-kubectl rollout restart deployment istiod -n istio-system
-
 # Wait for istiod to be ready
 kubectl rollout status deployment istiod -n istio-system
 
@@ -201,18 +201,24 @@ Install in each cluster:
 
 ```bash
 # Cluster A
+kubectl --context cluster-a create namespace istio-system --dry-run=client -o yaml | \
+  kubectl --context cluster-a apply -f -
 kubectl --context cluster-a create secret generic cacerts -n istio-system \
   --from-file=ca-cert.pem=cluster-a-ca-cert.pem \
   --from-file=ca-key.pem=cluster-a-ca-key.pem \
   --from-file=root-cert.pem \
-  --from-file=cert-chain.pem=cluster-a-cert-chain.pem
+  --from-file=cert-chain.pem=cluster-a-cert-chain.pem \
+  --dry-run=client -o yaml | kubectl --context cluster-a apply -f -
 
 # Cluster B
+kubectl --context cluster-b create namespace istio-system --dry-run=client -o yaml | \
+  kubectl --context cluster-b apply -f -
 kubectl --context cluster-b create secret generic cacerts -n istio-system \
   --from-file=ca-cert.pem=cluster-b-ca-cert.pem \
   --from-file=ca-key.pem=cluster-b-ca-key.pem \
   --from-file=root-cert.pem \
-  --from-file=cert-chain.pem=cluster-b-cert-chain.pem
+  --from-file=cert-chain.pem=cluster-b-cert-chain.pem \
+  --dry-run=client -o yaml | kubectl --context cluster-b apply -f -
 ```
 
 Both clusters share `root-cert.pem`, so they trust each other.
@@ -262,9 +268,9 @@ kubectl rollout restart deployment --all -n <namespace>
 Verify the secret exists and has the right keys:
 
 ```bash
-kubectl get secret cacerts -n istio-system -o jsonpath='{.data}' | jq 'keys'
+kubectl get secret cacerts -n istio-system -o json | jq '.data | keys'
 ```
 
-It must contain exactly: `ca-cert.pem`, `ca-key.pem`, `cert-chain.pem`, `root-cert.pem`.
+It must contain: `ca-cert.pem`, `ca-key.pem`, `cert-chain.pem`, `root-cert.pem`.
 
 Using a custom root certificate is a one-time setup that pays off continuously. It puts you in control of your mesh's trust foundation and unlocks multi-cluster and cross-system trust that the self-signed root simply cannot provide.
