@@ -89,7 +89,7 @@ After Istio injection, this pod has four containers: the app, the log shipper, t
 
 ## Sidecar for Local Caching
 
-Running a local Redis or Memcached sidecar gives your app a zero-latency cache:
+Running a local Redis or Memcached sidecar gives your app a low-latency cache:
 
 ```yaml
 apiVersion: apps/v1
@@ -98,7 +98,13 @@ metadata:
   name: api-service
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: api-service
   template:
+    metadata:
+      labels:
+        app: api-service
     spec:
       containers:
       - name: api-service
@@ -137,8 +143,13 @@ metadata:
   name: my-service
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: my-service
   template:
     metadata:
+      labels:
+        app: my-service
       annotations:
         traffic.sidecar.istio.io/excludeInboundPorts: "6379,9090"
         traffic.sidecar.istio.io/excludeOutboundPorts: "6379"
@@ -171,7 +182,13 @@ metadata:
   name: external-api-client
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: external-api-client
   template:
+    metadata:
+      labels:
+        app: external-api-client
     spec:
       containers:
       - name: app
@@ -244,23 +261,24 @@ Add up all container resources when sizing your nodes. A pod with the app (200m 
 
 ## Sidecar Lifecycle Management
 
-Kubernetes does not guarantee the startup order of containers within a pod. If your app depends on a sidecar being ready first (like the cache needing to be up before the app starts), use container startup probes or init containers:
+Kubernetes does not guarantee the startup order of regular containers within a pod. If your app depends on a sidecar being ready first (like the cache needing to be up before the app starts), use a Kubernetes native sidecar container under `initContainers` with `restartPolicy: Always`, or make the app retry until the sidecar is available. A regular init container cannot wait for another regular container in the same pod, because regular containers do not start until init containers finish:
 
 ```yaml
       initContainers:
-      - name: wait-for-cache
-        image: busybox:latest
-        command: ['sh', '-c', 'until nc -z localhost 6379; do sleep 1; done']
-      containers:
-      - name: my-service
-        image: my-registry/my-service:latest
       - name: local-cache
         image: redis:7-alpine
+        restartPolicy: Always
+        ports:
+        - containerPort: 6379
         startupProbe:
           tcpSocket:
             port: 6379
           failureThreshold: 10
           periodSeconds: 1
+        command: ["redis-server", "--maxmemory", "100mb", "--maxmemory-policy", "allkeys-lru"]
+      containers:
+      - name: my-service
+        image: my-registry/my-service:latest
 ```
 
 For Istio specifically, there is a known issue where the app container might start before the Envoy sidecar is ready. You can use the `holdApplicationUntilProxyStarts` annotation:
@@ -278,7 +296,7 @@ This makes Kubernetes wait for the Envoy sidecar to be ready before starting the
 The Istio `Sidecar` resource (not to be confused with sidecar containers) controls the Envoy proxy's behavior. Use it to limit what services the proxy can see, reducing memory usage:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: my-service
@@ -324,4 +342,4 @@ groups:
 
 ## Summary
 
-The sidecar pattern extends beyond Envoy in Istio. Add custom sidecar containers for logging, caching, authentication, config watching, and other cross-cutting concerns. Use shared volumes for communication between containers. Exclude custom sidecar ports from Envoy interception when the traffic should stay pod-internal. Manage resources carefully since each sidecar adds to the pod's footprint. Use init containers or startup probes to control startup order. The Istio Sidecar resource (the CRD, not the container) helps limit the Envoy proxy's scope to reduce memory usage. Combining Envoy with custom sidecars gives you a powerful per-pod infrastructure layer.
+The sidecar pattern extends beyond Envoy in Istio. Add custom sidecar containers for logging, caching, authentication, config watching, and other cross-cutting concerns. Use shared volumes for communication between containers. Exclude custom sidecar ports from Envoy interception when the traffic should stay pod-internal. Manage resources carefully since each sidecar adds to the pod's footprint. Use native sidecar containers with startup probes, or app-level retries, when startup ordering matters. The Istio Sidecar resource (the CRD, not the container) helps limit the Envoy proxy's scope to reduce memory usage. Combining Envoy with custom sidecars gives you a powerful per-pod infrastructure layer.
