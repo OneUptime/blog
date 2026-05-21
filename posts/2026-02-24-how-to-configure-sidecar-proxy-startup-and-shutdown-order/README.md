@@ -92,12 +92,9 @@ apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
   values:
-    global:
-      proxy:
-        startupProbe:
-          enabled: true
-          failureThreshold: 30
-          periodSeconds: 1
+    pilot:
+      env:
+        ENABLE_NATIVE_SIDECARS: "true"
 ```
 
 With native sidecars, the startup order is:
@@ -112,10 +109,10 @@ This is the cleanest solution because it uses Kubernetes-native lifecycle manage
 Check if your cluster supports native sidecars:
 
 ```bash
-kubectl version --short
+kubectl version
 ```
 
-You need Kubernetes 1.28 or later with the `SidecarContainers` feature gate enabled.
+Native sidecar containers were introduced as an alpha feature in Kubernetes 1.28. The `SidecarContainers` feature gate has been enabled by default since Kubernetes 1.29, and the feature is stable in Kubernetes 1.33 and later.
 
 ## The Shutdown Problem
 
@@ -155,7 +152,7 @@ annotations:
     terminationDrainDuration: 15s
 ```
 
-Set this to be slightly longer than your application's graceful shutdown period. If your application takes 10 seconds to finish in-flight requests, set the drain to 15 seconds.
+Set this to be slightly longer than your application's graceful shutdown path, including any `preStop` delay. If your application sleeps for 5 seconds in `preStop` and then takes 10 seconds to finish in-flight requests, set the drain to at least 15 seconds.
 
 ## Configuring the Application's Termination Grace Period
 
@@ -178,17 +175,18 @@ spec:
 The relationship between these timeouts should be:
 
 ```text
-terminationGracePeriodSeconds > terminationDrainDuration > application shutdown time
+terminationGracePeriodSeconds > terminationDrainDuration >= preStop delay + application shutdown time
 ```
 
 For example:
 - `terminationGracePeriodSeconds: 30`
 - `terminationDrainDuration: 15s`
+- Application `preStop` delay: 5 seconds
 - Application graceful shutdown: ~10 seconds
 
 This ensures:
-1. The application has 10 seconds to finish in-flight requests
-2. The sidecar drains for 15 seconds (covering the application's shutdown plus propagation delay)
+1. The application has 5 seconds for endpoint propagation and 10 seconds to finish in-flight requests
+2. The sidecar drains for 15 seconds (covering the application's `preStop` delay plus shutdown)
 3. Kubernetes force-kills everything at 30 seconds if something is stuck
 
 ## Handling the Endpoint Propagation Delay
@@ -206,14 +204,14 @@ containers:
         command: ["sleep", "5"]
 ```
 
-This 5-second sleep happens before SIGTERM is sent to the application. During those 5 seconds, the endpoint removal propagates through the cluster, so by the time the application starts shutting down, no new traffic is arriving.
+This 5-second sleep happens before SIGTERM is sent to the application container. During those 5 seconds, the endpoint removal propagates through the cluster, so by the time the application starts shutting down, much less new traffic should be arriving.
 
 The full shutdown sequence becomes:
 
 1. Kubernetes starts termination
 2. Pod is removed from Service endpoints
-3. preStop hook runs (sleep 5)
-4. SIGTERM is sent to application and sidecar
+3. The application's preStop hook runs (sleep 5) before SIGTERM is sent to the application container
+4. SIGTERM is sent to containers as their preStop hooks complete
 5. Application starts graceful shutdown
 6. Sidecar drains connections for `terminationDrainDuration`
 7. Everything finishes within `terminationGracePeriodSeconds`
@@ -317,7 +315,7 @@ spec:
 This configuration ensures:
 - The sidecar is ready before the application starts
 - The application has 5 seconds of endpoint propagation time before shutdown
-- The sidecar drains connections for 15 seconds during shutdown
+- The sidecar drains connections for 15 seconds during shutdown, covering the 5-second preStop delay plus the application's graceful shutdown
 - Kubernetes force-kills at 30 seconds as a safety net
 - Sidecar resources are appropriately sized
 
