@@ -45,12 +45,14 @@ spec:
             storage: 200Gi
 ```
 
-Or in command-line flags:
+Or in the Prometheus configuration file:
 
-```bash
-prometheus \
-  --storage.tsdb.retention.time=90d \
-  --storage.tsdb.retention.size=100GB
+```yaml
+storage:
+  tsdb:
+    retention:
+      time: 90d
+      size: 100GB
 ```
 
 This works for small to medium meshes. The downsides are: Prometheus memory usage grows with the amount of data stored, queries over long time ranges become slow, and you lose data if the disk fails.
@@ -135,14 +137,18 @@ remote_write:
 
 ### Google Cloud Managed Service for Prometheus
 
-Google's managed Prometheus works with the standard remote write protocol or their custom collector. With remote write:
+Google's managed Prometheus uses managed collectors, the self-deployed collector, the OpenTelemetry Collector, or the Ops Agent rather than a standard upstream Prometheus `remote_write` block. For managed collection outside GKE, configure collector credentials through the `OperatorConfig` resource:
 
 ```yaml
-remote_write:
-- url: "https://monitoring.googleapis.com/v1/projects/my-project/location/global/prometheus/api/v1/write"
-  authorization:
-    type: Bearer
-    credentials_file: "/etc/prometheus/gcp-token"
+apiVersion: monitoring.googleapis.com/v1
+kind: OperatorConfig
+metadata:
+  namespace: gmp-public
+  name: config
+collection:
+  credentials:
+    name: gmp-test-sa
+    key: key.json
 ```
 
 ## Downsampling for Cost Optimization
@@ -157,7 +163,13 @@ kind: Deployment
 metadata:
   name: thanos-compact
 spec:
+  selector:
+    matchLabels:
+      app: thanos-compact
   template:
+    metadata:
+      labels:
+        app: thanos-compact
     spec:
       containers:
       - name: thanos-compact
@@ -211,7 +223,7 @@ remote_write:
 Estimating storage costs helps you budget for long-term retention. A rough formula:
 
 ```text
-daily_bytes = active_series * 2 bytes/sample * samples_per_day
+daily_bytes = active_series * 1-2 bytes/sample * samples_per_day
 monthly_bytes = daily_bytes * 30
 ```
 
@@ -219,12 +231,11 @@ For Istio with 500 active services and standard metrics:
 
 - Active time series: ~500,000 (after relabeling)
 - Samples per day at 15s interval: 5,760 per series
-- Daily storage: 500,000 * 2 * 5,760 = ~5.5 GB/day uncompressed
-- With Prometheus compression (~10x): ~550 MB/day
-- Monthly: ~16 GB
-- Yearly: ~200 GB
+- Daily storage: 500,000 * 1-2 * 5,760 = ~2.9-5.8 GB/day on disk
+- Monthly: ~86-173 GB
+- Yearly: ~1.0-2.1 TB
 
-Object storage at typical cloud pricing ($0.023/GB/month for S3 Standard) costs about $4.60/month for a year of retention. Much cheaper than keeping Prometheus running with huge local disks.
+Object storage at typical cloud pricing ($0.023/GB/month for S3 Standard) costs about $24-$48/month for a year of retention. Much cheaper than keeping Prometheus running with huge local disks.
 
 ## Querying Long-Term Data
 
