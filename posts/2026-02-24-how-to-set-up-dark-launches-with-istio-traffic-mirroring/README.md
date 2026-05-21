@@ -12,7 +12,7 @@ Dark launching is testing a new version of your service with real production tra
 
 Istio's traffic mirroring (also called shadowing) copies live traffic to a secondary service. The primary service handles the actual request and returns the response to the user. The mirrored copy goes to the new version, which processes it, but the response gets thrown away. Users never see the new version's responses.
 
-This lets you validate that the new version handles production traffic correctly, performs well under real load, and doesn't crash on edge cases - all without any risk.
+This lets you validate that the new version handles production traffic correctly, performs well under real load, and doesn't crash on edge cases - all with much less user-facing risk.
 
 ## How Traffic Mirroring Works
 
@@ -24,9 +24,9 @@ When you enable mirroring in a VirtualService, Istio's Envoy proxy does the foll
 4. Returns the primary destination's response to the caller
 5. Discards the mirror destination's response
 
-The mirrored request is fire-and-forget. If the mirror service is slow or crashes, it doesn't affect the primary request at all.
+The mirrored request is fire-and-forget. If the mirror service is slow or crashes, Istio does not wait for the mirrored response before returning the primary response.
 
-Istio appends `-shadow` to the `Host` header of mirrored requests, so the mirror service can identify them if needed.
+Istio appends `-shadow` to the `Host` or `Authority` header of mirrored requests, so the mirror service can identify them if needed.
 
 ## Setting Up the Mirror
 
@@ -95,7 +95,7 @@ spec:
 Create the DestinationRule with subsets:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: payment-service-dr
@@ -116,7 +116,7 @@ spec:
 Now configure the VirtualService to mirror traffic from v1 to v2:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: payment-service-vs
@@ -183,10 +183,10 @@ Compare metrics between v1 and v2 in Prometheus:
 rate(istio_requests_total{destination_workload="payment-service-v2",response_code=~"5.."}[5m])
 
 # Latency comparison
-histogram_quantile(0.99, rate(istio_request_duration_milliseconds_bucket{destination_workload="payment-service-v2"}[5m]))
+histogram_quantile(0.99, sum by (le) (rate(istio_request_duration_milliseconds_bucket{destination_workload="payment-service-v2"}[5m])))
 
 # Compare with v1
-histogram_quantile(0.99, rate(istio_request_duration_milliseconds_bucket{destination_workload="payment-service-v1"}[5m]))
+histogram_quantile(0.99, sum by (le) (rate(istio_request_duration_milliseconds_bucket{destination_workload="payment-service-v1"}[5m])))
 ```
 
 Look for:
@@ -229,7 +229,7 @@ env:
 
 Your application checks this environment variable and skips write operations when running in shadow mode.
 
-**Detect mirrored requests**: Since Istio appends `-shadow` to the Host header of mirrored requests, your application can detect them:
+**Detect mirrored requests**: Since Istio appends `-shadow` to the Host or Authority header of mirrored requests, your application can detect them:
 
 ```python
 def handle_request(request):
