@@ -36,7 +36,7 @@ The important thing to understand is that Istio maintains its own service regist
 This is where things get interesting. When you define a ServiceEntry for an external host, Istio adds it to the sidecar's service registry. But that doesn't automatically make the hostname resolvable via DNS:
 
 ```yaml
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-api
@@ -52,13 +52,13 @@ spec:
   location: MESH_EXTERNAL
 ```
 
-With `resolution: DNS`, the sidecar resolves the hostname using the system DNS when it needs to connect. With `resolution: STATIC`, you provide the IP addresses directly in the ServiceEntry endpoints.
+With `resolution: DNS`, the sidecar periodically resolves the hostname using DNS and uses those results when routing connections. With `resolution: STATIC`, you provide the IP addresses directly in the ServiceEntry endpoints.
 
 There's also `resolution: NONE`, which means no resolution at all. The sidecar uses the original destination IP from the connection. This is useful for passthrough scenarios.
 
 ## The DNS Proxy Option
 
-As mentioned in the DNS proxy section, Istio can intercept DNS queries and resolve them in the sidecar. When enabled, this changes the flow:
+Istio can also intercept DNS queries and resolve them in the sidecar. When enabled, this changes the flow:
 
 1. App tries to resolve a hostname
 2. iptables redirects the DNS query to the sidecar
@@ -108,7 +108,7 @@ Istio handles cross-namespace routing transparently. As long as the sidecar has 
 If you've limited the sidecar's scope using the Sidecar resource, make sure the target namespace is included:
 
 ```yaml
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -128,7 +128,7 @@ Without the target namespace in the egress hosts, the sidecar won't know about s
 In a multicluster Istio setup, services in remote clusters need special DNS handling. There are a few approaches:
 
 ### Shared DNS Zone
-Set up CoreDNS to forward queries for the shared domain to both clusters:
+Set up CoreDNS to forward queries for the shared domain to a DNS server or load-balanced resolver that knows the shared records:
 
 ```yaml
 apiVersion: v1
@@ -146,7 +146,7 @@ data:
         forward . /etc/resolv.conf
     }
     global:53 {
-        forward . 10.0.0.10 10.1.0.10
+        forward . 10.0.0.10
     }
 ```
 
@@ -192,7 +192,7 @@ kubectl logs -n kube-system -l k8s-app=kube-dns --tail=50
 
 ## Common DNS Gotchas in Istio
 
-1. **ServiceEntry without DNS**: If you create a ServiceEntry with `resolution: NONE` and no DNS proxy, the hostname might resolve through external DNS to a different IP than what Istio expects. This can cause routing issues.
+1. **ServiceEntry without DNS**: If you create a ServiceEntry with `resolution: NONE` and no DNS proxy, the proxy uses the original destination IP and trusts application-layer host information such as HTTP Host headers or TLS SNI. If the resolved IP and host information diverge, this can cause routing or policy surprises.
 
 2. **ndots setting**: The default `ndots: 5` in Kubernetes means that names with fewer than 5 dots get the search domains appended first. This can cause extra DNS queries. Some teams lower this to `ndots: 2` for better performance.
 
