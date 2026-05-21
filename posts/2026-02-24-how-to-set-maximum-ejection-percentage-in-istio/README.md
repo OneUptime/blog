@@ -8,17 +8,17 @@ Description: How to configure maxEjectionPercent in Istio to prevent outlier det
 
 ---
 
-The `maxEjectionPercent` field in Istio's outlier detection is a safety valve. It caps the percentage of upstream instances that can be removed from the load balancing pool at the same time. Without it, a widespread issue could cause outlier detection to eject every single pod, leaving your service with zero backends and a 100% error rate.
+The `maxEjectionPercent` field in Istio's outlier detection is a safety valve. It caps the percentage of upstream instances that can be removed from the load balancing pool at the same time. If it is set too high, a widespread issue could cause outlier detection to eject every single pod, leaving your service with zero backends and a 100% error rate.
 
 ## Why maxEjectionPercent Matters
 
-Imagine you have 4 pods running a service. A network issue causes all of them to return errors briefly. Without `maxEjectionPercent`, outlier detection could eject all 4 pods, leaving no healthy backends. Every request would fail with a 503.
+Imagine you have 4 pods running a service. A network issue causes all of them to return errors briefly. With `maxEjectionPercent: 100`, outlier detection could eject all 4 pods, leaving no healthy backends. Every request would fail with a 503.
 
 With `maxEjectionPercent: 50`, at most 2 of the 4 pods can be ejected. The remaining 2 continue serving traffic, even if they are also having issues. Some degraded service is almost always better than no service.
 
 ```mermaid
 flowchart TD
-    subgraph "Without maxEjectionPercent"
+    subgraph "With maxEjectionPercent: 100%"
         A1[Pod 1 - ejected] --> X1[No backends!]
         A2[Pod 2 - ejected] --> X1
         A3[Pod 3 - ejected] --> X1
@@ -36,7 +36,7 @@ flowchart TD
 ## Basic Configuration
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service
@@ -119,7 +119,7 @@ The right `maxEjectionPercent` depends heavily on how many pods you run:
 With only 2-3 pods, even ejecting one pod means losing 33-50% of capacity. Be very conservative:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: small-service
@@ -131,15 +131,15 @@ spec:
       consecutive5xxErrors: 5
       interval: 15s
       baseEjectionTime: 15s
-      maxEjectionPercent: 33
+      maxEjectionPercent: 34
 ```
 
-Higher error threshold (5), shorter ejection time (15s), and 33% max ejection. With 3 pods, this allows ejecting 1 pod max. With 2 pods, `floor(2 * 0.33) = 0`, so ejection is effectively disabled. Consider using 50% for 2-pod deployments if you still want ejection.
+Higher error threshold (5), shorter ejection time (15s), and 34% max ejection. With 3 pods, this allows ejecting 1 pod max. With 2 pods, `floor(2 * 0.34) = 0`, so ejection is effectively disabled. Consider using 50% for 2-pod deployments if you still want ejection.
 
 ### Medium Deployments (4-10 pods)
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: medium-service
@@ -159,7 +159,7 @@ spec:
 ### Large Deployments (10+ pods)
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: large-service
@@ -181,7 +181,7 @@ With 20 pods and 50%, up to 10 can be ejected. This handles scenarios where half
 The `minHealthPercent` field adds another layer of protection. If the percentage of healthy hosts drops below this threshold, outlier detection is disabled entirely:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: critical-service
@@ -218,13 +218,13 @@ kubectl exec deploy/my-service -c istio-proxy -- \
   curl -s localhost:15000/stats | grep -E "ejections_detected|ejections_enforced"
 ```
 
-If `ejections_detected` exceeds `ejections_enforced`, the percentage limit is blocking ejections. This means you have more unhealthy pods than you are allowing to be removed. You might need more replicas, or you might need to investigate why so many pods are failing.
+If a corresponding `ejections_detected_*` counter exceeds its `ejections_enforced_*` counter, the percentage limit may be blocking ejections. This means you have more unhealthy pods than you are allowing to be removed. You might need more replicas, or you might need to investigate why so many pods are failing.
 
 ## Production Example: E-Commerce Platform
 
 ```yaml
 # Product catalog - reads only, can tolerate some degradation
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: catalog-service
@@ -239,7 +239,7 @@ spec:
       maxEjectionPercent: 50
 ---
 # Payment processing - critical, minimal ejection
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: payment-service
@@ -255,7 +255,7 @@ spec:
       minHealthPercent: 50
 ---
 # Recommendation engine - non-critical, aggressive ejection
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: recommendation-service
