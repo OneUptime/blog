@@ -169,7 +169,7 @@ metadata:
   namespace: production
 spec:
   hosts:
-  - product-page
+  - product-page.production.svc.cluster.local
   http:
   # Users assigned to variant A
   - match:
@@ -178,7 +178,7 @@ spec:
           regex: ".*ab_group=a.*"
     route:
     - destination:
-        host: product-page
+        host: product-page.production.svc.cluster.local
         subset: variant-a
   # Users assigned to variant B
   - match:
@@ -187,21 +187,21 @@ spec:
           regex: ".*ab_group=b.*"
     route:
     - destination:
-        host: product-page
+        host: product-page.production.svc.cluster.local
         subset: variant-b
-  # New users get randomly assigned (50/50)
+  # Requests without an assignment cookie use the 50/50 fallback
   - route:
     - destination:
-        host: product-page
+        host: product-page.production.svc.cluster.local
         subset: variant-a
       weight: 50
     - destination:
-        host: product-page
+        host: product-page.production.svc.cluster.local
         subset: variant-b
       weight: 50
 ```
 
-Your API gateway or frontend assigns the `ab_group` cookie on first visit. After that, the cookie ensures consistent routing.
+Your API gateway or frontend must assign the `ab_group` cookie before or with the first response. After that, the cookie ensures consistent routing. Without that cookie assignment, users without the cookie will keep using the 50/50 fallback on each request.
 
 ## Collecting Operational Metrics
 
