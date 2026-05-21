@@ -8,7 +8,7 @@ Description: How to configure Istio to use the W3C Trace Context standard for di
 
 ---
 
-W3C Trace Context is an official web standard (W3C Recommendation) for propagating trace context across service boundaries. Unlike the B3 format that Zipkin introduced (and that Istio has used by default for years), W3C Trace Context is a vendor-neutral standard that all major tracing tools and cloud providers support. If you're building a system that needs to interoperate with external services, cloud-native tools, or the broader OpenTelemetry ecosystem, W3C Trace Context is the right choice.
+W3C Trace Context is an official web standard (W3C Recommendation) for propagating trace context across service boundaries. Unlike the B3 format that Zipkin introduced (and that Istio has used by default for years), W3C Trace Context is a vendor-neutral standard with broad tracing tool and cloud provider support. If you're building a system that needs to interoperate with external services, cloud-native tools, or the broader OpenTelemetry ecosystem, W3C Trace Context is the right choice.
 
 ## W3C Trace Context Header Format
 
@@ -34,7 +34,7 @@ traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
 tracestate: vendor1=opaque-value,vendor2=another-value
 ```
 
-The `tracestate` header carries vendor-specific data. For example, AWS X-Ray or Datadog might include their own correlation IDs here. Multiple vendors can coexist in a single tracestate header, separated by commas.
+The `tracestate` header carries vendor-specific data. For example, tracing vendors can include their own correlation data here. Multiple vendors can coexist in a single tracestate header, separated by commas.
 
 ## Enabling W3C Trace Context in Istio
 
@@ -68,7 +68,7 @@ spec:
       randomSamplingPercentage: 10
 ```
 
-When using the OpenTelemetry provider, Envoy generates `traceparent` and `tracestate` headers instead of B3 headers.
+When using the OpenTelemetry provider, Envoy uses W3C Trace Context headers (`traceparent` and, when needed, `tracestate`) for context propagation instead of B3 headers.
 
 ## Verifying W3C Headers
 
@@ -80,14 +80,13 @@ Check that Envoy is generating W3C headers:
 kubectl exec deploy/sleep -- curl -s http://httpbin:8000/headers | python3 -m json.tool
 ```
 
-You should see `traceparent` in the response headers:
+You should see `traceparent` in the response headers. `tracestate` may also be present if a vendor has added state:
 
 ```json
 {
   "headers": {
     "Host": "httpbin:8000",
     "Traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
-    "Tracestate": "",
     "X-Request-Id": "d4e5f6a7-..."
   }
 }
@@ -202,18 +201,19 @@ app.get('/api/data', async (req, res) => {
 
 Instead of manual propagation, the OpenTelemetry SDK handles W3C Trace Context automatically:
 
-```python
-# Python with OpenTelemetry auto-instrumentation
+```bash
 pip install opentelemetry-instrumentation-flask opentelemetry-instrumentation-requests
+```
 
+```python
 from opentelemetry.instrumentation.flask import FlaskInstrumentor
 from opentelemetry.instrumentation.requests import RequestsInstrumentor
 from opentelemetry.propagate import set_global_textmap
-from opentelemetry.propagators.composite import CompositeHTTPPropagator
-from opentelemetry.trace.propagation import TraceContextTextMapPropagator
+from opentelemetry.propagators.composite import CompositePropagator
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 
 # Set W3C Trace Context as the propagator
-set_global_textmap(CompositeHTTPPropagator([
+set_global_textmap(CompositePropagator([
     TraceContextTextMapPropagator()
 ]))
 
@@ -308,23 +308,38 @@ spec:
   location: MESH_EXTERNAL
 ```
 
-When your service calls `api.partner.com` through the mesh, Envoy adds the `traceparent` header. If the partner's service also supports W3C Trace Context, they can continue the trace on their end, creating a cross-organization trace.
+When your service calls `api.partner.com`, make sure the application or OpenTelemetry SDK sends the `traceparent` header. Envoy can add tracing headers when it is handling HTTP before TLS encryption; it cannot inject headers into an already-encrypted HTTPS request body. If the partner's service also supports W3C Trace Context, they can continue the trace on their end, creating a cross-organization trace.
 
 ## Parsing traceparent Programmatically
 
 If you need to extract information from the `traceparent` header:
 
 ```python
+import re
+
+TRACE_ID_RE = re.compile(r'^[0-9a-f]{32}$')
+PARENT_ID_RE = re.compile(r'^[0-9a-f]{16}$')
+FLAGS_RE = re.compile(r'^[0-9a-f]{2}$')
+
 def parse_traceparent(header):
     parts = header.split('-')
     if len(parts) != 4:
         return None
+    version, trace_id, parent_id, flags = parts
+    if version != '00':
+        return None
+    if not TRACE_ID_RE.match(trace_id) or trace_id == '0' * 32:
+        return None
+    if not PARENT_ID_RE.match(parent_id) or parent_id == '0' * 16:
+        return None
+    if not FLAGS_RE.match(flags):
+        return None
     return {
-        'version': parts[0],
-        'trace_id': parts[1],
-        'parent_id': parts[2],
-        'flags': parts[3],
-        'sampled': int(parts[3], 16) & 0x01 == 1,
+        'version': version,
+        'trace_id': trace_id,
+        'parent_id': parent_id,
+        'flags': flags,
+        'sampled': int(flags, 16) & 0x01 == 1,
     }
 
 # Example
@@ -358,10 +373,10 @@ def build_tracestate(entries):
     return ','.join(f'{k}={v}' for k, v in entries.items())
 ```
 
-Common tracestate entries:
+Example tracestate entries:
 - `dd=...` - Datadog trace context
 - `sw=...` - SkyWalking context
-- `ot=...` - OpenTelemetry vendor-specific data
+- `rojo=...` - example vendor entry from the W3C Trace Context specification
 
 ## Advantages of W3C Over B3
 
@@ -370,8 +385,8 @@ Common tracestate entries:
 | Standard | Community (Zipkin) | W3C Recommendation |
 | Headers | 5 separate headers (or 1 compact) | 2 headers |
 | Vendor data | Not supported | tracestate header |
-| Browser support | Limited | Supported by fetch API |
-| Cloud provider support | Some | All major providers |
+| Browser support | Limited | Usable from browser clients, subject to CORS |
+| Cloud provider support | Some | Broad support |
 | Trace ID length | 64 or 128 bit | Always 128 bit |
 
 ## Troubleshooting
