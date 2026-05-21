@@ -8,7 +8,7 @@ Description: Configure the Kubernetes Gateway API Inference Extension with Istio
 
 ---
 
-The Kubernetes Gateway API Inference Extension is a relatively new addition to the Gateway API ecosystem. It provides purpose-built traffic routing for AI and machine learning inference workloads. If you are running model serving infrastructure on Kubernetes with Istio, this extension gives you routing capabilities specifically designed for ML inference patterns - things like model-aware routing, request queuing, and load-based traffic distribution across model replicas.
+The Kubernetes Gateway API Inference Extension is a relatively new addition to the Gateway API ecosystem. It provides purpose-built traffic routing for AI and machine learning inference workloads. If you are running model serving infrastructure on Kubernetes with Istio, this extension gives you routing capabilities specifically designed for ML inference patterns - things like model-aware rewrites, request queuing, and load-based traffic distribution across model replicas.
 
 This is particularly relevant as more teams deploy LLMs, computer vision models, and other ML models on Kubernetes and need smarter routing than standard HTTP load balancing provides.
 
@@ -28,14 +28,23 @@ The Gateway API Inference Extension adds custom resource types that understand t
 You need:
 
 - Kubernetes 1.28+
-- Istio 1.22+ with Gateway API support enabled
-- Gateway API CRDs (standard + experimental)
+- Istio 1.28+ with Gateway API Inference Extension support enabled
+- Gateway API CRDs
 - The Inference Extension CRDs
 
-Install the Gateway API experimental CRDs (required for the extension):
+Install Istio with Gateway API Inference Extension support:
 
 ```bash
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.2.0/experimental-install.yaml
+istioctl install --set profile=minimal \
+  --set values.pilot.env.SUPPORT_GATEWAY_API_INFERENCE_EXTENSION=true \
+  --set values.pilot.env.ENABLE_GATEWAY_API_INFERENCE_EXTENSION=true \
+  -y
+```
+
+Install the Gateway API CRDs:
+
+```bash
+kubectl apply --server-side -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.5.1/standard-install.yaml
 ```
 
 Install the Inference Extension CRDs:
@@ -52,39 +61,44 @@ The Inference Extension introduces several new resource types:
 graph TD
     A[Gateway] --> B[HTTPRoute]
     B --> C[InferencePool]
-    C --> D[InferenceModel]
-    D --> E[Model Server Pod 1]
-    D --> F[Model Server Pod 2]
-    D --> G[Model Server Pod 3]
+    C --> D[Model Server Pod 1]
+    C --> E[Model Server Pod 2]
+    C --> F[Model Server Pod 3]
+    G[InferenceObjective] --> C
+    H[InferenceModelRewrite] --> C
 ```
 
 - **InferencePool:** A group of model server pods that can serve inference requests
-- **InferenceModel:** Defines a model and its routing behavior, referencing an InferencePool
+- **InferenceObjective:** Defines request priority for traffic that uses an InferencePool
+- **InferenceModelRewrite:** Defines model-name matching and optional rewrites within an InferencePool
 
 ## Setting Up an InferencePool
 
 An InferencePool groups your model serving pods. Think of it like a Kubernetes Service, but with inference-specific configuration:
 
 ```yaml
-apiVersion: inference.networking.x-k8s.io/v1alpha2
+apiVersion: inference.networking.k8s.io/v1
 kind: InferencePool
 metadata:
   name: llm-pool
   namespace: ml-serving
 spec:
-  targetPortNumber: 8000
+  targetPorts:
+    - number: 8000
   selector:
     matchLabels:
       app: vllm-server
-  extensionRef:
-    name: inference-gateway-ext
+  endpointPickerRef:
+    name: endpoint-picker
+    port:
+      number: 9002
 ```
 
-The `selector` matches pods running your model server (vLLM, Triton, TGI, etc.). The `targetPortNumber` is the port your model server listens on.
+The `selector` matches pods running your model server (vLLM, Triton, TGI, etc.). The `targetPorts` list contains the ports your model server listens on, and `endpointPickerRef` points to the Endpoint Picker service that makes routing decisions.
 
 ## Deploying Model Server Pods
 
-Deploy your model serving backend. Here is an example using vLLM:
+Deploy your model serving backend. Here is an example using a vLLM-compatible simulator:
 
 ```yaml
 apiVersion: apps/v1
@@ -103,22 +117,32 @@ spec:
         app: vllm-server
     spec:
       containers:
-        - name: vllm
-          image: vllm/vllm-openai:latest
+        - name: vllm-sim
+          image: ghcr.io/llm-d/llm-d-inference-sim:v0.7.1
           args:
             - "--model"
-            - "meta-llama/Llama-3-8b"
+            - "meta-llama/Llama-3.1-8B-Instruct"
             - "--port"
             - "8000"
           ports:
             - containerPort: 8000
+              name: http-inference
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
           resources:
-            limits:
-              nvidia.com/gpu: 1
             requests:
-              nvidia.com/gpu: 1
-              cpu: 4
-              memory: 16Gi
+              cpu: 20m
 ---
 apiVersion: v1
 kind: Service
@@ -131,55 +155,80 @@ spec:
   ports:
     - port: 8000
       targetPort: 8000
-      name: http
+      name: http-inference
 ```
 
-## Creating an InferenceModel
+## Creating an InferenceObjective
 
-The InferenceModel resource defines a model and how it should be routed:
+The InferenceObjective resource defines a serving objective for requests that use an InferencePool:
 
 ```yaml
 apiVersion: inference.networking.x-k8s.io/v1alpha2
-kind: InferenceModel
+kind: InferenceObjective
 metadata:
-  name: llama-3-8b
+  name: critical
   namespace: ml-serving
 spec:
-  modelName: meta-llama/Llama-3-8b
-  criticality: Critical
+  priority: 10
   poolRef:
+    group: inference.networking.k8s.io
+    kind: InferencePool
     name: llm-pool
 ```
 
-The `modelName` field is used for routing. When a request comes in with a model name that matches, it gets routed to the appropriate InferencePool.
+Clients select an objective by sending the `x-gateway-inference-objective` header with the InferenceObjective name. If no objective is selected, the Endpoint Picker treats the request as priority `0`.
 
-You can define multiple models with different criticality levels:
+You can define multiple objectives with different priorities:
 
 ```yaml
 apiVersion: inference.networking.x-k8s.io/v1alpha2
-kind: InferenceModel
+kind: InferenceObjective
 metadata:
-  name: llama-3-8b-standard
+  name: standard
   namespace: ml-serving
 spec:
-  modelName: meta-llama/Llama-3-8b
-  criticality: Standard
+  priority: 0
   poolRef:
+    group: inference.networking.k8s.io
+    kind: InferencePool
     name: llm-pool
 ---
 apiVersion: inference.networking.x-k8s.io/v1alpha2
-kind: InferenceModel
+kind: InferenceObjective
 metadata:
-  name: embedding-model
+  name: batch
   namespace: ml-serving
 spec:
-  modelName: sentence-transformers/all-MiniLM-L6-v2
-  criticality: Critical
+  priority: -10
   poolRef:
-    name: embedding-pool
+    group: inference.networking.k8s.io
+    kind: InferencePool
+    name: llm-pool
 ```
 
-The `criticality` field (`Critical`, `Standard`, or `Sheddable`) determines priority during high load. Critical requests are served first; Sheddable requests can be dropped.
+The `priority` field determines ordering during high load. Higher-priority requests are served before lower-priority requests when flow control queues traffic.
+
+To match or rewrite model names in OpenAI-compatible request bodies, use `InferenceModelRewrite`:
+
+```yaml
+apiVersion: inference.networking.x-k8s.io/v1alpha2
+kind: InferenceModelRewrite
+metadata:
+  name: llama-model-rewrite
+  namespace: ml-serving
+spec:
+  poolRef:
+    group: inference.networking.k8s.io
+    kind: InferencePool
+    name: llm-pool
+  rules:
+    - matches:
+        - model:
+            type: Exact
+            value: llama-3
+      targets:
+        - modelRewrite: meta-llama/Llama-3.1-8B-Instruct
+```
 
 ## Connecting to the Gateway
 
@@ -215,10 +264,9 @@ spec:
             type: PathPrefix
             value: /v1
       backendRefs:
-        - group: inference.networking.x-k8s.io
+        - group: inference.networking.k8s.io
           kind: InferencePool
           name: llm-pool
-          port: 8000
 ```
 
 The HTTPRoute points its `backendRefs` to the InferencePool instead of a regular Kubernetes Service. This is the key integration point.
@@ -230,8 +278,9 @@ When a client sends a request to the OpenAI-compatible API endpoint:
 ```bash
 curl -X POST http://inference-gateway.ml-serving/v1/chat/completions \
   -H "Content-Type: application/json" \
+  -H "x-gateway-inference-objective: critical" \
   -d '{
-    "model": "meta-llama/Llama-3-8b",
+    "model": "llama-3",
     "messages": [{"role": "user", "content": "Hello"}],
     "max_tokens": 100
   }'
@@ -239,9 +288,9 @@ curl -X POST http://inference-gateway.ml-serving/v1/chat/completions \
 
 The inference extension:
 
-1. Parses the request body to extract the `model` field
-2. Matches it against registered InferenceModel resources
-3. Routes to the appropriate InferencePool
+1. Receives the request through the HTTPRoute that references the InferencePool
+2. Applies any matching InferenceModelRewrite rules to the `model` field
+3. Applies the priority from the `x-gateway-inference-objective` header if it is present
 4. Selects the best backend pod based on current load and capacity
 
 ## Load-Aware Routing
@@ -249,63 +298,147 @@ The inference extension:
 The extension can route based on backend load metrics rather than simple round-robin:
 
 ```yaml
-apiVersion: inference.networking.x-k8s.io/v1alpha2
+apiVersion: inference.networking.k8s.io/v1
 kind: InferencePool
 metadata:
   name: llm-pool
   namespace: ml-serving
 spec:
-  targetPortNumber: 8000
+  targetPorts:
+    - number: 8000
   selector:
     matchLabels:
       app: vllm-server
-  extensionRef:
-    name: inference-gateway-ext
+  endpointPickerRef:
+    name: endpoint-picker
+    port:
+      number: 9002
 ```
 
-The extension server queries each backend for its current queue depth, active request count, and GPU utilization, then routes new requests to the least loaded backend. This is much more effective than round-robin for inference workloads where request durations vary wildly.
+The Endpoint Picker tracks backend metrics such as queue depth, KV-cache utilization, prefix-cache locality, and active LoRA adapters, then routes new requests to the best backend for the configured scoring profile. This is much more effective than round-robin for inference workloads where request durations vary wildly.
 
-## Deploying the Extension Server
+## Deploying the Endpoint Picker
 
-The extension server runs as a sidecar or standalone deployment that processes routing decisions:
+The Endpoint Picker runs as a standalone deployment that processes routing decisions:
 
 ```yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: inference-gateway-ext
+  name: endpoint-picker
   namespace: ml-serving
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: inference-gateway-ext
+      app: endpoint-picker
   template:
     metadata:
       labels:
-        app: inference-gateway-ext
+        app: endpoint-picker
     spec:
       containers:
-        - name: ext-server
-          image: us-docker.pkg.dev/k8s-staging-gateway-api/gateway-api-inference-extension/epp:main
+        - name: epp
+          image: us-central1-docker.pkg.dev/k8s-staging-images/gateway-api-inference-extension/epp:v20251119-2aaf2a6
           ports:
             - containerPort: 9002
+            - containerPort: 9003
+            - name: metrics
+              containerPort: 9090
           args:
-            - "--grpcPort=9002"
-            - "--grpcHealthPort=9003"
+            - "--pool-name"
+            - "llm-pool"
+            - "--pool-namespace"
+            - "ml-serving"
+            - "--v"
+            - "4"
+            - "--zap-encoder"
+            - "json"
+            - "--config-file"
+            - "/config/default-plugins.yaml"
+          volumeMounts:
+            - name: plugins-config-volume
+              mountPath: "/config"
+      volumes:
+        - name: plugins-config-volume
+          configMap:
+            name: plugins-config
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: inference-gateway-ext
+  name: endpoint-picker
   namespace: ml-serving
 spec:
   selector:
-    app: inference-gateway-ext
+    app: endpoint-picker
   ports:
     - port: 9002
       targetPort: 9002
+      appProtocol: http2
       name: grpc
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: plugins-config
+  namespace: ml-serving
+data:
+  default-plugins.yaml: |
+    apiVersion: inference.networking.x-k8s.io/v1alpha1
+    kind: EndpointPickerConfig
+    plugins:
+    - type: queue-scorer
+    - type: kv-cache-utilization-scorer
+    - type: prefix-cache-scorer
+    schedulingProfiles:
+    - name: default
+      plugins:
+      - pluginRef: queue-scorer
+        weight: 2
+      - pluginRef: kv-cache-utilization-scorer
+        weight: 2
+      - pluginRef: prefix-cache-scorer
+        weight: 3
+---
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: endpoint-picker-tls
+  namespace: ml-serving
+spec:
+  host: endpoint-picker
+  trafficPolicy:
+    tls:
+      mode: SIMPLE
+      insecureSkipVerify: true
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: inference-model-reader
+  namespace: ml-serving
+rules:
+  - apiGroups: ["inference.networking.k8s.io"]
+    resources: ["inferencepools"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: epp-to-inference-model-reader
+  namespace: ml-serving
+subjects:
+  - kind: ServiceAccount
+    name: default
+    namespace: ml-serving
+roleRef:
+  kind: Role
+  name: inference-model-reader
+  apiGroup: rbac.authorization.k8s.io
 ```
 
 ## Monitoring Inference Traffic
@@ -331,10 +464,10 @@ vllm:gpu_cache_usage_perc
 
 ## Practical Tips
 
-- Start with a single InferencePool and model before adding complexity
-- Use `criticality` levels to protect production traffic during peak load
+- Start with a single InferencePool and Endpoint Picker before adding complexity
+- Use InferenceObjective priorities to protect production traffic during peak load
 - Monitor GPU utilization to understand when you need more replicas
-- The extension is still in alpha, so expect API changes between releases
+- InferenceObjective and InferenceModelRewrite are still alpha, so expect API changes between releases
 - Test routing behavior under load to verify the extension chooses backends correctly
 
-The Gateway API Inference Extension bridges the gap between standard Kubernetes networking and the unique requirements of ML inference workloads. Combined with Istio's traffic management capabilities, it gives you a production-ready platform for serving AI models at scale with intelligent routing.
+The Gateway API Inference Extension bridges the gap between standard Kubernetes networking and the unique requirements of ML inference workloads. Combined with Istio's traffic management capabilities, it gives you a Kubernetes-native path for serving AI models at scale with intelligent routing.
