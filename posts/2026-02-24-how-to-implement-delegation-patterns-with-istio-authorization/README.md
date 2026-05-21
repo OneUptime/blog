@@ -10,7 +10,7 @@ Description: How to implement authorization delegation patterns in Istio includi
 
 In a microservices architecture, a request often passes through multiple services before reaching its final destination. The frontend calls the API gateway, which calls the order service, which calls the payment service. At each hop, the question of "who is authorized?" gets complicated. Delegation patterns help you maintain proper authorization across these service chains without every service needing to talk to the same identity provider.
 
-Istio supports several delegation patterns through its authorization framework. You can propagate user identity through JWT tokens, delegate trust between service accounts, and build chain-of-custody authorization that tracks the full request path.
+Istio supports several delegation patterns through its authorization framework. You can propagate user identity through JWT tokens, delegate trust between service accounts, and build chain-of-custody authorization that tracks the full request path. The examples that match service principals assume mutual TLS is enabled, because Istio derives those identities from the peer certificate.
 
 ## Pattern 1: Token Forwarding
 
@@ -116,33 +116,32 @@ spec:
     - key: request.headers[x-delegated-from]
       values: ["api-gateway"]
     - key: request.headers[x-delegation-token]
-      notValues: [""]
+      values: ["*"]
 ```
 
-The scheduler must include delegation headers when making requests. Your application code adds these headers, and Istio validates them at the mesh level.
+The scheduler must include delegation headers when making requests. Your application code adds these headers, and Istio enforces the configured header matches at the mesh level. If `x-delegation-token` is a real credential, validate its signature and expiry in the application or with an external authorization service; the policy above only checks that the header is present.
 
 ## Pattern 3: Impersonation with Custom Headers
 
-For cases where a service needs to impersonate a user, use custom headers to carry the impersonated identity:
+For cases where a service needs to impersonate a user, use custom headers to carry the impersonated identity. If the identity comes from a validated JWT, Istio can copy a claim into a header:
 
 ```yaml
-# API gateway adds impersonation headers
-apiVersion: networking.istio.io/v1
-kind: VirtualService
+# Copy the JWT subject into an impersonation header
+apiVersion: security.istio.io/v1
+kind: RequestAuthentication
 metadata:
-  name: backend-route
+  name: backend-impersonation-jwt
   namespace: backend
 spec:
-  hosts:
-  - backend-service
-  http:
-  - route:
-    - destination:
-        host: backend-service
-    headers:
-      request:
-        set:
-          x-original-user: "%REQ(authorization)%"
+  selector:
+    matchLabels:
+      app: backend-service
+  jwtRules:
+  - issuer: "https://auth.example.com/"
+    jwksUri: "https://auth.example.com/.well-known/jwks.json"
+    outputClaimToHeaders:
+    - header: x-impersonated-user
+      claim: sub
 ```
 
 Then the downstream service can authorize based on impersonation headers, but only from trusted callers:
@@ -165,19 +164,19 @@ spec:
         principals: ["cluster.local/ns/frontend/sa/api-gateway"]
     when:
     - key: request.headers[x-impersonated-user]
-      notValues: [""]
+      values: ["*"]
   # Admin service can impersonate for support operations
   - from:
     - source:
         principals: ["cluster.local/ns/admin/sa/support-service"]
     when:
     - key: request.headers[x-impersonated-user]
-      notValues: [""]
+      values: ["*"]
     - key: request.headers[x-impersonation-reason]
-      notValues: [""]
+      values: ["*"]
 ```
 
-Important: Block other services from setting impersonation headers. Use an EnvoyFilter or gateway-level policy to strip these headers from untrusted sources:
+Important: Block other services from setting impersonation headers. Use an EnvoyFilter or gateway-level policy to strip these headers from untrusted sources, and deny untrusted callers that still present one:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -199,7 +198,7 @@ spec:
         - "cluster.local/ns/admin/sa/support-service"
     when:
     - key: request.headers[x-impersonated-user]
-      notValues: [""]
+      values: ["*"]
 ```
 
 ## Pattern 4: Multi-Hop Authorization Chain
@@ -232,16 +231,17 @@ spec:
         name: envoy.filters.http.lua
         typed_config:
           "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-          inlineCode: |
-            function envoy_on_request(request_handle)
-              local chain = request_handle:headers():get("x-auth-chain") or ""
-              if chain ~= "" then
-                chain = chain .. ",order-service"
-              else
-                chain = "order-service"
+          defaultSourceCode:
+            inlineString: |
+              function envoy_on_request(request_handle)
+                local chain = request_handle:headers():get("x-auth-chain") or ""
+                if chain ~= "" then
+                  chain = chain .. ",order-service"
+                else
+                  chain = "order-service"
+                end
+                request_handle:headers():replace("x-auth-chain", chain)
               end
-              request_handle:headers():replace("x-auth-chain", chain)
-            end
 ```
 
 Then the final service can verify the entire chain:
