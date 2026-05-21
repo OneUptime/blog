@@ -95,10 +95,10 @@ sum(rate(istio_requests_total{
 }[5m])) by (source_workload)
 ```
 
-For services that handle different types of requests, break traffic down further:
+For services that handle different protocols, break traffic down further:
 
 ```promql
-# Traffic by HTTP method
+# Traffic by request protocol
 sum(rate(istio_requests_total{
   destination_service_name="my-api",
   reporter="destination"
@@ -178,21 +178,21 @@ sum(rate(istio_requests_total{
 
 Saturation is the trickiest signal because Istio does not directly expose it. You need to combine Istio metrics with Kubernetes resource metrics:
 
+The Envoy-specific examples below require the relevant Envoy statistics to be enabled with `ProxyConfig.proxyStatsMatcher`; Istio only records a minimal set of Envoy statistics by default.
+
 ```promql
 # CPU saturation: proxy CPU near limit
 sum(rate(container_cpu_usage_seconds_total{container="istio-proxy"}[5m])) by (pod, namespace)
 /
-sum(kube_pod_container_resource_limits{container="istio-proxy", resource="cpu"}) by (pod, namespace)
+sum(kube_pod_container_resource_limits{container="istio-proxy", resource="cpu", unit="core"}) by (pod, namespace)
 
 # Memory saturation: proxy memory near limit
-container_memory_working_set_bytes{container="istio-proxy"}
+sum(container_memory_working_set_bytes{container="istio-proxy"}) by (pod, namespace)
 /
-kube_pod_container_resource_limits{container="istio-proxy", resource="memory"}
+sum(kube_pod_container_resource_limits{container="istio-proxy", resource="memory", unit="byte"}) by (pod, namespace)
 
-# Connection pool saturation
-envoy_cluster_upstream_rq_pending_active{}
-/
-envoy_cluster_upstream_rq_pending_total{}
+# Connection pool overflow rate
+sum(rate(envoy_cluster_upstream_rq_pending_overflow{}[5m])) by (cluster_name)
 
 # Request queue depth (saturation indicator)
 sum(envoy_cluster_upstream_rq_pending_active{}) by (cluster_name)
@@ -214,7 +214,7 @@ sum(envoy_cluster_upstream_rq_pending_active{
 # Thread pool saturation (application container)
 sum(rate(container_cpu_usage_seconds_total{container="my-api"}[5m])) by (pod)
 /
-sum(kube_pod_container_resource_limits{container="my-api", resource="cpu"}) by (pod)
+sum(kube_pod_container_resource_limits{container="my-api", resource="cpu", unit="core"}) by (pod)
 ```
 
 ## Golden Signals Dashboard
@@ -265,7 +265,7 @@ Build a Grafana dashboard with four panels, one per signal:
         "type": "timeseries",
         "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
         "targets": [
-          {"expr": "avg(sum(rate(container_cpu_usage_seconds_total{container=\"istio-proxy\", pod=~\".*$service.*\"}[5m])) by (pod) / sum(kube_pod_container_resource_limits{container=\"istio-proxy\", resource=\"cpu\", pod=~\".*$service.*\"}) by (pod))", "legendFormat": "Proxy CPU %"}
+          {"expr": "avg(sum(rate(container_cpu_usage_seconds_total{container=\"istio-proxy\", pod=~\".*$service.*\"}[5m])) by (pod) / sum(kube_pod_container_resource_limits{container=\"istio-proxy\", resource=\"cpu\", unit=\"core\", pod=~\".*$service.*\"}) by (pod)) * 100", "legendFormat": "Proxy CPU %"}
         ]
       }
     ]
@@ -316,10 +316,20 @@ spec:
     - alert: ErrorBudgetBurn
       expr: |
         (
-          sum(rate(istio_requests_total{response_code=~"5..", reporter="destination"}[1h])) by (destination_service_name)
-          /
-          sum(rate(istio_requests_total{reporter="destination"}[1h])) by (destination_service_name)
-        ) > 14.4 * 0.001
+          (
+            sum(rate(istio_requests_total{response_code=~"5..", reporter="destination"}[1h])) by (destination_service_name)
+            /
+            sum(rate(istio_requests_total{reporter="destination"}[1h])) by (destination_service_name)
+          ) > 14.4 * 0.001
+        )
+        and
+        (
+          (
+            sum(rate(istio_requests_total{response_code=~"5..", reporter="destination"}[5m])) by (destination_service_name)
+            /
+            sum(rate(istio_requests_total{reporter="destination"}[5m])) by (destination_service_name)
+          ) > 14.4 * 0.001
+        )
       for: 5m
       labels:
         severity: critical
@@ -329,4 +339,4 @@ spec:
 
 The Error Budget Burn alert uses a multi-window approach from the SRE book. A 14.4x burn rate over 1 hour means you would exhaust your monthly error budget (99.9% SLO) in about 2 days.
 
-The Four Golden Signals give you a complete view of service health. Latency and Errors tell you about quality, Traffic tells you about demand, and Saturation tells you about capacity. With Istio, the first three come for free, and Saturation just needs a few extra Kubernetes metrics.
+The Four Golden Signals give you a complete view of service health. Latency and Errors tell you about quality, Traffic tells you about demand, and Saturation tells you about capacity. With Istio, the first three come for free, and Saturation needs a few extra Kubernetes metrics plus enabled Envoy stats for proxy-specific saturation signals.
