@@ -40,7 +40,7 @@ kubectl exec deploy/my-service -c istio-proxy -- \
   pilot-agent request GET stats | grep "server.memory_heap_size"
 ```
 
-The difference between heap size and allocated memory is fragmentation. A large gap suggests memory fragmentation issues.
+The gap between heap size and allocated memory is memory reserved by the allocator but not currently allocated to Envoy objects. A large gap can indicate allocator fragmentation or free heap retained by TCMalloc.
 
 ## Common Causes of High Memory
 
@@ -71,7 +71,7 @@ spec:
     - "istio-system/*"
 ```
 
-This single change can cut memory usage by 50-80% in large meshes because the proxy only loads configuration for services in its own namespace and istio-system.
+This single change can significantly cut memory usage in large meshes because the proxy only loads configuration for services in its own namespace and istio-system.
 
 ### 2. High Connection Count
 
@@ -94,9 +94,9 @@ If the active connection count is very high (thousands), connections might not b
 Envoy buffers headers and may buffer bodies depending on the configuration. If your services exchange large payloads, this drives up memory:
 
 ```bash
-# Check request/response sizes
+# Check for requests or responses that hit configured buffer limits
 kubectl exec deploy/my-service -c istio-proxy -- \
-  pilot-agent request GET stats | grep "downstream_rq_rx_buf_flood\|upstream_rq_tx_buf_flood"
+  pilot-agent request GET stats | grep "downstream_rq_too_large\|rs_too_large"
 ```
 
 If you are streaming large bodies, make sure streaming is properly configured and Envoy is not buffering entire payloads in memory.
@@ -135,16 +135,16 @@ spec:
           operation: REMOVE
 ```
 
-### 5. Access Log Buffers
+### 5. Access Logging Overhead
 
-If access logging is enabled with high traffic, log buffers consume memory:
+If access logging is enabled with high traffic, logging overhead can contribute to resource pressure:
 
 ```bash
 kubectl exec deploy/my-service -c istio-proxy -- \
   pilot-agent request GET config_dump | grep -c "access_log"
 ```
 
-Consider using file-based access logging with rotation instead of stdout, or disable access logging on high-traffic services where you do not need it.
+Consider filtering or disabling access logging on high-traffic services where you do not need it.
 
 ## Checking for OOM Kill History
 
@@ -190,7 +190,8 @@ Set up dashboards and alerts for sidecar memory:
 # Memory usage as percentage of limit
 container_memory_working_set_bytes{container="istio-proxy"}
 /
-kube_pod_container_resource_limits{container="istio-proxy",resource="memory"}
+on(namespace,pod,container) group_left
+kube_pod_container_resource_limits{container="istio-proxy",resource="memory",unit="byte"}
 
 # Memory growth rate (are we trending toward OOM?)
 predict_linear(container_memory_working_set_bytes{container="istio-proxy"}[1h], 3600*4)
@@ -217,7 +218,8 @@ spec:
       expr: |
         container_memory_working_set_bytes{container="istio-proxy"}
         /
-        kube_pod_container_resource_limits{container="istio-proxy",resource="memory"}
+        on(namespace,pod,container) group_left
+        kube_pod_container_resource_limits{container="istio-proxy",resource="memory",unit="byte"}
         > 0.85
       for: 5m
       labels:
@@ -228,7 +230,8 @@ spec:
       expr: |
         predict_linear(container_memory_working_set_bytes{container="istio-proxy"}[1h], 3600*2)
         >
-        kube_pod_container_resource_limits{container="istio-proxy",resource="memory"}
+        on(namespace,pod,container) group_left
+        kube_pod_container_resource_limits{container="istio-proxy",resource="memory",unit="byte"}
       for: 15m
       labels:
         severity: warning
