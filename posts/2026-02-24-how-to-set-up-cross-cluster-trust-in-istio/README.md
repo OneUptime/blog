@@ -28,6 +28,8 @@ openssl req -new -newkey rsa:4096 -x509 -sha256 \
   -days 3650 -nodes \
   -out certs/root-cert.pem \
   -keyout certs/root-key.pem \
+  -addext "basicConstraints=critical,CA:TRUE,pathlen:1" \
+  -addext "keyUsage=critical,keyCertSign,cRLSign" \
   -subj "/O=MyCompany/CN=Root CA"
 ```
 
@@ -106,7 +108,7 @@ The key detail here is that both clusters get the same `root-cert.pem`. This is 
 
 ## Installing Istio with Matching Trust Domains
 
-Both clusters must use the same trust domain. Install Istio on each cluster with matching configuration:
+For this setup, use the same trust domain in both clusters. Install Istio on each cluster with matching configuration:
 
 ```yaml
 # cluster1-istio.yaml
@@ -212,10 +214,16 @@ kubectl --context=cluster1 create namespace sample
 kubectl --context=cluster1 label namespace sample istio-injection=enabled
 kubectl --context=cluster1 apply -n sample -f samples/sleep/sleep.yaml
 
-# Deploy httpbin in cluster2
+# Prepare cluster2
 kubectl --context=cluster2 create namespace sample
 kubectl --context=cluster2 label namespace sample istio-injection=enabled
-kubectl --context=cluster2 apply -n sample -f samples/httpbin/httpbin.yaml
+
+# Create the httpbin service in both clusters so DNS resolves locally
+kubectl --context=cluster1 apply -n sample -f samples/httpbin/httpbin.yaml -l service=httpbin
+kubectl --context=cluster2 apply -n sample -f samples/httpbin/httpbin.yaml -l service=httpbin
+
+# Deploy the httpbin workload in cluster2
+kubectl --context=cluster2 apply -n sample -f samples/httpbin/httpbin.yaml -l app=httpbin,version=v1
 ```
 
 Now test from cluster1 to cluster2:
@@ -234,12 +242,12 @@ If cross-cluster communication fails, check these things:
 Verify both clusters have the correct root certificate:
 
 ```bash
-kubectl --context=cluster1 get secret cacerts -n istio-system -o jsonpath='{.data.root-cert\.pem}' | base64 -d | openssl x509 -text -noout | grep "Issuer"
+kubectl --context=cluster1 get secret cacerts -n istio-system -o jsonpath='{.data.root-cert\.pem}' | base64 -d | openssl x509 -noout -fingerprint -sha256
 
-kubectl --context=cluster2 get secret cacerts -n istio-system -o jsonpath='{.data.root-cert\.pem}' | base64 -d | openssl x509 -text -noout | grep "Issuer"
+kubectl --context=cluster2 get secret cacerts -n istio-system -o jsonpath='{.data.root-cert\.pem}' | base64 -d | openssl x509 -noout -fingerprint -sha256
 ```
 
-Both should show the same issuer. Check that workload certs chain back to the root:
+Both should show the same SHA-256 fingerprint. Check that workload certs chain back to the root:
 
 ```bash
 istioctl --context=cluster1 proxy-config secret deploy/sleep -n sample -o json | \
