@@ -8,14 +8,14 @@ Description: How to implement request routing in Istio using VirtualService rule
 
 ---
 
-Request routing is one of the most powerful features Istio provides. Instead of simple round-robin load balancing to all instances of a service, you can route requests based on headers, URI paths, query parameters, source labels, and more. This is the foundation for canary deployments, A/B testing, feature flagging, and API versioning at the infrastructure level.
+Request routing is one of the most powerful features Istio provides. Instead of relying only on the default load balancing across all instances of a service, you can route requests based on headers, URI paths, query parameters, source labels, and more. This is the foundation for canary deployments, A/B testing, feature flagging, and API versioning at the infrastructure level.
 
 ## Basic Routing to Service Subsets
 
 The most common routing pattern is directing traffic to different versions of a service. First, define the subsets in a DestinationRule:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service
@@ -34,7 +34,7 @@ spec:
 Then create routing rules in a VirtualService:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service
@@ -61,7 +61,7 @@ This sends 90% of traffic to v1 and 10% to v2. This is the basic pattern for can
 Route requests based on HTTP headers. This is useful for testing new versions with specific users or teams:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service
@@ -110,7 +110,7 @@ headers:
 Route based on the request URI path:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service
@@ -161,7 +161,7 @@ uri:
 Route based on which service is making the call:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service
@@ -190,7 +190,7 @@ When the canary version of the frontend calls my-service, it gets routed to v2. 
 Route based on URL query parameters:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service
@@ -219,7 +219,7 @@ Adding `?debug=true` to a request routes it to v2.
 You can combine multiple match conditions. All conditions in a single match block must be true (AND logic). Multiple match blocks are evaluated with OR logic:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service
@@ -269,7 +269,7 @@ This routes to v2 if either `x-user-group: beta-testers` OR `x-internal: true` i
 You can rewrite the URI before forwarding the request:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service
@@ -295,7 +295,7 @@ A request to `/api/v2/users/123` gets rewritten to `/users/123` before being sen
 Add, remove, or modify headers before forwarding:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service
@@ -326,7 +326,7 @@ spec:
 You can route to completely different services based on the request:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-gateway
@@ -382,7 +382,7 @@ If traffic is not going where you expect:
 kubectl logs deploy/my-app -c istio-proxy | grep "my-service"
 ```
 
-The access logs show the route name that was matched. If you see requests going to the wrong route, check the order of your match rules in the VirtualService. Rules are evaluated top-to-bottom, and the first match wins.
+If access logging is enabled, the default Istio access log format includes the route name. If you see requests going to the wrong route, check the order of your match rules in the VirtualService. Rules are evaluated top-to-bottom, and the first match wins.
 
 A common mistake is putting a broad match rule above a specific one:
 
