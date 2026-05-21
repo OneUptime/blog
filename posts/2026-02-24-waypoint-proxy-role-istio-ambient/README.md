@@ -21,15 +21,15 @@ A waypoint proxy is essentially an Envoy proxy instance, but instead of running 
 You create a waypoint proxy using the Kubernetes Gateway API. Here is how to deploy one for a namespace:
 
 ```bash
-# Create a waypoint proxy for a namespace
+# Create and enroll a waypoint proxy for a namespace
 
-istioctl waypoint apply -n my-namespace
+istioctl waypoint apply -n my-namespace --enroll-namespace
 ```
 
 This creates a Gateway resource that Istio translates into an Envoy deployment:
 
 ```yaml
-apiVersion: gateway.networking.k8s.io/v1beta1
+apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
   name: waypoint
@@ -74,32 +74,33 @@ The key thing here is that ztunnel makes the routing decision. It knows about wa
 
 ## What Waypoint Proxies Can Do
 
-Since waypoint proxies run full Envoy, they support the complete range of Istio traffic management features:
+Since waypoint proxies run Envoy, they support Istio's L7 traffic management features through the supported route APIs. In ambient mode, HTTPRoute is the preferred API for HTTP routing; VirtualService support is considered alpha.
 
 **HTTP Routing:**
 
 ```yaml
-apiVersion: networking.istio.io/v1
-kind: VirtualService
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
 metadata:
   name: reviews-route
   namespace: my-namespace
 spec:
-  hosts:
-  - reviews
-  http:
-  - match:
+  parentRefs:
+  - group: ""
+    kind: Service
+    name: reviews
+    port: 9080
+  rules:
+  - matches:
     - headers:
-        end-user:
-          exact: jason
-    route:
-    - destination:
-        host: reviews
-        subset: v2
-  - route:
-    - destination:
-        host: reviews
-        subset: v1
+      - name: end-user
+        value: jason
+    backendRefs:
+    - name: reviews-v2
+      port: 9080
+  - backendRefs:
+    - name: reviews-v1
+      port: 9080
 ```
 
 **L7 Authorization Policies:**
@@ -128,27 +129,28 @@ spec:
 **Traffic Shifting:**
 
 ```yaml
-apiVersion: networking.istio.io/v1
-kind: VirtualService
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
 metadata:
   name: reviews-canary
   namespace: my-namespace
 spec:
-  hosts:
-  - reviews
-  http:
-  - route:
-    - destination:
-        host: reviews
-        subset: v1
+  parentRefs:
+  - group: ""
+    kind: Service
+    name: reviews
+    port: 9080
+  rules:
+  - backendRefs:
+    - name: reviews-v1
+      port: 9080
       weight: 90
-    - destination:
-        host: reviews
-        subset: v2
+    - name: reviews-v2
+      port: 9080
       weight: 10
 ```
 
-**Fault Injection, Timeouts, Retries** - all the standard Istio traffic management features work through waypoint proxies.
+**Fault Injection, Timeouts, Retries** - Istio's L7 traffic management features that require application protocol awareness are handled through waypoint proxies.
 
 ## Waypoint Proxy Scaling
 
@@ -188,7 +190,7 @@ spec:
 
 ## Waypoint Proxy and Service Accounts
 
-Waypoint proxies have their own service account and SPIFFE identity. This identity is important because authorization policies can reference it. The waypoint does not impersonate the source or destination identity - it has its own identity that is trusted by both ends.
+Waypoint proxies have their own service account and SPIFFE identity. This identity is important because L4 authorization policies enforced by ztunnel may need to allow the waypoint identity. The waypoint does not impersonate the source or destination identity - it has its own identity that is trusted by both ends.
 
 The trust chain looks like:
 
@@ -196,7 +198,7 @@ The trust chain looks like:
 Source (identity: frontend-sa) -> ztunnel -> Waypoint (identity: waypoint-sa) -> ztunnel -> Destination
 ```
 
-When writing authorization policies, you do not need to account for the waypoint identity in most cases. The policies are evaluated at the waypoint using the original source identity, not the waypoint's own identity.
+When writing L7 authorization policies attached to the waypoint or to a service using the waypoint, you do not need to account for the waypoint identity in most cases. Those policies are evaluated at the waypoint using the original source identity, not the waypoint's own identity. If you also have L4 policies enforced by ztunnel on the destination workload, allow the waypoint service account there.
 
 ## Monitoring Waypoint Proxies
 
