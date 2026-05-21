@@ -12,7 +12,7 @@ Istio adds a network proxy to every pod, and that proxy interacts with the under
 
 ## Understanding the Proxy Overhead
 
-Every request in an Istio mesh goes through two Envoy proxies - one on the client side and one on the server side. Each hop adds some latency. On a well-tuned setup, this overhead is typically 1-3 milliseconds per hop. But without tuning, it can be much higher.
+Every request in an Istio sidecar mesh goes through two Envoy proxies - one on the client side and one on the server side. Each hop adds some latency. On a well-tuned setup, this overhead is usually small, but the exact latency depends on workload, protocol, traffic rate, and platform. Without tuning, it can be much higher.
 
 The main factors that affect proxy performance:
 
@@ -109,7 +109,7 @@ For the NLB in front of Istio, enable cross-zone load balancing to distribute tr
 
 ```yaml
 serviceAnnotations:
-  service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
+  service.beta.kubernetes.io/aws-load-balancer-attributes: load_balancing.cross_zone.enabled=true
   service.beta.kubernetes.io/aws-load-balancer-target-group-attributes: "deregistration_delay.timeout_seconds=15"
 ```
 
@@ -130,20 +130,26 @@ This skips the kube-proxy hop and routes traffic directly from the load balancer
 
 ### Dataplane V2
 
-If your GKE cluster uses Dataplane V2 (powered by Cilium), you get eBPF-based networking that is more efficient than iptables. Istio's iptables rules for traffic interception work alongside Dataplane V2, but you can go further by using Istio's ambient mode which works with eBPF natively.
+If your GKE cluster uses Dataplane V2 (powered by Cilium), you get eBPF-based networking that is more efficient than iptables for Kubernetes service routing and NetworkPolicy. Istio sidecar traffic interception can run alongside Dataplane V2, but validate the exact Istio mode and CNI compatibility for your GKE version before relying on it in production. Istio ambient mode can reduce per-pod sidecar overhead by using per-node ztunnel proxies, but it is not simply an eBPF-native replacement for sidecars.
 
 ### GKE Node Auto-Provisioning
 
-GKE's node auto-provisioner can select machine types based on pending pod requirements. Make sure your pod resource requests include sidecar overhead so the autoprovisioner picks appropriately sized nodes:
+GKE's node auto-provisioner can select machine types based on pending pod requirements. Make sure both your application container requests and Istio proxy requests reflect actual needs so the autoprovisioner picks appropriately sized nodes:
 
 ```yaml
 spec:
-  containers:
-  - name: app
-    resources:
-      requests:
-        cpu: 500m  # App needs 500m + sidecar needs 100m = 600m total on the node
-        memory: 512Mi
+  template:
+    metadata:
+      annotations:
+        sidecar.istio.io/proxyCPU: "100m"
+        sidecar.istio.io/proxyMemory: "128Mi"
+    spec:
+      containers:
+      - name: app
+        resources:
+          requests:
+            cpu: 500m
+            memory: 512Mi
 ```
 
 ## Azure-Specific Optimizations
@@ -163,18 +169,23 @@ Overlay mode uses a separate CIDR for pods, so you do not exhaust your VNet addr
 
 ### Accelerated Networking
 
-Enable accelerated networking on your AKS node pools for lower latency and higher throughput:
+Use AKS node pool VM sizes that support accelerated networking for lower latency and higher throughput. Check the SKU capability in your region, then create the node pool with that VM size:
 
 ```bash
+az vm list-skus \
+  --location westeurope \
+  --size Standard_D4s_v5 \
+  --query "[?capabilities[?name=='AcceleratedNetworkingEnabled' && value=='True']].name" \
+  --output table
+
 az aks nodepool add \
   --resource-group istio-rg \
   --cluster-name istio-cluster \
   --name fastpool \
-  --node-vm-size Standard_D4s_v5 \
-  --enable-accelerated-networking
+  --node-vm-size Standard_D4s_v5
 ```
 
-This uses SR-IOV to bypass the hypervisor for network traffic, reducing latency significantly.
+Accelerated networking lets supported Azure VM NICs bypass the host virtual switch for much of the data path, reducing latency, jitter, and CPU overhead.
 
 ## Protocol Optimization
 
@@ -228,7 +239,7 @@ Setting `maxRequestsPerConnection` to 0 means unlimited requests per connection,
 
 ## DNS Optimization
 
-Enable DNS capture and auto-allocate to avoid unnecessary DNS lookups:
+Enable DNS capture to avoid unnecessary DNS lookups. In recent Istio releases, ServiceEntry IP auto-allocation is handled by Istiod by default; older `ISTIO_META_DNS_AUTO_ALLOCATE` proxy metadata is deprecated:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -238,7 +249,6 @@ spec:
     defaultConfig:
       proxyMetadata:
         ISTIO_META_DNS_CAPTURE: "true"
-        ISTIO_META_DNS_AUTO_ALLOCATE: "true"
 ```
 
 This lets the sidecar proxy handle DNS resolution locally instead of going through CoreDNS for every lookup.
