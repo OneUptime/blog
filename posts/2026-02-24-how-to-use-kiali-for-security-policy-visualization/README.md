@@ -18,17 +18,16 @@ One of Kiali's most useful security features is its mTLS visualization. On the t
 
 Enable mTLS badges from the Display dropdown by toggling "Security." Once enabled, you'll see lock icons on edges that are using mTLS. Edges without the lock icon are sending traffic in plaintext.
 
-This is incredibly valuable for verifying that your mTLS rollout is complete. If you've set PeerAuthentication to STRICT mode across the mesh, every edge should show a lock. Any edge without one indicates a problem.
+This is incredibly valuable for verifying that your mTLS rollout is complete. Kiali calculates the mTLS percentage for graph edges from Istio telemetry, so if you've set PeerAuthentication to STRICT mode across the mesh, every active in-mesh edge should show mTLS. Any active edge without it is worth investigating.
 
 ## Checking Mesh-Wide mTLS Status
 
-Kiali shows the overall mTLS status of your mesh in the toolbar. Look for the lock icon at the top of the page:
+Kiali shows the overall mTLS status of your mesh on the Mesh page, in the Istio control plane details panel. Look for the lock indicator:
 
-- **Lock icon (green)**: Mesh-wide mTLS is enabled and all traffic is encrypted
-- **Lock icon with exclamation**: mTLS is partially enabled (some connections are not encrypted)
-- **No lock**: mTLS is not enabled mesh-wide
+- **Closed lock**: Mesh-wide mTLS is enabled
+- **Open or hollow lock**: The mesh is in PERMISSIVE mode or Kiali detected a mesh-wide mTLS misconfiguration
 
-Click the lock icon for more details about which namespaces have mTLS enabled and which don't.
+For namespace-level details, use the Namespaces page. Kiali shows namespace mTLS status there, including whether strict mTLS is set directly or inherited from the mesh.
 
 ## PeerAuthentication Visualization
 
@@ -45,7 +44,7 @@ spec:
     mode: STRICT
 ```
 
-This mesh-wide policy requires mTLS for all services. Kiali validates that no conflicting PeerAuthentication policies exist at the namespace or workload level that would weaken this setting.
+This mesh-wide policy requires mTLS for all services when it is placed in the Istio root namespace for your installation. Kiali validates PeerAuthentication resources for conflicts such as multiple selector-less policies in the same namespace or multiple policies that apply to the same workload.
 
 For namespace-level overrides:
 
@@ -60,11 +59,11 @@ spec:
     mode: PERMISSIVE
 ```
 
-Kiali shows this as a warning because it allows plaintext traffic in a mesh that otherwise requires mTLS.
+Kiali shows the namespace with a permissive mTLS indicator because it allows plaintext traffic in a namespace that otherwise might inherit strict mTLS from the mesh.
 
 ## Authorization Policy Visualization
 
-AuthorizationPolicies control which services can communicate. Kiali displays these policies in the Istio Config section and also surfaces their effects in the graph view.
+AuthorizationPolicies control which services can communicate. Kiali displays these policies in the Istio Config section and validates common mistakes such as references to missing namespaces, hosts, or service accounts.
 
 ### Viewing Authorization Policies
 
@@ -92,15 +91,15 @@ spec:
             paths: ["/reviews/*"]
 ```
 
-This policy only allows the `productpage` service account to make GET requests to `/reviews/*` on the reviews service. Kiali validates that:
+This policy only allows the `productpage` service account to make GET requests to `/reviews/*` on workloads with the `app: reviews` label. Kiali validates issues such as:
 
-- The selector matches actual workloads
-- The referenced service accounts exist
-- The policy doesn't conflict with other policies
+- Referenced namespaces exist
+- Referenced service accounts are backed by pods in the mesh
+- Referenced hosts exist in the service registry when hosts are used in policy rules
 
 ### Security Badges in the Graph
 
-On the traffic graph, services with authorization policies show a badge indicating they have access control. This makes it easy to scan the graph and identify which services are protected and which aren't.
+On the traffic graph, the Security display focuses on mTLS status for edges. Use the graph together with Kiali's Istio Config and workload validations to identify which workloads are covered by AuthorizationPolicies.
 
 Services without any authorization policy are potential security gaps, especially in a zero-trust architecture.
 
@@ -219,7 +218,7 @@ graph TD
     C -->|mTLS + AuthZ| F[Cache Service]
 ```
 
-In Kiali's graph, you'd see lock icons on all edges (mTLS) and authorization badges on services B, C, E, and F. Service D has no authorization policy, which might be intentional (static assets) or a gap to fix.
+In Kiali's graph, you'd see mTLS status on the edges. You would use Istio Config and workload validations to confirm that services B, C, E, and F have matching authorization policies. Service D has no authorization policy, which might be intentional (static assets) or a gap to fix.
 
 ## Practical Tips
 
