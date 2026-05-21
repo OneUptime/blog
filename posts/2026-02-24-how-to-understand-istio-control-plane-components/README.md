@@ -14,7 +14,7 @@ When people talk about Istio's architecture, they usually mention the "control p
 
 In older versions of Istio (pre-1.5), the control plane was split into several separate microservices: Pilot, Citadel, Galley, and Mixer. Each one ran as its own Deployment in the istio-system namespace. This was complex to operate and used a lot of resources.
 
-Starting with Istio 1.5, all of these components were consolidated into a single binary called **istiod**. The separate services still exist conceptually as modules within istiod, but they run in one process. This made Istio much simpler to install and operate.
+Starting with Istio 1.5, the core control plane functions were consolidated into a single binary called **istiod**. Pilot, Citadel, Galley, and the sidecar injection logic now run through istiod; Mixer was deprecated and removed from the default control plane path rather than becoming an active istiod module. This made Istio much simpler to install and operate.
 
 ```bash
 # In modern Istio, you will see just istiod
@@ -26,7 +26,7 @@ kubectl get deployments -n istio-system
 
 ## Inside Istiod
 
-Even though istiod is a single binary, it still contains the functionality of the original separate components. Here is what each piece does:
+Even though istiod is a single binary, it still contains the functionality of the original core control plane components. Here is what each piece does:
 
 ### Pilot (Service Discovery and Configuration)
 
@@ -35,7 +35,7 @@ Pilot is the component responsible for converting your high-level Istio configur
 When you create a VirtualService like this:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: reviews
@@ -60,19 +60,20 @@ Pilot also watches the Kubernetes API for changes to Services and Endpoints. Whe
 
 ### Citadel (Certificate Authority)
 
-Citadel handles all the certificate management for mutual TLS. Its responsibilities include:
+Citadel was the original certificate authority component. In modern Istio, the CA functionality is handled by istiod. Its responsibilities include:
 
 - **Identity assignment** - Every workload gets a SPIFFE identity (like `spiffe://cluster.local/ns/default/sa/my-app`)
-- **Certificate issuance** - Citadel generates X.509 certificates for each workload
+- **Certificate issuance** - istiod signs X.509 certificates for each workload
 - **Certificate rotation** - Certificates are automatically rotated before they expire
 
 The certificate lifecycle works like this:
 
-1. When a new pod starts, the Envoy sidecar sends a Certificate Signing Request (CSR) to istiod
-2. Istiod validates the request against the pod's Kubernetes service account
-3. Istiod signs the certificate and sends it back
-4. The sidecar uses the certificate for all mTLS connections
-5. Before the certificate expires, the sidecar requests a new one
+1. When a new pod starts, the Istio agent creates a private key and Certificate Signing Request (CSR)
+2. The Istio agent sends the CSR and its credentials to istiod
+3. Istiod validates the request against the pod's Kubernetes service account
+4. Istiod signs the certificate and sends it back
+5. Envoy gets the certificate and key from the Istio agent over SDS and uses them for mTLS connections
+6. Before the certificate expires, the Istio agent requests a new one
 
 You can check the certificates being used:
 
@@ -88,9 +89,9 @@ istioctl proxy-config secret deploy/my-app -n default -o json | \
 
 ### Galley (Configuration Validation)
 
-Galley is the configuration validation and distribution component. In modern Istio, its main job is validating Istio custom resources when they are created or updated.
+Galley was the configuration validation and distribution component. In modern Istio, the validation webhook is served by istiod and validates Istio custom resources when they are created or updated.
 
-Galley registers a Kubernetes ValidatingWebhookConfiguration that intercepts create and update operations on Istio resources:
+Istio installs a Kubernetes ValidatingWebhookConfiguration that intercepts create and update operations on Istio resources:
 
 ```bash
 kubectl get validatingwebhookconfiguration
@@ -98,14 +99,14 @@ kubectl get validatingwebhookconfiguration
 # istio-validator-istio-system   1          30d
 ```
 
-When you apply a VirtualService with a typo or invalid field, Galley rejects it before it gets saved to etcd:
+When you apply a VirtualService with invalid schema values, the validation webhook rejects it before it gets saved to etcd:
 
 ```bash
-# This would be rejected by Galley
+# This would be rejected by the Istio validation webhook
 kubectl apply -f bad-virtualservice.yaml
 # Error from server: error when creating "bad-virtualservice.yaml":
-# admission webhook "validation.istio.io" denied the request:
-# configuration is invalid: virtual service destination host not found
+# admission webhook "validation.istio.io" denied the request: configuration is invalid:
+# percentage 888 is not in range 0..100
 ```
 
 ## How the Components Interact
@@ -113,7 +114,7 @@ kubectl apply -f bad-virtualservice.yaml
 The flow of a configuration change through the control plane looks like this:
 
 1. You apply a VirtualService using kubectl
-2. Galley (webhook) validates the resource
+2. The istiod validation webhook validates the resource
 3. Kubernetes stores the resource in etcd
 4. Pilot watches for the change and picks it up
 5. Pilot translates the VirtualService into Envoy configuration
@@ -195,13 +196,13 @@ Monitor these metrics to track control plane health:
 
 ```bash
 # Number of connected proxies
-pilot_xds_pushes{type="cds"}
+pilot_xds
 
 # Configuration push latency
 pilot_proxy_convergence_time_bucket
 
 # Push errors
-pilot_xds_push_errors
+pilot_total_xds_internal_errors
 ```
 
 ## The Injection Webhook
@@ -216,4 +217,4 @@ kubectl get mutatingwebhookconfiguration
 
 When a pod is created in a namespace with the `istio-injection=enabled` label, this webhook modifies the pod spec to add the Envoy container and init container.
 
-Understanding the control plane components helps you know where to look when something goes wrong. Configuration not taking effect? Check Pilot's logs and proxy-status. mTLS not working? Look at Citadel's certificate issuance. Invalid configs getting through? Check if the validation webhook is active. Each component has a specific responsibility, and knowing which one handles what makes troubleshooting much more targeted.
+Understanding the control plane components helps you know where to look when something goes wrong. Configuration not taking effect? Check Pilot's logs and proxy-status. mTLS not working? Look at istiod's certificate issuance. Invalid configs getting through? Check if the validation webhook is active. Each component has a specific responsibility, and knowing which one handles what makes troubleshooting much more targeted.
