@@ -48,13 +48,13 @@ If you do not want 4xx errors dragging down your success rate (since they are of
 
 ```promql
 (
-  sum(rate(istio_requests_total{reporter="destination", response_code!~"5.."}[5m])) by (destination_service_name)
+  sum(rate(istio_requests_total{reporter="destination", response_code=~"[23].."}[5m])) by (destination_service_name)
   /
-  sum(rate(istio_requests_total{reporter="destination"}[5m])) by (destination_service_name)
+  sum(rate(istio_requests_total{reporter="destination", response_code!~"4.."}[5m])) by (destination_service_name)
 ) * 100
 ```
 
-This counts everything except 5xx as success.
+This counts 2xx and 3xx responses as success and removes 4xx responses from the denominator.
 
 ## Per-Service Success Rate
 
@@ -88,9 +88,9 @@ Break down by request path to find which endpoints are failing:
 
 ```promql
 (
-  sum(rate(istio_requests_total{reporter="destination", destination_service_name="my-api", response_code=~"2.."}[5m])) by (destination_service_name)
+  sum(rate(istio_requests_total{reporter="destination", destination_service_name="my-api", response_code=~"2.."}[5m])) by (destination_service_name, request_path)
   /
-  sum(rate(istio_requests_total{reporter="destination", destination_service_name="my-api"}[5m])) by (destination_service_name)
+  sum(rate(istio_requests_total{reporter="destination", destination_service_name="my-api"}[5m])) by (destination_service_name, request_path)
 ) * 100
 ```
 
@@ -118,9 +118,9 @@ Create a Grafana dashboard with a success rate panel:
 
 ```promql
 (
-  sum(rate(istio_requests_total{reporter="destination", response_code!~"5.."}[5m])) by (destination_service_name)
+  sum(rate(istio_requests_total{reporter="destination", response_code=~"[23].."}[5m])) by (destination_service_name)
   /
-  sum(rate(istio_requests_total{reporter="destination"}[5m])) by (destination_service_name)
+  sum(rate(istio_requests_total{reporter="destination", response_code!~"4.."}[5m])) by (destination_service_name)
 ) * 100
 ```
 
@@ -155,9 +155,9 @@ spec:
         - alert: LowSuccessRate
           expr: |
             (
-              sum(rate(istio_requests_total{reporter="destination", response_code!~"5.."}[5m])) by (destination_service_name)
+              sum(rate(istio_requests_total{reporter="destination", response_code=~"[23].."}[5m])) by (destination_service_name)
               /
-              sum(rate(istio_requests_total{reporter="destination"}[5m])) by (destination_service_name)
+              sum(rate(istio_requests_total{reporter="destination", response_code!~"4.."}[5m])) by (destination_service_name)
             ) * 100 < 99.5
           for: 5m
           labels:
@@ -168,9 +168,9 @@ spec:
         - alert: CriticalSuccessRate
           expr: |
             (
-              sum(rate(istio_requests_total{reporter="destination", response_code!~"5.."}[5m])) by (destination_service_name)
+              sum(rate(istio_requests_total{reporter="destination", response_code=~"[23].."}[5m])) by (destination_service_name)
               /
-              sum(rate(istio_requests_total{reporter="destination"}[5m])) by (destination_service_name)
+              sum(rate(istio_requests_total{reporter="destination", response_code!~"4.."}[5m])) by (destination_service_name)
             ) * 100 < 95
           for: 2m
           labels:
@@ -185,13 +185,13 @@ spec:
 If your SLO is 99.9% success rate over a 30-day window, track the error budget:
 
 ```promql
-# Error budget remaining (as a percentage)
+# Error budget remaining (as a ratio)
 
 1 - (
   (1 - (
-    sum(rate(istio_requests_total{reporter="destination", destination_service_name="payment-service", response_code!~"5.."}[30d]))
+    sum(rate(istio_requests_total{reporter="destination", destination_service_name="payment-service", response_code=~"[23].."}[30d]))
     /
-    sum(rate(istio_requests_total{reporter="destination", destination_service_name="payment-service"}[30d]))
+    sum(rate(istio_requests_total{reporter="destination", destination_service_name="payment-service", response_code!~"4.."}[30d]))
   ))
   /
   0.001  # 0.1% error budget for 99.9% SLO
@@ -231,9 +231,9 @@ Do not alert on low-traffic services. A service that handles 1 request per minut
 
 ```promql
 (
-  sum(rate(istio_requests_total{reporter="destination", response_code!~"5.."}[5m])) by (destination_service_name)
+  sum(rate(istio_requests_total{reporter="destination", response_code=~"[23].."}[5m])) by (destination_service_name)
   /
-  sum(rate(istio_requests_total{reporter="destination"}[5m])) by (destination_service_name)
+  sum(rate(istio_requests_total{reporter="destination", response_code!~"4.."}[5m])) by (destination_service_name)
 ) * 100 < 99.5
 and
 sum(rate(istio_requests_total{reporter="destination"}[5m])) by (destination_service_name) > 1
@@ -246,8 +246,8 @@ The `> 1` filter ensures you only alert on services handling more than 1 request
 If Prometheus is not showing data, check the sidecar directly:
 
 ```bash
-# Check raw metrics
-kubectl exec deploy/my-service -c istio-proxy -- curl -s localhost:15090/stats/prometheus | grep istio_requests_total
+# Check proxy metrics directly
+kubectl exec deploy/my-service -c istio-proxy -- curl -s localhost:15000/stats/prometheus | grep istio_requests_total
 
 # Check the merged metrics endpoint
 kubectl exec deploy/my-service -c istio-proxy -- curl -s localhost:15020/stats/prometheus | grep istio_requests_total
