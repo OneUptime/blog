@@ -12,7 +12,7 @@ Most Istio traffic management examples focus on HTTP routing, but plenty of serv
 
 ## HTTP vs TCP Traffic Shifting
 
-HTTP traffic shifting in Istio can use headers, paths, methods, and other HTTP-specific attributes for routing decisions. TCP traffic shifting is simpler - you can only route based on destination port and use weighted routing between subsets. There are no header-based matches or URI-based routing for TCP.
+HTTP traffic shifting in Istio can use headers, paths, methods, and other HTTP-specific attributes for routing decisions. TCP traffic shifting is simpler - TCP routes can match on layer-4 attributes like destination port, source labels, source namespace, gateways, and destination subnets, then use weighted routing between subsets. There are no header-based matches or URI-based routing for TCP.
 
 ```mermaid
 flowchart TD
@@ -24,7 +24,9 @@ flowchart TD
     end
     subgraph "TCP Routing Options"
         T1[Destination Port]
-        T2[Weights]
+        T2[Source Labels]
+        T3[Destination Subnets]
+        T4[Weights]
     end
 ```
 
@@ -95,12 +97,12 @@ spec:
       name: tcp-custom
 ```
 
-Important: the port must have a name that starts with `tcp-` for Istio to recognize it as TCP traffic. Without this naming convention, Istio may treat it differently.
+Important: name the port with the `tcp-` prefix, or set `appProtocol: tcp` on Kubernetes 1.18+, to explicitly tell Istio this is TCP traffic. If Istio cannot automatically determine a protocol, it treats the traffic as plain TCP, but explicit protocol selection avoids ambiguity.
 
 ### Step 2: Define Subsets
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: tcp-service
@@ -119,7 +121,7 @@ spec:
 ### Step 3: Configure Weighted TCP Routing
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: tcp-service
@@ -145,7 +147,7 @@ spec:
           weight: 20
 ```
 
-Notice the `tcp` section instead of `http`. The match only supports port-based matching.
+Notice the `tcp` section instead of `http`. The example uses port-based matching, which is the most common TCP match condition.
 
 ## Gradual TCP Traffic Shift
 
@@ -154,7 +156,7 @@ Just like HTTP, you shift traffic gradually:
 ### Phase 1: 95/5 Split
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: tcp-service
@@ -183,7 +185,7 @@ spec:
 ### Phase 2: 50/50 Split
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: tcp-service
@@ -212,7 +214,7 @@ spec:
 ### Phase 3: Complete Shift
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: tcp-service
@@ -237,7 +239,7 @@ spec:
 Migrating traffic from an old database proxy to a new one:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: db-proxy
@@ -257,7 +259,7 @@ spec:
         maxConnections: 200
         connectTimeout: 5s
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: db-proxy
@@ -290,7 +292,7 @@ This shifts 10% of database connections to the new proxy while keeping 90% on th
 Shifting traffic between Redis versions:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: redis
@@ -305,7 +307,7 @@ spec:
       labels:
         version: "7"
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: redis
@@ -344,7 +346,7 @@ This means:
 
 ### Port Naming Requirements
 
-Istio needs to know a port carries TCP traffic. Name your service ports with the `tcp-` prefix:
+Istio needs to know a port carries TCP traffic. Name your service ports with the `tcp-` prefix, or use `appProtocol: tcp` on Kubernetes 1.18+:
 
 ```yaml
 apiVersion: v1
@@ -354,12 +356,13 @@ metadata:
 spec:
   ports:
     - port: 9000
-      name: tcp-custom  # Must start with tcp-
+      name: tcp-custom
+      appProtocol: tcp
 ```
 
 ### No Match on Source
 
-Unlike HTTP routing, TCP routing cannot match on source labels or namespaces in the VirtualService match conditions (though you can use AuthorizationPolicy for access control). The only match criteria is the destination port.
+TCP routes do not have HTTP attributes such as headers, paths, or methods, but they can use source labels or source namespaces as selectors for which workloads the VirtualService applies to. These are not runtime request matches. Use AuthorizationPolicy for access control.
 
 ### Monitoring TCP Traffic Split
 
@@ -389,7 +392,7 @@ sum(rate(istio_tcp_sent_bytes_total{destination_service="tcp-service.default.svc
 Add connection limits to protect both versions during the transition:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: tcp-service
