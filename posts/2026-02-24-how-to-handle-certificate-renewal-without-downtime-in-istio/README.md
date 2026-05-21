@@ -8,14 +8,14 @@ Description: Techniques for renewing certificates in Istio without causing servi
 
 ---
 
-Certificate renewal is inevitable. Whether it is the short-lived workload certificates that Istio rotates every 24 hours, the intermediate CA certificate that expires yearly, or the gateway TLS certificate that needs updating, you need to handle renewals without dropping connections or causing outages.
+Certificate renewal is inevitable. Whether it is the short-lived workload certificates that Istio rotates every 24 hours by default, the intermediate CA certificate that eventually expires, or the gateway TLS certificate that needs updating, you need to handle renewals without dropping connections or causing outages.
 
 ## Workload Certificate Renewal (Automatic)
 
 For the day-to-day workload certificates, Istio handles renewal automatically and you do not need to do anything. The process works like this:
 
 1. The istio-agent watches the certificate expiration time
-2. At around 80% of the certificate lifetime, it generates a new CSR
+2. When the certificate reaches the rotation grace period, it generates a new CSR. With current Istio defaults, `SECRET_GRACE_PERIOD_RATIO` is `0.5` with a small jitter, so renewal starts at about half of the certificate lifetime.
 3. It sends the CSR to istiod
 4. istiod signs the new certificate and returns it
 5. The istio-agent pushes the new certificate to Envoy via SDS (Secret Discovery Service)
@@ -123,25 +123,33 @@ openssl x509 -req -in new-ca-csr.pem \
 ### Step 3: Create Combined Root Trust Bundle
 
 ```bash
+# Save the current CA files before updating the secret
+kubectl get secret cacerts -n istio-system -o json | jq -r '.data["ca-cert.pem"]' | base64 -d > old-ca-cert.pem
+kubectl get secret cacerts -n istio-system -o json | jq -r '.data["ca-key.pem"]' | base64 -d > old-ca-key.pem
+kubectl get secret cacerts -n istio-system -o json | jq -r '.data["root-cert.pem"]' | base64 -d > old-root-cert.pem
+kubectl get secret cacerts -n istio-system -o json | jq -r '.data["cert-chain.pem"]' | base64 -d > old-cert-chain.pem
+
 # Combine old and new root certificates
-cat new-root-cert.pem old-root-cert.pem > combined-root-cert.pem
+cat old-root-cert.pem new-root-cert.pem > combined-root-cert.pem
 
 # Create cert chain
 cat new-ca-cert.pem new-root-cert.pem > new-cert-chain.pem
 ```
 
-### Step 4: Update the Secret with Combined Trust
+### Step 4: Add the New Root to the Trust Bundle
+
+First distribute a trust bundle that contains both roots while keeping the old intermediate CA as the signer. This gives workloads a chance to trust certificates under both roots before any workload receives a certificate signed by the new root:
 
 ```bash
 kubectl create secret generic cacerts -n istio-system \
-  --from-file=ca-cert.pem=new-ca-cert.pem \
-  --from-file=ca-key.pem=new-ca-key.pem \
+  --from-file=ca-cert.pem=old-ca-cert.pem \
+  --from-file=ca-key.pem=old-ca-key.pem \
   --from-file=root-cert.pem=combined-root-cert.pem \
-  --from-file=cert-chain.pem=new-cert-chain.pem \
+  --from-file=cert-chain.pem=old-cert-chain.pem \
   --dry-run=client -o yaml | kubectl apply -f -
 ```
 
-### Step 5: Restart istiod and All Workloads
+### Step 5: Restart istiod and Roll Workloads Onto the Combined Trust Bundle
 
 ```bash
 kubectl rollout restart deployment/istiod -n istio-system
@@ -153,10 +161,32 @@ sleep 30
 # Restart all workloads
 for ns in $(kubectl get ns -l istio-injection=enabled -o jsonpath='{.items[*].metadata.name}'); do
   kubectl rollout restart deployment -n "$ns"
+  kubectl rollout status deployment -n "$ns" --timeout=300s
 done
 ```
 
-### Step 6: Remove the Old Root (After Full Rotation)
+### Step 6: Switch istiod to the New Intermediate CA
+
+After workloads have the combined trust bundle, update `cacerts` so istiod starts signing workload certificates with the new intermediate CA:
+
+```bash
+kubectl create secret generic cacerts -n istio-system \
+  --from-file=ca-cert.pem=new-ca-cert.pem \
+  --from-file=ca-key.pem=new-ca-key.pem \
+  --from-file=root-cert.pem=combined-root-cert.pem \
+  --from-file=cert-chain.pem=new-cert-chain.pem \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+kubectl rollout restart deployment/istiod -n istio-system
+kubectl rollout status deployment/istiod -n istio-system
+
+for ns in $(kubectl get ns -l istio-injection=enabled -o jsonpath='{.items[*].metadata.name}'); do
+  kubectl rollout restart deployment -n "$ns"
+  kubectl rollout status deployment -n "$ns" --timeout=300s
+done
+```
+
+### Step 7: Remove the Old Root (After Full Rotation)
 
 Once all workloads have been restarted and have new certificates, update the trust bundle to remove the old root:
 
