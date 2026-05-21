@@ -8,7 +8,7 @@ Description: Practical solutions for handling the race condition where applicati
 
 ---
 
-One of the most frustrating issues people hit when adopting Istio is the startup race condition. Your application container starts up, tries to make an outbound HTTP call or connect to a database, and fails because the Envoy sidecar hasn't finished initializing yet. The sidecar needs time to receive its configuration from the control plane, set up listeners, and establish mTLS connections. If your app tries to send traffic before all that is done, requests fail.
+One of the most frustrating issues people hit when adopting Istio is the startup race condition. Your application container starts up, tries to make an outbound HTTP call or connect to a database, and fails because the Envoy sidecar hasn't finished initializing yet. The sidecar needs time to receive its configuration from the control plane, set up listeners, and prepare certificates for mTLS connections. If your app tries to send traffic before all that is done, requests fail.
 
 This problem shows up as connection refused errors, DNS failures, or TLS handshake errors during the first few seconds of a pod's life. Here's how to solve it properly.
 
@@ -57,7 +57,7 @@ spec:
         image: my-app:latest
 ```
 
-This works by using a postStart lifecycle hook on the sidecar container that blocks until the proxy is ready. The application container waits because Kubernetes starts containers in order when lifecycle hooks are in play.
+This works by injecting the sidecar at the start of the pod's container list and adding hooks that block the start of the other containers until the proxy is ready.
 
 ## Solution 2: Native Sidecar Containers (Kubernetes 1.28+)
 
@@ -78,10 +78,10 @@ With native sidecars, the Envoy container is defined as an init container with `
 Check if your cluster supports this:
 
 ```bash
-kubectl version --short
+kubectl version
 ```
 
-You need Kubernetes 1.28 or later, and the `SidecarContainers` feature gate must be enabled (it's beta and enabled by default in 1.29+).
+You need Kubernetes 1.28 or later, and the `SidecarContainers` feature gate must be enabled. The feature was alpha and off by default in Kubernetes 1.28, beta and enabled by default starting in 1.29, and stable in current Kubernetes releases.
 
 ## Solution 3: Application-Side Retry Logic
 
@@ -140,7 +140,7 @@ metadata:
 spec:
   template:
     metadata:
-      annotations:
+      labels:
         sidecar.istio.io/inject: "true"
     spec:
       containers:
