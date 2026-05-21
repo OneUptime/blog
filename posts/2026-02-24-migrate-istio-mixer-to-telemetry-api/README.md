@@ -8,7 +8,7 @@ Description: Step-by-step guide to migrating from the deprecated Istio Mixer com
 
 ---
 
-If you have been running Istio for a while, you might still have Mixer-based telemetry configuration hanging around. Mixer was removed in Istio 1.12, and all its functionality has been replaced by the Telemetry API and Envoy-native extensions. If you are upgrading from an older Istio version, migrating your telemetry configuration is a required step.
+If you have been running Istio for a while, you might still have Mixer-based telemetry configuration hanging around. Mixer was removed in Istio 1.8, and its telemetry functionality has been replaced by the Telemetry API, proxy extensions, and Envoy-native integrations. If you are upgrading from an older Istio version, migrating your telemetry configuration is a required step.
 
 This guide walks through how to move from Mixer-based telemetry to the modern Telemetry API.
 
@@ -19,7 +19,7 @@ Mixer was a separate component that sat in the data path for every request. Ever
 - Additional network hop for every request
 - Single point of failure in the telemetry pipeline
 - High CPU and memory usage in large deployments
-- Added 5-10ms of latency per request
+- Added latency to requests that used Mixer checks or reports
 
 The replacement approach moves all telemetry collection directly into the Envoy proxy using WebAssembly (Wasm) extensions and native Envoy filters. This eliminates the extra network hop and significantly reduces latency.
 
@@ -157,10 +157,10 @@ spec:
     - name: prometheus
     overrides:
     - match:
-        metric: REQUEST_BYTES
+        metric: REQUEST_SIZE
       disabled: true
     - match:
-        metric: RESPONSE_BYTES
+        metric: RESPONSE_SIZE
       disabled: true
 ```
 
@@ -222,7 +222,7 @@ spec:
       %RESPONSE_CODE% %RESPONSE_FLAGS% %BYTES_RECEIVED% %BYTES_SENT%
       %DURATION% "%REQ(X-FORWARDED-FOR)%" "%REQ(USER-AGENT)%"
       "%REQ(X-REQUEST-ID)%" "%REQ(:AUTHORITY)%" "%UPSTREAM_HOST%"
-    accessLogEncoding: JSON
+    accessLogEncoding: TEXT
 ```
 
 ### Per-Namespace Access Logging
@@ -318,7 +318,7 @@ spec:
 
 1. **Audit existing Mixer config**: List all Mixer-related resources
 2. **Create equivalent Telemetry API resources**: Build the new configuration
-3. **Apply new configuration alongside old**: Both can coexist temporarily
+3. **Test the new configuration during your Istio upgrade**: Mixer resources are not served by current Istio versions, so validate in staging or during a revision-based upgrade
 4. **Verify metrics are flowing**: Check Prometheus targets and Grafana dashboards
 5. **Verify traces are flowing**: Check your tracing backend
 6. **Verify access logs**: Check pod logs for Envoy access log entries
