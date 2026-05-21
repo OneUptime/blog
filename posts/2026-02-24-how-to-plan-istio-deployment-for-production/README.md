@@ -72,7 +72,10 @@ istioctl install -f production-istio.yaml
 
 ```bash
 helm repo add istio https://istio-release.storage.googleapis.com/charts
-helm install istio-base istio/base -n istio-system
+helm repo update
+helm install istio-base istio/base -n istio-system \
+  --set defaultRevision=default \
+  --create-namespace
 helm install istiod istio/istiod -n istio-system \
   --set pilot.replicaCount=3 \
   --set pilot.resources.requests.cpu=500m \
@@ -144,9 +147,9 @@ Adjust these based on your traffic patterns. High-throughput services need more 
 
 ## Network Configuration
 
-### Pod CIDR and Service CIDR
+### Mesh ID and Outbound Policy
 
-Make sure Istio knows your cluster's CIDR ranges:
+Set a stable mesh ID and decide how strictly outbound traffic should be controlled:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -192,7 +195,7 @@ spec:
     mode: STRICT
 ```
 
-### Lock Down the Control Plane
+### Set Mesh Identity Defaults
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -248,10 +251,10 @@ Plan your upgrade process before you need it:
 
 ```bash
 # Install new version as a canary
-istioctl install --set revision=1-20-0 -f production-istio.yaml
+istioctl install --set revision=1-30-0 -f production-istio.yaml
 
 # Gradually migrate namespaces
-kubectl label namespace default istio.io/rev=1-20-0 --overwrite
+kubectl label namespace default istio-injection- istio.io/rev=1-30-0 --overwrite
 kubectl rollout restart deployment -n default
 ```
 
