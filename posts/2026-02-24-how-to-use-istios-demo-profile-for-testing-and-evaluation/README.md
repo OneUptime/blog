@@ -32,7 +32,7 @@ istioctl profile dump demo
 
 ```bash
 curl -L https://istio.io/downloadIstio | sh -
-cd istio-1.24.0
+cd istio-1.30.0
 export PATH=$PWD/bin:$PATH
 ```
 
@@ -207,9 +207,8 @@ spec:
       tcp:
         maxConnections: 1
       http:
-        h2UpgradePolicy: DEFAULT
         http1MaxPendingRequests: 1
-        http2MaxRequests: 1
+        maxRequestsPerConnection: 1
     outlierDetection:
       consecutive5xxErrors: 1
       interval: 1s
@@ -217,17 +216,18 @@ spec:
       maxEjectionPercent: 100
 ```
 
-Deploy httpbin to test:
+Deploy httpbin and the Fortio client to test:
 
 ```bash
 kubectl apply -f samples/httpbin/httpbin.yaml
-kubectl apply -f samples/sleep/sleep.yaml
+kubectl apply -f samples/httpbin/sample-client/fortio-deploy.yaml
 ```
 
 Then use fortio to generate load and trip the circuit breaker:
 
 ```bash
-kubectl exec deploy/sleep -- fortio load -c 3 -qps 0 -n 30 http://httpbin:8000/get
+export FORTIO_POD=$(kubectl get pods -l app=fortio -o 'jsonpath={.items[0].metadata.name}')
+kubectl exec "$FORTIO_POD" -c fortio -- /usr/bin/fortio load -c 2 -qps 0 -n 20 -loglevel Warning http://httpbin:8000/get
 ```
 
 You'll see some requests succeed and others fail with 503 - that's the circuit breaker doing its job.
@@ -264,6 +264,32 @@ The demo profile includes an egress gateway, so you can test outbound traffic co
 
 ```yaml
 apiVersion: networking.istio.io/v1
+kind: Gateway
+metadata:
+  name: istio-egressgateway
+spec:
+  selector:
+    istio: egressgateway
+  servers:
+    - port:
+        number: 443
+        name: tls
+        protocol: TLS
+      hosts:
+        - httpbin.org
+      tls:
+        mode: PASSTHROUGH
+---
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: egressgateway-for-httpbin
+spec:
+  host: istio-egressgateway.istio-system.svc.cluster.local
+  subsets:
+    - name: httpbin
+---
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-api
@@ -284,9 +310,26 @@ metadata:
 spec:
   hosts:
     - httpbin.org
+  gateways:
+    - mesh
+    - istio-egressgateway
   tls:
     - match:
-        - port: 443
+        - gateways:
+            - mesh
+          port: 443
+          sniHosts:
+            - httpbin.org
+      route:
+        - destination:
+            host: istio-egressgateway.istio-system.svc.cluster.local
+            subset: httpbin
+            port:
+              number: 443
+    - match:
+        - gateways:
+            - istio-egressgateway
+          port: 443
           sniHosts:
             - httpbin.org
       route:
@@ -294,9 +337,10 @@ spec:
             host: httpbin.org
             port:
               number: 443
+          weight: 100
 ```
 
-This routes external HTTPS traffic through the mesh, giving you visibility and control over outbound calls.
+This routes external HTTPS traffic through the egress gateway, giving you visibility and control over outbound calls.
 
 Resource Usage of the Demo Profile
 
