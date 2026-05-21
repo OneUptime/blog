@@ -29,7 +29,7 @@ When you have 1000+ services, several things happen:
 The single most impactful optimization is using the Sidecar resource to limit what each sidecar knows about. By default, every sidecar gets configuration for every service in the mesh. Most services only talk to 5-10 other services.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -48,7 +48,7 @@ This Sidecar resource tells all sidecars in the `team-a` namespace to only load 
 For even more precision, scope individual workloads:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: payment-service
@@ -59,8 +59,8 @@ spec:
       app: payment-service
   egress:
     - hosts:
-        - "./billing-service.team-a.svc.cluster.local"
-        - "./notification-service.team-a.svc.cluster.local"
+        - "./billing-service"
+        - "./notification-service"
         - "istio-system/*"
 ```
 
@@ -70,14 +70,8 @@ The payment service only talks to billing and notification, so its sidecar only 
 
 For 1000+ services, a single istiod replica is not enough. Scale istiod horizontally:
 
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: istiod
-  namespace: istio-system
-spec:
-  replicas: 3
+```bash
+kubectl scale deployment istiod -n istio-system --replicas=3
 ```
 
 Or through IstioOperator:
@@ -122,22 +116,18 @@ Tune the push throttling parameters:
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
-  meshConfig:
-    defaultConfig:
-      concurrency: 2
   values:
     pilot:
       env:
-        PILOT_PUSH_THROTTLE: "100"
         PILOT_DEBOUNCE_AFTER: "100ms"
-        PILOT_DEBOUNCE_MAX: "1s"
+        PILOT_DEBOUNCE_MAX: "10s"
         PILOT_ENABLE_EDS_DEBOUNCE: "true"
 ```
 
-- **PILOT_PUSH_THROTTLE**: Limits the number of concurrent pushes. At 1000+ services, set this to 100-200 to prevent overwhelming the control plane.
+- **PILOT_PUSH_THROTTLE**: Limits the number of concurrent pushes. If unset or set to 0, Istio automatically determines the value based on machine size. On larger control plane nodes, you can increase this after measuring push latency and CPU usage.
 - **PILOT_DEBOUNCE_AFTER**: Waits this long after the last change before pushing. Groups rapid changes into a single push.
 - **PILOT_DEBOUNCE_MAX**: Maximum time to wait before pushing, even if changes are still coming in.
-- **PILOT_ENABLE_EDS_DEBOUNCE**: Enables endpoint-specific debouncing, which is important when pods are scaling frequently.
+- **PILOT_ENABLE_EDS_DEBOUNCE**: Includes EDS pushes in the same debouncing behavior, which is important when pods are scaling frequently.
 
 ## Step 4: Optimize Envoy Memory
 
@@ -150,15 +140,11 @@ spec:
   meshConfig:
     defaultConfig:
       concurrency: 2
-      proxyStatsMatcher:
-        inclusionPrefixes:
-          - "cluster.outbound"
-          - "listener"
 ```
 
 Reducing the proxy concurrency from the default (number of CPU cores) to 2 reduces memory usage because Envoy allocates per-worker data structures. For most services, 2 worker threads is plenty.
 
-The `proxyStatsMatcher` limits which statistics Envoy tracks. By default, Envoy generates statistics for everything, and at 1000 services, that is a lot of counters and histograms consuming memory.
+The `proxyStatsMatcher` controls which additional Envoy statistics are created beyond Istio's default subset. Avoid adding broad prefixes such as `cluster.outbound` unless you really need them, because extra Envoy stats can increase memory usage and Prometheus cardinality at 1000 services.
 
 Set appropriate resource limits for sidecars:
 
@@ -166,10 +152,6 @@ Set appropriate resource limits for sidecars:
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
-  meshConfig:
-    defaultConfig:
-      proxyMetadata:
-        ISTIO_META_REQUESTED_NETWORK_VIEW: ""
   values:
     global:
       proxy:
@@ -183,7 +165,7 @@ spec:
 
 ## Step 5: Use Discovery Selectors
 
-Discovery selectors tell istiod to only watch specific namespaces. If you have namespaces that do not need to be in the mesh, exclude them:
+Discovery selectors tell istiod to only process specific namespaces. If you have namespaces that do not need to be in the mesh, exclude them:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -202,7 +184,7 @@ kubectl label namespace team-a istio-discovery=enabled
 kubectl label namespace team-b istio-discovery=enabled
 ```
 
-This reduces the number of Kubernetes API watches and the amount of data istiod processes, which directly reduces memory usage and CPU load on the control plane.
+Istiod still opens Kubernetes watches, but discovery selectors make it ignore unselected objects very early in processing. That reduces the amount of configuration istiod computes and stores, which directly reduces memory usage and CPU load on the control plane.
 
 ## Step 6: Monitor Control Plane Health
 
@@ -212,7 +194,7 @@ At scale, you need to monitor istiod actively. Key metrics to watch:
 # Check push metrics
 
 kubectl exec -n istio-system deploy/istiod -- \
-  curl -s localhost:15014/metrics | grep -E "pilot_xds_pushes|pilot_push_triggers|pilot_proxy_convergence_time"
+  curl -s localhost:15014/metrics | grep -E "pilot_xds_pushes|pilot_xds_push_time|pilot_proxy_convergence_time|pilot_k8s_reg_events"
 ```
 
 Important metrics:
@@ -232,7 +214,7 @@ groups:
   - name: istio-control-plane
     rules:
       - alert: IstioPushConvergenceSlow
-        expr: histogram_quantile(0.99, rate(pilot_proxy_convergence_time_bucket[5m])) > 30
+        expr: histogram_quantile(0.99, sum(rate(pilot_proxy_convergence_time_bucket[5m])) by (le)) > 30
         for: 5m
         labels:
           severity: warning
@@ -253,4 +235,4 @@ With ambient mode, the ztunnel runs per-node (not per-pod), dramatically reducin
 
 ## Summary
 
-Scaling Istio to 1000+ services requires attention to five areas: scoping sidecar configuration with the Sidecar resource, scaling the control plane with multiple replicas and appropriate resource limits, tuning push throttling to prevent thundering herd behavior, optimizing Envoy memory per sidecar, and using discovery selectors to limit what istiod watches. The biggest single improvement comes from Sidecar resources that limit each proxy's view of the mesh. Start there and add the other optimizations as needed based on the metrics you observe.
+Scaling Istio to 1000+ services requires attention to five areas: scoping sidecar configuration with the Sidecar resource, scaling the control plane with multiple replicas and appropriate resource limits, tuning push throttling to prevent thundering herd behavior, optimizing Envoy memory per sidecar, and using discovery selectors to limit what istiod processes. The biggest single improvement comes from Sidecar resources that limit each proxy's view of the mesh. Start there and add the other optimizations as needed based on the metrics you observe.
