@@ -12,7 +12,7 @@ You deploy a storage system in your Kubernetes cluster, everything works fine, a
 
 ## Step 1: Confirm Istio is Actually the Problem
 
-Before going down the Istio rabbit hole, verify that the issue is actually caused by the mesh. The quickest way is to temporarily disable sidecar injection on the storage pod and see if the problem goes away:
+Before going down the Istio rabbit hole, verify that the issue is actually caused by the mesh. The quickest way is to temporarily compare with a test client pod that does not have sidecar injection and see if the problem goes away:
 
 ```bash
 # Check if the sidecar is injected
@@ -24,7 +24,8 @@ If you see `istio-proxy` in the container list, the sidecar is active. Try runni
 
 ```bash
 kubectl run debug-pod --image=postgres:15 -n storage \
-  --annotations="sidecar.istio.io/inject=false" \
+  --labels="sidecar.istio.io/inject=false" \
+  --restart=Never \
   --rm -it -- psql -h postgres.storage.svc.cluster.local -U admin -d mydb
 ```
 
@@ -69,7 +70,7 @@ istioctl proxy-config clusters deploy/myapp -n default \
 
 ## Step 4: Verify Protocol Detection
 
-Istio needs to know whether traffic is HTTP or TCP. If it guesses wrong, connections break. Storage protocols are almost always TCP, so your service ports need to be named correctly:
+Istio needs to know whether traffic is HTTP or TCP. If it guesses wrong, connections break. Storage protocols are almost always TCP, so your service ports should declare the protocol explicitly:
 
 ```yaml
 apiVersion: v1
@@ -79,14 +80,15 @@ metadata:
   namespace: storage
 spec:
   ports:
-  - name: tcp-postgres    # Must start with "tcp-" for TCP protocol
+  - name: tcp-postgres    # Explicitly declares opaque TCP traffic
+    appProtocol: tcp
     port: 5432
     targetPort: 5432
   selector:
     app: postgres
 ```
 
-If the port is named `postgres` without the `tcp-` prefix, Istio might try to parse it as HTTP and corrupt the database wire protocol. This is probably the single most common cause of storage connectivity issues with Istio.
+If the port is named `postgres` without the `tcp-` prefix or `appProtocol: tcp`, Istio falls back to automatic protocol detection. Traffic that cannot be detected as HTTP or HTTP/2 is treated as plain TCP, but explicitly declaring `tcp` avoids protocol sniffing surprises, especially with server-first storage protocols.
 
 Check what protocol Istio detected:
 
@@ -102,13 +104,14 @@ mTLS mismatches between source and destination cause silent connection failures.
 
 ```bash
 # Check what mTLS mode is active for the storage service
-istioctl authn tls-check deploy/myapp.default postgres.storage.svc.cluster.local
+POSTGRES_POD=$(kubectl get pod -n storage -l app=postgres -o jsonpath='{.items[0].metadata.name}')
+istioctl x describe pod "$POSTGRES_POD" -n storage
 ```
 
-The output shows the client-side and server-side TLS settings. If they don't match, connections will fail. Fix it with a PeerAuthentication resource:
+The output reports whether the pod enforces mTLS and can warn about TLS conflicts, such as a pod requiring mTLS while clients are configured to send plaintext. Fix server-side mTLS compatibility with a PeerAuthentication resource:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: storage-mtls
@@ -161,9 +164,9 @@ kubectl exec -n default deploy/myapp -c istio-proxy -- \
 
 The `/clusters` endpoint on the admin interface shows you the actual upstream endpoints and their health status. If the storage endpoints show `unhealthy`, Envoy won't send traffic to them.
 
-## Step 8: Check Init Container and iptables Rules
+## Step 8: Check Init Container or CNI and iptables Rules
 
-Istio uses an init container to set up iptables rules that redirect traffic through the sidecar. If these rules are wrong, traffic either bypasses the sidecar entirely or gets stuck in a redirect loop:
+Istio uses either the Istio CNI plugin or, when CNI is not enabled, an init container to set up iptables rules that redirect traffic through the sidecar. If these rules are wrong, traffic either bypasses the sidecar entirely or gets stuck in a redirect loop:
 
 ```bash
 # Check the iptables rules inside the pod
@@ -171,11 +174,11 @@ kubectl exec -n default deploy/myapp -c istio-proxy -- \
   iptables -t nat -L -n -v
 ```
 
-Look for rules that redirect traffic on port 5432 (or whatever your storage port is) to the Envoy listener port (typically 15001 for outbound). If the rules are missing, the init container might have failed.
+Look for rules that redirect traffic on port 5432 (or whatever your storage port is) to the Envoy listener port (typically 15001 for outbound). If the rules are missing, the Istio CNI setup or the init container might have failed.
 
 ## Step 9: Verify DNS Resolution
 
-Sometimes the issue is simply DNS. The sidecar needs to resolve the storage service's hostname:
+Sometimes the issue is simply DNS. Your application still needs to resolve the storage service's hostname:
 
 ```bash
 # Test DNS from the app container
