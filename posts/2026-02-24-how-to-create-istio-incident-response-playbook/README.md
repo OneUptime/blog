@@ -56,7 +56,7 @@ kubectl get pods -n istio-system -l app=istiod
 # Expected: Multiple pods in Running state
 
 # 2. Are proxies synced?
-istioctl proxy-status | grep -v SYNCED | head -20
+istioctl proxy-status | awk 'NR == 1 || $0 !~ /SYNCED/' | head -20
 # Expected: All proxies SYNCED
 
 # 3. Are there configuration errors?
@@ -103,7 +103,7 @@ Is istiod healthy?
 kubectl get events -n istio-system --field-selector reason=Killing | tail -5
 
 # Check certificate expiration (you have time until these expire)
-istioctl proxy-config secret deploy/<any-service> -n <namespace> | grep "VALID TO"
+istioctl proxy-config secret deployment/<any-service> -n <namespace> | grep "NOT AFTER"
 ```
 
 **Recovery steps**:
@@ -184,14 +184,14 @@ This immediately allows both plain text and mTLS traffic, resolving the connecti
 kubectl logs -n istio-system -l istio=ingressgateway --tail=50
 
 # Check gateway configuration
-istioctl proxy-config listeners deploy/istio-ingressgateway -n istio-system
-istioctl proxy-config routes deploy/istio-ingressgateway -n istio-system
+istioctl proxy-config listeners deployment/istio-ingressgateway -n istio-system
+istioctl proxy-config routes deployment/istio-ingressgateway -n istio-system
 
 # Check if TLS certificates are valid
-istioctl proxy-config secret deploy/istio-ingressgateway -n istio-system
+istioctl proxy-config secret deployment/istio-ingressgateway -n istio-system
 
 # Test internal connectivity
-kubectl exec -it deploy/istio-ingressgateway -n istio-system -- \
+kubectl run tmp-curl -n <namespace> --rm -i --restart=Never --image=curlimages/curl -- \
   curl -s -o /dev/null -w "%{http_code}" http://<service>.<namespace>:8080/health
 ```
 
@@ -231,7 +231,7 @@ istioctl analyze -n <namespace>
 kubectl logs deploy/<service> -c istio-proxy --tail=50
 
 # Check for configuration conflicts
-istioctl proxy-config clusters deploy/<service> -n <namespace> | grep <destination>
+istioctl proxy-config clusters deployment/<service> -n <namespace> | grep <destination>
 
 # Check authorization policies
 kubectl get authorizationpolicies -n <namespace>
@@ -298,7 +298,7 @@ Some actions can be taken immediately without approval during a P1 incident:
 
 ```bash
 # Disable sidecar injection for a namespace (stops mesh from affecting new pods)
-kubectl label namespace <namespace> istio-injection- --overwrite
+kubectl label namespace <namespace> istio-injection-
 
 # Switch mTLS to permissive (fixes mTLS-related connectivity issues)
 kubectl apply -f emergency/permissive-mtls.yaml
