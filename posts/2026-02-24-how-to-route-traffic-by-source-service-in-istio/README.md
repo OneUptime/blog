@@ -10,11 +10,11 @@ Description: Route traffic to different service versions based on the calling se
 
 In a microservices architecture, the same backend service often gets called by many different frontend services. Sometimes you want to route those calls differently depending on who is calling. Maybe your mobile API gateway should hit a different version of the recommendation service than your web API gateway. Or maybe your batch processing service should be routed to a deployment with higher resource limits while real-time services hit a leaner deployment.
 
-Istio supports this through `sourceLabels` matching in VirtualService, which lets you route based on the labels of the calling pod.
+Istio supports this through `sourceLabels` matching in VirtualService, which lets you make route rules apply only to workloads with matching source pod labels.
 
 ## How sourceLabels Works
 
-When a pod sends a request through the Istio sidecar, the sidecar knows the labels of its own pod. Istio's VirtualService lets you match on these labels using the `sourceLabels` field. If the labels on the calling pod match the specified labels, the corresponding route is used.
+When a pod sends a request through the Istio sidecar, Istio can build route configuration for that source workload using the labels on the pod. Istio's VirtualService lets you select source workloads with these labels using the `sourceLabels` field. If the labels on the calling pod match the specified labels, the corresponding route is used by that workload's sidecar.
 
 This is a powerful primitive because Kubernetes labels are already how you identify workloads. Your deployments probably already have labels like `app: frontend`, `app: mobile-gateway`, or `app: batch-processor`.
 
@@ -284,8 +284,8 @@ kubectl exec deploy/web-gateway -c web-gateway -- curl -s http://recommendation-
 Inspect the routes pushed to specific proxies:
 
 ```bash
-istioctl proxy-config routes deploy/batch-processor -n default
-istioctl proxy-config routes deploy/mobile-gateway -n default
+istioctl proxy-config routes deployment/batch-processor -n default
+istioctl proxy-config routes deployment/mobile-gateway -n default
 ```
 
 ## Things to Watch Out For
@@ -294,7 +294,7 @@ istioctl proxy-config routes deploy/mobile-gateway -n default
 
 **CronJobs and Jobs.** If you use Kubernetes Jobs or CronJobs, make sure the pod template has the right labels. Jobs sometimes get auto-generated labels that you might need to override.
 
-**Sidecar required.** Like all VirtualService matching, sourceLabels only works when the calling pod has the Istio sidecar injected. Without the sidecar, no routing rules apply.
+**Sidecar required.** For in-mesh service-to-service traffic, `sourceLabels` only works when the calling pod has the Istio sidecar injected and sends traffic through it. Without the sidecar, these routing rules are bypassed.
 
 **Label changes need rollout.** If you change labels on a Deployment's pod template, Kubernetes needs to roll out new pods for the change to take effect. Existing pods keep their old labels until they are replaced.
 
