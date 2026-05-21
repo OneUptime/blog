@@ -125,7 +125,7 @@ kubectl get secret istio-ca-secret -n istio-system
 If you're using a custom CA, verify the secret has the right data:
 
 ```bash
-kubectl get secret cacerts -n istio-system -o jsonpath='{.data}' | jq 'keys'
+kubectl get secret cacerts -n istio-system -o json | jq -r '.data | keys[]'
 ```
 
 It should have `ca-cert.pem`, `ca-key.pem`, `cert-chain.pem`, and `root-cert.pem`.
@@ -172,7 +172,8 @@ kubectl get clusterrolebinding istiod-istio-system -o yaml
 Make sure the service account has permission to create and update leases:
 
 ```bash
-kubectl auth can-i create leases --as=system:serviceaccount:istio-system:istiod -n istio-system
+kubectl auth can-i create leases.coordination.k8s.io --as=system:serviceaccount:istio-system:istiod -n istio-system
+kubectl auth can-i update leases.coordination.k8s.io --as=system:serviceaccount:istio-system:istiod -n istio-system
 ```
 
 ## Kubernetes API Server Connectivity
