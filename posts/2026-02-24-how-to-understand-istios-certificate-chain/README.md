@@ -20,13 +20,13 @@ Workload Certificate (leaf)
         └── Signed by: Root CA Certificate (self-signed, trusted)
 ```
 
-When Envoy presents its certificate during a TLS handshake, it sends the full chain (minus the root, which the verifier already has). The verifier checks:
+When Envoy presents its certificate during a TLS handshake, it sends the configured certificate chain. In Istio's plugged-in CA flow, that chain commonly includes the workload certificate, intermediate CA certificate, and root certificate. The verifier checks:
 
 1. The leaf certificate is signed by the intermediate CA
 2. The intermediate CA certificate is signed by the root CA
 3. The root CA is in its trusted store
 4. None of the certificates are expired
-5. None of the certificates are revoked (if CRL/OCSP is configured)
+5. None of the certificates are revoked (if CRL checking or a custom validator is configured)
 
 ## Istio's Default Chain
 
