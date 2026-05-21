@@ -16,10 +16,10 @@ The basic idea is this: you have a primary pool of endpoints that handles normal
 
 ## Setting Up Connection Limits for Overflow
 
-The foundation of overflow behavior is connection pooling. When you set hard limits on connections and pending requests, Envoy starts returning 503 errors once those limits are hit. You can then use retries and alternative routes to redirect that overflow traffic.
+The foundation of overflow behavior is connection pooling. When you set hard limits on connections and pending requests, Envoy starts returning 503 errors once those limits are hit. You can then use retries or explicit fallback routes to handle that overflow traffic.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: api-service-dr
@@ -42,14 +42,14 @@ spec:
       simple: LEAST_REQUEST
 ```
 
-With `maxConnections: 50`, each pod can handle at most 50 concurrent TCP connections. `http1MaxPendingRequests: 100` limits the queue of requests waiting for a connection. Once these limits are hit, Envoy returns 503s, which triggers the overflow logic.
+With `maxConnections: 50`, each client-side Envoy proxy will open at most 50 TCP connections to the upstream cluster for this destination. `http1MaxPendingRequests: 100` limits the queue of requests waiting for a connection. Once these limits are hit, Envoy returns 503s with an upstream overflow response flag; your retry or routing configuration must decide what to do next.
 
 ## Overflow with Weighted Routing
 
-One approach to overflow is using weighted routing with a VirtualService that retries on a different subset:
+One approach to overflow is using subsets with different connection pool limits, then routing normal traffic to the primary subset:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: api-service-dr
@@ -82,7 +82,7 @@ spec:
 ```
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-service-vs
@@ -102,14 +102,14 @@ spec:
       timeout: 5s
 ```
 
-When the primary pool gets overloaded and returns 503s, the retry logic kicks in. But the problem with this approach is that retries go back to the same service, which might still be overloaded.
+When the primary pool gets overloaded and returns 503s, the retry logic kicks in. But the problem with this approach is that retries stay within the selected primary subset, which might still be overloaded.
 
-## Overflow Using Fault Injection and Fallback
+## Overflow Using Header-Based Fallback
 
 A better pattern uses a fallback route. You can configure this with multiple route entries:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-service-vs
@@ -143,7 +143,7 @@ Your application or a middleware can set the `x-overflow` header when it detects
 Istio's locality failover is actually a form of overflow routing. When local endpoints are unhealthy, traffic overflows to endpoints in other zones or regions:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: api-service-dr
@@ -170,14 +170,14 @@ spec:
       simple: LEAST_REQUEST
 ```
 
-When endpoints in us-east-1 become unhealthy (through outlier detection or connection limit failures), traffic overflows to us-west-2. This is a clean, automatic overflow mechanism that doesn't require any application-level changes.
+When endpoints in us-east-1 become unhealthy through outlier detection, traffic overflows to us-west-2. This is a clean, automatic overflow mechanism for unhealthy endpoints that doesn't require any application-level changes.
 
 ## Overflow to a Degraded Service
 
 Sometimes the best overflow strategy is to serve degraded responses instead of full responses. You can route overflow traffic to a lightweight service that returns cached or simplified data:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: product-catalog-vs
@@ -186,6 +186,14 @@ spec:
   hosts:
     - product-catalog
   http:
+    - match:
+        - headers:
+            x-overflow:
+              exact: "true"
+      route:
+        - destination:
+            host: product-catalog-cache
+          weight: 100
     - route:
         - destination:
             host: product-catalog
@@ -195,15 +203,11 @@ spec:
         attempts: 1
         retryOn: 5xx,connect-failure
       timeout: 2s
-    - route:
-        - destination:
-            host: product-catalog-cache
-          weight: 100
 ```
 
 The idea here is that `product-catalog-cache` is a simple service that serves cached product data. It can handle much higher throughput because it doesn't do database queries or complex computation.
 
-Note: VirtualService evaluates routes top-down and uses the first matching route. The retry configuration on the first route helps handle transient failures, but if the primary consistently fails, you need application-level logic to route to the cache.
+Note: VirtualService evaluates routes top-down and uses the first matching route. The retry configuration on the primary route helps handle transient failures, but if the primary consistently fails, you need application-level logic to set the overflow header and route to the cache.
 
 ## Monitoring Overflow
 
