@@ -98,6 +98,9 @@ metadata:
   name: allow-health-checks
   namespace: tenant-acme
 spec:
+  selector:
+    matchLabels:
+      app: frontend
   rules:
     - to:
         - operation:
@@ -108,7 +111,7 @@ spec:
               - GET
 ```
 
-Repeat this pattern for each tenant namespace. Services within `tenant-acme` can communicate freely, but nothing from `tenant-globex` or `tenant-initech` can reach them.
+Repeat this pattern for each tenant namespace. Services within `tenant-acme` can communicate freely, but nothing from `tenant-globex` or `tenant-initech` can reach them except explicitly allowed endpoints such as the selected health checks.
 
 ## Sidecar Resource for Configuration Isolation
 
@@ -344,9 +347,9 @@ spec:
     - "."
 ```
 
-Acme can't reach PayPal, and Globex can't reach Stripe. Each tenant's external dependencies are isolated.
+The `exportTo: ["."]` setting keeps each ServiceEntry visible only inside the namespace where it is declared. To make this an enforcement boundary, run the mesh with `meshConfig.outboundTrafficPolicy.mode` set to `REGISTRY_ONLY` or route external traffic through an egress gateway with matching authorization controls. With that enforcement in place, Acme can't reach PayPal, and Globex can't reach Stripe.
 
-Resource Quotas for Tenants
+## Resource Quotas for Tenants
 
 Istio policies don't limit compute resources. Combine them with Kubernetes resource quotas:
 
