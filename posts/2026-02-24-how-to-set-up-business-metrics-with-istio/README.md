@@ -52,7 +52,13 @@ spec:
             'other'
         customer_tier:
           operation: UPSERT
-          value: "request.headers['x-customer-tier'] | 'standard'"
+          value: "'x-customer-tier' in request.headers ? request.headers['x-customer-tier'] : 'standard'"
+    - match:
+        metric: REQUEST_DURATION
+      tagOverrides:
+        customer_tier:
+          operation: UPSERT
+          value: "'x-customer-tier' in request.headers ? request.headers['x-customer-tier'] : 'standard'"
 ```
 
 Now query business metrics:
@@ -159,7 +165,7 @@ sum(rate(istio_requests_total{
   destination_service_name="my-api",
   reporter="destination"
 }[5m])) by (api_version)
-/
+/ ignoring(api_version) group_left
 sum(rate(istio_requests_total{
   destination_service_name="my-api",
   reporter="destination"
