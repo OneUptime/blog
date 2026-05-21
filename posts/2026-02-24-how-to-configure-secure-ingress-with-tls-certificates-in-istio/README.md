@@ -10,7 +10,7 @@ Description: Configure HTTPS ingress in Istio with TLS certificates using Kubern
 
 Running HTTP in production is not an option anymore. Every service exposed to the internet needs TLS. Istio's ingress gateway handles TLS termination natively, which means you configure your certificates once at the edge and your internal services do not need to deal with TLS at all.
 
-There are several ways to set this up: manually creating Kubernetes secrets with your certificates, using cert-manager for automatic provisioning and renewal, or using Istio's SDS (Secret Discovery Service) for dynamic certificate loading. We will cover all three.
+There are several ways to set this up: manually creating Kubernetes secrets with your certificates, using cert-manager for automatic provisioning and renewal, or requiring mutual TLS for client certificate authentication. We will cover all three.
 
 ## Option 1: Manual TLS Certificate Setup
 
@@ -90,7 +90,7 @@ cert-manager automates certificate provisioning and renewal. It works great with
 ### Install cert-manager
 
 ```bash
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.0/cert-manager.yaml
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml
 ```
 
 Wait for it to be ready:
@@ -115,7 +115,7 @@ spec:
     solvers:
       - http01:
           ingress:
-            class: istio
+            ingressClassName: istio
 ```
 
 ```bash
