@@ -27,10 +27,10 @@ Pod A -> iptables (Istio NAT rules) -> Envoy sidecar ->
 ```bash
 # Verify Flannel is running
 
-kubectl get pods -n kube-system -l app=flannel
+kubectl get pods -n kube-flannel -l app=flannel
 
 # Check Flannel configuration
-kubectl get configmap kube-flannel-cfg -n kube-system -o yaml
+kubectl get configmap kube-flannel-cfg -n kube-flannel -o yaml
 
 # Verify pod networking is working
 kubectl run test-net --image=busybox --restart=Never -- sleep 3600
@@ -150,13 +150,13 @@ Flannel does not implement Kubernetes NetworkPolicy. This means:
 
 1. If you apply a NetworkPolicy resource, it will be stored in the API server but **not enforced**
 2. You cannot use network-level segmentation through Flannel
-3. All network-level access control must come from Istio's AuthorizationPolicy
+3. Access control for meshed workload traffic should come from Istio's AuthorizationPolicy
 
 This makes Istio's security features even more important on Flannel clusters:
 
 ```yaml
 # Since Flannel cannot enforce NetworkPolicy, use Istio's AuthorizationPolicy
-# for all access control
+# for meshed workload access control
 
 # Default deny all traffic in a namespace
 apiVersion: security.istio.io/v1
@@ -221,7 +221,7 @@ net-conf.json: |
   }
 ```
 
-Performance impact with Istio: expect 0.1-0.3ms additional latency from the VXLAN overhead on top of the sidecar proxy latency.
+Performance impact with Istio depends on your node network, workload traffic patterns, and proxy configuration, so benchmark your own cluster before setting latency expectations.
 
 ### host-gw
 
@@ -253,7 +253,7 @@ net-conf.json: |
   }
 ```
 
-If you are using Istio mTLS, the WireGuard encryption is redundant. Consider using plain VXLAN or host-gw instead to reduce overhead.
+If you are using Istio mTLS for all application traffic in the mesh, the WireGuard encryption can be redundant for those payloads. Consider using plain VXLAN or host-gw instead to reduce overhead, unless you also need node-to-node encryption for non-mesh traffic.
 
 ## MTU Configuration
 
@@ -261,11 +261,12 @@ Getting the MTU right is important for avoiding fragmentation, which can cause p
 
 ```bash
 # Check the current MTU on flannel interfaces
-kubectl exec -n kube-system <flannel-pod> -- ip link show flannel.1
+kubectl exec -n kube-flannel <flannel-pod> -c kube-flannel -- ip link show flannel.1
 
 # For VXLAN, the MTU should be 50 bytes less than the host interface
 # If host MTU is 1500, flannel MTU should be 1450
-# With Istio's additional headers, you might want to go slightly lower
+# With additional network-layer encapsulation such as WireGuard or IPSec,
+# you might need to go lower
 ```
 
 If you experience packet fragmentation issues with Istio on Flannel:
@@ -292,8 +293,8 @@ kubectl exec <pod-a> -c <app-container> -- ping -c 3 <pod-b-ip>
 
 # If ping fails, it is a Flannel issue
 # Check Flannel pods
-kubectl get pods -n kube-system -l app=flannel
-kubectl logs -n kube-system -l app=flannel --tail=50
+kubectl get pods -n kube-flannel -l app=flannel
+kubectl logs -n kube-flannel -l app=flannel --tail=50
 
 # If ping works but HTTP through mesh fails, it is an Istio issue
 # Check sidecar status
@@ -303,11 +304,11 @@ istioctl proxy-status | grep <pod-name>
 ### Issue: Slow Performance
 
 ```bash
-# Check for MTU issues (fragmentation)
-kubectl exec <pod> -c istio-proxy -- curl -s localhost:15000/stats | grep "cx_tx\|cx_rx"
+# Check Envoy connection stats for resets or connection churn
+kubectl exec <pod> -c istio-proxy -- pilot-agent request GET stats | grep -E "cx_.*(reset|destroy)"
 
-# Check if VXLAN overhead is causing issues
-kubectl exec <pod> -c <app-container> -- traceroute <destination-pod-ip>
+# Use a debug image with tracepath to check path MTU
+kubectl run mtu-debug --rm -it --image=nicolaka/netshoot --restart=Never -- tracepath <destination-pod-ip>
 ```
 
 ### Issue: Sidecar Init Container Fails
@@ -316,9 +317,8 @@ kubectl exec <pod> -c <app-container> -- traceroute <destination-pod-ip>
 # Check init container logs
 kubectl logs <pod> -c istio-init
 
-# Common issue: iptables version mismatch
-# Flannel and Istio both need iptables. Ensure the node has compatible iptables
-kubectl exec <pod> -c istio-proxy -- iptables --version
+# Check the pod events for setup errors
+kubectl describe pod <pod>
 ```
 
 ## Monitoring
