@@ -132,10 +132,7 @@ patches:
       - op: replace
         path: /spec/rules
         value:
-          - from:
-              - source:
-                  namespaces:
-                    - dev
+          - {}
 ```
 
 ## Approach 2: Helm Values Files
