@@ -12,17 +12,19 @@ ServiceEntry registers an external service in Istio's registry. VirtualService t
 
 Think about what you can do: add timeouts without changing app code, retry failed requests automatically, inject faults for testing, mirror production traffic to a test endpoint, or route different request paths to different backends. All of this works for external APIs just like it works for internal services.
 
+For HTTPS APIs, the HTTP-level features below require Istio to see HTTP traffic before it originates TLS to the external service. The examples use a ServiceEntry on port 80 with `targetPort: 443` and a DestinationRule with TLS origination, so the request leaves the mesh encrypted.
+
 ## The Basic Pattern
 
 The pattern is always the same:
 
 1. Create a ServiceEntry to register the external host
-2. Create a VirtualService that targets the same host
-3. The VirtualService rules apply to all traffic going to that host
+2. For HTTPS backends, create a DestinationRule that originates TLS
+3. Create a VirtualService that targets the same host
+4. The VirtualService rules apply to HTTP traffic going to that host
 
 ```yaml
 # Step 1: Register the external service
-
 apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
@@ -32,12 +34,27 @@ spec:
     - api.weather.com
   location: MESH_EXTERNAL
   ports:
-    - number: 443
-      name: https
-      protocol: HTTPS
+    - number: 80
+      name: http
+      protocol: HTTP
+      targetPort: 443
   resolution: DNS
 ---
-# Step 2: Add traffic management
+# Step 2: Originate TLS for the external HTTPS service
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: weather-api-dr
+spec:
+  host: api.weather.com
+  trafficPolicy:
+    portLevelSettings:
+      - port:
+          number: 80
+        tls:
+          mode: SIMPLE
+---
+# Step 3: Add traffic management
 apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
@@ -55,10 +72,10 @@ spec:
         - destination:
             host: api.weather.com
             port:
-              number: 443
+              number: 80
 ```
 
-The `hosts` field in the VirtualService must match a host in the ServiceEntry. That connection is what makes the VirtualService apply to external traffic.
+The `hosts` field in the VirtualService must match a host in the ServiceEntry. That connection is what makes the VirtualService apply to external HTTP traffic.
 
 ## Route Matching for Different Endpoints
 
@@ -85,7 +102,7 @@ spec:
         - destination:
             host: api.payment-provider.com
             port:
-              number: 443
+              number: 80
     # Refund endpoint - longer timeout
     - match:
         - uri:
@@ -99,14 +116,14 @@ spec:
         - destination:
             host: api.payment-provider.com
             port:
-              number: 443
+              number: 80
     # Default for everything else
     - timeout: 5s
       route:
         - destination:
             host: api.payment-provider.com
             port:
-              number: 443
+              number: 80
 ```
 
 The charge endpoint gets minimal retries (because charging is not idempotent) while the refund endpoint gets more generous retry behavior.
@@ -132,15 +149,15 @@ spec:
         - destination:
             host: api-v2.example.com
             port:
-              number: 443
+              number: 80
     - route:
         - destination:
             host: api.example.com
             port:
-              number: 443
+              number: 80
 ```
 
-Note: this requires a separate ServiceEntry for `api-v2.example.com` as well.
+Note: this requires a separate ServiceEntry and DestinationRule for `api-v2.example.com` as well.
 
 ## Fault Injection for Testing
 
@@ -168,7 +185,7 @@ spec:
         - destination:
             host: api.payment-provider.com
             port:
-              number: 443
+              number: 80
 ```
 
 This adds a 5-second delay to 10% of requests and returns a 503 error for 5% of requests. Use this during chaos engineering tests to verify your application handles external API failures gracefully.
@@ -197,12 +214,12 @@ spec:
         - destination:
             host: api.payment-provider.com
             port:
-              number: 443
+              number: 80
     - route:
         - destination:
             host: api.payment-provider.com
             port:
-              number: 443
+              number: 80
 ```
 
 Only requests with the `x-test-chaos: true` header get the injected fault. Production traffic flows normally.
@@ -221,10 +238,24 @@ spec:
     - api-test.example.com
   location: MESH_EXTERNAL
   ports:
-    - number: 443
-      name: https
-      protocol: HTTPS
+    - number: 80
+      name: http
+      protocol: HTTP
+      targetPort: 443
   resolution: DNS
+---
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: test-api-dr
+spec:
+  host: api-test.example.com
+  trafficPolicy:
+    portLevelSettings:
+      - port:
+          number: 80
+        tls:
+          mode: SIMPLE
 ---
 apiVersion: networking.istio.io/v1
 kind: VirtualService
@@ -238,11 +269,11 @@ spec:
         - destination:
             host: api.example.com
             port:
-              number: 443
+              number: 80
       mirror:
         host: api-test.example.com
         port:
-          number: 443
+          number: 80
       mirrorPercentage:
         value: 100
 ```
@@ -273,7 +304,7 @@ spec:
         - destination:
             host: api.example.com
             port:
-              number: 443
+              number: 80
 ```
 
 This adds tracking headers and removes internal debug headers before the request reaches the external API.
@@ -300,7 +331,7 @@ spec:
         - destination:
             host: api.example.com
             port:
-              number: 443
+              number: 80
 ```
 
 Requests to `/legacy/users` get rewritten to `/v2/users` before reaching the external API. This is useful during API migrations.
@@ -319,10 +350,34 @@ spec:
     - api.critical-service.com
   location: MESH_EXTERNAL
   ports:
-    - number: 443
-      name: https
-      protocol: HTTPS
+    - number: 80
+      name: http
+      protocol: HTTP
+      targetPort: 443
   resolution: DNS
+---
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: critical-api-dr
+spec:
+  host: api.critical-service.com
+  trafficPolicy:
+    portLevelSettings:
+      - port:
+          number: 80
+        tls:
+          mode: SIMPLE
+    connectionPool:
+      tcp:
+        maxConnections: 100
+      http:
+        maxRequestsPerConnection: 10
+        maxPendingRequests: 50
+    outlierDetection:
+      consecutive5xxErrors: 5
+      interval: 30s
+      baseEjectionTime: 60s
 ---
 apiVersion: networking.istio.io/v1
 kind: VirtualService
@@ -341,28 +396,10 @@ spec:
         - destination:
             host: api.critical-service.com
             port:
-              number: 443
----
-apiVersion: networking.istio.io/v1
-kind: DestinationRule
-metadata:
-  name: critical-api-dr
-spec:
-  host: api.critical-service.com
-  trafficPolicy:
-    connectionPool:
-      tcp:
-        maxConnections: 100
-      http:
-        maxRequestsPerConnection: 10
-        maxPendingRequests: 50
-    outlierDetection:
-      consecutive5xxErrors: 5
-      interval: 30s
-      baseEjectionTime: 60s
+              number: 80
 ```
 
-The ServiceEntry registers the host. The VirtualService handles routing, timeouts, and retries. The DestinationRule manages connection pools and circuit breaking. Together they provide comprehensive traffic management for the external API.
+The ServiceEntry registers the host. The DestinationRule originates TLS and manages connection pools and circuit breaking. The VirtualService handles routing, timeouts, and retries. Together they provide comprehensive traffic management for the external API.
 
 ## Verifying VirtualService Configuration
 
@@ -374,7 +411,7 @@ istioctl proxy-config routes deploy/my-app | grep critical-service
 
 # View detailed route configuration
 istioctl proxy-config routes deploy/my-app \
-  --name "443" -o json | grep -A20 "critical-service"
+  --name "80" -o json | grep -A20 "critical-service"
 ```
 
-The combination of ServiceEntry and VirtualService gives you production-grade traffic management for external APIs. You get the same power and flexibility that Istio provides for internal services, without any changes to your application code.
+The combination of ServiceEntry and VirtualService gives you production-grade traffic management for external APIs. You get the same power and flexibility that Istio provides for internal services when applications send HTTP through the mesh and Istio originates TLS to the external API.
