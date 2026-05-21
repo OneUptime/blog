@@ -130,7 +130,7 @@ spec:
 
 ## RBAC for the Traffic Manager
 
-The CronJob needs permission to modify VirtualService resources. Create a ServiceAccount and ClusterRole:
+The CronJob needs permission to modify VirtualService resources in the namespace. Create a ServiceAccount and Role:
 
 ```yaml
 apiVersion: v1
@@ -241,7 +241,7 @@ spec:
 
 ## Handling Timezone Considerations
 
-CronJob schedules use the kube-controller-manager timezone, which defaults to UTC. If your users are in a specific timezone, you need to account for the offset. In Kubernetes 1.27+, you can set the timezone directly:
+CronJob schedules use the kube-controller-manager local timezone when no timezone is specified. Many clusters run control plane components in UTC, but you should not assume that unless you know your cluster configuration. In Kubernetes 1.27+, you can set the timezone directly:
 
 ```yaml
 spec:
@@ -249,7 +249,7 @@ spec:
   timeZone: "America/New_York"
 ```
 
-For older clusters, just calculate the UTC offset manually. If you want 11 PM Eastern (UTC-5), schedule for 4 AM UTC: `"0 4 * * *"`.
+For older clusters, calculate the UTC offset manually. If you want 11 PM Eastern Standard Time (UTC-5), schedule for 4 AM UTC: `"0 4 * * *"`. During daylight saving time, 11 PM Eastern Daylight Time is 3 AM UTC.
 
 ## Monitoring the Shifts
 
