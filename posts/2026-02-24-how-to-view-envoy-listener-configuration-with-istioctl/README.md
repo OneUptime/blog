@@ -17,7 +17,7 @@ Every Envoy sidecar in Istio has two special listeners:
 - **Port 15001** (outbound) - Catches all outbound traffic from the application container. The iptables rules redirect outgoing connections here.
 - **Port 15006** (inbound) - Catches all inbound traffic to the application container. Incoming connections are redirected here.
 
-In addition to these virtual listeners, Envoy creates per-port listeners for each service it knows about. A listener on port 9080 handles HTTP traffic to services running on that port.
+In addition to these virtual listeners, Envoy creates listeners for the services it knows about. For outbound traffic, Istio commonly creates a wildcard listener per HTTP port and service-IP listeners for non-HTTP TCP/TLS traffic. A listener on port 9080 handles HTTP traffic to services running on that port.
 
 ## Viewing Listeners
 
@@ -63,9 +63,9 @@ istioctl pc listeners productpage-v1-abc123.default --port 15006 -o json
 
 This listener has filter chains for each port your pod exposes. When traffic arrives, it matches the destination port and applies the appropriate filters (HTTP connection manager, TCP proxy, etc.).
 
-## Per-Service Listeners
+## Per-Service and Per-Port Listeners
 
-Listeners on ports like 9080, 9090, and 443 handle traffic to specific services:
+Listeners on ports like 9080 and 9090 can handle outbound HTTP traffic for services on those ports. For TCP/TLS traffic, listeners are often bound to specific service IPs and ports such as a ClusterIP on port 443:
 
 ```bash
 istioctl pc listeners productpage-v1-abc123.default --port 9080
@@ -121,8 +121,8 @@ A simplified version looks like:
                 { "name": "istio.stats" },
                 { "name": "envoy.filters.http.router" }
               ],
-              "tracing": { ... },
-              "accessLog": [ ... ]
+              "tracing": {},
+              "accessLog": []
             }
           }
         ]
@@ -192,7 +192,7 @@ spec:
     targetPort: 8080
 ```
 
-Valid prefixes: `http`, `http2`, `https`, `grpc`, `grpc-web`, `mongo`, `mysql`, `redis`, `tcp`, `tls`, `udp`.
+Valid prefixes: `http`, `http2`, `https`, `grpc`, `grpc-web`, `mongo`, `mysql`, `redis`, `tcp`, `tls`.
 
 ## Debugging Missing Listeners
 
