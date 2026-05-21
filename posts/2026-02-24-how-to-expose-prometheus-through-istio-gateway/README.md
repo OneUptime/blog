@@ -125,11 +125,13 @@ kubectl apply -f prometheus-vs.yaml
 
 ## Step 4: Add Access Control
 
-Prometheus has no built-in authentication. Anyone who can reach the endpoint can query your metrics and potentially extract sensitive information. You need access control at the Istio level.
+Prometheus supports basic authentication and TLS through its web configuration, but many default Kubernetes and Istio add-on deployments do not enable authentication. Anyone who can reach an unauthenticated endpoint can query your metrics and potentially extract sensitive information. You need access control at the Istio level.
 
 ### IP-Based Access Control
 
 Restrict access to specific IP ranges:
+
+If your load balancer preserves the packet source address with `externalTrafficPolicy: Local`, use `ipBlocks` instead of `remoteIpBlocks`. If you rely on `X-Forwarded-For` or PROXY protocol, use `remoteIpBlocks` and configure Istio's gateway network topology, such as `numTrustedProxies`, so Istio can determine the original client IP.
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -232,7 +234,7 @@ If using basic auth through an OAuth2 proxy, add the auth header in Grafana's da
 
 ## Securing the /api/v1/admin Endpoints
 
-Prometheus has admin endpoints that allow you to create snapshots, delete time series, and manage TSDB. These should be locked down:
+Prometheus has admin endpoints that allow you to create snapshots, delete time series, and manage TSDB when the server is started with `--web.enable-admin-api`. These endpoints are disabled by default, but if you enable them, they should be locked down:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -264,9 +266,9 @@ spec:
 
 This returns a 403 for any admin API calls while allowing regular queries.
 
-## Adding Rate Limiting
+## Adding Query Timeouts
 
-Prometheus queries can be expensive. Add rate limiting to prevent abuse:
+Prometheus queries can be expensive. Add a timeout to prevent long-running requests from consuming resources indefinitely:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -295,7 +297,7 @@ spec:
       timeout: 30s
 ```
 
-The timeout prevents long-running queries from consuming resources indefinitely. For more advanced rate limiting, use Istio's rate limiting features with an external rate limit service.
+This timeout is not rate limiting, but it limits the maximum request duration at the gateway. For rate limiting, use Istio's rate limiting features with an external rate limit service.
 
 ## HTTP-Only Setup (Non-Production)
 
@@ -352,8 +354,8 @@ Query these in Prometheus itself (or a second Prometheus instance):
 # Request rate to Prometheus through the gateway
 rate(istio_requests_total{destination_service="prometheus.istio-system.svc.cluster.local"}[5m])
 
-# Average query latency
-histogram_quantile(0.95, rate(istio_request_duration_milliseconds_bucket{destination_service="prometheus.istio-system.svc.cluster.local"}[5m]))
+# 95th percentile request latency
+histogram_quantile(0.95, sum(rate(istio_request_duration_milliseconds_bucket{destination_service="prometheus.istio-system.svc.cluster.local"}[5m])) by (le))
 ```
 
 ## Troubleshooting
