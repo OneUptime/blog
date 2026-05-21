@@ -33,7 +33,7 @@ If you only see single-stack addresses, your cluster is not configured for dual-
 For a kubeadm-based cluster, your cluster configuration should include:
 
 ```yaml
-apiVersion: kubeadm.k8s.io/v1beta3
+apiVersion: kubeadm.k8s.io/v1beta4
 kind: ClusterConfiguration
 networking:
   podSubnet: "10.244.0.0/16,fd00:10:244::/48"
@@ -45,7 +45,7 @@ networking:
 Dual-stack has been stable since Kubernetes 1.23. Make sure you are running at least that version:
 
 ```bash
-kubectl version --short
+kubectl version
 ```
 
 ## Installing Istio with Dual-Stack Support
@@ -66,6 +66,10 @@ spec:
     pilot:
       env:
         ISTIO_DUAL_STACK: "true"
+      ipFamilyPolicy: RequireDualStack
+    gateways:
+      istio-ingressgateway:
+        ipFamilyPolicy: PreferDualStack
   components:
     ingressGateways:
       - name: istio-ingressgateway
@@ -96,6 +100,11 @@ meshConfig:
 pilot:
   env:
     ISTIO_DUAL_STACK: "true"
+  ipFamilyPolicy: RequireDualStack
+
+gateways:
+  istio-ingressgateway:
+    ipFamilyPolicy: PreferDualStack
 ```
 
 ```bash
@@ -141,8 +150,10 @@ kubectl logs -n istio-system deploy/istiod | grep -i "dual"
 Check the gateway service to confirm it has both IPv4 and IPv6 addresses:
 
 ```bash
-kubectl get svc -n istio-ingress istio-ingress -o yaml | grep -A 5 clusterIPs
+kubectl get svc -n istio-system istio-ingressgateway -o yaml | grep -A 5 clusterIPs
 ```
+
+If you installed the gateway with the Helm command above, use `-n istio-ingress istio-ingress` instead.
 
 You should see something like:
 
@@ -287,14 +298,13 @@ spec:
 
 **Gateway only listening on one protocol**: Make sure the gateway Service has `ipFamilyPolicy: PreferDualStack` set explicitly.
 
-**DNS resolution failing for IPv6**: Istio's DNS proxy needs to be configured to return both A and AAAA records. Verify the `ISTIO_META_DNS_CAPTURE` proxy metadata is set:
+**DNS resolution failing for IPv6**: Kubernetes DNS should return A and AAAA records for dual-stack Services. If you rely on Istio DNS proxying, verify the `ISTIO_META_DNS_CAPTURE` proxy metadata is set:
 
 ```yaml
 meshConfig:
   defaultConfig:
     proxyMetadata:
       ISTIO_META_DNS_CAPTURE: "true"
-      ISTIO_META_DNS_AUTO_ALLOCATE: "true"
 ```
 
 **Connection timeouts on IPv6**: Check your node firewall rules. Often IPv4 traffic works fine but IPv6 is blocked by iptables/ip6tables rules that were not updated.
