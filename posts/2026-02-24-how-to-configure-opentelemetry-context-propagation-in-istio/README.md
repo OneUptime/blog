@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, OpenTelemetry, Context Propagation, W3C Trace Context, B3, Distributed Tracing
 
-Description: How to configure trace context propagation in Istio with OpenTelemetry, supporting W3C Trace Context, B3, and custom propagation formats.
+Description: How to configure trace context propagation in Istio with OpenTelemetry, supporting W3C Trace Context and B3 propagation formats.
 
 ---
 
@@ -63,10 +63,10 @@ b3: 4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-1-463ac35c9f6413ad
 
 ## Configuring Propagation in Istio
 
-Istio's default propagation includes both W3C Trace Context and B3 headers. You can verify by checking the headers on an incoming request:
+Istio applications should always forward W3C Trace Context headers, and Zipkin/B3 users should also forward B3 headers. You can verify propagation by checking the headers on an incoming request:
 
 ```bash
-# Deploy a debug service that echoes headers
+# Deploy a debug service that echoes request headers
 
 kubectl apply -f - <<EOF
 apiVersion: apps/v1
@@ -84,11 +84,11 @@ spec:
         app: header-echo
     spec:
       containers:
-      - name: echo
-        image: hashicorp/http-echo:0.2.3
-        args: ["-text=hello"]
+      - name: httpbin
+        image: docker.io/kennethreitz/httpbin
+        command: ["gunicorn", "--access-logfile", "-", "-b", "0.0.0.0:80", "httpbin:app"]
         ports:
-        - containerPort: 5678
+        - containerPort: 80
 ---
 apiVersion: v1
 kind: Service
@@ -99,14 +99,14 @@ spec:
     app: header-echo
   ports:
   - port: 80
-    targetPort: 5678
+    targetPort: 80
 EOF
 ```
 
 Send a request and check the trace headers that arrive:
 
 ```bash
-kubectl exec $POD -c istio-proxy -- curl -v http://header-echo 2>&1 | grep -i "traceparent\|x-b3"
+kubectl exec $POD -c curl -- curl -s http://header-echo/headers | grep -i "traceparent\|tracestate\|x-b3\|\"b3\""
 ```
 
 ## Application-Level Header Forwarding
@@ -124,6 +124,7 @@ x-b3-spanid
 x-b3-parentspanid
 x-b3-sampled
 x-b3-flags
+b3
 ```
 
 ### Manual Forwarding (Simple Approach)
@@ -142,7 +143,7 @@ TRACE_HEADERS = [
     'traceparent', 'tracestate',
     'x-request-id',
     'x-b3-traceid', 'x-b3-spanid',
-    'x-b3-parentspanid', 'x-b3-sampled', 'x-b3-flags',
+    'x-b3-parentspanid', 'x-b3-sampled', 'x-b3-flags', 'b3',
 ]
 
 def get_trace_headers():
@@ -173,7 +174,7 @@ var traceHeaders = []string{
     "traceparent", "tracestate",
     "x-request-id",
     "x-b3-traceid", "x-b3-spanid",
-    "x-b3-parentspanid", "x-b3-sampled", "x-b3-flags",
+    "x-b3-parentspanid", "x-b3-sampled", "x-b3-flags", "b3",
 }
 
 func forwardHeaders(incoming *http.Request, outgoing *http.Request) {
@@ -203,7 +204,7 @@ public class OrderController {
         "traceparent", "tracestate",
         "x-request-id",
         "x-b3-traceid", "x-b3-spanid",
-        "x-b3-parentspanid", "x-b3-sampled", "x-b3-flags"
+        "x-b3-parentspanid", "x-b3-sampled", "x-b3-flags", "b3"
     };
 
     @Autowired
@@ -251,17 +252,17 @@ When multiple propagation formats are in use, configure which takes priority:
 ```python
 from opentelemetry import propagate
 from opentelemetry.propagators.composite import CompositePropagator
-from opentelemetry.trace.propagation import TraceContextTextMapPropagator
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 from opentelemetry.propagators.b3 import B3MultiFormat
 
 # W3C Trace Context takes priority, B3 as fallback
 propagate.set_global_textmap(CompositePropagator([
-    TraceContextTextMapPropagator(),
     B3MultiFormat(),
+    TraceContextTextMapPropagator(),
 ]))
 ```
 
-The composite propagator tries extractors in order and uses the first one that finds valid context.
+The composite propagator runs extractors in order. If multiple propagators write the same context key, the later propagator wins, so the example above prefers W3C Trace Context when both W3C and B3 headers are present.
 
 ## Handling Mixed Propagation
 
@@ -271,9 +272,9 @@ In a real mesh, you might have services using different propagation formats:
 - Istio proxies support both
 
 This works because:
-1. The proxy always generates both formats
-2. The composite propagator extracts whichever format is present
-3. The SDK injects both formats into outgoing requests
+1. Istio proxies can work with the propagation headers required by the configured tracing backend
+2. The composite propagator can extract whichever configured format is present
+3. The SDK injects all formats configured in its propagator into outgoing requests
 
 Problems only occur when an application:
 - Extracts context in one format (e.g., B3)
@@ -313,7 +314,7 @@ Send a request through the mesh and trace it:
 DEBUG_POD=$(kubectl get pod -l app=trace-debug -o jsonpath='{.items[0].metadata.name}')
 
 # Send a request and see the trace headers
-kubectl exec $DEBUG_POD -- curl -sv http://my-service/api 2>&1 | grep -i "traceparent\|x-b3\|x-request-id"
+kubectl exec $DEBUG_POD -- curl -sv http://my-service/api 2>&1 | grep -i "traceparent\|tracestate\|x-b3\|b3\|x-request-id"
 ```
 
 ## Debugging Broken Traces
@@ -327,11 +328,11 @@ When traces are disconnected:
 kubectl logs $POD -c my-app | grep -i "traceparent\|x-b3"
 ```
 
-2. **Check if headers are forwarded in outgoing requests:**
+2. **Check the proxy tracing configuration:**
 
 ```bash
-# Use tcpdump in the proxy to see outgoing headers
-kubectl exec $POD -c istio-proxy -- pilot-agent request GET /config_dump | jq '.configs[].dynamic_active_clusters'
+# Inspect Envoy's HTTP connection manager tracing configuration
+kubectl exec $POD -c istio-proxy -- pilot-agent request GET /config_dump | jq '.. | objects | select(has("tracing")) | .tracing'
 ```
 
 3. **Verify trace IDs match across services:**
