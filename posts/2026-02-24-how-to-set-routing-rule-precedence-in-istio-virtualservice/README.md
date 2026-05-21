@@ -15,7 +15,7 @@ One of the trickiest parts of working with Istio VirtualService is understanding
 Istio evaluates HTTP routing rules in order, from top to bottom. The first rule that matches the request wins. There is no priority field or weight system for rules themselves - the position in the list determines precedence.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -44,7 +44,7 @@ spec:
 There is a problem with this configuration. Rule 1 matches `/api/v2/users` because `/api/v2/users` starts with `/api`. Rule 2 never gets a chance to match. The fix is to put the more specific rule first:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -85,7 +85,7 @@ The general principle is to order rules from most specific to least specific:
 Here is an example that follows this order:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -141,12 +141,13 @@ Because of this, it is generally safer to put all routing rules for a host in a 
 ```yaml
 # BAD - ordering between these two VirtualServices is unpredictable
 
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app-api
 spec:
   hosts: ["my-app"]
+  gateways: ["my-gateway"]
   http:
     - match:
         - uri:
@@ -155,12 +156,13 @@ spec:
         - destination:
             host: api-service
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app-web
 spec:
   hosts: ["my-app"]
+  gateways: ["my-gateway"]
   http:
     - route:
         - destination:
@@ -174,7 +176,7 @@ If the `my-app-web` VirtualService happens to come first in the merge, the catch
 When combining header-based routing with URI-based routing, the same top-to-bottom rule applies:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -242,7 +244,7 @@ The `proxy-config routes` output shows you the order Envoy will evaluate routes,
 Istio supports delegate VirtualServices where a parent delegates to child VirtualServices. In this case, the order is determined by the parent's delegation order:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: parent
