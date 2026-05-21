@@ -17,9 +17,9 @@ Before debugging, here's the quick rundown of the VM mesh architecture. A VM joi
 - **WorkloadEntry** - A Kubernetes resource that represents the VM workload, similar to how a Pod represents a container
 - **WorkloadGroup** - A template for WorkloadEntries, like a Deployment is for Pods
 - **Istio agent (pilot-agent)** - Runs on the VM alongside Envoy, handles bootstrapping, certificate rotation, and health checking
-- **East-West Gateway** - An Istio gateway that exposes Istiod to VMs outside the cluster
+- **East-West Gateway** - An Istio gateway that exposes Istiod to VMs outside the cluster, and also bridges data-plane traffic when the VM and pods are on different networks
 
-The VM runs pilot-agent, which bootstraps Envoy with certificates and connects to Istiod through the east-west gateway to receive configuration.
+The VM runs pilot-agent, which bootstraps Envoy with certificates and connects to Istiod through the east-west gateway to receive configuration. In a single-network deployment, pods and VMs can communicate directly; in a multi-network deployment, data-plane traffic between them goes through the gateway.
 
 ## Checking VM Registration
 
@@ -177,7 +177,17 @@ VMs need to resolve Kubernetes service names. Istio handles this by configuring 
 curl http://my-service.default.svc.cluster.local:8080/
 ```
 
-If DNS resolution fails, check that the Istio DNS proxy is enabled in the mesh config:
+When deploying to a VM using `istioctl x workload entry configure`, basic DNS proxying is enabled by default. If DNS resolution fails, check whether the generated VM configuration has DNS capture enabled, or regenerate it with DNS capture explicitly enabled:
+
+```bash
+istioctl x workload entry configure \
+  -f workloadgroup.yaml \
+  -o /tmp/vm-config \
+  --clusterID Kubernetes \
+  --capture-dns
+```
+
+For pod sidecars, DNS capture can also be enabled in the mesh config:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -187,7 +197,6 @@ spec:
     defaultConfig:
       proxyMetadata:
         ISTIO_META_DNS_CAPTURE: "true"
-        ISTIO_META_DNS_AUTO_ALLOCATE: "true"
 ```
 
 On the VM, verify that iptables rules are redirecting DNS traffic:
@@ -202,9 +211,9 @@ You should see rules redirecting port 53 traffic to Envoy's DNS listener on port
 
 VM networking is the most common source of problems. The VM needs:
 
-1. Outbound access to the east-west gateway (port 15012 for xDS, port 15443 for mTLS data plane)
+1. Outbound access to the east-west gateway for xDS and certificate signing on port 15012
 2. If using auto-registration, outbound access on port 15012
-3. Inbound access from cluster pods (through the east-west gateway) on the application port
+3. Data-plane connectivity between pods and the VM, either directly in a single-network deployment or through the east-west gateway on port 15443 in a multi-network deployment
 
 Test connectivity step by step:
 
@@ -222,10 +231,11 @@ From a pod in the cluster, test reaching the VM:
 kubectl exec sleep-pod -- curl http://my-vm-service.vm-namespace:8080/
 ```
 
-If the pod can't reach the VM, check the ServiceEntry or auto-generated service:
+If the pod can't reach the VM, check the ServiceEntry or Kubernetes Service that selects the VM workload:
 
 ```bash
 kubectl get serviceentries -n vm-namespace
+kubectl get services -n vm-namespace
 ```
 
 ## Health Check Failures
@@ -255,17 +265,17 @@ curl localhost:8080/healthz
 
 ## mTLS Between VM and Cluster
 
-By default, traffic between the VM and cluster pods uses mTLS through the east-west gateway. If mTLS is failing, check certificates on the VM:
+By default, traffic between the VM and cluster pods uses Istio mTLS. In a multi-network deployment, that traffic is bridged through the east-west gateway. If mTLS is failing, check certificates on the VM:
 
 ```bash
 # On the VM
-ls -la /var/run/secrets/workload-spiffe-credentials/
+ls -la /etc/certs/
 ```
 
 You should see `cert-chain.pem`, `key.pem`, and `root-cert.pem`. Check the certificate:
 
 ```bash
-openssl x509 -in /var/run/secrets/workload-spiffe-credentials/cert-chain.pem -text -noout
+openssl x509 -in /etc/certs/cert-chain.pem -text -noout
 ```
 
 Verify the SPIFFE identity matches what you expect:
@@ -282,13 +292,14 @@ If the certificate is expired, the Istio agent should auto-rotate it. Check the 
 Just like with pods, you can inspect the VM's Envoy configuration:
 
 ```bash
-istioctl proxy-config listeners my-vm-10.0.1.5.vm-namespace
-istioctl proxy-config routes my-vm-10.0.1.5.vm-namespace
-istioctl proxy-config clusters my-vm-10.0.1.5.vm-namespace
-istioctl proxy-config endpoints my-vm-10.0.1.5.vm-namespace
+# On the VM
+curl -s localhost:15000/config_dump | istioctl proxy-config listeners --file -
+curl -s localhost:15000/config_dump | istioctl proxy-config routes --file -
+curl -s localhost:15000/config_dump | istioctl proxy-config clusters --file -
+curl -s localhost:15000/config_dump | istioctl proxy-config endpoints --file -
 ```
 
-These work the same as for pod-based proxies. If the VM proxy doesn't have the expected listeners or routes, the issue is in the config pushed from Istiod.
+Unlike pod-based proxies, `istioctl proxy-config` can't connect to VM proxies through Kubernetes, so pass a config dump from Envoy with `--file -`. If the VM proxy doesn't have the expected listeners or routes, the issue is in the config pushed from Istiod.
 
 ## Summary
 
