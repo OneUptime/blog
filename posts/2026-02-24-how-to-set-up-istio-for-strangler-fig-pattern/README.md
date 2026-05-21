@@ -27,7 +27,7 @@ The strangler fig pattern works like this:
 The first step is getting the legacy system behind Istio. If it is not already in Kubernetes, you can represent it as a ServiceEntry:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: legacy-system
@@ -52,7 +52,7 @@ If the legacy system is already in Kubernetes, just use a standard Service with 
 Now create the routing facade that sends all traffic to the legacy system initially:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: app-routing
@@ -126,7 +126,7 @@ spec:
 Update the VirtualService to intercept notification-related requests:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: app-routing
@@ -200,7 +200,7 @@ Before routing any live traffic, validate with mirroring:
       value: 100.0
 ```
 
-All notification requests go to the legacy system (users see legacy responses), but copies go to the new service. Compare the responses from both to verify the new service produces correct results.
+All notification requests go to the legacy system (users see legacy responses), but copies go to the new service. Mirrored responses are discarded, so compare logs, traces, or validation output from the new service to verify it produces correct results.
 
 ## Handling the Anti-Corruption Layer
 
@@ -245,7 +245,7 @@ def get_legacy_data():
 As you extract more services, the VirtualService grows:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: app-routing
@@ -314,7 +314,7 @@ During migration, both the legacy system and new services might need access to s
 **API calls back to legacy**: The new service calls the legacy system for data it does not own yet:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: legacy-internal
