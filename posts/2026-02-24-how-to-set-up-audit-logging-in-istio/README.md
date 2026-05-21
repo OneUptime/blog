@@ -17,7 +17,7 @@ Istio generates access logs from every Envoy sidecar proxy, which gives you a na
 The simplest way to enable access logging across the entire mesh is with the Telemetry API:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: mesh-audit-logging
@@ -59,7 +59,6 @@ spec:
         "timestamp": "%START_TIME%",
         "source_identity": "%DOWNSTREAM_PEER_URI_SAN%",
         "source_ip": "%DOWNSTREAM_REMOTE_ADDRESS%",
-        "source_namespace": "%DOWNSTREAM_PEER_NAMESPACE%",
         "destination_service": "%UPSTREAM_CLUSTER%",
         "destination_ip": "%UPSTREAM_HOST%",
         "method": "%REQ(:METHOD)%",
@@ -76,17 +75,17 @@ spec:
         "trace_id": "%REQ(X-B3-TRACEID)%",
         "tls_version": "%DOWNSTREAM_TLS_VERSION%",
         "tls_cipher": "%DOWNSTREAM_TLS_CIPHER%",
-        "connection_mtls": "%DOWNSTREAM_PEER_ISSUER%"
+        "downstream_peer_issuer": "%DOWNSTREAM_PEER_ISSUER%"
       }
 ```
 
 This format captures:
 
-- **Who**: Source identity (SPIFFE URI), source IP, source namespace
+- **Who**: Source identity (SPIFFE URI), source IP
 - **What**: HTTP method, path, authority
 - **When**: Timestamp
 - **Result**: Response code, response flags, duration
-- **Security context**: TLS version, cipher suite, whether mTLS was used
+- **Security context**: TLS version, cipher suite, peer certificate issuer
 - **Correlation**: Request ID, trace ID for cross-referencing with traces
 
 ## Selective Logging for Sensitive Namespaces
@@ -94,7 +93,7 @@ This format captures:
 You might not want to log everything everywhere (the volume can be enormous). Use the Telemetry API to enable detailed logging only where it matters:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: sensitive-namespace-logging
@@ -108,7 +107,7 @@ spec:
 For less sensitive namespaces, you can log only errors:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: error-only-logging
@@ -124,7 +123,7 @@ spec:
 Or log based on other conditions:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: audit-critical-ops
@@ -179,7 +178,7 @@ data:
         region            us-west-2
         total_file_size   50M
         upload_timeout    5m
-        s3_key_format     /istio-audit/%Y/%m/%d/%H/$TAG_%M%S
+        s3_key_format     istio-audit/%Y/%m/%d/%H/$TAG_%M%S
         use_put_object    On
 ```
 
@@ -210,13 +209,13 @@ spec:
   meshConfig:
     extensionProviders:
       - name: otel-audit
-        opentelemetry:
+        envoyOtelAls:
           port: 4317
           service: otel-collector.monitoring.svc.cluster.local
 ```
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: otel-audit-logging
@@ -296,7 +295,7 @@ groups:
         expr: |
           sum(rate(istio_requests_total{
             destination_service_namespace="user-service",
-            request_method="GET"
+            reporter="destination"
           }[1m])) > 100
         for: 2m
         labels:
