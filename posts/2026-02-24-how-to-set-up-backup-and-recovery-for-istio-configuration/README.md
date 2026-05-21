@@ -91,7 +91,15 @@ cleanup_yaml() {
     .items[].metadata.creationTimestamp,
     .items[].metadata.generation,
     .items[].metadata.managedFields,
-    .metadata.resourceVersion)' "$file" > "${file%.yaml}-clean.yaml"
+    .items[].metadata.selfLink,
+    .items[].status,
+    .metadata.resourceVersion,
+    .metadata.uid,
+    .metadata.creationTimestamp,
+    .metadata.generation,
+    .metadata.managedFields,
+    .metadata.selfLink,
+    .status)' "$file" > "${file%.yaml}-clean.yaml"
 }
 
 for f in istio-backup-*/*.yaml; do
@@ -137,9 +145,12 @@ spec:
                 - |
                   BACKUP_DIR="/backups/$(date +%Y%m%d-%H%M%S)"
                   mkdir -p "$BACKUP_DIR"
-                  for r in virtualservices destinationrules gateways serviceentries sidecars authorizationpolicies peerauthentications requestauthentications envoyfilters; do
+                  for r in virtualservices destinationrules gateways serviceentries sidecars authorizationpolicies peerauthentications requestauthentications envoyfilters workloadentries workloadgroups telemetries; do
                     kubectl get "$r" --all-namespaces -o yaml > "$BACKUP_DIR/$r.yaml" 2>/dev/null || true
                   done
+                  kubectl get istiooperator --all-namespaces -o yaml > "$BACKUP_DIR/istiooperator.yaml" 2>/dev/null || true
+                  kubectl get configmap istio -n istio-system -o yaml > "$BACKUP_DIR/configmap-istio.yaml" 2>/dev/null || true
+                  kubectl get configmap istio-sidecar-injector -n istio-system -o yaml > "$BACKUP_DIR/configmap-injector.yaml" 2>/dev/null || true
                   # Keep only last 30 days of backups
                   find /backups -maxdepth 1 -type d -mtime +30 -exec rm -rf {} \;
               volumeMounts:
@@ -178,6 +189,9 @@ rules:
   - apiGroups: ["install.istio.io"]
     resources: ["*"]
     verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -207,9 +221,12 @@ CLUSTER_NAME="production-cluster"
 mkdir -p "$BACKUP_DIR"
 
 # Export all Istio resources
-for r in virtualservices destinationrules gateways serviceentries sidecars authorizationpolicies peerauthentications requestauthentications envoyfilters; do
+for r in virtualservices destinationrules gateways serviceentries sidecars authorizationpolicies peerauthentications requestauthentications envoyfilters workloadentries workloadgroups telemetries; do
   kubectl get "$r" --all-namespaces -o yaml > "$BACKUP_DIR/$r.yaml" 2>/dev/null || true
 done
+kubectl get istiooperator --all-namespaces -o yaml > "$BACKUP_DIR/istiooperator.yaml" 2>/dev/null || true
+kubectl get configmap istio -n istio-system -o yaml > "$BACKUP_DIR/configmap-istio.yaml" 2>/dev/null || true
+kubectl get configmap istio-sidecar-injector -n istio-system -o yaml > "$BACKUP_DIR/configmap-injector.yaml" 2>/dev/null || true
 
 # Compress and upload
 tar czf "$BACKUP_DIR.tar.gz" -C /tmp "$(basename $BACKUP_DIR)"
@@ -229,7 +246,7 @@ For restoring individual resources:
 
 ```bash
 # Restore a specific VirtualService
-kubectl apply -f backup/virtualservices-clean.yaml -l metadata.name=my-service
+yq eval '.items[] | select(.metadata.name == "my-service" and .metadata.namespace == "default")' backup/virtualservices-clean.yaml | kubectl apply -f -
 
 # Restore all DestinationRules
 kubectl apply -f backup/destinationrules-clean.yaml
