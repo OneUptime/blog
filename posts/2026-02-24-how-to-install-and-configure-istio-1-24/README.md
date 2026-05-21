@@ -8,7 +8,7 @@ Description: Step-by-step guide to installing Istio 1.24 with ambient mesh GA, K
 
 ---
 
-Istio 1.24 is a landmark release because it marked the ambient mesh mode as generally available. This means you can now run a production service mesh without sidecar proxies, using the ztunnel-based architecture that has been in development for over two years. The release also brought the `istioctl install` command into a maintenance-only phase, with Helm firmly established as the primary installation method.
+Istio 1.24 is a landmark release because it marked the ambient mesh mode as generally available. This means you can now run a production service mesh without sidecar proxies, using the ztunnel-based architecture that has been in development for over two years. For production ambient mesh installs, the Istio project recommends Helm so the control plane and data plane components can be packaged and upgraded separately.
 
 ## Prerequisites
 
@@ -61,19 +61,17 @@ helm install istio-base istio/base \
 ```yaml
 # istiod-values.yaml
 
-pilot:
-  resources:
-    requests:
-      cpu: 500m
-      memory: 1Gi
-    limits:
-      cpu: 2000m
-      memory: 4Gi
-  autoscaleMin: 2
-  autoscaleMax: 10
-  env:
-    PILOT_ENABLE_AMBIENT: "true"
-    PILOT_ENABLE_ALPHA_GATEWAY_API: "true"
+profile: ambient
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 1Gi
+  limits:
+    cpu: 2000m
+    memory: 4Gi
+autoscaleMin: 2
+autoscaleMax: 10
 
 meshConfig:
   accessLogFile: /dev/stdout
@@ -214,7 +212,8 @@ You can run both modes in the same mesh.
 Install the Gateway API CRDs:
 
 ```bash
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.1.0/standard-install.yaml
+kubectl get crd gateways.gateway.networking.k8s.io >/dev/null 2>&1 || \
+  kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.2.0/standard-install.yaml
 ```
 
 Create a production Gateway:
@@ -303,7 +302,7 @@ spec:
 apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
-  name: deny-all
+  name: deny-cross-namespace
   namespace: default
 spec:
   action: DENY
