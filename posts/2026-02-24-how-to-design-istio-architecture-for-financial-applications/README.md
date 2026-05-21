@@ -105,11 +105,11 @@ spec:
     accessLogFormat: |
       {
         "timestamp": "%START_TIME%",
-        "source_workload": "%REQ(X-ENVOY-PEER-METADATA:app)%",
-        "source_namespace": "%REQ(X-ENVOY-PEER-METADATA:namespace)%",
-        "destination_service": "%UPSTREAM_CLUSTER%",
+        "source_principal": "%DOWNSTREAM_PEER_URI_SAN%",
+        "destination_principal": "%UPSTREAM_PEER_URI_SAN%",
+        "destination_service": "%UPSTREAM_CLUSTER_RAW%",
         "request_method": "%REQ(:METHOD)%",
-        "request_path": "%REQ(PATH)%",
+        "request_path": "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%",
         "response_code": "%RESPONSE_CODE%",
         "response_flags": "%RESPONSE_FLAGS%",
         "bytes_received": "%BYTES_RECEIVED%",
@@ -119,7 +119,7 @@ spec:
         "x_request_id": "%REQ(X-REQUEST-ID)%",
         "user_agent": "%REQ(USER-AGENT)%",
         "authority": "%REQ(:AUTHORITY)%",
-        "connection_id": "%CONNECTION_ID%"
+        "stream_id": "%STREAM_ID%"
       }
 ```
 
@@ -130,28 +130,14 @@ Ship these logs to an immutable log store (something like S3 with object lock or
 Financial transactions need end-to-end tracing. Configure Istio tracing with a higher sampling rate for the PCI zone:
 
 ```yaml
-apiVersion: networking.istio.io/v1alpha3
-kind: EnvoyFilter
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
 metadata:
   name: pci-tracing
   namespace: pci-services
 spec:
-  configPatches:
-  - applyTo: NETWORK_FILTER
-    match:
-      context: SIDECAR_INBOUND
-      listener:
-        filterChain:
-          filter:
-            name: envoy.filters.network.http_connection_manager
-    patch:
-      operation: MERGE
-      value:
-        typed_config:
-          "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
-          tracing:
-            random_sampling:
-              value: 100.0
+  tracing:
+  - randomSamplingPercentage: 100.00
 ```
 
 For PCI-scoped traffic, 100% sampling is often required. For non-PCI traffic, you can use a lower rate.
@@ -161,7 +147,7 @@ For PCI-scoped traffic, 100% sampling is often required. For non-PCI traffic, yo
 Financial transactions often involve multiple downstream calls (payment processor, fraud check, sanctions screening). Configure timeouts to account for this while still having reasonable bounds:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: transaction-service
@@ -196,10 +182,10 @@ Notice that transfer operations have no retries and a generous 30-second timeout
 
 ## External Integration Security
 
-Financial applications typically integrate with external services like SWIFT, payment networks, and regulatory reporting systems. Use egress gateways and strict TLS for these:
+Financial applications typically integrate with external services like SWIFT, payment networks, and regulatory reporting systems. Use controlled ServiceEntry resources, egress gateways where you need centralized egress control, and strict TLS for these:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: swift-network
@@ -208,13 +194,14 @@ spec:
   hosts:
   - swift-api.provider.com
   ports:
-  - number: 443
-    name: https
-    protocol: TLS
+  - number: 80
+    name: http
+    protocol: HTTP
+    targetPort: 443
   resolution: DNS
   location: MESH_EXTERNAL
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: swift-network-tls
@@ -233,14 +220,14 @@ spec:
         http2MaxRequests: 20
 ```
 
-Pin the CA certificate for external financial services. This prevents man-in-the-middle attacks even if a certificate authority is compromised.
+Configure a dedicated CA bundle for external financial services. This limits trust to the configured CA bundle and reduces man-in-the-middle risk.
 
 ## Circuit Breakers to Prevent Cascading Failures
 
 In financial systems, a cascading failure can mean duplicate transactions or lost money. Apply circuit breakers to all external dependencies:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: fraud-detection
