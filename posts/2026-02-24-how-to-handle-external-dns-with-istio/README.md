@@ -28,7 +28,7 @@ If you're running `REGISTRY_ONLY` (which is recommended for production), you nee
 Use ServiceEntry to tell Istio about external services:
 
 ```yaml
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: google-apis
@@ -40,7 +40,7 @@ spec:
   - number: 443
     name: https
     protocol: TLS
-  resolution: NONE
+  resolution: DYNAMIC_DNS
   location: MESH_EXTERNAL
 ```
 
@@ -48,12 +48,12 @@ This registers all Google API endpoints as known external services. The `locatio
 
 ## DNS Resolution Strategies for External Services
 
-There are three resolution strategies, and picking the right one matters:
+There are several resolution strategies, and picking the right one matters. The three below are the ones you'll use most often, while recent Istio releases also include `DNS_ROUND_ROBIN` and `DYNAMIC_DNS` for specialized DNS-heavy and wildcard cases:
 
 ### resolution: DNS
 
 ```yaml
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-api
@@ -69,12 +69,12 @@ spec:
   location: MESH_EXTERNAL
 ```
 
-With `DNS` resolution, the Envoy sidecar resolves the hostname when establishing a connection. It caches the result based on DNS TTL. This is what you want for most external APIs since they typically sit behind load balancers with changing IPs.
+With `DNS` resolution, the Envoy sidecar resolves the hostname asynchronously and routes to the resolved endpoint IPs. This is what you want for most external APIs since they typically sit behind load balancers with changing IPs.
 
 ### resolution: NONE
 
 ```yaml
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: wildcard-external
@@ -90,12 +90,12 @@ spec:
   location: MESH_EXTERNAL
 ```
 
-With `NONE`, the sidecar uses the original destination IP from the connection (as resolved by the application). This is the right choice for wildcard entries where you can't pre-resolve the hostname.
+With `NONE`, the sidecar uses the original destination IP from the connection (as resolved by the application). This is the right choice when you need traffic routed to the IP the application originally requested. For wildcard HTTP or TLS hosts on newer Istio versions, `DYNAMIC_DNS` is often a better fit because the proxy can resolve the actual host from the HTTP Host header or TLS SNI.
 
 ### resolution: STATIC
 
 ```yaml
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: fixed-endpoint
@@ -120,7 +120,7 @@ spec:
 For external services with multiple endpoints, you can list them all:
 
 ```yaml
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: partner-api
@@ -147,7 +147,7 @@ Envoy will load balance across these endpoints using the configured policy (roun
 If your application speaks plain HTTP but the external service requires HTTPS, you can have Istio handle the TLS origination:
 
 ```yaml
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: httpbin
@@ -165,7 +165,7 @@ spec:
   resolution: DNS
   location: MESH_EXTERNAL
 ---
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: httpbin-tls
@@ -179,7 +179,7 @@ spec:
       tls:
         mode: SIMPLE
 ---
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: httpbin-redirect
@@ -204,7 +204,22 @@ Now your app can make plain HTTP requests to `httpbin.org:80`, and the sidecar w
 For production environments, you often want external traffic to go through an egress gateway. This gives you a central point for logging, security, and network policy enforcement:
 
 ```yaml
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
+kind: ServiceEntry
+metadata:
+  name: external-service
+  namespace: default
+spec:
+  hosts:
+  - api.external-service.com
+  ports:
+  - number: 443
+    name: tls
+    protocol: TLS
+  resolution: DNS
+  location: MESH_EXTERNAL
+---
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: egress-gateway
@@ -222,7 +237,7 @@ spec:
     tls:
       mode: PASSTHROUGH
 ---
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: external-via-egress
@@ -266,7 +281,7 @@ With ServiceEntry in place, you get full observability for external traffic. Che
 kubectl exec -it deploy/my-app -c istio-proxy -- pilot-agent request GET stats | grep api.external-service.com
 ```
 
-You'll see metrics for connection counts, request rates, latency, and error rates for each external service.
+You'll see raw Envoy cluster counters for the external service. For request rates, latency, and error rates, check your Istio telemetry backend such as Prometheus.
 
 ## Debugging External DNS Issues
 
@@ -282,9 +297,9 @@ istioctl proxy-config cluster deploy/my-app | grep PassthroughCluster
 istioctl proxy-config cluster deploy/my-app | grep external-service
 ```
 
-3. **Can the sidecar resolve the hostname?**
+3. **Can the application reach the hostname through the sidecar?**
 ```bash
-kubectl exec -it deploy/my-app -c istio-proxy -- curl -v https://api.external-service.com
+kubectl exec -it deploy/my-app -c my-app -- curl -v https://api.external-service.com
 ```
 
 4. **Check the sidecar logs for connection errors:**
