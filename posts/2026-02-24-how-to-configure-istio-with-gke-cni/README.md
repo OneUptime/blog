@@ -20,7 +20,7 @@ Istio needs to intercept traffic between pods using iptables rules injected by t
 
 You'll need:
 
-- A GKE cluster (version 1.27+) with VPC-native networking
+- A GKE Standard cluster running a Kubernetes version supported by your Istio release, with VPC-native networking
 - gcloud CLI configured
 - istioctl installed
 - kubectl configured to your GKE cluster
@@ -48,11 +48,11 @@ Get credentials for your cluster:
 gcloud container clusters get-credentials istio-cluster --zone us-central1-a
 ```
 
-## Step 2: Decide on GKE Managed Istio vs. Open Source
+## Step 2: Decide on Cloud Service Mesh vs. Open Source
 
-GKE offers Anthos Service Mesh (ASM), which is Google's managed version of Istio. But if you want to run open-source Istio directly, you have full control. This guide covers the open-source approach.
+Google offers Cloud Service Mesh, the successor to Anthos Service Mesh, as its managed service mesh for GKE. But if you want to run open-source Istio directly, you have full control. This guide covers the open-source approach.
 
-If you're using Autopilot clusters, note that Autopilot has restrictions on privileged containers. You'll need the Istio CNI plugin to avoid this problem.
+This guide is for GKE Standard clusters. The Istio CNI node agent requires elevated node-level privileges and isn't available on GKE Autopilot.
 
 ## Step 3: Install Istio with the CNI Plugin
 
@@ -80,6 +80,9 @@ spec:
         - gke-managed-system
     global:
       platform: gke
+    pilot:
+      cni:
+        enabled: true
 ```
 
 The critical settings here are `cniBinDir` and `cniConfDir`. GKE puts its CNI binaries in `/home/kubernetes/bin` instead of the standard `/opt/cni/bin`. If you get this wrong, the Istio CNI plugin won't install correctly.
@@ -92,30 +95,37 @@ istioctl install -f istio-gke.yaml -y
 
 ## Step 4: Handle GKE-Specific Firewall Rules
 
-GKE creates firewall rules for your cluster automatically, but Istio needs some additional ports open between nodes. Specifically, the webhook ports need to be accessible from the GKE control plane.
+GKE creates firewall rules for your cluster automatically, but private clusters can need an additional rule so the GKE control plane can reach Istio's webhook port.
 
 ```bash
-# Get your cluster's master CIDR
-
-MASTER_CIDR=$(gcloud container clusters describe istio-cluster \
-  --zone us-central1-a \
-  --format="get(privateClusterConfig.masterIpv4CidrBlock)")
+# Find the existing GKE master firewall rule and copy its source range
+# and target tag values.
+gcloud compute firewall-rules list \
+  --filter 'name~gke-istio-cluster-[0-9a-z]*-master' \
+  --format 'table(
+      name,
+      network,
+      direction,
+      sourceRanges.list():label=SRC_RANGES,
+      allowed[].map().firewall_rule().list():label=ALLOW,
+      targetTags.list():label=TARGET_TAGS
+  )'
 
 # Create firewall rule for Istio webhooks
-gcloud compute firewall-rules create allow-istio-webhooks \
+gcloud compute firewall-rules create allow-api-server-to-webhook-istio-cluster \
   --network default \
-  --allow tcp:15017,tcp:15014,tcp:8080 \
-  --source-ranges ${MASTER_CIDR} \
-  --target-tags $(gcloud container clusters describe istio-cluster \
-    --zone us-central1-a \
-    --format="get(nodeConfig.tags[0])")
+  --action ALLOW \
+  --direction INGRESS \
+  --rules tcp:15017 \
+  --source-ranges CONTROL_PLANE_RANGE \
+  --target-tags TARGET_TAG
 ```
 
-Without this firewall rule, sidecar injection will fail because the GKE control plane can't reach the Istio webhook.
+Without this firewall rule on a private cluster, sidecar injection can fail because the GKE control plane can't reach the Istio webhook.
 
 ## Step 5: Configure for GKE Dataplane V2
 
-If your cluster runs GKE Dataplane V2 (which uses eBPF-based networking through Cilium), the setup is slightly different. Dataplane V2 clusters handle network policy enforcement differently.
+If your cluster runs GKE Dataplane V2, the setup is slightly different. Dataplane V2 uses eBPF and Cilium instead of kube-proxy to implement Kubernetes Services, and it handles network policy enforcement differently.
 
 Check if Dataplane V2 is enabled:
 
@@ -125,7 +135,7 @@ gcloud container clusters describe istio-cluster \
   --format="get(networkConfig.datapathProvider)"
 ```
 
-If it returns `ADVANCED_DATAPATH`, you're on Dataplane V2. In this case, you should be aware that both Cilium and Istio will be manipulating traffic. They can coexist, but you should use Istio for L7 policies and Cilium (via Kubernetes NetworkPolicy) for L3/L4 policies.
+If it returns `ADVANCED_DATAPATH`, you're on Dataplane V2. In this case, you should be aware that both GKE Dataplane V2 and Istio participate in traffic handling. They can coexist, but you should use Istio for L7 policies and Kubernetes NetworkPolicy for L3/L4 policies.
 
 ## Step 6: Set Up the Ingress Gateway
 
@@ -158,7 +168,7 @@ spec:
         - "*.example.com"
 ```
 
-The Istio ingress gateway creates a GCP load balancer. You can customize it with GCP-specific annotations:
+The Istio ingress gateway Service creates a GCP Layer 4 passthrough Network Load Balancer when it uses `type: LoadBalancer`. You can customize it with GCP-specific Service annotations:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -170,8 +180,8 @@ spec:
         enabled: true
         k8s:
           serviceAnnotations:
-            cloud.google.com/neg: '{"ingress": true}'
-            cloud.google.com/backend-config: '{"default": "istio-backendconfig"}'
+            cloud.google.com/l4-rbs: "enabled"
+            networking.gke.io/load-balancer-type: "Internal"
 ```
 
 ## Step 7: Enable Workload Identity
@@ -213,7 +223,7 @@ Deploy a test workload:
 ```bash
 kubectl create namespace test
 kubectl label namespace test istio-injection=enabled
-kubectl apply -n test -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/bookinfo/platform/kube/bookinfo.yaml
+kubectl apply -n test -f https://raw.githubusercontent.com/istio/istio/release-1.29/samples/bookinfo/platform/kube/bookinfo.yaml
 ```
 
 Verify sidecar injection:
@@ -224,7 +234,7 @@ kubectl get pods -n test
 
 ## Troubleshooting
 
-**Sidecar injection fails with webhook timeout**: This almost always means the GKE firewall is blocking port 15017. Add the firewall rule from Step 4.
+**Sidecar injection fails with webhook timeout**: On private clusters, this often means the GKE firewall is blocking port 15017. Add the firewall rule from Step 4.
 
 **Pods fail to start with CNI errors**: Check that the `cniBinDir` is set to `/home/kubernetes/bin`. This is GKE-specific and different from most other Kubernetes distributions.
 
