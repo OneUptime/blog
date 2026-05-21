@@ -8,7 +8,7 @@ Description: How to set up custom telemetry exporters in Istio to send metrics, 
 
 ---
 
-Istio's built-in telemetry gives you Prometheus metrics, Zipkin traces, and Envoy access logs out of the box. But what if you need to send telemetry to Datadog, New Relic, Grafana Cloud, Elasticsearch, or your own custom backend? Custom telemetry exporters let you route observability data wherever you need it, and the OpenTelemetry Collector is the most flexible way to do this.
+Istio's telemetry can generate Prometheus metrics, distributed traces, and Envoy access logs from the data plane. But what if you need to send telemetry to Datadog, New Relic, Grafana Cloud, Elasticsearch, or your own custom backend? Custom telemetry exporters let you route observability data wherever you need it, and the OpenTelemetry Collector is the most flexible way to do this.
 
 ## The Architecture of Custom Exporters
 
@@ -68,12 +68,9 @@ data:
           value: production
           action: insert
       filter:
-        metrics:
-          include:
-            match_type: regexp
-            metric_names:
-            - "istio_.*"
-            - "envoy_cluster_upstream.*"
+        error_mode: ignore
+        metric_conditions:
+        - 'not IsMatch(metric.name, "^istio_.*") and not IsMatch(metric.name, "^envoy_cluster_upstream.*")'
 
     exporters:
       otlp:
@@ -86,23 +83,51 @@ data:
         endpoints:
         - "http://elasticsearch.logging.svc:9200"
         logs_index: istio-access-logs
-      logging:
-        loglevel: info
+      debug:
+        verbosity: basic
 
     service:
       pipelines:
         traces:
           receivers: [otlp]
-          processors: [batch, memory_limiter, attributes]
-          exporters: [otlp, logging]
+          processors: [memory_limiter, attributes, batch]
+          exporters: [otlp, debug]
         metrics:
           receivers: [prometheus]
-          processors: [batch, memory_limiter, filter]
+          processors: [memory_limiter, filter, batch]
           exporters: [prometheusremotewrite]
         logs:
           receivers: [otlp]
-          processors: [batch, memory_limiter]
-          exporters: [elasticsearch, logging]
+          processors: [memory_limiter, batch]
+          exporters: [elasticsearch, debug]
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: otel-collector
+  namespace: istio-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: otel-collector
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: otel-collector
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: otel-collector
+subjects:
+- kind: ServiceAccount
+  name: otel-collector
+  namespace: istio-system
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -119,6 +144,7 @@ spec:
       labels:
         app: otel-collector
     spec:
+      serviceAccountName: otel-collector
       containers:
       - name: otel-collector
         image: otel/opentelemetry-collector-contrib:latest
@@ -173,8 +199,12 @@ kind: IstioOperator
 spec:
   meshConfig:
     extensionProviders:
-    - name: otel
+    - name: otel-tracing
       opentelemetry:
+        service: otel-collector.istio-system.svc.cluster.local
+        port: 4317
+    - name: otel-logs
+      envoyOtelAls:
         service: otel-collector.istio-system.svc.cluster.local
         port: 4317
 ```
@@ -182,7 +212,7 @@ spec:
 Then enable it:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: mesh-telemetry
@@ -190,11 +220,11 @@ metadata:
 spec:
   tracing:
   - providers:
-    - name: otel
+    - name: otel-tracing
     randomSamplingPercentage: 5.0
   accessLogging:
   - providers:
-    - name: otel
+    - name: otel-logs
 ```
 
 ## Exporting to Specific Backends
@@ -207,7 +237,7 @@ Add the Datadog exporter to your collector config:
 exporters:
   datadog:
     api:
-      key: ${DD_API_KEY}
+      key: ${env:DD_API_KEY}
       site: datadoghq.com
     metrics:
       histograms:
@@ -227,7 +257,7 @@ service:
       exporters: [datadog]
 ```
 
-Store the API key as a Kubernetes secret and mount it as an environment variable:
+Store the API key as a Kubernetes secret and reference it from the Collector Deployment as the `DD_API_KEY` environment variable:
 
 ```yaml
 apiVersion: v1
@@ -252,8 +282,8 @@ exporters:
     endpoint: "tempo-prod-XX.grafana.net:443"
     headers:
       Authorization: "Basic <base64-encoded-credentials>"
-  loki:
-    endpoint: "https://logs-prod-XX.grafana.net/loki/api/v1/push"
+  otlphttp/loki:
+    endpoint: "https://logs-prod-XX.grafana.net/otlp"
     headers:
       Authorization: "Basic <base64-encoded-credentials>"
 
@@ -270,7 +300,7 @@ service:
     logs:
       receivers: [otlp]
       processors: [batch]
-      exporters: [loki]
+      exporters: [otlphttp/loki]
 ```
 
 ### AWS CloudWatch and X-Ray
@@ -299,7 +329,7 @@ service:
 
 ## Custom Access Log Formatting
 
-Before exporting access logs, you might want to customize the format. Use the Telemetry API or EnvoyFilter:
+Before exporting access logs, you might want to customize the format. Use the provider's `logFormat` in MeshConfig or an EnvoyFilter:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -341,12 +371,12 @@ spec:
                   bytes_sent: "%BYTES_SENT%"
 ```
 
-## Creating Custom Metrics
+## Customizing Metric Labels
 
-Beyond filtering existing metrics, you can create entirely new metrics using the Telemetry API:
+Beyond filtering existing metrics, you can add or override metric labels using the Telemetry API:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: custom-metrics
@@ -361,9 +391,9 @@ spec:
         mode: SERVER
       tagOverrides:
         api_version:
-          value: "request.headers['x-api-version'] || 'unknown'"
+          value: "has(request.headers['x-api-version']) ? request.headers['x-api-version'] : 'unknown'"
         tenant_id:
-          value: "request.headers['x-tenant-id'] || 'default'"
+          value: "has(request.headers['x-tenant-id']) ? request.headers['x-tenant-id'] : 'default'"
 ```
 
 This adds custom labels to the request count metric based on request header values. Be careful with this because custom labels can increase cardinality significantly.
@@ -384,7 +414,7 @@ service:
     # Detailed traces to Jaeger for debugging
     traces/jaeger:
       receivers: [otlp]
-      processors: [batch, memory_limiter]
+      processors: [memory_limiter, batch]
       exporters: [otlp]
 
     # Long-term trace storage in S3 via a different exporter
@@ -403,7 +433,7 @@ service:
     logs/alerts:
       receivers: [otlp]
       processors: [batch, filter/errors-only]
-      exporters: [pagerduty]
+      exporters: [webhook/pagerduty]
 ```
 
 ## Monitoring the Exporter Pipeline
@@ -457,8 +487,8 @@ spec:
   replicas: 3
 ```
 
-For traces, all spans of a single trace should go to the same collector instance for proper batching. Use a load balancing exporter or tail-based sampling processor for this.
+For traces, all spans of a single trace should go to the same collector instance if you use processors that need a complete trace, such as tail-based sampling. Use a load balancing exporter or another consistent routing strategy for this.
 
-For metrics, the collector can be stateless since Prometheus scraping is pull-based. Use multiple collector instances behind a service with standard load balancing.
+For metrics scraped by the Collector's Prometheus receiver, multiple replicas with the same scrape configuration will scrape the same sidecars and can produce duplicate samples. Use sharding, distinct scrape targets, or a collector mode that matches your backend's deduplication strategy.
 
 Custom telemetry exporters give you the flexibility to send Istio's observability data wherever it needs to go. The OpenTelemetry Collector is the most versatile tool for this job because it supports dozens of exporters and gives you a powerful processing pipeline in between. Start with a simple setup, verify data flows end-to-end, and then add more exporters and processing as your needs grow.
