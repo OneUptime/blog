@@ -57,7 +57,7 @@ Repeat similar policies for Prometheus (port 9090), Kiali (port 20001), and Jaeg
 
 ## Step 2: Enable Istio RBAC with AuthorizationPolicy
 
-Istio's AuthorizationPolicy gives you fine-grained control over who can access what. You can restrict access to telemetry addons based on source identity:
+Istio's AuthorizationPolicy gives you fine-grained control over who can access what. This only applies to workloads that are actually in the mesh, so make sure the addon pods have sidecars injected, are covered by ambient mode, or enforce the policy at the ingress gateway instead. You can restrict access to telemetry addons based on source identity:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -152,11 +152,24 @@ kubectl create clusterrolebinding kiali-user-binding \
 
 ### Prometheus Authentication
 
-Prometheus does not have built-in auth, so you need to put something in front of it. One common approach is using a reverse proxy. You can add an oauth2-proxy sidecar to the Prometheus pod or deploy it as a separate service.
+Prometheus supports built-in basic authentication and TLS through a web configuration file. For example:
+
+```yaml
+basic_auth_users:
+  admin: "$2y$10$replace-this-with-a-bcrypt-hash"
+```
+
+Mount that file into the Prometheus pod and start Prometheus with:
+
+```bash
+--web.config.file=/etc/prometheus/web.yml
+```
+
+For SSO or richer access control, put something in front of it. One common approach is using a reverse proxy. You can add an oauth2-proxy sidecar to the Prometheus pod or deploy it as a separate service.
 
 ## Step 4: Use Istio PeerAuthentication for Strict mTLS
 
-Make sure all communication to telemetry addons uses mutual TLS. Apply a PeerAuthentication policy:
+Make sure all mesh communication to telemetry addons uses mutual TLS. As with AuthorizationPolicy, this requires the addon workload to be in the mesh. Apply a PeerAuthentication policy:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -223,15 +236,15 @@ The `istioctl dashboard` command creates port-forwards, which means anyone with 
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: no-port-forward
+  name: telemetry-dashboard-port-forward
   namespace: istio-system
 rules:
   - apiGroups: [""]
     resources: ["pods/portforward"]
-    verbs: []
+    verbs: ["create"]
 ```
 
-Bind this role to users or groups that should not have direct dashboard access.
+Bind this role only to users or groups that should have direct dashboard access, and make sure other roles bound to non-admin users do not grant `create` on `pods/portforward`. Kubernetes RBAC permissions are additive, so an empty or restrictive role cannot deny access that another binding already grants.
 
 ## Putting It All Together
 
