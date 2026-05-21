@@ -32,7 +32,7 @@ istio-config/
 │   │   └── authorizationpolicies/
 │   └── istio-system/
 │       ├── gateways/
-│       └── peerauthentication/
+│       └── peerauthentications/
 ├── global/
 │   ├── telemetry.yaml
 │   └── mesh-peerauthentication.yaml
@@ -52,12 +52,11 @@ If you already have Istio running, start by exporting your current configuration
 REPO_DIR="istio-config"
 mkdir -p "$REPO_DIR"
 
-# Get all namespaces with Istio resources
-
-NAMESPACES=$(kubectl get virtualservices,destinationrules,gateways,authorizationpolicies --all-namespaces --no-headers 2>/dev/null | awk '{print $1}' | sort -u)
+RESOURCE_TYPES="virtualservices destinationrules gateways serviceentries authorizationpolicies peerauthentications sidecars envoyfilters"
+NAMESPACES=$(kubectl get $RESOURCE_TYPES --all-namespaces --no-headers 2>/dev/null | awk '{print $1}' | sort -u)
 
 for ns in $NAMESPACES; do
-  for resource_type in virtualservices destinationrules gateways serviceentries authorizationpolicies peerauthentications sidecars envoyfilters; do
+  for resource_type in $RESOURCE_TYPES; do
     resources=$(kubectl get "$resource_type" -n "$ns" --no-headers 2>/dev/null | awk '{print $1}')
     for resource_name in $resources; do
       dir="$REPO_DIR/namespaces/$ns/$resource_type"
@@ -89,6 +88,7 @@ cd istio-config
 git init
 git add -A
 git commit -m "Initial import of Istio configuration"
+git branch -M main
 git remote add origin git@github.com:myorg/istio-config.git
 git push -u origin main
 ```
@@ -151,11 +151,6 @@ spec:
   sourceRef:
     kind: GitRepository
     name: istio-config
-  healthChecks:
-    - apiVersion: networking.istio.io/v1
-      kind: VirtualService
-      name: my-service
-      namespace: production
 ```
 
 ## CI/CD Pipeline for Validation
@@ -185,11 +180,11 @@ jobs:
 
       - name: Validate YAML syntax
         run: |
-          find . -name "*.yaml" -exec istioctl validate -f {} \;
+          find namespaces global -name "*.yaml" -print0 | xargs -0 -r -n1 istioctl validate -f
 
       - name: Run Istio analysis
         run: |
-          find . -name "*.yaml" -exec istioctl analyze --use-kube=false -f {} \;
+          istioctl analyze --use-kube=false namespaces global
 
       - name: Check for deprecated APIs
         run: |
@@ -206,6 +201,7 @@ Even with GitOps, configuration drift can happen. Set up a job that detects diff
 
 REPO_DIR="istio-config/namespaces"
 DRIFT_FOUND=false
+shopt -s nullglob
 
 for ns_dir in "$REPO_DIR"/*/; do
   ns=$(basename "$ns_dir")
@@ -223,6 +219,10 @@ if doc:
     meta = doc.get('metadata', {})
     for f in ['resourceVersion', 'uid', 'creationTimestamp', 'generation', 'managedFields']:
         meta.pop(f, None)
+    if 'annotations' in meta:
+        meta['annotations'].pop('kubectl.kubernetes.io/last-applied-configuration', None)
+        if not meta['annotations']:
+            del meta['annotations']
     doc.pop('status', None)
     yaml.dump(doc, sys.stdout, default_flow_style=False)
 ")
@@ -310,6 +310,12 @@ spec:
     - secretKey: ca-key.pem
       remoteRef:
         key: istio/ca-key
+    - secretKey: root-cert.pem
+      remoteRef:
+        key: istio/root-cert
+    - secretKey: cert-chain.pem
+      remoteRef:
+        key: istio/cert-chain
 ```
 
 Version control for Istio configuration is one of those practices that pays dividends from day one. Every change is tracked, reviewed, and reversible. It transforms Istio operations from a manual, error-prone process into a systematic, auditable workflow.
