@@ -19,13 +19,13 @@ When you change a pod's service account, the following things change:
 1. The SPIFFE identity changes from `spiffe://cluster.local/ns/<namespace>/sa/<old-sa>` to `spiffe://cluster.local/ns/<namespace>/sa/<new-sa>`
 2. Any AuthorizationPolicy that references the old identity stops matching
 3. The mTLS certificate gets reissued with the new identity
-4. Any PeerAuthentication trust relationship changes
+4. Any policy or client-side check that depends on the peer identity can be affected
 
 Check what policies reference the current service account:
 
 ```bash
 kubectl get authorizationpolicy --all-namespaces -o json | \
-  jq '.items[] | select(.spec.rules[].from[].source.principals[]? | contains("sa/old-service-account")) | .metadata.name'
+  jq -r '.items[] | select(.spec.rules[]?.from[]?.source?.principals[]? | contains("sa/old-service-account")) | "\(.metadata.namespace)/\(.metadata.name)"'
 ```
 
 ## Step 1: Create the New Service Account
@@ -144,8 +144,7 @@ After deploying the canary, verify it can communicate with other services:
 
 ```bash
 # Check the new identity
-kubectl exec -n production deploy/order-service-canary -c istio-proxy -- \
-  curl -s localhost:15000/certs | head -20
+istioctl proxy-config secret -n production deploy/order-service-canary
 
 # Test connectivity
 kubectl exec -n production deploy/order-service-canary -c order-service -- \
@@ -174,7 +173,7 @@ kubectl get pods -n production -l app=order-service -o json | \
 istioctl proxy-config secret -n production deploy/order-service
 
 # Check for any authorization policy denials
-kubectl logs -n production deploy/order-service -c istio-proxy | grep "RBAC: access denied"
+kubectl logs -n production deploy/order-service -c istio-proxy | grep -E "RBAC: access denied|rbac_access_denied"
 ```
 
 Monitor error rates for a period to make sure nothing is broken:
