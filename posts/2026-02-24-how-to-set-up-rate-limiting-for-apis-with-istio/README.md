@@ -80,7 +80,7 @@ kubectl apply -f local-ratelimit.yaml
 
 ### Testing Local Rate Limiting
 
-Send a burst of requests to verify the rate limit works:
+From a pod inside the mesh, send a burst of requests to verify the rate limit works:
 
 ```bash
 for i in $(seq 1 150); do
@@ -88,7 +88,7 @@ for i in $(seq 1 150); do
 done
 ```
 
-You should see 200 responses for the first 100 requests and 429 responses after that.
+With a single `my-api` pod, you should see 200 responses for the first 100 requests and 429 responses after that.
 
 ## Global Rate Limiting
 
@@ -154,16 +154,9 @@ data:
       rate_limit:
         unit: minute
         requests_per_unit: 10
-    - key: header_match
-      value: "api-key"
-      descriptors:
-      - key: PATH
-        rate_limit:
-          unit: minute
-          requests_per_unit: 500
 ```
 
-This configuration sets different rate limits based on the request path. The `/api/expensive-operation` endpoint gets a lower limit of 10 requests per minute, while the default is 100. Requests with an API key get a higher limit of 500.
+This configuration sets different rate limits based on the request path. The `/api/expensive-operation` endpoint gets a lower limit of 10 requests per minute, while the default is 100.
 
 Deploy the rate limit service:
 
@@ -185,7 +178,8 @@ spec:
     spec:
       containers:
       - name: ratelimit
-        image: envoyproxy/ratelimit:master
+        image: docker.io/envoyproxy/ratelimit:30a4ce1a
+        command: ["/bin/ratelimit"]
         ports:
         - containerPort: 8080
         - containerPort: 8081
@@ -203,6 +197,14 @@ spec:
           value: /data
         - name: RUNTIME_SUBDIRECTORY
           value: ratelimit
+        - name: RUNTIME_WATCH_ROOT
+          value: "false"
+        - name: RUNTIME_IGNOREDOTFILES
+          value: "true"
+        - name: HOST
+          value: "::"
+        - name: GRPC_HOST
+          value: "::"
         volumeMounts:
         - name: config
           mountPath: /data/ratelimit/config
@@ -226,6 +228,9 @@ spec:
   - name: grpc
     port: 8081
     targetPort: 8081
+  - name: debug
+    port: 6070
+    targetPort: 6070
 ```
 
 ### Connecting Envoy to the Rate Limit Service
@@ -284,7 +289,7 @@ The `failure_mode_deny: false` setting means that if the rate limit service is u
 
 ### Per-Client Rate Limiting
 
-To rate limit per client (for example, by API key or IP address), add header-based descriptors:
+To rate limit per client by API key, add header-based descriptors:
 
 ```yaml
 rate_limits:
@@ -312,18 +317,10 @@ descriptors:
 
 ## Adding Rate Limit Headers to Responses
 
-It's good practice to include rate limit headers in your API responses so clients know their limits:
+It's good practice to include rate limit headers in your API responses so clients know their limits. For the global rate limit filter, add this to the `RateLimit` `typed_config`:
 
 ```yaml
-response_headers_to_add:
-- append_action: OVERWRITE_IF_EXISTS_OR_ADD
-  header:
-    key: x-ratelimit-limit
-    value: "100"
-- append_action: OVERWRITE_IF_EXISTS_OR_ADD
-  header:
-    key: x-ratelimit-remaining
-    value: "%DYNAMIC_METADATA(envoy.filters.http.ratelimit:remaining)%"
+enable_x_ratelimit_headers: DRAFT_VERSION_03
 ```
 
 ## Monitoring Rate Limits
