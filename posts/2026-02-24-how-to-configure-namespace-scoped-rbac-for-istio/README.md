@@ -239,24 +239,35 @@ Use a controller or script to automatically create RoleBindings when new namespa
 ```bash
 #!/bin/bash
 # Watch for new namespaces and create RBAC bindings
-kubectl get namespaces --watch -o json | while read -r line; do
-  NS=$(echo "$line" | jq -r '.metadata.name // empty')
-  TEAM=$(echo "$line" | jq -r '.metadata.labels.team // empty')
-
-  if [ -n "$TEAM" ] && [ -n "$NS" ]; then
-    EXISTS=$(kubectl get rolebinding "${TEAM}-istio-admin" -n "$NS" 2>/dev/null)
-    if [ -z "$EXISTS" ]; then
-      echo "Creating RBAC for team $TEAM in namespace $NS"
-      kubectl create rolebinding "${TEAM}-istio-admin" \
-        --clusterrole=istio-namespace-admin \
-        --group="$TEAM" \
-        -n "$NS"
-    fi
+kubectl get namespaces --watch -o json \
+  | jq -r --unbuffered 'select(.metadata.labels.team != null) | [.metadata.name, .metadata.labels.team] | @tsv' \
+  | while IFS=$'\t' read -r NS TEAM; do
+  if ! kubectl get rolebinding "${TEAM}-istio-admin" -n "$NS" >/dev/null 2>&1; then
+    echo "Creating RBAC for team $TEAM in namespace $NS"
+    kubectl create rolebinding "${TEAM}-istio-admin" \
+      --clusterrole=istio-namespace-admin \
+      --group="$TEAM" \
+      -n "$NS"
   fi
 done
 ```
 
-A more production-ready approach uses a Kubernetes operator or a policy tool like Kyverno:
+A more production-ready approach uses a Kubernetes operator or a policy tool like Kyverno. If Kyverno generates RoleBindings, its background controller ServiceAccount must first be granted the same ClusterRole it is assigning:
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kyverno-generate-istio-namespace-admin
+subjects:
+  - kind: ServiceAccount
+    name: kyverno-background-controller
+    namespace: kyverno
+roleRef:
+  kind: ClusterRole
+  name: istio-namespace-admin
+  apiGroup: rbac.authorization.k8s.io
+```
 
 ```yaml
 apiVersion: kyverno.io/v1
@@ -305,6 +316,9 @@ spec:
     spec:
       names:
         kind: IstioRoutingScope
+      validation:
+        openAPIV3Schema:
+          type: object
   targets:
     - target: admission.k8s.gatekeeper.sh
       rego: |
@@ -317,10 +331,19 @@ spec:
           host := route.destination.host
           contains(host, ".")
           parts := split(host, ".")
-          count(parts) >= 2
+          is_kubernetes_service_host(parts)
           target_ns := parts[1]
           target_ns != ns
           msg := sprintf("VirtualService in %v cannot route to %v", [ns, host])
+        }
+
+        is_kubernetes_service_host(parts) {
+          count(parts) == 2
+        }
+
+        is_kubernetes_service_host(parts) {
+          count(parts) >= 3
+          parts[2] == "svc"
         }
 ---
 apiVersion: constraints.gatekeeper.sh/v1beta1
