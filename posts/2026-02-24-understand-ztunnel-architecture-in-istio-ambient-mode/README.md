@@ -8,7 +8,7 @@ Description: A deep dive into ztunnel architecture in Istio ambient mode coverin
 
 ---
 
-ztunnel is the core data plane component of Istio ambient mode. It is a lightweight, purpose-built proxy that runs on every node in the cluster as a DaemonSet. Unlike the Envoy-based sidecar proxy that handles everything from L3 to L7, ztunnel focuses exclusively on L4 functionality: mTLS encryption, TCP-level authorization, and basic telemetry.
+ztunnel is the core data plane component of Istio ambient mode. It is a lightweight, purpose-built proxy that runs on every node in the cluster as a DaemonSet. Unlike the Envoy-based sidecar proxy that can process both L4 and L7 traffic, ztunnel focuses on L3 and L4 functionality: mTLS encryption, TCP-level authorization, and basic telemetry.
 
 Understanding how ztunnel works helps you troubleshoot issues, tune performance, and appreciate why ambient mode is so much lighter than sidecar mode.
 
@@ -70,7 +70,7 @@ Unlike the Envoy-based sidecar proxy (which is C++), ztunnel is written in Rust.
 - Low memory footprint (much less than Envoy for L4-only operations)
 - Efficient async I/O for handling many concurrent connections
 
-A typical ztunnel instance uses 20-50MB of memory, compared to 50-100MB+ for an Envoy sidecar. On a node with 50 pods, that is one ztunnel at 40MB versus 50 sidecars at 3-5GB total.
+Istio's published performance testing for Istio 1.24 showed a single ztunnel proxy using about 12MB of memory under the tested workload, compared to about 60MB for a single Envoy sidecar. Actual numbers vary with traffic and configuration, but the important difference is that ztunnel is one proxy per node rather than one proxy per pod.
 
 ## Traffic Flow: Source to Destination
 
@@ -78,17 +78,16 @@ Here is how traffic flows through ztunnel when pod A in namespace `app-a` calls 
 
 ### Step 1: Traffic Interception
 
-Pod A sends a regular TCP connection to pod B's ClusterIP or pod IP. The istio-cni plugin has configured iptables/eBPF rules on the node to redirect this traffic to the local ztunnel instance.
+Pod A sends a regular TCP connection to pod B's ClusterIP or pod IP. The istio-cni plugin has configured in-pod iptables rules to redirect this traffic to the local ztunnel instance.
 
 ### Step 2: Source-Side Processing
 
 The ztunnel on pod A's node:
 1. Identifies the source workload and looks up its SPIFFE identity
 2. Determines the destination workload
-3. Checks L4 AuthorizationPolicies (if any)
-4. If a waypoint proxy is in the path, routes traffic there first
-5. Establishes an HBONE (HTTP-Based Overlay Network Environment) tunnel to the destination node's ztunnel
-6. The HBONE tunnel uses mTLS, encrypting the traffic with the source workload's certificate
+3. If a waypoint proxy is in the path, routes traffic there first
+4. Establishes an HBONE (HTTP-Based Overlay Network Environment) tunnel toward the destination workload through the destination ztunnel
+5. The HBONE tunnel uses mTLS, encrypting the traffic with the source workload's certificate
 
 ### Step 3: Transit
 
@@ -106,20 +105,23 @@ The whole process is transparent to both pods. Pod A thinks it is talking direct
 
 ## Certificate Management
 
-ztunnel needs certificates for every workload identity on its node. It gets these from istiod through the Secure Token Service (STS):
+ztunnel needs certificates for every workload identity on its node. It receives configuration from istiod over xDS and obtains the workload certificates it needs from Istio's CA:
 
 ```bash
 istioctl ztunnel-config certificates
 ```
 
 ```text
-CERTIFICATE NAME                                              TYPE     STATUS  VALID CERT  SERIAL NUMBER
-spiffe://cluster.local/ns/bookinfo/sa/bookinfo-productpage    Leaf     Active  true        abc123
-spiffe://cluster.local/ns/bookinfo/sa/bookinfo-reviews        Leaf     Active  true        def456
-spiffe://cluster.local/ns/default/sa/sleep                    Leaf     Active  true        ghi789
+CERTIFICATE NAME                                              TYPE     STATUS      VALID CERT  SERIAL NUMBER
+spiffe://cluster.local/ns/bookinfo/sa/bookinfo-productpage    Leaf     Available   true        abc123
+spiffe://cluster.local/ns/bookinfo/sa/bookinfo-productpage    Root     Available   true        root123
+spiffe://cluster.local/ns/bookinfo/sa/bookinfo-reviews        Leaf     Available   true        def456
+spiffe://cluster.local/ns/bookinfo/sa/bookinfo-reviews        Root     Available   true        root123
+spiffe://cluster.local/ns/default/sa/sleep                    Leaf     Available   true        ghi789
+spiffe://cluster.local/ns/default/sa/sleep                    Root     Available   true        root123
 ```
 
-Each certificate corresponds to a Kubernetes ServiceAccount. All pods running under the same ServiceAccount share the same SPIFFE identity and certificate.
+Each workload identity corresponds to a Kubernetes ServiceAccount. All pods running under the same ServiceAccount share the same SPIFFE identity, and ztunnel manages certificates for each unique identity on the node.
 
 When a new pod starts on the node, ztunnel requests a certificate for that pod's ServiceAccount identity from istiod. When a pod is deleted, the certificate is eventually cleaned up.
 
@@ -191,14 +193,12 @@ resources:
 
 ztunnel relies on the istio-cni plugin to intercept traffic. The CNI plugin configures network rules when pods start and removes them when pods stop.
 
-There are two interception modes:
-- **iptables**: Traditional iptables rules that redirect traffic to ztunnel
-- **eBPF**: More efficient packet handling at the kernel level (available on newer kernels)
+Current ambient mode uses in-pod iptables rules for traffic redirection. Earlier Istio ambient work included an eBPF redirection option, but the current in-pod redirection model no longer requires it.
 
-Check which mode is in use:
+Check the redirect rules in a workload pod:
 
 ```bash
-kubectl logs -l k8s-app=istio-cni-node -n istio-system --tail=10
+kubectl debug <pod-name> -n <namespace> -it --image=gcr.io/istio-release/base --profile=netadmin -- iptables-save
 ```
 
 ## ztunnel Scaling
@@ -212,9 +212,9 @@ However, if one node has disproportionately more traffic than others (hot nodes)
 | Aspect | ztunnel | Envoy Sidecar |
 |--------|---------|---------------|
 | Language | Rust | C++ |
-| Scope | L4 only | L3-L7 |
+| Scope | L3/L4 only | L4-L7 |
 | Deployment | Per-node DaemonSet | Per-pod container |
-| Memory | 20-50MB per node | 50-100MB per pod |
+| Memory | About 12MB in Istio's 1.24 benchmark, per node | About 60MB in Istio's 1.24 benchmark, per pod |
 | Configuration | Via istiod, minimal | Via istiod, extensive |
 | Features | mTLS, L4 auth, TCP metrics | Full traffic management |
 
