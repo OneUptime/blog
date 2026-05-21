@@ -8,9 +8,9 @@ Description: How to install and use the Istio Operator for declarative, GitOps-f
 
 ---
 
-The Istio Operator lets you manage your Istio installation declaratively using a Kubernetes custom resource. Instead of running `istioctl install` every time you want to change something, you apply an IstioOperator resource and the operator controller reconciles the desired state. This fits naturally into GitOps workflows where everything is managed through version-controlled YAML.
+The legacy Istio in-cluster Operator lets you manage your Istio installation declaratively using a Kubernetes custom resource. Instead of running `istioctl install` every time you want to change something, you apply an IstioOperator resource and the operator controller reconciles the desired state. This fits naturally into GitOps workflows where everything is managed through version-controlled YAML.
 
-That said, the Istio project has been moving toward recommending Helm-based installation over the operator for new deployments. The operator is still supported and works well, but it is worth knowing both approaches. Here is how to set up and use the Istio Operator.
+That said, the Istio in-cluster operator was deprecated in Istio 1.23 and removed in Istio 1.24. Use Helm or `istioctl install -f` for new deployments and for current Istio versions. The steps below are useful for legacy clusters that still run Istio 1.23 or earlier and need to understand the old operator workflow.
 
 ## How the Operator Works
 
@@ -33,7 +33,7 @@ flowchart LR
 istioctl operator init
 ```
 
-This deploys the operator controller in the `istio-operator` namespace:
+Run this with an `istioctl` binary from a legacy release that still includes the operator command, such as Istio 1.23.x. This deploys the operator controller in the `istio-operator` namespace:
 
 ```bash
 kubectl get pods -n istio-operator
@@ -49,18 +49,22 @@ istio-operator-7c8b6d9f4-abc12   1/1     Running   0          30s
 ### Method 2: Using Helm
 
 ```bash
+helm repo add istio https://istio-release.storage.googleapis.com/charts
+helm repo update
+
 helm install istio-operator istio/operator \
+  --version 1.23.0 \
   -n istio-operator --create-namespace \
-  --set operatorNamespace=istio-operator \
   --set watchedNamespaces=istio-system
 ```
 
 ### Method 3: Using kubectl
 
-Download the operator manifests and apply them:
+Generate the operator manifests from a matching legacy `istioctl` release and apply them:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.24/manifests/charts/istio-operator/templates/
+istioctl operator init --dry-run > istio-operator.yaml
+kubectl apply -f istio-operator.yaml
 ```
 
 ## Installing Istio Through the Operator
@@ -118,7 +122,7 @@ spec:
 Apply it:
 
 ```bash
-kubectl create namespace istio-system
+kubectl create namespace istio-system --dry-run=client -o yaml | kubectl apply -f -
 kubectl apply -f istio-control-plane.yaml
 ```
 
@@ -252,19 +256,18 @@ Configure the operator controller itself:
 
 ```yaml
 # operator-values.yaml
-operatorNamespace: istio-operator
-
 # Which namespaces to watch for IstioOperator CRs
 watchedNamespaces: istio-system
 
 # Operator resource limits
-resources:
-  requests:
-    cpu: 50m
-    memory: 128Mi
-  limits:
-    cpu: 200m
-    memory: 256Mi
+operator:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
 ```
 
 ## Checking Operator Status
@@ -281,24 +284,26 @@ Check reconciliation status:
 kubectl get istiooperator -n istio-system -o jsonpath='{.items[*].status}'
 ```
 
-The status field shows whether the installation is `HEALTHY`, `RECONCILING`, or `ERROR`.
+The status field can show states such as `HEALTHY`, `UPDATING`, `RECONCILING`, `ERROR`, or `ACTION_REQUIRED`.
 
 ## Upgrading Istio with the Operator
 
-To upgrade Istio versions:
+The in-cluster operator cannot be used to upgrade to Istio 1.24 or later because it was removed in Istio 1.24. To move to Istio 1.24 or later, migrate the installation to Helm or `istioctl install -f`.
 
-1. First upgrade the operator to the new version:
+For upgrades within legacy operator-supported releases, upgrade the operator to the target Istio version first:
+
+1. First upgrade the operator:
 
 ```bash
-istioctl operator init --revision 1-24
+istioctl operator init
 ```
 
-2. Update the IstioOperator CR to reference the new version:
+2. If you use revisioned control planes, update the IstioOperator CR to reference the new revision and image tag:
 
 ```yaml
 spec:
-  revision: 1-24
-  tag: 1.24.0
+  revision: 1-23-6
+  tag: 1.23.6
 ```
 
 3. Apply the updated CR:
@@ -307,7 +312,7 @@ spec:
 kubectl apply -f istio-control-plane.yaml
 ```
 
-For canary upgrades, create a second IstioOperator CR with a different revision:
+For legacy canary upgrades, create a second IstioOperator CR with a different revision:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
