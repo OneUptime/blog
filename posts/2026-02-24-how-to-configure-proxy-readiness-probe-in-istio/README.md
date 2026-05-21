@@ -12,12 +12,11 @@ Readiness probes in Kubernetes tell the system whether a pod is ready to receive
 
 ## How Istio Proxy Readiness Works
 
-The Istio sidecar proxy exposes a health endpoint on port 15021 at the `/healthz/ready` path. This endpoint returns HTTP 200 when the proxy has:
+The Istio sidecar agent exposes a health endpoint on port 15021 at the `/healthz/ready` path. This endpoint returns HTTP 200 when the proxy has:
 
-1. Connected to the Istio control plane (istiod)
-2. Received its initial configuration
-3. Set up all listeners and routes
-4. Completed TLS certificate provisioning
+1. Received its initial configuration from the Istio control plane (istiod)
+2. Reached Envoy's live state
+3. Started Envoy worker threads
 
 The sidecar injector automatically adds a readiness probe to the `istio-proxy` container. By default, it looks like this:
 
@@ -99,11 +98,11 @@ spec:
       holdApplicationUntilProxyStarts: true
 ```
 
-With this setting, the sidecar container has a `postStart` lifecycle hook that blocks until `/healthz/ready` returns 200. The application container won't be started by the kubelet until this hook completes.
+With this setting, Istio injects the sidecar at the start of the pod's container list and configures it to block the start of the other containers until the proxy is ready.
 
 ## Application Ports Configuration
 
-You can tell the proxy readiness check to also verify that specific application ports are being listened on:
+You can tell the proxy readiness check which application ports Envoy should be ready to receive traffic for:
 
 ```yaml
 metadata:
@@ -111,7 +110,7 @@ metadata:
     readiness.status.sidecar.istio.io/applicationPorts: "8080,8443"
 ```
 
-When this annotation is set, the proxy health check not only verifies that Envoy is configured, but also that traffic can reach the application on the specified ports. This provides a more thorough readiness signal.
+When this annotation is set, the proxy health check verifies that Envoy is configured and ready to receive traffic for the specified application ports. It does not replace your application's own readiness probe.
 
 If you want to disable the application port check:
 
@@ -123,7 +122,7 @@ metadata:
 
 ## Rewriting Application Health Checks
 
-Istio can rewrite your application's health check probes to go through the sidecar proxy. This is enabled by default and ensures that health check traffic follows the same path as regular traffic:
+Istio can rewrite your application's HTTP, TCP, and gRPC health check probes to go through the sidecar agent. This is enabled by default in Istio's built-in configuration profiles and avoids mTLS and TCP-probe issues:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -133,8 +132,8 @@ spec:
     defaultConfig:
       holdApplicationUntilProxyStarts: true
   values:
-    sidecar_injector:
-      rewriteAppHTTPProbers: true
+    sidecarInjectorWebhook:
+      rewriteAppHTTPProbe: true
 ```
 
 When probe rewriting is enabled, Istio changes your app's readiness probe from something like:
@@ -152,10 +151,10 @@ To:
 readinessProbe:
   httpGet:
     path: /app-health/my-app/readyz
-    port: 15021
+    port: 15020
 ```
 
-The proxy then forwards the health check to your application on the original path and port. This means health checks go through the proxy, which validates that the entire data path is working.
+The sidecar agent then forwards the health check to your application on the original path and port, and returns the application's response status to the kubelet.
 
 ## Debugging Readiness Issues
 
@@ -217,7 +216,7 @@ A higher failure threshold means the pod won't be marked not-ready until 10 cons
 
 ## Readiness During Rolling Updates
 
-During rolling updates, the readiness probe is critical. Kubernetes won't terminate old pods until new pods are ready. If your readiness probe is too aggressive, you might see:
+During rolling updates, the readiness probe is critical. Kubernetes uses pod readiness to decide when new pods are available and how the rollout proceeds. Depending on your rolling update settings, if your readiness probe is too aggressive, you might see:
 
 - New pods taking too long to become ready, slowing down the rollout
 - Old pods being terminated before new pods are actually serving traffic
@@ -231,6 +230,9 @@ kind: Deployment
 metadata:
   name: my-api
 spec:
+  selector:
+    matchLabels:
+      app: my-api
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -238,12 +240,20 @@ spec:
       maxUnavailable: 0
   template:
     metadata:
+      labels:
+        app: my-api
       annotations:
         readiness.status.sidecar.istio.io/initialDelaySeconds: "1"
         readiness.status.sidecar.istio.io/periodSeconds: "5"
         readiness.status.sidecar.istio.io/failureThreshold: "10"
         proxy.istio.io/config: |
           holdApplicationUntilProxyStarts: true
+    spec:
+      containers:
+      - name: my-api
+        image: my-api:1.0
+        ports:
+        - containerPort: 8080
 ```
 
 Setting `maxUnavailable: 0` ensures Kubernetes always has enough ready pods to handle traffic. Combined with `holdApplicationUntilProxyStarts`, this gives you smooth rollouts.
