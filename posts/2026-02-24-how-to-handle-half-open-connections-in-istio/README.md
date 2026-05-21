@@ -46,6 +46,8 @@ kubectl exec my-pod -c istio-proxy -- \
 kubectl exec my-pod -c istio-proxy -- ss -tnp | grep ESTABLISHED
 ```
 
+Istio records a minimal set of Envoy stats by default, so you may need to enable the relevant `upstream_cx_*` and `upstream_rq_timeout` stats with `proxyStatsMatcher` before these metrics appear. If you use distroless proxy images, run OS-level tools like `ss` from an ephemeral debug container instead of directly in `istio-proxy`.
+
 If you see connections in ESTABLISHED state that have been idle for a very long time, they might be half-open.
 
 ## TCP Keep-Alive as the Primary Defense
@@ -207,6 +209,8 @@ This applies to all connections in the mesh unless overridden by a per-service D
 ## Monitoring for Half-Open Connections
 
 Set up monitoring to detect half-open connection issues:
+
+If these Envoy stats are not present, enable them with `ProxyConfig.ProxyStatsMatcher` in mesh config or a workload-level proxy config annotation first.
 
 ```bash
 # Watch for increasing connection counts without corresponding request activity
