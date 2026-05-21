@@ -8,7 +8,7 @@ Description: How to use Kiali's built-in validation engine to find and fix Istio
 
 ---
 
-Istio configuration is powerful but tricky. A small typo in a VirtualService, a missing host in a DestinationRule, or a conflicting AuthorizationPolicy can silently break your traffic routing or security posture. The worst part is that `kubectl apply` happily accepts these broken configs without complaint.
+Istio configuration is powerful but tricky. A small typo in a VirtualService, a missing host in a DestinationRule, or a conflicting AuthorizationPolicy can silently break your traffic routing or security posture. Istio's validating admission webhook catches many schema-level problems, but plenty of semantic issues can still be accepted by `kubectl apply`.
 
 Kiali has a built-in validation engine that catches these mistakes. It checks your Istio resources against a set of rules, cross-references them with each other, and flags anything that looks wrong. Think of it as a linter for your Istio configuration.
 
@@ -67,7 +67,7 @@ spec:
           weight: 20
 ```
 
-If you apply this without a DestinationRule that defines the `v1` and `v2` subsets, Kiali will flag it with an error: "Subset not found" for both subsets.
+If you apply this without a DestinationRule that defines the `v1` and `v2` subsets, Kiali will flag it with a warning: "Subset not found" for both subsets.
 
 The fix is to create the matching DestinationRule:
 
@@ -149,9 +149,9 @@ spec:
 
 Kiali validates the selector and warns you if no workloads match.
 
-### Unused DestinationRules
+### DestinationRules with Bad Hosts or Subsets
 
-If you have a DestinationRule that no VirtualService references, Kiali flags it as a warning. While this isn't strictly an error (DestinationRules still apply default settings), it often indicates leftover configuration that should be cleaned up.
+DestinationRules do not need a VirtualService reference to be useful because they can still apply traffic policies for a host. Kiali does, however, flag DestinationRules whose host does not match any service, workload, or ServiceEntry, or whose subset labels do not match any endpoints for that host.
 
 ### Port Name Mismatches
 
@@ -168,7 +168,7 @@ spec:
       name: server  # Should be "http-server" or "http"
 ```
 
-Kiali warns that the port name doesn't follow Istio's naming convention (should start with http, grpc, tcp, etc.).
+Kiali reports that the port name doesn't follow Istio's naming convention (the form is `<protocol>[-suffix]`, such as `http`, `http-server`, `grpc-api`, or `tcp-metrics`).
 
 ## Using the Validation Overview
 
@@ -193,15 +193,16 @@ Click on a node with a validation badge to see the specific issues in the side p
 If you want to integrate Kiali's validation into your CI/CD pipeline, you can use the Kiali API:
 
 ```bash
-# Get all Istio configs with validation status
-curl -s "http://localhost:20001/kiali/api/namespaces/bookinfo/istio" | \
+# Get all Istio configs with validation results
+curl -s "http://localhost:20001/kiali/api/namespaces/bookinfo/istio?validate=true" | \
   python3 -c "
 import json, sys
 data = json.load(sys.stdin)
-for kind in data:
-    for item in data[kind]:
-        if 'validation' in item and item['validation']['valid'] == False:
-            print(f\"ERROR: {kind}/{item['name']}: {item['validation']['checks']}\")
+validations = data.get('validations', {})
+for gvk, objects in validations.items():
+    for name_ns, validation in objects.items():
+        if not validation.get('valid', True):
+            print(f\"ERROR: {gvk}/{name_ns}: {validation.get('checks', [])}\")
 "
 ```
 
@@ -227,15 +228,16 @@ Kiali itself doesn't send notifications when it finds configuration errors, but 
 ```bash
 #!/bin/bash
 while true; do
-  ERRORS=$(curl -s "http://localhost:20001/kiali/api/namespaces/bookinfo/istio" | \
+  ERRORS=$(curl -s "http://localhost:20001/kiali/api/namespaces/bookinfo/istio?validate=true" | \
     python3 -c "
 import json, sys
 data = json.load(sys.stdin)
-count = 0
-for kind in data:
-    for item in data[kind]:
-        if 'validation' in item and not item['validation']['valid']:
-            count += 1
+count = sum(
+    1
+    for objects in data.get('validations', {}).values()
+    for validation in objects.values()
+    if not validation.get('valid', True)
+)
 print(count)
 ")
   if [ "$ERRORS" -gt 0 ]; then
