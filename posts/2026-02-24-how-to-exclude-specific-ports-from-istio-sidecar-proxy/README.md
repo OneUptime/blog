@@ -14,7 +14,7 @@ This post covers the different ways to exclude ports from sidecar interception, 
 
 ## Understanding How Port Interception Works
 
-When Istio injects a sidecar into your pod, it also adds an init container called `istio-init`. This init container sets up iptables rules that redirect all inbound and outbound traffic through the Envoy proxy. Every TCP connection going in or out of your pod passes through these rules.
+When Istio injects a sidecar into your pod, it also configures traffic redirection for the pod. In clusters that do not use the Istio CNI node agent, this is done by an init container called `istio-init`. With Istio CNI, the CNI node agent applies the redirection rules during pod network setup. Either way, TCP connections going in or out of your pod are matched against these rules.
 
 The redirect happens at the kernel level before your application sees the traffic. This means your application doesn't need to know about the proxy - it just sends and receives traffic as normal. But it also means that if there's a port you don't want proxied, you need to explicitly tell Istio to skip it.
 
@@ -49,7 +49,7 @@ A common use case is health check endpoints. If your kubelet health checks are h
 ```yaml
 metadata:
   annotations:
-    traffic.sidecar.istio.io/excludeInboundPorts: "15021"
+    traffic.sidecar.istio.io/excludeInboundPorts: "8081"
 ```
 
 Though for health checks specifically, Istio already handles this with its health check rewriting feature, so you usually don't need to exclude health check ports manually.
@@ -94,7 +94,7 @@ metadata:
 
 This approach is useful when your container exposes many ports but you only want a few going through the proxy. It's cleaner than listing a long exclusion list.
 
-Similarly, for outbound traffic:
+Similarly, for outbound traffic, `includeOutboundPorts` explicitly redirects the listed destination ports to Envoy, regardless of destination IP:
 
 ```yaml
 metadata:
@@ -102,20 +102,16 @@ metadata:
     traffic.sidecar.istio.io/includeOutboundPorts: "80,443,8080"
 ```
 
-**Note**: Using `includeOutboundPorts` means only those ports get intercepted for outbound traffic. Everything else bypasses the proxy. Be careful with this - it's easy to accidentally exclude traffic that should be managed by the mesh.
+**Note**: `includeOutboundPorts` is usually used together with outbound IP range settings. Be careful with outbound capture settings - it's easy to accidentally exclude traffic that should be managed by the mesh.
 
 ## Mesh-Wide Port Exclusion
 
-If you want to exclude certain ports across your entire mesh, you can configure it at the mesh level using the MeshConfig:
+If you want to exclude certain ports across your entire mesh, configure the sidecar injection defaults in your Istio install values:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
-  meshConfig:
-    defaultConfig:
-      proxyMetadata:
-        ISTIO_META_INTERCEPTION_MODE: REDIRECT
   values:
     global:
       proxy:
@@ -123,7 +119,7 @@ spec:
         excludeOutboundPorts: "5432,6379"
 ```
 
-You can also use the `ProxyConfig` resource for namespace-scoped defaults:
+These values become defaults in the injected pod configuration. A pod-level annotation can still override them for a specific workload. The `ProxyConfig` resource is useful for proxy runtime settings such as concurrency, image type, and environment variables, but it does not provide namespace-scoped port-capture exclusion fields.
 
 ```yaml
 apiVersion: networking.istio.io/v1beta1
@@ -133,7 +129,7 @@ metadata:
   namespace: production
 spec:
   environmentVariables:
-    ISTIO_META_INTERCEPTION_MODE: REDIRECT
+    ISTIO_META_CLUSTER_ID: cluster-1
 ```
 
 ## Verifying Port Exclusions
@@ -149,7 +145,7 @@ kubectl exec -it deploy/my-app -c istio-proxy -n default -- bash
 iptables -t nat -L -n -v
 ```
 
-Alternatively, you can check the init container logs to see what iptables rules were applied:
+Alternatively, in clusters that do not use Istio CNI, you can check the init container logs to see what iptables rules were applied:
 
 ```bash
 kubectl logs deploy/my-app -c istio-init -n default
@@ -170,7 +166,7 @@ You can also use istioctl to check the proxy configuration:
 istioctl proxy-config listeners deploy/my-app -n default
 ```
 
-Excluded ports won't show up as listeners in the proxy configuration.
+Inbound ports excluded from capture should not appear as workload inbound listeners in the proxy configuration. For outbound port exclusions, verify the traffic capture rules directly; the proxy may still have configuration for services that use the same destination port.
 
 ## Port Exclusion vs Sidecar Resource
 
@@ -191,7 +187,7 @@ Use port exclusion when you need traffic to completely bypass the proxy. Use the
 
 **Losing traffic management**: No retries, no circuit breaking, no timeout management for excluded ports. Your application is on its own for those connections.
 
-**Pod restart required**: Changing port exclusion annotations requires a pod restart because the iptables rules are set up by the init container at pod startup. Updating the annotation on a running pod has no effect until the pod restarts.
+**Pod restart required**: Changing port exclusion annotations requires a pod restart because the traffic redirection rules are set up when the pod is created. Updating the annotation on a running pod has no effect until the pod restarts.
 
 ```bash
 # Restart the deployment to pick up annotation changes
