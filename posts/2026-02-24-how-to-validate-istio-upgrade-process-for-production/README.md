@@ -29,20 +29,21 @@ Before starting any upgrade, run these validation steps:
 
 ```bash
 # Check for configuration issues
-
 istioctl analyze --all-namespaces
+
+# Check whether the cluster is ready for an Istio upgrade
+istioctl x precheck
 
 # Verify all proxies are in sync with control plane
 istioctl proxy-status
 ```
 
-Every proxy should show SYNCED status. If any show STALE or NOT SENT, fix those issues first.
+The main xDS columns such as CDS, LDS, EDS, and RDS should show SYNCED. If any show STALE, fix those issues first. ECDS can show NOT SENT when extension configuration is not used.
 
-Check the upgrade path compatibility. Istio supports upgrading one minor version at a time (e.g., 1.21 to 1.22, not 1.20 to 1.22):
+Check the upgrade path compatibility. In-place upgrades require the installed Istio version to be no more than one minor version behind the target version. Revision-based canary upgrades support jumping across two minor versions, but upgrading across more than two minor versions in one step is not officially tested or recommended:
 
 ```bash
-CURRENT=$(istioctl version --remote=false)
-echo "Current version: $CURRENT"
+istioctl x precheck --from-version 1.28
 ```
 
 Review the release notes for the target version, especially:
@@ -56,7 +57,7 @@ Never upgrade production first. Run the complete upgrade on a staging environmen
 
 ```bash
 # On staging cluster
-istioctl install --set revision=canary --set tag=1.22.0
+istioctl install --set revision=1-30-0 -f your-istiooperator.yaml
 
 # Verify the canary control plane is running
 kubectl get pods -n istio-system -l app=istiod
@@ -69,7 +70,7 @@ You should see pods for both the existing revision and the canary revision.
 Install the new control plane revision alongside the existing one:
 
 ```bash
-istioctl install --set revision=1-22-0 -f your-istiooperator.yaml
+istioctl install --set revision=1-30-0 -f your-istiooperator.yaml
 ```
 
 Verify both revisions are running:
@@ -86,7 +87,7 @@ Start with a test namespace. Change the injection label to point to the new revi
 
 ```bash
 # Remove old injection label and add new one
-kubectl label namespace test-namespace istio-injection- istio.io/rev=1-22-0 --overwrite
+kubectl label namespace test-namespace istio-injection- istio.io/rev=1-30-0 --overwrite
 
 # Restart pods to get the new sidecar
 kubectl rollout restart deployment -n test-namespace
@@ -123,18 +124,22 @@ kubectl exec deploy/sleep -n old-namespace -- curl -s http://httpbin.test-namesp
 kubectl exec deploy/sleep -n test-namespace -- curl -s http://httpbin.old-namespace:8000/get
 ```
 
-Both should work. Istio maintains backward compatibility between adjacent proxy versions.
+Both should work. Istio supports control plane and data plane version skew during upgrades, and using revisions keeps that skew as small as possible.
 
 ## Monitor During Migration
 
 Keep a close eye on these metrics during the upgrade:
 
 ```bash
+# Forward the istiod monitoring endpoint locally
+kubectl -n istio-system port-forward deploy/istiod 15014:15014
+
+# In another terminal, after port-forwarding
 # Error rate
-kubectl exec -n istio-system deploy/istiod -- curl -s localhost:15014/metrics | grep pilot_xds_push_errors
+curl -s localhost:15014/metrics | grep pilot_total_xds_internal_errors
 
 # Push time
-kubectl exec -n istio-system deploy/istiod -- curl -s localhost:15014/metrics | grep pilot_proxy_convergence_time
+curl -s localhost:15014/metrics | grep pilot_xds_push_time
 ```
 
 Set up a dashboard showing:
@@ -169,13 +174,17 @@ spec:
     - name: https
       port: 443
       protocol: HTTPS
+      hostname: example.com
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: production-tls
 ```
 
-Otherwise, upgrade gateways after all workloads are migrated:
+Otherwise, if your gateway is installed with the default Istio profile, verify that it picked up the new control plane revision:
 
 ```bash
-# The gateway will be upgraded as part of the revision installation
-kubectl get pods -n istio-system -l app=istio-ingressgateway
+istioctl proxy-status | grep "$(kubectl -n istio-system get pod -l app=istio-ingressgateway -o jsonpath='{.items..metadata.name}')"
 ```
 
 ## Rollback Procedure
@@ -201,7 +210,7 @@ Once all namespaces are migrated and validated, remove the old control plane:
 
 ```bash
 # Verify no workloads are using the old revision
-istioctl proxy-status | grep -v "1-22-0"
+istioctl proxy-status | grep -v "1-30-0" | grep -v "^NAME"
 
 # If nothing shows, it is safe to remove the old revision
 istioctl uninstall --revision default
@@ -217,7 +226,7 @@ istioctl proxy-status
 ## Upgrade Validation Checklist
 
 - [ ] Current version identified
-- [ ] Upgrade path confirmed (single minor version jump)
+- [ ] Upgrade path confirmed
 - [ ] Release notes reviewed for breaking changes
 - [ ] istioctl analyze shows no errors
 - [ ] All proxies synced before starting
