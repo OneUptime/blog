@@ -129,16 +129,16 @@ spec:
         - name: prometheus
       overrides:
         - match:
-            metric: REQUEST_BYTES
+            metric: REQUEST_SIZE
             mode: CLIENT_AND_SERVER
           disabled: true
         - match:
-            metric: RESPONSE_BYTES
+            metric: RESPONSE_SIZE
             mode: CLIENT_AND_SERVER
           disabled: true
 ```
 
-Histograms like `istio_request_bytes` are especially expensive because they create one time series per bucket. With the default 18 buckets, each histogram sample is 18+ time series. Disabling two histograms saves 36 time series per unique label combination.
+Histograms like `istio_request_bytes` are especially expensive because they create one time series per bucket, plus `_sum` and `_count` series. Disabling two histograms removes all of those series for each unique label combination.
 
 ## Strategy 4: Disable Metrics for Specific Workloads
 
@@ -171,28 +171,18 @@ Even after reducing what Istio generates, you can further filter in Prometheus u
 ```yaml
 # In your PodMonitor or ServiceMonitor
 metricRelabelings:
-  # Drop all Envoy-native metrics except a few key ones
+  # Drop Envoy-native metrics if you do not use them
   - sourceLabels: [__name__]
     regex: "envoy_.*"
     action: drop
 
-  # Drop specific high-cardinality label values
-  - sourceLabels: [response_code]
-    regex: "(0|200|201|204|301|302|400|401|403|404|500|502|503)"
-    action: keep
-
-  # Aggregate uncommon response codes
-  - sourceLabels: [response_code]
-    regex: "2.."
-    targetLabel: response_code
-    replacement: "2xx"
-  - sourceLabels: [response_code]
-    regex: "3.."
-    targetLabel: response_code
-    replacement: "3xx"
+  # Drop response codes you do not need to store
+  - sourceLabels: [__name__, response_code]
+    regex: "istio_requests_total;(0|1..|3..)"
+    action: drop
 ```
 
-The last two rules collapse individual status codes into classes, dramatically reducing cardinality for services with many different response codes.
+Metric relabeling drops samples before ingestion. It does not aggregate values, so use recording rules if you want rolled-up series such as `2xx`, `3xx`, or `5xx`.
 
 ## Strategy 6: Use Recording Rules
 
@@ -234,7 +224,7 @@ Then point your dashboards and alerts at the recording rules instead of raw metr
 
 ## Strategy 7: Reduce Histogram Bucket Count
 
-Histograms with many buckets create the most time series. If the default 18 buckets are more granular than you need, you can't reduce them through the Telemetry API directly, but you can drop buckets in Prometheus:
+Histograms with many buckets create the most time series. If the default duration buckets are more granular than you need, you can't reduce them through the Telemetry API directly, but you can drop buckets in Prometheus:
 
 ```yaml
 metricRelabelings:
@@ -244,7 +234,7 @@ metricRelabelings:
     action: drop
 ```
 
-This keeps the most commonly useful buckets (10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1000ms, 10000ms) and drops the rest.
+This drops selected very small and very large duration buckets while preserving the bucket series that are usually most useful for service latency dashboards. Adjust the list for your SLOs before applying it.
 
 ## Strategy 8: Shorten Retention
 
@@ -289,7 +279,7 @@ prometheus_tsdb_head_series
 Here's a phased approach that works for most teams:
 
 1. **Phase 1** - Remove `source_principal` and `destination_principal` labels (saves ~50-70% cardinality)
-2. **Phase 2** - Disable `REQUEST_BYTES` and `RESPONSE_BYTES` metrics (saves ~20-30% more)
+2. **Phase 2** - Disable `REQUEST_SIZE` and `RESPONSE_SIZE` metrics (saves ~20-30% more)
 3. **Phase 3** - Disable client-side reporting (saves ~50% of remaining)
 4. **Phase 4** - Add recording rules and point dashboards at them
 5. **Phase 5** - Drop unnecessary histogram buckets and Envoy-native metrics
