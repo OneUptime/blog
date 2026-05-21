@@ -8,7 +8,7 @@ Description: A detailed look at how selector fields work in Istio PeerAuthentica
 
 ---
 
-The `selector` field in an Istio PeerAuthentication policy determines which workloads the policy applies to. Without a selector, the policy covers the entire namespace (or the entire mesh if it's in the root namespace). With a selector, you can narrow things down to specific pods. Sounds simple enough, but there are a few nuances that trip people up.
+The `selector` field in an Istio PeerAuthentication policy determines which workloads the policy applies to. Without a selector, the policy covers the entire namespace (or the entire mesh if it's in the root namespace). With a selector in a regular namespace, you can narrow things down to specific pods. Sounds simple enough, but there are a few nuances that trip people up.
 
 ## The Selector Syntax
 
@@ -100,6 +100,9 @@ metadata:
   labels:
     app: payment-service  # These labels are on the Deployment, NOT the pods
 spec:
+  selector:
+    matchLabels:
+      app: payment-service
   template:
     metadata:
       labels:
@@ -191,7 +194,7 @@ All three of these behave the same way. But for clarity, if you want a namespace
 
 ## Selector Scope Is Limited to the Namespace
 
-The selector only matches pods within the same namespace as the PeerAuthentication resource. You can't create a policy in namespace `A` that targets pods in namespace `B`.
+The selector only matches pods within the same namespace as the PeerAuthentication resource. You can't create a policy in namespace `A` that targets pods in namespace `B`. Also avoid using workload selectors on mesh-wide PeerAuthentication policies in the root namespace; current Istio documentation notes that PeerAuthentication policies with workload selectors are ignored when they are deployed in the root namespace.
 
 ```yaml
 # This policy in the "backend" namespace...
@@ -250,7 +253,7 @@ spec:
     mode: PERMISSIVE
 ```
 
-If a pod has both `app=payment-service` and `version=v2`, both policies match. Istio doesn't have a well-defined rule for this case - the behavior can be unpredictable. The best practice is to avoid overlapping selectors. If you need different behavior for v2, make sure Policy 1 doesn't also match v2 pods, or use a single policy with port-level overrides.
+If a pod has both `app=payment-service` and `version=v2`, both workload-specific policies match. Istio has a rule for this case: when more than one workload-specific PeerAuthentication policy matches, Istio picks the oldest one. That's still easy to misread later, so the best practice is to avoid overlapping workload-specific selectors. If you need different behavior for v2, use a namespace-wide default plus a workload-specific v2 policy, make your workload labels mutually exclusive, or use a single policy with port-level overrides.
 
 ## Practical Example: Microservices with Mixed Security
 
