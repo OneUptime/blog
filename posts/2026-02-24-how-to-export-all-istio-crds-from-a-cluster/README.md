@@ -172,7 +172,42 @@ if [ -z "$EXPORT_DIR" ]; then
   exit 1
 fi
 
-find "$EXPORT_DIR/resources-individual" -name "*.yaml" | while read file; do
+find "$EXPORT_DIR/resources" "$EXPORT_DIR/resources-individual" -name "*.yaml" | while read file; do
+  python3 << PYEOF
+import yaml
+
+with open("$file", 'r') as f:
+    doc = yaml.safe_load(f)
+
+def clean_object(obj):
+    if not obj or not isinstance(obj, dict):
+        return
+
+    meta = obj.get('metadata')
+    if isinstance(meta, dict):
+        for field in ['resourceVersion', 'uid', 'creationTimestamp', 'generation', 'managedFields']:
+            meta.pop(field, None)
+
+        if 'annotations' in meta:
+            meta['annotations'].pop('kubectl.kubernetes.io/last-applied-configuration', None)
+            if not meta['annotations']:
+                del meta['annotations']
+
+    obj.pop('status', None)
+
+if doc and doc.get('kind') == 'List':
+    doc.get('metadata', {}).pop('resourceVersion', None)
+    for item in doc.get('items', []):
+        clean_object(item)
+else:
+    clean_object(doc)
+
+with open("$file", 'w') as f:
+    yaml.dump(doc, f, default_flow_style=False)
+PYEOF
+done
+
+find "$EXPORT_DIR/crds" -name "*.yaml" | while read file; do
   python3 << PYEOF
 import yaml
 
@@ -270,7 +305,7 @@ Always verify your export is complete:
 echo "Live cluster resource counts:"
 for resource in virtualservices destinationrules gateways serviceentries peerauthentications authorizationpolicies; do
   live_count=$(kubectl get "$resource" --all-namespaces --no-headers 2>/dev/null | wc -l)
-  export_count=$(grep "^  name:" "istio-export/resources/$resource.yaml" 2>/dev/null | wc -l)
+  export_count=$(python3 -c 'import sys, yaml; data=yaml.safe_load(open(sys.argv[1])); print(len(data.get("items", [])))' "istio-export/resources/$resource.yaml" 2>/dev/null || echo 0)
   echo "  $resource: live=$live_count export=$export_count"
 done
 ```
