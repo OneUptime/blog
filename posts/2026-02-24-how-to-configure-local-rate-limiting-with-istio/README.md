@@ -45,27 +45,29 @@ spec:
       value:
         name: envoy.filters.http.local_ratelimit
         typed_config:
-          "@type": type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit
-          stat_prefix: http_local_rate_limiter
-          token_bucket:
-            max_tokens: 100
-            tokens_per_fill: 100
-            fill_interval: 60s
-          filter_enabled:
-            runtime_key: local_rate_limit_enabled
-            default_value:
-              numerator: 100
-              denominator: HUNDRED
-          filter_enforced:
-            runtime_key: local_rate_limit_enforced
-            default_value:
-              numerator: 100
-              denominator: HUNDRED
-          response_headers_to_add:
-          - append_action: OVERWRITE_IF_EXISTS_OR_ADD
-            header:
-              key: x-local-rate-limit
-              value: "true"
+          "@type": type.googleapis.com/udpa.type.v1.TypedStruct
+          type_url: type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit
+          value:
+            stat_prefix: http_local_rate_limiter
+            token_bucket:
+              max_tokens: 100
+              tokens_per_fill: 100
+              fill_interval: 60s
+            filter_enabled:
+              runtime_key: local_rate_limit_enabled
+              default_value:
+                numerator: 100
+                denominator: HUNDRED
+            filter_enforced:
+              runtime_key: local_rate_limit_enforced
+              default_value:
+                numerator: 100
+                denominator: HUNDRED
+            response_headers_to_add:
+            - append_action: OVERWRITE_IF_EXISTS_OR_ADD
+              header:
+                key: x-local-rate-limit
+                value: "true"
 ```
 
 Apply it:
@@ -99,7 +101,7 @@ filter_enforced:
     denominator: HUNDRED
 ```
 
-With this configuration, the filter runs on 100% of requests (so you get metrics and headers) but does not actually reject anything. Check the metrics to see what would be rejected, and when you are comfortable, increase the enforced percentage.
+With this configuration, the filter runs on 100% of requests (so you get metrics) but does not actually reject anything. Check the metrics to see what would be rejected, and when you are comfortable, increase the enforced percentage.
 
 For a staged rollout, try enforcing on 10% first:
 
@@ -111,39 +113,41 @@ filter_enforced:
     denominator: HUNDRED
 ```
 
-## Configuring Custom Response Codes and Bodies
+## Configuring Custom Response Codes and Headers
 
-By default, rate-limited requests get a 429 response with no body. You can customize this:
+By default, rate-limited requests get a 429 response. You can customize the status code and add response headers:
 
 ```yaml
 typed_config:
-  "@type": type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit
-  stat_prefix: http_local_rate_limiter
-  token_bucket:
-    max_tokens: 100
-    tokens_per_fill: 100
-    fill_interval: 60s
-  filter_enabled:
-    runtime_key: local_rate_limit_enabled
-    default_value:
-      numerator: 100
-      denominator: HUNDRED
-  filter_enforced:
-    runtime_key: local_rate_limit_enforced
-    default_value:
-      numerator: 100
-      denominator: HUNDRED
-  status:
-    code: 429
-  response_headers_to_add:
-  - append_action: OVERWRITE_IF_EXISTS_OR_ADD
-    header:
-      key: x-rate-limited
-      value: "true"
-  - append_action: OVERWRITE_IF_EXISTS_OR_ADD
-    header:
-      key: retry-after
-      value: "60"
+  "@type": type.googleapis.com/udpa.type.v1.TypedStruct
+  type_url: type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit
+  value:
+    stat_prefix: http_local_rate_limiter
+    token_bucket:
+      max_tokens: 100
+      tokens_per_fill: 100
+      fill_interval: 60s
+    filter_enabled:
+      runtime_key: local_rate_limit_enabled
+      default_value:
+        numerator: 100
+        denominator: HUNDRED
+    filter_enforced:
+      runtime_key: local_rate_limit_enforced
+      default_value:
+        numerator: 100
+        denominator: HUNDRED
+    status:
+      code: 429
+    response_headers_to_add:
+    - append_action: OVERWRITE_IF_EXISTS_OR_ADD
+      header:
+        key: x-rate-limited
+        value: "true"
+    - append_action: OVERWRITE_IF_EXISTS_OR_ADD
+      header:
+        key: retry-after
+        value: "60"
 ```
 
 The `retry-after` header is a good practice. It tells clients how long to wait before trying again.
@@ -178,22 +182,24 @@ spec:
       value:
         name: envoy.filters.http.local_ratelimit
         typed_config:
-          "@type": type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit
-          stat_prefix: http_local_rate_limiter
-          token_bucket:
-            max_tokens: 1000
-            tokens_per_fill: 1000
-            fill_interval: 60s
-          filter_enabled:
-            runtime_key: local_rate_limit_enabled
-            default_value:
-              numerator: 100
-              denominator: HUNDRED
-          filter_enforced:
-            runtime_key: local_rate_limit_enforced
-            default_value:
-              numerator: 100
-              denominator: HUNDRED
+          "@type": type.googleapis.com/udpa.type.v1.TypedStruct
+          type_url: type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit
+          value:
+            stat_prefix: http_local_rate_limiter
+            token_bucket:
+              max_tokens: 1000
+              tokens_per_fill: 1000
+              fill_interval: 60s
+            filter_enabled:
+              runtime_key: local_rate_limit_enabled
+              default_value:
+                numerator: 100
+                denominator: HUNDRED
+            filter_enforced:
+              runtime_key: local_rate_limit_enforced
+              default_value:
+                numerator: 100
+                denominator: HUNDRED
   # Apply a tighter limit to a specific route
   - applyTo: HTTP_ROUTE
     match:
@@ -207,22 +213,24 @@ spec:
       value:
         typed_per_filter_config:
           envoy.filters.http.local_ratelimit:
-            "@type": type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit
-            stat_prefix: expensive_route_limiter
-            token_bucket:
-              max_tokens: 10
-              tokens_per_fill: 10
-              fill_interval: 60s
-            filter_enabled:
-              runtime_key: local_rate_limit_enabled
-              default_value:
-                numerator: 100
-                denominator: HUNDRED
-            filter_enforced:
-              runtime_key: local_rate_limit_enforced
-              default_value:
-                numerator: 100
-                denominator: HUNDRED
+            "@type": type.googleapis.com/udpa.type.v1.TypedStruct
+            type_url: type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit
+            value:
+              stat_prefix: expensive_route_limiter
+              token_bucket:
+                max_tokens: 10
+                tokens_per_fill: 10
+                fill_interval: 60s
+              filter_enabled:
+                runtime_key: local_rate_limit_enabled
+                default_value:
+                  numerator: 100
+                  denominator: HUNDRED
+              filter_enforced:
+                runtime_key: local_rate_limit_enforced
+                default_value:
+                  numerator: 100
+                  denominator: HUNDRED
 ```
 
 ## Applying to Gateway Traffic
@@ -254,27 +262,41 @@ spec:
       value:
         name: envoy.filters.http.local_ratelimit
         typed_config:
-          "@type": type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit
-          stat_prefix: gateway_local_rate_limiter
-          token_bucket:
-            max_tokens: 5000
-            tokens_per_fill: 5000
-            fill_interval: 60s
-          filter_enabled:
-            runtime_key: local_rate_limit_enabled
-            default_value:
-              numerator: 100
-              denominator: HUNDRED
-          filter_enforced:
-            runtime_key: local_rate_limit_enforced
-            default_value:
-              numerator: 100
-              denominator: HUNDRED
+          "@type": type.googleapis.com/udpa.type.v1.TypedStruct
+          type_url: type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit
+          value:
+            stat_prefix: gateway_local_rate_limiter
+            token_bucket:
+              max_tokens: 5000
+              tokens_per_fill: 5000
+              fill_interval: 60s
+            filter_enabled:
+              runtime_key: local_rate_limit_enabled
+              default_value:
+                numerator: 100
+                denominator: HUNDRED
+            filter_enforced:
+              runtime_key: local_rate_limit_enforced
+              default_value:
+                numerator: 100
+                denominator: HUNDRED
 ```
 
 ## Monitoring Local Rate Limits
 
 Check the rate limit metrics directly from the proxy:
+
+In Istio, these detailed Envoy stats are not always included by default. If `local_rate_limiter` counters do not appear, enable them on the workload with `proxyStatsMatcher`:
+
+```yaml
+template:
+  metadata:
+    annotations:
+      proxy.istio.io/config: |-
+        proxyStatsMatcher:
+          inclusionRegexps:
+          - ".*http_local_rate_limit.*"
+```
 
 ```bash
 kubectl exec my-service-pod -c istio-proxy -- \
