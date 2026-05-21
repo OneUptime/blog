@@ -16,7 +16,7 @@ When JWT validation fails, you typically see one of these:
 
 - **401 Unauthorized** - The token was present but failed validation.
 - **403 Forbidden** - An AuthorizationPolicy blocked the request (usually because no valid principal was set).
-- **200 OK but no principal set** - The token's issuer didn't match any configured rule, so it was ignored.
+- **200 OK but no principal set** - No token was sent and no AuthorizationPolicy required a valid principal.
 
 The distinction between 401 and 403 is important:
 - 401 means RequestAuthentication rejected the token.
@@ -29,10 +29,10 @@ Before blaming Istio, check the token itself:
 ```bash
 # Decode the header
 
-echo "$TOKEN" | cut -d. -f1 | base64 -d 2>/dev/null | python3 -m json.tool
+python3 -c 'import base64,json,sys; p=sys.argv[1].split(".")[0]; print(json.dumps(json.loads(base64.urlsafe_b64decode(p + "=" * (-len(p) % 4))), indent=2))' "$TOKEN"
 
 # Decode the payload
-echo "$TOKEN" | cut -d. -f2 | base64 -d 2>/dev/null | python3 -m json.tool
+python3 -c 'import base64,json,sys; p=sys.argv[1].split(".")[1]; print(json.dumps(json.loads(base64.urlsafe_b64decode(p + "=" * (-len(p) % 4))), indent=2))' "$TOKEN"
 ```
 
 Check these fields in the payload:
@@ -60,13 +60,13 @@ kubectl get requestauthentication -n <namespace> -o jsonpath='{range .items[*]}{
 
 ## Step 3: Verify JWKS Reachability
 
-The Envoy sidecar needs to fetch the JWKS from the configured URL. Test from inside the cluster:
+The configured JWKS resolver (Istiod by default, or Envoy when remote JWKS fetching is enabled) needs to fetch the JWKS from the configured URL. Test reachability from inside the cluster:
 
 ```bash
 kubectl exec deploy/sleep -c sleep -- curl -s <jwks-uri>
 ```
 
-If this fails, the proxy can't validate any tokens. Common causes:
+If this fails, Istio can't validate any tokens that depend on that JWKS endpoint. Common causes:
 
 - DNS resolution failure (the JWKS endpoint isn't reachable from the cluster).
 - Firewall or egress policies blocking HTTPS to the JWKS endpoint.
@@ -78,7 +78,7 @@ The token's `kid` (Key ID) header must match a key in the JWKS:
 
 ```bash
 # Get the kid from the token
-echo "$TOKEN" | cut -d. -f1 | base64 -d 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin).get('kid', 'NO KID'))"
+python3 -c 'import base64,json,sys; p=sys.argv[1].split(".")[0]; print(json.loads(base64.urlsafe_b64decode(p + "=" * (-len(p) % 4))).get("kid", "NO KID"))' "$TOKEN"
 
 # Get available kids from JWKS
 curl -s <jwks-uri> | python3 -c "import json,sys; [print(k.get('kid', 'NO KID')) for k in json.load(sys.stdin)['keys']]"
@@ -113,10 +113,10 @@ kubectl exec <pod> -c istio-proxy -- curl -s localhost:15000/stats | grep jwt_au
 ```
 
 Look for counters like:
-- `jwt_authn.allowed` - Requests that passed JWT validation
-- `jwt_authn.denied` - Requests denied due to JWT validation
-- `jwt_authn.jwks_fetch_success` - Successful JWKS fetches
-- `jwt_authn.jwks_fetch_failed` - Failed JWKS fetches
+- `http.<stat_prefix>.jwt_authn.allowed` - Requests that passed JWT validation
+- `http.<stat_prefix>.jwt_authn.denied` - Requests denied due to JWT validation
+- `http.<stat_prefix>.jwt_authn.jwks_fetch_success` - Successful JWKS fetches
+- `http.<stat_prefix>.jwt_authn.jwks_fetch_failed` - Failed JWKS fetches
 
 ## Step 7: Enable Debug Logging
 
@@ -169,7 +169,7 @@ Compare with the token's `exp` and `iat` claims. If there's skew, fix NTP on you
 
 **Cause:** The old key was removed from the JWKS before all cached keys expired.
 
-**Fix:** During key rotation, keep old keys in the JWKS for at least 10 minutes. Envoy's JWKS cache refreshes approximately every 5 minutes.
+**Fix:** During key rotation, keep old keys in the JWKS longer than your configured JWKS cache or refresh interval. Envoy's default remote JWKS cache duration is 10 minutes if not specified, and Istiod's default public key refresh interval is 20 minutes.
 
 ### Scenario 4: Valid Token Returns 403 Instead of 200
 
@@ -185,24 +185,20 @@ Verify the request principal format matches what you expect:
 
 ```bash
 # The principal will be: <issuer>/<subject>
-echo "$TOKEN" | cut -d. -f2 | base64 -d 2>/dev/null | python3 -c "
-import json,sys
-d = json.load(sys.stdin)
-print(f\"{d['iss']}/{d['sub']}\")
-"
+python3 -c 'import base64,json,sys; p=sys.argv[1].split(".")[1]; d=json.loads(base64.urlsafe_b64decode(p + "=" * (-len(p) % 4))); print("{}/{}".format(d["iss"], d["sub"]))' "$TOKEN"
 ```
 
-### Scenario 5: Token with Unknown Issuer Passes Through
+### Scenario 5: Request Without a Token Passes Through
 
-**Cause:** RequestAuthentication only validates tokens from configured issuers. Unknown issuers are ignored.
+**Cause:** RequestAuthentication validates tokens when authentication credentials are present, but it does not require every request to include a token.
 
-**Fix:** This is by design. If you want to reject unknown tokens, add an AuthorizationPolicy that requires a valid principal:
+**Fix:** This is by design. If you want to reject requests without valid tokens, add an AuthorizationPolicy that requires a valid principal:
 
 ```yaml
 apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
-  name: require-known-token
+  name: require-valid-token
 spec:
   action: DENY
   rules:
@@ -215,7 +211,7 @@ spec:
 
 ```bash
 # 1. Decode and inspect the token
-echo "$TOKEN" | cut -d. -f2 | base64 -d 2>/dev/null | python3 -m json.tool
+python3 -c 'import base64,json,sys; p=sys.argv[1].split(".")[1]; print(json.dumps(json.loads(base64.urlsafe_b64decode(p + "=" * (-len(p) % 4))), indent=2))' "$TOKEN"
 
 # 2. Check RequestAuthentication config
 kubectl get requestauthentication -n <namespace> -o yaml
@@ -224,7 +220,7 @@ kubectl get requestauthentication -n <namespace> -o yaml
 kubectl exec deploy/sleep -c sleep -- curl -s <jwks-uri> | head -5
 
 # 4. Check kid matching
-echo "$TOKEN" | cut -d. -f1 | base64 -d 2>/dev/null | python3 -m json.tool
+python3 -c 'import base64,json,sys; p=sys.argv[1].split(".")[0]; print(json.dumps(json.loads(base64.urlsafe_b64decode(p + "=" * (-len(p) % 4))), indent=2))' "$TOKEN"
 
 # 5. Check proxy logs
 kubectl logs <pod> -c istio-proxy --tail=100 | grep -i jwt
