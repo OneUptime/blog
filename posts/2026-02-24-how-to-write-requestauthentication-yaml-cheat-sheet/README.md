@@ -103,7 +103,7 @@ spec:
         - "https://api.example.com"
 ```
 
-The token's `aud` claim must match one of the listed audiences. If `audiences` is not specified, the audience is not checked.
+The token's `aud` claim must match one of the listed audiences. If `audiences` is not specified, Istio accepts the service name as an audience.
 
 ## Custom Token Location
 
@@ -163,7 +163,7 @@ spec:
         - access_token
 ```
 
-Istio checks headers first, then query parameters.
+Do not send multiple JWTs in different locations on the same request. Istio does not support that case, and the resulting principal is undefined.
 
 ## Forward Original Token
 
@@ -187,9 +187,9 @@ spec:
 
 When `forwardOriginalToken` is true, the original JWT is preserved in the request headers and forwarded to the upstream service. This is useful when your backend also needs to inspect the token.
 
-## Output Payload to Headers
+## Output Payload to Header
 
-Extract specific JWT claims and add them as request headers:
+Add the verified JWT payload to a request header:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -278,7 +278,7 @@ spec:
       jwksUri: "https://auth.example.com/.well-known/jwks.json"
 ```
 
-No selector means it applies to everything in the namespace. In `istio-system`, this becomes mesh-wide.
+No selector means it applies to everything in the namespace. If `istio-system` is your mesh root namespace, this becomes mesh-wide.
 
 ## Pairing with AuthorizationPolicy
 
@@ -372,7 +372,7 @@ spec:
 If tokens are being rejected, check the proxy logs:
 
 ```bash
-istioctl proxy-config log deploy/api-server -n default --level jwt:debug
+istioctl proxy-config log deployment/api-server -n default --level jwt:debug
 kubectl logs deploy/api-server -n default -c istio-proxy | grep jwt
 ```
 
