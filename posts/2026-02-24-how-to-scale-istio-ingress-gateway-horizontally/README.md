@@ -12,7 +12,7 @@ A single Istio ingress gateway pod can handle a surprising amount of traffic, bu
 
 ## Default Gateway Deployment
 
-The default Istio installation creates an ingress gateway Deployment with just one or two replicas. Check your current setup:
+The default Istio installation creates an ingress gateway Deployment with a small initial replica count, and some installation methods also create an HPA for it. Check your current setup:
 
 ```bash
 kubectl get deploy istio-ingressgateway -n istio-system
@@ -98,7 +98,7 @@ kubectl apply -f hpa.yaml
 
 ## Setting Resource Limits
 
-Before autoscaling works properly, you need appropriate resource requests and limits on the gateway pods:
+Before utilization-based autoscaling works properly, you need appropriate resource requests on the gateway pods. Limits are optional, but they are commonly set to keep each gateway pod within a predictable CPU and memory budget:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -123,7 +123,9 @@ spec:
           - type: Resource
             resource:
               name: cpu
-              targetAverageUtilization: 70
+              target:
+                type: Utilization
+                averageUtilization: 70
 ```
 
 Or patch the existing deployment:
@@ -161,12 +163,12 @@ spec:
           limits:
             cpu: "4"
             memory: 2Gi
-        env:
-        - name: ISTIO_META_ROUTER_MODE
-          value: sni-dnat
+        podAnnotations:
+          proxy.istio.io/config: |
+            concurrency: 4
 ```
 
-You can also increase the number of Envoy worker threads. By default, Envoy creates one worker thread per CPU core. If your pods have 4 CPU cores, Envoy creates 4 worker threads.
+You can also tune the number of Envoy worker threads with the proxy `concurrency` setting. In current Istio releases, if `concurrency` is unset, Istio determines it from the proxy container CPU limit. If you set it explicitly, match it to load-test results rather than assuming more threads will always improve throughput.
 
 ## Pod Disruption Budget
 
@@ -267,21 +269,22 @@ kubectl top pods -n istio-system -l istio=ingressgateway
 Key metrics to monitor in Prometheus:
 
 - `envoy_server_concurrency` - Number of Envoy worker threads
-- `envoy_server_total_connections` - Total active connections
+- `envoy_listener_downstream_cx_active` - Active downstream connections per listener
+- `envoy_server_total_connections` - Total connections in the current and hot-restart Envoy processes
 - `istio_requests_total` - Request rate through the gateway
 - `container_cpu_usage_seconds_total` - CPU usage per pod
 - `container_memory_working_set_bytes` - Memory usage per pod
 
 ## Connection Draining During Scale-Down
 
-When a gateway pod is terminated, it needs to drain existing connections gracefully. Istio configures a termination grace period:
+When a gateway pod is terminated, it needs to drain existing connections gracefully. Kubernetes configures a pod termination grace period:
 
 ```bash
 kubectl get deploy istio-ingressgateway -n istio-system \
   -o jsonpath='{.spec.template.spec.terminationGracePeriodSeconds}'
 ```
 
-The default is 30 seconds. For long-lived connections (WebSocket, gRPC streaming), increase this:
+The Kubernetes default is 30 seconds. For long-lived connections (WebSocket, gRPC streaming), increase the pod termination grace period and the Istio proxy drain duration:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -292,6 +295,9 @@ spec:
     - name: istio-ingressgateway
       enabled: true
       k8s:
+        podAnnotations:
+          proxy.istio.io/config: |
+            terminationDrainDuration: 120s
         overlays:
         - kind: Deployment
           name: istio-ingressgateway
