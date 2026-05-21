@@ -14,12 +14,12 @@ This guide covers how to identify Istio-related eviction issues, fix them, and p
 
 ## Understanding Pod Eviction
 
-Kubernetes evicts pods in two main scenarios:
+Kubernetes evicts pods when a node is under resource pressure or through the eviction API:
 
-1. **Node resource pressure**: When a node runs low on memory, disk, or PIDs, the kubelet evicts pods based on QoS class and resource usage.
-2. **Pod exceeds resource limits**: When a container (including the sidecar) exceeds its memory limit, it gets OOMKilled, which can trigger a pod restart or eviction.
+1. **Node resource pressure**: When a node runs low on memory, disk, or PIDs, the kubelet evicts pods based on whether usage exceeds requests, pod priority, and usage relative to requests.
+2. **API-initiated eviction**: Cluster operations such as draining a node can ask the API server to evict pods.
 
-Istio sidecars contribute to both scenarios by adding their resource consumption to every pod.
+When a container, including the sidecar, exceeds its memory limit, it gets OOMKilled. That is not the same as a kubelet eviction, but it can still trigger a pod restart and may look similar during an incident. Istio sidecars can contribute to node-pressure evictions and OOMKills by adding their resource consumption to every pod.
 
 ## Identifying Istio-Related Evictions
 
@@ -44,7 +44,7 @@ To see if the sidecar is contributing to evictions:
 kubectl top pods -n my-namespace --containers
 
 # Check if sidecars are using more memory than expected
-kubectl top pods -A --containers | grep istio-proxy | sort -k4 -rn | head -20
+kubectl top pods -A --containers --sort-by=memory | grep istio-proxy | head -20
 ```
 
 ## Common Eviction Scenarios
@@ -61,7 +61,7 @@ kubectl top nodes
 
 # Check total sidecar memory on a specific node
 NODE_NAME="your-node-name"
-kubectl get pods -A -o wide --field-selector spec.nodeName=$NODE_NAME | \
+kubectl get pods -A -o wide --field-selector spec.nodeName=$NODE_NAME --no-headers | \
   awk '{print $1, $2}' | while read ns pod; do
     kubectl top pod $pod -n $ns --containers 2>/dev/null | grep istio-proxy
   done
@@ -85,7 +85,7 @@ spec:
 
 ### Scenario 2: BestEffort Pods Getting Evicted First
 
-Pods without resource requests and limits are classified as BestEffort QoS and are the first to be evicted. If your Istio sidecar has resource limits but the application container does not, the pod might still be BestEffort.
+Pods where no container has CPU or memory requests or limits are classified as BestEffort QoS and are the most likely to be evicted under node pressure. If either the application container or the Istio sidecar has a request or limit, the pod is Burstable instead of BestEffort, but it still will not be Guaranteed unless every container has equal CPU and memory requests and limits.
 
 Diagnosis:
 
@@ -94,7 +94,7 @@ Diagnosis:
 kubectl get pods -n my-namespace -o jsonpath='{range .items[*]}{.metadata.name}: {.status.qosClass}{"\n"}{end}'
 ```
 
-Fix: Make sure both the application container and the sidecar have resource requests and limits set. This gives the pod a Guaranteed or Burstable QoS class.
+Fix: Make sure both the application container and the sidecar have resource requests and limits set. This gives the pod a Burstable QoS class, or Guaranteed if every container has equal CPU and memory requests and limits.
 
 ### Scenario 3: Sidecar Memory Spike During Configuration Push
 
@@ -151,11 +151,11 @@ spec:
             memory: "512Mi"
 ```
 
-When requests equal limits for all containers, the pod gets Guaranteed QoS and is the last to be evicted.
+When CPU and memory requests equal limits for all containers, the pod gets Guaranteed QoS and is less likely to be evicted under node pressure.
 
 ### Use Priority Classes
 
-Higher priority pods are evicted last:
+Higher priority pods are less likely to be selected for node-pressure eviction after Kubernetes considers whether pods are exceeding requests:
 
 ```yaml
 apiVersion: scheduling.k8s.io/v1
@@ -231,7 +231,7 @@ spec:
 A major contributor to sidecar memory is the mesh configuration size. Restrict it:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
