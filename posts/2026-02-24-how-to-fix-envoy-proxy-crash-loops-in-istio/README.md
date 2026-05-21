@@ -8,7 +8,7 @@ Description: Diagnose and fix Envoy sidecar proxy crash loops in Istio caused by
 
 ---
 
-When the Envoy sidecar proxy starts crash looping, it takes your entire pod down with it. The application might be perfectly healthy, but because the proxy keeps crashing and restarting, network traffic gets disrupted and Kubernetes might eventually mark the pod as unhealthy.
+When the Envoy sidecar proxy starts crash looping, it can make your pod unavailable even if the application container is still running. The application might be perfectly healthy, but because the proxy keeps crashing and restarting, network traffic gets disrupted and Kubernetes might eventually mark the pod as unhealthy.
 
 This guide covers every common cause of Envoy proxy crash loops and how to fix them.
 
@@ -112,8 +112,8 @@ kubectl get pods -n istio-system -l app=istiod
 kubectl get svc istiod -n istio-system
 
 # Test connectivity from the pod's namespace
-kubectl run test-istiod --image=busybox --rm -it --restart=Never -n production -- \
-  wget -qO- --timeout=5 http://istiod.istio-system:15014/debug/endpointz 2>&1 || echo "Cannot reach istiod"
+kubectl run test-istiod --image=curlimages/curl --rm -it --restart=Never -n production -- \
+  curl -fsS --max-time 5 http://istiod.istio-system:15014/version 2>&1 || echo "Cannot reach istiod"
 ```
 
 If istiod is down, fix it first. If there is a network policy blocking traffic to istio-system, add an exception.
@@ -169,15 +169,22 @@ Check if the istiod CA is working:
 # Check istiod logs for CA errors
 kubectl logs -n istio-system deployment/istiod | grep "CA\|cert\|error"
 
-# Check the root CA secret
-kubectl get secret istio-ca-secret -n istio-system
+# Check the root CA config map distributed to the workload namespace
+kubectl get configmap istio-ca-root-cert -n production
+
+# If you use a plugged-in CA, check the CA secret
+kubectl get secret cacerts -n istio-system
 ```
 
 If the root CA has expired, you need to rotate it:
 
 ```bash
 # Check root CA expiration
-kubectl get secret istio-ca-secret -n istio-system -o jsonpath='{.data.ca-cert\.pem}' | \
+kubectl get configmap istio-ca-root-cert -n production -o jsonpath='{.data.root-cert\.pem}' | \
+  openssl x509 -noout -dates
+
+# If you use a plugged-in CA, check the plugged-in root certificate
+kubectl get secret cacerts -n istio-system -o jsonpath='{.data.root-cert\.pem}' | \
   base64 -d | openssl x509 -noout -dates
 ```
 
@@ -197,12 +204,12 @@ If another process in the pod is using ports that the Envoy proxy needs:
 kubectl logs <pod-name> -c istio-proxy -n production --previous | grep "bind\|address already in use"
 ```
 
-Fix by changing your application port or excluding the conflicting port from interception:
+Fix by changing your application port. For application ports that are being intercepted, but are not Istio's reserved ports, you can exclude the conflicting port from interception:
 
 ```yaml
 metadata:
   annotations:
-    traffic.sidecar.istio.io/excludeInboundPorts: "15000"
+    traffic.sidecar.istio.io/excludeInboundPorts: "8081"
 ```
 
 ## Cause 6: DNS Resolution Failures
@@ -266,7 +273,7 @@ kubectl patch deployment my-app -n production --type merge -p '
 spec:
   template:
     metadata:
-      annotations:
+      labels:
         sidecar.istio.io/inject: "false"'
 
 # Option 2: Increase resources significantly
@@ -295,7 +302,7 @@ kubectl top pod <pod> -n production --containers
 kubectl get pods -n istio-system -l app=istiod
 
 # 5. EnvoyFilters applied
-kubectl get envoyfilters -n production -n istio-system
+kubectl get envoyfilters --all-namespaces
 
 # 6. Version compatibility
 istioctl version
