@@ -106,7 +106,7 @@ spec:
         connectTimeout: 10s
 ```
 
-The default connect timeout in Envoy is 5 seconds. If the upstream is slow to accept connections (overloaded, far away, etc.), you might need to increase this.
+The default connect timeout in Istio's DestinationRule API is 10 seconds. Envoy's raw cluster default is 5 seconds if `connect_timeout` is not set. If the upstream is slow to accept connections (overloaded, far away, etc.), you might need to increase this.
 
 Check if connect timeouts are happening:
 
@@ -145,18 +145,18 @@ If your WebSocket connections are being dropped after a period of inactivity, in
 
 ## Step 5: Check the Gateway Timeout
 
-If traffic enters through the Istio ingress gateway, there is an additional timeout layer. The gateway itself has default timeouts:
+If traffic enters through the Istio ingress gateway, check the Envoy route configuration on the gateway as well as on the source sidecar:
 
 ```bash
 INGRESS_POD=$(kubectl get pod -n istio-system -l istio=ingressgateway -o jsonpath='{.items[0].metadata.name}')
 istioctl proxy-config routes $INGRESS_POD.istio-system -o json | grep -A 5 "timeout"
 ```
 
-Check if the gateway has a route-level timeout that is lower than your VirtualService timeout.
+Check if the gateway has a route-level timeout that is lower than the timeout you expected.
 
 ## Step 6: Check Retry Interaction with Timeouts
 
-Retries and timeouts interact in important ways. If you have retries configured, the timeout applies to each individual attempt, not the total time:
+Retries and timeouts interact in important ways. The route `timeout` is the overall timeout for the request, while `perTryTimeout` applies to each individual attempt, including the initial attempt:
 
 ```yaml
 apiVersion: networking.istio.io/v1beta1
@@ -181,14 +181,14 @@ In this example:
 - The overall request timeout is 10 seconds (`timeout`)
 - If the first attempt takes 5 seconds and times out, the second attempt gets at most 5 seconds before the overall 10-second timeout kills it
 
-If `perTryTimeout` is not set, each retry uses the full `timeout` value, which means the total time could be `timeout * attempts`.
+If `perTryTimeout` is not set, Istio does not add a smaller per-attempt timeout. The overall `timeout`, when configured, still caps the total request time, and the actual number of retries depends on how much time is left.
 
 ## Step 7: Check Upstream Service Response Time
 
-Sometimes the timeout is correct but the upstream service is genuinely slow. Check the response times in the access logs:
+Sometimes the timeout is correct but the upstream service is genuinely slow. Check the `%DURATION%` field in text access logs, or the `duration` field if you use JSON access logs. For JSON access logs:
 
 ```bash
-kubectl logs my-app-xxxxx -c istio-proxy --tail=200 | awk '{print $NF}'
+kubectl logs my-app-xxxxx -c istio-proxy --tail=200 | jq -r 'select(.duration != null) | .duration'
 ```
 
 Or use metrics if you have Prometheus:
@@ -239,8 +239,8 @@ Key metrics:
 |---|---|---|
 | Request timeout | VirtualService `.http[].timeout` | None (unlimited) |
 | Per-retry timeout | VirtualService `.http[].retries.perTryTimeout` | Same as timeout |
-| Connect timeout | DestinationRule `.trafficPolicy.connectionPool.tcp.connectTimeout` | 5s |
+| Connect timeout | DestinationRule `.trafficPolicy.connectionPool.tcp.connectTimeout` | 10s |
 | HTTP idle timeout | DestinationRule `.trafficPolicy.connectionPool.http.idleTimeout` | 1h |
 | TCP idle timeout | DestinationRule `.trafficPolicy.connectionPool.tcp.idleTimeout` | 1h |
 
-When debugging timeouts, first identify which type of timeout is occurring using the Envoy access log flags, then look at the corresponding configuration. The most common issue is not setting a VirtualService timeout at all and relying on defaults, or having retry settings that multiply the effective timeout beyond what clients expect.
+When debugging timeouts, first identify which type of timeout is occurring using the Envoy access log flags, then look at the corresponding configuration. The most common issue is not setting a VirtualService timeout at all and relying on defaults, or having retry settings that let attempts consume more of the overall timeout than clients expect.
