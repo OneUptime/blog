@@ -8,7 +8,7 @@ Description: How Istio handles service discovery and how to configure it for ser
 
 ---
 
-Service discovery is how services find each other in a distributed system. In plain Kubernetes, kube-dns resolves service names to ClusterIP addresses. With Istio, service discovery gets more sophisticated. The control plane maintains a registry of all services and their endpoints, pushing this information to every Envoy sidecar so it can route traffic intelligently.
+Service discovery is how services find each other in a distributed system. In plain Kubernetes, the cluster DNS service, typically CoreDNS, resolves service names to ClusterIP addresses. With Istio, service discovery gets more sophisticated. The control plane maintains a registry of all services and their endpoints, pushing this information to every Envoy sidecar so it can route traffic intelligently.
 
 ## How Istio Service Discovery Works
 
@@ -16,7 +16,7 @@ Istio's service discovery builds on top of Kubernetes service discovery but adds
 
 1. **istiod watches the Kubernetes API** for Services, Endpoints, and Pods
 2. **istiod aggregates this information** into a service registry
-3. **istiod pushes the registry** to all Envoy sidecars via the EDS (Endpoint Discovery Service) protocol
+3. **istiod pushes the registry** to all Envoy sidecars via xDS APIs, including EDS (Endpoint Discovery Service) for endpoint updates
 4. **Envoy sidecars use this information** to route traffic directly to pod IPs (bypassing kube-proxy)
 
 The big difference from vanilla Kubernetes: Envoy sends traffic directly to pod IPs, not through the ClusterIP virtual IP. This gives Istio the ability to do intelligent load balancing, circuit breaking, and other traffic management features at the individual endpoint level.
@@ -24,13 +24,13 @@ The big difference from vanilla Kubernetes: Envoy sends traffic directly to pod 
 You can see what services a sidecar knows about:
 
 ```bash
-istioctl proxy-config clusters deploy/my-app -n default
+istioctl proxy-config clusters deployment/my-app -n default
 ```
 
 And what endpoints it has for each service:
 
 ```bash
-istioctl proxy-config endpoints deploy/my-app -n default
+istioctl proxy-config endpoints deployment/my-app -n default
 ```
 
 ## Mesh-Internal Service Discovery
@@ -67,7 +67,7 @@ Your application just calls `http://my-service:8080` and Envoy handles the rest.
 For services outside the mesh (external APIs, databases, third-party services), you need to tell Istio about them using a ServiceEntry:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-api
@@ -77,26 +77,29 @@ spec:
   - api.external-service.com
   ports:
   - number: 443
-    name: https
-    protocol: HTTPS
+    name: tls
+    protocol: TLS
   location: MESH_EXTERNAL
   resolution: DNS
 ```
 
-This tells Istio that `api.external-service.com` is a service outside the mesh. Envoy will resolve it via DNS and can apply traffic policies (retries, timeouts, circuit breaking) to requests going to this external service.
+This tells Istio that `api.external-service.com` is a service outside the mesh. Envoy will resolve it via DNS and can route TLS traffic based on SNI without terminating the connection. Traffic policies that work at the connection level, such as timeouts and circuit breaking, can be applied to requests going to this external service.
 
 ### Static IP Resolution
 
 For services with known IP addresses:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-db
 spec:
   hosts:
   - external-db.company.internal
+  addresses:
+  - 10.0.0.100/32
+  - 10.0.0.101/32
   ports:
   - number: 5432
     name: tcp-postgres
@@ -120,11 +123,11 @@ The `resolution` field controls how Envoy resolves the hostname:
 
 - **NONE**: Use the original destination IP from the request. Good for passthrough traffic.
 - **STATIC**: Use the IP addresses specified in the `endpoints` field. No DNS lookup.
-- **DNS**: Look up the hostname via DNS and use the resolved IP addresses. New connections use fresh DNS results.
-- **DNS_ROUND_ROBIN**: Similar to DNS but round-robins across all resolved IPs.
+- **DNS**: Resolve the hostname asynchronously and load balance across the resolved IP addresses.
+- **DNS_ROUND_ROBIN**: Resolve the hostname asynchronously, but use only the first IP returned for each new connection and keep existing connection pools even when DNS records change frequently.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: cdn-service
@@ -133,8 +136,8 @@ spec:
   - cdn.mycompany.com
   ports:
   - number: 443
-    name: https
-    protocol: HTTPS
+    name: tls
+    protocol: TLS
   location: MESH_EXTERNAL
   resolution: DNS_ROUND_ROBIN
 ```
@@ -144,7 +147,7 @@ spec:
 If you have services running on VMs (not in Kubernetes), you can register them with WorkloadEntry to include them in the mesh:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: WorkloadEntry
 metadata:
   name: vm-backend-1
@@ -156,7 +159,7 @@ spec:
     version: v1
   serviceAccount: backend-sa
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: WorkloadEntry
 metadata:
   name: vm-backend-2
@@ -169,7 +172,30 @@ spec:
   serviceAccount: backend-sa
 ```
 
-Then create a Service that selects these workloads:
+Then create a ServiceEntry that selects these workloads:
+
+```yaml
+apiVersion: networking.istio.io/v1
+kind: ServiceEntry
+metadata:
+  name: backend
+  namespace: default
+spec:
+  hosts:
+  - backend.default.svc.cluster.local
+  location: MESH_INTERNAL
+  ports:
+  - name: http
+    number: 8080
+    protocol: HTTP
+    targetPort: 8080
+  resolution: STATIC
+  workloadSelector:
+    labels:
+      app: backend
+```
+
+You can also create a Kubernetes Service for stable in-cluster DNS:
 
 ```yaml
 apiVersion: v1
@@ -178,20 +204,22 @@ metadata:
   name: backend
   namespace: default
 spec:
+  selector:
+    app: backend
   ports:
   - name: http
     port: 8080
     targetPort: 8080
 ```
 
-The Service will select both Kubernetes pods and VM workloads that match the labels. Traffic will be load balanced across all endpoints.
+The ServiceEntry can select both Kubernetes pods and VM workloads that match the labels. Traffic will be load balanced across all endpoints.
 
 ## WorkloadGroup for VM Auto-Registration
 
 For larger VM deployments, WorkloadGroup lets VMs register themselves automatically when they join the mesh:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: WorkloadGroup
 metadata:
   name: backend-vms
@@ -219,7 +247,7 @@ When a VM with the Istio proxy starts and connects to istiod, it automatically r
 By default, every sidecar in the mesh receives the full service registry. In large meshes, this can be a lot of data. Use the Sidecar resource to control what each workload can see:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: my-app-sidecar
@@ -251,13 +279,13 @@ spec:
       mode: REGISTRY_ONLY
 ```
 
-- **ALLOW_ANY** (default): Traffic to unknown destinations is allowed and passes through without Istio traffic management.
+- **ALLOW_ANY** (default): Traffic to unknown destinations is allowed with limited Istio functionality, such as reduced observability.
 - **REGISTRY_ONLY**: Traffic to unknown destinations is blocked. Only services in the registry (Kubernetes services + ServiceEntries) can be reached.
 
 Using `REGISTRY_ONLY` forces you to explicitly register all external services, which gives you better visibility and control:
 
 ```bash
-# Check what mode is currently active
+# Check what mode is currently active in installations that store mesh config in the istio ConfigMap
 
 kubectl get configmap istio -n istio-system -o jsonpath='{.data.mesh}' | grep outboundTrafficPolicy
 ```
@@ -268,10 +296,10 @@ When a service cannot be found, check these things:
 
 ```bash
 # Check if the service exists in the sidecar's config
-istioctl proxy-config clusters deploy/my-app -n default --fqdn service-b.default.svc.cluster.local
+istioctl proxy-config clusters deployment/my-app -n default --fqdn service-b.default.svc.cluster.local
 
 # Check if endpoints are populated
-istioctl proxy-config endpoints deploy/my-app --cluster "outbound|8080||service-b.default.svc.cluster.local"
+istioctl proxy-config endpoints deployment/my-app --cluster "outbound|8080||service-b.default.svc.cluster.local"
 
 # Check if the proxy is in sync
 istioctl proxy-status
@@ -291,7 +319,7 @@ Istio uses Kubernetes readiness probes for health checking. If a pod fails its r
 You can also use Envoy's outlier detection for additional health checking:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: service-b
@@ -306,4 +334,4 @@ spec:
 
 This removes endpoints from the load balancing pool based on error responses, even if Kubernetes still considers them ready.
 
-Service discovery in Istio is largely automatic for in-mesh services, but understanding how it works helps you debug issues and configure it for external services. ServiceEntry is the key tool for bringing external services into the mesh, Sidecar resources control the scope of discovery per workload, and the outbound traffic policy gives you a security boundary for unknown destinations.
+Service discovery in Istio is largely automatic for in-mesh services, but understanding how it works helps you debug issues and configure it for external services. ServiceEntry is the key tool for bringing external services into the mesh, Sidecar resources control the scope of discovery per workload, and the outbound traffic policy helps detect unknown destinations that are missing from the registry.
