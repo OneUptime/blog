@@ -12,7 +12,7 @@ gRPC and Istio should work great together since gRPC runs on HTTP/2 and Envoy ha
 
 ## Declare gRPC Ports Correctly
 
-The most basic but important thing is telling Istio that your service speaks gRPC. Without this, Istio treats the traffic as plain TCP and you lose HTTP/2-aware features:
+The most basic but important thing is telling Istio that your service speaks gRPC. Istio can automatically detect HTTP/2 traffic, but explicit protocol selection is safer and is required in some gateway paths. Without explicit selection, traffic that cannot be detected is treated as plain TCP and you lose HTTP/2-aware features:
 
 ```yaml
 apiVersion: v1
@@ -23,6 +23,7 @@ metadata:
 spec:
   ports:
   - name: grpc-api
+    appProtocol: grpc
     port: 50051
     targetPort: 50051
     protocol: TCP
@@ -30,9 +31,9 @@ spec:
     app: my-grpc-service
 ```
 
-The port name must start with `grpc-`. This tells Istio to use HTTP/2 protocol handling. Other valid prefixes are `grpc` or `grpc-web`.
+The port name should be `grpc` or use the `grpc-` prefix. You can also set `appProtocol: grpc` on Kubernetes 1.18 and newer; when both are present, Istio uses `appProtocol`. For gRPC-Web, use `grpc-web` or a `grpc-web-` prefix. This tells Istio to use HTTP/2 protocol handling.
 
-Without the correct naming, Istio falls back to TCP proxy mode. You lose:
+Without explicit protocol selection, and when automatic protocol detection does not classify the traffic as HTTP/2, Istio falls back to TCP proxy mode. You lose:
 - gRPC-aware load balancing
 - Per-request metrics (instead of per-connection)
 - Header-based routing
@@ -55,12 +56,12 @@ istioctl proxy-config cluster deploy/my-grpc-client -n my-namespace | grep my-gr
 istioctl proxy-config endpoint deploy/my-grpc-client -n my-namespace | grep my-grpc-service
 ```
 
-If you see all traffic going to one endpoint, make sure the port is named correctly (grpc- prefix) and that the DestinationRule is not forcing a hash-based load balancer that pins sessions.
+If you see all traffic going to one endpoint, make sure the port is explicitly marked as gRPC and that the DestinationRule is not forcing a hash-based load balancer that pins sessions.
 
 Configure the load balancing algorithm:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: grpc-lb
@@ -79,7 +80,7 @@ spec:
 gRPC's multiplexing means you need fewer connections but higher request limits:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: grpc-pool
@@ -105,7 +106,7 @@ The key setting is `http2MaxRequests`. This limits the total number of concurren
 Retries in gRPC need special attention because gRPC has its own status codes that are different from HTTP status codes:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: grpc-retries
@@ -123,7 +124,7 @@ spec:
       retryOn: cancelled,deadline-exceeded,internal,resource-exhausted,unavailable
 ```
 
-The `retryOn` field accepts gRPC status codes (Envoy maps them internally). Common ones to retry on:
+The `retryOn` field accepts gRPC status codes. Envoy applies these gRPC retry policies when the status code is available in response headers; gRPC status codes sent only in trailers do not trigger Envoy retry logic. Common ones to retry on:
 - `unavailable` - The server is not ready
 - `resource-exhausted` - Rate limited or overloaded
 - `internal` - Server error
@@ -137,7 +138,7 @@ Do not retry on `invalid-argument` or `not-found` - those will just fail again.
 gRPC supports deadline propagation natively. Istio can add or enforce deadlines:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: grpc-timeouts
@@ -161,7 +162,7 @@ gRPC supports four types of communication: unary, server streaming, client strea
 For long-lived streams, increase the idle timeout:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: grpc-streaming
@@ -175,12 +176,12 @@ spec:
         maxRequestsPerConnection: 0
 ```
 
-Without a long `idleTimeout`, Envoy might close connections that have active but quiet streams.
+Without a long `idleTimeout`, Envoy might close pooled HTTP/2 connections that sit idle between streams.
 
 For server-streaming RPCs where the client waits for data:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: grpc-stream-timeout
@@ -199,7 +200,7 @@ Setting `timeout: 0s` disables the request timeout, which is necessary for long-
 
 ## gRPC Health Checking
 
-Istio can perform gRPC health checks on your services using the gRPC health checking protocol:
+Kubernetes can perform gRPC health checks on your services using the gRPC health checking protocol:
 
 ```yaml
 apiVersion: apps/v1
@@ -227,7 +228,7 @@ Make sure your gRPC server implements the `grpc.health.v1.Health` service.
 Istio can route gRPC traffic based on the service and method name:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: grpc-routing
