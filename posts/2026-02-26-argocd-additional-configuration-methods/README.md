@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Configuration, Operation
 
-Description: Learn about all the configuration methods available for ArgoCD beyond command-line flags, including ConfigMaps, Secrets, environment variables, and Helm values.
+Description: Learn about the configuration methods available for ArgoCD beyond command-line flags, including ConfigMaps, Secrets, environment variables, annotations, and custom resources.
 
 ---
 
 ArgoCD has multiple configuration surfaces. Command-line flags are just one piece of the puzzle. There are ConfigMaps that control behavior, Secrets that store credentials, environment variables that override defaults, and various files that affect how ArgoCD processes repositories. Understanding all these configuration methods gives you complete control over your ArgoCD deployment.
 
-This guide maps out every configuration method available in ArgoCD and when to use each one.
+This guide maps out the main configuration methods available in ArgoCD and when to use each one.
 
 ## Configuration Methods Overview
 
-ArgoCD uses six main configuration methods:
+ArgoCD uses several main configuration methods:
 
 1. **ConfigMaps** - Behavioral configuration (argocd-cm, argocd-rbac-cm, argocd-cmd-params-cm)
 2. **Secrets** - Credentials and sensitive data (argocd-secret, repo secrets, cluster secrets)
@@ -120,8 +120,9 @@ data:
   # Admin account status
   admin.enabled: "false"
 
-  # Application set controller options
-  applicationsetcontroller.enable.progressive.syncs: "true"
+  # Reconciliation timing
+  timeout.reconciliation: 180s
+  timeout.hard.reconciliation: 0s
 
   # GA tracking (disabled for privacy)
   ga.trackingid: ""
@@ -129,7 +130,7 @@ data:
 
 ## Method 2: The argocd-cmd-params-cm ConfigMap
 
-This ConfigMap was introduced to separate server parameters from other configuration. It maps directly to command-line flags.
+This ConfigMap was introduced to separate component command parameters from other configuration. It maps command parameters to ConfigMap keys.
 
 ```yaml
 apiVersion: v1
@@ -162,14 +163,11 @@ data:
   # Application set controller
   applicationsetcontroller.log.format: "json"
   applicationsetcontroller.log.level: "info"
+  applicationsetcontroller.enable.progressive.syncs: "true"
 
   # Redis
   redis.server: "argocd-redis-ha-haproxy:6379"
   redis.compression: "gzip"
-
-  # Timeout settings
-  timeout.reconciliation: "180s"
-  timeout.hard.reconciliation: "0"
 ```
 
 Using `argocd-cmd-params-cm` is preferred over command-line flags because changes take effect when the ConfigMap is updated (after pod restart), and it keeps all parameters in one place.
@@ -305,7 +303,7 @@ stringData:
 
 ## Method 5: Environment Variables
 
-Many settings can be configured through environment variables.
+ArgoCD components also read environment variables. In the upstream manifests, many of these variables are populated from `argocd-cm` or `argocd-cmd-params-cm`; set them directly only when you are customizing the component manifests yourself.
 
 ```yaml
 env:
@@ -318,8 +316,8 @@ env:
   # Controller settings
   - name: ARGOCD_RECONCILIATION_TIMEOUT
     value: "180s"
-  - name: ARGOCD_CONTROLLER_REPLICAS
-    value: "1"
+  - name: ARGOCD_HARD_RECONCILIATION_TIMEOUT
+    value: "0s"
 
   # Git settings
   - name: ARGOCD_GIT_MODULES_ENABLED
@@ -358,8 +356,8 @@ metadata:
   annotations:
     # Sync options per resource
     argocd.argoproj.io/sync-options: Prune=false
-    # Health check override
-    argocd.argoproj.io/health-check-timeout: "60"
+    # Sync wave
+    argocd.argoproj.io/sync-wave: "1"
     # Diff customization
     argocd.argoproj.io/compare-options: IgnoreExtraneous
 ```
