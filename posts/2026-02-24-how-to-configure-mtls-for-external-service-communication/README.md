@@ -81,8 +81,13 @@ kind: Deployment
 metadata:
   name: my-app
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   template:
     metadata:
+      labels:
+        app: my-app
       annotations:
         sidecar.istio.io/userVolume: '[{"name":"partner-certs","secret":{"secretName":"partner-mtls-certs"}}]'
         sidecar.istio.io/userVolumeMount: '[{"name":"partner-certs","mountPath":"/etc/partner-certs","readOnly":true}]'
@@ -125,6 +130,18 @@ kubectl create secret generic partner-mtls-credential -n default \
 
 Note the key names: `tls.crt`, `tls.key`, and `ca.crt`. These are the names Istio's SDS expects.
 
+Allow the workload's service account to read the secret:
+
+```bash
+kubectl create role partner-mtls-credential-role -n default \
+  --resource=secret \
+  --verb=list
+
+kubectl create rolebinding partner-mtls-credential-role-binding -n default \
+  --role=partner-mtls-credential-role \
+  --serviceaccount=default:default
+```
+
 Then use `credentialName` in the DestinationRule:
 
 ```yaml
@@ -134,6 +151,9 @@ metadata:
   name: partner-api-mtls
   namespace: default
 spec:
+  workloadSelector:
+    matchLabels:
+      app: my-app
   host: api.partner.com
   trafficPolicy:
     tls:
@@ -141,7 +161,7 @@ spec:
       credentialName: partner-mtls-credential
 ```
 
-This is simpler because Istio automatically loads the certificates from the secret without needing volume mounts.
+This is simpler because Istio automatically loads the certificates from the secret without needing volume mounts. For sidecars, `credentialName` applies only when the `DestinationRule` has a `workloadSelector`.
 
 ## TLS Origination with Client Certificates
 
@@ -175,14 +195,18 @@ metadata:
   name: partner-api-tls-origination
   namespace: default
 spec:
+  workloadSelector:
+    matchLabels:
+      app: my-app
   host: api.partner.com
   trafficPolicy:
     portLevelSettings:
     - port:
-        number: 443
+        number: 80
       tls:
         mode: MUTUAL
         credentialName: partner-mtls-credential
+        sni: api.partner.com
 ```
 
 Now your application can call `http://api.partner.com` and the sidecar upgrades it to HTTPS with client certificate authentication.
@@ -196,15 +220,15 @@ apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: partner-egress
-  namespace: default
+  namespace: istio-system
 spec:
   selector:
     istio: egressgateway
   servers:
   - port:
       number: 443
-      name: tls
-      protocol: TLS
+      name: https
+      protocol: HTTPS
     hosts:
     - api.partner.com
     tls:
@@ -215,8 +239,63 @@ spec:
 apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
-  name: partner-api-from-egress
+  name: partner-egress-gateway
   namespace: default
+spec:
+  host: istio-egressgateway.istio-system.svc.cluster.local
+  subsets:
+  - name: partner-api
+    trafficPolicy:
+      portLevelSettings:
+      - port:
+          number: 443
+        tls:
+          mode: ISTIO_MUTUAL
+          sni: api.partner.com
+```
+
+```yaml
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: partner-api-through-egress
+  namespace: default
+spec:
+  hosts:
+  - api.partner.com
+  gateways:
+  - mesh
+  - istio-system/partner-egress
+  http:
+  - match:
+    - gateways:
+      - mesh
+      port: 80
+    route:
+    - destination:
+        host: istio-egressgateway.istio-system.svc.cluster.local
+        subset: partner-api
+        port:
+          number: 443
+  - match:
+    - gateways:
+      - istio-system/partner-egress
+      port: 443
+    route:
+    - destination:
+        host: api.partner.com
+        port:
+          number: 443
+```
+
+Create `partner-mtls-credential` in the namespace where the egress gateway runs, typically `istio-system`, and add the DestinationRule that originates mTLS from the gateway to the partner API:
+
+```yaml
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: partner-api-from-egress
+  namespace: istio-system
 spec:
   host: api.partner.com
   trafficPolicy:
@@ -226,6 +305,7 @@ spec:
       tls:
         mode: MUTUAL
         credentialName: partner-mtls-credential
+        sni: api.partner.com
 ```
 
 With this setup, the egress gateway handles the external mTLS connection. The client certificates only need to be accessible to the egress gateway, not to every application pod.
@@ -263,13 +343,13 @@ spec:
 
 ## Verifying External mTLS
 
-Test the connection from your pod:
+Test the connection from your pod. If you configured TLS origination from plaintext HTTP, use `http://api.partner.com/health`; otherwise use the scheme your application normally uses:
 
 ```bash
 kubectl exec deploy/my-app -- curl -v https://api.partner.com/health
 ```
 
-Check the sidecar logs for TLS handshake details:
+Check the sidecar logs for request entries or TLS-related errors:
 
 ```bash
 kubectl logs deploy/my-app -c istio-proxy | grep "api.partner.com"
@@ -281,7 +361,7 @@ You can also use istioctl to check the proxy configuration:
 istioctl proxy-config clusters deploy/my-app --fqdn api.partner.com -o json
 ```
 
-Look for the `transportSocket` configuration, which should show the client certificate paths.
+Look for the `transportSocket` configuration, which should show the client certificate paths or SDS secret references.
 
 ## Common Issues
 
@@ -289,7 +369,7 @@ Look for the `transportSocket` configuration, which should show the client certi
 
 **Certificate chain incomplete**: If the partner's CA is not a well-known root, you must provide the full CA chain in `ca.crt`.
 
-**Secret not found**: When using `credentialName`, the secret must be in the same namespace as the workload (for sidecar) or in `istio-system` (for gateways).
+**Secret not found**: When using `credentialName`, the secret must be in the same namespace as the proxy using it. For sidecars, the `DestinationRule` also needs a `workloadSelector`. For gateways, create the secret in the gateway's namespace.
 
 **Certificate not picking up after rotation**: If using file-based configuration (not SDS), you need to restart the sidecar for new certificates to be loaded. SDS-based configuration picks up changes automatically.
 
