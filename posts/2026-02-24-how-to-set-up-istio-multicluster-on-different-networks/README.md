@@ -10,7 +10,7 @@ Description: Step-by-step instructions for setting up Istio multicluster when cl
 
 When your Kubernetes clusters sit on different networks - think different VPCs, different cloud providers, or on-prem mixed with cloud - pods in one cluster cannot directly reach pods in the other. Istio handles this by routing cross-cluster traffic through east-west gateways. These gateways act as bridges between the networks, tunneling mesh traffic through mTLS connections.
 
-This is different from the same-network setup where pods can talk directly. The different-network model adds a gateway hop, but it works across any network topology, which makes it the more common choice for real-world multicluster deployments.
+This is different from the same-network setup where pods can talk directly. The different-network model adds a gateway hop, but it works across many network topologies as long as the east-west gateways and Kubernetes API servers are reachable where Istio needs them, which makes it the more common choice for real-world multicluster deployments.
 
 ## Architecture Overview
 
@@ -24,6 +24,8 @@ Istio handles all of this transparently. Your applications just call services by
 - `istioctl` CLI installed
 - kubectl access to both clusters
 - Each cluster's east-west gateway must be reachable from the other cluster (typically via a LoadBalancer service)
+- The Kubernetes API server in each cluster must be reachable from the other cluster's Istiod for endpoint discovery
+- East-west gateways must not be exposed through a Layer 7 load balancer that terminates TLS, because `AUTO_PASSTHROUGH` requires TLS passthrough
 
 Set up your contexts:
 
@@ -53,15 +55,19 @@ popd
 Apply the CA secrets:
 
 ```bash
-for ctx in "${CTX_CLUSTER1}" "${CTX_CLUSTER2}"; do
-  cluster_name=$(echo $ctx | tr '[:upper:]' '[:lower:]')
-  kubectl create namespace istio-system --context="${ctx}"
-  kubectl create secret generic cacerts -n istio-system --context="${ctx}" \
-    --from-file=certs/${cluster_name}/ca-cert.pem \
-    --from-file=certs/${cluster_name}/ca-key.pem \
-    --from-file=certs/${cluster_name}/root-cert.pem \
-    --from-file=certs/${cluster_name}/cert-chain.pem
-done
+kubectl create namespace istio-system --context="${CTX_CLUSTER1}"
+kubectl create secret generic cacerts -n istio-system --context="${CTX_CLUSTER1}" \
+  --from-file=ca-cert.pem=certs/cluster1/ca-cert.pem \
+  --from-file=ca-key.pem=certs/cluster1/ca-key.pem \
+  --from-file=root-cert.pem=certs/cluster1/root-cert.pem \
+  --from-file=cert-chain.pem=certs/cluster1/cert-chain.pem
+
+kubectl create namespace istio-system --context="${CTX_CLUSTER2}"
+kubectl create secret generic cacerts -n istio-system --context="${CTX_CLUSTER2}" \
+  --from-file=ca-cert.pem=certs/cluster2/ca-cert.pem \
+  --from-file=ca-key.pem=certs/cluster2/ca-key.pem \
+  --from-file=root-cert.pem=certs/cluster2/root-cert.pem \
+  --from-file=cert-chain.pem=certs/cluster2/cert-chain.pem
 ```
 
 ## Step 2: Label Networks
@@ -119,7 +125,7 @@ kubectl apply -n istio-system -f samples/multicluster/expose-services.yaml --con
 The `expose-services.yaml` creates a Gateway resource that allows mTLS traffic on port 15443:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: cross-network-gateway
