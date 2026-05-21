@@ -8,7 +8,7 @@ Description: How to configure per-retry timeouts in Istio to control how long ea
 
 ---
 
-When you configure retries in Istio, one of the most important settings is the per-retry timeout. Without it, a single slow retry attempt can consume all the time allocated for the overall request, leaving no room for additional retries. The `perTryTimeout` field gives each individual attempt a hard deadline. If the upstream doesn't respond within that time, the attempt is cancelled and the next retry kicks in.
+When you configure retries in Istio, one of the most important settings is the per-retry timeout. Without it, a single slow retry attempt can consume all the time allocated for the overall request, leaving no room for additional retries. The `perTryTimeout` field gives each individual attempt a hard deadline. If the upstream doesn't respond within that time, the attempt is cancelled and the next retry is attempted after the retry backoff.
 
 Getting this value right is the difference between retries that actually help and retries that just waste time. This post covers how to configure per-retry timeouts, how they interact with the overall route timeout, and how to choose appropriate values.
 
@@ -35,7 +35,7 @@ spec:
             host: inventory-service
 ```
 
-Each attempt (the original request and each retry) gets at most 2 seconds. If the upstream doesn't respond in 2 seconds, that attempt is terminated and the next one begins.
+Each attempt (the original request and each retry) gets at most 2 seconds. If the upstream doesn't respond in 2 seconds, that attempt is terminated and the next retry is attempted after the retry backoff.
 
 The timeout is specified as a duration string:
 - `500ms` - half a second
@@ -92,15 +92,15 @@ With this configuration:
 
 - Each attempt gets up to 2 seconds (perTryTimeout)
 - The total time for all attempts combined can't exceed 8 seconds (overall timeout)
-- In the worst case: 4 attempts * 2s = 8s, which exactly hits the overall timeout
+- In the worst case, the attempts alone can use up to 4 attempts * 2s = 8s. Any retry backoff time also counts against the overall timeout, so the last retry may be cut short in practice.
 
 What happens at the boundary:
 
 ```text
-Attempt 1: starts at 0s, times out at 2s -> retry
-Attempt 2: starts at 2s, times out at 4s -> retry
-Attempt 3: starts at 4s, times out at 6s -> retry
-Attempt 4: starts at 6s, times out at 8s -> overall timeout hit, return error
+Attempt 1: starts at 0s, times out at 2s -> retry after backoff
+Attempt 2: starts after backoff, gets up to 2s -> retry after backoff
+Attempt 3: starts after backoff, gets up to 2s -> retry after backoff
+Attempt 4: starts after backoff, may get slightly less than 2s before the overall timeout is hit
 ```
 
 If the overall timeout is shorter than the total possible retry time, some retries get cut short:
@@ -114,13 +114,13 @@ http:
 ```
 
 ```text
-Attempt 1: 0s-2s (uses full perTryTimeout)
-Attempt 2: 2s-4s (uses full perTryTimeout)
-Attempt 3: 4s-5s (gets only 1s before overall timeout)
+Attempt 1: about 0s-2s (uses full perTryTimeout)
+Attempt 2: starts after retry backoff and uses up to 2s
+Attempt 3: gets only the remaining overall timeout budget
 Attempt 4: never starts (no time left)
 ```
 
-The third retry only gets 1 second instead of 2, and the fourth retry never happens. This is why you want: `timeout >= (attempts + 1) * perTryTimeout`.
+The third retry gets less than 2 seconds, and the fourth retry never happens. This is why you want: `timeout >= (attempts + 1) * perTryTimeout + expected retry backoff`.
 
 ## Choosing the Right Per-Retry Timeout
 
@@ -200,7 +200,7 @@ retries:
   retryOn: 5xx,connect-failure
 ```
 
-Each retry attempt uses the overall route timeout as its timeout. If the route timeout is 10 seconds and the first attempt takes 9.5 seconds to fail, you only have 0.5 seconds for your three retry attempts.
+There is no separate per-attempt cap. By default, `perTryTimeout` uses the same value as the route timeout, and the route timeout is the outer budget for the whole request. If the route timeout is 10 seconds and the first attempt takes 9.5 seconds to fail, you only have 0.5 seconds left for your retry attempts.
 
 This is almost always wrong. Always set perTryTimeout when configuring retries.
 
@@ -217,9 +217,9 @@ retries:
   retryOn: 5xx
 ```
 
-## Testing Per-Retry Timeout with Fault Injection
+## Testing Per-Retry Timeout
 
-Validate that per-retry timeout works correctly by injecting delays:
+Validate that per-retry timeout works correctly with an upstream endpoint that sometimes delays its own response. Do not combine Istio fault injection with retries and timeouts in the same `VirtualService`; Istio does not support that combination, so the retry policy will not take effect as expected.
 
 ```yaml
 apiVersion: networking.istio.io/v1beta1
@@ -231,12 +231,7 @@ spec:
   hosts:
     - inventory-service
   http:
-    - fault:
-        delay:
-          fixedDelay: 5s
-          percentage:
-            value: 75.0
-      retries:
+    - retries:
         attempts: 3
         perTryTimeout: 1s
         retryOn: 5xx,connect-failure
@@ -246,7 +241,7 @@ spec:
             host: inventory-service
 ```
 
-75% of attempts get a 5-second delay, but the per-retry timeout is 1 second. So 75% of attempts time out after 1 second, and the proxy immediately tries the next one. With 4 total attempts, the probability of all hitting the delay is 0.75^4 = 31.6%.
+If your test endpoint delays 75% of requests by 5 seconds, but the per-retry timeout is 1 second, about 75% of attempts time out after 1 second and the proxy retries after the retry backoff. With 4 total attempts, the probability of all hitting the delay is 0.75^4 = 31.6%.
 
 Test it:
 
@@ -257,7 +252,7 @@ for i in $(seq 1 20); do
 done
 ```
 
-Successful requests should complete in about 1-2 seconds (one or two timeouts at 1 second, then a fast response). Failed requests should take about 4 seconds (four attempts, each timing out at 1 second).
+Successful requests should complete in about 1-2 seconds plus retry backoff (one or two timeouts at 1 second, then a fast response). Failed requests should take about 4 seconds plus retry backoff (four attempts, each timing out at 1 second).
 
 ## Per-Retry Timeout for gRPC
 
