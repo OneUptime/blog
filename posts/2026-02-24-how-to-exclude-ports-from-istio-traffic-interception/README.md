@@ -118,8 +118,11 @@ The equivalent for outbound:
 ```yaml
 metadata:
   annotations:
+    traffic.sidecar.istio.io/includeOutboundIPRanges: ""
     traffic.sidecar.istio.io/includeOutboundPorts: "80,443"
 ```
+
+The `includeOutboundPorts` annotation forces those outbound ports through Envoy regardless of destination IP. If you want only those outbound ports to be intercepted, also set `includeOutboundIPRanges` to an empty string so the default outbound IP-range capture does not still capture other ports.
 
 ## Setting Defaults at the Mesh Level
 
@@ -153,7 +156,7 @@ Note the escaped comma in the Helm command.
 
 ## Namespace-Level Configuration
 
-You can also set port exclusions at the namespace level using the `istio.io/rev` and annotation-based configuration. While there's no direct namespace annotation for port exclusion, you can achieve this through the Sidecar resource:
+There isn't a direct namespace annotation for iptables port exclusion. The `Sidecar` resource can scope the inbound and outbound configuration Envoy receives for workloads in a namespace, but it is not the same as bypassing traffic capture with the `traffic.sidecar.istio.io/*Ports` annotations.
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -174,7 +177,7 @@ spec:
     defaultEndpoint: 127.0.0.1:8080
 ```
 
-The Sidecar resource's `ingress` field controls which ports the proxy listens on for inbound traffic. Only ports listed here will have listeners created in Envoy.
+The Sidecar resource's `ingress` field controls which inbound ports the proxy is configured to handle for workloads associated with services. Use pod annotations or the install-level proxy defaults when you specifically need traffic on a port to bypass Istio's redirection rules.
 
 ## Verifying Port Exclusions
 
@@ -205,7 +208,7 @@ You can also verify using `istioctl`:
 istioctl proxy-config listener <pod-name>
 ```
 
-Excluded ports won't have corresponding Envoy listeners.
+This shows the listeners Envoy is configured with, but port exclusion is primarily an iptables redirection setting. Treat the iptables rules as the authoritative verification; a listener may still exist even when traffic to a port is not redirected to it.
 
 ## Combining Annotations
 
@@ -216,10 +219,10 @@ metadata:
   annotations:
     traffic.sidecar.istio.io/excludeInboundPorts: "3306"
     traffic.sidecar.istio.io/excludeOutboundPorts: "5432,6379"
-    traffic.sidecar.istio.io/includeInboundPorts: ""
+    traffic.sidecar.istio.io/includeInboundPorts: "*"
 ```
 
-Be careful with combinations, though. If you set `includeInboundPorts` to an empty string, it means "include all ports" (which is the default behavior). If you set it to `""` AND also set `excludeInboundPorts`, the exclude takes precedence on those specific ports.
+Be careful with combinations, though. `excludeInboundPorts` only applies when all inbound traffic is being redirected, which is represented by `includeInboundPorts: "*"`. If you set `includeInboundPorts` to an empty string, it disables inbound redirection instead of meaning "include all ports."
 
 ## Gotchas and Tips
 
