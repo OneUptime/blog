@@ -23,16 +23,22 @@ If you want the gateway to terminate TLS and forward plaintext HTTP to backends,
 
 ## Prerequisites
 
-TLSRoute is part of the experimental Gateway API channel. Install the experimental CRDs:
+Istio's current TLSRoute examples use alpha Gateway API resources, so install the experimental CRDs:
 
 ```bash
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.2.0/experimental-install.yaml
+kubectl kustomize "github.com/kubernetes-sigs/gateway-api/config/crd/experimental?ref=v1.5.1" | kubectl apply -f -
 ```
 
 Verify the TLSRoute CRD is installed:
 
 ```bash
 kubectl get crd tlsroutes.gateway.networking.k8s.io
+```
+
+Configure Istio to read the alpha Gateway API resources when you install or upgrade Istio:
+
+```bash
+istioctl install --set values.pilot.env.PILOT_ENABLE_ALPHA_GATEWAY_API=true --set profile=minimal -y
 ```
 
 ## Setting Up the Gateway for TLS Passthrough
@@ -148,7 +154,7 @@ spec:
       port: 443
 ```
 
-This catches any subdomain of example.com that doesn't match a more specific TLSRoute. More specific hostnames take precedence over wildcards, so `api.example.com` would match a specific route before falling back to `*.example.com`.
+This catches single-label subdomains of example.com that don't match a more specific TLSRoute. More specific hostnames take precedence over wildcards, so `api.example.com` would match a specific route before falling back to `*.example.com`.
 
 ## Multiple Backend References
 
@@ -179,7 +185,7 @@ This sends 80% of connections to the primary backend and 20% to the secondary. N
 
 ## Cross-Namespace TLS Routing
 
-To route TLS traffic to services in other namespaces, you need both the Gateway to allow it and a ReferenceGrant in the target namespace:
+To attach TLSRoutes from other namespaces, the Gateway must allow it. If a TLSRoute sends traffic to a backend Service in a different namespace, the backend namespace must also provide a ReferenceGrant.
 
 Gateway allowing cross-namespace routes:
 
@@ -221,10 +227,11 @@ spec:
   rules:
   - backendRefs:
     - name: team-a-service
+      namespace: shared-services
       port: 443
 ```
 
-If the TLSRoute references a backend in yet another namespace, a ReferenceGrant is needed:
+Because the TLSRoute references a backend in another namespace, a ReferenceGrant is needed:
 
 ```yaml
 apiVersion: gateway.networking.k8s.io/v1beta1
