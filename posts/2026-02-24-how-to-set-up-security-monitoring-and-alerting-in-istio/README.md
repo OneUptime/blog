@@ -17,42 +17,42 @@ Istio generates a wealth of security-related metrics through its Envoy sidecars.
 Istio exposes several security-relevant metrics:
 
 - `istio_requests_total` - Total request count, filterable by response code (403 = denied)
-- `envoy_server_ssl_handshake` - Successful TLS handshakes
-- `envoy_cluster_ssl_handshake_error` - Failed TLS handshakes
+- `envoy_listener_ssl_handshake` - Successful TLS handshakes
+- `envoy_listener_ssl_connection_error` and `envoy_listener_ssl_fail_verify_*` - Failed TLS connections and certificate verification failures
 - `envoy_cluster_upstream_cx_connect_fail` - Connection failures
-- `envoy_server_ssl_no_certificate` - Connections without client certificates
+- `envoy_listener_ssl_no_certificate` - Successful TLS connections without client certificates
 - `envoy_cluster_upstream_rq_retry` - Retried requests
 - RBAC-related stats from the authorization filter
+
+The `envoy_*` metrics are Envoy proxy stats. Istio records a minimal Envoy stats set by default, so enable the relevant prefixes or regular expressions with `proxyStatsMatcher` if these metrics are not present in your Prometheus targets.
 
 ## Setting Up Prometheus for Istio Metrics
 
 If you don't have Prometheus running yet, install it alongside Istio:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.22/samples/addons/prometheus.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/prometheus.yaml
 ```
 
 For production, use the Prometheus Operator:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
+kind: PodMonitor
 metadata:
   name: istio-sidecar
   namespace: monitoring
 spec:
-  selector:
-    matchLabels:
-      istio: sidecar
+  selector: {}
   namespaceSelector:
     any: true
-  endpoints:
+  podMetricsEndpoints:
     - port: http-envoy-prom
       path: /stats/prometheus
       interval: 15s
 ```
 
-This tells Prometheus to scrape all Istio sidecars for metrics every 15 seconds.
+This tells Prometheus to scrape pods that expose the Istio sidecar metrics port every 15 seconds.
 
 ## Monitoring Authorization Denials
 
@@ -65,10 +65,10 @@ Authorization denials (403 responses from RBAC) are one of the most important se
 Prometheus query for authorization denials:
 
 ```promql
-sum(rate(istio_requests_total{response_code="403", response_flags="UAEX"}[5m])) by (source_workload, destination_service)
+sum(rate(istio_requests_total{response_code="403"}[5m])) by (source_workload, destination_service)
 ```
 
-The `response_flags="UAEX"` filter isolates denials from Istio's authorization engine specifically, not other sources of 403 responses.
+This captures HTTP 403 responses reported by Istio. To distinguish Istio RBAC denials from application-generated 403 responses, check Envoy access logs for `response_code_details` values such as `rbac_access_denied_matched_policy[...]`.
 
 Create a Prometheus alerting rule:
 
@@ -101,7 +101,7 @@ TLS handshake failures indicate problems with the mTLS infrastructure. They can 
 ```promql
 # TLS handshake errors across the mesh
 
-sum(rate(envoy_cluster_ssl_handshake_error[5m])) by (cluster_name)
+sum(rate({__name__=~"envoy_listener_ssl_(connection_error|fail_verify_no_cert|fail_verify_error|fail_verify_san)"}[5m])) by (pod)
 ```
 
 Alert on TLS failures:
@@ -109,7 +109,7 @@ Alert on TLS failures:
 ```yaml
 - alert: TLSHandshakeFailures
   expr: |
-    sum(rate(envoy_cluster_ssl_handshake_error[5m])) by (pod) > 0.1
+    sum(rate({__name__=~"envoy_listener_ssl_(connection_error|fail_verify_no_cert|fail_verify_error|fail_verify_san)"}[5m])) by (pod) > 0.1
   for: 5m
   labels:
     severity: critical
@@ -134,7 +134,7 @@ For bulk monitoring, use the Envoy stats:
 
 ```promql
 # Time until certificate expiry (from the Envoy cert stats)
-envoy_server_ssl_days_until_first_cert_expiring
+envoy_server_days_until_first_cert_expiring
 ```
 
 Alert when certificates are close to expiring:
@@ -142,7 +142,7 @@ Alert when certificates are close to expiring:
 ```yaml
 - alert: CertificateExpiringWithinDay
   expr: |
-    envoy_server_ssl_days_until_first_cert_expiring < 1
+    envoy_server_days_until_first_cert_expiring < 1
   for: 10m
   labels:
     severity: critical
@@ -158,7 +158,7 @@ Watch for unusual connection patterns that might indicate security issues:
 ```promql
 # Sudden spike in connection attempts
 sum(rate(istio_tcp_connections_opened_total[5m])) by (destination_service)
-  > 2 * sum(rate(istio_tcp_connections_opened_total[1h])) by (destination_service)
+  > 2 * avg_over_time((sum(rate(istio_tcp_connections_opened_total[5m])) by (destination_service))[1h:5m])
 ```
 
 This detects when the current connection rate is more than 2x the hourly average.
@@ -167,7 +167,7 @@ This detects when the current connection rate is more than 2x the hourly average
 - alert: ConnectionSpike
   expr: |
     sum(rate(istio_tcp_connections_opened_total[5m])) by (destination_service)
-    > 2 * avg_over_time(sum(rate(istio_tcp_connections_opened_total[5m])) by (destination_service)[1h:5m])
+    > 2 * avg_over_time((sum(rate(istio_tcp_connections_opened_total[5m])) by (destination_service))[1h:5m])
   for: 5m
   labels:
     severity: warning
@@ -211,9 +211,9 @@ sum(rate(istio_requests_total{response_code="403"}[5m])) by (source_workload, de
 
 ```promql
 # Percentage of requests using mTLS
-sum(rate(istio_requests_total{connection_security_policy="mutual_tls"}[5m]))
+sum(rate(istio_requests_total{reporter="destination", connection_security_policy="mutual_tls"}[5m]))
 /
-sum(rate(istio_requests_total[5m]))
+sum(rate(istio_requests_total{reporter="destination"}[5m]))
 ```
 
 ### Top Denied Source-Destination Pairs
@@ -239,7 +239,7 @@ sum(rate(envoy_cluster_upstream_cx_connect_fail[5m])) by (cluster_name)
 Connect your alerts to notification channels:
 
 ```yaml
-apiVersion: monitoring.coreos.com/v1alpha1
+apiVersion: monitoring.coreos.com/v1beta1
 kind: AlertmanagerConfig
 metadata:
   name: istio-security
@@ -254,19 +254,24 @@ spec:
     repeatInterval: 1h
     receiver: security-team
     routes:
-      - match:
-          severity: critical
+      - matchers:
+          - name: severity
+            value: critical
+            matchType: =
         receiver: security-pager
   receivers:
     - name: security-team
       slackConfigs:
-        - channel: "#security-alerts"
+        - apiURL:
+            name: slack-webhook
+            key: url
+          channel: "#security-alerts"
           sendResolved: true
     - name: security-pager
       pagerdutyConfigs:
-        - serviceKey:
+        - routingKey:
             name: pagerduty-key
-            key: service-key
+            key: routing-key
 ```
 
 ## Istiod Health Monitoring
