@@ -10,23 +10,23 @@ Description: How to properly manage long-lived and persistent connections in Ist
 
 Persistent connections are everywhere in modern applications. HTTP/2 multiplexes requests over a single connection, gRPC keeps connections open for streaming, databases use connection pools, and WebSockets maintain long-lived connections. When you put Istio in front of these workloads, the Envoy sidecar sits in the middle of every connection, and you need to understand how it handles them.
 
-The biggest issue with persistent connections in a service mesh is load balancing. When a connection is established, all traffic on that connection goes to the same backend. If connections are long-lived and carry lots of requests, you end up with uneven load distribution. This guide covers how to handle that and other persistent connection challenges.
+The biggest issue with persistent connections in a service mesh is load balancing for protocols that are handled as opaque TCP. When a TCP connection is established, all traffic on that connection goes to the same backend. If connections are long-lived and carry lots of requests, you end up with uneven load distribution. HTTP, HTTP/2, and gRPC traffic can be handled at L7 when Istio detects the protocol correctly, but raw TCP, WebSockets, and database connections still need careful connection management. This guide covers how to handle that and other persistent connection challenges.
 
 ## The Load Balancing Problem
 
-Consider a gRPC service with 3 replicas behind a Kubernetes Service. A client creates a single gRPC channel (which uses one HTTP/2 connection). All RPCs on that channel go to the same backend pod because they share one connection. Even though Istio is doing L7 load balancing, it made the routing decision once when the connection was established.
+Consider a gRPC service with 3 replicas behind a Kubernetes Service. A client creates a single gRPC channel, which uses one HTTP/2 connection. If Istio recognizes that traffic as gRPC or HTTP/2, Envoy can route individual HTTP/2 streams. If the service port is named as opaque TCP, or if the traffic is encrypted in a way the sidecar cannot parse, Envoy can only load balance the TCP connection and all traffic on that connection goes to the same backend pod.
 
 You can see this imbalance in your metrics:
 
 ```promql
-sum(rate(istio_requests_total{destination_service="my-grpc-service"}[5m])) by (destination_workload_namespace, destination_workload, destination_canonical_revision)
+sum(rate(istio_requests_total{destination_service="my-grpc-service.default.svc.cluster.local"}[5m])) by (destination_workload_namespace, destination_workload, destination_canonical_revision)
 ```
 
-If one pod is handling 90% of traffic while the other two are idle, you have a persistent connection load balancing problem.
+If one revision or workload is handling most of the traffic while other intended destinations are idle, you have a routing or persistent connection load balancing problem. For per-pod analysis, add a pod-level metric dimension through Istio telemetry customization or inspect Envoy endpoint-level metrics.
 
 ## Fixing gRPC Load Balancing
 
-For gRPC specifically, Istio can do per-request load balancing because it understands the HTTP/2 protocol. The key is making sure your DestinationRule enables this:
+For gRPC specifically, Istio can do per-request load balancing because it understands the HTTP/2 protocol. The key is making sure Istio classifies the service as gRPC or HTTP/2; a DestinationRule can then select the load balancing policy and connection behavior:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -44,7 +44,7 @@ spec:
         maxRequestsPerConnection: 0
 ```
 
-With Istio's L7 processing, each gRPC call (which is an HTTP/2 stream) can be routed independently. This happens automatically for services with ports named `grpc-*` or `http2-*`:
+With Istio's L7 processing, each gRPC call, which is an HTTP/2 stream, can be load-balanced independently. This happens for services with ports named `grpc-*` or `http2-*`, or with a Kubernetes `appProtocol` value of `grpc` or `http2`:
 
 ```yaml
 apiVersion: v1
@@ -89,7 +89,7 @@ spec:
 ```
 
 Key settings:
-- `maxConnections` - Maximum number of TCP connections to the service. Once reached, new connection attempts are queued.
+- `maxConnections` - Maximum number of HTTP/1.1 or TCP connections from one Envoy proxy to the destination host. Once reached, Envoy's connection circuit breaker can reject or overflow new connection attempts.
 - `connectTimeout` - How long to wait for a TCP connection to be established.
 - `tcpKeepalive` - Keeps idle connections alive and detects dead peers.
 - `maxRequestsPerConnection` - After this many requests, the connection is closed and a new one is opened. This helps redistribute traffic. Set to 0 for unlimited.
@@ -117,7 +117,7 @@ spec:
       mode: ISTIO_MUTUAL
 ```
 
-Make sure the sidecar's `maxConnections` is at least as high as your application's connection pool size. If your app pool allows 50 connections and you have 4 replicas, the sidecar needs to support at least 200 connections (50 * 4) to the database service.
+Make sure each sidecar's `maxConnections` is at least as high as the number of database connections that workload instance can open through that proxy. If each app pod has a pool of 50 connections, the outbound sidecar for that pod needs to allow at least 50 connections to the database service. The database itself still needs capacity for the total across replicas, such as 200 connections for 4 app replicas with 50 connections each.
 
 ## Handling WebSocket Connections
 
@@ -144,9 +144,9 @@ spec:
     timeout: 0s
 ```
 
-Setting `timeout: 0s` disables the request timeout, which is necessary for WebSocket connections that can last hours. Without this, Envoy will terminate the connection after the default timeout (15 seconds for HTTP).
+Setting `timeout: 0s` disables the route timeout, which is useful if you have configured HTTP request timeouts elsewhere and want this route exempt. Istio's VirtualService HTTP timeout is disabled by default, so this field is only needed when overriding a nonzero timeout.
 
-Also configure idle timeout for WebSocket connections:
+Also configure an upstream HTTP connection idle timeout if you want idle pooled HTTP connections to close only after a longer interval:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -208,7 +208,7 @@ spec:
       terminationGracePeriodSeconds: 70
 ```
 
-For services with many persistent connections, you might also want to enable connection draining at the Envoy level through the DestinationRule:
+For services with many persistent HTTP connections, you might also want to encourage connection recycling through the DestinationRule:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -223,7 +223,7 @@ spec:
         maxRequestsPerConnection: 100
 ```
 
-Setting `maxRequestsPerConnection` forces connections to be recycled periodically. This means during a rolling deployment, connections naturally migrate to new pods as old connections reach their request limit and get closed.
+Setting `maxRequestsPerConnection` forces HTTP connections to be recycled periodically. This can help during a rolling deployment because connections naturally migrate to new pods as old HTTP connections reach their request limit and get closed. It does not drain arbitrary TCP or WebSocket connections.
 
 ## Monitoring Connection Health
 
