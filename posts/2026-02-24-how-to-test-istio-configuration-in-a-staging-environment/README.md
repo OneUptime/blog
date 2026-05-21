@@ -59,9 +59,9 @@ kubectl create namespace frontend
 kubectl create namespace backend
 kubectl create namespace data
 
-kubectl label namespace frontend istio-injection=enabled
-kubectl label namespace backend istio-injection=enabled
-kubectl label namespace data istio-injection=enabled
+kubectl label namespace frontend istio.io/rev=stable
+kubectl label namespace backend istio.io/rev=stable
+kubectl label namespace data istio.io/rev=stable
 ```
 
 ## Deploying Test Workloads
@@ -166,9 +166,9 @@ If either returns no results, your routing will break.
 One of the most valuable debugging tools is checking what configuration the Envoy proxies actually received. Use `istioctl proxy-config` to inspect routes, clusters, and listeners:
 
 ```bash
-istioctl proxy-config routes deploy/sleep -n frontend
-istioctl proxy-config clusters deploy/sleep -n frontend
-istioctl proxy-config endpoints deploy/sleep -n frontend
+istioctl proxy-config routes deployment/sleep -n frontend
+istioctl proxy-config clusters deployment/sleep -n frontend
+istioctl proxy-config endpoints deployment/sleep -n frontend
 ```
 
 This tells you exactly what the sidecar proxy knows about. If a route is missing or pointing to the wrong cluster, you will see it here.
@@ -189,16 +189,25 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      ISTIO_VERSION: 1.30.0
     steps:
     - uses: actions/checkout@v4
 
     - name: Set up kubectl
-      uses: azure/setup-kubectl@v3
+      uses: azure/setup-kubectl@v4
+
+    - name: Set up istioctl
+      run: |
+        curl -L https://istio.io/downloadIstio | ISTIO_VERSION=${ISTIO_VERSION} TARGET_ARCH=x86_64 sh -
+        echo "$PWD/istio-${ISTIO_VERSION}/bin" >> "$GITHUB_PATH"
 
     - name: Configure kubeconfig
-      run: echo "${{ secrets.STAGING_KUBECONFIG }}" > kubeconfig
+      run: |
+        printf '%s' "$STAGING_KUBECONFIG" > kubeconfig
+        echo "KUBECONFIG=$PWD/kubeconfig" >> "$GITHUB_ENV"
       env:
-        KUBECONFIG: kubeconfig
+        STAGING_KUBECONFIG: ${{ secrets.STAGING_KUBECONFIG }}
 
     - name: Validate with istioctl analyze
       run: |
@@ -218,10 +227,10 @@ jobs:
 Drift between staging and production is a real problem. Use `istioctl` to export proxy configurations from both environments and diff them:
 
 ```bash
-istioctl proxy-config routes deploy/productpage -n frontend \
+istioctl proxy-config routes deployment/productpage -n frontend \
   --context staging -o json > staging-routes.json
 
-istioctl proxy-config routes deploy/productpage -n frontend \
+istioctl proxy-config routes deployment/productpage -n frontend \
   --context production -o json > prod-routes.json
 
 diff staging-routes.json prod-routes.json
