@@ -12,22 +12,22 @@ Every Envoy sidecar in your Istio mesh goes through a bootstrap process before i
 
 ## The Bootstrap Sequence
 
-When a pod with Istio sidecar injection starts, the following happens in order:
+When a pod with Istio sidecar injection starts, the following usually happens in this order:
 
-1. Init container (istio-init) runs and sets up iptables rules
+1. Init container (`istio-init`) runs and sets up iptables rules, unless the mesh uses Istio CNI or a native sidecar mode that handles this differently
 2. Application container and istio-proxy container start
 3. Pilot-agent generates the Envoy bootstrap configuration
 4. Pilot-agent starts Envoy with the bootstrap config
-5. Envoy connects to istiod using the bootstrap config
+5. Envoy connects to the local pilot-agent xDS proxy using the bootstrap config
 6. Istiod sends the full mesh configuration via xDS
 7. Envoy applies the configuration and starts serving traffic
 8. The readiness probe passes
 
-Each step has to complete before the next one works. If any step fails, the pod either stays in init or the sidecar reports not ready.
+These steps are tightly linked, although the application and sidecar containers can start in parallel by default. If any required step fails, the pod either stays in init or the sidecar reports not ready.
 
 ## Step 1: The Init Container
 
-The `istio-init` container runs before any other container in the pod. Its job is to set up iptables rules that redirect all inbound and outbound traffic through the Envoy sidecar:
+In the default iptables mode without Istio CNI, the `istio-init` container runs before any other container in the pod. Its job is to set up iptables rules that redirect inbound and outbound traffic through the Envoy sidecar:
 
 ```bash
 # See the init container definition
@@ -47,9 +47,9 @@ What these flags mean:
 - `-u 1337` - UID of the istio-proxy user (traffic from this UID is not redirected)
 - `-m REDIRECT` - Use REDIRECT mode
 - `-b '*'` - Redirect traffic for all inbound ports
-- `-d 15090,15021,15020` - Exclude these ports from redirection (Envoy admin/health/stats ports)
+- `-d 15090,15021,15020` - Exclude these ports from inbound redirection. In current default injection this is commonly `15090,15021`; older or customized pods may also exclude `15020`.
 
-The init container needs `NET_ADMIN` and `NET_RAW` capabilities to modify iptables:
+When Istio is not using CNI, the init container needs `NET_ADMIN` and `NET_RAW` capabilities to modify iptables:
 
 ```yaml
 securityContext:
@@ -82,9 +82,9 @@ kubectl get pod my-app-xyz -o jsonpath='{.spec.containers[?(@.name=="istio-proxy
 
 Pilot-agent generates a JSON bootstrap configuration file at `/etc/istio/proxy/envoy-rev.json`. This file tells Envoy:
 
-- Where to find the control plane (istiod address)
+- Where to find the local xDS proxy
 - What its identity is (node ID, cluster name)
-- How to authenticate with istiod
+- How to obtain workload certificates through SDS
 - Static listeners for the admin interface
 - Logging configuration
 
@@ -138,7 +138,7 @@ kubectl exec deploy/my-app -c istio-proxy -- ps aux | grep envoy
 
 ## Step 5: xDS Connection
 
-Envoy uses the `xds-grpc` cluster from the bootstrap config to connect to istiod. The cluster is defined statically in the bootstrap:
+Envoy uses the `xds-grpc` cluster from the bootstrap config to connect to the local pilot-agent xDS proxy. In current Istio sidecars this cluster is defined statically as a Unix domain socket:
 
 ```json
 {
@@ -146,7 +146,7 @@ Envoy uses the `xds-grpc` cluster from the bootstrap config to connect to istiod
     "clusters": [
       {
         "name": "xds-grpc",
-        "type": "STRICT_DNS",
+        "type": "STATIC",
         "load_assignment": {
           "cluster_name": "xds-grpc",
           "endpoints": [
@@ -155,9 +155,8 @@ Envoy uses the `xds-grpc` cluster from the bootstrap config to connect to istiod
                 {
                   "endpoint": {
                     "address": {
-                      "socket_address": {
-                        "address": "istiod.istio-system.svc",
-                        "port_value": 15012
+                      "pipe": {
+                        "path": "./etc/istio/proxy/XDS"
                       }
                     }
                   }
@@ -172,7 +171,7 @@ Envoy uses the `xds-grpc` cluster from the bootstrap config to connect to istiod
 }
 ```
 
-The connection to istiod on port 15012 is secured with TLS. The initial TLS bootstrap uses the Kubernetes service account token mounted in the pod.
+Pilot-agent then connects upstream to istiod, typically using the discovery address `istiod.istio-system.svc:15012`. That upstream xDS connection is secured with TLS, and the proxy uses the Kubernetes service account token mounted in the pod when authenticating with the control plane.
 
 ## Step 6: Configuration Delivery
 
@@ -183,22 +182,21 @@ Once connected, istiod pushes the full configuration to the sidecar:
 3. LDS (Listener Discovery Service) - What ports to listen on
 4. RDS (Route Discovery Service) - HTTP routing rules
 
-The sidecar logs show when configuration is received:
+The sidecar logs show when the xDS proxy connects and when Envoy becomes ready:
 
 ```bash
-kubectl logs deploy/my-app -c istio-proxy | head -20
+kubectl logs deploy/my-app -c istio-proxy | grep -i "xds\|ready\|certificate"
 ```
 
 You will see lines like:
 
 ```text
 info  cache  generated new workload certificate
-info  ads    ADS: new]connection for node:sidecar~10.244.1.5~my-app-xyz.default~default.svc.cluster.local
-info  ads    CDS: PUSH
-info  ads    EDS: PUSH
-info  ads    LDS: PUSH
-info  ads    RDS: PUSH
+info  xdsproxy  connected to upstream XDS server: istiod.istio-system.svc:15012
+info  Envoy proxy is ready
 ```
+
+Istiod logs and `istioctl proxy-status` are better places to confirm which xDS resources were pushed and acknowledged.
 
 ## Step 7: Readiness
 
@@ -209,7 +207,7 @@ Once the configuration is received and applied, the sidecar's readiness probe pa
 kubectl exec deploy/my-app -c istio-proxy -- curl -s localhost:15021/healthz/ready
 ```
 
-Pilot-agent checks that Envoy is running and has received at least one configuration update before reporting ready. This prevents the pod from receiving traffic before the sidecar knows about the mesh.
+Pilot-agent checks that Envoy is running and has successfully received initial CDS and LDS updates before reporting ready. This prevents the pod from receiving traffic before the sidecar knows about the mesh.
 
 ## Startup Timing
 
@@ -280,6 +278,6 @@ metadata:
     proxy.istio.io/config: '{"holdApplicationUntilProxyStarts": true}'
 ```
 
-This adds a postStart hook that blocks the application container until the sidecar is ready.
+In the classic sidecar mode, this adds a `postStart` hook to the `istio-proxy` container and blocks the other containers from starting until the sidecar is ready.
 
 The bootstrap process is the foundation of everything the sidecar does. Every routing rule, security policy, and telemetry feature depends on the sidecar successfully bootstrapping and receiving its configuration from istiod. When pods take too long to start or fail to connect, the bootstrap sequence is the first place to investigate.
