@@ -45,8 +45,13 @@ metadata:
   name: csi-node-driver
   namespace: kube-system
 spec:
+  selector:
+    matchLabels:
+      app: csi-node-driver
   template:
     metadata:
+      labels:
+        app: csi-node-driver
       annotations:
         sidecar.istio.io/inject: "false"
     spec:
@@ -66,8 +71,13 @@ metadata:
   name: iscsi-target
   namespace: storage
 spec:
+  selector:
+    matchLabels:
+      app: iscsi-target
   template:
     metadata:
+      labels:
+        app: iscsi-target
       annotations:
         traffic.sidecar.istio.io/excludeInboundPorts: "3260"
         traffic.sidecar.istio.io/excludeOutboundPorts: "3260"
@@ -88,15 +98,24 @@ metadata:
   name: storage-controller
   namespace: storage
 spec:
+  selector:
+    matchLabels:
+      app: storage-controller
   template:
     metadata:
+      labels:
+        app: storage-controller
       annotations:
         traffic.sidecar.istio.io/excludeOutboundPorts: "3260"
+    spec:
+      containers:
+      - name: storage-controller
+        image: storage-vendor/controller:v2.0
 ```
 
 ## NVMe over TCP Configuration
 
-NVMe over Fabrics using TCP transport is becoming more common in cloud-native storage. The default port is 4420:
+NVMe over Fabrics using TCP transport is becoming more common in cloud-native storage. TCP port 4420 is assigned for NVMe-oF and is commonly used for NVMe/TCP I/O controllers, while discovery controllers default to port 8009. Use the port advertised by your storage system's discovery log:
 
 ```yaml
 apiVersion: apps/v1
@@ -105,8 +124,13 @@ metadata:
   name: nvme-target
   namespace: storage
 spec:
+  selector:
+    matchLabels:
+      app: nvme-target
   template:
     metadata:
+      labels:
+        app: nvme-target
       annotations:
         traffic.sidecar.istio.io/excludeInboundPorts: "4420"
         traffic.sidecar.istio.io/excludeOutboundPorts: "4420"
@@ -125,7 +149,7 @@ NVMe-oF traffic is extremely latency-sensitive. Even the small overhead of passi
 When your block storage backend lives outside the cluster (which is common with enterprise SANs), create ServiceEntry resources so Istio doesn't block the outbound connections:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-iscsi-target
@@ -147,14 +171,14 @@ spec:
   - address: 10.0.50.101
 ```
 
-Using STATIC resolution with explicit IP addresses is better for block storage because DNS resolution adds latency and a potential failure point. Block storage targets have stable IPs, so hardcode them.
+Using STATIC resolution with explicit IP addresses is a good fit when block storage targets have stable IPs and you want Istio to load balance over those endpoints directly. If your storage vendor relies on DNS for discovery or failover, use the vendor-supported DNS behavior instead.
 
 ## Storage Management API Through the Mesh
 
 While the data path should bypass Istio, the management API of your storage system can benefit from mesh features. For example, if you use a storage orchestrator like Rook or OpenEBS:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: storage-api
@@ -175,7 +199,7 @@ spec:
 ```
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: storage-api-access
@@ -200,7 +224,7 @@ This setup puts the management API through the mesh for mTLS and authorization w
 
 ## Network Policies for Block Storage
 
-Complement your Istio configuration with Kubernetes NetworkPolicies to ensure block storage traffic can always flow:
+Complement your Istio configuration with Kubernetes NetworkPolicies so pod-level storage target traffic is not accidentally blocked:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -225,7 +249,7 @@ spec:
 Multipath I/O (MPIO) is standard practice for block storage high availability. It opens multiple connections to the same storage target over different paths. Istio can confuse the multipath setup if it load-balances across the connections:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: iscsi-no-lb
@@ -249,10 +273,10 @@ Even though block storage traffic bypasses the mesh, you should still monitor st
 ```bash
 # Check iSCSI sessions from a node
 
-kubectl debug node/worker-1 -it --image=busybox -- iscsiadm -m session
+kubectl debug node/worker-1 -it --image=ubuntu -- chroot /host iscsiadm -m session
 
 # Check NVMe connections
-kubectl debug node/worker-1 -it --image=busybox -- nvme list
+kubectl debug node/worker-1 -it --image=ubuntu -- chroot /host nvme list
 
 # Monitor CSI driver logs for connection issues
 kubectl logs -n kube-system -l app=csi-driver --tail=100
@@ -265,8 +289,8 @@ For quick reference, here are the common ports that should be excluded from Isti
 | Protocol | Port | Direction |
 |----------|------|-----------|
 | iSCSI | 3260 | Both |
-| NVMe-oF TCP | 4420 | Both |
-| Ceph RADOS | 6800-7300 | Both |
+| NVMe-oF TCP I/O controller | 4420, or the advertised TRSVCID | Both |
+| Ceph RADOS | 6800-7568 | Both |
 | Ceph MON | 3300, 6789 | Both |
 
 The general rule for block storage with Istio is simple: keep the data path out of the mesh, and only use mesh features for management APIs and monitoring endpoints. Block storage protocols are too sensitive to the overhead and behavioral changes that a proxy introduces.
