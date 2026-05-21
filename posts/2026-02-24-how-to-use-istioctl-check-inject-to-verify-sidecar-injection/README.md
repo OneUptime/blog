@@ -8,9 +8,9 @@ Description: A practical guide to using istioctl check-inject to troubleshoot an
 
 ---
 
-Sidecar injection is one of those Istio features that usually "just works" until it doesn't. You label a namespace, deploy a pod, and magically it gets an Envoy sidecar. But when a pod shows up without a sidecar and you're not sure why, `istioctl check-inject` helps you figure out what happened.
+Sidecar injection is one of those Istio features that usually "just works" until it doesn't. You label a namespace, deploy a pod, and magically it gets an Envoy sidecar. But when a pod shows up without a sidecar and you're not sure why, `istioctl experimental check-inject` helps you figure out what happened.
 
-This command inspects the injection configuration and tells you exactly whether a given pod, deployment, or namespace will get sidecar injection and why.
+This command inspects the injection configuration and tells you exactly whether a given pod, deployment, or set of labels in a namespace will get sidecar injection and why.
 
 ## How Sidecar Injection Works
 
@@ -19,51 +19,51 @@ Before getting into the command, a quick refresher on how injection works. Istio
 The webhook checks several things in order:
 
 1. Is the pod in a namespace with the `istio-injection=enabled` label (or `istio.io/rev=<revision>` for canary)?
-2. Does the pod have the annotation `sidecar.istio.io/inject` set to `true` or `false`?
-3. Does the pod match any `IstioOperator` configuration for injection?
+2. Does the pod have the label `sidecar.istio.io/inject` set to `true` or `false`?
+3. Does the injector configuration allow injection by default when neither label is set?
 
-Pod-level annotations override namespace-level labels. So you can enable injection for a namespace but opt out specific pods, or vice versa.
+Pod-level labels can affect the injection decision. So you can enable injection for a namespace but opt out specific pods; a pod label can also opt in when no disabling namespace label blocks it.
 
 ## Using check-inject
 
 ### Check a Namespace
 
 ```bash
-istioctl check-inject -n default
+istioctl experimental check-inject -n default -l app=httpbin
 ```
 
 Output:
 
 ```text
-NAMESPACE   INJECTED   REASON
-default     true       Namespace label istio-injection=enabled
+WEBHOOK                      REVISION  INJECTED      REASON
+istio-revision-tag-default   default   ✔             Namespace label istio-injection=enabled matches
 ```
 
 If injection isn't enabled:
 
 ```text
-NAMESPACE   INJECTED   REASON
-kube-system false      Namespace label istio-injection not found
+WEBHOOK                      REVISION  INJECTED      REASON
+istio-revision-tag-default   default   ✘             No matching namespace labels (istio-injection=enabled) or pod labels (sidecar.istio.io/inject=true)
 ```
 
 ### Check a Specific Pod
 
 ```bash
-istioctl check-inject pod/httpbin-74fb669cc6-abc12 -n default
+istioctl experimental check-inject httpbin-74fb669cc6-abc12 -n default
 ```
 
 Output:
 
 ```text
-POD                              NAMESPACE   INJECTED   REASON
-httpbin-74fb669cc6-abc12         default     true       Namespace label istio-injection=enabled, no pod override
+WEBHOOK                      REVISION  INJECTED      REASON
+istio-revision-tag-default   default   ✔             Namespace label istio-injection=enabled matches
 ```
 
 Or if the pod has opted out:
 
 ```text
-POD                              NAMESPACE   INJECTED   REASON
-httpbin-74fb669cc6-abc12         default     false      Pod annotation sidecar.istio.io/inject=false
+WEBHOOK                      REVISION  INJECTED      REASON
+istio-revision-tag-default   default   ✘             Pod label sidecar.istio.io/inject=false prevents injection
 ```
 
 ### Check a Deployment
@@ -71,7 +71,7 @@ httpbin-74fb669cc6-abc12         default     false      Pod annotation sidecar.i
 You can also check at the deployment level to see what will happen when new pods are created:
 
 ```bash
-istioctl check-inject deployment/httpbin -n default
+istioctl experimental check-inject deployment/httpbin -n default
 ```
 
 This is more useful than checking a running pod because it tells you what future pods will look like.
@@ -83,12 +83,12 @@ This is more useful than checking a running pod because it tells you what future
 The most common reason pods don't get sidecars:
 
 ```bash
-istioctl check-inject -n my-namespace
+istioctl experimental check-inject -n my-namespace -l app=my-app
 ```
 
 ```text
-NAMESPACE      INJECTED   REASON
-my-namespace   false      Namespace label istio-injection not found
+WEBHOOK                      REVISION  INJECTED      REASON
+istio-revision-tag-default   default   ✘             No matching namespace labels (istio-injection=enabled) or pod labels (sidecar.istio.io/inject=true)
 ```
 
 Fix:
@@ -103,31 +103,31 @@ After labeling, existing pods won't automatically get sidecars. You need to rest
 kubectl rollout restart deployment -n my-namespace
 ```
 
-### Pod Annotation Override
+### Pod Label Override
 
-Sometimes a pod has an annotation that disables injection even though the namespace has it enabled:
+Sometimes a pod has a label that disables injection even though the namespace has it enabled:
 
 ```bash
-istioctl check-inject pod/special-pod-abc12 -n default
+istioctl experimental check-inject special-pod-abc12 -n default
 ```
 
 ```text
-POD                    NAMESPACE   INJECTED   REASON
-special-pod-abc12      default     false      Pod annotation sidecar.istio.io/inject=false
+WEBHOOK                      REVISION  INJECTED      REASON
+istio-revision-tag-default   default   ✘             Pod label sidecar.istio.io/inject=false prevents injection
 ```
 
-Check the pod's annotations:
+Check the pod's labels:
 
 ```bash
-kubectl get pod special-pod-abc12 -n default -o jsonpath='{.metadata.annotations}'
+kubectl get pod special-pod-abc12 -n default -o jsonpath='{.metadata.labels}'
 ```
 
-If the annotation was set intentionally (maybe by a Helm chart), you can override it in your values:
+If the label was set intentionally (maybe by a Helm chart), you can override it in your values:
 
 ```yaml
 # Helm values example
 
-podAnnotations:
+podLabels:
   sidecar.istio.io/inject: "true"
 ```
 
@@ -136,12 +136,12 @@ podAnnotations:
 If you're using revision-based canary upgrades, the namespace label changes from `istio-injection=enabled` to `istio.io/rev=<revision>`:
 
 ```bash
-istioctl check-inject -n production
+istioctl experimental check-inject -n production -l app=api
 ```
 
 ```text
-NAMESPACE    INJECTED   REASON
-production   false      Neither istio-injection nor istio.io/rev label found
+WEBHOOK                      REVISION  INJECTED      REASON
+istio-revision-tag-stable    stable    ✘             No matching namespace labels (istio.io/rev=stable) or pod labels (istio.io/rev=stable)
 ```
 
 This happens when you switched to revision-based injection but used the old label. Fix it:
@@ -166,7 +166,7 @@ You should see something like `istio-sidecar-injector` or `istio-revision-tag-de
 Check with:
 
 ```bash
-istioctl check-inject -n default
+istioctl experimental check-inject -n default -l app=httpbin
 ```
 
 If the output mentions the webhook isn't found, reinstall or repair the Istio installation:
@@ -180,8 +180,8 @@ istioctl install --set profile=default
 Pods running with `hostNetwork: true` can't use sidecar injection because Envoy can't intercept traffic properly. check-inject flags this:
 
 ```text
-POD              NAMESPACE   INJECTED   REASON
-network-pod      default     false      Pod uses host networking
+WEBHOOK                      REVISION  INJECTED      REASON
+istio-revision-tag-default   default   ✘             Pod has hostNetwork enabled
 ```
 
 There's no fix for this - it's a fundamental limitation. These pods need to communicate with mesh services through other means (like connecting directly to the service's ClusterIP).
@@ -214,14 +214,15 @@ kubectl get configmap istio-sidecar-injector -n istio-system -o yaml
 
 This contains the injection template, which defines what containers and volumes get added to pods. If you've customized injection (maybe to add extra environment variables or change resource limits), the customizations live here.
 
-For per-pod customization of the sidecar, use annotations:
+For per-pod customization of the sidecar, use the injection label plus sidecar resource annotations:
 
 ```yaml
 apiVersion: v1
 kind: Pod
 metadata:
-  annotations:
+  labels:
     sidecar.istio.io/inject: "true"
+  annotations:
     sidecar.istio.io/proxyCPU: "100m"
     sidecar.istio.io/proxyMemory: "128Mi"
     sidecar.istio.io/proxyMemoryLimit: "256Mi"
@@ -233,7 +234,7 @@ spec:
     image: my-app:latest
 ```
 
-These annotations are respected during injection and let you tune sidecar resources on a per-pod basis.
+These labels and annotations are respected during injection and let you tune sidecar resources on a per-pod basis.
 
 ## Troubleshooting Injection Failures
 
@@ -254,8 +255,8 @@ kubectl get mutatingwebhookconfiguration istio-sidecar-injector -o yaml | grep f
 
 If `failurePolicy` is `Ignore`, webhook failures are silent. If it's `Fail`, pod creation fails entirely.
 
-3. **Namespace exclusions.** Some namespaces are excluded from injection by default, including `kube-system`, `kube-public`, and `istio-system`. Check the webhook configuration for `namespaceSelector` rules.
+3. **Namespace exclusions.** Some namespaces are excluded from injection by default, including `kube-system` and `kube-public`, and mesh operators commonly disable injection in `istio-system`. Check the webhook configuration for `namespaceSelector` rules.
 
 ## Summary
 
-The `istioctl check-inject` command takes the guesswork out of sidecar injection. Instead of manually checking labels, annotations, and webhooks, you get a clear answer about whether injection will work and why. Make it part of your deployment verification process, especially when onboarding new namespaces or troubleshooting missing sidecars.
+The `istioctl experimental check-inject` command takes the guesswork out of sidecar injection. Instead of manually checking labels and webhooks, you get a clear answer about whether injection will work and why. Make it part of your deployment verification process, especially when onboarding new namespaces or troubleshooting missing sidecars.
