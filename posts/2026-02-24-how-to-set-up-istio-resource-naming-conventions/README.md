@@ -17,13 +17,13 @@ Naming conventions sound boring, but they save real time. They make troubleshoot
 Before getting into resource-specific conventions, some ground rules apply to everything:
 
 - Use lowercase letters, numbers, and hyphens only
-- No underscores (they are technically valid but break some tools)
-- Keep names under 63 characters (Kubernetes limit)
+- No underscores (Kubernetes DNS label and DNS subdomain names do not allow them)
+- Keep names under 63 characters when using this DNS label-style convention
 - Be descriptive but not verbose
 - Include the service name or purpose in the resource name
 - Use consistent suffixes or prefixes to indicate resource type when needed
 
-Kubernetes resource names must match the following regex, so stick to that pattern:
+Many Kubernetes resources use either DNS label names (up to 63 characters) or DNS subdomain names (up to 253 characters). For Istio resource naming, a DNS label-style pattern is usually the simplest convention to standardize on:
 
 ```text
 [a-z0-9]([-a-z0-9]*[a-z0-9])?
@@ -38,7 +38,7 @@ Pattern: `{service-name}` or `{service-name}-{context}`
 ```yaml
 # Good: Clear which service this routes to
 
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: orders-service
@@ -54,7 +54,7 @@ spec:
 
 ```yaml
 # Good: When you need multiple VirtualServices for different contexts
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: orders-service-external
@@ -90,7 +90,7 @@ Pattern: `{service-name}` or `{service-name}-{policy-type}`
 
 ```yaml
 # Good: Matches the service it configures
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: orders-service
@@ -120,7 +120,7 @@ Pattern: `{purpose}-gateway` or `{domain}-gateway`
 
 ```yaml
 # Good: Describes what it serves
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: public-api-gateway
@@ -204,7 +204,7 @@ Pattern: `{external-service-name}` or `{provider}-{service}`
 
 ```yaml
 # Good: Clear external service name
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: stripe-payment-api
@@ -339,7 +339,7 @@ spec:
       rego: |
         package istionaming
         violation[{"msg": msg}] {
-          not re_match(input.parameters.namePattern, input.review.object.metadata.name)
+          not regex.match(input.parameters.namePattern, input.review.object.metadata.name)
           msg := sprintf("Resource name '%v' does not match required pattern '%v'", [input.review.object.metadata.name, input.parameters.namePattern])
         }
 ```
