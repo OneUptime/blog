@@ -14,7 +14,7 @@ Getting sidecar resource requests right is one of those things that seems simple
 
 ## Why Sidecar Resources Matter
 
-Every Envoy sidecar needs CPU cycles to process traffic and memory to hold its configuration, connection pools, and stats. If you don't set resource requests, Kubernetes treats the sidecar as a best-effort container, which means it can get killed first under memory pressure. On the flip side, if you set requests too high, you waste cluster capacity because Kubernetes reserves those resources even when the proxy is idle.
+Every Envoy sidecar needs CPU cycles to process traffic and memory to hold its configuration, connection pools, and stats. If you don't set resource requests, the sidecar does not get a reserved share of CPU or memory, and the pod's QoS class and eviction behavior depend on the requests and limits across all of its containers. On the flip side, if you set requests too high, you waste cluster capacity because Kubernetes reserves those resources even when the proxy is idle.
 
 The default Istio sidecar resource configuration is intentionally minimal. For many production workloads, you need to adjust these values based on actual traffic patterns.
 
@@ -143,7 +143,7 @@ Or for more detailed metrics, query Prometheus:
 ```bash
 # CPU usage of sidecar containers
 
-container_cpu_usage_seconds_total{container="istio-proxy"}
+rate(container_cpu_usage_seconds_total{container="istio-proxy"}[5m])
 
 # Memory usage of sidecar containers
 container_memory_working_set_bytes{container="istio-proxy"}
@@ -151,7 +151,7 @@ container_memory_working_set_bytes{container="istio-proxy"}
 
 ## Setting Concurrency for CPU-Bound Proxies
 
-The `concurrency` setting controls how many worker threads Envoy uses. By default, Istio sets this to 2. If your proxy is CPU-bound (handling very high request rates), you can increase it:
+The `concurrency` setting controls how many worker threads Envoy uses. In current Istio releases, if this is unset, Istio automatically determines the value based on CPU limits. If your proxy is CPU-bound (handling very high request rates), you can set it explicitly:
 
 ```yaml
 apiVersion: apps/v1
@@ -240,13 +240,13 @@ spec:
 
 Once you set initial resource values, monitor them over a few days of normal traffic. Look for:
 
-- **CPU throttling**: Check `container_cpu_cfs_throttled_seconds_total` for the istio-proxy container. Any significant throttling means your CPU limit is too low.
-- **OOMKills**: Check pod events for OOMKilled on the istio-proxy container. Increase memory limits if this happens.
+- **CPU throttling**: Check `rate(container_cpu_cfs_throttled_seconds_total{container="istio-proxy"}[5m])` for the istio-proxy container. Any significant throttling means your CPU limit is too low.
+- **OOMKills**: Check the pod's container status for OOMKilled on the istio-proxy container. Increase memory limits if this happens.
 - **Wasted resources**: If actual usage is consistently below 50% of the request, you're over-provisioning.
 
 ```bash
 # Check for OOMKilled sidecars
-kubectl get events --field-selector reason=OOMKilling -A | grep istio-proxy
+kubectl describe pod my-pod -n my-namespace
 ```
 
 Getting sidecar resource requests right is an iterative process. Start with reasonable defaults, monitor actual usage under production traffic, and adjust. The goal is to give sidecars enough headroom to handle traffic spikes without wasting cluster resources during quiet periods.
