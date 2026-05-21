@@ -27,10 +27,10 @@ Together, these APIs give the control plane complete control over every aspect o
 
 Here's the sequence of events when you deploy a new Kubernetes Service:
 
-1. Kubernetes creates the Service and its Endpoints
+1. Kubernetes creates the Service and its EndpointSlice objects (or Endpoints on older Kubernetes clusters)
 2. Istiod watches the Kubernetes API and detects the new Service
 3. Istiod creates a new CDS entry (cluster) for the service
-4. Istiod creates EDS entries with the pod IPs from the Endpoints resource
+4. Istiod creates EDS entries with the pod IPs from EndpointSlice or Endpoints data
 5. Istiod pushes the updated CDS and EDS to all sidecars in the mesh
 6. Each sidecar's Envoy updates its configuration and can now route traffic to the new service
 
@@ -54,10 +54,10 @@ backend-6c7d9e4f55-def34.production     SYNCED SYNCED SYNCED SYNCED        istio
 
 Each column shows the sync status for that xDS type:
 - **SYNCED** - Envoy has the latest configuration
-- **STALE** - Envoy has an older configuration (it either rejected the update or hasn't received it yet)
-- **NOT SENT** - Istiod hasn't sent this type of configuration to the proxy (this is normal for some proxies)
+- **STALE** - Istiod has sent an update but has not received an acknowledgement from Envoy
+- **NOT SENT** - Istiod hasn't sent this type of configuration to the proxy, usually because there is nothing to send (this is normal for some proxies)
 
-If you see STALE, it usually means there's a configuration error that Envoy is rejecting.
+If you see STALE, it can point to a networking issue between Envoy and istiod, an Envoy rejection, or an Istio bug.
 
 ## Inspecting xDS Configuration
 
@@ -108,9 +108,9 @@ Each sidecar maintains a persistent gRPC connection to istiod for receiving xDS 
 kubectl logs <pod-name> -c istio-proxy | grep "xds"
 ```
 
-The connection endpoint is typically `istiod.istio-system.svc:15012` for secure (mTLS) connections. The sidecar authenticates to istiod using a certificate mounted from the `istio-ca-secret`.
+The connection endpoint is typically `istiod.istio-system.svc:15012` for secure (mTLS) connections. The Istio agent obtains workload certificates from istiod using the pod's service account token, and Envoy receives the certificate and key from the local Istio agent through SDS.
 
-If sidecars can't connect to istiod, they'll use whatever configuration they had before the disconnection. New pods won't have any configuration and will fail to start.
+If sidecars can't connect to istiod, they'll use whatever configuration they had before the disconnection. New pods may not receive the configuration they need to become ready or serve mesh traffic correctly.
 
 Check connectivity:
 
@@ -130,7 +130,7 @@ Understanding the mapping between Istio resources and xDS types helps you predic
 
 **Gateway** creates new LDS entries (listeners) on the ingress/egress gateway.
 
-**ServiceEntry** creates CDS + EDS entries for external services.
+**ServiceEntry** creates service registry entries that usually become CDS clusters and, depending on the resolution mode and endpoints, EDS endpoint configuration or DNS-based cluster resolution.
 
 **PeerAuthentication** modifies LDS (listener) filter chains to add mTLS requirements.
 
@@ -205,8 +205,8 @@ metadata:
 spec:
   egress:
   - hosts:
-    - "./backend.production.svc.cluster.local"
-    - "./cache.production.svc.cluster.local"
+    - "production/backend.production.svc.cluster.local"
+    - "production/cache.production.svc.cluster.local"
     - "istio-system/*"
 ```
 
