@@ -32,13 +32,13 @@ For more detailed measurements, check the sidecar's readiness:
 kubectl get pod <pod-name> -o jsonpath='{.status.containerStatuses[?(@.name=="istio-proxy")].state}'
 ```
 
-You can also check when the proxy first connected to istiod by looking at the proxy status:
+You can also check whether the proxy has received its configuration by looking at the proxy status:
 
 ```bash
 istioctl proxy-status
 ```
 
-The "PILOT CONNECTION AGE" column shows how long the proxy has been connected.
+This shows whether CDS, LDS, EDS, and RDS have synced for each proxy. A proxy that is not `SYNCED` has not fully received the configuration it needs.
 
 ## Understanding What Happens During Startup
 
@@ -48,7 +48,7 @@ When a pod starts with Istio sidecar injection, the sequence is:
 2. **Containers start**: Both the application and istio-proxy containers start.
 3. **Envoy bootstraps**: Reads the bootstrap configuration, initializes, starts listeners. Takes 1-2 seconds.
 4. **xDS connection**: Envoy connects to istiod and receives configuration via xDS protocol. Takes 1-5 seconds depending on cluster size and network latency.
-5. **Certificate issuance**: Envoy gets its mTLS certificate from istiod. Usually part of the xDS flow.
+5. **Certificate issuance**: The proxy obtains its workload certificate from the Istio CA and exposes it to Envoy through SDS.
 6. **Listeners ready**: Envoy starts accepting connections on configured ports.
 
 The total is typically 3-10 seconds for the sidecar to be fully ready, depending on cluster conditions.
@@ -79,13 +79,22 @@ This makes the application container wait for the proxy to be ready. It doesn't 
 
 ## Technique 2: Use the CNI Plugin
 
-Replacing the init container with the CNI plugin removes one step from the startup sequence. The iptables rules are set up before the pod even starts, so there's no init container delay.
+Replacing the privileged `istio-init` container with the CNI plugin removes one step from the startup sequence. The iptables rules are set up during the Kubernetes pod network setup phase, so there's no `istio-init` delay.
 
 ```bash
-istioctl install --set components.cni.enabled=true
+cat <<EOF > istio-cni.yaml
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
+spec:
+  components:
+    cni:
+      enabled: true
+EOF
+
+istioctl install -f istio-cni.yaml -y
 ```
 
-This saves 1-3 seconds of startup time by eliminating the init container entirely. The network rules are already in place when the containers start.
+This can save startup time by eliminating the privileged `istio-init` container. In current Istio versions, sidecar injection may still add an `istio-validation` init container to detect CNI setup races, so measure the actual impact in your cluster.
 
 ## Technique 3: Reduce Configuration Scope
 
@@ -142,7 +151,7 @@ metadata:
 
 ## Technique 5: Pre-warm the Proxy
 
-For workloads like CronJobs or batch processors that start on a schedule, you can pre-warm the proxy by keeping a minimum number of pods running:
+For request-serving workloads that scale from zero or run on a schedule, you can avoid cold starts for the first request by keeping a minimum number of pods running:
 
 ```yaml
 apiVersion: autoscaling/v2
@@ -158,11 +167,11 @@ spec:
   maxReplicas: 50
 ```
 
-Keeping `minReplicas: 1` means there's always a warm pod ready to handle requests without cold start. Additional pods scale up as needed.
+Keeping `minReplicas: 1` means there's always a warm pod ready to handle requests without cold start. Additional pods scale up as needed. For true Kubernetes Jobs and CronJobs, use a long-running worker or queue consumer if you need this pattern; an HPA does not scale a Job directly.
 
-## Technique 6: Use Concurrency for Startup
+## Technique 6: Tune Proxy Worker Concurrency
 
-Envoy supports concurrent configuration loading. By default it processes xDS updates sequentially. For faster startup, configure concurrent xDS processing:
+Envoy can run multiple worker threads. In Istio, the `concurrency` setting controls the number of worker threads; if it is unset, Istio automatically chooses a value based on CPU requests and limits. Setting it explicitly can help CPU-rich pods, but it can also waste CPU if the value is too high:
 
 ```yaml
 metadata:
@@ -171,7 +180,7 @@ metadata:
       concurrency: 2
 ```
 
-The `concurrency` setting controls the number of worker threads. More threads can process configuration faster, at the cost of more CPU usage during startup.
+More worker threads can improve proxy throughput and some startup work, at the cost of more CPU usage. Avoid setting it to `0` unless you really want Envoy to use all cores on the node.
 
 ## Technique 7: Ambient Mode
 
@@ -188,9 +197,9 @@ With ambient mode, traffic goes through a shared per-node ztunnel proxy that's a
 After applying optimizations, measure the improvement:
 
 ```bash
-# Create a test pod and time its startup
-time kubectl run test-pod --image=nginx --restart=Never -n my-namespace
-kubectl wait --for=condition=Ready pod/test-pod -n my-namespace --timeout=60s
+# Create a test pod and wait for readiness
+kubectl run test-pod --image=nginx --restart=Never -n my-namespace
+time kubectl wait --for=condition=Ready pod/test-pod -n my-namespace --timeout=60s
 
 # Check the timing details
 kubectl get pod test-pod -n my-namespace -o jsonpath='{
@@ -213,7 +222,7 @@ In a typical cluster with a few hundred services, here's what you can expect:
 |---|---|
 | Default (no optimization) | 5-10 seconds |
 | With Sidecar scope reduction | 3-5 seconds |
-| With CNI plugin | 2-7 seconds (saves 1-3s) |
+| With CNI plugin | 2-7 seconds (removes the privileged init container step) |
 | With CNI + Sidecar scope | 2-4 seconds |
 | Ambient mode | 0 seconds (from Istio) |
 
@@ -221,7 +230,7 @@ These numbers vary significantly based on cluster size, network latency to istio
 
 ## For Batch Jobs Specifically
 
-If you're running Kubernetes Jobs with Istio sidecars, the sidecar won't terminate when the job completes because Envoy doesn't know the job is done. Add a preStop hook or use the Istio-provided job completion mechanism:
+If you're running Kubernetes Jobs with Istio sidecars and are not using Kubernetes native sidecar support, the sidecar may keep running when the job container completes because Envoy doesn't know the job is done. Keep the shutdown drain short:
 
 ```yaml
 metadata:
@@ -231,13 +240,13 @@ metadata:
       terminationDrainDuration: 2s
 ```
 
-And in your job container, signal completion to the sidecar:
+And at the end of your job container, signal completion to the sidecar:
 
 ```bash
 # At the end of your job script
 curl -X POST http://localhost:15020/quitquitquit
 ```
 
-This tells the Envoy proxy to shut down, allowing the pod to terminate.
+This tells the Istio agent to shut down the proxy, allowing the pod to terminate.
 
 Cold start optimization with Istio is about reducing unnecessary work during startup: smaller configuration, faster bootstrap, no init container overhead. Pick the techniques that match your workload patterns and measure the results.
