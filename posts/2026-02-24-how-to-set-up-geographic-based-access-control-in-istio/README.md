@@ -14,7 +14,7 @@ Istio doesn't have built-in GeoIP matching in AuthorizationPolicy, but there are
 
 ## Approach 1: IP Block-Based Geographic Restriction
 
-The simplest approach uses CIDR ranges associated with specific regions. This works well when you have a known set of IP ranges to allow or block:
+The simplest approach uses CIDR ranges associated with specific regions. This works well when you have a known set of IP ranges to allow or block. If the original client address comes from `X-Forwarded-For` or the PROXY protocol at an ingress gateway, use `remoteIpBlocks` and configure trusted proxies; use `ipBlocks` when the packet source address is the client address:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -30,12 +30,14 @@ spec:
   rules:
   - from:
     - source:
-        ipBlocks:
+        remoteIpBlocks:
         # EU IP ranges (example - use actual CIDR blocks)
         - "80.0.0.0/8"
         - "81.0.0.0/8"
         - "82.0.0.0/8"
         - "83.0.0.0/8"
+    - source:
+        ipBlocks:
         # Internal cluster traffic
         - "10.0.0.0/8"
 ```
@@ -56,7 +58,7 @@ spec:
   rules:
   - from:
     - source:
-        ipBlocks:
+        remoteIpBlocks:
         # Block specific IP ranges
         - "203.0.113.0/24"
         - "198.51.100.0/24"
@@ -123,8 +125,11 @@ Here's a Python implementation of the GeoIP authorizer using gRPC (matching Envo
 import grpc
 from concurrent import futures
 import geoip2.database
+import ipaddress
 import os
 
+from envoy.config.core.v3 import base_pb2
+from envoy.type.v3 import http_status_pb2
 from envoy.service.auth.v3 import external_auth_pb2
 from envoy.service.auth.v3 import external_auth_pb2_grpc
 from google.rpc import status_pb2
@@ -134,6 +139,18 @@ ALLOWED_COUNTRIES = os.environ.get("ALLOWED_COUNTRIES", "US,CA").split(",")
 GEOIP_DB_PATH = os.environ.get("GEOIP_DB_PATH", "/data/GeoLite2-Country.mmdb")
 
 reader = geoip2.database.Reader(GEOIP_DB_PATH)
+PRIVATE_NETWORKS = [
+    ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("172.16.0.0/12"),
+    ipaddress.ip_network("192.168.0.0/16"),
+]
+
+def is_private_rfc1918(address):
+    try:
+        ip = ipaddress.ip_address(address)
+        return any(ip in network for network in PRIVATE_NETWORKS)
+    except ValueError:
+        return False
 
 class AuthorizationService(external_auth_pb2_grpc.AuthorizationServicer):
     def Check(self, request, context):
@@ -141,7 +158,7 @@ class AuthorizationService(external_auth_pb2_grpc.AuthorizationServicer):
         source_ip = request.attributes.source.address.socket_address.address
 
         # Skip internal IPs
-        if source_ip.startswith("10.") or source_ip.startswith("172.") or source_ip.startswith("192.168."):
+        if is_private_rfc1918(source_ip):
             return external_auth_pb2.CheckResponse(
                 status=status_pb2.Status(code=code_pb2.OK)
             )
@@ -154,14 +171,23 @@ class AuthorizationService(external_auth_pb2_grpc.AuthorizationServicer):
                 return external_auth_pb2.CheckResponse(
                     status=status_pb2.Status(code=code_pb2.OK),
                     ok_response=external_auth_pb2.OkHttpResponse(
-                        headers=[{"header": {"key": "x-geo-country", "value": country}}]
+                        headers=[
+                            base_pb2.HeaderValueOption(
+                                header=base_pb2.HeaderValue(
+                                    key="x-geo-country",
+                                    value=country,
+                                )
+                            )
+                        ]
                     )
                 )
             else:
                 return external_auth_pb2.CheckResponse(
                     status=status_pb2.Status(code=code_pb2.PERMISSION_DENIED),
                     denied_response=external_auth_pb2.DeniedHttpResponse(
-                        status={"code": 403},
+                        status=http_status_pb2.HttpStatus(
+                            code=http_status_pb2.StatusCode.Forbidden
+                        ),
                         body=f"Access denied from country: {country}"
                     )
                 )
@@ -282,7 +308,7 @@ spec:
 
 ## Using EnvoyFilter for GeoIP at the Gateway
 
-You can add GeoIP lookup directly at the Istio ingress gateway using an EnvoyFilter with Lua:
+You can add GeoIP header injection directly at the Istio ingress gateway using an EnvoyFilter with Lua:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -310,17 +336,18 @@ spec:
         name: envoy.filters.http.lua
         typed_config:
           "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-          inlineCode: |
-            -- Simple IP range check (for demonstration)
-            -- In production, use a proper GeoIP module or external service
-            function envoy_on_request(request_handle)
-              local xff = request_handle:headers():get("x-forwarded-for")
-              if xff then
-                -- Add geo header based on IP lookup
-                -- This is simplified - use a real GeoIP library
-                request_handle:headers():add("x-geo-country", "US")
+          defaultSourceCode:
+            inlineString: |
+              -- Simple IP range check (for demonstration)
+              -- In production, use a proper GeoIP module or external service
+              function envoy_on_request(request_handle)
+                local xff = request_handle:headers():get("x-forwarded-for")
+                if xff then
+                  -- Add geo header based on IP lookup
+                  -- This is simplified - use a real GeoIP library
+                  request_handle:headers():add("x-geo-country", "US")
+                end
               end
-            end
 ```
 
 Then use standard AuthorizationPolicy to match on the injected header.
