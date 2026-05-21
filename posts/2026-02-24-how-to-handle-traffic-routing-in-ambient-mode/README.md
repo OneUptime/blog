@@ -10,7 +10,7 @@ Description: A practical guide to configuring traffic routing in Istio ambient m
 
 Istio's ambient mode changes the game for traffic routing. Instead of injecting sidecar proxies into every pod, ambient mode splits responsibilities between ztunnel (handling L4) and waypoint proxies (handling L7). This means you need to think about routing differently compared to the traditional sidecar model.
 
-If you've been running Istio with sidecars, you already know how VirtualService and DestinationRule work. The good news is that those same resources still apply in ambient mode. The difference is where and how the routing logic gets enforced.
+If you've been running Istio with sidecars, you already know how VirtualService and DestinationRule work. Those resources can still be used in ambient mode, but VirtualService support with ambient is currently considered alpha. The difference is where and how the routing logic gets enforced.
 
 ## Understanding the Two-Layer Architecture
 
@@ -26,11 +26,11 @@ To enroll a namespace in ambient mode:
 kubectl label namespace default istio.io/dataplane-mode=ambient
 ```
 
-This gets you ztunnel coverage immediately. But for traffic routing rules to work, you need waypoint proxies.
+This gets you ztunnel coverage immediately. But for L7 traffic routing rules to work, you need waypoint proxies.
 
 ## Deploying a Waypoint Proxy
 
-Waypoint proxies are deployed per-service or per-namespace. Here's how to create a waypoint for an entire namespace:
+Waypoint proxies are deployed per-service, per-pod, or per-namespace. Here's how to create a waypoint for an entire namespace:
 
 ```bash
 istioctl waypoint apply --namespace default --enroll-namespace
@@ -39,9 +39,11 @@ istioctl waypoint apply --namespace default --enroll-namespace
 This creates a Gateway resource:
 
 ```yaml
-apiVersion: gateway.networking.k8s.io/v1beta1
+apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
+  labels:
+    istio.io/waypoint-for: service
   name: waypoint
   namespace: default
 spec:
@@ -52,15 +54,16 @@ spec:
     protocol: HBONE
 ```
 
-You can also create a waypoint for a specific service account:
+You can also create a waypoint for a specific service and label that service to use it:
 
 ```bash
-istioctl waypoint apply --service-account my-app --namespace default
+istioctl waypoint apply --name my-app-waypoint --namespace default
+kubectl label service my-app istio.io/use-waypoint=my-app-waypoint
 ```
 
 ## Configuring Traffic Splits
 
-Traffic splitting works the same way you're used to. The key difference is that the waypoint proxy enforces the rules instead of a sidecar. Here's a typical canary setup:
+Traffic splitting can use the same Istio APIs you're used to, keeping in mind that VirtualService support in ambient mode is alpha and should not be mixed with Gateway API route configuration for the same traffic. The key difference is that the waypoint proxy enforces the rules instead of a sidecar. Here's a typical canary setup:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -132,7 +135,7 @@ This sends all requests with the `x-version: canary` header to v2, and everythin
 
 ## Fault Injection and Timeouts
 
-Fault injection is fully supported through waypoint proxies. You can inject delays to test resilience:
+Fault injection is available through waypoint proxies when you use Istio's VirtualService API. You can inject delays to test resilience:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -185,14 +188,14 @@ kubectl label namespace backend istio.io/dataplane-mode=ambient
 istioctl waypoint apply --namespace backend --enroll-namespace
 ```
 
-Then create a VirtualService that references the full service hostname:
+Then create a VirtualService and DestinationRule for the backend service. Use the full service hostname so the destination is unambiguous across namespaces:
 
 ```yaml
 apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: backend-routing
-  namespace: frontend
+  namespace: backend
 spec:
   hosts:
   - backend-api.backend.svc.cluster.local
@@ -206,6 +209,21 @@ spec:
         host: backend-api.backend.svc.cluster.local
         subset: canary
       weight: 20
+---
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: backend-api-dr
+  namespace: backend
+spec:
+  host: backend-api.backend.svc.cluster.local
+  subsets:
+  - name: stable
+    labels:
+      version: stable
+  - name: canary
+    labels:
+      version: canary
 ```
 
 ## Debugging Traffic Routing
@@ -239,9 +257,9 @@ kubectl logs -n default -l gateway.networking.k8s.io/gateway-name=waypoint -c is
 
 One thing that catches people off guard: if you define a VirtualService but don't have a waypoint proxy deployed, the routing rules silently do nothing. There's no error or warning. The traffic just flows through ztunnel at L4 without any L7 processing.
 
-Another gotcha is that waypoint proxies are scoped. A namespace-level waypoint handles traffic for all services in that namespace. A service-account-level waypoint only handles traffic for pods running under that specific service account. Make sure you're deploying the waypoint at the right scope.
+Another gotcha is that waypoint proxies are scoped. A namespace-level waypoint handles traffic for services in that namespace. A service-level waypoint only handles traffic to the labeled service, and a pod-level waypoint only handles traffic addressed directly to that labeled pod. Make sure you're deploying the waypoint at the right scope.
 
-Also, keep in mind that ztunnel handles load balancing at L4 when there's no waypoint. This means you get basic round-robin, but nothing fancy like consistent hashing or locality-aware routing. For those features, you need a waypoint proxy with a DestinationRule:
+Also, keep in mind that ztunnel handles load balancing at L4 when there's no waypoint. It can apply locality preferences through Istio's traffic-distribution annotation or Kubernetes `spec.trafficDistribution`, but HTTP-aware policies like consistent hashing on a header need a waypoint proxy with a DestinationRule:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -259,6 +277,6 @@ spec:
 
 ## Wrapping Up
 
-Traffic routing in ambient mode follows the same Istio APIs you already know. The main shift is understanding when you need a waypoint proxy and when ztunnel alone is enough. For basic connectivity and mTLS, ztunnel handles everything. For HTTP routing, traffic splitting, retries, fault injection, and advanced load balancing, deploy a waypoint proxy and apply your VirtualService and DestinationRule resources as usual.
+Traffic routing in ambient mode can use the Istio APIs you already know, with the caveat that VirtualService support in ambient mode is alpha. The main shift is understanding when you need a waypoint proxy and when ztunnel alone is enough. For basic connectivity and mTLS, ztunnel handles everything. For HTTP routing, traffic splitting, retries, fault injection, and HTTP-aware load balancing, deploy a waypoint proxy and apply your routing resources there.
 
 Start by enrolling your namespace, deploy waypoint proxies where needed, and build up your routing rules incrementally. Test each rule as you go to make sure the waypoint is actually processing traffic.
