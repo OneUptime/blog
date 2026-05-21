@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Failover, Resilience, Kubernetes, High Availability
 
-Description: How to test Istio failover scenarios including locality-based failover, endpoint health checking, and cross-cluster failover to verify high availability configurations.
+Description: How to test Istio failover scenarios including locality-based failover, endpoint health checking, and retry behavior to verify high availability configurations.
 
 ---
 
@@ -42,6 +42,7 @@ spec:
     metadata:
       labels:
         app: my-service
+        version: stable
     spec:
       containers:
       - name: my-service
@@ -55,7 +56,8 @@ spec:
             fieldRef:
               fieldPath: spec.nodeName
         ports:
-        - containerPort: 5678
+        - name: http
+          containerPort: 5678
 ```
 
 Create the service and DestinationRule:
@@ -70,7 +72,9 @@ spec:
   selector:
     app: my-service
   ports:
-  - port: 5678
+  - name: http
+    port: 5678
+    targetPort: http
 ---
 apiVersion: networking.istio.io/v1
 kind: DestinationRule
@@ -89,9 +93,9 @@ spec:
 
 ## Testing Outlier Detection
 
-Outlier detection ejects endpoints that return too many errors. To test this, you need an endpoint that you can make fail on demand.
+Outlier detection ejects endpoints that return too many errors. To test this, you need an endpoint that can return real upstream 5xx responses on demand.
 
-Deploy a service where you can control the failure rate:
+Deploy a service where you can control the failure response:
 
 ```yaml
 apiVersion: apps/v1
@@ -115,35 +119,18 @@ spec:
       - name: httpbin
         image: kennethreitz/httpbin
         ports:
-        - containerPort: 80
+        - name: http
+          containerPort: 80
 ```
 
-Use Istio fault injection to make this specific version return errors:
-
-```yaml
-apiVersion: networking.istio.io/v1
-kind: VirtualService
-metadata:
-  name: my-service-fault
-  namespace: failover-test
-spec:
-  hosts:
-  - my-service
-  http:
-  - match:
-    - sourceLabels:
-        app: sleep
-    route:
-    - destination:
-        host: my-service
-```
+The `httpbin` endpoint can return a specific status code from paths like `/status/503`. That gives you real upstream 5xx responses that outlier detection can count. Istio fault injection is useful for testing client-side behavior, but client-side abort faults do not prove that a specific upstream endpoint was ejected.
 
 Now generate traffic and watch the outlier detection kick in:
 
 ```bash
 for i in $(seq 1 100); do
   kubectl exec -n failover-test deploy/sleep -c sleep -- \
-    curl -s -o /dev/null -w "%{http_code}\n" http://my-service:5678
+    curl -s -o /dev/null -w "%{http_code}\n" http://my-service:5678/status/503
 done
 ```
 
@@ -232,40 +219,58 @@ spec:
         host: my-service
 ```
 
-To test retries, inject a partial failure rate and verify that the caller sees a higher success rate than the actual backend:
+To test retries, use a backend that sometimes returns real 5xx responses and verify that the caller sees a higher success rate than the actual backend. Do not combine Istio fault injection and retries on the same `VirtualService` route for this test; Istio applies fault injection on the client side, and retries are not enabled when faults are enabled on that route.
 
 ```yaml
 apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: my-service
+  namespace: failover-test
+spec:
+  host: my-service
+  subsets:
+  - name: healthy
+    labels:
+      app: my-service
+      version: stable
+  - name: flaky
+    labels:
+      app: my-service
+      version: flaky
+---
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
-  name: my-service-fault
+  name: my-service
   namespace: failover-test
 spec:
   hosts:
   - my-service
   http:
-  - fault:
-      abort:
-        percentage:
-          value: 30
-        httpStatus: 503
-    retries:
+  - retries:
       attempts: 3
       perTryTimeout: 2s
       retryOn: 5xx
     route:
     - destination:
         host: my-service
+        subset: healthy
+      weight: 70
+    - destination:
+        host: my-service
+        subset: flaky
+      weight: 30
 ```
 
-With 30% failure rate and 3 retry attempts, the probability of all 3 attempts failing is 0.3^3 = 2.7%. So the caller should see a success rate of about 97%:
+With a 30% flaky backend weight and 3 retries, the maximum possible number of requests is the initial attempt plus 3 retries. If each attempt is routed independently, the probability of all 4 attempts hitting the flaky subset is 0.3^4 = 0.81%. In practice the observed success rate can differ because retries also depend on timeouts, retry budgets, and load-balancing behavior:
 
 ```bash
 SUCCESS=0
 FAIL=0
 for i in $(seq 1 100); do
   CODE=$(kubectl exec -n failover-test deploy/sleep -c sleep -- \
-    curl -s -o /dev/null -w "%{http_code}" http://my-service:5678)
+    curl -s -o /dev/null -w "%{http_code}" http://my-service:5678/status/503)
   if [ "$CODE" = "200" ]; then
     SUCCESS=$((SUCCESS+1))
   else
@@ -293,7 +298,7 @@ Traffic should seamlessly shift to the remaining pods with at most a brief inter
 
 ## Testing with Network Partitions
 
-For more advanced failover testing, simulate a network partition using NetworkPolicy:
+For more advanced failover testing, simulate a network partition using NetworkPolicy. This requires a Kubernetes network plugin that enforces NetworkPolicy:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
