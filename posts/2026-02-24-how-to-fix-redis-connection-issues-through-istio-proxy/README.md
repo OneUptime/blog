@@ -29,7 +29,7 @@ spec:
     app: redis
 ```
 
-Istio has built-in Redis protocol support, so using the `redis` name can enable Redis-specific features:
+Istio recognizes `redis` as an experimental application protocol. If Redis protocol support is enabled in your Istio install, using the `redis` name can enable Redis-specific features; otherwise Istio treats it as opaque TCP:
 
 ```yaml
 ports:
@@ -57,13 +57,15 @@ Or handle it in your application with retry logic. Most Redis clients have built
 
 ```python
 import redis
+from redis.backoff import ExponentialBackoff
+from redis.retry import Retry
 
 r = redis.Redis(
     host='redis.cache.svc.cluster.local',
     port=6379,
     retry_on_timeout=True,
     socket_connect_timeout=5,
-    retry=redis.retry.Retry(redis.backoff.ExponentialBackoff(), 10)
+    retry=Retry(ExponentialBackoff(), 10)
 )
 ```
 
@@ -74,7 +76,7 @@ Redis Pub/Sub uses long-lived connections. The subscriber keeps the connection o
 If your Pub/Sub subscribers keep disconnecting, increase the idle timeout:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: redis-dr
@@ -99,7 +101,7 @@ The problem: those addresses are the internal Redis pod IPs. If your client trie
 Make sure the Redis Cluster nodes are reachable. If Redis pods are in the same namespace, this usually works. If they're in a different namespace, verify the Sidecar resource allows it:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -147,7 +149,7 @@ Make sure both ports are named with `tcp` prefix.
 Redis clients typically maintain a connection pool. If the pool size exceeds Envoy's connection limit, new connections get rejected:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: redis-pool
@@ -160,7 +162,7 @@ spec:
         maxConnections: 1000
 ```
 
-Set `maxConnections` higher than your application's connection pool size. If you have multiple application pods, multiply by the number of pods.
+Set `maxConnections` higher than your application's connection pool size per client pod. Separately, make sure Redis itself can handle the total number of connections from all application pods.
 
 Check how many connections are active:
 
@@ -175,9 +177,9 @@ Redis operations are typically sub-millisecond. Adding a proxy in the path adds 
 Measure the overhead:
 
 ```bash
-# From inside the pod, directly to Redis (bypassing proxy)
+# From a pod without sidecar injection, or after excluding outbound port 6379
 
-kubectl exec <pod-name> -c my-app -- redis-cli -h 127.0.0.1 -p 6379 --latency-history
+kubectl exec <pod-name> -c my-app -- redis-cli -h redis.cache.svc.cluster.local -p 6379 --latency-history
 
 # Through the service name (going through proxy)
 kubectl exec <pod-name> -c my-app -- redis-cli -h redis.cache.svc.cluster.local -p 6379 --latency-history
@@ -198,7 +200,7 @@ If both the client pod and the Redis pod have sidecars, mTLS is automatic. Redis
 If the Redis pod doesn't have a sidecar (common for StatefulSet-based Redis), make sure the PeerAuthentication for the Redis namespace is PERMISSIVE or create a DestinationRule disabling mTLS:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: redis-no-mtls
@@ -215,7 +217,7 @@ spec:
 For external Redis services, create a ServiceEntry:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-redis
@@ -234,7 +236,7 @@ spec:
 And a DestinationRule to disable mTLS (since the external server doesn't have an Istio sidecar):
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: external-redis-dr
