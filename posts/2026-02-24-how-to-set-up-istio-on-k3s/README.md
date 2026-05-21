@@ -15,9 +15,9 @@ k3s is a lightweight Kubernetes distribution from Rancher that strips away a lot
 You will need:
 
 - A machine with at least 4GB RAM and 2 CPU cores (Istio is resource-hungry even on lightweight clusters)
-- k3s installed (version 1.26+)
+- k3s installed with a Kubernetes version supported by your Istio release (the examples below use Istio 1.29, which supports Kubernetes 1.31-1.35)
 - `kubectl` configured to talk to your k3s cluster
-- `istioctl` installed locally (version 1.20+)
+- `istioctl` installed locally (the examples below use version 1.29)
 
 ## Installing k3s Without Traefik
 
@@ -27,13 +27,18 @@ The biggest gotcha with k3s and Istio is that k3s ships with Traefik as the defa
 curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--disable=traefik" sh -
 ```
 
-If you already have k3s running with Traefik, you can disable it by editing the k3s service configuration:
+If you already have k3s running with Traefik, add Traefik to the disabled packaged components in the k3s configuration on each server node:
 
 ```bash
-sudo systemctl edit k3s
+sudo mkdir -p /etc/rancher/k3s
+sudo mkdir -p /etc/rancher/k3s/config.yaml.d
+sudo tee /etc/rancher/k3s/config.yaml.d/90-disable-traefik.yaml >/dev/null <<'EOF'
+disable+:
+  - traefik
+EOF
 ```
 
-Add the `--disable=traefik` flag and restart:
+Then restart k3s:
 
 ```bash
 sudo systemctl restart k3s
@@ -98,6 +103,7 @@ spec:
             type: LoadBalancer
   values:
     global:
+      platform: k3s
       proxy:
         resources:
           requests:
@@ -138,7 +144,7 @@ On a single-node k3s cluster, the external IP will be your node's IP address.
 
 ## Step 3: Handle k3s-Specific Networking
 
-k3s uses Flannel VXLAN by default, which works fine with Istio. However, if you are running k3s with the `--flannel-backend=none` option and using a different CNI, make sure that CNI supports the network policies Istio relies on.
+k3s uses Flannel VXLAN by default, which works fine with Istio. However, if you are running k3s with the `--flannel-backend=none` option and using a different CNI, make sure that CNI meets Istio's Kubernetes networking requirements and supports the traffic interception mode you plan to use. If you also rely on Kubernetes NetworkPolicy resources, verify NetworkPolicy support separately.
 
 One thing that trips people up is that k3s's built-in load balancer (ServiceLB) creates DaemonSet pods for each LoadBalancer service. You can check these:
 
@@ -149,7 +155,17 @@ kubectl get pods -n kube-system -l svccontroller.k3s.cattle.io/svcname=istio-ing
 If you prefer using MetalLB instead:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.5/config/manifests/metallb-native.yaml
+sudo mkdir -p /etc/rancher/k3s/config.yaml.d
+sudo tee /etc/rancher/k3s/config.yaml.d/90-disable-default-load-balancers.yaml >/dev/null <<'EOF'
+disable+:
+  - traefik
+  - servicelb
+EOF
+sudo systemctl restart k3s
+```
+
+```bash
+kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.16.0/config/manifests/metallb-native.yaml
 ```
 
 Then configure an IP pool:
@@ -182,7 +198,7 @@ kubectl label namespace default istio-injection=enabled
 Deploy a test application:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/bookinfo/platform/kube/bookinfo.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.29/samples/bookinfo/platform/kube/bookinfo.yaml
 ```
 
 Verify the sidecars got injected:
@@ -248,12 +264,12 @@ curl http://$INGRESS_HOST/productpage
 
 ## Step 6: Install Observability Add-ons
 
-Even on a lightweight k3s cluster, you probably want some observability. Install Kiali, Prometheus, and Grafana with reduced resource requirements:
+Even on a lightweight k3s cluster, you probably want some observability. Install the sample Kiali, Prometheus, and Grafana add-ons:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/prometheus.yaml
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/grafana.yaml
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/kiali.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.29/samples/addons/prometheus.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.29/samples/addons/grafana.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.29/samples/addons/kiali.yaml
 ```
 
 Access Kiali:
@@ -291,7 +307,7 @@ istioctl install --set profile=minimal -y
 
 ## Multi-Node k3s Clusters
 
-If you are running a multi-node k3s cluster with server and agent nodes, Istio works out of the box. The istiod control plane will run on one of the server nodes, and sidecars get injected into pods wherever they are scheduled.
+If you are running a multi-node k3s cluster with server and agent nodes, Istio works out of the box. The istiod control plane runs as a Kubernetes Deployment on any schedulable node that matches its scheduling constraints, and sidecars get injected into pods wherever they are scheduled.
 
 For high availability, run multiple istiod replicas:
 
@@ -302,7 +318,7 @@ components:
       replicaCount: 2
 ```
 
-Just make sure your k3s cluster has at least 2 server nodes for this to make sense.
+For meaningful availability, make sure your k3s cluster has at least two schedulable nodes for the istiod pods and enough server-node availability for the Kubernetes API.
 
 ## Common Pitfalls
 
