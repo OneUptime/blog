@@ -25,6 +25,8 @@ Jaeger exposes several ports, but for the UI you only need to expose one:
 
 You only want to expose port 16686 (the UI) to external users. The collector ports should remain internal.
 
+If you are using Istio's sample Jaeger addon, the `tracing` Kubernetes Service exposes the Query UI as service port 80 and forwards it to Jaeger's 16686 container port.
+
 Check that Jaeger is running:
 
 ```bash
@@ -117,10 +119,10 @@ spec:
         - destination:
             host: tracing
             port:
-              number: 16686
+              number: 80
 ```
 
-Note: the destination host is `tracing`, which is the default service name when Jaeger is installed as an Istio addon. If you installed Jaeger separately, the service name might be different (like `jaeger-query`).
+Note: the destination host is `tracing`, which is the default service name when Jaeger is installed as an Istio addon. If you installed Jaeger separately, the service name and service port might be different (like `jaeger-query` on port 16686).
 
 Apply both resources:
 
@@ -160,6 +162,8 @@ spec:
               - "jaeger.example.com"
 ```
 
+Note: use `remoteIpBlocks` when Istio is configured to extract the original client IP from `X-Forwarded-For` or the PROXY protocol. If the ingress gateway receives the real client source address directly, for example with `externalTrafficPolicy: Local`, use `ipBlocks` instead.
+
 ### OAuth2 Proxy
 
 For proper user authentication, put OAuth2 Proxy in front of Jaeger:
@@ -189,7 +193,7 @@ spec:
             - --client-id=jaeger
             - --client-secret=$(CLIENT_SECRET)
             - --email-domain=*
-            - --upstream=http://tracing.istio-system:16686
+            - --upstream=http://tracing.istio-system
             - --http-address=0.0.0.0:4180
             - --cookie-secret=$(COOKIE_SECRET)
             - --cookie-secure=true
@@ -280,7 +284,7 @@ Open `https://jaeger.example.com` in your browser. Without OAuth2 Proxy, you'll 
 
 If you want to serve Jaeger under a sub-path like `https://monitoring.example.com/jaeger/`:
 
-Update the Jaeger deployment with the `--query.base-path` flag:
+For Jaeger v1, update the Jaeger deployment with the `--query.base-path` flag:
 
 ```bash
 kubectl edit deployment jaeger -n istio-system
@@ -291,6 +295,14 @@ Add the argument:
 ```yaml
 args:
   - --query.base-path=/jaeger
+```
+
+For Jaeger v2, including current Istio sample addon manifests, set the base path in the Jaeger configuration instead:
+
+```yaml
+extensions:
+  jaeger_query:
+    base_path: /jaeger
 ```
 
 Update the VirtualService:
@@ -304,14 +316,14 @@ http:
       - destination:
           host: tracing
           port:
-            number: 16686
+            number: 80
 ```
 
 ## Exposing the Jaeger API for Programmatic Access
 
 If you need to query traces programmatically (from scripts or other tools):
 
-The Jaeger API is available at the same port as the UI. Common endpoints:
+The Jaeger query APIs are available on the query service. For stable programmatic integrations, prefer Jaeger's gRPC query API on port 16685 or the stable HTTP `/api/v3/*` endpoints if your Jaeger version supports them. The UI also uses internal HTTP JSON endpoints on the same port as the UI; common internal endpoints include:
 
 ```bash
 # List all services
@@ -339,7 +351,7 @@ http:
       - destination:
           host: tracing
           port:
-            number: 16686
+            number: 80
 ```
 
 ## Connecting Kiali to the Exposed Jaeger
@@ -357,13 +369,13 @@ spec:
     tracing:
       enabled: true
       # Internal URL for Kiali's backend to query
-      in_cluster_url: "http://tracing.istio-system:16685/jaeger"
+      internal_url: "http://tracing.istio-system:16685/jaeger"
       use_grpc: true
       # External URL for browser links
-      url: "https://jaeger.example.com"
+      external_url: "https://jaeger.example.com"
 ```
 
-The `in_cluster_url` is used by Kiali's backend to fetch trace data. The `url` is used to generate links in the Kiali UI that open Jaeger in a new tab.
+The `internal_url` is used by Kiali's backend to fetch trace data. The `external_url` is used to generate links in the Kiali UI that open Jaeger in a new tab.
 
 ## Performance Considerations
 
@@ -379,7 +391,7 @@ http:
       - destination:
           host: tracing
           port:
-            number: 16686
+            number: 80
     timeout: 30s
 ```
 
