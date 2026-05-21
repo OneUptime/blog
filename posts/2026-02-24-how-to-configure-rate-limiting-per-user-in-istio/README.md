@@ -256,13 +256,13 @@ rate_limits:
       header_name: "x-user-id"
       descriptor_key: user_id
 - actions:
-  - request_headers:
-      header_name: "x-user-id"
+  - header_value_match:
       descriptor_key: user_id
-      skip_if_absent: true
-  - generic_key:
       descriptor_value: "anonymous"
-      descriptor_key: user_id
+      expect_match: false
+      headers:
+      - name: "x-user-id"
+        present_match: true
 ```
 
 ## Testing Per-User Rate Limits
@@ -292,7 +292,7 @@ User A should start getting 429s after 100 requests, but User B should be comple
 
 ## Monitoring Per-User Usage
 
-Check the rate limit service metrics:
+Check the Envoy proxy rate limit stats:
 
 ```bash
 kubectl exec my-api-pod -c istio-proxy -- \
