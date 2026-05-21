@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Least Request, Load Balancing, DestinationRule, Kubernetes
 
-Description: Configure least request load balancing in Istio DestinationRule to send traffic to the pod with the fewest active requests.
+Description: Configure least request load balancing in Istio DestinationRule to favor pods with fewer active requests.
 
 ---
 
-Least request load balancing is one of the smartest simple algorithms available in Istio. Instead of blindly cycling through pods (round robin) or picking randomly, it sends each new request to the backend pod that currently has the fewest active requests. This naturally adapts to pods with different processing speeds and handles variable request costs gracefully.
+Least request load balancing is one of the smartest simple algorithms available in Istio. Instead of blindly cycling through pods (round robin) or picking randomly, it favors backend pods that currently have fewer active requests. This naturally adapts to pods with different processing speeds and handles variable request costs gracefully.
 
 ## Why Least Request Matters
 
 Consider a service where some API endpoints are fast (5ms) and others are slow (500ms). With round robin, every pod gets the same number of requests. But a pod that gets 5 slow requests in a row is now loaded down while another pod that got 5 fast requests is sitting idle.
 
-Least request fixes this. The pod handling slow requests will have more active (in-flight) requests, so new requests will get routed elsewhere. Traffic naturally flows to wherever there is capacity.
+Least request fixes this. The pod handling slow requests will have more active (in-flight) requests, so new requests are more likely to get routed elsewhere. Traffic naturally flows to wherever there is capacity.
 
 This algorithm shines for:
 
@@ -67,7 +67,7 @@ graph TD
 
 ## Setting Up a Test Scenario
 
-To see least request in action, create a service where some pods are artificially slower:
+To test the DestinationRule, start with a simple service that has multiple pods:
 
 ```yaml
 apiVersion: apps/v1
@@ -266,12 +266,15 @@ spec:
         simple: LEAST_REQUEST
 ```
 
+Subset-level traffic policies take effect when a VirtualService route sends traffic to that subset.
+
 Using least request for the canary makes sense because canary pods might have different performance characteristics than stable pods.
 
 ## Cleanup
 
 ```bash
 kubectl delete destinationrule api-service-lr
+kubectl delete destinationrule slow-fast-lr
 kubectl delete deployment slow-fast-service
 kubectl delete service slow-fast-service
 ```
