@@ -8,7 +8,7 @@ Description: A practical walkthrough of using Istio fault injection to implement
 
 ---
 
-Chaos engineering is about proactively breaking things to find weaknesses before they bite you in production. Istio makes this surprisingly easy because you can inject faults at the network layer without modifying any application code. The Envoy sidecar proxy intercepts all traffic, so you can add delays, abort requests, or corrupt responses just by applying a VirtualService configuration.
+Chaos engineering is about proactively breaking things to find weaknesses before they bite you in production. Istio makes this surprisingly easy because you can inject faults at the network layer without modifying any application code. The Envoy sidecar proxy intercepts all traffic, so you can add delays or abort requests just by applying a VirtualService configuration.
 
 This is a huge advantage over other chaos engineering approaches that require agents installed in your pods or modifications to your application code.
 
@@ -29,9 +29,9 @@ Deploy the Bookinfo sample application, which gives us multiple services to expe
 kubectl create namespace chaos-test
 kubectl label namespace chaos-test istio-injection=enabled
 
-kubectl apply -n chaos-test -f https://raw.githubusercontent.com/istio/istio/release-1.22/samples/bookinfo/platform/kube/bookinfo.yaml
-kubectl apply -n chaos-test -f https://raw.githubusercontent.com/istio/istio/release-1.22/samples/bookinfo/networking/bookinfo-gateway.yaml
-kubectl apply -n chaos-test -f https://raw.githubusercontent.com/istio/istio/release-1.22/samples/bookinfo/networking/destination-rule-all.yaml
+kubectl apply -n chaos-test -f https://raw.githubusercontent.com/istio/istio/release-1.29/samples/bookinfo/platform/kube/bookinfo.yaml
+kubectl apply -n chaos-test -f https://raw.githubusercontent.com/istio/istio/release-1.29/samples/bookinfo/networking/bookinfo-gateway.yaml
+kubectl apply -n chaos-test -f https://raw.githubusercontent.com/istio/istio/release-1.29/samples/bookinfo/networking/destination-rule-all.yaml
 ```
 
 Wait for everything to come up:
@@ -43,8 +43,8 @@ kubectl wait --for=condition=ready pod --all -n chaos-test --timeout=120s
 Verify the app works:
 
 ```bash
-kubectl exec -n chaos-test deploy/ratings-v1 -- \
-  curl -s productpage:9080/productpage | grep -o "<title>.*</title>"
+kubectl exec -n chaos-test "$(kubectl get pod -n chaos-test -l app=ratings -o jsonpath='{.items[0].metadata.name}')" -c ratings -- \
+  curl -sS productpage:9080/productpage | grep -o "<title>.*</title>"
 ```
 
 ## Experiment 1: Inject Latency into Reviews Service
@@ -140,7 +140,7 @@ spec:
         host: reviews
 ```
 
-This means 30% of requests will be slow and 10% will fail outright. The remaining 60% work normally. This is much closer to how real degraded services behave.
+This configures a 30% delay fault and a 10% abort fault for matching requests. This is much closer to how real degraded services behave.
 
 ## Experiment 4: Fault Injection for Specific Users
 
