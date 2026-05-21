@@ -51,7 +51,7 @@ Possible reasons for STALE status:
 Istiod exposes metrics about the push process:
 
 ```bash
-kubectl exec -n istio-system deploy/istiod -- curl -s localhost:15014/metrics | grep pilot_xds
+kubectl exec -n istio-system deploy/istiod -- curl -s localhost:15014/metrics | grep -E "pilot_xds|pilot_total_xds"
 ```
 
 Key metrics:
@@ -64,20 +64,21 @@ pilot_xds_pushes{type="eds"} 8234
 pilot_xds_pushes{type="lds"} 1523
 pilot_xds_pushes{type="rds"} 1523
 
-# Push errors
-pilot_xds_push_errors{type="cds"} 0
-pilot_xds_push_errors{type="lds"} 3
+# Push send errors and proxy rejections
+pilot_xds_pushes{type="cds_senderr"} 0
+pilot_xds_pushes{type="lds_senderr"} 3
+pilot_total_xds_rejects 3
 
 # Push time
-pilot_xds_push_time_bucket{le="0.01"} 1400
-pilot_xds_push_time_bucket{le="0.1"} 1520
-pilot_xds_push_time_bucket{le="1"} 1523
+pilot_xds_push_time_bucket{type="rds",le="0.01"} 1400
+pilot_xds_push_time_bucket{type="rds",le="0.1"} 1520
+pilot_xds_push_time_bucket{type="rds",le="1"} 1523
 
 # Connected proxies
-pilot_xds_connected 150
+pilot_xds{version="1.30.0"} 150
 ```
 
-If `pilot_xds_push_errors` is increasing, pushes are failing. If `pilot_xds_push_time` shows high latency (above 1 second), istiod is struggling.
+If the `_senderr` series on `pilot_xds_pushes` or `pilot_total_xds_rejects` is increasing, pushes are failing or proxies are rejecting configuration. If `pilot_xds_push_time` shows high latency (above 1 second), istiod is struggling.
 
 ## Step 3: Check istiod Logs
 
@@ -107,13 +108,19 @@ Common log messages and what they mean:
 
 ## Step 4: Compare Intended vs. Actual Config
 
-Check what istiod intends to send to a proxy:
+Check the diff between the configuration Envoy has loaded and the configuration Istiod would send:
+
+```bash
+istioctl proxy-status productpage-v1-abc123.default
+```
+
+Then inspect the route configuration the proxy actually has:
 
 ```bash
 istioctl proxy-config routes productpage-v1-abc123.default -o json
 ```
 
-Compare this with what the proxy actually has:
+You can also compare this with the raw Envoy admin config dump:
 
 ```bash
 kubectl exec productpage-v1-abc123 -c istio-proxy -- curl -s localhost:15000/config_dump | jq '.configs[] | select(."@type" | contains("RoutesConfigDump"))'
@@ -128,7 +135,7 @@ Each proxy maintains a gRPC connection to istiod for xDS updates. If this connec
 Check connections from istiod's perspective:
 
 ```bash
-kubectl exec -n istio-system deploy/istiod -- curl -s localhost:15014/debug/connections | jq length
+kubectl exec -n istio-system deploy/istiod -- curl -s localhost:15014/debug/connections | jq '.totalClients'
 ```
 
 Check connection status from the proxy side:
@@ -142,13 +149,13 @@ If the proxy cannot reach istiod, you will see connection errors. Common causes:
 - Network policy blocking traffic to istio-system
 - istiod pod was rescheduled to a different node
 
-Force the proxy to reconnect:
+If a proxy is stuck and needs a clean reconnect, restart the workload pod so the sidecar establishes a new xDS stream:
 
 ```bash
-kubectl exec productpage-v1-abc123 -c istio-proxy -- kill -HUP 1
+kubectl delete pod productpage-v1-abc123
 ```
 
-This sends a SIGHUP to the pilot-agent process, which triggers a reconnection without restarting the pod.
+This is disruptive for that workload pod, so use it only after confirming the xDS connection is unhealthy.
 
 ## Step 6: Check for Configuration Errors
 
@@ -180,11 +187,12 @@ kubectl exec -n istio-system deploy/istiod -- curl -s localhost:15014/metrics | 
 ```
 
 ```text
-pilot_debounce_send 523
-pilot_debounce_max 12
+pilot_debounce_time_bucket{le="0.1"} 480
+pilot_debounce_time_bucket{le="1"} 520
+pilot_debounce_time_bucket{le="10"} 523
 ```
 
-If `pilot_debounce_max` is consistently hit, it means changes are coming in so fast that istiod is always at the maximum debounce window. This is normal during deployments but should not be permanent.
+If `pilot_debounce_time` is consistently near 10 seconds, changes are coming in so fast that istiod is staying close to the maximum debounce window. This is normal during deployments but should not be permanent.
 
 ## Step 8: Check Resource Pressure
 
@@ -238,7 +246,7 @@ kubectl annotate virtualservice my-vs -n my-namespace debug-push=$(date +%s) --o
 ## Quick Debugging Checklist
 
 1. `istioctl proxy-status` - Any STALE proxies?
-2. `pilot_xds_push_errors` metric - Any push errors?
+2. `pilot_xds_pushes{type="*_senderr"}` or `pilot_total_xds_rejects` metrics - Any push errors or NACKs?
 3. `kubectl logs istiod` - Any NACK messages?
 4. `istioctl analyze` - Any configuration errors?
 5. `kubectl top pod istiod` - Resource pressure?
