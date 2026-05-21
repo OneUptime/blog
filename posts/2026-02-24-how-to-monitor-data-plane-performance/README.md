@@ -34,15 +34,15 @@ rate(istio_requests_total{destination_service="service-b.default.svc.cluster.loc
 To get the 99th percentile latency:
 
 ```promql
-histogram_quantile(0.99, rate(istio_request_duration_milliseconds_bucket{destination_service="service-b.default.svc.cluster.local"}[5m]))
+histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{destination_service="service-b.default.svc.cluster.local"}[5m])) by (le))
 ```
 
 To get the error rate (5xx responses):
 
 ```promql
-rate(istio_requests_total{destination_service="service-b.default.svc.cluster.local", response_code=~"5.."}[5m])
+sum(rate(istio_requests_total{destination_service="service-b.default.svc.cluster.local", response_code=~"5.."}[5m]))
 /
-rate(istio_requests_total{destination_service="service-b.default.svc.cluster.local"}[5m])
+sum(rate(istio_requests_total{destination_service="service-b.default.svc.cluster.local"}[5m]))
 ```
 
 ### TCP Metrics
@@ -59,26 +59,25 @@ For TCP traffic (non-HTTP):
 Beyond the Istio standard metrics, Envoy exposes a large number of its own stats. You can see them directly:
 
 ```bash
-kubectl exec deploy/my-app -c istio-proxy -- curl -s localhost:15000/stats | head -50
+kubectl exec deploy/my-app -c istio-proxy -- pilot-agent request GET stats | head -50
 ```
 
-Some useful Envoy stats to watch:
+Istio records a minimal set of Envoy stats by default. If you want to monitor connection pools, circuit breakers, retries, and timeout stats, configure `proxyStatsMatcher` to include them. Some useful Envoy stats to watch:
 
 ```bash
 # Active connections
-
-kubectl exec deploy/my-app -c istio-proxy -- curl -s localhost:15000/stats | grep "downstream_cx_active"
+kubectl exec deploy/my-app -c istio-proxy -- pilot-agent request GET stats | grep "downstream_cx_active"
 
 # Upstream connection pool stats
-kubectl exec deploy/my-app -c istio-proxy -- curl -s localhost:15000/stats | grep "upstream_cx"
+kubectl exec deploy/my-app -c istio-proxy -- pilot-agent request GET stats | grep "upstream_cx"
 
 # Circuit breaker trips
-kubectl exec deploy/my-app -c istio-proxy -- curl -s localhost:15000/stats | grep "upstream_rq_pending_overflow"
+kubectl exec deploy/my-app -c istio-proxy -- pilot-agent request GET stats | grep "upstream_rq_pending_overflow"
 ```
 
 ## Setting Up Prometheus Scraping
 
-If you installed Istio with the default profile, Prometheus scraping is usually already configured. But if you need to set it up manually, add these scrape configs to your Prometheus configuration:
+Istio's metrics merging is enabled by default and adds Prometheus scrape annotations to data plane pods. If your Prometheus setup honors those annotations, sidecar metrics are scraped from `:15020/stats/prometheus`. If you need to configure scraping manually, add a job like this to your Prometheus configuration:
 
 ```yaml
 scrape_configs:
@@ -87,14 +86,9 @@ scrape_configs:
   kubernetes_sd_configs:
   - role: pod
   relabel_configs:
-  - source_labels: [__meta_kubernetes_pod_container_name]
+  - source_labels: [__meta_kubernetes_pod_container_port_name]
     action: keep
-    regex: istio-proxy
-  - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
-    action: replace
-    regex: ([^:]+)(?::\d+)?;(\d+)
-    replacement: $1:15020
-    target_label: __address__
+    regex: '.*-envoy-prom'
 ```
 
 Verify that Prometheus is scraping your sidecars:
@@ -165,13 +159,16 @@ The control plane pushes configuration to data plane proxies. If these pushes ar
 
 ```promql
 # Time taken to push config to proxies
-histogram_quantile(0.99, sum(rate(pilot_proxy_push_time_bucket[5m])) by (le))
+histogram_quantile(0.99, sum(rate(pilot_xds_push_time_bucket[5m])) by (le))
 
 # Number of pushes
 rate(pilot_xds_pushes[5m])
 
-# Push errors
-rate(pilot_xds_push_errors[5m])
+# XDS internal errors
+rate(pilot_total_xds_internal_errors[5m])
+
+# XDS responses rejected by proxies
+rate(pilot_total_xds_rejects[5m])
 ```
 
 If push times are high (over a few seconds), you may need to scale istiod or use Sidecar resources to reduce the amount of configuration pushed to each proxy.
@@ -181,7 +178,7 @@ If push times are high (over a few seconds), you may need to scale istiod or use
 Kiali provides a visual graph of your service mesh traffic. Install it if you have not already:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/kiali.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/kiali.yaml
 ```
 
 Access the dashboard:
@@ -249,8 +246,8 @@ istioctl proxy-status
 # Check for any configuration validation issues
 istioctl analyze --all-namespaces
 
-# Get a quick summary of mesh traffic
-kubectl exec -n istio-system deploy/istiod -- curl -s localhost:15014/debug/syncz | python3 -m json.tool | head -20
+# Get detailed proxy sync information
+istioctl x internal-debug syncz
 ```
 
 The data plane generates a wealth of metrics that tell you exactly what is happening with every request in your mesh. The key is to set up Prometheus to scrape those metrics, build dashboards around the four golden signals, and configure alerts so you know about problems before they escalate. The combination of Istio's standard metrics, raw Envoy stats, and tools like Kiali gives you complete visibility into your data plane performance.
