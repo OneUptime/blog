@@ -21,7 +21,7 @@ You need:
 Install cert-manager if you have not already:
 
 ```bash
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.0/cert-manager.yaml
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml
 
 # Wait for cert-manager pods to be ready
 
@@ -46,7 +46,7 @@ spec:
     solvers:
     - http01:
         ingress:
-          class: istio
+          ingressClassName: istio
 ```
 
 For production:
@@ -65,7 +65,7 @@ spec:
     solvers:
     - http01:
         ingress:
-          class: istio
+          ingressClassName: istio
 ```
 
 Apply both:
@@ -77,26 +77,17 @@ kubectl apply -f letsencrypt-prod-issuer.yaml
 
 ## HTTP-01 Challenge with Istio
 
-The HTTP-01 challenge requires Let's Encrypt to access a specific URL on your domain to verify ownership. cert-manager creates a temporary pod and ingress to serve the challenge response.
+The HTTP-01 challenge requires Let's Encrypt to access a specific URL on your domain to verify ownership. cert-manager creates a temporary pod and Kubernetes Ingress to serve the challenge response.
 
-For this to work with Istio, you need a Gateway and VirtualService that routes the challenge traffic:
+For this to work with Istio, you need an IngressClass that tells Kubernetes to use the Istio ingress controller for those temporary challenge Ingress resources:
 
 ```yaml
-apiVersion: networking.istio.io/v1
-kind: Gateway
+apiVersion: networking.k8s.io/v1
+kind: IngressClass
 metadata:
-  name: http-gateway
-  namespace: istio-system
+  name: istio
 spec:
-  selector:
-    istio: ingressgateway
-  servers:
-  - port:
-      number: 80
-      name: http
-      protocol: HTTP
-    hosts:
-    - "api.example.com"
+  controller: istio.io/ingress-controller
 ```
 
 Request the certificate:
