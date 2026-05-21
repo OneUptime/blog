@@ -105,7 +105,7 @@ spec:
       perTryTimeout: 3s
 ```
 
-The `timeout` is the total time allowed for all attempts, including retries. The `perTryTimeout` is the max time for each individual attempt. With the config above, each try gets 3 seconds, and the total budget is 10 seconds. If the first two tries each take 3 seconds, the third try only gets 4 seconds.
+The `timeout` is the total time allowed for the original request and all retries. The `perTryTimeout` is the max time for each individual attempt. With the config above, each try gets up to 3 seconds, and the total budget is 10 seconds. If the first two tries each take 3 seconds, 4 seconds remain in the overall budget, but `perTryTimeout` still caps the third try at 3 seconds.
 
 ## Circuit Breaking
 
@@ -177,20 +177,21 @@ spec:
         name: envoy.filters.http.lua
         typed_config:
           "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-          inlineCode: |
-            function envoy_on_response(response_handle)
-              local status = response_handle:headers():get(":status")
-              if status == "503" then
-                response_handle:headers():replace("content-type", "application/json")
-                response_handle:body():setBytes('{"error": "service_unavailable", "message": "The service is temporarily unavailable. Please retry in a few seconds.", "retry_after": 5}')
-              elseif status == "429" then
-                response_handle:headers():replace("content-type", "application/json")
-                response_handle:body():setBytes('{"error": "rate_limited", "message": "You have exceeded the rate limit. Please slow down."}')
-              elseif status == "504" then
-                response_handle:headers():replace("content-type", "application/json")
-                response_handle:body():setBytes('{"error": "gateway_timeout", "message": "The request timed out. The upstream service took too long to respond."}')
+          defaultSourceCode:
+            inlineString: |
+              function envoy_on_response(response_handle)
+                local status = response_handle:headers():get(":status")
+                if status == "503" then
+                  response_handle:headers():replace("content-type", "application/json")
+                  response_handle:body(true):setBytes('{"error": "service_unavailable", "message": "The service is temporarily unavailable. Please retry in a few seconds.", "retry_after": 5}')
+                elseif status == "429" then
+                  response_handle:headers():replace("content-type", "application/json")
+                  response_handle:body(true):setBytes('{"error": "rate_limited", "message": "You have exceeded the rate limit. Please slow down."}')
+                elseif status == "504" then
+                  response_handle:headers():replace("content-type", "application/json")
+                  response_handle:body(true):setBytes('{"error": "gateway_timeout", "message": "The request timed out. The upstream service took too long to respond."}')
+                end
               end
-            end
 ```
 
 ## Fault Injection for Testing
@@ -223,13 +224,13 @@ spec:
           number: 8080
 ```
 
-This injects 503 errors on 10% of requests and a 5-second delay on 20% of requests. Use this to verify that your retry logic, circuit breakers, and timeout configurations work as expected.
+This injects 503 errors on 10% of requests and a 5-second delay on 20% of requests. Fault injection is useful for testing client behavior and downstream error handling. Istio does not enable retries or timeouts on the same client-side route rule when faults are enabled, so test those policies separately.
 
 ## Handling Specific Error Scenarios
 
-### Retry Budget
+### Retrying Across Localities
 
-Retries can amplify traffic during outages. Limit the total retry budget:
+Retries can amplify traffic during outages. Keep attempts low and, when you use locality-aware load balancing, choose whether retries can go to another locality:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -250,7 +251,7 @@ spec:
       retryRemoteLocalities: true
 ```
 
-The `retryRemoteLocalities` option tells Istio to try the retry on a different locality (zone or region) if available. This is useful when an entire zone is having problems.
+The `retryRemoteLocalities` option tells Istio to try retries in another locality if available. This is useful when an entire zone is having problems.
 
 ### Connection Draining
 
@@ -272,7 +273,7 @@ spec:
         idleTimeout: 60s
 ```
 
-The `idleTimeout` prevents the proxy from holding connections open to pods that are no longer serving traffic.
+The `idleTimeout` closes upstream HTTP connection pool connections after they have no active requests for the configured time. It does not replace Kubernetes termination grace periods or Istio sidecar drain settings for in-flight requests during pod shutdown.
 
 ## Monitoring Error Handling
 
@@ -305,6 +306,6 @@ sum(rate(envoy_cluster_outlier_detection_ejections_total{cluster_name="outbound|
 
 ## Best Practices
 
-Set timeouts on every service call. Unset timeouts default to 15 seconds in Istio, which might be too long or too short for your needs. Configure retries only for idempotent operations. Use circuit breaking on every DestinationRule. Set your `maxEjectionPercent` thoughtfully so you do not accidentally eject all your backends. And always test your error handling with fault injection before relying on it in production.
+Set timeouts on every service call. Unset route timeouts are disabled in Istio, which can let slow requests run longer than you intended. Configure retries only for idempotent operations. Use circuit breaking on every DestinationRule. Set your `maxEjectionPercent` thoughtfully so you do not accidentally eject all your backends. And always test your error handling with fault injection before relying on it in production.
 
 Error handling in a service mesh is about layering defenses. Timeouts catch slow responses, retries handle transient failures, and circuit breakers prevent cascade failures. Together, they make your API much more resilient than any single technique alone.
