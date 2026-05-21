@@ -8,7 +8,7 @@ Description: Complete walkthrough for configuring an active-active multi-cluster
 
 ---
 
-Active-active means both clusters are handling production traffic at the same time. This is different from active-passive where one cluster sits idle until it's needed for failover. With Istio, active-active is the natural multi-cluster mode since the mesh automatically load balances across endpoints in all clusters.
+Active-active means both clusters are handling production traffic at the same time. This is different from active-passive where one cluster sits idle until it's needed for failover. With Istio, active-active is a common multi-cluster mode since the mesh can discover and load balance across endpoints in all clusters.
 
 ## Why Active-Active
 
@@ -27,7 +27,7 @@ In an active-active Istio setup:
 
 - Both clusters run their own istiod (separate control planes)
 - Both clusters have the same services deployed
-- Istio load balances requests across endpoints in both clusters
+- Istio can load balance requests across endpoints in both clusters
 - If one cluster's endpoints become unhealthy, traffic shifts to the other
 
 ## Step 1: Set Up Two Clusters with Separate Control Planes
@@ -102,10 +102,10 @@ The Service definitions must be identical (same name, namespace, and ports) so t
 
 ## Step 3: Configure Locality-Aware Load Balancing
 
-By default, Istio distributes traffic evenly across all endpoints regardless of which cluster they're in. For active-active with geographic distribution, you want locality-aware routing so users hit the nearest cluster first:
+By default, Istio uses least-request load balancing across the endpoints it discovers for a service, including endpoints in other clusters unless you make a service cluster-local. For active-active with geographic distribution, you want locality-aware routing so users hit the nearest cluster first:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-app
@@ -113,6 +113,9 @@ metadata:
 spec:
   host: my-app.production.svc.cluster.local
   trafficPolicy:
+    loadBalancer:
+      localityLbSetting:
+        enabled: true
     connectionPool:
       http:
         h2UpgradePolicy: DEFAULT
@@ -123,7 +126,7 @@ spec:
       maxEjectionPercent: 100
 ```
 
-Locality-aware routing kicks in automatically when you have outlier detection configured. Istio uses the node's `topology.kubernetes.io/zone` and `topology.kubernetes.io/region` labels to determine locality.
+Istio's default mesh configuration enables locality load balancing, so configuring outlier detection in a `DestinationRule` activates locality-aware failover even if you do not explicitly set `localityLbSetting`. Istio uses the node's `topology.kubernetes.io/zone` and `topology.kubernetes.io/region` labels to determine locality.
 
 For it to work, your nodes need to be labeled with their region and zone:
 
@@ -135,16 +138,16 @@ kubectl --context=${CTX_CLUSTER1} get nodes --show-labels | grep topology
 On most cloud providers, these labels are set automatically. On bare metal, you need to set them manually:
 
 ```bash
-kubectl label node worker-1 topology.kubernetes.io/region=us-east-1
-kubectl label node worker-1 topology.kubernetes.io/zone=us-east-1a
+kubectl --context=${CTX_CLUSTER1} label node worker-1 topology.kubernetes.io/region=us-east-1
+kubectl --context=${CTX_CLUSTER1} label node worker-1 topology.kubernetes.io/zone=us-east-1a
 ```
 
 ## Step 4: Configure Failover Between Clusters
 
-Locality-aware routing prefers local endpoints, but you need failover to the other cluster when local endpoints are unhealthy. This happens automatically with outlier detection, but you can fine-tune it:
+Locality-aware routing prefers local endpoints, but you need failover to the other cluster when local endpoints are unhealthy. This happens with outlier detection, but you can fine-tune it:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-app-failover
@@ -152,6 +155,9 @@ metadata:
 spec:
   host: my-app.production.svc.cluster.local
   trafficPolicy:
+    loadBalancer:
+      localityLbSetting:
+        enabled: true
     outlierDetection:
       consecutive5xxErrors: 2
       interval: 10s
@@ -197,11 +203,13 @@ aws route53 change-resource-record-sets --hosted-zone-id Z123456 --change-batch 
 }'
 ```
 
-The IPs should be the external IPs of each cluster's Istio ingress gateway:
+If your cloud provider exposes IP addresses for the Istio ingress gateways, use those IPs in the weighted `A` records. If the load balancers expose hostnames instead, use weighted alias or CNAME records that point at those hostnames:
 
 ```bash
 kubectl --context=${CTX_CLUSTER1} get svc -n istio-system istio-ingressgateway -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
 kubectl --context=${CTX_CLUSTER2} get svc -n istio-system istio-ingressgateway -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
+kubectl --context=${CTX_CLUSTER1} get svc -n istio-system istio-ingressgateway -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
+kubectl --context=${CTX_CLUSTER2} get svc -n istio-system istio-ingressgateway -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
 ```
 
 ## Step 6: Verify Active-Active Behavior
@@ -216,11 +224,11 @@ for i in $(seq 1 20); do
 done
 ```
 
-You should see responses from pods in both clusters. If locality-aware routing is active, you'll see more responses from cluster1's pods (since that's where the client is), but some should come from cluster2.
+Without locality-aware failover or cluster-local traffic configured, you should see responses from pods in both clusters. If locality-aware failover is active, traffic from cluster1 will usually stay on cluster1's pods while they are healthy; use locality weighted distribution if you want a deliberate percentage of requests to go to another locality while local endpoints are still healthy.
 
 ## Step 7: Test Failover
 
-Scale down the service in cluster1 and watch traffic shift:
+Scale down the deployment in cluster1 and watch traffic shift:
 
 ```bash
 kubectl --context=${CTX_CLUSTER1} scale deployment -n production my-app --replicas=0
