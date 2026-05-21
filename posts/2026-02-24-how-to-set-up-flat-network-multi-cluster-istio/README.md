@@ -46,10 +46,26 @@ Both clusters need to trust each other's certificates. The easiest way is to use
 mkdir -p certs
 cd certs
 
+cat > root-ca.cnf <<EOF
+[req]
+distinguished_name = dn
+x509_extensions = v3_ca
+prompt = no
+
+[dn]
+O = Istio
+CN = Root CA
+
+[v3_ca]
+basicConstraints = critical,CA:TRUE,pathlen:1
+keyUsage = critical,keyCertSign,cRLSign
+subjectKeyIdentifier = hash
+EOF
+
 # Generate root CA
 openssl req -new -newkey rsa:4096 -x509 -sha256 \
   -days 3650 -nodes \
-  -subj "/O=Istio/CN=Root CA" \
+  -config root-ca.cnf \
   -keyout root-key.pem \
   -out root-cert.pem
 ```
@@ -57,6 +73,14 @@ openssl req -new -newkey rsa:4096 -x509 -sha256 \
 Generate intermediate CAs for each cluster:
 
 ```bash
+cat > intermediate-ca.cnf <<EOF
+[v3_ca]
+basicConstraints = critical,CA:TRUE,pathlen:0
+keyUsage = critical,keyCertSign,cRLSign
+subjectKeyIdentifier = hash
+authorityKeyIdentifier = keyid,issuer
+EOF
+
 # Cluster 1 intermediate CA
 openssl req -new -newkey rsa:4096 -nodes \
   -subj "/O=Istio/CN=Intermediate CA cluster1" \
@@ -65,8 +89,10 @@ openssl req -new -newkey rsa:4096 -nodes \
 
 openssl x509 -req -sha256 -days 3650 \
   -CA root-cert.pem -CAkey root-key.pem -CAcreateserial \
+  -extfile intermediate-ca.cnf -extensions v3_ca \
   -in cluster1-ca-csr.pem \
   -out cluster1-ca-cert.pem
+cat cluster1-ca-cert.pem root-cert.pem > cluster1-cert-chain.pem
 
 # Cluster 2 intermediate CA
 openssl req -new -newkey rsa:4096 -nodes \
@@ -76,8 +102,10 @@ openssl req -new -newkey rsa:4096 -nodes \
 
 openssl x509 -req -sha256 -days 3650 \
   -CA root-cert.pem -CAkey root-key.pem -CAcreateserial \
+  -extfile intermediate-ca.cnf -extensions v3_ca \
   -in cluster2-ca-csr.pem \
   -out cluster2-ca-cert.pem
+cat cluster2-ca-cert.pem root-cert.pem > cluster2-cert-chain.pem
 ```
 
 Create the secret in both clusters:
@@ -89,7 +117,7 @@ kubectl --context=cluster1 create secret generic cacerts -n istio-system \
   --from-file=ca-cert.pem=cluster1-ca-cert.pem \
   --from-file=ca-key.pem=cluster1-ca-key.pem \
   --from-file=root-cert.pem=root-cert.pem \
-  --from-file=cert-chain.pem=cluster1-ca-cert.pem
+  --from-file=cert-chain.pem=cluster1-cert-chain.pem
 
 # Cluster 2
 kubectl --context=cluster2 create namespace istio-system
@@ -97,7 +125,7 @@ kubectl --context=cluster2 create secret generic cacerts -n istio-system \
   --from-file=ca-cert.pem=cluster2-ca-cert.pem \
   --from-file=ca-key.pem=cluster2-ca-key.pem \
   --from-file=root-cert.pem=root-cert.pem \
-  --from-file=cert-chain.pem=cluster2-ca-cert.pem
+  --from-file=cert-chain.pem=cluster2-cert-chain.pem
 ```
 
 ## Step 2: Install Istio on Both Clusters
@@ -122,7 +150,7 @@ spec:
       meshID: mesh1
       multiCluster:
         clusterName: cluster1
-      network: ""
+      network: network1
 ```
 
 And for cluster 2:
@@ -145,10 +173,10 @@ spec:
       meshID: mesh1
       multiCluster:
         clusterName: cluster2
-      network: ""
+      network: network1
 ```
 
-Notice that `network` is set to an empty string for both. This tells Istio that both clusters are on the same network, so no gateway is needed for cross-cluster traffic.
+Notice that `network` is set to the same value for both clusters. This tells Istio that both clusters are on the same network, so no gateway is needed for cross-cluster traffic.
 
 Install on both clusters:
 
@@ -175,7 +203,7 @@ This is a bidirectional setup. Each cluster's istiod watches the other cluster's
 
 ## Step 4: Verify Cross-Cluster Connectivity
 
-Deploy the same service in both clusters and verify traffic flows:
+Deploy the service in both clusters and verify traffic flows:
 
 ```bash
 # Create test namespace in both clusters
@@ -186,7 +214,37 @@ kubectl --context=cluster2 create namespace sample
 kubectl --context=cluster2 label namespace sample istio-injection=enabled
 ```
 
-Deploy a service in cluster2:
+Create the service in both clusters so DNS lookup works from either cluster:
+
+```bash
+kubectl --context=cluster1 apply -n sample -f - <<EOF
+apiVersion: v1
+kind: Service
+metadata:
+  name: helloworld
+spec:
+  selector:
+    app: helloworld
+  ports:
+    - port: 5000
+      targetPort: 5000
+EOF
+
+kubectl --context=cluster2 apply -n sample -f - <<EOF
+apiVersion: v1
+kind: Service
+metadata:
+  name: helloworld
+spec:
+  selector:
+    app: helloworld
+  ports:
+    - port: 5000
+      targetPort: 5000
+EOF
+```
+
+Deploy the v2 application in cluster2:
 
 ```bash
 kubectl --context=cluster2 apply -n sample -f - <<EOF
@@ -211,17 +269,6 @@ spec:
           image: docker.io/istio/examples-helloworld-v2
           ports:
             - containerPort: 5000
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: helloworld
-spec:
-  selector:
-    app: helloworld
-  ports:
-    - port: 5000
-      targetPort: 5000
 EOF
 ```
 
@@ -261,7 +308,33 @@ If you see a response from the v2 version, flat network multi-cluster is working
 
 ## Step 5: Verify Load Balancing
 
-If you deploy the helloworld service in both clusters, Istio will load balance across endpoints in both clusters:
+If you deploy helloworld workloads in both clusters, Istio will load balance across endpoints in both clusters:
+
+```bash
+kubectl --context=cluster1 apply -n sample -f - <<EOF
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: helloworld-v1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: helloworld
+      version: v1
+  template:
+    metadata:
+      labels:
+        app: helloworld
+        version: v1
+    spec:
+      containers:
+        - name: helloworld
+          image: docker.io/istio/examples-helloworld-v1
+          ports:
+            - containerPort: 5000
+EOF
+```
 
 ```bash
 # Run this multiple times
@@ -277,7 +350,7 @@ You should see responses from both clusters, roughly evenly distributed.
 
 **Can't reach services across clusters**: Verify pod-to-pod connectivity directly. SSH into a node in cluster1 and try to curl a pod IP in cluster2. If that doesn't work, the flat network isn't actually flat.
 
-**Services discovered but connections time out**: Check firewall rules between clusters. Port 15443 needs to be open for mTLS traffic.
+**Services discovered but connections time out**: Check firewall rules between clusters. In a flat network, workloads connect directly to remote pod IPs on the service's destination port, so the pod CIDRs and application ports need to be reachable across clusters. Port 15443 is used by Istio east-west gateways in different-network topologies, not by this flat-network path.
 
 **Uneven load balancing**: Check that both clusters have healthy endpoints. Use `istioctl proxy-config endpoints` to see what endpoints the proxy knows about:
 
