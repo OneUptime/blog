@@ -171,7 +171,7 @@ Workload Identity eliminates the need for service account key files by letting K
 
 ### Prerequisites
 
-Workload Identity must be enabled on both the ArgoCD cluster and the target GKE cluster:
+Workload Identity must be enabled on the GKE cluster that runs ArgoCD. The target GKE cluster must authorize the IAM service account and be reachable from ArgoCD:
 
 ```bash
 # Enable Workload Identity on the ArgoCD cluster
@@ -198,17 +198,26 @@ gcloud projects add-iam-policy-binding my-gcp-project \
   --member="serviceAccount:argocd-controller@my-gcp-project.iam.gserviceaccount.com" \
   --role="roles/container.developer"
 
-# Allow the Kubernetes SA to impersonate the GCP SA
+# Allow the ArgoCD Kubernetes SAs to impersonate the GCP SA
 gcloud iam service-accounts add-iam-policy-binding \
   argocd-controller@my-gcp-project.iam.gserviceaccount.com \
   --role="roles/iam.workloadIdentityUser" \
   --member="serviceAccount:my-gcp-project.svc.id.goog[argocd/argocd-application-controller]"
+
+gcloud iam service-accounts add-iam-policy-binding \
+  argocd-controller@my-gcp-project.iam.gserviceaccount.com \
+  --role="roles/iam.workloadIdentityUser" \
+  --member="serviceAccount:my-gcp-project.svc.id.goog[argocd/argocd-server]"
 ```
 
 ### Step 2: Annotate the ArgoCD Service Account
 
 ```bash
 kubectl annotate serviceaccount argocd-application-controller \
+  -n argocd \
+  iam.gke.io/gcp-service-account=argocd-controller@my-gcp-project.iam.gserviceaccount.com
+
+kubectl annotate serviceaccount argocd-server \
   -n argocd \
   iam.gke.io/gcp-service-account=argocd-controller@my-gcp-project.iam.gserviceaccount.com
 ```
@@ -238,7 +247,7 @@ stringData:
       },
       "tlsClientConfig": {
         "insecure": false,
-        "caData": "<ca-data>"
+        "caData": "<base64-encoded-ca-cert>"
       }
     }
 ```
@@ -252,16 +261,16 @@ For organizations with many GKE clusters, automate registration:
 # register-gke-clusters.sh
 
 PROJECT="my-gcp-project"
-CLUSTERS=$(gcloud container clusters list --project=$PROJECT --format='csv[no-heading](name,zone)')
+CLUSTERS=$(gcloud container clusters list --project=$PROJECT --format='csv[no-heading](name,location)')
 
-while IFS=, read -r name zone; do
-  echo "Registering cluster: $name in $zone"
+while IFS=, read -r name location; do
+  echo "Registering cluster: $name in $location"
 
   ENDPOINT=$(gcloud container clusters describe $name \
-    --zone=$zone --project=$PROJECT --format='get(endpoint)')
+    --location=$location --project=$PROJECT --format='get(endpoint)')
 
   CA_CERT=$(gcloud container clusters describe $name \
-    --zone=$zone --project=$PROJECT --format='get(masterAuth.clusterCaCertificate)')
+    --location=$location --project=$PROJECT --format='get(masterAuth.clusterCaCertificate)')
 
   cat <<EOF | kubectl apply -f -
 apiVersion: v1
@@ -272,7 +281,7 @@ metadata:
   labels:
     argocd.argoproj.io/secret-type: cluster
     provider: gcp
-    zone: ${zone}
+    location: ${location}
 type: Opaque
 stringData:
   name: ${name}
@@ -316,24 +325,27 @@ argocd app delete gke-test --yes
 ## Troubleshooting
 
 ```bash
-# Check if Workload Identity is working
-kubectl exec -n argocd deploy/argocd-application-controller -- \
-  cat /var/run/secrets/tokens/gcp-ksa
+# Check if Workload Identity is returning the linked IAM service account
+kubectl run gcp-test --rm -it \
+  --image=google/cloud-sdk:slim \
+  --serviceaccount=argocd-application-controller \
+  -n argocd \
+  -- gcloud auth list --filter=status:ACTIVE --format='value(account)'
 
 # Test GCP authentication
 kubectl run gcp-test --rm -it \
   --image=google/cloud-sdk:slim \
   --serviceaccount=argocd-application-controller \
   -n argocd \
-  -- gcloud auth list
+  -- gcloud container clusters list --project=my-gcp-project
 
 # Common errors:
 # "could not get token": Workload Identity not configured
 # "forbidden": GKE RBAC not set up for the GCP service account
-# "connection refused": Private cluster without authorized networks
+# "connection refused": Private cluster without a valid network path or authorized network
 ```
 
-For private GKE clusters, you need to add the ArgoCD cluster's IP range to the authorized networks:
+For private GKE clusters that use a public control plane endpoint with authorized networks, add the ArgoCD egress IP range to the authorized networks. If the cluster only exposes a private endpoint, ArgoCD needs private network connectivity to the target cluster control plane instead:
 
 ```bash
 gcloud container clusters update my-gke-cluster \
@@ -344,4 +356,4 @@ gcloud container clusters update my-gke-cluster \
 
 ## Summary
 
-Adding a GKE cluster to ArgoCD requires handling Google Cloud's authentication layer. For development, the static token approach via `argocd cluster add` works fine. For production, Workload Identity provides the most secure option by eliminating long-lived credentials entirely. The key steps are creating a GCP service account with appropriate GKE permissions, binding it to the ArgoCD Kubernetes service account via Workload Identity, and registering the cluster with the exec provider configuration. For the complete Workload Identity setup, see our guide on [GKE Workload Identity for ArgoCD](https://oneuptime.com/blog/post/2026-02-26-argocd-gke-workload-identity/view).
+Adding a GKE cluster to ArgoCD requires handling Google Cloud's authentication layer. For development, the static token approach via `argocd cluster add` works fine. For production, Workload Identity provides the most secure option by eliminating long-lived credentials entirely. The key steps are creating a GCP service account with appropriate GKE permissions, binding it to the ArgoCD Kubernetes service accounts via Workload Identity, and registering the cluster with the exec provider configuration. For the complete Workload Identity setup, see our guide on [GKE Workload Identity for ArgoCD](https://oneuptime.com/blog/post/2026-02-26-argocd-gke-workload-identity/view).
