@@ -12,7 +12,7 @@ Istio extends Kubernetes by adding a set of Custom Resource Definitions (CRDs) t
 
 ## What CRDs Does Istio Install?
 
-When you install Istio, it registers dozens of CRDs with the Kubernetes API server. You can see them all:
+When you install Istio, it registers a set of CRDs with the Kubernetes API server. You can see them all:
 
 ```bash
 kubectl get crds | grep istio
@@ -171,7 +171,7 @@ spec:
     - "other-namespace/specific-service.other-namespace.svc.cluster.local"
 ```
 
-This tells sidecars in `my-namespace` to only receive configuration for services in their own namespace, the istio-system namespace, and one specific service from another namespace. This reduces memory usage and configuration push time.
+This tells sidecars in `my-namespace` to receive configuration for services in their own namespace, the istio-system namespace, and one specific service from another namespace. This reduces memory usage and configuration push time. Sidecar scoping controls generated proxy configuration; it is not an outbound access control policy.
 
 ## Security Resources
 
@@ -296,7 +296,7 @@ kubectl describe vs reviews-route -n default
 
 Istio includes a validation webhook that checks resources when you apply them. If your YAML has errors, the webhook rejects it with an error message.
 
-You can also validate offline with `istioctl`:
+You can also analyze the resources in a live cluster with `istioctl`:
 
 ```bash
 istioctl analyze -n my-namespace
@@ -304,17 +304,17 @@ istioctl analyze -n my-namespace
 
 This checks for common misconfigurations like VirtualServices referencing non-existent services, DestinationRules with missing subsets, and Gateways with conflicting configurations.
 
-For a specific file:
+For a specific file without connecting to a live cluster:
 
 ```bash
-istioctl analyze my-config.yaml
+istioctl analyze --use-kube=false my-config.yaml
 ```
 
 Resource Scoping
 
 Istio resources can be scoped in different ways:
 
-- **Namespace-scoped**: Most Istio resources (VirtualService, DestinationRule, etc.) are namespace-scoped. They affect workloads in their namespace.
+- **Namespace-scoped**: Most Istio resources (VirtualService, DestinationRule, etc.) are Kubernetes namespace-scoped. Their effect depends on the resource type and fields such as `hosts`, `gateways`, `exportTo`, and `selector`.
 - **Root namespace**: Resources in the Istio root namespace (usually `istio-system`) can serve as defaults for the entire mesh.
 - **Workload-specific**: Resources with a `selector` field only affect pods matching those labels.
 
