@@ -40,65 +40,66 @@ spec:
           name: envoy.filters.http.lua
           typed_config:
             "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-            inlineCode: |
-              -- Valid API keys (in production, use external authorization instead)
-              local valid_keys = {
-                ["key-abc123"] = {client = "service-a", tier = "premium"},
-                ["key-def456"] = {client = "service-b", tier = "standard"},
-                ["key-ghi789"] = {client = "service-c", tier = "free"}
-              }
+            default_source_code:
+              inline_string: |
+                -- Valid API keys (in production, use external authorization instead)
+                local valid_keys = {
+                  ["key-abc123"] = {client = "service-a", tier = "premium"},
+                  ["key-def456"] = {client = "service-b", tier = "standard"},
+                  ["key-ghi789"] = {client = "service-c", tier = "free"}
+                }
 
-              -- Paths that don't require API keys
-              local public_paths = {
-                ["/health"] = true,
-                ["/docs"] = true
-              }
+                -- Paths that don't require API keys
+                local public_paths = {
+                  ["/health"] = true,
+                  ["/docs"] = true
+                }
 
-              function envoy_on_request(request_handle)
-                local path = request_handle:headers():get(":path")
+                function envoy_on_request(request_handle)
+                  local path = request_handle:headers():get(":path")
 
-                -- Skip validation for public paths
-                for prefix, _ in pairs(public_paths) do
-                  if path:sub(1, #prefix) == prefix then
+                  -- Skip validation for public paths
+                  for prefix, _ in pairs(public_paths) do
+                    if path:sub(1, #prefix) == prefix then
+                      return
+                    end
+                  end
+
+                  -- Check for API key in header or query parameter
+                  local api_key = request_handle:headers():get("x-api-key")
+                  if api_key == nil then
+                    -- Try query parameter
+                    local query_key = path:match("[?&]api_key=([^&]+)")
+                    if query_key then
+                      api_key = query_key
+                    end
+                  end
+
+                  if api_key == nil then
+                    request_handle:respond(
+                      {[":status"] = "401",
+                       ["content-type"] = "application/json"},
+                      '{"error": "Missing API key. Include x-api-key header."}'
+                    )
                     return
                   end
-                end
 
-                -- Check for API key in header or query parameter
-                local api_key = request_handle:headers():get("x-api-key")
-                if api_key == nil then
-                  -- Try query parameter
-                  local query_key = path:match("[?&]api_key=([^&]+)")
-                  if query_key then
-                    api_key = query_key
+                  local key_info = valid_keys[api_key]
+                  if key_info == nil then
+                    request_handle:respond(
+                      {[":status"] = "403",
+                       ["content-type"] = "application/json"},
+                      '{"error": "Invalid API key."}'
+                    )
+                    return
                   end
-                end
 
-                if api_key == nil then
-                  request_handle:respond(
-                    {[":status"] = "401",
-                     ["content-type"] = "application/json"},
-                    '{"error": "Missing API key. Include x-api-key header."}'
-                  )
-                  return
+                  -- Add client info headers for downstream services
+                  request_handle:headers():add("x-client-id", key_info.client)
+                  request_handle:headers():add("x-client-tier", key_info.tier)
+                  -- Remove the API key from headers so it doesn't reach backends
+                  request_handle:headers():remove("x-api-key")
                 end
-
-                local key_info = valid_keys[api_key]
-                if key_info == nil then
-                  request_handle:respond(
-                    {[":status"] = "403",
-                     ["content-type"] = "application/json"},
-                    '{"error": "Invalid API key."}'
-                  )
-                  return
-                end
-
-                -- Add client info headers for downstream services
-                request_handle:headers():add("x-client-id", key_info.client)
-                request_handle:headers():add("x-client-tier", key_info.tier)
-                -- Remove the API key from headers so it doesn't reach backends
-                request_handle:headers():remove("x-api-key")
-              end
 ```
 
 This works for small numbers of keys but does not scale well. The keys are hardcoded in the filter, so updating them requires redeploying the EnvoyFilter.
@@ -153,13 +154,22 @@ package main
 import (
     "context"
     "net"
-    "google.golang.org/grpc"
+
+    core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
     auth "github.com/envoyproxy/go-control-plane/envoy/service/auth/v3"
-    "google.golang.org/genproto/googleapis/rpc/status"
+    "google.golang.org/grpc"
     "google.golang.org/grpc/codes"
+    "google.golang.org/genproto/googleapis/rpc/status"
 )
 
-type AuthServer struct{}
+type ClientInfo struct {
+    Client string
+    Tier   string
+}
+
+type AuthServer struct {
+    auth.UnimplementedAuthorizationServer
+}
 
 func (s *AuthServer) Check(ctx context.Context, req *auth.CheckRequest) (*auth.CheckResponse, error) {
     apiKey := req.Attributes.Request.Http.Headers["x-api-key"]
@@ -180,7 +190,33 @@ func (s *AuthServer) Check(ctx context.Context, req *auth.CheckRequest) (*auth.C
 
     return &auth.CheckResponse{
         Status: &status.Status{Code: int32(codes.OK)},
+        HttpResponse: &auth.CheckResponse_OkResponse{
+            OkResponse: &auth.OkHttpResponse{
+                Headers: []*core.HeaderValueOption{
+                    {
+                        Header: &core.HeaderValue{
+                            Key:   "x-client-id",
+                            Value: clientInfo.Client,
+                        },
+                    },
+                    {
+                        Header: &core.HeaderValue{
+                            Key:   "x-client-tier",
+                            Value: clientInfo.Tier,
+                        },
+                    },
+                },
+            },
+        },
     }, nil
+}
+
+func validateAPIKey(apiKey string) (bool, ClientInfo) {
+    // Replace this with a Redis/database lookup.
+    if apiKey == "key-abc123" {
+        return true, ClientInfo{Client: "service-a", Tier: "premium"}
+    }
+    return false, ClientInfo{}
 }
 
 func main() {
@@ -250,6 +286,8 @@ spec:
 
 The `fromHeaders` field tells Istio to look for the JWT in the `x-api-key` header instead of the standard `Authorization` header. Your key management service issues JWTs that encode client information, rate limit tiers, and permissions.
 
+RequestAuthentication rejects invalid JWTs, but requests without any JWT are accepted unless you also add an AuthorizationPolicy that requires a request principal.
+
 ## Storing API Keys Securely
 
 For the Lua-based approach, instead of hardcoding keys, store them in a Kubernetes Secret and mount them:
@@ -269,11 +307,11 @@ stringData:
     }
 ```
 
-Unfortunately, Lua filters in Envoy cannot directly read files. The external authorization approach is more practical for anything beyond a handful of keys.
+Unfortunately, mounting a Kubernetes Secret does not automatically make the keys available to the Lua filter configuration; you still need to load the data into the Envoy configuration or script and roll out a config update. The external authorization approach is more practical for anything beyond a handful of keys.
 
 ## Rate Limiting by API Key
 
-Once you have API key validation working, you can apply different rate limits per key or tier. Using the client tier header injected by the auth service:
+Once you have API key validation working, you can apply different rate limits per key or tier with Envoy's global rate limit filter and service. For example, you can configure rate limit descriptors from the client tier header injected by the auth service:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -286,32 +324,20 @@ spec:
     labels:
       istio: ingressgateway
   configPatches:
-    - applyTo: HTTP_FILTER
+    - applyTo: VIRTUAL_HOST
       match:
         context: GATEWAY
-        listener:
-          filterChain:
-            filter:
-              name: envoy.filters.network.http_connection_manager
-              subFilter:
-                name: envoy.filters.http.router
+        routeConfiguration:
+          vhost:
+            domainName: api.example.com
       patch:
-        operation: INSERT_BEFORE
+        operation: MERGE
         value:
-          name: envoy.filters.http.lua
-          typed_config:
-            "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-            inlineCode: |
-              function envoy_on_response(response_handle)
-                local tier = response_handle:headers():get("x-client-tier")
-                if tier == "premium" then
-                  response_handle:headers():add("x-rate-limit-limit", "10000")
-                elseif tier == "standard" then
-                  response_handle:headers():add("x-rate-limit-limit", "1000")
-                else
-                  response_handle:headers():add("x-rate-limit-limit", "100")
-                end
-              end
+          rate_limits:
+            - actions:
+                - request_headers:
+                    header_name: x-client-tier
+                    descriptor_key: tier
 ```
 
 ## Key Rotation
