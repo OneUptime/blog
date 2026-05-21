@@ -43,11 +43,28 @@ kind: IstioOperator
 spec:
   meshConfig:
     enableTracing: true
-    defaultConfig:
-      tracing:
-        sampling: 1.0
+    extensionProviders:
+      - name: zipkin
         zipkin:
-          address: zipkin.istio-system:9411
+          service: zipkin.istio-system.svc.cluster.local
+          port: 9411
+    defaultConfig:
+      tracing: {}
+```
+
+Then use the Telemetry API to activate the provider:
+
+```yaml
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
+metadata:
+  name: mesh-tracing
+  namespace: istio-system
+spec:
+  tracing:
+    - providers:
+        - name: zipkin
+      randomSamplingPercentage: 1.0
 ```
 
 ### OpenTelemetry Collector
@@ -66,14 +83,13 @@ spec:
           service: otel-collector.observability.svc.cluster.local
           port: 4317
     defaultConfig:
-      tracing:
-        sampling: 1.0
+      tracing: {}
 ```
 
 Then use the Telemetry API to activate the provider:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: mesh-tracing
@@ -87,25 +103,26 @@ spec:
 
 ### Jaeger
 
-Jaeger is compatible with the Zipkin protocol, so you can use the Zipkin configuration:
-
-```yaml
-meshConfig:
-  defaultConfig:
-    tracing:
-      zipkin:
-        address: jaeger-collector.observability:9411
-```
-
-Or use the OpenTelemetry path if your Jaeger instance supports OTLP:
+Current Istio documentation shows Jaeger configured through OpenTelemetry:
 
 ```yaml
 meshConfig:
   extensionProviders:
-    - name: jaeger-otel
+    - name: jaeger
       opentelemetry:
         service: jaeger-collector.observability.svc.cluster.local
         port: 4317
+```
+
+If your Jaeger deployment explicitly exposes a Zipkin-compatible collector, you can also use a Zipkin provider:
+
+```yaml
+meshConfig:
+  extensionProviders:
+    - name: jaeger-zipkin
+      zipkin:
+        service: jaeger-collector.observability.svc.cluster.local
+        port: 9411
 ```
 
 ## Setting Sampling Rate
@@ -139,14 +156,14 @@ spec:
             sampling: 100.0
 ```
 
-This traces every request to the payment service while keeping the mesh default at a lower rate. Useful for services you are actively debugging.
+When no Telemetry API sampling rule overrides it, this traces every request to the payment service while keeping the mesh default at a lower rate. Useful for services you are actively debugging.
 
 ### Using the Telemetry API
 
 The Telemetry API provides more flexible sampling control:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: production-tracing
@@ -163,7 +180,7 @@ Different namespaces can have different sampling rates:
 ```yaml
 # High sampling for staging
 
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: staging-tracing
@@ -180,7 +197,7 @@ spec:
 Add custom tags to all spans for better filtering and correlation:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: custom-tags
@@ -219,7 +236,7 @@ For Zipkin/B3 format:
 - `x-b3-sampled`
 - `x-b3-flags`
 
-For W3C Trace Context (used by OpenTelemetry):
+For W3C Trace Context (commonly used with OpenTelemetry):
 - `traceparent`
 - `tracestate`
 
