@@ -14,7 +14,7 @@ Connection draining is the process of letting existing connections finish while 
 
 When a pod is being removed (during a deployment update, scale-down, or deletion), several things happen in sequence:
 
-First, Kubernetes marks the pod as Terminating and starts removing it from Service endpoints. Second, Istio's control plane (istiod) picks up this change and pushes new endpoint lists to all sidecars in the mesh. Third, the Envoy sidecar on the terminating pod enters drain mode.
+First, Kubernetes marks the pod as Terminating and exposes the endpoint as not ready, so it is no longer used for normal Service traffic. Second, Istio's control plane (istiod) picks up this change and pushes new endpoint lists to all sidecars in the mesh. Third, the Envoy sidecar on the terminating pod enters drain mode when it is asked to shut down.
 
 The challenge is that these three processes happen asynchronously. There's a window where some sidecars still have the old pod in their endpoint list and will keep sending traffic to it, while the pod is already trying to shut down.
 
@@ -42,11 +42,11 @@ spec:
 
 During the drain period, Envoy does the following:
 
-- Stops accepting new connections on inbound listeners
+- Discourages new HTTP requests while the drain period runs
 - Sends "Connection: close" headers on HTTP/1.1 responses
 - Sends GOAWAY frames on HTTP/2 connections
 - Waits for existing requests to complete
-- Closes idle connections immediately
+- Closes HTTP connections after request completion
 
 ## Drain Behavior by Protocol
 
@@ -56,9 +56,9 @@ Connection draining works differently depending on the protocol:
 
 **HTTP/2 and gRPC:** Envoy sends a GOAWAY frame, which tells clients to stop opening new streams on this connection. Existing streams complete normally.
 
-**TCP:** There's no protocol-level drain mechanism. Envoy just waits for existing connections to close naturally or until the drain period expires.
+**TCP:** There's no protocol-level drain mechanism in plain TCP. Envoy can keep existing connections open until the proxy exits, but it cannot tell a TCP client to reconnect somewhere else the way it can with HTTP/1.1 or HTTP/2.
 
-For TCP connections, this means you need to make sure your drain period is long enough for all active TCP sessions to complete. If you have long-lived TCP connections, this could be a problem.
+For TCP connections, this means you need to make sure your shutdown and application logic can tolerate long-lived sessions being closed when the grace period expires. If you have long-lived TCP connections, this could be a problem.
 
 ## Outlier Detection and Connection Draining
 
@@ -86,7 +86,7 @@ spec:
         maxRequestsPerConnection: 100
 ```
 
-The `maxRequestsPerConnection` setting is helpful for draining because it forces clients to periodically close and reopen connections. When they reopen, the new connection goes to the updated endpoint list (which no longer includes the draining pod).
+The `maxRequestsPerConnection` setting is helpful for draining because it limits how many requests Envoy sends on a single upstream connection to a backend. When Envoy opens a replacement upstream connection, it uses the current endpoint list (which should no longer include the draining pod after endpoint updates propagate).
 
 ## Handling Drain for WebSocket Connections
 
@@ -135,7 +135,7 @@ kubectl exec deploy/api-server -c istio-proxy -- \
 kubectl exec deploy/api-server -c istio-proxy -- \
   pilot-agent request GET /server_info | grep state
 
-# Check for connection reset errors across the mesh
+# Check for closed TCP connections across the mesh
 kubectl exec -n istio-system deploy/prometheus -- \
   promtool query instant http://localhost:9090 \
   'sum(rate(istio_tcp_connections_closed_total{connection_security_policy="mutual_tls"}[5m])) by (destination_workload)'
@@ -186,10 +186,10 @@ spec:
 
 The timeline looks like this:
 
-- T+0: SIGTERM received. PreStop hooks start. Envoy begins drain.
+- T+0: Pod termination starts. The application's preStop hook starts, and the sidecar may begin draining when it receives its shutdown signal.
 - T+0-2: Readiness probe fails, Kubernetes starts removing from endpoints.
 - T+0-5: Endpoint removal propagates across the cluster.
-- T+15: PreStop hook completes, application shuts down.
+- T+15: PreStop hook completes, then Kubernetes sends the application container its stop signal.
 - T+20: Envoy drain period ends, sidecar shuts down.
 - T+40: Hard kill if anything is still running.
 
