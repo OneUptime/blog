@@ -17,10 +17,10 @@ Instead of writing scripts to update VirtualService weights and query Prometheus
 When you create a Flagger Canary resource, Flagger takes over traffic management for that service. It creates:
 
 1. A primary Deployment (the stable version)
-2. A canary Deployment (the new version)
-3. ClusterIP Services for both
+2. Uses the original Deployment as the canary Deployment (the new version)
+3. ClusterIP Services for the apex, primary, and canary services
 4. A VirtualService that controls the traffic split
-5. A DestinationRule with primary and canary subsets
+5. DestinationRules for the primary and canary services
 
 You only manage the original Deployment. Flagger manages everything else.
 
@@ -127,6 +127,7 @@ spec:
         url: http://flagger-loadtester.test/
         timeout: 5s
         metadata:
+          type: cmd
           cmd: "hey -z 1m -q 10 -c 2 http://my-app-canary.app:80/"
 ```
 
@@ -230,9 +231,13 @@ spec:
 Flagger can run load tests during the canary to ensure there is enough traffic for meaningful metrics. Install the Flagger load tester:
 
 ```bash
-helm install flagger-loadtester flagger/loadtester \
+kubectl create namespace test
+kubectl label namespace test istio-injection=enabled --overwrite
+
+helm upgrade -i flagger-loadtester flagger/loadtester \
   --namespace test \
-  --set meshProvider=istio
+  --set cmd.timeout=1h \
+  --set cmd.namespaceRegexp=''
 ```
 
 Configure it in the Canary webhooks:
@@ -244,26 +249,25 @@ webhooks:
     url: http://flagger-loadtester.test/
     timeout: 15s
     metadata:
+      type: cmd
       cmd: "hey -z 2m -q 10 -c 5 http://my-app-canary.app:80/api/health"
 ```
 
 ## Webhook Notifications
 
-Get notified about rollout progress:
+Send rollout events to an HTTP receiver:
 
 ```yaml
 webhooks:
-  - name: slack-notification
+  - name: rollout-events
     type: event
-    url: http://flagger-loadtester.test/
+    url: http://event-receiver.notifications/slack
+    retries: 3
     metadata:
-      cmd: |
-        curl -s -X POST $SLACK_WEBHOOK_URL \
-          -H 'Content-Type: application/json' \
-          -d '{"text":"Canary {{.Name}} in {{.Namespace}}: {{.Phase}}"}'
+      environment: production
 ```
 
-Or use Flagger's built-in alerting:
+Or define an AlertProvider and reference it from the Canary:
 
 ```yaml
 apiVersion: flagger.app/v1beta1
@@ -275,6 +279,19 @@ spec:
   type: slack
   channel: deployments
   address: https://hooks.slack.com/services/YOUR/WEBHOOK/URL
+---
+apiVersion: flagger.app/v1beta1
+kind: Canary
+metadata:
+  name: my-app
+  namespace: app
+spec:
+  analysis:
+    alerts:
+      - name: slack-notification
+        severity: info
+        providerRef:
+          name: slack
 ```
 
 ## CI/CD Integration
@@ -309,7 +326,7 @@ jobs:
             --for=condition=promoted --timeout=600s
 ```
 
-The `kubectl wait` command blocks until Flagger finishes the rollout (either promotion or rollback).
+The `kubectl wait` command blocks until Flagger marks the rollout as promoted. If the canary is rolled back, the command exits after the timeout instead of reporting success.
 
 ## Handling Rollback
 
@@ -374,8 +391,9 @@ Flagger exposes its own metrics:
 
 ```text
 flagger_canary_status{name="my-app", namespace="app"}
-flagger_canary_weight{name="my-app", namespace="app"}
-flagger_canary_total{name="my-app", namespace="app"}
+flagger_canary_weight{workload="my-app", namespace="app"}
+flagger_canary_weight{workload="my-app-primary", namespace="app"}
+flagger_canary_total{namespace="app"}
 ```
 
 Set up Grafana dashboards to track rollout history, success rates, and duration.
