@@ -31,13 +31,13 @@ Start by checking what the ingress gateway actually knows about:
 ```bash
 # List all listeners
 
-istioctl proxy-config listeners deploy/istio-ingressgateway -n istio-system
+istioctl proxy-config listeners deployment/istio-ingressgateway -n istio-system
 
 # List all routes
-istioctl proxy-config routes deploy/istio-ingressgateway -n istio-system
+istioctl proxy-config routes deployment/istio-ingressgateway -n istio-system
 
 # Get detailed route config
-istioctl proxy-config routes deploy/istio-ingressgateway -n istio-system -o json
+istioctl proxy-config routes deployment/istio-ingressgateway -n istio-system -o json
 ```
 
 The routes output shows which hostnames and paths are configured. If your domain is not there, that is your problem.
@@ -135,7 +135,7 @@ The hostname matched but the specific URI path has no matching route rule.
 Check the routes for your virtual host:
 
 ```bash
-istioctl proxy-config routes deploy/istio-ingressgateway -n istio-system \
+istioctl proxy-config routes deployment/istio-ingressgateway -n istio-system \
   --name "https.443.https.my-gateway.istio-system" -o json
 ```
 
@@ -188,7 +188,7 @@ If you are sending HTTPS traffic but the Gateway only has an HTTP server configu
 ### Diagnosis
 
 ```bash
-istioctl proxy-config listeners deploy/istio-ingressgateway -n istio-system
+istioctl proxy-config listeners deployment/istio-ingressgateway -n istio-system
 ```
 
 Check what ports and protocols the gateway is listening on. Then compare with how you are making the request.
@@ -226,7 +226,7 @@ spec:
 
 ## Cause 5: TLS Secret Missing or Invalid
 
-If the Gateway references a TLS secret that does not exist, the HTTPS listener won't be configured. Requests on port 443 will get a 404 or connection refused.
+If the Gateway references a TLS secret that does not exist or contains invalid certificate data, HTTPS traffic will not be served correctly. Requests on port 443 can fail during the TLS handshake, get connection refused if no matching listener is available, or be handled by another matching server.
 
 ### Diagnosis
 
@@ -275,7 +275,7 @@ kubectl get pod -n istio-system -l istio=ingressgateway --show-labels
 
 ### Fix
 
-The selector should match. The default label is `istio: ingressgateway`:
+The selector should match. A common default label for the Istio ingress gateway is `istio: ingressgateway`:
 
 ```yaml
 spec:
