@@ -17,7 +17,7 @@ Without least privilege, any compromised service can potentially talk to any oth
 Least privilege starts with denying everything by default. Apply a mesh-wide deny-all policy:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: deny-all
@@ -26,12 +26,12 @@ spec:
   {}
 ```
 
-An AuthorizationPolicy with an empty spec and no rules denies all traffic. After applying this, nothing in your mesh can talk to anything. That's the starting point. Now you explicitly allow only what's needed.
+An AuthorizationPolicy with an empty spec and no rules denies all traffic in its scope. In the Istio root namespace, which is commonly `istio-system`, this applies mesh-wide. After applying this, nothing in your mesh can talk to anything unless another ALLOW policy matches. That's the starting point. Now you explicitly allow only what's needed.
 
 You might want to exempt the `kube-system` namespace and Istio's own namespace:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: allow-istio-system
@@ -63,7 +63,13 @@ metadata:
   name: order-service
   namespace: shop
 spec:
+  selector:
+    matchLabels:
+      app: order-service
   template:
+    metadata:
+      labels:
+        app: order-service
     spec:
       serviceAccountName: order-service
       containers:
@@ -98,7 +104,7 @@ Create policies for each service:
 ```yaml
 # api-gateway can be called by frontend
 
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: api-gateway-access
@@ -118,7 +124,7 @@ spec:
             ports: ["8080"]
 ---
 # order-service can be called by api-gateway
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: order-service-access
@@ -139,7 +145,7 @@ spec:
             paths: ["/api/v1/orders*"]
 ---
 # payment-service can be called by order-service only
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: payment-service-access
@@ -167,7 +173,7 @@ Notice how specific these are. The payment service only accepts POST requests to
 Least privilege isn't just about which services can communicate. It's also about what operations they can perform. Restrict HTTP methods and paths:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: inventory-access
@@ -212,12 +218,12 @@ spec:
 
 ## Handling Health Checks and Probes
 
-One thing that catches people off guard: Kubernetes health check probes also go through the sidecar. If you have a deny-all policy, kubelet can't reach your health endpoints.
+One thing that catches people off guard: Kubernetes HTTP, TCP, and gRPC health check probes need special handling with Istio. By default, Istio rewrites those probes so the kubelet calls the sidecar agent on port 15020, and the sidecar agent checks the application. In that default setup, you usually do not need an AuthorizationPolicy rule for the original health endpoint.
 
-Handle this by allowing the kubelet:
+If you disable probe rewriting or expose health endpoints through normal mesh traffic, allow only the health paths you actually need:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: allow-health-checks
@@ -233,8 +239,6 @@ spec:
             methods: ["GET"]
             paths: ["/healthz", "/readyz", "/livez"]
 ```
-
-Since kubelet doesn't go through the sidecar proxy (it calls the pod directly), you actually might not need this in all cases. But if your health endpoints are behind the sidecar, add this rule.
 
 ## Discovering Communication Patterns
 
@@ -259,16 +263,16 @@ Use this data to build your authorization policies. Each row in the output repre
 
 Going from no policies to deny-all is risky. Do it gradually:
 
-**Step 1**: Deploy all ALLOW policies in audit mode first:
+**Step 1**: Deploy all ALLOW policies in dry-run mode first:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: order-service-access
   namespace: shop
   annotations:
-    audit-mode: "true"
+    "istio.io/dry-run": "true"
 spec:
   selector:
     matchLabels:
@@ -284,7 +288,7 @@ spec:
 **Step 2**: Enable the deny-all policy per namespace, starting with the least critical:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: deny-all
@@ -293,7 +297,7 @@ spec:
   {}
 ```
 
-**Step 3**: Monitor for 403 errors. Any 403s mean you're missing an ALLOW rule:
+**Step 3**: Monitor for 403 errors. Unexpected 403s often mean you're missing an ALLOW rule:
 
 ```promql
 sum(rate(istio_requests_total{response_code="403"}[5m])) by (
@@ -313,25 +317,16 @@ The initial setup is just the beginning. As your application evolves, new servic
 
 1. Require authorization policies as part of service deployment (add it to your Helm charts or Kustomize overlays)
 2. Review policies quarterly against actual traffic patterns
-3. Alert on new communication paths that don't match any policy
+3. Alert on unexpected authorization denials
 4. Remove ALLOW rules when services are decommissioned
 
-```yaml
-groups:
-  - name: least-privilege-monitoring
-    rules:
-      - alert: ExcessivePermissions
-        expr: |
-          count by (source_workload, destination_service_name) (
-            increase(istio_requests_total[30d])
-          ) == 0
-          and on (source_workload, destination_service_name)
-          count(kube_customresource_authorizationpolicy_info) > 0
-        for: 30d
-        labels:
-          severity: info
-        annotations:
-          summary: "Authorization policy exists but no matching traffic for 30 days"
+```promql
+sum(rate(istio_requests_total{response_code="403"}[5m])) by (
+  source_workload,
+  source_workload_namespace,
+  destination_service_name,
+  destination_service_namespace
+) > 0
 ```
 
 Least privilege is a discipline, not a one-time task. But the security benefits are enormous. When every service can only do exactly what it needs to do, the damage from any single compromise is contained. That's the whole point.
