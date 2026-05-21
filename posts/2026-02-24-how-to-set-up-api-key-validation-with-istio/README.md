@@ -153,48 +153,49 @@ spec:
         name: envoy.filters.http.lua
         typed_config:
           "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-          inline_code: |
-            -- Valid API keys
-            local valid_keys = {
-              ["ak_live_abc123def456"] = true,
-              ["ak_live_ghi789jkl012"] = true,
-              ["ak_live_mno345pqr678"] = true,
-            }
+          defaultSourceCode:
+            inlineString: |
+              -- Valid API keys
+              local valid_keys = {
+                ["ak_live_abc123def456"] = true,
+                ["ak_live_ghi789jkl012"] = true,
+                ["ak_live_mno345pqr678"] = true,
+              }
 
-            -- Public paths that don't need API keys
-            local public_paths = {
-              ["/health"] = true,
-            }
+              -- Public paths that don't need API keys
+              local public_paths = {
+                ["/health"] = true,
+              }
 
-            function envoy_on_request(request_handle)
-              local path = request_handle:headers():get(":path")
+              function envoy_on_request(request_handle)
+                local path = request_handle:headers():get(":path")
 
-              -- Skip auth for public paths
-              for prefix, _ in pairs(public_paths) do
-                if string.sub(path, 1, #prefix) == prefix then
+                -- Skip auth for public paths
+                for prefix, _ in pairs(public_paths) do
+                  if string.sub(path, 1, #prefix) == prefix then
+                    return
+                  end
+                end
+
+                -- Check for API key in header
+                local api_key = request_handle:headers():get("x-api-key")
+
+                if api_key == nil then
+                  request_handle:respond(
+                    {[":status"] = "401", ["content-type"] = "application/json"},
+                    '{"error": "Missing API key. Include x-api-key header."}'
+                  )
+                  return
+                end
+
+                if not valid_keys[api_key] then
+                  request_handle:respond(
+                    {[":status"] = "403", ["content-type"] = "application/json"},
+                    '{"error": "Invalid API key."}'
+                  )
                   return
                 end
               end
-
-              -- Check for API key in header
-              local api_key = request_handle:headers():get("x-api-key")
-
-              if api_key == nil then
-                request_handle:respond(
-                  {[":status"] = "401", ["content-type"] = "application/json"},
-                  '{"error": "Missing API key. Include x-api-key header."}'
-                )
-                return
-              end
-
-              if not valid_keys[api_key] then
-                request_handle:respond(
-                  {[":status"] = "403", ["content-type"] = "application/json"},
-                  '{"error": "Invalid API key."}'
-                )
-                return
-              end
-            end
 ```
 
 The Lua approach is simple and has low latency (no external service call), but it has limitations. Updating keys requires updating the EnvoyFilter and waiting for config propagation. It also doesn't scale well to thousands of keys.
@@ -227,9 +228,9 @@ spec:
       - "ak_live_mno345pqr678"
 ```
 
-This denies requests that don't have a valid `x-api-key` header. It's the simplest approach but doesn't support features like per-key rate limiting or usage tracking.
+This denies requests that don't have a valid `x-api-key` header. For Istio `DENY` policies, missing attributes are treated as matches, so this also denies requests with no API key at all. It's the simplest approach but doesn't support features like per-key rate limiting or usage tracking.
 
-To also deny requests with no API key at all, add a separate rule:
+If you want to make the missing-header case explicit in a separate policy, use a presence match:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -329,13 +330,13 @@ when:
 
 Track which API keys are being used and how often. With the external authorization approach, your authorization service can emit metrics.
 
-With any approach, you can check Envoy access logs:
+With any approach, you can check Envoy access logs for request paths, response codes, and other default fields:
 
 ```bash
-kubectl logs -l istio=ingressgateway -n istio-system | grep "x-api-key"
+kubectl logs -l istio=ingressgateway -n istio-system
 ```
 
-Enable access logging that captures the API key header:
+Enable access logging with the Telemetry API:
 
 ```yaml
 apiVersion: telemetry.istio.io/v1
@@ -351,6 +352,8 @@ spec:
   - providers:
     - name: envoy
 ```
+
+The default access log format does not include `x-api-key`. If you add the header to a custom access log format, log only a masked value or a derived client identifier rather than the full key.
 
 ## Security Considerations
 
