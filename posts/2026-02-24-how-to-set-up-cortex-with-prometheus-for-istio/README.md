@@ -29,7 +29,7 @@ The key Cortex components for an Istio setup:
 
 - **Distributor**: Receives remote write requests from Prometheus and distributes samples to Ingesters
 - **Ingester**: Batches and compresses samples, writes them to long-term storage
-- **Querier**: Handles PromQL queries by reading from both Ingesters (recent data) and Store (historical data)
+- **Querier**: Handles PromQL queries by reading from both Ingesters (recent data) and Store Gateway (historical data)
 - **Query Frontend** (optional): Caches and splits queries for better performance
 - **Compactor**: Compacts blocks in object storage
 - **Store Gateway**: Serves blocks from object storage for queries
@@ -54,6 +54,7 @@ The values file for an Istio-focused deployment:
 # cortex-values.yaml
 
 config:
+  auth_enabled: true
   storage:
     engine: blocks
   blocks_storage:
@@ -93,6 +94,8 @@ distributor:
 
 ingester:
   replicas: 3
+  statefulSet:
+    enabled: true
   persistentVolume:
     enabled: true
     size: 50Gi
@@ -214,20 +217,21 @@ Set different rate limits per tenant:
 
 ```yaml
 config:
-  limits:
-    per_tenant_override_config: /etc/cortex/overrides.yaml
+  runtime_config:
+    file: /etc/cortex-runtime-config/runtime_config.yaml
 
-# overrides.yaml
-overrides:
-  production:
-    ingestion_rate: 200000
-    max_series_per_user: 10000000
-  staging:
-    ingestion_rate: 50000
-    max_series_per_user: 2000000
-  platform:
-    ingestion_rate: 20000
-    max_series_per_user: 500000
+runtimeconfigmap:
+  runtime_config:
+    overrides:
+      production:
+        ingestion_rate: 200000
+        max_series_per_user: 10000000
+      staging:
+        ingestion_rate: 50000
+        max_series_per_user: 2000000
+      platform:
+        ingestion_rate: 20000
+        max_series_per_user: 500000
 ```
 
 ## Querying Cortex
@@ -270,19 +274,21 @@ limits:
 **Enable query result caching** on the Query Frontend to speed up repeated dashboard queries:
 
 ```yaml
-query_frontend:
-  results_cache:
-    backend: memcached
-    memcached:
-      addresses: "dns+memcached.cortex.svc:11211"
+config:
+  query_range:
+    cache_results: true
+    results_cache:
+      cache:
+        memcached_client:
+          addresses: "dns+memcached.cortex.svc:11211"
 ```
 
 **Configure compactor retention** to control how long data is kept:
 
 ```yaml
-compactor:
-  deletion_enabled: true
-  blocks_retention_period: 365d
+config:
+  limits:
+    compactor_blocks_retention_period: 365d
 ```
 
 ## Monitoring Cortex Itself
