@@ -26,6 +26,8 @@ rate(kube_pod_container_status_restarts_total{namespace="default"}[1h]) * 3600
 These metrics come from kube-state-metrics, which you should have running in your cluster. If you do not have it:
 
 ```bash
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo update
 helm install kube-state-metrics prometheus-community/kube-state-metrics -n monitoring
 ```
 
@@ -33,12 +35,12 @@ Track readiness status:
 
 ```promql
 # Pods that are not ready
-kube_pod_status_ready{condition="false", namespace="default"}
+kube_pod_status_ready{condition="false", namespace="default"} == 1
 
-# Percentage of ready pods per deployment
-sum(kube_pod_status_ready{condition="true", namespace="default"}) by (pod)
+# Percentage of ready pods
+sum(kube_pod_status_ready{condition="true", namespace="default"} == 1)
 /
-count(kube_pod_status_ready{namespace="default"}) by (pod)
+count(kube_pod_status_ready{condition="true", namespace="default"})
 * 100
 ```
 
@@ -55,8 +57,8 @@ kubectl exec -it <pod-name> -c istio-proxy -- \
 The key metrics:
 
 - `outlier_detection.ejections_active` - number of currently ejected endpoints
-- `outlier_detection.ejections_total` - total ejections since proxy start
-- `outlier_detection.ejections_consecutive_5xx` - ejections due to consecutive 5xx errors
+- `outlier_detection.ejections_detected_consecutive_5xx` - detected ejections due to consecutive 5xx errors
+- `outlier_detection.ejections_enforced_consecutive_5xx` - enforced ejections due to consecutive 5xx errors
 - `outlier_detection.ejections_enforced_total` - ejections that were actually enforced (not limited by maxEjectionPercent)
 
 In Prometheus:
@@ -66,10 +68,10 @@ In Prometheus:
 envoy_cluster_outlier_detection_ejections_active
 
 # Rate of new ejections
-rate(envoy_cluster_outlier_detection_ejections_total[5m])
+rate(envoy_cluster_outlier_detection_ejections_enforced_total[5m])
 
 # Ejections by cluster (service)
-sum(rate(envoy_cluster_outlier_detection_ejections_total[5m])) by (cluster_name)
+sum(rate(envoy_cluster_outlier_detection_ejections_enforced_total[5m])) by (cluster_name)
 ```
 
 ## Envoy Endpoint Health
@@ -81,22 +83,22 @@ Check the health status of endpoints that Envoy knows about:
 istioctl proxy-config endpoints <pod-name> --cluster "outbound|8080||backend.default.svc.cluster.local"
 ```
 
-The output shows each endpoint with its health status: HEALTHY, UNHEALTHY, DRAINING, or TIMEOUT.
+The output shows each endpoint with its health status, such as HEALTHY, UNHEALTHY, DRAINING, TIMEOUT, DEGRADED, or UNKNOWN.
 
 You can also get this from the Envoy admin API:
 
 ```bash
 kubectl exec -it <pod-name> -c istio-proxy -- \
-  pilot-agent request GET clusters?format=json | python3 -m json.tool | grep -A5 "health_status"
+  pilot-agent request GET /clusters?format=json | python3 -m json.tool | grep -A5 "health_status"
 ```
 
 ## Sidecar Agent Health Metrics
 
-The Istio sidecar agent (pilot-agent) on port 15020 exposes Prometheus metrics about probe handling:
+The Istio sidecar agent (pilot-agent) on port 15020 exposes merged Prometheus metrics from the agent, Envoy, and the application:
 
 ```bash
 kubectl exec -it <pod-name> -c istio-proxy -- \
-  curl -s http://localhost:15020/metrics | grep -i health
+  curl -s http://localhost:15020/stats/prometheus | grep -i health
 ```
 
 ## Setting Up a Health Monitoring Dashboard
@@ -110,7 +112,7 @@ topk(10, rate(kube_pod_container_status_restarts_total{namespace="default"}[1h])
 
 **Panel 2: Not-Ready Pods**
 ```promql
-count(kube_pod_status_ready{condition="false", namespace="default"}) by (pod)
+sum(kube_pod_status_ready{condition="false", namespace="default"} == 1) by (pod)
 ```
 
 **Panel 3: Active Outlier Ejections**
@@ -156,7 +158,7 @@ spec:
 
         - alert: HighOutlierEjectionRate
           expr: |
-            rate(envoy_cluster_outlier_detection_ejections_total[5m]) > 0.1
+            rate(envoy_cluster_outlier_detection_ejections_enforced_total[5m]) > 0.1
           for: 5m
           labels:
             severity: warning
@@ -166,9 +168,9 @@ spec:
 
         - alert: ManyPodsNotReady
           expr: |
-            count(kube_pod_status_ready{condition="false", namespace="default"})
+            sum(kube_pod_status_ready{condition="false", namespace="default"} == 1)
             /
-            count(kube_pod_status_ready{namespace="default"})
+            count(kube_pod_status_ready{condition="true", namespace="default"})
             > 0.2
           for: 5m
           labels:
@@ -178,6 +180,8 @@ spec:
 
         - alert: AllEndpointsEjected
           expr: |
+            envoy_cluster_membership_total > 0
+            and on (cluster_name)
             envoy_cluster_outlier_detection_ejections_active
             ==
             envoy_cluster_membership_total
@@ -200,10 +204,11 @@ kubectl get pods -n default -o wide
 kubectl get pods -n default | grep -v "Running" && kubectl get pods -n default | grep "0/"
 
 # Recent health check events
-kubectl get events -n default --sort-by='.lastTimestamp' | grep -i "unhealthy\|probe\|restart"
+kubectl events -n default | grep -i "unhealthy\|probe\|restart"
 
 # Endpoint health for a specific service
-kubectl get endpoints my-service -o yaml | grep -c "ip:"
+kubectl get endpointslice -n default -l kubernetes.io/service-name=my-service \
+  -o jsonpath='{range .items[*].endpoints[?(@.conditions.ready==true)].addresses[*]}{.}{"\n"}{end}' | wc -l
 ```
 
 ## Monitoring Health During Rollouts
@@ -245,7 +250,7 @@ done
 
 # Check all services have healthy endpoints
 for svc in $(kubectl get svc -n default -o name); do
-  ep_count=$(kubectl get endpoints ${svc#*/} -n default -o jsonpath='{.subsets[0].addresses}' 2>/dev/null | grep -c "ip")
+  ep_count=$(kubectl get endpointslice -n default -l kubernetes.io/service-name=${svc#*/} -o jsonpath='{range .items[*].endpoints[?(@.conditions.ready==true)].addresses[*]}{.}{"\n"}{end}' 2>/dev/null | wc -l)
   if [ "$ep_count" -eq 0 ]; then
     echo "WARNING: $svc has no healthy endpoints"
   fi
