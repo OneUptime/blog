@@ -94,12 +94,13 @@ spec:
     - grpc-api.example.com
   location: MESH_EXTERNAL
   ports:
-    - number: 443
-      name: grpc-tls
-      protocol: GRPC
     - number: 80
       name: grpc-plaintext
       protocol: GRPC
+      targetPort: 443
+    - number: 443
+      name: https
+      protocol: HTTPS
   resolution: DNS
 ```
 
@@ -113,28 +114,10 @@ spec:
   trafficPolicy:
     portLevelSettings:
       - port:
-          number: 443
+          number: 80
         tls:
           mode: SIMPLE
           sni: grpc-api.example.com
-```
-
-```yaml
-apiVersion: networking.istio.io/v1
-kind: VirtualService
-metadata:
-  name: grpc-redirect
-spec:
-  hosts:
-    - grpc-api.example.com
-  http:
-    - match:
-        - port: 80
-      route:
-        - destination:
-            host: grpc-api.example.com
-            port:
-              number: 443
 ```
 
 Now your application uses a plaintext gRPC channel:
@@ -148,7 +131,7 @@ channel = grpc.insecure_channel('grpc-api.example.com:80')
 
 ## Google Cloud APIs over gRPC
 
-Google Cloud client libraries use gRPC by default. Here is the ServiceEntry for Google Cloud APIs:
+Many Google Cloud client libraries can use gRPC, although the default transport depends on the specific API and language library. Here is a ServiceEntry for gRPC-enabled Google Cloud API clients that connect to `*.googleapis.com` over TLS:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -166,11 +149,11 @@ spec:
   resolution: NONE
 ```
 
-Since Google Cloud has many different service endpoints (storage.googleapis.com, pubsub.googleapis.com, etc.), using a wildcard host with `resolution: NONE` is the practical approach.
+Since Google Cloud has many different service endpoints (pubsub.googleapis.com, firestore.googleapis.com, etc.), using a wildcard host with `resolution: NONE` is the practical approach for direct sidecar egress. `resolution: DNS` cannot be used with wildcard hosts.
 
-## Firebase and Firestore gRPC
+## Firestore gRPC
 
-Firebase and Firestore use gRPC for real-time communication:
+Firestore exposes APIs over gRPC, including streaming APIs used for real-time updates:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -180,7 +163,6 @@ metadata:
 spec:
   hosts:
     - firestore.googleapis.com
-    - fcm.googleapis.com
   location: MESH_EXTERNAL
   ports:
     - number: 443
@@ -191,7 +173,7 @@ spec:
 
 ## gRPC Retries and Timeouts
 
-gRPC retries work through VirtualService just like HTTP retries, but you can target specific gRPC status codes:
+gRPC retries work through VirtualService just like HTTP retries, but you can target specific gRPC status codes. Envoy's gRPC retry policies are based on the `grpc-status` value available to the router:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -242,15 +224,15 @@ spec:
 
 The `maxConcurrentStreams` setting is important for gRPC because it limits how many simultaneous gRPC calls can share a single HTTP/2 connection.
 
-## gRPC Health Checking
+## gRPC Outlier Detection
 
-For static endpoints, you can use gRPC health checking to detect when endpoints go down:
+For external endpoints, you can use passive outlier detection to eject hosts that are returning errors:
 
 ```yaml
 apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
-  name: grpc-health-check
+  name: grpc-outlier-detection
 spec:
   host: grpc-api.example.com
   trafficPolicy:
@@ -261,7 +243,7 @@ spec:
       maxEjectionPercent: 50
 ```
 
-Outlier detection treats gRPC error status codes (UNAVAILABLE, INTERNAL, etc.) as 5xx errors, so the circuit breaker works the same way.
+Outlier detection uses the HTTP status mapped from the `grpc-status` response header, so gRPC failures such as UNAVAILABLE can contribute to the same ejection logic as HTTP 5xx responses.
 
 ## Debugging gRPC ServiceEntry Issues
 
@@ -279,7 +261,7 @@ istioctl proxy-config cluster deploy/my-app | grep grpc-api
 
 **Protocol mismatch errors:**
 
-If you set `protocol: HTTP` instead of `protocol: GRPC` or `protocol: HTTPS`, Envoy treats the traffic as HTTP/1.1 and gRPC breaks. Check your port protocol settings.
+If you set `protocol: HTTP` for plaintext gRPC, Envoy treats the traffic as HTTP/1.1. Use `GRPC` or `HTTP2` for plaintext gRPC, and use `HTTPS` or `TLS` when the application originates TLS and Envoy should pass the encrypted connection through.
 
 **TLS handshake failures:**
 
@@ -316,7 +298,7 @@ Setting `timeout: 0s` disables the timeout entirely for streaming connections. U
 
 When Envoy can see the gRPC layer (non-TLS or TLS-originated), you get gRPC-specific metrics:
 
-```bash
+```promql
 # gRPC request count by status code
 istio_requests_total{
   destination_service="grpc-api.example.com",
