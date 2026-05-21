@@ -47,34 +47,17 @@ All clusters in the mesh need to trust each other's certificates. The simplest w
 
 ```bash
 # Create a directory for certificates
-mkdir -p certs && cd certs
+mkdir -p certs
+pushd certs
 
-# Generate a root CA
-openssl req -new -newkey rsa:4096 -x509 -sha256 \
-  -days 3650 -nodes \
-  -out root-cert.pem \
-  -keyout root-key.pem \
-  -subj "/O=my-org/CN=root-ca"
+# Generate a root CA from the top-level directory of the Istio release
+make -f ../tools/certs/Makefile.selfsigned.mk root-ca
 
-# Generate intermediate CA for cluster 1
-openssl req -new -newkey rsa:4096 -nodes \
-  -out cluster1-ca.csr \
-  -keyout cluster1-ca-key.pem \
-  -subj "/O=my-org/CN=cluster1-ca"
+# Generate intermediate CA files for each cluster
+make -f ../tools/certs/Makefile.selfsigned.mk cluster1-cacerts
+make -f ../tools/certs/Makefile.selfsigned.mk cluster2-cacerts
 
-openssl x509 -req -days 730 -CA root-cert.pem -CAkey root-key.pem \
-  -set_serial 01 -in cluster1-ca.csr \
-  -out cluster1-ca-cert.pem
-
-# Generate intermediate CA for cluster 2
-openssl req -new -newkey rsa:4096 -nodes \
-  -out cluster2-ca.csr \
-  -keyout cluster2-ca-key.pem \
-  -subj "/O=my-org/CN=cluster2-ca"
-
-openssl x509 -req -days 730 -CA root-cert.pem -CAkey root-key.pem \
-  -set_serial 02 -in cluster2-ca.csr \
-  -out cluster2-ca-cert.pem
+popd
 ```
 
 Create secrets in each cluster:
@@ -84,19 +67,25 @@ Create secrets in each cluster:
 kubectl create namespace istio-system --context=$CTX_CLUSTER1
 kubectl create secret generic cacerts -n istio-system \
   --context=$CTX_CLUSTER1 \
-  --from-file=ca-cert.pem=cluster1-ca-cert.pem \
-  --from-file=ca-key.pem=cluster1-ca-key.pem \
-  --from-file=root-cert.pem=root-cert.pem \
-  --from-file=cert-chain.pem=cluster1-ca-cert.pem
+  --from-file=certs/cluster1/ca-cert.pem \
+  --from-file=certs/cluster1/ca-key.pem \
+  --from-file=certs/cluster1/root-cert.pem \
+  --from-file=certs/cluster1/cert-chain.pem
+
+kubectl label namespace istio-system topology.istio.io/network=network1 \
+  --context=$CTX_CLUSTER1
 
 # Cluster 2
 kubectl create namespace istio-system --context=$CTX_CLUSTER2
 kubectl create secret generic cacerts -n istio-system \
   --context=$CTX_CLUSTER2 \
-  --from-file=ca-cert.pem=cluster2-ca-cert.pem \
-  --from-file=ca-key.pem=cluster2-ca-key.pem \
-  --from-file=root-cert.pem=root-cert.pem \
-  --from-file=cert-chain.pem=cluster2-ca-cert.pem
+  --from-file=certs/cluster2/ca-cert.pem \
+  --from-file=certs/cluster2/ca-key.pem \
+  --from-file=certs/cluster2/root-cert.pem \
+  --from-file=certs/cluster2/cert-chain.pem
+
+kubectl label namespace istio-system topology.istio.io/network=network2 \
+  --context=$CTX_CLUSTER2
 ```
 
 ## Step 2: Install Istio on Both Clusters
@@ -151,7 +140,7 @@ spec:
 istioctl install --context=$CTX_CLUSTER2 -f cluster2.yaml
 ```
 
-Note: If both clusters are on the same network (can reach each other's pod IPs directly), use the same network name for both.
+Note: If both clusters are on the same network (can reach each other's pod IPs directly), use the same network name in the namespace labels and IstioOperator configuration for both.
 
 ## Step 3: Configure Cross-Cluster Discovery
 
@@ -228,22 +217,43 @@ spec:
 
 ## Step 5: Verify Cross-Cluster Communication
 
-Deploy a test service on cluster2 and call it from cluster1:
+Deploy the HelloWorld service in both clusters, then deploy different versions in each cluster and call it from an in-mesh curl pod:
 
 ```bash
-# Deploy on cluster2
-kubectl create deployment hello --image=nginx --context=$CTX_CLUSTER2 -n default
-kubectl expose deployment hello --port=80 --context=$CTX_CLUSTER2 -n default
+# Create and label a sample namespace in both clusters
+kubectl create namespace sample --context=$CTX_CLUSTER1
+kubectl create namespace sample --context=$CTX_CLUSTER2
+kubectl label namespace sample istio-injection=enabled --context=$CTX_CLUSTER1
+kubectl label namespace sample istio-injection=enabled --context=$CTX_CLUSTER2
+
+# Create the service in both clusters so DNS lookup succeeds everywhere
+kubectl apply --context=$CTX_CLUSTER1 \
+  -f samples/helloworld/helloworld.yaml \
+  -l service=helloworld -n sample
+kubectl apply --context=$CTX_CLUSTER2 \
+  -f samples/helloworld/helloworld.yaml \
+  -l service=helloworld -n sample
+
+# Deploy v1 on cluster1 and v2 on cluster2
+kubectl apply --context=$CTX_CLUSTER1 \
+  -f samples/helloworld/helloworld.yaml \
+  -l version=v1 -n sample
+kubectl apply --context=$CTX_CLUSTER2 \
+  -f samples/helloworld/helloworld.yaml \
+  -l version=v2 -n sample
 
 # Deploy a client on cluster1
-kubectl run client --image=curlimages/curl --context=$CTX_CLUSTER1 -n default -- sleep infinity
+kubectl apply --context=$CTX_CLUSTER1 \
+  -f samples/curl/curl.yaml -n sample
 
 # Test cross-cluster call
-kubectl exec client --context=$CTX_CLUSTER1 -n default -- \
-  curl -s hello.default.svc.cluster.local
+kubectl exec --context=$CTX_CLUSTER1 -n sample -c curl \
+  "$(kubectl get pod --context=$CTX_CLUSTER1 -n sample -l app=curl \
+  -o jsonpath='{.items[0].metadata.name}')" \
+  -- curl -sS helloworld.sample:5000/hello
 ```
 
-If everything is configured correctly, the request from cluster1 will reach the service in cluster2.
+If everything is configured correctly, repeated requests from cluster1 will alternate between `v1` in cluster1 and `v2` in cluster2.
 
 ## Locality-Aware Routing
 
@@ -253,9 +263,9 @@ With multicluster, you can configure locality-aware routing so traffic prefers l
 apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
-  name: hello
+  name: helloworld
 spec:
-  host: hello.default.svc.cluster.local
+  host: helloworld.sample.svc.cluster.local
   trafficPolicy:
     connectionPool:
       tcp:
@@ -303,7 +313,10 @@ Common issues and how to fix them:
 istioctl remote-clusters --context=$CTX_CLUSTER1
 
 # Check if cross-cluster endpoints are discovered
-istioctl proxy-config endpoints client-pod --context=$CTX_CLUSTER1 | grep hello
+istioctl proxy-config endpoints \
+  "$(kubectl get pod --context=$CTX_CLUSTER1 -n sample -l app=curl \
+  -o jsonpath='{.items[0].metadata.name}')" \
+  --context=$CTX_CLUSTER1 -n sample | grep helloworld
 
 # Check east-west gateway logs
 kubectl logs -l istio=eastwestgateway -n istio-system --context=$CTX_CLUSTER1
