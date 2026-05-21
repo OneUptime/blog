@@ -14,7 +14,7 @@ This is essential for running strict mTLS on production traffic while keeping mo
 
 ## The portLevelMtls Field
 
-PeerAuthentication has a `portLevelMtls` field that maps port numbers to mTLS settings. Ports not listed inherit the top-level `mtls.mode`.
+PeerAuthentication has a `portLevelMtls` field that maps port numbers to mTLS settings. Ports not listed inherit the top-level `mtls.mode`. Port-level settings only apply to workload-specific policies with a `selector`, and Istio ignores them for ports that are not bound to a Service.
 
 Basic structure:
 
@@ -159,17 +159,20 @@ spec:
       mode: PERMISSIVE
 ```
 
-## Namespace-Wide Port-Level Policies
+## Workload-Wide Port-Level Policies
 
-You can apply port-level mTLS settings at the namespace level (without a selector). This applies to all pods in the namespace:
+Port-level mTLS settings must be attached to workload-specific policies. If several workloads follow the same port convention, create a matching policy for each workload label set:
 
 ```yaml
 apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
-  name: default
+  name: api-server-mtls
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: api-server
   mtls:
     mode: STRICT
   portLevelMtls:
@@ -177,11 +180,11 @@ spec:
       mode: PERMISSIVE
 ```
 
-Every pod in the production namespace now accepts plain text on port 9090 while requiring mTLS on all other ports. This is convenient when all services follow the same port convention for metrics.
+The api-server pods now accept plain text on port 9090 while requiring mTLS on all other Service-bound workload ports.
 
 ## Combining Namespace and Workload Policies
 
-When both exist, the workload-specific policy takes full priority. It does NOT merge with the namespace policy:
+When both exist, the workload-specific policy is the more specific match. Its `mtls.mode` applies to matching pods:
 
 ```yaml
 # Namespace policy
@@ -193,12 +196,9 @@ metadata:
 spec:
   mtls:
     mode: STRICT
-  portLevelMtls:
-    9090:
-      mode: PERMISSIVE
 
 ---
-# Workload policy - completely overrides the namespace policy for matching pods
+# Workload policy - takes precedence over the namespace policy for matching pods
 apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
@@ -212,9 +212,9 @@ spec:
     mode: PERMISSIVE
 ```
 
-The special-service pods use PERMISSIVE on all ports. They do NOT inherit the port 9090 exception from the namespace policy. The workload policy replaces the namespace policy entirely, it does not merge with it.
+The special-service pods use PERMISSIVE on all ports. The workload policy takes precedence over the namespace policy for matching pods.
 
-If you want the special service to also have the port 9090 exception, include it explicitly:
+If you want the special service to use a different mode on port 9090, include it explicitly:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -230,7 +230,7 @@ spec:
     mode: PERMISSIVE
   portLevelMtls:
     9090:
-      mode: PERMISSIVE
+      mode: STRICT
 ```
 
 ## Pattern: Strict with Prometheus Exception
@@ -241,9 +241,12 @@ The most common port-level pattern is strict mTLS with a Prometheus metrics exce
 apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
-  name: default
+  name: api-server-mtls
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: api-server
   mtls:
     mode: STRICT
   portLevelMtls:
