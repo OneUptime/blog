@@ -15,7 +15,7 @@ A single VirtualService can handle traffic for multiple hostnames. This is usefu
 The `hosts` field accepts a list of hostnames:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: multi-host
@@ -42,7 +42,7 @@ All three hostnames route to the same backend. This is common when you want `exa
 When all hosts share the same routing rules, a single VirtualService keeps things simple:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: shared-rules
@@ -77,7 +77,7 @@ The same routing rules (v2 path routing) apply regardless of which hostname the 
 If you need different behavior per hostname, use the `authority` match condition:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: host-specific
@@ -113,14 +113,14 @@ spec:
               number: 80
 ```
 
-`api.example.com` goes to the API service, `admin.example.com` goes to the admin service, and `www.example.com` (or anything else) goes to the web frontend.
+`api.example.com` goes to the API service, `admin.example.com` goes to the admin service, and `www.example.com` goes to the web frontend.
 
 ## Combining Mesh and External Hosts
 
 You can mix internal service names with external hostnames:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -151,7 +151,7 @@ The 90/10 traffic split applies to both external users hitting `app.example.com`
 A common pattern is redirecting some hostnames to a canonical one:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: canonical-redirect
@@ -190,7 +190,7 @@ Requests to `example.com` and `app.example.com` get redirected to `www.example.c
 Your Gateway needs to accept all the hostnames:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: web-gateway
@@ -229,7 +229,7 @@ For TLS, you will need a certificate that covers all the hostnames. This can be 
 If different hostnames use different TLS certificates, split them into separate server entries:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: web-gateway
@@ -265,7 +265,7 @@ Istio uses SNI to determine which certificate to present to the client.
 You can combine wildcards with specific hostnames:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: mixed-hosts
@@ -292,7 +292,7 @@ spec:
               number: 80
 ```
 
-Requests to `api.example.com` go to the API service. Everything else under `*.example.com` goes to the web frontend. The exact match takes precedence over the wildcard.
+Requests to `api.example.com` go to the API service. Other matching hosts under `*.example.com` go to the web frontend because the `api.example.com` authority rule is listed before the fallback route.
 
 ## One VirtualService vs Multiple
 
@@ -311,7 +311,7 @@ Should you use one VirtualService with multiple hosts or separate VirtualService
 ```yaml
 # Option A: One VirtualService
 
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: all-hosts
@@ -321,7 +321,7 @@ spec:
 
 # Option B: Separate VirtualServices
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-host
@@ -329,7 +329,7 @@ spec:
   hosts: ["api.example.com"]
   # API-specific rules
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: admin-host
@@ -353,9 +353,9 @@ istioctl analyze -n default
 
 ## Common Pitfalls
 
-1. **Gateway host mismatch** - Every host in the VirtualService must be included in the Gateway's host list.
+1. **Gateway host mismatch** - The VirtualService hosts must match at least one host exposed by the bound Gateway server, either exactly or through a supported wildcard suffix match.
 2. **Authority vs Host** - For matching purposes, the `authority` field is the HTTP Host header. For gateway traffic, this is the domain name the client connected to.
-3. **Wildcard overlap** - If you have both `*.example.com` and `api.example.com`, make sure the more specific one has higher priority rules.
+3. **Wildcard overlap** - If you have both `*.example.com` and `api.example.com`, make sure the more specific `authority` match is listed before fallback routes.
 4. **TLS certificate coverage** - The TLS certificate must cover all listed hostnames.
 
 Managing multiple hostnames in a single VirtualService keeps your configuration organized and makes it easy to apply consistent policies across domains. Use the `authority` match condition when you need host-specific behavior.
