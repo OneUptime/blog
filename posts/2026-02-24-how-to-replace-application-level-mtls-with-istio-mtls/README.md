@@ -73,9 +73,9 @@ When Istio's sidecar proxy (Envoy) is injected alongside your application:
 1. Istiod acts as the CA and issues SPIFFE-based X.509 certificates to each proxy
 2. The certificates are automatically rotated before expiration (default lifetime is 24 hours)
 3. When service A calls service B, both Envoy sidecars negotiate mTLS automatically
-4. Your application code communicates with the local sidecar over plaintext on localhost
+4. Your application code sends plaintext traffic normally, and Istio redirects it through the local sidecar
 
-Your application never touches a certificate. It sends HTTP to localhost, and the sidecar handles TLS.
+Your application never touches a certificate. It sends HTTP to the Kubernetes service as usual, and the sidecar handles TLS between proxies.
 
 ## Step 1: Assess Current mTLS Setup
 
@@ -107,7 +107,7 @@ istioctl install --set profile=default
 Start with PERMISSIVE mode so existing mTLS and plaintext traffic both work:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -135,7 +135,7 @@ istioctl x describe pod my-service-xxxxx -n default
 You should see:
 
 ```text
-Pod is PERMISSIVE (allows mTLS and plaintext)
+Pod accepts both HTTP and mutual TLS requests
 ```
 
 Check the certificate issued to the proxy:
@@ -258,14 +258,14 @@ Do not switch all services at once. Migrate one at a time:
 During migration, PERMISSIVE mode is essential because:
 - Services with sidecars can communicate using Istio mTLS
 - Services with sidecars can still talk to services without sidecars over plaintext
-- The old application-level mTLS still works alongside Istio mTLS
+- The old application-level mTLS can still work during migration if the application ports are still configured for TLS passthrough
 
 ## Step 7: Switch to STRICT mTLS
 
 After all services have sidecars and are using plaintext internally:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: strict
