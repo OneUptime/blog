@@ -17,7 +17,7 @@ Here is how to get started as an Istio contributor.
 Istio is primarily written in Go. You will need:
 
 ```bash
-# Install Go (1.21+)
+# Install the Go version required by Istio's go.mod (currently 1.25+)
 
 # On macOS
 brew install go
@@ -122,10 +122,10 @@ make test
 
 # Commit
 git add .
-git commit -s -m "Fix typo in pilot documentation"
+git commit -m "Fix typo in pilot documentation"
 ```
 
-The `-s` flag adds a Signed-off-by line, which is required for all Istio contributions (Developer Certificate of Origin).
+Before your first PR can be accepted, you need to sign the CNCF Contributor License Agreement (CLA). The EasyCLA bot will guide you after you open a PR.
 
 Push and create a pull request:
 
@@ -154,21 +154,14 @@ make test
 make lint
 
 # Integration tests (requires a Kubernetes cluster)
-make test.integration.local
+make test.integration.kube
 ```
 
 For running a local Kubernetes cluster with Istio:
 
 ```bash
-# Create a kind cluster
-kind create cluster --name istio-dev
-
-# Install Istio from your local build
-make docker
-make docker.tag
-
-# Deploy to the kind cluster
-go run ./istioctl/cmd/istioctl install --set hub=localhost:5000 --set tag=latest
+# Build local images and run Kubernetes integration tests in kind
+prow/integ-suite-kind.sh test.integration.pilot.kube
 ```
 
 ## Code Style and Conventions
@@ -224,9 +217,6 @@ Documentation contributions are highly valued and a great way to start:
 git clone https://github.com/istio/istio.io.git
 cd istio.io
 
-# Install prerequisites
-npm install
-
 # Run the site locally
 make serve
 ```
@@ -245,7 +235,7 @@ Getting involved in the community makes contributing easier:
   - `#contributors` for contributor discussions
   - `#development` for development questions
   - `#documentation` for doc contributions
-- **Weekly meetings**: Attend the community meeting (schedule on the Istio wiki)
+- **Community meetings**: Attend the monthly community meeting (schedule on the Istio community page)
 - **Working groups**: Join a working group that matches your interests (networking, security, etc.)
 
 ```bash
