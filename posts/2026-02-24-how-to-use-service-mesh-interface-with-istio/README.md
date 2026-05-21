@@ -8,7 +8,7 @@ Description: A practical guide to using the Service Mesh Interface specification
 
 ---
 
-Service Mesh Interface (SMI) is a specification that defines a set of common APIs for service meshes running on Kubernetes. The idea behind SMI is pretty straightforward: if you build your traffic management, access control, and metrics collection around a standard set of CRDs, you can theoretically swap out one mesh implementation for another without rewriting all your configuration. Istio, being one of the most widely adopted service meshes, can work with SMI through adapter layers.
+Service Mesh Interface (SMI) is a specification that defines a set of common APIs for service meshes running on Kubernetes. The idea behind SMI is pretty straightforward: if you build your traffic management, access control, and metrics collection around a standard set of CRDs, you can theoretically swap out one mesh implementation for another without rewriting all your configuration. Istio, being one of the most widely adopted service meshes, has historically worked with SMI through adapter layers.
 
 ## What is SMI and Why Should You Care?
 
@@ -23,26 +23,26 @@ These APIs are implemented as Kubernetes CRDs, so they feel natural if you're al
 
 ## Setting Up SMI with Istio
 
-Istio doesn't natively implement SMI APIs out of the box. You need an adapter that translates SMI resources into Istio-native configurations. The most common approach is using the SMI adapter for Istio.
+Istio doesn't natively implement SMI APIs out of the box. You need an adapter that translates SMI resources into Istio-native configurations. The SMI adapter for Istio is the historical project for this, but it is archived and its published manifests target older Istio and Kubernetes APIs. Treat it as a legacy lab setup rather than a current production path.
 
-First, make sure you have Istio installed:
+First, make sure you have Istio installed. For current Istio versions, `istioctl` still supports installing the demo profile:
 
 ```bash
 istioctl install --set profile=demo
 kubectl label namespace default istio-injection=enabled
 ```
 
-Next, install the SMI adapter. The adapter runs as a controller in your cluster that watches for SMI CRDs and creates corresponding Istio resources:
+Next, install the SMI adapter. The adapter runs as a controller in your cluster that watches for SMI CRDs and creates corresponding Istio resources. These upstream manifests use legacy Kubernetes CRD APIs and may need to be migrated before they will apply on Kubernetes 1.22 or newer:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/servicemeshinterface/smi-adapter-istio/master/deploy/crds.yaml
-kubectl apply -f https://raw.githubusercontent.com/servicemeshinterface/smi-adapter-istio/master/deploy/adapter.yaml
+kubectl apply -f https://raw.githubusercontent.com/servicemeshinterface/smi-adapter-istio/main/deploy/crds/crds.yaml
+kubectl apply -f https://raw.githubusercontent.com/servicemeshinterface/smi-adapter-istio/main/deploy/operator-and-rbac.yaml
 ```
 
 Verify the adapter is running:
 
 ```bash
-kubectl get pods -n istio-system -l app=smi-adapter-istio
+kubectl get pods -n istio-system -l name=smi-adapter-istio
 ```
 
 ## Understanding the SMI CRDs
@@ -53,7 +53,7 @@ Once the adapter is installed, you get access to SMI custom resources. Check wha
 kubectl api-resources | grep smi
 ```
 
-You should see resources like `traffictargets`, `httproutegroups`, `trafficsplits`, and `traffictargets` from the SMI API groups.
+You should see resources like `traffictargets`, `httproutegroups`, and `trafficsplits` from the SMI API groups.
 
 ## Deploying a Sample Application
 
@@ -96,6 +96,18 @@ spec:
   ports:
   - port: 80
     targetPort: 5678
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-server-v1
+spec:
+  selector:
+    app: api-server
+    version: v1
+  ports:
+  - port: 80
+    targetPort: 5678
 ```
 
 Deploy a second version for traffic splitting later:
@@ -127,6 +139,18 @@ spec:
         - "-text=api-v2"
         ports:
         - containerPort: 5678
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-server-v2
+spec:
+  selector:
+    app: api-server
+    version: v2
+  ports:
+  - port: 80
+    targetPort: 5678
 ```
 
 ## Using SMI Traffic Split
@@ -147,11 +171,10 @@ spec:
     weight: 10
 ```
 
-The SMI adapter translates this into an Istio VirtualService and DestinationRule behind the scenes. You can verify:
+The SMI adapter translates this into an Istio VirtualService behind the scenes. You can verify:
 
 ```bash
 kubectl get virtualservice -o yaml
-kubectl get destinationrule -o yaml
 ```
 
 ## Using SMI Traffic Access Control
@@ -159,40 +182,46 @@ kubectl get destinationrule -o yaml
 SMI Traffic Access Control lets you define which services can talk to which other services:
 
 ```yaml
-apiVersion: access.smi-spec.io/v1alpha3
+apiVersion: specs.smi-spec.io/v1alpha1
+kind: HTTPRouteGroup
+metadata:
+  name: api-routes
+matches:
+- name: get-api
+  pathRegex: "/.*"
+  methods: ["GET"]
+---
+apiVersion: access.smi-spec.io/v1alpha1
 kind: TrafficTarget
 metadata:
   name: api-server-access
-spec:
-  destination:
-    kind: ServiceAccount
-    name: api-server
-    namespace: default
-  sources:
-  - kind: ServiceAccount
-    name: frontend
-    namespace: default
-  rules:
-  - kind: HTTPRouteGroup
-    name: api-routes
-    matches:
-    - get-api
+destination:
+  kind: ServiceAccount
+  name: api-server
+  namespace: default
+sources:
+- kind: ServiceAccount
+  name: frontend
+  namespace: default
+specs:
+- kind: HTTPRouteGroup
+  name: api-routes
+  matches:
+  - get-api
 ```
 
-This gets translated into Istio AuthorizationPolicy resources by the adapter.
+This archived adapter translates TrafficTarget resources into Istio ServiceRole and ServiceRoleBinding resources, which were part of Istio's older RBAC API. Modern Istio authorization uses AuthorizationPolicy instead.
 
 ## How the Translation Works
 
 Understanding what happens under the hood is helpful for debugging. When you create an SMI TrafficSplit resource, the adapter controller picks it up and generates:
 
 1. An Istio **VirtualService** with route weights matching your split configuration
-2. An Istio **DestinationRule** with subsets for each backend
-3. Any necessary **ServiceEntry** resources if external services are involved
 
 This means you can always fall back to inspecting and even manually editing the Istio resources if something isn't working as expected:
 
 ```bash
-kubectl get virtualservices,destinationrules,authorizationpolicies -A
+kubectl get virtualservices,serviceroles,servicerolebindings -A
 ```
 
 ## Limitations to Know About
@@ -201,7 +230,7 @@ There are some important limitations when using SMI with Istio:
 
 **Feature coverage is partial.** SMI only covers a subset of what Istio can do. You won't find SMI equivalents for circuit breaking, fault injection, or retries. If you need those features, you'll have to use Istio-native resources directly.
 
-**Adapter maturity varies.** The SMI adapter for Istio is a community project and may lag behind the latest Istio releases. Always check compatibility before upgrading Istio.
+**Adapter maturity varies.** The SMI adapter for Istio is an archived community project and lags behind current Istio and Kubernetes releases. Always check compatibility before using or upgrading it.
 
 **Mixing SMI and native resources can be tricky.** If you use SMI for some configurations and Istio-native CRDs for others, conflicts can happen. The adapter might overwrite manual changes to resources it manages.
 
@@ -227,7 +256,7 @@ You can monitor how the adapter is handling your SMI resources:
 
 ```bash
 kubectl describe trafficsplit api-server-split
-kubectl logs -n istio-system -l app=smi-adapter-istio
+kubectl logs -n istio-system -l name=smi-adapter-istio
 ```
 
 The adapter logs will show you when it creates, updates, or encounters errors with Istio resources.
@@ -239,8 +268,9 @@ To remove SMI resources and the adapter:
 ```bash
 kubectl delete trafficsplit api-server-split
 kubectl delete traffictarget api-server-access
-kubectl delete -f https://raw.githubusercontent.com/servicemeshinterface/smi-adapter-istio/master/deploy/adapter.yaml
-kubectl delete -f https://raw.githubusercontent.com/servicemeshinterface/smi-adapter-istio/master/deploy/crds.yaml
+kubectl delete httproutegroup api-routes
+kubectl delete -f https://raw.githubusercontent.com/servicemeshinterface/smi-adapter-istio/main/deploy/operator-and-rbac.yaml
+kubectl delete -f https://raw.githubusercontent.com/servicemeshinterface/smi-adapter-istio/main/deploy/crds/crds.yaml
 ```
 
 SMI offers a useful abstraction if portability matters to your organization. The trade-off is that you lose access to some of Istio's more powerful features. For many teams, starting with SMI and dropping down to native APIs when needed is a reasonable approach that keeps the common cases simple while still allowing advanced configurations where they count.
