@@ -128,8 +128,14 @@ kubectl logs deploy/my-app -n default -c istio-proxy | grep -i "expire\|cert\|tl
 2. Restart all workloads to force certificate renewal:
 
 ```bash
-# Restart all deployments in all injected namespaces
-for ns in $(kubectl get namespaces -l istio-injection=enabled -o jsonpath='{.items[*].metadata.name}'); do
+# Restart all deployments in all injected namespaces, including revision-based injection
+for ns in $(
+  {
+    kubectl get namespaces -l istio-injection=enabled -o jsonpath='{.items[*].metadata.name}'
+    echo
+    kubectl get namespaces -l istio.io/rev -o jsonpath='{.items[*].metadata.name}'
+  } | tr ' ' '\n' | sort -u
+); do
   echo "Restarting $ns..."
   kubectl rollout restart deployment -n "$ns"
 done
@@ -160,32 +166,23 @@ kubectl get secret cacerts -n istio-system -o jsonpath='{.data.root-cert\.pem}' 
   base64 -d | openssl x509 -enddate -noout
 ```
 
-**Recovery requires generating new certificates:**
+**Recovery requires generating new certificates. For production, use your CA or certificate management system. For a test recovery, Istio's certificate Makefile generates the CA files with the extensions Istio expects:**
 
 ```bash
-# Generate a new root CA (using openssl as an example)
-openssl req -newkey rsa:4096 -nodes -x509 -days 3650 \
-  -keyout root-key.pem -out root-cert.pem \
-  -subj "/O=Istio/CN=Root CA"
-
-# Generate intermediate CA
-openssl req -newkey rsa:4096 -nodes \
-  -keyout ca-key.pem -out ca-cert.csr \
-  -subj "/O=Istio/CN=Intermediate CA"
-
-openssl x509 -req -in ca-cert.csr -CA root-cert.pem -CAkey root-key.pem \
-  -CAcreateserial -out ca-cert.pem -days 730
-
-# Create cert chain
-cat ca-cert.pem root-cert.pem > cert-chain.pem
+# From the top-level directory of the Istio release package
+mkdir -p certs
+pushd certs
+make -f ../tools/certs/Makefile.selfsigned.mk root-ca
+make -f ../tools/certs/Makefile.selfsigned.mk cluster1-cacerts
+popd
 
 # Update the secret
 kubectl delete secret cacerts -n istio-system
 kubectl create secret generic cacerts -n istio-system \
-  --from-file=ca-cert.pem \
-  --from-file=ca-key.pem \
-  --from-file=root-cert.pem \
-  --from-file=cert-chain.pem
+  --from-file=certs/cluster1/ca-cert.pem \
+  --from-file=certs/cluster1/ca-key.pem \
+  --from-file=certs/cluster1/root-cert.pem \
+  --from-file=certs/cluster1/cert-chain.pem
 
 # Restart Istiod
 kubectl rollout restart deployment/istiod -n istio-system
@@ -225,7 +222,7 @@ kubectl get validatingwebhookconfigurations | grep istio
 
 ## Temporary Workaround: Disable mTLS
 
-If you need services to communicate immediately while fixing the control plane, you can temporarily disable mTLS:
+If Istiod is running well enough to accept and push configuration, you can temporarily disable mTLS to restore service communication while you finish the recovery:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -238,7 +235,9 @@ spec:
     mode: DISABLE
 ```
 
-This removes the mTLS requirement mesh-wide. Remove this as soon as the control plane is recovered.
+This sets the mesh-level mTLS mode to `DISABLE` when `istio-system` is your root namespace. Remove this as soon as the control plane is recovered, and check for namespace or workload `PeerAuthentication` policies that may still enforce stricter settings.
+
+This only applies in sidecar mode. `DISABLE` is not supported for ambient mode, and this policy will not take effect while Istiod is unable to push configuration.
 
 ## Prevention
 
@@ -261,7 +260,7 @@ After recovery, set up monitoring to catch control plane issues early:
 
 # Alert on proxy sync failures
 - alert: IstioProxySyncStale
-  expr: pilot_proxy_convergence_time_bucket{le="30"} / pilot_proxy_convergence_time_count < 0.9
+  expr: sum(rate(pilot_proxy_convergence_time_bucket{le="30"}[5m])) / sum(rate(pilot_proxy_convergence_time_count[5m])) < 0.9
   for: 5m
   labels:
     severity: warning
