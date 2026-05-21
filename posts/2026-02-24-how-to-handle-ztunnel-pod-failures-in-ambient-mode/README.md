@@ -8,7 +8,7 @@ Description: How to detect, troubleshoot, and recover from ztunnel pod failures 
 
 ---
 
-In Istio ambient mode, the ztunnel DaemonSet runs one pod per node and handles all L4 mesh traffic for every pod on that node. If a ztunnel pod fails, every mesh-enrolled pod on that node loses its mTLS encryption, L4 authorization, and potentially all network connectivity depending on the failure mode. Understanding how to handle these failures quickly is critical.
+In Istio ambient mode, the ztunnel DaemonSet runs one pod per eligible node and handles L4 mesh traffic for ambient-enrolled pods on that node. If a ztunnel pod fails, mesh-enrolled pods on that node lose the ztunnel-provided mTLS, L4 authorization, and potentially network connectivity depending on the failure mode. Understanding how to handle these failures quickly is critical.
 
 ## What Happens When ztunnel Fails
 
@@ -61,7 +61,8 @@ spec:
           expr: |
             kube_pod_status_ready{
               namespace="istio-system",
-              pod=~"ztunnel.*"
+              pod=~"ztunnel.*",
+              condition="true"
             } == 0
           for: 1m
           labels:
@@ -109,7 +110,7 @@ spec:
 
 ### Certificate Errors
 
-If ztunnel cannot obtain its workload certificate from istiod, it will log errors and potentially crash:
+If ztunnel cannot obtain workload certificates from istiod, it will log errors and may fail readiness or traffic that depends on those certificates:
 
 ```text
 ERROR ztunnel::tls: failed to fetch certificate from CA: connection refused
@@ -119,11 +120,17 @@ Check that istiod is running and reachable:
 
 ```bash
 kubectl get pods -n istio-system -l app=istiod
-kubectl exec -n istio-system ztunnel-xxxxx -- \
-  curl -s http://istiod.istio-system:15014/debug/endpointz > /dev/null && echo "OK" || echo "FAIL"
+
+ZTUNNEL_POD=ztunnel-xxxxx
+ISTIOD_POD=$(kubectl get pods -n istio-system -l app=istiod \
+  -o jsonpath='{.items[0].metadata.name}')
+
+istioctl ztunnel-config certificates "$ZTUNNEL_POD".istio-system
+kubectl debug -n istio-system "$ISTIOD_POD" --image=curlimages/curl -- \
+  curl -s "localhost:15014/debug/config_dump?proxyID=$ZTUNNEL_POD.istio-system" > /dev/null && echo "OK" || echo "FAIL"
 ```
 
-Resource Pressure
+### Resource Pressure
 
 On busy nodes, ztunnel might get CPU throttled or evicted due to resource pressure:
 
@@ -135,18 +142,18 @@ kubectl describe node <node-name> | grep -A 5 Conditions
 kubectl top pod -n istio-system ztunnel-xxxxx
 ```
 
-If CPU throttling is the issue, increase the CPU limit or set a higher priority class:
+If CPU throttling is the issue, increase the CPU request or limit. If ztunnel needs stronger scheduling priority in your cluster, set a higher priority class on the DaemonSet pod template:
 
-```yaml
-apiVersion: install.istio.io/v1alpha1
-kind: IstioOperator
+```bash
+kubectl patch daemonset ztunnel -n istio-system --type='strategic' -p='
 spec:
-  values:
-    ztunnel:
+  template:
+    spec:
       priorityClassName: system-node-critical
+'
 ```
 
-Setting `system-node-critical` ensures ztunnel is one of the last pods to be evicted when the node is under pressure.
+Setting `system-node-critical` gives ztunnel a built-in critical priority class so it is scheduled ahead of lower-priority pods and can preempt them when needed.
 
 ## Recovering from ztunnel Failures
 
@@ -166,11 +173,13 @@ ZTUNNEL_POD=$(kubectl get pods -n istio-system -l app=ztunnel \
   --field-selector spec.nodeName=<node-name> -o jsonpath='{.items[0].metadata.name}')
 
 # Check health endpoint
-kubectl exec -n istio-system $ZTUNNEL_POD -- curl -s localhost:15021/healthz/ready
+kubectl debug -n istio-system "$ZTUNNEL_POD" --image=curlimages/curl -- \
+  curl -s localhost:15021/healthz/ready
 
 # Verify it has loaded workload information
-kubectl exec -n istio-system $ZTUNNEL_POD -- curl -s localhost:15000/config_dump | \
-  python3 -c "import sys,json; d=json.load(sys.stdin); print(f'Workloads: {len(d.get(\"workloads\", []))}')"
+kubectl debug -n istio-system "$ZTUNNEL_POD" --image=curlimages/curl -- \
+  curl -s localhost:15000/config_dump | \
+  python3 -c "import sys,json; d=json.load(sys.stdin); print(f'Workloads: {len(d.get(\"workloads\", {}))}')"
 ```
 
 ### Manual Recovery
@@ -212,26 +221,25 @@ Monitor actual resource usage and set limits accordingly:
 # Check memory usage over time
 kubectl top pods -n istio-system -l app=ztunnel
 
-# For more detailed memory analysis
-kubectl exec -n istio-system ztunnel-xxxxx -- \
-  curl -s localhost:15000/memory
+# Check per-container resource usage
+kubectl top pod -n istio-system ztunnel-xxxxx --containers
 ```
 
-### Set Pod Disruption Budgets
+### Set DaemonSet Update Strategy
 
-While ztunnel is a DaemonSet (so PDBs do not directly apply), you can protect against accidental deletion during upgrades:
+While ztunnel is a DaemonSet, a PDB only constrains voluntary evictions made through the Kubernetes Eviction API. For ztunnel upgrades, use the DaemonSet update strategy instead:
 
 ```yaml
-apiVersion: policy/v1
-kind: PodDisruptionBudget
-metadata:
-  name: ztunnel-pdb
-  namespace: istio-system
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
 spec:
-  maxUnavailable: 1
-  selector:
-    matchLabels:
-      app: ztunnel
+  values:
+    ztunnel:
+      updateStrategy:
+        type: RollingUpdate
+        rollingUpdate:
+          maxSurge: 1
+          maxUnavailable: 0
 ```
 
 ### Monitor Connection Counts
@@ -239,11 +247,11 @@ spec:
 High connection counts can predict future OOM issues:
 
 ```bash
-kubectl exec -n istio-system ztunnel-xxxxx -- \
-  curl -s localhost:15020/metrics | grep ztunnel_active_connections
+kubectl debug -n istio-system ztunnel-xxxxx --image=curlimages/curl -- \
+  curl -s localhost:15020/metrics | grep -E 'istio_tcp_connections_(opened|closed)_total'
 ```
 
-If a node has an unusually high number of connections, consider spreading workloads to other nodes.
+You can also inspect active connections with `istioctl ztunnel-config connections`. If a node has an unusually high number of connections, consider spreading workloads to other nodes.
 
 ## Failover Behavior
 
@@ -251,9 +259,9 @@ When ztunnel fails on one node, workloads on other nodes are unaffected. Kuberne
 
 1. Kubernetes readiness probes on the application pods may fail (if they depend on network connectivity)
 2. Other ztunnel instances will see connection failures to the affected node's pods
-3. Outlier detection on upstream services will eject the affected endpoints
+3. If the service uses waypoint proxies or sidecars for traffic management, outlier detection can eject endpoints after observed failures
 
-To speed up failover, make sure your services have outlier detection configured:
+To speed up failover for services using waypoint proxies or sidecars, make sure your services have outlier detection configured:
 
 ```yaml
 apiVersion: networking.istio.io/v1
