@@ -33,7 +33,7 @@ metadata:
   name: my-service-sa
   namespace: production
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: WorkloadGroup
 metadata:
   name: my-service-vm
@@ -47,7 +47,7 @@ spec:
     serviceAccount: my-service-sa
     network: vm-network
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: WorkloadEntry
 metadata:
   name: my-service-vm-1
@@ -124,7 +124,7 @@ Both the VM (version: vm) and the Kubernetes pods (version: k8s) are selected by
 Create a DestinationRule with subsets for each version, then use a VirtualService to control the split:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service-dr
@@ -139,7 +139,7 @@ spec:
     labels:
       version: k8s
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service-vs
@@ -169,7 +169,7 @@ Now start moving traffic to Kubernetes in controlled increments:
 # Phase 1: 10% to Kubernetes
 
 kubectl apply -f - <<EOF
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service-vs
@@ -197,7 +197,7 @@ Monitor the Kubernetes version at each phase:
 kubectl exec deploy/sleep -n production -- curl -s http://my-service:8080/healthz
 
 # Watch metrics in Prometheus
-# Query: sum(rate(istio_requests_total{destination_service="my-service.production.svc.cluster.local", response_code!~"5.."}[5m])) by (destination_version)
+# Query: sum(rate(istio_requests_total{destination_service="my-service.production.svc.cluster.local", response_code=~"5.."}[5m])) by (destination_version)
 ```
 
 Continue the progression:
@@ -242,7 +242,7 @@ kubectl patch virtualservice my-service-vs -n production --type merge -p '{"spec
 Before shifting production traffic, you might want to test the Kubernetes version with specific requests:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service-vs
@@ -280,7 +280,7 @@ kubectl delete workloadgroup my-service-vm -n production
 
 # Simplify the VirtualService (remove VM subset)
 kubectl apply -f - <<EOF
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service-vs
@@ -296,7 +296,7 @@ EOF
 
 # Update DestinationRule to remove VM subset
 kubectl apply -f - <<EOF
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service-dr
