@@ -305,7 +305,6 @@ package main
 
 import (
     "encoding/json"
-    "io"
     "net/http"
 )
 
@@ -327,10 +326,14 @@ func paymentHandler(w http.ResponseWriter, r *http.Request) {
     // Process payment...
 
     // Call Fraud Detection Service with propagated headers
-    fraudReq, _ := http.NewRequest("POST",
+    fraudReq, err := http.NewRequest("POST",
         "http://fraud-service:8080/api/check",
         r.Body,
     )
+    if err != nil {
+        http.Error(w, err.Error(), 500)
+        return
+    }
     propagateHeaders(r, fraudReq)
     fraudReq.Header.Set("Content-Type", "application/json")
 
@@ -369,6 +372,8 @@ kubectl apply -f inventory-service.yaml -n ecommerce
 kubectl apply -f payment-service.yaml -n ecommerce
 kubectl apply -f fraud-service.yaml -n ecommerce
 kubectl apply -f notification-service.yaml -n ecommerce
+
+kubectl create deployment sleep -n ecommerce --image=curlimages/curl:8.15.0 -- sleep 3650d
 ```
 
 Verify sidecars are injected:
@@ -384,7 +389,7 @@ Each pod should list both the application container and `istio-proxy`.
 Create an order:
 
 ```bash
-kubectl exec deploy/sleep -- curl -s -X POST \
+kubectl exec deploy/sleep -n ecommerce -- curl -s -X POST \
   -H "Content-Type: application/json" \
   -d '{"productId": "prod-1", "quantity": 2, "paymentMethod": "card"}' \
   http://order-service.ecommerce:8080/api/orders
@@ -439,10 +444,12 @@ If your end-to-end trace shows gaps or disconnected spans:
 
 ```bash
 # Verify header propagation at each service
-kubectl exec deploy/sleep -- curl -s \
+kubectl exec deploy/sleep -n ecommerce -- curl -s -X POST \
   -H "X-B3-TraceId: deadbeef12345678deadbeef12345678" \
   -H "X-B3-SpanId: 1234567812345678" \
   -H "X-B3-Sampled: 1" \
+  -H "Content-Type: application/json" \
+  -d '{"productId": "prod-1", "quantity": 2, "paymentMethod": "card"}' \
   http://order-service.ecommerce:8080/api/orders
 
 # Search for this trace ID in Jaeger
