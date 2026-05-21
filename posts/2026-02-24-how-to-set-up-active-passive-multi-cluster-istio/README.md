@@ -77,7 +77,16 @@ Install Istio, set up east-west gateways, and exchange remote secrets on both cl
 istioctl install --context=active -f active-cluster.yaml -y
 istioctl install --context=passive -f passive-cluster.yaml -y
 
-# East-west gateways and remote secrets (same as separate control planes setup)
+# East-west gateways
+samples/multicluster/gen-eastwest-gateway.sh --network network1 | \
+  istioctl --context=active install -y -f -
+samples/multicluster/gen-eastwest-gateway.sh --network network2 | \
+  istioctl --context=passive install -y -f -
+
+kubectl --context=active apply -n istio-system -f samples/multicluster/expose-services.yaml
+kubectl --context=passive apply -n istio-system -f samples/multicluster/expose-services.yaml
+
+# Remote secrets
 istioctl create-remote-secret --context=passive --name=passive | \
   kubectl apply --context=active -f -
 istioctl create-remote-secret --context=active --name=active | \
@@ -102,12 +111,12 @@ The passive cluster runs at least one replica so that:
 - Health checks confirm the passive cluster is functional
 - The sidecar configuration is active and current
 
-## Step 3: Route All Traffic to the Active Cluster
+## Step 3: Configure In-Mesh Failover Behavior
 
-Use a VirtualService to ensure that inter-mesh traffic prefers the active cluster. Apply this to both clusters:
+Use a DestinationRule to enable locality failover for inter-mesh traffic. This assumes the active cluster's nodes are labeled with `topology.kubernetes.io/region=active-region` and the passive cluster's nodes are labeled with `topology.kubernetes.io/region=passive-region`. Apply this to both clusters:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-app
@@ -115,6 +124,13 @@ metadata:
 spec:
   host: my-app.production.svc.cluster.local
   trafficPolicy:
+    loadBalancer:
+      simple: ROUND_ROBIN
+      localityLbSetting:
+        enabled: true
+        failover:
+          - from: active-region
+            to: passive-region
     outlierDetection:
       consecutive5xxErrors: 3
       interval: 10s
@@ -165,7 +181,7 @@ curl http://${ACTIVE_GATEWAY_IP}:15021/healthz/ready
 Create a more comprehensive health check that validates your application is actually working:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: health-check
@@ -285,7 +301,7 @@ kubectl --context=passive scale deployment -n production my-app --replicas=1
 
 The trickiest part of active-passive isn't the Istio configuration but the data layer. If your application uses a database, you need to handle replication:
 
-- **Managed databases**: Use the cloud provider's cross-region replication (RDS Multi-AZ, Cloud SQL HA, etc.)
+- **Managed databases**: Use the cloud provider's cross-region replication features (for example, Amazon RDS cross-Region read replicas or Cloud SQL cross-region replicas)
 - **Self-managed databases**: Set up primary-replica replication and promote the replica during failover
 - **Stateless applications**: No data concerns, just make sure configuration is synced
 
