@@ -52,7 +52,7 @@ Having three replicas on the same node does not help when that node dies. Verify
 kubectl get pods -n istio-system -l app=istiod -o wide
 ```
 
-Each istiod pod should be on a different node. Configure anti-affinity:
+Ideally, each istiod pod should be on a different node. Configure anti-affinity:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -139,7 +139,7 @@ metadata:
   name: istiod-pdb
   namespace: istio-system
 spec:
-  minAvailable: 1
+  minAvailable: 2
   selector:
     matchLabels:
       app: istiod
@@ -150,7 +150,7 @@ metadata:
   name: ingressgateway-pdb
   namespace: istio-system
 spec:
-  minAvailable: 1
+  minAvailable: 2
   selector:
     matchLabels:
       app: istio-ingressgateway
@@ -166,7 +166,8 @@ The only way to know if HA works is to test it. Kill an istiod pod and verify th
 kubectl get pods -n istio-system -l app=istiod
 
 # Kill one pod
-kubectl delete pod -n istio-system -l app=istiod --field-selector=status.phase=Running --grace-period=0 --force 2>/dev/null | head -1
+POD=$(kubectl get pod -n istio-system -l app=istiod --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}')
+kubectl delete pod "$POD" -n istio-system --grace-period=0 --force
 
 # Immediately check if traffic still flows
 kubectl exec deploy/sleep -- curl -s -o /dev/null -w "%{http_code}" http://httpbin:8000/get
@@ -205,13 +206,18 @@ spec:
   components:
     pilot:
       k8s:
-        topologySpreadConstraints:
-          - maxSkew: 1
-            topologyKey: topology.kubernetes.io/zone
-            whenUnsatisfiable: ScheduleAnyway
-            labelSelector:
-              matchLabels:
-                app: istiod
+        overlays:
+          - kind: Deployment
+            name: istiod
+            patches:
+              - path: spec.template.spec.topologySpreadConstraints
+                value:
+                  - maxSkew: 1
+                    topologyKey: topology.kubernetes.io/zone
+                    whenUnsatisfiable: ScheduleAnyway
+                    labelSelector:
+                      matchLabels:
+                        app: istiod
 ```
 
 ## Validate Proxy Resilience
