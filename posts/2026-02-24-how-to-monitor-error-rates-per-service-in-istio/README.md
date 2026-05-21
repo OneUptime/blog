@@ -90,7 +90,7 @@ sum(rate(istio_requests_total{
 ```promql
 sum(rate(istio_requests_total{
   response_code=~"5..",
-  response_flags!=""
+  response_flags!="-"
 }[5m])) by (destination_service, response_flags)
 ```
 
@@ -237,13 +237,13 @@ Panel type: Stacked bar chart. This shows the distribution of error types over t
 
 ### Error Heat Map
 
-For a mesh-wide view, create a heatmap of error rates across services and time:
+For a mesh-wide view, create a status history view of error rates across services and time:
 
 ```promql
 istio:error_rate_5xx_5m * 100
 ```
 
-Panel type: Heatmap with the Y-axis as service names.
+Panel type: Status history, with one row per service series.
 
 ## Investigating High Error Rates
 
@@ -258,7 +258,8 @@ When an alert fires, here is a systematic approach to debugging:
 ```promql
 sum(rate(istio_requests_total{
   destination_service="failing-service.default.svc.cluster.local",
-  response_code=~"5.."
+  response_code=~"5..",
+  response_flags!="-"
 }[5m])) by (response_flags)
 ```
 
@@ -275,10 +276,10 @@ kubectl get pods -l app=failing-service
 kubectl top pods -l app=failing-service
 ```
 
-6. **Check Envoy access logs for details:**
+6. **Check Envoy access logs for details if access logging is enabled:**
 
 ```bash
-kubectl logs deploy/failing-service -c istio-proxy | grep "response_code\":\"5"
+kubectl logs deploy/failing-service -c istio-proxy | grep -E ' 5[0-9]{2} |"response_code":[[:space:]]*"?5'
 ```
 
 ## Handling Noisy Alerts
