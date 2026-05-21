@@ -21,12 +21,12 @@ A basic Rego policy for Istio follows this pattern:
 ```rego
 package main
 
-deny[msg] {
+deny contains msg if {
     # Match a specific resource kind
     input.kind == "VirtualService"
 
     # Check a condition
-    some_condition_is_true
+    input.spec.some_condition_is_true
 
     # Return an error message
     msg := "Description of what went wrong"
@@ -44,8 +44,9 @@ Here are practical validation rules that address real problems teams run into.
 ```rego
 package main
 
-deny[msg] {
+deny contains msg if {
     input.kind == "VirtualService"
+    some i
     route := input.spec.http[i]
     not route.timeout
     msg := sprintf("VirtualService '%s': HTTP route %d must define a timeout", [input.metadata.name, i])
@@ -57,9 +58,9 @@ deny[msg] {
 ```rego
 package main
 
-deny[msg] {
+deny contains msg if {
     input.kind == "VirtualService"
-    route := input.spec.http[_]
+    some route in input.spec.http
     route.retries.attempts > 3
     msg := sprintf("VirtualService '%s': retry attempts should not exceed 3 to avoid cascading failures", [input.metadata.name])
 }
@@ -70,10 +71,10 @@ deny[msg] {
 ```rego
 package main
 
-deny[msg] {
+deny contains msg if {
     input.kind == "VirtualService"
     input.metadata.namespace == "production"
-    route := input.spec.http[_]
+    some route in input.spec.http
     route.fault
     msg := sprintf("VirtualService '%s': fault injection is not allowed in the production namespace", [input.metadata.name])
 }
@@ -84,9 +85,9 @@ deny[msg] {
 ```rego
 package main
 
-deny[msg] {
+deny contains msg if {
     input.kind == "VirtualService"
-    host := input.spec.hosts[_]
+    some host in input.spec.hosts
     host == "*"
     msg := sprintf("VirtualService '%s': wildcard host '*' is not permitted", [input.metadata.name])
 }
@@ -99,7 +100,7 @@ deny[msg] {
 ```rego
 package main
 
-deny[msg] {
+deny contains msg if {
     input.kind == "DestinationRule"
     not input.spec.trafficPolicy.connectionPool
     msg := sprintf("DestinationRule '%s': must define connectionPool settings in trafficPolicy", [input.metadata.name])
@@ -111,7 +112,7 @@ deny[msg] {
 ```rego
 package main
 
-deny[msg] {
+deny contains msg if {
     input.kind == "DestinationRule"
     not input.spec.trafficPolicy.outlierDetection
     msg := sprintf("DestinationRule '%s': must define outlierDetection for circuit breaking", [input.metadata.name])
@@ -123,11 +124,13 @@ deny[msg] {
 ```rego
 package main
 
-deny[msg] {
+deny contains msg if {
     input.kind == "DestinationRule"
-    tls := input.spec.trafficPolicy.tls
-    tls.mode != "ISTIO_MUTUAL"
-    msg := sprintf("DestinationRule '%s': TLS mode must be ISTIO_MUTUAL, got '%s'", [input.metadata.name, tls.mode])
+    traffic_policy := object.get(input.spec, "trafficPolicy", {})
+    tls := object.get(traffic_policy, "tls", {})
+    mode := object.get(tls, "mode", "")
+    mode != "ISTIO_MUTUAL"
+    msg := sprintf("DestinationRule '%s': TLS mode must be ISTIO_MUTUAL, got '%s'", [input.metadata.name, mode])
 }
 ```
 
@@ -138,10 +141,10 @@ deny[msg] {
 ```rego
 package main
 
-deny[msg] {
+deny contains msg if {
     input.kind == "Gateway"
-    server := input.spec.servers[_]
-    host := server.hosts[_]
+    some server in input.spec.servers
+    some host in server.hosts
     host == "*"
     msg := sprintf("Gateway '%s': wildcard host '*' is not allowed. Specify explicit hosts.", [input.metadata.name])
 }
@@ -152,9 +155,9 @@ deny[msg] {
 ```rego
 package main
 
-deny[msg] {
+deny contains msg if {
     input.kind == "Gateway"
-    server := input.spec.servers[_]
+    some server in input.spec.servers
     server.port.protocol == "HTTP"
     not server.tls
     msg := sprintf("Gateway '%s': all servers must use TLS. Plain HTTP is not allowed.", [input.metadata.name])
@@ -198,7 +201,7 @@ Conftest catches issues in CI, but someone could still `kubectl apply` a bad con
 First, install Gatekeeper:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/open-policy-agent/gatekeeper/v3.14.0/deploy/gatekeeper.yaml
+kubectl apply -f https://raw.githubusercontent.com/open-policy-agent/gatekeeper/v3.22.2/deploy/gatekeeper.yaml
 ```
 
 Then create a ConstraintTemplate. This defines the policy logic:
@@ -215,15 +218,20 @@ spec:
         kind: IstioReqTimeout
   targets:
     - target: admission.k8s.gatekeeper.sh
-      rego: |
-        package istioreqtimeout
+      code:
+        - engine: Rego
+          source:
+            version: "v1"
+            rego: |
+              package istioreqtimeout
 
-        violation[{"msg": msg}] {
-            input.review.object.kind == "VirtualService"
-            route := input.review.object.spec.http[i]
-            not route.timeout
-            msg := sprintf("VirtualService '%s': HTTP route %d must define a timeout", [input.review.object.metadata.name, i])
-        }
+              violation contains {"msg": msg} if {
+                  input.review.object.kind == "VirtualService"
+                  some i
+                  route := input.review.object.spec.http[i]
+                  not route.timeout
+                  msg := sprintf("VirtualService '%s': HTTP route %d must define a timeout", [input.review.object.metadata.name, i])
+              }
 ```
 
 Then create a Constraint that activates the template:
@@ -251,7 +259,7 @@ Write test cases for your Rego policies. Conftest supports this natively:
 
 package main
 
-test_deny_missing_timeout {
+test_deny_missing_timeout if {
     result := deny with input as {
         "kind": "VirtualService",
         "metadata": {"name": "test-vs"},
@@ -263,7 +271,7 @@ test_deny_missing_timeout {
     count(result) > 0
 }
 
-test_allow_with_timeout {
+test_allow_with_timeout if {
     result := deny with input as {
         "kind": "VirtualService",
         "metadata": {"name": "test-vs"},
