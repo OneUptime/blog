@@ -53,7 +53,7 @@ These metrics include labels like `source_workload`, `destination_workload`, `so
 
 ### How Metrics Reach Prometheus
 
-Each sidecar exposes metrics on port 15020 at the path `/stats/prometheus`. Prometheus scrapes this endpoint at regular intervals (typically every 15 seconds).
+With Istio's default metrics merging enabled, each sidecar exposes merged metrics on port 15020 at the path `/stats/prometheus`. Prometheus scrapes this endpoint at regular intervals (for example, every 15 seconds if configured that way).
 
 The flow:
 1. Request passes through Envoy
@@ -108,21 +108,22 @@ These spans include:
 
 ### Configuring Trace Sampling
 
-By default, Istio samples 1% of traces. For debugging, you might want to increase this:
+In the default configuration profile, Istio samples 1% of traces. For debugging, you might want to increase this with the Telemetry API:
 
 ```yaml
-apiVersion: install.istio.io/v1alpha1
-kind: IstioOperator
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
+metadata:
+  name: mesh-default
+  namespace: istio-system
 spec:
-  meshConfig:
-    defaultConfig:
-      tracing:
-        sampling: 10.0
+  tracing:
+  - randomSamplingPercentage: 10.0
 ```
 
 This sets the sampling rate to 10%. Be careful with high sampling rates in production because they generate a lot of data and can impact performance.
 
-You can override the sampling rate per-pod:
+You can also override trace settings per-pod:
 
 ```yaml
 apiVersion: apps/v1
@@ -142,17 +143,19 @@ Setting it to 100% captures every trace, which is useful for debugging specific 
 
 ### Configuring Trace Exporters
 
-Istio can send traces to various backends. Configure the tracing provider in the mesh config:
+Istio can send traces to various backends. Define a tracing provider in the mesh config:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
   meshConfig:
-    defaultConfig:
-      tracing:
-        zipkin:
-          address: zipkin.istio-system.svc:9411
+    enableTracing: true
+    extensionProviders:
+    - name: zipkin
+      zipkin:
+        service: zipkin.istio-system.svc.cluster.local
+        port: 9411
 ```
 
 Or for OpenTelemetry:
@@ -162,14 +165,27 @@ apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
   meshConfig:
+    enableTracing: true
     extensionProviders:
     - name: otel-tracing
       opentelemetry:
         service: otel-collector.istio-system.svc.cluster.local
         port: 4317
-    defaultConfig:
-      tracing:
-        sampling: 5.0
+```
+
+Then enable that provider and set sampling with a Telemetry resource:
+
+```yaml
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
+metadata:
+  name: mesh-default
+  namespace: istio-system
+spec:
+  tracing:
+  - providers:
+    - name: otel-tracing
+    randomSamplingPercentage: 5.0
 ```
 
 ## How Access Logs Work
@@ -227,7 +243,7 @@ The `response_flags` field is particularly useful for debugging. An empty value 
 Istio's Telemetry API provides a more structured way to configure telemetry:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: mesh-telemetry
