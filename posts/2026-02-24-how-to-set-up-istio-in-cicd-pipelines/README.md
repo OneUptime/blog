@@ -31,7 +31,7 @@ jobs:
 
       - name: Install istioctl
         run: |
-          ISTIO_VERSION=1.22.0
+          ISTIO_VERSION=1.30.0
           curl -L https://istio.io/downloadIstio | ISTIO_VERSION=$ISTIO_VERSION sh -
           echo "$PWD/istio-$ISTIO_VERSION/bin" >> $GITHUB_PATH
 
@@ -46,8 +46,8 @@ deploy:
   image: ubuntu:22.04
   before_script:
     - apt-get update && apt-get install -y curl
-    - curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.22.0 sh -
-    - export PATH=$PWD/istio-1.22.0/bin:$PATH
+    - curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.30.0 sh -
+    - export PATH=$PWD/istio-1.30.0/bin:$PATH
   script:
     - istioctl version --remote=false
 ```
@@ -78,7 +78,7 @@ Helm gives you more control and is often preferred in production pipelines:
   run: |
     helm repo add istio https://istio-release.storage.googleapis.com/charts
     helm repo update
-    helm install istio-base istio/base -n istio-system --create-namespace --wait
+    helm install istio-base istio/base -n istio-system --set defaultRevision=default --create-namespace --wait
 
 - name: Install istiod
   run: |
@@ -288,17 +288,17 @@ Downloading istioctl on every pipeline run wastes time. Cache it:
 
 ```yaml
 - name: Cache istioctl
-  uses: actions/cache@v3
+  uses: actions/cache@v4
   with:
-    path: istio-1.22.0
-    key: istioctl-1.22.0
+    path: istio-1.30.0
+    key: istioctl-1.30.0
 
 - name: Install istioctl
   run: |
-    if [ ! -f istio-1.22.0/bin/istioctl ]; then
-      curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.22.0 sh -
+    if [ ! -f istio-1.30.0/bin/istioctl ]; then
+      curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.30.0 sh -
     fi
-    echo "$PWD/istio-1.22.0/bin" >> $GITHUB_PATH
+    echo "$PWD/istio-1.30.0/bin" >> $GITHUB_PATH
 ```
 
 Setting up Istio in CI/CD pipelines brings the same rigor to your service mesh configuration that you already have for application deployments. Version-control your Istio resources, validate before applying, deploy in the right order, and always have a rollback plan.
