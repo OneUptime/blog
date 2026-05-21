@@ -12,7 +12,7 @@ Routing traffic based on who the user is opens up a lot of possibilities. You ca
 
 ## The General Approach
 
-Istio does not have built-in user authentication. It works with whatever identity information is already in the request. Typically this comes from:
+Istio can validate JWTs with request authentication, but it does not manage application login sessions or user accounts. It works with whatever identity information is already in the request. Typically this comes from:
 
 - A JWT token (decoded by Istio or an upstream gateway)
 - A custom header set by your authentication middleware
@@ -23,10 +23,10 @@ Your auth layer extracts the user identity and puts it in a header. Istio matche
 
 ## Routing Based on a User ID Header
 
-The simplest pattern is matching on a header that contains the user ID or a user group:
+The simplest pattern is matching on a header that contains the user ID or a user group. When you route to subsets, make sure those subsets are defined in a matching `DestinationRule`:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -64,7 +64,7 @@ Your auth middleware sets the `x-user-group` header based on the user's subscrip
 Want to test a new feature with specific users before rolling it out?
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -113,7 +113,7 @@ spec:
 The `outputClaimToHeaders` field extracts JWT claims and puts them into request headers. Now you can route on them:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -152,7 +152,7 @@ Admin users go to the admin service. Specific tenants get v2. Everyone else gets
 For multi-tenant applications, route each tenant to their own backend:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: tenant-router
@@ -195,7 +195,7 @@ Each tenant can have their own namespace, their own deployment, and even their o
 A common need is routing internal company users to a staging or test version:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -225,7 +225,7 @@ Anyone with a `@mycompany.com` email gets the staging version. External users ge
 If user identity is stored in a session cookie:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -261,7 +261,7 @@ spec:
 You can combine user identity with path matching for fine-grained control:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
