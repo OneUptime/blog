@@ -177,7 +177,7 @@ spec:
 The ReferenceGrant in the shared-services namespace:
 
 ```yaml
-apiVersion: gateway.networking.k8s.io/v1beta1
+apiVersion: gateway.networking.k8s.io/v1
 kind: ReferenceGrant
 metadata:
   name: allow-team-a
@@ -199,7 +199,7 @@ This grants team-a's HTTPRoutes permission to reference Services in the shared-s
 You can allow multiple namespaces to reference your services:
 
 ```yaml
-apiVersion: gateway.networking.k8s.io/v1beta1
+apiVersion: gateway.networking.k8s.io/v1
 kind: ReferenceGrant
 metadata:
   name: allow-all-teams
@@ -223,7 +223,7 @@ spec:
 Or allow specific services only:
 
 ```yaml
-apiVersion: gateway.networking.k8s.io/v1beta1
+apiVersion: gateway.networking.k8s.io/v1
 kind: ReferenceGrant
 metadata:
   name: allow-auth-only
@@ -247,7 +247,7 @@ If your TLS certificates are managed centrally but gateways are in different nam
 
 ```yaml
 # ReferenceGrant in the cert-store namespace
-apiVersion: gateway.networking.k8s.io/v1beta1
+apiVersion: gateway.networking.k8s.io/v1
 kind: ReferenceGrant
 metadata:
   name: allow-gateway-cert-ref
@@ -425,7 +425,8 @@ status:
 If `Accepted` is False, check:
 - Does the namespace have the required labels?
 - Does the gateway allow routes from this namespace?
-- Does a ReferenceGrant exist for cross-namespace backend references?
+
+If `ResolvedRefs` is False, check whether a ReferenceGrant exists for any cross-namespace backend references.
 
 ```bash
 kubectl get referencegrant -A
