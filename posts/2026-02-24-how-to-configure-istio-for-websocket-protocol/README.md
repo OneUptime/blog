@@ -10,7 +10,7 @@ Description: How to configure Istio to properly handle WebSocket connections, in
 
 WebSockets are essential for real-time applications like chat systems, live dashboards, collaborative editing, and streaming updates. Unlike regular HTTP requests, a WebSocket connection starts as an HTTP upgrade request and then transitions into a full-duplex persistent connection. This upgrade mechanism and the long-lived nature of WebSocket connections require some specific configuration in Istio.
 
-The good news is that Istio supports WebSockets out of the box. The not-so-good news is that the default timeout settings can kill your WebSocket connections prematurely if you don't adjust them.
+The good news is that Istio supports WebSockets out of the box. The not-so-good news is that timeout settings can kill your WebSocket connections prematurely if you don't adjust them.
 
 ## How WebSockets Work Through Istio
 
@@ -76,7 +76,7 @@ spec:
               number: 8080
 ```
 
-The `timeout: 0s` setting is critical. By default, Istio applies a 15-second timeout to HTTP routes. For regular HTTP requests, that's usually fine. But WebSocket connections are meant to stay open for minutes, hours, or even days. Setting the timeout to `0s` disables it entirely for the WebSocket route.
+The `timeout: 0s` setting is useful when you have configured HTTP route timeouts elsewhere. Istio disables HTTP request timeouts by default, but Envoy's raw route timeout default is 15 seconds when it is not explicitly disabled. For regular HTTP requests, a request timeout is usually fine. But WebSocket connections are meant to stay open for minutes, hours, or even days. Setting the timeout to `0s` disables it entirely for the WebSocket route.
 
 ## Gateway Configuration for External WebSocket Access
 
@@ -145,7 +145,7 @@ Already covered above. Set to `0s` in your VirtualService.
 
 Envoy has an idle timeout that closes connections with no activity. For WebSocket connections that might be idle between messages, you need to increase this.
 
-Configure it through a mesh-level EnvoyFilter:
+Configure it through a workload-level EnvoyFilter:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -169,6 +169,7 @@ spec:
       patch:
         operation: MERGE
         value:
+          name: envoy.filters.network.http_connection_manager
           typed_config:
             "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
             stream_idle_timeout: 0s
@@ -193,6 +194,7 @@ spec:
       tcp:
         maxConnections: 1000
         connectTimeout: 10s
+        idleTimeout: 0s
         tcpKeepalive:
           time: 30s
           interval: 10s
@@ -204,6 +206,8 @@ spec:
 `maxRequestsPerConnection: 0` means unlimited requests per connection. This is appropriate for WebSocket because a single connection carries all messages.
 
 The `maxConnections` limit applies to WebSocket connections too. Each active WebSocket client is a separate TCP connection. If you have thousands of concurrent WebSocket clients, set this high enough.
+
+The `idleTimeout: 0s` setting disables the TCP idle timeout for upstream connections. Use a longer finite value instead if you want the proxy to clean up idle connections automatically.
 
 ## Load Balancing WebSocket Connections
 
@@ -279,7 +283,7 @@ kubectl exec -it <pod-name> -c istio-proxy -n default -- \
 
 Common patterns:
 
-- Connections drop after exactly 15 seconds: the route timeout is not set to `0s`
+- Connections drop after exactly 15 seconds: an Envoy route timeout is still active, so set the WebSocket route timeout to `0s`
 - Connections drop after a few minutes of inactivity: the stream idle timeout needs to be increased
 - Connections drop randomly under load: check `maxConnections` in the DestinationRule
 
