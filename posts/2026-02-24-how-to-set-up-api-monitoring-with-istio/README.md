@@ -19,35 +19,31 @@ When you install Istio with the default profile, every sidecar proxy automatical
 - `istio_request_bytes` - Request body sizes
 - `istio_response_bytes` - Response body sizes
 
-These metrics are exposed on port 15020 of each sidecar proxy and can be scraped by Prometheus.
+With Istio's default metrics merging, these metrics are available at `:15020/stats/prometheus`. Envoy-only sidecar metrics are also exposed on the `http-envoy-prom` port and can be scraped by Prometheus.
 
 ## Setting Up Prometheus
 
 If you installed Istio with `istioctl`, you can deploy the Prometheus addon:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.22/samples/addons/prometheus.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/prometheus.yaml
 ```
 
-For production setups, you will want a proper Prometheus installation. Here is a ServiceMonitor that scrapes Istio sidecars:
+For production setups, you will want a proper Prometheus installation. Here is a PodMonitor that scrapes the Envoy telemetry port exposed by Istio sidecars:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
+kind: PodMonitor
 metadata:
   name: istio-proxy-metrics
   namespace: monitoring
 spec:
-  selector:
-    matchExpressions:
-    - key: istio-prometheus-ignore
-      operator: DoesNotExist
   namespaceSelector:
     any: true
-  jobLabel: istio-mesh
-  endpoints:
+  selector: {}
+  podMetricsEndpoints:
   - path: /stats/prometheus
-    targetPort: 15020
+    port: http-envoy-prom
     interval: 15s
 ```
 
@@ -87,7 +83,7 @@ histogram_quantile(0.50,
 )
 ```
 
-Request rate by HTTP method and path:
+Request rate by protocol and response code:
 
 ```promql
 sum(rate(istio_requests_total{destination_service_name="my-api"}[5m])) by (request_protocol, response_code)
@@ -98,7 +94,7 @@ sum(rate(istio_requests_total{destination_service_name="my-api"}[5m])) by (reque
 Deploy Grafana with the Istio addon:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.22/samples/addons/grafana.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/grafana.yaml
 ```
 
 Istio ships with several pre-built dashboards. Access Grafana through port-forwarding:
@@ -113,7 +109,7 @@ The most useful built-in dashboards are:
 - **Istio Service Dashboard** - detailed view of a single service
 - **Istio Workload Dashboard** - per-pod metrics
 
-For a custom API monitoring dashboard, create a dashboard JSON and load it via ConfigMap:
+For a custom API monitoring dashboard in a Grafana setup that watches dashboard ConfigMaps, create a dashboard JSON and load it via ConfigMap:
 
 ```yaml
 apiVersion: v1
@@ -271,8 +267,8 @@ Define your SLO targets and track them:
 You do not always need a dashboard. Sometimes a quick CLI check is enough:
 
 ```bash
-# Check the request stats for a specific pod
-istioctl dashboard envoy <pod-name>.default
+# Open the proxy admin dashboard for a specific pod
+istioctl dashboard proxy <pod-name>.default
 
 # Get a quick overview of mesh traffic
 istioctl x describe service my-api.default
