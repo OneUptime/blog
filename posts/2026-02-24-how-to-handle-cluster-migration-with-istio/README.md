@@ -28,7 +28,11 @@ istioctl install --context=new-cluster \
 Set up the east-west gateway on the new cluster:
 
 ```bash
-kubectl apply -f samples/multicluster/expose-services.yaml --context=new-cluster
+samples/multicluster/gen-eastwest-gateway.sh \
+  --network network-new | \
+  istioctl install --context=new-cluster -y -f -
+
+kubectl apply -n istio-system -f samples/multicluster/expose-services.yaml --context=new-cluster
 ```
 
 Exchange remote secrets between clusters:
@@ -88,6 +92,10 @@ spec:
           to:
             "us-east-1/*": 100
             "us-west-2/*": 0
+        - from: "us-west-2/*"
+          to:
+            "us-east-1/*": 100
+            "us-west-2/*": 0
       simple: ROUND_ROBIN
     outlierDetection:
       consecutive5xxErrors: 5
@@ -121,6 +129,10 @@ spec:
           to:
             "us-east-1/*": 95
             "us-west-2/*": 5
+        - from: "us-west-2/*"
+          to:
+            "us-east-1/*": 95
+            "us-west-2/*": 5
       simple: ROUND_ROBIN
     outlierDetection:
       consecutive5xxErrors: 5
@@ -133,15 +145,7 @@ Monitor error rates and latency for the new cluster's endpoints. If everything l
 
 ## Using Subsets for More Control
 
-If both clusters run the same version of the service, you can use pod labels to create subsets that correspond to clusters:
-
-```bash
-# Label pods in old cluster
-kubectl label pods -l app=myapp migration-target=old -n myapp --context=old-cluster
-
-# Label pods in new cluster
-kubectl label pods -l app=myapp migration-target=new -n myapp --context=new-cluster
-```
+If both clusters run the same version of the service, you can use Istio's built-in cluster label to create subsets that correspond to clusters.
 
 Then use VirtualService with weights:
 
@@ -156,10 +160,10 @@ spec:
   subsets:
   - name: old-cluster
     labels:
-      migration-target: old
+      topology.istio.io/cluster: old-cluster
   - name: new-cluster
     labels:
-      migration-target: new
+      topology.istio.io/cluster: new-cluster
 ---
 apiVersion: networking.istio.io/v1
 kind: VirtualService
@@ -233,11 +237,11 @@ Before decommissioning the old cluster, run thorough validation:
 istioctl proxy-config endpoints deploy/frontend -n myapp --context=old-cluster | grep myapp
 
 # Monitor error rates
-kubectl exec deploy/sleep -c sleep --context=old-cluster -- \
+kubectl exec deploy/sleep -n myapp -c sleep --context=old-cluster -- \
   sh -c 'for i in $(seq 1 100); do curl -s -o /dev/null -w "%{http_code}\n" myapp.myapp:8080/health; done' | sort | uniq -c
 
-# Check cross-cluster latency
-istioctl proxy-config log deploy/frontend --level connection:info -n myapp --context=old-cluster
+# Inspect endpoint locality metadata
+istioctl proxy-config endpoints deploy/frontend -n myapp --context=old-cluster -o json | grep '"locality"'
 ```
 
 Run your integration tests pointing at the new cluster to make sure everything works.
