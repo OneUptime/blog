@@ -41,7 +41,9 @@ data:
 
     connectors:
       spanmetrics:
+        namespace: traces.spanmetrics
         histogram:
+          unit: s
           explicit:
             buckets: [5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 2s, 5s, 10s]
         dimensions:
@@ -49,7 +51,7 @@ data:
           - name: http.status_code
           - name: upstream_cluster
           - name: response_flags
-        dimensions_cache_size: 10000
+        aggregation_cardinality_limit: 10000
         aggregation_temporality: AGGREGATION_TEMPORALITY_CUMULATIVE
 
     processors:
@@ -123,7 +125,7 @@ spec:
         - alert: EndpointHighLatency
           expr: |
             histogram_quantile(0.99,
-              sum(rate(traces_spanmetrics_duration_bucket{
+              sum(rate(traces_spanmetrics_duration_seconds_bucket{
                 http_method="POST",
                 span_kind="SPAN_KIND_SERVER"
               }[5m])) by (le, service_name)
@@ -171,6 +173,11 @@ metrics_generator:
         - http.method
         - http.status_code
         - http.route
+
+overrides:
+  defaults:
+    metrics_generator:
+      processors: [service-graphs, span-metrics]
 ```
 
 Then alert on the generated metrics:
@@ -192,9 +199,9 @@ groups:
           summary: "High error rate between {{ $labels.client }} and {{ $labels.server }}"
 ```
 
-## Approach 3: Jaeger Alerts via Prometheus
+## Approach 3: Jaeger Alerts via Alertmanager
 
-If you're using Jaeger, you can query its API periodically and create custom metrics:
+If you're using Jaeger, you can query its API periodically and send alerts to Alertmanager:
 
 ```yaml
 apiVersion: batch/v1
@@ -210,19 +217,17 @@ spec:
         spec:
           containers:
             - name: checker
-              image: curlimages/curl:8.5.0
+              image: python:3.12-alpine
               command:
                 - /bin/sh
                 - -c
                 - |
                   # Check for recent error traces
-                  ERRORS=$(curl -s "http://jaeger-query:16686/api/traces?service=payment-service&tags=error%3Dtrue&limit=10&lookback=5m" | python3 -c "import json,sys; d=json.load(sys.stdin); print(len(d.get('data',[])))")
+                  ERRORS=$(python3 -c "import json,urllib.parse,urllib.request; params=urllib.parse.urlencode({'service':'payment-service','tags':json.dumps({'error':'true'}),'limit':'10','lookback':'5m'}); d=json.load(urllib.request.urlopen('http://jaeger-query:16686/api/traces?' + params)); print(len(d.get('data',[])))")
 
                   if [ "$ERRORS" -gt "5" ]; then
                     # Send alert to alertmanager or webhook
-                    curl -X POST http://alertmanager:9093/api/v1/alerts \
-                      -H "Content-Type: application/json" \
-                      -d "[{\"labels\":{\"alertname\":\"HighErrorTraces\",\"service\":\"payment-service\",\"severity\":\"warning\"},\"annotations\":{\"summary\":\"$ERRORS error traces in last 5 minutes\"}}]"
+                    ERRORS="$ERRORS" python3 -c "import json,os,urllib.request; errors=os.environ['ERRORS']; payload=json.dumps([{'labels':{'alertname':'HighErrorTraces','service':'payment-service','severity':'warning'},'annotations':{'summary':f'{errors} error traces in last 5 minutes'}}]).encode(); req=urllib.request.Request('http://alertmanager:9093/api/v2/alerts',data=payload,headers={'Content-Type':'application/json'},method='POST'); urllib.request.urlopen(req).read()"
                   fi
           restartPolicy: OnFailure
 ```
@@ -236,42 +241,34 @@ If you're using Apache SkyWalking with Istio, it has built-in alerting that work
 rules:
   # Alert on service response time
   service_resp_time_rule:
-    metrics-name: service_resp_time
-    op: ">"
-    threshold: 1000
+    expression: sum(service_resp_time > 1000) >= 3
     period: 5
-    count: 3
     message: "Response time above 1s for 3 consecutive checks"
 
   # Alert on service success rate
   service_sla_rule:
-    metrics-name: service_sla
-    op: "<"
-    threshold: 9000
+    expression: sum((service_sla / 100) < 90) >= 5
     period: 5
-    count: 5
     message: "Success rate below 90% for 5 consecutive checks"
 
   # Alert on specific endpoint latency
   endpoint_resp_time_rule:
-    metrics-name: endpoint_resp_time
-    op: ">"
-    threshold: 2000
+    expression: sum(endpoint_resp_time > 2000) >= 3
     period: 5
-    count: 3
     message: "Endpoint response time above 2s"
 
   # Alert on relation metrics (service-to-service)
   service_relation_resp_time_rule:
-    metrics-name: service_relation_client_resp_time
-    op: ">"
-    threshold: 3000
+    expression: sum(service_relation_client_resp_time > 3000) >= 3
     period: 5
-    count: 3
     message: "Cross-service call latency above 3s"
 
-webhooks:
-  - http://alertmanager.observability:9093/api/v1/alerts
+hooks:
+  webhook:
+    default:
+      is-default: true
+      urls:
+        - http://alertmanager-webhook-adapter.observability:8080/skywalking
 ```
 
 ## Setting Up Notification Channels
@@ -283,12 +280,12 @@ Route trace-based alerts through Alertmanager:
 route:
   receiver: default
   routes:
-    - match:
-        alertname: DownstreamServiceErrors
+    - matchers:
+        - alertname="DownstreamServiceErrors"
       receiver: on-call-team
       continue: true
-    - match:
-        alertname: CircuitBreakerTriggered
+    - matchers:
+        - alertname="CircuitBreakerTriggered"
       receiver: platform-team
       group_wait: 30s
       repeat_interval: 5m
@@ -300,7 +297,7 @@ receivers:
         send_resolved: true
   - name: on-call-team
     pagerduty_configs:
-      - service_key: '<pagerduty-key>'
+      - routing_key: '<pagerduty-integration-key>'
   - name: platform-team
     slack_configs:
       - channel: '#platform-alerts'
@@ -340,6 +337,7 @@ done
 # Check Prometheus for span metrics
 kubectl port-forward svc/prometheus -n observability 9090:9090
 # Query: traces_spanmetrics_calls_total{status_code="STATUS_CODE_ERROR"}
+# Query: traces_spanmetrics_duration_seconds_bucket
 
 # Check active alerts
 curl -s http://localhost:9090/api/v1/alerts | python3 -m json.tool
