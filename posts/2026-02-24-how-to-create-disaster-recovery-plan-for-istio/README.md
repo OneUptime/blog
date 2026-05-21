@@ -39,12 +39,14 @@ A complete Istio DR plan has these sections:
 # istio-backup-checklist.sh
 
 echo "=== Istio Backup Checklist ==="
+mkdir -p backup
 
 # IstioOperator or Helm values
 
 echo "1. Installation configuration:"
-kubectl get istiooperators -n istio-system -o yaml > backup/istiooperator.yaml
-echo "   Saved istiooperator.yaml"
+kubectl get istiooperators -n istio-system -o yaml > backup/istiooperator.yaml 2>/dev/null && \
+  echo "   Saved istiooperator.yaml" || \
+  echo "   No in-cluster IstioOperator found; back up your istioctl manifest or Helm values from source control"
 
 # All CRD instances
 echo "2. Istio resources:"
@@ -67,6 +69,7 @@ kubectl get configmap -n istio-system -o yaml > backup/configmaps.yaml
 # Namespace labels
 echo "5. Namespace labels:"
 kubectl get namespaces -l istio-injection=enabled -o yaml > backup/namespaces.yaml
+kubectl get namespaces -l istio.io/rev -o yaml > backup/namespaces-revisions.yaml
 
 echo "=== Backup Complete ==="
 ```
@@ -124,7 +127,7 @@ kubectl wait --for=condition=ready pod -l app=istiod -n istio-system --timeout=3
 istioctl proxy-status
 ```
 
-**Scenario C: Certificate Expiration**
+**Scenario C: Certificate Expiration or Rotation**
 
 ```bash
 # Severity: Critical
@@ -134,7 +137,7 @@ istioctl proxy-status
 kubectl get secret cacerts -n istio-system -o jsonpath='{.data.ca-cert\.pem}' | \
   base64 -d | openssl x509 -enddate -noout
 
-# 2. If expired, restore from backup
+# 2. If expired, replace with renewed CA files or restore a still-valid backup
 kubectl delete secret cacerts -n istio-system
 kubectl create secret generic cacerts -n istio-system \
   --from-file=backup/certs/ca-cert.pem \
@@ -145,8 +148,11 @@ kubectl create secret generic cacerts -n istio-system \
 # 3. Restart control plane
 kubectl rollout restart deployment/istiod -n istio-system
 
-# 4. Restart all workloads to get new certificates
-for ns in $(kubectl get ns -l istio-injection=enabled -o jsonpath='{.items[*].metadata.name}'); do
+# 4. Restart injected workloads to pick up the new trust root if the root changed
+for ns in $(
+  { kubectl get ns -l istio-injection=enabled -o jsonpath='{.items[*].metadata.name}'; echo; kubectl get ns -l istio.io/rev -o jsonpath='{.items[*].metadata.name}'; } |
+  tr ' ' '\n' | sort -u
+); do
   kubectl rollout restart deployment -n "$ns"
 done
 ```
@@ -240,9 +246,11 @@ groups:
           summary: "Istiod is unavailable"
 
       - alert: IstioCertExpiringIn7Days
-        expr: (istio_build_tag != "unknown") and (certmanager_certificate_expiration_timestamp_seconds - time() < 604800)
+        expr: citadel_server_root_cert_expiry_seconds < 604800
         labels:
           severity: warning
+        annotations:
+          summary: "Istio root certificate expires in less than 7 days"
 
       - alert: IstioConfigSyncFailure
         expr: rate(pilot_total_xds_rejects[5m]) > 0
@@ -254,6 +262,7 @@ groups:
         expr: (time() - istio_backup_last_success_timestamp) > 172800
         labels:
           severity: warning
+        annotations:
           summary: "Istio backup hasn't succeeded in 48 hours"
 ```
 
