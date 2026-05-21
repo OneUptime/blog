@@ -73,6 +73,7 @@ This tells Istio what part of the Envoy configuration you want to modify:
 - `HTTP_ROUTE` - Individual route within a virtual host
 - `CLUSTER` - Upstream cluster configuration
 - `EXTENSION_CONFIG` - Extension configuration
+- `LISTENER_FILTER` - Listener filters such as TLS inspector or original destination
 
 ## The match Field
 
@@ -105,7 +106,7 @@ The `operation` field supports:
 - `INSERT_BEFORE` - Insert before a matched filter
 - `INSERT_AFTER` - Insert after a matched filter
 - `INSERT_FIRST` - Insert at the beginning of the filter chain
-- `REPLACE` - Replace the matched configuration entirely
+- `REPLACE` - Replace a matched HTTP or network filter entirely
 
 ## Example: Custom Access Log Format
 
@@ -155,7 +156,7 @@ spec:
 
 ## Example: Adding Connection Timeout Settings
 
-Sometimes you need to tune connection parameters that Istio does not expose through DestinationRule:
+Sometimes you need to combine a standard connection timeout with lower-level cluster fields that Istio does not expose through DestinationRule:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -225,7 +226,7 @@ spec:
 
 ## Example: Configuring Circuit Breaker Thresholds
 
-If you need circuit breaker settings beyond what DestinationRule offers:
+DestinationRule covers the common circuit breaker settings. If you need to patch Envoy's cluster-level circuit breaker configuration directly, you can use EnvoyFilter:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -286,7 +287,7 @@ istioctl analyze -n default
 
 ## Best Practices
 
-1. **Always use workloadSelector** - Applying EnvoyFilters mesh-wide is dangerous. Scope them to specific workloads.
+1. **Scope the filter deliberately** - Applying EnvoyFilters mesh-wide is dangerous. Use `workloadSelector` or `targetRefs` when you can scope them to specific workloads.
 
 2. **Document everything** - Future you will not remember why you added that obscure Envoy setting. Add comments and link to relevant documentation.
 
