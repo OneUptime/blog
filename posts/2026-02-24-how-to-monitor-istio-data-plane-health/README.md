@@ -27,7 +27,7 @@ The first thing to verify is whether all your sidecars are receiving configurati
 istioctl proxy-status
 ```
 
-This gives you a table showing each proxy and its sync status for clusters, listeners, endpoints, and routes. You want to see `SYNCED` across the board. If you see `STALE` or `NOT SENT`, that proxy is not getting configuration updates and traffic routing may be broken.
+This gives you a table showing each proxy and its sync status for clusters, listeners, endpoints, and routes. You want to see `SYNCED` across the board. If you see `STALE`, Istiod has sent an update but has not received an acknowledgement from Envoy, and traffic routing may be broken. `NOT SENT` usually means Istiod has not sent that xDS resource type to the proxy.
 
 You can also check a specific proxy in detail:
 
@@ -37,7 +37,7 @@ istioctl proxy-status deploy/my-app -n my-namespace
 
 ## Envoy Health Check Metrics
 
-Each Envoy proxy exposes a rich set of metrics on port 15090. You can scrape these with Prometheus. The key health-related metrics to track are:
+Istio exposes merged workload metrics on `:15020/stats/prometheus` by default, and Envoy-only metrics on `:15090/stats/prometheus`. You can scrape these with Prometheus. For Envoy-only stats, Istio's documented scrape job discovers ports whose names end with `-envoy-prom`:
 
 ```yaml
 # Prometheus scrape config for Istio sidecars
@@ -46,15 +46,11 @@ Each Envoy proxy exposes a rich set of metrics on port 15090. You can scrape the
   metrics_path: /stats/prometheus
   kubernetes_sd_configs:
   - role: pod
+
   relabel_configs:
-  - source_labels: [__meta_kubernetes_pod_container_name]
+  - source_labels: [__meta_kubernetes_pod_container_port_name]
     action: keep
-    regex: istio-proxy
-  - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
-    action: replace
-    regex: ([^:]+)(?::\d+)?;(\d+)
-    replacement: $1:15090
-    target_label: __address__
+    regex: '.*-envoy-prom'
 ```
 
 ## Key Metrics to Watch
@@ -90,43 +86,33 @@ Sudden latency spikes often indicate proxy issues, resource contention, or confi
 Keep an eye on the number of active connections per proxy:
 
 ```promql
-envoy_server_total_connections{pod=~"my-app.*"}
+sum(envoy_listener_downstream_cx_active{pod=~"my-app.*"}) by (pod)
 ```
+
+If this Envoy statistic is not present in your Prometheus data, enable the matching listener connection stats with `proxyStatsMatcher` before building alerts on it.
 
 If connections are climbing without dropping, you might have a connection leak or a downstream service that is not closing connections properly.
 
 ### Proxy Convergence Time
 
-This metric tells you how long it takes for configuration changes to propagate to all proxies:
+This control plane metric tells you how long it takes for configuration changes to propagate to proxies:
 
 ```promql
-envoy_server_hot_restart_epoch
+histogram_quantile(0.99,
+  sum(rate(pilot_proxy_convergence_time_bucket[5m])) by (le)
+)
 ```
 
-Combined with `pilot_proxy_convergence_time` from the control plane, you get a full picture of how quickly your mesh responds to changes.
+Combined with `istioctl proxy-status`, you get a full picture of how quickly your mesh responds to changes.
 
 ## Setting Up a Data Plane Health Dashboard
 
 A good Grafana dashboard for data plane health should include panels for the following:
 
-```yaml
-# Example Grafana dashboard panel - Success Rate
-apiVersion: 1
-panels:
-  - title: "Data Plane Success Rate"
-    type: gauge
-    targets:
-      - expr: |
-          sum(rate(istio_requests_total{response_code!~"5.*",reporter="destination"}[5m]))
-          /
-          sum(rate(istio_requests_total{reporter="destination"}[5m]))
-    thresholds:
-      - value: 0.99
-        color: green
-      - value: 0.95
-        color: yellow
-      - value: 0
-        color: red
+```promql
+sum(rate(istio_requests_total{response_code!~"5.*",reporter="destination"}[5m]))
+/
+sum(rate(istio_requests_total{reporter="destination"}[5m]))
 ```
 
 Other panels to include:
@@ -152,7 +138,7 @@ if [ "$STALE_PROXIES" -gt 0 ]; then
 fi
 
 # Check for proxies not ready
-NOT_READY=$(kubectl get pods --all-namespaces -l istio.io/rev -o json | \
+NOT_READY=$(kubectl get pods --all-namespaces -o json | \
   jq '[.items[] | select(.status.containerStatuses[]? | select(.name=="istio-proxy") | .ready==false)] | length')
 
 if [ "$NOT_READY" -gt 0 ]; then
@@ -193,16 +179,16 @@ spec:
     rules:
     - alert: IstioHighErrorRate
       expr: |
-        sum(rate(istio_requests_total{response_code=~"5.*",reporter="destination"}[5m])) by (destination_workload, namespace)
+        sum(rate(istio_requests_total{response_code=~"5.*",reporter="destination"}[5m])) by (destination_workload, destination_workload_namespace)
         /
-        sum(rate(istio_requests_total{reporter="destination"}[5m])) by (destination_workload, namespace)
+        sum(rate(istio_requests_total{reporter="destination"}[5m])) by (destination_workload, destination_workload_namespace)
         > 0.05
       for: 5m
       labels:
         severity: critical
       annotations:
         summary: "High error rate on {{ $labels.destination_workload }}"
-        description: "Error rate is {{ $value | humanizePercentage }} for {{ $labels.destination_workload }} in {{ $labels.namespace }}"
+        description: "Error rate is {{ $value | humanizePercentage }} for {{ $labels.destination_workload }} in {{ $labels.destination_workload_namespace }}"
     - alert: IstioProxyNotReady
       expr: |
         kube_pod_container_status_ready{container="istio-proxy"} == 0
