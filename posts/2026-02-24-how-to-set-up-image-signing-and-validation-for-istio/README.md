@@ -32,7 +32,7 @@ sequenceDiagram
     Cluster->>Cluster: Allow pod to run
 ```
 
-The Istio project signs images during their CI/CD process using Cosign's keyless signing with Sigstore's certificate transparency log (Rekor). This means there is a public, auditable record of every signature.
+The Istio project signs images during their release process using Cosign and publishes the verification key at `https://istio.io/misc/istio-key.pub`. This means there is a public, auditable record of every signature.
 
 ## Verifying Istio Images Manually
 
@@ -54,28 +54,16 @@ Verify an Istio image:
 ```bash
 # Verify the istiod image
 cosign verify \
-  --certificate-identity-regexp='https://github.com/istio/istio/.github/workflows/' \
-  --certificate-oidc-issuer='https://token.actions.githubusercontent.com' \
+  --key https://istio.io/misc/istio-key.pub \
   docker.io/istio/pilot:1.20.3
 
 # Verify the proxy image
 cosign verify \
-  --certificate-identity-regexp='https://github.com/istio/istio/.github/workflows/' \
-  --certificate-oidc-issuer='https://token.actions.githubusercontent.com' \
+  --key https://istio.io/misc/istio-key.pub \
   docker.io/istio/proxyv2:1.20.3
 ```
 
-A successful verification shows the signature details and the certificate chain. If the image has been tampered with, the verification fails.
-
-You can also verify the Software Bill of Materials (SBOM):
-
-```bash
-cosign verify-attestation \
-  --type spdx \
-  --certificate-identity-regexp='https://github.com/istio/istio/.github/workflows/' \
-  --certificate-oidc-issuer='https://token.actions.githubusercontent.com' \
-  docker.io/istio/pilot:1.20.3
-```
+A successful verification shows the signature details and confirms the signature was verified against Istio's public key. If the image has been tampered with, the verification fails.
 
 ## Automating Verification in CI/CD
 
@@ -106,8 +94,7 @@ jobs:
           for image in $IMAGES; do
             echo "Verifying istio/$image:$VERSION"
             cosign verify \
-              --certificate-identity-regexp='https://github.com/istio/istio/.github/workflows/' \
-              --certificate-oidc-issuer='https://token.actions.githubusercontent.com' \
+              --key https://istio.io/misc/istio-key.pub \
               "docker.io/istio/$image:$VERSION"
           done
 
@@ -130,51 +117,41 @@ kubectl create -f https://github.com/kyverno/kyverno/releases/latest/download/in
 Create a policy that requires Istio images to be signed:
 
 ```yaml
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+apiVersion: policies.kyverno.io/v1
+kind: ImageValidatingPolicy
 metadata:
   name: verify-istio-images
 spec:
-  validationFailureAction: Enforce
-  background: false
-  webhookTimeoutSeconds: 30
-  rules:
-    - name: verify-istiod
-      match:
-        any:
-          - resources:
-              kinds:
-                - Pod
-              namespaces:
-                - istio-system
-      verifyImages:
-        - imageReferences:
-            - "docker.io/istio/pilot:*"
-            - "docker.io/istio/proxyv2:*"
-            - "docker.io/istio/install-cni:*"
-          attestors:
-            - entries:
-                - keyless:
-                    issuer: "https://token.actions.githubusercontent.com"
-                    subject: "https://github.com/istio/istio/.github/workflows/*"
-                    rekor:
-                      url: "https://rekor.sigstore.dev"
-    - name: verify-sidecar-images
-      match:
-        any:
-          - resources:
-              kinds:
-                - Pod
-      verifyImages:
-        - imageReferences:
-            - "docker.io/istio/proxyv2:*"
-          attestors:
-            - entries:
-                - keyless:
-                    issuer: "https://token.actions.githubusercontent.com"
-                    subject: "https://github.com/istio/istio/.github/workflows/*"
-                    rekor:
-                      url: "https://rekor.sigstore.dev"
+  validationActions: [Deny]
+  webhookConfiguration:
+    timeoutSeconds: 30
+  failurePolicy: Fail
+  evaluation:
+    background:
+      enabled: false
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["pods"]
+  matchImageReferences:
+    - glob: "docker.io/istio/pilot:*"
+    - glob: "docker.io/istio/proxyv2:*"
+    - glob: "docker.io/istio/install-cni:*"
+  attestors:
+    - name: istio
+      cosign:
+        key:
+          data: |
+            -----BEGIN PUBLIC KEY-----
+            MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEej5bv2n2vOecKineYGWwq1WaQa7C
+            7HTEVN+BkNI4D1+66ufzn1eGTrbaC9dceJqCAkhp37vMxhWOrGufpBUokg==
+            -----END PUBLIC KEY-----
+  validations:
+    - expression: >-
+        images.containers.map(image, verifyImageSignatures(image, [attestors.istio])).all(result, result > 0)
+      message: "failed to verify Istio image signature"
 ```
 
 This policy prevents any pod from running an unsigned Istio proxy image. If someone tries to deploy a tampered image, the admission controller blocks it.
@@ -194,23 +171,27 @@ Configure a validator for Istio images:
 
 ```yaml
 # values.yaml for Connaisseur
-validators:
-  - name: istio-cosign
-    type: cosign
-    trustRoots:
-      - name: default
-        key: |
-          -----BEGIN PUBLIC KEY-----
-          ... (Istio's public signing key) ...
-          -----END PUBLIC KEY-----
-policy:
-  - pattern: "docker.io/istio/*"
-    validator: istio-cosign
+application:
+  validators:
+    - name: istio-cosign
+      type: cosign
+      trustRoots:
+        - name: istio-key
+          key: |
+            -----BEGIN PUBLIC KEY-----
+            MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEej5bv2n2vOecKineYGWwq1WaQa7C
+            7HTEVN+BkNI4D1+66ufzn1eGTrbaC9dceJqCAkhp37vMxhWOrGufpBUokg==
+            -----END PUBLIC KEY-----
+  policy:
+    - pattern: "docker.io/istio/*"
+      validator: istio-cosign
+      with:
+        trustRoot: istio-key
 ```
 
 ## Using OPA Gatekeeper for Image Validation
 
-If you already use OPA Gatekeeper, add a constraint template for image signatures:
+If you already use OPA Gatekeeper, add a constraint template to ensure Istio images come from the official registry. Gatekeeper does not verify Cosign signatures by itself; use Kyverno, Connaisseur, or another signature-aware admission controller for signature verification.
 
 ```yaml
 apiVersion: templates.gatekeeper.sh/v1
@@ -225,21 +206,43 @@ spec:
       validation:
         openAPIV3Schema:
           type: object
-          properties:
-            allowedRegistries:
-              type: array
-              items:
-                type: string
   targets:
     - target: admission.k8s.gatekeeper.sh
       rego: |
         package k8simageverification
-        violation[{"msg": msg}] {
+
+        containers[container] {
           container := input.review.object.spec.containers[_]
-          startswith(container.image, "istio/")
+        }
+
+        containers[container] {
+          container := input.review.object.spec.initContainers[_]
+        }
+
+        is_istio_image(image) {
+          startswith(image, "istio/")
+        }
+
+        is_istio_image(image) {
+          contains(image, "/istio/")
+        }
+
+        violation[{"msg": msg}] {
+          container := containers[_]
+          is_istio_image(container.image)
           not startswith(container.image, "docker.io/istio/")
           msg := sprintf("Istio image %v must come from docker.io/istio/", [container.image])
         }
+---
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sImageVerification
+metadata:
+  name: require-official-istio-images
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
 ```
 
 ## Signing Your Own Custom Istio Images
@@ -261,28 +264,32 @@ cosign sign --key cosign.key myregistry.example.com/istio/pilot:1.20.3-custom
 Then update your admission policy to verify against your key:
 
 ```yaml
-verifyImages:
-  - imageReferences:
-      - "myregistry.example.com/istio/*"
-    attestors:
-      - entries:
-          - keys:
-              publicKeys: |
-                -----BEGIN PUBLIC KEY-----
-                ... (your public key) ...
-                -----END PUBLIC KEY-----
+attestors:
+  - name: custom-istio
+    cosign:
+      key:
+        data: |
+          -----BEGIN PUBLIC KEY-----
+          ... (your public key) ...
+          -----END PUBLIC KEY-----
 ```
 
 ## Verifying Istio Helm Charts
 
-If you install Istio via Helm, verify the chart provenance:
+If you install Istio via Helm, check the chart digest from the official Istio chart repository index. Istio does not publish Helm provenance files for this chart version, so `helm verify` will not work unless a `.prov` file exists.
 
 ```bash
-# Download the chart with provenance file
-helm pull istio/istiod --version 1.20.3 --prov
+# Add the official Istio chart repository
+helm repo add istio https://istio-release.storage.googleapis.com/charts
+helm repo update
 
-# Verify the provenance
-helm verify istiod-1.20.3.tgz
+# Download the chart
+helm pull istio/istiod --version 1.20.3
+
+# Compare with the digest in the official repository index
+sha256sum istiod-1.20.3.tgz
+curl -s -o istio-index.yaml https://istio-release.storage.googleapis.com/charts/index.yaml
+awk '/^  istiod:/{in_chart=1} in_chart && /version: 1.20.3/{found=1} found && /digest:/{print $2; exit}' istio-index.yaml
 ```
 
 ## Monitoring Image Verification
@@ -319,11 +326,6 @@ image: docker.io/istio/pilot@sha256:abc123...
 3. **Use a private registry** - Mirror Istio images to your own registry and scan them
 4. **Enable admission control** - Prevent unsigned images from running
 5. **Audit image pulls** - Monitor which images are pulled and from where
-6. **Review SBOMs** - Check the software bill of materials for known vulnerable dependencies
-
-```bash
-# Get the SBOM for an Istio image
-cosign download sbom docker.io/istio/pilot:1.20.3 > pilot-sbom.json
-```
+6. **Review SBOMs when available** - Check the software bill of materials for known vulnerable dependencies
 
 Image signing and verification add a critical layer of trust to your Istio deployment. Without it, you are trusting that the images you pull are what they claim to be, which is an assumption that supply chain attacks directly target. Set up verification early, enforce it through admission control, and make it part of your standard deployment process.
