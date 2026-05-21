@@ -15,21 +15,21 @@ k0s is a Kubernetes distribution from Mirantis that aims to be the simplest way 
 You need:
 
 - A Linux machine with at least 4GB RAM and 2 CPU cores
-- k0s installed (version 1.28+)
+- k0s installed (version 1.32+ for current supported Istio releases)
 - `kubectl` access to the k0s cluster
-- `istioctl` installed (version 1.20+)
+- `istioctl` installed (version 1.30+ or another supported Istio release compatible with your Kubernetes version)
 
 ## Installing k0s
 
 If you do not have k0s running yet, the installation is straightforward:
 
 ```bash
-curl -sSLf https://get.k0s.sh | sudo sh
+curl --proto '=https' --tlsv1.2 -sSf https://get.k0s.sh | sudo sh
 sudo k0s install controller --single
 sudo k0s start
 ```
 
-The `--single` flag creates a single-node cluster where the controller also runs workloads. For production, you would separate controllers and workers.
+The `--single` flag creates a single-node cluster where the controller also runs workloads, and it disables features needed to extend that cluster later. If you want the option to add worker nodes in the future, use `sudo k0s install controller --enable-worker --no-taints` instead. For production, you would separate controllers and workers.
 
 Get the kubeconfig:
 
@@ -52,7 +52,7 @@ k0s has a few characteristics that matter for Istio:
 - It uses kube-router for network policies by default (or you can choose Calico)
 - It does not include a default ingress controller, which is actually nice because there is nothing to conflict with Istio
 - The control plane components run as a single process, not as pods
-- It supports both containerd and Docker as container runtimes
+- It comes bundled with containerd by default and can use other CRI-compatible runtimes, including Docker through cri-dockerd
 
 The fact that k0s does not bundle an ingress controller means you do not have the Traefik conflict that plagues k3s installations.
 
@@ -127,13 +127,13 @@ istioctl verify-install
 
 k0s uses kube-router for network policies by default. Istio's sidecar proxy uses iptables rules to intercept traffic, and these need to coexist with kube-router's rules.
 
-Check if network policies are enabled in your k0s configuration:
+Check if network policies are enabled in the k0s configuration you installed with. If you installed k0s without a custom config file, the defaults apply; you can generate those defaults for comparison:
 
 ```bash
-sudo k0s config create > k0s-config.yaml
+sudo k0s config create > k0s-defaults.yaml
 ```
 
-Look at the `network` section in the generated config. If you are using kube-router with network policies, make sure Istio's init containers can set up their iptables rules. Usually this works without changes, but if you see connection issues, check the init container logs:
+Look at the `network` section in your active config file or in the generated defaults. If you are using kube-router with network policies, make sure Istio's init containers can set up their iptables rules. Usually this works without changes, but if you see connection issues, check the init container logs:
 
 ```bash
 kubectl logs <pod-name> -c istio-init
@@ -244,10 +244,10 @@ You should get a JSON response from httpbin.
 Install the standard Istio add-ons:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/prometheus.yaml
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/kiali.yaml
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/grafana.yaml
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/jaeger.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/prometheus.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/kiali.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/grafana.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/jaeger.yaml
 ```
 
 Access the dashboards:
@@ -289,13 +289,13 @@ kubectl scale deployment istiod -n istio-system --replicas=2
 When a new Istio version comes out, the upgrade process on k0s follows the standard canary upgrade path:
 
 ```bash
-istioctl install --set revision=1-21 -f istio-k0s.yaml -y
+istioctl install --set revision=1-30 -f istio-k0s.yaml -y
 ```
 
 Then relabel namespaces to use the new revision:
 
 ```bash
-kubectl label namespace default istio.io/rev=1-21 --overwrite
+kubectl label namespace default istio.io/rev=1-30 --overwrite
 kubectl label namespace default istio-injection-
 ```
 
