@@ -22,7 +22,7 @@ Recording rules solve this by:
 
 ## Setting Up Recording Rules
 
-Recording rules are defined in Prometheus configuration. With a Kubernetes-based Prometheus, you typically use a ConfigMap:
+Recording rules are defined in Prometheus configuration and loaded with the `rule_files` setting. With a Kubernetes-based Prometheus, you typically store the rule file in a ConfigMap and mount it into the Prometheus pod:
 
 ```yaml
 apiVersion: v1
@@ -197,17 +197,17 @@ Pre-compute control plane metrics:
       - name: istio-control-plane-records
         interval: 30s
         rules:
-          - record: istio:pilot:push_convergence:p99:5m
+          - record: istio:pilot:xds_push_time:p99:5m
             expr: |
               histogram_quantile(0.99,
-                sum(rate(pilot_proxy_convergence_time_bucket[5m])) by (le)
+                sum(rate(pilot_xds_push_time_bucket[5m])) by (le)
               )
 
           - record: istio:pilot:xds_push_rate:5m
             expr: sum(rate(pilot_xds_pushes[5m])) by (type)
 
-          - record: istio:pilot:xds_push_error_rate:5m
-            expr: sum(rate(pilot_xds_push_errors[5m])) by (type)
+          - record: istio:pilot:xds_internal_error_rate:5m
+            expr: sum(rate(pilot_total_xds_internal_errors[5m]))
 ```
 
 ## Using Recording Rules in Dashboards
