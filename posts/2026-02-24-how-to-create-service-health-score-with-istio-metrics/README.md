@@ -14,7 +14,7 @@ When you are running dozens or hundreds of microservices, you need a quick way t
 
 A good health score is a weighted combination of the key signals that determine whether a service is healthy. The standard signals from Istio are:
 
-1. **Success rate** - What percentage of requests succeed (2xx/3xx vs 5xx)
+1. **Success rate** - What percentage of requests succeed (non-5xx vs 5xx)
 2. **Latency** - How fast the service responds (P95 or P99)
 3. **Error trend** - Is the error rate getting worse or staying stable
 4. **Throughput** - Is the service receiving the expected amount of traffic
