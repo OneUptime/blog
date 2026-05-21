@@ -12,7 +12,7 @@ When something goes wrong in production, you often start with one of two things:
 
 ## How Trace Context Flows Through Istio
 
-Every request in an Istio mesh can carry trace context headers. When a request enters the mesh, the ingress gateway or the first sidecar proxy generates trace headers if they don't already exist. These headers travel with the request through every service hop.
+Every request in an Istio mesh can carry trace context headers. Istio proxies can automatically generate spans, but applications still need to forward the trace context headers from incoming requests to any outgoing requests they make. When that propagation is in place, these headers travel with the request through every service hop.
 
 The key headers for trace correlation are:
 
@@ -121,8 +121,6 @@ scrape_configs:
       - labels:
           method:
           response_code:
-      - output:
-          source: trace_id
 ```
 
 Then in Grafana, configure the Loki data source with a derived field:
@@ -131,7 +129,7 @@ Then in Grafana, configure the Loki data source with a derived field:
 2. Scroll to Derived Fields
 3. Add a new derived field:
    - Name: `TraceID`
-   - Regex: `"trace_id":"([a-f0-9]+)"`
+   - Regex: `"trace_id"\s*:\s*"([a-f0-9]+)"`
    - Internal Link: Enable and select your Tempo/Jaeger data source
    - URL: `${__value.raw}`
 
@@ -213,18 +211,28 @@ app.use((req, res, next) => {
 
 ## Using OpenTelemetry for Unified Correlation
 
-If you're using the OpenTelemetry Collector, you can route both access logs and traces through the same pipeline:
+If you're using the OpenTelemetry Collector, you can route both access logs and traces through the same Collector:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
   meshConfig:
+    enableTracing: true
     extensionProviders:
-      - name: otel
+      - name: otel-logs
         envoyOtelAls:
           service: otel-collector.observability.svc.cluster.local
           port: 4317
+      - name: otel-tracing
+        opentelemetry:
+          service: otel-collector.observability.svc.cluster.local
+          port: 4317
+    defaultProviders:
+      accessLogging:
+        - otel-logs
+      tracing:
+        - otel-tracing
 ```
 
 The OpenTelemetry Collector can then process both signals and ensure they share the same trace context:
@@ -243,8 +251,8 @@ processors:
     send_batch_size: 1000
 
 exporters:
-  loki:
-    endpoint: http://loki:3100/loki/api/v1/push
+  otlphttp/loki:
+    endpoint: http://loki:3100/otlp
   otlp/tempo:
     endpoint: tempo:4317
     tls:
@@ -255,7 +263,7 @@ service:
     logs:
       receivers: [otlp]
       processors: [batch]
-      exporters: [loki]
+      exporters: [otlphttp/loki]
     traces:
       receivers: [otlp]
       processors: [batch]
