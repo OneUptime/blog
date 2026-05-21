@@ -93,7 +93,9 @@ In the JSON output, look for the `routes` array under the `virtualHosts` section
     "headers": [
       {
         "name": "end-user",
-        "exactMatch": "jason"
+        "stringMatch": {
+          "exact": "jason"
+        }
       }
     ]
   },
@@ -118,7 +120,7 @@ kubectl get virtualservice -n bookinfo
 istioctl proxy-config cluster productpage-v1-6b746f74dc-9rlmh.bookinfo | grep reviews
 ```
 
-A VirtualService with `hosts: ["reviews"]` will only work if the proxy has a cluster for the reviews service. If the service does not exist or the proxy cannot see it (due to Sidecar resource restrictions), the VirtualService is silently ignored.
+A VirtualService with `hosts: ["reviews"]` will only work for that proxy if `reviews` resolves to a service registry host that the proxy can see. If the service does not exist or the proxy cannot see it (for example, due to Sidecar resource restrictions), the route may be missing or traffic to the destination may be dropped.
 
 ### Route Order Matters
 
@@ -133,7 +135,7 @@ Check the order of routes in the output. They should have specific matches (head
 
 ### Multiple VirtualServices for the Same Host
 
-If you have multiple VirtualServices targeting the same host, Istio merges them. But the merge order can be unpredictable:
+If you have multiple VirtualServices targeting the same host, the behavior depends on where they apply. Istio supports merging VirtualServices attached to ingress gateways, but overlapping VirtualServices attached to the mesh gateway can conflict, and ordering should not be relied on:
 
 ```bash
 kubectl get virtualservice -n bookinfo -l "app=reviews"
@@ -236,7 +238,7 @@ outbound|9080|v2|reviews.bookinfo.svc.cluster.local: 10
 
 ## Comparing Routes on Client vs Server
 
-Remember that routes are configured on the client side (outbound) and the server side (inbound). When debugging, check both:
+In sidecar mode, routes are configured on the client side (outbound) and the server side (inbound). When debugging, check both:
 
 ```bash
 # Client side routes (outbound)
@@ -246,7 +248,7 @@ istioctl proxy-config route productpage-v1-abc.bookinfo --name 9080
 istioctl proxy-config route reviews-v1-def.bookinfo --name "inbound|9080||"
 ```
 
-VirtualService rules are applied on the client side. AuthorizationPolicy is applied on the server side. Make sure you are checking the right proxy.
+For normal sidecar-to-sidecar service routing, VirtualService rules are applied on the client side. AuthorizationPolicy is enforced on the destination workload side. Make sure you are checking the right proxy.
 
 ## Filtering Route Output
 
