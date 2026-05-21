@@ -14,7 +14,7 @@ The setup works by having Keycloak issue JWTs that Istio validates on every requ
 
 ## Deploying Keycloak
 
-Deploy Keycloak in your cluster. For production, you want it backed by a proper database, but for getting started, the embedded H2 database works fine:
+Deploy Keycloak in your cluster. For production, you want it backed by a proper database and an optimized image started with `start`. The manifest below uses PostgreSQL and `start-dev` for a lab setup; if you omit the database settings for a quick local test, Keycloak uses its development database:
 
 ```yaml
 apiVersion: apps/v1
@@ -34,18 +34,20 @@ spec:
     spec:
       containers:
         - name: keycloak
-          image: quay.io/keycloak/keycloak:23.0
+          image: quay.io/keycloak/keycloak:26.6.2
           args: ["start-dev"]
           env:
-            - name: KEYCLOAK_ADMIN
+            - name: KC_BOOTSTRAP_ADMIN_USERNAME
               value: admin
-            - name: KEYCLOAK_ADMIN_PASSWORD
+            - name: KC_BOOTSTRAP_ADMIN_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: keycloak-admin
                   key: password
-            - name: KC_PROXY
-              value: edge
+            - name: KC_HTTP_ENABLED
+              value: "true"
+            - name: KC_PROXY_HEADERS
+              value: xforwarded
             - name: KC_HOSTNAME
               value: keycloak.mycompany.com
             - name: KC_DB
@@ -321,7 +323,7 @@ kubectl logs -n istio-system deploy/istiod | grep -i "jwks\|jwt"
 Inspect a JWT to see what claims are included:
 
 ```bash
-echo $TOKEN | cut -d'.' -f2 | base64 -d 2>/dev/null | jq .
+jq -R 'split(".")[1] | @base64d | fromjson' <<< "$TOKEN"
 ```
 
 If Istio rejects tokens, check that the issuer in the token matches exactly what you configured in the RequestAuthentication resource. Also verify that the Keycloak JWKS endpoint is reachable from the istiod pod.
