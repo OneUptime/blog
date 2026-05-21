@@ -112,7 +112,7 @@ spec:
 
 ## Multi-Domain TLS with SNI
 
-When you serve multiple domains, each needs its own certificate. Istio handles this through SNI (Server Name Indication) routing:
+When you serve multiple domains with separate certificates, Istio handles this through SNI (Server Name Indication) routing:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -185,7 +185,18 @@ Manual certificate management does not scale. Use cert-manager to automatically 
 Install cert-manager:
 
 ```bash
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/latest/download/cert-manager.yaml
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml
+```
+
+For HTTP-01 challenges through Istio, make sure an IngressClass named `istio` exists:
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: IngressClass
+metadata:
+  name: istio
+spec:
+  controller: istio.io/ingress-controller
 ```
 
 Create a ClusterIssuer:
@@ -204,7 +215,7 @@ spec:
     solvers:
       - http01:
           ingress:
-            class: istio
+            ingressClassName: istio
 ```
 
 Create a Certificate resource:
@@ -303,7 +314,7 @@ Look for listeners on port 443 with the expected filter chains.
 kubectl get secret my-app-tls -n istio-system -o yaml
 ```
 
-The secret should have `tls.crt` and `tls.key` fields for TLS secrets, or `cert`, `key`, and optionally `cacert` for generic secrets.
+The secret should have `tls.crt` and `tls.key` fields for TLS secrets. For mutual TLS, include `ca.crt` in the same TLS secret, use `caCertCredentialName`, or use a separate `<secret>-cacert` secret. Generic secrets can also use `cert`, `key`, and optionally `cacert`.
 
 **SNI routing not working**: Check that each server block has a unique name and the hosts match exactly what clients send as the SNI:
 
@@ -317,7 +328,7 @@ kubectl logs istio-ingressgateway-xxxx -n istio-system | grep -i "sni\|tls\|secr
 cat server-cert.pem intermediate-cert.pem > fullchain.pem
 ```
 
-**Hot reloading certificates**: Istio supports hot reloading of TLS certificates. When you update the Kubernetes secret, the gateway picks up the new certificate without restart. This works automatically with `credentialName`. If using file-mounted secrets, you need the SDS agent to detect the change.
+**Hot reloading certificates**: Istio supports hot reloading of TLS certificates. When you update the Kubernetes secret, the gateway picks up the new certificate without restart. This works automatically with `credentialName`, which uses SDS. If using file-mounted certificate paths instead, plan for a gateway restart or a separate reload mechanism.
 
 ```bash
 # Update a certificate
