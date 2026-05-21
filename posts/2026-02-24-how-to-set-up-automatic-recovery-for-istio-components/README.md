@@ -26,12 +26,18 @@ metadata:
   namespace: istio-system
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: istiod
   strategy:
     type: RollingUpdate
     rollingUpdate:
       maxSurge: 1
       maxUnavailable: 0
   template:
+    metadata:
+      labels:
+        app: istiod
     spec:
       restartPolicy: Always
       containers:
@@ -86,7 +92,7 @@ spec:
           averageUtilization: 80
 ```
 
-When a large deployment event triggers a storm of configuration pushes, the HPA adds more istiod replicas to handle the load. After the storm passes, it scales back down.
+When a large deployment event triggers a storm of configuration pushes, the HPA adds more istiod replicas to handle the load. Resource utilization targets require CPU and memory requests on the istiod container, so make sure those are set in the Deployment. After the storm passes, it scales back down.
 
 ## Automatic Sidecar Recovery
 
@@ -121,8 +127,7 @@ spec:
                 - -c
                 - |
                   # Find pods with high sidecar restart counts
-                  kubectl get pods --all-namespaces -o json | \
-                    jq -r '.items[] | select(.status.containerStatuses[]? | select(.name=="istio-proxy" and .restartCount > 10)) | .metadata.namespace + "/" + .metadata.name' | \
+                  kubectl get pods --all-namespaces -o go-template='{{range .items}}{{ $ns := .metadata.namespace }}{{ $name := .metadata.name }}{{range .status.containerStatuses}}{{if and (eq .name "istio-proxy") (gt .restartCount 10)}}{{$ns}}/{{$name}}{{"\n"}}{{end}}{{end}}{{end}}' | \
                     while read pod; do
                       ns=$(echo $pod | cut -d/ -f1)
                       name=$(echo $pod | cut -d/ -f2)
@@ -153,14 +158,15 @@ spec:
           serviceAccountName: istio-sync-checker
           containers:
             - name: checker
-              image: istio/istioctl:latest
+              image: your-registry/istioctl-kubectl:latest
               command:
                 - /bin/sh
                 - -c
                 - |
+                  # Use an image that contains both istioctl and kubectl.
                   # Check proxy sync status
-                  STALE_COUNT=$(istioctl proxy-status 2>/dev/null | grep -c "STALE" || echo "0")
-                  NOT_SENT_COUNT=$(istioctl proxy-status 2>/dev/null | grep -c "NOT SENT" || echo "0")
+                  STALE_COUNT=$(istioctl proxy-status 2>/dev/null | grep -c "STALE" || true)
+                  NOT_SENT_COUNT=$(istioctl proxy-status 2>/dev/null | grep -c "NOT SENT" || true)
 
                   TOTAL_ISSUES=$((STALE_COUNT + NOT_SENT_COUNT))
 
@@ -192,16 +198,28 @@ spec:
           serviceAccountName: cert-checker
           containers:
             - name: checker
-              image: istio/istioctl:latest
+              image: your-registry/kubectl-openssl:latest
               command:
                 - /bin/sh
                 - -c
                 - |
-                  # Check root CA cert expiry
-                  ROOT_CERT=$(kubectl get secret istio-ca-secret -n istio-system -o jsonpath='{.data.ca-cert\.pem}' 2>/dev/null)
+                  # Use an image that contains kubectl, openssl, and GNU or BSD date.
+                  # Check root CA cert expiry. Plugged-in CAs use the cacerts secret;
+                  # self-signed Istio CAs use istio-ca-secret.
+                  ROOT_CERT=$(kubectl get secret cacerts -n istio-system -o jsonpath='{.data.root-cert\.pem}' 2>/dev/null)
+                  if [ -z "$ROOT_CERT" ]; then
+                    ROOT_CERT=$(kubectl get secret istio-ca-secret -n istio-system -o jsonpath='{.data.root-cert\.pem}' 2>/dev/null)
+                  fi
+                  if [ -z "$ROOT_CERT" ]; then
+                    ROOT_CERT=$(kubectl get secret istio-ca-secret -n istio-system -o jsonpath='{.data.ca-cert\.pem}' 2>/dev/null)
+                  fi
                   if [ -n "$ROOT_CERT" ]; then
                     EXPIRY=$(echo "$ROOT_CERT" | base64 -d | openssl x509 -noout -enddate 2>/dev/null | cut -d= -f2)
                     EXPIRY_EPOCH=$(date -d "$EXPIRY" +%s 2>/dev/null || date -j -f "%b %d %H:%M:%S %Y %Z" "$EXPIRY" +%s 2>/dev/null)
+                    if [ -z "$EXPIRY_EPOCH" ]; then
+                      echo "Could not parse certificate expiry: $EXPIRY"
+                      exit 1
+                    fi
                     NOW_EPOCH=$(date +%s)
                     DAYS_LEFT=$(( (EXPIRY_EPOCH - NOW_EPOCH) / 86400 ))
 
@@ -232,11 +250,12 @@ spec:
           serviceAccountName: gateway-checker
           containers:
             - name: checker
-              image: curlimages/curl:latest
+              image: your-registry/kubectl-curl:latest
               command:
                 - /bin/sh
                 - -c
                 - |
+                  # Use an image that contains both kubectl and curl.
                   # Check each gateway pod directly
                   GATEWAY_IPS=$(kubectl get pods -l app=istio-ingressgateway -n istio-system -o jsonpath='{.items[*].status.podIP}')
 
@@ -287,7 +306,7 @@ spec:
                 if [ "${READY:-0}" -lt "${DESIRED:-3}" ]; then
                   echo "$(date): istiod has $READY/$DESIRED replicas ready"
 
-                  # If no replicas are ready for more than 5 minutes, force recreate
+                  # If no replicas are ready, force recreate
                   if [ "${READY:-0}" -eq 0 ]; then
                     echo "$(date): No istiod replicas ready. Forcing recreation."
                     kubectl rollout restart deployment/istiod -n istio-system
@@ -316,8 +335,8 @@ Combine Prometheus alerting with a webhook-based recovery system. When Prometheu
 route:
   receiver: 'recovery-webhook'
   routes:
-    - match:
-        alertname: IstiodUnresponsive
+    - matchers:
+        - alertname="IstiodUnresponsive"
       receiver: 'recovery-webhook'
 
 receivers:
