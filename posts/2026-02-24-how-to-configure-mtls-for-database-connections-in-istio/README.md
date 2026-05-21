@@ -23,12 +23,12 @@ sequenceDiagram
     participant DS as DB Sidecar
     participant DB as Database
 
-    App->>AS: Plain TCP (localhost)
+    App->>AS: Plain TCP (intercepted)
     AS->>DS: mTLS encrypted TCP
     DS->>DB: Plain TCP (localhost)
 ```
 
-The application connects to the database using a normal, unencrypted connection (since it is going to localhost through the sidecar). The sidecars handle the encryption between them. The database does not need any TLS configuration.
+The application connects to the database using a normal, unencrypted connection to the Kubernetes Service. The client-side sidecar intercepts the outbound connection, the sidecars handle the encryption between pods, and the database-side sidecar forwards plain TCP to the database container. The database does not need any TLS configuration for in-mesh traffic.
 
 ## PostgreSQL with Istio mTLS
 
@@ -83,7 +83,7 @@ spec:
     targetPort: 5432
 ```
 
-Important: The port name must start with `tcp-` for Istio to recognize it as a TCP protocol. Without this prefix, Istio might try to parse the traffic as HTTP and break things.
+Important: The port name should start with `tcp-` for Istio to treat it explicitly as opaque TCP. You can also set `appProtocol: tcp` on Kubernetes 1.18 or later. This avoids automatic protocol detection, which is especially important for server-first database protocols.
 
 ### Apply mTLS Policy
 
@@ -168,20 +168,13 @@ spec:
 
 MySQL uses a server-initiated protocol where the server sends a greeting packet before the client sends anything. Istio handles this correctly for TCP protocol, but you need to make sure the port is declared as TCP (not HTTP).
 
-If you are using MySQL's native TLS on top of Istio mTLS, you will get double encryption. This is wasteful. Disable MySQL's built-in TLS when using Istio:
-
-```yaml
-# MySQL configuration
-env:
-- name: MYSQL_SSL
-  value: "0"
-```
-
-And in your application connection string:
+If your MySQL client is also configured to use MySQL's native TLS on top of Istio mTLS, you will get double encryption. This is usually wasteful for in-mesh traffic. Configure your client or driver to use an unencrypted MySQL connection when relying on Istio mTLS:
 
 ```text
-mysql://myuser:password@mysql.database.svc.cluster.local:3306/mydb?tls=skip-verify
+jdbc:mysql://mysql.database.svc.cluster.local:3306/mydb?sslMode=DISABLED
 ```
+
+Other MySQL drivers use different connection string options, but the key point is the same: do not set a client option such as `tls=skip-verify`, because that still enables application-level TLS.
 
 ## MongoDB with Istio mTLS
 
@@ -316,7 +309,7 @@ The `ISTIO_MUTUAL` mode explicitly tells the sidecar to use Istio-managed mTLS c
 If your database is outside the cluster (RDS, Cloud SQL, Azure SQL), Istio mTLS does not apply because there is no sidecar on the database side. In this case:
 
 1. Use a ServiceEntry to register the external database
-2. Use a DestinationRule with `mode: SIMPLE` for standard TLS (not mTLS)
+2. Use the database driver's native TLS settings for encryption to the external database
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -333,20 +326,9 @@ spec:
     protocol: TCP
   resolution: DNS
   location: MESH_EXTERNAL
----
-apiVersion: networking.istio.io/v1
-kind: DestinationRule
-metadata:
-  name: external-postgres-dr
-  namespace: database
-spec:
-  host: mydb.abc123.us-east-1.rds.amazonaws.com
-  trafficPolicy:
-    tls:
-      mode: SIMPLE
 ```
 
-The `SIMPLE` mode initiates a standard TLS connection (server authentication only, no client certificate).
+Do not add `tls.mode: SIMPLE` for PostgreSQL, MySQL, MongoDB, or Redis unless you know the upstream service expects ordinary TLS immediately after the TCP connection opens. Many database protocols negotiate TLS inside the database protocol, so the database client or driver should usually handle TLS for external databases.
 
 ## Verifying Database mTLS
 
@@ -382,6 +364,6 @@ metadata:
 
 **Connection pool exhaustion**: Database connections through the sidecar use the Envoy connection pool. If your application creates many database connections, you might hit Envoy's default limits. Increase them with a DestinationRule.
 
-**Protocol detection issues**: If Istio cannot detect the protocol, it might treat database traffic as HTTP and break it. Always name your database ports with the `tcp-` prefix.
+**Protocol detection issues**: Server-first protocols such as MySQL are incompatible with automatic protocol detection. Always name your database ports with the `tcp-` prefix, or set `appProtocol: tcp`.
 
 Using Istio mTLS for database connections is one of the quickest wins for encrypting data in transit. No certificate distribution, no application code changes, no database TLS configuration. The sidecars handle everything.
