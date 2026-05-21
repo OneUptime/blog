@@ -10,7 +10,7 @@ Description: Implement session affinity in Istio using consistent hash load bala
 
 Session affinity (also called sticky sessions) means routing all requests from the same user or session to the same backend pod. This is necessary when your application stores session state in memory, maintains per-user caches, or uses WebSocket connections that need to stay on the same server.
 
-Istio handles session affinity through consistent hash load balancing in the DestinationRule. You pick a hash key that identifies the session, and Envoy ensures all requests with the same key value go to the same pod.
+Istio handles session affinity through consistent hash load balancing in the DestinationRule. You pick a hash key that identifies the session, and Envoy routes requests with the same key value to the same pod while the endpoint set stays stable.
 
 ## Choosing the Right Hash Key
 
@@ -78,7 +78,7 @@ Every request must include the `x-user-id` header:
 curl -H "x-user-id: user-42" http://api-service:8080/data
 ```
 
-All requests from user-42 go to the same pod. If a request comes in without the header, Envoy treats the hash key as empty and all such requests may end up on the same pod - which is not what you want. Make sure your clients always send the header.
+All requests from user-42 go to the same pod. If a request comes in without the header, Envoy cannot produce a hash from that policy and falls back to normal load balancing - which is not what you want. Make sure your clients always send the header.
 
 ## Source IP-Based Affinity
 
@@ -97,7 +97,7 @@ spec:
         useSourceIp: true
 ```
 
-This works well for service-to-service communication within the mesh because each pod has a unique IP. But for external traffic coming through an ingress gateway, all requests might appear to come from the gateway's IP, defeating the purpose.
+This works well for service-to-service communication within the mesh because each pod has a unique IP. But for external traffic coming through an ingress gateway, the source IP might be a shared NAT or external load balancer IP unless client IP preservation is configured, defeating the purpose.
 
 ## Full Working Example with Testing
 
@@ -121,6 +121,9 @@ spec:
       containers:
       - name: web
         image: nginx:latest
+        command: ["/bin/sh", "-c"]
+        args:
+        - echo "$HOSTNAME" > /usr/share/nginx/html/index.html && nginx -g 'daemon off;'
         ports:
         - containerPort: 80
 ---
@@ -168,17 +171,17 @@ kubectl run curl-test --image=curlimages/curl -it --rm -- sh
 First request to get the cookie:
 
 ```bash
-curl -v http://web-app/
+curl -c cookies.txt -v http://web-app/
 ```
 
-Note the `Set-Cookie` header value. Then test affinity:
+Note the `Set-Cookie` header value and the pod name returned in the response body. Then test affinity with the generated cookie:
 
 ```bash
 # All of these should hit the same pod
 
-curl -b "SERVER_ID=abc123def" http://web-app/
-curl -b "SERVER_ID=abc123def" http://web-app/
-curl -b "SERVER_ID=abc123def" http://web-app/
+curl -b cookies.txt http://web-app/
+curl -b cookies.txt http://web-app/
+curl -b cookies.txt http://web-app/
 ```
 
 ## Handling Failover
@@ -244,17 +247,17 @@ spec:
           ttl: 3600s
 ```
 
-The gateway proxy handles both the VirtualService routing and the DestinationRule affinity. Cookies get set in responses passing through the gateway and are sent back by the browser on subsequent requests.
+The gateway proxy handles both the VirtualService routing and the DestinationRule affinity, as long as the DestinationRule is visible on Istio's lookup path for the destination service. Cookies get set in responses passing through the gateway and are sent back by the browser on subsequent requests.
 
 ## Monitoring Session Distribution
 
-To see how sessions are distributed across pods:
+To see which endpoints are available for the cluster:
 
 ```bash
 istioctl proxy-config endpoint <client-pod> --cluster "outbound|80||web-app.default.svc.cluster.local"
 ```
 
-This shows all endpoints and their health status. If you see one endpoint getting significantly more traffic than others, you might have a hot-key problem where many sessions hash to the same position.
+This shows all endpoints and their health status. To see whether one endpoint is getting significantly more traffic than others, use Envoy access logs or Istio metrics such as `istio_requests_total` grouped by destination workload or pod. A large imbalance can indicate a hot-key problem where many sessions hash to the same position.
 
 ## Cleanup
 
