@@ -54,7 +54,7 @@ This enables locality-aware routing mesh-wide.
 Locality failover only works when Istio can detect unhealthy endpoints. Without outlier detection, Istio has no way to know when to fail over. You configure this through DestinationRule:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service-dr
@@ -98,11 +98,11 @@ spec:
           to: us-east-1
 ```
 
-This tells Istio that if endpoints in `us-east-1` are unhealthy, traffic should fail over to `us-west-2` (and vice versa). Without explicit failover rules, Istio uses a round-robin approach across non-local regions.
+This tells Istio that if endpoints in `us-east-1` are unhealthy, traffic should fail over to `us-west-2` (and vice versa). Without explicit failover rules, Istio can fail over to any available endpoint globally after closer priorities are exhausted.
 
 ## Weighted Distribution
 
-Instead of strict priority ordering, you can distribute traffic across localities with explicit weights:
+Instead of strict priority ordering, you can distribute traffic across localities with explicit weights. Use `distribute` instead of `failover`, because Istio only supports one locality load balancing policy at a time:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -135,7 +135,7 @@ This sends 80% of traffic to the local zone, 15% to the neighboring zone in the 
 You can also configure locality settings per service through DestinationRule instead of mesh-wide through MeshConfig:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: critical-service
@@ -172,20 +172,20 @@ Send test requests and check which endpoints receive traffic:
 ```bash
 for i in $(seq 1 20); do
   kubectl exec deploy/sleep -c sleep -n sample -- \
-    curl -sS http://my-service.default:8080/headers | grep "x-envoy-upstream"
+    curl -sS http://my-service.default:8080/zone
 done
 ```
 
-The `x-envoy-upstream-service-time` header and the upstream host address in access logs tell you which endpoint handled each request.
+Use an application response that includes the pod, zone, or version, or inspect Envoy access logs for the upstream host address to see which endpoint handled each request. The `x-envoy-upstream-service-time` response header reports upstream request time, but it does not identify the endpoint.
 
 ## Testing Failover
 
-To test locality failover, simulate an unhealthy zone by scaling down the service in one zone or by deploying a version that returns 500 errors:
+To test locality failover, simulate an unhealthy zone by scaling down the deployment that runs in one zone or by deploying a version that returns 500 errors:
 
 ```bash
-# Scale down in zone us-east-1a
+# Scale down the deployment that runs in zone us-east-1a
 
-kubectl scale deployment my-service --replicas=0 -n default
+kubectl scale deployment my-service-us-east-1a --replicas=0 -n default
 
 # Watch traffic shift to the next zone
 for i in $(seq 1 20); do
@@ -197,7 +197,7 @@ done
 Then scale back up and verify traffic returns to the local zone:
 
 ```bash
-kubectl scale deployment my-service --replicas=3 -n default
+kubectl scale deployment my-service-us-east-1a --replicas=3 -n default
 ```
 
 ## Common Pitfalls
