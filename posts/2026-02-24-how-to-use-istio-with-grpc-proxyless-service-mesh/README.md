@@ -8,9 +8,9 @@ Description: How to use gRPC proxyless service mesh with Istio to get service me
 
 ---
 
-Istio's sidecar proxy model works well for most services, but gRPC applications have an alternative. gRPC has native support for the xDS protocol, which is the same protocol that Envoy uses to receive configuration from the Istio control plane. This means gRPC applications can talk directly to istiod and get service discovery, load balancing, and routing without needing a sidecar proxy at all.
+Istio's sidecar proxy model works well for most services, but gRPC applications have an alternative. gRPC has native support for the xDS protocol, which is the same protocol that Envoy uses to receive configuration from the Istio control plane. This means gRPC applications can talk directly to istiod and get service discovery, load balancing, and routing without needing an Envoy data-plane sidecar.
 
-This is called "proxyless gRPC" or "proxyless service mesh," and it eliminates the latency overhead and resource consumption of the sidecar for gRPC workloads.
+This is called "proxyless gRPC" or "proxyless service mesh," and it eliminates the latency overhead and resource consumption of the Envoy data-plane sidecar for gRPC workloads.
 
 ## How Proxyless gRPC Works
 
@@ -27,7 +27,7 @@ In proxyless mode:
 - Your gRPC app handles load balancing and routing internally
 - The request goes directly from your app to the destination
 
-No sidecar proxy is involved. The gRPC library itself acts as the data plane.
+No Envoy data-plane proxy is involved. The gRPC library itself acts as the data plane.
 
 ## Setting Up Proxyless gRPC
 
@@ -68,6 +68,7 @@ spec:
       annotations:
         inject.istio.io/templates: grpc-agent
         sidecar.istio.io/inject: "true"
+        proxy.istio.io/config: '{"holdApplicationUntilProxyStarts": true}'
     spec:
       containers:
       - name: grpc-server
@@ -81,6 +82,8 @@ spec:
 ```
 
 The `inject.istio.io/templates: grpc-agent` annotation tells Istio to inject a lightweight agent instead of the full Envoy sidecar. This agent generates the xDS bootstrap configuration and handles certificate management.
+
+For gRPC servers, `proxy.istio.io/config: '{"holdApplicationUntilProxyStarts": true}'` makes sure the in-pod xDS proxy and bootstrap file are ready before the server initializes.
 
 ### Step 3: Create the Service
 
@@ -111,7 +114,6 @@ package main
 import (
     "context"
     "log"
-    "os"
     "time"
 
     "google.golang.org/grpc"
@@ -125,7 +127,7 @@ func main() {
     // Use xds:/// scheme for proxyless service mesh
     target := "xds:///grpc-server.grpc-app.svc.cluster.local:50051"
 
-    conn, err := grpc.Dial(target,
+    conn, err := grpc.NewClient(target,
         grpc.WithTransportCredentials(insecure.NewCredentials()),
     )
     if err != nil {
@@ -150,15 +152,17 @@ For a Java gRPC client:
 
 ```java
 import io.grpc.ManagedChannel;
-import io.grpc.ManagedChannelBuilder;
+import io.grpc.Grpc;
+import io.grpc.InsecureChannelCredentials;
 import io.grpc.xds.XdsChannelCredentials;
 
 // Use xds:/// scheme
 String target = "xds:///grpc-server.grpc-app.svc.cluster.local:50051";
 
-ManagedChannel channel = ManagedChannelBuilder
-    .forTarget(target)
-    .usePlaintext()
+ManagedChannel channel = Grpc
+    .newChannelBuilder(
+        target,
+        XdsChannelCredentials.create(InsecureChannelCredentials.create()))
     .build();
 ```
 
@@ -248,11 +252,14 @@ spec:
 
 Proxyless gRPC supports mTLS through xDS credentials. The gRPC library manages certificates using the same Istio CA as the sidecar model.
 
-To enable mTLS in your Go client:
+In Istio's proxyless gRPC flow, mTLS requires explicit Istio security policy, such as `PeerAuthentication` in `STRICT` mode for the server and a `DestinationRule` with `ISTIO_MUTUAL` for the client-side traffic policy. Permissive mode and auto-mTLS are not supported for proxyless gRPC.
+
+To let a Go client use xDS-provided security configuration:
 
 ```go
 import (
     "google.golang.org/grpc"
+    "google.golang.org/grpc/credentials/insecure"
     "google.golang.org/grpc/credentials/xds"
     _ "google.golang.org/grpc/xds"
 )
@@ -264,7 +271,7 @@ if err != nil {
     log.Fatal(err)
 }
 
-conn, err := grpc.Dial(target, grpc.WithTransportCredentials(creds))
+conn, err := grpc.NewClient(target, grpc.WithTransportCredentials(creds))
 ```
 
 And in the server:
@@ -272,11 +279,12 @@ And in the server:
 ```go
 import (
     "google.golang.org/grpc"
-    "google.golang.org/grpc/credentials/xds"
+    "google.golang.org/grpc/credentials/insecure"
+    xdscreds "google.golang.org/grpc/credentials/xds"
     "google.golang.org/grpc/xds"
 )
 
-creds, err := xds.NewServerCredentials(xds.ServerOptions{
+creds, err := xdscreds.NewServerCredentials(xdscreds.ServerOptions{
     FallbackCreds: insecure.NewCredentials(),
 })
 if err != nil {
@@ -292,7 +300,7 @@ Some Istio features require the Envoy proxy and are not available in proxyless m
 
 - Fault injection
 - Request mirroring
-- Fine-grained retry configuration (basic retries work)
+- VirtualService retry and timeout policies
 - EnvoyFilter customizations
 - Wasm plugins
 - Access logging through Envoy
@@ -315,6 +323,7 @@ spec:
       annotations:
         inject.istio.io/templates: grpc-agent
         sidecar.istio.io/inject: "true"
+        proxy.istio.io/config: '{"holdApplicationUntilProxyStarts": true}'
 
 ---
 # Standard sidecar service
@@ -367,7 +376,7 @@ kubectl exec my-pod -c istio-proxy -- cat /etc/istio/proxy/grpc-bootstrap.json
 
 The main advantage of proxyless gRPC is reduced overhead:
 
-- No extra container per pod (just a lightweight agent for bootstrap)
+- No Envoy proxy container per pod (just a lightweight agent for bootstrap)
 - No traffic going through an additional proxy
 - Lower latency (one fewer network hop per direction)
 - Less CPU and memory usage per pod
