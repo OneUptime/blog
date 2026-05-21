@@ -21,7 +21,7 @@ First, you need a TLS certificate. For production, you'd get this from a Certifi
 ```bash
 # Generate a self-signed certificate
 
-openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+openssl req -x509 -noenc -days 365 -newkey rsa:2048 \
   -keyout tls.key -out tls.crt \
   -subj "/CN=app.example.com" \
   -addext "subjectAltName=DNS:app.example.com,DNS:www.example.com"
@@ -79,7 +79,7 @@ spec:
       port: 80
 ```
 
-After the gateway terminates TLS, it forwards the request as plaintext HTTP to `my-app`. Within the mesh, Istio's mTLS still encrypts traffic between sidecars, so traffic isn't actually unencrypted in transit.
+After the gateway terminates TLS, it forwards the request as plaintext HTTP to `my-app`. If `my-app` participates in the mesh and Istio mTLS is enabled, Istio can still encrypt traffic between the gateway proxy and the backend proxy, so traffic is not necessarily unencrypted in transit inside the cluster.
 
 ## HTTP to HTTPS Redirect
 
@@ -270,7 +270,7 @@ cert-manager creates the `app-tls-cert` Secret automatically and renews it befor
 If your TLS certificates are stored in a different namespace (common for centralized cert management), use a ReferenceGrant:
 
 ```yaml
-apiVersion: gateway.networking.k8s.io/v1beta1
+apiVersion: gateway.networking.k8s.io/v1
 kind: ReferenceGrant
 metadata:
   name: allow-cert-ref
