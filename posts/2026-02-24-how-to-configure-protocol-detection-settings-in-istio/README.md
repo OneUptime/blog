@@ -14,12 +14,12 @@ While protocol detection works in many cases, it's not foolproof. Misconfigured 
 
 ## How Protocol Detection Works
 
-When Envoy receives a new connection on a port without explicit protocol configuration, it uses its `FilterChainMatch` with `transportProtocol` and the HTTP inspector listener filter to detect the protocol:
+When Envoy receives a new connection on a port without explicit protocol configuration, it uses listener filters such as the HTTP inspector to detect the protocol and select a matching filter chain:
 
 1. Envoy reads the first few bytes of the connection (without consuming them)
 2. The HTTP inspector checks if the bytes match an HTTP request pattern
-3. If it matches, the HTTP filter chain is selected
-4. If it doesn't match within the timeout, the TCP filter chain is selected
+3. If it matches, the HTTP filter chain is selected using the detected application protocol
+4. If non-HTTP bytes are detected, or the timeout expires, the TCP filter chain is selected
 
 The detection happens at the listener level, before any filter chain processing. You can see this in the listener configuration:
 
@@ -47,13 +47,15 @@ spec:
     protocolDetectionTimeout: 100ms
 ```
 
-The default is `100ms` for outbound connections and `0ms` (disabled - infinite wait) for inbound connections on permissive mTLS.
+The default is `0s` (disabled - no timeout). The value must be either `0s` or at least `1ms`.
 
 A few things to consider about this timeout:
 
 - **Too short** - May misidentify slow clients as TCP when they're actually HTTP
-- **Too long** - Adds latency to TCP connections and breaks server-first protocols
+- **Too long** - Adds latency to server-first or idle connections before falling back to TCP
 - **Zero** - Disables the timeout entirely. Envoy waits indefinitely for client data. This breaks server-first protocols.
+
+Istio generally recommends explicit protocol selection instead of relying on timeout fallback.
 
 ## Configuring Per-Port Protocol
 
@@ -87,16 +89,15 @@ With explicit protocols, Envoy doesn't need to sniff the connection. It immediat
 Server-first protocols are the biggest problem for protocol detection. These protocols have the server send the initial data:
 
 - MySQL (sends greeting packet)
-- PostgreSQL (server sends authentication request)
 - SMTP (sends banner)
+- DNS
 - MongoDB (older wire protocol versions)
-- Redis (can be server-first in some configurations)
 
 When Envoy is doing protocol detection on an inbound connection for a server-first protocol, here's what happens:
 
 1. Client connects to the server through Envoy
 2. Envoy intercepts and waits for client data to detect the protocol
-3. The server is also waiting for client data (or trying to send its greeting)
+3. The server would send the first bytes, but Envoy has not selected the TCP filter chain yet
 4. Deadlock: neither side sends data because Envoy is in the middle waiting
 
 The fix is to explicitly declare these ports as TCP:
@@ -114,7 +115,7 @@ spec:
       appProtocol: tcp
 ```
 
-Or set the detection timeout to a non-zero value so Envoy gives up and falls through to TCP:
+You can set the detection timeout to a non-zero value so Envoy gives up and falls through to TCP:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -124,7 +125,7 @@ spec:
     protocolDetectionTimeout: 5000ms
 ```
 
-But naming the port is better because the timeout approach still adds 5 seconds of delay on every new connection.
+But naming the port is better because Istio does not recommend relying on timeout fallback, and this example can still add 5 seconds of delay to affected new connections.
 
 ## Protocol Detection for Permissive mTLS
 
