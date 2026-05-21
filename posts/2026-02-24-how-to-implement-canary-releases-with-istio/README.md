@@ -78,7 +78,8 @@ spec:
   selector:
     app: checkout-service
   ports:
-  - port: 8080
+  - name: http
+    port: 8080
     targetPort: 8080
 ```
 
@@ -87,7 +88,7 @@ spec:
 Define the stable and canary subsets:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: checkout-service-dr
@@ -108,7 +109,7 @@ spec:
 Begin by routing 5% of traffic to the canary:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: checkout-service-vs
@@ -143,24 +144,24 @@ This is the most important part. Watch the canary's metrics and compare them to 
 ```bash
 # Error rate for canary
 
-rate(istio_requests_total{destination_workload="checkout-service-canary",response_code=~"5.."}[5m])
+sum(rate(istio_requests_total{destination_workload="checkout-service-canary",response_code=~"5.."}[5m]))
 /
-rate(istio_requests_total{destination_workload="checkout-service-canary"}[5m])
+sum(rate(istio_requests_total{destination_workload="checkout-service-canary"}[5m]))
 
 # Error rate for stable
-rate(istio_requests_total{destination_workload="checkout-service-stable",response_code=~"5.."}[5m])
+sum(rate(istio_requests_total{destination_workload="checkout-service-stable",response_code=~"5.."}[5m]))
 /
-rate(istio_requests_total{destination_workload="checkout-service-stable"}[5m])
+sum(rate(istio_requests_total{destination_workload="checkout-service-stable"}[5m]))
 ```
 
 Compare the error rates, response times (p50, p95, p99), and throughput between the two versions:
 
 ```bash
 # P99 latency for canary
-histogram_quantile(0.99, rate(istio_request_duration_milliseconds_bucket{destination_workload="checkout-service-canary"}[5m]))
+histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{destination_workload="checkout-service-canary"}[5m])) by (le))
 
 # P99 latency for stable
-histogram_quantile(0.99, rate(istio_request_duration_milliseconds_bucket{destination_workload="checkout-service-stable"}[5m]))
+histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{destination_workload="checkout-service-stable"}[5m])) by (le))
 ```
 
 If the canary shows similar or better metrics, proceed to the next step.
@@ -268,11 +269,11 @@ Manually watching dashboards is tedious and error-prone. You can automate canary
 #!/bin/bash
 
 CANARY_ERROR_RATE=$(curl -s "http://prometheus:9090/api/v1/query" \
-  --data-urlencode 'query=rate(istio_requests_total{destination_workload="checkout-service-canary",response_code=~"5.."}[5m]) / rate(istio_requests_total{destination_workload="checkout-service-canary"}[5m])' \
+  --data-urlencode 'query=sum(rate(istio_requests_total{destination_workload="checkout-service-canary",response_code=~"5.."}[5m])) / sum(rate(istio_requests_total{destination_workload="checkout-service-canary"}[5m]))' \
   | jq -r '.data.result[0].value[1]')
 
 STABLE_ERROR_RATE=$(curl -s "http://prometheus:9090/api/v1/query" \
-  --data-urlencode 'query=rate(istio_requests_total{destination_workload="checkout-service-stable",response_code=~"5.."}[5m]) / rate(istio_requests_total{destination_workload="checkout-service-stable"}[5m])' \
+  --data-urlencode 'query=sum(rate(istio_requests_total{destination_workload="checkout-service-stable",response_code=~"5.."}[5m])) / sum(rate(istio_requests_total{destination_workload="checkout-service-stable"}[5m]))' \
   | jq -r '.data.result[0].value[1]')
 
 echo "Canary error rate: $CANARY_ERROR_RATE"
@@ -295,7 +296,7 @@ For production-grade automation, consider using Flagger, which integrates with I
 Sometimes you want specific users or testers to always hit the canary. Use header-based routing alongside weighted routing:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: checkout-service-vs
