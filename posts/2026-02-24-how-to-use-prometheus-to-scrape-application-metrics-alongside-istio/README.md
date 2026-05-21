@@ -12,7 +12,7 @@ Istio gives you great network-level metrics - request rates, latency, error rate
 
 ## The Challenge
 
-When you add an Istio sidecar to a pod, the sidecar intercepts all network traffic. This means Prometheus can't directly scrape your application's metrics endpoint on the pod's IP anymore - the request goes through Envoy first. Also, your pod now has two processes exposing Prometheus metrics: the application on its own port and the Istio proxy on port 15020.
+When you add an Istio sidecar to a pod, the sidecar intercepts inbound application traffic. This means Prometheus scrapes to your application's metrics endpoint may go through Envoy first, and they need to match your mesh's mTLS policy. Also, your pod now has multiple Prometheus endpoints: the application on its own port, merged telemetry on the Istio agent port 15020, and Envoy telemetry on port 15090.
 
 You have two options:
 
@@ -44,7 +44,8 @@ spec:
         - name: my-app
           image: my-app:latest
           ports:
-            - containerPort: 8080
+            - name: http-metrics
+              containerPort: 8080
 ```
 
 The annotations tell Istio:
@@ -111,7 +112,7 @@ spec:
     - port: http-metrics
       path: /metrics
       interval: 30s
-      # Skip the Envoy sidecar container
+      # Drop pods that are not in the Running phase
       filterRunning: true
 ```
 
@@ -154,11 +155,6 @@ scrape_configs:
       - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
         action: keep
         regex: "true"
-      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
-        action: replace
-        target_label: __address__
-        regex: (.+)
-        replacement: ${1}
       - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
         action: replace
         regex: ([^:]+)(?::\d+)?;(\d+)
@@ -185,7 +181,7 @@ scrape_configs:
       - source_labels: [__address__]
         action: replace
         regex: ([^:]+)(?::\d+)?
-        replacement: ${1}:15020
+        replacement: ${1}:15090
         target_label: __address__
 ```
 
@@ -197,9 +193,11 @@ Sometimes your application uses ports that conflict with Istio's reserved ports.
 - 15001 - Envoy outbound
 - 15004 - Debug
 - 15006 - Envoy inbound
+- 15008 - HBONE mTLS tunnel
 - 15020 - Merged Prometheus metrics
 - 15021 - Health checks
-- 15090 - Envoy Prometheus (deprecated)
+- 15053 - DNS, if DNS capture is enabled
+- 15090 - Envoy Prometheus telemetry
 
 If your application exposes metrics on any of these ports, change your application's port.
 
@@ -211,7 +209,7 @@ When Prometheus scrapes your application directly (not through merging), it need
 
 Merging is the simplest solution because the metrics endpoint on port 15020 is always available in plain HTTP.
 
-### Solution 2: Exclude Prometheus Port from mTLS
+### Solution 2: Disable mTLS on the Metrics Port
 
 Add a port-level exception:
 
@@ -229,7 +227,7 @@ spec:
     mode: STRICT
   portLevelMtls:
     8080:
-      mode: PERMISSIVE
+      mode: DISABLE
 ```
 
 This allows plain HTTP on port 8080 (your metrics port) while keeping mTLS strict on all other ports.
@@ -252,7 +250,7 @@ spec:
         sidecar.istio.io/inject: "true"
 ```
 
-With a sidecar, Prometheus's scrape requests go through Envoy and automatically get mTLS. This is the most secure option but adds complexity to the Prometheus deployment.
+With a sidecar, Prometheus can use Istio-issued certificates to scrape targets with mTLS. For direct application scraping, configure Prometheus with those certificates rather than relying on transparent outbound interception, because Prometheus's direct endpoint scraping model does not fit well with sidecar traffic redirection. This is the most secure option but adds complexity to the Prometheus deployment.
 
 ## Correlating Application and Istio Metrics
 
@@ -290,9 +288,9 @@ For this to work, both metrics need a common label (like `pod` or a custom label
 
 Make correlation easier by adding common labels to both application and Istio metrics:
 
-```yaml
-# Application side: add labels to your metrics library
-# (This is language-specific - here's a Go example with prometheus/client_golang)
+```go
+// Application side: add labels to your metrics library
+// (This is language-specific - here's a Go example with prometheus/client_golang)
 counter := prometheus.NewCounterVec(
   prometheus.CounterOpts{
     Name: "my_app_requests_total",
@@ -330,7 +328,7 @@ spec:
 Check that the annotations are correct:
 
 ```bash
-kubectl get pod <pod-name> -o jsonpath='{.metadata.annotations}' | python3 -m json.tool
+kubectl get pod <pod-name> -o jsonpath='{.metadata.annotations.prometheus\.io/scrape}{"\n"}{.metadata.annotations.prometheus\.io/port}{"\n"}{.metadata.annotations.prometheus\.io/path}{"\n"}'
 ```
 
 Verify the application is actually serving metrics:
