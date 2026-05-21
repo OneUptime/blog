@@ -90,10 +90,10 @@ spec:
 
 In large clusters, each sidecar receives configuration for every service in the mesh. If you have hundreds of services, the sidecar spends significant CPU and memory tracking endpoints it never talks to.
 
-Check how many clusters your sidecar knows about:
+Check how many outbound clusters your sidecar knows about:
 
 ```bash
-# Count the number of clusters (endpoints) configured in a sidecar
+# Count the number of outbound clusters configured in a sidecar
 istioctl proxy-config clusters my-pod | wc -l
 ```
 
@@ -121,11 +121,11 @@ istioctl proxy-config clusters my-pod | wc -l
 # Should be significantly lower
 ```
 
-This optimization alone can reduce sidecar memory by 50% or more in large clusters.
+This optimization alone can significantly reduce sidecar memory in large clusters.
 
 ## Common Cause 3: Envoy Concurrency Too Low
 
-Envoy's worker thread count affects throughput. By default, Istio sets the concurrency to 2, which may not be enough for high-traffic services.
+Envoy's worker thread count affects throughput. In current Istio releases, if concurrency is unset, Istio automatically determines it from CPU limits. For high-traffic services, verify the actual value and tune it when the automatically selected value is not enough.
 
 ```yaml
 apiVersion: apps/v1
@@ -198,7 +198,7 @@ spec:
 
 ## Common Cause 5: Connection Pool Exhaustion
 
-Default connection pool settings can cause queuing under high load:
+Connection pool or circuit breaker settings that are too low can cause queuing under high load:
 
 ```bash
 # Check for pending requests
