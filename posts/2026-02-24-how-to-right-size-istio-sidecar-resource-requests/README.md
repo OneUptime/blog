@@ -8,7 +8,7 @@ Description: Step-by-step guide to measuring actual Istio sidecar resource consu
 
 ---
 
-Every pod in an Istio mesh runs an Envoy sidecar proxy. Each sidecar has CPU and memory requests that reserve cluster resources whether the sidecar actually uses them or not. If you leave the defaults in place, you are almost certainly over-provisioning. If you set them too low, you get OOM kills and CPU throttling that slow down your services.
+Every pod in an Istio sidecar mesh runs an Envoy sidecar proxy. Each sidecar has CPU and memory requests that reserve cluster resources whether the sidecar actually uses them or not. If you leave the defaults in place, you are almost certainly over-provisioning. If you set them too low, you get OOM kills and CPU throttling that slow down your services.
 
 Getting this right requires measuring actual usage and setting requests based on real data, not guesswork.
 
@@ -45,33 +45,35 @@ This shows current CPU and memory usage per container. Run it at different times
 CPU usage (95th percentile over the last 24 hours):
 
 ```promql
-quantile(0.95,
+quantile_over_time(0.95,
   rate(container_cpu_usage_seconds_total{
     container="istio-proxy",
     namespace="production"
-  }[5m])
-) by (pod)
+  }[5m])[24h:]
+)
 ```
 
 Memory usage (95th percentile):
 
 ```promql
-quantile(0.95,
+quantile_over_time(0.95,
   container_memory_working_set_bytes{
     container="istio-proxy",
     namespace="production"
-  }
-) by (pod)
+  }[24h]
+)
 ```
 
-Peak CPU usage across all sidecars in a namespace:
+Peak CPU usage across all sidecars in a namespace over the last 24 hours:
 
 ```promql
 max(
-  rate(container_cpu_usage_seconds_total{
-    container="istio-proxy",
-    namespace="production"
-  }[5m])
+  max_over_time(
+    rate(container_cpu_usage_seconds_total{
+      container="istio-proxy",
+      namespace="production"
+    }[5m])[24h:]
+  )
 )
 ```
 
@@ -155,7 +157,7 @@ spec:
 
 ## The Concurrency Factor
 
-Envoy's `concurrency` setting controls how many worker threads the proxy uses. Each thread consumes memory for its own set of connection pools and listeners. The default is 2.
+Envoy's `concurrency` setting controls how many worker threads the proxy uses. Each thread consumes memory for its own set of connection pools and listeners. If unset, Istio automatically determines this from the proxy CPU limit; older installs commonly used 2.
 
 For low-traffic services, set concurrency to 1:
 
@@ -176,7 +178,7 @@ annotations:
     concurrency: 1
 ```
 
-Dropping from 2 threads to 1 typically saves 15-25 MB of memory per sidecar. Across hundreds of pods, that adds up.
+Dropping a multi-threaded sidecar to 1 thread typically saves memory per sidecar. Across hundreds of pods, that adds up.
 
 ## Memory Impact of Configuration Size
 
@@ -194,7 +196,7 @@ kubectl exec -n production deploy/your-service -c istio-proxy -- \
 If the config dump is larger than 5 MB, you should use Sidecar resources to limit scope:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -254,13 +256,14 @@ spec:
         cpu: 500m
         memory: 512Mi
       controlledResources: ["cpu", "memory"]
+      controlledValues: RequestsOnly
     - containerName: my-service
       minAllowed:
         cpu: 50m
         memory: 64Mi
 ```
 
-Start with `updateMode: "Off"` to get recommendations without automatic changes. Review the VPA recommendations, then switch to `"Auto"` once you are comfortable with the values.
+Start with `updateMode: "Off"` to get recommendations without automatic changes. Review the VPA recommendations, then switch to `"Recreate"` or `"InPlaceOrRecreate"` once you are comfortable with the values.
 
 ## Monitoring After Changes
 
