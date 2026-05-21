@@ -69,7 +69,7 @@ spec:
         image: myapp/backend-api:latest
 ```
 
-When Istio issues certificates for mTLS, each workload gets a SPIFFE identity based on its service account: `cluster.local/ns/default/sa/backend-api`.
+When Istio issues certificates for mTLS, each workload gets a SPIFFE identity based on its service account: `spiffe://cluster.local/ns/default/sa/backend-api`. In authorization policies, you match that workload with the source principal format `cluster.local/ns/default/sa/backend-api`.
 
 ## Defining Roles Through Authorization Policies
 
@@ -205,9 +205,65 @@ spec:
         paths: ["/orders/*"]
 ```
 
+Backend API role - can manage products and orders:
+
+```yaml
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: backend-api-to-product-catalog
+  namespace: default
+spec:
+  selector:
+    matchLabels:
+      app: product-catalog
+  action: ALLOW
+  rules:
+  - from:
+    - source:
+        principals:
+        - "cluster.local/ns/default/sa/backend-api"
+---
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: backend-api-to-order-service
+  namespace: default
+spec:
+  selector:
+    matchLabels:
+      app: order-service
+  action: ALLOW
+  rules:
+  - from:
+    - source:
+        principals:
+        - "cluster.local/ns/default/sa/backend-api"
+```
+
 Order processor role - can read orders and call payment service:
 
 ```yaml
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: order-processor-to-orders
+  namespace: default
+spec:
+  selector:
+    matchLabels:
+      app: order-service
+  action: ALLOW
+  rules:
+  - from:
+    - source:
+        principals:
+        - "cluster.local/ns/default/sa/order-processor"
+    to:
+    - operation:
+        methods: ["GET"]
+        paths: ["/orders/*"]
+---
 apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
