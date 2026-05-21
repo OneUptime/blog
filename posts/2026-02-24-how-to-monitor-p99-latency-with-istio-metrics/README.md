@@ -16,7 +16,7 @@ But working with histograms in Prometheus takes some getting used to. This guide
 
 Istio uses the `istio_request_duration_milliseconds` histogram metric. This metric is collected by Envoy and exposed in Prometheus format. A histogram in Prometheus is not a single value - it is a set of counters for predefined buckets.
 
-The default buckets for Istio request duration are: 1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 30000, 60000, and 300000 milliseconds.
+The default buckets for Istio request duration are: 0.5, 1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 30000, 60000, 300000, 600000, 1800000, and 3600000 milliseconds.
 
 Each bucket counter tells you how many requests completed in less than or equal to that duration. Prometheus then uses these buckets to estimate percentiles using the `histogram_quantile` function.
 
@@ -67,32 +67,15 @@ If your actual P99 latency is 450ms and your buckets are [250, 500], Prometheus 
 If you need more precise percentile calculations, you can customize the histogram buckets in Istio:
 
 ```yaml
-apiVersion: install.istio.io/v1alpha1
-kind: IstioOperator
-spec:
-  meshConfig:
-    defaultConfig:
-      proxyStatsMatcher:
-        inclusionRegexps:
-          - ".*request_duration_milliseconds.*"
-```
-
-Or better yet, use the Telemetry API to adjust the metric:
-
-```yaml
-apiVersion: telemetry.istio.io/v1
-kind: Telemetry
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: custom-latency-buckets
-  namespace: istio-system
+  name: my-service
 spec:
-  metrics:
-    - providers:
-        - name: prometheus
-      overrides:
-        - match:
-            metric: REQUEST_DURATION
-          tagOverrides: {}
+  template:
+    metadata:
+      annotations:
+        sidecar.istio.io/statsHistogramBuckets: '{"istiocustom":[1,5,10,25,50,100,250,500,1000,2500,5000,10000]}'
 ```
 
 Note that adding more buckets increases the number of time series and storage requirements. Only add buckets in ranges where you need precision.
