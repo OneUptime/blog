@@ -14,14 +14,14 @@ WebSocket support in Istio is something that works out of the box in most cases,
 
 WebSocket connections start as regular HTTP/1.1 requests with an `Upgrade: websocket` header. The server responds with a `101 Switching Protocols` status, and from that point on the connection becomes a full-duplex TCP stream. Envoy (the proxy that Istio uses under the hood) handles this upgrade process automatically.
 
-The important thing to understand is that once the connection upgrades, Envoy treats it as a raw TCP tunnel. This means HTTP-level features like retries, fault injection, and request-level load balancing no longer apply to that connection. The initial handshake goes through the HTTP filter chain, but everything after the upgrade is purely TCP.
+The important thing to understand is that once the connection upgrades, Envoy treats it as a long-lived upgraded stream. This means HTTP-level features like retries, fault injection, and request-level load balancing no longer apply in the same way after the connection has been established. The initial handshake goes through the HTTP filter chain, and the selected upstream stays attached to that WebSocket connection for its lifetime.
 
 ## Basic VirtualService Configuration
 
 If you are routing WebSocket traffic through a VirtualService, you need to be aware that Istio handles the upgrade automatically when the service port is named correctly. Here is a basic VirtualService for a WebSocket service:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: ws-app
@@ -44,7 +44,7 @@ This works because Envoy will automatically detect the `Upgrade` header and allo
 
 ## Naming Your Service Ports
 
-One thing that catches people off guard is the port naming convention. Istio uses port names to determine the protocol. For WebSocket services, name your port with an `http` prefix:
+One thing that catches people off guard is the port naming convention. Istio uses port names or the Kubernetes `appProtocol` field to determine the protocol. For WebSocket services, name your port with an `http` prefix or set `appProtocol: http`:
 
 ```yaml
 apiVersion: v1
@@ -57,21 +57,22 @@ spec:
     app: ws-app
   ports:
     - name: http-ws
+      appProtocol: http
       port: 8080
       targetPort: 8080
       protocol: TCP
 ```
 
-If you name it something like `tcp-ws`, Istio will treat it as opaque TCP and you lose the ability to do HTTP-level routing on the initial handshake. The `http` prefix tells Istio to use the HTTP filter chain, which is what you want for WebSocket connections.
+If you name it something like `tcp-ws`, Istio will treat it as opaque TCP and you lose the ability to do HTTP-level routing on the initial handshake. The `http` protocol selection tells Istio to use the HTTP filter chain, which is what you want for WebSocket connections.
 
 ## Handling Idle Timeouts
 
-The most common issue people hit with WebSockets in Istio is idle timeout. By default, Istio sets an idle timeout on HTTP connections. For regular request-response traffic this makes sense, but for WebSocket connections that might sit idle for minutes between messages, it causes premature disconnections.
+The most common issue people hit with WebSockets in Istio is idle timeout. Envoy and Istio have idle timeout settings at the connection and stream layers, and load balancers in front of the gateway can have their own idle timeouts as well. For regular request-response traffic this makes sense, but for WebSocket connections that might sit idle between messages, it can cause premature disconnections.
 
 You can adjust this with a DestinationRule:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: ws-app
@@ -82,19 +83,19 @@ spec:
     connectionPool:
       tcp:
         connectTimeout: 30s
-      http:
         idleTimeout: 3600s
+      http:
         h2UpgradePolicy: DO_NOT_UPGRADE
 ```
 
-Setting `idleTimeout` to 3600s (one hour) gives your WebSocket connections plenty of breathing room. Adjust this based on your application needs. The `h2UpgradePolicy: DO_NOT_UPGRADE` is also important here because you do not want Envoy trying to upgrade your HTTP/1.1 connection to HTTP/2 before the WebSocket handshake happens. WebSocket upgrades only work over HTTP/1.1.
+Setting the TCP `idleTimeout` to 3600s (one hour) gives your WebSocket connections plenty of breathing room. Adjust this based on your application needs. The `h2UpgradePolicy: DO_NOT_UPGRADE` setting can also be useful when your backend expects the classic HTTP/1.1 `Upgrade: websocket` handshake instead of WebSockets over HTTP/2 using RFC 8441 extended CONNECT.
 
 ## Gateway Configuration for External WebSockets
 
 If your WebSocket service is exposed through an Istio Gateway, the configuration is straightforward:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: ws-gateway
@@ -110,7 +111,7 @@ spec:
       hosts:
         - ws.example.com
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: ws-app-external
@@ -138,7 +139,7 @@ The Gateway itself does not need anything special for WebSocket support. The pro
 For production environments, you will almost certainly want TLS. Here is how to configure the Gateway for secure WebSocket connections:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: wss-gateway
@@ -174,7 +175,7 @@ One thing you should not do is configure retries on routes that serve WebSocket 
 If you have a VirtualService that handles both regular HTTP and WebSocket paths, split them into separate route rules:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: mixed-app
@@ -186,6 +187,8 @@ spec:
     - match:
         - uri:
             prefix: /ws
+      retries:
+        attempts: 0
       route:
         - destination:
             host: mixed-app.default.svc.cluster.local
@@ -204,7 +207,7 @@ spec:
               number: 8080
 ```
 
-This way retries only apply to the `/api` routes and not the WebSocket path.
+This way retries only apply to the `/api` routes and not the WebSocket path. Setting `attempts: 0` on the WebSocket route is explicit and avoids surprises from mesh-wide default retry settings.
 
 ## Debugging WebSocket Connection Issues
 
@@ -231,7 +234,7 @@ Keep in mind that WebSocket connections are persistent, so traditional request-b
 If you need session affinity beyond what the default round-robin provides, you can configure consistent hashing in your DestinationRule:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: ws-app-sticky
