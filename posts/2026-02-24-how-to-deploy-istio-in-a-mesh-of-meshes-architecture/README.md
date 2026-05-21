@@ -25,10 +25,10 @@ This architecture makes sense when:
 
 A mesh of meshes setup involves:
 
-1. **Independent meshes**: Each mesh has its own Istiod, its own root CA, and its own configuration
+1. **Independent meshes**: Each mesh has its own Istiod, its own CA configuration, and its own configuration
 2. **Federation gateways**: Dedicated gateways at mesh boundaries that handle cross-mesh traffic
 3. **Exported services**: Each mesh explicitly declares which services are available to other meshes
-4. **Trust negotiation**: Since meshes have different root CAs, you need a way to establish trust at the boundaries
+4. **Trust negotiation**: If meshes have different root CAs, you need to exchange trust bundles or terminate and re-originate TLS at the boundary
 
 ## Step 1: Deploy Independent Meshes
 
@@ -85,7 +85,7 @@ Each mesh needs a gateway that handles traffic from the other mesh. This is simi
 
 ```yaml
 # federation-gateway-mesh-a.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: federation-gateway
@@ -101,7 +101,7 @@ spec:
       tls:
         mode: AUTO_PASSTHROUGH
       hosts:
-        - "*.mesh-b.example.com"
+        - "*.local"
 ```
 
 Deploy east-west gateways on both meshes:
@@ -116,7 +116,7 @@ samples/multicluster/gen-eastwest-gateway.sh --network network-b | \
 
 ## Step 3: Establish Cross-Mesh Trust
 
-Since each mesh has its own root CA, direct mTLS will not work. You have two options:
+If each mesh has its own root CA and the roots are not trusted by the other mesh, direct mTLS will not work. You have two options:
 
 **Option A: Shared root with different intermediates**
 
@@ -125,8 +125,8 @@ If you can control the CA setup, use the same root CA but different intermediate
 ```bash
 # Both meshes trust the same root
 make -f tools/certs/Makefile.selfsigned.mk root-ca
-make -f tools/certs/Makefile.selfsigned.mk mesh-a-cacerts
-make -f tools/certs/Makefile.selfsigned.mk mesh-b-cacerts
+make -f tools/certs/Makefile.selfsigned.mk cluster-a-cacerts
+make -f tools/certs/Makefile.selfsigned.mk cluster-b-cacerts
 ```
 
 **Option B: TLS termination at the gateway**
@@ -134,7 +134,7 @@ make -f tools/certs/Makefile.selfsigned.mk mesh-b-cacerts
 If meshes truly have different roots, configure the federation gateway to terminate TLS and re-encrypt with the local mesh's certificates. This requires more configuration but provides true trust isolation:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: federation-ingress
@@ -149,7 +149,7 @@ spec:
         protocol: HTTPS
       tls:
         mode: MUTUAL
-        credentialName: mesh-b-client-cert
+        credentialName: mesh-a-gateway-credential
       hosts:
         - "*.exported.mesh-a.example.com"
 ```
@@ -161,20 +161,20 @@ Each mesh explicitly exports the services it wants to make available. Create Ser
 On Mesh A, to consume a service from Mesh B:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: payment-service-from-mesh-b
   namespace: default
 spec:
   hosts:
-    - payment.mesh-b.example.com
+    - payment.default.svc.cluster.local
   location: MESH_EXTERNAL
   ports:
     - number: 80
       name: http
       protocol: HTTP
-  resolution: DNS
+  resolution: STATIC
   endpoints:
     - address: <mesh-b-federation-gateway-ip>
       ports:
@@ -184,40 +184,42 @@ spec:
 And a DestinationRule to configure the TLS settings:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: payment-service-mesh-b-dr
   namespace: default
 spec:
-  host: payment.mesh-b.example.com
+  host: payment.default.svc.cluster.local
   trafficPolicy:
     tls:
       mode: ISTIO_MUTUAL
-      sni: payment.default.svc.cluster.local
 ```
+
+Because this service name is not in Mesh A's Kubernetes DNS, make sure workloads can resolve it. Common options are enabling Istio DNS capture for ServiceEntry hosts or publishing the exported name in DNS.
 
 ## Step 5: Route Traffic Across Meshes
 
-On the providing mesh (Mesh B), set up a VirtualService to route incoming federation traffic to the actual service:
+On the providing mesh (Mesh B), the service must exist in Istio's service registry and the federation gateway must allow the SNI host used by the caller. With `AUTO_PASSTHROUGH`, you do not attach an HTTP VirtualService to the gateway; Istio uses the SNI value to forward the mTLS connection to the service:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
-kind: VirtualService
+apiVersion: networking.istio.io/v1
+kind: Gateway
 metadata:
-  name: payment-federation-route
-  namespace: default
+  name: federation-gateway
+  namespace: istio-system
 spec:
-  hosts:
-    - payment.default.svc.cluster.local
-  gateways:
-    - istio-system/federation-gateway
-  http:
-    - route:
-        - destination:
-            host: payment.default.svc.cluster.local
-            port:
-              number: 80
+  selector:
+    istio: eastwestgateway
+  servers:
+    - port:
+        number: 15443
+        name: tls
+        protocol: TLS
+      tls:
+        mode: AUTO_PASSTHROUGH
+      hosts:
+        - "*.local"
 ```
 
 ## Managing the Federation
@@ -251,8 +253,8 @@ spec:
               - "spiffe://mesh-a.example.com/ns/default/sa/payment-client"
       to:
         - operation:
-            hosts:
-              - "payment.default.svc.cluster.local"
+            ports:
+              - "15443"
 ```
 
 The mesh of meshes model is the most flexible but also the most operationally complex way to connect Istio deployments. Use it when autonomy and isolation between meshes are genuine requirements, not just nice-to-haves.
