@@ -26,7 +26,7 @@ During TLS handshake, the client receives the server's certificate chain and val
 1. Checking that each certificate in the chain is signed by the next one
 2. Checking that the root CA is in the client's trust store
 3. Checking that no certificates are expired
-4. Checking that no certificates are revoked
+4. Checking that no certificates are revoked, if revocation checking is configured
 
 In Istio, this happens automatically for in-mesh traffic. The root CA certificate is distributed to every namespace via the `istio-ca-root-cert` ConfigMap.
 
@@ -113,7 +113,7 @@ After setting up your chain, verify it is working:
 ```bash
 # Extract the workload certificate chain from a pod
 istioctl proxy-config secret <pod-name> -o json | \
-  jq -r '.dynamicActiveSecrets[0].secret.tlsCertificate.certificateChain.inlineBytes' | \
+  jq -r '[.dynamicActiveSecrets[] | select(.name == "default")][0].secret.tlsCertificate.certificateChain.inlineBytes' | \
   base64 -d > workload-chain.pem
 
 # Split the chain into individual certificates
@@ -125,8 +125,8 @@ for f in xx*; do
   openssl x509 -in $f -text -noout | grep -E "Subject:|Issuer:|Not After"
 done
 
-# Verify the chain
-openssl verify -CAfile root-cert.pem -untrusted ca-cert.pem workload-chain.pem
+# Verify the leaf certificate against the CA chain
+openssl verify -CAfile <(cat ca-cert.pem root-cert.pem) xx00
 ```
 
 ## Chain Validation Failures
@@ -141,7 +141,7 @@ If the workload certificate does not include the intermediate CA certificate, th
 error:0A000086:SSL routines::certificate verify failed
 ```
 
-Fix: Make sure the `cert-chain.pem` file in the `cacerts` secret includes the full chain from the intermediate CA up to (but not including) the root.
+Fix: Make sure the `cert-chain.pem` file in the `cacerts` secret includes the full chain used by istiod, including the intermediate CA and root CA.
 
 ### Expired Certificates
 
@@ -171,9 +171,9 @@ All namespaces should show the same fingerprint. If they do not, restart istiod 
 
 ### Path Length Constraints
 
-The `pathlen` constraint in the basic constraints extension limits how many intermediate CAs can exist below a CA. If you set `pathlen:0` on a CA certificate, it can only sign leaf certificates, not other CA certificates.
+The `pathlen` constraint in the basic constraints extension limits how many non-self-issued intermediate CA certificates can exist below a CA. If you set `pathlen:0` on a CA certificate, it can only sign leaf certificates, not other CA certificates.
 
-Make sure your root CA has `pathlen:1` or higher if you need an intermediate CA:
+Make sure your root CA has `pathlen:1` or higher, or no path length constraint, if you need an intermediate CA:
 
 ```bash
 openssl x509 -in root-cert.pem -text -noout | grep -A 1 "Basic Constraints"
