@@ -149,7 +149,7 @@ spec:
     mode: STRICT
 ```
 
-For namespaces that receive traffic from non-mesh sources (like an ingress controller without a sidecar), you may need port-level exceptions:
+For workloads that receive traffic from non-mesh sources (like an ingress controller without a sidecar), you may need port-level exceptions. The port number is the workload container port, not necessarily the Kubernetes Service port:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -158,6 +158,9 @@ metadata:
   name: strict-with-exception
   namespace: api-gateway
 spec:
+  selector:
+    matchLabels:
+      app: api-gateway
   mtls:
     mode: STRICT
   portLevelMtls:
