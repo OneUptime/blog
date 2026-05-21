@@ -12,7 +12,7 @@ The `argocd admin` subcommand is a collection of powerful diagnostic and adminis
 
 ## Getting Access to argocd admin
 
-The `argocd admin` commands are included in the standard ArgoCD CLI binary. Some commands run against the ArgoCD API server, while others work directly against the Kubernetes cluster where ArgoCD is installed.
+The `argocd admin` commands are included in the standard ArgoCD CLI binary. These commands generally require direct access to the Kubernetes cluster where ArgoCD is installed.
 
 ```bash
 # Check available admin commands
@@ -73,10 +73,11 @@ Check if your ArgoCD configuration is valid:
 
 ```bash
 # Validate all settings in argocd-cm ConfigMap
-argocd admin settings validate --namespace argocd
+argocd admin settings validate --namespace argocd --load-cluster-settings
 
-# Check specific settings
-argocd admin settings resource-overrides list --namespace argocd
+# Validate only resource override settings
+argocd admin settings validate --group resource-overrides \
+  --namespace argocd --load-cluster-settings
 ```
 
 Common validation issues this catches:
@@ -93,9 +94,8 @@ The export/import tools are critical for backups and migrations:
 # Export all ArgoCD data (applications, projects, settings)
 argocd admin export --namespace argocd > argocd-backup.yaml
 
-# Export only applications
-argocd admin export --namespace argocd | \
-  grep -A 1000 'kind: Application' > applications-backup.yaml
+# Export only Application resources
+kubectl get applications.argoproj.io -n argocd -o yaml > applications-backup.yaml
 ```
 
 The export produces a YAML stream that includes:
@@ -109,7 +109,7 @@ To restore from a backup:
 
 ```bash
 # Import ArgoCD data from backup
-argocd admin import --namespace argocd < argocd-backup.yaml
+argocd admin import - --namespace argocd < argocd-backup.yaml
 ```
 
 ## Managing ArgoCD Database
@@ -117,8 +117,12 @@ argocd admin import --namespace argocd < argocd-backup.yaml
 ArgoCD uses Kubernetes resources as its database. The admin tools help manage this:
 
 ```bash
-# List all applications with their status
-argocd admin app generate-spec my-app --namespace argocd
+# Generate declarative config for an application
+argocd admin app generate-spec guestbook \
+  --repo https://github.com/argoproj/argocd-example-apps.git \
+  --path guestbook \
+  --dest-namespace default \
+  --dest-server https://kubernetes.default.svc
 
 # Get the initial admin password
 argocd admin initial-password --namespace argocd
@@ -129,17 +133,21 @@ argocd admin initial-password --namespace argocd
 Check how ArgoCD is interpreting resource customizations:
 
 ```bash
-# List all resource overrides
-argocd admin settings resource-overrides list --namespace argocd
+# Validate resource overrides loaded from the cluster
+argocd admin settings validate --group resource-overrides \
+  --namespace argocd --load-cluster-settings
 
-# Check health assessment for a specific resource type
-argocd admin settings resource-overrides health deployment --namespace argocd
+# Check health assessment for a specific resource manifest
+argocd admin settings resource-overrides health ./deployment.yaml \
+  --namespace argocd --load-cluster-settings
 
-# Check ignore differences for a specific resource type
-argocd admin settings resource-overrides ignore-differences deployment --namespace argocd
+# Check ignore differences for a specific resource manifest
+argocd admin settings resource-overrides ignore-differences ./deployment.yaml \
+  --namespace argocd --load-cluster-settings
 
-# Check custom actions for a resource type
-argocd admin settings resource-overrides action list deployment --namespace argocd
+# Check custom actions for a specific resource manifest
+argocd admin settings resource-overrides list-actions ./deployment.yaml \
+  --namespace argocd --load-cluster-settings
 ```
 
 This is invaluable when custom health checks or ignore-difference rules are not working as expected.
@@ -151,8 +159,8 @@ Before deploying a custom health check, test it:
 ```bash
 # Test a custom health check Lua script
 argocd admin settings resource-overrides health \
-  argoproj.io/Rollout \
-  --namespace argocd
+  ./rollout.yaml \
+  --namespace argocd --load-cluster-settings
 ```
 
 To test a health check script locally:
@@ -179,8 +187,8 @@ resource.customizations.health.argoproj.io_Rollout: |
 ```bash
 # Validate the Lua script syntax
 argocd admin settings resource-overrides health \
-  argoproj.io/Rollout \
-  --namespace argocd 2>&1
+  ./rollout.yaml \
+  --argocd-cm-path ./argocd-cm.yaml 2>&1
 ```
 
 ## Cluster Management
@@ -190,8 +198,7 @@ argocd admin settings resource-overrides health \
 argocd admin cluster stats --namespace argocd
 
 # Generate a declarative cluster secret
-argocd admin cluster generate-spec my-cluster \
-  --namespace argocd
+argocd admin cluster generate-spec my-cluster -o yaml
 ```
 
 The `cluster stats` command shows useful metrics:
@@ -203,10 +210,10 @@ The `cluster stats` command shows useful metrics:
 
 ```bash
 # List configured notification templates
-argocd admin notifications template list --namespace argocd
+argocd admin notifications template get --namespace argocd
 
 # List configured notification triggers
-argocd admin notifications trigger list --namespace argocd
+argocd admin notifications trigger get --namespace argocd
 
 # Test a notification template
 argocd admin notifications template notify \
@@ -222,11 +229,8 @@ argocd admin notifications trigger run \
 ## Managing Repository Credentials
 
 ```bash
-# List configured repositories
-argocd admin repo list --namespace argocd
-
-# Validate repository access
-argocd admin repo validate --namespace argocd
+# Generate a declarative repository secret
+argocd admin repo generate-spec https://github.com/argoproj/argocd-example-apps.git
 ```
 
 ## Full Diagnostic Report
@@ -252,7 +256,7 @@ kubectl get pods -n $NAMESPACE -o wide 2>&1 | tee -a $REPORT_FILE
 
 # Settings Validation
 echo -e "\n=== Settings Validation ===" | tee -a $REPORT_FILE
-argocd admin settings validate --namespace $NAMESPACE 2>&1 | tee -a $REPORT_FILE
+argocd admin settings validate --namespace $NAMESPACE --load-cluster-settings 2>&1 | tee -a $REPORT_FILE
 
 # RBAC Validation
 echo -e "\n=== RBAC Validation ===" | tee -a $REPORT_FILE
@@ -260,7 +264,7 @@ argocd admin settings rbac validate --namespace $NAMESPACE 2>&1 | tee -a $REPORT
 
 # Resource Overrides
 echo -e "\n=== Resource Overrides ===" | tee -a $REPORT_FILE
-argocd admin settings resource-overrides list --namespace $NAMESPACE 2>&1 | tee -a $REPORT_FILE
+argocd admin settings validate --group resource-overrides --namespace $NAMESPACE --load-cluster-settings 2>&1 | tee -a $REPORT_FILE
 
 # Cluster Stats
 echo -e "\n=== Cluster Stats ===" | tee -a $REPORT_FILE
@@ -272,10 +276,10 @@ argocd app list --output wide 2>&1 | tee -a $REPORT_FILE
 
 # Notification Config
 echo -e "\n=== Notification Templates ===" | tee -a $REPORT_FILE
-argocd admin notifications template list --namespace $NAMESPACE 2>&1 | tee -a $REPORT_FILE
+argocd admin notifications template get --namespace $NAMESPACE 2>&1 | tee -a $REPORT_FILE
 
 echo -e "\n=== Notification Triggers ===" | tee -a $REPORT_FILE
-argocd admin notifications trigger list --namespace $NAMESPACE 2>&1 | tee -a $REPORT_FILE
+argocd admin notifications trigger get --namespace $NAMESPACE 2>&1 | tee -a $REPORT_FILE
 
 echo -e "\nReport saved to: $REPORT_FILE"
 ```
