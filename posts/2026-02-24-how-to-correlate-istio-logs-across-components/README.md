@@ -8,7 +8,7 @@ Description: Learn how to correlate logs across Istio's control plane, Envoy pro
 
 ---
 
-One of the most frustrating things about debugging issues in a service mesh is that the relevant information is spread across multiple log sources. A single request might touch the Istiod control plane, two or three Envoy proxies, and several application containers. If you can't tie those log entries together, you're basically doing detective work with disconnected clues.
+One of the most frustrating things about debugging issues in a service mesh is that the relevant information is spread across multiple log sources. A single request might depend on configuration delivered by the Istiod control plane, then pass through two or three Envoy proxies and several application containers. If you can't tie those log entries together, you're basically doing detective work with disconnected clues.
 
 The key to correlating logs across Istio components is understanding what identifiers are available and how to use them to stitch the full picture together.
 
@@ -20,7 +20,7 @@ In the default access log format, the request ID shows up. In JSON format, it's 
 
 ```json
 {
-  "request_id": "abc12345-def6-7890-ghij-klmnopqrstuv",
+  "request_id": "6f8d8f7e-7a56-4d6b-9b92-2f4d4f8b7c9a",
   "method": "GET",
   "path": "/api/users",
   "response_code": 200,
@@ -37,7 +37,7 @@ To search for all log entries related to a single request across your entire mes
 curl -s "http://elasticsearch:9200/istio-*/_search" -H 'Content-Type: application/json' -d '{
   "query": {
     "match": {
-      "request_id": "abc12345-def6-7890-ghij-klmnopqrstuv"
+      "request_id": "6f8d8f7e-7a56-4d6b-9b92-2f4d4f8b7c9a"
     }
   }
 }'
@@ -45,7 +45,7 @@ curl -s "http://elasticsearch:9200/istio-*/_search" -H 'Content-Type: applicatio
 
 ```bash
 # If using Loki via LogCLI
-logcli query '{app=~".+"} |= "abc12345-def6-7890-ghij-klmnopqrstuv"'
+logcli query '{app=~".+"} |= "6f8d8f7e-7a56-4d6b-9b92-2f4d4f8b7c9a"'
 ```
 
 ## Trace Headers for Distributed Tracing
@@ -66,26 +66,23 @@ spec:
   meshConfig:
     accessLogFile: /dev/stdout
     accessLogEncoding: JSON
-    extensionProviders:
-      - name: correlated-access-log
-        envoyFileAccessLog:
-          path: /dev/stdout
-          logFormat:
-            labels:
-              request_id: "%REQ(X-REQUEST-ID)%"
-              trace_id: "%REQ(X-B3-TRACEID)%"
-              span_id: "%REQ(X-B3-SPANID)%"
-              parent_span_id: "%REQ(X-B3-PARENTSPANID)%"
-              traceparent: "%REQ(TRACEPARENT)%"
-              method: "%REQ(:METHOD)%"
-              path: "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%"
-              response_code: "%RESPONSE_CODE%"
-              response_flags: "%RESPONSE_FLAGS%"
-              duration: "%DURATION%"
-              upstream_host: "%UPSTREAM_HOST%"
-              upstream_cluster: "%UPSTREAM_CLUSTER%"
-              source_workload: "%DOWNSTREAM_PEER_ID%"
-              destination_workload: "%UPSTREAM_PEER_ID%"
+    accessLogFormat: |
+      {
+        "request_id": "%REQ(X-REQUEST-ID)%",
+        "trace_id": "%REQ(X-B3-TRACEID)%",
+        "span_id": "%REQ(X-B3-SPANID)%",
+        "parent_span_id": "%REQ(X-B3-PARENTSPANID)%",
+        "traceparent": "%REQ(TRACEPARENT)%",
+        "method": "%REQ(:METHOD)%",
+        "path": "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%",
+        "response_code": "%RESPONSE_CODE%",
+        "response_flags": "%RESPONSE_FLAGS%",
+        "duration": "%DURATION%",
+        "upstream_host": "%UPSTREAM_HOST%",
+        "upstream_cluster": "%UPSTREAM_CLUSTER%",
+        "source_principal": "%DOWNSTREAM_PEER_URI_SAN%",
+        "destination_principal": "%UPSTREAM_PEER_URI_SAN%"
+      }
 ```
 
 ## Connection IDs in Envoy Debug Logs
@@ -110,10 +107,10 @@ For a request from service A to service B, you'll have access log entries on bot
 
 ```bash
 # On the client side (service A's proxy), look for outbound logs
-kubectl logs pod-a -c istio-proxy | grep "abc12345-def6-7890"
+kubectl logs pod-a -c istio-proxy | grep "6f8d8f7e-7a56-4d6b"
 
 # On the server side (service B's proxy), look for inbound logs
-kubectl logs pod-b -c istio-proxy | grep "abc12345-def6-7890"
+kubectl logs pod-b -c istio-proxy | grep "6f8d8f7e-7a56-4d6b"
 ```
 
 In JSON access logs, the `upstream_cluster` field tells you the direction. Outbound entries have clusters like `outbound|8080||service-b.default.svc.cluster.local`, while inbound entries show `inbound|8080||`.
@@ -171,7 +168,7 @@ If you're using Grafana, you can build a dashboard that lets you search by reque
 
 ```text
 # Loki query for all logs matching a request ID
-{namespace=~".+"} |= "abc12345-def6-7890-ghij-klmnopqrstuv"
+{namespace=~".+"} |= "6f8d8f7e-7a56-4d6b-9b92-2f4d4f8b7c9a"
 ```
 
 In Grafana, you can also link from a trace view (Tempo or Jaeger) to the corresponding logs, using the trace ID as the correlation key. This is where the real power of including trace IDs in your access logs comes in.
