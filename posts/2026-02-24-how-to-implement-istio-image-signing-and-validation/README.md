@@ -44,16 +44,14 @@ Verify an Istio image:
 ```bash
 # Verify the istiod image
 cosign verify docker.io/istio/pilot:1.24.0 \
-  --certificate-identity-regexp='https://github.com/istio/release-builder' \
-  --certificate-oidc-issuer='https://token.actions.githubusercontent.com'
+  --key https://istio.io/misc/istio-key.pub
 ```
 
 For proxy images:
 
 ```bash
 cosign verify docker.io/istio/proxyv2:1.24.0 \
-  --certificate-identity-regexp='https://github.com/istio/release-builder' \
-  --certificate-oidc-issuer='https://token.actions.githubusercontent.com'
+  --key https://istio.io/misc/istio-key.pub
 ```
 
 A successful verification shows the signature details and confirms the image is authentic.
@@ -86,8 +84,7 @@ jobs:
           for image in pilot proxyv2; do
             echo "Verifying docker.io/istio/${image}:${VERSION}"
             cosign verify docker.io/istio/${image}:${VERSION} \
-              --certificate-identity-regexp='https://github.com/istio/release-builder' \
-              --certificate-oidc-issuer='https://token.actions.githubusercontent.com'
+              --key https://istio.io/misc/istio-key.pub
           done
 
       - name: Deploy Istio
@@ -126,9 +123,12 @@ spec:
             - "docker.io/istio/proxyv2:*"
           attestors:
             - entries:
-                - keyless:
-                    issuer: "https://token.actions.githubusercontent.com"
-                    subjectRegExp: "https://github.com/istio/release-builder.*"
+                - keys:
+                    publicKeys: |-
+                      -----BEGIN PUBLIC KEY-----
+                      MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEej5bv2n2vOecKineYGWwq1WaQa7C
+                      7HTEVN+BkNI4D1+66ufzn1eGTrbaC9dceJqCAkhp37vMxhWOrGufpBUokg==
+                      -----END PUBLIC KEY-----
     - name: verify-sidecar-images
       match:
         any:
@@ -140,9 +140,12 @@ spec:
             - "docker.io/istio/proxyv2:*"
           attestors:
             - entries:
-                - keyless:
-                    issuer: "https://token.actions.githubusercontent.com"
-                    subjectRegExp: "https://github.com/istio/release-builder.*"
+                - keys:
+                    publicKeys: |-
+                      -----BEGIN PUBLIC KEY-----
+                      MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEej5bv2n2vOecKineYGWwq1WaQa7C
+                      7HTEVN+BkNI4D1+66ufzn1eGTrbaC9dceJqCAkhp37vMxhWOrGufpBUokg==
+                      -----END PUBLIC KEY-----
 ```
 
 ### Sigstore Policy Controller
@@ -165,10 +168,12 @@ spec:
   images:
     - glob: "docker.io/istio/**"
   authorities:
-    - keyless:
-        identities:
-          - issuerRegExp: "https://token.actions.githubusercontent.com"
-            subjectRegExp: "https://github.com/istio/release-builder.*"
+    - key:
+        data: |
+          -----BEGIN PUBLIC KEY-----
+          MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEej5bv2n2vOecKineYGWwq1WaQa7C
+          7HTEVN+BkNI4D1+66ufzn1eGTrbaC9dceJqCAkhp37vMxhWOrGufpBUokg==
+          -----END PUBLIC KEY-----
 ```
 
 Label namespaces to enforce the policy:
@@ -180,14 +185,13 @@ kubectl label namespace production policy.sigstore.dev/include=true
 
 ## Verifying SBOM and Provenance
 
-Beyond image signatures, you can verify the Software Bill of Materials (SBOM) and build provenance. Istio publishes SBOM attestations for its releases:
+Beyond image signatures, you can verify the Software Bill of Materials (SBOM) and build provenance when those attestations are published for the image you are deploying. The documented Istio image signing flow verifies image signatures with the Istio public key; if you add SBOM attestations for mirrored images, verify them before deployment:
 
 ```bash
-# Download and verify SBOM
-cosign verify-attestation docker.io/istio/pilot:1.24.0 \
+# Verify an SBOM attestation you publish for a mirrored image
+cosign verify-attestation registry.internal.example.com/istio/pilot:1.24.0 \
   --type spdxjson \
-  --certificate-identity-regexp='https://github.com/istio/release-builder' \
-  --certificate-oidc-issuer='https://token.actions.githubusercontent.com'
+  --key cosign.pub
 ```
 
 The SBOM tells you exactly what dependencies are included in the image, which is important for vulnerability scanning and compliance.
@@ -210,18 +214,14 @@ IMAGES=(
 for IMAGE in "${IMAGES[@]}"; do
   # Verify the image first
   cosign verify "${IMAGE}:${ISTIO_VERSION}" \
-    --certificate-identity-regexp='https://github.com/istio/release-builder' \
-    --certificate-oidc-issuer='https://token.actions.githubusercontent.com'
+    --key https://istio.io/misc/istio-key.pub
 
   if [ $? -eq 0 ]; then
     echo "Verified ${IMAGE}:${ISTIO_VERSION}, mirroring..."
 
-    # Copy image to private registry
+    # Copy the image and its referrers to the private registry
     BASENAME=$(basename ${IMAGE})
-    crane copy "${IMAGE}:${ISTIO_VERSION}" "${PRIVATE_REGISTRY}/istio/${BASENAME}:${ISTIO_VERSION}"
-
-    # Copy the signature too
-    cosign copy "${IMAGE}:${ISTIO_VERSION}" "${PRIVATE_REGISTRY}/istio/${BASENAME}:${ISTIO_VERSION}"
+    oras cp -r "${IMAGE}:${ISTIO_VERSION}" "${PRIVATE_REGISTRY}/istio/${BASENAME}:${ISTIO_VERSION}"
   else
     echo "FAILED to verify ${IMAGE}:${ISTIO_VERSION}"
     exit 1
@@ -252,7 +252,7 @@ Add verification for your custom images to your Kyverno or Sigstore policy.
 
 ## Monitoring for Unsigned Images
 
-Set up alerts for pods running unsigned images:
+Set up alerts for image references in Istio namespaces so you can check them against your verification policy:
 
 ```bash
 # Check for pods with unverified images in Istio namespaces
