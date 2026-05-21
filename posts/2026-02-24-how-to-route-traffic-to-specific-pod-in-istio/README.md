@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Traffic Routing, Debugging, Kubernetes, Pod Targeting
 
-Description: Learn how to route traffic to a specific pod in Istio for debugging, testing, and troubleshooting using DestinationRule subsets and WorkloadEntry.
+Description: Learn how to route traffic to a specific pod in Istio for debugging, testing, and troubleshooting using DestinationRule subsets and ServiceEntry.
 
 ---
 
@@ -130,7 +130,7 @@ spec:
         http: 8080
 ```
 
-Then you can route to `debug-pod.internal` and Istio policies will apply. The downside is that pod IPs are ephemeral, so this requires updating whenever the pod is recreated.
+Then, if `debug-pod.internal` resolves for the client workload, you can route to it and Istio traffic policies and telemetry for that host can apply. Kubernetes DNS does not know about custom ServiceEntry hosts by default, so you need Istio DNS capture enabled, a real DNS record, or another DNS setup that resolves the name. The downside is that pod IPs are ephemeral, so this requires updating whenever the pod is recreated.
 
 ## Approach 4: Consistent Hash Load Balancing
 
