@@ -24,7 +24,7 @@ Each of these has a different configuration fix.
 
 ## Increasing Request Body Size Limits
 
-Envoy does not have a default request body size limit in streaming mode. But if you have the buffer filter enabled (which is needed for retries), it will enforce a size limit:
+Envoy does not have a default request body size limit in streaming mode. But if you have the buffer filter enabled, it will enforce a size limit:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -57,10 +57,10 @@ spec:
 
 That sets a 100 MB limit. For larger files, increase accordingly. But be mindful of memory - if you allow 100 MB uploads and have 50 concurrent uploads, that is 5 GB of buffer memory.
 
-If you do not need retries on upload endpoints, avoid the buffer filter entirely and let Envoy stream the upload:
+If you do not need request buffering on upload endpoints, avoid the buffer filter entirely and let Envoy stream the upload:
 
 ```yaml
-# Disable buffer filter for upload routes
+# Disable buffer filter for matched upload routes
 
 apiVersion: networking.istio.io/v1alpha3
 kind: EnvoyFilter
@@ -115,7 +115,7 @@ spec:
       timeout: 600s
 ```
 
-The VirtualService timeout controls how long Envoy waits for the upstream to send a complete response. For uploads, you need this to cover the time it takes to receive the file plus the time the backend spends processing it.
+The VirtualService timeout controls how long Envoy waits for the upstream to send a complete response after the full downstream request has been received. For uploads, use this to cover the time the backend spends processing the upload and sending the response; use the HTTP connection manager request and idle timeouts below for the upload transfer itself.
 
 ### Stream Idle Timeout
 
@@ -207,7 +207,7 @@ spec:
           per_connection_buffer_limit_bytes: 10485760
 ```
 
-This sets a 10 MB connection buffer, which helps when data arrives in large chunks.
+This sets a 10 MB soft limit for each connection's read and write buffers. Increase it only when the default 1 MiB high watermark is too small for your workload, because larger values can increase proxy memory usage under load.
 
 ## Disabling Retries for Uploads
 
@@ -256,7 +256,7 @@ spec:
         useClientProtocol: true
 ```
 
-Setting `useClientProtocol: true` ensures Envoy uses the same protocol the client sent. This preserves chunked encoding and other protocol-level features.
+Setting `useClientProtocol: true` ensures Envoy uses the same HTTP protocol version when it opens the upstream connection. Chunked transfer encoding is hop-by-hop, so Envoy may decode and re-encode it, but preserving HTTP/1.1 upstream avoids an automatic HTTP/2 upgrade for clients that uploaded with HTTP/1.1.
 
 ## HTTP/2 Considerations
 
@@ -334,7 +334,7 @@ spec:
 
 ## Complete Upload Configuration
 
-Here is a full configuration for a service that handles file uploads up to 500 MB:
+Here is a full configuration for a service that handles long streaming uploads, such as 500 MB files:
 
 ```yaml
 apiVersion: networking.istio.io/v1beta1
@@ -374,7 +374,6 @@ spec:
     connectionPool:
       http:
         useClientProtocol: true
-        h2UpgradePolicy: DO_NOT_UPGRADE
 ---
 apiVersion: networking.istio.io/v1alpha3
 kind: EnvoyFilter
@@ -409,6 +408,6 @@ spec:
           per_connection_buffer_limit_bytes: 10485760
 ```
 
-This configuration allows streaming uploads up to 900 seconds without buffering the entire file in the proxy, disables retries, and uses the client's original protocol.
+This configuration allows streaming uploads to take up to 900 seconds without buffering the entire file in the proxy, disables retries, and uses the client's original protocol. It does not set a 500 MB proxy body-size limit; enforce any maximum upload size in the application or in an explicit buffering policy.
 
 File uploads through Istio are manageable once you understand which timeout and buffer settings to adjust. The key principle is to stream whenever possible (avoid full-body buffering), set generous timeouts, and allocate enough sidecar resources.
