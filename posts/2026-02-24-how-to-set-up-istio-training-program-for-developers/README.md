@@ -137,7 +137,7 @@ istioctl install --set profile=demo -y
 kubectl label namespace default istio-injection=enabled
 
 # Deploy sample apps
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.21/samples/bookinfo/platform/kube/bookinfo.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/bookinfo/platform/kube/bookinfo.yaml
 
 # Wait for pods
 kubectl wait --for=condition=ready pod --all -n default --timeout=120s
@@ -151,7 +151,7 @@ Structure exercises from simple to complex:
 
 ### Exercise 1: Port Naming (30 minutes)
 
-**Scenario**: A MySQL service is deployed but connections from the app pod time out after 5 seconds.
+**Scenario**: A MySQL service is deployed with an ambiguous port name. MySQL is a server-first protocol, so the service should declare the port as TCP.
 
 ```yaml
 # Broken service - students need to fix it
@@ -262,8 +262,8 @@ istioctl proxy-config clusters deploy/myapp
 istioctl proxy-config endpoints deploy/myapp
 istioctl proxy-config secret deploy/myapp
 
-# Check mTLS status
-istioctl authn tls-check deploy/myapp
+# Check traffic and mTLS configuration for a workload
+istioctl x describe pod <pod-name>
 
 # Generate bug report
 istioctl bug-report
