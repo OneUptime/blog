@@ -18,7 +18,7 @@ A CSI driver typically has two components:
 
 2. **Node Plugin** - a DaemonSet that runs on every node. It handles mounting/unmounting volumes into pods. It communicates with the kubelet via a Unix domain socket.
 
-Both components also communicate internally via gRPC over Unix domain sockets. The sidecar containers (csi-provisioner, csi-attacher, csi-snapshotter, csi-resizer) within each pod communicate with the CSI driver container via a shared socket.
+Within each CSI pod, the sidecar containers (csi-provisioner, csi-attacher, csi-snapshotter, csi-resizer) communicate with the CSI driver container over a shared Unix domain socket.
 
 ## Should CSI Drivers Have Istio Sidecars?
 
@@ -45,11 +45,13 @@ metadata:
   name: ebs-csi-controller
   namespace: kube-system
 spec:
+  selector:
+    matchLabels:
+      app: ebs-csi-controller
   template:
     metadata:
       labels:
         app: ebs-csi-controller
-      annotations:
         sidecar.istio.io/inject: "false"
     spec:
       containers:
@@ -69,9 +71,13 @@ metadata:
   name: ebs-csi-node
   namespace: kube-system
 spec:
+  selector:
+    matchLabels:
+      app: ebs-csi-node
   template:
     metadata:
-      annotations:
+      labels:
+        app: ebs-csi-node
         sidecar.istio.io/inject: "false"
     spec:
       containers:
@@ -84,7 +90,7 @@ spec:
 Or disable injection at the namespace level:
 
 ```bash
-kubectl label namespace kube-system istio-injection=disabled
+kubectl label namespace kube-system istio-injection=disabled --overwrite
 ```
 
 ## CSI Controller Traffic Patterns
@@ -129,7 +135,13 @@ kind: DaemonSet
 metadata:
   name: csi-node-plugin
 spec:
+  selector:
+    matchLabels:
+      app: csi-node-plugin
   template:
+    metadata:
+      labels:
+        app: csi-node-plugin
     spec:
       hostNetwork: true
       containers:
@@ -138,7 +150,7 @@ spec:
             privileged: true
 ```
 
-When `hostNetwork: true` is set, the pod uses the node's network namespace. Istio's iptables rules do not apply because the init container sets up rules in the pod's network namespace, which in this case is the node's namespace. This could interfere with other traffic on the node.
+When `hostNetwork: true` is set, the pod uses the node's network namespace. Istio automatic sidecar injection is ignored for pods on the host network because the sidecar model assumes that Envoy's iptables interception is scoped to the pod network namespace. For host-networked pods, that assumption is not true and can lead to host-level routing failures.
 
 Even without `hostNetwork`, CSI node plugins need privileged access and interact with the kubelet via Unix domain sockets. The sidecar adds no value here.
 
@@ -153,9 +165,13 @@ metadata:
   name: snapshot-controller
   namespace: kube-system
 spec:
+  selector:
+    matchLabels:
+      app: snapshot-controller
   template:
     metadata:
-      annotations:
+      labels:
+        app: snapshot-controller
         sidecar.istio.io/inject: "false"
     spec:
       containers:
@@ -163,7 +179,7 @@ spec:
           image: registry.k8s.io/sig-storage/snapshot-controller:latest
 ```
 
-Exclude this from the mesh as well. The snapshot controller communicates with the Kubernetes API server and CSI drivers, neither of which needs to go through Envoy.
+Exclude this from the mesh as well. The snapshot controller watches the Kubernetes API server for VolumeSnapshot objects and creates VolumeSnapshotContent objects. The CSI external-snapshotter sidecar in the driver deployment is what calls the CSI driver, and neither path needs to go through Envoy.
 
 ## When Your Application Uses a CSI-Backed Volume
 
@@ -176,6 +192,9 @@ metadata:
   name: my-app
   namespace: default
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   template:
     metadata:
       labels:
@@ -263,7 +282,8 @@ kubectl get pod -n kube-system -o jsonpath='{range .items[*]}{.metadata.name}: {
 
 # If you see "istio-proxy" in the container list, that is the problem
 # Remove the sidecar:
-kubectl annotate deployment -n kube-system ebs-csi-controller sidecar.istio.io/inject=false
+kubectl patch deployment -n kube-system ebs-csi-controller \
+  -p '{"spec":{"template":{"metadata":{"labels":{"sidecar.istio.io/inject":"false"}}}}}'
 kubectl rollout restart deployment -n kube-system ebs-csi-controller
 
 # Check PVC status
@@ -276,6 +296,6 @@ kubectl get events -n default --sort-by='.lastTimestamp' | grep -i "volume\|stor
 kubectl describe pvc my-pvc -n default
 ```
 
-If the PVC is stuck in Pending, the CSI controller cannot provision the volume. If the pod is stuck in ContainerCreating, the CSI node plugin cannot mount the volume. Neither of these is an Istio issue unless the CSI driver pods have sidecars that are blocking their communication.
+If the PVC is stuck in Pending, the CSI controller may be unable to provision the volume, or the PVC may be waiting for a consuming pod when the StorageClass uses `WaitForFirstConsumer`. If the pod is stuck in ContainerCreating, the CSI node plugin may be unable to mount the volume. Neither of these is usually an Istio issue unless the CSI driver pods have sidecars that are blocking their communication.
 
 The rule of thumb for CSI drivers and Istio is simple: keep them separate. CSI drivers are infrastructure components that should run outside the service mesh. Exclude them from injection, and your storage will work exactly as it would without Istio. The only Istio consideration for application pods using CSI volumes is that filesystem access does not go through the proxy, so there is nothing to configure.
