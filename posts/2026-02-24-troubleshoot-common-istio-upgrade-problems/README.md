@@ -82,7 +82,7 @@ kubectl get mutatingwebhookconfiguration | grep istio
 If the webhook still points to the old revision or service:
 
 ```bash
-kubectl get mutatingwebhookconfiguration istio-sidecar-injector -o yaml | grep caBundle
+kubectl get mutatingwebhookconfiguration istio-sidecar-injector -o jsonpath='{range .webhooks[*]}{.name}{" -> "}{.clientConfig.service.name}{"\n"}{end}'
 ```
 
 Fix: Re-run the install to update the webhook:
@@ -102,20 +102,21 @@ kubectl get namespaces -L istio.io/rev -L istio-injection
 Fix: Update namespace labels:
 
 ```bash
-kubectl label namespace my-app istio.io/rev=new-revision --overwrite
+kubectl label namespace my-app istio-injection- istio.io/rev=new-revision --overwrite
 ```
 
 ### Cause: Certificate Authority Issues
 
-If the webhook's CA bundle does not match the istiod certificate:
+If the webhook's CA bundle is empty or does not match the istiod certificate:
 
 ```bash
 kubectl logs -n istio-system -l app=istiod | grep -i "certificate\|tls\|x509"
 ```
 
-Fix: Restart istiod to regenerate certificates, then the webhook should be automatically updated:
+Fix: Re-run the install to restore the webhook configuration, then restart istiod if it is not updating the webhook:
 
 ```bash
+istioctl install --set profile=default -y
 kubectl rollout restart deployment/istiod -n istio-system
 ```
 
@@ -134,7 +135,7 @@ my-pod.my-namespace     STALE   SYNCED  SYNCED  SYNCED  -       istiod-xyz
 
 ### Cause: Version Skew Too Large
 
-If the proxy version is more than one minor version behind the control plane, it may not understand the new configuration format.
+If the data plane is more than one minor version behind the control plane, it is outside Istio's supported control plane/data plane skew.
 
 ```bash
 istioctl proxy-status | awk '{print $NF}' | sort | uniq -c
@@ -194,7 +195,7 @@ istioctl analyze -n <namespace>
 
 ### Cause: VirtualService Validation Changed
 
-The new Istio version might enforce stricter validation on VirtualService rules. A configuration that worked before might now be rejected silently.
+The new Istio version might enforce stricter validation on VirtualService rules. A configuration that worked before might now be rejected by validation or reported by analysis.
 
 ```bash
 kubectl get events -n my-namespace | grep -i "virtualservice\|validation"
@@ -238,6 +239,10 @@ Fix: Restart all workloads to get new certificates:
 
 ```bash
 for ns in $(kubectl get ns -l istio-injection=enabled -o jsonpath='{.items[*].metadata.name}'); do
+  kubectl rollout restart deployment -n $ns
+done
+
+for ns in $(kubectl get ns -l istio.io/rev -o jsonpath='{.items[*].metadata.name}'); do
   kubectl rollout restart deployment -n $ns
 done
 ```
@@ -304,7 +309,7 @@ kubectl top pods -n istio-system
 
 ### Cause: New Features Enabled by Default
 
-Some upgrades enable new features that consume additional resources (like DNS proxying or telemetry v2).
+Some upgrades change defaults or enable features that consume additional resources, such as DNS capture when it is enabled in your mesh.
 
 Fix: Check what changed in the defaults and disable features you do not need:
 
