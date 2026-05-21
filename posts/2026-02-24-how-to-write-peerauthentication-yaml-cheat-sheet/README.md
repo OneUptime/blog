@@ -42,9 +42,11 @@ There are four mTLS modes:
 | `DISABLE` | Do not use mTLS for connections |
 | `UNSET` | Inherit from parent scope |
 
+In ambient mode, `DISABLE` is not supported.
+
 ## Mesh-Wide Strict mTLS
 
-Apply strict mTLS to the entire mesh by placing the policy in `istio-system` with the name `default`:
+Apply strict mTLS to the entire mesh by placing the policy in the Istio root namespace, usually `istio-system`, with the name `default`:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -65,7 +67,7 @@ After applying this, every service-to-service connection in the mesh must use mT
 
 ## Mesh-Wide Permissive mTLS
 
-Permissive mode is the default when Istio is installed. It accepts both mTLS and plaintext:
+Permissive mode is the default when no PeerAuthentication policy sets a stricter mode. It accepts both mTLS and plaintext:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -95,7 +97,7 @@ spec:
     mode: STRICT
 ```
 
-This sets strict mTLS for all workloads in the `backend` namespace, regardless of the mesh-wide setting.
+This sets strict mTLS for all workloads in the `backend` namespace unless a workload-level policy overrides it.
 
 ## Workload-Level Policy
 
@@ -119,7 +121,7 @@ This only affects pods with the label `app: api-server` in the `backend` namespa
 
 ## Port-Level Configuration
 
-Different ports can have different mTLS modes. This is useful when a service has some ports that need to accept plaintext (like health check endpoints) while others should require mTLS:
+Different workload ports can have different mTLS modes. This is useful when a service has some ports that need to accept plaintext (like health check endpoints) while others should require mTLS. Port-level settings only apply when the policy has a workload selector, and the port number is the workload port, not the Kubernetes Service port:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -143,7 +145,7 @@ spec:
 In this example:
 - All ports default to STRICT mTLS
 - Port 8080 accepts both mTLS and plaintext
-- Port 9090 does not use mTLS at all
+- Port 9090 does not use mTLS at all in sidecar mode
 
 ## Disable mTLS for a Specific Workload
 
@@ -253,7 +255,7 @@ kubectl rollout restart deployment -n legacy-ns
 
 ## Handling Health Checks
 
-Kubernetes liveness and readiness probes come from the kubelet, which does not use mTLS. Istio handles this automatically by rewriting probe paths to go through the sidecar. But if you have custom health check setups, you might need port-level exceptions:
+Kubernetes liveness and readiness probes come from the kubelet, which does not use mTLS. Istio handles HTTP, TCP, and gRPC probes automatically by rewriting them to go through the sidecar agent. But if you have custom health check setups that send plaintext traffic directly to an application port, you might need a port-level exception on that workload port:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -268,11 +270,11 @@ spec:
   mtls:
     mode: STRICT
   portLevelMtls:
-    15021:
+    8080:
       mode: PERMISSIVE
 ```
 
-Port 15021 is the Istio sidecar's health check port.
+Port 8080 here is the workload port receiving the custom health check traffic.
 
 ## Validating PeerAuthentication
 
@@ -286,8 +288,8 @@ kubectl get peerauthentication -A
 # Check specific policy
 kubectl get peerauthentication default -n istio-system -o yaml
 
-# Verify mTLS between services
-istioctl authn tls-check deploy/frontend.default
+# Inspect the Istio configuration affecting a pod
+istioctl experimental describe pod frontend-abc123.default
 
 # Run analysis
 istioctl analyze -n default
@@ -297,7 +299,7 @@ istioctl analyze -n default
 
 ### Multiple policies with the same selector
 
-If two policies target the same workload, behavior is undefined. Always have one policy per workload:
+If two workload-specific policies target the same workload, Istio picks the oldest one. Always have one policy per workload so this does not depend on creation order:
 
 ```bash
 # Check for duplicate selectors
