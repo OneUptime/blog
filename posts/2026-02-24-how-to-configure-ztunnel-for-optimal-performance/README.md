@@ -21,7 +21,7 @@ ztunnel is written in Rust, which makes it lightweight and efficient compared to
 - Number of concurrent connections
 - Size of the mesh configuration (ServiceEntries, AuthorizationPolicies)
 
-A typical ztunnel instance uses 30-50MB of memory and minimal CPU at idle. Under load, CPU usage scales with traffic volume.
+The default Helm chart requests 200m CPU and 512Mi memory for ztunnel. Actual idle usage is usually lower than the request, but under load CPU usage scales with traffic volume and memory usage scales with cluster size and concurrent connections.
 
 ## Setting Resource Requests and Limits
 
@@ -31,24 +31,25 @@ ztunnel is deployed as a DaemonSet in the `istio-system` namespace. You can conf
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
-  values:
+  components:
     ztunnel:
-      resources:
-        requests:
-          cpu: 200m
-          memory: 128Mi
-        limits:
-          cpu: "1"
-          memory: 512Mi
+      k8s:
+        resources:
+          requests:
+            cpu: 200m
+            memory: 512Mi
+          limits:
+            cpu: "1"
+            memory: 512Mi
 ```
 
 If you are using Helm:
 
 ```bash
-helm install istio-ztunnel istio/ztunnel \
+helm install ztunnel istio/ztunnel \
   --namespace istio-system \
   --set resources.requests.cpu=200m \
-  --set resources.requests.memory=128Mi \
+  --set resources.requests.memory=512Mi \
   --set resources.limits.cpu=1000m \
   --set resources.limits.memory=512Mi
 ```
@@ -67,23 +68,24 @@ ztunnel exposes Prometheus metrics that help you understand its performance:
 ```promql
 # CPU usage per ztunnel instance
 
-rate(container_cpu_usage_seconds_total{container="ztunnel"}[5m])
+rate(container_cpu_usage_seconds_total{container="istio-proxy", pod=~"ztunnel-.*"}[5m])
 ```
 
 ```promql
 # Memory usage
-container_memory_working_set_bytes{container="ztunnel"}
+container_memory_working_set_bytes{container="istio-proxy", pod=~"ztunnel-.*"}
 ```
 
 ```promql
-# Active connections
-ztunnel_active_connections
+# TCP connections opened and closed
+rate(istio_tcp_connections_opened_total[5m])
+rate(istio_tcp_connections_closed_total[5m])
 ```
 
 ```promql
 # Bytes sent and received
-rate(ztunnel_tcp_sent_bytes_total[5m])
-rate(ztunnel_tcp_received_bytes_total[5m])
+rate(istio_tcp_sent_bytes_total[5m])
+rate(istio_tcp_received_bytes_total[5m])
 ```
 
 Create a Grafana dashboard that shows these metrics per node so you can identify hot spots.
@@ -95,24 +97,14 @@ ztunnel manages connections on behalf of all pods on its node. The number of con
 Monitor connection counts:
 
 ```bash
-kubectl exec -n istio-system $(kubectl get pod -n istio-system -l app=ztunnel -o name | head -1) -- curl -s localhost:15020/metrics | grep connections
+istioctl ztunnel-config connections
 ```
 
 If you see connection counts approaching the system limits, you might need to:
 
-1. **Increase file descriptor limits**: ztunnel needs file descriptors for each connection. The default limit might not be enough for high-traffic nodes.
+1. **Increase file descriptor limits**: ztunnel needs file descriptors for open sockets. File descriptor limits are inherited from the node and container runtime, so raise them through your node or runtime configuration rather than by setting a ztunnel environment variable.
 
-```yaml
-apiVersion: install.istio.io/v1alpha1
-kind: IstioOperator
-spec:
-  values:
-    ztunnel:
-      env:
-        RLIMIT_NOFILE: "65536"
-```
-
-2. **Tune connection pooling**: ztunnel reuses HBONE connections between nodes. This means traffic for multiple pods going to the same destination node shares a single mTLS connection with multiplexed HTTP/2 streams. This is efficient but can become a bottleneck if too much traffic flows over one connection.
+2. **Inspect HBONE connection reuse**: ztunnel uses HBONE to carry traffic over mTLS. This is efficient, but there is no general Helm value for tuning a ztunnel connection pool. If a node is saturated, use the scaling approaches below to spread traffic across more ztunnel instances.
 
 ## Log Level Tuning
 
@@ -124,14 +116,13 @@ kind: IstioOperator
 spec:
   values:
     ztunnel:
-      env:
-        RUST_LOG: "warn"
+      logLevel: warn
 ```
 
 For debugging, you can temporarily increase the log level:
 
 ```bash
-kubectl exec -n istio-system $(kubectl get pod -n istio-system -l app=ztunnel --field-selector spec.nodeName=$(kubectl get nodes -o name | head -1 | cut -d/ -f2) -o name) -- curl -X POST "localhost:15020/logging?level=debug"
+istioctl ztunnel-config log --level debug
 ```
 
 Remember to set it back to `warn` after debugging to avoid performance impact from excessive logging.
@@ -166,7 +157,7 @@ Since ztunnel runs as a DaemonSet, scaling is tied to node count. You cannot sca
 - **Check for hot spots**: Use the per-node metrics to identify nodes where ztunnel is under the most pressure.
 
 ```promql
-topk(10, rate(container_cpu_usage_seconds_total{container="ztunnel"}[5m]))
+topk(10, rate(container_cpu_usage_seconds_total{container="istio-proxy", pod=~"ztunnel-.*"}[5m]))
 ```
 
 This shows the top 10 ztunnel instances by CPU usage, helping you find hot spots.
@@ -185,10 +176,10 @@ ztunnel has different performance characteristics than sidecars:
 
 ## Health Checking ztunnel
 
-Monitor ztunnel health with readiness and liveness probes. The default configuration includes these, but verify they are working:
+Monitor ztunnel health with the readiness probe. The default configuration includes a readiness probe, but verify it is working:
 
 ```bash
-kubectl get daemonset ztunnel -n istio-system -o yaml | grep -A10 "readinessProbe\|livenessProbe"
+kubectl get daemonset ztunnel -n istio-system -o yaml | grep -A10 "readinessProbe"
 ```
 
 Check the health endpoint directly:
