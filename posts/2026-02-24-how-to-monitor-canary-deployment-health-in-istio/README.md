@@ -14,7 +14,7 @@ This guide covers how to set up monitoring specifically for canary deployments, 
 
 ## Key Metrics for Canary Monitoring
 
-Istio generates four categories of metrics that matter for canary health:
+Istio generates HTTP and TCP metrics that matter for canary health:
 
 **Request metrics (L7):**
 - `istio_requests_total` - Total request count with response code labels
@@ -241,9 +241,9 @@ kubectl get events -n production -w --field-selector involvedObject.name=my-app
 # Stream sidecar access logs for the canary
 kubectl logs -f -l app=my-app,version=v2 -c istio-proxy -n production | grep -v "200"
 
-# Quick success rate check
+# Quick Envoy 5xx counter check from the canary sidecar
 while true; do
-  echo "$(date): $(kubectl exec -n production deploy/web-app-v1 -c istio-proxy -- curl -s localhost:15000/stats | grep 'upstream_rq_5xx')"
+  echo "$(date): $(kubectl exec -n production deploy/my-app-v2 -c istio-proxy -- curl -s localhost:15000/stats | grep 'upstream_rq_5xx')"
   sleep 10
 done
 ```
@@ -256,7 +256,7 @@ If you have Jaeger or Zipkin set up with Istio, trace requests through the canar
 istioctl dashboard jaeger
 ```
 
-Filter traces by the `node_id` tag or destination version to see only canary traffic. This is invaluable for debugging latency regressions in the new version because you can see exactly which service call is slower.
+Filter traces by the `node_id` tag, or by a custom destination-version tag if you configure one, to see only canary traffic. This is invaluable for debugging latency regressions in the new version because you can see exactly which service call is slower.
 
 ## Flagger Monitoring Metrics
 
@@ -264,13 +264,15 @@ If you're using Flagger for canary automation, it exposes its own metrics:
 
 ```promql
 # Current canary weight
-flagger_canary_weight{name="my-app", namespace="production"}
+flagger_canary_weight{workload="my-app", namespace="production"}
 
-# Canary status (0=init, 1=progressing, 2=promoted, 3=failed)
+# Canary status (0=running, 1=successful, 2=failed)
 flagger_canary_status{name="my-app", namespace="production"}
 
-# Duration of current canary analysis
-flagger_canary_duration_seconds{name="my-app", namespace="production"}
+# Average duration of completed canary analyses
+flagger_canary_duration_seconds_sum{name="my-app", namespace="production"}
+/
+flagger_canary_duration_seconds_count{name="my-app", namespace="production"}
 ```
 
 Create a Grafana dashboard that combines Flagger metrics with Istio metrics. The Flagger metrics show the automation state, and the Istio metrics show the actual canary performance.
