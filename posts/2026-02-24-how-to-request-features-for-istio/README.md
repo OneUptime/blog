@@ -17,7 +17,7 @@ Here is how to navigate the Istio feature request process effectively.
 The biggest mistake in feature requests is leading with a specific solution instead of describing the problem. Maintainers know the codebase better than you do, and they might have a simpler or more elegant approach in mind.
 
 Bad feature request:
-> "Add a `retryBudget` field to VirtualService that limits total retries per second."
+> "Add a `retryBudget` field to DestinationRule that limits concurrent retries."
 
 Good feature request:
 > "In a deep call chain (A -> B -> C -> D), retry configuration at each level causes exponential retry amplification. During partial failures, the downstream service receives 10-100x normal traffic due to retries compounding at each hop. We need a way to limit the total retry load on a destination."
@@ -34,19 +34,16 @@ Before requesting a feature, make sure it does not already exist:
 # https://istio.io/latest/docs/
 
 # Search existing feature requests
-gh issue list --repo istio/istio --label "kind/feature" --search "your feature" --state open
+gh issue list --repo istio/istio --label "kind/enhancement" --search "your feature" --state open
 
 # Search closed issues (it might have been discussed and rejected)
-gh issue list --repo istio/istio --label "kind/feature" --search "your feature" --state closed
+gh issue list --repo istio/istio --label "kind/enhancement" --search "your feature" --state closed
 ```
 
 Also check if the feature is planned in an upcoming release:
 
 ```bash
-# Check the Istio roadmap
-# https://github.com/istio/istio/blob/master/ROADMAP.md
-
-# Check recent RFCs
+# Check recent enhancements
 # https://github.com/istio/enhancements
 gh issue list --repo istio/enhancements --state open
 ```
@@ -100,7 +97,7 @@ If you have a specific idea, share it, but make it clear that you are open to al
 
 ```text
 One possible approach would be to add a retry budget to
-DestinationRule that limits total concurrent retries to a
+DestinationRule that limits concurrent retries to a
 destination, similar to Envoy's retry budget feature:
 
 apiVersion: networking.istio.io/v1
@@ -110,11 +107,9 @@ metadata:
 spec:
   host: database
   trafficPolicy:
-    connectionPool:
-      http:
-        retryBudget:
-          budgetPercent: 20
-          minRetriesPerSecond: 10
+    retryBudget:
+      percent: 20
+      minRetryConcurrency: 10
 
 I am not wedded to this specific API. Any solution that prevents
 retry amplification in deep call chains would solve our problem.
@@ -141,10 +136,11 @@ gh issue list --repo istio/enhancements --state open
 
 To submit an enhancement proposal:
 
-1. Create an issue in `istio/enhancements` describing the feature
-2. If there is interest, you will be asked to write a design document
-3. The design document goes through review by the relevant working group
-4. Once approved, implementation can begin
+1. Circulate the idea through the relevant working group, community meeting, discussion forum, or an issue in `istio/istio`
+2. Once there is working group consensus, create an issue in `istio/enhancements` describing the feature
+3. If the feature is substantial, you will be asked to write a design document
+4. The design document goes through review by the relevant working group
+5. Once approved, implementation can begin
 
 The design document typically includes:
 - Problem statement
@@ -159,8 +155,9 @@ Istio has several working groups that focus on different areas:
 
 - **Networking**: Traffic management, VirtualService, Gateway API
 - **Security**: mTLS, authorization, authentication
-- **Environment**: Installation, upgrades, multi-cluster
-- **Extensions**: Wasm, EnvoyFilter, telemetry
+- **Environments**: Installation, upgrades, multi-cluster
+- **Extensions and Telemetry**: Wasm, EnvoyFilter, telemetry
+- **User Experience**: API and CLI guidelines and support
 
 Find the right working group for your feature:
 
@@ -219,7 +216,7 @@ Check on your request periodically:
 
 ```bash
 # Check status of your feature requests
-gh issue list --repo istio/istio --author @me --label "kind/feature" --state open
+gh issue list --repo istio/istio --author @me --label "kind/enhancement" --state open
 ```
 
 If there is no activity after a month, leave a polite comment:
