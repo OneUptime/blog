@@ -159,15 +159,15 @@ curl -s "http://prometheus:9090/api/v1/query_range" \
 
 ### Certificate Health Evidence
 
-Show that certificates were valid throughout the period:
+Run this daily to show that certificates remained valid throughout the period:
 
 ```bash
-# Check CA certificate expiry
+# Check CA certificate expiry when using Istio's plugged-in CA secret
 kubectl get secret cacerts -n istio-system \
   -o jsonpath='{.data.ca-cert\.pem}' | base64 -d | \
   openssl x509 -noout -dates
 
-# Check root certificate expiry
+# Check root certificate expiry when using Istio's plugged-in CA secret
 kubectl get secret cacerts -n istio-system \
   -o jsonpath='{.data.root-cert\.pem}' | base64 -d | \
   openssl x509 -noout -dates
@@ -188,32 +188,33 @@ git log --since="2025-01-01" --until="2026-01-01" \
 done
 ```
 
-If you're not using GitOps, pull change events from Kubernetes:
+If you're not using GitOps, pull change records from Kubernetes audit logs:
 
 ```bash
-# Recent changes to security resources
-kubectl get events --all-namespaces \
-  --field-selector reason=Updated \
-  -o json | jq '.items[] |
-  select(.involvedObject.kind |
-    IN("AuthorizationPolicy", "PeerAuthentication", "RequestAuthentication")) | {
-      time: .lastTimestamp,
-      kind: .involvedObject.kind,
-      name: .involvedObject.name,
-      namespace: .involvedObject.namespace
-  }'
+# Recent changes to security resources from kube-apiserver audit logs
+jq 'select(.verb | IN("create", "update", "patch", "delete")) |
+  select(.objectRef.apiGroup == "security.istio.io") |
+  select(.objectRef.resource |
+    IN("authorizationpolicies", "peerauthentications", "requestauthentications")) | {
+      time: .requestReceivedTimestamp,
+      user: .user.username,
+      verb: .verb,
+      resource: .objectRef.resource,
+      name: .objectRef.name,
+      namespace: .objectRef.namespace
+  }' /var/log/kubernetes/audit.log
 ```
 
 ## Collecting Access Evidence
 
-Access evidence shows who accessed sensitive systems. Istio access logs provide this:
+Access evidence shows who accessed sensitive systems. Istio access logs provide this when JSON access logging is enabled with a format that includes the source principal:
 
 ```bash
 # Extract access records for sensitive namespaces
 kubectl logs -n payment-processing -l app=payment-api -c istio-proxy \
-  --since=720h | jq '{
+  --since=720h | jq -R 'fromjson? | select(.) | {
     timestamp: .start_time,
-    source: .downstream_peer_uri_san,
+    source: .source_principal,
     method: .method,
     path: .path,
     response_code: .response_code,
