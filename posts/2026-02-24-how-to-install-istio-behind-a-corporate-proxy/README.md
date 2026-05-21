@@ -112,9 +112,12 @@ spec:
 istioctl install -f istio-internal-registry.yaml -y
 ```
 
-With Helm:
+With Helm, install the base chart first so the Istio CRDs exist before `istiod` starts:
 
 ```bash
+helm install istio-base istio/base -n istio-system --create-namespace \
+  --set defaultRevision=default
+
 helm install istiod istio/istiod -n istio-system \
   --set global.hub=registry.corp.example.com/istio \
   --set global.tag=1.24.0
@@ -144,13 +147,13 @@ helm pull istio/gateway --version 1.24.0
 curl --data-binary "@base-1.24.0.tgz" http://chartmuseum.corp.example.com/api/charts
 ```
 
-## Step 5: Configure Envoy Proxy for External Services
+## Step 5: Configure External Service Access
 
 If your mesh services need to call external APIs through the corporate proxy, you have two options.
 
 ### Option A: ServiceEntry with Corporate Proxy
 
-Route external traffic through the corporate proxy using Envoy's HTTP CONNECT:
+Register the corporate proxy as an external TCP service, then have your workload use `HTTPS_PROXY` so the application opens an HTTP CONNECT tunnel through that proxy:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -167,37 +170,42 @@ spec:
       protocol: TCP
   location: MESH_EXTERNAL
   resolution: DNS
----
-apiVersion: networking.istio.io/v1
-kind: ServiceEntry
-metadata:
-  name: external-api
-  namespace: my-app
-spec:
-  hosts:
-    - api.external-service.com
-  ports:
-    - number: 443
-      name: https
-      protocol: HTTPS
-  location: MESH_EXTERNAL
-  resolution: DNS
 ```
 
-### Option B: Set Proxy Environment Variables on Sidecars
+Do not create ServiceEntries for the final external sites reached through the corporate proxy. From Istio's point of view, the sidecar is sending traffic to the proxy, and the proxy forwards the CONNECT tunnel to the destination.
 
-You can set HTTP_PROXY on the Envoy sidecar containers:
+### Option B: Set Proxy Environment Variables on Workloads
+
+You can set proxy environment variables on application containers that make outbound HTTP or HTTPS calls:
 
 ```yaml
-meshConfig:
-  defaultConfig:
-    proxyMetadata:
-      HTTP_PROXY: "http://proxy.corp.example.com:8080"
-      HTTPS_PROXY: "http://proxy.corp.example.com:8080"
-      NO_PROXY: "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,.svc,.cluster.local,.corp.example.com"
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-app
+  namespace: my-app
+spec:
+  selector:
+    matchLabels:
+      app: my-app
+  template:
+    metadata:
+      labels:
+        app: my-app
+    spec:
+      containers:
+        - name: app
+          image: registry.corp.example.com/my-app:latest
+          env:
+            - name: HTTP_PROXY
+              value: "http://proxy.corp.example.com:8080"
+            - name: HTTPS_PROXY
+              value: "http://proxy.corp.example.com:8080"
+            - name: NO_PROXY
+              value: "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,.svc,.cluster.local,.corp.example.com"
 ```
 
-Be careful with this approach. These environment variables affect all outbound traffic from the sidecar. Make sure `NO_PROXY` covers all your internal services.
+Be careful with this approach. These environment variables affect HTTP client libraries in the application container. Make sure `NO_PROXY` covers all your internal services.
 
 ## Step 6: Handle TLS Inspection
 
@@ -218,7 +226,7 @@ spec:
       k8s:
         env:
           - name: SSL_CERT_FILE
-            value: /etc/corporate-certs/ca.crt
+            value: /etc/corporate-certs/ca-bundle.crt
         volumes:
           - name: corporate-certs
             configMap:
@@ -229,12 +237,12 @@ spec:
             readOnly: true
 ```
 
-Create the ConfigMap with your corporate CA:
+Create the ConfigMap with a CA bundle that includes your corporate CA and any other root CAs that istiod still needs:
 
 ```bash
 kubectl create configmap corporate-ca \
   -n istio-system \
-  --from-file=ca.crt=/path/to/corporate-ca.crt
+  --from-file=ca-bundle.crt=/path/to/ca-bundle.crt
 ```
 
 ## Step 7: Configure Egress Gateway for Controlled External Access
@@ -255,11 +263,10 @@ resources:
 
 ```bash
 kubectl create namespace istio-egress
-kubectl label namespace istio-egress istio-injection=enabled
-helm install istio-egress istio/gateway -n istio-egress -f values-egress.yaml
+helm install istio-egress istio/gateway -n istio-egress -f values-egress.yaml --wait
 ```
 
-Route traffic through the egress gateway:
+Define the egress gateway listener:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -269,7 +276,7 @@ metadata:
   namespace: istio-egress
 spec:
   selector:
-    istio: egressgateway
+    istio: egress
   servers:
     - port:
         number: 443
