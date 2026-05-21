@@ -17,7 +17,7 @@ Istio's VirtualService supports matching on HTTP headers, and since cookies are 
 The simplest case is routing users with a specific cookie to a different version. Say you have a `beta-user` cookie and want to send those users to the v2 version:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: frontend
@@ -29,7 +29,7 @@ spec:
   - match:
     - headers:
         cookie:
-          regex: ".*beta-user=true.*"
+          regex: '(^|.*;[[:space:]]*)beta-user=true(;.*|$)'
     route:
     - destination:
         host: frontend
@@ -47,7 +47,7 @@ The `cookie` header match uses a regex because the Cookie header contains all co
 You need a DestinationRule to define the v1 and v2 subsets:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: frontend
@@ -93,29 +93,31 @@ spec:
         name: envoy.filters.http.lua
         typed_config:
           "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-          inline_code: |
-            function envoy_on_request(request_handle)
-              local cookies = request_handle:headers():get("cookie") or ""
-              if not string.find(cookies, "ab%-group=") then
-                -- Assign to group A or B randomly (50/50)
-                local random_val = math.random(1, 100)
-                local group = "A"
-                if random_val > 50 then
-                  group = "B"
+          default_source_code:
+            inline_string: |
+              function envoy_on_request(request_handle)
+                local cookies = request_handle:headers():get("cookie") or ""
+                if not string.find(cookies, "ab%-group=") then
+                  -- Assign to group A or B randomly (50/50)
+                  local random_val = math.random(1, 100)
+                  local group = "A"
+                  if random_val > 50 then
+                    group = "B"
+                  end
+                  request_handle:streamInfo():dynamicMetadata():set("envoy.filters.http.lua", "ab-group", group)
                 end
-                request_handle:headers():add("x-ab-group", group)
               end
-            end
 
-            function envoy_on_response(response_handle)
-              local group = response_handle:headers():get("x-ab-group")
-              if group then
-                response_handle:headers():add(
-                  "set-cookie",
-                  "ab-group=" .. group .. "; Path=/; Max-Age=2592000; SameSite=Lax"
-                )
+              function envoy_on_response(response_handle)
+                local metadata = response_handle:streamInfo():dynamicMetadata():get("envoy.filters.http.lua")
+                local group = metadata and metadata["ab-group"]
+                if group then
+                  response_handle:headers():add(
+                    "set-cookie",
+                    "ab-group=" .. group .. "; Path=/; Max-Age=2592000; SameSite=Lax"
+                  )
+                end
               end
-            end
 ```
 
 This filter checks if the `ab-group` cookie exists. If not, it randomly assigns the user to group A or B and sets the cookie in the response. Subsequent requests carry the cookie and get routed accordingly.
@@ -125,7 +127,7 @@ This filter checks if the `ab-group` cookie exists. If not, it randomly assigns 
 Now route based on the A/B cookie:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: frontend
@@ -139,7 +141,7 @@ spec:
   - match:
     - headers:
         cookie:
-          regex: ".*ab-group=B.*"
+          regex: '(^|.*;[[:space:]]*)ab-group=B(;.*|$)'
     route:
     - destination:
         host: frontend
@@ -157,7 +159,7 @@ Group A gets v1 (the default route), group B gets v2. Every user stays on the sa
 You can match on multiple cookies or combine cookie matching with other criteria:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: frontend
@@ -170,9 +172,7 @@ spec:
   - match:
     - headers:
         cookie:
-          regex: ".*tier=premium.*"
-        cookie:
-          regex: ".*beta-user=true.*"
+          regex: '(^|.*;[[:space:]]*)tier=premium(;.*)?;[[:space:]]*beta-user=true(;.*|$)|(^|.*;[[:space:]]*)beta-user=true(;.*)?;[[:space:]]*tier=premium(;.*|$)'
     route:
     - destination:
         host: frontend
@@ -181,7 +181,7 @@ spec:
   - match:
     - headers:
         cookie:
-          regex: ".*beta-user=true.*"
+          regex: '(^|.*;[[:space:]]*)beta-user=true(;.*|$)'
     route:
     - destination:
         host: frontend
@@ -200,7 +200,7 @@ Note: when you have multiple match conditions in the same match block, they are 
 Sometimes you do not care about the cookie value but just want the same user to always reach the same backend pod. Istio supports consistent hash-based load balancing using cookies:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: frontend
@@ -224,7 +224,7 @@ This is session affinity, not version routing. It ensures a user sticks to the s
 Cookie-based routing works great for feature flags. Set a cookie with the feature flag, then route accordingly:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: checkout-service
@@ -236,7 +236,7 @@ spec:
   - match:
     - headers:
         cookie:
-          regex: ".*feature-new-checkout=enabled.*"
+          regex: '(^|.*;[[:space:]]*)feature-new-checkout=enabled(;.*|$)'
     route:
     - destination:
         host: checkout-service
