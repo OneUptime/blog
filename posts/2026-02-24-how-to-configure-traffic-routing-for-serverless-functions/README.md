@@ -10,7 +10,7 @@ Description: Step-by-step instructions for configuring Istio traffic routing pol
 
 When you run serverless functions on Kubernetes with Knative, you already get some basic traffic splitting built in. Knative lets you split traffic between revisions. But once you add Istio to the mix, you unlock a much more powerful set of routing capabilities. You can route based on headers, query parameters, user identity, or any combination of these.
 
-This guide covers practical traffic routing patterns for serverless functions using Istio VirtualService and DestinationRule resources.
+This guide covers practical traffic routing patterns for serverless functions using Istio VirtualService resources.
 
 ## Understanding How Knative and Istio Routing Interact
 
@@ -76,6 +76,7 @@ spec:
   traffic:
     - revisionName: my-function-v1
       percent: 100
+      tag: stable
     - revisionName: my-function-v2
       percent: 0
       tag: canary
@@ -84,7 +85,7 @@ spec:
 Now create an Istio VirtualService that overrides routing for specific headers:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-function-header-routing
@@ -99,10 +100,10 @@ spec:
               exact: "true"
       route:
         - destination:
-            host: my-function-v2.default.svc.cluster.local
+            host: canary-my-function.default.svc.cluster.local
     - route:
         - destination:
-            host: my-function.default.svc.cluster.local
+            host: stable-my-function.default.svc.cluster.local
 ```
 
 Now any request with the header `x-canary: true` goes to v2, and everything else goes to v1.
@@ -112,7 +113,7 @@ Now any request with the header `x-canary: true` goes to v2, and everything else
 If you have multiple serverless functions and want to route to them based on the URL path, you can use a single VirtualService at the gateway level:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: functions-router
@@ -153,27 +154,32 @@ The `rewrite` field strips the prefix before forwarding to the function, so the 
 
 ## Weighted Routing with Gradual Rollout
 
-For a gradual rollout strategy where you slowly increase traffic to a new version, you can update the weights over time. Here is a setup with a DestinationRule and VirtualService:
+For a gradual rollout strategy where you slowly increase traffic to a new version, you can update the weights over time. If you use tagged Knative traffic targets, Knative creates separate Kubernetes Services for those targets, so you can weight them directly in a VirtualService:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
-kind: DestinationRule
+apiVersion: serving.knative.dev/v1
+kind: Service
 metadata:
-  name: my-function-dr
+  name: my-function
   namespace: default
 spec:
-  host: my-function.default.svc.cluster.local
-  subsets:
-    - name: v1
-      labels:
-        serving.knative.dev/revision: my-function-v1
-    - name: v2
-      labels:
-        serving.knative.dev/revision: my-function-v2
+  template:
+    metadata:
+      name: my-function-v2
+    spec:
+      containers:
+        - image: myregistry/my-function:v2
+  traffic:
+    - revisionName: my-function-v1
+      percent: 100
+      tag: stable
+    - revisionName: my-function-v2
+      percent: 0
+      tag: canary
 ```
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-function-weighted
@@ -184,12 +190,10 @@ spec:
   http:
     - route:
         - destination:
-            host: my-function.default.svc.cluster.local
-            subset: v1
+            host: stable-my-function.default.svc.cluster.local
           weight: 90
         - destination:
-            host: my-function.default.svc.cluster.local
-            subset: v2
+            host: canary-my-function.default.svc.cluster.local
           weight: 10
 ```
 
@@ -197,10 +201,10 @@ You can automate the weight changes using tools like Flagger, which integrates w
 
 ## Routing Based on Query Parameters
 
-Sometimes you want to route based on query parameters, which is useful for A/B testing:
+Sometimes you want to route based on query parameters, which is useful for A/B testing. Assuming you are using the `stable` and `canary` traffic tags from the earlier example:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-function-ab-test
@@ -215,10 +219,10 @@ spec:
               exact: "beta"
       route:
         - destination:
-            host: my-function-v2.default.svc.cluster.local
+            host: canary-my-function.default.svc.cluster.local
     - route:
         - destination:
-            host: my-function-v1.default.svc.cluster.local
+            host: stable-my-function.default.svc.cluster.local
 ```
 
 A request to `my-function?version=beta` will go to v2, while all other requests go to v1.
@@ -228,7 +232,7 @@ A request to `my-function?version=beta` will go to v2, while all other requests 
 Traffic mirroring (also called shadowing) lets you send a copy of production traffic to a new version without affecting real users. This is perfect for testing a new function version with real traffic:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-function-mirror
@@ -239,9 +243,9 @@ spec:
   http:
     - route:
         - destination:
-            host: my-function-v1.default.svc.cluster.local
+            host: stable-my-function.default.svc.cluster.local
       mirror:
-        host: my-function-v2.default.svc.cluster.local
+        host: canary-my-function.default.svc.cluster.local
       mirrorPercentage:
         value: 100.0
 ```
@@ -253,7 +257,7 @@ The mirrored requests are fire-and-forget. The response from v2 is discarded, an
 You can attach timeout and retry policies directly to your routing rules. This is especially important for serverless because of cold starts:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-function-with-retries
