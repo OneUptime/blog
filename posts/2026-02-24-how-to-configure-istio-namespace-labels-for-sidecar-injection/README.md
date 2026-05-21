@@ -143,7 +143,7 @@ metadata:
     sidecar.istio.io/inject: "false"
 ```
 
-Both the label and annotation work. The label is checked first.
+Both the label and annotation work, but the annotation is deprecated in favor of the label.
 
 To force injection in a namespace that does not have injection enabled:
 
@@ -153,7 +153,7 @@ metadata:
     sidecar.istio.io/inject: "true"
 ```
 
-Note that this only works if the webhook's `objectSelector` is configured to look for this label, which is the default in recent Istio versions.
+Note that this only works if the webhook is invoked for that namespace. For example, the namespace must match the webhook's `namespaceSelector`, and the pod must not be excluded by the webhook's `objectSelector`.
 
 ## Checking Label Status
 
@@ -213,11 +213,17 @@ metadata:
     sidecar.istio.io/inject: "true"
 ```
 
-This requires the webhook to be configured with an `objectSelector`:
+This requires the webhook to match unlabeled namespaces and not exclude the pod:
 
 ```yaml
 webhooks:
   - name: namespace.sidecar-injector.istio.io
+    namespaceSelector:
+      matchExpressions:
+        - key: istio-injection
+          operator: NotIn
+          values:
+            - disabled
     objectSelector:
       matchExpressions:
         - key: sidecar.istio.io/inject
@@ -230,10 +236,10 @@ webhooks:
 
 ### Migrating a Namespace to the Mesh
 
-1. Start with injection disabled:
+1. Start without a namespace injection label, and make sure your webhook matches unlabeled namespaces as described above:
 
 ```bash
-kubectl label namespace legacy-app istio-injection=disabled
+kubectl label namespace legacy-app istio-injection- istio.io/rev-
 ```
 
 2. Test with a single deployment:
@@ -262,7 +268,7 @@ kubectl rollout restart deployment -n legacy-app
 
 ```bash
 # Remove the label
-kubectl label namespace leaving-mesh istio-injection-
+kubectl label namespace leaving-mesh istio-injection- istio.io/rev-
 
 # Restart pods to remove sidecars
 kubectl rollout restart deployment -n leaving-mesh
