@@ -12,9 +12,9 @@ When you have multiple versions of a service running, or your pods have differen
 
 ## Understanding Weighted Round Robin
 
-Round robin is the default load balancing algorithm in most systems. It just cycles through available endpoints one by one. Weighted round robin adds a twist: each endpoint gets a weight, and the load balancer sends traffic proportionally based on those weights.
+Round robin cycles through available endpoints one by one. Istio's default load balancing policy is least requests, but you can configure round robin when you want sequential distribution. Weighted routing adds a twist: each destination gets a weight, and the proxy sends traffic proportionally based on those weights.
 
-For example, if endpoint A has weight 3 and endpoint B has weight 1, then out of every 4 requests, 3 go to A and 1 goes to B.
+For example, if destination A has weight 3 and destination B has weight 1, then A receives roughly three times as much traffic as B.
 
 In Istio, you achieve weighted routing primarily through `VirtualService` and `DestinationRule` resources. The `VirtualService` handles weight-based routing between subsets, while the `DestinationRule` defines those subsets and their load balancing policies.
 
@@ -23,7 +23,7 @@ In Istio, you achieve weighted routing primarily through `VirtualService` and `D
 First, you need to define your service subsets. Suppose you have a `payment-service` with two versions deployed:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: payment-service-dr
@@ -49,7 +49,7 @@ This DestinationRule creates two subsets based on pod labels. The `ROUND_ROBIN` 
 Now you set up the VirtualService to split traffic between these subsets with specific weights:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: payment-service-vs
@@ -69,14 +69,14 @@ spec:
           weight: 20
 ```
 
-This sends 80% of traffic to v1 and 20% to v2. The weights must add up to 100. Istio's sidecar proxy (Envoy) handles the actual distribution.
+This sends 80% of traffic to v1 and 20% to v2. The weights are relative proportions, so each destination receives `weight / sum(all weights)` traffic. Using values that add up to 100 makes the intended percentages easy to read. Istio's sidecar proxy (Envoy) handles the actual distribution.
 
 ## Combining Weights with Per-Subset Load Balancing
 
 You can get more granular by applying different load balancing policies to each subset. Maybe v1 has heterogeneous pods and you want least connections there, while v2 is uniform so round robin is fine:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: payment-service-dr
@@ -105,7 +105,7 @@ With this setup, the VirtualService still controls the 80/20 split between subse
 A common use case for weighted round robin is canary deployments. You roll out a new version to a small percentage of traffic, monitor it, and gradually increase:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-gateway-vs
@@ -129,7 +129,7 @@ Start with 5% on canary. If metrics look good, bump it up:
 
 ```bash
 kubectl apply -f - <<EOF
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-gateway-vs
@@ -185,20 +185,20 @@ for i in $(seq 1 100); do
 done | sort | uniq -c
 ```
 
-If your weights are 80/20, you should see roughly 80 responses from v1 and 20 from v2. It won't be exact because weighted round robin is probabilistic at small sample sizes.
+If your weights are 80/20, you should see roughly 80 responses from v1 and 20 from v2. It won't be exact over a small sample because traffic distribution is affected by sample size, connection reuse, retries, and the current proxy state.
 
 ## Handling Edge Cases
 
 There are a few things to watch out for when using weighted routing.
 
-**Weights must sum to 100.** If they don't, Istio normalizes them, but your configuration might not behave as expected. Always be explicit.
+**Weights are relative.** They don't have to sum to 100 because Istio calculates each destination's share as `weight / sum(all weights)`. Keeping them as percentages still makes the configuration easier to understand.
 
 **Zero-weight subsets still exist.** If you set a weight to 0, that subset receives no traffic from this route, but the pods are still running and consuming resources. This is useful during migrations but remember to clean up.
 
 **Connection pooling interacts with weights.** If you have long-lived connections (like gRPC streams), the weight distribution might not be as precise because connections aren't re-balanced on every request. For gRPC, consider using `LEAST_REQUEST` within subsets to improve distribution.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: grpc-service-dr
