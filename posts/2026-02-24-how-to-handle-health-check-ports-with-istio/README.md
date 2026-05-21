@@ -50,7 +50,7 @@ spec:
             periodSeconds: 5
 ```
 
-With Istio's probe rewriting enabled, this works without any extra configuration. The sidecar injector sees the probe targets port 8081 and rewrites it to go through the agent on port 15021. The agent forwards to port 8081.
+With Istio's probe rewriting enabled, this works without any extra configuration. The sidecar injector sees the probe targets port 8081 and rewrites it to go through the sidecar agent on port 15020. The agent forwards to port 8081.
 
 ## Excluding Health Ports from Istio
 
@@ -96,9 +96,14 @@ spec:
             periodSeconds: 5
 ```
 
-The `excludeInboundPorts` annotation tells the init container not to add iptables rules for port 8081. Traffic to this port goes directly to your container, bypassing Envoy completely.
+The `excludeInboundPorts` annotation tells Istio's traffic redirection setup not to add capture rules for port 8081. Traffic to this port goes directly to your container, bypassing Envoy completely.
 
-When you exclude a port, probe rewriting is not needed for probes targeting that port. The kubelet can reach the container directly. However, Istio still rewrites the probe unless you explicitly disable rewriting.
+When you exclude a port, probe rewriting is not needed for probes targeting that port. However, Istio still rewrites HTTP probes unless you explicitly disable rewriting. If you want the kubelet to reach the container directly on the excluded port, also add:
+
+```yaml
+annotations:
+  sidecar.istio.io/rewriteAppHTTPProbers: "false"
+```
 
 ## Kubernetes Service Port vs Container Port
 
@@ -116,7 +121,7 @@ spec:
     - name: http
       port: 80          # Service port (external)
       targetPort: 8080  # Container port
-    - name: health
+    - name: http-health
       port: 8081        # Service port
       targetPort: 8081  # Container port
 ```
@@ -142,14 +147,16 @@ Istio uses several ports that you must not use for your application:
 |------|---------|
 | 15000 | Envoy admin |
 | 15001 | Envoy outbound |
+| 15002 | Failure detection |
 | 15004 | Debug |
 | 15006 | Envoy inbound |
+| 15008 | HBONE mTLS tunnel |
 | 15020 | Merged Prometheus |
 | 15021 | Health check agent |
 | 15053 | DNS proxy |
 | 15090 | Envoy Prometheus |
 
-If your health check port conflicts with any of these, change it. Using port 15021 for your own health endpoint will definitely cause problems since that is the probe rewriting agent port.
+If your health check port conflicts with any of these, change it. Using port 15020 or 15021 for your own health endpoint will cause problems because those ports are used by Istio's sidecar agent.
 
 Check for conflicts:
 
@@ -160,12 +167,13 @@ kubectl exec -it <pod-name> -c my-service -- ss -tlnp
 
 ## Named Ports for Protocol Detection
 
-Istio uses port names to detect protocols. For your health check port, name it appropriately:
+Istio uses Service port names or the Kubernetes `appProtocol` field to detect protocols. For your health check Service port, name it appropriately:
 
 ```yaml
 ports:
   - name: http-health
-    containerPort: 8081
+    port: 8081
+    targetPort: 8081
 ```
 
 Names starting with `http` tell Istio this is HTTP traffic. Other recognized prefixes:
