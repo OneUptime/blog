@@ -122,9 +122,9 @@ With this setup:
 - All traces with latency above 2 seconds are kept (100%)
 - 5% of normal, healthy traces are kept for baseline visibility
 
-## Strategy 2: Composite Policies
+## Strategy 2: Combining Policies
 
-The tail-sampling processor supports composite policies that combine multiple conditions with AND/OR logic:
+The tail-sampling processor evaluates top-level policies with OR semantics: a trace is sampled if any policy votes to sample it, unless a drop policy overrides the decision. Use the `and` policy to combine multiple conditions:
 
 ```yaml
 processors:
@@ -180,20 +180,28 @@ processors:
 
 ## Strategy 3: Force-Trace Important Requests
 
-For known-important requests (like specific API endpoints or user-triggered actions), force tracing from the application layer:
+For known-important requests (like specific API endpoints or user-triggered actions), force tracing before the request enters the mesh. For example, an edge service or API gateway that forwards requests can add B3 sampling headers on the outbound request:
 
 ```python
-# Python middleware that forces tracing for specific conditions
+# Python gateway handler that forwards important requests with B3 sampling headers
+from flask import g, request
+import requests
 
 @app.before_request
 def force_trace_important_requests():
-    # Force-trace admin actions
-    if request.path.startswith('/admin/'):
-        request.headers.environ['HTTP_X_B3_SAMPLED'] = '1'
+    g.force_trace = (
+        request.path.startswith('/admin/')
+        or request.headers.get('X-Debug-Trace') is not None
+    )
 
-    # Force-trace requests with a debug header
-    if request.headers.get('X-Debug-Trace'):
-        request.headers.environ['HTTP_X_B3_SAMPLED'] = '1'
+@app.route('/proxy/<path:path>')
+def proxy(path):
+    headers = dict(request.headers)
+    if getattr(g, 'force_trace', False):
+        headers['X-B3-Sampled'] = '1'
+
+    upstream_response = requests.get(f'http://api.example.com/{path}', headers=headers)
+    return upstream_response.content, upstream_response.status_code
 ```
 
 From the client side:
@@ -208,7 +216,7 @@ curl -H "X-B3-Flags: 1" http://api.example.com/api/checkout
 
 ## Strategy 4: Rate-Limited Sampling
 
-Instead of percentage-based sampling, use rate-limiting to sample a fixed number of traces per second. This gives predictable trace volume regardless of traffic spikes:
+Instead of percentage-based sampling, use rate-limiting to sample a fixed number of spans per second. This gives predictable span volume regardless of traffic spikes:
 
 ```yaml
 processors:
@@ -227,7 +235,7 @@ processors:
           spans_per_second: 100
 ```
 
-At 100 spans per second, you'll get roughly 8.6 million spans per day, regardless of whether your traffic is 1,000 or 100,000 requests per second.
+At 100 spans per second, you'll get roughly 8.6 million baseline sampled spans per day, regardless of whether your traffic is 1,000 or 100,000 requests per second. The number of traces depends on how many spans each sampled trace contains.
 
 ## Strategy 5: Priority-Based Sampling at the Mesh Level
 
@@ -290,7 +298,7 @@ spec:
     spec:
       containers:
         - name: collector
-          image: otel/opentelemetry-collector-contrib:0.96.0
+          image: otel/opentelemetry-collector-contrib:0.152.0
           resources:
             requests:
               cpu: "2"
@@ -300,7 +308,7 @@ spec:
               memory: 8Gi
 ```
 
-Important: tail-based sampling requires all spans from the same trace to arrive at the same collector instance. Use the `loadbalancingexporter` to distribute traces consistently:
+Important: tail-based sampling requires all spans from the same trace to arrive at the same collector instance. Use the `loadbalancingexporter` to distribute traces consistently by trace ID. With the DNS resolver, point it at a service that resolves to the sampling collector endpoints, such as a Kubernetes headless Service:
 
 ```yaml
 # First tier: Load-balanced routing
@@ -312,13 +320,14 @@ receivers:
 
 exporters:
   loadbalancing:
+    routing_key: traceID
     protocol:
       otlp:
         tls:
           insecure: true
     resolver:
       dns:
-        hostname: otel-collector-sampling.observability
+        hostname: otel-collector-sampling-headless.observability.svc.cluster.local
         port: 4317
 
 service:
@@ -387,9 +396,9 @@ For a service handling 10,000 RPS:
 | 100% sampling | ~864M | 100% |
 | 1% random | ~8.6M | ~1% |
 | Tail-based (errors + 5%) | ~43M + all errors | 100% |
-| Rate-limited (100/sec) | ~8.6M + all errors | 100% |
+| Rate-limited (100 spans/sec) | ~8.6M spans + all errors | 100% |
 
-Tail-based sampling costs more than simple random sampling but guarantees you capture every error trace.
+Tail-based sampling costs more than simple random sampling but can be configured to capture every error trace that reaches the collector with an error status before the sampling decision is made.
 
 ## Summary
 
