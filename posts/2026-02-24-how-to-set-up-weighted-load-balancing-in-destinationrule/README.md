@@ -54,7 +54,7 @@ spec:
       weight: 10
 ```
 
-90% of traffic goes to v1 pods, 10% goes to v2 pods. The weights must add up to 100.
+90% of traffic goes to v1 pods, 10% goes to v2 pods. Istio treats weights as relative proportions, so setting them to add up to 100 makes them easy to read as percentages.
 
 ## Deploying the Service Versions
 
@@ -118,7 +118,7 @@ spec:
     targetPort: 8080
 ```
 
-The Kubernetes Service selects all pods with `app: my-app`. Without Istio, traffic would be distributed across all 7 pods equally. With the VirtualService weight configuration, 90% goes to the 5 v1 pods and 10% goes to the 2 v2 pods.
+The Kubernetes Service selects all pods with `app: my-app`. Without Istio, traffic would be routed to one of the 7 ready pods without version-aware weighting. With the VirtualService weight configuration, 90% goes to the 5 v1 pods and 10% goes to the 2 v2 pods.
 
 ## Gradual Rollout Strategy
 
@@ -264,7 +264,7 @@ spec:
       weight: 10
 ```
 
-v1 gets 70%, v2 gets 20%, v3 gets 10%. All weights must add up to 100.
+v1 gets 70%, v2 gets 20%, v3 gets 10%. Setting weights to add up to 100 makes the split easy to read as percentages.
 
 ## Weighted Routing with Header Overrides
 
@@ -305,7 +305,7 @@ Testers can force their traffic to v2 by setting the `x-test-version: v2` header
 Send a batch of requests and count which subset handles them:
 
 ```bash
-kubectl run curl-test --image=curlimages/curl -it --rm -- sh -c '
+kubectl run curl-test --image=curlimages/curl -it --rm --restart=Never --command -- sh -c '
 for i in $(seq 1 1000); do
   curl -s http://my-app:8080/version 2>/dev/null
 done | sort | uniq -c | sort -rn
