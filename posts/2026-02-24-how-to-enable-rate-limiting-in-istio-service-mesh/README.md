@@ -82,7 +82,11 @@ This limits each proxy instance to 100 requests per 60 seconds. When the limit i
 
 Global rate limiting requires deploying a rate limit service. The most common choice is the Envoy rate limit service (ratelimit), which uses Redis as its backend.
 
-First, deploy Redis:
+First, create the namespace and deploy Redis:
+
+```bash
+kubectl create namespace rate-limit
+```
 
 ```yaml
 apiVersion: apps/v1
@@ -157,7 +161,7 @@ spec:
     spec:
       containers:
       - name: ratelimit
-        image: envoyproxy/ratelimit:master
+        image: docker.io/envoyproxy/ratelimit:30a4ce1a
         ports:
         - containerPort: 8080
         - containerPort: 8081
@@ -175,6 +179,10 @@ spec:
           value: redis.rate-limit.svc.cluster.local:6379
         - name: USE_STATSD
           value: "false"
+        - name: RUNTIME_WATCH_ROOT
+          value: "false"
+        - name: RUNTIME_IGNOREDOTFILES
+          value: "true"
         volumeMounts:
         - name: config
           mountPath: /data/ratelimit/config
@@ -202,7 +210,7 @@ spec:
 
 ## Connecting Istio to the Global Rate Limit Service
 
-Now you need to tell Envoy to check with the rate limit service. This takes two EnvoyFilter resources. First, define the rate limit cluster:
+Now you need to tell Envoy to check with the rate limit service. This takes three EnvoyFilter resources. First, define the rate limit cluster:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -214,8 +222,7 @@ spec:
   configPatches:
   - applyTo: CLUSTER
     match:
-      cluster:
-        service: ratelimit.rate-limit.svc.cluster.local
+      context: SIDECAR_OUTBOUND
     patch:
       operation: ADD
       value:
@@ -277,6 +284,37 @@ spec:
             transport_api_version: V3
 ```
 
+Third, add rate limit actions to the inbound route configuration. Without this route-level configuration, the rate limit filter is present but has no descriptor to send to the rate limit service:
+
+```yaml
+apiVersion: networking.istio.io/v1alpha3
+kind: EnvoyFilter
+metadata:
+  name: rate-limit-route
+  namespace: istio-system
+spec:
+  workloadSelector:
+    labels:
+      app: my-service
+  configPatches:
+  - applyTo: VIRTUAL_HOST
+    match:
+      context: SIDECAR_INBOUND
+      routeConfiguration:
+        vhost:
+          name: "inbound|http|8080"
+          route:
+            action: ANY
+    patch:
+      operation: MERGE
+      value:
+        rate_limits:
+        - actions:
+          - request_headers:
+              header_name: ":path"
+              descriptor_key: "PATH"
+```
+
 ## Testing Your Rate Limits
 
 Once everything is deployed, test that rate limiting is working:
@@ -293,20 +331,30 @@ After 100 requests, you should start seeing 429 status codes.
 
 ## Checking Rate Limit Headers
 
-When a request is rate limited, the response includes standard headers:
+When a request is rate limited, Envoy adds the `x-envoy-ratelimited` header. The local rate limit example above also adds the custom `x-local-rate-limit` header:
 
 ```text
 HTTP/1.1 429 Too Many Requests
-x-ratelimit-limit: 100
-x-ratelimit-remaining: 0
-x-ratelimit-reset: 45
+x-envoy-ratelimited: true
+x-local-rate-limit: true
 ```
 
-These headers tell the client how many requests are allowed, how many are remaining, and when the window resets.
+If you want `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset` response headers, enable them explicitly in the rate limit filter with `enable_x_ratelimit_headers`.
 
 ## Monitoring Rate Limit Metrics
 
-Both local and global rate limiting generate Envoy metrics. For local rate limiting:
+Both local and global rate limiting can generate Envoy metrics. Istio does not expose every Envoy stat by default, so enable matching proxy stats for local rate limiting if you want to query them:
+
+```yaml
+metadata:
+  annotations:
+    proxy.istio.io/config: |-
+      proxyStatsMatcher:
+        inclusionRegexps:
+        - ".*http_local_rate_limit.*"
+```
+
+For local rate limiting:
 
 ```bash
 kubectl exec my-service-pod -c istio-proxy -- \
