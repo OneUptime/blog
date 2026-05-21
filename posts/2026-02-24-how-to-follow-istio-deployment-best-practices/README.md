@@ -140,9 +140,9 @@ spec:
       targetPort: 3306
 ```
 
-The naming convention is `<protocol>-<suffix>`. Supported protocols include `http`, `http2`, `https`, `grpc`, `grpc-web`, `tcp`, `tls`, and `mongo`.
+The naming convention is `<protocol>-<suffix>`. Supported protocols include `http`, `http2`, `https`, `grpc`, `grpc-web`, `tcp`, `tls`, `mongo`, `mysql`, and `redis`.
 
-Without proper naming, Istio treats the port as opaque TCP and you lose all HTTP-level features like retries, routing, and metrics.
+Without proper naming, Istio tries to automatically detect HTTP and HTTP/2. If the protocol cannot be detected, Istio treats the port as opaque TCP and you lose HTTP-level features like retries, routing, and metrics.
 
 ## Configure Sidecar Resources to Limit Config Size
 
@@ -205,7 +205,7 @@ spec:
     mode: STRICT
 ```
 
-For namespaces that need to communicate with non-mesh services, set PERMISSIVE at the namespace level:
+For namespaces with workloads that must accept both mTLS traffic from the mesh and plaintext traffic from non-mesh clients, set PERMISSIVE at the namespace level:
 
 ```yaml
 apiVersion: security.istio.io/v1
