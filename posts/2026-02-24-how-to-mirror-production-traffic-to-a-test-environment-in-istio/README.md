@@ -117,7 +117,7 @@ Notice the test deployment uses a different database URL. This is critical - you
 ### Mirroring VirtualService
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: order-service
@@ -150,7 +150,7 @@ Mirroring write requests (POST, PUT, DELETE) to a test environment requires care
 The simplest approach - only mirror GET requests:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: order-service
@@ -239,7 +239,7 @@ Mirror only 10% of traffic. Enough to test with real patterns without needing fu
 
 ### Option 2: Use Fewer Replicas
 
-If you mirror 100% of traffic but only have 1 test replica vs 3 production replicas, the test service gets 3x the per-pod load. This is fine if you are testing correctness rather than performance. If the test service gets overwhelmed, it just queues up and processes slowly - since responses are discarded, nobody cares.
+If you mirror 100% of traffic but only have 1 test replica vs 3 production replicas, the test service gets 3x the per-pod load. This can be fine if you are testing correctness rather than performance, but watch the test service's resource usage and error rate. Mirrored responses are discarded, but an overwhelmed mirror target can still fail, drop requests, or consume cluster resources.
 
 ### Option 3: Use Resource Limits
 
@@ -309,7 +309,7 @@ Here is the full configuration:
 
 ```yaml
 # Production VirtualService with mirroring
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: order-service
@@ -331,7 +331,7 @@ spec:
         value: 50.0
 ---
 # DestinationRule for the test service
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: order-service-mirror
@@ -350,7 +350,7 @@ spec:
       baseEjectionTime: 60s
 ```
 
-The DestinationRule on the test service has relaxed circuit breaking since we do not care about the test service's availability. We just want it to process what it can.
+The DestinationRule on the test service sets explicit connection-pool and outlier-detection limits so the mirror target processes what it can without allowing unbounded pending requests.
 
 ## When to Use Traffic Mirroring
 
