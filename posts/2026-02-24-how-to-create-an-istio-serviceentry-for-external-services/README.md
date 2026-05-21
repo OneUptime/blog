@@ -44,7 +44,7 @@ The key fields are:
 
 ## Creating Your First ServiceEntry
 
-Say you have a microservice that needs to call `https://api.stripe.com` to process payments. Without a ServiceEntry (and with `REGISTRY_ONLY` mode), those calls fail silently. Your pod logs show connection refused errors and you spend an hour debugging before realizing Istio is blocking the traffic.
+Say you have a microservice that needs to call `https://api.stripe.com` to process payments. Without a ServiceEntry (and with `REGISTRY_ONLY` mode), those calls fail because Istio blocks traffic to hosts that are not in the service registry. Your pod logs show connection errors and you spend an hour debugging before realizing Istio is blocking the traffic.
 
 Here is how to fix that:
 
@@ -198,10 +198,10 @@ spec:
 
 ## Verifying ServiceEntry Works
 
-After applying your ServiceEntry, test from inside a pod:
+After applying your ServiceEntry, test from inside an application or debug container in the pod:
 
 ```bash
-kubectl exec -it deploy/my-app -c istio-proxy -- curl -I https://api.stripe.com
+kubectl exec -it deploy/my-app -c my-app -- curl -I https://api.stripe.com
 ```
 
 You can also check the Envoy clusters to confirm the service was registered:
@@ -212,17 +212,17 @@ istioctl proxy-config cluster deploy/my-app | grep stripe
 
 This should show the cluster for api.stripe.com with the correct port and protocol.
 
-For deeper inspection, look at the routes:
+For HTTP services, you can also inspect routes:
 
 ```bash
-istioctl proxy-config routes deploy/my-app --name 443
+istioctl proxy-config routes deploy/my-app --name 80
 ```
 
 ## Common Mistakes to Avoid
 
 **Forgetting the port name prefix.** Istio uses port naming conventions to determine protocol. For TCP services, prefix with `tcp-`. For HTTP, use `http-` or just `http`. For HTTPS, use `https`.
 
-**Wrong namespace.** ServiceEntries are namespace-scoped by default. If your ServiceEntry is in the `default` namespace but your workload is in `production`, the workload might not see it. You can either create the ServiceEntry in the same namespace or export it:
+**Wrong namespace.** ServiceEntry resources live in a namespace, but Istio exports them to all namespaces by default unless `exportTo` or mesh-wide export defaults restrict visibility. If your ServiceEntry is in the `default` namespace and it is only exported to that namespace, a workload in `production` will not see it. You can either create the ServiceEntry in the same namespace or export it:
 
 ```yaml
 apiVersion: networking.istio.io/v1
