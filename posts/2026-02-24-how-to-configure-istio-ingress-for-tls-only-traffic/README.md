@@ -90,7 +90,7 @@ Manually managing TLS certificates is error-prone. Use cert-manager with Let's E
 First, install cert-manager:
 
 ```bash
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.0/cert-manager.yaml
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml
 ```
 
 Create a ClusterIssuer for Let's Encrypt:
@@ -109,7 +109,7 @@ spec:
     solvers:
     - http01:
         ingress:
-          class: istio
+          ingressClassName: istio
 ```
 
 Create a Certificate resource that cert-manager will fulfill:
