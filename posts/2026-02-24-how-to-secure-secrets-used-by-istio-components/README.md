@@ -8,7 +8,7 @@ Description: Protect sensitive data used by Istio components including TLS certi
 
 ---
 
-Istio relies on several types of secrets to function properly - TLS certificates for mTLS, CA signing keys for Citadel, gateway TLS certificates, and service account tokens. If any of these secrets get compromised, an attacker could impersonate services, decrypt mesh traffic, or gain unauthorized access to your entire cluster. Securing these secrets is not optional; it's fundamental to your mesh security posture.
+Istio relies on several types of secrets to function properly - TLS certificates for mTLS, CA signing keys for istiod, gateway TLS certificates, and service account tokens. If any of these secrets get compromised, an attacker could impersonate services, decrypt mesh traffic, or gain unauthorized access to your entire cluster. Securing these secrets is not optional; it's fundamental to your mesh security posture.
 
 ## What Secrets Does Istio Use?
 
@@ -30,14 +30,31 @@ By default, Istio generates a self-signed root CA and stores it as a Kubernetes 
 
 ### Option 1: Bring Your Own CA Certificate
 
-You can provide your own CA certificate and key, generated offline and stored securely:
+You can provide your own CA certificate and key, generated offline and stored securely. In production, keep the root CA offline and give Istio an intermediate CA instead of the root signing key:
 
 ```bash
 # Generate a root CA offline (do this on a secure workstation)
-
 openssl req -x509 -newkey rsa:4096 -sha256 -days 3650 \
-  -nodes -keyout ca-key.pem -out ca-cert.pem \
+  -nodes -keyout root-key.pem -out root-cert.pem \
   -subj "/O=MyOrg/CN=Istio Root CA"
+
+# Generate an intermediate CA for Istio
+openssl req -newkey rsa:4096 -nodes \
+  -keyout ca-key.pem -out ca.csr \
+  -subj "/O=MyOrg/CN=Istio Intermediate CA"
+
+cat > ca-ext.conf <<EOF
+basicConstraints=critical,CA:TRUE,pathlen:0
+keyUsage=critical,keyCertSign,cRLSign
+subjectKeyIdentifier=hash
+authorityKeyIdentifier=keyid,issuer
+EOF
+
+openssl x509 -req -in ca.csr -CA root-cert.pem -CAkey root-key.pem \
+  -CAcreateserial -out ca-cert.pem -days 1825 -sha256 \
+  -extfile ca-ext.conf
+
+cat ca-cert.pem root-cert.pem > cert-chain.pem
 
 # Create the Kubernetes secret before installing Istio
 kubectl create namespace istio-system
@@ -45,8 +62,8 @@ kubectl create namespace istio-system
 kubectl create secret generic cacerts -n istio-system \
   --from-file=ca-cert.pem=ca-cert.pem \
   --from-file=ca-key.pem=ca-key.pem \
-  --from-file=root-cert.pem=ca-cert.pem \
-  --from-file=cert-chain.pem=ca-cert.pem
+  --from-file=root-cert.pem=root-cert.pem \
+  --from-file=cert-chain.pem=cert-chain.pem
 ```
 
 When Istio starts and finds the `cacerts` secret, it uses that instead of generating its own CA.
@@ -55,7 +72,9 @@ After creating the secret, securely delete the private key from your local machi
 
 ### Option 2: Integrate with an External CA
 
-For enterprise environments, you can integrate Istio with an external Certificate Authority. Istio supports pluggable CA implementations:
+For enterprise environments, you can integrate Istio with an external Certificate Authority. Istio supports external CA integration through the Kubernetes CSR API by setting `EXTERNAL_CA` to `ISTIOD_RA_KUBERNETES_API`; the signer name, trust roots, and RBAC depend on your CA implementation.
+
+You can also integrate with cert-manager as an external CA by using Istio's Kubernetes CSR flow. This feature is experimental, so validate it against your Istio and cert-manager versions before using it in production. After configuring cert-manager Issuers or ClusterIssuers for your PKI, configure Istio to use that signer:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -65,24 +84,37 @@ spec:
     pilot:
       env:
         EXTERNAL_CA: ISTIOD_RA_KUBERNETES_API
-    global:
-      pilotCertProvider: custom
-```
-
-You can also integrate with cert-manager as an external CA:
-
-```yaml
-apiVersion: install.istio.io/v1alpha1
-kind: IstioOperator
-spec:
-  values:
-    pilot:
-      env:
-        ENABLE_CA_SERVER: "false"
   meshConfig:
     defaultConfig:
       proxyMetadata:
         ISTIO_META_CERT_SIGNER: istio-system
+    caCertificates:
+      - pem: |
+          <root-ca-certificate-pem>
+        certSigners:
+          - clusterissuers.cert-manager.io/istio-system
+  components:
+    pilot:
+      k8s:
+        env:
+          - name: CERT_SIGNER_DOMAIN
+            value: clusterissuers.cert-manager.io
+          - name: PILOT_CERT_PROVIDER
+            value: k8s.io/clusterissuers.cert-manager.io/istio-system
+        overlays:
+          - kind: ClusterRole
+            name: istiod-clusterrole-istio-system
+            patches:
+              - path: rules[-1]
+                value: |
+                  apiGroups:
+                  - certificates.k8s.io
+                  resourceNames:
+                  - clusterissuers.cert-manager.io/istio-system
+                  resources:
+                  - signers
+                  verbs:
+                  - approve
 ```
 
 Then configure cert-manager with an Issuer that chains to your corporate PKI. This way the root key lives in your existing PKI infrastructure, not in Kubernetes.
@@ -137,7 +169,6 @@ spec:
   issuerRef:
     name: letsencrypt-prod
     kind: ClusterIssuer
-  commonName: "*.example.com"
   dnsNames:
     - "*.example.com"
     - example.com
@@ -212,7 +243,7 @@ kubectl get clusterrolebindings -o json | \
 
 ## Encrypting Secrets at Rest
 
-Kubernetes stores secrets in etcd, and by default they're stored as base64-encoded (not encrypted) data. Enable encryption at rest for etcd:
+Kubernetes stores secrets in etcd, and by default the API server stores them without at-rest encryption. Prefer a KMS v2 provider so the key encryption key is held outside the cluster. If KMS is not available, a local provider such as `aescbc` is still better than no encryption, but the key material in the encryption configuration must be protected carefully:
 
 ```yaml
 apiVersion: apiserver.config.k8s.io/v1
@@ -270,7 +301,7 @@ Set up audit logging to track access to Istio secrets:
 apiVersion: audit.k8s.io/v1
 kind: Policy
 rules:
-  - level: RequestResponse
+  - level: Metadata
     resources:
       - group: ""
         resources: ["secrets"]
