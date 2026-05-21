@@ -15,13 +15,13 @@ Grafana turns your Istio metrics into visual dashboards that make it easy to spo
 Deploy Grafana using the Istio sample addon:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/grafana.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.29/samples/addons/grafana.yaml
 ```
 
 You also need Prometheus since Grafana queries it for data:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/prometheus.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.29/samples/addons/prometheus.yaml
 ```
 
 Verify both are running:
@@ -79,15 +79,25 @@ This is useful when you need to see both incoming and outgoing traffic for a sin
 
 ### Istio Performance Dashboard
 
-Focuses on the control plane:
+Focuses on Istio component resource usage:
 
 - Resource usage (CPU, memory) for Istiod
+- Proxy resource usage
+- Bytes transferred per second
+- Istio component versions
+- vCPU usage normalized by request volume
+
+Watch this dashboard during upgrades and when adding large numbers of services to the mesh.
+
+### Istio Control Plane Dashboard
+
+Focuses on the control plane:
+
+- Istiod resource usage
 - xDS push latency
 - Config push rates
 - Number of connected proxies
-- Proxy convergence time
-
-Watch this dashboard during upgrades and when adding large numbers of services to the mesh.
+- Push errors and webhook metrics
 
 ## Setting Up Grafana with an Existing Installation
 
@@ -129,16 +139,19 @@ The Istio dashboards are available as JSON files in the Istio repository. Downlo
 ```bash
 # Mesh dashboard
 
-curl -L https://raw.githubusercontent.com/istio/istio/release-1.20/manifests/addons/dashboards/istio-mesh-dashboard.json -o mesh-dashboard.json
+curl -L https://raw.githubusercontent.com/istio/istio/release-1.29/manifests/addons/dashboards/istio-mesh-dashboard.gen.json -o mesh-dashboard.json
 
 # Service dashboard
-curl -L https://raw.githubusercontent.com/istio/istio/release-1.20/manifests/addons/dashboards/istio-service-dashboard.json -o service-dashboard.json
+curl -L https://raw.githubusercontent.com/istio/istio/release-1.29/manifests/addons/dashboards/istio-service-dashboard.json -o service-dashboard.json
 
 # Workload dashboard
-curl -L https://raw.githubusercontent.com/istio/istio/release-1.20/manifests/addons/dashboards/istio-workload-dashboard.json -o workload-dashboard.json
+curl -L https://raw.githubusercontent.com/istio/istio/release-1.29/manifests/addons/dashboards/istio-workload-dashboard.json -o workload-dashboard.json
 
 # Performance dashboard
-curl -L https://raw.githubusercontent.com/istio/istio/release-1.20/manifests/addons/dashboards/istio-performance-dashboard.json -o performance-dashboard.json
+curl -L https://raw.githubusercontent.com/istio/istio/release-1.29/manifests/addons/dashboards/istio-performance-dashboard.json -o performance-dashboard.json
+
+# Control plane dashboard
+curl -L https://raw.githubusercontent.com/istio/istio/release-1.29/manifests/addons/dashboards/pilot-dashboard.gen.json -o control-plane-dashboard.json
 ```
 
 Import them through the Grafana UI: Dashboards > Import > Upload JSON file.
@@ -146,7 +159,7 @@ Import them through the Grafana UI: Dashboards > Import > Upload JSON file.
 Or use the Grafana API:
 
 ```bash
-for dashboard in mesh-dashboard.json service-dashboard.json workload-dashboard.json performance-dashboard.json; do
+for dashboard in mesh-dashboard.json service-dashboard.json workload-dashboard.json performance-dashboard.json control-plane-dashboard.json; do
   curl -X POST http://localhost:3000/api/dashboards/db \
     -H "Content-Type: application/json" \
     -d "{\"dashboard\": $(cat $dashboard), \"overwrite\": true}"
@@ -224,7 +237,7 @@ sum(rate(istio_requests_total{reporter="destination"}[5m]))
 by (source_workload, destination_workload)
 ```
 
-Use the Node Graph panel (available in newer Grafana versions) to visualize service-to-service communication.
+Use a table panel for this query, or transform the result into the Node Graph panel's required `id`, `source`, and `target` edge fields to visualize service-to-service communication.
 
 ### Template Variables
 
@@ -240,12 +253,12 @@ This creates a dropdown that lets users select which service to view.
 
 ## Setting Up Alerts
 
-Grafana can fire alerts based on Istio metrics. Common alert rules:
+Grafana can fire alerts based on Istio metrics. If you manage alerts as Prometheus-compatible rules, common alert expressions are:
 
 ### High Error Rate
 
 ```yaml
-# Grafana alerting rule
+# Prometheus-style alerting rule
 - alert: IstioHighErrorRate
   expr: |
     sum(rate(istio_requests_total{reporter="destination", response_code=~"5.."}[5m]))
@@ -306,11 +319,11 @@ persistence:
 **Set appropriate retention.** Istio metrics generate significant data. Configure Prometheus retention based on your storage capacity:
 
 ```yaml
-# Prometheus config
-retention: 15d
 storage:
   tsdb:
-    retention.size: 50GB
+    retention:
+      time: 15d
+      size: 50GB
 ```
 
 ## Summary
