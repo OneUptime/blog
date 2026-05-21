@@ -14,10 +14,11 @@ Done well, relabeling can cut your Istio metric storage by 50-80% without losing
 
 ## Relabeling vs. Write Relabeling
 
-Prometheus has two places where relabeling happens:
+Prometheus has three common places where relabeling happens:
 
 - **relabel_configs**: Applied during target discovery, before scraping. Controls which targets are scraped and how the scrape request is formed.
 - **metric_relabel_configs**: Applied after scraping, before storing. Controls which metrics are kept and how their labels are modified.
+- **write_relabel_configs**: Applied after external labels are added, before samples are sent to remote write endpoints. Controls what gets sent to remote storage, but does not change what local Prometheus stores.
 
 For filtering Istio metrics, you mostly work with `metric_relabel_configs`.
 
@@ -49,7 +50,7 @@ A more aggressive approach is to keep only the standard Istio metrics and drop e
 ```yaml
 metric_relabel_configs:
 - source_labels: [__name__]
-  regex: 'istio_requests_total|istio_request_duration_milliseconds_bucket|istio_request_bytes_bucket|istio_response_bytes_bucket|istio_tcp_sent_bytes_total|istio_tcp_received_bytes_total|istio_tcp_connections_opened_total|istio_tcp_connections_closed_total'
+  regex: 'istio_requests_total|istio_request_duration_milliseconds_(bucket|sum|count)|istio_request_bytes_(bucket|sum|count)|istio_response_bytes_(bucket|sum|count)|istio_request_messages_total|istio_response_messages_total|istio_tcp_sent_bytes_total|istio_tcp_received_bytes_total|istio_tcp_connections_opened_total|istio_tcp_connections_closed_total'
   action: keep
 ```
 
@@ -117,16 +118,18 @@ metric_relabel_configs:
 
 This drops specific bucket boundaries that you do not use in your percentile calculations. Be careful: if you drop too many buckets, your percentile calculations become inaccurate.
 
-A safer approach is to configure the histogram buckets at the Istio level:
+A safer approach is to configure histogram buckets before Istio emits the metrics:
 
 ```yaml
-apiVersion: install.istio.io/v1alpha1
-kind: IstioOperator
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-service
 spec:
-  meshConfig:
-    defaultConfig:
-      proxyMetadata:
-        ISTIO_METAJSON_STATS_HISTOGRAM_BUCKETS: '{"istio_request_duration_milliseconds":{"buckets":[1,5,10,25,50,100,250,500,1000,2500,5000,10000]}}'
+  template:
+    metadata:
+      annotations:
+        sidecar.istio.io/statsHistogramBuckets: '{"istiocustom":[1,5,10,25,50,100,250,500,1000,2500,5000,10000]}'
 ```
 
 ## Practical Relabeling Examples
