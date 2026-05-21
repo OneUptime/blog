@@ -14,7 +14,7 @@ EnvoyFilter is the escape hatch of Istio. When the standard Istio APIs (VirtualS
 
 You should only reach for EnvoyFilter when the standard Istio APIs cannot do what you need. Common use cases include:
 
-- Adding custom HTTP headers that VirtualService does not support
+- Adding custom HTTP header logic that VirtualService header manipulation does not support
 - Configuring rate limiting with Envoy's built-in rate limiter
 - Adding custom Lua scripting for request/response manipulation
 - Modifying Envoy listener settings not exposed through Istio
@@ -119,10 +119,11 @@ spec:
           name: envoy.filters.http.lua
           typed_config:
             "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-            inlineCode: |
-              function envoy_on_response(response_handle)
-                response_handle:headers():add("x-served-by", "my-app")
-              end
+            defaultSourceCode:
+              inlineString: |
+                function envoy_on_response(response_handle)
+                  response_handle:headers():add("x-served-by", "my-app")
+                end
 ```
 
 This inserts a Lua filter before the router filter on the inbound listener. The Lua script adds an `x-served-by` header to every response.
@@ -170,7 +171,7 @@ spec:
                       request_id: "%REQ(X-REQUEST-ID)%"
 ```
 
-## Example: Setting Connection Timeout on a Listener
+## Example: Setting HTTP Idle Timeouts
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -202,7 +203,7 @@ spec:
 
 ## Scoping EnvoyFilters
 
-EnvoyFilter scope matters a lot. An EnvoyFilter without a `workloadSelector` in the `istio-system` namespace applies to every proxy in the mesh. This is almost always a bad idea.
+EnvoyFilter scope matters a lot. An EnvoyFilter without a `workloadSelector` in the Istio config root namespace (typically `istio-system`) applies to every proxy in the mesh. This is almost always a bad idea.
 
 **Best practice: always use workloadSelector**:
 
@@ -222,7 +223,7 @@ spec:
       istio: ingressgateway
 ```
 
-If you absolutely need a mesh-wide EnvoyFilter, apply it in `istio-system` with extreme caution and thorough testing.
+If you absolutely need a mesh-wide EnvoyFilter, apply it in the Istio config root namespace with extreme caution and thorough testing.
 
 ## Debugging EnvoyFilter
 
@@ -236,7 +237,7 @@ When your EnvoyFilter is not working as expected, use these debugging steps:
 istioctl proxy-config all deploy/my-app -n default -o json > /tmp/envoy-config.json
 
 # Search for your filter name
-grep -l "my-filter-name" /tmp/envoy-config.json
+grep -n "my-filter-name" /tmp/envoy-config.json
 ```
 
 ### Check for Errors
@@ -261,15 +262,15 @@ This dumps the complete Envoy configuration. Search for your filter or patch to 
 
 ## Common Mistakes
 
-**Wrong @type URL**: The `typed_config` `@type` field must exactly match the Envoy proto type. Getting this wrong means your filter is silently ignored.
+**Wrong @type URL**: The `typed_config` `@type` field must exactly match the Envoy proto type. Getting this wrong can cause the patch to be rejected or fail to apply.
 
 **Wrong filter name**: Envoy filter names are specific. Use `envoy.filters.http.router`, not `router` or `http_router`.
 
 **Incorrect match context**: Applying an inbound filter patch with `SIDECAR_OUTBOUND` context means it never matches.
 
-**Missing workloadSelector**: Without it, the filter applies to all proxies in the namespace (or mesh-wide if in istio-system).
+**Missing workloadSelector**: Without it, the filter applies to all proxies in the namespace (or mesh-wide if it is in the Istio config root namespace).
 
-**Patch priority**: EnvoyFilter patches are applied in order of creation timestamp, then by namespace priority (istio-system first). Be aware of ordering issues.
+**Patch priority**: EnvoyFilter patches in the config root namespace are applied before patches in the workload namespace. Within those groups, Istio applies patches by priority, creation timestamp, and fully qualified resource name. Be aware of ordering issues.
 
 ## EnvoyFilter and Istio Upgrades
 
