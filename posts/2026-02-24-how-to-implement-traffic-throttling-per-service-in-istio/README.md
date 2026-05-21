@@ -17,7 +17,7 @@ Istio gives you two main approaches to throttling: connection pool limits throug
 The simplest form of throttling is setting connection pool limits. When the limits are hit, additional requests get a 503 response:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: order-service
@@ -39,7 +39,7 @@ spec:
 
 Here is what each setting does:
 
-- `maxConnections`: Maximum TCP connections to the service. Once hit, new connections queue up.
+- `maxConnections`: Maximum HTTP/1 or TCP connections to the service. Once hit, additional requests can overflow instead of opening more upstream connections.
 - `http1MaxPendingRequests`: Maximum requests waiting for a connection from the pool. Overflow gets 503.
 - `http2MaxRequests`: Maximum concurrent requests for HTTP/2 connections.
 - `maxRequestsPerConnection`: After this many requests on a single connection, the connection gets closed and a new one opens. Helps with load balancing.
@@ -50,7 +50,7 @@ Here is what each setting does:
 You can set different limits for different services by applying separate DestinationRules:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: payment-service
@@ -65,7 +65,7 @@ spec:
         http1MaxPendingRequests: 25
         http2MaxRequests: 50
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: notification-service
@@ -143,7 +143,7 @@ This configuration allows 100 requests per 60 seconds per pod. The token bucket 
 
 ## Rate Limiting Specific Routes
 
-You might want different rate limits for different endpoints on the same service. A read endpoint can handle more traffic than a write endpoint. Use route-level rate limiting:
+You might want different rate limits for different endpoints on the same service. A read endpoint can handle more traffic than a write endpoint. Use route-level rate limiting on a route you can match reliably. The HTTP filter still needs to be inserted, and the token bucket is defined on the matched route. This example assumes the route is named `write-orders`:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -156,13 +156,32 @@ spec:
     labels:
       app: order-service
   configPatches:
+  - applyTo: HTTP_FILTER
+    match:
+      context: SIDECAR_INBOUND
+      listener:
+        filterChain:
+          filter:
+            name: envoy.filters.network.http_connection_manager
+            subFilter:
+              name: envoy.filters.http.router
+    patch:
+      operation: INSERT_BEFORE
+      value:
+        name: envoy.filters.http.local_ratelimit
+        typed_config:
+          "@type": type.googleapis.com/udpa.type.v1.TypedStruct
+          type_url: type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit
+          value:
+            stat_prefix: http_local_rate_limiter
   - applyTo: HTTP_ROUTE
     match:
       context: SIDECAR_INBOUND
       routeConfiguration:
         vhost:
+          name: "inbound|http|8080"
           route:
-            name: default
+            name: write-orders
     patch:
       operation: MERGE
       value:
@@ -190,26 +209,20 @@ spec:
 
 ## Adding Rate Limit Headers to Responses
 
-To help clients understand their rate limit status, add response headers that indicate the limit and remaining capacity. You can use the `response_headers_to_add` field in the rate limit filter:
+To help clients understand their rate limit status, enable Envoy's built-in X-RateLimit headers in the rate limit filter:
 
 ```yaml
-response_headers_to_add:
-- append_action: OVERWRITE_IF_EXISTS_OR_ADD
-  header:
-    key: x-ratelimit-limit
-    value: "100"
-- append_action: OVERWRITE_IF_EXISTS_OR_ADD
-  header:
-    key: x-ratelimit-remaining
-    value: "%DYNAMIC_METADATA(envoy.filters.http.local_ratelimit:remaining)%"
+enable_x_ratelimit_headers: DRAFT_VERSION_03
 ```
+
+This emits `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset` headers from the local token bucket. Use `response_headers_to_add` only for static headers that you want returned on rate-limited responses.
 
 ## Circuit Breaking as a Throttling Mechanism
 
 Circuit breaking through DestinationRule outlier detection is another throttling mechanism. If a service starts returning errors, Envoy ejects it from the load balancing pool temporarily:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: order-service
@@ -234,7 +247,7 @@ After 5 consecutive 5xx errors from a pod (checked every 10 seconds), that pod g
 
 ## Monitoring Throttled Traffic
 
-Check how much traffic is being throttled using Envoy stats:
+Check how much traffic is being throttled using Envoy stats. Istio records a minimal set of Envoy stats by default, so configure `proxyStatsMatcher` for local rate limit or circuit breaker stats if they do not appear:
 
 ```bash
 # Check rate limit stats for a specific pod
