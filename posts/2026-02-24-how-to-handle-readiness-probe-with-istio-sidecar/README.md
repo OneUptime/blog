@@ -57,15 +57,15 @@ spec:
             successThreshold: 1
 ```
 
-Istio rewrites this probe to go through the sidecar agent on port 15021. The agent forwards the probe to your container on port 8080.
+Istio rewrites this probe to go through the sidecar agent on port 15020. The agent forwards the probe to your container on port 8080.
 
 ## The Sidecar Readiness Problem
 
 There is a subtle issue with readiness probes and the Istio sidecar. Your application container might be ready, but the sidecar proxy might not be. If the sidecar is not ready, inbound traffic cannot reach your application even though the readiness probe passes.
 
-Kubernetes 1.28+ handles this better with sidecar containers as a native concept, but in earlier versions, the sidecar runs as a regular container. The solution is to make your readiness probe account for both the application and the sidecar.
+Kubernetes 1.29+ handles this better with sidecar containers as a native concept enabled by default. Kubernetes 1.28 introduced the feature as alpha behind a feature gate, and in earlier versions the sidecar runs as a regular container. Istio also injects a readiness probe for the proxy container, so the pod is only marked ready when both the application container and the proxy container are ready.
 
-One approach is to check the sidecar readiness in your application's readiness endpoint:
+If you need one readiness signal that explicitly checks both from the application container, one approach is to check the sidecar readiness in an exec probe:
 
 ```yaml
 readinessProbe:
@@ -161,7 +161,7 @@ readinessProbe:
   failureThreshold: 3
 ```
 
-But with Istio, there is a catch. If the database is outside the mesh and you are using STRICT mTLS, the database connection might fail because Istio tries to apply mTLS to it. Exclude database traffic from the mesh:
+But with Istio, there is a catch. `PeerAuthentication` in `STRICT` mode controls what inbound traffic a workload accepts; outbound TLS behavior is controlled by `DestinationRule`. If your external database connection is failing because outbound traffic is being captured by the sidecar, you can either register the database with a `ServiceEntry` and configure TLS explicitly, or bypass the sidecar for that destination:
 
 ```yaml
 metadata:
@@ -169,7 +169,7 @@ metadata:
     traffic.sidecar.istio.io/excludeOutboundIPRanges: "10.0.1.100/32"
 ```
 
-Replace with your database IP. Without this, your readiness probe might fail because the database connection is broken by the proxy.
+Replace with your database IP. Without the right egress configuration, your readiness probe might fail because the application cannot reach the database.
 
 ## Graceful Shutdown and Readiness
 
@@ -211,7 +211,7 @@ In Prometheus, you can track endpoint counts:
 
 ```promql
 # Number of ready endpoints per service
-kube_endpoint_address_available{endpoint="api-service"}
+kube_endpoint_address{endpoint="api-service",ready="true"}
 ```
 
 ## Debugging Readiness Failures
@@ -223,7 +223,7 @@ If readiness probes are failing:
 kubectl exec -it <pod-name> -c api-service -- curl -v http://localhost:8080/readyz
 
 # Test through the sidecar agent
-kubectl exec -it <pod-name> -c istio-proxy -- curl -v http://localhost:15021/app-health/api-service/readyz
+kubectl exec -it <pod-name> -c istio-proxy -- curl -v http://localhost:15020/app-health/api-service/readyz
 
 # Check sidecar readiness
 kubectl exec -it <pod-name> -c istio-proxy -- curl -v http://localhost:15021/healthz/ready
