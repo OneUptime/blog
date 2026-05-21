@@ -71,10 +71,10 @@ spec:
       sni: external-api.example.com
 ```
 
-With MUTUAL mode, you must provide:
+With MUTUAL mode, you must provide the client certificate and key, and usually provide the CA certificate:
 - `clientCertificate` - Path to the client certificate file
 - `privateKey` - Path to the client private key file
-- `caCertificates` - Path to the CA certificate for verifying the server
+- `caCertificates` - Path to the CA certificate for verifying the server, when you are not relying on the proxy's OS CA certificates
 
 These files need to be mounted into the sidecar container, typically through a Kubernetes Secret:
 
@@ -95,7 +95,7 @@ spec:
         image: my-app:latest
 ```
 
-Or using Istio's credentialName approach for gateway configurations:
+Or using Istio's `credentialName` approach for gateway configurations, or for sidecars when the `DestinationRule` has a `workloadSelector`:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -165,11 +165,11 @@ spec:
 
 | Feature | ISTIO_MUTUAL | MUTUAL |
 |---|---|---|
-| Certificate source | Istio CA (automatic) | User-provided files |
+| Certificate source | Istio CA (automatic) | User-provided files or Secret |
 | Certificate rotation | Automatic (24h default) | Manual (you manage it) |
-| Certificate paths needed | No | Yes |
+| Certificate paths needed | No | Yes, unless using `credentialName` |
 | Works with mesh services | Yes | Yes (but unnecessary) |
-| Works with external services | No | Yes |
+| Works with external services | Usually no | Yes |
 | SPIFFE identity included | Yes | Depends on your certs |
 | Setup complexity | Minimal | Significant |
 
@@ -198,7 +198,7 @@ While this technically works (pointing to the Istio-managed cert paths), it is f
 ### Mistake 2: Using ISTIO_MUTUAL for External Services
 
 ```yaml
-# WRONG - external services do not trust Istio certificates
+# WRONG - most external services do not trust Istio certificates
 apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
@@ -210,11 +210,11 @@ spec:
       mode: ISTIO_MUTUAL
 ```
 
-This will fail because the external service does not trust Istio's CA and will reject the client certificate. Use MUTUAL with the appropriate certificates for external services, or use SIMPLE if you only need server authentication.
+This will usually fail because the external service does not trust Istio's CA and will reject the client certificate. Use MUTUAL with the appropriate certificates for external services, or use SIMPLE if you only need server authentication.
 
 ### Mistake 3: Forgetting SNI with MUTUAL Mode
 
-When using MUTUAL mode with external services, always specify the SNI:
+When using MUTUAL mode with external services, specify the SNI if the server requires SNI-based routing or certificate selection, or if the downstream HTTP host/authority is not the SNI value you need:
 
 ```yaml
 trafficPolicy:
@@ -223,7 +223,7 @@ trafficPolicy:
     sni: api.external.com  # Don't forget this!
 ```
 
-Without SNI, the TLS handshake might fail if the server uses SNI-based routing or certificate selection.
+If SNI is not specified, Istio automatically sets it from the downstream HTTP host/authority for SIMPLE and MUTUAL TLS modes. For non-HTTP traffic or host rewrites, setting it explicitly avoids handshake failures with servers that depend on SNI.
 
 ## Checking Which Mode is Active
 
@@ -234,7 +234,7 @@ istioctl proxy-config cluster <pod-name> -n <namespace> \
   --fqdn <destination-host> -o json | jq '.[].transportSocket'
 ```
 
-For ISTIO_MUTUAL, you will see SDS (Secret Discovery Service) configuration. For MUTUAL, you will see file-based certificate paths.
+For ISTIO_MUTUAL, you will see SDS (Secret Discovery Service) configuration. For MUTUAL, you will see file-based certificate paths, or SDS secret references if you configured `credentialName`.
 
 ## Real-World Example: Mixed Configuration
 
@@ -259,6 +259,9 @@ metadata:
   namespace: production
 spec:
   host: api.bank.com
+  workloadSelector:
+    matchLabels:
+      app: banking-client
   trafficPolicy:
     tls:
       mode: MUTUAL
