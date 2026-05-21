@@ -24,7 +24,7 @@ Understanding the difference is important because tuning one does not affect the
 
 ## TCP Connection Buffer Limits
 
-The `per_connection_buffer_limit_bytes` setting controls how much data Envoy buffers at the TCP level per connection:
+The `per_connection_buffer_limit_bytes` setting controls the soft high-watermark limit for Envoy's per-connection read and write buffers:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -48,7 +48,7 @@ spec:
           per_connection_buffer_limit_bytes: 1048576
 ```
 
-This sets a 1 MB per-connection buffer for inbound traffic. The default in Envoy is 1 MB. When this buffer fills up, Envoy stops reading from the downstream connection until the upstream consumes some data. This is the flow control mechanism.
+This sets a 1 MB per-connection buffer limit for inbound traffic. The default in Envoy is 1 MiB when the field is not specified. When this buffer reaches the high watermark, Envoy stops reading from the downstream connection until the buffered data drains. This is the flow control mechanism.
 
 For outbound connections:
 
@@ -110,7 +110,7 @@ spec:
           per_connection_buffer_limit_bytes: 2097152
 ```
 
-This controls the buffer between the Envoy proxy and the upstream service.
+This controls the soft high-watermark buffer limit for connections between the Envoy proxy and the upstream service.
 
 ## HTTP Connection Manager Buffering
 
@@ -160,7 +160,7 @@ How long a stream can be idle (no data flowing) before Envoy closes it. Default 
 request_timeout: 0s
 ```
 
-Maximum duration for the entire request (including the body). Default is 0 (disabled). This is different from the VirtualService timeout, which covers the upstream response time. The `request_timeout` covers the time to receive the complete request from the client.
+Maximum duration for the request body to be received and processed by decoding filters. The timer is disabled when set to `0s`, and it is also disarmed when the response starts. This is different from the VirtualService timeout, which covers upstream request/response handling.
 
 ### request_headers_timeout
 
@@ -184,7 +184,7 @@ Maximum size of request headers in kilobytes. Default is 60 KB. Requests with he
 delayed_close_timeout: 1s
 ```
 
-After Envoy sends a local reply (like a 413 for oversized request), it waits this long before closing the connection. This gives the client time to receive the response.
+After Envoy starts local connection-close processing, it waits this long for the downstream peer to close before closing the socket itself. This helps clients receive local replies, such as a 413 for an oversized request, before the connection is closed.
 
 ## HTTP Buffer Filter
 
@@ -225,10 +225,12 @@ When the buffer filter is active:
 2. Only then forwards the request to the upstream
 3. If the body exceeds `max_request_bytes`, a 413 is returned
 
+Because the request must be fully buffered before it is forwarded, do not apply this filter broadly to streaming or upgrade-based traffic such as gRPC streaming or WebSocket.
+
 This is necessary for:
-- Retries on POST/PUT/PATCH requests
 - Request body transformation in Lua or Wasm filters
-- Request mirroring with bodies
+- Protecting upstream applications that cannot handle partial request bodies
+- Routes where you explicitly need full request buffering before proxying
 
 ## Watermark-Based Flow Control
 
@@ -368,7 +370,7 @@ kubectl exec <pod> -c istio-proxy -- curl -s localhost:15000/memory
 
 ## Memory Planning
 
-When planning buffer sizes, consider the formula:
+When planning worst-case buffer sizes, consider the formula:
 
 ```text
 Total buffer memory = connections * per_connection_buffer * 2 (in + out) + http_buffer * concurrent_buffered_requests
