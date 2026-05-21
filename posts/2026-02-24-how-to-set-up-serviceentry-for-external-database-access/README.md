@@ -96,7 +96,7 @@ With STATIC resolution, Envoy does not do DNS lookups. It load balances across t
 
 ## Database with TLS Encryption
 
-Most managed databases support (or require) TLS connections. For TLS-encrypted database traffic, set the protocol to TLS:
+Most managed databases support (or require) TLS connections. For PostgreSQL, MySQL, and other database protocols that negotiate TLS inside the database handshake, keep the ServiceEntry protocol as `TCP` and configure TLS in your database client:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -109,14 +109,16 @@ spec:
   location: MESH_EXTERNAL
   ports:
     - number: 5432
-      name: tls-postgres
-      protocol: TLS
+      name: tcp-postgres
+      protocol: TCP
   resolution: DNS
 ```
 
-Using `protocol: TLS` instead of `TCP` tells Envoy that this traffic is TLS-encrypted. Envoy can then extract the SNI for proper routing without trying to inspect the encrypted payload.
+Using `protocol: TCP` keeps Envoy from trying to parse the database protocol. The database client and server still negotiate encryption themselves.
 
-If you want Envoy to originate TLS (your app sends plaintext, Envoy encrypts it), add a DestinationRule:
+Use `protocol: TLS` only for endpoints where the connection starts with a standard TLS handshake and the client sends SNI. That tells Envoy it can use SNI for routing without trying to inspect the encrypted payload.
+
+If you connect to an endpoint that expects immediate TLS and you want Envoy to originate TLS (your app sends plaintext, Envoy encrypts it), add a DestinationRule:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -239,11 +241,13 @@ istioctl proxy-config endpoints deploy/backend-api | grep rds
 kubectl logs deploy/backend-api -c istio-proxy --tail=50 | grep 5432
 ```
 
-5. **Test bypassing the sidecar** (to isolate if Istio is the problem):
+5. **Test from a pod without an Istio sidecar** (to isolate if Istio is the problem):
 
 ```bash
-kubectl exec deploy/backend-api -c backend-api -- \
-  curl -v telnet://mydb.abc123.us-east-1.rds.amazonaws.com:5432
+kubectl run db-test -n backend --rm -it --restart=Never \
+  --image=postgres:16 \
+  --overrides='{"metadata":{"annotations":{"sidecar.istio.io/inject":"false"}}}' \
+  -- pg_isready -h mydb.abc123.us-east-1.rds.amazonaws.com -p 5432
 ```
 
 ## Common Port Reference
@@ -263,7 +267,7 @@ Here is a quick reference for common database ports to use in your ServiceEntry 
 
 ## Port Naming Conventions
 
-Istio requires specific port naming patterns for protocol detection. For TCP database ports, prefix the name with `tcp-`:
+Istio uses port names for protocol selection when the protocol is not otherwise specified. For TCP database ports, prefix the name with `tcp-`:
 
 ```yaml
 ports:
@@ -272,10 +276,10 @@ ports:
     protocol: TCP
 
   - number: 5432
-    name: postgres        # might not work correctly
+    name: postgres        # avoid this when relying on port-name protocol selection
     protocol: TCP
 ```
 
-The `tcp-` prefix ensures Istio treats the traffic as opaque TCP, which is what you want for database protocols.
+The `tcp-` prefix makes the intended protocol explicit in the port name, which is what you want for opaque database protocols.
 
 Setting up ServiceEntries for databases takes a few minutes but prevents the frustrating "why can't my pod connect to the database" debugging sessions that eat up engineering time. Define them early in your Istio adoption, preferably as part of your infrastructure-as-code pipeline, and you will save yourself and your team a lot of trouble.
