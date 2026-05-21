@@ -81,13 +81,12 @@ helm install istio-base istio/base -n istio-system --create-namespace
 
 # Install the CNI plugin
 helm install istio-cni istio/cni -n istio-system \
-  --set cni.cniBinDir=/opt/cni/bin \
-  --set cni.cniConfDir=/etc/cni/net.d
+  --set cniBinDir=/opt/cni/bin \
+  --set cniConfDir=/etc/cni/net.d
 
 # Install istiod with CNI awareness
 helm install istiod istio/istiod -n istio-system \
-  --set istio_cni.enabled=true \
-  --set istio_cni.chained=true
+  --set pilot.cni.enabled=true
 ```
 
 ## CNI Binary and Config Directory Paths
@@ -97,17 +96,16 @@ Different Kubernetes distributions place CNI files in different locations. Here 
 | Distribution | Binary Dir | Config Dir |
 |---|---|---|
 | Standard kubeadm | /opt/cni/bin | /etc/cni/net.d |
-| GKE | /home/kubernetes/bin | /etc/cni/net.d |
+| GKE | Use `global.platform=gke` | /etc/cni/net.d |
 | OpenShift | /var/lib/cni/bin | /etc/cni/multus/net.d |
-| k3s | /opt/cni/bin | /var/lib/rancher/k3s/agent/etc/cni/net.d |
-| MicroK8s | /opt/cni/bin | /var/snap/microk8s/current/args/cni-network |
+| k3s | /var/lib/rancher/k3s/data/cni | /var/lib/rancher/k3s/agent/etc/cni/net.d |
+| MicroK8s | /var/snap/microk8s/current/opt/cni/bin | /var/snap/microk8s/current/args/cni-network |
 
 If you are running on GKE:
 
 ```bash
 helm install istio-cni istio/cni -n istio-system \
-  --set cni.cniBinDir=/home/kubernetes/bin \
-  --set cni.cniConfDir=/etc/cni/net.d
+  --set global.platform=gke
 ```
 
 ## Verifying the CNI Installation
@@ -169,7 +167,7 @@ With CNI properly configured, you should see no init containers (or possibly jus
 Verify traffic interception is working:
 
 ```bash
-kubectl exec -n cni-test deploy/httpbin -c istio-proxy -- curl -s localhost:15000/config_dump | head -20
+istioctl proxy-config listeners httpbin.cni-test
 ```
 
 ## CNI Plugin Configuration Options
@@ -178,48 +176,46 @@ Here is a more detailed Helm values file for the CNI chart:
 
 ```yaml
 # values-cni.yaml
-cni:
-  # Install CNI as a chained plugin (recommended)
-  chained: true
+# Install CNI as a chained plugin (recommended)
+chained: true
 
-  # CNI binary and config directories
-  cniBinDir: /opt/cni/bin
-  cniConfDir: /etc/cni/net.d
+# CNI binary and config directories
+cniBinDir: /opt/cni/bin
+cniConfDir: /etc/cni/net.d
 
-  # Namespaces to exclude from CNI interception
-  excludeNamespaces:
-    - istio-system
-    - kube-system
-    - kube-node-lease
-    - kube-public
+# Namespaces to exclude from CNI interception
+excludeNamespaces:
+  - istio-system
+  - kube-system
+  - kube-node-lease
+  - kube-public
 
-  # Log level for the CNI plugin
-  logLevel: info
+# Log level for the CNI plugin
+logging:
+  level: info
 
-  # Repair mode - automatically fix pods that failed due to race conditions
-  repair:
-    enabled: true
-    deletePods: false
-    labelPods: true
-    brokenPodLabelKey: cni.istio.io/uninitialized
-    brokenPodLabelValue: "true"
-    initContainerName: istio-validation
+# Repair mode - automatically fix pods that failed due to race conditions
+repair:
+  enabled: true
+  repairPods: true
+  deletePods: false
+  labelPods: false
+  brokenPodLabelKey: cni.istio.io/uninitialized
+  brokenPodLabelValue: "true"
+  initContainerName: istio-validation
 
-  # Resource requests and limits for the CNI DaemonSet
-  resources:
-    requests:
-      cpu: 100m
-      memory: 100Mi
-    limits:
-      cpu: 200m
-      memory: 256Mi
+# Resource requests and limits for the CNI DaemonSet
+resources:
+  requests:
+    cpu: 100m
+    memory: 100Mi
+  limits:
+    cpu: 200m
+    memory: 256Mi
 
-  # Ambient mode settings (if using ambient mesh)
-  ambient:
-    enabled: false
-
-  # Run as a privileged container (required for iptables)
-  privileged: true
+# Ambient mode settings (if using ambient mesh)
+ambient:
+  enabled: false
 ```
 
 ```bash
@@ -231,17 +227,17 @@ helm install istio-cni istio/cni -n istio-system -f values-cni.yaml
 There is a known race condition where a pod might start before the CNI plugin finishes its setup. Istio includes a repair controller to handle this:
 
 ```yaml
-cni:
-  repair:
-    enabled: true
-    deletePods: true
+repair:
+  enabled: true
+  repairPods: false
+  deletePods: true
 ```
 
-When `deletePods` is true, the repair controller will delete and let Kubernetes recreate pods that hit the race condition. If you prefer a gentler approach, use `labelPods: true` instead, which just labels the affected pods for manual intervention.
+When `deletePods` is true, the repair controller will delete and let Kubernetes recreate pods that hit the race condition. In Istio 1.21 and newer, the default `repairPods` mode dynamically repairs broken pods instead. If you prefer a gentler detection-only approach, use `labelPods: true` instead, which just labels the affected pods for manual intervention.
 
 ## Upgrading the CNI Plugin
 
-When upgrading Istio, upgrade the CNI plugin first since it is a node-level component:
+When upgrading Istio, keep the CNI plugin and control plane within one minor version of each other. For canary control plane upgrades, operate the CNI plugin separately because it is a cluster-wide singleton:
 
 ```bash
 # Upgrade CNI first
@@ -254,7 +250,7 @@ kubectl rollout status daemonset/istio-cni-node -n istio-system
 
 # Then upgrade istiod
 helm upgrade istiod istio/istiod -n istio-system \
-  --set istio_cni.enabled=true \
+  --set pilot.cni.enabled=true \
   --version 1.24.0
 ```
 
