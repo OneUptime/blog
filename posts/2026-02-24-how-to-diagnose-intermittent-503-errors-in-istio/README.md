@@ -26,13 +26,13 @@ spec:
     - name: envoy
 ```
 
-Now look at the access logs on the destination pod:
+Now look at the access logs on the source pod or ingress gateway that returned the 503:
 
 ```bash
-kubectl logs deploy/my-service -c istio-proxy --tail=200 | grep " 503 "
+kubectl logs deploy/my-client -c istio-proxy --tail=200 | grep " 503 "
 ```
 
-The response flags column (the field after the response code) tells you everything:
+The response flags column (the field after the response code in Istio's default text access log format) narrows down the cause:
 
 | Flag | Meaning |
 |------|---------|
@@ -45,7 +45,7 @@ The response flags column (the field after the response code) tells you everythi
 | `DC`  | Downstream connection termination |
 | `RL`  | Rate limited |
 
-Each of these points to a different root cause.
+Each of these points to a different root cause. Some flags, such as `NR` and `RL`, commonly appear with non-503 responses, so check the response code and flag together.
 
 ## UH - No Healthy Upstream Hosts
 
@@ -62,7 +62,7 @@ istioctl proxy-config endpoint deploy/my-client -n my-namespace | grep my-servic
 
 Look for endpoints with `UNHEALTHY` status. If endpoints intermittently become unhealthy, your health checks might be too aggressive:
 
-```yaml
+```bash
 # Check if outlier detection is ejecting hosts
 kubectl exec deploy/my-client -c istio-proxy -- \
   pilot-agent request GET stats | grep "outlier_detection"
@@ -134,7 +134,7 @@ spec:
 
 ## NR - No Route Configured
 
-The proxy does not have a route for this request. This usually happens when:
+The proxy does not have a route for this request. For HTTP traffic this commonly returns a 404 with the `NR` flag, but it is still useful to check when you are investigating unexpected failures. This usually happens when:
 
 - A VirtualService is misconfigured
 - The service is not in the proxy's config (happens with Sidecar resources)
@@ -181,7 +181,7 @@ spec:
               command: ["/bin/sh", "-c", "sleep 5"]
 ```
 
-The `sleep 5` gives Envoy time to drain connections before the pod is terminated.
+The `sleep 5` delays application termination so Kubernetes endpoint changes and proxy draining have time to take effect before the container exits.
 
 ## Intermittent 503 with Headless Services
 
@@ -241,13 +241,13 @@ spec:
   - retries:
       attempts: 2
       perTryTimeout: 5s
-      retryOn: 503
+      retryOn: gateway-error,connect-failure,refused-stream
     route:
     - destination:
         host: my-service
 ```
 
-But be careful - retries increase load on the backend and can amplify problems if the backend is already struggling. Use them as a temporary measure while you fix the real issue.
+But be careful - retries increase load on the backend and can amplify problems if the backend is already struggling. HTTP status-code retry policies such as `503` only match responses actually received from the destination, so include retry conditions such as `connect-failure` when you are trying to mask proxy-generated connection failures. Use retries as a temporary measure while you fix the real issue.
 
 ## Debugging Checklist
 
