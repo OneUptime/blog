@@ -89,7 +89,7 @@ spec:
       weight: 20
 ```
 
-The VirtualService defines three routing rules:
+The VirtualService defines two routing rules:
 1. If the `end-user` header is "jason", route to v3
 2. Otherwise, split traffic 80/20 between v1 and v2
 
@@ -206,7 +206,7 @@ Beta users (identified by the `x-beta-user` header) go to v2. Everyone else goes
 
 ## Fault Injection with Circuit Breaking
 
-VirtualService can inject faults for testing, and DestinationRule can protect against those faults:
+VirtualService can inject faults for testing, and DestinationRule can protect against real upstream failures:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -242,7 +242,7 @@ spec:
         http1MaxPendingRequests: 50
 ```
 
-The VirtualService injects 10% failures. The DestinationRule's outlier detection ejects endpoints that are "failing" (from the injected faults). This is useful for testing your circuit breaking configuration.
+The VirtualService injects 10% failures for callers. The DestinationRule's outlier detection ejects endpoints that return real consecutive 5xx responses, while the connection pool limits cap pending HTTP requests. This is useful for testing client resilience alongside circuit breaking configuration.
 
 ## Timeouts and Retries with Connection Limits
 
@@ -307,7 +307,7 @@ istioctl analyze
 
 This will flag the missing subset reference.
 
-**Different hosts**: VirtualService routes to `my-service` but DestinationRule is for `my-service.default.svc.cluster.local`. These should resolve to the same service, but for clarity, use the same format in both resources.
+**Different hosts**: VirtualService routes to `my-service` but DestinationRule is for `my-service.default.svc.cluster.local`. These resolve to the same service when the resources are in the `default` namespace, but for clarity, use the same format in both resources.
 
 **Policy not applied**: If the DestinationRule exists but its policies do not seem to take effect, verify the host matches:
 
