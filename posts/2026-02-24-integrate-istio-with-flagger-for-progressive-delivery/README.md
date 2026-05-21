@@ -22,13 +22,22 @@ Install Flagger with Istio support:
 helm repo add flagger https://flagger.app
 helm repo update
 
-helm install flagger flagger/flagger \
+kubectl apply -f https://raw.githubusercontent.com/fluxcd/flagger/main/artifacts/flagger/crd.yaml
+
+helm upgrade -i flagger flagger/flagger \
   --namespace istio-system \
+  --set crd.create=false \
   --set meshProvider=istio \
   --set metricsServer=http://prometheus.istio-system:9090
 ```
 
-Flagger needs access to Prometheus for metrics. If you installed Istio with the default profile, Prometheus should already be available. Verify:
+Flagger needs access to Prometheus for metrics. If you are using Istio's sample Prometheus add-on, install it first:
+
+```bash
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/prometheus.yaml
+```
+
+For production, use a Prometheus setup that scrapes Istio metrics. Verify that Flagger can reach the Prometheus service you configured:
 
 ```bash
 kubectl get svc -n istio-system | grep prometheus
@@ -131,9 +140,9 @@ spec:
 When you apply this, Flagger creates:
 
 - A `my-app-primary` Deployment (copy of the original)
-- A `my-app-canary` Deployment (scaled to zero initially)
+- A `my-app-canary` Service that points to the original `my-app` Deployment
 - An Istio VirtualService with traffic routing rules
-- An Istio DestinationRule with subsets for primary and canary
+- Istio DestinationRule resources for the primary and canary services
 
 ## Understanding the Canary Analysis
 
