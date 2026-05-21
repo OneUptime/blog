@@ -93,7 +93,7 @@ kubectl create secret generic cacerts -n istio-system \
   --from-file=cert-chain.pem
 ```
 
-The secret must contain exactly these four keys:
+The secret must contain these four keys:
 - `ca-cert.pem`
 - `ca-key.pem`
 - `root-cert.pem`
@@ -129,7 +129,7 @@ Verify a workload's certificate was signed by the new CA:
 
 ```bash
 istioctl proxy-config secret <pod-name> -n <namespace> -o json | \
-  jq -r '.dynamicActiveSecrets[0].secret.tlsCertificate.certificateChain.inlineBytes' | \
+  jq -r '[.dynamicActiveSecrets[] | select(.name == "default")][0].secret.tlsCertificate.certificateChain.inlineBytes' | \
   base64 -d | openssl x509 -text -noout | grep "Issuer"
 ```
 
@@ -139,7 +139,7 @@ Check the full chain:
 
 ```bash
 istioctl proxy-config secret <pod-name> -n <namespace> -o json | \
-  jq -r '.dynamicActiveSecrets[0].secret.tlsCertificate.certificateChain.inlineBytes' | \
+  jq -r '[.dynamicActiveSecrets[] | select(.name == "default")][0].secret.tlsCertificate.certificateChain.inlineBytes' | \
   base64 -d | openssl crl2pkcs7 -nocrl -certfile /dev/stdin | \
   openssl pkcs7 -print_certs -text -noout | grep -E "Subject:|Issuer:"
 ```
