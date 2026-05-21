@@ -8,7 +8,7 @@ Description: How to use fortio and other tools to load test circuit breaking con
 
 ---
 
-You have configured circuit breaking in your Istio DestinationRule. But does it actually work? The only way to know for sure is to test it under load. Istio ships with fortio, a fast and flexible load testing tool that is perfect for verifying circuit breaker behavior. This guide walks through practical load testing scenarios.
+You have configured circuit breaking in your Istio DestinationRule. But does it actually work? The only way to know for sure is to test it under load. Istio's sample tasks use fortio, a fast and flexible load testing tool that is perfect for verifying circuit breaker behavior. This guide walks through practical load testing scenarios.
 
 ## Setting Up the Test Environment
 
@@ -17,10 +17,10 @@ First, deploy a test service. The httpbin sample from Istio works great for this
 ```bash
 # Deploy httpbin as the target service
 
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/httpbin/httpbin.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/httpbin/httpbin.yaml
 
 # Deploy fortio as the load generator
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/httpbin/sample-client/fortio/fortio-deploy.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/httpbin/sample-client/fortio-deploy.yaml
 
 # Verify both are running with sidecars
 kubectl get pods -l app=httpbin
@@ -30,7 +30,7 @@ kubectl get pods -l app=fortio
 Now apply a circuit breaking DestinationRule:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: httpbin
@@ -59,7 +59,7 @@ Send traffic with just one connection to establish a baseline:
 
 ```bash
 # Single connection - should work fine
-kubectl exec deploy/fortio -- fortio load \
+kubectl exec deploy/fortio-deploy -c fortio -- /usr/bin/fortio load \
   -c 1 \
   -qps 0 \
   -n 20 \
@@ -71,7 +71,7 @@ You should see 100% success (all 200 responses). Now increase the concurrency:
 
 ```bash
 # 3 concurrent connections - should trigger circuit breaking
-kubectl exec deploy/fortio -- fortio load \
+kubectl exec deploy/fortio-deploy -c fortio -- /usr/bin/fortio load \
   -c 3 \
   -qps 0 \
   -n 30 \
@@ -96,8 +96,8 @@ Check that the 503s are actually from the circuit breaker and not from the backe
 
 ```bash
 # Check upstream overflow stats
-kubectl exec deploy/fortio -c istio-proxy -- \
-  curl -s localhost:15000/stats | grep "httpbin" | grep "overflow"
+kubectl exec deploy/fortio-deploy -c istio-proxy -- \
+  pilot-agent request GET stats 2>/dev/null | grep "httpbin" | grep "overflow"
 ```
 
 You should see `upstream_rq_pending_overflow` incrementing. This confirms the circuit breaker is the source of the 503s.
@@ -107,7 +107,7 @@ You should see `upstream_rq_pending_overflow` incrementing. This confirms the ci
 For outlier detection testing, you need a service that returns errors. httpbin's `/status/500` endpoint works perfectly:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: httpbin
@@ -124,7 +124,7 @@ spec:
 
 ```bash
 # Send requests that will return 500 errors
-kubectl exec deploy/fortio -- fortio load \
+kubectl exec deploy/fortio-deploy -c fortio -- /usr/bin/fortio load \
   -c 1 \
   -qps 1 \
   -t 30s \
@@ -136,12 +136,12 @@ After 3 consecutive errors, the host should be ejected:
 
 ```bash
 # Check ejection status
-kubectl exec deploy/fortio -c istio-proxy -- \
-  curl -s localhost:15000/stats | grep "ejections"
+kubectl exec deploy/fortio-deploy -c istio-proxy -- \
+  pilot-agent request GET stats 2>/dev/null | grep "ejections"
 
 # Check host health flags
-kubectl exec deploy/fortio -c istio-proxy -- \
-  curl -s localhost:15000/clusters | grep httpbin
+kubectl exec deploy/fortio-deploy -c istio-proxy -- \
+  pilot-agent request GET clusters 2>/dev/null | grep httpbin
 ```
 
 Look for `health_flags::/failed_outlier_check` in the clusters output, which indicates the host is ejected.
@@ -153,19 +153,19 @@ A more realistic test gradually increases load to find the breaking point:
 ```bash
 # Step 1: Low load
 echo "=== 5 concurrent connections ==="
-kubectl exec deploy/fortio -- fortio load \
+kubectl exec deploy/fortio-deploy -c fortio -- /usr/bin/fortio load \
   -c 5 -qps 0 -n 100 -loglevel Warning \
   http://httpbin:8000/get 2>&1 | grep "Code"
 
 # Step 2: Medium load
 echo "=== 20 concurrent connections ==="
-kubectl exec deploy/fortio -- fortio load \
+kubectl exec deploy/fortio-deploy -c fortio -- /usr/bin/fortio load \
   -c 20 -qps 0 -n 200 -loglevel Warning \
   http://httpbin:8000/get 2>&1 | grep "Code"
 
 # Step 3: High load
 echo "=== 50 concurrent connections ==="
-kubectl exec deploy/fortio -- fortio load \
+kubectl exec deploy/fortio-deploy -c fortio -- /usr/bin/fortio load \
   -c 50 -qps 0 -n 500 -loglevel Warning \
   http://httpbin:8000/get 2>&1 | grep "Code"
 ```
@@ -173,7 +173,7 @@ kubectl exec deploy/fortio -- fortio load \
 Apply a more realistic circuit breaking configuration first:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: httpbin
@@ -202,7 +202,7 @@ Test what happens when circuit breaking is active for an extended period:
 
 ```bash
 # Run for 2 minutes with moderate overload
-kubectl exec deploy/fortio -- fortio load \
+kubectl exec deploy/fortio-deploy -c fortio -- /usr/bin/fortio load \
   -c 30 \
   -qps 100 \
   -t 120s \
@@ -214,8 +214,8 @@ During the test, monitor the circuit breaker in another terminal:
 
 ```bash
 # Watch stats in real-time
-watch -n 2 "kubectl exec deploy/fortio -c istio-proxy -- \
-  curl -s localhost:15000/stats | \
+watch -n 2 "kubectl exec deploy/fortio-deploy -c istio-proxy -- \
+  pilot-agent request GET stats 2>/dev/null | \
   grep -E 'overflow|ejections_active|cx_active|rq_active'"
 ```
 
@@ -225,8 +225,8 @@ After running your tests, gather a complete picture:
 
 ```bash
 # Full stats dump for analysis
-kubectl exec deploy/fortio -c istio-proxy -- \
-  curl -s localhost:15000/stats | grep "httpbin" > /tmp/circuit-breaker-stats.txt
+kubectl exec deploy/fortio-deploy -c istio-proxy -- \
+  pilot-agent request GET stats 2>/dev/null | grep "httpbin" > /tmp/circuit-breaker-stats.txt
 
 # Key metrics to check
 echo "=== Connection Stats ==="
@@ -246,7 +246,7 @@ A well-configured circuit breaker under test should show:
 1. **Under normal load:** 0% error rate, no overflows, no ejections
 2. **Under moderate overload:** Small percentage of 503s, overflow counts incrementing slowly
 3. **Under heavy overload:** Higher 503 rate, but the service itself stays healthy (response times for successful requests remain stable)
-4. **With failing instances:** Ejected hosts visible, traffic shifted to healthy hosts, overall error rate lower than without circuit breaking
+4. **With failing instances:** Ejected hosts visible, traffic shifted to healthy hosts when multiple instances exist, overall error rate lower than without circuit breaking
 
 ## What Bad Results Look Like
 
@@ -268,8 +268,8 @@ kubectl delete destinationrule httpbin
 kubectl apply -f production-destination-rule.yaml
 
 # Clean up test deployments if done
-kubectl delete -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/httpbin/httpbin.yaml
-kubectl delete -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/httpbin/sample-client/fortio/fortio-deploy.yaml
+kubectl delete -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/httpbin/httpbin.yaml
+kubectl delete -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/httpbin/sample-client/fortio-deploy.yaml
 ```
 
 Load testing circuit breakers is not optional. It is the only way to know your configuration will actually work when you need it. Run these tests in a staging environment before deploying new circuit breaker settings to production, and re-run them whenever you change service capacity or traffic patterns.
