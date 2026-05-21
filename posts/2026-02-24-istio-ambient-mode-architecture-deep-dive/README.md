@@ -35,7 +35,7 @@ This split is the key architectural insight. Most workloads only need mTLS and b
 
 When a pod in an ambient-enabled namespace sends traffic, here is what happens:
 
-1. The ztunnel on the source node intercepts outbound traffic using iptables/eBPF redirection
+1. The ztunnel on the source node intercepts outbound traffic using Istio CNI-managed network redirection
 2. ztunnel establishes an mTLS connection (using HBONE protocol) to the ztunnel on the destination node
 3. If no waypoint proxy is configured, ztunnel delivers the traffic directly to the destination pod
 4. If a waypoint proxy is configured, ztunnel routes traffic through the waypoint first for L7 processing
@@ -53,13 +53,13 @@ kubectl get pods -n my-namespace -l gateway.istio.io/managed=istio.io-mesh-contr
 
 ## HBONE Protocol
 
-Ambient mode introduces HBONE (HTTP Based Overlay Network Encapsulation) as its transport protocol. HBONE tunnels TCP connections inside HTTP/2 CONNECT streams, which provides a few benefits:
+Ambient mode introduces HBONE (HTTP-Based Overlay Network Environment) as its transport protocol. HBONE tunnels TCP connections using HTTP/2, HTTP CONNECT, and mTLS, which provides a few benefits:
 
 - It works through standard load balancers and firewalls
 - It carries mTLS natively
 - It supports metadata propagation between ztunnel nodes
 
-The HBONE tunnel looks like this at the network level:
+The HBONE tunnel is commonly shown like this at the logical data-path level:
 
 ```text
 [Source Pod] -> [Source ztunnel] --HBONE/mTLS--> [Dest ztunnel] -> [Dest Pod]
@@ -77,13 +77,17 @@ To install Istio with ambient mode:
 
 ```bash
 # Install Istio with the ambient profile
-istioctl install --set profile=ambient
+istioctl install --set profile=ambient --skip-confirmation
 
 # Or using Helm
-helm install istio-base istio/base -n istio-system
-helm install istiod istio/istiod -n istio-system
-helm install ztunnel istio/ztunnel -n istio-system
-helm install istio-cni istio/cni -n istio-system
+helm repo add istio https://istio-release.storage.googleapis.com/charts
+helm repo update
+helm install istio-base istio/base -n istio-system --create-namespace --wait
+kubectl get crd gateways.gateway.networking.k8s.io &> /dev/null || \
+  kubectl apply --server-side -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.5.1/experimental-install.yaml
+helm install istiod istio/istiod -n istio-system --set profile=ambient --wait
+helm install istio-cni istio/cni -n istio-system --set profile=ambient --wait
+helm install ztunnel istio/ztunnel -n istio-system --wait
 ```
 
 Once installed, you enroll namespaces into the ambient mesh by labeling them:
@@ -104,7 +108,7 @@ Ambient mode relies on the Istio CNI plugin for traffic interception. The CNI pl
 kubectl get pods -n istio-system -l k8s-app=istio-cni-node
 ```
 
-The CNI plugin configures iptables rules (or eBPF programs in newer versions) on each node to capture traffic from ambient-enrolled pods and route it through the local ztunnel instance.
+The CNI plugin configures network redirection for ambient-enrolled pods so their traffic is routed through the local ztunnel instance. In current Istio releases, you can inspect the resulting netfilter/iptables rules inside the application pod's network namespace when troubleshooting traffic capture.
 
 ## Control Plane Changes
 
@@ -113,7 +117,7 @@ The Istio control plane (istiod) in ambient mode still handles certificate issua
 - **ztunnel** receives L4-level configuration: which services exist, their endpoints, mTLS certificates, and L4 authorization policies
 - **Waypoint proxies** receive full Envoy configuration: HTTP routes, virtual services, destination rules, and L7 authorization policies
 
-This means istiod generates different xDS configurations for different proxy types. Ztunnel uses a simplified protocol since it does not need the full Envoy API surface.
+This means istiod generates different xDS configurations for different proxy types. Ztunnel uses a simplified set of xDS resources since it does not need the full Envoy API surface.
 
 Resource Comparison
 
@@ -134,7 +138,7 @@ The savings are significant, especially in clusters with many small pods.
 
 ## Security Model
 
-Ambient mode actually strengthens the security model in some ways. In sidecar mode, the Envoy proxy shares a network namespace with the application, meaning a compromised application could potentially tamper with proxy configuration. In ambient mode, ztunnel runs in its own pod with its own identity, completely separate from application workloads.
+Ambient mode strengthens the security model in some ways. In sidecar mode, the Envoy proxy shares a pod with the application, meaning a compromised application pod can expose that pod's mesh credentials. In ambient mode, ztunnel runs separately from application workloads and obtains workload certificates only for pods scheduled on its node.
 
 The trust model works like this:
 
@@ -166,7 +170,7 @@ Ambient mode works best when:
 Sidecars might still be preferred when:
 
 - You need per-pod L7 processing everywhere
-- You want complete traffic isolation between the proxy and the application
+- You want each workload to have its own dedicated proxy and keys
 - You are running workloads that need custom Envoy configuration per pod
 
 ## Checking the Architecture in a Running Cluster
