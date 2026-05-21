@@ -15,7 +15,7 @@ URL rewriting in Istio lets you modify the request path or host header before it
 The most common use case is stripping or replacing a path prefix. Say your gateway exposes `/api/v1/users` but your backend expects requests at `/users`:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-rewrite
@@ -47,7 +47,7 @@ Important detail: the rewrite `uri` replaces the matched prefix, not the entire 
 To strip a prefix entirely, rewrite to `/`:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: strip-prefix
@@ -60,7 +60,7 @@ spec:
   http:
     - match:
         - uri:
-            prefix: /service-a
+            exact: /service-a
       rewrite:
         uri: /
       route:
@@ -70,7 +70,27 @@ spec:
               number: 8080
     - match:
         - uri:
-            prefix: /service-b
+            prefix: /service-a/
+      rewrite:
+        uri: /
+      route:
+        - destination:
+            host: service-a
+            port:
+              number: 8080
+    - match:
+        - uri:
+            exact: /service-b
+      rewrite:
+        uri: /
+      route:
+        - destination:
+            host: service-b
+            port:
+              number: 8080
+    - match:
+        - uri:
+            prefix: /service-b/
       rewrite:
         uri: /
       route:
@@ -80,14 +100,14 @@ spec:
               number: 8080
 ```
 
-A request to `/service-a/health` gets rewritten to `/health` and routed to service-a. A request to `/service-b/api/data` becomes `/api/data` and goes to service-b.
+A request to `/service-a/health` gets rewritten to `/health` and routed to service-a. A request to `/service-b/api/data` becomes `/api/data` and goes to service-b. The exact-match rules handle requests to `/service-a` and `/service-b`; the trailing slash in the prefix rules avoids producing paths like `//health`.
 
 ## Regex-Based URL Rewriting
 
 For more complex rewriting patterns, you can use regex with capture groups:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: regex-rewrite
@@ -126,7 +146,7 @@ http:
     rewrite:
       uriRegexRewrite:
         match: "/api/v([0-9]+)/(.+)"
-        rewrite: "/\\2?api_version=\\1"
+        rewrite: "/v\\1/\\2"
     route:
       - destination:
           host: api-service
@@ -134,14 +154,14 @@ http:
             number: 8080
 ```
 
-This converts `/api/v2/users/list` into `/users/list?api_version=2`.
+This converts `/api/v2/users/list` into `/v2/users/list`. Regex rewrites operate on the path portion of the URI; use application logic or another proxy feature if you need to add or transform query parameters.
 
 ## Authority (Host) Rewriting
 
 You can also rewrite the Host header (also called the authority in HTTP/2):
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: host-rewrite
@@ -190,7 +210,7 @@ http:
 VirtualService rules are evaluated in order, so you can have multiple rewrite rules for different path patterns:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: multi-rewrite
@@ -245,7 +265,7 @@ The last rule without a match acts as a catch-all.
 Rewrites work for mesh-internal traffic too, not just gateway traffic:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: internal-rewrite
@@ -282,14 +302,14 @@ To verify that rewrites are working:
 
 istioctl proxy-config routes <pod-name> -n <namespace> -o json
 
-# Test with curl (from inside the mesh)
-kubectl exec <pod> -c istio-proxy -- curl -v http://app.example.com/api/v1/users
+# Test with curl from an application container inside the mesh
+kubectl exec <pod> -c <app-container> -- curl -v http://app.example.com/api/v1/users
 
 # Check Envoy access logs for the rewritten path
 kubectl logs <gateway-pod> -c istio-proxy -n istio-system
 ```
 
-In the access logs, you will see the original path in the request line and the rewritten path in the upstream request.
+Envoy stores the pre-rewrite path in the `x-envoy-original-path` header. Whether you see both the original and rewritten paths in access logs depends on the access log format you configured.
 
 ## Common Pitfalls
 
@@ -327,6 +347,6 @@ match:
 
 ### Regex Performance
 
-Regex rewrites are more expensive than prefix rewrites. For high-traffic services, prefer prefix-based rewrites when possible. If you must use regex, keep the patterns simple and avoid backtracking.
+Regex rewrites are more expensive than prefix rewrites. For high-traffic services, prefer prefix-based rewrites when possible. If you must use regex, keep the patterns simple and avoid unnecessary complexity.
 
 URL rewriting in Istio is flexible enough to handle most path translation needs. Start with simple prefix rewrites and reach for regex only when the pattern genuinely requires it.
