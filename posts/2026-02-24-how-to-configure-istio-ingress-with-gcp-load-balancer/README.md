@@ -20,7 +20,7 @@ When you install Istio on GKE and create the `istio-ingressgateway` service with
 kubectl get svc istio-ingressgateway -n istio-system
 ```
 
-The external IP will be a regional static IP managed by GCP. This default setup works for most use cases, but you might want to customize it.
+The external IP is ephemeral unless you configure a reserved static IP. This default setup works for most use cases, but you might want to customize it.
 
 ## Using a Static IP Address
 
@@ -56,7 +56,7 @@ spec:
         service:
           loadBalancerIP: "35.192.x.x"
         serviceAnnotations:
-          networking.gke.io/load-balancer-type: "External"
+          cloud.google.com/l4-rbs: "enabled"
 ```
 
 Replace the IP with your reserved address.
@@ -85,7 +85,7 @@ The `internal-load-balancer-allow-global-access` annotation allows traffic from 
 
 For more advanced features like Cloud CDN, Cloud Armor, or custom health checks, you need a GCP HTTP(S) Load Balancer instead of the default Network Load Balancer. The recommended way to do this on GKE is through a NEG (Network Endpoint Group).
 
-First, annotate the ingress gateway service to use NEGs:
+First, annotate the ingress gateway service to use NEGs and attach the backend configuration. These annotations are used by the GKE Ingress controller, so the Service port must also be referenced by a GKE Ingress:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -167,7 +167,7 @@ If you prefer GCP-managed certificates, you can terminate TLS at the GCP HTTP(S)
 
 ## Google-Managed Certificates with Istio
 
-You can use Google-managed certificates alongside Istio by creating a ManagedCertificate resource and a GKE Ingress that points to the Istio gateway service:
+You can use Google-managed certificates alongside Istio by creating a ManagedCertificate resource and a GKE Ingress that points to the Istio gateway service. For an external GKE Ingress, use the name of a global static IP address, not the regional address used by a Service `LoadBalancer`:
 
 ```yaml
 apiVersion: networking.gke.io/v1
@@ -187,7 +187,7 @@ metadata:
   name: istio-gcp-ingress
   namespace: istio-system
   annotations:
-    kubernetes.io/ingress.global-static-ip-name: "istio-ingress-ip"
+    kubernetes.io/ingress.global-static-ip-name: "istio-ingress-global-ip"
     networking.gke.io/managed-certificates: "my-managed-cert"
 spec:
   defaultBackend:
@@ -224,7 +224,7 @@ GCP load balancers need to verify your targets are healthy. The Istio ingress ga
 - Port: 15021
 - Path: /healthz/ready
 
-For the default Network Load Balancer, GKE handles health checks automatically. For HTTP(S) Load Balancers with BackendConfig, specify the health check explicitly as shown earlier.
+For the default Network Load Balancer, GKE handles load balancer health checks automatically at the node level. For HTTP(S) Load Balancers with BackendConfig, specify the health check explicitly as shown earlier.
 
 Verify the health check is passing:
 
@@ -237,8 +237,8 @@ kubectl exec -n istio-system deploy/istio-ingressgateway -- \
 
 GKE usually creates firewall rules automatically for load balancer health checks. If you have custom network policies or VPC firewall rules, make sure the following are allowed:
 
-- Health check source ranges: `35.191.0.0/16` and `130.211.0.0/22`
-- Target port: 15021 (health check) and your application ports (80, 443)
+- Health check source ranges: `35.191.0.0/16` and `130.211.0.0/22` for Application Load Balancers and internal passthrough Network Load Balancers. External passthrough Network Load Balancers also use `209.85.152.0/22` and `209.85.204.0/22` for IPv4 health checks.
+- Target port: the Service's health check node port for LoadBalancer Services, or 15021 when using the BackendConfig health check shown earlier, plus your application ports (80, 443)
 
 Check existing firewall rules:
 
@@ -272,7 +272,7 @@ kubectl describe svc istio-ingressgateway -n istio-system
 kubectl logs -n istio-system deploy/istio-ingressgateway --tail=50
 ```
 
-**Slow provisioning of Google-managed certificates.** These can take up to 60 minutes. Check the certificate status:
+**Slow provisioning of Google-managed certificates.** These can take several hours to provision. Check the certificate status:
 
 ```bash
 kubectl describe managedcertificate my-managed-cert -n istio-system
