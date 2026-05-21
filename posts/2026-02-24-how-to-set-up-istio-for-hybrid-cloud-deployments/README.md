@@ -24,7 +24,7 @@ Before touching any configuration, you need to answer a few questions:
 
 ## Step 1: Set Up Network Connectivity
 
-Ensure your environments can reach each other. The minimum requirement is that the east-west gateway LoadBalancer IPs are reachable from all environments.
+Ensure your environments can reach each other. The minimum requirement is that the east-west gateway addresses are reachable from all environments.
 
 If you are using AWS and on-prem:
 
@@ -91,7 +91,6 @@ spec:
     defaultConfig:
       proxyMetadata:
         ISTIO_META_DNS_CAPTURE: "true"
-        ISTIO_META_DNS_AUTO_ALLOCATE: "true"
   values:
     global:
       meshID: hybrid-mesh
@@ -144,7 +143,6 @@ spec:
     defaultConfig:
       proxyMetadata:
         ISTIO_META_DNS_CAPTURE: "true"
-        ISTIO_META_DNS_AUTO_ALLOCATE: "true"
   values:
     global:
       meshID: hybrid-mesh
@@ -179,7 +177,7 @@ For hybrid cloud, the API server of each cluster must be reachable from the othe
 In hybrid cloud, you probably want traffic to prefer local endpoints. Configure locality load balancing:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: prefer-local
@@ -238,6 +236,6 @@ kubectl exec -n sample -c sleep "${SLEEP_POD}" --context="${CTX_ONPREM}" -- curl
 
 **Plan for disconnection**: If the link between environments goes down, each environment should continue to function independently. Multi-primary ensures this - each Istiod has a complete configuration and can serve its local sidecars without the remote cluster.
 
-**Upgrade coordination**: Plan Istio upgrades to happen within a maintenance window for both environments. Version skew between control planes is supported (N-1 to N+1), but keeping them in sync is simpler to reason about.
+**Upgrade coordination**: Plan Istio upgrades to happen within a maintenance window for both environments. Istio supports the control plane being one minor version ahead of the data plane, but the data plane should not be ahead of the control plane. Keeping the control planes in sync is simpler to reason about.
 
 Hybrid cloud with Istio is not a weekend project. But once set up, it gives you a powerful foundation for running services across any combination of environments with consistent networking, security, and visibility.
