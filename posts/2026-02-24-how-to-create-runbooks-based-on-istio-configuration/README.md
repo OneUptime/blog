@@ -129,7 +129,7 @@ If not resolved in 15 minutes, escalate to platform-team in #platform-oncall
 kubectl get endpoints <service-name> -n <namespace>
 
 # Check what Envoy knows about the endpoints
-istioctl proxy-config endpoints deploy/<calling-service> -n <namespace> | grep <service-name>
+istioctl proxy-config endpoints deployment/<calling-service> -n <namespace> | grep <service-name>
 ```
 
 ```markdown
@@ -158,7 +158,7 @@ kubectl get svc <service-name> -n <namespace> -o json | jq '.spec.ports[]'
 ```
 
 ```bash
-istioctl authn tls-check deploy/<calling-service>.<namespace> <service-name>.<namespace>.svc.cluster.local
+istioctl experimental describe pod <service-pod> -n <namespace>
 ```
 
 ```markdown
@@ -174,7 +174,7 @@ istioctl authn tls-check deploy/<calling-service>.<namespace> <service-name>.<na
 
 Automate runbook generation based on your actual Istio configuration:
 
-```python
+````python
 #!/usr/bin/env python3
 # generate-runbooks.py
 
@@ -196,6 +196,7 @@ def generate_service_runbook(vs, dr):
     name = vs["metadata"]["name"]
     ns = vs["metadata"]["namespace"]
     hosts = vs["spec"].get("hosts", [])
+    service = hosts[0].split(".")[0] if hosts else name
 
     runbook = f"""# Runbook: {name}
 
@@ -206,17 +207,17 @@ def generate_service_runbook(vs, dr):
 
 ```bash
 ## Check pod status
-kubectl get pods -n {ns} -l app={name}
+kubectl get pods -n {ns} -l app={service}
 
 ## Check proxy status
-istioctl proxy-status | grep {name}
+istioctl proxy-status | grep {service}
 
 ## Check endpoints
-istioctl proxy-config endpoints deploy/{name} -n {ns}
+istioctl proxy-config endpoints deployment/{service} -n {ns}
 
 ## Check recent errors
-kubectl logs -n {ns} deploy/{name} -c istio-proxy --tail=50 | grep -i error
-```bash
+kubectl logs -n {ns} deploy/{service} -c istio-proxy --tail=50 | grep -i error
+```
 
 ## Route Information
 
@@ -251,9 +252,9 @@ kubectl logs -n {ns} deploy/{name} -c istio-proxy --tail=50 | grep -i error
 
 ```bash
 ## Check if circuit breaker is active
-kubectl exec deploy/{name} -n {ns} -c istio-proxy -- \\
+kubectl exec deploy/{service} -n {ns} -c istio-proxy -- \\
   pilot-agent request GET /stats | grep ejections
-```bash
+```
 
 """
 
@@ -269,9 +270,11 @@ for vs in vs_list.get("items", []):
 
     # Find matching DestinationRule
     dr = None
+    hosts = vs["spec"].get("hosts", [])
     for d in dr_list.get("items", []):
         if d["metadata"]["namespace"] == ns:
-            if name in d["spec"].get("host", ""):
+            dr_host = d["spec"].get("host", "")
+            if any(dr_host == host or dr_host == host.split(".")[0] for host in hosts):
                 dr = d
                 break
 
@@ -281,7 +284,7 @@ for vs in vs_list.get("items", []):
     with open(filename, "w") as f:
         f.write(runbook)
     print(f"Generated: {filename}")
-```text
+````
 
 ## Runbook: Gateway Connection Failures
 
@@ -321,7 +324,7 @@ done
 ```
 
 ```bash
-istioctl proxy-config listeners -n istio-system deploy/istio-ingressgateway
+istioctl proxy-config listeners deployment/istio-ingressgateway -n istio-system
 ```
 
 ```markdown
