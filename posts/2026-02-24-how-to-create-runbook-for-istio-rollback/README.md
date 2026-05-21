@@ -45,11 +45,11 @@ istioctl proxy-status | awk '{print $1, $NF}' | sort -k2
 
 ```bash
 # For each namespace that was migrated to the new revision:
-OLD_REVISION=default  # or the previous revision label
+OLD_REVISION=1-23-0  # or the previous stable revision tag, such as prod-stable
 NEW_REVISION=1-24-0
 
-# Remove the new revision label and restore the old injection method
-kubectl label namespace <namespace> istio.io/rev- istio-injection=enabled
+# Point the namespace back to the old revision and remove non-revision injection
+kubectl label namespace <namespace> istio.io/rev=$OLD_REVISION istio-injection- --overwrite
 
 # Restart all deployments to pick up the old sidecar
 kubectl rollout restart deployment -n <namespace>
@@ -62,12 +62,13 @@ Script to revert all affected namespaces:
 
 ```bash
 #!/bin/bash
+OLD_REVISION=1-23-0
 NEW_REVISION=1-24-0
 NAMESPACES=$(kubectl get namespaces -l istio.io/rev=$NEW_REVISION -o jsonpath='{.items[*].metadata.name}')
 
 for ns in $NAMESPACES; do
   echo "Reverting namespace: $ns"
-  kubectl label namespace $ns istio.io/rev- istio-injection=enabled --overwrite
+  kubectl label namespace $ns istio.io/rev=$OLD_REVISION istio-injection- --overwrite
   kubectl rollout restart deployment -n $ns
   kubectl rollout status deployment --all -n $ns --timeout=300s
   echo "Namespace $ns reverted"
@@ -117,10 +118,10 @@ istioctl version --remote=false
 
 ```bash
 # If you have the backup IstioOperator config:
-istioctl install -f istio-operator-backup.yaml -y
+istioctl upgrade -f istio-operator-backup.yaml -y
 
 # Or install with the previous version's default profile:
-istioctl install --set profile=default -y
+istioctl upgrade --set profile=default -y
 ```
 
 #### Step 3: Restart All Meshed Workloads
@@ -209,12 +210,15 @@ In extreme cases where Istio itself is causing a cluster-wide outage:
 ```bash
 # Step 1: Remove sidecar injection immediately
 # This prevents new pods from getting sidecars
-kubectl delete mutatingwebhookconfiguration istio-sidecar-injector
-kubectl delete mutatingwebhookconfiguration istio-revision-tag-default
+kubectl delete mutatingwebhookconfiguration istio-sidecar-injector --ignore-not-found
+kubectl delete mutatingwebhookconfiguration istio-sidecar-injector-<revision> --ignore-not-found
+kubectl delete mutatingwebhookconfiguration istio-revision-tag-default --ignore-not-found
 
 # Step 2: Restart all workloads (they will come up without sidecars)
 kubectl get namespaces -l istio-injection=enabled -o jsonpath='{.items[*].metadata.name}' | \
-  xargs -I {} kubectl rollout restart deployment -n {}
+  xargs -r -I {} kubectl rollout restart deployment -n {}
+kubectl get namespaces -l istio.io/rev -o jsonpath='{.items[*].metadata.name}' | \
+  xargs -r -I {} kubectl rollout restart deployment -n {}
 
 # Step 3: Once traffic is flowing again, properly uninstall Istio
 istioctl uninstall --purge -y
