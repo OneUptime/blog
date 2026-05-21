@@ -8,17 +8,17 @@ Description: How to configure bandwidth throttling in Istio to control data tran
 
 ---
 
-Bandwidth throttling is different from request rate limiting. Rate limiting controls how many requests per second a client can make. Bandwidth throttling controls how much data per second can flow through a connection. You need bandwidth throttling when large responses (file downloads, data exports, streaming) risk saturating your network or starving other services.
+Bandwidth throttling is different from request rate limiting. Rate limiting controls how many requests per second a client can make. Bandwidth throttling controls how much data per second can flow through a proxy, route, or stream. You need bandwidth throttling when large responses (file downloads, data exports, streaming) risk saturating your network or starving other services.
 
 ## Understanding Bandwidth Control in Envoy
 
-Envoy provides bandwidth limiting through its bandwidth limit filter. This filter controls the rate at which data flows through the proxy on a per-connection or per-request basis. It uses a token bucket algorithm similar to rate limiting, but instead of counting requests, it counts bytes.
+Envoy provides bandwidth limiting through its bandwidth limit filter. This filter controls the rate at which HTTP request or response data flows through the proxy. It uses a token bucket algorithm similar to rate limiting, but instead of counting requests, it counts bytes.
 
 The bandwidth limit filter can apply to both request bodies (uploads) and response bodies (downloads). You configure it through an EnvoyFilter resource in Istio.
 
 ## Basic Bandwidth Throttling Setup
 
-Here is a configuration that limits each connection to 1 MB/s for both uploads and downloads:
+Here is a configuration that limits the selected workload's local Envoy proxy to 1 MiB/s for both uploads and downloads:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -55,8 +55,8 @@ spec:
 The key fields:
 
 - `enable_mode` - Controls what gets throttled: `REQUEST` (uploads only), `RESPONSE` (downloads only), or `REQUEST_AND_RESPONSE` (both)
-- `limit_kbps` - The bandwidth limit in kilobits per second (1024 kbps = roughly 1 MB/s)
-- `fill_interval` - How frequently the token bucket refills. Smaller intervals give smoother throughput
+- `limit_kbps` - Despite the field name, Envoy defines this value in KiB/s (1024 KiB/s = 1 MiB/s)
+- `fill_interval` - How frequently the token bucket refills. Smaller intervals give smoother throughput, but Envoy requires at least 20ms
 
 ## Throttling Only Downloads
 
@@ -94,7 +94,7 @@ spec:
           fill_interval: 50ms
 ```
 
-This limits response data to roughly 5 MB/s per connection.
+This limits response data to roughly 5 MiB/s for the selected Envoy proxy.
 
 ## Throttling Uploads
 
@@ -261,18 +261,18 @@ kubectl exec my-service-pod -c istio-proxy -- \
 You will see metrics like:
 
 ```text
-bandwidth_limiter.request_enabled: 1000
-bandwidth_limiter.response_enabled: 1000
-bandwidth_limiter.request_enforced: 500
-bandwidth_limiter.response_enforced: 800
+bandwidth_limiter.http_bandwidth_limit.request_enabled: 1000
+bandwidth_limiter.http_bandwidth_limit.response_enabled: 1000
+bandwidth_limiter.http_bandwidth_limit.request_enforced: 500
+bandwidth_limiter.http_bandwidth_limit.response_enforced: 800
 ```
 
-For more detailed bandwidth monitoring, Istio's standard telemetry tracks bytes sent and received:
+For more detailed HTTP response-size monitoring, Istio's standard telemetry reports response bytes as a Prometheus histogram:
 
 ```promql
-sum(rate(istio_tcp_sent_bytes_total{
+sum(rate(istio_response_bytes_sum{
   destination_service_name="file-service"
-}[5m])) by (pod)
+}[5m])) by (destination_workload)
 ```
 
 ## Testing Bandwidth Limits
@@ -289,7 +289,7 @@ curl -o /dev/null -w "Speed: %{speed_download} bytes/sec\n" \
   http://file-service.default:8080/large-file.zip
 ```
 
-Compare this with the expected speed. If you set `limit_kbps: 1024`, the download speed should be approximately 128 KB/s (1024 kilobits = 128 kilobytes).
+Compare this with the expected speed. If you set `limit_kbps: 1024`, the download speed should be approximately 1 MiB/s because Envoy defines `limit_kbps` in KiB/s.
 
 ## Combining with Request Rate Limiting
 
@@ -302,7 +302,7 @@ For a file service, you might want both:
 
 ```yaml
 # Rate limit: max 100 download requests per minute
-# Bandwidth limit: max 5 MB/s per download
+# Bandwidth limit: max 5 MiB/s through each configured Envoy proxy
 ```
 
 This prevents both request floods and bandwidth saturation.
@@ -311,10 +311,10 @@ This prevents both request floods and bandwidth saturation.
 
 Keep these things in mind:
 
-- Bandwidth limits are per-connection in Envoy. A client opening multiple connections effectively multiplies their bandwidth.
+- Bandwidth limits are local to each Envoy proxy process. Multiple pods or gateway replicas each get their own bucket, so aggregate bandwidth can exceed a single configured value.
 - The `fill_interval` affects burstiness. Smaller intervals give smoother throughput but slightly more overhead.
 - Very low bandwidth limits can cause timeouts if the client or server has aggressive timeout settings.
-- gRPC streaming and WebSocket connections are long-lived, so bandwidth limits are especially relevant for these.
+- gRPC streaming and other long-lived HTTP streams are long-lived, so bandwidth limits are especially relevant for these.
 
 ## Summary
 
