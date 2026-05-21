@@ -15,13 +15,13 @@ Kiali is the observability console for Istio. It shows you a visual graph of you
 The quickest approach for testing:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/kiali.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/kiali.yaml
 ```
 
 Kiali depends on Prometheus for metrics data, so make sure Prometheus is running:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/prometheus.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/prometheus.yaml
 ```
 
 Verify both are running:
@@ -42,7 +42,14 @@ istioctl dashboard kiali
 For production deployments, use the Kiali Operator:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/kiali/kiali-operator/master/deploy/deploy-kiali-operator.yaml
+helm repo add kiali https://kiali.org/helm-charts
+helm repo update kiali
+helm install \
+  --namespace kiali-operator \
+  --create-namespace \
+  --set clusterRoleCreator=true \
+  kiali-operator \
+  kiali/kiali-operator
 ```
 
 Then create a Kiali custom resource:
@@ -57,22 +64,22 @@ spec:
   auth:
     strategy: anonymous
   deployment:
-    accessible_namespaces:
-    - "**"
+    cluster_wide_access: true
     image_name: quay.io/kiali/kiali
-    image_version: v1.79
+    image_version: operator_version
     replicas: 1
   external_services:
     prometheus:
       url: http://prometheus.istio-system.svc:9090
     grafana:
       enabled: true
-      in_cluster_url: http://grafana.istio-system.svc:3000
-      url: http://grafana.istio-system.svc:3000
+      internal_url: http://grafana.istio-system.svc:3000
+      external_url: http://grafana.example.com
     tracing:
       enabled: true
-      in_cluster_url: http://jaeger-query.istio-system.svc:16686
-      url: http://jaeger-query.istio-system.svc:16686
+      provider: jaeger
+      internal_url: http://jaeger-query.istio-system.svc:16686
+      external_url: http://jaeger.example.com
   server:
     web_root: /kiali
 ```
@@ -230,25 +237,32 @@ spec:
       url: http://prometheus-server.monitoring.svc:9090
     grafana:
       enabled: true
-      in_cluster_url: http://grafana.monitoring.svc:3000
+      internal_url: http://grafana.monitoring.svc:3000
     tracing:
       enabled: true
-      in_cluster_url: http://jaeger-query.observability.svc:16686
+      provider: jaeger
+      internal_url: http://jaeger-query.observability.svc:16686
       use_grpc: false
 ```
 
 ### Namespace Access
 
-Control which namespaces Kiali can see:
+Control which namespaces Kiali can see with discovery selectors:
 
 ```yaml
 spec:
   deployment:
-    accessible_namespaces:
-    - default
-    - production
-    - staging
-    - istio-system
+    cluster_wide_access: false
+    discovery_selectors:
+      default:
+      - matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: In
+          values:
+          - default
+          - production
+          - staging
+          - istio-system
 ```
 
 Or allow all namespaces:
@@ -256,8 +270,7 @@ Or allow all namespaces:
 ```yaml
 spec:
   deployment:
-    accessible_namespaces:
-    - "**"
+    cluster_wide_access: true
 ```
 
 ## Using Kiali for Traffic Management
@@ -308,12 +321,14 @@ kubectl exec -n istio-system deploy/kiali -- curl -s http://prometheus.istio-sys
 
 **Stale data.** Kiali caches data from Prometheus. If you made changes and don't see them reflected, wait for the refresh interval (default 15 seconds) or manually refresh.
 
-**Missing sidecars warning.** Kiali detects pods without Istio sidecars. If a workload intentionally doesn't have a sidecar, you can silence the warning by adding an annotation:
+**Missing sidecars warning.** Kiali detects pods without Istio sidecars. If a workload should be in the mesh, enable automatic injection for its namespace or add the standard Istio injection annotation to the workload template:
 
 ```yaml
-metadata:
-  annotations:
-    kiali.io/dashboards: ""
+spec:
+  template:
+    metadata:
+      annotations:
+        sidecar.istio.io/inject: "true"
 ```
 
 ## Summary
