@@ -18,13 +18,13 @@ If there are NO authorization policies for a workload, all traffic is allowed (d
 
 ```mermaid
 flowchart TD
-    A[Incoming Request] --> B{Any DENY policy match?}
-    B -->|Yes| C[DENIED 403]
-    B -->|No| D{Any CUSTOM policy?}
+    A[Incoming Request] --> D{Any CUSTOM policy?}
     D -->|Yes| E{Custom provider says?}
     E -->|Deny| C
-    E -->|Allow| F{Any ALLOW policy match?}
-    D -->|No| F
+    E -->|Allow| B{Any DENY policy match?}
+    D -->|No| B
+    B -->|Yes| C[DENIED 403]
+    B -->|No| F{Any ALLOW policy match?}
     F -->|Yes| G[ALLOWED]
     F -->|No, but ALLOW policies exist| C
     F -->|No ALLOW policies at all| G
@@ -75,6 +75,8 @@ spec:
 ```
 
 This allows traffic from two specific service accounts. No one else can reach the backend-api service.
+
+Principal-based matching depends on Istio being able to identify the peer, so make sure mutual TLS is enabled for the workloads that use `source.principals`.
 
 ## Operation-Based ALLOW
 
@@ -203,30 +205,30 @@ This is great for setting a baseline. All services in `my-app` can only be reach
 
 ## Using IP Blocks
 
-For traffic coming from outside the mesh (through an ingress gateway, for example), you might want to allow specific IP ranges:
+For traffic coming from outside the mesh, put the IP allow-list on the ingress gateway and match the original client IP. Use `remoteIpBlocks` when Istio is using the `X-Forwarded-For` header or proxy protocol to determine the remote client address:
 
 ```yaml
 apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: allow-office-ips
-  namespace: my-app
+  namespace: istio-system
 spec:
   selector:
     matchLabels:
-      app: admin-panel
+      app: istio-ingressgateway
   action: ALLOW
   rules:
     - from:
         - source:
-            ipBlocks: ["203.0.113.0/24", "198.51.100.0/24"]
+            remoteIpBlocks: ["203.0.113.0/24", "198.51.100.0/24"]
 ```
 
-Keep in mind that IP-based policies can be tricky in Kubernetes. The source IP seen by the sidecar depends on your CNI plugin and whether traffic goes through a load balancer. Test thoroughly before relying on IP blocks.
+Keep in mind that IP-based policies can be tricky in Kubernetes. If the gateway receives the real source IP directly, such as with `externalTrafficPolicy: Local`, use `ipBlocks` instead. If traffic passes through a load balancer or proxy, configure Istio's trusted proxy settings and use `remoteIpBlocks`. Test thoroughly before relying on IP blocks.
 
 ## ALLOW with JWT Authentication
 
-Combine ALLOW with JWT validation for end-user authentication:
+Combine ALLOW with JWT validation for end-user authentication. First configure a `RequestAuthentication` policy for the workload so Istio validates the JWT, then use `requestPrincipals` and claims in the ALLOW policy:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -262,7 +264,7 @@ spec:
 
 **Not accounting for all traffic sources.** If your service receives traffic from both internal mesh services and an ingress gateway, your ALLOW policy needs to cover both. It's easy to forget one and break half your traffic.
 
-**Health check probes.** Kubernetes health probes go through the sidecar. If your ALLOW policy doesn't account for them, your pods will start failing health checks. Always include health check paths in your ALLOW rules.
+**Health check probes.** Istio rewrites HTTP, TCP, and gRPC probes by default so the kubelet checks go through the sidecar agent. If you disable probe rewriting, make sure your ALLOW policy accounts for the probe traffic and health check paths.
 
 ## Testing Your ALLOW Policy
 
@@ -281,14 +283,14 @@ kubectl exec -n other-ns deploy/attacker -- curl -s -o /dev/null -w "%{http_code
 istioctl analyze -n my-app
 
 # Verify the policy is loaded in Envoy
-istioctl proxy-config listener deploy/backend -n my-app -o json | grep -c "rbac"
+istioctl proxy-config listener deployment/backend -n my-app -o json | grep -c "rbac"
 ```
 
 ## When to Use ALLOW vs DENY
 
 Use ALLOW policies when you have a known set of traffic sources that should be permitted and you want to block everything else. This is the "default deny" approach and is the most secure pattern.
 
-Use DENY policies when most traffic should be allowed and you only need to block specific cases. DENY policies are evaluated before ALLOW policies, so they act as overrides.
+Use DENY policies when most traffic should be allowed and you only need to block specific cases. DENY policies are evaluated before ALLOW policies, so they act as overrides. CUSTOM policies are checked before DENY policies.
 
 In practice, most production meshes use ALLOW policies as the primary mechanism with occasional DENY policies for specific blocking needs.
 
