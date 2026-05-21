@@ -81,7 +81,13 @@ metadata:
     argocd.argoproj.io/sync-wave: "0"
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: web-app
   template:
+    metadata:
+      labels:
+        app: web-app
     spec:
       containers:
         - name: app
@@ -102,6 +108,13 @@ spec:
     name: web-app
   minReplicas: 3
   maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
 ```
 
 Sync waves are processed in numerical order. Resources in the same wave are applied together. ArgoCD waits for all resources in a wave to be healthy before proceeding to the next wave.
@@ -141,7 +154,13 @@ metadata:
     argocd.argoproj.io/sync-options: ServerSideApply=true
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: complex-deployment
   template:
+    metadata:
+      labels:
+        app: complex-deployment
     spec:
       containers:
         - name: app
@@ -164,6 +183,14 @@ metadata:
   name: one-time-setup
   annotations:
     argocd.argoproj.io/sync-options: Replace=true
+spec:
+  template:
+    spec:
+      containers:
+        - name: setup
+          image: myorg/setup:latest
+          command: ["./setup.sh"]
+      restartPolicy: Never
 ```
 
 You can combine multiple sync options:
@@ -232,7 +259,7 @@ spec:
       restartPolicy: Never
 ```
 
-Hook phases: `PreSync`, `Sync`, `PostSync`, `SyncFail`, `Skip`
+Hook phases: `PreSync`, `Sync`, `PostSync`, `SyncFail`, `Skip`, `PreDelete`, `PostDelete`
 
 ## Hook delete policy annotations
 
@@ -283,20 +310,34 @@ metadata:
 
 `IgnoreExtraneous` is useful for resources created by operators or controllers that ArgoCD should not manage but should not flag as orphaned either.
 
-## Managed-by annotation
+## Tracking ID annotation
 
-Explicitly declare which ArgoCD application manages a resource:
+Explicitly declare the ArgoCD tracking ID for a resource:
 
 ```yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: shared-service
+  namespace: default
   annotations:
-    argocd.argoproj.io/managed-by: argocd/my-app
+    argocd.argoproj.io/tracking-id: my-app:apps/Deployment:default/shared-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: shared-service
+  template:
+    metadata:
+      labels:
+        app: shared-service
+    spec:
+      containers:
+        - name: app
+          image: myorg/shared-service:latest
 ```
 
-This is useful when resources are shared or when you need to transfer ownership between applications.
+This is useful when ArgoCD is configured for annotation-based resource tracking.
 
 ## Notification annotations
 
@@ -317,12 +358,21 @@ metadata:
     notifications.argoproj.io/subscribe.on-sync-failed.email: oncall@myorg.com
 
     # Webhook notifications
-    notifications.argoproj.io/subscribe.on-sync-succeeded.webhook: https://hooks.myorg.com/deploy
+    notifications.argoproj.io/subscribe.on-sync-succeeded.webhook: deploy-webhook
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/myorg/gitops.git
+    targetRevision: main
+    path: apps/prod-web-app
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: prod
 ```
 
 ## Image updater annotations
 
-Control automated image updates:
+Control automated image updates with legacy Application annotations. In current Argo CD Image Updater versions, this requires an `ImageUpdater` resource with `useAnnotations: true`; new configurations can use the `ImageUpdater` custom resource fields directly.
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -331,18 +381,26 @@ metadata:
   name: staging-web-app
   annotations:
     # Define images to watch
-    argocd-image-updater.argoproj.io/image-list: app=myorg/web-app,sidecar=myorg/proxy
+    argocd-image-updater.argoproj.io/image-list: app=myorg/web-app:~1.0,sidecar=myorg/proxy
 
     # Update strategy per image
     argocd-image-updater.argoproj.io/app.update-strategy: semver
-    argocd-image-updater.argoproj.io/app.semver-constraint: ">=1.0.0 <2.0.0"
 
-    argocd-image-updater.argoproj.io/sidecar.update-strategy: latest
+    argocd-image-updater.argoproj.io/sidecar.update-strategy: newest-build
     argocd-image-updater.argoproj.io/sidecar.allow-tags: "regexp:^v[0-9]+$"
 
     # Write-back method
     argocd-image-updater.argoproj.io/write-back-method: git
     argocd-image-updater.argoproj.io/git-branch: main
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/myorg/gitops.git
+    targetRevision: main
+    path: apps/staging-web-app
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: staging
 ```
 
 ## Combining annotations for complex workflows
@@ -392,6 +450,19 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "0"
     argocd.argoproj.io/sync-options: ServerSideApply=true
+spec:
+  serviceName: postgres
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16
 
 ---
 # Step 5: Run migrations after database is up
@@ -404,6 +475,14 @@ metadata:
     argocd.argoproj.io/sync-wave: "1"
     argocd.argoproj.io/hook: Sync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  template:
+    spec:
+      containers:
+        - name: migrate
+          image: myorg/db-migrate:latest
+          command: ["./migrate", "up"]
+      restartPolicy: Never
 
 ---
 # Step 6: Smoke test
@@ -415,6 +494,14 @@ metadata:
   annotations:
     argocd.argoproj.io/hook: PostSync
     argocd.argoproj.io/hook-delete-policy: HookSucceeded
+spec:
+  template:
+    spec:
+      containers:
+        - name: check
+          image: myorg/db-health-check:latest
+          command: ["./check.sh"]
+      restartPolicy: Never
 ```
 
 ## Best practices for annotation usage
