@@ -44,8 +44,8 @@ More services and endpoints means larger xDS payloads and more computation durin
 kubectl get services --all-namespaces --no-headers | wc -l
 
 # Count endpoints
-kubectl get endpoints --all-namespaces -o json | \
-  jq '[.items[].subsets[]?.addresses // [] | length] | add'
+kubectl get endpointslices --all-namespaces -o json | \
+  jq '[.items[].endpoints[]?.addresses | length] | add // 0'
 ```
 
 ### Number of Istio Configuration Resources
@@ -154,7 +154,7 @@ process_resident_memory_bytes{app="istiod"}
 histogram_quantile(0.99, sum(rate(pilot_xds_push_time_bucket[5m])) by (le))
 
 # Number of connected proxies
-pilot_xds_pushes{type="cds"}
+pilot_xds
 
 # Push errors (indicates istiod is overloaded)
 pilot_total_xds_internal_errors
@@ -219,7 +219,7 @@ spec:
 Running multiple istiod replicas is not just about capacity. It is about availability. If a single istiod instance goes down, all proxy connections need to reconnect to the remaining instances. With proper replica count:
 
 - **2 replicas**: Handles single-instance failure. Each instance needs capacity to temporarily handle all proxies.
-- **3 replicas**: Better fault tolerance. Each instance handles about 50% of its maximum capacity during normal operation.
+- **3 replicas**: Better fault tolerance. After a single-instance failure, each remaining instance handles about 50% of the proxies.
 
 Configure pod disruption budgets to prevent losing too many replicas during node maintenance:
 
@@ -242,7 +242,7 @@ Watch for these symptoms that indicate istiod needs more resources:
 
 1. **Slow config propagation**: `pilot_proxy_convergence_time` exceeding seconds
 2. **Push errors**: `pilot_total_xds_internal_errors` increasing
-3. **High push queue**: `pilot_push_triggers` growing faster than pushes complete
+3. **High push queue**: `pilot_worker_queue_depth` staying elevated or `pilot_proxy_queue_time` increasing
 4. **Certificate rotation failures**: Workload certificates not being renewed on time
 5. **Injection webhook timeouts**: Pods failing to start because sidecar injection times out
 
