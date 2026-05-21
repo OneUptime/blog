@@ -32,7 +32,7 @@ Check the Envoy access log timing:
 # Enable detailed access logging temporarily
 
 kubectl apply -f - <<EOF
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: debug-logging
@@ -53,7 +53,7 @@ The access log includes timing fields:
 kubectl logs deploy/slow-service -c istio-proxy | tail -20
 ```
 
-Look at the `DURATION` and `X-ENVOY-UPSTREAM-SERVICE-TIME` headers in the logs. The difference is the time Envoy spent processing the request.
+Look at the `DURATION` and `X-ENVOY-UPSTREAM-SERVICE-TIME` values in the logs. `DURATION` is the total time from request start to the last byte sent downstream, while `X-ENVOY-UPSTREAM-SERVICE-TIME` is the time spent by the upstream host plus network latency between Envoy and that upstream. The difference is a useful approximation of downstream-side proxy and network overhead, not pure Envoy processing time.
 
 ## Use Envoy Admin Interface for Detailed Stats
 
@@ -88,11 +88,14 @@ If sidecar CPU is the concern, use Envoy's built-in profiling:
 # Check hot restart stats
 kubectl exec deploy/slow-service -c istio-proxy -- curl -s localhost:15000/stats | grep "server"
 
-# Check worker thread utilization
+# Check worker thread count
 kubectl exec deploy/slow-service -c istio-proxy -- curl -s localhost:15000/stats | grep "server.concurrency"
+
+# Check dispatcher loop stats, if enabled in the proxy bootstrap
+kubectl exec deploy/slow-service -c istio-proxy -- curl -s localhost:15000/stats | grep -E "dispatcher.loop_duration_us|dispatcher.poll_delay_us"
 ```
 
-For deeper CPU profiling, you can capture a CPU profile from Envoy:
+For deeper CPU profiling, you can capture a CPU profile from Envoy if CPU profiling is available in your Envoy build:
 
 ```bash
 # Enable CPU profiling (only for debugging, not production)
@@ -121,7 +124,7 @@ istioctl proxy-config cluster deploy/slow-service -n my-namespace | wc -l
 istioctl proxy-config endpoint deploy/slow-service -n my-namespace | wc -l
 ```
 
-If the config dump is large (over 2MB), the proxy is receiving too much configuration. Apply Sidecar resources to reduce it.
+If the config dump is unexpectedly large for a single workload, the proxy may be receiving too much configuration. Apply Sidecar resources to reduce it.
 
 ## Profile the Control Plane
 
@@ -134,7 +137,7 @@ kubectl exec deploy/istiod -n istio-system -- curl -s localhost:15014/metrics | 
 # Check istiod CPU and memory
 kubectl top pods -n istio-system -l app=istiod
 
-# Check push queue depth
+# Check push trigger counts
 kubectl exec deploy/istiod -n istio-system -- curl -s localhost:15014/metrics | grep "pilot_push_triggers"
 ```
 
@@ -188,7 +191,7 @@ istioctl analyze --all-namespaces
 # Check proxy sync status
 istioctl proxy-status
 
-# Compare a proxy's configuration to what istiod intends
+# Retrieve the proxy's current Envoy configuration
 istioctl proxy-config all deploy/slow-service -n my-namespace -o json > actual.json
 ```
 
@@ -203,11 +206,10 @@ If you have tracing enabled, use it to see exactly where time is spent:
 kubectl port-forward svc/tracing -n istio-system 16686:80
 ```
 
-Open the Jaeger UI and look at traces for slow requests. The spans show:
-- Time in the client-side sidecar
+Open the Jaeger UI and look at traces for slow requests. Depending on your tracing configuration and application instrumentation, the spans can help distinguish:
+- Time in mesh-generated proxy spans
 - Network transit time
-- Time in the server-side sidecar
-- Application processing time
+- Time in application spans
 
 ## Build a Profiling Checklist
 
