@@ -30,7 +30,7 @@ These things continue working:
 - mTLS (until certificates expire)
 - Current routing rules
 
-**Time sensitivity**: You have approximately 12-20 hours before workload certificates start expiring (they rotate at 80% of their lifetime, which is 24 hours by default).
+**Time sensitivity**: Workload certificate lifetime is 24 hours by default, and Istio starts rotation before expiry. Depending on the age of existing workload certificates when the outage starts, some workloads may have less than 24 hours before certificates expire.
 
 ### Scenario 1: istiod Pod Crash Loop
 
@@ -59,8 +59,7 @@ kubectl get events -n istio-system --sort-by='.lastTimestamp' | grep istiod
 kubectl describe pod -n istio-system -l app=istiod | grep -A 5 "Last State"
 
 # Fix: Increase memory limits
-kubectl patch deployment istiod -n istio-system --type=json \
-  -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/resources/limits/memory", "value": "4Gi"}]'
+kubectl set resources deployment/istiod -n istio-system -c discovery --limits=memory=4Gi
 ```
 
 **Invalid configuration:**
@@ -78,8 +77,9 @@ kubectl delete <resource-type> <name> -n <namespace>
 kubectl get secret cacerts -n istio-system
 kubectl get secret istio-ca-secret -n istio-system
 
-# If missing, istiod will create a self-signed CA on restart
-# If you need a specific CA, restore from backup:
+# If the custom cacerts secret is missing, restore it from backup before restart.
+# If you use Istio's default self-signed CA and istio-ca-secret is missing,
+# istiod can generate a new CA, but workloads may need restart to pick up the new trust root.
 kubectl apply -f cacerts-backup.yaml
 
 # Restart istiod
@@ -148,7 +148,7 @@ When istiod cannot be recovered through simple restarts:
 kubectl get secret cacerts -n istio-system -o yaml > cacerts-backup.yaml 2>/dev/null
 kubectl get secret istio-ca-secret -n istio-system -o yaml > istio-ca-secret-backup.yaml 2>/dev/null
 
-# Step 2: Save all Istio configuration
+# Step 2: Save common Istio configuration
 for resource in virtualservices destinationrules gateways serviceentries sidecars authorizationpolicies peerauthentications requestauthentications envoyfilters; do
   kubectl get $resource --all-namespaces -o yaml > backup-$resource.yaml 2>/dev/null
 done
@@ -164,6 +164,7 @@ kubectl get pods -n istio-system
 # Step 5: Restore CA certificates first
 kubectl create namespace istio-system 2>/dev/null
 kubectl apply -f cacerts-backup.yaml 2>/dev/null
+kubectl apply -f istio-ca-secret-backup.yaml 2>/dev/null
 
 # Step 6: Reinstall istiod
 istioctl install -f <your-istio-config.yaml> -y
@@ -173,7 +174,7 @@ kubectl get pods -n istio-system
 istioctl proxy-status
 
 # Step 8: Restore configuration resources
-for resource in virtualservices destinationrules gateways serviceentries sidecars authorizationpolicies peerauthentications requestauthentications; do
+for resource in virtualservices destinationrules gateways serviceentries sidecars authorizationpolicies peerauthentications requestauthentications envoyfilters; do
   kubectl apply -f backup-$resource.yaml 2>/dev/null
 done
 ```
@@ -189,10 +190,10 @@ istioctl proxy-status
 # Check istiod instances
 kubectl get pods -n istio-system -l app=istiod -o wide
 
-# Compare config across instances
+# Compare config across instances from the Kubernetes API server
 for pod in $(kubectl get pods -n istio-system -l app=istiod -o jsonpath='{.items[*].metadata.name}'); do
   echo "=== $pod ==="
-  kubectl exec $pod -n istio-system -- curl -s localhost:15014/debug/configz | md5sum
+  kubectl get --raw "/api/v1/namespaces/istio-system/pods/$pod:15014/proxy/debug/configz" | md5sum
 done
 
 # If instances have different configs, restart all of them
@@ -218,11 +219,20 @@ kubectl get crds | grep istio
 istioctl install -f <config.yaml> -y
 
 # Step 5: Check certificate validity
-kubectl get secret cacerts -n istio-system -o jsonpath='{.data.ca-cert\.pem}' | \
-  base64 -d | openssl x509 -noout -dates
+for secret in cacerts istio-ca-secret; do
+  cert=$(kubectl get secret "$secret" -n istio-system -o jsonpath='{.data.ca-cert\.pem}' 2>/dev/null || true)
+  if [ -n "$cert" ]; then
+    echo "=== $secret ==="
+    echo "$cert" | base64 -d | openssl x509 -noout -dates
+  fi
+done
 
 # Step 6: Restart all meshed workloads to re-establish connections
 for ns in $(kubectl get namespaces -l istio-injection=enabled -o jsonpath='{.items[*].metadata.name}'); do
+  kubectl rollout restart deployment -n $ns
+done
+
+for ns in $(kubectl get namespaces -l 'istio.io/rev' -o jsonpath='{.items[*].metadata.name}'); do
   kubectl rollout restart deployment -n $ns
 done
 
@@ -239,12 +249,11 @@ After any recovery scenario, run these checks:
 kubectl get pods -n istio-system -l app=istiod
 
 # 2. All proxies synced
-istioctl proxy-status | grep -v SYNCED
-# Should return no results
+istioctl proxy-status
+# All xDS status columns should show SYNCED
 
 # 3. Sidecar injection working
-kubectl run test-injection --image=busybox --restart=Never --dry-run=server -o yaml | \
-  grep sidecar
+istioctl x check-inject -n <injection-enabled-namespace> -l app=test-injection
 
 # 4. Certificate issuance working
 istioctl proxy-config secret <any-pod> | head -5
@@ -253,8 +262,11 @@ istioctl proxy-config secret <any-pod> | head -5
 istioctl analyze --all-namespaces
 
 # 6. Mesh metrics flowing
-kubectl exec -n istio-system deploy/istiod -- \
-  curl -s localhost:15014/metrics | grep pilot_xds_pushes
+kubectl port-forward -n istio-system deploy/istiod 15014:15014 &
+PF_PID=$!
+sleep 2
+curl -s localhost:15014/metrics | grep pilot_xds_pushes
+kill $PF_PID
 ```
 
 ### Prevention Measures
@@ -301,6 +313,7 @@ spec:
 ```bash
 # 3. Regular backups of critical secrets
 kubectl get secret cacerts -n istio-system -o yaml > /backup/cacerts-$(date +%Y%m%d).yaml
+kubectl get secret istio-ca-secret -n istio-system -o yaml > /backup/istio-ca-secret-$(date +%Y%m%d).yaml
 ```
 
 ### Recovery Time Estimates
