@@ -49,14 +49,15 @@ spec:
         name: envoy.filters.http.lua
         typed_config:
           "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-          inline_code: |
-            function envoy_on_request(request_handle)
-              request_handle:logInfo("Processing request to: " .. request_handle:headers():get(":path"))
-            end
+          default_source_code:
+            inline_string: |
+              function envoy_on_request(request_handle)
+                request_handle:logInfo("Processing request to: " .. request_handle:headers():get(":path"))
+              end
 
-            function envoy_on_response(response_handle)
-              response_handle:logInfo("Response status: " .. response_handle:headers():get(":status"))
-            end
+              function envoy_on_response(response_handle)
+                response_handle:logInfo("Response status: " .. response_handle:headers():get(":status"))
+              end
 ```
 
 This simple filter logs the request path and response status. You can see the logs by checking the istio-proxy container logs:
@@ -95,25 +96,26 @@ spec:
         name: envoy.filters.http.lua
         typed_config:
           "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-          inline_code: |
-            function envoy_on_request(request_handle)
-              -- Read a header
-              local auth = request_handle:headers():get("authorization")
+          default_source_code:
+            inline_string: |
+              function envoy_on_request(request_handle)
+                -- Read a header
+                local auth = request_handle:headers():get("authorization")
 
-              -- Add a new header
-              request_handle:headers():add("x-request-timestamp", os.time())
+                -- Add a new header
+                request_handle:headers():add("x-request-timestamp", tostring(os.time()))
 
-              -- Replace a header value
-              request_handle:headers():replace("user-agent", "custom-agent/1.0")
+                -- Replace a header value
+                request_handle:headers():replace("user-agent", "custom-agent/1.0")
 
-              -- Remove a header
-              request_handle:headers():remove("x-unwanted-header")
+                -- Remove a header
+                request_handle:headers():remove("x-unwanted-header")
 
-              -- Iterate all headers
-              for key, value in pairs(request_handle:headers()) do
-                request_handle:logInfo(key .. ": " .. value)
+                -- Iterate all headers
+                for key, value in pairs(request_handle:headers()) do
+                  request_handle:logInfo(key .. ": " .. value)
+                end
               end
-            end
 ```
 
 ## Making HTTP Calls from Lua
@@ -146,27 +148,28 @@ spec:
         name: envoy.filters.http.lua
         typed_config:
           "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-          inline_code: |
-            function envoy_on_request(request_handle)
-              local headers, body = request_handle:httpCall(
-                "outbound|8080||auth-service.default.svc.cluster.local",
-                {
-                  [":method"] = "GET",
-                  [":path"] = "/verify",
-                  [":authority"] = "auth-service",
-                  ["x-token"] = request_handle:headers():get("authorization") or ""
-                },
-                "",
-                5000
-              )
-
-              if headers[":status"] ~= "200" then
-                request_handle:respond(
-                  {[":status"] = "403"},
-                  "Forbidden"
+          default_source_code:
+            inline_string: |
+              function envoy_on_request(request_handle)
+                local headers, body = request_handle:httpCall(
+                  "outbound|8080||auth-service.default.svc.cluster.local",
+                  {
+                    [":method"] = "GET",
+                    [":path"] = "/verify",
+                    [":authority"] = "auth-service",
+                    ["x-token"] = request_handle:headers():get("authorization") or ""
+                  },
+                  "",
+                  5000
                 )
+
+                if headers[":status"] ~= "200" then
+                  request_handle:respond(
+                    {[":status"] = "403"},
+                    "Forbidden"
+                  )
+                end
               end
-            end
 ```
 
 The `httpCall` function takes four arguments: the cluster name, request headers, request body, and timeout in milliseconds. The cluster name follows Istio's naming convention: `outbound|PORT||FQDN`.
@@ -201,22 +204,23 @@ spec:
         name: envoy.filters.http.lua
         typed_config:
           "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-          inline_code: |
-            function envoy_on_request(request_handle)
-              local body = request_handle:body()
-              if body then
-                local body_str = body:getBytes(0, body:length())
-                request_handle:logInfo("Request body length: " .. body:length())
+          default_source_code:
+            inline_string: |
+              function envoy_on_request(request_handle)
+                local body = request_handle:body()
+                if body then
+                  local body_str = body:getBytes(0, body:length())
+                  request_handle:logInfo("Request body length: " .. body:length())
+                end
               end
-            end
 
-            function envoy_on_response(response_handle)
-              local body = response_handle:body()
-              if body then
-                local body_str = body:getBytes(0, body:length())
-                response_handle:logInfo("Response body length: " .. body:length())
+              function envoy_on_response(response_handle)
+                local body = response_handle:body()
+                if body then
+                  local body_str = body:getBytes(0, body:length())
+                  response_handle:logInfo("Response body length: " .. body:length())
+                end
               end
-            end
 ```
 
 ## Returning Custom Responses
@@ -224,29 +228,31 @@ spec:
 You can short-circuit request processing and return a custom response directly from Lua:
 
 ```yaml
-inline_code: |
-  function envoy_on_request(request_handle)
-    local path = request_handle:headers():get(":path")
+default_source_code:
+  inline_string: |
+    function envoy_on_request(request_handle)
+      local path = request_handle:headers():get(":path")
 
-    if path == "/health" then
-      request_handle:respond(
-        {
-          [":status"] = "200",
-          ["content-type"] = "application/json"
-        },
-        '{"status": "healthy"}'
-      )
-    end
+      if path == "/health" then
+        request_handle:respond(
+          {
+            [":status"] = "200",
+            ["content-type"] = "application/json"
+          },
+          '{"status": "healthy"}'
+        )
+        return
+      end
 
-    -- Block requests with no User-Agent
-    local ua = request_handle:headers():get("user-agent")
-    if ua == nil then
-      request_handle:respond(
-        {[":status"] = "400"},
-        "User-Agent header required"
-      )
+      -- Block requests with no User-Agent
+      local ua = request_handle:headers():get("user-agent")
+      if ua == nil then
+        request_handle:respond(
+          {[":status"] = "400"},
+          "User-Agent header required"
+        )
+      end
     end
-  end
 ```
 
 ## Using Shared State with Metadata
@@ -255,20 +261,20 @@ You can pass data between the request and response phases using dynamic metadata
 
 ```lua
 function envoy_on_request(request_handle)
-  local start_time = os.clock()
+  local start_time = request_handle:timestamp()
   request_handle:streamInfo():dynamicMetadata():set("my_filter", "start_time", start_time)
 end
 
 function envoy_on_response(response_handle)
   local start_time = response_handle:streamInfo():dynamicMetadata():get("my_filter")["start_time"]
-  local elapsed = os.clock() - start_time
-  response_handle:headers():add("x-processing-time-ms", tostring(elapsed * 1000))
+  local elapsed = response_handle:timestamp() - start_time
+  response_handle:headers():add("x-processing-time-ms", tostring(elapsed))
 end
 ```
 
 ## Performance Considerations
 
-Lua scripts run synchronously in the Envoy worker thread, so keep them fast. Here are some guidelines:
+Lua scripts execute on Envoy worker threads and are written in a synchronous style, so keep local work fast. Here are some guidelines:
 
 - Avoid complex string operations or loops over large datasets
 - If you need to make HTTP calls, set reasonable timeouts
