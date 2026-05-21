@@ -34,7 +34,7 @@ The default Corefile typically looks like:
 .:53 {
     errors
     health {
-       lazystart
+       lameduck 5s
     }
     ready
     kubernetes cluster.local in-addr.arpa ip6.arpa {
@@ -68,7 +68,7 @@ data:
     .:53 {
         errors
         health {
-           lazystart
+           lameduck 5s
         }
         ready
         kubernetes cluster.local in-addr.arpa ip6.arpa {
@@ -92,7 +92,7 @@ data:
     }
 ```
 
-This adds a `global` zone that forwards queries to DNS servers in other clusters. Services can then be resolved as `my-service.my-namespace.global`.
+This adds a `global` zone that forwards queries to DNS servers configured to serve that zone. Services can then be resolved as `my-service.my-namespace.global` if those upstream DNS servers publish records in that format.
 
 ## Stub Domains for External Integration
 
@@ -109,7 +109,7 @@ data:
     .:53 {
         errors
         health {
-           lazystart
+           lameduck 5s
         }
         ready
         kubernetes cluster.local in-addr.arpa ip6.arpa {
@@ -136,7 +136,7 @@ data:
 Now queries for `*.corp.internal` will be forwarded to the corporate DNS server at `10.0.0.53`. Combined with Istio ServiceEntry, you can get full mesh observability for these services:
 
 ```yaml
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: corp-database
@@ -188,20 +188,18 @@ data:
     }
 ```
 
-### Option 2: CoreDNS with External Plugin
+### Option 2: CoreDNS with etcd Plugin
 
-For more advanced setups, you can use the CoreDNS external plugin to serve DNS records from an external source:
+For more advanced setups, you can use the CoreDNS etcd plugin to serve DNS records from an external data store:
 
 ```text
-.:53 {
+ext.cluster.local:53 {
     errors
-    health
-    kubernetes cluster.local in-addr.arpa ip6.arpa
-    external ext.cluster.local
-    prometheus :9153
-    forward . /etc/resolv.conf
+    etcd ext.cluster.local {
+        path /skydns
+        endpoint http://etcd-dns.default.svc.cluster.local:2379
+    }
     cache 30
-    reload
 }
 ```
 
@@ -230,7 +228,7 @@ cache 60 {
 
 ### Reduce ndots
 
-The default `ndots: 5` in Kubernetes causes up to 4 extra DNS queries for every external hostname. If your applications mostly call external services, reducing this helps:
+The default `ndots: 5` in Kubernetes can cause external hostnames to be tried against the pod's search domains before the absolute name is queried. If your applications mostly call external services, reducing this helps:
 
 ```yaml
 apiVersion: apps/v1
@@ -270,21 +268,21 @@ The autopath plugin in CoreDNS can optimize the search domain expansion:
 }
 ```
 
-Autopath detects the source pod's namespace and tries the most likely search domain first, reducing the number of DNS queries.
+Autopath uses the source pod's namespace to complete the search path on the server side and return the first non-NXDOMAIN answer, reducing the number of DNS queries in successful cases.
 
 ## Monitoring CoreDNS with Istio
 
 CoreDNS exposes Prometheus metrics on port 9153. You can scrape these with the same Prometheus that monitors your Istio mesh:
 
 ```bash
-kubectl port-forward -n kube-system svc/kube-dns 9153:9153
+kubectl port-forward -n kube-system deployment/coredns 9153:9153
 curl http://localhost:9153/metrics
 ```
 
 Key metrics to watch:
 - `coredns_dns_requests_total` - total DNS queries
 - `coredns_dns_responses_total` - responses by rcode (NOERROR, NXDOMAIN, SERVFAIL)
-- `coredns_forward_requests_total` - queries forwarded to upstream
+- `coredns_proxy_request_duration_seconds_count{proxy_name="forward"}` - queries forwarded to upstream
 - `coredns_cache_hits_total` - cache effectiveness
 
 ## Debugging CoreDNS Issues
@@ -322,7 +320,7 @@ kubectl logs -n kube-system -l k8s-app=kube-dns --tail=100
 
 After adding the `log` directive, you'll see every DNS query. This is very noisy so only enable it temporarily for debugging.
 
-After making changes, restart CoreDNS:
+With the `reload` plugin, CoreDNS automatically reloads Corefile changes after the ConfigMap is updated. If you need to force a restart, run:
 
 ```bash
 kubectl rollout restart deployment coredns -n kube-system
