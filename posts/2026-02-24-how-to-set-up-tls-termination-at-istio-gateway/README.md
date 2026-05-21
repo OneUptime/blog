@@ -17,7 +17,7 @@ There are solid reasons to handle TLS at the gateway rather than at each individ
 - You manage certificates in one place instead of per service
 - Backend services stay simple - they just serve HTTP
 - The Envoy proxy is optimized for TLS performance
-- Istio mesh mTLS still encrypts traffic between the gateway and your services inside the mesh
+- Istio mesh mTLS can still encrypt traffic between the gateway and your services inside the mesh
 
 ```mermaid
 graph LR
@@ -28,7 +28,7 @@ graph LR
     style B fill:#f9f,stroke:#333
 ```
 
-Within the mesh, Istio's mutual TLS handles encryption between sidecars automatically, so there is no gap in encryption even though your service receives HTTP.
+Within the mesh, Istio's auto mTLS handles encryption between proxies by default when both workloads are in the mesh, so there is no gap in encryption even though your service receives HTTP.
 
 ## Preparing the TLS Certificate
 
@@ -51,12 +51,13 @@ openssl req -out server.csr -newkey rsa:2048 -nodes \
 openssl x509 -req -sha256 -days 365 \
   -CA ca.crt -CAkey ca.key -CAcreateserial \
   -in server.csr \
-  -out server.crt
+  -out server.crt \
+  -extfile <(printf "subjectAltName=DNS:myapp.example.com")
 ```
 
 ## Storing the Certificate in Kubernetes
 
-Create a Kubernetes secret with the certificate and key. It needs to be in the `istio-system` namespace:
+Create a Kubernetes secret with the certificate and key. With the default Istio ingress gateway, it needs to be in the `istio-system` namespace because `credentialName` is resolved in the gateway workload's namespace:
 
 ```bash
 kubectl create secret tls myapp-tls-credential \
@@ -270,7 +271,7 @@ openssl x509 -in server.crt -text -noout
 
 **Error: "Secret not found"**
 
-Check the secret name matches `credentialName` and it is in the `istio-system` namespace.
+Check the secret name matches `credentialName` and it is in the gateway workload's namespace, which is usually `istio-system` for the default ingress gateway.
 
 **Clients see a self-signed certificate warning when using a real cert**
 
