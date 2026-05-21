@@ -45,7 +45,7 @@ spec:
     spec:
       containers:
         - name: zipkin
-          image: openzipkin/zipkin:3.3
+          image: openzipkin/zipkin:3.6.1
           ports:
             - containerPort: 9411
           env:
@@ -87,7 +87,7 @@ kubectl get pods -n observability
 kubectl port-forward svc/zipkin -n observability 9411:9411
 ```
 
-Open `http://localhost:9411` to see the Zipkin UI.
+Open `http://localhost:9411/zipkin` to see the Zipkin UI.
 
 ## Configuring Istio to Use Zipkin
 
@@ -99,6 +99,8 @@ kind: IstioOperator
 spec:
   meshConfig:
     enableTracing: true
+    defaultConfig:
+      tracing: {}
     extensionProviders:
       - name: zipkin
         zipkin:
@@ -127,7 +129,7 @@ If you're updating an existing Istio installation, edit the configmap:
 kubectl edit configmap istio -n istio-system
 ```
 
-Add the extension provider under the `mesh` key, save, and restart istiod:
+Add `defaultConfig.tracing` and the extension provider under the `mesh` key, save, and restart istiod:
 
 ```bash
 kubectl rollout restart deployment/istiod -n istio-system
@@ -151,7 +153,7 @@ Zipkin uses the B3 propagation format. Istio's Envoy sidecars generate these hea
 | `X-B3-Sampled` | Sampling decision | `1` (sampled) or `0` (not sampled) |
 | `X-B3-Flags` | Debug flag | `1` (force trace) |
 
-There's also a single-header format: `b3: {traceId}-{spanId}-{sampling}-{parentSpanId}`.
+There's also a single-header format: `b3: {traceId}-{spanId}-{samplingState}-{parentSpanId}`, where the sampling state and parent span ID are optional.
 
 Your applications must propagate these headers from incoming requests to any outgoing requests for traces to be connected properly.
 
@@ -162,13 +164,28 @@ Without header propagation in your application code, you'll see individual spans
 Java (Spring Boot):
 
 ```java
+import jakarta.servlet.Filter;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.ServletRequest;
+import jakarta.servlet.ServletResponse;
+import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.stereotype.Component;
+
+import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
+
 @Component
 public class TracePropagationFilter implements Filter {
 
     private static final String[] TRACE_HEADERS = {
         "x-request-id", "x-b3-traceid", "x-b3-spanid",
-        "x-b3-parentspanid", "x-b3-sampled", "x-b3-flags"
+        "x-b3-parentspanid", "x-b3-sampled", "x-b3-flags",
+        "traceparent", "tracestate"
     };
+
+    private static final ThreadLocal<Map<String, String>> TRACE_CONTEXT = new ThreadLocal<>();
 
     @Override
     public void doFilter(ServletRequest req, ServletResponse res, FilterChain chain)
@@ -181,9 +198,12 @@ public class TracePropagationFilter implements Filter {
                 headers.put(header, value);
             }
         }
-        // Store in ThreadLocal or request context for downstream calls
-        TraceContext.setHeaders(headers);
-        chain.doFilter(req, res);
+        TRACE_CONTEXT.set(headers);
+        try {
+            chain.doFilter(req, res);
+        } finally {
+            TRACE_CONTEXT.remove();
+        }
     }
 }
 ```
@@ -193,7 +213,8 @@ Node.js (Express):
 ```javascript
 const TRACE_HEADERS = [
   'x-request-id', 'x-b3-traceid', 'x-b3-spanid',
-  'x-b3-parentspanid', 'x-b3-sampled', 'x-b3-flags'
+  'x-b3-parentspanid', 'x-b3-sampled', 'x-b3-flags',
+  'traceparent', 'tracestate'
 ];
 
 function traceMiddleware(req, res, next) {
@@ -237,14 +258,14 @@ spec:
     spec:
       containers:
         - name: zipkin
-          image: openzipkin/zipkin:3.3
+          image: openzipkin/zipkin:3.6.1
           ports:
             - containerPort: 9411
           env:
             - name: STORAGE_TYPE
               value: elasticsearch
             - name: ES_HOSTS
-              value: http://elasticsearch.observability:9200
+              value: http://elasticsearch.observability.svc.cluster.local:9200
             - name: ES_INDEX
               value: zipkin
             - name: ES_INDEX_REPLICAS
@@ -287,11 +308,11 @@ spec:
                 - |
                   # Delete indices older than 7 days
                   CUTOFF=$(date -d '7 days ago' +%Y-%m-%d 2>/dev/null || date -v-7d +%Y-%m-%d)
-                  curl -s "http://elasticsearch.observability:9200/_cat/indices/zipkin*" | \
+                  curl -s "http://elasticsearch.observability.svc.cluster.local:9200/_cat/indices/zipkin*" | \
                     awk '{print $3}' | while read idx; do
-                      DATE=$(echo $idx | grep -oP '\d{4}-\d{2}-\d{2}' || echo "")
+                      DATE=$(echo "$idx" | sed -n 's/.*\([0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}\).*/\1/p')
                       if [ -n "$DATE" ] && [ "$DATE" \< "$CUTOFF" ]; then
-                        curl -XDELETE "http://elasticsearch.observability:9200/$idx"
+                        curl -XDELETE "http://elasticsearch.observability.svc.cluster.local:9200/$idx"
                         echo "Deleted $idx"
                       fi
                     done
@@ -350,7 +371,7 @@ No traces appearing:
 
 ```bash
 # Verify Zipkin is reachable from the mesh
-kubectl exec deploy/sleep -c istio-proxy -- curl -s http://zipkin.observability:9411/health
+kubectl exec deploy/sleep -- curl -s http://zipkin.observability:9411/health
 
 # Check Envoy bootstrap config for tracing
 istioctl proxy-config bootstrap deploy/sleep -o json | grep -A20 tracing
