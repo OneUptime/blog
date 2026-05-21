@@ -20,7 +20,7 @@ Before you start, inventory everything:
 # Count all Istio resources
 
 echo "=== Istio Resource Inventory ==="
-for group in networking.istio.io security.istio.io telemetry.istio.io; do
+for group in networking.istio.io security.istio.io telemetry.istio.io extensions.istio.io; do
   resources=$(kubectl api-resources --api-group="$group" -o name 2>/dev/null)
   for resource in $resources; do
     count=$(kubectl get "$resource" --all-namespaces --no-headers 2>/dev/null | wc -l)
@@ -40,8 +40,9 @@ kubectl get configmap istio -n istio-system -o yaml
 Document:
 - The Istio version running on the source cluster
 - Whether you're using custom CA certificates
-- Any EnvoyFilters or custom extensions
+- Any EnvoyFilters, WasmPlugins, TrafficExtensions, or custom extensions
 - The IstioOperator or Helm values used for installation
+- Gateway API resources, if you use Kubernetes Gateway API with Istio
 - External integrations (Prometheus, Grafana, Jaeger, etc.)
 
 ## Migration Strategy Options
@@ -67,18 +68,20 @@ mkdir -p "$EXPORT_DIR"
 
 # 1. Istio installation configuration
 echo "Exporting installation config..."
-kubectl get istiooperators --all-namespaces -o yaml > "$EXPORT_DIR/istiooperator.yaml"
-kubectl get configmap istio -n istio-system -o yaml > "$EXPORT_DIR/mesh-configmap.yaml"
+# Prefer the original IstioOperator file or Helm values from source control.
+# This fallback only applies to older/in-cluster operator based installs.
+kubectl get istiooperator --all-namespaces -o yaml > "$EXPORT_DIR/istiooperator-export.yaml" 2>/dev/null || true
+kubectl get configmap istio -n istio-system -o yaml > "$EXPORT_DIR/mesh-configmap.yaml" 2>/dev/null || true
 
 # 2. All Istio CRD instances
 echo "Exporting CRD instances..."
-RESOURCES="virtualservices destinationrules gateways serviceentries sidecars envoyfilters workloadentries workloadgroups peerauthentications requestauthentications authorizationpolicies proxyconfigs"
+RESOURCES="virtualservices.networking.istio.io destinationrules.networking.istio.io gateways.networking.istio.io serviceentries.networking.istio.io sidecars.networking.istio.io envoyfilters.networking.istio.io workloadentries.networking.istio.io workloadgroups.networking.istio.io proxyconfigs.networking.istio.io peerauthentications.security.istio.io requestauthentications.security.istio.io authorizationpolicies.security.istio.io telemetry.telemetry.istio.io wasmplugins.extensions.istio.io trafficextensions.extensions.istio.io"
 for resource in $RESOURCES; do
-  kubectl get "$resource" --all-namespaces -o yaml > "$EXPORT_DIR/$resource.yaml" 2>/dev/null
+  kubectl get "$resource" --all-namespaces -o yaml > "$EXPORT_DIR/${resource%%.*}.yaml" 2>/dev/null
 done
 
-# 3. Telemetry
-kubectl get telemetry --all-namespaces -o yaml > "$EXPORT_DIR/telemetry.yaml" 2>/dev/null
+# 3. Kubernetes Gateway API resources (if used with Istio)
+kubectl get gateways.gateway.networking.k8s.io httproutes.gateway.networking.k8s.io grpcroutes.gateway.networking.k8s.io tcproutes.gateway.networking.k8s.io tlsroutes.gateway.networking.k8s.io udproutes.gateway.networking.k8s.io referencegrants.gateway.networking.k8s.io --all-namespaces -o yaml > "$EXPORT_DIR/gateway-api-resources.yaml" 2>/dev/null || true
 
 # 4. Certificates (if using custom CA)
 echo "Exporting certificates..."
@@ -135,7 +138,8 @@ On the new cluster, install Istio with the same configuration:
 kubectl create namespace istio-system
 
 # 2. Install Istio
-istioctl install -f migration-export/istiooperator.yaml
+# Use the original IstioOperator file or Helm values, not the raw kubectl export.
+istioctl install -f /path/to/original-istiooperator.yaml
 
 # 3. Wait for readiness
 kubectl wait --for=condition=ready pod -l app=istiod -n istio-system --timeout=300s
@@ -157,11 +161,13 @@ kubectl apply -f "$IMPORT_DIR/requestauthentications.yaml" 2>/dev/null
 echo "Importing service entries..."
 kubectl apply -f "$IMPORT_DIR/serviceentries.yaml" 2>/dev/null
 kubectl apply -f "$IMPORT_DIR/workloadentries.yaml" 2>/dev/null
+kubectl apply -f "$IMPORT_DIR/workloadgroups.yaml" 2>/dev/null
 
 echo "Importing traffic management..."
 kubectl apply -f "$IMPORT_DIR/destinationrules.yaml" 2>/dev/null
 kubectl apply -f "$IMPORT_DIR/gateways.yaml" 2>/dev/null
 kubectl apply -f "$IMPORT_DIR/virtualservices.yaml" 2>/dev/null
+kubectl apply -f "$IMPORT_DIR/gateway-api-resources.yaml" 2>/dev/null
 
 echo "Importing authorization..."
 kubectl apply -f "$IMPORT_DIR/authorizationpolicies.yaml" 2>/dev/null
@@ -169,7 +175,10 @@ kubectl apply -f "$IMPORT_DIR/authorizationpolicies.yaml" 2>/dev/null
 echo "Importing advanced config..."
 kubectl apply -f "$IMPORT_DIR/sidecars.yaml" 2>/dev/null
 kubectl apply -f "$IMPORT_DIR/envoyfilters.yaml" 2>/dev/null
+kubectl apply -f "$IMPORT_DIR/proxyconfigs.yaml" 2>/dev/null
 kubectl apply -f "$IMPORT_DIR/telemetry.yaml" 2>/dev/null
+kubectl apply -f "$IMPORT_DIR/wasmplugins.yaml" 2>/dev/null
+kubectl apply -f "$IMPORT_DIR/trafficextensions.yaml" 2>/dev/null
 ```
 
 ## Handling the Traffic Cutover
@@ -186,8 +195,8 @@ The traffic cutover depends on your setup:
 **Load balancer cutover:**
 
 ```bash
-# Get the new cluster's ingress gateway external IP
-kubectl get svc istio-ingressgateway -n istio-system -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
+# Get the new cluster's ingress gateway external IP or hostname
+kubectl get svc istio-ingressgateway -n istio-system -o jsonpath='{.status.loadBalancer.ingress[0].ip}{.status.loadBalancer.ingress[0].hostname}'
 ```
 
 **Gradual cutover with external load balancer:**
