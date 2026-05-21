@@ -10,7 +10,7 @@ Description: How to deploy and configure OAuth2 Proxy with Istio ingress gateway
 
 Adding authentication to every microservice individually is tedious and error-prone. A better approach is to handle authentication at the ingress layer so your backend services do not need to deal with OAuth flows at all. OAuth2 Proxy is a reverse proxy that handles the OAuth2 flow and passes authenticated user information to your backends through headers.
 
-When combined with Istio, OAuth2 Proxy sits behind the ingress gateway and authenticates users before requests reach your services. Your backend just reads the `x-forwarded-email` or `x-forwarded-user` header and trusts it because the request has already been authenticated.
+When combined with Istio, OAuth2 Proxy sits behind the ingress gateway and authenticates users before requests reach your services. Your backend just reads the identity headers from OAuth2 Proxy, such as `x-auth-request-email` with external authorization or `x-forwarded-email` when OAuth2 Proxy is proxying to the upstream directly, and trusts them because the request has already been authenticated.
 
 ## Architecture
 
@@ -63,7 +63,7 @@ spec:
     spec:
       containers:
         - name: oauth2-proxy
-          image: quay.io/oauth2-proxy/oauth2-proxy:v7.6.0
+          image: quay.io/oauth2-proxy/oauth2-proxy:v7.15.2
           args:
             - --provider=google
             - --email-domain=*
@@ -143,7 +143,7 @@ spec:
   meshConfig:
     extensionProviders:
       - name: oauth2-proxy
-        envoyExtAuthz:
+        envoyExtAuthzHttp:
           service: oauth2-proxy.default.svc.cluster.local
           port: 4180
           includeRequestHeadersInCheck:
@@ -154,6 +154,8 @@ spec:
             - x-auth-request-email
             - x-auth-request-access-token
             - authorization
+          headersToDownstreamOnAllow:
+            - set-cookie
           headersToDownstreamOnDeny:
             - set-cookie
             - content-type
@@ -172,7 +174,7 @@ data:
   mesh: |-
     extensionProviders:
     - name: oauth2-proxy
-      envoyExtAuthz:
+      envoyExtAuthzHttp:
         service: oauth2-proxy.default.svc.cluster.local
         port: 4180
         includeRequestHeadersInCheck:
@@ -181,7 +183,10 @@ data:
         headersToUpstreamOnAllow:
         - x-auth-request-user
         - x-auth-request-email
+        - x-auth-request-access-token
         - authorization
+        headersToDownstreamOnAllow:
+        - set-cookie
         headersToDownstreamOnDeny:
         - set-cookie
         - content-type
@@ -190,7 +195,7 @@ data:
 Now apply an AuthorizationPolicy to use the external authorizer:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: oauth2-auth
@@ -213,7 +218,7 @@ spec:
 This approach routes traffic through OAuth2 Proxy using VirtualService:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: app-gateway
@@ -233,7 +238,7 @@ spec:
         - "app.example.com"
 
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: app-vs
@@ -281,7 +286,7 @@ Some paths like health checks or public APIs should not require authentication:
 Using the ext_authz approach, update the AuthorizationPolicy:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: oauth2-auth
@@ -327,7 +332,7 @@ After OAuth2 Proxy authenticates the user, it adds these headers to the request:
 
 - `x-auth-request-user` - The authenticated user's username
 - `x-auth-request-email` - The authenticated user's email
-- `x-auth-request-access-token` - The OAuth access token
+- `x-auth-request-access-token` - The OAuth access token when `--pass-access-token=true` is enabled
 
 Your backend can read these directly:
 
