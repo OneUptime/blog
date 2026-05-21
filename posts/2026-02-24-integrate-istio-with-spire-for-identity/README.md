@@ -189,18 +189,30 @@ Now the interesting part. You need to tell Istio to use SPIRE for its identity i
 ```yaml
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
+metadata:
+  namespace: istio-system
 spec:
   profile: default
   meshConfig:
-    defaultConfig:
-      proxyMetadata:
-        ISTIO_META_CERT_SIGNER: istio-system
+    trustDomain: example.org
   values:
-    global:
-      caAddress: ""
-    pilot:
-      env:
-        ENABLE_CA_SERVER: "false"
+    sidecarInjectorWebhook:
+      templates:
+        spire: |
+          labels:
+            spiffe.io/spire-managed-identity: "true"
+          spec:
+            initContainers:
+            - name: istio-proxy
+              volumeMounts:
+              - name: workload-socket
+                mountPath: /run/secrets/workload-spiffe-uds
+                readOnly: true
+            volumes:
+            - name: workload-socket
+              csi:
+                driver: "csi.spiffe.io"
+                readOnly: true
   components:
     ingressGateways:
     - name: istio-ingressgateway
@@ -211,42 +223,33 @@ spec:
           kind: Deployment
           name: istio-ingressgateway
           patches:
-          - path: spec.template.spec.volumes[+]
+          - path: spec.template.spec.volumes.[name:workload-socket]
             value:
-              name: spire-agent-socket
-              hostPath:
-                path: /run/spire/sockets
-                type: Directory
-          - path: spec.template.spec.containers[0].volumeMounts[+]
+              name: workload-socket
+              csi:
+                driver: "csi.spiffe.io"
+                readOnly: true
+          - path: spec.template.spec.containers.[name:istio-proxy].volumeMounts.[name:workload-socket]
             value:
-              name: spire-agent-socket
-              mountPath: /run/spire/sockets
+              name: workload-socket
+              mountPath: /run/secrets/workload-spiffe-uds
               readOnly: true
 ```
 
-You also need to patch the sidecar injector to mount the SPIRE agent socket into every sidecar proxy. This is typically done through a MutatingWebhookConfiguration or through the Istio sidecar template:
+You also need to opt workloads into the `spire` sidecar injection template so the SPIFFE CSI driver mounts the SPIRE SDS socket into the sidecar proxy:
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: istio-sidecar-injector
-  namespace: istio-system
-data:
-  values: |-
-    {
-      "global": {
-        "proxy": {
-          "volumeMounts": [
-            {
-              "name": "spire-agent-socket",
-              "mountPath": "/run/spire/sockets",
-              "readOnly": true
-            }
-          ]
-        }
-      }
-    }
+  name: my-app
+spec:
+  template:
+    metadata:
+      labels:
+        spiffe.io/spire-managed-identity: "true"
+      annotations:
+        inject.istio.io/templates: "sidecar,spire"
 ```
 
 ## Registering Workload Identities
@@ -285,12 +288,12 @@ kind: ClusterSPIFFEID
 metadata:
   name: istio-workloads
 spec:
-  spiffeIDTemplate: "spiffe://example.org/ns/{{ .PodMeta.Namespace }}/sa/{{ .PodSpec.ServiceAccountName }}"
+  spiffeIDTemplate: "spiffe://{{ .TrustDomain }}/ns/{{ .PodMeta.Namespace }}/sa/{{ .PodSpec.ServiceAccountName }}"
   podSelector:
     matchLabels:
       spiffe.io/spire-managed-identity: "true"
-  namespaceSelector:
-    matchLabels: {}
+  workloadSelectorTemplates:
+  - "k8s:ns:default"
 ```
 
 ## Verifying the Integration
@@ -302,8 +305,9 @@ Check that workloads are receiving SPIRE-issued certificates:
 istioctl proxy-config secret <pod-name> -o json | jq '.dynamicActiveSecrets[0].secret.tlsCertificate.certificateChain'
 
 # Verify the SPIFFE ID in the certificate
-kubectl exec <pod-name> -c istio-proxy -- \
-  openssl x509 -in /etc/certs/cert-chain.pem -text -noout | grep URI
+istioctl proxy-config secret <pod-name> -o json | jq -r \
+  '.dynamicActiveSecrets[0].secret.tlsCertificate.certificateChain.inlineBytes' | \
+  base64 --decode | openssl x509 -text -noout | grep URI
 ```
 
 The URI SAN should show your SPIFFE ID format.
@@ -319,7 +323,7 @@ kubectl exec -n spire spire-server-0 -- \
   -bundleEndpointURL https://spire-server-cluster-b.example.com:8443 \
   -bundleEndpointProfile https_spiffe \
   -trustDomain cluster-b.example.org \
-  -trustDomainBundleEndpointProfile https_spiffe
+  -endpointSpiffeID spiffe://cluster-b.example.org/spire/server
 ```
 
 This lets workloads in different clusters with different trust domains authenticate each other, which is something Istio's multi-cluster setup can leverage for cross-cluster mTLS.
@@ -336,7 +340,7 @@ kubectl logs -n spire spire-server-0
 Common issues include missing registration entries, incorrect selectors, and the SPIRE agent socket not being mounted in the sidecar container. Verify the socket is accessible:
 
 ```bash
-kubectl exec <pod-name> -c istio-proxy -- ls -la /run/spire/sockets/
+kubectl exec <pod-name> -c istio-proxy -- ls -la /run/secrets/workload-spiffe-uds/
 ```
 
 The integration between Istio and SPIRE gives you production-grade workload identity that goes well beyond what Kubernetes service accounts alone can provide. The setup requires more moving parts, but the security and federation capabilities make it worthwhile for organizations with strict identity requirements.
