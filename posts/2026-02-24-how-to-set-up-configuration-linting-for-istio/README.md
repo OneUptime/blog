@@ -19,7 +19,7 @@ The `istioctl analyze` command is the official linting tool for Istio configurat
 Run it against your local files:
 
 ```bash
-istioctl analyze --use-kube=false -f istio-config/ --recursive
+istioctl analyze --use-kube=false istio-config/
 ```
 
 The `--use-kube=false` flag means it does not need a live cluster. This is what you want in CI.
@@ -58,7 +58,7 @@ jobs:
 
       - name: Install istioctl
         run: |
-          ISTIO_VERSION=1.22.0
+          ISTIO_VERSION=1.30.0
           curl -L https://istio.io/downloadIstio | ISTIO_VERSION=$ISTIO_VERSION sh -
           sudo mv istio-$ISTIO_VERSION/bin/istioctl /usr/local/bin/
 
@@ -68,19 +68,13 @@ jobs:
           yamllint -d "{extends: default, rules: {line-length: disable, truthy: disable}}" \
             istio-config/
 
-      - name: Kubernetes schema validation
+      - name: Istio schema validation
         run: |
-          pip install kubeval
-          for FILE in $(find istio-config -name "*.yaml" -type f); do
-            kubectl apply --dry-run=client -f "$FILE" 2>&1 || {
-              echo "FAIL: $FILE"
-              exit 1
-            }
-          done
+          istioctl validate -f istio-config/
 
       - name: Istio analysis
         run: |
-          istioctl analyze --use-kube=false -f istio-config/ --recursive 2>&1
+          istioctl analyze --use-kube=false istio-config/ 2>&1
           EXIT_CODE=$?
           if [ $EXIT_CODE -ne 0 ]; then
             echo "istioctl analyze found issues"
@@ -220,14 +214,14 @@ Write policies in Rego:
 # policy/istio/virtualservice.rego
 package istio.virtualservice
 
-deny[msg] {
+deny contains msg if {
   input.kind == "VirtualService"
   route := input.spec.http[_].route[_]
   not route.destination.port
   msg := sprintf("VirtualService %s: route destination must specify a port", [input.metadata.name])
 }
 
-deny[msg] {
+deny contains msg if {
   input.kind == "VirtualService"
   http := input.spec.http[_]
   http.retries
@@ -235,7 +229,7 @@ deny[msg] {
   msg := sprintf("VirtualService %s: retries must include perTryTimeout", [input.metadata.name])
 }
 
-warn[msg] {
+warn contains msg if {
   input.kind == "VirtualService"
   http := input.spec.http[_]
   timeout := http.timeout
@@ -250,14 +244,14 @@ warn[msg] {
 # policy/istio/destinationrule.rego
 package istio.destinationrule
 
-deny[msg] {
+deny contains msg if {
   input.kind == "DestinationRule"
   input.metadata.namespace == "production"
   not input.spec.trafficPolicy.outlierDetection
   msg := sprintf("DestinationRule %s: must have outlierDetection in production", [input.metadata.name])
 }
 
-deny[msg] {
+deny contains msg if {
   input.kind == "DestinationRule"
   pool := input.spec.trafficPolicy.connectionPool
   pool.tcp.maxConnections > 1000
@@ -269,14 +263,14 @@ deny[msg] {
 # policy/istio/authorizationpolicy.rego
 package istio.authorizationpolicy
 
-deny[msg] {
+deny contains msg if {
   input.kind == "AuthorizationPolicy"
   input.metadata.namespace != "istio-system"
   not input.spec.selector
   msg := sprintf("AuthorizationPolicy %s: must have a selector (non-mesh-wide)", [input.metadata.name])
 }
 
-deny[msg] {
+deny contains msg if {
   input.kind == "AuthorizationPolicy"
   input.spec.action == "ALLOW"
   rule := input.spec.rules[_]
@@ -302,7 +296,7 @@ repos:
     hooks:
       - id: istio-lint
         name: Istio Configuration Lint
-        entry: bash -c 'istioctl analyze --use-kube=false -f istio-config/ --recursive'
+        entry: bash -c 'istioctl analyze --use-kube=false istio-config/'
         language: system
         files: 'istio-config/.*\.yaml$'
         pass_filenames: false
@@ -336,7 +330,7 @@ For a better developer experience, have your CI bot comment on PRs with lint res
 # In your CI pipeline
 - name: Run Istio Lint and Comment
   run: |
-    RESULT=$(istioctl analyze --use-kube=false -f istio-config/ --recursive 2>&1)
+    RESULT=$(istioctl analyze --use-kube=false istio-config/ 2>&1)
     EXIT_CODE=$?
 
     if [ $EXIT_CODE -ne 0 ]; then
