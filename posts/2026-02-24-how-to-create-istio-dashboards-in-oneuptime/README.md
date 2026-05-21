@@ -39,10 +39,10 @@ A time-series chart showing total request rate across the mesh:
 ```text
 # Total mesh request rate
 
-sum(rate(istio_requests_total[5m]))
+sum(rate(istio_requests_total{reporter="destination"}[5m]))
 
 # Broken down by response code class
-sum(rate(istio_requests_total[5m])) by (response_code)
+sum(rate(istio_requests_total{reporter="destination"}[5m])) by (response_code)
 ```
 
 This gives you a quick view of traffic patterns. Sudden drops or spikes are immediately visible.
@@ -53,15 +53,15 @@ A time-series chart showing error rates:
 
 ```text
 # 5xx error rate as percentage
-sum(rate(istio_requests_total{response_code=~"5.*"}[5m]))
+sum(rate(istio_requests_total{reporter="destination", response_code=~"5.*"}[5m]))
 /
-sum(rate(istio_requests_total[5m]))
+sum(rate(istio_requests_total{reporter="destination"}[5m]))
 * 100
 
 # 4xx error rate as percentage
-sum(rate(istio_requests_total{response_code=~"4.*"}[5m]))
+sum(rate(istio_requests_total{reporter="destination", response_code=~"4.*"}[5m]))
 /
-sum(rate(istio_requests_total[5m]))
+sum(rate(istio_requests_total{reporter="destination"}[5m]))
 * 100
 ```
 
@@ -74,17 +74,17 @@ Show p50, p95, and p99 latency on the same chart:
 ```text
 # P50 latency
 histogram_quantile(0.50,
-  sum(rate(istio_request_duration_milliseconds_bucket[5m])) by (le)
+  sum(rate(istio_request_duration_milliseconds_bucket{reporter="destination"}[5m])) by (le)
 )
 
 # P95 latency
 histogram_quantile(0.95,
-  sum(rate(istio_request_duration_milliseconds_bucket[5m])) by (le)
+  sum(rate(istio_request_duration_milliseconds_bucket{reporter="destination"}[5m])) by (le)
 )
 
 # P99 latency
 histogram_quantile(0.99,
-  sum(rate(istio_request_duration_milliseconds_bucket[5m])) by (le)
+  sum(rate(istio_request_duration_milliseconds_bucket{reporter="destination"}[5m])) by (le)
 )
 ```
 
@@ -105,12 +105,12 @@ Create one of these for each critical service. Use a template variable for the s
 
 ```text
 # Inbound request rate
-sum(rate(istio_requests_total{destination_service="$service_name"}[5m]))
+sum(rate(istio_requests_total{reporter="destination", destination_service="$service_name"}[5m]))
 
 # Inbound error rate
-sum(rate(istio_requests_total{destination_service="$service_name", response_code=~"5.*"}[5m]))
+sum(rate(istio_requests_total{reporter="destination", destination_service="$service_name", response_code=~"5.*"}[5m]))
 /
-sum(rate(istio_requests_total{destination_service="$service_name"}[5m]))
+sum(rate(istio_requests_total{reporter="destination", destination_service="$service_name"}[5m]))
 * 100
 ```
 
@@ -119,15 +119,15 @@ sum(rate(istio_requests_total{destination_service="$service_name"}[5m]))
 ```text
 # P50, P95, P99 for the specific service
 histogram_quantile(0.50,
-  sum(rate(istio_request_duration_milliseconds_bucket{destination_service="$service_name"}[5m])) by (le)
+  sum(rate(istio_request_duration_milliseconds_bucket{reporter="destination", destination_service="$service_name"}[5m])) by (le)
 )
 
 histogram_quantile(0.95,
-  sum(rate(istio_request_duration_milliseconds_bucket{destination_service="$service_name"}[5m])) by (le)
+  sum(rate(istio_request_duration_milliseconds_bucket{reporter="destination", destination_service="$service_name"}[5m])) by (le)
 )
 
 histogram_quantile(0.99,
-  sum(rate(istio_request_duration_milliseconds_bucket{destination_service="$service_name"}[5m])) by (le)
+  sum(rate(istio_request_duration_milliseconds_bucket{reporter="destination", destination_service="$service_name"}[5m])) by (le)
 )
 ```
 
@@ -137,7 +137,7 @@ Show where traffic to this service is coming from:
 
 ```text
 # Request rate by source workload
-sum(rate(istio_requests_total{destination_service="$service_name"}[5m])) by (source_workload)
+sum(rate(istio_requests_total{reporter="destination", destination_service="$service_name"}[5m])) by (source_workload)
 ```
 
 Display this as a stacked bar chart or table. This helps you understand which clients are generating the most load.
@@ -146,7 +146,7 @@ Display this as a stacked bar chart or table. This helps you understand which cl
 
 ```text
 # Response codes for this service
-sum(rate(istio_requests_total{destination_service="$service_name"}[5m])) by (response_code)
+sum(rate(istio_requests_total{reporter="destination", destination_service="$service_name"}[5m])) by (response_code)
 ```
 
 A pie chart or stacked area chart works well here. You want to see the proportion of 200s, 4xxs, and 5xxs.
@@ -155,13 +155,13 @@ A pie chart or stacked area chart works well here. You want to see the proportio
 
 ```text
 # Active TCP connections
-sum(istio_tcp_connections_opened_total{destination_service="$service_name"})
+sum(istio_tcp_connections_opened_total{reporter="destination", destination_service="$service_name"})
 -
-sum(istio_tcp_connections_closed_total{destination_service="$service_name"})
+sum(istio_tcp_connections_closed_total{reporter="destination", destination_service="$service_name"})
 
 # TCP bytes sent and received
-sum(rate(istio_tcp_sent_bytes_total{destination_service="$service_name"}[5m]))
-sum(rate(istio_tcp_received_bytes_total{destination_service="$service_name"}[5m]))
+sum(rate(istio_tcp_sent_bytes_total{reporter="destination", destination_service="$service_name"}[5m]))
+sum(rate(istio_tcp_received_bytes_total{reporter="destination", destination_service="$service_name"}[5m]))
 ```
 
 ## Dashboard 3: Control Plane Health
@@ -182,10 +182,10 @@ container_memory_working_set_bytes{namespace="istio-system", container="discover
 
 ```text
 # XDS push rate
-sum(rate(pilot_xds_pushes[5m])) by (type)
+sum(rate(pilot_push_triggers[5m])) by (reason)
 
-# Push errors
-sum(rate(pilot_xds_push_errors[5m]))
+# XDS internal errors
+sum(rate(pilot_total_xds_internal_errors[5m]))
 
 # Config convergence time
 histogram_quantile(0.99,
@@ -226,10 +226,10 @@ If you use Istio Ingress Gateways, create a dashboard specifically for them:
 
 ```text
 # Inbound request rate at the gateway
-sum(rate(istio_requests_total{destination_service_namespace="istio-system", destination_service_name="istio-ingressgateway"}[5m]))
+sum(rate(istio_requests_total{reporter="source", source_workload="istio-ingressgateway", source_workload_namespace="istio-system"}[5m]))
 
 # Response codes at the gateway level
-sum(rate(istio_requests_total{source_workload="istio-ingressgateway"}[5m])) by (response_code)
+sum(rate(istio_requests_total{reporter="source", source_workload="istio-ingressgateway", source_workload_namespace="istio-system"}[5m])) by (response_code)
 ```
 
 ### Row 2: Gateway Latency
@@ -237,7 +237,7 @@ sum(rate(istio_requests_total{source_workload="istio-ingressgateway"}[5m])) by (
 ```text
 # Latency at the gateway (this includes routing to backend)
 histogram_quantile(0.99,
-  sum(rate(istio_request_duration_milliseconds_bucket{source_workload="istio-ingressgateway"}[5m])) by (le, destination_service)
+  sum(rate(istio_request_duration_milliseconds_bucket{reporter="source", source_workload="istio-ingressgateway", source_workload_namespace="istio-system"}[5m])) by (le, destination_service)
 )
 ```
 
@@ -267,9 +267,9 @@ groups:
   rules:
   - record: istio:service:error_rate:5m
     expr: |
-      sum(rate(istio_requests_total{response_code=~"5.*"}[5m])) by (destination_service)
+      sum(rate(istio_requests_total{reporter="destination", response_code=~"5.*"}[5m])) by (destination_service)
       /
-      sum(rate(istio_requests_total[5m])) by (destination_service)
+      sum(rate(istio_requests_total{reporter="destination"}[5m])) by (destination_service)
 ```
 
 Build these dashboards incrementally. Start with the Mesh Overview, get it working and useful, then add the Service Detail dashboard for your most critical service. Expand from there based on what questions you find yourself asking during incidents.
