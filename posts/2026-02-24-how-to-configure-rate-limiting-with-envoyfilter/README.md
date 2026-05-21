@@ -170,8 +170,9 @@ spec:
       context: SIDECAR_INBOUND
       routeConfiguration:
         vhost:
+          name: "inbound|http|8080"
           route:
-            name: default
+            action: ANY
     patch:
       operation: MERGE
       value:
@@ -228,9 +229,44 @@ data:
         requests_per_unit: 10
 ```
 
-Deploy the rate limit service:
+Deploy Redis and the rate limit service:
 
 ```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: rate-limit
+spec:
+  ports:
+  - port: 6379
+    targetPort: 6379
+    name: redis
+  selector:
+    app: redis
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: rate-limit
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+      - name: redis
+        image: redis:alpine
+        ports:
+        - containerPort: 6379
+          name: redis
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -248,7 +284,7 @@ spec:
     spec:
       containers:
       - name: ratelimit
-        image: envoyproxy/ratelimit:master
+        image: envoyproxy/ratelimit:30a4ce1a
         ports:
         - containerPort: 8081
           name: grpc
@@ -257,6 +293,8 @@ spec:
           value: /data
         - name: RUNTIME_SUBDIRECTORY
           value: ratelimit
+        - name: RUNTIME_WATCH_ROOT
+          value: "false"
         - name: USE_STATSD
           value: "false"
         - name: REDIS_SOCKET_TYPE
@@ -336,6 +374,21 @@ spec:
                   socket_address:
                     address: ratelimit.rate-limit.svc.cluster.local
                     port_value: 8081
+  - applyTo: VIRTUAL_HOST
+    match:
+      context: SIDECAR_INBOUND
+      routeConfiguration:
+        vhost:
+          route:
+            action: ANY
+    patch:
+      operation: MERGE
+      value:
+        rate_limits:
+        - actions:
+          - request_headers:
+              header_name: ":path"
+              descriptor_key: "PATH"
 ```
 
 ## Monitoring Rate Limit Metrics
