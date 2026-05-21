@@ -39,7 +39,7 @@ kubectl exec deploy/my-app -c my-app -- curl -v https://api.example.com/health
 kubectl exec deploy/my-app -c my-app -- curl -s -o /dev/null -w "http_code: %{http_code}\ntime_total: %{time_total}\n" https://api.example.com/health
 ```
 
-If you get a 502 or connection refused, the sidecar is blocking the traffic. If you get a timeout, it could be DNS, routing, or network-level blocking.
+If you get a 502 or connection refused, the sidecar may be blocking the traffic or unable to connect to the upstream. If you get a timeout, it could be DNS, routing, or network-level blocking.
 
 ## Creating a ServiceEntry
 
@@ -104,15 +104,15 @@ ports:
   protocol: TLS     # Envoy will pass through the TLS connection
 ```
 
-Use `TLS` when you want Envoy to pass through the encrypted connection without terminating it. Use `HTTPS` when you want Envoy to originate TLS.
+Use `TLS` or `HTTPS` when the application already sends TLS. To have Envoy originate TLS for plaintext HTTP from the application, configure TLS settings in a DestinationRule.
 
 ### DNS Resolution Issues
 
 If the ServiceEntry uses `resolution: DNS`, Envoy resolves the hostname and connects to the resolved IP. If DNS resolution fails inside the cluster, the connection fails:
 
 ```bash
-# Test DNS resolution from the proxy
-kubectl exec deploy/my-app -c istio-proxy -- \
+# Test connectivity from the application container
+kubectl exec deploy/my-app -c my-app -- \
   curl -v https://api.example.com 2>&1 | head -20
 
 # Check the proxy's cluster config for the external service
@@ -122,11 +122,11 @@ istioctl proxy-config cluster deploy/my-app -n my-namespace | grep api.example.c
 istioctl proxy-config endpoint deploy/my-app -n my-namespace | grep api.example.com
 ```
 
-If endpoints show `0.0.0.0`, DNS resolution failed. Check DNS settings:
+If endpoints are missing, unhealthy, or still show an unresolved placeholder, DNS resolution may have failed. Check DNS settings:
 
 ```bash
-# Test DNS from inside the pod
-kubectl exec deploy/my-app -c istio-proxy -- nslookup api.example.com
+# Test DNS from inside the application container
+kubectl exec deploy/my-app -c my-app -- nslookup api.example.com
 ```
 
 ### Missing Wildcard Configuration
@@ -149,7 +149,7 @@ spec:
   location: MESH_EXTERNAL
 ```
 
-Note: `resolution: NONE` is required for wildcard hosts because Envoy cannot resolve a wildcard hostname.
+Note: For Istio versions before wildcard `DYNAMIC_DNS` support, use `resolution: NONE` for wildcard hosts because Envoy cannot resolve a wildcard hostname.
 
 ## Checking Envoy Access Logs
 
@@ -237,7 +237,7 @@ spec:
 
 ## Applying Traffic Policies to External Services
 
-Once you have a ServiceEntry, you can apply DestinationRules for timeouts, retries, and connection pooling:
+Once you have a ServiceEntry, you can apply DestinationRules for connection pooling, outlier detection, and TLS policies:
 
 ```yaml
 apiVersion: networking.istio.io/v1
