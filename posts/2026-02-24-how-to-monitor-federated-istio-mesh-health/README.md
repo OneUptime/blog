@@ -27,10 +27,10 @@ There are several layers you need to watch:
 Each mesh should have its own Prometheus instance scraping local metrics. Install Prometheus using the Istio-provided configuration:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/prometheus.yaml \
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.29/samples/addons/prometheus.yaml \
   --context=cluster-west
 
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/prometheus.yaml \
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.29/samples/addons/prometheus.yaml \
   --context=cluster-east
 ```
 
@@ -45,14 +45,21 @@ scrape_configs:
           names:
             - istio-system
     relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+        action: keep
+        regex: "true"
       - source_labels: [__meta_kubernetes_pod_label_istio]
         action: keep
         regex: eastwestgateway
-      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+        action: replace
+        target_label: __metrics_path__
+        regex: (.+)
+      - source_labels: [__meta_kubernetes_pod_ip, __meta_kubernetes_pod_annotation_prometheus_io_port]
         action: replace
         target_label: __address__
-        regex: (.+)
-        replacement: ${1}:15020
+        regex: (.+);(\d+)
+        replacement: ${1}:${2}
 ```
 
 ## Key Metrics for Federation Health
@@ -65,14 +72,16 @@ The most important metrics to track for federation are:
 # Request rate through the east-west gateway
 
 sum(rate(istio_requests_total{
-  reporter="destination",
-  destination_service_name="istio-eastwestgateway"
+  reporter="source",
+  source_workload="istio-eastwestgateway",
+  source_workload_namespace="istio-system"
 }[5m])) by (response_code)
 
 # Latency of cross-mesh requests
 histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{
-  reporter="destination",
-  destination_service_name="istio-eastwestgateway"
+  reporter="source",
+  source_workload="istio-eastwestgateway",
+  source_workload_namespace="istio-system"
 }[5m])) by (le))
 ```
 
@@ -80,13 +89,13 @@ histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{
 
 ```promql
 # Remote cluster endpoint sync status
-pilot_xds_pushes{type="eds"}
+istiod_remote_cluster_sync_status
 
-# Number of endpoints from remote clusters
-pilot_k8s_endpoints_total
+# Number of clusters managed by istiod
+istiod_managed_clusters
 
-# Time to push configuration updates
-histogram_quantile(0.99, sum(rate(pilot_xds_push_time_bucket[5m])) by (le))
+# Time to push EDS configuration updates
+histogram_quantile(0.99, sum(rate(pilot_xds_push_time_bucket{type="eds"}[5m])) by (le))
 ```
 
 **Cross-mesh request metrics:**
@@ -118,12 +127,19 @@ metadata:
   name: prometheus
   namespace: monitoring
 spec:
+  selector:
+    matchLabels:
+      app: prometheus
   template:
+    metadata:
+      labels:
+        app: prometheus
     spec:
       containers:
         - name: prometheus
           image: prom/prometheus:v2.48.0
           args:
+            - '--web.enable-admin-api'
             - '--storage.tsdb.min-block-duration=2h'
             - '--storage.tsdb.max-block-duration=2h'
         - name: thanos-sidecar
@@ -144,16 +160,22 @@ metadata:
   name: thanos-query
   namespace: monitoring
 spec:
+  selector:
+    matchLabels:
+      app: thanos-query
   template:
+    metadata:
+      labels:
+        app: thanos-query
     spec:
       containers:
         - name: thanos-query
           image: quay.io/thanos/thanos:v0.34.0
           args:
             - query
-            - '--store=prometheus-west.monitoring.svc:10901'
-            - '--store=prometheus-east.monitoring.svc:10901'
-            - '--query.replica-label=cluster'
+            - '--endpoint=prometheus-west.monitoring.svc:10901'
+            - '--endpoint=prometheus-east.monitoring.svc:10901'
+            - '--query.replica-label=replica'
 ```
 
 Now you can query metrics from all meshes through a single endpoint.
@@ -169,7 +191,7 @@ Create a dedicated Grafana dashboard for federation health. Here are the essenti
       "title": "Cross-Mesh Request Rate",
       "targets": [
         {
-          "expr": "sum(rate(istio_requests_total{source_cluster!=destination_cluster}[5m])) by (source_cluster, destination_cluster)"
+          "expr": "sum(rate(istio_requests_total{source_cluster=\"cluster-west\",destination_cluster=\"cluster-east\"}[5m]) or rate(istio_requests_total{source_cluster=\"cluster-east\",destination_cluster=\"cluster-west\"}[5m])) by (source_cluster, destination_cluster)"
         }
       ]
     },
@@ -177,7 +199,7 @@ Create a dedicated Grafana dashboard for federation health. Here are the essenti
       "title": "Cross-Mesh P99 Latency",
       "targets": [
         {
-          "expr": "histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{source_cluster!=destination_cluster}[5m])) by (le, source_cluster, destination_cluster))"
+          "expr": "histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{source_cluster=\"cluster-west\",destination_cluster=\"cluster-east\"}[5m]) or rate(istio_request_duration_milliseconds_bucket{source_cluster=\"cluster-east\",destination_cluster=\"cluster-west\"}[5m])) by (le, source_cluster, destination_cluster))"
         }
       ]
     },
@@ -185,7 +207,7 @@ Create a dedicated Grafana dashboard for federation health. Here are the essenti
       "title": "East-West Gateway Active Connections",
       "targets": [
         {
-          "expr": "envoy_cluster_upstream_cx_active{cluster_name=~\"outbound.*eastwestgateway.*\"}"
+          "expr": "envoy_listener_downstream_cx_active{job=\"eastwest-gateway\"}"
         }
       ]
     }
@@ -225,7 +247,7 @@ spec:
           restartPolicy: OnFailure
 ```
 
-This CronJob runs every minute and calls a health endpoint on the remote mesh. You can extend this to push results to your metrics system.
+This CronJob runs every minute and calls a health endpoint that should resolve across the mesh, such as a service deployed only in the remote cluster. You can extend this to push results to your metrics system.
 
 ## Alerting Rules
 
@@ -237,14 +259,31 @@ groups:
     rules:
       - alert: CrossMeshHighErrorRate
         expr: |
-          sum(rate(istio_requests_total{
-            response_code=~"5.*",
-            source_cluster!=destination_cluster
-          }[5m]))
+          sum(
+            rate(istio_requests_total{
+              response_code=~"5.*",
+              source_cluster="cluster-west",
+              destination_cluster="cluster-east"
+            }[5m])
+            or
+            rate(istio_requests_total{
+              response_code=~"5.*",
+              source_cluster="cluster-east",
+              destination_cluster="cluster-west"
+            }[5m])
+          )
           /
-          sum(rate(istio_requests_total{
-            source_cluster!=destination_cluster
-          }[5m])) > 0.05
+          sum(
+            rate(istio_requests_total{
+              source_cluster="cluster-west",
+              destination_cluster="cluster-east"
+            }[5m])
+            or
+            rate(istio_requests_total{
+              source_cluster="cluster-east",
+              destination_cluster="cluster-west"
+            }[5m])
+          ) > 0.05
         for: 5m
         labels:
           severity: critical
@@ -262,7 +301,7 @@ groups:
 
       - alert: RemoteEndpointsSyncLag
         expr: |
-          pilot_xds_push_time{type="eds"} > 10
+          histogram_quantile(0.99, sum(rate(pilot_xds_push_time_bucket{type="eds"}[5m])) by (le)) > 10
         for: 5m
         labels:
           severity: warning
