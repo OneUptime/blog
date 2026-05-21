@@ -21,18 +21,18 @@ The classic Istio APIs (Gateway, VirtualService, DestinationRule) work well but 
 
 ## Installing Gateway API CRDs
 
-Before using Gateway API with Istio, you need the Gateway API CRDs installed in your cluster. Istio 1.22+ includes experimental support, and newer versions have GA support for most resources.
+Before using Gateway API with Istio, you need the Gateway API CRDs installed in your cluster. Gateway API CRDs do not come installed by default on most Kubernetes clusters, and Istio 1.22+ supports the stable Gateway API for both ingress and service mesh use cases.
 
 Install the standard Gateway API CRDs:
 
 ```bash
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.2.0/standard-install.yaml
+kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.5.1/standard-install.yaml
 ```
 
-If you also need experimental features (like TCPRoute, TLSRoute, GRPCRoute):
+If you also need experimental features (like TCPRoute and UDPRoute):
 
 ```bash
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.2.0/experimental-install.yaml
+kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.5.1/experimental-install.yaml
 ```
 
 Verify the CRDs are installed:
@@ -46,8 +46,12 @@ You should see:
 ```text
 gatewayclasses.gateway.networking.k8s.io
 gateways.gateway.networking.k8s.io
+grpcroutes.gateway.networking.k8s.io
 httproutes.gateway.networking.k8s.io
+listenersets.gateway.networking.k8s.io
 referencegrants.gateway.networking.k8s.io
+tlsroutes.gateway.networking.k8s.io
+backendtlspolicies.gateway.networking.k8s.io
 ```
 
 ## Installing Istio with Gateway API Support
@@ -243,8 +247,8 @@ Here's how the resources map:
 
 Some Istio features don't have Gateway API equivalents yet:
 - Fault injection
-- Request mirroring
-- Retry policies (coming in future Gateway API versions)
+- Some advanced request mirroring options
+- Advanced retry policies beyond the experimental HTTPRoute retry field
 - Circuit breaking (still requires DestinationRule)
 
 ## Checking Gateway Status
