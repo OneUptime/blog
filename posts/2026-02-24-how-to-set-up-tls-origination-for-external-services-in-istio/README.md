@@ -40,6 +40,7 @@ spec:
     - number: 80
       name: http-port
       protocol: HTTP
+      targetPort: 443
     - number: 443
       name: https-port
       protocol: HTTPS
@@ -49,7 +50,7 @@ spec:
 
 ### Step 2: Create the DestinationRule for TLS Origination
 
-The DestinationRule tells the sidecar to originate TLS when connecting to the external service on port 443:
+The DestinationRule tells the sidecar to originate TLS for HTTP traffic sent to port 80:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -62,15 +63,15 @@ spec:
   trafficPolicy:
     portLevelSettings:
       - port:
-          number: 443
+          number: 80
         tls:
           mode: SIMPLE
           sni: api.example.com
 ```
 
-### Step 3: Create a VirtualService to Redirect HTTP to HTTPS
+### Step 3: Create a VirtualService for Traffic Routing
 
-This is the piece that makes TLS origination seamless for your application. The VirtualService redirects traffic sent to port 80 to port 443, where the DestinationRule will handle TLS:
+This step is optional for the basic setup. The ServiceEntry `targetPort` sends traffic to port 443, where the DestinationRule will handle TLS. Add a VirtualService only if you need route-level controls such as retries, timeouts, or subsets:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -88,7 +89,7 @@ spec:
         - destination:
             host: api.example.com
             port:
-              number: 443
+              number: 80
 ```
 
 ### Step 4: Test from Your Application
@@ -119,11 +120,14 @@ metadata:
   name: partner-api-tls
   namespace: default
 spec:
+  workloadSelector:
+    matchLabels:
+      app: your-app
   host: api.partner.com
   trafficPolicy:
     portLevelSettings:
       - port:
-          number: 443
+          number: 80
         tls:
           mode: MUTUAL
           credentialName: partner-api-client-certs
@@ -133,13 +137,18 @@ spec:
 Create the Kubernetes secret with the client certificate:
 
 ```bash
-kubectl create secret generic partner-api-client-certs -n istio-system \
+kubectl create secret generic partner-api-client-certs -n default \
   --from-file=tls.crt=client-cert.pem \
   --from-file=tls.key=client-key.pem \
   --from-file=ca.crt=partner-ca-cert.pem
+
+kubectl create role partner-api-client-certs-role -n default --resource=secret --verb=list
+kubectl create rolebinding partner-api-client-certs-role-binding -n default \
+  --role=partner-api-client-certs-role \
+  --serviceaccount=default:<your-service-account>
 ```
 
-Note that the secret must be in the `istio-system` namespace when using `credentialName` with egress gateways.
+For sidecar-based TLS origination, create the secret in the same namespace as the selected client workload and include a `workloadSelector` in the DestinationRule. When using `credentialName` with the default Istio egress gateway, the secret must be in the `istio-system` namespace.
 
 ## Using an Egress Gateway for TLS Origination
 
@@ -172,8 +181,8 @@ spec:
       name: http
       protocol: HTTP
     - number: 443
-      name: tls
-      protocol: TLS
+      name: https
+      protocol: HTTPS
   resolution: DNS
   location: MESH_EXTERNAL
 ---
@@ -187,10 +196,28 @@ spec:
   servers:
     - port:
         number: 80
-        name: http
-        protocol: HTTP
+        name: https-port-for-tls-origination
+        protocol: HTTPS
       hosts:
         - api.example.com
+      tls:
+        mode: ISTIO_MUTUAL
+---
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: egressgateway-for-external-api
+spec:
+  host: istio-egressgateway.istio-system.svc.cluster.local
+  subsets:
+    - name: external-api
+      trafficPolicy:
+        portLevelSettings:
+          - port:
+              number: 80
+            tls:
+              mode: ISTIO_MUTUAL
+              sni: api.example.com
 ---
 apiVersion: networking.istio.io/v1
 kind: VirtualService
@@ -210,6 +237,7 @@ spec:
       route:
         - destination:
             host: istio-egressgateway.istio-system.svc.cluster.local
+            subset: external-api
             port:
               number: 80
     - match:
@@ -225,7 +253,7 @@ spec:
 apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
-  name: external-api-tls
+  name: originate-tls-for-external-api
 spec:
   host: api.example.com
   trafficPolicy:
@@ -242,7 +270,7 @@ The traffic flow becomes:
 ```mermaid
 graph LR
     App[Application Pod] -->|HTTP port 80| Sidecar[Envoy Sidecar]
-    Sidecar -->|HTTP| EG[Egress Gateway]
+    Sidecar -->|Istio mTLS on port 80| EG[Egress Gateway]
     EG -->|HTTPS port 443| Ext[api.example.com]
 ```
 
@@ -261,6 +289,10 @@ spec:
     - api.sendgrid.com
     - api.twilio.com
   ports:
+    - number: 80
+      name: http
+      protocol: HTTP
+      targetPort: 443
     - number: 443
       name: https
       protocol: HTTPS
@@ -274,9 +306,12 @@ metadata:
 spec:
   host: api.stripe.com
   trafficPolicy:
-    tls:
-      mode: SIMPLE
-      sni: api.stripe.com
+    portLevelSettings:
+      - port:
+          number: 80
+        tls:
+          mode: SIMPLE
+          sni: api.stripe.com
 ---
 apiVersion: networking.istio.io/v1
 kind: DestinationRule
@@ -285,9 +320,12 @@ metadata:
 spec:
   host: api.sendgrid.com
   trafficPolicy:
-    tls:
-      mode: SIMPLE
-      sni: api.sendgrid.com
+    portLevelSettings:
+      - port:
+          number: 80
+        tls:
+          mode: SIMPLE
+          sni: api.sendgrid.com
 ```
 
 ## Debugging TLS Origination
