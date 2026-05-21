@@ -27,13 +27,13 @@ Start by checking the overall mTLS status of your mesh:
 ```bash
 # Check mTLS status for a specific service
 
-istioctl authn tls-check <source-pod>.<namespace> <destination-service>
+istioctl x describe pod <destination-pod>.<namespace>
 
 # Example
-istioctl authn tls-check sleep-pod.default httpbin.default.svc.cluster.local
+istioctl x describe pod httpbin-6f9b8c45c7-z4x2q.default
 ```
 
-The output shows the effective TLS mode and whether client and server agree. Look for `CONFLICT` in the status column.
+The output shows the effective TLS mode for the destination pod and can warn about TLS conflicts, such as when the pod enforces mTLS but clients are configured to send plaintext.
 
 ## Checking PeerAuthentication Policies
 
@@ -122,8 +122,10 @@ Look at the `VALID CERT` column. If it shows `false`, the certificate is not val
 You can also check the certificate details:
 
 ```bash
-kubectl exec deploy/my-service -n my-namespace -c istio-proxy -- \
-  cat /var/run/secrets/istio/cert-chain.pem | openssl x509 -noout -text -dates
+istioctl proxy-config secret deploy/my-service -n my-namespace -o json | jq -r \
+  '.dynamicActiveSecrets[] | select(.name == "default") |
+  .secret.tlsCertificate.certificateChain.inlineBytes' | \
+  base64 --decode | openssl x509 -noout -text -dates
 ```
 
 If the certificate is expired, check if Istiod is healthy and if certificate rotation is working:
@@ -214,12 +216,12 @@ You can also verify mTLS by looking at Envoy access logs. When mTLS is active, t
 
 ## Namespace-Level mTLS Issues
 
-When enabling STRICT mTLS at the namespace level, every pod in that namespace must have a sidecar. Check for pods without sidecars:
+When enabling STRICT mTLS at the namespace level, every pod that needs to participate in mesh mTLS should have a sidecar. Check for pods without sidecars:
 
 ```bash
 # Find pods without istio-proxy
 kubectl get pods -n my-namespace -o json | \
-  jq -r '.items[] | select(.spec.containers[].name != "istio-proxy") | .metadata.name'
+  jq -r '.items[] | select([.spec.containers[].name] | index("istio-proxy") | not) | .metadata.name'
 ```
 
 A simpler approach:
@@ -228,7 +230,7 @@ A simpler approach:
 kubectl get pods -n my-namespace -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.containers[*].name}{"\n"}{end}' | grep -v istio-proxy
 ```
 
-Any pods without sidecars will break under STRICT mTLS because they cannot present a certificate.
+Any pods without sidecars that need to call STRICT mTLS workloads will fail because they cannot present an Istio workload certificate.
 
 ## Using istioctl analyze
 
