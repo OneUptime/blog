@@ -29,17 +29,19 @@ The port naming convention follows this pattern: `<protocol>[-<suffix>]`. The re
 - `mysql` for MySQL protocol
 - `redis` for Redis protocol
 
+The `mongo`, `mysql`, and `redis` protocols are experimental in Istio and require the corresponding protocol environment variables to be enabled. If they are not enabled, Istio treats them as opaque TCP streams.
+
 If you name your port `http-api`, Istio knows it is HTTP. If you name it `grpc-backend`, it is gRPC. If you name it `my-port` or leave it unnamed, Istio falls back to protocol sniffing.
 
 ## The Protocol Sniffing Process
 
-When Istio cannot determine the protocol from the port name, the sidecar looks at the initial bytes of data on the connection. It reads up to the first few bytes and tries to match them against known protocol signatures:
+When Istio cannot determine the protocol from the port name, the sidecar looks at the initial bytes of data on the connection. It primarily uses this automatic protocol selection to detect HTTP and HTTP/2 traffic; if it cannot determine the protocol, it treats the traffic as plain TCP. Envoy's listener filters may also inspect TLS ClientHello data for TLS-related matching such as SNI or ALPN. Common patterns include:
 
 - HTTP requests start with a method like `GET`, `POST`, `PUT`, etc.
 - HTTP/2 connections start with the connection preface `PRI * HTTP/2.0`
-- TLS connections start with a ClientHello message (byte 0x16)
+- TLS connections start with a ClientHello message
 
-If Istio detects one of these patterns, it applies the corresponding filter chain. If it cannot detect the protocol within a timeout period, it falls back to treating the traffic as plain TCP.
+If Istio detects one of these patterns, it applies the corresponding filter chain. If it cannot detect the application protocol, it falls back to treating the traffic as plain TCP.
 
 ## The Server-First Protocol Problem
 
@@ -52,7 +54,9 @@ Common server-first protocols include:
 - FTP (server sends a welcome message)
 - Some custom binary protocols
 
-When a client connects to a server-first protocol through Istio, the sidecar sits there waiting for the client to send data so it can sniff the protocol. The server is also waiting because it already sent its greeting to the sidecar (which buffered it). The result is a deadlock that eventually times out.
+Istio automatically assumes some well-known server-first ports, such as SMTP on 25, MySQL on 3306, and MongoDB on 27017, are TCP. You should still declare the protocol explicitly, especially if the service uses a non-standard port.
+
+When a client connects to a server-first protocol through Istio, the sidecar sits there waiting for the client to send data so it can sniff the protocol. The client is waiting for the server's greeting, and the server-side protocol expects to speak first. The result is a deadlock unless the protocol is explicitly declared or the port is one Istio already treats as TCP.
 
 ## Fixing Server-First Protocol Issues
 
@@ -85,7 +89,7 @@ ports:
     targetPort: 3306
 ```
 
-This enables MySQL-specific metrics collection in Istio while still handling the server-first protocol correctly.
+When Istio's experimental MySQL protocol support is enabled, this can provide MySQL-specific protocol handling and metrics. If that support is not enabled, Istio treats the port as an opaque TCP stream, which still avoids automatic HTTP protocol sniffing.
 
 ## Diagnosing Protocol Detection Issues
 
@@ -109,7 +113,7 @@ Inspect the listener configuration on the affected pod:
 istioctl proxy-config listeners deploy/my-app -n default -o json
 ```
 
-Look for the `filterChainMatch` section. If you see `transportProtocol: raw_buffer` and `applicationProtocols` matching, that means Istio is relying on protocol sniffing for that listener.
+Look for listener filters such as `envoy.filters.listener.http_inspector` or `envoy.filters.listener.tls_inspector`, and for `filterChainMatch` sections that use `applicationProtocols` or `transportProtocol`. Those are signs Envoy is inspecting the connection to choose a filter chain.
 
 ### Check for Connection Timeouts
 
@@ -142,7 +146,7 @@ kubectl logs deploy/my-app -c istio-proxy -f
 
 ## Configuring Protocol Detection Timeout
 
-By default, Istio waits for a short period during protocol sniffing. If the client does not send data within this window, traffic is treated as TCP. You can adjust this timeout through the mesh configuration:
+Istio exposes a mesh setting for the protocol detection timeout. In current Istio releases, the default is `0s`, which means no timeout. If you set a non-zero timeout and the client does not send data within that window, traffic is treated as TCP. You can adjust this timeout through the mesh configuration:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -152,7 +156,7 @@ spec:
     protocolDetectionTimeout: 5s
 ```
 
-Increasing this timeout gives Istio more time to detect the protocol but also means server-first protocol connections will hang longer before falling back to TCP. In most cases, it is better to fix the port naming than to adjust this timeout.
+Increasing this timeout gives Istio more time to detect the protocol but also means server-first protocol connections will hang longer before falling back to TCP. Istio's API documentation does not recommend setting this timeout in most cases; it is better to fix the port naming than to adjust this timeout.
 
 ## Using appProtocol
 
@@ -186,7 +190,7 @@ However, if your application serves HTTP on a port that is named `tcp-something`
 
 Here is a quick reference for common protocol detection issues:
 
-**MySQL connection hangs for 5 seconds then works**: The port is not named correctly. Rename it to `tcp-mysql` or `mysql`.
+**MySQL connection hangs before it works**: The port is not named correctly, it is using a non-standard MySQL port, or a non-zero protocol detection timeout has been configured. Rename it to `tcp-mysql` or `mysql`.
 
 **SMTP connections time out**: Name the port `tcp-smtp`. SMTP is server-first.
 
