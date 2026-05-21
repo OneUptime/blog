@@ -16,10 +16,10 @@ Most tutorials just tell you to use `MESH_EXTERNAL` for everything outside the c
 
 The `location` field tells Istio whether the service should be treated as part of the mesh or external to it. This affects:
 
-1. **mTLS behavior** - Mesh-internal services get mTLS applied automatically. External services do not.
-2. **Metrics labels** - The `source_workload` and `destination_service` labels differ based on location.
-3. **Passthrough vs proxy** - External services get simpler L4 handling by default.
-4. **Default traffic policies** - Connection pool and load balancing defaults differ.
+1. **mTLS and policy behavior** - Mesh-internal services can use Istio mTLS when the destination participates in the mesh, while mesh-external services are treated as outside the mesh unless you explicitly configure TLS origination.
+2. **Metrics labels** - Destination labels such as `destination_service` and `destination_service_namespace` can differ based on whether Istio can associate the traffic with an internal service.
+3. **Service registry behavior** - Istio treats mesh-internal entries as part of the mesh service registry, including VM or unmanaged workloads that you add explicitly.
+4. **Workload selection** - `workloadSelector` applies only to `MESH_INTERNAL` services.
 
 ## MESH_EXTERNAL
 
@@ -42,10 +42,10 @@ spec:
 ```
 
 With MESH_EXTERNAL:
-- Envoy does NOT attempt mTLS to the destination
+- Envoy does not use Istio auto mTLS to the destination
 - Traffic metrics show the destination as an external service
 - The proxy treats the connection as egress traffic
-- Default connection pool settings are more conservative
+- You can still use Istio traffic management for the registered external service
 
 This is the right setting for any third-party API, cloud service, SaaS platform, or service that is not part of your Istio mesh.
 
@@ -77,7 +77,7 @@ spec:
 ```
 
 With MESH_INTERNAL:
-- Envoy applies mTLS if peer authentication policies are set
+- Istio can use mTLS when the endpoints are mesh workloads, or when you configure TLS with a `DestinationRule`
 - The service appears in the mesh topology as an internal service
 - Metrics include the service as a mesh-internal destination
 - Full L7 traffic management features are available
@@ -111,7 +111,7 @@ spec:
 ```
 
 Traffic to this service:
-- No mTLS attempted
+- No Istio auto mTLS is attempted
 - Shows as "external" in Kiali
 - TCP-level metrics only (for HTTPS passthrough)
 
@@ -136,14 +136,14 @@ spec:
 ```
 
 Traffic to this service:
-- mTLS is applied based on PeerAuthentication policies
+- mTLS is used when the destination endpoint participates in the mesh, or when you configure TLS origination with a `DestinationRule`
 - Shows as a mesh-internal service in Kiali
 - Full HTTP metrics available
 - Full traffic management (retries, fault injection, traffic shifting)
 
 ## Impact on mTLS
 
-This is the most impactful difference. When you set `MESH_INTERNAL`, Istio's automatic mTLS negotiation kicks in. If your mesh has `PeerAuthentication` set to STRICT mode, Envoy tries to establish mTLS with the destination.
+This is the most impactful difference. When you set `MESH_INTERNAL`, Istio treats the service as part of the mesh. For mesh workloads with sidecars, Istio can automatically use mutual TLS unless you override TLS settings with a `DestinationRule`. `PeerAuthentication` controls what kind of mTLS traffic the destination sidecar accepts.
 
 For services that actually have a sidecar proxy (like VMs enrolled in the mesh), this is exactly what you want:
 
@@ -158,9 +158,9 @@ spec:
     mode: STRICT
 ```
 
-With this policy and a MESH_INTERNAL ServiceEntry, Envoy initiates mTLS to the endpoint. If the endpoint does not have a sidecar proxy, the connection fails because there is nothing to terminate the mTLS connection.
+With this policy and a MESH_INTERNAL ServiceEntry that points at workloads with sidecars, the destination accepts only mTLS. If the endpoint does not have a sidecar proxy and you configure the client to originate mTLS anyway, the connection fails because there is nothing to terminate the mTLS connection.
 
-With MESH_EXTERNAL, Envoy skips mTLS entirely, which is correct for services without sidecars.
+With MESH_EXTERNAL, Envoy skips Istio auto mTLS, which is correct for services without sidecars. You can still configure TLS or mTLS origination explicitly with a `DestinationRule` when an external service requires it.
 
 ## Impact on Metrics
 
@@ -214,7 +214,7 @@ graph TD
 
 ## Switching Between Locations
 
-You can change the location without disrupting traffic. Just update the ServiceEntry:
+You can change the location by updating the ServiceEntry:
 
 ```bash
 kubectl patch serviceentry payment-service \
@@ -227,7 +227,7 @@ Or update the YAML and reapply:
 kubectl apply -f updated-serviceentry.yaml
 ```
 
-Envoy picks up the change within seconds. However, be careful switching to MESH_INTERNAL if mTLS is enforced - make sure the destination can handle mTLS before switching.
+Envoy picks up the change within seconds. However, treat this as a traffic-affecting change: be careful switching to MESH_INTERNAL if mTLS is enforced, and make sure the destination can handle mTLS before switching.
 
 ## Mixing Locations in One Namespace
 
