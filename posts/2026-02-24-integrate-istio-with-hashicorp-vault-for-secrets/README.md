@@ -8,7 +8,7 @@ Description: How to integrate HashiCorp Vault with Istio for secure secret manag
 
 ---
 
-Kubernetes Secrets are base64-encoded, not encrypted. Anyone with access to etcd or the right RBAC permissions can read them. For production environments, especially those running a service mesh, you want something more robust. HashiCorp Vault provides encrypted secret storage, dynamic credentials, fine-grained access control, and audit logging. Integrating it with Istio means your mesh services can securely access secrets without storing them in Kubernetes objects.
+Kubernetes Secret data is base64-encoded and, by default, stored unencrypted in the API server's underlying data store. Anyone with access to etcd or the right RBAC permissions can read it unless you enable Kubernetes encryption at rest. For production environments, especially those running a service mesh, you want something more robust. HashiCorp Vault provides encrypted secret storage, dynamic credentials, fine-grained access control, and audit logging. Integrating it with Istio means your mesh services can securely access secrets without storing them in Kubernetes objects.
 
 ## The Integration Points
 
@@ -52,8 +52,8 @@ Vault needs to authenticate requests from Kubernetes pods. Enable the Kubernetes
 ```bash
 kubectl exec -n vault vault-0 -- vault auth enable kubernetes
 
-kubectl exec -n vault vault-0 -- vault write auth/kubernetes/config \
-  kubernetes_host="https://$KUBERNETES_PORT_443_TCP_ADDR:443"
+kubectl exec -n vault vault-0 -- sh -c 'vault write auth/kubernetes/config \
+  kubernetes_host="https://$KUBERNETES_SERVICE_HOST:$KUBERNETES_SERVICE_PORT"'
 ```
 
 Create a policy that allows reading secrets:
@@ -72,6 +72,8 @@ EOF
 Create a Kubernetes auth role that maps service accounts to policies:
 
 ```bash
+kubectl create serviceaccount myapp -n default
+
 kubectl exec -n vault vault-0 -- vault write auth/kubernetes/role/myapp \
   bound_service_account_names=myapp \
   bound_service_account_namespaces=default \
@@ -140,14 +142,21 @@ The secrets get rendered to `/vault/secrets/config.txt` inside the container. Yo
 
 With both Istio and Vault sidecars, you might run into startup ordering issues. The Vault agent init container needs network access to reach Vault, but the Istio sidecar might not be ready yet.
 
-Fix this by telling Istio to exclude Vault-related traffic from the sidecar:
+Fix this by telling Istio to exclude Vault-related traffic from the sidecar. This applies to both init-container and application traffic, so use it only when you intentionally want Vault traffic to bypass Envoy:
 
 ```yaml
 annotations:
   traffic.sidecar.istio.io/excludeOutboundPorts: "8200"
 ```
 
-Or use Istio's `holdApplicationUntilProxyStarts` option:
+If you use Istio CNI and the Vault Agent init container needs to resolve or reach Vault before the proxy is running, you can also run the injected Vault Agent as Istio's proxy UID so that its traffic is not captured:
+
+```yaml
+annotations:
+  vault.hashicorp.com/agent-run-as-user: "1337"
+```
+
+For application container startup ordering, use Istio's `holdApplicationUntilProxyStarts` option:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -212,9 +221,25 @@ kubectl exec -n vault vault-0 -- vault write pki/root/generate/internal \
 
 # Create a role for issuing certificates
 kubectl exec -n vault vault-0 -- vault write pki/roles/istio-ca \
-  allowed_domains="svc.cluster.local" \
-  allow_subdomains=true \
+  allowed_uri_sans="spiffe://cluster.local/*" \
+  require_cn=false \
   max_ttl=72h
+```
+
+Create a Vault policy and Kubernetes auth role for cert-manager:
+
+```bash
+kubectl exec -n vault vault-0 -- vault policy write cert-manager - <<EOF
+path "pki/sign/istio-ca" {
+  capabilities = ["update"]
+}
+EOF
+
+kubectl exec -n vault vault-0 -- vault write auth/kubernetes/role/cert-manager \
+  bound_service_account_names=cert-manager \
+  bound_service_account_namespaces=cert-manager \
+  policies=cert-manager \
+  ttl=1h
 ```
 
 Then configure cert-manager to use the Vault issuer:
