@@ -12,6 +12,8 @@ Streaming protocols add complexity to authorization in a service mesh. With stan
 
 Istio handles streaming protocols, but there are gotchas around when authorization is enforced, how long-lived connections interact with policy changes, and what metadata is available for authorization decisions.
 
+The source principal and namespace matches shown below rely on Istio workload identity, so they require mutual TLS to be enabled between the workloads.
+
 ## gRPC Streaming Authorization
 
 gRPC supports four streaming patterns: unary (request-response), server streaming, client streaming, and bidirectional streaming. Istio treats gRPC as HTTP/2, so standard AuthorizationPolicy works, but with some nuances.
@@ -101,7 +103,7 @@ spec:
         paths: ["/myapp.OrderService/*"]
     when:
     - key: request.headers[x-api-key]
-      notValues: [""]
+      values: ["*"]
 ```
 
 Your gRPC client sends metadata:
@@ -225,7 +227,7 @@ Like WebSocket, SSE connections are long-lived. Policy changes won't affect exis
 
 ## Handling Connection Timeouts
 
-For long-lived streaming connections, configure appropriate timeouts to force periodic re-authorization:
+For long-lived streaming connections, configure appropriate timeouts when you intentionally want Envoy to terminate the stream and force the client to reconnect:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -236,6 +238,7 @@ metadata:
 spec:
   hosts:
   - ws-service
+  - event-service
   http:
   - match:
     - uri:
@@ -253,7 +256,28 @@ spec:
     timeout: 1800s  # 30 minute max SSE connection
 ```
 
-For gRPC streams, set the timeout in the DestinationRule:
+For server-streaming gRPC calls where you want a fixed maximum RPC duration, set a route timeout in the VirtualService:
+
+```yaml
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: grpc-routes
+  namespace: backend
+spec:
+  hosts:
+  - grpc-service
+  http:
+  - match:
+    - uri:
+        prefix: /myapp.OrderService/
+    route:
+    - destination:
+        host: grpc-service
+    timeout: 3600s  # 1 hour max RPC duration
+```
+
+Route timeouts are not a universal fit for every streaming pattern. For client-streaming or bidirectional gRPC streams, use application-level deadlines and reconnection logic. DestinationRule connection pool settings can still help control idle HTTP/2 connections:
 
 ```yaml
 apiVersion: networking.istio.io/v1
