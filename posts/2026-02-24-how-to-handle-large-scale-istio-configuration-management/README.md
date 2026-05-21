@@ -39,6 +39,8 @@ services:
     dependencies:
       - payment-service
       - inventory-service
+    allowedCallers:
+      - frontend-service
     timeout: 30s
     retries: 3
 
@@ -49,6 +51,8 @@ services:
     tier: critical
     dependencies:
       - notification-service
+    allowedCallers:
+      - order-service
     timeout: 15s
     retries: 2
 
@@ -67,7 +71,7 @@ OUTPUT_DIR="generated-istio-config"
 mkdir -p "$OUTPUT_DIR"
 
 # Read each service and generate resources
-yq eval '.services[]' "$INPUT" -o json | while read -r SERVICE; do
+yq eval -o json -I=0 '.services[]' "$INPUT" | while read -r SERVICE; do
   NAME=$(echo "$SERVICE" | jq -r '.name')
   NS=$(echo "$SERVICE" | jq -r '.namespace')
   PORT=$(echo "$SERVICE" | jq -r '.port')
@@ -121,12 +125,12 @@ spec:
       baseEjectionTime: 30s
 EOF
 
-  # Generate AuthorizationPolicy from dependencies
-  DEPS=$(echo "$SERVICE" | jq -r '.dependencies[]? // empty')
-  if [ -n "$DEPS" ]; then
+  # Generate AuthorizationPolicy from allowed callers
+  CALLERS=$(echo "$SERVICE" | jq -r '.allowedCallers[]? // empty')
+  if [ -n "$CALLERS" ]; then
     PRINCIPALS=""
-    for DEP in $DEPS; do
-      PRINCIPALS="$PRINCIPALS              - \"cluster.local/ns/$NS/sa/$DEP\"\n"
+    for CALLER in $CALLERS; do
+      PRINCIPALS="$PRINCIPALS              - \"cluster.local/ns/$NS/sa/$CALLER\"\n"
     done
 
     cat > "$OUTPUT_DIR/$NS/$NAME/authorization-policy.yaml" <<EOF
@@ -257,8 +261,12 @@ Monitor istiod performance:
 kubectl top pods -n istio-system -l app=istiod
 
 # Check configuration push latency
-kubectl exec -n istio-system deploy/istiod -- curl -s localhost:15014/metrics | \
+kubectl port-forward -n istio-system deploy/istiod 15014:15014 >/tmp/istiod-port-forward.log 2>&1 &
+PF_PID=$!
+sleep 2
+curl -s localhost:15014/metrics | \
   grep pilot_xds_push_time
+kill "$PF_PID"
 ```
 
 Scale istiod if needed:
@@ -312,13 +320,13 @@ spec:
         - "production/inventory-service.production.svc.cluster.local"
 ```
 
-This tells the order-service proxy to only load configuration for services it actually communicates with. For a mesh with 500 services, this can reduce the configuration size pushed to each proxy by 90% or more.
+This tells the order-service proxy to only load configuration for services it actually communicates with. For a mesh with 500 services, this can significantly reduce the configuration size pushed to each proxy.
 
 Generate Sidecar resources from your service registry:
 
 ```bash
 #!/bin/bash
-yq eval '.services[]' service-registry.yaml -o json | while read -r SERVICE; do
+yq eval -o json -I=0 '.services[]' service-registry.yaml | while read -r SERVICE; do
   NAME=$(echo "$SERVICE" | jq -r '.name')
   NS=$(echo "$SERVICE" | jq -r '.namespace')
   DEPS=$(echo "$SERVICE" | jq -r '.dependencies[]? // empty')
@@ -372,7 +380,7 @@ for CLUSTER in $(yq eval '.clusters[].name' cluster-config.yaml); do
   ENV=$(yq eval ".clusters[] | select(.name == \"$CLUSTER\") | .environment" cluster-config.yaml)
 
   echo "Deploying to $CLUSTER ($ENV)..."
-  kubectl --context="$CONTEXT" apply -k "overlays/$ENV/" -R
+  kubectl --context="$CONTEXT" apply -k "overlays/$ENV/"
 done
 ```
 
@@ -386,9 +394,11 @@ At scale, configuration drift between what is in git and what is in the cluster 
 
 DRIFT_COUNT=0
 
-for TYPE in virtualservices destinationrules authorizationpolicies; do
+for RESOURCE in virtualservices:VirtualService destinationrules:DestinationRule authorizationpolicies:AuthorizationPolicy; do
+  TYPE=${RESOURCE%%:*}
+  KIND=${RESOURCE##*:}
   CLUSTER_RESOURCES=$(kubectl get $TYPE -n production -o json | jq -r '.items[].metadata.name' | sort)
-  GIT_RESOURCES=$(find generated-istio-config/production -name "*.yaml" -exec grep -l "kind: $(echo $TYPE | sed 's/s$//' | sed 's/\b\(.\)/\u\1/g')" {} \; | xargs -I{} yq eval '.metadata.name' {} | sort)
+  GIT_RESOURCES=$(find generated-istio-config/production -name "*.yaml" -exec grep -l "kind: $KIND" {} \; | xargs -r -I{} yq eval '.metadata.name' {} | sort)
 
   CLUSTER_ONLY=$(comm -23 <(echo "$CLUSTER_RESOURCES") <(echo "$GIT_RESOURCES"))
   GIT_ONLY=$(comm -13 <(echo "$CLUSTER_RESOURCES") <(echo "$GIT_RESOURCES"))
