@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Secret, Security, Kubernetes, Configuration
 
-Description: How to securely manage secrets used in Istio configuration including TLS certificates, JWT keys, and external service credentials.
+Description: How to securely manage secrets used in Istio configuration including TLS certificates, JWT verification keys, and external service credentials.
 
 ---
 
-Istio configuration often involves secrets. TLS certificates for gateways, JWT signing keys for request authentication, credentials for external services referenced in ServiceEntries. These secrets need to be managed carefully because leaking a gateway TLS certificate or a JWT key can have serious security consequences.
+Istio configuration often involves secrets. TLS certificates for gateways, JWT verification keys for request authentication, credentials for external services referenced in ServiceEntries. These secrets need to be managed carefully because leaking a gateway TLS certificate or a JWT verification key can have serious security consequences.
 
 The challenge is that Istio expects secrets in specific formats and locations, and you need a workflow that keeps secrets out of git while still making them available to the cluster. Here is how to handle the common scenarios.
 
@@ -87,6 +87,9 @@ spec:
       - dns01:
           cloudDNS:
             project: my-gcp-project
+            serviceAccountSecretRef:
+              name: clouddns-service-account
+              key: service-account.json
 ```
 
 cert-manager handles renewal automatically, so you never have to worry about expired certificates.
@@ -96,7 +99,7 @@ cert-manager handles renewal automatically, so you never have to worry about exp
 For secrets that are not certificates, like API keys or credentials stored in a vault, use the External Secrets Operator:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: external-api-credentials
@@ -122,7 +125,7 @@ spec:
 Set up the SecretStore to connect to your vault:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: vault-backend
@@ -141,9 +144,9 @@ spec:
             namespace: external-secrets
 ```
 
-## Managing JWT Signing Keys
+## Managing JWT Verification Keys
 
-Istio's RequestAuthentication uses JWKS (JSON Web Key Sets) for JWT validation. You can reference a remote JWKS endpoint or store keys locally:
+Istio's RequestAuthentication uses JWKS (JSON Web Key Sets) for JWT validation. You can reference a remote JWKS endpoint or provide keys inline:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -162,15 +165,13 @@ spec:
 
 Using a remote JWKS URI is preferred because you do not need to store the keys in the cluster at all. Istio fetches them at runtime.
 
-If you need to use a local JWKS (for example, when the issuer is not reachable from the cluster), store it as a secret:
+If you need to use a local JWKS (for example, when the issuer is not reachable from the cluster), keep the source file out of git and render its contents into the `jwks` field during deployment:
 
 ```bash
-kubectl create secret generic jwt-jwks \
-  --from-file=jwks.json=path/to/jwks.json \
-  -n istio-system
+jwks="$(cat path/to/jwks.json)"
 ```
 
-Then reference it in the RequestAuthentication:
+Then include it in the RequestAuthentication:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -258,10 +259,11 @@ echo | openssl s_client -connect gateway-ip:443 -servername example.com 2>/dev/n
 # Clean up old secret
 kubectl delete secret main-tls-cert -n istio-system
 
-# Rename new secret (optional, requires recreating)
-kubectl get secret main-tls-cert-new -n istio-system -o yaml | \
-  sed 's/main-tls-cert-new/main-tls-cert/' | \
-  kubectl apply -f -
+# Recreate the original secret name with the new certificate
+kubectl create secret tls main-tls-cert \
+  --cert=new-cert.pem \
+  --key=new-key.pem \
+  -n istio-system
 kubectl delete secret main-tls-cert-new -n istio-system
 
 # Update gateway back to original name
@@ -285,7 +287,7 @@ rules:
     resources: ["secrets"]
     resourceNames:
       - main-tls-cert
-      - jwt-jwks
+      - external-api-credentials
     verbs: ["get"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
