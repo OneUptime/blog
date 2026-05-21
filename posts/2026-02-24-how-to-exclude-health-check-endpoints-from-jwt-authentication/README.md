@@ -8,19 +8,19 @@ Description: Learn how to exclude health check and readiness probe endpoints fro
 
 ---
 
-One of the most common headaches when rolling out JWT authentication across your Istio service mesh is that Kubernetes health checks suddenly start failing. Your liveness and readiness probes return 401 Unauthorized because they don't carry a JWT token. This breaks pod lifecycle management, and suddenly your perfectly healthy pods are getting restarted left and right.
+One of the most common headaches when rolling out JWT authentication across your Istio service mesh is that Kubernetes health checks suddenly start failing. Your probes can return 403 Forbidden because they don't carry a JWT token. This breaks pod lifecycle management: readiness probes can take pods out of service, while failed liveness or startup probes can cause restarts.
 
-The fix is straightforward once you know where to look. Istio's RequestAuthentication and AuthorizationPolicy resources support excluding specific paths from JWT validation. This post walks through the exact configuration you need.
+The fix is straightforward once you know where to look. Istio's RequestAuthentication and AuthorizationPolicy resources support excluding specific paths from JWT authentication requirements. This post walks through the exact configuration you need.
 
 ## Why Health Checks Fail with JWT Auth
 
-When you apply a RequestAuthentication policy that requires JWT tokens, every request hitting your service's sidecar proxy gets checked. Kubernetes sends health check requests from the kubelet to your pod's health check endpoint (usually something like `/healthz` or `/ready`). These requests come from the kubelet directly - they don't carry JWT tokens.
+When you apply a RequestAuthentication policy together with an AuthorizationPolicy that requires JWT tokens, every request hitting your service's sidecar proxy gets checked. Kubernetes sends health check requests from the kubelet to your pod's health check endpoint (usually something like `/healthz` or `/ready`). These requests come from the kubelet directly - they don't carry JWT tokens.
 
-The result: your health probes fail, Kubernetes thinks your pod is unhealthy, and it restarts the pod. This cycle repeats forever.
+The result: your health probes fail, Kubernetes thinks your pod is not ready or unhealthy, and liveness or startup probe failures can restart the pod. This cycle repeats forever.
 
 ## The RequestAuthentication Resource
 
-Here's a typical RequestAuthentication that enforces JWT validation:
+Here's a typical RequestAuthentication that configures JWT validation:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -89,9 +89,9 @@ Istio evaluates authorization policies in a specific order. When you have multip
 
 A request to `/api/data` doesn't match the first policy (wrong path), so it needs to match the second policy. The second policy requires `requestPrincipals: ["*"]`, which means a valid JWT must be present.
 
-## Using notPaths for a Cleaner Approach
+## Using a Single Policy for a Cleaner Approach
 
-If you prefer a single policy, you can use `notPaths` to exclude health check endpoints:
+If you prefer a single policy, you can include both rules in the same AuthorizationPolicy:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -147,7 +147,7 @@ The `*` wildcard matches any suffix. So `/health`, `/healthz`, `/health/live`, a
 
 There's an important nuance here. By default, Istio rewrites kubelet health check probes so they go through the sidecar. This is controlled by the `sidecar.istio.io/rewriteAppHTTPProbers` annotation, which defaults to `true` in most Istio installations.
 
-When this rewrite is active, health probes go through the Envoy sidecar on port 15020, and then Envoy forwards them to your application. This means your authorization policies apply to these probes.
+When this rewrite is active, Istio changes the probe path and port in the pod spec so kubelet probes go to the sidecar agent on port 15020. The sidecar agent then redirects the request to your application and returns only the response code. In this default setup, the rewritten kubelet probe is not the same as a normal application request to `/healthz` through Envoy, so AuthorizationPolicy rules for your application paths are mainly relevant when probe rewrite is disabled, when you use health checks that reach the application through normal mesh traffic, or when you intentionally expose health endpoints to in-mesh callers.
 
 You can verify this behavior:
 
@@ -155,7 +155,7 @@ You can verify this behavior:
 kubectl get pod my-service-pod -o yaml | grep -A 5 "httpGet"
 ```
 
-If the probe port shows 15020, the rewrite is active and your authorization policies need to account for health checks.
+If the probe port shows 15020 and the path starts with `/app-health/`, the rewrite is active.
 
 ## Alternative: Disable Probe Rewrite
 
@@ -180,9 +180,9 @@ spec:
               port: 8080
 ```
 
-With this annotation set to `false`, kubelet probes bypass the Envoy sidecar entirely and go straight to your application container. This means authorization policies won't affect them at all.
+With this annotation set to `false`, kubelet probes use the original probe path and port. In a sidecar-injected pod, that traffic can be intercepted by Envoy like other inbound traffic, so your authorization policies may need to allow those health check paths.
 
-However, this approach has a downside - you lose mTLS on health check probes, and the probes won't be visible in Istio's telemetry. For most production setups, the authorization policy approach is cleaner.
+However, this approach has a downside - kubelet still does not send an Istio-issued mTLS certificate or JWT token, so strict authentication and authorization policies can break the probes unless you allow the health check paths. For most production setups, leaving probe rewrite enabled and using authorization policies for normal in-mesh health traffic is cleaner.
 
 ## Testing Your Configuration
 
