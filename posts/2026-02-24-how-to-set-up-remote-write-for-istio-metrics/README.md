@@ -62,7 +62,7 @@ remote_write:
   write_relabel_configs:
   # Keep core Istio request metrics
   - source_labels: [__name__]
-    regex: 'istio_requests_total|istio_request_duration_milliseconds_bucket|istio_request_bytes_bucket|istio_response_bytes_bucket'
+    regex: 'istio_requests_total|istio_request_duration_milliseconds_(bucket|sum|count)|istio_request_bytes_(bucket|sum|count)|istio_response_bytes_(bucket|sum|count)'
     action: keep
   # Also keep TCP metrics
   - source_labels: [__name__]
@@ -81,7 +81,7 @@ remote_write:
 - url: "http://mimir.monitoring.svc:9009/api/v1/push"
   write_relabel_configs:
   - source_labels: [__name__]
-    regex: 'istio_requests_total|istio_request_duration_milliseconds_bucket|istio_request_bytes_bucket|istio_response_bytes_bucket|istio_tcp_.*|pilot_.*'
+    regex: 'istio_requests_total|istio_request_duration_milliseconds_(bucket|sum|count)|istio_request_bytes_(bucket|sum|count)|istio_response_bytes_(bucket|sum|count)|istio_tcp_.*|pilot_.*'
     action: keep
 ```
 
@@ -208,7 +208,7 @@ Prometheus exposes metrics about the remote write queue:
 ```promql
 # Samples pending in the queue
 
-prometheus_remote_storage_pending_samples
+prometheus_remote_storage_samples_pending
 
 # Failed sample sends
 rate(prometheus_remote_storage_failed_samples_total[5m])
@@ -240,13 +240,12 @@ groups:
 If you do not need to query the local Prometheus and only want to forward metrics, consider running Prometheus in agent mode. Agent mode disables local storage and the query engine, reducing resource usage:
 
 ```yaml
-apiVersion: monitoring.coreos.com/v1
-kind: Prometheus
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: PrometheusAgent
 metadata:
   name: prometheus
   namespace: istio-system
 spec:
-  mode: Agent
   remoteWrite:
   - url: "http://mimir.monitoring.svc:9009/api/v1/push"
 ```
