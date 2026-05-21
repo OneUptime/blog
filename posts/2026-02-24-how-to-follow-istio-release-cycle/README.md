@@ -47,7 +47,7 @@ Istio supports each minor release for approximately 6 months after its initial r
 Check if your version is still supported:
 
 ```bash
-CURRENT=$(istioctl version --remote=false 2>/dev/null | head -1)
+CURRENT=$(istioctl version --remote=false 2>/dev/null | awk '/client version/ {print $3}')
 echo "Current version: $CURRENT"
 
 # Check release date
@@ -76,7 +76,7 @@ Set up notifications to stay aware of new releases:
 #!/bin/bash
 # Check for new Istio releases
 LATEST=$(curl -sL https://api.github.com/repos/istio/istio/releases/latest | jq -r '.tag_name')
-CURRENT=$(istioctl version --remote=false 2>/dev/null | head -1)
+CURRENT=$(istioctl version --remote=false 2>/dev/null | awk '/client version/ {print $3}')
 
 if [ "$LATEST" != "$CURRENT" ]; then
   echo "New Istio release available: $LATEST (current: $CURRENT)"
@@ -107,11 +107,12 @@ Production target: 1.21.x (latest patch)
 ```
 
 ### Upgrade One Minor Version at a Time
-Istio supports upgrading one minor version at a time. Do not skip versions:
+For in-place upgrades, Istio supports upgrading one minor version at a time. Do not skip versions when using an in-place upgrade. Revision-based canary upgrades support jumping across two minor versions, but you should still test that path carefully:
 
 ```bash
-# GOOD: 1.20 -> 1.21 -> 1.22
-# BAD: 1.20 -> 1.22 (skipping 1.21)
+# GOOD for in-place upgrades: 1.20 -> 1.21 -> 1.22
+# BAD for in-place upgrades: 1.20 -> 1.22 (skipping 1.21)
+# Supported for revision-based canary upgrades: 1.20 -> 1.22
 ```
 
 ## Read Release Notes
@@ -140,14 +141,14 @@ Istio has compatibility requirements with Kubernetes:
 ```text
 Istio 1.22: Kubernetes 1.27, 1.28, 1.29, 1.30
 Istio 1.21: Kubernetes 1.26, 1.27, 1.28, 1.29
-Istio 1.20: Kubernetes 1.25, 1.26, 1.27, 1.28
+Istio 1.20: Kubernetes 1.25, 1.26, 1.27, 1.28, 1.29
 ```
 
 Check the official compatibility page for your version:
 
 ```bash
 # Always verify compatibility before upgrading
-kubectl version --short
+kubectl version
 istioctl version --remote=false
 ```
 
