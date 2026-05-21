@@ -30,7 +30,7 @@ graph LR
 First, create a ServiceEntry for the external service:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-api
@@ -39,9 +39,9 @@ spec:
   hosts:
     - api.external.com
   ports:
-    - number: 443
-      name: https
-      protocol: HTTPS
+    - number: 80
+      name: http
+      protocol: HTTP
   resolution: DNS
   location: MESH_EXTERNAL
 ```
@@ -53,7 +53,7 @@ Now Istio knows about `api.external.com` and can apply traffic management rules 
 With the ServiceEntry in place, add a VirtualService:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: external-api
@@ -71,17 +71,17 @@ spec:
         - destination:
             host: api.external.com
             port:
-              number: 443
+              number: 80
 ```
 
-Now every call to `api.external.com` from within the mesh gets a 5-second timeout and 3 retry attempts on failures.
+Now every HTTP call to `api.external.com` from within the mesh gets a 5-second timeout and 3 retry attempts on failures.
 
 ## Routing to Different External Endpoints
 
-You can route different paths to different external services:
+You can route different requests to different external services:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: payment-provider-a
@@ -90,13 +90,13 @@ spec:
   hosts:
     - payments-a.example.com
   ports:
-    - number: 443
-      name: https
-      protocol: HTTPS
+    - number: 80
+      name: http
+      protocol: HTTP
   resolution: DNS
   location: MESH_EXTERNAL
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: payment-provider-b
@@ -105,13 +105,13 @@ spec:
   hosts:
     - payments-b.example.com
   ports:
-    - number: 443
-      name: https
-      protocol: HTTPS
+    - number: 80
+      name: http
+      protocol: HTTP
   resolution: DNS
   location: MESH_EXTERNAL
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: payment-routing
@@ -128,12 +128,12 @@ spec:
         - destination:
             host: payments-a.example.com
             port:
-              number: 443
+              number: 80
     - route:
         - destination:
             host: payments-b.example.com
             port:
-              number: 443
+              number: 80
 ```
 
 ## Traffic Splitting Between External Providers
@@ -141,7 +141,37 @@ spec:
 You can split traffic between external services for migration or A/B testing:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
+kind: ServiceEntry
+metadata:
+  name: old-search
+  namespace: default
+spec:
+  hosts:
+    - old-search.example.com
+  ports:
+    - number: 80
+      name: http
+      protocol: HTTP
+  resolution: DNS
+  location: MESH_EXTERNAL
+---
+apiVersion: networking.istio.io/v1
+kind: ServiceEntry
+metadata:
+  name: new-search
+  namespace: default
+spec:
+  hosts:
+    - new-search.example.com
+  ports:
+    - number: 80
+      name: http
+      protocol: HTTP
+  resolution: DNS
+  location: MESH_EXTERNAL
+---
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: search-api
@@ -154,12 +184,12 @@ spec:
         - destination:
             host: old-search.example.com
             port:
-              number: 443
+              number: 80
           weight: 80
         - destination:
             host: new-search.example.com
             port:
-              number: 443
+              number: 80
           weight: 20
 ```
 
@@ -170,7 +200,7 @@ spec:
 If your application talks HTTP internally but the external service requires HTTPS, use TLS origination in the DestinationRule:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-api
@@ -182,13 +212,14 @@ spec:
     - number: 80
       name: http-port
       protocol: HTTP
+      targetPort: 443
     - number: 443
       name: https
       protocol: HTTPS
   resolution: DNS
   location: MESH_EXTERNAL
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: external-api
@@ -198,11 +229,11 @@ spec:
   trafficPolicy:
     portLevelSettings:
       - port:
-          number: 443
+          number: 80
         tls:
           mode: SIMPLE
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: external-api
@@ -217,7 +248,7 @@ spec:
         - destination:
             host: api.external.com
             port:
-              number: 443
+              number: 80
 ```
 
 Your application calls `http://api.external.com`, and the Istio proxy upgrades the connection to HTTPS before sending it out.
@@ -227,7 +258,7 @@ Your application calls `http://api.external.com`, and the Istio proxy upgrades t
 Testing how your application handles external service failures:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: external-api
@@ -249,7 +280,7 @@ spec:
         - destination:
             host: api.external.com
             port:
-              number: 443
+              number: 80
 ```
 
 50% of calls to the external API get a 5-second delay, and 10% get a 503 error. This is useful for testing your application's resilience to external service problems.
@@ -259,7 +290,7 @@ spec:
 Protect your application from cascading failures when an external service goes down:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: external-api
@@ -284,7 +315,22 @@ spec:
 For tighter security control, route external traffic through a dedicated egress gateway:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
+kind: ServiceEntry
+metadata:
+  name: external-api
+  namespace: default
+spec:
+  hosts:
+    - api.external.com
+  ports:
+    - number: 443
+      name: tls
+      protocol: TLS
+  resolution: DNS
+  location: MESH_EXTERNAL
+---
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: egress-gateway
@@ -302,7 +348,7 @@ spec:
       tls:
         mode: PASSTHROUGH
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: external-api-egress
@@ -317,6 +363,7 @@ spec:
     - match:
         - gateways:
             - mesh
+          port: 443
           sniHosts:
             - api.external.com
       route:
@@ -327,6 +374,7 @@ spec:
     - match:
         - gateways:
             - istio-system/egress-gateway
+          port: 443
           sniHosts:
             - api.external.com
       route:
@@ -340,10 +388,10 @@ This forces all external traffic through the egress gateway, giving you a centra
 
 ## Using Internal Service Name for External Services
 
-You can create an internal alias for an external service:
+You can create an internal alias for an external service. For application DNS resolution, enable Istio DNS capture or provide a matching Kubernetes Service or DNS record for the alias:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-db
@@ -362,7 +410,7 @@ spec:
   endpoints:
     - address: 10.0.0.100
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: external-db
@@ -378,7 +426,7 @@ spec:
               number: 5432
 ```
 
-Your application connects to `external-db` as if it were an internal Kubernetes service.
+With DNS resolution in place, your application connects to `external-db` as if it were an internal Kubernetes service.
 
 ## Debugging External Service Routing
 
@@ -394,7 +442,7 @@ istioctl proxy-config clusters deploy/my-app -n default | grep external
 istioctl proxy-config endpoints deploy/my-app -n default | grep external
 
 # Check for connectivity
-kubectl exec deploy/my-app -c istio-proxy -- curl -s -o /dev/null -w "%{http_code}" https://api.external.com/health
+kubectl exec deploy/my-app -c my-app -- curl -s -o /dev/null -w "%{http_code}" https://api.external.com/health
 ```
 
 Routing to external services with Istio gives you the same traffic management capabilities you have for internal services. Timeouts, retries, circuit breaking, and traffic splitting all work once you register the external service with a ServiceEntry.
