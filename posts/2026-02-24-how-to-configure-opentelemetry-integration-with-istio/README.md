@@ -27,6 +27,34 @@ First, deploy the OpenTelemetry Collector in your cluster. It acts as the centra
 
 ```yaml
 apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: otel-collector
+  namespace: istio-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: otel-collector
+rules:
+- apiGroups: [""]
+  resources: ["pods", "endpoints", "services"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: otel-collector
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: otel-collector
+subjects:
+- kind: ServiceAccount
+  name: otel-collector
+  namespace: istio-system
+---
+apiVersion: v1
 kind: ConfigMap
 metadata:
   name: otel-collector-config
@@ -63,6 +91,10 @@ data:
           receivers: [otlp]
           processors: [memory_limiter, batch]
           exporters: [prometheus]
+        logs:
+          receivers: [otlp]
+          processors: [memory_limiter, batch]
+          exporters: [debug]
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -79,9 +111,10 @@ spec:
       labels:
         app: otel-collector
     spec:
+      serviceAccountName: otel-collector
       containers:
       - name: otel-collector
-        image: otel/opentelemetry-collector-contrib:0.96.0
+        image: otel/opentelemetry-collector-contrib:0.151.0
         args:
         - --config=/etc/otel/config.yaml
         ports:
@@ -228,7 +261,7 @@ This lets you trace critical services like payment processing at a higher rate t
 
 ## Configuring Metrics Export via OpenTelemetry
 
-Istio can also export its metrics through the OpenTelemetry pipeline:
+Istio exposes its service-mesh metrics in Prometheus format. You can route those metrics through an OpenTelemetry Collector by having the collector scrape the Istio metrics endpoints:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -241,11 +274,12 @@ spec:
         service: otel-collector.istio-system.svc.cluster.local
         port: 4317
     - name: otel-metrics
-      prometheus:
-        scrape: true
+      prometheus: {}
     defaultProviders:
       tracing:
       - otel-tracing
+      metrics:
+      - otel-metrics
 ```
 
 For a full OpenTelemetry metrics pipeline, you can configure the collector to scrape Istio's Prometheus metrics and export them to your preferred backend. Add this to the collector config:
@@ -266,11 +300,19 @@ receivers:
         - source_labels: [__meta_kubernetes_pod_container_name]
           action: keep
           regex: istio-proxy
-        - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
+        - source_labels: [__address__]
           action: replace
           target_label: __address__
-          regex: (.+)
+          regex: ([^:]+)(?::\d+)?
           replacement: ${1}:15020
+        - target_label: __metrics_path__
+          replacement: /stats/prometheus
+service:
+  pipelines:
+    metrics:
+      receivers: [otlp, prometheus]
+      processors: [memory_limiter, batch]
+      exporters: [prometheus]
 ```
 
 ## Verifying the Integration
