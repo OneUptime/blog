@@ -92,7 +92,7 @@ kubectl get vs my-route -n default -o yaml | yq eval '
 For a batch cleanup of all exported files:
 
 ```bash
-for file in exports/**/*.yaml; do
+find exports -name "*.yaml" -print0 | while IFS= read -r -d '' file; do
   yq eval '
     del(.metadata.resourceVersion) |
     del(.metadata.uid) |
@@ -105,7 +105,7 @@ for file in exports/**/*.yaml; do
 done
 ```
 
-If you don't have `yq`, you can use Python:
+If you don't have `yq`, you can use Python with PyYAML installed:
 
 ```bash
 kubectl get vs my-route -n default -o yaml | python3 -c "
@@ -133,14 +133,14 @@ print(yaml.dump(doc, default_flow_style=False))
 
 ## Complete Export Script
 
-Here's a comprehensive script that exports all Istio resources to clean YAML files organized by type and namespace:
+Here's a script that exports common Istio resources to clean YAML files organized by type and namespace:
 
 ```bash
 #!/bin/bash
 EXPORT_DIR="${1:-istio-export-$(date +%Y%m%d)}"
 mkdir -p $EXPORT_DIR
 
-RESOURCE_TYPES="virtualservices destinationrules gateways serviceentries sidecars envoyfilters workloadentries workloadgroups peerauthentications authorizationpolicies requestauthentications telemetries wasmplugins"
+RESOURCE_TYPES="virtualservices destinationrules gateways serviceentries sidecars envoyfilters workloadentries workloadgroups proxyconfigs peerauthentications authorizationpolicies requestauthentications telemetries wasmplugins"
 
 for rtype in $RESOURCE_TYPES; do
   items=$(kubectl get $rtype -A --no-headers 2>/dev/null)
@@ -225,7 +225,7 @@ REPO_DIR="/path/to/istio-config-repo"
 cd $REPO_DIR
 
 # Export all resources
-RESOURCE_TYPES="virtualservices destinationrules gateways serviceentries sidecars peerauthentications authorizationpolicies requestauthentications telemetries"
+RESOURCE_TYPES="virtualservices destinationrules gateways serviceentries sidecars proxyconfigs peerauthentications authorizationpolicies requestauthentications telemetries"
 
 for rtype in $RESOURCE_TYPES; do
   mkdir -p $rtype
