@@ -17,13 +17,12 @@ The worst approach is to enable Istio mesh-wide and hope nothing breaks. The bes
 Install Istio but don't enable automatic sidecar injection:
 
 ```bash
-istioctl install --set profile=default
+istioctl install --set profile=default --verify
 ```
 
-Verify the installation:
+Check the installation:
 
 ```bash
-istioctl verify-install
 kubectl get pods -n istio-system
 ```
 
@@ -69,10 +68,10 @@ The first real value you get from Istio is observability. Even with just a few s
 Install the observability addons:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/prometheus.yaml
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/grafana.yaml
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/kiali.yaml
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/jaeger.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/prometheus.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/grafana.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/kiali.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/jaeger.yaml
 ```
 
 Access Kiali to see the service graph:
@@ -140,7 +139,7 @@ At this point, services with sidecars use mTLS automatically when talking to eac
 Don't jump to mesh-wide strict mTLS. Enable it namespace by namespace:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -162,10 +161,10 @@ kubectl exec -it deploy/frontend -n frontend-ns -- \
 
 ## Phase 6: Add Authorization Policies
 
-Start with monitoring mode before enforcing policies. Use AUDIT mode to log policy decisions without blocking traffic:
+Start with monitoring mode before enforcing policies. Use AUDIT mode to mark matching requests for audit without blocking traffic:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: order-service-audit
@@ -183,7 +182,7 @@ spec:
         - cluster.local/ns/backend/sa/checkout-sa
 ```
 
-This logs when services other than frontend and checkout access the order service, without blocking the traffic. Check the Envoy logs for audit entries:
+This marks requests from services other than frontend and checkout for audit, without blocking the traffic. Audit output depends on having an audit plugin configured; if your audit provider writes to Envoy logs, check the logs for audit entries:
 
 ```bash
 kubectl logs deploy/order-service -c istio-proxy -n backend | grep "AUDIT"
@@ -192,7 +191,7 @@ kubectl logs deploy/order-service -c istio-proxy -n backend | grep "AUDIT"
 After verifying the audit logs match your expectations, switch to enforcement:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: order-service-deny-all
@@ -201,9 +200,8 @@ spec:
   selector:
     matchLabels:
       app: order-service
-  {}
 ---
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: order-service-allow
@@ -228,7 +226,7 @@ With observability and security in place, start using traffic management feature
 Start with retries and timeouts for your most important services:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: payment-service-vs
@@ -250,7 +248,7 @@ spec:
 Add circuit breaking:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: payment-service-dr
@@ -273,7 +271,7 @@ spec:
 If you're using a separate ingress controller (NGINX, Traefik), consider migrating to Istio's ingress gateway. This is optional but reduces operational complexity.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: main-gateway
@@ -311,7 +309,7 @@ spec:
         sidecar.istio.io/inject: "false"
 ```
 
-Or exclude specific pods at the namespace level using the Sidecar resource.
+If a namespace has automatic injection enabled, exclude individual pods with the `sidecar.istio.io/inject: "false"` pod template annotation.
 
 ## Monitoring the Adoption Progress
 
