@@ -14,7 +14,7 @@ Protocol detection is how Istio figures out what protocol a connection uses. You
 
 ## How Istio Determines the Protocol
 
-Istio uses three methods to determine the protocol, checked in this order:
+Istio uses three methods to determine the protocol. If both `appProtocol` and a port name are set, `appProtocol` takes precedence over the port name.
 
 ### 1. Explicit Port Naming
 
@@ -39,14 +39,14 @@ spec:
 ```
 
 The recognized prefixes are:
-- `http`, `http2` - HTTP/1.1 and HTTP/2
-- `https` - HTTPS (TLS-terminated by the application)
+- `http`, `http2` - Plaintext HTTP/1.1 and HTTP/2
+- `https` - TLS-encrypted HTTP; in sidecars this is handled the same as `tls` because the sidecar does not decrypt application TLS
 - `grpc`, `grpc-web` - gRPC
 - `tcp` - Raw TCP
 - `tls` - TLS connections
-- `mongo` - MongoDB protocol
-- `mysql` - MySQL protocol
-- `redis` - Redis protocol
+- `mongo` - MongoDB protocol (experimental; requires the corresponding Istio environment variable)
+- `mysql` - MySQL protocol (experimental; requires the corresponding Istio environment variable)
+- `redis` - Redis protocol (experimental; requires the corresponding Istio environment variable)
 
 The prefix must be followed by a dash, or it can be the entire name. Both `http` and `http-api` work, but `httpapi` does not.
 
@@ -71,13 +71,13 @@ spec:
       appProtocol: grpc
 ```
 
-This is cleaner than port naming conventions because it separates the protocol declaration from the port name. Istio respects `appProtocol` and uses it for protocol determination.
+This is cleaner than port naming conventions because it separates the protocol declaration from the port name. Istio respects `appProtocol` and uses it for protocol determination. If both `appProtocol` and a protocol-prefixed port name are defined, `appProtocol` wins.
 
 ### 3. Automatic Protocol Sniffing
 
-If neither port naming nor appProtocol specifies the protocol, Istio falls back to protocol sniffing. The sidecar inspects the first few bytes of the connection to determine if it is HTTP or not.
+If neither port naming nor appProtocol specifies the protocol, Istio falls back to protocol sniffing. The sidecar inspects the first few bytes of the connection to determine if it is HTTP or HTTP/2.
 
-For server-side protocol detection, the sidecar waits for the client to send data. If the initial bytes look like an HTTP request (start with a valid HTTP method), it treats the connection as HTTP. Otherwise, it falls back to TCP.
+For server-side protocol detection, the sidecar waits for the client to send data. If the initial bytes look like HTTP/1.1 or HTTP/2, it treats the connection as HTTP. Otherwise, it falls back to TCP.
 
 ## Configuring Protocol Detection Behavior
 
@@ -86,23 +86,18 @@ For server-side protocol detection, the sidecar waits for the client to send dat
 When Istio sniffs the protocol, it needs to wait for the client to send data. The detection timeout controls how long it waits:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
-kind: DestinationRule
-metadata:
-  name: my-service-dr
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
 spec:
-  host: my-service.default.svc.cluster.local
-  trafficPolicy:
-    connectionPool:
-      tcp:
-        connectTimeout: 10s
+  meshConfig:
+    protocolDetectionTimeout: 500ms
 ```
 
-The default timeout is relatively short. If your clients have a slow start or the protocol uses server-speaks-first behavior, the detection might time out and default to TCP.
+The current Istio API default is `0s`, which means no detection timeout. If you set a non-zero timeout and your clients have a slow start or the protocol uses server-speaks-first behavior, the detection might time out and default to TCP. Istio's API comments warn that setting this timeout is not generally recommended; explicit protocol declaration is the safer fix.
 
 ### Disabling Protocol Sniffing
 
-If you want to disable automatic protocol detection and require explicit protocol declaration, you cannot do it globally in MeshConfig. But you can ensure all your services use explicit port naming or appProtocol, which effectively bypasses sniffing.
+If you want to avoid automatic protocol detection and require explicit protocol declaration, do not use `protocolDetectionTimeout` as a disable switch; it controls how long Envoy waits, not whether Istio attempts protocol detection. Instead, ensure all your services use explicit port naming or appProtocol, which bypasses sniffing for those ports.
 
 For strict environments, enforce port naming conventions through admission webhooks or policy tools like OPA/Gatekeeper:
 
@@ -169,7 +164,7 @@ ports:
 
 If your application handles its own TLS (instead of letting the sidecar handle it), the sidecar sees encrypted bytes and cannot detect HTTP. This is expected behavior.
 
-Fix: If you want HTTP features, let the sidecar handle TLS (use ISTIO_MUTUAL or SIMPLE TLS mode) and have the application speak plain HTTP to the sidecar. Or use `https` or `tls` as the port prefix:
+Fix: If you want HTTP features, have the application speak plain HTTP to the sidecar and let Istio handle mesh TLS. If the application must keep handling TLS itself, use `https` or `tls` as the port prefix, but expect TLS/TCP-level handling rather than HTTP routing and metrics:
 
 ```yaml
 ports:
@@ -193,7 +188,7 @@ You can also check the clusters:
 istioctl proxy-config clusters deploy/sleep -n sample | grep my-service
 ```
 
-The output includes a column showing the detected protocol type.
+The listener output is the best place to confirm whether Istio built HTTP or TCP filters for the port. Cluster output can help you correlate the service and port, but the listener filters show the protocol handling.
 
 ## Best Practices
 
