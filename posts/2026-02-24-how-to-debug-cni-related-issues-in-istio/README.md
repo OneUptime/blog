@@ -86,7 +86,8 @@ Common log messages and what they mean:
 You need to see what's actually on the node's filesystem. Use a debug pod or the CNI DaemonSet pod itself:
 
 ```bash
-kubectl exec -n istio-system ${CNI_POD} -c install-cni -- cat /host/etc/cni/net.d/10-calico.conflist
+kubectl exec -n istio-system ${CNI_POD} -c install-cni -- ls -la /host/etc/cni/net.d
+kubectl exec -n istio-system ${CNI_POD} -c install-cni -- sh -c 'cat /host/etc/cni/net.d/*.conf*'
 ```
 
 The `install-cni` container mounts the host's CNI directories. Verify that:
@@ -103,11 +104,13 @@ kubectl exec -n istio-system ${CNI_POD} -c install-cni -- ls -la /host/opt/cni/b
 
 ## Step 4: Verify iptables Rules Inside Pods
 
-If the CNI plugin is installed but traffic isn't flowing correctly, check the iptables rules that Istio sets up inside the pod:
+If the CNI plugin is installed but traffic isn't flowing correctly and your mesh uses Istio's default iptables backend, check the iptables rules that Istio sets up inside the pod:
 
 ```bash
-kubectl exec -it <pod-name> -c istio-proxy -- iptables -t nat -L -n -v
+kubectl exec -it <pod-name> -c istio-proxy -- iptables-save -t nat
 ```
+
+Depending on the proxy image and security context, the `istio-proxy` container may not have the `iptables` tools or permission to list the rules. In that case, use a privileged node debug session and inspect the workload pod's network namespace from the node.
 
 You should see rules like:
 
@@ -184,15 +187,15 @@ CNI issues often appear during Istio upgrades. The old CNI binary might be incom
 
 During upgrades, follow this order:
 
-1. Upgrade the Istio CNI DaemonSet first
-2. Wait for all CNI pods to be ready
-3. Then upgrade istiod and gateways
-4. Finally, restart workload pods to pick up new sidecars
+1. Run `istioctl x precheck`
+2. For in-place upgrades, upgrade the CNI component together with the control plane or upgrade the `istio-cni` Helm chart separately
+3. For canary upgrades, operate the CNI component separately because it is a cluster singleton
+4. Wait for all CNI pods to be ready before restarting workload pods to pick up new sidecars
 
 Check the version of the CNI plugin:
 
 ```bash
-kubectl exec -n istio-system ${CNI_POD} -c install-cni -- /opt/cni/bin/istio-cni version 2>/dev/null || echo "version command not supported"
+kubectl exec -n istio-system ${CNI_POD} -c install-cni -- install-cni version 2>/dev/null || echo "version command not supported"
 ```
 
 If the version command isn't supported, check the image tag:
@@ -212,7 +215,7 @@ istioctl bug-report --include istio-system
 # Additionally, grab the CNI config from all nodes
 for node in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'); do
   echo "=== Node: $node ==="
-  kubectl debug node/$node -it --image=busybox -- cat /host/etc/cni/net.d/10-calico.conflist 2>/dev/null
+  kubectl debug node/$node --image=busybox --attach=true -- sh -c 'ls -la /host/etc/cni/net.d && cat /host/etc/cni/net.d/*.conf*' 2>/dev/null
 done
 ```
 
