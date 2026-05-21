@@ -245,7 +245,7 @@ jobs:
 
       - name: Run istioctl analyze
         run: |
-          istioctl analyze istio-config/ --recursive --use-kube=false
+          istioctl analyze --use-kube=false istio-config/
 
       - name: Check version annotations
         run: |
