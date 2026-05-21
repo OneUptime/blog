@@ -17,7 +17,7 @@ Istio VirtualService supports per-route timeouts, letting you set appropriate ti
 Each HTTP route in a VirtualService can have its own timeout. Routes are matched in order, so you put the most specific routes first:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: analytics-service
@@ -166,7 +166,7 @@ http:
 When combining per-route timeouts with retries, each route can have its own retry configuration:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: order-service
@@ -212,7 +212,7 @@ Read operations get aggressive retries with a tight per-try timeout. Write opera
 When routing to different subsets or versions, each can have its own timeout:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-service
@@ -239,12 +239,14 @@ spec:
             subset: v1
 ```
 
+The subsets must also be defined in a corresponding DestinationRule.
+
 ## Practical Example: E-Commerce Service
 
 Here's a real-world example for an e-commerce API with many different endpoints:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: ecommerce-api
@@ -340,44 +342,16 @@ Check that the correct timeout is applied to each route:
 ```bash
 # View the routes configured in the proxy
 
-istioctl proxy-config routes deploy/frontend -n production -o json | jq '.[] | .virtualHosts[].routes[] | {name: .match.prefix, timeout: .route.timeout}'
+istioctl proxy-config routes deployment/frontend -n production -o json | jq '.[] | .virtualHosts[].routes[] | {match: .match, timeout: .route.timeout}'
 ```
 
-Test with fault injection to confirm timeouts fire correctly:
+Test with a slow response from the application, or from a dependency behind the route, to confirm timeouts fire correctly. Do not add fault injection to the same HTTP route you are testing, because Istio does not enable timeouts or retries on a client-side route when faults are enabled on that route:
 
 ```bash
 # Test the search timeout (2s)
-# Inject a 5s delay
-kubectl apply -f - <<EOF
-apiVersion: networking.istio.io/v1beta1
-kind: VirtualService
-metadata:
-  name: ecommerce-api
-  namespace: production
-spec:
-  hosts:
-    - ecommerce-api
-  http:
-    - match:
-        - uri:
-            prefix: /api/products/search
-      fault:
-        delay:
-          fixedDelay: 5s
-          percentage:
-            value: 100.0
-      timeout: 2s
-      route:
-        - destination:
-            host: ecommerce-api
-    - timeout: 5s
-      route:
-        - destination:
-            host: ecommerce-api
-EOF
-
-# Should get 504 in ~2 seconds
-time kubectl exec deploy/test-client -n production -- curl -s -o /dev/null -w "%{http_code}" http://ecommerce-api:8080/api/products/search?q=laptop
+# Call a test-only path or query that makes the application take about 5s to respond
+# Should get 504 in about 2 seconds
+time kubectl exec deploy/test-client -n production -- curl -s -o /dev/null -w "%{http_code}\n" "http://ecommerce-api:8080/api/products/search?q=laptop&debugDelay=5s"
 ```
 
 ## Route Order Matters
