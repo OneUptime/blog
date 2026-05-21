@@ -70,7 +70,7 @@ Now verify that the pods have the matching labels:
 kubectl get pods -n backend -l app=order-service --show-labels
 ```
 
-If no pods match the selector, the policy exists but has no effect. This is a silent failure that won't produce any error messages.
+If no pods match the selector, the policy exists but has no effect on any workload. `kubectl apply` will not reject the policy just because the selector matches nothing, so verify selectors after applying.
 
 ## Checking Your Pod Labels
 
@@ -111,7 +111,7 @@ This targets only the v2 pods of the order-service. The v1 pods (with `version: 
 
 ## Combining with Port-Level mTLS
 
-Workload-specific policies can include port-level mTLS overrides. This is handy when a workload has some ports that need encryption and others that don't:
+Workload-specific policies can include port-level mTLS overrides. This is handy when a workload has some ports that need encryption and others that don't. The port numbers are workload ports, not Kubernetes Service ports, and Istio only applies the override when the port is bound by a Service:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -239,13 +239,15 @@ kubectl get pods -n app -l app=api-server
 kubectl get peerauthentication -n app -o yaml
 ```
 
-3. **Check that the sidecar is injected.** PeerAuthentication only works on pods with the Istio sidecar.
+3. **Check that the workload is in the mesh.** In sidecar mode, that means checking that the Istio sidecar is injected.
 
 ```bash
 kubectl get pod api-server-abc123 -n app -o jsonpath='{.spec.containers[*].name}'
 ```
 
 You should see `istio-proxy` in the container list.
+
+In ambient mode, PeerAuthentication is enforced by ztunnel rather than an injected sidecar, and `DISABLE` mode is not supported.
 
 4. **Check the Envoy logs.** If connections are failing:
 
