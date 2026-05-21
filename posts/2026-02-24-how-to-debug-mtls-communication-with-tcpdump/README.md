@@ -10,7 +10,7 @@ Description: Use tcpdump and other network tools to debug mTLS communication iss
 
 When mTLS is not working correctly in Istio, the error messages can be vague. You might see "connection reset," "upstream connect error," or just timeouts. These errors tell you something is wrong but not exactly what. To really understand what is happening at the network level, you need to look at the actual packets on the wire.
 
-tcpdump is the go-to tool for this. It lets you capture and inspect network traffic at the packet level, which means you can see whether TLS handshakes are happening, whether they are succeeding, and what certificates are being exchanged.
+tcpdump is the go-to tool for this. It lets you capture and inspect network traffic at the packet level, which means you can see whether TLS handshakes are happening and whether they are succeeding. You can inspect certificates in older TLS handshakes or decrypted captures, but TLS 1.3 encrypts certificate messages.
 
 ## Getting tcpdump into Your Pods
 
@@ -21,7 +21,7 @@ Most application containers do not include tcpdump. You have a few options:
 The Istio sidecar container often has some debugging tools. You can run tcpdump from a debug container:
 
 ```bash
-kubectl debug -it deploy/my-app --image=nicolaka/netshoot --target=istio-proxy -- tcpdump -i any -n port 8080 -w /tmp/capture.pcap
+kubectl debug -it deploy/my-app --image=nicolaka/netshoot --target=istio-proxy --profile=netadmin -c debug -- tcpdump -i any -n port 8080 -w /tmp/capture.pcap
 ```
 
 ### Option 2: Use an Ephemeral Debug Container
@@ -29,7 +29,7 @@ kubectl debug -it deploy/my-app --image=nicolaka/netshoot --target=istio-proxy -
 Kubernetes ephemeral containers let you attach a debug container to a running pod:
 
 ```bash
-kubectl debug -it my-pod --image=nicolaka/netshoot -- bash
+kubectl debug -it my-pod --image=nicolaka/netshoot --profile=netadmin -c debug -- bash
 ```
 
 Once inside the debug container, run tcpdump:
@@ -44,11 +44,10 @@ If you have node access, you can enter the pod's network namespace:
 
 ```bash
 # Find the pod's container ID
-
 CONTAINER_ID=$(kubectl get pod my-pod -o jsonpath='{.status.containerStatuses[0].containerID}' | cut -d/ -f3)
 
-# Find the PID
-PID=$(docker inspect --format '{{.State.Pid}}' $CONTAINER_ID)
+# Find the PID from the node's CRI runtime
+PID=$(crictl inspect --output go-template --template '{{.info.pid}}' "$CONTAINER_ID")
 
 # Enter the network namespace and run tcpdump
 nsenter -t $PID -n tcpdump -i any -n port 8080 -c 50
@@ -58,7 +57,7 @@ nsenter -t $PID -n tcpdump -i any -n port 8080 -c 50
 
 ### Verify mTLS is Active
 
-When mTLS is working, you should see TLS handshake packets between services. Run tcpdump and filter for TLS:
+When mTLS is working, you should see TLS handshake packets between services. Run tcpdump and filter for the service port:
 
 ```bash
 tcpdump -i any -n 'tcp port 8080' -c 20
@@ -104,8 +103,7 @@ tshark -r mtls-debug.pcap -Y "tls.handshake" -V
 This shows the full TLS handshake details, including:
 - Client Hello: cipher suites offered, TLS version, SNI
 - Server Hello: selected cipher suite, TLS version
-- Certificate: the server certificate
-- Client Certificate: the client certificate (this is the "mutual" part of mTLS)
+- Certificate messages: visible in TLS 1.2 captures, or in TLS 1.3 only if you decrypt the capture with session keys
 
 ### Diagnose Handshake Failures
 
@@ -127,7 +125,7 @@ This filters for RST packets, which indicate connection resets. A reset right af
 First, check if the connection even reaches Service B. Capture on Service B's pod:
 
 ```bash
-kubectl debug -it service-b-pod --image=nicolaka/netshoot -- tcpdump -i any -n 'tcp port 8080' -c 20
+kubectl debug -it service-b-pod --image=nicolaka/netshoot --profile=netadmin -- tcpdump -i any -n 'tcp port 8080' -c 20
 ```
 
 If you see SYN packets arriving but no established connection, the TLS handshake is failing.
@@ -135,7 +133,7 @@ If you see SYN packets arriving but no established connection, the TLS handshake
 Then check from Service A's side:
 
 ```bash
-kubectl debug -it service-a-pod --image=nicolaka/netshoot -- tcpdump -i any -n 'dst port 8080' -c 20
+kubectl debug -it service-a-pod --image=nicolaka/netshoot --profile=netadmin -- tcpdump -i any -n 'dst port 8080' -c 20
 ```
 
 Look at the sequence: SYN, SYN-ACK, ACK (TCP handshake succeeds), then TLS handshake data, then what? If you see a RST after the ClientHello, the server rejected the TLS connection.
@@ -182,10 +180,10 @@ These commands show you the Envoy configuration without needing to capture packe
 You can test the TLS connection directly using openssl from inside a pod:
 
 ```bash
-kubectl exec -it deploy/sleep -- openssl s_client -connect service-b.default:8080 -CAfile /etc/certs/root-cert.pem
+kubectl exec -it deploy/sleep -c istio-proxy -- openssl s_client -showcerts -connect service-b.default:8080
 ```
 
-This shows the full TLS handshake including the certificate chain, cipher suite, and any errors.
+This shows the TLS handshake including the certificate chain, cipher suite, and any errors. If you run `openssl` from an application container instead of through the sidecar, you need to provide the workload client certificate and key with `-cert` and `-key` to test mTLS directly.
 
 ## Performance Considerations
 
@@ -194,7 +192,7 @@ Running tcpdump on a production pod adds CPU overhead and can affect latency. Ke
 - Use `-c` to limit the number of packets captured
 - Use specific port filters to avoid capturing unrelated traffic
 - Capture to a file (`-w`) and analyze offline rather than printing to stdout
-- Remove the debug container when done
+- Stop the capture when done. Ephemeral containers cannot be removed after they are added to a pod; if you created a copied debug pod, delete that pod.
 
 ```bash
 # Limit capture to 30 seconds
@@ -205,9 +203,9 @@ timeout 30 tcpdump -i any -n 'tcp port 8080' -w /tmp/capture.pcap
 
 | Symptom | tcpdump Check | Likely Cause |
 |---------|---------------|--------------|
-| Connection refused | No SYN-ACK | Service not listening, network policy blocking |
+| Connection refused | RST in response to SYN | Service not listening |
 | Connection reset | RST after SYN-ACK | TLS handshake failed |
-| Timeout | SYN sent, no response | Pod not reachable, firewall |
+| Timeout | SYN sent, no SYN-ACK or RST | Pod not reachable, network policy, firewall |
 | Plaintext visible | HTTP headers in capture | mTLS not active |
 | Binary payload | Encrypted data after handshake | mTLS working correctly |
 
