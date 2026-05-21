@@ -8,9 +8,9 @@ Description: A hands-on guide to configuring and verifying round robin load bala
 
 ---
 
-Round robin is the default load balancing algorithm in Istio, and for good reason. It distributes requests evenly across all available endpoints in a predictable, sequential pattern. Pod 1 gets a request, then pod 2, then pod 3, then back to pod 1. Simple and effective for most workloads.
+Round robin is a supported load balancing algorithm in Istio, though current Istio releases use least request as the default. It distributes requests across available endpoints in sequence from the perspective of a proxy worker. Pod 1 gets a request, then pod 2, then pod 3, then back to pod 1. Simple and predictable when your workload has similar request costs.
 
-Even though round robin is the default, there are cases where you want to explicitly configure it - maybe to override a previously set policy, or to be explicit in your configuration for clarity. Either way, setting it up takes about 30 seconds.
+There are cases where you want to explicitly configure round robin - maybe to override the default least-request policy, to replace a previously set policy, or to be explicit in your configuration for clarity. Either way, setting it up takes about 30 seconds.
 
 ## Why Round Robin?
 
@@ -21,7 +21,7 @@ Round robin is a solid choice when:
 - You do not need session stickiness
 - You want predictable, even distribution
 
-It is the simplest algorithm to reason about. Every pod gets the same number of requests over time, assuming no pods are unhealthy.
+It is one of the simplest algorithms to reason about. Each healthy pod should get roughly the same number of requests over time when request volume is high enough and endpoint weights are equal.
 
 ## Setting Up a Test Service
 
@@ -44,17 +44,14 @@ spec:
     spec:
       containers:
       - name: echo
-        image: hashicorp/http-echo
+        image: registry.k8s.io/e2e-test-images/agnhost:2.53
+        command:
+        - /agnhost
+        - netexec
         args:
-        - -listen=:8080
-        - -text=hello
+        - --http-port=8080
         ports:
         - containerPort: 8080
-        env:
-        - name: POD_NAME
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.name
 ---
 apiVersion: v1
 kind: Service
@@ -103,7 +100,7 @@ Apply it:
 kubectl apply -f echo-server-destinationrule.yaml
 ```
 
-Since round robin is the default, this DestinationRule is functionally identical to having no DestinationRule at all for the load balancing part. But now you have an explicit configuration that anyone reading your Istio resources can understand.
+This overrides Istio's default least-request behavior and makes the load balancing policy explicit for anyone reading your Istio resources.
 
 ## Verifying the Configuration
 
@@ -134,14 +131,14 @@ This confirms Envoy is using the round robin policy for this cluster.
 Deploy a curl pod to send test requests:
 
 ```bash
-kubectl run curl-test --image=curlimages/curl -it --rm -- sh
+kubectl run curl-test --image=curlimages/curl -it --rm --restart=Never --command -- sh
 ```
 
 Inside the pod, send 20 requests and observe the distribution:
 
 ```bash
 for i in $(seq 1 20); do
-  curl -s http://echo-server:8080/
+  curl -s http://echo-server:8080/hostname
   echo ""
 done
 ```
@@ -152,7 +149,7 @@ For a more thorough test, send 100 requests and count:
 
 ```bash
 for i in $(seq 1 100); do
-  curl -s http://echo-server:8080/ 2>/dev/null
+  curl -s http://echo-server:8080/hostname 2>/dev/null
 done | sort | uniq -c | sort -rn
 ```
 
@@ -160,7 +157,7 @@ done | sort | uniq -c | sort -rn
 
 Under the hood, Envoy maintains a round-robin index for each upstream cluster. When a request comes in, Envoy picks the next endpoint in the list and increments the index. If an endpoint is unhealthy (based on outlier detection or health checks), it gets skipped.
 
-One important thing to understand: each Envoy proxy maintains its own independent round-robin state. If you have 10 client pods each with their own sidecar, each sidecar has its own counter. This means the global distribution across all clients is not perfectly round-robin - it is more like "per-client round-robin."
+One important thing to understand: Envoy load balancing state is not a single global counter. Each client-side Envoy proxy has its own state, and Envoy worker threads do not coordinate their load balancers with each other. If you have 10 client pods each with their own sidecar, each sidecar has its own view of the rotation. This means the global distribution across all clients is not perfectly round-robin - it is more like "per-client round-robin."
 
 ```mermaid
 graph TD
@@ -233,7 +230,7 @@ Here is a quick comparison to help you decide if round robin is right for your u
 | Variable request processing times | Least Request |
 | Need session stickiness | Consistent Hash |
 | Many client proxies with few servers | Random |
-| External service, DNS-based LB | Passthrough |
+| Preserve original destination without proxy load balancing | Passthrough |
 
 If your requests have wildly different processing times (like some take 5ms and others take 5 seconds), round robin can lead to uneven actual load. One pod might be stuck processing slow requests while another finishes its fast requests and sits idle. In that case, consider LEAST_REQUEST instead.
 
@@ -268,4 +265,4 @@ kubectl delete deployment echo-server
 kubectl delete service echo-server
 ```
 
-Round robin is boring but reliable. For most services, you do not need anything more complex. Start with round robin and switch to something else only when you have a specific reason to.
+Round robin is boring but predictable. Istio's default least-request policy is usually the safer starting point for most services, but round robin is still useful when you specifically want sequential distribution across similarly sized, similarly loaded endpoints.
