@@ -67,10 +67,10 @@ spec:
         principals: ["cluster.local/ns/monitoring/sa/prometheus-sa"]
   - to:
     - operation:
-        ports: ["15021"]
+        ports: ["15020", "15021"]
 ```
 
-The last rule allows health check traffic on the Istio health port.
+The last rule allows Istio sidecar agent health probe traffic on port 15020 and sidecar status checks on port 15021. If you disabled Istio's probe rewrite, allow the original application health check port and path instead.
 
 ## Principal Names Are Wrong
 
@@ -124,7 +124,7 @@ kubectl get authorizationpolicy -n istio-system
 
 ## IP-Based Rules Not Matching
 
-If you're using IP-based rules, remember that with mTLS enabled, the source IP seen by the sidecar is 127.0.0.1 (because traffic comes through the local proxy). The `ipBlocks` field in ALLOW/DENY rules refers to the original source IP, but there are cases where Istio can't determine it correctly.
+If you're using IP-based rules, make sure you're matching the right IP attribute. The `ipBlocks` field in ALLOW/DENY rules uses the source address of the IP packet. For ingress traffic where the original client IP comes from `X-Forwarded-For` or the PROXY protocol, use `remoteIpBlocks` instead.
 
 ```yaml
 rules:
@@ -133,7 +133,7 @@ rules:
       ipBlocks: ["10.0.0.0/8"]
 ```
 
-If this isn't matching, use `remoteIpBlocks` instead, which uses the X-Forwarded-For header:
+If this isn't matching for ingress traffic, use `remoteIpBlocks` instead. To make this work reliably, configure Istio's trusted proxy count or gateway topology so Istio can derive the original client IP from `X-Forwarded-For` or the PROXY protocol:
 
 ```yaml
 rules:
@@ -184,17 +184,17 @@ rules:
       paths: ["/api/v1/*"]
 ```
 
-The path matching uses glob patterns. `/api/v1/*` matches `/api/v1/users` but not `/api/v1/users/123`. For deeper paths, use `/api/v1/**` or be more explicit:
+For plain string matches, Istio supports exact, prefix, suffix, and presence matching. A trailing `*` is a prefix match, so `/api/v1/*` matches both `/api/v1/users` and `/api/v1/users/123`. For segment-aware matching, use Istio's path template operators such as `/api/v1/{*}` for one path segment or `/api/v1/{**}` for zero or more trailing segments:
 
 ```yaml
 rules:
 - to:
   - operation:
       methods: ["GET", "POST"]
-      paths: ["/api/*"]
+      paths: ["/api/v1/{**}"]
 ```
 
-Also note that path matching is case-sensitive.
+Also note that path matching is case-sensitive and is applied after Istio's authorization path normalization.
 
 ## DENY Policies Take Precedence
 
@@ -243,7 +243,7 @@ Always run the analyzer as a sanity check:
 istioctl analyze -n my-namespace
 ```
 
-It catches issues like referencing service accounts that don't exist or policies that conflict with each other.
+It catches issues like schema problems and selectors that don't match any workloads.
 
 ## Quick Debugging Steps
 
