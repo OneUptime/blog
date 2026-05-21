@@ -233,7 +233,7 @@ spec:
   http:
   - match:
     - uri:
-        prefix: /user-service
+        prefix: /user-service/
     rewrite:
       uri: /
     route:
@@ -243,7 +243,7 @@ spec:
           number: 8080
   - match:
     - uri:
-        prefix: /order-service
+        prefix: /order-service/
     rewrite:
       uri: /
     route:
@@ -314,7 +314,7 @@ spec:
           number: 8080
 ```
 
-The gateway reference uses the `namespace/name` format, and the destination host uses the fully qualified service name since it is in a different namespace than the gateway.
+The gateway reference uses the `namespace/name` format. The destination host uses the fully qualified service name to avoid short-name ambiguity; short destination names are resolved relative to the VirtualService namespace.
 
 ## Weighted Routing Across Services
 
