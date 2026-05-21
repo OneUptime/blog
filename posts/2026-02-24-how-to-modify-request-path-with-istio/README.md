@@ -146,7 +146,7 @@ spec:
 
 This catches any path like `/legacy/api/v1/something` or `/legacy/api/v3/something` and rewrites it to `/api/current`.
 
-Note that with basic VirtualService rewrite, you cannot use regex capture groups in the rewrite URI. The rewrite is a static replacement. For capture group based rewrites, you need an EnvoyFilter.
+Note that with `rewrite.uri`, the replacement is static. Current Istio versions also support `rewrite.uriRegexRewrite` when you need regex capture groups in the rewritten URI. For request transformations beyond VirtualService's path and authority rewrite features, use an EnvoyFilter.
 
 ## HTTP Redirects
 
@@ -234,7 +234,7 @@ spec:
 
 ## Advanced Path Manipulation with EnvoyFilter
 
-When VirtualService rewriting is not flexible enough, EnvoyFilter with Lua lets you do arbitrary path manipulation:
+When VirtualService rewriting is not flexible enough, EnvoyFilter with Lua lets you do arbitrary request manipulation:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -262,18 +262,19 @@ spec:
           name: envoy.filters.http.lua
           typed_config:
             "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-            inlineCode: |
-              function envoy_on_request(request_handle)
-                local path = request_handle:headers():get(":path")
-                -- Convert /users/123/profile to /api/v2/users/123/profile
-                local new_path = path:gsub("^/users/(%d+)/", "/api/v2/users/%1/")
-                if new_path ~= path then
-                  request_handle:headers():replace(":path", new_path)
+            defaultSourceCode:
+              inlineString: |
+                function envoy_on_request(request_handle)
+                  local path = request_handle:headers():get(":path")
+                  -- Convert /users/123/profile to /api/v2/users/123/profile
+                  local new_path = path:gsub("^/users/(%d+)/", "/api/v2/users/%1/")
+                  if new_path ~= path then
+                    request_handle:headers():replace(":path", new_path)
+                  end
                 end
-              end
 ```
 
-This uses Lua's string pattern matching to do capture-group-style rewrites that VirtualService cannot handle natively.
+This uses Lua's string pattern matching to do custom rewrites at the Envoy layer.
 
 ## Stripping Query Parameters
 
@@ -305,15 +306,32 @@ spec:
           name: envoy.filters.http.lua
           typed_config:
             "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-            inlineCode: |
-              function envoy_on_request(request_handle)
-                local path = request_handle:headers():get(":path")
-                -- Remove debug query parameter
-                local new_path = path:gsub("[?&]debug=[^&]*", "")
-                if new_path ~= path then
-                  request_handle:headers():replace(":path", new_path)
+            defaultSourceCode:
+              inlineString: |
+                function envoy_on_request(request_handle)
+                  local raw_path = request_handle:headers():get(":path")
+                  local path, query = raw_path:match("^([^?]*)%??(.*)$")
+
+                  if query == nil or query == "" then
+                    return
+                  end
+
+                  local params = {}
+                  for param in query:gmatch("[^&]+") do
+                    if param ~= "debug" and not param:match("^debug=") then
+                      table.insert(params, param)
+                    end
+                  end
+
+                  local new_path = path
+                  if #params > 0 then
+                    new_path = path .. "?" .. table.concat(params, "&")
+                  end
+
+                  if new_path ~= raw_path then
+                    request_handle:headers():replace(":path", new_path)
+                  end
                 end
-              end
 ```
 
 ## Testing Path Modifications
@@ -323,10 +341,10 @@ Verify your path rewrites are working:
 ```bash
 # Deploy httpbin as a test backend
 
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/httpbin/httpbin.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/httpbin/httpbin.yaml
 
-# Test the rewrite - httpbin echoes back the received URL
-curl -s http://api.example.com/api/users/123 | python3 -m json.tool
+# Test against a VirtualService route that forwards to httpbin's /anything endpoint
+curl -s http://api.example.com/anything/users/123 | python3 -m json.tool
 ```
 
 httpbin's `/anything` endpoint is particularly useful because it echoes back the full request including the path:
@@ -338,7 +356,7 @@ curl -s http://api.example.com/anything | python3 -m json.tool
 Check the Envoy route configuration:
 
 ```bash
-istioctl proxy-config routes deploy/istio-ingressgateway -n istio-system -o json | grep -A 3 "prefixRewrite\|regex"
+istioctl proxy-config routes deployment/istio-ingressgateway.istio-system -o json | grep -A 3 "prefixRewrite\|regex"
 ```
 
 ## Gotchas
