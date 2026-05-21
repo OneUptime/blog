@@ -32,7 +32,7 @@ If it is `REGISTRY_ONLY` and you have not created a ServiceEntry for your extern
 First, confirm the issue from within the pod:
 
 ```bash
-kubectl exec -it my-app-xxxxx -c istio-proxy -- curl -v https://api.external.com/health
+kubectl exec -it my-app-xxxxx -c my-app -- curl -v https://api.external.com/health
 ```
 
 Common error messages and what they mean:
@@ -41,10 +41,10 @@ Common error messages and what they mean:
 - `503 Service Unavailable` - No upstream or route for this destination
 - Connection timeout - Network issue or firewall
 
-Also try from the app container directly:
+If your application container does not include debugging tools, use an injected debug pod in the same namespace:
 
 ```bash
-kubectl exec -it my-app-xxxxx -c my-app -- curl -v https://api.external.com/health
+kubectl run curl-debug --rm -it --image=curlimages/curl --restart=Never -- curl -v https://api.external.com/health
 ```
 
 ## Step 2: Check if the Request Hits Envoy
@@ -64,7 +64,7 @@ If you see a log entry with a 502 or 503 response code, Envoy is handling the re
 If your mesh is in REGISTRY_ONLY mode, or you want Istio to properly manage external traffic, create a ServiceEntry:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-api
@@ -75,7 +75,7 @@ spec:
   ports:
     - number: 443
       name: https
-      protocol: TLS
+      protocol: HTTPS
   resolution: DNS
   location: MESH_EXTERNAL
 ```
@@ -84,14 +84,14 @@ Apply it and test again:
 
 ```bash
 kubectl apply -f external-api-se.yaml
-kubectl exec -it my-app-xxxxx -c istio-proxy -- curl -v https://api.external.com/health
+kubectl exec -it my-app-xxxxx -c my-app -- curl -v https://api.external.com/health
 ```
 
 A few things that commonly go wrong with ServiceEntries:
 
 ### Wrong Protocol
 
-If your external service uses HTTPS but you set the protocol to HTTP, the connection will fail because Envoy will try to manage the TLS when it should just pass it through.
+If your external service uses HTTPS but you set the protocol to HTTP, the connection can fail because Envoy will try to parse encrypted TLS bytes as plaintext HTTP.
 
 For HTTPS services where you want Envoy to pass through the TLS (not terminate it):
 
@@ -102,13 +102,14 @@ For HTTPS services where you want Envoy to pass through the TLS (not terminate i
       protocol: TLS
 ```
 
-For HTTPS services where Envoy should originate TLS:
+For services where the application sends plaintext HTTP and Envoy should originate TLS to the external HTTPS endpoint:
 
 ```yaml
   ports:
-    - number: 443
-      name: https
-      protocol: HTTPS
+    - number: 80
+      name: http
+      protocol: HTTP
+      targetPort: 443
 ```
 
 ### Wrong Resolution
@@ -116,7 +117,7 @@ For HTTPS services where Envoy should originate TLS:
 If the external host is a DNS name, use `resolution: DNS`. If it is an IP address, use `resolution: STATIC` with explicit endpoints:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-db
@@ -146,7 +147,7 @@ istioctl proxy-config clusters my-app-xxxxx.default | grep "api.external.com"
 You should see a cluster like:
 
 ```text
-outbound|443||api.external.com    api.external.com    443    -    EDS
+outbound|443||api.external.com    api.external.com    443    -    STRICT_DNS
 ```
 
 Check the endpoints:
@@ -158,7 +159,7 @@ istioctl proxy-config endpoints my-app-xxxxx.default --cluster "outbound|443||ap
 If the cluster exists but has no endpoints, DNS resolution might be failing. Check the Envoy DNS resolution:
 
 ```bash
-kubectl exec my-app-xxxxx -c istio-proxy -- curl -s localhost:15000/clusters | grep "api.external.com"
+kubectl exec my-app-xxxxx -c istio-proxy -- pilot-agent request GET clusters | grep "api.external.com"
 ```
 
 ## Step 5: Check for DestinationRule Issues
@@ -169,24 +170,27 @@ If you have a DestinationRule for the external service, it might be misconfigure
 kubectl get destinationrule -n default | grep external
 ```
 
-For external HTTPS services, the DestinationRule should use SIMPLE TLS, not ISTIO_MUTUAL:
+If the application sends plaintext HTTP and you intentionally want Istio to originate TLS to the external service, the DestinationRule should use SIMPLE TLS, not ISTIO_MUTUAL:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: external-api
 spec:
   host: api.external.com
   trafficPolicy:
-    tls:
-      mode: SIMPLE
+    portLevelSettings:
+      - port:
+          number: 80
+        tls:
+          mode: SIMPLE
 ```
 
 If the external service requires client certificates:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: external-api
@@ -238,16 +242,16 @@ Also check cloud-level firewall rules. On GKE, AWS, or Azure, there might be fir
 External connectivity often fails because of DNS issues. Test DNS from within the pod:
 
 ```bash
-kubectl exec my-app-xxxxx -c istio-proxy -- nslookup api.external.com
+kubectl exec my-app-xxxxx -c my-app -- nslookup api.external.com
 ```
 
 If DNS fails, check if the pod's DNS configuration is correct:
 
 ```bash
-kubectl exec my-app-xxxxx -c istio-proxy -- cat /etc/resolv.conf
+kubectl exec my-app-xxxxx -c my-app -- cat /etc/resolv.conf
 ```
 
-Istio uses smart DNS proxying by default (Istio 1.8+). This can sometimes interfere with external DNS resolution. Check the istio-proxy DNS settings:
+Istio can proxy DNS requests when DNS capture is enabled. In sidecar mode this is not enabled by default, while ambient mode enables DNS proxying by default in Istio 1.25 and later. If DNS capture is enabled, check the istio-proxy DNS settings:
 
 ```bash
 istioctl proxy-config bootstrap my-app-xxxxx.default -o json | grep -A 10 "dns"
