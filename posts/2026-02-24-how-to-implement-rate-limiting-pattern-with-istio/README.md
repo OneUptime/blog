@@ -74,7 +74,7 @@ This configuration:
 
 ## Path-Based Local Rate Limiting
 
-You can apply different rate limits to different paths by using route-level configuration:
+You can apply different rate limits to different paths by using route-level configuration, as long as those paths are already represented by distinct routes (for example, named HTTP routes in a VirtualService):
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -93,7 +93,7 @@ spec:
       routeConfiguration:
         vhost:
           route:
-            name: default
+            name: search
     patch:
       operation: MERGE
       value:
@@ -118,6 +118,8 @@ spec:
                   numerator: 100
                   denominator: HUNDRED
 ```
+
+EnvoyFilter matches route objects, not raw URL path prefixes. If all traffic is handled by the default inbound route, this configuration applies to that whole route.
 
 ## Global Rate Limiting
 
@@ -311,18 +313,17 @@ spec:
 
 ## Monitoring Rate Limiting
 
-Track rate limiting activity:
+Track rate limiting activity. In Istio, local rate limit proxy statistics are disabled by default; include `.*http_local_rate_limit.*` in `proxyStatsMatcher` for the workload if you want to scrape them with Prometheus.
 
-```promql
+```text
 # Local rate limit hits
+http_local_rate_limiter.http_local_rate_limit.rate_limited
 
-rate(envoy_http_local_rate_limiter_http_local_rate_limit_rate_limited[5m])
+# Global rate limit hits from Envoy's HTTP rate limit filter
+cluster.<route target cluster>.ratelimit.over_limit
 
-# Global rate limit hits
-rate(envoy_http_ratelimit_over_limit[5m])
-
-# Rate limit service latency
-histogram_quantile(0.99, rate(envoy_http_ratelimit_ratelimit_duration_seconds_bucket[5m]))
+# Reference rate limit service over-limit hits
+ratelimit.service.rate_limit.<domain>.<descriptor>.over_limit
 ```
 
 Check from the proxy:
