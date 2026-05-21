@@ -20,7 +20,7 @@ The simplest way to generate a bug report:
 istioctl bug-report
 ```
 
-This collects data from the entire cluster and creates a tar.gz archive in your current directory. The file is typically named something like `bug-report-<timestamp>.tar.gz`.
+This collects data from the entire cluster and creates a compressed archive in your current directory. The file is typically named `bug-report.tgz`.
 
 The command takes a few minutes to run because it gathers information from every proxy, the control plane, and your Kubernetes configuration.
 
@@ -46,9 +46,9 @@ If you know the issue is in a specific namespace, you can scope the report to re
 istioctl bug-report --include default,backend
 ```
 
-This only collects data from the `default` and `backend` namespaces (plus `istio-system` which is always included).
+This targets proxy commands and logs for the `default` and `backend` namespaces while still collecting cluster-wide and control plane state needed for the report.
 
-To exclude certain namespaces that have a lot of pods but are not relevant:
+To exclude proxy logs from certain namespaces that have a lot of pods but are not relevant:
 
 ```bash
 istioctl bug-report --exclude kube-system,monitoring
@@ -77,13 +77,13 @@ This collects only the last 30 minutes of logs.
 If the issue is isolated to specific pods, target them directly:
 
 ```bash
-istioctl bug-report --include "default/my-app-*"
+istioctl bug-report --include "default//my-app-*"
 ```
 
-The pattern uses namespace/pod-name-prefix format. You can include multiple patterns:
+The pattern uses namespace/deployment/pod-name format. Leaving the deployment segment empty targets pods directly. You can include multiple patterns:
 
 ```bash
-istioctl bug-report --include "default/frontend-*,backend/api-*"
+istioctl bug-report --include "default//frontend-*,backend//api-*"
 ```
 
 ## Specifying Output Directory
@@ -91,27 +91,27 @@ istioctl bug-report --include "default/frontend-*,backend/api-*"
 By default, the report is saved to the current directory. Specify a different location:
 
 ```bash
-istioctl bug-report --dir /tmp/istio-reports
+istioctl bug-report --output-dir /tmp/istio-reports
 ```
 
 ## Handling Large Clusters
 
 On large clusters with hundreds of pods, the bug report can be very large and take a long time to generate. Here are some strategies:
 
-Limit the number of proxy config dumps:
+Skip proxy debug collection:
 
 ```bash
-istioctl bug-report --include default --full-secrets=false
+istioctl bug-report --include default --skip-proxy-debug
 ```
 
-The `--full-secrets` flag controls whether to include TLS secret content. Setting it to false reduces the archive size and avoids collecting sensitive material.
+The `--skip-proxy-debug` flag skips fetching Envoy admin debug information from proxy pods, which can reduce the archive size and collection time.
 
 ## Examining the Bug Report
 
 After generating the report, extract it to see what is inside:
 
 ```bash
-tar xzf bug-report-*.tar.gz
+tar xzf bug-report.tgz
 ls bug-report/
 ```
 
@@ -175,10 +175,18 @@ kubectl logs deploy/my-app -n default -c istio-proxy --tail=500 > proxy.log
 ### All Istio CRDs:
 
 ```bash
-for crd in virtualservices destinationrules gateways serviceentries \
-  authorizationpolicies peerauthentications requestauthentications \
-  envoyfilters telemetries sidecars; do
-  kubectl get $crd -A -o yaml > ${crd}.yaml
+for resource in \
+  virtualservices.networking.istio.io \
+  destinationrules.networking.istio.io \
+  gateways.networking.istio.io \
+  serviceentries.networking.istio.io \
+  envoyfilters.networking.istio.io \
+  sidecars.networking.istio.io \
+  authorizationpolicies.security.istio.io \
+  peerauthentications.security.istio.io \
+  requestauthentications.security.istio.io \
+  telemetries.telemetry.istio.io; do
+  kubectl get "$resource" -A -o yaml > "$resource.yaml"
 done
 ```
 
@@ -210,7 +218,7 @@ When filing an issue on the Istio GitHub repository, include the following with 
 3. **Description of the issue**: What you expected vs. what happened
 4. **Steps to reproduce**: Minimal steps to reproduce the problem
 5. **Relevant logs**: Specific error messages or log lines
-6. **The bug report archive**: Attach the tar.gz file
+6. **The bug report archive**: Attach the `bug-report.tgz` file
 
 A good issue template:
 
@@ -233,7 +241,7 @@ All requests should succeed with 200 status.
 **Relevant logs:**
 [paste specific error log lines]
 
-**Bug report attached:** bug-report-2024-03-15.tar.gz
+**Bug report attached:** bug-report.tgz
 ```
 
 ## Automating Regular Collection
@@ -258,7 +266,7 @@ spec:
               command:
                 - istioctl
                 - bug-report
-                - --dir
+                - --output-dir
                 - /reports
                 - --duration
                 - "6h"
