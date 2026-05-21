@@ -8,11 +8,11 @@ Description: Configure proper timeouts for storage operations in Istio to preven
 
 ---
 
-Storage operations can take a long time. A database backup might run for hours. A large file upload could take minutes. A bulk data import might keep a connection busy for an extended period. Istio's default timeout of 15 seconds for HTTP traffic will kill all of these operations before they finish. Getting timeouts right for storage workloads is critical if you want your data layer to actually work inside a service mesh.
+Storage operations can take a long time. A database backup might run for hours. A large file upload could take minutes. A bulk data import might keep a connection busy for an extended period. Istio's HTTP request timeout is disabled by default, but route, stream idle, gateway, and client-side timeouts can still cut these operations short if they are configured too aggressively. Getting timeouts right for storage workloads is critical if you want your data layer to actually work inside a service mesh.
 
 ## Understanding Istio's Default Timeout Behavior
 
-Istio applies timeouts at multiple levels. For HTTP traffic, the default is 15 seconds unless you override it. For raw TCP traffic, there is no default timeout, but idle connections can still get closed. The Envoy proxy also has its own set of defaults for connection timeouts, stream idle timeouts, and request timeouts.
+Istio applies timeouts at multiple levels. For HTTP traffic, the VirtualService request timeout is disabled unless you override it. For raw TCP traffic, DestinationRule uses a 10-second default connection timeout and a 1-hour default idle timeout, so idle connections can still get closed. The Envoy proxy also has its own set of defaults for connection timeouts, stream idle timeouts, and request timeouts.
 
 The problem is that these defaults are designed for typical microservice communication where requests complete in milliseconds. Storage operations don't fit that pattern at all.
 
@@ -21,7 +21,7 @@ The problem is that these defaults are designed for typical microservice communi
 If your storage system exposes an HTTP or gRPC API (like MinIO's S3-compatible API or a REST-based object store), you configure timeouts through VirtualService:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: minio-storage
@@ -48,7 +48,7 @@ Setting the timeout to 3600s (one hour) gives large uploads and downloads plenty
 Not all storage operations need the same timeout. Read operations are typically fast while write operations, especially bulk ones, take longer. You can set different timeouts per route:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: storage-api
@@ -93,7 +93,7 @@ Backup endpoints get 2 hours, uploads get 30 minutes, and everything else gets 3
 For non-HTTP storage protocols (like database wire protocols), you work with TCP-level settings in DestinationRules:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: postgres-storage
@@ -116,7 +116,7 @@ The `connectTimeout` controls how long to wait for a new connection to be establ
 
 ## Handling Streaming and Long-Running Operations
 
-Some storage operations use streaming, like PostgreSQL's COPY command or a chunked upload to an object store. These need special handling because Envoy's stream idle timeout can close the connection even though data is actively flowing:
+Some storage operations use streaming, like PostgreSQL's COPY command or a chunked upload to an object store. These need special handling because Envoy's stream idle timeout can close an HTTP stream when there is no upstream or downstream activity for the configured idle period:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -139,20 +139,21 @@ spec:
     patch:
       operation: MERGE
       value:
+        name: envoy.filters.network.http_connection_manager
         typed_config:
           "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
           stream_idle_timeout: 0s
           request_timeout: 0s
 ```
 
-Setting `stream_idle_timeout` and `request_timeout` to `0s` disables those timeouts entirely for the matched workloads. Only do this for storage services that genuinely need it, not across the entire mesh.
+Setting `stream_idle_timeout` and `request_timeout` to `0s` disables those timeouts for the matched workloads. Envoy's `request_timeout` is not enforced by default, but setting it explicitly is useful if another filter or mesh customization has enabled it. Only do this for storage services that genuinely need it, not across the entire mesh.
 
 ## Retry Configuration Alongside Timeouts
 
-Timeouts and retries interact with each other. If you have a 30-second timeout and 3 retries, the total time before failure is 90 seconds. For storage operations, you generally want fewer retries with longer timeouts:
+Timeouts and retries interact with each other. Istio's `attempts` value is the number of retries, so the maximum number of tries is the original request plus the configured retry attempts, and the route timeout can cap how many retries actually happen. For storage operations, you generally want fewer retries with longer timeouts:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: storage-with-retry
@@ -171,14 +172,14 @@ spec:
       retryOn: connect-failure,refused-stream,unavailable
 ```
 
-Notice that `perTryTimeout` is less than the overall `timeout`. The `retryOn` conditions are limited to connection-level failures. You generally don't want to retry storage writes on 5xx errors because the write might have partially succeeded.
+Notice that `perTryTimeout` is less than the overall `timeout`. The `retryOn` conditions are limited to connection failures, refused streams, and gRPC `unavailable` responses. You generally don't want to retry storage writes on broad 5xx errors because the write might have partially succeeded.
 
 ## Database Connection Timeouts
 
 Database connections through Istio need careful timeout tuning. Here's a setup for PostgreSQL:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: postgres-timeouts
@@ -210,7 +211,7 @@ The connect timeout is short (5 seconds) because you want fast failure if the da
 If your storage is accessed across clusters or through an Istio gateway, add timeout settings at the gateway level too:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: storage-gateway
@@ -256,10 +257,10 @@ If you see `upstream request timeout` or `stream timeout` in the proxy logs, you
 
 When storage operations fail with timeouts in Istio, check these in order:
 
-1. VirtualService timeout (defaults to 15s for HTTP)
+1. VirtualService timeout (disabled by default for HTTP)
 2. DestinationRule connectTimeout and idleTimeout
 3. Envoy stream_idle_timeout (defaults to 5 minutes)
 4. Gateway timeout if traffic enters through a gateway
 5. Client-side timeout settings in your application
 
-The actual timeout enforced is the minimum of all these values. So even if your VirtualService timeout is 1 hour, a 5-minute stream idle timeout will still kill long-running streaming operations. You need to check every layer.
+The actual timeout enforced is the most restrictive timeout that applies to that phase of the request. So even if your VirtualService timeout is 1 hour, a 5-minute stream idle timeout can still kill a long-running streaming operation if the stream is idle for that long. You need to check every layer.
