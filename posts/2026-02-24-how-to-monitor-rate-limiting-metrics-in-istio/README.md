@@ -12,7 +12,17 @@ Setting up rate limiting is only half the battle. If you cannot see how your lim
 
 ## Envoy Rate Limit Statistics
 
-Every Envoy proxy exposes detailed statistics about rate limiting. You can access them directly from the sidecar admin interface.
+Every Envoy proxy can expose detailed statistics about rate limiting. In Istio, the Envoy statistics mentioned in the rate limiting documentation are disabled by default, so enable them with `proxyStatsMatcher` before scraping them:
+
+```yaml
+proxy.istio.io/config: |-
+  proxyStatsMatcher:
+    inclusionRegexps:
+    - ".*http_local_rate_limit.*"
+    - ".*ratelimit.*"
+```
+
+You can access the enabled stats directly from the sidecar admin interface.
 
 For local rate limiting:
 
@@ -23,10 +33,10 @@ kubectl exec deploy/my-service -c istio-proxy -- curl -s localhost:15000/stats |
 This outputs stats like:
 
 ```text
-http_local_rate_limiter.enabled: 5000
-http_local_rate_limiter.enforced: 150
-http_local_rate_limiter.ok: 4850
-http_local_rate_limiter.rate_limited: 150
+http_local_rate_limiter.http_local_rate_limit.enabled: 5000
+http_local_rate_limiter.http_local_rate_limit.enforced: 150
+http_local_rate_limiter.http_local_rate_limit.ok: 4850
+http_local_rate_limiter.http_local_rate_limit.rate_limited: 150
 ```
 
 For global rate limiting:
@@ -38,17 +48,17 @@ kubectl exec deploy/istio-ingressgateway -n istio-system -c istio-proxy -- curl 
 Which shows:
 
 ```text
-ratelimit.api-gateway.ok: 9500
-ratelimit.api-gateway.over_limit: 500
-ratelimit.api-gateway.error: 3
-ratelimit.api-gateway.failure_mode_allowed: 2
+cluster.outbound|8081||ratelimit.rate-limit.svc.cluster.local.ratelimit.ok: 9500
+cluster.outbound|8081||ratelimit.rate-limit.svc.cluster.local.ratelimit.over_limit: 500
+cluster.outbound|8081||ratelimit.rate-limit.svc.cluster.local.ratelimit.error: 3
+cluster.outbound|8081||ratelimit.rate-limit.svc.cluster.local.ratelimit.failure_mode_allowed: 2
 ```
 
 The `error` and `failure_mode_allowed` counters tell you when the rate limit service was unreachable and requests were allowed through (if failure_mode_deny is false).
 
 ## Scraping Metrics with Prometheus
 
-Istio already configures Envoy to expose metrics in Prometheus format on port 15020. The rate limit stats are included in this exposition.
+Istio can merge Envoy metrics into the Prometheus endpoint on port 15020. The rate limit stats are included in this exposition after you enable them with `proxyStatsMatcher`.
 
 Verify that Prometheus is scraping your sidecars:
 
@@ -65,14 +75,9 @@ scrape_configs:
   kubernetes_sd_configs:
   - role: pod
   relabel_configs:
-  - source_labels: [__meta_kubernetes_pod_container_name]
+  - source_labels: [__meta_kubernetes_pod_container_port_name]
     action: keep
-    regex: istio-proxy
-  - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
-    action: replace
-    target_label: __address__
-    regex: (.+)
-    replacement: ${1}:15020
+    regex: '.*-envoy-prom'
 ```
 
 ## Key Prometheus Queries
@@ -82,24 +87,24 @@ Here are the Prometheus queries you need for rate limiting visibility:
 ### Rate of Rate-Limited Requests
 
 ```promql
-sum(rate(envoy_http_local_rate_limit_rate_limited{pod=~"my-service.*"}[5m]))
+sum(rate(envoy_http_local_rate_limiter_http_local_rate_limit_rate_limited{pod=~"my-service.*"}[5m]))
 ```
 
 ### Percentage of Requests Being Rate Limited
 
 ```promql
-sum(rate(envoy_http_local_rate_limit_rate_limited[5m]))
+sum(rate(envoy_http_local_rate_limiter_http_local_rate_limit_rate_limited[5m]))
 /
-sum(rate(envoy_http_local_rate_limit_enabled[5m]))
+sum(rate(envoy_http_local_rate_limiter_http_local_rate_limit_enabled[5m]))
 * 100
 ```
 
 ### Global Rate Limit Service Error Rate
 
 ```promql
-sum(rate(envoy_ratelimit_error[5m]))
+sum(rate(envoy_cluster_ratelimit_error[5m]))
 /
-(sum(rate(envoy_ratelimit_ok[5m])) + sum(rate(envoy_ratelimit_over_limit[5m])) + sum(rate(envoy_ratelimit_error[5m])))
+(sum(rate(envoy_cluster_ratelimit_ok[5m])) + sum(rate(envoy_cluster_ratelimit_over_limit[5m])) + sum(rate(envoy_cluster_ratelimit_error[5m])))
 * 100
 ```
 
@@ -121,7 +126,7 @@ Create a Grafana dashboard that shows rate limiting at a glance. Here is a JSON 
       "type": "timeseries",
       "targets": [
         {
-          "expr": "sum(rate(envoy_http_local_rate_limit_rate_limited[1m])) by (pod)",
+          "expr": "sum(rate(envoy_http_local_rate_limiter_http_local_rate_limit_rate_limited[1m])) by (pod)",
           "legendFormat": "{{pod}}"
         }
       ]
@@ -131,7 +136,7 @@ Create a Grafana dashboard that shows rate limiting at a glance. Here is a JSON 
       "type": "gauge",
       "targets": [
         {
-          "expr": "sum(rate(envoy_http_local_rate_limit_rate_limited[5m])) / sum(rate(envoy_http_local_rate_limit_enabled[5m])) * 100"
+          "expr": "sum(rate(envoy_http_local_rate_limiter_http_local_rate_limit_rate_limited[5m])) / sum(rate(envoy_http_local_rate_limiter_http_local_rate_limit_enabled[5m])) * 100"
         }
       ]
     },
@@ -163,7 +168,7 @@ metadata:
   namespace: rate-limit
   annotations:
     prometheus.io/scrape: "true"
-    prometheus.io/port: "6070"
+    prometheus.io/port: "9090"
     prometheus.io/path: /metrics
 spec:
   selector:
@@ -173,11 +178,11 @@ spec:
     port: 8081
   - name: http
     port: 8080
-  - name: debug
-    port: 6070
+  - name: metrics
+    port: 9090
 ```
 
-The debug port (6070) exposes runtime stats including:
+The Prometheus port defaults to 9090 when `USE_PROMETHEUS=true` is set on the rate limit service. It exposes metrics including:
 
 - Total rate limit requests handled
 - Latency of Redis operations
@@ -188,7 +193,7 @@ The debug port (6070) exposes runtime stats including:
 Redis health directly impacts rate limiting reliability. Monitor these Redis metrics:
 
 ```bash
-kubectl exec -n rate-limit deploy/redis -- redis-cli info stats | grep -E "instantaneous_ops|keyspace_hits|keyspace_misses|used_memory"
+kubectl exec -n rate-limit deploy/redis -- redis-cli info | grep -E "instantaneous_ops|keyspace_hits|keyspace_misses|used_memory"
 ```
 
 Key things to watch:
@@ -225,7 +230,7 @@ spec:
         - containerPort: 9121
         env:
         - name: REDIS_ADDR
-          value: redis.rate-limit.svc.cluster.local:6379
+          value: redis://redis.rate-limit.svc.cluster.local:6379
 ```
 
 ## Alerting on Rate Limiting Issues
@@ -255,7 +260,7 @@ spec:
         summary: "More than 10% of requests are being rate limited"
     - alert: RateLimitServiceDown
       expr: |
-        sum(rate(envoy_ratelimit_error[5m])) > 0
+        sum(rate(envoy_cluster_ratelimit_error[5m])) > 0
       for: 2m
       labels:
         severity: critical
