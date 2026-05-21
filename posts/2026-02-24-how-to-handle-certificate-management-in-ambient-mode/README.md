@@ -28,13 +28,13 @@ To verify that certificates are being issued properly:
 istioctl ztunnel-config certificates
 ```
 
-This shows all certificates held by all ztunnel instances, including their expiration times and SPIFFE IDs.
+This shows the certificates held by a ztunnel instance selected by `istioctl`, including their expiration times and SPIFFE IDs.
 
 For a specific ztunnel pod:
 
 ```bash
 ZTUNNEL_POD=$(kubectl get pods -n istio-system -l app=ztunnel -o jsonpath='{.items[0].metadata.name}')
-istioctl ztunnel-config certificates $ZTUNNEL_POD
+istioctl ztunnel-config certificates "$ZTUNNEL_POD".istio-system
 ```
 
 ## Certificate Rotation
@@ -59,18 +59,19 @@ Or configure it at the istiod level:
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
-  pilot:
-    env:
-      MAX_WORKLOAD_CERT_TTL: 48h
-      DEFAULT_WORKLOAD_CERT_TTL: 24h
+  values:
+    pilot:
+      env:
+        MAX_WORKLOAD_CERT_TTL: 48h
+        DEFAULT_WORKLOAD_CERT_TTL: 24h
 ```
 
 To verify rotation is working, watch the certificates and check their ages:
 
 ```bash
 # Check certificate validity times
-
-istioctl ztunnel-config certificates | grep -E "VALID|EXPIRED"
+ZTUNNEL_POD=$(kubectl get pods -n istio-system -l app=ztunnel -o jsonpath='{.items[0].metadata.name}')
+istioctl ztunnel-config certificates "$ZTUNNEL_POD".istio-system
 ```
 
 If certificates aren't rotating, check ztunnel logs for errors:
@@ -111,7 +112,11 @@ cert-manager can act as the CA for Istio through the istio-csr project:
 
 ```bash
 # Install cert-manager
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.0/cert-manager.yaml
+helm install cert-manager oci://quay.io/jetstack/charts/cert-manager \
+  --namespace cert-manager \
+  --create-namespace \
+  --version v1.20.2 \
+  --set crds.enabled=true
 
 # Wait for cert-manager to be ready
 kubectl wait --for=condition=Available deployment --all -n cert-manager --timeout=120s
@@ -120,11 +125,17 @@ kubectl wait --for=condition=Available deployment --all -n cert-manager --timeou
 Install istio-csr:
 
 ```bash
-helm repo add jetstack https://charts.jetstack.io
-helm install istio-csr jetstack/cert-manager-istio-csr \
+kubectl create secret generic -n cert-manager istio-root-ca --from-file=ca.pem=ca.pem
+
+helm upgrade cert-manager-istio-csr oci://quay.io/jetstack/charts/cert-manager-istio-csr \
+  --install \
   --namespace cert-manager \
   --set "app.tls.rootCAFile=/var/run/secrets/istio-csr/ca.pem" \
-  --set "app.server.clusterID=cluster.local"
+  --set "app.server.caTrustedNodeAccounts=istio-system/ztunnel" \
+  --set "volumeMounts[0].name=root-ca" \
+  --set "volumeMounts[0].mountPath=/var/run/secrets/istio-csr" \
+  --set "volumes[0].name=root-ca" \
+  --set "volumes[0].secret.secretName=istio-root-ca"
 ```
 
 Then configure Istio to use cert-manager as the CA:
@@ -136,9 +147,9 @@ spec:
   values:
     global:
       caAddress: cert-manager-istio-csr.cert-manager.svc:443
-  pilot:
-    env:
-      ENABLE_CA_SERVER: "false"
+    pilot:
+      env:
+        ENABLE_CA_SERVER: "false"
 ```
 
 This setup gives you full control over the CA chain and integrates with whatever PKI infrastructure you already have through cert-manager's various issuer types.
@@ -151,38 +162,44 @@ You can configure Istio to use the Kubernetes CSR API, which lets external signe
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
-  pilot:
-    env:
-      EXTERNAL_CA: ISTIOD_RA_KUBERNETES_API
-      K8S_SIGNER: clusterissuers.cert-manager.io/istio-system
+  values:
+    pilot:
+      env:
+        EXTERNAL_CA: ISTIOD_RA_KUBERNETES_API
+  meshConfig:
+    defaultConfig:
+      proxyMetadata:
+        ISTIO_META_CERT_SIGNER: istio-system
+    caCertificates:
+    - pem: |
+        <root certificate PEM for the istio-system signer>
+      certSigners:
+      - clusterissuers.cert-manager.io/istio-system
+  components:
+    pilot:
+      k8s:
+        env:
+        - name: CERT_SIGNER_DOMAIN
+          value: clusterissuers.cert-manager.io
+        - name: PILOT_CERT_PROVIDER
+          value: k8s.io/clusterissuers.cert-manager.io/istio-system
 ```
 
 ## Inspecting Certificates
 
-When debugging mTLS issues, you'll want to look at the actual certificate contents. You can extract and inspect certificates from ztunnel:
+When debugging mTLS issues, you'll want to look at the certificate metadata. You can extract and inspect certificates from ztunnel:
 
 ```bash
 # Get the cert info from ztunnel's admin API
 ZTUNNEL_POD=$(kubectl get pods -n istio-system -l app=ztunnel -o jsonpath='{.items[0].metadata.name}')
-kubectl exec -n istio-system $ZTUNNEL_POD -- curl -s localhost:15020/config_dump | python3 -c "
-import json, sys
-data = json.load(sys.stdin)
-for cert in data.get('certificates', []):
-    print(f\"Identity: {cert.get('identity', 'unknown')}\")
-    print(f\"  Valid from: {cert.get('valid_from', 'N/A')}\")
-    print(f\"  Expiration: {cert.get('expiration_time', 'N/A')}\")
-    print()
-"
+kubectl debug -n istio-system -it $ZTUNNEL_POD --image=curlimages/curl -- curl -s localhost:15000/config_dump > ztunnel-config.json
+istioctl ztunnel-config certificates --file ztunnel-config.json -o json
 ```
 
-You can also use openssl to inspect the certificate chain when testing mTLS:
+You can also use ztunnel logs to confirm the identities used for mTLS:
 
 ```bash
-# From a test pod, connect and show the peer certificate
-kubectl run openssl-test -n default --image=alpine --rm -it -- sh -c '
-apk add --no-cache openssl
-echo | openssl s_client -connect my-app.default.svc.cluster.local:8080 -showcerts 2>/dev/null | openssl x509 -noout -text
-'
+kubectl logs -n istio-system -l app=ztunnel --tail=200 | grep -E "src.identity|dst.identity"
 ```
 
 ## Troubleshooting Common Certificate Problems
