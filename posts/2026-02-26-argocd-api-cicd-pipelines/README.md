@@ -127,8 +127,8 @@ while [ $ELAPSED -lt $TIMEOUT ]; do
 
   echo "Sync: $SYNC_STATUS | Health: $HEALTH_STATUS | Operation: $OPERATION_PHASE"
 
-  # Check if sync succeeded
-  if [ "$SYNC_STATUS" = "Synced" ] && [ "$HEALTH_STATUS" = "Healthy" ]; then
+  # Check if the sync operation completed successfully
+  if [ "$OPERATION_PHASE" = "Succeeded" ] && [ "$SYNC_STATUS" = "Synced" ] && [ "$HEALTH_STATUS" = "Healthy" ]; then
     echo "Application is synced and healthy"
     exit 0
   fi
@@ -194,7 +194,7 @@ jobs:
           docker build -t myregistry.com/myapp:${{ github.sha }} .
           docker push myregistry.com/myapp:${{ github.sha }}
 
-      - name: Update manifests and trigger sync
+      - name: Refresh and trigger sync
         env:
           ARGOCD_TOKEN: ${{ secrets.ARGOCD_TOKEN }}
           ARGOCD_SERVER: ${{ secrets.ARGOCD_SERVER }}
@@ -252,7 +252,7 @@ for i in $(seq 1 30); do
 
   echo "  [$i/30] Sync=$SYNC Health=$HEALTH Phase=$PHASE"
 
-  if [ "$SYNC" = "Synced" ] && [ "$HEALTH" = "Healthy" ]; then
+  if [ "$PHASE" = "Succeeded" ] && [ "$SYNC" = "Synced" ] && [ "$HEALTH" = "Healthy" ]; then
     echo "==> Deployment successful!"
     exit 0
   fi
