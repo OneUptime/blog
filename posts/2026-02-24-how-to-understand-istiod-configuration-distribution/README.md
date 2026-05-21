@@ -87,7 +87,7 @@ This shows the sync state for each xDS type per proxy:
 What istiod intends to send:
 
 ```bash
-istioctl proxy-config routes productpage-v1-abc123.default -o json
+kubectl exec -n istio-system deploy/istiod -- curl -s 'localhost:15014/debug/config_dump?proxyID=productpage-v1-abc123.default&types=routes'
 ```
 
 What the proxy actually has:
@@ -117,13 +117,13 @@ istioctl proxy-config endpoints productpage-v1-abc123.default
 
 ## Incremental vs. Full Pushes
 
-Istiod supports two push modes:
+Istiod supports two related optimization mechanisms:
 
-**Full Push**: Sends the complete configuration for all requested resource types. Used when major configuration changes happen (VirtualService update, DestinationRule change).
+**Full Push**: Rebuilds the full push context and may generate updates for all affected resource types. Used when major configuration changes happen (VirtualService update, DestinationRule change).
 
-**Incremental Push (Delta xDS)**: Sends only the changed resources. Used primarily for EDS updates when endpoints change.
+**Incremental Push / Delta xDS**: Avoids rebuilding or resending more configuration than necessary. Endpoint-only changes are commonly handled as incremental pushes, and Delta xDS lets istiod send changed resources on the xDS stream.
 
-Check which type of push is happening:
+Check which xDS resource types are being pushed:
 
 ```bash
 kubectl exec -n istio-system deploy/istiod -- curl -s localhost:15014/metrics | grep pilot_xds_pushes
@@ -211,7 +211,7 @@ istioctl validate -f my-resource.yaml
 **2. Did istiod see the resource?**
 
 ```bash
-kubectl exec -n istio-system deploy/istiod -- curl -s localhost:15014/debug/configz | jq '.[] | select(.name == "my-virtualservice")'
+kubectl exec -n istio-system deploy/istiod -- curl -s localhost:15014/debug/configz | jq '.[] | select(.metadata.name == "my-virtualservice")'
 ```
 
 **3. Did istiod include it in the push?**
