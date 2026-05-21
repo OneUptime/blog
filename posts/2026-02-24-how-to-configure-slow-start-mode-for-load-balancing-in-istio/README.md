@@ -14,14 +14,14 @@ When a new pod comes online, it's cold. Its JIT compiler hasn't warmed up, its c
 
 Slow start gives new endpoints a lower effective weight that increases linearly over a configured time window. At the start of the window, the endpoint gets minimal traffic. By the end of the window, it gets its full share. This gives the pod time to warm up its caches, compile hot paths, and establish downstream connections.
 
-Envoy (the proxy that Istio uses) supports slow start for the `ROUND_ROBIN` and `LEAST_REQUEST` load balancing algorithms. You configure it through Istio's DestinationRule using the `warmupDurationSecs` field.
+Envoy (the proxy that Istio uses) supports slow start for the `ROUND_ROBIN` and `LEAST_REQUEST` load balancing algorithms. You configure it through Istio's DestinationRule using the `warmup` field.
 
 ## Basic Slow Start Configuration
 
 Here is a straightforward slow start setup:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: api-service-dr
@@ -30,20 +30,21 @@ spec:
   host: api-service
   trafficPolicy:
     loadBalancer:
-      warmupDurationSecs: 60s
+      warmup:
+        duration: 60s
       simple: LEAST_REQUEST
 ```
 
 With this configuration, when a new pod joins the pool, it starts receiving a small fraction of traffic. Over the next 60 seconds, the traffic share linearly increases until the pod is receiving its full share.
 
-The `warmupDurationSecs` value should roughly match how long your application takes to warm up. For a Java service with JIT compilation, 60 to 120 seconds is common. For a lightweight Go service, 10 to 30 seconds might be enough.
+The `warmup.duration` value should roughly match how long your application takes to warm up. For a Java service with JIT compilation, 60 to 120 seconds is common. For a lightweight Go service, 10 to 30 seconds might be enough.
 
 ## Slow Start with Round Robin
 
 Slow start also works with the `ROUND_ROBIN` algorithm:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: web-service-dr
@@ -52,7 +53,8 @@ spec:
   host: web-service
   trafficPolicy:
     loadBalancer:
-      warmupDurationSecs: 45s
+      warmup:
+        duration: 45s
       simple: ROUND_ROBIN
 ```
 
@@ -63,7 +65,7 @@ Under the hood, Envoy adjusts the weight of the new endpoint during the warmup p
 For the best results, combine slow start with connection pool settings that complement the ramp-up:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: backend-service-dr
@@ -79,7 +81,8 @@ spec:
         maxRequestsPerConnection: 500
         maxRetries: 3
     loadBalancer:
-      warmupDurationSecs: 90s
+      warmup:
+        duration: 90s
       simple: LEAST_REQUEST
     outlierDetection:
       consecutive5xxErrors: 5
@@ -95,7 +98,7 @@ The connection pool settings prevent new pods from being flooded with connection
 Different subsets might need different warmup durations. A canary deployment with a new version might need more warmup time than the stable version:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: catalog-service-dr
@@ -108,14 +111,16 @@ spec:
         version: v1
       trafficPolicy:
         loadBalancer:
-          warmupDurationSecs: 30s
+          warmup:
+            duration: 30s
           simple: LEAST_REQUEST
     - name: canary
       labels:
         version: v2
       trafficPolicy:
         loadBalancer:
-          warmupDurationSecs: 120s
+          warmup:
+            duration: 120s
           simple: LEAST_REQUEST
 ```
 
@@ -131,7 +136,13 @@ kind: Deployment
 metadata:
   name: api-service
 spec:
+  selector:
+    matchLabels:
+      app: api-service
   template:
+    metadata:
+      labels:
+        app: api-service
     spec:
       containers:
         - name: api-service
@@ -159,18 +170,24 @@ The startup probe gives the application up to 60 seconds (30 failures * 2 second
 ```python
 # Example startup endpoint
 
+from flask import Flask, Response
+
+app = Flask(__name__)
+warmup_complete = False
+
 @app.route('/startup')
 def startup():
-    if not app.state.warmup_complete:
+    if not warmup_complete:
         return Response(status=503)
     return Response(status=200)
 
 # Run warmup on application start
 async def warmup():
+    global warmup_complete
     await load_caches()
     await initialize_connection_pools()
     await compile_templates()
-    app.state.warmup_complete = True
+    warmup_complete = True
 ```
 
 ## Choosing the Right Warmup Duration
@@ -185,11 +202,11 @@ The ideal warmup duration depends on your application. Here is a rough guide:
 | Java with heavy caching | 120-300s |
 | ML model serving | 60-180s |
 
-To measure your actual warmup time, look at the P99 latency of a new pod over time after it starts receiving traffic. The warmup is "done" when its P99 stabilizes at the same level as existing pods.
+To measure your actual warmup time, look at the P99 latency of the new workload version over time after it starts receiving traffic. The warmup is "done" when its P99 stabilizes at the same level as existing workload versions.
 
 ```promql
-# Compare new pod latency with existing pods
-histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{destination_service="api-service.default.svc.cluster.local", pod="api-service-abc123"}[1m])) by (le))
+# Compare new workload version latency with existing workload versions
+histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{reporter="destination", destination_service="api-service.default.svc.cluster.local", destination_workload="api-service-v2"}[1m])) by (le))
 ```
 
 ## Rolling Updates with Slow Start
@@ -205,6 +222,17 @@ metadata:
   name: api-service
 spec:
   replicas: 10
+  selector:
+    matchLabels:
+      app: api-service
+  template:
+    metadata:
+      labels:
+        app: api-service
+    spec:
+      containers:
+        - name: api-service
+          image: myregistry/api-service:v1
   strategy:
     rollingUpdate:
       maxSurge: 1
@@ -227,4 +255,4 @@ You should see the slow start configuration in the cluster's load balancing poli
 
 ## Summary
 
-Slow start mode in Istio prevents new pods from being overwhelmed during their warmup period. Configure it with `warmupDurationSecs` in your DestinationRule, combine it with startup probes and application-level warmup, and set the duration based on how long your application actually takes to reach steady-state performance. This is especially valuable for Java applications, services with heavy caching, or any workload where cold starts are expensive.
+Slow start mode in Istio prevents new pods from being overwhelmed during their warmup period. Configure it with `warmup` in your DestinationRule, combine it with startup probes and application-level warmup, and set the duration based on how long your application actually takes to reach steady-state performance. This is especially valuable for Java applications, services with heavy caching, or any workload where cold starts are expensive.
