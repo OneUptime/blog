@@ -27,9 +27,9 @@ Install kops:
 brew install kops
 
 # Linux
-curl -Lo kops https://github.com/kubernetes/kops/releases/download/v1.29.0/kops-linux-amd64
+curl -Lo kops https://github.com/kubernetes/kops/releases/download/$(curl -s https://api.github.com/repos/kubernetes/kops/releases/latest | grep tag_name | cut -d '"' -f 4)/kops-linux-amd64
 chmod +x kops
-sudo mv kops /usr/local/bin/
+sudo mv kops /usr/local/bin/kops
 ```
 
 Set up environment variables:
@@ -48,6 +48,7 @@ kops create cluster \
   --name $NAME \
   --state $KOPS_STATE_STORE \
   --zones us-east-1a,us-east-1b,us-east-1c \
+  --control-plane-zones us-east-1a,us-east-1b,us-east-1c \
   --node-count 3 \
   --node-size t3.xlarge \
   --control-plane-size t3.large \
@@ -90,8 +91,8 @@ kubectl get nodes
 ## Step 2: Install Istio
 
 ```bash
-curl -L https://istio.io/downloadIstio | sh -
-cd istio-1.24.0
+curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.30.0 sh -
+cd istio-1.30.0
 export PATH=$PWD/bin:$PATH
 ```
 
@@ -153,7 +154,7 @@ curl http://$INGRESS_HOST/productpage
 
 ### Calico and Istio
 
-Calico is the recommended CNI plugin for kops with Istio. It supports NetworkPolicy and doesn't conflict with Istio's traffic management. If you used a different CNI, make sure it's compatible.
+Calico is a supported CNI plugin for kops with Istio. It supports NetworkPolicy and doesn't conflict with Istio's traffic management. If you used a different CNI, make sure it's compatible.
 
 In the cluster spec, verify Calico is configured:
 
@@ -185,7 +186,7 @@ nonMasqueradeCIDR: 100.64.0.0/10
 kops creates security groups automatically. But if you've customized them, make sure:
 
 - Worker nodes can talk to each other on all ports (for Istio mesh traffic)
-- The load balancer security group allows inbound traffic on 80 and 443
+- Any load balancer security group, if configured, allows inbound traffic on 80 and 443; for NLBs without managed security groups, make sure the node security groups allow the required traffic
 - Control plane nodes can reach worker nodes on port 15017 (for webhook calls)
 
 You can check security groups in the AWS console or with:
