@@ -63,7 +63,7 @@ Match the concurrency to the number of CPU cores available to the sidecar. If yo
 New connections are expensive - they require TCP handshakes and TLS negotiations. For high throughput, reuse connections aggressively:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: high-throughput-dr
@@ -97,27 +97,27 @@ Key settings:
 HTTP/2 multiplexing is one of the biggest throughput improvements you can make. Instead of needing one TCP connection per concurrent request (HTTP/1.1), many requests share a single connection:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
-  name: h2-everywhere
+  name: h2-dependency-service
   namespace: my-namespace
 spec:
-  host: "*.my-namespace.svc.cluster.local"
+  host: dependency-service.my-namespace.svc.cluster.local
   trafficPolicy:
     connectionPool:
       http:
         h2UpgradePolicy: UPGRADE
 ```
 
-Make sure your services support HTTP/2 or are using gRPC (which uses HTTP/2 natively).
+Create a rule like this for each service where you want the proxy to upgrade HTTP/1.1 upstream connections. Make sure your services support HTTP/2 or are using gRPC (which uses HTTP/2 natively).
 
 ## Reduce Telemetry Overhead
 
 At high throughput, telemetry processing becomes a significant CPU consumer. Every request generates metrics, and potentially access logs and trace spans. Reduce what you do not need:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: high-throughput-telemetry
@@ -157,7 +157,7 @@ Disabling access logging alone can improve throughput by 5-10% for I/O-bound pro
 A larger configuration means more work during route matching. For a high-throughput service, you want the smallest possible route table:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: high-throughput-sidecar
@@ -180,7 +180,7 @@ Only include the services this workload actually calls. Fewer routes means faste
 For services that handle large request or response bodies, the default buffer sizes might cause unnecessary memory allocations and copies:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1alpha3
 kind: EnvoyFilter
 metadata:
   name: buffer-tuning
@@ -196,7 +196,7 @@ spec:
     patch:
       operation: MERGE
       value:
-        per_connection_buffer_limit_bytes: 1048576
+        per_connection_buffer_limit_bytes: 2097152
 ```
 
 For small payloads, reduce the buffer size to save memory and improve cache efficiency. For large payloads, increase it to avoid fragmentation.
