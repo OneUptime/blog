@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Extension Providers, Envoy, Observability, Kubernetes
 
-Description: How to configure extension providers in Istio for custom telemetry backends, external authorization, and rate limiting.
+Description: How to configure extension providers in Istio for custom telemetry backends and external authorization.
 
 ---
 
-Extension providers are Istio's mechanism for plugging in external services and backends. They let you connect Istio to custom authorization services, telemetry backends, rate limiters, and other external systems without modifying the proxy configuration directly. Instead of writing EnvoyFilter resources, you define a provider once and reference it from higher-level APIs like Telemetry and AuthorizationPolicy.
+Extension providers are Istio's mechanism for plugging in external services and backends. They let you connect Istio to custom authorization services, telemetry backends, and other external systems without modifying the proxy configuration directly. Instead of writing EnvoyFilter resources, you define a provider once and reference it from higher-level APIs like Telemetry and AuthorizationPolicy.
 
 Here is how to set up and use extension providers effectively.
 
@@ -95,8 +95,8 @@ The most common use of extension providers is for telemetry. Here are the teleme
   opentelemetry:
     service: tempo.observability.svc.cluster.local
     port: 4317
-    resource_detectors:
-      - environment
+    resourceDetectors:
+      environment: {}
 ```
 
 Reference it in a Telemetry resource:
@@ -277,10 +277,10 @@ istioctl analyze -n istio-system
 istioctl proxy-config listener deploy/my-service -o json | grep -i "ext_authz\|otel\|access_log"
 ```
 
-Test that the external service is reachable from a proxy:
+For an HTTP auth provider, test that the external service is reachable from an injected workload container:
 
 ```bash
-kubectl exec deploy/my-service -c istio-proxy -- curl -v ext-authz.auth.svc.cluster.local:50051
+kubectl exec deploy/my-service -c my-service -- curl -v http://auth-service.auth.svc.cluster.local:8080/check
 ```
 
 ## Best Practices
