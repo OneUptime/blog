@@ -112,18 +112,19 @@ data:
         Refresh_Interval  5
 
     [FILTER]
+        Name    grep
+        Match   istio.*
+        Regex   log ^{
+
+    [FILTER]
         Name         kubernetes
         Match        istio.*
         Kube_URL     https://kubernetes.default.svc:443
+        Kube_Tag_Prefix istio.var.log.containers.
         Merge_Log    On
         Keep_Log     Off
         Labels       On
         Annotations  Off
-
-    [FILTER]
-        Name    grep
-        Match   istio.*
-        Regex   log ^{
 
     [OUTPUT]
         Name            es
@@ -147,6 +148,48 @@ data:
 ```
 
 The grep filter (`Regex log ^{`) ensures only JSON lines are sent to Elasticsearch. Envoy sometimes outputs non-JSON lines during startup or configuration changes.
+
+Create the service account and RBAC that the Kubernetes metadata filter needs:
+
+```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: logging
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: fluent-bit
+  namespace: logging
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: fluent-bit
+rules:
+  - apiGroups: [""]
+    resources:
+      - pods
+      - namespaces
+    verbs:
+      - get
+      - list
+      - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: fluent-bit
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: fluent-bit
+subjects:
+  - kind: ServiceAccount
+    name: fluent-bit
+    namespace: logging
+```
 
 Deploy the DaemonSet:
 
@@ -204,8 +247,7 @@ curl -X PUT "elasticsearch.logging.svc.cluster.local:9200/_index_template/istio-
     "settings": {
       "number_of_shards": 2,
       "number_of_replicas": 1,
-      "index.lifecycle.name": "istio-access-logs-policy",
-      "index.lifecycle.rollover_alias": "istio-access-logs"
+      "index.lifecycle.name": "istio-access-logs-policy"
     },
     "mappings": {
       "properties": {
@@ -244,14 +286,6 @@ curl -X PUT "elasticsearch.logging.svc.cluster.local:9200/_ilm/policy/istio-acce
   -d '{
   "policy": {
     "phases": {
-      "hot": {
-        "actions": {
-          "rollover": {
-            "max_primary_shard_size": "10gb",
-            "max_age": "1d"
-          }
-        }
-      },
       "warm": {
         "min_age": "3d",
         "actions": {
@@ -270,7 +304,7 @@ curl -X PUT "elasticsearch.logging.svc.cluster.local:9200/_ilm/policy/istio-acce
 }'
 ```
 
-This rolls over indices daily, shrinks them after 3 days, and deletes them after 30 days.
+With `Logstash_Format On`, Fluent Bit creates daily indices such as `istio-access-2026.02.24`. This policy shrinks those daily indices after 3 days and deletes them after 30 days.
 
 ## Alternative: OpenTelemetry Collector Pipeline
 
@@ -308,18 +342,22 @@ processors:
         value: istio-proxy
         action: upsert
 
+  transform/elastic_mapping:
+    log_statements:
+      - context: scope
+        statements:
+          - set(attributes["elastic.mapping.mode"], "ecs")
+
 exporters:
   elasticsearch:
     endpoints: ["https://elasticsearch.logging.svc.cluster.local:9200"]
     logs_index: istio-access-logs
-    mapping:
-      mode: ecs
 
 service:
   pipelines:
     logs:
       receivers: [otlp]
-      processors: [resource, batch]
+      processors: [resource, transform/elastic_mapping, batch]
       exporters: [elasticsearch]
 ```
 
