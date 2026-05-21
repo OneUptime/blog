@@ -8,7 +8,7 @@ Description: A step-by-step guide to migrating from NGINX Ingress Controller to 
 
 ---
 
-NGINX Ingress Controller is probably the most widely used ingress solution for Kubernetes. It works great, but if you're adopting Istio for service mesh capabilities, running both NGINX Ingress and Istio's ingress gateway is redundant. Consolidating on Istio's gateway simplifies your stack and lets external traffic benefit from mesh features like mTLS, traffic management, and observability.
+NGINX Ingress Controller is probably the most widely used ingress solution for Kubernetes. It works great, but if you're adopting Istio for service mesh capabilities, running both NGINX Ingress and Istio's ingress gateway is redundant. Consolidating on Istio's gateway simplifies your stack and lets external traffic benefit from mesh features like gateway-to-service mTLS, traffic management, and observability.
 
 The migration is straightforward because most NGINX Ingress features have direct equivalents in Istio. The challenge is doing it without downtime.
 
@@ -24,7 +24,7 @@ Here's how NGINX Ingress concepts map to Istio:
 | rate limiting annotation | EnvoyFilter (local rate limit) |
 | SSL termination | Gateway TLS config |
 | URL rewriting | VirtualService rewrite |
-| Backend protocol | Service port naming |
+| Backend protocol | Service port naming or appProtocol |
 
 ## Step 1: Inventory Your NGINX Ingress Resources
 
@@ -67,9 +67,8 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: my-app
-  annotations:
-    kubernetes.io/ingress.class: nginx
 spec:
+  ingressClassName: nginx
   rules:
   - host: app.example.com
     http:
@@ -93,7 +92,7 @@ spec:
 Istio equivalent:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: my-app-gateway
@@ -109,7 +108,7 @@ spec:
     hosts:
     - "app.example.com"
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app-vs
@@ -145,9 +144,9 @@ kind: Ingress
 metadata:
   name: my-app
   annotations:
-    kubernetes.io/ingress.class: nginx
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
 spec:
+  ingressClassName: nginx
   tls:
   - hosts:
     - app.example.com
@@ -168,7 +167,7 @@ spec:
 Istio equivalent:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: my-app-gateway
@@ -198,9 +197,9 @@ spec:
 Important: NGINX reads TLS secrets from the Ingress namespace. Istio reads them from the `istio-system` namespace (or wherever the gateway runs). Copy your TLS secrets:
 
 ```bash
-kubectl get secret app-tls-secret -n default -o yaml | \
-  sed 's/namespace: default/namespace: istio-system/' | \
-  kubectl apply -f -
+kubectl get secret app-tls-secret -n default -o json | \
+  jq 'del(.metadata.namespace, .metadata.uid, .metadata.resourceVersion, .metadata.creationTimestamp, .metadata.managedFields)' | \
+  kubectl apply -n istio-system -f -
 ```
 
 ### URL Rewriting
@@ -209,14 +208,16 @@ NGINX Ingress:
 
 ```yaml
 annotations:
+  nginx.ingress.kubernetes.io/use-regex: "true"
   nginx.ingress.kubernetes.io/rewrite-target: /$2
 spec:
+  ingressClassName: nginx
   rules:
   - host: app.example.com
     http:
       paths:
       - path: /api(/|$)(.*)
-        pathType: Prefix
+        pathType: ImplementationSpecific
         backend:
           service:
             name: api-service
@@ -230,9 +231,11 @@ Istio equivalent:
 http:
 - match:
   - uri:
-      prefix: /api
+      regex: ^/api(/|$)(.*)
   rewrite:
-    uri: /
+    uriRegexRewrite:
+      match: ^/api(/|$)(.*)
+      rewrite: /\2
   route:
   - destination:
       host: api-service
@@ -331,7 +334,7 @@ http:
 
 ## Step 4: Zero-Downtime Cutover
 
-The cleanest approach is to use DNS-based traffic shifting:
+The cleanest approach, when your DNS provider supports it, is to use DNS-based traffic shifting with a low TTL:
 
 1. Both NGINX and Istio gateways run simultaneously with their own external IPs
 2. Update DNS to use weighted records pointing to both IPs
@@ -367,12 +370,13 @@ kubectl delete namespace ingress-nginx
 
 ## Common Migration Issues
 
-**Port naming**: Istio uses Kubernetes Service port names to detect protocol. Make sure your Service ports are named with the correct prefix (`http-`, `grpc-`, `tcp-`):
+**Port naming**: Istio uses Kubernetes Service port names or the `appProtocol` field to detect protocol. Make sure your Service ports are named with the correct prefix (`http-`, `grpc-`, `tcp-`) or set `appProtocol`:
 
 ```yaml
 ports:
 - name: http-web
   port: 8080
+  appProtocol: http
 ```
 
 **Connection timeout differences**: NGINX defaults differ from Envoy defaults. If you had custom proxy timeouts in NGINX, replicate them in Istio VirtualService timeout fields.
