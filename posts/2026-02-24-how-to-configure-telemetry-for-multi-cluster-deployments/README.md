@@ -57,12 +57,6 @@ kind: IstioOperator
 metadata:
   name: istio-cluster-a
 spec:
-  meshConfig:
-    defaultConfig:
-      extraStatTags:
-        - "cluster_name"
-      proxyMetadata:
-        ISTIO_META_CLUSTER_ID: "cluster-a"
   values:
     global:
       meshID: "my-mesh"
@@ -78,12 +72,6 @@ kind: IstioOperator
 metadata:
   name: istio-cluster-b
 spec:
-  meshConfig:
-    defaultConfig:
-      extraStatTags:
-        - "cluster_name"
-      proxyMetadata:
-        ISTIO_META_CLUSTER_ID: "cluster-b"
   values:
     global:
       meshID: "my-mesh"
@@ -92,25 +80,12 @@ spec:
       network: "network-b"
 ```
 
-Then use the Telemetry API to include the cluster name in metrics:
+Istio standard metrics include `source_cluster` and `destination_cluster` labels from `global.multiCluster.clusterName`, so no extra metric tag configuration is required for cluster identity.
 
-```yaml
-apiVersion: telemetry.istio.io/v1
-kind: Telemetry
-metadata:
-  name: cluster-identity
-  namespace: istio-system
-spec:
-  metrics:
-    - providers:
-        - name: prometheus
-      overrides:
-        - match:
-            metric: ALL_METRICS
-          tagOverrides:
-            cluster_name:
-              operation: UPSERT
-              value: "node.metadata['CLUSTER_ID']"
+```text
+# Example Prometheus labels on istio_requests_total:
+source_cluster="cluster-a"
+destination_cluster="cluster-b"
 ```
 
 ## Centralized Collection Setup
@@ -186,6 +161,7 @@ apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
   meshConfig:
+    enableTracing: true
     extensionProviders:
       - name: central-otel
         opentelemetry:
@@ -247,18 +223,25 @@ metadata:
   name: prometheus
   namespace: observability
 spec:
+  serviceName: prometheus
+  selector:
+    matchLabels:
+      app: prometheus
   template:
+    metadata:
+      labels:
+        app: prometheus
     spec:
       containers:
         - name: prometheus
-          image: prom/prometheus:v2.48.0
+          image: prom/prometheus:v3.11.3
           args:
             - --storage.tsdb.path=/data
             - --config.file=/etc/prometheus/prometheus.yml
             - --storage.tsdb.min-block-duration=2h
             - --storage.tsdb.max-block-duration=2h
         - name: thanos-sidecar
-          image: thanosio/thanos:v0.34.0
+          image: thanosio/thanos:v0.41.0
           args:
             - sidecar
             - --tsdb.path=/data
@@ -281,7 +264,7 @@ Then deploy Thanos Query in the central cluster to query across all Prometheus i
 
 ```bash
 helm install thanos bitnami/thanos -n observability \
-  --set query.stores=["cluster-a-thanos-sidecar:10901","cluster-b-thanos-sidecar:10901"]
+  --set query.stores='{cluster-a-thanos-sidecar:10901,cluster-b-thanos-sidecar:10901}'
 ```
 
 ## Consistent Sampling Across Clusters
@@ -324,7 +307,7 @@ Then verify:
 
 ```bash
 # Check local metrics have cluster labels
-kubectl exec deploy/my-service -c istio-proxy -- curl -s localhost:15000/stats/prometheus | grep cluster_name
+kubectl exec deploy/my-service -c istio-proxy -- curl -s localhost:15000/stats/prometheus | grep -E 'source_cluster|destination_cluster'
 
 # Check traces in the central backend
 # Look for traces that span multiple cluster values
