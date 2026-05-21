@@ -19,7 +19,7 @@ Outlier detection (also in DestinationRule) is closer to a traditional circuit b
 These are two different mechanisms:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service
@@ -73,7 +73,7 @@ The `connectionPool` settings create hard limits:
 
 - `maxConnections`: Maximum TCP connections to the destination. If you try to open more, the request gets a 503.
 - `http1MaxPendingRequests`: Maximum pending HTTP/1.1 requests (requests waiting for a connection). Excess requests get a 503.
-- `http2MaxRequests`: Maximum concurrent HTTP/2 requests. Excess requests get a 503.
+- `http2MaxRequests`: Maximum active requests to the destination. Despite the name, Istio applies this to both HTTP/1.1 and HTTP/2. Excess requests get a 503.
 
 These limits are per-proxy, not global. If you have 3 client pods, each pod's proxy has its own limits. The total connections to the backend could be up to 3x the configured limit.
 
@@ -130,7 +130,7 @@ If you see all 200s even with high concurrency, either:
 
 ## Step 5: Check HTTP/1.1 vs HTTP/2
 
-This catches a lot of people. If your traffic uses HTTP/2 (which is the default for Istio mesh traffic), multiple requests are multiplexed over a single connection. So `maxConnections: 5` with HTTP/2 can handle hundreds of concurrent requests, because they all share 5 connections.
+This catches a lot of people. If your traffic uses HTTP/2 (for example, gRPC, a service port declared as `http2`, or traffic upgraded by `h2UpgradePolicy`), multiple requests are multiplexed over a single connection. So `maxConnections: 5` with HTTP/2 can handle hundreds of concurrent requests, because they all share 5 connections.
 
 To limit HTTP/2 requests, use `http2MaxRequests`:
 
@@ -139,7 +139,7 @@ connectionPool:
   tcp:
     maxConnections: 10
   http:
-    http2MaxRequests: 50  # Limits total concurrent HTTP/2 requests
+    http2MaxRequests: 50  # Limits total active requests
 ```
 
 Check what protocol is being used:
@@ -164,12 +164,13 @@ Envoy tracks circuit breaker activity in its stats:
 
 ```bash
 kubectl exec deploy/my-client -n production -c istio-proxy -- \
-  pilot-agent request GET stats | grep "circuit_breaker\|overflow\|pending_overflow"
+  pilot-agent request GET stats | grep "circuit_breaker\|overflow\|pending_overflow\|active_overflow"
 ```
 
 Key metrics:
 
 - `upstream_rq_pending_overflow`: Requests rejected because pending queue was full
+- `upstream_rq_active_overflow`: Requests rejected because the active request limit was reached
 - `upstream_cx_overflow`: Connections rejected because max connections reached
 - `upstream_rq_retry_overflow`: Retries rejected because retry budget was exhausted
 
@@ -205,18 +206,18 @@ kubectl exec deploy/my-client -n production -c istio-proxy -- \
 Look for:
 
 - `outlier_detection.ejections_active`: Currently ejected endpoints
-- `outlier_detection.ejections_total`: Total ejections
-- `outlier_detection.ejections_consecutive_5xx`: Ejections due to consecutive 5xx errors
+- `outlier_detection.ejections_enforced_total`: Total enforced ejections
+- `outlier_detection.ejections_enforced_consecutive_5xx`: Enforced ejections due to consecutive 5xx errors
 
 ## Step 8: Check Per-Endpoint vs Global Behavior
 
 Outlier detection works per endpoint (per pod), not per service. If you have 10 pods and one is returning errors, only that one pod gets ejected. The other 9 continue receiving traffic.
 
-Connection pool limits are also per endpoint by default. If `maxConnections: 10` and you have 5 backend pods, each pod gets up to 10 connections from each client proxy, for a total of 50 connections.
+Connection pool circuit breaker limits are scoped to each client proxy's Envoy upstream cluster. If `maxConnections: 10` and you have 5 backend pods, that limit applies to the cluster in each client proxy, not as a single global service-wide limit.
 
 ## Step 9: Test Outlier Detection
 
-Inject errors into one endpoint and verify it gets ejected:
+After injecting errors into one endpoint, verify it gets ejected:
 
 ```bash
 # Find a specific pod IP
@@ -243,7 +244,7 @@ After the ejection threshold is hit, check the endpoint status:
 istioctl proxy-config endpoints deploy/my-client -n production | grep my-service
 ```
 
-Ejected endpoints show as `UNHEALTHY`.
+Ejected endpoints show `FAILED` in the `OUTLIER CHECK` column.
 
 ## Common Causes Summary
 
