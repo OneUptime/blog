@@ -24,9 +24,9 @@ Install and configure the Alibaba Cloud CLI:
 ```bash
 # Install
 
-curl -O https://aliyuncli.alicdn.com/aliyun-cli-linux-latest-amd64.tgz
-tar -xvf aliyun-cli-linux-latest-amd64.tgz
-sudo mv aliyun /usr/local/bin/
+curl https://aliyuncli.alicdn.com/aliyun-cli-linux-latest-amd64.tgz -o aliyun-cli-linux-latest.tgz
+tar xzvf aliyun-cli-linux-latest.tgz
+sudo mv ./aliyun /usr/local/bin/
 
 # Configure
 aliyun configure
@@ -37,21 +37,40 @@ aliyun configure
 You can create a managed Kubernetes cluster through the console or CLI. The CLI approach:
 
 ```bash
-aliyun cs POST /clusters --body '{
+aliyun cs POST /clusters --region cn-hangzhou --header "Content-Type=application/json" --body '{
   "name": "istio-cluster",
   "cluster_type": "ManagedKubernetes",
+  "profile": "Default",
+  "cluster_spec": "ack.standard",
   "region_id": "cn-hangzhou",
-  "kubernetes_version": "1.30.1-aliyun.1",
+  "kubernetes_version": "1.34.3-aliyun.1",
   "vpcid": "vpc-xxx",
   "vswitch_ids": ["vsw-xxx"],
-  "num_of_nodes": 3,
-  "master_instance_types": [],
-  "worker_instance_types": ["ecs.g6.xlarge"],
-  "worker_system_disk_category": "cloud_essd",
-  "worker_system_disk_size": 120,
   "container_cidr": "172.20.0.0/16",
   "service_cidr": "172.21.0.0/20",
-  "snat_entry": true
+  "snat_entry": true,
+  "addons": [
+    {"name": "flannel"},
+    {"name": "csi-plugin"},
+    {"name": "managed-csiprovisioner"},
+    {"name": "nginx-ingress-controller", "disabled": true}
+  ],
+  "nodepools": [
+    {
+      "nodepool_info": {"name": "default-nodepool"},
+      "scaling_group": {
+        "vswitch_ids": ["vsw-xxx"],
+        "instance_types": ["ecs.g6.xlarge"],
+        "system_disk_category": "cloud_essd",
+        "system_disk_size": 120,
+        "desired_size": 3,
+        "instance_charge_type": "PostPaid"
+      },
+      "kubernetes_config": {
+        "runtime": "containerd"
+      }
+    }
+  ]
 }'
 ```
 
@@ -79,8 +98,8 @@ kubectl get nodes
 ## Step 3: Install Istio
 
 ```bash
-curl -L https://istio.io/downloadIstio | sh -
-cd istio-1.24.0
+curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.29.2 sh -
+cd istio-1.29.2
 export PATH=$PWD/bin:$PATH
 ```
 
@@ -110,7 +129,7 @@ spec:
             service.beta.kubernetes.io/alibaba-cloud-loadbalancer-address-type: internet
 ```
 
-The `slb.s2.small` spec is suitable for development. For production, use a larger spec like `slb.s3.medium` or `slb.s3.large`.
+The `slb.s2.small` spec is suitable for development when you create a pay-by-specification CLB instance. For production, use a larger spec like `slb.s3.medium` or `slb.s3.large`, or omit the spec annotation and use Alibaba Cloud's default pay-by-usage CLB billing.
 
 ```bash
 istioctl install -f istio-ack.yaml -y
@@ -174,7 +193,7 @@ service.beta.kubernetes.io/alibaba-cloud-loadbalancer-force-override-listeners: 
 service.beta.kubernetes.io/alibaba-cloud-loadbalancer-health-check-flag: "on"
 service.beta.kubernetes.io/alibaba-cloud-loadbalancer-health-check-type: http
 service.beta.kubernetes.io/alibaba-cloud-loadbalancer-health-check-uri: /healthz/ready
-service.beta.kubernetes.io/alibaba-cloud-loadbalancer-health-check-connect-port: "15021"
+service.beta.kubernetes.io/alibaba-cloud-loadbalancer-health-check-connect-timeout: "5"
 ```
 
 ## Container Image Considerations
@@ -185,15 +204,19 @@ If your cluster is in a China region, pulling images from Docker Hub can be slow
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
-  hub: registry.cn-hangzhou.aliyuncs.com/istio
-  tag: 1.24.0
+  hub: <your-acr-registry>/<your-istio-namespace>
+  tag: 1.29.2
 ```
 
 Or set up a pull-through cache using Alibaba Container Registry (ACR):
 
 ```bash
 # Create a namespace in ACR
-aliyun cr POST /namespace --body '{"Namespace": {"Namespace": "istio-mirror"}}'
+aliyun cr CreateNamespace \
+  --RegionId cn-hangzhou \
+  --InstanceId cri-xxx \
+  --NamespaceName istio-mirror \
+  --AutoCreateRepo true
 ```
 
 ## TLS with Alibaba Cloud Certificates
@@ -236,8 +259,8 @@ spec:
 Alibaba Cloud's Application Real-Time Monitoring Service (ARMS) integrates with Kubernetes. You can use it alongside or instead of Istio's built-in monitoring:
 
 ```bash
-# Install the ARMS agent
-kubectl apply -f https://arms-China-region.oss-cn-hangzhou.aliyuncs.com/China/China-arms-pilot.yaml
+# Install the supported ack-onepilot add-on from the ACK console:
+# Cluster -> Add-ons -> Logs and Monitoring -> ack-onepilot
 ```
 
 Or install the standard Istio addons:
