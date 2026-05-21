@@ -23,7 +23,7 @@ kubectl top pods -n istio-system -l app=istiod
 kubectl exec -it deploy/istiod -n istio-system -- curl -s localhost:15014/metrics | grep pilot_xds_push_time
 
 # Check number of connected proxies
-kubectl exec -it deploy/istiod -n istio-system -- curl -s localhost:15014/metrics | grep pilot_xds_pushes
+kubectl exec -it deploy/istiod -n istio-system -- curl -s localhost:15014/metrics | grep '^pilot_xds{'
 
 # Check for push errors
 kubectl exec -it deploy/istiod -n istio-system -- curl -s localhost:15014/metrics | grep pilot_total_xds_internal_errors
@@ -101,7 +101,7 @@ spec:
         istio-discovery: enabled
 ```
 
-This is one of the most effective control plane optimizations. If you have 100 namespaces but only 30 are in the mesh, istiod only watches those 30.
+This is one of the most effective control plane optimizations. If you have 100 namespaces but only 30 are in the mesh, istiod only processes configuration from those 30.
 
 ## Reduce Configuration Push Frequency
 
@@ -132,7 +132,7 @@ For large clusters with frequent changes, increasing `PILOT_DEBOUNCE_AFTER` to 5
 Not every sidecar needs to know about every change. istiod computes which proxies are affected by a change and only pushes to those proxies. You can help by keeping your Sidecar resources tight:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -146,9 +146,9 @@ spec:
 
 When a service in `other-namespace` changes, istiod does not need to push to proxies in `my-namespace` because they are not watching `other-namespace`.
 
-## Tune Kubernetes Watch Behavior
+## Scope Gateway Selection
 
-istiod uses Kubernetes watches to track changes. In large clusters, the initial list-and-watch can be expensive:
+In large clusters with shared gateway labels, keep Gateway selection local to the gateway workload's namespace:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -157,11 +157,10 @@ spec:
   values:
     pilot:
       env:
-        PILOT_ENABLE_K8S_SELECT_WORKLOAD_ENTRIES: "true"
         PILOT_SCOPE_GATEWAY_TO_NAMESPACE: "true"
 ```
 
-`PILOT_SCOPE_GATEWAY_TO_NAMESPACE` prevents istiod from watching Gateway resources in all namespaces when it only needs to watch the namespace where the gateway is deployed.
+`PILOT_SCOPE_GATEWAY_TO_NAMESPACE` means a gateway workload can only select Gateway resources in the same namespace, so Gateways with the same selectors in other namespaces do not apply to it.
 
 ## Monitor Control Plane Health
 
@@ -171,13 +170,13 @@ Set up dashboards for key istiod metrics:
 # Push latency over time
 rate(pilot_xds_push_time_sum[5m]) / rate(pilot_xds_push_time_count[5m])
 
-# Push queue depth
+# Push triggers by reason
 pilot_push_triggers
 
 # Memory usage trend
 process_resident_memory_bytes{app="istiod"}
 
-# Number of connected proxies per instance
+# Number of connected XDS endpoints per instance
 pilot_xds
 
 # Configuration convergence time
@@ -242,6 +241,6 @@ kubectl label namespace critical-apps istio.io/rev=stable
 kubectl label namespace experimental istio.io/rev=canary
 ```
 
-Each istiod revision only watches and serves namespaces labeled with its revision. This naturally partitions the control plane load.
+Revision labels control which control plane injected workloads connect to. To partition configuration discovery as well, combine revisions with discovery selectors so each control plane processes only its intended namespaces.
 
 A well-tuned Istio control plane handles thousands of pods with push latencies under a second and resource usage that stays predictable. The key ingredients are proper resource allocation, discovery selectors to limit scope, debounce tuning to reduce push frequency, and horizontal scaling to distribute load.
