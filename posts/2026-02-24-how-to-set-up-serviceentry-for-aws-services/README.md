@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, ServiceEntry, AWS, Kubernetes, Cloud Services
 
-Description: Configure Istio ServiceEntry for AWS services like S3, SQS, DynamoDB, and others to get mesh observability and traffic management for AWS API calls.
+Description: Configure Istio ServiceEntry for AWS services like S3, SQS, DynamoDB, and others to get mesh visibility and connection-level traffic management for AWS API calls.
 
 ---
 
-If you run workloads on Kubernetes and use AWS services, your pods are constantly calling AWS APIs. Every S3 upload, SQS message, DynamoDB query, and Secrets Manager fetch goes through an HTTPS call to an AWS endpoint. By default, Istio does not know about these calls, so they either get blocked (in REGISTRY_ONLY mode) or fly under the radar with no metrics.
+If you run workloads on Kubernetes and use AWS services, your pods are constantly calling AWS APIs. Every S3 upload, SQS message, DynamoDB query, and Secrets Manager fetch goes through an HTTPS call to an AWS endpoint. By default, Istio does not know about these calls, so they either get blocked (in REGISTRY_ONLY mode) or fly under the radar as passthrough traffic.
 
-Setting up ServiceEntries for AWS services gives you visibility into which pods call which AWS services, how often they call them, and how fast those calls are. That is incredibly useful for debugging and capacity planning.
+Setting up ServiceEntries for AWS services gives you visibility into which pods connect to which AWS service hostnames. For normal AWS SDK HTTPS traffic, Istio sees the SNI and connection-level telemetry, not individual HTTP API operations inside the encrypted TLS stream. That is still useful for debugging and capacity planning.
 
 ## AWS Endpoint Patterns
 
@@ -49,7 +49,7 @@ spec:
   resolution: NONE
 ```
 
-This allows any call to `*.amazonaws.com` through the mesh. The `resolution: NONE` is required for wildcard hosts because Envoy cannot know which specific hostname will be requested ahead of time.
+This allows any call to `*.amazonaws.com` through the mesh. The `resolution: NONE` setting is commonly used for wildcard hosts because the application resolves the actual hostname before the connection is redirected to the sidecar. In Istio versions that support it, `DYNAMIC_DNS` is another option for wildcard HTTPS destinations.
 
 Pros:
 - One resource covers all AWS services
@@ -109,7 +109,7 @@ spec:
   resolution: DNS
 ```
 
-Now your Prometheus metrics show separate entries for S3, SQS, and DynamoDB.
+Now Istio can label the destination service separately for S3, SQS, and DynamoDB instead of treating everything as unknown passthrough traffic.
 
 ## S3 Specific Configuration
 
@@ -139,7 +139,7 @@ spec:
   resolution: NONE
 ```
 
-The wildcard entries handle virtual-hosted bucket names. The `resolution: NONE` is necessary because of the wildcards.
+The wildcard entries handle virtual-hosted bucket names. Use `resolution: NONE` for the broadest compatibility with wildcard hosts, or `DYNAMIC_DNS` on Istio versions that support wildcard DNS resolution.
 
 ## STS and IAM (Global Endpoints)
 
@@ -183,7 +183,7 @@ spec:
 
 ## ECR (Container Registry)
 
-If your pods pull images from ECR or your application interacts with ECR:
+Kubernetes image pulls are done by the kubelet on the node, outside the application pod's sidecar. Add ECR ServiceEntries when an application inside the mesh calls the ECR API or talks to an ECR registry endpoint:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -206,48 +206,22 @@ Replace `123456789012` with your actual AWS account ID.
 
 ## Adding Traffic Policies for AWS Services
 
-You can apply timeout and retry policies to AWS API calls:
+For normal AWS SDK HTTPS calls, Istio does not decrypt the HTTP request, so `VirtualService` HTTP timeout and retry policies do not apply to the AWS API operation. Istio `http` routes apply to HTTP, HTTP/2, and gRPC service ports; HTTPS passthrough traffic uses TLS routing based on SNI.
+
+If you need mesh-level limits for AWS HTTPS calls, prefer connection-level controls and let the AWS SDK handle request timeouts and retries:
 
 ```yaml
 apiVersion: networking.istio.io/v1
-kind: VirtualService
+kind: DestinationRule
 metadata:
-  name: aws-s3-policy
+  name: aws-dynamodb-connections
 spec:
-  hosts:
-    - "s3.us-east-1.amazonaws.com"
-  http:
-    - timeout: 30s
-      retries:
-        attempts: 3
-        perTryTimeout: 10s
-        retryOn: 5xx,reset,connect-failure
-      route:
-        - destination:
-            host: s3.us-east-1.amazonaws.com
-            port:
-              number: 443
-```
-
-Be careful with retries on AWS services though. The AWS SDK already implements retry logic with exponential backoff. Adding Istio retries on top can cause double-retrying, which wastes resources and can hit API rate limits faster.
-
-A safer approach is to set only timeouts at the Istio level and let the AWS SDK handle retries:
-
-```yaml
-apiVersion: networking.istio.io/v1
-kind: VirtualService
-metadata:
-  name: aws-dynamodb-timeout
-spec:
-  hosts:
-    - "dynamodb.us-east-1.amazonaws.com"
-  http:
-    - timeout: 15s
-      route:
-        - destination:
-            host: dynamodb.us-east-1.amazonaws.com
-            port:
-              number: 443
+  host: dynamodb.us-east-1.amazonaws.com
+  trafficPolicy:
+    connectionPool:
+      tcp:
+        connectTimeout: 10s
+        maxConnections: 200
 ```
 
 ## Connection Pool Limits
@@ -265,25 +239,22 @@ spec:
     connectionPool:
       tcp:
         maxConnections: 200
-      http:
-        maxRequestsPerConnection: 100
-        maxPendingRequests: 50
 ```
 
 ## Monitoring AWS API Calls
 
-After registering AWS services, check your metrics:
+After registering AWS services, check your metrics. For normal AWS SDK HTTPS traffic, use TCP metrics:
 
 ```bash
-# See which AWS services your pods call
+# See which AWS service hosts your pods connect to
 
-istio_requests_total{destination_service=~".*amazonaws.com"}
+istio_tcp_connections_opened_total{destination_service=~".*amazonaws.com"}
 
-# Check latency to DynamoDB
-istio_request_duration_milliseconds_bucket{destination_service="dynamodb.us-east-1.amazonaws.com"}
+# Check bytes sent to DynamoDB
+istio_tcp_sent_bytes_total{destination_service="dynamodb.us-east-1.amazonaws.com"}
 ```
 
-In Kiali, AWS services appear as external service nodes in your service graph, showing you exactly which microservices depend on which AWS services.
+If you use TLS origination or otherwise make HTTP visible to Istio, HTTP metrics such as `istio_requests_total` and `istio_request_duration_milliseconds` can apply. In Kiali, AWS services can appear as external service nodes in your service graph, showing you which microservices depend on which AWS service hostnames.
 
 ## Complete Example for a Typical Application
 
@@ -324,4 +295,4 @@ spec:
   resolution: NONE
 ```
 
-This gives you a solid foundation. As you add more AWS services, extend the hosts list or create new ServiceEntries. The key is to make sure every AWS endpoint your application calls is registered so you get full visibility into your AWS dependencies.
+This gives you a solid foundation. As you add more AWS services, extend the hosts list or create new ServiceEntries. The key is to make sure every AWS endpoint your application calls is registered so you get visibility into your AWS dependencies.
