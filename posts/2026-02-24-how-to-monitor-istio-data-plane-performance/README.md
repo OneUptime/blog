@@ -33,15 +33,13 @@ spec:
     enablePrometheusMerge: true
     defaultConfig:
       proxyStatsMatcher:
-        inclusionPrefixes:
-        - cluster.outbound
-        - cluster.inbound
-        - listener
-        - http.inbound
-        - upstream_cx
-        - upstream_rq
-        - downstream_cx
-        - downstream_rq
+        inclusionRegexps:
+        - ".*upstream_cx_.*"
+        - ".*upstream_rq_.*"
+        - ".*downstream_cx_.*"
+        - ".*downstream_rq_.*"
+        - ".*\\.ssl\\..*"
+        - ".*circuit_breakers.*"
 ```
 
 The `proxyStatsMatcher` controls which detailed Envoy stats are exported. Without this, only the standard Istio metrics are available.
@@ -72,7 +70,7 @@ histogram_quantile(0.99, sum(rate(istio_request_bytes_bucket{reporter="destinati
 histogram_quantile(0.99, sum(rate(istio_response_bytes_bucket{reporter="destination"}[5m])) by (le, destination_service))
 ```
 
-The `reporter` label is important. `reporter="destination"` gives you server-side metrics (from the receiving sidecar), while `reporter="source"` gives client-side metrics. The difference between the two at the same percentile roughly corresponds to network latency.
+The `reporter` label is important. `reporter="destination"` gives you server-side metrics (from the receiving sidecar), while `reporter="source"` gives client-side metrics. Comparing the two can help identify client-side, proxy, or network overhead, but do not treat the difference between two percentile values as an exact network-latency measurement.
 
 ## Proxy Resource Metrics
 
@@ -113,7 +111,7 @@ sum(rate(envoy_cluster_upstream_cx_total[5m])) by (cluster_name)
 sum(rate(envoy_cluster_upstream_cx_destroy[5m])) by (cluster_name)
 ```
 
-A high connection creation rate relative to active connections indicates poor connection reuse. Connection overflow is a critical metric - it means requests are being rejected because the pool is exhausted.
+A high connection creation rate relative to active connections indicates poor connection reuse. Connection overflow is a critical metric - it means the connection circuit breaker is being hit, so traffic can fail fast instead of opening more upstream connections.
 
 ## TLS Metrics
 
@@ -126,8 +124,8 @@ sum(rate(envoy_cluster_ssl_handshake[5m])) by (cluster_name)
 # TLS connection errors
 sum(rate(envoy_cluster_ssl_connection_error[5m])) by (cluster_name)
 
-# Active TLS connections
-envoy_cluster_ssl_connections_total
+# TLS session reuse count
+sum(rate(envoy_cluster_ssl_session_reused[5m])) by (cluster_name)
 ```
 
 A high TLS handshake rate means connections are not being reused effectively. Each handshake adds latency and CPU overhead.
@@ -246,7 +244,7 @@ It is great for quick visual inspection but not a replacement for detailed Prome
 In large meshes, the volume of metrics can overwhelm your monitoring stack. Be selective about what you collect:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: selective-metrics
