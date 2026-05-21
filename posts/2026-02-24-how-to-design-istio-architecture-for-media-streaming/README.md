@@ -67,7 +67,7 @@ Setting `concurrency: 2` gives Envoy two worker threads, which helps with throug
 Your streaming API serves mobile apps, smart TVs, web browsers, and other clients. Configure the gateway to handle this diverse client base:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: streaming-gateway
@@ -86,7 +86,7 @@ spec:
     hosts:
     - "api.streaming.example.com"
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-routes
@@ -133,7 +133,7 @@ The playback service gets the tightest timeout because it is on the critical pat
 The catalog and search services handle thousands of concurrent requests. Configure connection pools to match:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: catalog-service
@@ -159,7 +159,7 @@ The `LEAST_REQUEST` load balancer is important for streaming platforms. Some req
 The recommendation engine directly affects user engagement. A bad recommendation model can increase churn. Use Istio traffic splitting to test new models safely:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: recommend-service
@@ -178,7 +178,7 @@ spec:
         subset: model-v4
       weight: 10
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: recommend-service
@@ -201,7 +201,7 @@ Send 10% of traffic to the new model, compare click-through and watch-through ra
 Streaming platforms integrate with DRM providers, payment gateways, and content partner APIs. Protect against their outages:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: drm-provider
@@ -227,7 +227,7 @@ spec:
 For the catalog and search services, retries make sense because they are read-only:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: catalog-service
@@ -248,7 +248,7 @@ spec:
 For the playback service, retries are acceptable but with tight timeouts. A user waiting for playback to start notices every extra second:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: playback-service
@@ -274,7 +274,7 @@ Only one retry with a 1-second timeout per try. If the playback service is not r
 Scope your sidecars to reduce memory usage and configuration push times:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -288,7 +288,7 @@ spec:
     - "media-billing/*"
     - "istio-system/*"
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -312,9 +312,24 @@ spec:
   meshConfig:
     accessLogFile: ""
     enableTracing: true
+    extensionProviders:
+    - name: otel-tracing
+      opentelemetry:
+        port: 4317
+        service: opentelemetry-collector.observability.svc.cluster.local
     defaultConfig:
       tracing:
         sampling: 1.0
+---
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
+metadata:
+  name: mesh-default
+  namespace: istio-system
+spec:
+  tracing:
+  - providers:
+    - name: otel-tracing
 ```
 
 Turn off access logging globally and enable it only for specific services when debugging. Keep trace sampling at 1% or lower for production traffic. You can always bump it up temporarily when investigating an issue.
