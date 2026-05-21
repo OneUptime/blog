@@ -8,7 +8,7 @@ Description: Learn how to use argocd account commands to manage local user accou
 
 ---
 
-ArgoCD supports both SSO-based authentication and local user accounts. The `argocd account` command family manages local accounts - creating them, setting passwords, generating API tokens, and checking their status. This is especially important for service accounts used in CI/CD pipelines and automation scripts.
+ArgoCD supports both SSO-based authentication and local user accounts. The `argocd account` command family manages local accounts - setting passwords, generating API tokens, and checking their status. This is especially important for service accounts used in CI/CD pipelines and automation scripts.
 
 ## Understanding ArgoCD Accounts
 
@@ -16,7 +16,7 @@ ArgoCD has two types of accounts:
 
 1. **SSO accounts** - Users authenticated through an external identity provider (Okta, Azure AD, GitHub, etc.). Managed outside ArgoCD.
 
-2. **Local accounts** - Users defined directly in ArgoCD's ConfigMap. Managed with `argocd account` commands.
+2. **Local accounts** - Users defined directly in ArgoCD's ConfigMap. Managed with the ConfigMap and `argocd account` commands.
 
 The built-in `admin` account is a local account that exists by default.
 
@@ -42,10 +42,10 @@ The capabilities column shows what each account can do:
 
 ```bash
 # Get details for a specific account
-argocd account get admin
+argocd account get --account admin
 
 # Get details for a service account
-argocd account get ci-bot
+argocd account get --account ci-bot
 ```
 
 ## Creating Local Accounts
@@ -84,7 +84,7 @@ After creating the account in the ConfigMap, set the password:
 # Set initial password for a new account
 argocd account update-password --account alice --new-password <password>
 
-# You will be prompted for the current admin password for verification
+# You will be prompted for the current logged-in user's password for verification
 ```
 
 ## Updating Passwords
@@ -214,10 +214,10 @@ echo "Store this token as a secret in GitHub Actions: $TOKEN"
 # GitHub Actions
 - name: Sync ArgoCD Application
   env:
+    ARGOCD_SERVER: argocd.example.com
     ARGOCD_AUTH_TOKEN: ${{ secrets.ARGOCD_TOKEN }}
   run: |
-    argocd login argocd.example.com --grpc-web
-    argocd app sync my-app
+    argocd app sync my-app --grpc-web
 ```
 
 ## Disabling Accounts
@@ -262,7 +262,7 @@ for account in $(argocd account list -o json | jq -r '.[].name'); do
   echo ""
   echo "Account: $account"
 
-  DATA=$(argocd account get "$account" -o json 2>/dev/null)
+  DATA=$(argocd account get --account "$account" -o json 2>/dev/null)
 
   ENABLED=$(echo "$DATA" | jq -r '.enabled')
   CAPS=$(echo "$DATA" | jq -r '.capabilities | join(", ")')
@@ -297,7 +297,7 @@ echo "New token generated."
 echo "Token: $NEW_TOKEN"
 echo ""
 echo "IMPORTANT: Update this token in all systems that use it."
-echo "Old tokens remain valid until they expire."
+echo "Old tokens remain valid until they expire or are deleted."
 ```
 
 ## Can-I Check
@@ -306,7 +306,7 @@ Test what an account is allowed to do:
 
 ```bash
 # Check if the current account can sync a specific application
-argocd account can-i sync applications my-app
+argocd account can-i sync applications default/my-app
 
 # Check various permissions
 argocd account can-i get applications '*'
