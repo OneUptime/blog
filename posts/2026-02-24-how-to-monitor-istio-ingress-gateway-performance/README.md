@@ -33,7 +33,7 @@ Istio also generates standard metrics through its telemetry system. The most imp
 
 ## Setting Up Prometheus
 
-If you installed Istio with the demo profile or enabled Prometheus integration, metrics are already being scraped. Verify:
+If you installed Istio's sample Prometheus add-on or configured Prometheus scraping for Istio, metrics are already being scraped. Verify:
 
 ```bash
 kubectl get svc prometheus -n istio-system
@@ -42,12 +42,27 @@ kubectl get svc prometheus -n istio-system
 If Prometheus is not installed, you can deploy it alongside Istio:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.22/samples/addons/prometheus.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/prometheus.yaml
 ```
 
-Or if you use the Prometheus Operator, add a ServiceMonitor for the ingress gateway:
+Or if you use the Prometheus Operator, expose the gateway telemetry port with a Service and add a ServiceMonitor for it:
 
 ```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: istio-ingressgateway-metrics
+  namespace: istio-system
+  labels:
+    istio: ingressgateway-metrics
+spec:
+  selector:
+    istio: ingressgateway
+  ports:
+  - name: http-monitoring
+    port: 15020
+    targetPort: 15020
+---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
@@ -56,9 +71,9 @@ metadata:
 spec:
   selector:
     matchLabels:
-      istio: ingressgateway
+      istio: ingressgateway-metrics
   endpoints:
-  - port: http-envoy-prom
+  - port: http-monitoring
     interval: 15s
     path: /stats/prometheus
 ```
@@ -122,7 +137,7 @@ sum(rate(istio_response_bytes_sum{reporter="source", source_workload="istio-ingr
 Install Grafana if you don't have it:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.22/samples/addons/grafana.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/grafana.yaml
 ```
 
 Access the Grafana UI:
@@ -179,7 +194,7 @@ Visualization: time series, showing which backend services get the most traffic.
 **Panel 5: Gateway Pod Resource Usage**
 
 ```promql
-sum(container_cpu_usage_seconds_total{pod=~"istio-ingressgateway.*", container="istio-proxy"}) by (pod)
+sum(rate(container_cpu_usage_seconds_total{pod=~"istio-ingressgateway.*", container="istio-proxy"}[5m])) by (pod)
 sum(container_memory_working_set_bytes{pod=~"istio-ingressgateway.*", container="istio-proxy"}) by (pod)
 ```
 
@@ -222,7 +237,9 @@ spec:
 
     - alert: IngressGatewayDown
       expr: |
-        absent(up{job="istio-ingressgateway"} == 1)
+        absent(up{namespace="istio-system", pod=~"istio-ingressgateway.*"})
+        or
+        sum(up{namespace="istio-system", pod=~"istio-ingressgateway.*"}) == 0
       for: 1m
       labels:
         severity: critical
