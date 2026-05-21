@@ -23,21 +23,21 @@ The flow is straightforward: Envoy asks for a certificate through SDS, pilot-age
 
 ## The Root Certificate
 
-The root certificate is the top of the trust chain. All workload certificates chain up to this root. By default, Istiod generates a self-signed root certificate at startup:
+The root certificate is the top of the trust chain. All workload certificates chain up to this root. By default, Istiod generates a self-signed root certificate using RSA 2048:
 
 ```bash
 # View the root certificate
 
-kubectl get secret istio-ca-secret -n istio-system -o jsonpath='{.data.ca-cert\.pem}' | base64 -d | openssl x509 -text -noout
-```
-
-If the secret doesn't exist (newer Istio versions), the root cert is generated in memory by Istiod. You can still see it:
-
-```bash
 kubectl get configmap istio-ca-root-cert -n istio-system -o jsonpath='{.data.root-cert\.pem}' | openssl x509 -text -noout
 ```
 
-This root certificate is distributed to every namespace as a ConfigMap called `istio-ca-root-cert`:
+If you plugged in your own CA, you can also inspect the root certificate from the `cacerts` secret:
+
+```bash
+kubectl get secret cacerts -n istio-system -o jsonpath='{.data.root-cert\.pem}' | base64 -d | openssl x509 -text -noout
+```
+
+By default, this root certificate is distributed to every namespace as a ConfigMap called `istio-ca-root-cert`:
 
 ```bash
 kubectl get configmap istio-ca-root-cert -n default -o yaml
@@ -69,26 +69,28 @@ Istiod detects the `cacerts` secret and uses it as the signing CA instead of gen
 
 ### Using cert-manager
 
-You can also integrate with cert-manager to manage the CA certificate:
+You can also integrate with cert-manager through Istio's Kubernetes CSR integration. Do not point a cert-manager `Certificate` directly at the `cacerts` secret, because cert-manager writes keys such as `tls.crt`, `tls.key`, and `ca.crt`, while Istio's plug-in CA expects `ca-cert.pem`, `ca-key.pem`, `root-cert.pem`, and `cert-chain.pem`.
 
 ```yaml
-apiVersion: cert-manager.io/v1
-kind: Certificate
-metadata:
-  name: istio-ca
-  namespace: istio-system
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
 spec:
-  isCA: true
-  commonName: istio-ca
-  secretName: cacerts
-  duration: 8760h  # 1 year
-  renewBefore: 720h  # 30 days
-  issuerRef:
-    name: root-ca-issuer
-    kind: ClusterIssuer
-  privateKey:
-    algorithm: ECDSA
-    size: 256
+  values:
+    pilot:
+      env:
+        EXTERNAL_CA: ISTIOD_RA_KUBERNETES_API
+  meshConfig:
+    defaultConfig:
+      proxyMetadata:
+        ISTIO_META_CERT_SIGNER: istio-system
+  components:
+    pilot:
+      k8s:
+        env:
+        - name: CERT_SIGNER_DOMAIN
+          value: clusterissuers.cert-manager.io
+        - name: PILOT_CERT_PROVIDER
+          value: k8s.io/clusterissuers.cert-manager.io/istio-system
 ```
 
 ## Certificate Lifecycle
@@ -99,7 +101,7 @@ Every workload certificate goes through a lifecycle:
 
 When a pod starts, pilot-agent in the sidecar:
 
-1. Generates an ECDSA P-256 private key (or RSA 2048, depending on config)
+1. Generates an RSA private key by default, or an ECDSA key if `ECC_SIGNATURE_ALGORITHM` is set to `ECDSA`
 2. Creates a CSR with the SPIFFE identity as the SAN (Subject Alternative Name)
 3. Sends the CSR to Istiod over a secure gRPC channel
 
@@ -150,14 +152,16 @@ spec:
       env:
         CITADEL_SELF_SIGNED_CA_CERT_TTL: "87600h"  # 10 years for the root CA
         MAX_WORKLOAD_CERT_TTL: "48h"
-        WORKLOAD_CERT_TTL: "24h"
+        DEFAULT_WORKLOAD_CERT_TTL: "24h"
 ```
 
 Environment variables for Istiod:
 
 - `CITADEL_SELF_SIGNED_CA_CERT_TTL` - Lifetime of the self-signed root CA (default: 10 years)
-- `WORKLOAD_CERT_TTL` - Default lifetime for workload certificates (default: 24 hours)
+- `DEFAULT_WORKLOAD_CERT_TTL` - Default lifetime for workload certificates when the client requests a non-positive TTL (default: 24 hours)
 - `MAX_WORKLOAD_CERT_TTL` - Maximum allowed workload certificate lifetime
+
+`SECRET_TTL` is configured in proxy metadata and controls the certificate lifetime requested by istio-agent for workloads.
 
 ## Trust Domains
 
@@ -203,17 +207,7 @@ istioctl proxy-config secret my-pod -o json
 kubectl get configmap istio-ca-root-cert -n default
 
 # Check certificate expiration on a specific pod
-istioctl proxy-config secret my-pod -o json | \
-  python3 -c "
-import json, sys
-data = json.load(sys.stdin)
-for s in data.get('dynamicActiveSecrets', []):
-    cert = s.get('secret', {}).get('tlsCertificate', {})
-    if cert:
-        print(f\"Name: {s['name']}\")
-        validity = s.get('secret', {}).get('tlsCertificate', {})
-        print(f\"  State: valid\")
-"
+istioctl proxy-config secret my-pod
 
 # Check Istiod CA logs
 kubectl logs -n istio-system -l app=istiod | grep -i "cert\|sign\|ca" | tail -20
