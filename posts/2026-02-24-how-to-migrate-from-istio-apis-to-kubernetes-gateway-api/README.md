@@ -19,7 +19,7 @@ The Kubernetes Gateway API is the standard that the broader Kubernetes ecosystem
 - **Upstream momentum** - Gateway API is where new features are being developed
 - **Multi-tenancy** - Better namespace isolation and cross-namespace routing controls
 
-That said, not everything in Istio's APIs has a Gateway API equivalent yet. Features like fault injection, request mirroring, and complex retry policies still need Istio resources.
+That said, not everything in Istio's APIs has a Gateway API equivalent yet. Features like fault injection and some advanced retry policies still need Istio resources, while features such as request mirroring and timeouts are available in HTTPRoute with implementation-specific support levels.
 
 Resource Mapping
 
@@ -41,11 +41,11 @@ Here's how Istio resources map to Gateway API resources:
 ## Step 1: Install Gateway API CRDs
 
 ```bash
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.2.0/standard-install.yaml
+kubectl apply --server-side -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.5.1/standard-install.yaml
 
-# For experimental resources (TCPRoute, TLSRoute, GRPCRoute)
+# For experimental resources (TCPRoute and UDPRoute)
 
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.2.0/experimental-install.yaml
+kubectl apply --server-side -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.5.1/experimental-install.yaml
 ```
 
 Verify:
@@ -288,7 +288,7 @@ Some VirtualService features don't have Gateway API equivalents. You have two op
 
 **Use Istio's extensions** through policy resources:
 
-For fault injection, retries, and timeouts, you can still use VirtualService or configure these through DestinationRule and EnvoyFilter.
+For fault injection and advanced retry behavior, you can still use VirtualService or configure these through DestinationRule and EnvoyFilter. HTTPRoute has native fields for timeouts and request mirroring, but support depends on the Gateway API implementation.
 
 Example - keeping a VirtualService for fault injection while using HTTPRoute for routing:
 
