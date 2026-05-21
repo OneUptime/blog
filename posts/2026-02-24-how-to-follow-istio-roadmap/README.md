@@ -12,12 +12,12 @@ Keeping up with Istio's development direction matters if you're running it in pr
 
 ## Where the Roadmap Lives
 
-Istio publishes its roadmap on the official website at `istio.io/latest/about/feature-stages/`. This page breaks down features by their maturity level and shows what's being actively worked on.
+Istio publishes its feature status on the official website at `istio.io/latest/docs/releases/feature-stages/`. This page breaks down features by their maturity level and shows what's available in current releases.
 
 But the website roadmap is just the tip of the iceberg. The real planning happens across several places:
 
 1. **GitHub Milestones**: Each release has a milestone with the issues and PRs targeted for it
-2. **Working Group Meetings**: Technical direction is discussed in weekly/biweekly calls
+2. **Working Group Meetings**: Technical direction is discussed in weekly calls
 3. **Design Documents**: Major features go through a design proposal process
 4. **Release Notes**: Show what actually shipped in each version
 5. **Blog Posts**: The Istio blog announces major features and direction changes
@@ -29,18 +29,18 @@ Istio uses a feature maturity model that you should understand when reading the 
 | Stage | Meaning |
 |---|---|
 | Experimental | Feature is new, API may change, not recommended for production |
-| Alpha | Feature is functional but not fully tested, API may still change |
-| Beta | Feature is well-tested, API is stable, safe for production with caution |
-| Stable | Feature is production-ready, API is locked, backward compatibility guaranteed |
+| Alpha | Feature is functional but still early, API and behavior may change |
+| Beta | Feature is well-tested and safe for production evaluation, but details may still change |
+| Stable | Feature is production-ready, and only strictly compatible changes are allowed |
 
-When evaluating features for production use, stick to Beta or Stable features. Experimental and Alpha features can change or be removed entirely between releases.
+When evaluating features for production use, prefer Stable features. Beta features can be used in production as part of an evaluation, while Experimental and Alpha features can change or be removed entirely between releases.
 
 You can check the current feature status:
 
 ```bash
 # The feature status page lists every feature and its current stage
 
-# https://istio.io/latest/about/feature-stages/
+# https://istio.io/latest/docs/releases/feature-stages/
 
 # You can also check what's supported in your installed version
 istioctl version
@@ -84,11 +84,11 @@ Major features go through a formal design process. Design documents are typicall
 To find active design proposals:
 
 ```bash
-# Search for design docs on GitHub
-# https://github.com/istio/istio/issues?q=is:open+label:kind/design-doc
+# Search for enhancement work on GitHub
+# https://github.com/istio/istio/issues?q=is:open+label:kind/enhancement
 
-# The community also uses Google Docs for design proposals
-# Links are shared in working group meetings and on the mailing list
+# The community keeps working group design docs in shared Google Drive folders
+# Links are shared from WORKING-GROUPS.md
 ```
 
 Reading design proposals is the best way to understand not just what's coming, but why. You'll get insight into the trade-offs and constraints that shape the project's direction.
@@ -125,7 +125,7 @@ Istio follows a predictable release cadence:
 - **Minor releases** (1.x.0) ship roughly every quarter
 - **Patch releases** (1.x.y) ship as needed for bug fixes and security patches
 - **Support window**: Each minor release is supported with patches for about 6 months after release
-- **Upgrade path**: You can upgrade one minor version at a time (e.g., 1.21 to 1.22, not 1.20 to 1.22)
+- **Upgrade path**: Upgrading across more than two minor versions in one step is not officially tested or recommended
 
 Here's how to check which versions are currently supported:
 
@@ -154,7 +154,7 @@ istioctl analyze --all-namespaces
 # - Best practice violations
 ```
 
-Deprecation notices appear in release notes and on the feature stages page. When a feature moves to "Deprecated" status, you typically have at least two minor releases before it's removed.
+Deprecation notices appear in release notes and on the feature stages page. Removal timing depends on the feature stage: Experimental and Alpha features can be removed without notice, Beta features can be removed with advance notice, and Stable features have the strongest compatibility expectations.
 
 ## Watching Working Group Progress
 
@@ -178,7 +178,7 @@ The most active working groups to follow are:
 
 If you want to stay systematically informed, here's a practical approach:
 
-1. **Weekly**: Skim the `#istio-dev` Slack channel for significant discussions
+1. **Weekly**: Skim the relevant working group Slack channels for significant discussions
 2. **Monthly**: Review the GitHub milestone for the next release
 3. **Quarterly**: Read the full release notes for new minor versions
 4. **Always**: Run `istioctl analyze` after upgrades to catch deprecated features
@@ -186,8 +186,8 @@ If you want to stay systematically informed, here's a practical approach:
 You can also set up GitHub notifications with filters:
 
 ```bash
-# Use gh CLI to check for new issues with specific labels
-gh issue list --repo istio/istio --label "kind/design-doc" --state open
+# Use gh CLI to check for new enhancement issues
+gh issue list --repo istio/istio --label "kind/enhancement" --state open
 
 # Check recent PRs in an area you care about
 gh pr list --repo istio/istio --label "area/networking" --state open --limit 10
