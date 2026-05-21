@@ -10,13 +10,13 @@ Description: Diagnose and resolve connection refused errors in Istio service mes
 
 "Connection refused" in an Istio mesh means something very different from a typical Kubernetes networking problem. In a normal setup, connection refused means the target pod is not listening on that port. With Istio, the sidecar proxy sits in the middle, so connection refused could mean the sidecar is not ready, the port mapping is wrong, mTLS handshake failed, or half a dozen other things.
 
-This guide covers every scenario where you might see connection refused errors and how to track down the real cause.
+This guide covers common scenarios where you might see connection refused errors and how to track down the real cause.
 
 ## Understanding Connection Refused in Istio
 
 When a request flows through the mesh, it hits several components:
 
-1. The source application sends to localhost (intercepted by iptables)
+1. The source application sends to the destination service address (intercepted by iptables)
 2. The source sidecar (Envoy) picks up the request
 3. The source sidecar connects to the destination sidecar
 4. The destination sidecar forwards to the destination application
@@ -44,7 +44,7 @@ Look for entries with response flags like:
 
 ## Cause 1: Application Not Listening on the Right Port
 
-The most basic cause. Your application might be listening on `localhost:8080` instead of `0.0.0.0:8080`. With the sidecar, the destination proxy forwards traffic to `127.0.0.1:<port>`, so the application needs to listen on localhost or all interfaces.
+The most basic cause. Your application might be listening on a specific pod IP instead of `0.0.0.0:8080` or `127.0.0.1:8080`. With the sidecar, the destination proxy forwards traffic to `127.0.0.1:<port>`, so the application needs to listen on localhost or all interfaces.
 
 ```bash
 # Check what the application is listening on
@@ -119,11 +119,11 @@ kubectl exec <pod-name> -c orders-service -n production -- ss -tlnp
 
 ## Cause 4: mTLS Mode Mismatch
 
-If the client expects plaintext but the server requires mTLS (or vice versa), the connection will be refused:
+If the client expects plaintext but the server requires mTLS (or vice versa), the connection can fail:
 
 ```bash
 # Check mTLS status
-istioctl authn tls-check <client-pod>.production orders-service.production.svc.cluster.local
+istioctl x describe pod <server-pod> -n production
 ```
 
 The output shows whether the client and server agree on TLS mode. Fix mismatches by aligning PeerAuthentication and DestinationRule settings:
@@ -140,7 +140,7 @@ spec:
     mode: STRICT
 
 # The client DestinationRule should use ISTIO_MUTUAL
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: orders-service
@@ -168,9 +168,10 @@ kubectl get networkpolicies -n production -o yaml
 
 If you have a default deny policy, you need to allow:
 
-- Traffic on port 15012 (istiod control plane)
-- Traffic on port 15017 (istiod webhook)
-- Traffic between sidecars on the application ports
+- Egress from injected workloads to istiod on port 15012
+- Traffic between workloads on the application ports
+- Scraping of sidecar metrics on port 15090 if your monitoring stack uses it
+- Kubernetes API server traffic to the istiod webhook service in the `istio-system` namespace if you also restrict that namespace
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -180,15 +181,15 @@ metadata:
   namespace: production
 spec:
   podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
   ingress:
-    - ports:
-        - port: 15012
-        - port: 15017
-        - port: 15090
     - from:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: istio-system
+        - podSelector: {}
+      ports:
+        - port: 8080
+        - port: 15090
   egress:
     - to:
         - namespaceSelector:
@@ -196,7 +197,10 @@ spec:
               kubernetes.io/metadata.name: istio-system
       ports:
         - port: 15012
-        - port: 15017
+    - to:
+        - podSelector: {}
+      ports:
+        - port: 8080
 ```
 
 ## Cause 6: Init Container Failed
@@ -211,7 +215,7 @@ kubectl describe pod <pod-name> -n production | grep -A 5 "istio-init"
 kubectl logs <pod-name> -c istio-init -n production
 ```
 
-Common init container failures include missing NET_ADMIN capability or PodSecurityPolicy restrictions:
+Common init container failures include missing NET_ADMIN capability or pod security restrictions. If you use the Istio CNI plugin, traffic redirection is configured by the CNI plugin instead of an `istio-init` container.
 
 ```bash
 # Check for security context issues
@@ -223,7 +227,7 @@ kubectl get pod <pod-name> -n production -o jsonpath='{.spec.initContainers[?(@.
 If you are calling an external service and get connection refused, you might need a ServiceEntry:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-api
@@ -258,11 +262,11 @@ kubectl exec <pod> -c app -n production -- ss -tlnp
 # 2. Is the sidecar running?
 kubectl get pod <pod> -n production -o jsonpath='{.status.containerStatuses[?(@.name=="istio-proxy")].ready}'
 
-# 3. Can the sidecar reach the destination?
-kubectl exec <pod> -c istio-proxy -n production -- curl -v http://destination:8080/health
+# 3. Does Envoy have endpoints for the destination?
+istioctl proxy-config endpoints <pod> -n production --port 8080
 
 # 4. mTLS status?
-istioctl authn tls-check <pod>.production destination.production.svc.cluster.local
+istioctl x describe pod <destination-pod> -n production
 
 # 5. Network policies?
 kubectl get networkpolicies -n production
