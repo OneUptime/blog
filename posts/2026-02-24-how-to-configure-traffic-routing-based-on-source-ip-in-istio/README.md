@@ -14,7 +14,7 @@ Routing traffic based on the source IP address is useful for several scenarios. 
 
 Source IP handling in Istio depends on your network topology. When traffic enters through an Istio ingress gateway, the original client IP might be in the `X-Forwarded-For` header (if behind a load balancer) or in the direct connection source address.
 
-For the ingress gateway to see the real client IP, you typically need to configure your external load balancer to preserve it. On cloud providers, this usually means using a proxy protocol or setting `externalTrafficPolicy: Local` on the gateway Service:
+For the ingress gateway to see the real client IP, you typically need to configure your external load balancer to preserve it. On cloud providers, this can mean using `X-Forwarded-For` or the PROXY protocol with the gateway topology configured, or setting `externalTrafficPolicy: Local` on the gateway Service when the load balancer preserves the packet source address:
 
 ```yaml
 apiVersion: v1
@@ -41,7 +41,7 @@ Setting `externalTrafficPolicy: Local` preserves the source IP but means traffic
 Use the `sourceLabels` and `sourceNamespace` fields in VirtualService for mesh-internal traffic, or match on the `X-Forwarded-For` header for external traffic:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-routing
@@ -77,7 +77,7 @@ spec:
         subset: production
 ```
 
-The `X-Forwarded-For` header contains the client's original IP when traffic passes through proxies and load balancers. Matching on this header lets you route based on the client's address.
+The `X-Forwarded-For` header contains the client's original IP when traffic passes through trusted proxies and load balancers. Matching on this header lets you route based on the client's address, but only use it for routing decisions when client-supplied `X-Forwarded-For` values are sanitized or overwritten by trusted infrastructure.
 
 ## IP-Based Access Control with AuthorizationPolicy
 
@@ -126,12 +126,13 @@ spec:
 
 ## Combining Allow and Deny Policies
 
-When you have both ALLOW and DENY policies, Istio evaluates them in this order:
+When you have CUSTOM, DENY, and ALLOW policies, Istio evaluates them in this order:
 
-1. If any DENY policy matches, deny the request
-2. If there are no ALLOW policies, allow the request
-3. If any ALLOW policy matches, allow the request
-4. Deny the request
+1. If any CUSTOM policy matches and the extension denies the request, deny the request
+2. If any DENY policy matches, deny the request
+3. If there are no ALLOW policies, allow the request
+4. If any ALLOW policy matches, allow the request
+5. Deny the request
 
 So if you have both a DENY for a specific IP range and an ALLOW for a broader range, the DENY takes precedence.
 
@@ -216,7 +217,7 @@ The difference between `ipBlocks` and `remoteIpBlocks`:
 Within the mesh, you might want to route based on which service is calling. This is not IP-based, but it serves a similar purpose. Use `sourceLabels` in VirtualService:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: data-service
@@ -272,6 +273,17 @@ spec:
         - "3.130.192.231/32"
         - "13.235.14.237/32"
         - "13.235.122.149/32"
+        - "18.211.135.69/32"
+        - "35.154.171.200/32"
+        - "52.15.183.38/32"
+        - "54.88.130.119/32"
+        - "54.88.130.237/32"
+        - "54.187.174.169/32"
+        - "54.187.205.235/32"
+        - "54.187.216.72/32"
+        - "35.157.207.129/32"
+        - "3.69.109.8/32"
+        - "3.120.168.93/32"
     to:
     - operation:
         paths:
@@ -295,7 +307,7 @@ kubectl logs deploy/istio-ingressgateway -n istio-system | grep "x-forwarded-for
 Enable access logging in Istio to capture client IPs:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: access-logging
