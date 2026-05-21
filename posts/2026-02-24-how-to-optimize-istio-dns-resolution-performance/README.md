@@ -39,17 +39,19 @@ spec:
     defaultConfig:
       proxyMetadata:
         ISTIO_META_DNS_CAPTURE: "true"
-        ISTIO_META_DNS_AUTO_ALLOCATE: "true"
+  values:
+    pilot:
+      env:
+        PILOT_ENABLE_IP_AUTOALLOCATE: "true"
 ```
 
-`ISTIO_META_DNS_CAPTURE` redirects DNS queries to the local Istio agent. `ISTIO_META_DNS_AUTO_ALLOCATE` assigns virtual IPs to ServiceEntry hosts that do not have explicit addresses.
+`ISTIO_META_DNS_CAPTURE` redirects DNS queries to the local Istio agent. `PILOT_ENABLE_IP_AUTOALLOCATE` enables virtual IP auto-allocation for ServiceEntry hosts that do not have explicit addresses. In Istio 1.25 and later, `ISTIO_META_DNS_AUTO_ALLOCATE` in `proxyMetadata` is deprecated in favor of this controller-based auto-allocation.
 
 Verify it is working:
 
 ```bash
-# Check if DNS capture is active
-
-kubectl exec deploy/my-app -c istio-proxy -- pilot-agent request GET /dns_resolve/my-service.my-namespace.svc.cluster.local
+# Check that the Istio agent DNS metrics are present
+kubectl exec deploy/my-app -c istio-proxy -- curl -sS localhost:15020/stats/prometheus | grep '^dns_'
 
 # Check iptables rules
 kubectl exec deploy/my-app -c istio-proxy -- iptables -t nat -L ISTIO_OUTPUT | grep 15053
@@ -72,7 +74,7 @@ You will see something like:
 ```text
 search my-namespace.svc.cluster.local svc.cluster.local cluster.local
 nameserver 10.96.0.10
-ndots:5
+options ndots:5
 ```
 
 The `ndots:5` setting means any name with fewer than 5 dots triggers a search through all search domains. A call to `my-service` (0 dots) generates queries for:
@@ -81,7 +83,7 @@ The `ndots:5` setting means any name with fewer than 5 dots triggers a search th
 3. `my-service.cluster.local`
 4. `my-service` (absolute)
 
-Only the first one succeeds, but all four consume DNS resources.
+For a same-namespace Service, the first expanded name should succeed and the resolver can stop there. For names that do not match early in the search list, each failed expansion consumes DNS resources before the resolver reaches the final name.
 
 ## Reduce ndots
 
@@ -105,7 +107,7 @@ With `ndots: 2`, a name like `my-service` (0 dots) still goes through search dom
 
 ## Use Fully Qualified Domain Names
 
-For external services, always use FQDNs with a trailing dot to skip the search domain expansion entirely:
+For external services, use FQDNs with a trailing dot where your client library accepts them to skip the search domain expansion entirely:
 
 ```bash
 # In application code, use:
@@ -132,6 +134,7 @@ data:
         errors
         health
         ready
+        prometheus :9153
         kubernetes cluster.local in-addr.arpa ip6.arpa {
           pods insecure
           fallthrough in-addr.arpa ip6.arpa
@@ -145,7 +148,7 @@ data:
     }
 ```
 
-The `cache 60` line caches DNS responses for 60 seconds. Increasing this to 300 seconds can reduce the load on upstream DNS servers:
+The `cache 60` line caches DNS responses for up to 60 seconds, subject to the TTLs in the DNS responses. Increasing this to 300 seconds can reduce the load on upstream DNS servers:
 
 ```text
 cache 300
@@ -186,10 +189,11 @@ Track DNS resolution latency:
 kubectl exec deploy/my-app -- time nslookup my-service.my-namespace.svc.cluster.local
 
 # Check CoreDNS metrics
-kubectl exec deploy/coredns -n kube-system -- wget -qO- http://localhost:9153/metrics | grep coredns_dns_request_duration
+kubectl -n kube-system port-forward deploy/coredns 9153:9153
+curl -s http://localhost:9153/metrics | grep coredns_dns_request_duration
 
 # Check Istio DNS proxy stats
-kubectl exec deploy/my-app -c istio-proxy -- curl -s localhost:15000/stats | grep dns
+kubectl exec deploy/my-app -c istio-proxy -- curl -sS localhost:15020/stats/prometheus | grep '^dns_'
 ```
 
 Key metrics to watch in Prometheus:
@@ -202,7 +206,7 @@ histogram_quantile(0.99, sum(rate(coredns_dns_request_duration_seconds_bucket[5m
 sum(rate(coredns_dns_requests_total[5m]))
 
 # CoreDNS cache hit rate
-sum(rate(coredns_cache_hits_total[5m])) / (sum(rate(coredns_cache_hits_total[5m])) + sum(rate(coredns_cache_misses_total[5m])))
+sum(rate(coredns_cache_hits_total[5m])) / sum(rate(coredns_cache_requests_total[5m]))
 ```
 
 ## Handle High DNS Query Rates
@@ -217,7 +221,7 @@ If your services make thousands of DNS queries per second (common with microserv
 
 ```yaml
 # Keep connections alive to reduce DNS lookups
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: connection-reuse
