@@ -26,7 +26,7 @@ The default connection pool settings are generous but not optimized for any spec
 Connection pools are configured through DestinationRule resources:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: service-b-pool
@@ -55,8 +55,8 @@ Here is what each setting does:
 
 - `maxConnections`: Maximum number of TCP connections to the upstream service
 - `connectTimeout`: How long to wait for a TCP connection to be established
-- `http1MaxPendingRequests`: Maximum number of HTTP/1.1 requests queued while waiting for a connection
-- `http2MaxRequests`: Maximum number of concurrent HTTP/2 requests
+- `http1MaxPendingRequests`: Maximum number of requests queued while waiting for a connection (applies to HTTP/1.1 and HTTP/2)
+- `http2MaxRequests`: Maximum number of active requests to the destination (applies to HTTP/1.1 and HTTP/2)
 - `maxRequestsPerConnection`: Maximum requests per connection before it is closed (0 = unlimited)
 - `maxRetries`: Maximum number of concurrent retries across all requests
 - `idleTimeout`: How long an idle connection stays in the pool
@@ -67,18 +67,18 @@ The connection pooling behavior is very different between HTTP/1.1 and HTTP/2, a
 
 With HTTP/1.1, each connection handles one request at a time. If you have `maxConnections: 100` and 100 concurrent requests, all connections are busy. The 101st request goes into the pending queue. If the pending queue (`http1MaxPendingRequests`) is also full, the request fails with a 503.
 
-With HTTP/2, multiple requests are multiplexed over a single connection. The `http2MaxRequests` limit controls the total number of concurrent requests across all connections. You typically need far fewer connections with HTTP/2.
+With HTTP/2, multiple requests are multiplexed over a single connection. The `http2MaxRequests` limit controls the total number of active requests to the destination, and `maxConcurrentStreams` can be used when you need to cap the number of concurrent streams on a single HTTP/2 connection. You typically need far fewer connections with HTTP/2.
 
 Enable HTTP/2 for internal service communication:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
-  name: h2-pools
+  name: service-b-h2-pool
   namespace: my-namespace
 spec:
-  host: "*.my-namespace.svc.cluster.local"
+  host: service-b.my-namespace.svc.cluster.local
   trafficPolicy:
     connectionPool:
       http:
@@ -95,28 +95,33 @@ To figure out the right size, look at the current connection usage:
 ```bash
 # Check active connections per upstream
 
-kubectl exec deploy/my-app -c istio-proxy -- curl -s localhost:15000/stats | grep "upstream_cx_active"
+kubectl exec deploy/my-app -c istio-proxy -- pilot-agent request GET stats | grep "upstream_cx_active"
 
 # Check connection pool overflow (requests rejected due to full pool)
-kubectl exec deploy/my-app -c istio-proxy -- curl -s localhost:15000/stats | grep "upstream_cx_overflow"
+kubectl exec deploy/my-app -c istio-proxy -- pilot-agent request GET stats | grep "upstream_cx_overflow"
+
+# Check request overflow
+kubectl exec deploy/my-app -c istio-proxy -- pilot-agent request GET stats | grep "upstream_rq_active_overflow"
 
 # Check pending request overflow
-kubectl exec deploy/my-app -c istio-proxy -- curl -s localhost:15000/stats | grep "upstream_rq_pending_overflow"
+kubectl exec deploy/my-app -c istio-proxy -- pilot-agent request GET stats | grep "upstream_rq_pending_overflow"
 ```
 
-If you see `upstream_cx_overflow` or `upstream_rq_pending_overflow` incrementing, your pools are too small.
+If these stats are missing, enable the relevant upstream and circuit breaker stats with `proxyStatsMatcher`.
+
+If you see `upstream_cx_overflow`, `upstream_rq_active_overflow`, or `upstream_rq_pending_overflow` incrementing, your pools are too small.
 
 A good starting formula:
 - `maxConnections` = expected peak concurrent requests * 1.5 (for HTTP/1.1)
 - `http1MaxPendingRequests` = maxConnections * 2
-- `http2MaxRequests` = expected peak concurrent requests * 2
+- `http2MaxRequests` = expected peak active requests * 2
 
 ## Keep Connections Alive
 
 Creating new connections is expensive, especially with mTLS. Keep connections alive as long as possible:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: keepalive-pool
@@ -142,10 +147,10 @@ The `tcpKeepalive` settings send periodic keepalive probes to detect dead connec
 
 ## Connection Draining
 
-When a backend pod is shutting down, connections to it need to be drained gracefully. Istio handles this through the endpoint update mechanism, but you can control the drain behavior:
+When a backend pod is shutting down, connections to it need to be drained gracefully. Istio handles this through endpoint updates as pod readiness changes. Outlier detection is separate from graceful shutdown, but it helps stop sending traffic to endpoints that are returning errors:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: drain-settings
@@ -163,14 +168,14 @@ spec:
       baseEjectionTime: 30s
 ```
 
-Outlier detection ejects endpoints that return errors, which indirectly drains connections to failing backends.
+Outlier detection ejects endpoints that return errors, which keeps new traffic away from failing backends.
 
 ## Per-Subset Connection Pools
 
 If your service has multiple versions (subsets), each subset gets its own connection pool. You can configure them separately:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: versioned-pools
@@ -222,11 +227,14 @@ sum(rate(envoy_cluster_upstream_cx_overflow{cluster_name=~"outbound.*"}[5m])) by
 # Request queue overflows
 sum(rate(envoy_cluster_upstream_rq_pending_overflow{cluster_name=~"outbound.*"}[5m])) by (cluster_name)
 
+# Active request overflows
+sum(rate(envoy_cluster_upstream_rq_active_overflow{cluster_name=~"outbound.*"}[5m])) by (cluster_name)
+
 # Connection creation rate
 sum(rate(envoy_cluster_upstream_cx_total{cluster_name=~"outbound.*"}[5m])) by (cluster_name)
 ```
 
-The connection overflow metric is the most important one. If it is non-zero, you are losing requests due to undersized pools. The connection creation rate tells you how well connection reuse is working - lower is better.
+The overflow metrics are the most important ones. If any of them are non-zero, requests are hitting circuit breaker limits. The connection creation rate tells you how well connection reuse is working - lower is better.
 
 ## Common Pitfalls
 
@@ -234,7 +242,7 @@ The connection overflow metric is the most important one. If it is non-zero, you
 
 2. **Forgetting about retries**: Retries consume connections too. If `maxRetries` is high and many requests are failing, retries can exhaust the pool.
 
-3. **Not matching pool size across services**: If service-a has a pool of 100 connections to service-b, but service-b's inbound listener only accepts 50, connections will be refused.
+3. **Not matching pool size across services**: If service-a has a pool of 100 connections to service-b, but service-b's inbound side is configured with a lower connection limit, traffic can hit inbound circuit breakers.
 
 4. **Ignoring idle timeouts**: Connections that sit idle for too long might be silently closed by intermediate load balancers or firewalls. Set `idleTimeout` to less than the lowest timeout in the path.
 
