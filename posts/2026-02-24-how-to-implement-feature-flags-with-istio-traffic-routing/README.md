@@ -99,7 +99,7 @@ spec:
 
 ## Enabling the Feature for Internal Users
 
-Start by enabling the feature for your team. Route requests from internal IPs or with a specific header:
+Start by enabling the feature for your team. Route requests with a specific header:
 
 ```yaml
 apiVersion: networking.istio.io/v1beta1
@@ -202,7 +202,7 @@ spec:
 
 ## Multiple Feature Flags
 
-You can manage multiple features at once using separate VirtualService match rules. Say you're testing both a new checkout flow and a new search algorithm:
+You can manage multiple features at once using separate VirtualService match rules. Say you're testing both a new checkout flow and a new search algorithm. Make sure each service also has a corresponding DestinationRule with the subsets you route to:
 
 ```yaml
 apiVersion: networking.istio.io/v1beta1
@@ -307,7 +307,7 @@ def call_downstream(request):
     return response.json()
 ```
 
-Alternatively, if you use Istio's tracing headers (like `x-request-id`, `x-b3-traceid`), you can piggyback on those propagation mechanisms.
+Alternatively, if your services already propagate Istio tracing headers (like `x-request-id`, `traceparent`, or `x-b3-traceid`), you can forward feature flag headers in the same propagation code.
 
 ## Emergency Kill Switch
 
