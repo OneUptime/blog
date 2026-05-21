@@ -115,11 +115,9 @@ spec:
   - "mqtt.iot.example.com"
   gateways:
   - iot-gateway
-  tls:
+  tcp:
   - match:
     - port: 8883
-      sniHosts:
-      - "mqtt.iot.example.com"
     route:
     - destination:
         host: mqtt-broker
@@ -306,11 +304,11 @@ apiVersion: security.istio.io/v1
 kind: RequestAuthentication
 metadata:
   name: device-jwt-auth
-  namespace: iot-ingestion
+  namespace: istio-system
 spec:
   selector:
     matchLabels:
-      app: telemetry-ingestor
+      istio: ingressgateway
   jwtRules:
   - issuer: "https://auth.iot.example.com"
     jwksUri: "https://auth.iot.example.com/.well-known/jwks.json"
@@ -320,11 +318,11 @@ apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: require-device-auth
-  namespace: iot-ingestion
+  namespace: istio-system
 spec:
   selector:
     matchLabels:
-      app: telemetry-ingestor
+      istio: ingressgateway
   rules:
   - from:
     - source:
