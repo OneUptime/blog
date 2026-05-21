@@ -88,7 +88,7 @@ spec:
 
 ### Exclude Health Checks
 
-Health check endpoints generate a lot of 200 logs. Exclude them while keeping everything else:
+Health check endpoints generate a lot of 200 logs. A first attempt might look like this:
 
 ```yaml
 apiVersion: telemetry.istio.io/v1
@@ -184,7 +184,7 @@ spec:
 
 If you want to keep some percentage of successful requests for analysis while logging all errors:
 
-The Telemetry API does not have built-in sampling, but you can work around this using multiple logging configurations. Log all errors to one provider, and sample successful requests to another:
+The Telemetry API does not have built-in access log sampling. You can still use multiple logging configurations to separate error logs from a full stream, then sample or route the full stream in your log aggregation pipeline:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -236,7 +236,7 @@ spec:
         - name: all-log
 ```
 
-Downstream, your log aggregation pipeline can route the `level: "error"` logs to a different index or stream with longer retention.
+Downstream, your log aggregation pipeline can route the `level: "error"` logs to a different index or stream with longer retention, and sample the full `level: "info"` stream there.
 
 ## Verifying Filters Work
 
