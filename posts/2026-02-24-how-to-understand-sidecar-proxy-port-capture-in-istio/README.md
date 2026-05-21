@@ -12,7 +12,7 @@ When Istio injects a sidecar into your pod, it does not just add a container. It
 
 ## How Traffic Capture Works
 
-Istio uses iptables rules (or optionally eBPF) to intercept traffic at the network level. When a pod starts with the Istio sidecar, an init container called `istio-init` runs first and sets up these iptables rules.
+Istio uses iptables rules (or the nftables backend in supported setups) to intercept traffic at the network level. When a pod starts with the Istio sidecar without Istio CNI enabled, an init container called `istio-init` runs first and sets up these redirection rules.
 
 The init container runs a program called `istio-iptables` that creates NAT rules to redirect traffic:
 
@@ -75,7 +75,7 @@ Understanding which ports Istio uses is essential:
 | 15021 | Health check endpoint |
 | 15090 | Envoy Prometheus stats |
 
-These ports are excluded from traffic capture to avoid infinite redirect loops. Traffic to these ports goes directly to the Envoy proxy without going through iptables redirect.
+Applications should not use these ports because they are reserved for the sidecar proxy and Istio agent. Inbound capture is disabled for several ports used by the sidecar, and proxy-originated traffic is excluded by owner-based rules to avoid infinite redirect loops.
 
 ## Traffic Flow for Inbound Requests
 
@@ -103,7 +103,7 @@ When your application makes an outbound request:
 3. ISTIO_OUTPUT chain checks if it should be redirected
 4. If not excluded, ISTIO_REDIRECT sends it to port 15001
 5. Envoy resolves the destination using its routing configuration
-6. Envoy establishes a connection (with mTLS) to the destination
+6. Envoy establishes a connection to the destination, using mTLS when it is configured or automatically negotiated
 
 ```bash
 # View outbound listener configuration
@@ -152,7 +152,7 @@ spec:
         image: my-app:latest
 ```
 
-This is commonly used for database connections that either handle their own TLS or use server-first protocols.
+This is commonly used for connections that should bypass the sidecar, such as database connections that handle their own TLS. For server-first protocols, explicitly declaring the service port protocol as `TCP` is often the better fix.
 
 ### Exclude IP Ranges
 
@@ -261,6 +261,6 @@ spec:
       runAsUser: 1000  # Any UID except 1337
 ```
 
-**DNS traffic**: UDP traffic is not captured by default. DNS queries (UDP port 53) go directly from the pod without going through Envoy. Istio captures DNS through a separate mechanism using the Istio agent.
+**DNS traffic**: UDP traffic is not captured by the normal TCP redirection rules. In sidecar mode, DNS proxying is not enabled by default; when it is enabled, DNS queries are captured through a separate mechanism using the Istio agent on port 15053.
 
 Understanding traffic capture is foundational to debugging Istio networking issues. When you know how traffic flows through the iptables rules and into the Envoy proxy, you can quickly identify whether an issue is with the capture rules, the Envoy configuration, or your application.
