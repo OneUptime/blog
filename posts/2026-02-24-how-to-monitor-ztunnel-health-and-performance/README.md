@@ -58,7 +58,7 @@ spec:
     matchLabels:
       app: ztunnel
   podMetricsEndpoints:
-  - port: http-monitoring
+  - port: ztunnel-stats
     path: /metrics
     interval: 15s
 ```
@@ -77,7 +77,7 @@ scrape_configs:
   - source_labels: [__meta_kubernetes_pod_label_app]
     action: keep
     regex: ztunnel
-  - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
+  - source_labels: [__meta_kubernetes_pod_ip]
     action: replace
     target_label: __address__
     regex: (.+)
@@ -150,19 +150,19 @@ spec:
 If you're using Grafana (and you should be), set up dashboards for ztunnel monitoring. Here's a useful dashboard panel query for tracking connection rates per node:
 
 ```text
-sum(rate(istio_tcp_connections_opened_total{app="ztunnel"}[5m])) by (instance)
+sum(rate(istio_tcp_connections_opened_total{job=~".*ztunnel.*"}[5m])) by (instance)
 ```
 
 For byte throughput:
 
 ```text
-sum(rate(istio_tcp_sent_bytes_total{app="ztunnel"}[5m])) by (instance)
+sum(rate(istio_tcp_sent_bytes_total{job=~".*ztunnel.*"}[5m])) by (instance)
 ```
 
 For tracking connection errors:
 
 ```text
-sum(rate(istio_tcp_connections_closed_total{app="ztunnel", response_flags!=""}[5m])) by (response_flags)
+sum(rate(istio_tcp_connections_closed_total{job=~".*ztunnel.*", response_flags!=""}[5m])) by (response_flags)
 ```
 
 ## Health Check Endpoints
@@ -171,13 +171,13 @@ ztunnel exposes health endpoints that you can use for liveness and readiness pro
 
 ```bash
 # Port-forward to a ztunnel pod
-kubectl port-forward -n istio-system $ZTUNNEL_POD 15021:15021 &
+kubectl port-forward -n istio-system $ZTUNNEL_POD 15021:15021 15000:15000 &
 
 # Check readiness
 curl localhost:15021/healthz/ready
 
 # Check the config dump
-curl localhost:15020/config_dump
+curl localhost:15000/config_dump
 ```
 
 The config dump is particularly useful. It shows you what workloads ztunnel knows about, what certificates it has, and what policies are loaded.
@@ -194,7 +194,7 @@ istioctl ztunnel-config workloads
 istioctl ztunnel-config certificates
 
 # View authorization policies loaded in ztunnel
-istioctl ztunnel-config authorization
+istioctl ztunnel-config policies
 ```
 
 These commands talk directly to the ztunnel's admin interface and give you a real-time view of what it knows.
@@ -224,7 +224,7 @@ groups:
 ```yaml
   - alert: ZtunnelHighRestarts
     expr: |
-      increase(kube_pod_container_status_restarts_total{namespace="istio-system", container="ztunnel"}[1h]) > 3
+      increase(kube_pod_container_status_restarts_total{namespace="istio-system", container="istio-proxy", pod=~"ztunnel-.*"}[1h]) > 3
     for: 5m
     labels:
       severity: warning
@@ -237,7 +237,7 @@ groups:
 ```yaml
   - alert: ZtunnelHighMemory
     expr: |
-      container_memory_working_set_bytes{namespace="istio-system", container="ztunnel"} / container_spec_memory_limit_bytes{namespace="istio-system", container="ztunnel"} > 0.85
+      container_memory_working_set_bytes{namespace="istio-system", container="istio-proxy", pod=~"ztunnel-.*"} / container_spec_memory_limit_bytes{namespace="istio-system", container="istio-proxy", pod=~"ztunnel-.*"} > 0.85
     for: 10m
     labels:
       severity: warning
