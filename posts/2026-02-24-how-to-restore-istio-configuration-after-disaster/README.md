@@ -41,7 +41,7 @@ If the CRDs aren't there, install Istio first.
 
 ## Step 1: Install Istio
 
-If you're restoring to a fresh cluster, you need Istio installed before you can apply any configuration. Use the same IstioOperator configuration you had before:
+If you're restoring to a fresh cluster, you need Istio installed before you can apply any configuration. If you use a custom CA, create the `cacerts` secret from Step 2 before running the install so Istiod starts with the right certificates. Use the same IstioOperator configuration you had before:
 
 ```bash
 # If you backed up your IstioOperator resource
@@ -49,7 +49,7 @@ If you're restoring to a fresh cluster, you need Istio installed before you can 
 istioctl install -f backup/istiooperator.yaml
 
 # Or if using Helm
-helm install istio-base istio/base -n istio-system --create-namespace
+helm install istio-base istio/base -n istio-system --set defaultRevision=default --create-namespace
 helm install istiod istio/istiod -n istio-system --values backup/helm-values.yaml
 ```
 
@@ -61,7 +61,7 @@ kubectl wait --for=condition=ready pod -l app=istiod -n istio-system --timeout=3
 
 ## Step 2: Restore Certificates (If Using Custom CA)
 
-If you were using custom CA certificates, restore them before anything else. The certificates need to be in place before Istiod starts issuing workload certificates:
+If you were using custom CA certificates, restore them before installing Istio on a fresh cluster. The certificates need to be in place before Istiod starts issuing workload certificates:
 
 ```bash
 kubectl create secret generic cacerts -n istio-system \
@@ -71,7 +71,7 @@ kubectl create secret generic cacerts -n istio-system \
   --from-file=backup/cert-chain.pem
 ```
 
-Then restart Istiod to pick up the certificates:
+If Istiod was already running, restart it to pick up the certificates:
 
 ```bash
 kubectl rollout restart deployment/istiod -n istio-system
@@ -106,7 +106,7 @@ kubectl apply -f backup/peerauthentications.yaml
 kubectl apply -f backup/requestauthentications.yaml
 ```
 
-These define the authentication mode for the mesh. Applying them early prevents any mTLS conflicts when services start communicating.
+PeerAuthentication defines the mTLS mode for the mesh or namespace, and RequestAuthentication defines JWT validation rules. Applying them early prevents authentication policy surprises when services start communicating.
 
 **Second, apply ServiceEntries:**
 
@@ -149,7 +149,7 @@ kubectl apply -f backup/telemetry.yaml
 
 ## Step 5: Handle Resource Conflicts
 
-If you're restoring to a cluster that already has some Istio configuration, you might hit conflicts. The `--force` flag can help, but use it carefully:
+If you're restoring to a cluster that already has some Istio configuration, you might hit field ownership conflicts. Server-side apply with `--force-conflicts` can help, but use it carefully:
 
 ```bash
 # Apply with server-side apply to handle conflicts
@@ -186,17 +186,17 @@ If you used Velero for backups, restoration is straightforward:
 velero backup get
 
 # Restore from a specific backup
-velero restore create --from-backup istio-backup-20260224
+velero restore create istio-restore-20260224 --from-backup istio-backup-20260224
 
 # Check restore status
-velero restore describe istio-backup-20260224
+velero restore describe istio-restore-20260224
 ```
 
 To restore only Istio resources (not everything in the backup):
 
 ```bash
-velero restore create --from-backup full-cluster-backup \
-  --include-resources virtualservices,destinationrules,gateways,serviceentries,sidecars,envoyfilters,peerauthentications,requestauthentications,authorizationpolicies,telemetry
+velero restore create istio-config-restore --from-backup full-cluster-backup \
+  --include-resources virtualservices.networking.istio.io,destinationrules.networking.istio.io,gateways.networking.istio.io,serviceentries.networking.istio.io,sidecars.networking.istio.io,envoyfilters.networking.istio.io,peerauthentications.security.istio.io,requestauthentications.security.istio.io,authorizationpolicies.security.istio.io,telemetries.telemetry.istio.io
 ```
 
 ## Verifying the Restoration
@@ -248,7 +248,7 @@ A few things that commonly trip people up during restoration:
 
 **Version mismatch**: If you restore Istio v1.20 configuration to a cluster running v1.22, some fields might have changed or been deprecated. Always try to match versions.
 
-**Missing CRDs**: If a CRD doesn't exist in the target cluster, kubectl apply will silently fail. Always verify CRDs are installed first.
+**Missing CRDs**: If a CRD doesn't exist in the target cluster, `kubectl apply` fails with an error such as "no matches for kind." Always verify CRDs are installed first.
 
 **Resource version conflicts**: Backups may include `resourceVersion` fields that conflict. Make sure your cleanup script removes these before restoration.
 
