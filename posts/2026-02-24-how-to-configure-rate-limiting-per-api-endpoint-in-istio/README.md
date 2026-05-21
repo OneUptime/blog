@@ -119,7 +119,8 @@ spec:
           rate_limit_service:
             grpc_service:
               envoy_grpc:
-                cluster_name: rate_limit_cluster
+                cluster_name: outbound|8081||ratelimit.rate-limit.svc.cluster.local
+                authority: ratelimit.rate-limit.svc.cluster.local
             transport_api_version: V3
           enable_x_ratelimit_headers: DRAFT_VERSION_03
   - applyTo: VIRTUAL_HOST
@@ -143,9 +144,9 @@ One challenge with path-based rate limiting is dynamic path segments. The path `
 
 There are a few ways to handle this:
 
-### Option 1: Use Route Names
+### Option 1: Use Header Match Patterns
 
-Instead of the raw path, use Envoy route names which group all paths matching a pattern:
+Instead of the raw path, use header match patterns which group all paths matching a prefix:
 
 ```yaml
 rate_limits:
@@ -223,7 +224,7 @@ rate_limits:
 
 ## Combining Endpoint and Per-User Limits
 
-The most effective setup combines per-endpoint and per-user limits. You can send multiple descriptors in a single rate limit check:
+The most effective setup combines per-endpoint and per-user limits. You can send multiple descriptor entries in a single rate limit check:
 
 ```yaml
 rate_limits:
@@ -246,7 +247,7 @@ metadata:
   namespace: rate-limit
 data:
   config.yaml: |
-    domain: combined-ratelimit
+    domain: endpoint-ratelimit
     descriptors:
     - key: PATH
       value: "/api/v1/search"
@@ -302,7 +303,8 @@ spec:
           rate_limit_service:
             grpc_service:
               envoy_grpc:
-                cluster_name: rate_limit_cluster
+                cluster_name: outbound|8081||ratelimit.rate-limit.svc.cluster.local
+                authority: ratelimit.rate-limit.svc.cluster.local
             transport_api_version: V3
   - applyTo: VIRTUAL_HOST
     match:
@@ -342,7 +344,7 @@ The search endpoint should start returning 429 after 50 requests, while the data
 
 ## Monitoring Endpoint Rate Limits
 
-Track per-endpoint metrics using the rate limit service stats:
+Track Envoy rate limit filter stats from the sidecar:
 
 ```bash
 kubectl exec my-api-pod -c istio-proxy -- \
