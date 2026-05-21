@@ -51,7 +51,7 @@ kubectl exec deploy/my-app -c istio-proxy -- curl -s localhost:15000/config_dump
 If this returns something like 200MB, your sidecar is carrying configuration for a lot of services. Fix this with a Sidecar resource:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -85,39 +85,16 @@ kubectl exec deploy/my-app -c istio-proxy -- curl -s localhost:15000/stats | gre
 
 If you have confirmed that memory is growing continuously and the common causes above do not explain it, you need to profile the heap. Envoy supports heap profiling with tcmalloc.
 
-First, check if heap profiling is available:
+Envoy's `/heap_dump` admin endpoint returns a pprof-compatible heap profile in the response body when the binary is built with tcmalloc. Save it to a file inside the proxy container:
 
 ```bash
-kubectl exec deploy/my-app -c istio-proxy -- curl -s localhost:15000/heap_dump
-```
-
-If it is not enabled, you may need to set the `ENVOY_HEAP_PROFILE` environment variable. Add it through the sidecar proxy configuration:
-
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: my-app
-spec:
-  template:
-    metadata:
-      annotations:
-        sidecar.istio.io/proxyMemoryLimit: "1Gi"
-        proxy.istio.io/config: |
-          proxyMetadata:
-            ENVOY_HEAP_PROFILE: "/tmp/envoy_heap"
-```
-
-Once the pod is running with this configuration, you can trigger a heap dump:
-
-```bash
-kubectl exec deploy/my-app -c istio-proxy -- curl -s -X POST localhost:15000/heap_dump
+kubectl exec deploy/my-app -c istio-proxy -- curl -s -o /tmp/envoy.heap localhost:15000/heap_dump
 ```
 
 Then copy it out for analysis:
 
 ```bash
-kubectl cp default/my-app-xyz:/tmp/envoy_heap.0001.heap ./heap_profile -c istio-proxy
+kubectl cp default/my-app-xyz:/tmp/envoy.heap ./heap_profile -c istio-proxy
 ```
 
 ## Analyzing the Heap Profile
@@ -125,13 +102,13 @@ kubectl cp default/my-app-xyz:/tmp/envoy_heap.0001.heap ./heap_profile -c istio-
 You need the `pprof` tool to analyze the heap dump. If you have Go installed:
 
 ```bash
-go tool pprof heap_profile
+go tool pprof -top heap_profile
 ```
 
 Or use the standalone pprof:
 
 ```bash
-pprof --text heap_profile
+pprof -top heap_profile
 ```
 
 Look for allocation sites that are consuming the most memory. Common culprits include:
@@ -143,7 +120,7 @@ Look for allocation sites that are consuming the most memory. Common culprits in
 
 ## Stats Cardinality Issues
 
-One of the most common causes of memory growth in Envoy is stats cardinality. Every unique combination of metric labels creates a separate stats entry in memory. If you have a metric with a label that has thousands of unique values (like a request ID or user ID), the stats memory will grow unbounded.
+One common cause of memory growth is stats cardinality. Envoy keeps statistics in memory, and Istio's Prometheus telemetry creates a separate time series for every unique combination of metric labels. If you add a metric label that has thousands of unique values, such as a request ID or user ID, memory and Prometheus cardinality can grow quickly.
 
 Check the total number of stats:
 
@@ -153,10 +130,10 @@ kubectl exec deploy/my-app -c istio-proxy -- curl -s localhost:15000/stats | wc 
 
 If this number is very high (over 100,000), you have a cardinality problem.
 
-Istio lets you control which stats are generated through the Telemetry API:
+Istio lets you control which metric dimensions are generated through the Telemetry API. For example, if you previously added `request_host` as a custom metric dimension and it is too high-cardinality, remove it:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: reduce-stats
@@ -180,12 +157,12 @@ This removes the `request_host` label from all metrics, which can be a high-card
 If memory growth correlates with traffic volume, the issue might be unbounded connection pools. Limit them with a DestinationRule:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: limit-connections
 spec:
-  host: "*.default.svc.cluster.local"
+  host: my-service.default.svc.cluster.local
   trafficPolicy:
     connectionPool:
       tcp:
@@ -219,7 +196,7 @@ When the sidecar hits the memory limit, it gets OOMKilled and Kubernetes restart
 
 ## Overload Manager
 
-Envoy has an overload manager that can take protective actions when resource usage gets too high. You can configure it to stop accepting new connections before hitting the memory limit:
+Envoy has an overload manager that can take protective actions when resource usage gets too high, such as stopping new connections or shrinking the heap. In Istio sidecars, one simpler lever exposed through `ProxyConfig` is reducing concurrency:
 
 ```yaml
 apiVersion: apps/v1
@@ -246,7 +223,7 @@ Set up a dashboard that tracks sidecar memory for all pods in a namespace:
 container_memory_working_set_bytes{container="istio-proxy", namespace="default"}
 
 # Memory limit to overlay
-kube_pod_container_resource_limits{container="istio-proxy", resource="memory", namespace="default"}
+kube_pod_container_resource_limits{container="istio-proxy", resource="memory", unit="byte", namespace="default"}
 ```
 
 Set up an alert that fires when memory crosses a threshold:
@@ -258,7 +235,8 @@ groups:
   - alert: SidecarMemoryGrowing
     expr: |
       predict_linear(container_memory_working_set_bytes{container="istio-proxy"}[6h], 24*3600) >
-      kube_pod_container_resource_limits{container="istio-proxy", resource="memory"} * 0.9
+      on (namespace, pod, container)
+      kube_pod_container_resource_limits{container="istio-proxy", resource="memory", unit="byte"} * 0.9
     for: 30m
     labels:
       severity: warning
