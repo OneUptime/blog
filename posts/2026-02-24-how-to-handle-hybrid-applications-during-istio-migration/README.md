@@ -27,7 +27,7 @@ These three categories need to communicate with each other, and each combination
 The most critical setting during hybrid migration is PeerAuthentication. You need PERMISSIVE mode:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -101,7 +101,7 @@ If you need traffic management for non-meshed services, you can use the Istio in
 AuthorizationPolicies only apply to meshed services (because they are enforced by the sidecar). During hybrid migration, be careful with policies that reference source identities:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: allow-specific-sources
@@ -122,7 +122,7 @@ This policy requires the caller to present a valid Istio identity. Non-meshed ca
 To allow both meshed and non-meshed callers during migration:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: allow-hybrid
@@ -141,9 +141,9 @@ spec:
     - from:
         - source:
             notPrincipals: ["*"]
-          source:
-            namespaces: ["default"]
 ```
+
+If you need to narrow plaintext callers, use source IP ranges or Kubernetes network controls. Source namespaces and principals are derived from Istio identity and require mTLS.
 
 Or simply do not apply restrictive AuthorizationPolicies until all callers are meshed.
 
@@ -213,7 +213,7 @@ For critical services, do a canary migration:
 5. Remove the non-meshed deployment
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: payment-service
@@ -232,6 +232,24 @@ spec:
           weight: 90
 ```
 
+The subsets referenced by the VirtualService must be defined in a matching DestinationRule:
+
+```yaml
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: payment-service
+spec:
+  host: payment-service
+  subsets:
+    - name: meshed
+      labels:
+        mesh: enabled
+    - name: non-meshed
+      labels:
+        mesh: disabled
+```
+
 ## Handling Stateful Services
 
 Stateful services (databases, message queues) need special care:
@@ -241,7 +259,7 @@ Stateful services (databases, message queues) need special care:
 - **Kafka**: Can be meshed with TCP protocol support, but test thoroughly
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-postgres
@@ -287,7 +305,7 @@ Switch to STRICT mTLS only when:
 5. You have a rollback plan (switching back to PERMISSIVE)
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: strict
