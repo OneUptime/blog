@@ -4,23 +4,23 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Termination, Drain Duration, Kubernetes, Envoy
 
-Description: Master the terminationDrainDuration setting in Istio to control how long Envoy waits for connections to finish during pod shutdown.
+Description: Master the terminationDrainDuration setting in Istio to control how long Envoy is allowed to drain connections during pod shutdown.
 
 ---
 
-The `terminationDrainDuration` setting is one of the most important and least understood configurations in Istio. It controls how long the Envoy sidecar proxy waits for active connections and requests to finish after the pod receives a SIGTERM signal. Set it too low and connections get dropped. Set it too high and deployments take forever. Finding the right value depends on your workload.
+The `terminationDrainDuration` setting is one of the most important and least understood configurations in Istio. It controls how long `istio-agent` lets the Envoy sidecar proxy drain active connections and requests after the proxy container receives SIGTERM or SIGINT. Set it too low and connections get dropped. Set it too high and deployments take forever. Finding the right value depends on your workload.
 
 ## What terminationDrainDuration Actually Does
 
-When a pod is being terminated, Kubernetes sends SIGTERM to all containers. The Istio sidecar (Envoy) receives this signal and starts a drain sequence:
+When a pod is being terminated, Kubernetes asks the container runtime to stop the containers in the pod by sending a TERM signal to each container's main process. The Istio sidecar container runs `istio-agent`, which receives the signal and starts the proxy drain sequence:
 
-1. Envoy's listener manager begins draining all listeners
-2. No new connections are accepted on inbound listeners
+1. `istio-agent` tells the active Envoy process to start gracefully draining
+2. Envoy discourages new requests and connections while letting existing ones complete
 3. For HTTP connections, `Connection: close` headers are added to responses
 4. For HTTP/2, GOAWAY frames are sent
-5. Envoy waits up to `terminationDrainDuration` for active requests to complete
-6. After the duration expires, remaining connections are forcibly closed
-7. Envoy process exits
+5. `istio-agent` waits for `terminationDrainDuration`
+6. After the duration expires, `istio-agent` kills any remaining active Envoy processes
+7. The sidecar container exits
 
 The default value in Istio is 5 seconds. For many production workloads, 5 seconds is not enough.
 
@@ -130,7 +130,7 @@ spec:
   # Buffer before SIGKILL: 25 seconds
 ```
 
-If the drain duration exceeds the grace period, Kubernetes will SIGKILL the pod before the drain completes. You'll see this in the pod events:
+If the drain duration exceeds the grace period, Kubernetes can send SIGKILL to any remaining processes before the drain completes. You'll see this in the pod events:
 
 ```bash
 kubectl describe pod payment-service-xxx | grep -A5 Events
@@ -146,7 +146,7 @@ Different protocols drain differently, and the duration impacts them in distinct
 
 **HTTP/2 and gRPC:** Multiple streams share a single connection. The GOAWAY frame stops new streams, but existing streams continue until they complete or the drain period ends. If you use gRPC streaming, the drain duration needs to be long enough for both sides to wrap up the stream.
 
-**Raw TCP:** Envoy can't gracefully signal the application over TCP. It just waits for the connection to close on its own. If the application doesn't close the connection, it stays open until the drain period expires and then gets forcibly terminated.
+**Raw TCP:** Envoy can't gracefully signal the application over TCP in the same protocol-aware way it can for HTTP. It generally has to wait for the connection to close on its own. If the application doesn't close the connection, it can stay open until the drain period expires and the proxy is terminated.
 
 For TCP workloads, consider a longer drain duration:
 
@@ -165,9 +165,9 @@ Check if your drain duration is adequate by monitoring connection states during 
 kubectl exec pod/my-app-xxx -c istio-proxy -- \
   pilot-agent request GET /server_info
 
-# The state field shows:
+# The state field can show:
 # LIVE - normal operation
-# DRAINING - drain in progress
+# DRAINING - Envoy is in its draining server state
 # PRE_INITIALIZING / INITIALIZING - startup
 ```
 
@@ -220,9 +220,9 @@ A few things that trip people up with termination drain duration:
 
 1. **Changed values don't apply immediately.** Pods need to be restarted to pick up new drain duration settings. A `kubectl rollout restart` will do it.
 
-2. **The annotation format matters.** The `proxy.istio.io/config` annotation expects valid YAML. If you get the indentation wrong, the setting silently falls back to the default.
+2. **The annotation format matters.** The `proxy.istio.io/config` annotation expects valid YAML. If you get the indentation wrong, the override can be ignored or rejected.
 
-3. **Drain duration of 0s means no drain.** Envoy will close all connections immediately on SIGTERM. This is almost never what you want.
+3. **Drain duration of 0s means no useful drain window.** `istio-agent` will not give Envoy meaningful time to finish in-flight work before shutdown. This is almost never what you want.
 
 4. **Global vs. per-pod precedence.** Per-pod annotations override the global mesh config. If you set a global value of 30s but a pod annotation of 5s, that pod gets 5s.
 
