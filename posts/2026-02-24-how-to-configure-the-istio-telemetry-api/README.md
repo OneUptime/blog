@@ -52,13 +52,13 @@ The three main sections are `metrics`, `accessLogging`, and `tracing`. Each sect
 
 ## Setting Up a Mesh-Wide Telemetry Policy
 
-To apply telemetry configuration across the entire mesh, create a Telemetry resource in the Istio root namespace (usually `istio-system`) with the name `default`:
+To apply telemetry configuration across the entire mesh, create a Telemetry resource in the Istio root namespace (usually `istio-system`) without a workload selector:
 
 ```yaml
 apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
-  name: default
+  name: mesh-default
   namespace: istio-system
 spec:
   metrics:
@@ -137,7 +137,7 @@ The metrics section controls which metrics are collected and how they're configu
 apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
-  name: default
+  name: mesh-default
   namespace: istio-system
 spec:
   metrics:
@@ -293,11 +293,11 @@ istioctl proxy-config log <pod-name> --level telemetry:debug
 
 ## Common Gotchas
 
-**Provider not found**: If you reference a provider name that isn't defined in MeshConfig, the Telemetry resource will be accepted but have no effect. Always check MeshConfig first.
+**Provider not found**: If you reference a provider name that isn't defined in MeshConfig, Istio can't send telemetry to that backend. Always check MeshConfig first.
 
-**Root namespace**: The mesh-wide Telemetry must be in the root namespace (usually `istio-system`). A Telemetry named "default" in any other namespace only applies to that namespace.
+**Root namespace**: The mesh-wide Telemetry must be in the root namespace (usually `istio-system`) and must not have a workload selector. A selector-less Telemetry in any other namespace only applies to that namespace.
 
-**Multiple Telemetry resources**: You can have multiple Telemetry resources in the same namespace, but they merge in a specific order. Named resources merge on top of the "default" resource. Avoid creating conflicting configurations.
+**Multiple Telemetry resources**: It is only valid to have one selector-less Telemetry resource in a namespace, and only one selector-based Telemetry resource can select a given workload. Avoid creating overlapping configurations.
 
 **Sidecar restart required**: After changing MeshConfig providers, you need to restart your workload pods for the new configuration to take effect:
 
