@@ -63,11 +63,11 @@ spec:
   location: MESH_EXTERNAL
 ```
 
-With `DNS` resolution, the sidecar proxy resolves the hostname using DNS when it needs to establish a connection. It caches the result based on the DNS TTL. This is the most common setting for external services accessed by hostname.
+With `DNS` resolution, the sidecar proxy resolves the hostname asynchronously and periodically, then uses the resolved addresses for requests. This is the most common setting for external services accessed by hostname.
 
 **When to use:** Single-host external services with stable DNS.
 
-**Tradeoffs:** DNS lookups add a small amount of latency. The sidecar caches results, but cache invalidation depends on TTL.
+**Tradeoffs:** Each proxy periodically performs DNS lookups for these ServiceEntry hosts, even if it is not currently sending traffic to them. In current Istio, the proxy DNS refresh interval is fixed at 30 seconds, so many proxies or many DNS-based ServiceEntries can add load to DNS servers.
 
 ### resolution: STATIC
 
@@ -118,13 +118,13 @@ spec:
 
 With `NONE` resolution, the sidecar does not resolve the hostname at all. It uses the IP address that the application resolved via DNS. The sidecar just matches the traffic based on the original destination IP and passes it through.
 
-**When to use:** Wildcard hosts (required). Services where DNS resolution must happen at the application level. Cases where you don't want the sidecar to do its own DNS resolution.
+**When to use:** Wildcard hosts where you want the application-resolved destination IP to be used. Services where DNS resolution must happen at the application level. Cases where you don't want the sidecar to do its own DNS resolution. In current Istio versions, wildcard HTTP/TLS egress can also use `resolution: DYNAMIC_DNS` when you want the proxy to resolve the host from the HTTP Host header or TLS SNI.
 
 **Tradeoffs:** The sidecar cannot do load balancing across multiple IPs because it doesn't know about them. Less control over connection routing.
 
 ## DNS Proxy in Istio
 
-Starting with Istio 1.13+, Istio includes a DNS proxy feature in the sidecar that intercepts DNS queries from the application. This enables the sidecar to resolve hostnames for ServiceEntry hosts directly, without relying on the upstream DNS server.
+Current Istio includes a DNS proxy feature that can intercept DNS queries from the application. This enables the proxy to answer hostnames for ServiceEntry hosts directly when it has a matching mapping, without relying on the upstream DNS server. In sidecar mode, DNS proxying is not enabled by default. In ambient mode, DNS proxying is enabled by default in Istio 1.25 and later.
 
 Check if DNS proxy is enabled:
 
@@ -138,11 +138,16 @@ Enable it in the mesh config:
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
+  values:
+    pilot:
+      env:
+        # Enable status-based IP auto-allocation for ServiceEntries
+        PILOT_ENABLE_IP_AUTOALLOCATE: "true"
   meshConfig:
     defaultConfig:
       proxyMetadata:
+        # Enable DNS proxying in sidecar mode
         ISTIO_META_DNS_CAPTURE: "true"
-        ISTIO_META_DNS_AUTO_ALLOCATE: "true"
 ```
 
 With DNS proxy enabled:
@@ -150,13 +155,13 @@ With DNS proxy enabled:
 - The sidecar intercepts DNS queries from the application
 - For hosts defined in ServiceEntry resources, the sidecar responds directly
 - For other hosts, it forwards the query to the upstream DNS server
-- `DNS_AUTO_ALLOCATE` assigns virtual IPs to ServiceEntry hosts, which helps with TCP traffic routing
+- IP auto-allocation assigns virtual IPs to ServiceEntry hosts, which helps with TCP traffic routing
 
 This is especially useful for ServiceEntry hosts that don't have real IP addresses or when you need the sidecar to route TCP traffic by hostname.
 
 ## DNS Auto-Allocation
 
-When `ISTIO_META_DNS_AUTO_ALLOCATE` is enabled, Istio assigns virtual IP addresses (from the 240.240.0.0/16 range) to ServiceEntry hosts. This solves a tricky problem:
+When IP auto-allocation is enabled, Istio assigns virtual IP addresses (from the 240.240.0.0/16 range) to ServiceEntry hosts that do not explicitly define addresses, as long as they do not use wildcard hosts. This solves a tricky problem:
 
 Without auto-allocation, if your application resolves `api.stripe.com` to `192.0.2.50`, the sidecar intercepts a connection to `192.0.2.50:443`. For HTTP/TLS traffic, the sidecar can match on the Host header or SNI. But for plain TCP traffic, there is no hostname in the packet. The sidecar can only match on the IP address, and it might not know that `192.0.2.50` corresponds to `api.stripe.com`.
 
@@ -186,17 +191,19 @@ istioctl proxy-config endpoints deploy/my-app --cluster "outbound|443||api.strip
 
 ### DNS Resolution Returns Wrong IP
 
-If you are using `resolution: DNS` and the sidecar resolves to a different IP than the application, it might be due to DNS caching. The sidecar caches DNS results independently from the application. Force a refresh by restarting the pod or checking the TTL.
+If you are using `resolution: DNS` and the sidecar resolves to a different IP than the application, it might be due to the sidecar's independent DNS refresh cycle. The sidecar resolves DNS independently from the application and, in current Istio, refreshes DNS results every 30 seconds. Wait for the next refresh or restart the pod if you need to force the proxy to rebuild its state.
 
 ### Wildcard ServiceEntry Not Working
 
-If `*.example.com` is not matching requests, verify you are using `resolution: NONE`:
+If `*.example.com` is not matching requests and you expect passthrough to the application-resolved IP, verify you are using `resolution: NONE`:
 
 ```bash
 kubectl get serviceentry wildcard-example -o yaml
 ```
 
-Also verify that DNS proxy is enabled if you need the sidecar to handle DNS for wildcard entries:
+Also remember that automatic VIP allocation does not apply to wildcard hosts. For current Istio HTTP/TLS wildcard routing where the proxy should resolve the destination from the Host header or SNI, use `resolution: DYNAMIC_DNS` instead of `NONE`.
+
+You can inspect the proxy bootstrap configuration when checking whether DNS capture is configured:
 
 ```bash
 istioctl proxy-config bootstrap deploy/my-app -o json | grep DNS
@@ -252,7 +259,7 @@ spec:
   location: MESH_EXTERNAL
 ```
 
-The sidecar resolves `service.external.com` once and uses the result for all ports. If the service uses different IP addresses for different ports (unusual but possible), you would need separate ServiceEntry resources.
+The same ServiceEntry resolution mode and host apply to all of the ports in the resource. Istio still creates per-port proxy configuration, so do not rely on one shared DNS cache across ports. If the service uses different IP addresses for different ports (unusual but possible), you would need separate ServiceEntry resources.
 
 ## Best Practices
 
@@ -260,7 +267,7 @@ The sidecar resolves `service.external.com` once and uses the result for all por
 
 2. **Use `resolution: STATIC` for stable IP services.** This avoids DNS dependency and gives you explicit control.
 
-3. **Use `resolution: NONE` for wildcards.** It is the only option that works with wildcard hosts.
+3. **Use `resolution: NONE` for wildcard passthrough.** Use it when the application should resolve the wildcard destination and the proxy should forward to that original IP. For current Istio HTTP/TLS wildcard egress where the proxy should resolve the destination from Host or SNI, consider `resolution: DYNAMIC_DNS`.
 
 4. **Enable DNS proxy for TCP services.** Auto-allocation helps the sidecar route TCP traffic correctly to ServiceEntry hosts.
 
@@ -270,8 +277,8 @@ The sidecar resolves `service.external.com` once and uses the result for all por
 kubectl exec deploy/my-app -c istio-proxy -- curl -s localhost:15000/stats | grep dns
 ```
 
-6. **Set reasonable DNS TTLs.** Envoy respects the DNS TTL for caching. If the external service has a very short TTL (like 5 seconds), the sidecar will be doing frequent DNS lookups. If it has a very long TTL (like 24 hours), IP changes won't be picked up quickly.
+6. **Set reasonable DNS TTLs, but understand Istio's refresh behavior.** Current Istio proxy DNS resolution for `resolution: DNS` ServiceEntries is periodic with a fixed 30-second refresh interval. Very low TTLs can still increase load for applications and other DNS clients, but the sidecar does not refresh these ServiceEntry DNS results on every TTL boundary.
 
 ## Summary
 
-DNS resolution for external services in Istio depends on the `resolution` setting in your ServiceEntry. Use `DNS` for hostname-based services, `STATIC` for IP-based services, and `NONE` for wildcards. Enable the Istio DNS proxy with auto-allocation for better TCP routing support. When troubleshooting connectivity issues, check both DNS resolution (from the application level) and sidecar routing (using `istioctl proxy-config`) since they are independent processes that both need to be working correctly.
+DNS resolution for external services in Istio depends on the `resolution` setting in your ServiceEntry. Use `DNS` for hostname-based services, `STATIC` for IP-based services, and `NONE` for wildcard passthrough. For current Istio HTTP/TLS wildcard egress, `DYNAMIC_DNS` is also available. Enable the Istio DNS proxy with auto-allocation for better TCP routing support. When troubleshooting connectivity issues, check both DNS resolution (from the application level) and sidecar routing (using `istioctl proxy-config`) since they are independent processes that both need to be working correctly.
