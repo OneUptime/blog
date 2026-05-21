@@ -33,7 +33,7 @@ This gives each request a 33.3% chance of being aborted.
 A basic percentage-based abort injection:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: inventory-service
@@ -59,7 +59,7 @@ spec:
 Same concept, but with delays instead of errors:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: inventory-service
@@ -85,7 +85,7 @@ spec:
 You can apply both delay and abort percentages in the same rule:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: inventory-service
@@ -108,16 +108,17 @@ spec:
             host: inventory-service
 ```
 
-The percentages are evaluated independently. Here's how it breaks down for each request:
+The percentages are evaluated independently. A request can match the delay percentage, the abort percentage, both, or neither:
 
-1. First, the abort check runs: 10% chance of immediate 503
-2. If the request survives the abort check, the delay check runs: 30% chance of 2-second delay
-3. If neither fault triggers, the request proceeds normally
+1. 10% of requests match the abort fault and return a 503
+2. 30% of requests match the delay fault and get a 2-second delay
+3. Some requests can match both faults
 
-So the effective distribution is roughly:
-- 10% of requests get aborted
-- 27% of requests get delayed (30% of the 90% that aren't aborted)
-- 63% of requests proceed normally
+So the overlap is roughly:
+- 7% of requests match only the abort fault
+- 3% of requests match both the delay and abort faults
+- 27% of requests match only the delay fault and proceed to the upstream service
+- 63% of requests match neither fault and proceed normally
 
 ## Choosing the Right Percentages
 
@@ -153,8 +154,8 @@ fault:
 ```
 
 Good for testing:
-- Retry effectiveness (retries should mask many of these failures)
-- Circuit breaker behavior (should they trip at this rate?)
+- Application-level retry effectiveness
+- Circuit breaker behavior when faults are injected upstream of the client that owns the circuit breaker
 - User experience during degradation
 
 ### Severe Degradation (50-75%)
@@ -203,7 +204,7 @@ for pct in 5 10 20 30 50 75; do
   echo "Setting fault percentage to ${pct}%..."
 
   cat <<EOF | kubectl apply -f -
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: inventory-service
@@ -235,8 +236,8 @@ echo "Fault injection removed."
 Watch your dashboards during this progression. You should see:
 
 - Error rates climbing proportionally
-- Retry rates increasing
-- Circuit breakers potentially activating
+- Retry rates increasing if retries are configured outside the same fault-injection VirtualService
+- Circuit breakers potentially activating when they observe upstream failures rather than client-side injected faults
 - Latency increasing (if retries add delay)
 
 ## Verifying the Actual Fault Rate
@@ -265,7 +266,7 @@ For small sample sizes, the actual rate may differ from the configured percentag
 Apply different percentages to different routes based on their criticality:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: inventory-service
