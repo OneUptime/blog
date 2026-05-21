@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, WASM, WasmPlugin, API, Kubernetes, Service Mesh
 
-Description: A complete walkthrough of the Istio WasmPlugin API including all fields, configuration options, and practical deployment examples.
+Description: A complete walkthrough of the Istio WasmPlugin API including common fields, configuration options, and practical deployment examples.
 
 ---
 
@@ -56,7 +56,7 @@ spec:
       version: v2
 ```
 
-If you omit the selector entirely and deploy the WasmPlugin in the `istio-system` namespace, it applies to all workloads in the mesh. This is how you deploy mesh-wide plugins.
+If you omit the selector entirely and deploy the WasmPlugin in Istio's root configuration namespace, usually `istio-system`, it applies to all workloads in the mesh. This is how you deploy mesh-wide plugins.
 
 For namespace-scoped plugins, create the WasmPlugin in the workload's namespace:
 
@@ -100,10 +100,10 @@ Wasm plugins need to execute at a specific point in the Envoy filter chain. The 
 
 - `AUTHN` - Runs during authentication, before Istio's own authentication filters
 - `AUTHZ` - Runs during authorization, before Istio's authorization filters
-- `STATS` - Runs during stats collection, after authorization
-- `UNSPECIFIED_PHASE` - Defaults to `AUTHN`
+- `STATS` - Runs before Istio's stats filters, after authorization
+- `UNSPECIFIED_PHASE` - Lets the control plane decide where to insert the plugin, generally near the end of the filter chain before the router
 
-Choosing the right phase matters. If your plugin does authentication work, put it in `AUTHN`. If it modifies headers for routing decisions, `AUTHN` is also appropriate since it runs early. Logging and observability plugins should use `STATS` so they see the final state of the request.
+Choosing the right phase matters. If your plugin does authentication work, put it in `AUTHN`. If it modifies headers for routing decisions, `AUTHN` is also appropriate since it runs early. Logging and observability plugins should use `STATS` so they run after authorization and before Istio's own stats filters.
 
 ```yaml
 spec:
@@ -219,7 +219,7 @@ kubectl apply -f custom-headers-plugin.yaml
 Verify it is loaded:
 
 ```bash
-istioctl proxy-config extension api-gateway-pod-xyz -n default
+istioctl proxy-config ecds api-gateway-pod-xyz -n default
 ```
 
 ## Targeting Specific Traffic Types
@@ -245,7 +245,7 @@ spec:
 The mode options are:
 - `CLIENT` - Outbound traffic (when the pod is the client)
 - `SERVER` - Inbound traffic (when the pod is the server)
-- `UNDEFINED` - Both directions (default)
+- `CLIENT_AND_SERVER` - Both directions (default for WasmPlugin traffic selectors when mode is not specified)
 
 ## Verifying Plugin Deployment
 
@@ -259,7 +259,7 @@ Then verify the plugin is actually loaded in the proxy:
 
 ```bash
 istioctl proxy-status
-istioctl proxy-config extension <pod-name> -n <namespace>
+istioctl proxy-config ecds <pod-name> -n <namespace>
 ```
 
 If the plugin is not showing up, check istiod logs:
@@ -282,4 +282,4 @@ The proxy will stop loading the plugin on the next configuration push from istio
 
 ## Summary
 
-The WasmPlugin API is the proper way to manage Wasm extensions in Istio. It gives you control over which workloads run the plugin, what phase of the filter chain it executes in, how it handles failures, and what configuration it receives. Using OCI registries for plugin distribution, pinning versions, and setting appropriate failure strategies are all essential for production deployments. The API surface is compact but covers everything you need.
+The WasmPlugin API is a supported way to manage Wasm extensions in Istio, although Istio 1.30 and later recommend the newer TrafficExtension API for new extensibility configuration. WasmPlugin gives you control over which workloads run the plugin, what phase of the filter chain it executes in, how it handles failures, and what configuration it receives. Using OCI registries for plugin distribution, pinning versions, and setting appropriate failure strategies are all essential for production deployments. The API surface is compact but covers the core controls you need.
