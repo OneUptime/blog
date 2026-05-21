@@ -86,13 +86,12 @@ spec:
     - name: istio-ingressgateway
       enabled: true
       k8s:
-        service:
-          loadBalancerIP: "20.50.x.x"
         serviceAnnotations:
           service.beta.kubernetes.io/azure-load-balancer-resource-group: "MC_myResourceGroup_myAKSCluster_eastus"
+          service.beta.kubernetes.io/azure-pip-name: "istio-ingress-ip"
 ```
 
-The `azure-load-balancer-resource-group` annotation is needed when the public IP is in a different resource group than the AKS cluster resource group.
+The `azure-pip-name` annotation tells AKS which public IP resource to use. The `azure-load-balancer-resource-group` annotation should match the resource group that contains the public IP, and is especially important when the public IP is not in the AKS node resource group.
 
 ## Internal Load Balancer Setup
 
@@ -124,8 +123,7 @@ And assign a static internal IP:
 ```yaml
 serviceAnnotations:
   service.beta.kubernetes.io/azure-load-balancer-internal: "true"
-service:
-  loadBalancerIP: "10.0.1.50"
+  service.beta.kubernetes.io/azure-load-balancer-ipv4: "10.0.1.50"
 ```
 
 Make sure the IP address falls within the subnet's address range.
@@ -241,7 +239,20 @@ spec:
 
 Azure Load Balancer uses health probes to check backend health. For the Istio ingress gateway, AKS automatically creates health probes based on the service port definitions.
 
-The ingress gateway readiness endpoint is at port 15021, path `/healthz/ready`. AKS should pick this up from the service definition, but you can verify in the Azure portal under Load Balancer > Health Probes.
+The ingress gateway readiness endpoint is at port 15021, path `/healthz/ready`.
+
+For HTTP and HTTPS listener ports, you can explicitly point the Azure Load Balancer probes at Istio's readiness endpoint:
+
+```yaml
+serviceAnnotations:
+  service.beta.kubernetes.io/azure-load-balancer-health-probe-request-path: "/healthz/ready"
+  service.beta.kubernetes.io/port_80_health-probe_protocol: "http"
+  service.beta.kubernetes.io/port_80_health-probe_port: "15021"
+  service.beta.kubernetes.io/port_443_health-probe_protocol: "http"
+  service.beta.kubernetes.io/port_443_health-probe_port: "15021"
+```
+
+You can verify the generated probes in the Azure portal under Load Balancer > Health Probes.
 
 ## DNS Integration with Azure DNS
 
@@ -277,7 +288,7 @@ az network nsg rule list \
 
 ## Scaling Considerations
 
-Azure Standard Load Balancer supports up to 1000 backend pool instances. For the Istio ingress gateway, you can scale the deployment:
+Azure Standard Load Balancer supports up to 5000 backend pool instances. For the Istio ingress gateway, you can scale the deployment:
 
 ```bash
 kubectl scale deploy istio-ingressgateway -n istio-system --replicas=3
