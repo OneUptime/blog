@@ -17,7 +17,7 @@ A retry budget limits the total number of retries happening at any given time. I
 Istio configures retries through VirtualService resources. A basic retry configuration:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: payment-service
@@ -35,14 +35,14 @@ spec:
       retryOn: 5xx,reset,connect-failure,retriable-status-codes
 ```
 
-This says: retry up to 3 times, give each attempt 2 seconds, and retry on 5xx errors, connection resets, connection failures, and retriable status codes. Simple enough. But without a budget, under high load this can triple the inbound traffic to the payment service.
+This says: retry up to 3 times after the initial request, give each attempt 2 seconds, and retry on 5xx errors, connection resets, connection failures, and retriable status codes. Simple enough. But without a budget, under high load this can add up to three extra retry attempts for each original request.
 
 ## The Retry Budget Concept
 
-Envoy supports a retry budget through the `maxRetries` field in DestinationRule. This limits the number of concurrent retries across all requests from a caller to a specific destination. It is not a per-request setting - it is a pool-wide limit.
+Istio supports Envoy retry budgets through the `retryBudget` field in DestinationRule. This limits the number of concurrent retries as a percentage of active and pending requests from a caller to a specific destination. It is not a per-request setting - it is a pool-wide limit.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: payment-service
@@ -50,24 +50,26 @@ metadata:
 spec:
   host: payment-service
   trafficPolicy:
+    retryBudget:
+      percent: 10
+      minRetryConcurrency: 3
     connectionPool:
       http:
         http2MaxRequests: 100
-        maxRetries: 10
 ```
 
-With `maxRetries: 10`, only 10 retries can be in flight at the same time across all connections from the caller to payment-service. If all 10 retry slots are used, additional retries are not attempted - the original failure response is returned to the caller.
+With `percent: 10`, retries are capped at 10% of the current active and pending request load, with at least 3 retry slots available because of `minRetryConcurrency`. If all retry slots are used, additional retries are not attempted - the original failure response is returned to the caller.
 
 ## Sizing Your Retry Budget
 
-The right retry budget depends on your traffic volume and how much additional load the destination can handle. A good starting point is to set `maxRetries` to a small percentage of `http2MaxRequests`.
+The right retry budget depends on your traffic volume and how much additional load the destination can handle. A good starting point is to set `retryBudget.percent` to a small percentage of active and pending requests.
 
-For example, if you allow 100 concurrent requests (`http2MaxRequests: 100`), setting `maxRetries: 10` means retries can add at most 10% overhead. This is conservative and safe.
+For example, if the caller has 100 active and pending requests, setting `percent: 10` means retries can add up to about 10 concurrent retry attempts, subject to the minimum retry concurrency. This is conservative and safe.
 
-If you set `maxRetries` too high (say, 100 when `http2MaxRequests` is also 100), you effectively allow the total load to double - 100 original requests plus 100 retries. That defeats the purpose of having a budget.
+If you set `percent` too high (say, 100), you effectively allow retries to match the current request load. That defeats the purpose of having a budget.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: payment-service
@@ -75,23 +77,25 @@ metadata:
 spec:
   host: payment-service
   trafficPolicy:
+    retryBudget:
+      percent: 10
+      minRetryConcurrency: 3
     connectionPool:
       tcp:
         maxConnections: 100
       http:
         http2MaxRequests: 200
         http1MaxPendingRequests: 50
-        maxRetries: 20
 ```
 
-This allows 200 concurrent requests with a retry budget of 20. Retries add at most 10% extra load.
+This allows up to 200 active requests and uses a 10% retry budget. When the caller is saturated, retries add about 10% extra concurrent load.
 
 ## Combining Retry Budget with VirtualService Retries
 
-The VirtualService `retries` and the DestinationRule `maxRetries` work together. The VirtualService defines the retry policy (how many attempts per request, what to retry on), and the DestinationRule caps the total concurrent retries:
+The VirtualService `retries` and the DestinationRule `retryBudget` work together. The VirtualService defines the retry policy (how many attempts per request, what to retry on), and the DestinationRule caps the total concurrent retries:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: payment-service
@@ -109,7 +113,7 @@ spec:
       retryOn: 5xx,reset,connect-failure
     timeout: 10s
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: payment-service
@@ -117,24 +121,26 @@ metadata:
 spec:
   host: payment-service
   trafficPolicy:
+    retryBudget:
+      percent: 10
+      minRetryConcurrency: 3
     connectionPool:
       http:
         http2MaxRequests: 200
-        maxRetries: 20
     outlierDetection:
       consecutive5xxErrors: 5
       interval: 10s
       baseEjectionTime: 30s
 ```
 
-When the system is healthy, requests rarely fail, so few retries happen and the budget is not a constraint. When the payment service starts failing, retries increase, but the budget caps them at 20 concurrent retries. This prevents the retry storm.
+When the system is healthy, requests rarely fail, so few retries happen and the budget is not a constraint. When the payment service starts failing, retries increase, but the budget caps them relative to active and pending request load. This prevents the retry storm.
 
 ## Different Budgets for Different Services
 
 Not every service needs the same retry budget. Apply different policies based on service criticality and capacity:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: catalog-service
@@ -142,12 +148,14 @@ metadata:
 spec:
   host: catalog-service
   trafficPolicy:
+    retryBudget:
+      percent: 10
+      minRetryConcurrency: 3
     connectionPool:
       http:
         http2MaxRequests: 500
-        maxRetries: 50
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: inventory-service
@@ -155,10 +163,12 @@ metadata:
 spec:
   host: inventory-service
   trafficPolicy:
+    retryBudget:
+      percent: 5
+      minRetryConcurrency: 1
     connectionPool:
       http:
         http2MaxRequests: 100
-        maxRetries: 5
 ```
 
 The catalog service is a read-heavy service that can handle retries gracefully, so it gets a larger budget. The inventory service writes to a database and has lower capacity, so it gets a tight budget.
@@ -168,7 +178,7 @@ The catalog service is a read-heavy service that can handle retries gracefully, 
 Retry budgets and circuit breaking complement each other. The retry budget limits retry traffic. Circuit breaking removes unhealthy pods from the load balancing pool. Together, they prevent overload from two angles:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: order-service
@@ -176,13 +186,15 @@ metadata:
 spec:
   host: order-service
   trafficPolicy:
+    retryBudget:
+      percent: 10
+      minRetryConcurrency: 3
     connectionPool:
       tcp:
         maxConnections: 100
       http:
         http2MaxRequests: 200
         http1MaxPendingRequests: 50
-        maxRetries: 15
     outlierDetection:
       consecutive5xxErrors: 3
       interval: 10s
@@ -190,7 +202,7 @@ spec:
       maxEjectionPercent: 30
 ```
 
-When a pod starts failing, outlier detection ejects it. Retries go to healthy pods (capped by the budget). The failing pod gets 30 seconds to recover before being added back.
+When a pod starts failing, outlier detection ejects it. Retries go to healthy pods (capped by the budget). The failing pod gets at least 30 seconds to recover before being added back.
 
 ## Monitoring Retry Behavior
 
@@ -207,8 +219,10 @@ Look for these Envoy stats:
 
 - `upstream_rq_retry`: Total retries attempted
 - `upstream_rq_retry_success`: Retries that succeeded
-- `upstream_rq_retry_overflow`: Retries that were rejected because the budget was exhausted
+- `upstream_rq_retry_overflow`: Retries that were rejected because the retry budget or retry circuit breaker was exhausted
 - `upstream_rq_retry_limit_exceeded`: Retries that exceeded per-request retry limits
+
+If you do not see these stats, configure Istio's proxy stats matcher to include `.*upstream_rq_retry.*`.
 
 A high `upstream_rq_retry_overflow` count means your budget is actively preventing retry storms. That is the budget doing its job. But if you see it climbing during normal operations (not during an outage), your budget might be too tight.
 
@@ -217,7 +231,7 @@ A high `upstream_rq_retry_overflow` count means your budget is actively preventi
 Some operations should never be retried. Non-idempotent operations (like charging a credit card) can cause duplicates if retried. Disable retries for these:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: payment-service
@@ -246,10 +260,10 @@ The `/api/charge` endpoint gets zero retries. Everything else gets the standard 
 
 ## Retry Backoff
 
-Envoy adds jittered exponential backoff between retries by default. The first retry happens after 25ms, the second after 50ms, and so on, with random jitter. This helps spread out retry traffic and gives the destination time to recover.
+Envoy adds fully jittered exponential backoff between retries by default, using a 25ms base interval. With the default interval, the first retry is delayed randomly by up to about 25ms, the second by up to about 75ms, and later retries continue increasing up to the configured cap. This helps spread out retry traffic and gives the destination time to recover.
 
 You do not need to configure this - it is the default behavior. But it is worth knowing because it means retries are not all hitting at the same instant.
 
 ## Summary
 
-Retry budgets prevent retries from becoming a problem worse than the original failure. Set `maxRetries` in your DestinationRule to a small percentage (5-15%) of your `http2MaxRequests` to cap retry overhead. Combine this with VirtualService retry policies for per-request retry behavior, and outlier detection for circuit breaking. Monitor `upstream_rq_retry_overflow` to see when budgets are being enforced. Disable retries entirely for non-idempotent operations. The goal is to keep retries helpful without letting them amplify failures.
+Retry budgets prevent retries from becoming a problem worse than the original failure. Set `retryBudget.percent` in your DestinationRule to a small percentage (5-15%) to cap retry overhead relative to active and pending request load. Combine this with VirtualService retry policies for per-request retry behavior, and outlier detection for circuit breaking. Monitor `upstream_rq_retry_overflow` to see when budgets are being enforced. Disable retries entirely for non-idempotent operations. The goal is to keep retries helpful without letting them amplify failures.
