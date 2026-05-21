@@ -27,7 +27,7 @@ At thousands of pods, three things become bottlenecks:
 If you do only one optimization, do this one. The Sidecar resource limits which services each sidecar knows about:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -51,7 +51,7 @@ For large organizations, create a Sidecar resource in every namespace:
 
 for ns in $(kubectl get namespaces -l type=application -o jsonpath='{.items[*].metadata.name}'); do
   cat <<EOF | kubectl apply -f -
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -89,7 +89,7 @@ kubectl label namespace team-orders istio-mesh=enabled
 # ... only label namespaces that actually use the mesh
 ```
 
-This reduces the number of Kubernetes API watches, the amount of data istiod processes, and the memory required for the service registry.
+Istiod still opens Kubernetes watches, but discovery selectors cause it to ignore unselected objects early in processing. This reduces the amount of data istiod processes and the memory required for the service registry.
 
 ## Optimization 3: Control Plane Scaling
 
@@ -138,7 +138,6 @@ spec:
         PILOT_DEBOUNCE_MAX: "3s"
         PILOT_PUSH_THROTTLE: "200"
         PILOT_ENABLE_EDS_DEBOUNCE: "true"
-        PILOT_STATUS_UPDATE_THRESHOLD: "0.1"
 ```
 
 - **PILOT_DEBOUNCE_AFTER: 300ms**: Wait 300ms after the last change before pushing. This batches rapid changes from deployments scaling.
@@ -242,16 +241,11 @@ This limits access logs to error responses only and removes unnecessary metric l
 
 ## Optimization 8: Endpoint Slices
 
-Kubernetes EndpointSlice is more efficient than Endpoints for large services. Make sure your cluster uses EndpointSlices (default in recent Kubernetes versions) and that Istio is configured to use them:
+Kubernetes EndpointSlice is more efficient than Endpoints for large services. EndpointSlice has been stable since Kubernetes 1.21 and is created by default for Services in current Kubernetes clusters. Verify that your cluster has EndpointSlices for large Services:
 
-```yaml
-apiVersion: install.istio.io/v1alpha1
-kind: IstioOperator
-spec:
-  values:
-    pilot:
-      env:
-        PILOT_ENABLE_K8S_SELECT_WORKLOAD_ENTRIES: "false"
+```bash
+kubectl api-resources | grep endpointslices
+kubectl get endpointslices -A
 ```
 
 ## Monitoring at Scale
@@ -276,7 +270,7 @@ groups:
           severity: warning
 
       - alert: HighPushRate
-        expr: rate(pilot_xds_pushes[5m]) > 500
+        expr: rate(pilot_push_triggers[5m]) > 500
         for: 5m
         labels:
           severity: warning
@@ -295,10 +289,10 @@ Key metrics to dashboard:
 histogram_quantile(0.99, rate(pilot_proxy_convergence_time_bucket[5m]))
 
 # Number of connected proxies
-sum(pilot_xds_connected)
+sum(pilot_xds)
 
 # Push errors (should be zero)
-rate(pilot_xds_push_errors[5m])
+sum(rate(pilot_total_xds_internal_errors[5m])) + sum(rate(pilot_total_xds_rejects[5m]))
 
 # Average sidecar memory usage
 avg(container_memory_usage_bytes{container="istio-proxy"})
