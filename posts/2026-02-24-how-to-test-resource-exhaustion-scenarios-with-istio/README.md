@@ -139,7 +139,7 @@ When connection pool limits are hit, Envoy tracks this as circuit breaker overfl
 FORTIO_POD_PROXY=$(kubectl get pod -n exhaust-test -l app=fortio -o jsonpath='{.items[0].metadata.name}')
 
 kubectl exec -n exhaust-test $FORTIO_POD_PROXY -c istio-proxy -- \
-  pilot-agent request GET stats | grep "circuit_breaker"
+  pilot-agent request GET stats | grep -E "circuit_breakers|upstream_.*_overflow"
 ```
 
 You will see counters like:
@@ -152,7 +152,7 @@ cluster.outbound|8000||httpbin.exhaust-test.svc.cluster.local.circuit_breakers.h
 cluster.outbound|8000||httpbin.exhaust-test.svc.cluster.local.upstream_rq_pending_overflow: 2987
 ```
 
-The `upstream_rq_pending_overflow` counter shows how many requests were rejected due to the connection pool being full.
+The `upstream_rq_pending_overflow` counter shows requests rejected because the pending request circuit breaker overflowed. Depending on the exact limit that was hit and the Envoy version, you may also see counters such as `upstream_cx_overflow`, `upstream_cx_pool_overflow`, or `upstream_rq_active_overflow`.
 
 ## Simulating Slow Resource Exhaustion
 
@@ -246,28 +246,25 @@ spec:
 kubectl apply -n exhaust-test -f httpbin-outlier.yaml
 ```
 
-If one instance starts returning 503s due to resource exhaustion, outlier detection will eject it from the load balancing pool after 3 consecutive errors. The remaining healthy instances continue serving traffic.
+If one upstream instance starts returning 503s due to resource exhaustion, outlier detection can eject it from the load balancing pool after 3 consecutive errors. This applies to errors observed from a specific upstream host, not to local client-side circuit breaker overflows. The remaining healthy instances continue serving traffic.
 
 ## Testing Memory Pressure Effects
 
-While Istio cannot directly simulate memory pressure, you can observe how Envoy behaves under memory constraints. Set tight resource limits on the sidecar:
+While Istio cannot directly simulate memory pressure, you can observe how Envoy behaves under memory constraints. Set tight resource limits on the sidecar by patching the pod template annotations:
 
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: httpbin
-  namespace: exhaust-test
-spec:
-  template:
-    metadata:
-      annotations:
-        sidecar.istio.io/proxyMemoryLimit: "64Mi"
-        sidecar.istio.io/proxyMemory: "32Mi"
-    spec:
-      containers:
-      - name: httpbin
-        image: docker.io/kennethreitz/httpbin
+```bash
+kubectl patch deployment httpbin -n exhaust-test --type merge -p '{
+  "spec": {
+    "template": {
+      "metadata": {
+        "annotations": {
+          "sidecar.istio.io/proxyMemory": "32Mi",
+          "sidecar.istio.io/proxyMemoryLimit": "64Mi"
+        }
+      }
+    }
+  }
+}'
 ```
 
 With only 64Mi for the proxy, high connection counts will push the sidecar toward its memory limit. Monitor proxy memory:
