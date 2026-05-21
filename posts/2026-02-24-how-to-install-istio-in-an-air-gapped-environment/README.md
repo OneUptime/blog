@@ -24,7 +24,7 @@ Before going into the air-gapped network, you need to collect:
 ### Download istioctl
 
 ```bash
-ISTIO_VERSION=1.24.0
+ISTIO_VERSION=1.30.0
 
 # Download the release archive
 
@@ -54,7 +54,7 @@ helm pull istio/cni --version ${ISTIO_VERSION} -d helm-charts/
 Pull all required Istio images:
 
 ```bash
-ISTIO_VERSION=1.24.0
+ISTIO_VERSION=1.30.0
 
 # Core Istio images
 IMAGES=(
@@ -70,7 +70,7 @@ for img in "${IMAGES[@]}"; do
 done
 
 # Save all images to a single tar
-docker save ${IMAGES[@]} -o istio-images-${ISTIO_VERSION}.tar
+docker save -o istio-images-${ISTIO_VERSION}.tar ${IMAGES[@]}
 
 echo "Saved images to istio-images-${ISTIO_VERSION}.tar"
 ls -lh istio-images-${ISTIO_VERSION}.tar
@@ -80,23 +80,24 @@ If you plan to use the Bookinfo sample or observability addons, also download:
 
 ```bash
 ADDON_IMAGES=(
-  "docker.io/istio/examples-bookinfo-productpage-v1:1.20.1"
-  "docker.io/istio/examples-bookinfo-details-v1:1.20.1"
-  "docker.io/istio/examples-bookinfo-reviews-v1:1.20.1"
-  "docker.io/istio/examples-bookinfo-reviews-v2:1.20.1"
-  "docker.io/istio/examples-bookinfo-reviews-v3:1.20.1"
-  "docker.io/istio/examples-bookinfo-ratings-v1:1.20.1"
-  "docker.io/prom/prometheus:v2.51.0"
-  "docker.io/grafana/grafana:10.4.1"
-  "quay.io/kiali/kiali:v1.82.0"
-  "docker.io/jaegertracing/all-in-one:1.56"
+  "registry.istio.io/release/examples-bookinfo-productpage-v1:1.20.3"
+  "registry.istio.io/release/examples-bookinfo-details-v1:1.20.3"
+  "registry.istio.io/release/examples-bookinfo-reviews-v1:1.20.3"
+  "registry.istio.io/release/examples-bookinfo-reviews-v2:1.20.3"
+  "registry.istio.io/release/examples-bookinfo-reviews-v3:1.20.3"
+  "registry.istio.io/release/examples-bookinfo-ratings-v1:1.20.3"
+  "ghcr.io/prometheus-operator/prometheus-config-reloader:v0.89.0"
+  "docker.io/prom/prometheus:v3.10.0"
+  "docker.io/grafana/grafana:12.0.1"
+  "quay.io/kiali/kiali:v2.22"
+  "docker.io/jaegertracing/jaeger:2.14.0"
 )
 
 for img in "${ADDON_IMAGES[@]}"; do
   docker pull ${img}
 done
 
-docker save ${ADDON_IMAGES[@]} -o istio-addon-images.tar
+docker save -o istio-addon-images.tar ${ADDON_IMAGES[@]}
 ```
 
 ## Step 2: Transfer to the Air-Gapped Network
@@ -123,7 +124,7 @@ INTERNAL_REGISTRY=registry.internal.example.com
 docker load -i istio-images-${ISTIO_VERSION}.tar
 
 # Tag and push each image
-ISTIO_VERSION=1.24.0
+ISTIO_VERSION=1.30.0
 
 for component in pilot proxyv2 install-cni; do
   docker tag docker.io/istio/${component}:${ISTIO_VERSION} \
@@ -164,7 +165,7 @@ apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
   hub: registry.internal.example.com/istio
-  tag: 1.24.0
+  tag: 1.30.0
   meshConfig:
     accessLogFile: /dev/stdout
     defaultConfig:
@@ -200,7 +201,9 @@ helm install istiod helm-charts/istiod-${ISTIO_VERSION}.tgz \
   --set global.tag=${ISTIO_VERSION}
 
 helm install istio-ingress helm-charts/gateway-${ISTIO_VERSION}.tgz \
-  -n istio-ingress --create-namespace
+  -n istio-ingress --create-namespace \
+  --set global.hub=registry.internal.example.com/istio \
+  --set global.tag=${ISTIO_VERSION}
 ```
 
 ## Step 6: Verify the Installation
@@ -213,7 +216,7 @@ kubectl get pods -n istio-system
 kubectl get pods -n istio-system -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.containers[*].image}{"\n"}{end}'
 
 # Run verification
-istioctl verify-install -f istio-airgap.yaml
+istioctl install -f istio-airgap.yaml --verify -y
 
 # Analyze configuration
 istioctl analyze --all-namespaces
@@ -225,22 +228,22 @@ When sidecars are injected, they need to pull the `proxyv2` image. Make sure the
 
 ```bash
 # Verify the injector config
-kubectl get configmap istio-sidecar-injector -n istio-system -o yaml | grep "image:"
+kubectl get configmap istio-sidecar-injector -n istio-system -o yaml | grep -E "hub:|tag:|image:"
 ```
 
-It should reference `registry.internal.example.com/istio/proxyv2:1.24.0`.
+It should render sidecars from `registry.internal.example.com/istio/proxyv2:1.30.0`.
 
 If your internal registry requires authentication:
 
 ```bash
-# Create a pull secret
+# Create a pull secret in each namespace that pulls from the registry
 kubectl create secret docker-registry registry-creds \
-  -n istio-system \
+  -n my-app \
   --docker-server=registry.internal.example.com \
   --docker-username=user \
   --docker-password=password
 
-# Add to the default service account in each namespace
+# Add to the service account used by workloads in each namespace
 kubectl patch serviceaccount default -n my-app \
   -p '{"imagePullSecrets": [{"name": "registry-creds"}]}'
 ```
@@ -256,7 +259,7 @@ For updates in an air-gapped environment, repeat the process:
 
 ```bash
 # On connected machine
-NEW_VERSION=1.24.1
+NEW_VERSION=1.30.0
 # ... download new images ...
 
 # On air-gapped network
@@ -274,7 +277,7 @@ Here is a script to automate the preparation on the connected machine:
 #!/bin/bash
 set -e
 
-ISTIO_VERSION=${1:-"1.24.0"}
+ISTIO_VERSION=${1:-"1.30.0"}
 OUTPUT_DIR="istio-airgap-${ISTIO_VERSION}"
 
 mkdir -p ${OUTPUT_DIR}/helm-charts
@@ -302,7 +305,7 @@ for img in "${IMAGES[@]}"; do
 done
 
 echo "Saving images to tar..."
-docker save ${IMAGES[@]} -o "${OUTPUT_DIR}/istio-images.tar"
+docker save -o "${OUTPUT_DIR}/istio-images.tar" ${IMAGES[@]}
 
 echo "Bundle ready at ${OUTPUT_DIR}/"
 ls -lh ${OUTPUT_DIR}/
@@ -312,7 +315,7 @@ Run it:
 
 ```bash
 chmod +x prepare-istio-airgap.sh
-./prepare-istio-airgap.sh 1.24.0
+./prepare-istio-airgap.sh 1.30.0
 ```
 
 ## Troubleshooting
