@@ -43,9 +43,10 @@ Make sure the sidecar allows traffic to the Kubernetes API server. If you're usi
 The biggest risk with Lease-based election through Istio is latency. If sidecar latency causes a leader to miss its renewal deadline, it loses the lease and a new election happens. Check the sidecar's latency overhead:
 
 ```bash
-# Time a direct API server call vs through the sidecar
+# Time an API server call from the application container
 
-kubectl exec my-pod -c app -- curl -w "%{time_total}" -o /dev/null -s https://kubernetes.default.svc:443/healthz
+kubectl exec my-pod -c app -- curl --cacert /var/run/secrets/kubernetes.io/serviceaccount/ca.crt \
+  -w "%{time_total}" -o /dev/null -s https://kubernetes.default.svc:443/readyz
 ```
 
 ## Application-Level Leader Election
@@ -85,15 +86,33 @@ spec:
           time: 10s
           interval: 5s
           probes: 3
-      http:
-        maxRetries: 0
     loadBalancer:
-      simple: ROUND_ROBIN
+      simple: PASSTHROUGH
+---
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: my-cluster-election
+  namespace: distributed
+spec:
+  hosts:
+  - my-cluster.distributed.svc.cluster.local
+  http:
+  - match:
+    - port: 7070
+    retries:
+      attempts: 0
+    route:
+    - destination:
+        host: my-cluster.distributed.svc.cluster.local
+        port:
+          number: 7070
 ```
 
 Key settings:
 - `connectTimeout: 2s` - Election protocols have tight timeouts. Slow connections cause false leader failures.
-- `maxRetries: 0` - Don't retry election messages. Retrying a stale vote or heartbeat can cause confusion in the election algorithm.
+- `retries.attempts: 0` - Don't retry election messages. Retrying a stale vote or heartbeat can cause confusion in the election algorithm.
+- `PASSTHROUGH` load balancing - Preserve the original pod IP selected by the caller instead of rebalancing peer traffic.
 - Aggressive `tcpKeepalive` - Detect failed peers quickly so elections can proceed.
 
 ## etcd and Raft Traffic
@@ -134,6 +153,8 @@ spec:
           time: 10s
           interval: 5s
           probes: 2
+    loadBalancer:
+      simple: PASSTHROUGH
 ```
 
 Raft has an election timeout (typically 1-5 seconds). If the sidecar adds more latency than the election timeout allows, you'll see constant leader elections. Monitor for this:
@@ -199,6 +220,7 @@ annotations:
 ```
 
 More worker threads reduce per-request latency under load.
+If `concurrency` is unset, Istio sizes worker threads automatically from CPU requests and limits, which is the recommended default for many workloads. Set it explicitly only after measuring proxy CPU saturation.
 
 ## Handling Election During Deployments
 
@@ -218,12 +240,12 @@ spec:
     metadata:
       annotations:
         proxy.istio.io/config: |
-          drainDuration: 30s
+          terminationDrainDuration: 30s
     spec:
       terminationGracePeriodSeconds: 60
 ```
 
-The drain duration should be long enough for the election to complete and for the departing node to transfer its responsibilities. In practice, 30 seconds is usually sufficient for most election algorithms.
+The termination drain duration should be long enough for the election to complete and for the departing node to transfer its responsibilities. In practice, 30 seconds is usually sufficient for most election algorithms.
 
 ## Authorization Policies for Election Traffic
 
@@ -250,7 +272,7 @@ spec:
   action: ALLOW
 ```
 
-This ensures only pods with the `my-cluster` service account can send election traffic. An attacker who compromises another pod in the namespace can't interfere with the election.
+With mTLS enabled, this ensures only pods with the `my-cluster` service account can send election traffic. An attacker who compromises another pod in the namespace can't interfere with the election.
 
 ## Monitoring Election Health
 
