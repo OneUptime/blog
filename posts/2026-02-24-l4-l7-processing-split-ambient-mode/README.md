@@ -19,7 +19,7 @@ L4 processing deals with TCP connections without looking at the application prot
 **TCP-level authorization:** Policies that make decisions based on:
 - Source identity (service account / SPIFFE ID)
 - Destination port number
-- Source and destination namespace
+- Source namespace and the policy's target namespace or workload
 - Source and destination IP address
 
 **TCP metrics:** Connection counts, bytes transferred, connection duration. No HTTP-specific metrics at this layer.
@@ -94,21 +94,23 @@ This policy references HTTP methods and paths, which means ztunnel cannot enforc
 
 ## How the Split Works in Practice
 
-When you deploy a service in an ambient-enrolled namespace, it automatically gets L4 processing from ztunnel. No waypoint proxy is needed for this. All traffic is encrypted, L4 authorization policies are enforced, and basic TCP metrics are collected.
+When you deploy a service in an ambient-enrolled namespace, it automatically gets L4 processing from ztunnel. No waypoint proxy is needed for this. Mesh-to-mesh traffic is encrypted, L4 authorization policies are enforced, and basic TCP metrics are collected.
 
 When you add a waypoint proxy and associate it with the namespace or service, L7 processing kicks in. Traffic now takes an additional hop through the waypoint, where HTTP-aware policies and routing rules are applied.
 
-The decision flow inside ztunnel is:
+The traffic flow through ztunnel is:
 
 ```text
 1. Intercept outbound traffic from pod
 2. Look up destination service
-3. Apply L4 authorization policies
-4. Check: Does the destination have a waypoint proxy?
+3. Check: Does the destination have a waypoint proxy?
    - NO: Forward directly to destination ztunnel via HBONE
    - YES: Forward to waypoint proxy via HBONE
-5. Waypoint applies L7 policies and forwards to destination ztunnel
+4. Waypoint applies L7 policies and forwards to destination ztunnel
+5. Destination ztunnel applies L4 authorization policies and forwards to the workload
 ```
+
+The destination ztunnel is the L4 authorization enforcement point. If traffic reaches it through a waypoint, it sees the waypoint identity rather than the original source workload identity.
 
 ## Identifying Which Layer Handles Your Policy
 
@@ -152,6 +154,10 @@ metadata:
   name: l7-policy
   namespace: backend
 spec:
+  targetRefs:
+  - kind: Service
+    group: ""
+    name: api
   rules:
   - from:
     - source:
@@ -164,7 +170,9 @@ spec:
 
 ## What Happens When You Apply L7 Policies Without a Waypoint
 
-If you apply an L7 authorization policy (one that references HTTP methods or paths) to a service that does not have a waypoint proxy, the policy will not be enforced. Istio does not silently fail or fall back to L4. The policy simply has no effect because there is no component capable of evaluating it.
+If you attach an L7 authorization policy (one that references HTTP methods or paths) to a service with `targetRefs`, the service needs to use a waypoint proxy for that policy to be enforced. Istio does not fall back to evaluating HTTP attributes at L4.
+
+Be careful with selector-based L7 policies in ambient mode. If a policy with L7 attributes is targeted to workloads for ztunnel enforcement instead of being attached to a waypoint with `targetRefs`, ztunnel cannot evaluate those attributes and fails safe by treating the policy as a deny.
 
 You can detect this situation by checking:
 
@@ -224,17 +232,17 @@ The performance benefit of the split is that you only pay for L7 processing wher
 When migrating from sidecar mode, you need to audit your Istio configuration to understand which services need L7 features:
 
 ```bash
-# Find all VirtualServices (these need L7)
+# Find all VirtualServices (these may need L7; ambient support is Alpha)
 kubectl get virtualservice --all-namespaces
 
 # Find AuthorizationPolicies with L7 fields
 kubectl get authorizationpolicy --all-namespaces -o yaml | grep -B 10 -E "methods:|paths:|headers:"
 
-# Find DestinationRules with L7 traffic policy
+# Find DestinationRules with traffic policy that may need migration to waypoint-compatible routing
 kubectl get destinationrule --all-namespaces -o yaml | grep -B 5 "trafficPolicy"
 ```
 
-Services that only have L4 policies and PeerAuthentication can run with just ztunnel. Services with VirtualServices, L7 AuthorizationPolicies, or advanced DestinationRules need waypoint proxies.
+Services that only have L4 policies and PeerAuthentication can run with just ztunnel. Services with L7 AuthorizationPolicies, Gateway API HTTP routing, or VirtualServices that you keep using in ambient mode need waypoint proxies.
 
 ## Summary
 
