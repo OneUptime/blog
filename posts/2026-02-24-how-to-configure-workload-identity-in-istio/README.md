@@ -24,7 +24,7 @@ For example, a workload running with the service account `order-service` in the 
 spiffe://cluster.local/ns/production/sa/order-service
 ```
 
-This identity is embedded in the X.509 certificate that Istio issues to the workload's sidecar proxy. Every time two services communicate, they exchange certificates and verify each other's identity through mTLS.
+This identity is embedded in the X.509 certificate that Istio issues to the workload's sidecar proxy. When mTLS is used, services exchange certificates and verify each other's identity.
 
 ## Setting Up Service Accounts Properly
 
@@ -80,7 +80,7 @@ With this configuration, workload identities become:
 spiffe://mycompany.com/ns/production/sa/order-service
 ```
 
-This matters especially in multi-cluster setups where you need to distinguish identities across clusters.
+This matters especially in multi-cluster setups where clusters in the same mesh need a consistent identity root.
 
 ## Verifying Workload Identity
 
@@ -94,7 +94,7 @@ To see the full certificate details including the SPIFFE ID:
 
 ```bash
 istioctl proxy-config secret deployment/order-service -n production -o json | \
-  jq -r '.dynamicActiveSecrets[0].secret.tlsCertificate.certificateChain.inlineBytes' | \
+  jq -r '.dynamicActiveSecrets[] | select(.name == "default") | .secret.tlsCertificate.certificateChain.inlineBytes' | \
   base64 -d | openssl x509 -text -noout | grep URI
 ```
 
@@ -123,8 +123,8 @@ spec:
   - from:
     - source:
         principals:
-        - "cluster.local/ns/production/sa/order-service"
-        - "cluster.local/ns/production/sa/checkout-service"
+        - "mycompany.com/ns/production/sa/order-service"
+        - "mycompany.com/ns/production/sa/checkout-service"
     to:
     - operation:
         methods: ["POST"]
@@ -135,7 +135,7 @@ Only the order-service and checkout-service can make POST requests to the paymen
 
 ## Peer Authentication with Identity
 
-PeerAuthentication policies control how workloads verify each other's identities:
+PeerAuthentication policies control the mTLS requirements for inbound connections to workloads:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -148,7 +148,7 @@ spec:
     mode: STRICT
 ```
 
-In STRICT mode, every connection must present a valid mTLS certificate. There is no falling back to plain text. This guarantees that every request in the namespace comes from an authenticated identity.
+In STRICT mode, every inbound connection to matching workloads must present a valid mTLS certificate. There is no falling back to plain text. This ensures requests accepted by those workloads come from an authenticated mesh identity.
 
 You can also set per-port policies for workloads that need to accept non-mTLS traffic on certain ports:
 
@@ -208,7 +208,7 @@ spec:
   rules:
   - from:
     - source:
-        principals: ["cluster.local/ns/production/sa/api-gateway"]
+        principals: ["mycompany.com/ns/production/sa/api-gateway"]
         requestPrincipals: ["https://auth.mycompany.com/*"]
     when:
     - key: request.auth.claims[role]
@@ -254,10 +254,10 @@ Check the istiod logs for certificate issuance problems:
 kubectl logs deployment/istiod -n istio-system | grep -i "csr\|cert\|identity"
 ```
 
-And use `istioctl authn tls-check` to verify mTLS status between services:
+And use `istioctl x describe pod` to inspect the mTLS status and detect TLS conflicts for a workload:
 
 ```bash
-istioctl authn tls-check <pod-name>.production order-service.production.svc.cluster.local
+istioctl x describe pod <pod-name> -n production
 ```
 
 ## Best Practices
