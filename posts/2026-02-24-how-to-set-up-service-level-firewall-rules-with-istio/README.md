@@ -70,7 +70,13 @@ kind: Deployment
 metadata:
   name: order-service
 spec:
+  selector:
+    matchLabels:
+      app: order-service
   template:
+    metadata:
+      labels:
+        app: order-service
     spec:
       serviceAccountName: order-service-sa
       containers:
@@ -299,13 +305,13 @@ Only order-service can connect to the database proxy on port 5432.
 
 ## Visualizing the Firewall
 
-Kiali provides a visual representation of your service communication. After applying your firewall rules, you can see which connections are allowed and which are blocked:
+Kiali provides a visual representation of your service communication. After applying your firewall rules and generating traffic, you can see observed connections and response status:
 
 ```bash
 istioctl dashboard kiali
 ```
 
-In the graph view, edges between services show allowed traffic. Missing edges indicate blocked communication paths.
+In the graph view, edges between services show traffic observed through Istio telemetry during the selected time range. Missing edges usually mean no matching traffic was observed, so use test requests and access logs to confirm that a path is blocked.
 
 ## Auditing and Logging
 
@@ -323,10 +329,10 @@ spec:
         - name: envoy
 ```
 
-Denied requests appear in the access log with response code 403 and the RBAC filter flag:
+Denied requests appear in the default text access log with response code 403 and RBAC response details:
 
 ```bash
-kubectl logs deploy/payment-service -c istio-proxy | grep "response_code\":403"
+kubectl logs deploy/payment-service -c istio-proxy | grep ' 403 .*rbac'
 ```
 
 ## Testing the Firewall
