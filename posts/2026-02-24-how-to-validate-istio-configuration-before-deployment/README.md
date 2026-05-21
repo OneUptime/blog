@@ -17,13 +17,13 @@ This post covers every validation method available, from quick local checks to t
 The `istioctl analyze` command checks your configuration for common mistakes. It can analyze files on disk without a running cluster:
 
 ```bash
-istioctl analyze k8s/istio/virtual-service.yaml k8s/istio/destination-rule.yaml
+istioctl analyze --use-kube=false k8s/istio/virtual-service.yaml k8s/istio/destination-rule.yaml
 ```
 
 Or analyze an entire directory:
 
 ```bash
-istioctl analyze k8s/istio/
+istioctl analyze --use-kube=false k8s/istio/
 ```
 
 Or check the live configuration on a cluster:
@@ -49,17 +49,17 @@ Here are some of the issues it detects:
 - DestinationRule referencing a subset that no deployment matches
 - Conflicting VirtualService configurations for the same host
 - Missing sidecar injection labels on namespaces
-- PeerAuthentication with conflicting modes
+- Sidecar resources with conflicting workload selectors
 
 Example output:
 
 ```text
-Warning [IST0101] (VirtualService my-app.app) Referenced host not found: "my-app.app.svc.cluster.local"
-Error [IST0104] (Gateway my-gateway.istio-system) Referenced credential not found: "my-tls-cert"
+Error [IST0101] (VirtualService my-app.app) Referenced host not found: "my-app.app.svc.cluster.local"
+Error [IST0161] (Gateway my-gateway.istio-system) The credential "my-tls-cert" is not found
 Info [IST0102] (Namespace app) The namespace is not enabled for Istio injection
 ```
 
-The exit code is non-zero when errors are found, making it easy to integrate into CI:
+The exit code is non-zero when analyzer issues are found, making it easy to integrate into CI:
 
 ```yaml
 - name: Validate Istio config
@@ -79,7 +79,7 @@ Use kubectl dry-run to validate that your YAML is valid against the Kubernetes A
 kubectl apply --dry-run=server -f k8s/istio/virtual-service.yaml
 ```
 
-Server-side dry-run sends the request to the API server, which validates it against all installed CRDs and admission webhooks, but does not persist the change. This catches:
+Server-side dry-run sends the request to the API server, which validates it against all installed CRDs and dry-run-compatible admission webhooks, but does not persist the change. This catches:
 
 - Invalid field names
 - Wrong API version
@@ -159,7 +159,7 @@ repos:
     hooks:
       - id: istio-validate
         name: Validate Istio configuration
-        entry: bash -c 'istioctl analyze k8s/istio/ 2>&1 || exit 1'
+        entry: bash -c 'istioctl analyze --use-kube=false k8s/istio/ 2>&1 || exit 1'
         language: system
         files: 'k8s/istio/.*\.yaml$'
         pass_filenames: false
@@ -190,14 +190,24 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install istioctl
         run: |
-          curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.22.0 sh -
-          echo "$PWD/istio-1.22.0/bin" >> $GITHUB_PATH
+          curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.30.0 sh -
+          echo "$PWD/istio-1.30.0/bin" >> $GITHUB_PATH
+
+      - name: Install validation tools
+        run: |
+          curl -L https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz | tar xz
+          sudo mv kubeconform /usr/local/bin/
+          LATEST_CONFTEST_VERSION=$(curl -s https://api.github.com/repos/open-policy-agent/conftest/releases/latest | grep '"tag_name":' | sed -E 's/.*"v([^"]+)".*/\1/')
+          curl -L "https://github.com/open-policy-agent/conftest/releases/download/v${LATEST_CONFTEST_VERSION}/conftest_${LATEST_CONFTEST_VERSION}_Linux_x86_64.tar.gz" | tar xz
+          sudo mv conftest /usr/local/bin/
 
       - name: Static analysis
-        run: istioctl analyze k8s/istio/ --all-namespaces
+        run: istioctl analyze --use-kube=false k8s/istio/
 
       - name: Schema validation
         run: |
@@ -239,7 +249,7 @@ This is useful for complex changes where you want to verify the exact impact on 
 
 ## Validating VirtualService Weights
 
-A common mistake is VirtualService weights that do not add up to 100:
+A common team convention is VirtualService weights that add up to 100. Istio treats weights as relative proportions, so this is a policy check rather than an Istio schema requirement:
 
 ```bash
 #!/bin/bash
@@ -254,7 +264,7 @@ for doc in docs:
         for http_route in doc.get('spec', {}).get('http', []):
             total = sum(r.get('weight', 0) for r in http_route.get('route', []))
             if total != 100 and total != 0:
-                print(f'$file: weights sum to {total}, expected 100')
+                print(f'$file: weights sum to {total}, expected team convention of 100')
                 sys.exit(1)
 ")
   if [ $? -ne 0 ]; then
