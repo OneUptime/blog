@@ -27,7 +27,7 @@ Install kind if you haven't:
 brew install kind
 
 # Linux
-curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.24.0/kind-linux-amd64
+curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.31.0/kind-linux-amd64
 chmod +x ./kind
 sudo mv ./kind /usr/local/bin/kind
 ```
@@ -72,7 +72,7 @@ Download Istio and install with the demo profile:
 
 ```bash
 curl -L https://istio.io/downloadIstio | sh -
-cd istio-1.24.0
+cd istio-1.30.0
 export PATH=$PWD/bin:$PATH
 ```
 
@@ -95,8 +95,8 @@ kubectl patch svc istio-ingressgateway -n istio-system \
   --type='json' \
   -p='[
     {"op": "replace", "path": "/spec/type", "value": "NodePort"},
-    {"op": "replace", "path": "/spec/ports/0/nodePort", "value": 30080},
-    {"op": "replace", "path": "/spec/ports/1/nodePort", "value": 30443}
+    {"op": "replace", "path": "/spec/ports/1/nodePort", "value": 30080},
+    {"op": "replace", "path": "/spec/ports/2/nodePort", "value": 30443}
   ]'
 ```
 
@@ -118,6 +118,9 @@ spec:
           service:
             type: NodePort
             ports:
+              - name: status-port
+                port: 15021
+                targetPort: 15021
               - name: http2
                 port: 80
                 targetPort: 8080
@@ -166,7 +169,7 @@ If the port mapping is set up correctly, you should see the Bookinfo product pag
 If you want proper LoadBalancer support (so you don't have to mess with NodePorts), install MetalLB:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.8/config/manifests/metallb-native.yaml
+kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.16.0/config/manifests/metallb-native.yaml
 ```
 
 Wait for MetalLB to be ready:
