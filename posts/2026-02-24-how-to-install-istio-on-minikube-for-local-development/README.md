@@ -16,7 +16,7 @@ Here's how to get a smooth local Istio setup on Minikube.
 
 - Minikube installed (version 1.30+)
 - A hypervisor or container runtime (Docker, HyperKit, VirtualBox, etc.)
-- At least 8 GB of free RAM on your machine
+- At least 16 GB of free RAM on your machine
 - istioctl installed
 
 ## Step 1: Start Minikube with Enough Resources
@@ -26,12 +26,12 @@ This is where most people run into trouble. Istio needs more resources than a ba
 ```bash
 minikube start \
   --cpus 4 \
-  --memory 8192 \
+  --memory 16384 \
   --driver docker \
-  --kubernetes-version v1.30.0
+  --kubernetes-version v1.32.0
 ```
 
-The Docker driver is the fastest and most reliable option on most platforms. If you're on macOS, you can also use the HyperKit or Hypervisor.framework driver.
+The Docker driver is the fastest and most reliable option on most platforms. If you're on macOS, you can also use the HyperKit or VFKit driver.
 
 Verify the cluster is running:
 
@@ -43,15 +43,15 @@ kubectl get nodes
 ## Step 2: Download and Install Istio
 
 ```bash
-curl -L https://istio.io/downloadIstio | sh -
-cd istio-1.24.0
+curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.30.0 sh -
+cd istio-1.30.0
 export PATH=$PWD/bin:$PATH
 ```
 
-For local development, the demo profile is a great choice because it includes extras like Kiali, Grafana dashboards, and more verbose logging:
+For local development, the demo profile is a great choice because it installs the ingress and egress gateways and enables more verbose logging:
 
 ```bash
-istioctl install --set profile=demo -y
+istioctl install --set profile=demo --set values.global.platform=minikube -y
 ```
 
 The demo profile installs:
@@ -170,7 +170,7 @@ Each command opens the dashboard in your default browser.
 If you're short on resources, you can trim down the installation. Use the minimal profile instead of demo:
 
 ```bash
-istioctl install --set profile=minimal -y
+istioctl install --set profile=minimal --set values.global.platform=minikube -y
 ```
 
 This only installs istiod without any gateways. You can add a gateway separately:
@@ -205,7 +205,7 @@ This reduces the memory footprint significantly, which matters when you're runni
 
 ## Hot Reloading Configuration
 
-One of the nice things about developing with Istio locally is that configuration changes apply immediately. When you update a VirtualService or DestinationRule, Envoy picks up the change within seconds:
+One of the nice things about developing with Istio locally is that configuration changes apply immediately. When you update a VirtualService or DestinationRule, Envoy picks up the change within seconds. For subset-based routing like this, make sure matching DestinationRule subsets exist:
 
 ```yaml
 apiVersion: networking.istio.io/v1
