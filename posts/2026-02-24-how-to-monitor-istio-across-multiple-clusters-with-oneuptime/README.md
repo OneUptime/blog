@@ -37,29 +37,32 @@ metadata:
 data:
   config.yaml: |
     receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
       prometheus:
         config:
           scrape_configs:
-            - job_name: 'istio-mesh'
+            - job_name: 'envoy-stats'
+              metrics_path: /stats/prometheus
               kubernetes_sd_configs:
                 - role: pod
               relabel_configs:
-                - source_labels: [__meta_kubernetes_pod_container_name]
-                  regex: istio-proxy
+                - source_labels: [__meta_kubernetes_pod_container_port_name]
+                  regex: '.*-envoy-prom'
                   action: keep
-                - source_labels: [__address__]
-                  action: replace
-                  regex: ([^:]+)(?::\d+)?
-                  replacement: $1:15090
-                  target_label: __address__
             - job_name: 'istiod'
+              metrics_path: /metrics
               kubernetes_sd_configs:
-                - role: pod
+                - role: endpoints
                   namespaces:
                     names: [istio-system]
               relabel_configs:
-                - source_labels: [__meta_kubernetes_pod_label_app]
-                  regex: istiod
+                - source_labels: [__meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
+                  regex: istiod;http-monitoring
                   action: keep
 
     processors:
@@ -75,25 +78,25 @@ data:
             action: upsert
 
     exporters:
-      otlp/oneuptime:
-        endpoint: "https://otlp.oneuptime.com"
+      otlphttp/oneuptime:
+        endpoint: "https://oneuptime.com/otlp"
         headers:
-          x-oneuptime-token: "${ONEUPTIME_TOKEN}"
+          x-oneuptime-token: "${env:ONEUPTIME_TOKEN}"
 
     service:
       pipelines:
         metrics:
           receivers: [prometheus]
           processors: [resource, batch]
-          exporters: [otlp/oneuptime]
+          exporters: [otlphttp/oneuptime]
         traces:
           receivers: [otlp]
           processors: [resource, batch]
-          exporters: [otlp/oneuptime]
+          exporters: [otlphttp/oneuptime]
         logs:
-          receivers: [filelog]
+          receivers: [otlp]
           processors: [resource, batch]
-          exporters: [otlp/oneuptime]
+          exporters: [otlphttp/oneuptime]
 ```
 
 ### Cluster 2 (us-west)
@@ -155,10 +158,10 @@ In a multi-cluster mesh, services communicate across clusters. Monitor this traf
 
 ```text
 # Cross-cluster request rate
-sum(rate(istio_requests_total{source_cluster!="", destination_cluster!="", source_cluster!=destination_cluster}[5m])) by (source_cluster, destination_cluster)
+sum(rate(istio_requests_total{source_cluster!="", destination_cluster!=""}[5m])) by (source_cluster, destination_cluster)
 ```
 
-Display this as a heatmap or table showing traffic flow between clusters.
+Display this as a heatmap or table showing traffic flow between clusters, and filter out rows where the source and destination cluster are the same.
 
 **Row 3: Per-Cluster Latency Comparison**
 
@@ -187,7 +190,7 @@ pilot_xds{cluster="us-west-1"}
 pilot_xds{cluster="eu-west-1"}
 
 # Push errors per cluster
-sum(rate(pilot_xds_push_errors[5m])) by (cluster)
+sum(rate(pilot_total_xds_internal_errors[5m])) by (cluster)
 
 # Config convergence time per cluster
 histogram_quantile(0.99,
@@ -288,7 +291,7 @@ alert:
 alert:
   name: "Cross-Cluster Connectivity Lost"
   condition: |
-    sum(rate(istio_requests_total{source_cluster!=destination_cluster}[5m])) == 0
+    sum(rate(istio_requests_total{source_cluster="us-east-1",destination_cluster="us-west-1"}[5m])) == 0
   for: 5m
   severity: critical
 ```
@@ -298,14 +301,13 @@ alert:
 In multi-primary setups, control planes should have consistent configuration:
 
 ```yaml
-# Alert when clusters have different Istio configurations
-# Compare the number of configured routes or listeners
+# Alert when one control plane starts rejecting config that others accept
 alert:
   name: "Config Divergence Between Clusters"
   condition: |
     abs(
-      sum(pilot_xds_pushes{cluster="us-east-1"}) -
-      sum(pilot_xds_pushes{cluster="us-west-1"})
+      sum(rate(pilot_total_rejected_configs{cluster="us-east-1"}[5m])) -
+      sum(rate(pilot_total_rejected_configs{cluster="us-west-1"}[5m]))
     ) > threshold
   severity: medium
 ```
