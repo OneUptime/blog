@@ -2,13 +2,13 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Access Logs, Log Aggregation, Fluentd, OpenTelemetry, Observability
+Tags: Istio, Access Logs, Log Aggregation, Fluent Bit, OpenTelemetry, Observability
 
 Description: How to ship Istio access logs from sidecar proxies to centralized log aggregation systems like Elasticsearch, Loki, and cloud logging services.
 
 ---
 
-Istio access logs are written to stdout by default, which means they end up in the container log files on each node. That works fine for quick debugging with `kubectl logs`, but for production use you need a centralized log aggregation system. Searching through logs across hundreds of pods manually is not sustainable.
+When Istio access logging is enabled with the default Envoy provider, access logs are written to stdout, which means they end up in the container log files on each node. That works fine for quick debugging with `kubectl logs`, but for production use you need a centralized log aggregation system. Searching through logs across hundreds of pods manually is not sustainable.
 
 This guide covers the main approaches to shipping Istio access logs to a log aggregator, from the standard Kubernetes log collection pattern to Istio-native options.
 
@@ -77,13 +77,12 @@ data:
     [SERVICE]
         Flush         5
         Log_Level     info
-        Parsers_File  parsers.conf
 
     [INPUT]
         Name              tail
         Tag               kube.*
         Path              /var/log/containers/*istio-proxy*.log
-        Parser            docker
+        multiline.parser  docker, cri
         DB                /var/log/flb_kube.db
         Mem_Buf_Limit     5MB
         Skip_Long_Lines   On
@@ -108,21 +107,14 @@ data:
         Host            elasticsearch.logging.svc.cluster.local
         Port            9200
         Index           istio-access-logs
-        Type            _doc
+        Suppress_Type_Name On
         Logstash_Format On
         Logstash_Prefix istio-access
-
-  parsers.conf: |
-    [PARSER]
-        Name        docker
-        Format      json
-        Time_Key    time
-        Time_Format %Y-%m-%dT%H:%M:%S.%LZ
 ```
 
 The key optimization here is the `Path` filter: `/var/log/containers/*istio-proxy*.log`. This tells Fluent Bit to only read logs from istio-proxy containers, reducing the amount of data it processes.
 
-### Using Promtail for Loki
+### Using Grafana Alloy for Loki
 
 If you use Grafana Loki for log aggregation:
 
@@ -130,36 +122,53 @@ If you use Grafana Loki for log aggregation:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: promtail-config
+  name: alloy-config
   namespace: logging
 data:
-  promtail.yaml: |
-    server:
-      http_listen_port: 3101
+  config.alloy: |
+    loki.source.file "istio_proxy" {
+      targets = [
+        {
+          __path__ = "/var/log/containers/*istio-proxy*.log",
+          job      = "istio-access-logs",
+        },
+      ]
+      forward_to = [loki.process.istio_proxy.receiver]
 
-    positions:
-      filename: /tmp/positions.yaml
+      file_match {
+        enabled     = true
+        sync_period = "10s"
+      }
+    }
 
-    clients:
-      - url: http://loki.logging.svc.cluster.local:3100/loki/api/v1/push
+    loki.process "istio_proxy" {
+      forward_to = [loki.write.default.receiver]
 
-    scrape_configs:
-      - job_name: istio-proxy
-        pipeline_stages:
-          - regex:
-              expression: '^\[(?P<timestamp>[^\]]+)\] "(?P<method>\S+) (?P<path>\S+) (?P<protocol>\S+)" (?P<response_code>\d+) (?P<response_flags>\S+) (?P<response_code_details>\S+)'
-          - labels:
-              method:
-              response_code:
-              response_flags:
-          - timestamp:
-              source: timestamp
-              format: "2006-01-02T15:04:05.000Z"
-        static_configs:
-          - targets: [localhost]
-            labels:
-              job: istio-access-logs
-              __path__: /var/log/containers/*istio-proxy*.log
+      stage.cri {}
+
+      stage.regex {
+        expression = "^\\[(?P<timestamp>[^\\]]+)\\] \"(?P<method>\\S+) (?P<path>\\S+) (?P<protocol>\\S+)\" (?P<response_code>\\d+) (?P<response_flags>\\S+) (?P<response_code_details>\\S+)"
+      }
+
+      stage.labels {
+        values = {
+          method         = "",
+          response_code  = "",
+          response_flags = "",
+        }
+      }
+
+      stage.timestamp {
+        source = "timestamp"
+        format = "2006-01-02T15:04:05.000Z"
+      }
+    }
+
+    loki.write "default" {
+      endpoint {
+        url = "http://loki.logging.svc.cluster.local:3100/loki/api/v1/push"
+      }
+    }
 ```
 
 This extracts fields from the access log and adds them as Loki labels, making it easy to filter by method, response code, or response flags.
@@ -222,19 +231,15 @@ data:
         endpoints: ["https://elasticsearch.logging.svc.cluster.local:9200"]
         logs_index: istio-access-logs
 
-      loki:
-        endpoint: http://loki.logging.svc.cluster.local:3100/loki/api/v1/push
-        labels:
-          attributes:
-            response_code: ""
-            method: ""
+      otlphttp/loki:
+        endpoint: http://loki.logging.svc.cluster.local:3100/otlp
 
     service:
       pipelines:
         logs:
           receivers: [otlp]
           processors: [batch]
-          exporters: [elasticsearch]
+          exporters: [elasticsearch, otlphttp/loki]
 ```
 
 The advantage of ALS over node-level collection is that the logs are structured from the start and do not need to be parsed from text. The downside is that it adds gRPC connections from every sidecar to the collector, which can be a scaling concern in large meshes.
@@ -322,4 +327,4 @@ Multiply by the number of pods in your mesh and you get a sense of the infrastru
 3. **Selective enablement** - Only enable access logs for specific namespaces or services
 4. **Log retention** - Set aggressive retention policies in your aggregation backend
 
-The right approach depends on your scale and budget. For most teams, node-level collection with Fluent Bit or Promtail, combined with JSON encoding and CEL-based filtering, provides a good balance of visibility and cost.
+The right approach depends on your scale and budget. For most teams, node-level collection with Fluent Bit or Grafana Alloy, combined with JSON encoding and CEL-based filtering, provides a good balance of visibility and cost.
