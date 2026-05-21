@@ -56,10 +56,10 @@ jobs:
     - name: Install istioctl
       run: |
         curl -L https://istio.io/downloadIstio | sh -
-        echo "$PWD/istio-*/bin" >> $GITHUB_PATH
+        echo "$PWD"/istio-*/bin >> "$GITHUB_PATH"
     - name: Analyze Istio configs
       run: |
-        istioctl analyze k8s/istio/ --use-kube=false
+        istioctl analyze --use-kube=false k8s/istio/
 ```
 
 ## Scanning with Trivy
@@ -106,7 +106,9 @@ Kyverno acts as a Kubernetes admission controller that can validate and enforce 
 Install Kyverno:
 
 ```bash
-kubectl apply -f https://github.com/kyverno/kyverno/releases/download/v1.11.0/install.yaml
+helm repo add kyverno https://kyverno.github.io/kyverno/
+helm repo update
+helm install kyverno kyverno/kyverno -n kyverno --create-namespace
 ```
 
 **Require strict mTLS everywhere:**
@@ -117,7 +119,6 @@ kind: ClusterPolicy
 metadata:
   name: require-strict-mtls
 spec:
-  validationFailureAction: Enforce
   background: true
   rules:
   - name: check-peer-authentication
@@ -127,6 +128,7 @@ spec:
           kinds:
           - PeerAuthentication
     validate:
+      failureAction: Enforce
       message: "PeerAuthentication must use STRICT mTLS mode"
       pattern:
         spec:
@@ -142,7 +144,6 @@ kind: ClusterPolicy
 metadata:
   name: require-gateway-tls
 spec:
-  validationFailureAction: Enforce
   rules:
   - name: check-gateway-tls
     match:
@@ -153,6 +154,7 @@ spec:
           namespaces:
           - istio-system
     validate:
+      failureAction: Enforce
       message: "Gateway servers must use HTTPS or TLS protocol"
       deny:
         conditions:
@@ -170,7 +172,6 @@ kind: ClusterPolicy
 metadata:
   name: require-authz-policy
 spec:
-  validationFailureAction: Audit
   background: true
   rules:
   - name: check-authz-exists
@@ -179,7 +180,13 @@ spec:
       - resources:
           kinds:
           - Namespace
+    context:
+    - name: allauthorizationpolicies
+      apiCall:
+        urlPath: /apis/security.istio.io/v1/authorizationpolicies
+        jmesPath: items[].metadata.namespace
     validate:
+      failureAction: Audit
       message: "Namespace must have at least one AuthorizationPolicy"
       deny:
         conditions:
@@ -187,6 +194,9 @@ spec:
           - key: "{{ request.object.metadata.labels.\"istio-injection\" || '' }}"
             operator: Equals
             value: "enabled"
+          - key: "{{ request.object.metadata.name }}"
+            operator: AnyNotIn
+            value: "{{ allauthorizationpolicies }}"
 ```
 
 ## Using OPA/Gatekeeper
@@ -205,6 +215,9 @@ spec:
     spec:
       names:
         kind: IstioMTLS
+      validation:
+        openAPIV3Schema:
+          type: object
   targets:
   - target: admission.k8s.gatekeeper.sh
     rego: |
@@ -212,7 +225,7 @@ spec:
 
       violation[{"msg": msg}] {
         input.review.object.kind == "PeerAuthentication"
-        mode := input.review.object.spec.mtls.mode
+        mode := object.get(input.review.object, ["spec", "mtls", "mode"], "UNSET")
         mode != "STRICT"
         msg := sprintf("PeerAuthentication %v must use STRICT mTLS, got %v", [input.review.object.metadata.name, mode])
       }
@@ -234,13 +247,13 @@ Regularly scan the container images used by Istio for known CVEs:
 
 ```bash
 # Scan istiod image
-trivy image docker.io/istio/pilot:1.22.0
+trivy image registry.istio.io/pilot:1.30.0
 
 # Scan proxy image
-trivy image docker.io/istio/proxyv2:1.22.0
+trivy image registry.istio.io/proxyv2:1.30.0
 
 # Scan in CI pipeline
-trivy image --exit-code 1 --severity CRITICAL docker.io/istio/pilot:1.22.0
+trivy image --exit-code 1 --severity CRITICAL registry.istio.io/pilot:1.30.0
 ```
 
 ## Custom Security Checks Script
@@ -255,7 +268,7 @@ echo ""
 
 # Check 1: Strict mTLS
 echo "[Check] Mesh-wide strict mTLS..."
-MTLS=$(kubectl get peerauthentication -n istio-system -o json 2>/dev/null | \
+MTLS=$(kubectl get peerauthentications.security.istio.io -n istio-system -o json 2>/dev/null | \
   jq -r '.items[] | select(.metadata.name == "default") | .spec.mtls.mode')
 if [ "$MTLS" = "STRICT" ]; then
   echo "  PASS: Mesh-wide strict mTLS is enabled"
@@ -277,22 +290,24 @@ fi
 echo "[Check] Namespaces without AuthorizationPolicy..."
 INJECTED_NS=$(kubectl get ns -l istio-injection=enabled -o jsonpath='{.items[*].metadata.name}')
 for ns in $INJECTED_NS; do
-  POLICIES=$(kubectl get authorizationpolicy -n "$ns" 2>/dev/null | wc -l)
-  if [ "$POLICIES" -le 1 ]; then
+  POLICIES=$(kubectl get authorizationpolicies.security.istio.io -n "$ns" --no-headers 2>/dev/null | wc -l)
+  if [ "$POLICIES" -eq 0 ]; then
     echo "  WARN: Namespace '$ns' has no AuthorizationPolicy"
   fi
 done
 
 # Check 4: Gateways without TLS
 echo "[Check] Gateways without TLS..."
-kubectl get gateway --all-namespaces -o json | \
+kubectl get gateways.networking.istio.io --all-namespaces -o json | \
   jq -r '.items[] | .spec.servers[] | select(.port.protocol == "HTTP" and (.tls.httpsRedirect // false) != true) | "  FAIL: Gateway server on port \(.port.number) uses HTTP without redirect"'
 
 # Check 5: istiod running as non-root
 echo "[Check] istiod running as non-root..."
-ISTIOD_USER=$(kubectl get pods -n istio-system -l app=istiod -o json | \
-  jq -r '.items[0].spec.containers[0].securityContext.runAsUser // "not-set"')
-if [ "$ISTIOD_USER" = "1337" ]; then
+ISTIOD_SECURITY=$(kubectl get pods -n istio-system -l app=istiod -o json | \
+  jq -r '.items[0].spec.containers[0].securityContext')
+ISTIOD_NONROOT=$(echo "$ISTIOD_SECURITY" | jq -r '.runAsNonRoot // false')
+ISTIOD_USER=$(echo "$ISTIOD_SECURITY" | jq -r '.runAsUser // ""')
+if [ "$ISTIOD_NONROOT" = "true" ] || { [ -n "$ISTIOD_USER" ] && [ "$ISTIOD_USER" != "0" ]; }; then
   echo "  PASS: istiod runs as non-root user"
 else
   echo "  WARN: istiod security context should be verified"
@@ -327,7 +342,7 @@ istio-lint:
 istio-analyze:
   stage: analyze
   script:
-    - istioctl analyze k8s/istio/ --use-kube=false
+    - istioctl analyze --use-kube=false k8s/istio/
 
 security-scan:
   stage: scan
