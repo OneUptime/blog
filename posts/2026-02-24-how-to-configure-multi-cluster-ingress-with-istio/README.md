@@ -43,7 +43,7 @@ spec:
 EOF
 ```
 
-Repeat for cluster2 (with different clusterName and network values).
+Repeat for cluster2 (with the appropriate clusterName and network values). This assumes you have already completed the rest of the Istio multicluster setup, including remote secrets for endpoint discovery and east-west gateways when clusters are on different networks.
 
 ### Configure Gateway and VirtualService
 
@@ -104,14 +104,14 @@ kubectl apply -f gateway.yaml --context="${CTX_CLUSTER2}"
 
 ### Set Up DNS-Based Routing
 
-Use a DNS provider with health checking to route traffic to the nearest healthy cluster:
+Use a DNS provider with health checking to route traffic to a healthy cluster:
 
 **Route53 weighted routing:**
 
 ```bash
-# Get ingress IPs
-CLUSTER1_IP=$(kubectl get svc istio-ingressgateway -n istio-system --context="${CTX_CLUSTER1}" -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-CLUSTER2_IP=$(kubectl get svc istio-ingressgateway -n istio-system --context="${CTX_CLUSTER2}" -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+# Get ingress hostnames for AWS load balancers. If your provider assigns IPs, use A records and the .ip field instead.
+CLUSTER1_HOST=$(kubectl get svc istio-ingressgateway -n istio-system --context="${CTX_CLUSTER1}" -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+CLUSTER2_HOST=$(kubectl get svc istio-ingressgateway -n istio-system --context="${CTX_CLUSTER2}" -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
 
 # Create Route53 records with health checks
 aws route53 change-resource-record-sets --hosted-zone-id Z123456 --change-batch '{
@@ -120,11 +120,11 @@ aws route53 change-resource-record-sets --hosted-zone-id Z123456 --change-batch 
       "Action": "CREATE",
       "ResourceRecordSet": {
         "Name": "app.example.com",
-        "Type": "A",
+        "Type": "CNAME",
         "SetIdentifier": "cluster1",
         "Weight": 50,
         "TTL": 60,
-        "ResourceRecords": [{"Value": "'${CLUSTER1_IP}'"}],
+        "ResourceRecords": [{"Value": "'${CLUSTER1_HOST}'"}],
         "HealthCheckId": "health-check-cluster1"
       }
     },
@@ -132,11 +132,11 @@ aws route53 change-resource-record-sets --hosted-zone-id Z123456 --change-batch 
       "Action": "CREATE",
       "ResourceRecordSet": {
         "Name": "app.example.com",
-        "Type": "A",
+        "Type": "CNAME",
         "SetIdentifier": "cluster2",
         "Weight": 50,
         "TTL": 60,
-        "ResourceRecords": [{"Value": "'${CLUSTER2_IP}'"}],
+        "ResourceRecords": [{"Value": "'${CLUSTER2_HOST}'"}],
         "HealthCheckId": "health-check-cluster2"
       }
     }
@@ -146,7 +146,7 @@ aws route53 change-resource-record-sets --hosted-zone-id Z123456 --change-batch 
 
 **Cloudflare load balancing:**
 
-Configure a Cloudflare load balancer with two origin pools, each pointing to a cluster's ingress gateway IP. Enable health checks for automatic failover.
+Configure a Cloudflare load balancer with two origin pools, each pointing to a cluster's ingress gateway address. Enable health checks for automatic failover.
 
 ## Pattern 2: Global Load Balancer
 
@@ -170,12 +170,16 @@ gcloud compute backend-services create istio-backend \
 gcloud compute backend-services add-backend istio-backend \
   --global \
   --network-endpoint-group=cluster1-neg \
-  --network-endpoint-group-zone=us-east1-b
+  --network-endpoint-group-zone=us-east1-b \
+  --balancing-mode=RATE \
+  --max-rate-per-endpoint=100
 
 gcloud compute backend-services add-backend istio-backend \
   --global \
   --network-endpoint-group=cluster2-neg \
-  --network-endpoint-group-zone=us-west1-a
+  --network-endpoint-group-zone=us-west1-a \
+  --balancing-mode=RATE \
+  --max-rate-per-endpoint=100
 ```
 
 ### AWS Global Accelerator
@@ -228,7 +232,7 @@ spec:
           number: 8080
 ```
 
-Even though the ingress gateway is in cluster1, if `api-server` has endpoints in cluster2, Istio will route some traffic there. This works because the ingress gateway sidecar has the merged endpoint list from all clusters.
+Even though the ingress gateway is in cluster1, if `api-server` has endpoints in cluster2, Istio can route some traffic there when multicluster endpoint discovery is configured. For clusters on different networks, this also requires the east-west gateway setup. This works because the ingress gateway proxy receives endpoint information for the service from the mesh control plane.
 
 The downside is that the single ingress gateway is a single point of failure for all external traffic.
 
