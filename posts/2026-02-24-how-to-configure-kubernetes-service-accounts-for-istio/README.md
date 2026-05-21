@@ -125,7 +125,7 @@ This policy says only the order service can create and read payments. No other s
 
 ## Automating Service Account Creation
 
-If you have many services, manually creating service accounts gets tedious. Use a Kustomize approach to generate them:
+If you have many services, manually creating service accounts gets tedious. Use Kustomize to manage them alongside the deployments:
 
 ```yaml
 # kustomization.yaml
@@ -133,9 +133,8 @@ If you have many services, manually creating service accounts gets tedious. Use 
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
+  - service-accounts.yaml
   - deployments/
-generators:
-  - service-account-generator.yaml
 ```
 
 Or use a shell script to create service accounts for all deployments that are using the default account:
@@ -159,13 +158,14 @@ done
 
 Istio relies on Kubernetes service account tokens for initial authentication with the control plane. The sidecar presents its service account token to istiod, which validates it and issues an X.509 certificate.
 
-By default, Kubernetes mounts a projected service account token that is audience-bound and time-limited. Make sure your cluster supports this:
+On modern Kubernetes clusters, the automatically mounted service account token is a projected token that is audience-bound and time-limited, unless token automounting is disabled. Make sure your cluster supports the TokenRequest API that Istio uses for third-party service account tokens:
 
 ```bash
-kubectl get --raw /api/v1/namespaces/default/serviceaccounts/default/token
+kubectl get --raw /api/v1 | \
+  jq '.resources[] | select(.name | index("serviceaccounts/token"))'
 ```
 
-For Istio specifically, the token audience should be set correctly. Check the mesh configuration:
+For Istio specifically, the token audience is configured by the sidecar injector for the proxy token. Check the mesh trust domain separately:
 
 ```bash
 kubectl get configmap istio -n istio-system -o jsonpath='{.data.mesh}' | grep -A5 "trustDomain"
@@ -175,7 +175,7 @@ The default trust domain is `cluster.local`. If you have changed it, make sure a
 
 ## Restricting Service Account Permissions
 
-Istio sidecars need certain RBAC permissions to function. But the application container sharing the same pod should have minimal permissions. Use role bindings scoped to what each service actually needs:
+Your application containers should have minimal Kubernetes API permissions. Any container in the same pod that can read the mounted service account token can use the Kubernetes RBAC permissions of that service account, so scope role bindings to what each service actually needs:
 
 ```yaml
 apiVersion: rbac.authorization.k8s.io/v1
@@ -232,7 +232,7 @@ kubectl get pod -n production -l app=order-service -o json | \
 
 ## Cross-Namespace Service Account References
 
-When services in different namespaces need to communicate, the authorization policy references the full SPIFFE URI:
+When services in different namespaces need to communicate, the authorization policy references the full peer principal string:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -262,8 +262,9 @@ After setting everything up, verify that identities are correct:
 istioctl proxy-config secret -n production deploy/order-service -o json | \
   jq '.dynamicActiveSecrets[0].secret.tlsCertificate.certificateChain'
 
-# Verify mutual TLS is working
-istioctl authn tls-check -n production order-service.production.svc.cluster.local
+# Check the outbound cluster configuration for the destination service
+istioctl proxy-config cluster -n production deploy/order-service \
+  --fqdn payment-service.production.svc.cluster.local
 ```
 
 Test that authorization policies enforce correctly:
