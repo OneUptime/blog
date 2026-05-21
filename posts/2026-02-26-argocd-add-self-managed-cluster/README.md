@@ -17,7 +17,7 @@ In this guide, I will walk you through adding self-managed clusters to ArgoCD, c
 Self-managed clusters typically use one or more of these authentication methods:
 
 - **Client certificates** - X509 certificates signed by the cluster CA
-- **Service account tokens** - Long-lived tokens bound to Kubernetes ServiceAccounts
+- **Service account tokens** - Bearer tokens for Kubernetes ServiceAccounts, either short-lived TokenRequest tokens or manually created long-lived token Secrets
 - **OIDC tokens** - External identity provider tokens (if configured)
 - **Webhook tokens** - Custom authentication webhook
 
@@ -41,8 +41,10 @@ kubectl config get-contexts
 # Add the cluster
 argocd cluster add on-prem-staging --name on-prem-staging
 
-# For clusters with self-signed certificates
-argocd cluster add on-prem-staging --name on-prem-staging --insecure
+# For remote clusters with self-signed API certificates, make sure the
+# kubeconfig context includes certificate-authority-data or certificate-authority.
+# The argocd CLI --insecure flag skips verification for the ArgoCD API server,
+# not for the remote Kubernetes API server.
 ```
 
 ## Method 2: Manual Service Account Registration
@@ -122,10 +124,14 @@ TOKEN=$(kubectl get secret argocd-manager-token \
   --context on-prem-staging \
   -o jsonpath='{.data.token}' | base64 -d)
 
+CLUSTER_NAME=$(kubectl config view --raw \
+  --context on-prem-staging \
+  -o jsonpath='{.contexts[?(@.name=="on-prem-staging")].context.cluster}')
+
 # Get the cluster CA certificate
 CA_DATA=$(kubectl config view --raw \
   --context on-prem-staging \
-  -o jsonpath='{.clusters[?(@.name=="on-prem-staging")].cluster.certificate-authority-data}')
+  -o jsonpath="{.clusters[?(@.name==\"$CLUSTER_NAME\")].cluster.certificate-authority-data}")
 
 # If CA is a file path instead of inline data
 CA_DATA=$(cat /etc/kubernetes/pki/ca.crt | base64 -w 0)
@@ -133,7 +139,7 @@ CA_DATA=$(cat /etc/kubernetes/pki/ca.crt | base64 -w 0)
 # Get the server URL
 SERVER=$(kubectl config view \
   --context on-prem-staging \
-  -o jsonpath='{.clusters[?(@.name=="on-prem-staging")].cluster.server}')
+  -o jsonpath="{.clusters[?(@.name==\"$CLUSTER_NAME\")].cluster.server}")
 
 echo "Server: $SERVER"
 echo "Token: $TOKEN"
