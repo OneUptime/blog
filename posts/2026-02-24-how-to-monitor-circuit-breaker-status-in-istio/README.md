@@ -22,7 +22,7 @@ These metrics tell you when connection limits are being hit:
 # Check all overflow-related stats
 
 kubectl exec deploy/my-service -c istio-proxy -- \
-  curl -s localhost:15000/stats | grep "overflow"
+  pilot-agent request GET stats | grep "overflow"
 ```
 
 Key metrics:
@@ -38,15 +38,15 @@ These metrics show ejection activity:
 ```bash
 # Check outlier detection metrics
 kubectl exec deploy/my-service -c istio-proxy -- \
-  curl -s localhost:15000/stats | grep "outlier"
+  pilot-agent request GET stats | grep "outlier"
 ```
 
 Key metrics:
 
 - `outlier_detection.ejections_active` - Number of currently ejected hosts
-- `outlier_detection.ejections_total` - Total ejections over the lifetime of the proxy
+- `outlier_detection.ejections_enforced_total` - Total enforced ejections over the lifetime of the proxy
 - `outlier_detection.ejections_detected_consecutive_5xx` - Ejections triggered by consecutive 5xx errors
-- `outlier_detection.ejections_enforced_total` - Ejections that were actually enforced (not just detected)
+- `outlier_detection.ejections_enforced_consecutive_5xx` - Consecutive 5xx ejections that were actually enforced
 - `outlier_detection.ejections_overflow` - Ejections that were not enforced because maxEjectionPercent was reached
 
 ### Per-Host Health Status
@@ -56,14 +56,14 @@ Check the health of individual upstream instances:
 ```bash
 # See all upstream hosts and their status
 kubectl exec deploy/my-service -c istio-proxy -- \
-  curl -s localhost:15000/clusters | grep -E "health_flags|cx_active|rq_active"
+  pilot-agent request GET clusters | grep -E "healthy|cx_active|rq_active"
 ```
 
-The output shows each upstream host with its health flags. A healthy host has no flags. An ejected host shows `health_flags::/failed_outlier_check`.
+The output shows each upstream host with its health status. A healthy host shows `healthy`. An ejected host shows `/failed_outlier_check`.
 
 ## Setting Up Prometheus Monitoring
 
-Istio exposes Envoy metrics to Prometheus automatically. The relevant metrics for circuit breaking are:
+Istio exposes its standard service metrics to Prometheus automatically, but many detailed Envoy cluster stats are only recorded when they match the proxy stats matcher configuration. Make sure your mesh or workload `proxyStatsMatcher` includes the relevant `upstream_*` and `outlier_detection` stats before relying on these queries. The Prometheus metric names and labels can also vary with Istio and Envoy configuration, so confirm the exact names in your environment.
 
 ### Connection Pool Metrics
 
@@ -87,7 +87,7 @@ rate(envoy_cluster_upstream_cx_overflow{cluster_name="outbound|8080||my-service.
 envoy_cluster_outlier_detection_ejections_active{cluster_name="outbound|8080||my-service.default.svc.cluster.local"}
 
 # Ejection rate
-rate(envoy_cluster_outlier_detection_ejections_total{cluster_name="outbound|8080||my-service.default.svc.cluster.local"}[5m])
+rate(envoy_cluster_outlier_detection_ejections_enforced_total{cluster_name="outbound|8080||my-service.default.svc.cluster.local"}[5m])
 ```
 
 ## Prometheus Alert Rules
@@ -185,7 +185,7 @@ Shows the percentage of hosts currently ejected. This is the most useful metric 
 
 ## Quick Health Check Script
 
-Here is a script that gives you a quick overview of circuit breaker status across your mesh:
+Here is a script that gives you a quick overview of circuit breaker status in the current namespace:
 
 ```bash
 #!/bin/bash
@@ -194,10 +194,10 @@ Here is a script that gives you a quick overview of circuit breaker status acros
 echo "=== Circuit Breaker Status ==="
 echo ""
 
-# Get all pods with istio-proxy
+# Get pods with istio-proxy in the current namespace
 for pod in $(kubectl get pods -l security.istio.io/tlsMode=istio -o jsonpath='{.items[*].metadata.name}'); do
-  overflow=$(kubectl exec $pod -c istio-proxy -- curl -s localhost:15000/stats 2>/dev/null | grep "upstream_rq_pending_overflow" | awk '{sum+=$2} END {print sum}')
-  ejections=$(kubectl exec $pod -c istio-proxy -- curl -s localhost:15000/stats 2>/dev/null | grep "ejections_active" | awk '{sum+=$2} END {print sum}')
+  overflow=$(kubectl exec "$pod" -c istio-proxy -- pilot-agent request GET stats 2>/dev/null | grep "upstream_rq_pending_overflow" | awk '{sum+=$2} END {print sum+0}')
+  ejections=$(kubectl exec "$pod" -c istio-proxy -- pilot-agent request GET stats 2>/dev/null | grep "ejections_active" | awk '{sum+=$2} END {print sum+0}')
 
   if [ "$overflow" -gt 0 ] || [ "$ejections" -gt 0 ]; then
     echo "Pod: $pod"
@@ -231,7 +231,7 @@ Rolling deployments temporarily reduce capacity as old pods terminate and new po
 ```bash
 # Watch ejections during a deployment
 watch -n 2 "kubectl exec deploy/my-service -c istio-proxy -- \
-  curl -s localhost:15000/stats 2>/dev/null | \
+  pilot-agent request GET stats 2>/dev/null | \
   grep -E 'ejections_active|pending_overflow'"
 ```
 
