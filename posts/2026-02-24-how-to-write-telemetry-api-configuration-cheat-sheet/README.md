@@ -35,7 +35,7 @@ Telemetry resources follow the same precedence as other Istio policies:
 
 1. **Workload-level** (highest priority): Has a `selector`
 2. **Namespace-level**: No selector, applies to all workloads in the namespace
-3. **Mesh-wide** (lowest priority): In `istio-system`, no selector
+3. **Mesh-wide** (lowest priority): In the Istio root configuration namespace, usually `istio-system`, with no selector
 
 ## Access Logging
 
@@ -190,7 +190,7 @@ spec:
             metric: REQUEST_COUNT
             mode: CLIENT_AND_SERVER
           tagOverrides:
-            request_host:
+            response_code:
               operation: REMOVE
 ```
 
@@ -213,10 +213,10 @@ spec:
           tagOverrides:
             environment:
               operation: UPSERT
-              value: "production"
+              value: "'production'"
             cluster_name:
               operation: UPSERT
-              value: "cluster-east-1"
+              value: "'cluster-east-1'"
 ```
 
 ### Add Request Header as Metric Tag
@@ -258,9 +258,9 @@ spec:
         - match:
             metric: ALL_METRICS
           tagOverrides:
-            request_path:
+            source_principal:
               operation: REMOVE
-            destination_ip:
+            destination_principal:
               operation: REMOVE
 ```
 
@@ -321,6 +321,8 @@ This disables client-side REQUEST_COUNT metrics, keeping only server-side metric
 | `GRPC_REQUEST_MESSAGES` | gRPC messages sent |
 | `GRPC_RESPONSE_MESSAGES` | gRPC messages received |
 
+Only labels that exist for the selected metric provider can be removed. See the Istio standard metric labels when choosing tags to remove.
+
 ## Tracing
 
 ### Enable Tracing Mesh-Wide
@@ -337,6 +339,8 @@ spec:
         - name: zipkin
       randomSamplingPercentage: 1.0
 ```
+
+The `zipkin` provider must be configured in the mesh config extension providers.
 
 ### Configure Sampling Rate
 
@@ -479,8 +483,8 @@ spec:
           tagOverrides:
             environment:
               operation: UPSERT
-              value: "production"
-            request_path:
+              value: "'production'"
+            response_flags:
               operation: REMOVE
   # Tracing with 5% sampling
   tracing:
@@ -516,9 +520,9 @@ spec:
         - match:
             metric: ALL_METRICS
           tagOverrides:
-            request_path:
+            source_principal:
               operation: REMOVE
-            source_ip:
+            destination_principal:
               operation: REMOVE
   # Low sampling rate for production
   tracing:
