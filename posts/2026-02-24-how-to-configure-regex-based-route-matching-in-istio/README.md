@@ -19,14 +19,14 @@ Istio supports regex matching in several places within a VirtualService match co
 - Query parameters
 - Authority (host header)
 
-The regex engine used by Envoy (the underlying proxy) follows the RE2 syntax, which is similar to standard POSIX regex but has some differences. Notably, RE2 does not support backreferences or lookaheads.
+The regex engine used by Envoy (the underlying proxy) follows the RE2 syntax, which is similar to common regex syntaxes but has some differences. Envoy regex matches are full-string matches, not partial substring searches. Notably, RE2 does not support backreferences or lookaheads.
 
 ## Basic URI Regex Matching
 
 Here is a simple example that matches API version paths:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-api
@@ -57,7 +57,7 @@ This matches paths like `/api/v1/users/123`, `/api/v2/users/john`, or `/api/v10/
 A common need is routing based on path segments that contain IDs or slugs:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: product-api
@@ -96,7 +96,7 @@ The first rule matches UUID-style product IDs. The second matches numeric IDs. T
 Regex works well for headers where values follow a pattern but are not fixed:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -126,7 +126,7 @@ This routes requests from Chrome and Firefox to the modern subset and everything
 Since cookies are sent as a single header value, you almost always need regex to match specific cookies:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -156,7 +156,7 @@ The `.*` before and after the cookie name-value pair is important because the co
 You can use regex to match several URL patterns in one rule:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -193,7 +193,7 @@ The alternation operator `|` lets you match multiple path prefixes in a single r
 ## Query Parameter Regex Matching
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: search-api
@@ -216,14 +216,14 @@ spec:
             subset: default
 ```
 
-The anchors `^` and `$` are important here. Without them, `json-ld` would also match the pattern. Anchoring ensures only exact format values match.
+Envoy regex matching is already a full-string match, so `json-ld` would not match `(json|xml|csv)`. The anchors `^` and `$` still make the intent explicit and avoid surprises if you reuse the pattern in another context.
 
 ## Regex Performance Considerations
 
 Regex matching is more expensive than exact or prefix matching. Envoy compiles the regex when the configuration is loaded, but every incoming request still needs to be evaluated against it. Keep these tips in mind:
 
 - **Keep patterns simple.** Avoid deeply nested groups or excessive alternations.
-- **Use anchors.** Start with `^` and end with `$` when possible to help the engine fail fast on non-matching strings.
+- **Use full-string patterns intentionally.** Envoy regex matchers evaluate the whole string; anchors can still make your intent clearer when a pattern should match a complete value.
 - **Prefer exact or prefix matching** when they are sufficient. Only use regex when you truly need pattern matching.
 - **Limit the number of regex rules.** Having dozens of regex match rules in a single VirtualService will slow down route evaluation.
 
@@ -268,7 +268,7 @@ Here are the most useful RE2 patterns for Istio routing:
 | `?` | Zero or one of the previous |
 | `[abc]` | Character class |
 | `[0-9]` | Digit range |
-| `(a\|b)` | Alternation |
+| `(a\|b)` | Alternation, written as `a|b` in the actual regex |
 | `^` | Start of string |
 | `$` | End of string |
 | `{n}` | Exactly n repetitions |
@@ -279,7 +279,7 @@ Here are the most useful RE2 patterns for Istio routing:
 Here is a complete example that routes different API versions and formats:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-router
