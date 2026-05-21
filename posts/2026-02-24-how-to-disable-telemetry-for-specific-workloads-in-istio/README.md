@@ -38,15 +38,13 @@ spec:
         - name: envoy
       disabled: true
   tracing:
-    - providers:
-        - name: zipkin
-      randomSamplingPercentage: 0
+    - disableSpanReporting: true
 ```
 
 After applying this, the `internal-tool` workload will:
 - Stop generating Prometheus metrics
 - Stop writing access logs
-- Stop producing trace spans
+- Stop reporting trace spans
 
 The proxy still handles traffic normally - it just stops reporting telemetry data.
 
@@ -110,12 +108,10 @@ spec:
     matchLabels:
       app: secret-manager
   tracing:
-    - providers:
-        - name: zipkin
-      randomSamplingPercentage: 0
+    - disableSpanReporting: true
 ```
 
-Setting the sampling percentage to 0 effectively disables tracing.
+Setting `disableSpanReporting` to `true` disables trace span reporting. Trace context propagation is not affected.
 
 ## Disabling Specific Metrics
 
@@ -165,7 +161,7 @@ spec:
 
 ## Disabling Client-Side Metrics Only
 
-Every Istio metric is collected twice: once on the client (calling) side and once on the server (receiving) side. Disabling client-side metrics cuts your metric volume in half for a workload while keeping the server-side data intact:
+Istio standard traffic metrics can be reported from the client (calling) side and the server (receiving) side when both sides are in the mesh. Disabling client-side metrics reduces metric volume for a workload while keeping the server-side data intact:
 
 ```yaml
 apiVersion: telemetry.istio.io/v1
@@ -212,20 +208,18 @@ spec:
         - name: envoy
       disabled: true
   tracing:
-    - providers:
-        - name: zipkin
-      randomSamplingPercentage: 0
+    - disableSpanReporting: true
 ```
 
-Note that this uses the name `default` and no selector, making it a namespace-level override rather than a workload-level one.
+Note that this has no selector, making it a namespace-level override rather than a workload-level one. The name `default` is conventional, but any name can be used as long as there is only one selector-less Telemetry resource in the namespace.
 
 ## When to Disable Telemetry
 
 Here are common scenarios where disabling telemetry makes sense:
 
-### Health Check Endpoints
+### Health Check Workloads
 
-If Kubernetes probes hit your services frequently, they generate a lot of metric and log noise:
+If Kubernetes probes hit a dedicated health check workload frequently, they generate a lot of metric and log noise:
 
 ```yaml
 apiVersion: telemetry.istio.io/v1
@@ -272,9 +266,7 @@ spec:
             metric: ALL_METRICS
           disabled: true
   tracing:
-    - providers:
-        - name: zipkin
-      randomSamplingPercentage: 0
+    - disableSpanReporting: true
 ```
 
 ### Internal Monitoring Services
@@ -349,7 +341,8 @@ kubectl port-forward svc/prometheus 9090:9090 -n istio-system
 Query the number of time series:
 
 ```promql
-count({__name__=~"istio_.*", source_workload="data-pipeline"})
+count({__name__=~"istio_.*", reporter="source", source_workload="data-pipeline"})
++ count({__name__=~"istio_.*", reporter="destination", destination_workload="data-pipeline"})
 ```
 
 After disabling, this count should drop to near zero.
