@@ -16,10 +16,10 @@ Istio automatically collects the `istio_request_duration_milliseconds` histogram
 
 - Source and destination service information
 - Response code
-- Request method
+- Request protocol
 - Connection security status (mTLS or not)
 
-The default histogram buckets are: 1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000 milliseconds.
+The default histogram buckets are: 0.5, 1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 30000, 60000, 300000, 600000, 1800000, 3600000 milliseconds.
 
 ## Verifying Metrics Are Available
 
@@ -45,7 +45,7 @@ istio_request_duration_milliseconds_count{...} 500
 If you do not already have Prometheus running, install the Istio addons:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/prometheus.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/prometheus.yaml
 ```
 
 Verify Prometheus is scraping Istio metrics:
@@ -82,7 +82,7 @@ histogram_quantile(0.99,
 )
 ```
 
-The `reporter="destination"` filter means we are measuring latency as seen by the receiving service's sidecar. This gives you the most accurate picture of how long the service took to process the request.
+The `reporter="destination"` filter means we are measuring latency as seen by the receiving service's sidecar. This gives you the closest server-side view of how long the request took after it reached the destination proxy.
 
 ### Latency by Response Code
 
@@ -108,68 +108,38 @@ This tells you which calling services are experiencing the highest latency when 
 
 The default buckets might not fit your use case. If your service typically responds in under 10ms, the default buckets are too coarse at the low end. If your service handles long-running requests, you might need higher buckets.
 
-Customize buckets using the Telemetry API:
+Customize buckets using the `sidecar.istio.io/statsHistogramBuckets` annotation. For example, add the annotation to the pod template for the workload that needs different bucket boundaries:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1
-kind: Telemetry
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: custom-histograms
+  name: my-fast-service
   namespace: default
 spec:
-  metrics:
-    - providers:
-        - name: prometheus
-      overrides:
-        - match:
-            metric: REQUEST_DURATION
-            mode: CLIENT_AND_SERVER
-          tagOverrides:
-            request_protocol:
-              operation: REMOVE
-```
-
-For more fine-grained bucket control, you can configure this through the mesh config:
-
-```yaml
-apiVersion: install.istio.io/v1alpha1
-kind: IstioOperator
-spec:
-  meshConfig:
-    defaultConfig:
-      proxyStatsMatcher:
-        inclusionPrefixes:
-          - "cluster.outbound"
-```
-
-Or use an EnvoyFilter for per-workload bucket customization:
-
-```yaml
-apiVersion: networking.istio.io/v1alpha3
-kind: EnvoyFilter
-metadata:
-  name: custom-duration-buckets
-  namespace: default
-spec:
-  workloadSelector:
-    labels:
+  selector:
+    matchLabels:
       app: my-fast-service
-  configPatches:
-    - applyTo: CLUSTER
-      match:
-        context: SIDECAR_OUTBOUND
-      patch:
-        operation: MERGE
-        value:
-          track_cluster_stats: true
+  template:
+    metadata:
+      labels:
+        app: my-fast-service
+      annotations:
+        sidecar.istio.io/statsHistogramBuckets: '{"istiocustom":[1,5,10,25,50,100,250,500,1000,2500,5000,10000]}'
+    spec:
+      containers:
+        - name: my-fast-service
+          image: example/my-fast-service:latest
 ```
+
+The `istiocustom` prefix applies the buckets to Istio standard histogram metrics such as `istio_request_duration_milliseconds`. Use the Telemetry API when you need to add, remove, or override metric dimensions; use the annotation when you need to change histogram bucket boundaries.
 
 ## Setting Up Grafana Dashboards
 
 Install Grafana if you have not already:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/grafana.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/grafana.yaml
 ```
 
 Istio comes with built-in Grafana dashboards that include request duration panels. Access them:
@@ -194,7 +164,7 @@ Set the visualization to a time series graph with the Y-axis labeled in millisec
 
 ## Alerting on Latency
 
-Set up Prometheus alerting rules for latency degradation:
+If you use Prometheus Operator, set up `PrometheusRule` alerting rules for latency degradation:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
@@ -232,7 +202,7 @@ spec:
 
 ## Comparing Client vs. Server Latency
 
-Istio reports metrics from both the client side (`reporter="source"`) and the server side (`reporter="destination"`). The difference between the two tells you how much time is spent in the network:
+Istio reports metrics from both the client side (`reporter="source"`) and the server side (`reporter="destination"`). Comparing the two helps you identify latency that is outside the destination service's server-side view:
 
 ```promql
 # Client-side P95
@@ -247,7 +217,7 @@ histogram_quantile(0.95,
 )
 ```
 
-If client-side latency is significantly higher than server-side latency, you have network overhead (DNS resolution, connection pooling, retries, etc.).
+If client-side latency is significantly higher than server-side latency, that can point to network or client-side proxy overhead, connection pooling, retries, or other client-side effects.
 
 ## Troubleshooting Latency Issues
 
@@ -265,4 +235,4 @@ kubectl exec deploy/my-service -c istio-proxy -- pilot-agent request GET stats |
 
 ## Summary
 
-Istio's built-in request duration histogram gives you detailed latency visibility across your entire mesh without instrumenting your application code. Use Prometheus to query percentiles, Grafana to visualize trends, and alerting rules to catch regressions. Break down by source, destination, response code, and method to pinpoint exactly where latency issues originate. The combination of client-side and server-side metrics helps you separate application latency from network latency.
+Istio's built-in request duration histogram gives you detailed latency visibility across your entire mesh without instrumenting your application code. Use Prometheus to query percentiles, Grafana to visualize trends, and alerting rules to catch regressions. Break down by source, destination, response code, and protocol to pinpoint exactly where latency issues originate. The combination of client-side and server-side metrics helps you separate application latency from network latency.
