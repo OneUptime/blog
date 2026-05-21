@@ -32,13 +32,13 @@ curl -s https://keycloak.example.com/realms/myrealm/.well-known/openid-configura
 Before configuring Istio, make sure you have a client configured in Keycloak:
 
 1. Create a realm (or use an existing one).
-2. Create a client with "Client authentication" enabled for service-to-service communication, or a public client for browser-based apps.
+2. Create a client with "Client authentication" and "Service accounts roles" enabled for service-to-service communication, or a public client for browser-based apps.
 3. Note the client ID and client secret.
 4. Optionally create roles and assign them to users or service accounts.
 
 ## Creating the RequestAuthentication
 
-For Keycloak running inside the cluster:
+For Keycloak exposed through an external domain:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -78,13 +78,13 @@ Notice the issuer stays as the external URL (because that's what's in the token'
 
 ## Important: Issuer vs JWKS URI
 
-The `issuer` field must match the `iss` claim in the JWT exactly. Keycloak sets the issuer based on the URL clients use to obtain tokens. If your users get tokens through `https://keycloak.example.com`, the issuer will be `https://keycloak.example.com/realms/myrealm`.
+The `issuer` field must match the `iss` claim in the JWT exactly. Keycloak sets the issuer from its configured frontend hostname/base URL. If your Keycloak frontend URL is `https://keycloak.example.com`, the issuer will be `https://keycloak.example.com/realms/myrealm`.
 
 The `jwksUri` just needs to be reachable from the Envoy sidecar. It doesn't need to match the issuer domain. This is useful when Keycloak is in the cluster but tokens are issued through an external URL.
 
 ## Adding Audience Validation
 
-Keycloak access tokens include an `aud` claim by default. You can configure which audiences appear in the token using client scopes in Keycloak.
+Keycloak access tokens can include an `aud` claim, and many default setups include `account`. You can configure which audiences appear in the token using audience mappers in client scopes in Keycloak.
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -108,7 +108,7 @@ spec:
 Check your token to see what audiences are set:
 
 ```bash
-echo "$TOKEN" | cut -d. -f2 | base64 -d 2>/dev/null | python3 -m json.tool | grep aud
+python3 -c 'import base64,json,os; payload=os.environ["TOKEN"].split(".")[1]; payload += "=" * (-len(payload) % 4); print(json.dumps(json.loads(base64.urlsafe_b64decode(payload)), indent=2))' | grep aud
 ```
 
 ## Getting a Test Token
@@ -126,7 +126,7 @@ TOKEN=$(curl -s -X POST \
 echo "$TOKEN"
 ```
 
-Using the password grant (for testing with a user):
+Using the password grant (for testing with a user, if Direct Access Grants are enabled for the client):
 
 ```bash
 TOKEN=$(curl -s -X POST \
@@ -223,7 +223,7 @@ kubectl exec deploy/sleep -c sleep -- \
 
 ### Frontend URL Configuration
 
-Keycloak has a "Frontend URL" setting that determines the issuer in tokens. If this isn't set correctly, the `iss` claim won't match your RequestAuthentication. Check it in the Keycloak admin console under Realm Settings.
+Keycloak's frontend hostname/base URL determines the issuer in tokens. If this isn't set correctly, the `iss` claim won't match your RequestAuthentication. In current Keycloak versions, configure it with the server `hostname` option; older installations may also have a realm-level frontend URL setting.
 
 ### Keycloak Behind a Reverse Proxy
 
