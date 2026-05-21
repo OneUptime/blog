@@ -20,8 +20,11 @@ Flagger runs as a Kubernetes controller that watches your deployments and manage
 helm repo add flagger https://flagger.app
 helm repo update
 
-helm install flagger flagger/flagger \
+kubectl apply -f https://raw.githubusercontent.com/fluxcd/flagger/main/artifacts/flagger/crd.yaml
+
+helm upgrade -i flagger flagger/flagger \
   --namespace istio-system \
+  --set crd.create=false \
   --set meshProvider=istio \
   --set metricsServer=http://prometheus:9090
 ```
@@ -29,8 +32,9 @@ helm install flagger flagger/flagger \
 Flagger needs access to Prometheus to query metrics for canary analysis. Make sure the `metricsServer` URL points to your Prometheus instance. If you installed Istio's Prometheus addon:
 
 ```bash
-helm install flagger flagger/flagger \
+helm upgrade -i flagger flagger/flagger \
   --namespace istio-system \
+  --set crd.create=false \
   --set meshProvider=istio \
   --set metricsServer=http://prometheus.istio-system:9090
 ```
@@ -149,7 +153,7 @@ Flagger creates several resources:
 - `my-app-primary` Service
 - `my-app-canary` Service
 - VirtualService with traffic routing rules
-- DestinationRule with subsets
+- `my-app-primary` and `my-app-canary` DestinationRules
 
 Check the status:
 
@@ -242,14 +246,14 @@ spec:
       rate(istio_requests_total{
         reporter="destination",
         destination_workload_namespace="{{ namespace }}",
-        destination_workload=~"{{ target }}-canary",
+        destination_workload=~"{{ target }}",
         response_code!~"5.*"
       }[{{ interval }}])
     ) / sum(
       rate(istio_requests_total{
         reporter="destination",
         destination_workload_namespace="{{ namespace }}",
-        destination_workload=~"{{ target }}-canary"
+        destination_workload=~"{{ target }}"
       }[{{ interval }}])
     ) * 100
 ```
@@ -270,11 +274,14 @@ spec:
     - name: load-test
       type: rollout
       url: http://flagger-loadtester.production/
+      timeout: 5s
       metadata:
+        type: cmd
         cmd: "hey -z 1m -q 10 -c 2 http://my-app-canary.production/"
     - name: acceptance-test
       type: pre-rollout
       url: http://flagger-loadtester.production/
+      timeout: 30s
       metadata:
         type: bash
         cmd: "curl -s http://my-app-canary.production/healthz | grep ok"
@@ -292,15 +299,15 @@ helm install flagger-loadtester flagger/loadtester \
 Flagger exposes Prometheus metrics:
 
 ```promql
-# Canary status (0=initializing, 1=progressing, 2=succeeded, 3=failed)
+# Canary promotion last known status (0=running, 1=successful, 2=failed)
 
 flagger_canary_status{name="my-app", namespace="production"}
 
 # Canary weight (current traffic percentage to canary)
-flagger_canary_weight{name="my-app", namespace="production"}
+flagger_canary_weight{workload="my-app", namespace="production"}
 
 # Total canary iterations
-flagger_canary_total{name="my-app", namespace="production"}
+flagger_canary_total{namespace="production"}
 ```
 
 Set up alerts for failed canaries:
@@ -310,7 +317,7 @@ groups:
 - name: flagger
   rules:
   - alert: CanaryFailed
-    expr: flagger_canary_status{status="failed"} == 1
+    expr: flagger_canary_status == 2
     for: 1m
     labels:
       severity: warning
