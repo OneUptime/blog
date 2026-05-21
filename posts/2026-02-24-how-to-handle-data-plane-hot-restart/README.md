@@ -4,15 +4,17 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Data Plane, Hot Restart, Envoy, Kubernetes
 
-Description: Understanding and configuring Envoy hot restart in Istio to apply configuration changes and upgrade proxies without dropping active connections.
+Description: Understanding Envoy hot restart and how current Istio sidecars handle proxy configuration, draining, and upgrades.
 
 ---
 
-Hot restart is an Envoy feature that allows a new instance of the proxy to take over from an old instance without dropping any active connections. This is how Istio can update sidecar configurations and even upgrade proxy binaries while keeping your traffic flowing. Understanding how this works helps you avoid unnecessary downtime and troubleshoot issues when proxies are not behaving as expected.
+Hot restart is an Envoy feature that allows a new instance of the proxy to take over from an old instance without dropping active connections during the drain process. Existing connections are not transferred to the new process; they must finish during the drain period or be terminated.
+
+In current Istio sidecars, Envoy is started with hot restart disabled. Istio normally updates routing, clusters, listeners, and secrets through xDS, and sidecar binary upgrades are handled by restarting pods so they receive a newly injected proxy. Understanding the difference helps you avoid unnecessary downtime and troubleshoot issues when proxies are not behaving as expected.
 
 ## What Is Hot Restart?
 
-When Envoy needs to restart (for a binary upgrade, configuration change that requires a full restart, or other reasons), it does not simply stop and start. Instead, it:
+In a standalone Envoy deployment where hot restart is enabled, when Envoy needs to restart for a binary upgrade, configuration change that requires a full restart, or other reason, it does not simply stop and start. Instead, it:
 
 1. Starts a new Envoy process
 2. The new process coordinates with the old process through a Unix domain socket
@@ -26,7 +28,7 @@ This handoff means that at no point are there zero Envoy instances handling traf
 
 It is important to understand that most Istio configuration changes do NOT trigger a hot restart. When you create or modify a VirtualService, DestinationRule, or other Istio resource, istiod pushes the updated configuration to the Envoy proxies over xDS (the Envoy discovery service protocol). Envoy applies these changes live without any restart.
 
-Hot restart is only needed for changes that cannot be applied dynamically, such as:
+In standalone Envoy, hot restart is useful for changes that cannot be applied dynamically, such as:
 - Envoy binary upgrades
 - Changes to bootstrap configuration
 - Changes to certain static listeners
@@ -45,11 +47,11 @@ for item in config.get('configs', []):
 
 ## Hot Restart Configuration
 
-Envoy's hot restart behavior is controlled by a few parameters in the bootstrap configuration. In Istio, you can influence these through proxy configuration.
+Envoy's hot restart behavior is controlled by command-line settings such as `--drain-time-s` and `--parent-shutdown-time-s`. In current Istio sidecars, hot restart itself is disabled, but `drainDuration` still controls the drain time passed to Envoy for drain behavior.
 
 The key settings are:
 
-**Drain duration** - How long the old process keeps serving existing connections after the new process starts:
+**Drain duration** - How long Envoy drains connections during a hot restart in Envoy, and the value Istio passes to Envoy as `--drain-time-s`:
 
 ```yaml
 apiVersion: apps/v1
@@ -64,7 +66,7 @@ spec:
           drainDuration: 45s
 ```
 
-**Parent shutdown time** - How long the new process waits before asking the old process to shut down:
+**Termination drain duration** - How long Istio allows connections to complete during proxy shutdown after `SIGTERM` or `SIGINT`:
 
 ```yaml
 apiVersion: apps/v1
@@ -76,32 +78,32 @@ spec:
     metadata:
       annotations:
         proxy.istio.io/config: |
-          parentShutdownDuration: 60s
+          terminationDrainDuration: 60s
 ```
 
-The `parentShutdownDuration` should be longer than the `drainDuration` to give the old process time to finish draining before being told to shut down.
+The old `parentShutdownDuration` setting is not part of current Istio `ProxyConfig`. It was tied to Envoy hot restart parent shutdown behavior, while current Istio uses `terminationDrainDuration` for proxy shutdown draining.
 
 ## Monitoring Hot Restarts
 
-You can see how many times Envoy has hot restarted by checking the server info:
+You can check whether a proxy is running with hot restart disabled by checking the server info:
 
 ```bash
 kubectl exec deploy/my-app -c istio-proxy -- curl -s localhost:15000/server_info | python3 -m json.tool
 ```
 
-Look for the `hot_restart_version` field. You can also check the restart epoch:
+Look for `command_line_options.disable_hot_restart` and the `hot_restart_version` field. You can also check the hot restart compatibility version:
 
 ```bash
 kubectl exec deploy/my-app -c istio-proxy -- curl -s localhost:15000/hot_restart_version
 ```
 
-Monitor for frequent hot restarts, which could indicate a problem:
+You can inspect the restart epoch statistic:
 
 ```bash
 kubectl exec deploy/my-app -c istio-proxy -- curl -s localhost:15000/stats | grep "server.hot_restart_epoch"
 ```
 
-If the epoch keeps incrementing, something is causing repeated restarts. Check the proxy logs:
+In current Istio sidecars this should normally stay at `0` because hot restart is disabled. If Envoy is restarting unexpectedly, check the proxy logs:
 
 ```bash
 kubectl logs deploy/my-app -c istio-proxy --tail=100
@@ -109,12 +111,9 @@ kubectl logs deploy/my-app -c istio-proxy --tail=100
 
 ## Shared Memory in Hot Restart
 
-Envoy uses shared memory to transfer state between the old and new processes during hot restart. This includes:
-- Active connection counts
-- Statistics counters
-- Drain state information
+Envoy uses Unix domain sockets to coordinate old and new processes during hot restart, and it uses shared memory regions as part of hot restart support. Current Envoy documentation describes counters and gauges being transferred over the Unix domain socket between processes.
 
-The shared memory region is created in `/dev/shm` inside the container. If your container has a small `/dev/shm` limit, hot restarts can fail.
+In current Istio sidecars, hot restart is disabled, so you normally do not need to resize `/dev/shm` for Envoy hot restart.
 
 Check the shared memory size:
 
@@ -122,7 +121,7 @@ Check the shared memory size:
 kubectl exec deploy/my-app -c istio-proxy -- df -h /dev/shm
 ```
 
-If it is too small, increase it in your pod spec:
+If you run a custom Envoy container with hot restart enabled and need a larger shared memory mount, add an in-memory `emptyDir` and mount it at `/dev/shm`:
 
 ```yaml
 apiVersion: apps/v1
@@ -135,6 +134,11 @@ spec:
       containers:
       - name: my-app
         image: my-app:latest
+      - name: envoy
+        image: envoyproxy/envoy:latest
+        volumeMounts:
+        - name: dshm
+          mountPath: /dev/shm
       volumes:
       - name: dshm
         emptyDir:
@@ -142,7 +146,7 @@ spec:
           sizeLimit: 128Mi
 ```
 
-Then mount it in the istio-proxy container by adding the volume mount through an annotation:
+For an Istio-injected sidecar, the annotations for adding extra sidecar volumes and mounts are:
 
 ```yaml
 metadata:
@@ -151,15 +155,17 @@ metadata:
     sidecar.istio.io/userVolumeMount: '[{"name":"dshm","mountPath":"/dev/shm"}]'
 ```
 
+These annotations add the volume and mount to the injected sidecar; do not also define a duplicate volume with the same name in the pod spec.
+
 ## Handling Hot Restart Failures
 
-If a hot restart fails, the new Envoy process will exit and the old process continues serving traffic. This is a safe failure mode because traffic is not interrupted. However, the proxy will be running with the old configuration or binary.
+In standalone Envoy, if a hot restart fails, the new Envoy process exits and the old process continues serving traffic. This is a safe failure mode because traffic is not interrupted. However, the proxy will be running with the old configuration or binary.
 
 Common causes of hot restart failures:
 
-**Shared memory incompatibility**: If the old and new Envoy versions have different shared memory layouts, hot restart will fail. This is why you should not skip minor versions during upgrades.
+**Hot restart compatibility mismatch**: Envoy exposes a hot restart compatibility version. If the new binary is not compatible with the running binary, hot restart should not be attempted.
 
-**Resource constraints**: If the container does not have enough memory to run two Envoy processes simultaneously (even briefly), the new process may OOM before it can take over.
+**Resource constraints**: If the container does not have enough memory to run two Envoy processes simultaneously, the new process may OOM before it can take over.
 
 Check memory limits:
 
@@ -169,29 +175,21 @@ kubectl get pod my-app-xyz -o jsonpath='{.spec.containers[?(@.name=="istio-proxy
 
 Make sure the memory limit is high enough to accommodate two processes. A good rule of thumb is to set the limit to at least 2x the normal memory usage of a single Envoy process.
 
-**Socket conflicts**: If the Unix domain socket used for coordination between old and new processes is in a bad state, hot restart will fail. This can happen if a previous restart was interrupted.
+**Socket conflicts**: If the Unix domain socket used for coordination between old and new processes is in a bad state, hot restart can fail. This can happen if a previous restart was interrupted.
 
 ## Disabling Hot Restart
 
-In some cases, you might want to disable hot restart entirely. For example, if you are running in an environment where shared memory is not available or if you are using a container runtime that does not support it.
+In current Istio sidecars, hot restart is already disabled by the way `istio-agent` starts Envoy. You can confirm this in the server info output:
 
-You can disable hot restart through the proxy configuration:
-
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: my-app
-spec:
-  template:
-    metadata:
-      annotations:
-        proxy.istio.io/config: |
-          proxyMetadata:
-            ISTIO_META_ENABLE_HOT_RESTART: "false"
+```bash
+kubectl exec deploy/my-app -c istio-proxy -- curl -s localhost:15000/server_info | python3 -c "
+import json, sys
+info = json.load(sys.stdin)
+print(info.get('command_line_options', {}).get('disable_hot_restart'))
+"
 ```
 
-When hot restart is disabled, any change that would normally trigger a hot restart will instead require a full pod restart.
+If this prints `True`, Envoy was started with `--disable-hot-restart`. There is no supported `ISTIO_META_ENABLE_HOT_RESTART` proxy metadata setting in current Istio to re-enable it for sidecars.
 
 ## Hot Restart During Upgrades
 
@@ -201,15 +199,15 @@ When upgrading Istio, the sidecar binary changes. The way to "upgrade" sidecars 
 kubectl rollout restart deployment my-app -n default
 ```
 
-True hot restarts happen within the lifecycle of a single pod, when Envoy needs to restart itself internally. During a Kubernetes rolling update, the old pod and new pod overlap, which achieves a similar effect at the pod level.
+True Envoy hot restarts happen within the lifecycle of a single proxy process supervisor when hot restart is enabled. During a Kubernetes rolling update, the old pod and new pod overlap, which achieves a similar effect at the pod level.
 
 ## Best Practices
 
-1. Set `drainDuration` to match your longest expected request duration
-2. Set `parentShutdownDuration` to be at least 10 seconds longer than `drainDuration`
-3. Ensure sufficient memory limits for two concurrent Envoy processes
-4. Monitor hot restart epochs to detect unexpected restarts
-5. Keep the shared memory volume sized appropriately
-6. Test hot restart behavior in a staging environment before production
+1. Set `drainDuration` carefully for Envoy drain behavior
+2. Use `terminationDrainDuration` for Istio proxy shutdown draining
+3. Ensure sufficient memory limits for two concurrent Envoy processes only in custom deployments that enable hot restart
+4. Check `disable_hot_restart` and restart epochs when debugging Envoy process behavior
+5. Keep shared memory sizing in mind only for custom Envoy deployments that enable hot restart
+6. Test rollout and drain behavior in a staging environment before production
 
-Hot restart is one of those features that works quietly in the background and you rarely need to think about. But when something goes wrong during a restart, understanding how the handoff works, what shared memory does, and how to tune the drain and shutdown durations will save you a lot of debugging time.
+Hot restart is one of those Envoy features that you rarely need to think about in current Istio sidecars because Istio disables it and uses xDS updates plus Kubernetes rollouts instead. But when something goes wrong during a proxy restart or rollout, understanding how the handoff works in Envoy, what shared memory does, and which Istio drain settings still apply will save you a lot of debugging time.
