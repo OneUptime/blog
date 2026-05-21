@@ -61,7 +61,7 @@ spec:
           headers:
             response:
               add:
-                deprecation: "true"
+                deprecation: "@1771891200"
                 sunset: "Wed, 01 Jul 2026 00:00:00 GMT"
                 link: '</api/v2/users>; rel="successor-version"'
                 x-api-version: "v1"
@@ -69,7 +69,7 @@ spec:
                 x-deprecation-notice: "This API version will be removed on July 1, 2026. Please migrate to /api/v2/users."
 ```
 
-The `Deprecation` header (RFC 8594) and `Sunset` header (RFC 8594) are standards that well-behaved API clients can parse automatically. The `Link` header with `rel="successor-version"` tells the client exactly where to go.
+The `Deprecation` header (RFC 9745) and `Sunset` header (RFC 8594) are standards that well-behaved API clients can parse automatically. The `Link` header with `rel="successor-version"` tells the client exactly where to go.
 
 ## Phase 2: Monitoring Deprecated API Usage
 
@@ -93,10 +93,13 @@ spec:
           tagOverrides:
             client_id:
               operation: UPSERT
-              value: request.headers["x-client-id"]
+              value: '"x-client-id" in request.headers ? request.headers["x-client-id"] : "unknown"'
             api_version:
               operation: UPSERT
-              value: request.headers["x-api-version"]
+              value: 'request.url_path.matches("^/api/v1/users.*") ? "v1" : "v2"'
+            request_path:
+              operation: UPSERT
+              value: request.url_path
 ```
 
 Query Prometheus to find clients still using v1:
@@ -104,15 +107,15 @@ Query Prometheus to find clients still using v1:
 ```text
 # Total v1 requests per client
 
-sum(increase(istio_requests_total{api_version="v1", request_url_path=~"/api/v1/users.*"}[7d])) by (client_id)
+sum(increase(istio_requests_total{api_version="v1", request_path=~"/api/v1/users.*"}[7d])) by (client_id)
 
 # v1 request trend over time
-sum(rate(istio_requests_total{request_url_path=~"/api/v1/users.*"}[1h]))
+sum(rate(istio_requests_total{request_path=~"/api/v1/users.*"}[1h]))
 ```
 
 ## Phase 3: Gradual Traffic Migration
 
-If you want to force-migrate clients from v1 to v2, start redirecting a small percentage of v1 traffic to v2:
+If you want to force-migrate clients from v1 to v2, start routing a small percentage of v1 traffic to v2:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -144,7 +147,7 @@ spec:
           headers:
             response:
               add:
-                deprecation: "true"
+                deprecation: "@1771891200"
                 sunset: "Wed, 01 Jul 2026 00:00:00 GMT"
         - destination:
             host: user-service
@@ -163,7 +166,7 @@ Only do this if v2 is backward compatible with v1 request formats. If the API co
 
 ## Phase 4: Soft Sunset with Warnings
 
-As the sunset date approaches, start returning warnings in the response body for the deprecated API:
+As the sunset date approaches, start returning warning headers for the deprecated API:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -191,29 +194,41 @@ spec:
           name: envoy.filters.http.lua
           typed_config:
             "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-            inlineCode: |
-              function envoy_on_request(request_handle)
-                local path = request_handle:headers():get(":path")
-                if path and path:find("^/api/v1/") then
-                  -- Add a warning header that becomes more urgent as sunset approaches
-                  local sunset = 1751328000  -- July 1, 2026
-                  local now = os.time()
-                  local days_remaining = math.floor((sunset - now) / 86400)
-
-                  if days_remaining <= 0 then
-                    request_handle:headers():add("x-deprecation-days-remaining", "0")
-                  elseif days_remaining <= 30 then
-                    request_handle:headers():add("x-deprecation-urgency", "critical")
-                    request_handle:headers():add("x-deprecation-days-remaining", tostring(days_remaining))
-                  elseif days_remaining <= 90 then
-                    request_handle:headers():add("x-deprecation-urgency", "high")
-                    request_handle:headers():add("x-deprecation-days-remaining", tostring(days_remaining))
-                  else
-                    request_handle:headers():add("x-deprecation-urgency", "normal")
-                    request_handle:headers():add("x-deprecation-days-remaining", tostring(days_remaining))
+            default_source_code:
+              inline_string: |
+                function envoy_on_request(request_handle)
+                  local path = request_handle:headers():get(":path")
+                  if path and path:find("^/api/v1/") then
+                    request_handle:streamInfo():dynamicMetadata():set(
+                      "envoy.filters.http.lua",
+                      "deprecated_api",
+                      true
+                    )
                   end
                 end
-              end
+
+                function envoy_on_response(response_handle)
+                  local meta = response_handle:streamInfo():dynamicMetadata():get("envoy.filters.http.lua")
+                  if meta and meta["deprecated_api"] then
+                    -- Add warning headers that become more urgent as sunset approaches
+                    local sunset = 1782864000  -- July 1, 2026 00:00:00 UTC
+                    local now = os.time()
+                    local days_remaining = math.floor((sunset - now) / 86400)
+
+                    if days_remaining <= 0 then
+                      response_handle:headers():add("x-deprecation-days-remaining", "0")
+                    elseif days_remaining <= 30 then
+                      response_handle:headers():add("x-deprecation-urgency", "critical")
+                      response_handle:headers():add("x-deprecation-days-remaining", tostring(days_remaining))
+                    elseif days_remaining <= 90 then
+                      response_handle:headers():add("x-deprecation-urgency", "high")
+                      response_handle:headers():add("x-deprecation-days-remaining", tostring(days_remaining))
+                    else
+                      response_handle:headers():add("x-deprecation-urgency", "normal")
+                      response_handle:headers():add("x-deprecation-days-remaining", tostring(days_remaining))
+                    end
+                  end
+                end
 ```
 
 ## Phase 5: Hard Sunset
@@ -255,7 +270,7 @@ spec:
             }
 ```
 
-The 410 Gone status code is the correct HTTP status for permanently removed resources. It tells clients and caches that this URL will never work again.
+The 410 Gone status code is the correct HTTP status for resources that are expected to be permanently unavailable. It tells clients and caches that this URL is not expected to work again.
 
 ## Phase 6: Redirect Instead of Error
 
@@ -313,19 +328,22 @@ curl -s https://api.example.com/api/v2/users | head -5
 kubectl apply -f deprecation-headers.yaml
 
 # 3. Monitor v1 usage
-kubectl exec -n istio-system deploy/prometheus -- curl -s \
-  'localhost:9090/api/v1/query?query=sum(rate(istio_requests_total{request_url_path=~"/api/v1/.*"}[1h]))'
+kubectl exec -n istio-system deploy/prometheus -- curl -sG \
+  'http://localhost:9090/api/v1/query' \
+  --data-urlencode 'query=sum(rate(istio_requests_total{request_path=~"/api/v1/.*"}[1h]))'
 
 # 4. Check which clients are still using v1
-kubectl exec -n istio-system deploy/prometheus -- curl -s \
-  'localhost:9090/api/v1/query?query=sum(increase(istio_requests_total{request_url_path=~"/api/v1/.*"}[7d])) by (source_workload)'
+kubectl exec -n istio-system deploy/prometheus -- curl -sG \
+  'http://localhost:9090/api/v1/query' \
+  --data-urlencode 'query=sum(increase(istio_requests_total{request_path=~"/api/v1/.*"}[7d])) by (source_workload)'
 
 # 5. Apply sunset configuration when ready
 kubectl apply -f sunset-config.yaml
 
 # 6. After sunset period, verify zero traffic
-kubectl exec -n istio-system deploy/prometheus -- curl -s \
-  'localhost:9090/api/v1/query?query=sum(rate(istio_requests_total{request_url_path=~"/api/v1/.*"}[24h]))'
+kubectl exec -n istio-system deploy/prometheus -- curl -sG \
+  'http://localhost:9090/api/v1/query' \
+  --data-urlencode 'query=sum(rate(istio_requests_total{request_path=~"/api/v1/.*"}[24h]))'
 
 # 7. Delete v1 deployment
 kubectl delete deployment user-service-v1
