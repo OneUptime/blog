@@ -35,10 +35,10 @@ spec:
         ISTIO_META_DNS_AUTO_ALLOCATE: "true"
 ```
 
-You can also enable it per-workload by setting the proxy metadata in the WorkloadGroup:
+You can also enable it per-workload by setting the proxy metadata in the WorkloadGroup annotations:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: WorkloadGroup
 metadata:
   name: my-vm-group
@@ -47,6 +47,11 @@ spec:
   metadata:
     labels:
       app: my-app
+    annotations:
+      proxy.istio.io/config: |
+        proxyMetadata:
+          ISTIO_META_DNS_CAPTURE: "true"
+          ISTIO_META_DNS_AUTO_ALLOCATE: "true"
   template:
     serviceAccount: my-service-account
     network: vm-network
@@ -123,17 +128,19 @@ server=/svc.cluster.local/<CLUSTER_DNS_EXTERNAL_IP>
 
 ## Option 3: Use ServiceEntry with Resolution
 
-For cases where you only need to reach a few specific services from your VMs, you can use ServiceEntry resources with explicit resolution. This avoids the DNS problem entirely by using IP addresses.
+For cases where you only need to reach a few specific services from your VMs, you can use ServiceEntry resources with explicit resolution. This avoids DNS lookup for the backend endpoints, although the application still needs DNS proxying or another way to resolve the service hostname to a VIP.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
-  name: external-db
+  name: internal-db
   namespace: my-namespace
 spec:
   hosts:
-  - my-database.my-namespace.svc.cluster.local
+  - my-database.internal
+  addresses:
+  - 10.96.200.200
   location: MESH_INTERNAL
   ports:
   - number: 3306
@@ -146,7 +153,7 @@ spec:
       app: my-database
 ```
 
-With `resolution: STATIC`, Istio does not need DNS to find the endpoint. It uses the address directly.
+With `resolution: STATIC`, Istio does not need DNS to find the backend endpoint. It routes traffic sent to the ServiceEntry address to the static endpoint address.
 
 ## DNS Auto-Allocation
 
@@ -155,7 +162,7 @@ When you enable `ISTIO_META_DNS_AUTO_ALLOCATE`, Istio automatically assigns virt
 Without auto-allocation, a ServiceEntry for an external service might look like this:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-api
@@ -177,7 +184,7 @@ You can check the allocated addresses:
 
 ```bash
 # Check what IPs have been auto-allocated
-istioctl proxy-config cluster <vm-workload> | grep "api.external-service.com"
+curl -s localhost:15000/config_dump | istioctl proxy-config clusters --file - | grep "api.external-service.com"
 ```
 
 ## Debugging DNS Issues
@@ -230,12 +237,12 @@ dig google.com
 
 The Istio DNS proxy adds a small amount of latency to DNS queries. For most workloads this is negligible, but if your VM makes a very high volume of DNS queries, you might want to consider:
 
-- Enabling DNS caching on the VM (the Istio DNS proxy does cache, but local caching adds another layer)
-- Using headless services where possible to reduce the number of DNS lookups
-- Setting appropriate TTL values in your ServiceEntry resources
+- Enabling DNS caching on the VM for names that are forwarded to upstream DNS
+- Avoiding unnecessary application-level DNS lookups
+- Using explicit ServiceEntry addresses for services that need stable VIPs
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: cached-external
