@@ -25,7 +25,7 @@ OSSM differs from upstream Istio in several important ways:
 ## Prerequisites
 
 You need:
-- OpenShift 4.12 or newer
+- OpenShift 4.14 or newer for OpenShift Service Mesh 2.6
 - Cluster admin access
 - The `oc` CLI installed
 
@@ -41,9 +41,9 @@ oc get nodes
 
 ## Installing Required Operators
 
-OSSM requires several operators. Install them in this order through the OpenShift web console or CLI.
+For this example with Kiali and Jaeger, install these operators through the OpenShift web console or CLI. Starting with OpenShift Service Mesh 2.5, Red Hat OpenShift distributed tracing platform (Jaeger) and OpenShift Elasticsearch are deprecated, so use them only when you specifically need Jaeger-based tracing.
 
-**1. OpenShift Elasticsearch Operator** (for distributed tracing):
+**1. OpenShift Elasticsearch Operator** (only needed for Elasticsearch-backed Jaeger storage):
 
 ```yaml
 apiVersion: operators.coreos.com/v1alpha1
@@ -113,7 +113,9 @@ Apply these and wait for the operators to be ready:
 oc apply -f operators/
 
 # Wait for operators to install
-oc get csv -n openshift-operators | grep -E "servicemesh|kiali|jaeger|elasticsearch"
+oc get csv -n openshift-operators | grep -E "servicemesh|kiali"
+oc get csv -n openshift-distributed-tracing | grep jaeger
+oc get csv -n openshift-operators-redhat | grep elasticsearch
 ```
 
 ## Creating the Service Mesh Control Plane
@@ -133,12 +135,13 @@ metadata:
   name: basic
   namespace: istio-system
 spec:
-  version: v2.5
+  version: v2.6
   tracing:
     type: Jaeger
     sampling: 10000
   addons:
     jaeger:
+      name: jaeger
       install:
         storage:
           type: Memory
@@ -243,7 +246,7 @@ Create a project and deploy an application:
 ```bash
 oc new-project myapp
 
-# The namespace is already in the member roll, so injection happens automatically
+# The namespace is in the member roll, and this deployment opts in to sidecar injection
 oc apply -n myapp -f - <<EOF
 apiVersion: apps/v1
 kind: Deployment
@@ -289,12 +292,12 @@ oc get pods -n myapp
 
 ## Configuring Routes and Gateways
 
-OpenShift uses Routes instead of Ingress. OSSM can automatically create Routes for Istio Gateways when `openshiftRoute.enabled: true` is set.
+OpenShift uses Routes instead of Ingress. OSSM can automatically create Routes for Istio Gateways when `openshiftRoute.enabled: true` is set, although this Istio OpenShift Routing feature is deprecated and is disabled by default for new ServiceMeshControlPlane resources starting with Service Mesh 2.5.
 
 Create a Gateway and VirtualService:
 
 ```yaml
-apiVersion: networking.istio.io/v1
+apiVersion: networking.istio.io/v1alpha3
 kind: Gateway
 metadata:
   name: myapp-gateway
@@ -310,7 +313,7 @@ spec:
     hosts:
     - myapp.apps.example.com
 ---
-apiVersion: networking.istio.io/v1
+apiVersion: networking.istio.io/v1alpha3
 kind: VirtualService
 metadata:
   name: myapp-vs
@@ -377,7 +380,7 @@ oc adm policy who-can use scc anyuid -n myapp
 Enable strict mTLS for the entire mesh:
 
 ```yaml
-apiVersion: security.istio.io/v1
+apiVersion: security.istio.io/v1beta1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -399,7 +402,7 @@ oc exec deploy/httpbin -c istio-proxy -n myapp -- \
 Apply authorization policies to restrict access:
 
 ```yaml
-apiVersion: security.istio.io/v1
+apiVersion: security.istio.io/v1beta1
 kind: AuthorizationPolicy
 metadata:
   name: httpbin-policy
@@ -434,7 +437,7 @@ Kiali uses OpenShift authentication, so you log in with your OpenShift credentia
 
 ## Upgrading the Service Mesh
 
-To upgrade OSSM, update the version in the ServiceMeshControlPlane:
+To upgrade an older OSSM 2.x control plane, update the version in the ServiceMeshControlPlane:
 
 ```yaml
 apiVersion: maistra.io/v2
@@ -471,7 +474,7 @@ metadata:
   name: team-b-mesh
   namespace: team-b-istio-system
 spec:
-  version: v2.5
+  version: v2.6
   security:
     dataPlane:
       mtls: true
