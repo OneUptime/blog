@@ -10,6 +10,8 @@ Description: A detailed guide on combining multiple match conditions in Istio Vi
 
 Real-world routing rules are rarely based on a single condition. You usually need to combine several conditions together - match on a header AND a path, or route based on a cookie OR a query parameter. Istio VirtualService gives you both AND and OR logic for match conditions, but the way you express them is a bit different from what you might expect.
 
+One important caveat: `sourceLabels` is not evaluated as a normal per-request match condition. Istio uses it as a selector to decide which source workloads receive the rule in their sidecar configuration.
+
 ## AND vs OR Logic
 
 The key thing to understand is how match conditions are structured in Istio:
@@ -33,7 +35,7 @@ graph TD
 When you put multiple conditions in the same match entry, all of them must be true:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -75,7 +77,7 @@ A request to `/api/data?format=json` without the header would not match.
 When you need any one of several conditions to trigger a route, use separate match blocks in the same list:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -106,14 +108,14 @@ spec:
 This routes to the canary version if ANY of these is true:
 - The `x-canary: true` header is present
 - The `?canary=true` query parameter is present
-- The request comes from a pod with the label `app: internal-tester`
+- The route is in the sidecar configuration for a source workload with the label `app: internal-tester`
 
 ## Combining AND and OR
 
 You can mix both. Each match block uses AND internally, and the blocks themselves are ORed:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -149,7 +151,7 @@ The v2 route matches if:
 You can match on HTTP method to route reads and writes differently:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -197,10 +199,10 @@ GET requests to `/api/products` go to the read service. POST, PUT, and DELETE re
 
 ## Source Label Matching
 
-You can also route based on which workload is making the request:
+You can also scope routing rules to the source workload making the request. `sourceLabels` is a selector for client-side sidecar configuration, so this applies to mesh traffic from matching workloads. If the VirtualService uses top-level `gateways`, include the reserved `mesh` gateway for `sourceLabels` to apply:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: backend-service
@@ -208,6 +210,8 @@ metadata:
 spec:
   hosts:
     - backend-service
+  gateways:
+    - mesh
   http:
     - match:
         - sourceLabels:
@@ -233,10 +237,10 @@ Requests from the admin dashboard go to the admin subset, while requests from th
 
 ## Port-Based Matching
 
-Match on the incoming port:
+Match on the destination port being addressed:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -266,7 +270,7 @@ spec:
 Here is a more realistic example that combines several conditions for a microservice:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: order-service
@@ -329,7 +333,7 @@ kubectl get vs order-service -o yaml
 istioctl analyze -n default
 
 # Check the Envoy route config on a specific pod
-istioctl proxy-config routes deploy/order-service -o json
+istioctl proxy-config routes deployment/order-service -o json
 
 # Test with curl
 curl -H "x-beta: true" http://order-service.default.svc.cluster.local/api/orders
