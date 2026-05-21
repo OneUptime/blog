@@ -47,22 +47,25 @@ istio-config/
     staging/
       kustomization.yaml
       patches/
-        istiod-resources.yaml
+        api-gateway-timeout.yaml
         gateway-replicas.yaml
     production/
       kustomization.yaml
       patches/
-        istiod-resources.yaml
+        api-gateway-timeout.yaml
         gateway-replicas.yaml
   services/
     api-gateway/
+      kustomization.yaml
       virtualservice.yaml
       destinationrule.yaml
       authorization-policy.yaml
     user-service/
+      kustomization.yaml
       virtualservice.yaml
       destinationrule.yaml
     order-service/
+      kustomization.yaml
       virtualservice.yaml
       destinationrule.yaml
       authorization-policy.yaml
@@ -107,18 +110,19 @@ resources:
   - ../../services/user-service
 
 patches:
-  - path: patches/istiod-resources.yaml
+  - path: patches/api-gateway-timeout.yaml
+    target:
+      group: networking.istio.io
+      version: v1
+      kind: VirtualService
+      name: api-gateway
 ```
 
 ```yaml
-# overlays/staging/patches/istiod-resources.yaml
-apiVersion: networking.istio.io/v1
-kind: VirtualService
-metadata:
-  name: api-gateway
-spec:
-  http:
-    - timeout: "60s"
+# overlays/staging/patches/api-gateway-timeout.yaml
+- op: add
+  path: /spec/http/0/timeout
+  value: 60s
 ```
 
 Build and preview the configuration for a specific environment:
@@ -168,11 +172,10 @@ echo "Validation passed!"
 Use kubeconform to validate Istio CRDs against their JSON schemas:
 
 ```bash
-kubeconform \
+kubectl kustomize overlays/staging | kubeconform \
   -schema-location default \
   -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
-  -summary \
-  overlays/staging/
+  -summary
 ```
 
 This catches YAML syntax errors and invalid field names before you try to apply anything.
@@ -216,25 +219,29 @@ jobs:
 
       - name: Install istioctl
         run: |
-          curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.22.0 sh -
-          echo "$PWD/istio-1.22.0/bin" >> $GITHUB_PATH
+          curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.30.0 sh -
+          echo "$PWD/istio-1.30.0/bin" >> $GITHUB_PATH
 
       - name: Install kubeconform
         run: |
           go install github.com/yannh/kubeconform/cmd/kubeconform@latest
+          echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
 
       - name: Validate staging
         run: |
           kubectl kustomize overlays/staging > /tmp/staging.yaml
-          istioctl analyze /tmp/staging.yaml
-          kubeconform -schema-location default \
+          istioctl analyze --use-kube=false /tmp/staging.yaml
+          kubectl kustomize overlays/staging | kubeconform -schema-location default \
             -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
-            /tmp/staging.yaml
+            -summary
 
       - name: Validate production
         run: |
           kubectl kustomize overlays/production > /tmp/production.yaml
-          istioctl analyze /tmp/production.yaml
+          istioctl analyze --use-kube=false /tmp/production.yaml
+          kubectl kustomize overlays/production | kubeconform -schema-location default \
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            -summary
 ```
 
 ## Secrets Management
@@ -257,6 +264,8 @@ sops:
     - arn: arn:aws:kms:us-east-1:123456789:key/abc-123
 ```
 
+Commit the encrypted file, then decrypt it in your deployment pipeline before applying it to the cluster.
+
 ## Drift Detection
 
 Configuration drift happens when someone makes a manual change directly on the cluster. Set up periodic drift detection:
@@ -266,16 +275,18 @@ Configuration drift happens when someone makes a manual change directly on the c
 # Run as a cron job
 ENVIRONMENT="production"
 
-DESIRED=$(kubectl kustomize "overlays/${ENVIRONMENT}")
-ACTUAL=$(kubectl get virtualservices,destinationrules,authorizationpolicies,peerauthentications \
-  -A -o yaml)
+# Compare the rendered desired state with live cluster objects
+set +e
+kubectl diff -k "overlays/${ENVIRONMENT}" > /tmp/drift.txt
+DIFF_EXIT=$?
+set -e
 
-# Compare and alert on differences
-diff <(echo "$DESIRED") <(echo "$ACTUAL") > /tmp/drift.txt
-
-if [ -s /tmp/drift.txt ]; then
+if [ "$DIFF_EXIT" -eq 1 ]; then
   echo "Configuration drift detected!"
   # Send alert to Slack/PagerDuty/etc.
+elif [ "$DIFF_EXIT" -gt 1 ]; then
+  echo "Drift check failed"
+  exit "$DIFF_EXIT"
 fi
 ```
 
