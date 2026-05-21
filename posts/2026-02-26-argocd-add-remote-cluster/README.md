@@ -77,8 +77,7 @@ You can specify the namespace and service account name:
 argocd cluster add remote-staging \
   --name staging-cluster \
   --service-account argocd-deployer \
-  --system-namespace argocd-system \
-  --in-cluster
+  --system-namespace argocd-system
 ```
 
 ### Add with limited namespaces
@@ -336,11 +335,11 @@ argocd cluster get https://staging.k8s.example.com
 
 # If "Unknown" status, check:
 # 1. Network connectivity from ArgoCD pod
-kubectl exec -n argocd deploy/argocd-application-controller -- \
+kubectl exec -n argocd statefulset/argocd-application-controller -- \
   wget -qO- --timeout=5 https://staging.k8s.example.com/healthz
 
 # 2. Certificate issues
-kubectl exec -n argocd deploy/argocd-application-controller -- \
+kubectl exec -n argocd statefulset/argocd-application-controller -- \
   wget -qO- --no-check-certificate https://staging.k8s.example.com/healthz
 
 # 3. Token validity
