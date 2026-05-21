@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Fortios, Load Testing, Performance, Kubernetes
+Tags: Istio, Fortio, Load Testing, Performance, Kubernetes
 
 Description: A complete guide to using Fortio for load testing your Istio service mesh, including deployment, configuration, and result analysis.
 
@@ -96,14 +96,16 @@ Here are the flags you will use most often:
 
 ```bash
 kubectl exec -n load-test $FORTIO_POD -- fortio load \
-  -c 64 \          # concurrent connections
-  -qps 1000 \      # target queries per second (0 = max)
-  -t 120s \         # test duration
-  -r 0.001 \        # resolution of histogram in seconds
-  -json /tmp/results.json \  # save results to JSON
-  -labels "test=baseline" \  # label for the test run
+  -c 64 \
+  -qps 1000 \
+  -t 120s \
+  -r 0.001 \
+  -json /tmp/results.json \
+  -labels "test=baseline" \
   http://my-service.my-namespace.svc.cluster.local:8080/endpoint
 ```
+
+In this example, `-c` sets concurrent connections, `-qps` sets the target queries per second, `-t` sets the test duration, `-r` sets the histogram resolution in seconds, `-json` saves results to JSON, and `-labels` adds a label for the test run.
 
 The `-qps 0` flag is especially important. It tells Fortio to send as fast as possible, which gives you the maximum throughput the service can handle. For latency testing, you typically want to set a specific QPS target below the service's maximum capacity to see realistic latency distribution.
 
@@ -180,7 +182,7 @@ Then open http://localhost:8080/fortio/ in your browser. The UI lets you:
 
 ## gRPC Load Testing
 
-Fortio supports gRPC natively, which is great for testing gRPC services in the mesh:
+Fortio supports gRPC natively, which is great for testing gRPC services in the mesh. By default, `fortio load -grpc` sends gRPC health check requests, so the target service must implement the standard gRPC health checking service:
 
 ```bash
 kubectl exec -n load-test $FORTIO_POD -- fortio load \
@@ -192,7 +194,7 @@ kubectl exec -n load-test $FORTIO_POD -- fortio load \
   my-grpc-service.my-namespace.svc.cluster.local:8079
 ```
 
-For gRPC health check pinging:
+For Fortio's gRPC ping service:
 
 ```bash
 kubectl exec -n load-test $FORTIO_POD -- fortio load \
@@ -264,7 +266,7 @@ All done 89432 calls (plus 32 warmup) 5.721 ms avg, 2810.2 qps
 ```
 
 Key things to look at:
-- **Error rate**: The "Code 200" line shows success rate. Any non-200 codes indicate issues.
+- **Error rate**: The "Code 200" line shows success rate for this example. Any non-2xx or unexpected status codes indicate issues.
 - **Avg latency**: The "ms avg" at the bottom is the mean latency.
 - **QPS**: Actual achieved queries per second.
 - **Socket reuse**: "for perfect keepalive, would be 32" tells you if connections are being reused properly.
