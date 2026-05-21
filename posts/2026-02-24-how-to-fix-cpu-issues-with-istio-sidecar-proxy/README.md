@@ -86,14 +86,14 @@ Important: Setting CPU limits too low causes throttling. Setting them too high w
 
 ## Tuning Concurrency
 
-Envoy's concurrency setting controls the number of worker threads. By default, it matches the number of CPU cores available to the container:
+Envoy's concurrency setting controls the number of worker threads. In current Istio releases, if concurrency is unset, Istio automatically determines it from the proxy CPU limit. Setting `concurrency: 0` uses all cores on the node:
 
 ```bash
 # Check current concurrency
 kubectl exec <pod-name> -c istio-proxy -n production -- pilot-agent request GET /server_info | jq '.command_line_options.concurrency'
 ```
 
-If a pod has 4 CPU cores available, Envoy creates 4 worker threads. For most services this is excessive. Reduce it:
+If a proxy has a 4 CPU limit, Istio can configure Envoy with 4 worker threads. For most services this is excessive. Reduce it:
 
 ```yaml
 metadata:
@@ -112,21 +112,21 @@ Reducing concurrency directly reduces CPU usage because fewer threads are runnin
 
 ## Reducing mTLS Overhead
 
-mTLS encryption is a significant source of CPU usage. For services where mTLS is not needed (communication within the same node, for example), you can disable it:
+mTLS encryption is a significant source of CPU usage. For services where plaintext is explicitly allowed by policy, you can disable client-side TLS for that destination:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
-  name: same-node-service
+  name: plaintext-service
 spec:
-  host: same-node-service
+  host: plaintext-service.production.svc.cluster.local
   trafficPolicy:
     tls:
       mode: DISABLE
 ```
 
-However, disabling mTLS reduces security. A better approach is to optimize TLS by using ECDSA certificates instead of RSA (ECDSA is faster for TLS operations):
+This will not work if the destination requires STRICT mTLS with PeerAuthentication. Disabling mTLS reduces security. A better approach is to optimize TLS by using ECDSA certificates instead of RSA:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -135,16 +135,12 @@ spec:
   meshConfig:
     defaultConfig:
       proxyMetadata:
-        ISTIO_META_CERT_SIGNER: ""
-  values:
-    pilot:
-      env:
-        PILOT_CERT_PROVIDER: "istiod"
+        ECC_SIGNATURE_ALGORITHM: "ECDSA"
 ```
 
 ## Reducing Statistics Overhead
 
-Envoy collects a lot of statistics by default. Reducing the stats scope saves CPU:
+Istio configures Envoy to collect a minimal set of statistics by default. If you have expanded Envoy stats, reducing the stats scope saves CPU:
 
 ```yaml
 metadata:
@@ -152,7 +148,6 @@ metadata:
     proxy.istio.io/config: |
       proxyStatsMatcher:
         inclusionPrefixes:
-          - "cluster.outbound"
           - "cluster_manager"
           - "listener_manager"
           - "server"
@@ -169,9 +164,10 @@ spec:
     defaultConfig:
       proxyStatsMatcher:
         inclusionPrefixes:
-          - "cluster.outbound"
-          - "listener"
+          - "cluster_manager"
+          - "listener_manager"
           - "server"
+          - "cluster.xds-grpc"
 ```
 
 This limits stats collection to only the prefixes you actually need for monitoring.
@@ -213,7 +209,7 @@ When istiod pushes new configuration to the proxies (because a service was added
 Reduce the configuration scope with Sidecar resources:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -268,9 +264,9 @@ For deep CPU analysis, you can get a CPU profile from Envoy:
 kubectl port-forward <pod-name> -n production 15000:15000 &
 
 # Get CPU profile (if profiling is enabled)
-curl -s localhost:15000/cpuprofiler?enable=y
+curl -s -X POST "localhost:15000/cpuprofiler?enable=y"
 # Wait for a period of traffic
-curl -s localhost:15000/cpuprofiler?enable=n
+curl -s -X POST "localhost:15000/cpuprofiler?enable=n"
 
 # Check hot restart info
 curl -s localhost:15000/hot_restart_version
@@ -291,7 +287,7 @@ From highest to lowest impact:
 # Check current state
 kubectl top pods -n production --containers | grep istio-proxy | sort -k3 -rn
 
-# Look for throttled containers
+# Check proxy restarts
 kubectl get pods -n production -o json | jq '.items[].status.containerStatuses[] | select(.name == "istio-proxy") | {pod: .name, restartCount: .restartCount}'
 ```
 
