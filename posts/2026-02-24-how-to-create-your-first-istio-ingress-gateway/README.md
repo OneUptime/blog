@@ -16,10 +16,10 @@ This guide walks through creating your first Istio Ingress Gateway from scratch.
 
 Before you start, make sure you have:
 
-- A running Kubernetes cluster (1.25+)
+- A running Kubernetes cluster supported by your Istio version (for Istio 1.29, Kubernetes 1.31-1.35)
 - Istio installed with the default profile
 - kubectl configured to talk to your cluster
-- A sample application deployed with Istio sidecar injection enabled
+- Permission to deploy a sample application
 
 You can verify Istio is installed by checking the istio-system namespace:
 
@@ -181,7 +181,20 @@ If you are running on a cloud provider, you will get an external IP or hostname.
 minikube tunnel
 ```
 
-Or get the NodePort:
+Set the ingress host and port from the LoadBalancer service:
+
+```bash
+export INGRESS_HOST=$(kubectl -n istio-system get service istio-ingressgateway -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+export INGRESS_PORT=$(kubectl -n istio-system get service istio-ingressgateway -o jsonpath='{.spec.ports[?(@.name=="http2")].port}')
+```
+
+If your load balancer exposes a hostname instead of an IP address, use:
+
+```bash
+export INGRESS_HOST=$(kubectl -n istio-system get service istio-ingressgateway -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+```
+
+If your environment does not support external load balancers, you can try the NodePort instead:
 
 ```bash
 export INGRESS_PORT=$(kubectl -n istio-system get service istio-ingressgateway -o jsonpath='{.spec.ports[?(@.name=="http2")].nodePort}')
@@ -193,15 +206,13 @@ export INGRESS_HOST=$(minikube ip)
 Now test the gateway with curl. Set the Host header to match the host you configured:
 
 ```bash
-export GATEWAY_URL=$(kubectl -n istio-system get service istio-ingressgateway -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-
-curl -s -I -H "Host: httpbin.example.com" "http://$GATEWAY_URL/status/200"
+curl -s -I -H "Host: httpbin.example.com" "http://$INGRESS_HOST:$INGRESS_PORT/status/200"
 ```
 
 You should get a 200 OK response. If you try a path that is not in your VirtualService match rules, you will get a 404:
 
 ```bash
-curl -s -I -H "Host: httpbin.example.com" "http://$GATEWAY_URL/headers"
+curl -s -I -H "Host: httpbin.example.com" "http://$INGRESS_HOST:$INGRESS_PORT/headers"
 ```
 
 ## Verifying the Configuration
@@ -232,7 +243,7 @@ istioctl proxy-config routes deploy/istio-ingressgateway -n istio-system
 
 **Wrong selector labels.** The Gateway selector must match the labels on the ingress gateway pod. Use `kubectl get pods -n istio-system --show-labels` to verify.
 
-**Missing sidecar injection.** Your backend service needs the Istio sidecar injected for full mesh functionality. Make sure your namespace has the `istio-injection=enabled` label.
+**Missing sidecar injection.** A backend service can receive ingress gateway traffic with or without an Istio sidecar. If you expect full mesh behavior such as sidecar-based policy, telemetry, and mutual TLS for that workload, make sure your namespace has the `istio-injection=enabled` label before creating the pod.
 
 **Port name conventions.** Istio uses port names to determine protocol. Name your ports `http`, `http2`, `grpc`, `tcp`, or `https` so Istio can apply the right protocol handling.
 
