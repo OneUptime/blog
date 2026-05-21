@@ -87,6 +87,8 @@ The `regex` matcher checks if the User-Agent header contains the word "Mobile". 
 
 You can get more specific. Here is how to route iOS and Android traffic separately:
 
+This example assumes your DestinationRule also defines `ios-backend` and `android-backend` subsets.
+
 ```yaml
 apiVersion: networking.istio.io/v1
 kind: VirtualService
@@ -246,7 +248,7 @@ istioctl analyze -n default
 And check the proxy config is correct on a specific pod:
 
 ```bash
-istioctl proxy-config routes deploy/my-app-standard -n default
+istioctl proxy-config routes deployment/my-app-standard -n default
 ```
 
 ## Summary
