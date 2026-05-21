@@ -8,7 +8,7 @@ Description: Complete installation and configuration guide for Istio 1.21 includ
 
 ---
 
-Istio 1.21 continued the push toward ambient mesh maturity and brought several quality-of-life improvements for operators. The Helm-based installation became the recommended approach over istioctl install in this release cycle, and there were notable improvements in resource consumption and startup time for the sidecar proxies.
+Istio 1.21 continued the push toward ambient mesh maturity and brought several quality-of-life improvements for operators. Helm-based installation is a supported production installation option alongside istioctl, and the sidecar image became smaller, which can improve image pull and pod startup times.
 
 This guide covers a fresh installation of Istio 1.21, including both the istioctl and Helm approaches, with production-ready configuration.
 
@@ -22,7 +22,7 @@ Istio 1.21 supports:
 Verify your cluster:
 
 ```bash
-kubectl version --short
+kubectl version
 helm version
 ```
 
@@ -90,9 +90,9 @@ spec:
 istioctl install -f my-istio-config.yaml -y
 ```
 
-## Option 2: Installing with Helm (Recommended for 1.21)
+## Option 2: Installing with Helm
 
-Helm gives you more flexibility for managing the lifecycle of Istio components independently. This is the approach the Istio project started recommending more heavily in 1.21.
+Helm gives you more flexibility for managing the lifecycle of Istio components independently. This is one of the Istio project's documented production installation approaches for 1.21.
 
 Add the Istio Helm repository:
 
@@ -314,13 +314,16 @@ Verify:
 
 ```bash
 kubectl get pods
-INGRESS_IP=$(kubectl -n istio-system get svc istio-ingressgateway -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-curl -s "http://$INGRESS_IP/productpage" | grep -o "<title>.*</title>"
+INGRESS_HOST=$(kubectl -n istio-system get svc istio-ingressgateway -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+if [ -z "$INGRESS_HOST" ]; then
+  INGRESS_HOST=$(kubectl -n istio-system get svc istio-ingressgateway -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+fi
+curl -s "http://$INGRESS_HOST/productpage" | grep -o "<title>.*</title>"
 ```
 
 ## Production Hardening
 
-Set resource limits on the proxy:
+Tune proxy concurrency and DNS capture:
 
 ```yaml
 meshConfig:
@@ -331,7 +334,7 @@ meshConfig:
       ISTIO_META_DNS_AUTO_ALLOCATE: "true"
 ```
 
-Enable protocol detection timeout to prevent hanging connections:
+Set protocol detection timeout when automatic protocol detection needs a bounded wait:
 
 ```yaml
 meshConfig:
