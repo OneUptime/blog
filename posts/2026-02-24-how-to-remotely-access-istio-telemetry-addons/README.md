@@ -25,7 +25,7 @@ kubectl port-forward svc/prometheus 9090:9090 -n istio-system
 kubectl port-forward svc/grafana 3000:3000 -n istio-system
 
 # Jaeger
-kubectl port-forward svc/tracing 16686:16686 -n istio-system
+kubectl port-forward svc/tracing 16686:80 -n istio-system
 
 # Kiali
 kubectl port-forward svc/kiali 20001:20001 -n istio-system
@@ -45,7 +45,7 @@ Then open your browser to the respective localhost port.
 
 ### Making Port-Forward More Reliable
 
-For longer sessions, use `--address 0.0.0.0` to bind to all interfaces (if you need to share with others on your network) and add keepalive:
+For longer sessions, use `--address 0.0.0.0` to bind to all interfaces if you need to share with others on your network:
 
 ```bash
 kubectl port-forward svc/grafana 3000:3000 -n istio-system --address 0.0.0.0
@@ -122,7 +122,7 @@ This works but bypasses Istio's traffic management. If you're running Istio, it 
 
 ## Method 4: Istio Gateway (Recommended)
 
-The recommended approach for production is to expose addons through the Istio IngressGateway. This gives you all of Istio's features: TLS termination, authentication, rate limiting, and access logging.
+The recommended approach for production is to expose addons through the Istio IngressGateway. This gives you TLS termination and can be combined with Istio features like authentication, rate limiting, and access logging.
 
 ### Step 1: Create a Gateway
 
@@ -202,7 +202,7 @@ spec:
         - destination:
             host: tracing
             port:
-              number: 16686
+              number: 80
 ---
 apiVersion: networking.istio.io/v1
 kind: VirtualService
@@ -278,7 +278,7 @@ This is simple but lacks security. Only use it in isolated development environme
 
 ## Adding Authentication
 
-Exposing telemetry addons without authentication is a security risk. Prometheus has no built-in auth. Grafana can be configured with its own auth, but it's better to handle authentication at the Istio level.
+Exposing telemetry addons without authentication is a security risk. Prometheus supports basic authentication and TLS through its web configuration, but the Istio sample addon is not configured with authentication by default. Grafana can be configured with its own auth, but it's better to handle authentication at the Istio level.
 
 ### OAuth2 Proxy
 
@@ -325,6 +325,8 @@ spec:
 
 This restricts access to specific IP ranges (your office, VPN, etc.).
 
+Use `remoteIpBlocks` when Istio is configured to trust `X-Forwarded-For` or PROXY protocol information. If you preserve the original packet source address with `externalTrafficPolicy: Local`, use `ipBlocks` instead.
+
 ## Comparison of Methods
 
 | Method | Security | Shared Access | Persistence | Effort |
@@ -332,10 +334,10 @@ This restricts access to specific IP ranges (your office, VPN, etc.).
 | Port-forward | High (kubeconfig) | No | No | None |
 | istioctl dashboard | High (kubeconfig) | No | No | None |
 | K8s Ingress | Medium | Yes | Yes | Low |
-| Istio Gateway | High (TLS + Auth) | Yes | Yes | Medium |
+| Istio Gateway | High (with TLS + Auth) | Yes | Yes | Medium |
 | NodePort | Low | Yes | Yes | Low |
 
-For production, the Istio Gateway approach is the clear winner. It gives you TLS, authentication, access logging, and all the other Istio features you already rely on for your application traffic.
+For production, the Istio Gateway approach is the clear winner. It gives you TLS and lets you add authentication, access logging, and the other Istio features you already rely on for your application traffic.
 
 ## Troubleshooting
 
