@@ -30,7 +30,13 @@ kind: Deployment
 metadata:
   name: payment-service
 spec:
+  selector:
+    matchLabels:
+      app: payment-service
   template:
+    metadata:
+      labels:
+        app: payment-service
     spec:
       containers:
         - name: payment-service
@@ -89,7 +95,7 @@ With Istio:
 2. Each sidecar gets a short-lived certificate (24h default) via SDS (Secret Discovery Service)
 3. Certificates are automatically rotated before expiration
 4. The CA trust chain is distributed to all proxies automatically
-5. Your application sends plaintext HTTP to localhost; the sidecar handles TLS
+5. Your application sends plaintext HTTP to the service address; the sidecar intercepts the traffic and handles TLS between proxies
 
 No cert-manager, no Vault integration, no certificate secrets, no trust store management.
 
@@ -102,7 +108,7 @@ istioctl install --set profile=default
 ```
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -141,7 +147,13 @@ kind: Deployment
 metadata:
   name: payment-service
 spec:
+  selector:
+    matchLabels:
+      app: payment-service
   template:
+    metadata:
+      labels:
+        app: payment-service
     spec:
       containers:
         - name: payment-service
@@ -160,6 +172,8 @@ kind: Service
 metadata:
   name: payment-service
 spec:
+  selector:
+    app: payment-service
   ports:
     - name: http  # Important: named port for Istio protocol detection
       port: 8080
@@ -179,7 +193,7 @@ response = requests.get("https://payment-service:8443/api/charge",
 response = requests.get("http://payment-service:8080/api/charge")
 ```
 
-The sidecar handles mTLS transparently. Your app talks plaintext to the local sidecar, and the sidecar encrypts it.
+The sidecar handles mTLS transparently. Your app makes a plaintext HTTP request to the Kubernetes service address, and the sidecar intercepts and encrypts it between proxies.
 
 ### Phase 4: Clean Up TLS Artifacts
 
@@ -217,7 +231,7 @@ kubectl get pods -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{range .spe
 After all services have sidecars and are using plaintext internally:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: strict
@@ -246,26 +260,47 @@ Once everything runs on Istio mTLS:
 
 ### External Services
 
-External services that are not in the mesh still need traditional TLS. Use ServiceEntries and DestinationRules:
+External services that are not in the mesh still need traditional TLS. Register them with ServiceEntries. If you want the sidecar to originate TLS for an application HTTP request, pair the ServiceEntry with a DestinationRule:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
+kind: ServiceEntry
+metadata:
+  name: external-api
+spec:
+  hosts:
+    - api.external.com
+  location: MESH_EXTERNAL
+  ports:
+    - number: 80
+      name: http
+      protocol: HTTP
+      targetPort: 443
+    - number: 443
+      name: https
+      protocol: HTTPS
+  resolution: DNS
+---
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: external-api
 spec:
   host: api.external.com
   trafficPolicy:
-    tls:
-      mode: SIMPLE  # Standard TLS (not mTLS)
+    portLevelSettings:
+      - port:
+          number: 80
+        tls:
+          mode: SIMPLE  # Standard TLS origination (not mTLS)
 ```
 
 ### Services That Cannot Have Sidecars
 
-Some services (like certain databases or legacy systems) cannot run sidecars. Keep them in PERMISSIVE mode or set up specific PeerAuthentication exceptions:
+Some services (like certain databases or legacy systems) cannot run sidecars. Keep them out of the STRICT migration until they are replaced, and verify mesh clients send plaintext to those destinations. Istio auto mTLS does this for workloads without sidecars when no DestinationRule overrides TLS. For a sidecar-injected legacy workload that must accept plaintext, set up a specific PeerAuthentication exception:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: legacy-exception
@@ -280,13 +315,13 @@ spec:
 
 ### Custom CA Integration
 
-If you want Istio to use your existing CA instead of its built-in one, you can configure it:
+If you want Istio to use an external CA through the Kubernetes CSR API instead of its built-in CA, configure the external CA integration. This requires a CSR signer/controller that can approve and sign the workload certificate requests:
 
 ```bash
 istioctl install --set values.pilot.env.EXTERNAL_CA=ISTIOD_RA_KUBERNETES_API
 ```
 
-Or provide a custom CA certificate to istiod:
+Or plug your own CA certificate and key into `istiod` before installing Istio:
 
 ```bash
 kubectl create secret generic cacerts -n istio-system \
@@ -296,7 +331,7 @@ kubectl create secret generic cacerts -n istio-system \
   --from-file=cert-chain.pem
 ```
 
-This way, Istio issues certificates signed by your existing CA, maintaining trust chain compatibility during migration.
+With the `cacerts` secret, Istio issues workload certificates from the administrator-provided CA chain, maintaining trust chain compatibility during migration.
 
 ## Benefits After Migration
 
