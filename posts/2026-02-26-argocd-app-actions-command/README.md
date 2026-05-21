@@ -17,7 +17,8 @@ Resource actions are operations you can perform on specific Kubernetes resources
 Built-in actions include:
 - **Restart** for Deployments, StatefulSets, DaemonSets
 - **Resume/Pause/Abort** for Argo Rollouts
-- **Retry** for Jobs
+- **Retry** for Argo Rollouts
+- **Suspend/Resume/Terminate** for Jobs
 
 ## Listing Available Actions
 
@@ -49,10 +50,9 @@ restart   false
 The most common action - restart all pods in a Deployment by updating the pod template annotation:
 
 ```bash
-argocd app actions run my-app \
+argocd app actions run my-app restart \
   --kind Deployment \
-  --resource-name my-app \
-  --action restart
+  --resource-name my-app
 ```
 
 This is equivalent to `kubectl rollout restart deployment/my-app` but works through ArgoCD, respecting RBAC policies and providing audit logging.
@@ -60,48 +60,44 @@ This is equivalent to `kubectl rollout restart deployment/my-app` but works thro
 ### Restart a StatefulSet
 
 ```bash
-argocd app actions run my-app \
+argocd app actions run my-app restart \
   --kind StatefulSet \
-  --resource-name my-database \
-  --action restart
+  --resource-name my-database
 ```
 
 ### Restart a DaemonSet
 
 ```bash
-argocd app actions run my-app \
+argocd app actions run my-app restart \
   --kind DaemonSet \
-  --resource-name my-agent \
-  --action restart
+  --resource-name my-agent
 ```
 
 ### Resume an Argo Rollout
 
 ```bash
-argocd app actions run my-app \
+argocd app actions run my-app resume \
   --kind Rollout \
   --group argoproj.io \
-  --resource-name my-rollout \
-  --action resume
+  --resource-name my-rollout
 ```
 
 ### Abort an Argo Rollout
 
 ```bash
-argocd app actions run my-app \
+argocd app actions run my-app abort \
   --kind Rollout \
   --group argoproj.io \
-  --resource-name my-rollout \
-  --action abort
+  --resource-name my-rollout
 ```
 
-### Retry a Failed Job
+### Retry an Argo Rollout
 
 ```bash
-argocd app actions run my-app \
-  --kind Job \
-  --resource-name migration-job \
-  --action retry
+argocd app actions run my-app retry \
+  --kind Rollout \
+  --group argoproj.io \
+  --resource-name my-rollout
 ```
 
 ## Specifying the Resource Namespace
@@ -109,11 +105,10 @@ argocd app actions run my-app \
 When the resource is in a specific namespace:
 
 ```bash
-argocd app actions run my-app \
+argocd app actions run my-app restart \
   --kind Deployment \
   --resource-name my-app \
-  --namespace production \
-  --action restart
+  --namespace production
 ```
 
 ## Custom Resource Actions
@@ -150,10 +145,9 @@ data:
 After adding this configuration, you can run:
 
 ```bash
-argocd app actions run my-app \
+argocd app actions run my-app scale-to-zero \
   --kind Deployment \
-  --resource-name my-app \
-  --action scale-to-zero
+  --resource-name my-app
 ```
 
 ### Example: Toggle Maintenance Mode
@@ -210,7 +204,7 @@ data:
 
 ```yaml
 data:
-  resource.customizations.actions._Pod: |
+  resource.customizations.actions.Pod: |
     discovery.lua: |
       actions = {}
       actions["enable-debug"] = {["disabled"] = false}
@@ -276,14 +270,13 @@ APP_NAME="${1:?Usage: rolling-restart.sh <app-name>}"
 echo "=== Rolling Restart: $APP_NAME ==="
 
 # Get all Deployments managed by this application
-DEPLOYMENTS=$(argocd app resources "$APP_NAME" --kind Deployment -o json | jq -r '.[].name')
+DEPLOYMENTS=$(argocd app get "$APP_NAME" -o json | jq -r '.status.resources[] | select(.group=="apps" and .kind=="Deployment") | .name')
 
 for deploy in $DEPLOYMENTS; do
   echo "Restarting Deployment: $deploy"
-  argocd app actions run "$APP_NAME" \
+  argocd app actions run "$APP_NAME" restart \
     --kind Deployment \
-    --resource-name "$deploy" \
-    --action restart
+    --resource-name "$deploy"
   echo "  Done."
 done
 
@@ -313,11 +306,10 @@ argocd app actions list "$APP_NAME" \
   --resource-name "$ROLLOUT_NAME"
 
 # Run the action
-argocd app actions run "$APP_NAME" \
+argocd app actions run "$APP_NAME" "$ACTION" \
   --kind Rollout \
   --group argoproj.io \
-  --resource-name "$ROLLOUT_NAME" \
-  --action "$ACTION"
+  --resource-name "$ROLLOUT_NAME"
 
 echo "Action $ACTION executed successfully."
 ```
@@ -344,7 +336,7 @@ p, role:developer, applications, action/apps/Deployment/scale-to-zero, productio
 
 ```bash
 # Verify the resource exists in the application
-argocd app resources my-app --kind Deployment --resource-name my-app
+argocd app get-resource my-app --kind Deployment --resource-name my-app
 
 # List available actions for the resource
 argocd app actions list my-app --kind Deployment --resource-name my-app
