@@ -8,15 +8,15 @@ Description: A comprehensive reference and guide to Istio sidecar proxy annotati
 
 ---
 
-Istio uses Kubernetes annotations extensively to configure how the sidecar proxy behaves for individual workloads. These annotations give you fine-grained control without modifying global mesh settings. They are processed by the sidecar injector webhook during pod creation, so changes require a pod restart to take effect.
+Istio uses Kubernetes annotations extensively to configure how the sidecar proxy behaves for individual workloads. These annotations give you fine-grained control without modifying global mesh settings. Many of them are processed by the sidecar injector webhook during pod creation, so changes require a pod restart to take effect.
 
 ## How Sidecar Injection Annotations Work
 
-When a pod is created in a namespace with injection enabled, the Istio mutating webhook intercepts the pod creation request and modifies the pod spec to add the sidecar container. Annotations on the pod template control what the webhook does. The annotations go on the pod template inside your Deployment (under `spec.template.metadata.annotations`), not on the Deployment itself.
+When a pod is created in a namespace with injection enabled, the Istio mutating webhook intercepts the pod creation request and modifies the pod spec to add the sidecar container. Pod metadata controls what the webhook does. The annotations go on the pod template inside your Deployment (under `spec.template.metadata.annotations`), not on the Deployment itself.
 
 ## Injection Control Annotations
 
-The most basic annotations control whether injection happens at all:
+The most basic setting controls whether injection happens at all. In current Istio releases, use the `sidecar.istio.io/inject` pod label; the older annotation form is deprecated:
 
 ```yaml
 apiVersion: apps/v1
@@ -26,7 +26,7 @@ metadata:
 spec:
   template:
     metadata:
-      annotations:
+      labels:
         sidecar.istio.io/inject: "true"
     spec:
       containers:
@@ -34,7 +34,7 @@ spec:
         image: nginx:1.25
 ```
 
-Setting `sidecar.istio.io/inject` to `"false"` skips injection for that pod, even if the namespace has injection enabled. This is useful for jobs, init-only pods, or services that should not be in the mesh.
+Setting the `sidecar.istio.io/inject` label to `"false"` skips injection for that pod, even if the namespace has injection enabled. This is useful for jobs, init-only pods, or services that should not be in the mesh.
 
 Resource Annotations
 
@@ -50,17 +50,6 @@ metadata:
 ```
 
 These map directly to the resource requests and limits on the `istio-proxy` container. Setting appropriate values here is critical for production. Too low, and the proxy gets throttled or OOMKilled. Too high, and you waste cluster resources.
-
-For the init container, separate annotations exist:
-
-```yaml
-metadata:
-  annotations:
-    sidecar.istio.io/initCPU: "100m"
-    sidecar.istio.io/initCPULimit: "2000m"
-    sidecar.istio.io/initMemory: "128Mi"
-    sidecar.istio.io/initMemoryLimit: "1024Mi"
-```
 
 ## Traffic Interception Annotations
 
@@ -85,7 +74,7 @@ metadata:
 
 This is really useful when you have ports that should bypass the mesh entirely. Common examples include database connections where mTLS might cause issues, or metrics endpoints that should be accessible without going through the proxy.
 
-**Including specific ports only:**
+**Including specific inbound ports and forcing outbound ports:**
 
 ```yaml
 metadata:
@@ -94,7 +83,7 @@ metadata:
     traffic.sidecar.istio.io/includeOutboundPorts: "80,443"
 ```
 
-If you set `includeInboundPorts`, only those ports will be intercepted. All other inbound traffic bypasses the sidecar. The default behavior is to intercept all ports.
+If you set `includeInboundPorts`, only those inbound ports will be intercepted. All other inbound traffic bypasses the sidecar. The default behavior is to intercept all inbound ports. The `includeOutboundPorts` annotation redirects traffic to those outbound ports regardless of the destination IP range; use `includeOutboundIPRanges` when you need to constrain outbound capture by destination range.
 
 **Excluding IP ranges:**
 
@@ -200,8 +189,8 @@ spec:
     metadata:
       labels:
         app: payment-service
-      annotations:
         sidecar.istio.io/inject: "true"
+      annotations:
         sidecar.istio.io/proxyCPU: "200m"
         sidecar.istio.io/proxyCPULimit: "1000m"
         sidecar.istio.io/proxyMemory: "256Mi"
@@ -246,10 +235,10 @@ kubectl exec $POD -c istio-proxy -- pilot-agent request GET /config_dump | jq . 
 
 ## Common Gotchas
 
-1. Annotations go on the pod template, not on the Deployment metadata
+1. Pod annotations and injection labels go on the pod template, not on the Deployment metadata
 2. Changes require a pod restart (delete the pod or do a rollout restart)
-3. String values need to be quoted in YAML (like `"true"` not `true` for the inject annotation)
-4. The `proxy.istio.io/config` annotation uses YAML format, not JSON, for the value
-5. Resource annotations are strings, so write `"128Mi"` not `128Mi` without quotes
+3. String values need to be quoted in YAML (like `"true"` not `true` for the inject label)
+4. The `proxy.istio.io/config` annotation is commonly written as YAML; inline JSON object syntax also parses as YAML
+5. Annotation values are strings, so quote values such as `"true"` and `"128Mi"` to avoid YAML type conversion surprises
 
 Proxy annotations are the most granular way to tune Istio's behavior per workload. Use them when you need specific settings that differ from your mesh-wide defaults, and remember that they only take effect when pods are created or restarted.
