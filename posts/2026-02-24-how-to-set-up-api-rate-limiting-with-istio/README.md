@@ -74,7 +74,7 @@ spec:
                 value: "1000"
 ```
 
-This limits each gateway instance to 1000 requests per minute. The `response_headers_to_add` section adds rate limit information to the response, which helps clients understand the limits.
+This limits each gateway instance to 1000 requests per minute. The `response_headers_to_add` section adds a static header to rate-limited responses.
 
 ### Rate Limiting per Service
 
@@ -272,33 +272,6 @@ spec:
     labels:
       istio: ingressgateway
   configPatches:
-  # Add the rate limit cluster
-  - applyTo: CLUSTER
-    match:
-      cluster:
-        service: ratelimit.istio-system.svc.cluster.local
-    patch:
-      operation: ADD
-      value:
-        name: rate_limit_cluster
-        type: STRICT_DNS
-        connect_timeout: 0.25s
-        lb_policy: ROUND_ROBIN
-        typed_extension_protocol_options:
-          envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
-            "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
-            explicit_http_config:
-              http2_protocol_options: {}
-        load_assignment:
-          cluster_name: rate_limit_cluster
-          endpoints:
-          - lb_endpoints:
-            - endpoint:
-                address:
-                  socket_address:
-                    address: ratelimit.istio-system.svc.cluster.local
-                    port_value: 8081
-
   # Add the rate limit filter
   - applyTo: HTTP_FILTER
     match:
@@ -321,7 +294,8 @@ spec:
           rate_limit_service:
             grpc_service:
               envoy_grpc:
-                cluster_name: rate_limit_cluster
+                cluster_name: outbound|8081||ratelimit.istio-system.svc.cluster.local
+                authority: ratelimit.istio-system.svc.cluster.local
             transport_api_version: V3
 
   # Add rate limit actions
@@ -345,7 +319,34 @@ spec:
         - actions:
           - header_value_match:
               descriptor_key: header_match
+              descriptor_value: path-users
+              headers:
+              - name: ":path"
+                string_match:
+                  prefix: /v1/users
+        - actions:
+          - header_value_match:
+              descriptor_key: header_match
+              descriptor_value: path-orders
+              headers:
+              - name: ":path"
+                string_match:
+                  prefix: /v1/orders
+        - actions:
+          - header_value_match:
+              descriptor_key: header_match
               descriptor_value: default
+              headers:
+              - name: x-api-key
+                present_match: false
+              - name: ":path"
+                string_match:
+                  prefix: /v1/users
+                invert_match: true
+              - name: ":path"
+                string_match:
+                  prefix: /v1/orders
+                invert_match: true
 ```
 
 ## Per-Client Rate Limiting
@@ -377,21 +378,21 @@ Each unique API key gets its own rate limit bucket.
 
 ## Monitoring Rate Limiting
 
-Check rate limit metrics in Prometheus:
+After enabling the relevant Envoy stats with `proxyStatsMatcher`, check rate limit metrics in Prometheus:
 
 ```text
 # Local rate limit
 
-envoy_http_local_rate_limit_enabled
-envoy_http_local_rate_limit_enforced
-envoy_http_local_rate_limit_ok
-envoy_http_local_rate_limit_rate_limited
+envoy_http_local_rate_limiter_http_local_rate_limit_enabled
+envoy_http_local_rate_limiter_http_local_rate_limit_enforced
+envoy_http_local_rate_limiter_http_local_rate_limit_ok
+envoy_http_local_rate_limiter_http_local_rate_limit_rate_limited
 
 # Global rate limit
-envoy_ratelimit_ok
-envoy_ratelimit_over_limit
-envoy_ratelimit_error
-envoy_ratelimit_failure_mode_allowed
+envoy_cluster_<route_target_cluster>_ratelimit_ok
+envoy_cluster_<route_target_cluster>_ratelimit_over_limit
+envoy_cluster_<route_target_cluster>_ratelimit_error
+envoy_cluster_<route_target_cluster>_ratelimit_failure_mode_allowed
 ```
 
 Monitor the rate limit service itself:
@@ -404,7 +405,7 @@ Set up alerts for high rejection rates:
 
 ```yaml
 - alert: HighRateLimitRejections
-  expr: sum(rate(envoy_ratelimit_over_limit[5m])) > 100
+  expr: sum(rate({__name__=~"envoy_cluster_.*_ratelimit_over_limit"}[5m])) > 100
   for: 5m
   labels:
     severity: warning
