@@ -14,7 +14,7 @@ There are two main approaches: header-based routing where an external component 
 
 ## Approach 1: Header-Based Geo-Routing
 
-The most flexible approach is to have your load balancer or API gateway detect the user's location and add it as a request header. Most cloud load balancers can do this - AWS ALB adds the `CloudFront-Viewer-Country` header, Google Cloud adds `X-Appengine-Country`, and Cloudflare adds `CF-IPCountry`.
+The most flexible approach is to have your load balancer, CDN, or API gateway detect the user's location and add it as a request header. Common options include Amazon CloudFront's `CloudFront-Viewer-Country` header, Google Cloud Load Balancing custom request headers using the `{client_region}` variable, App Engine's `X-Appengine-Country` header, and Cloudflare's `CF-IPCountry` header.
 
 Once you have a geo header, Istio routes based on it:
 
@@ -176,8 +176,8 @@ spec:
               -- This is a simplified example
               local xff = request_handle:headers():get("x-forwarded-for")
               if xff then
-                -- Call your GeoIP service or use a Lua GeoIP library
-                request_handle:headers():add("x-user-region", "us")
+                -- Call your GeoIP service and add the detected country code
+                request_handle:headers():add("x-user-country", "US")
               end
             end
 ```
@@ -186,7 +186,7 @@ For production, you'd use a proper GeoIP service rather than the Lua inline appr
 
 ## Approach 2: Istio Locality-Aware Load Balancing
 
-If you run a multi-region Kubernetes cluster (or multiple clusters), Istio can automatically route traffic to the closest endpoints using locality load balancing. This works based on Kubernetes node labels:
+If you run a multi-region Kubernetes cluster (or multiple clusters), Istio can prefer endpoints in the same locality as the source workload using locality load balancing. This works based on Kubernetes node labels:
 
 ```bash
 # Nodes should have topology labels
@@ -226,7 +226,7 @@ With this configuration, a request from a pod in `us-east-1a` will prefer endpoi
 2. `us-east-1b` or `us-east-1c` (same region, different zone)
 3. `eu-west-1a` (different region, as failover)
 
-You must have outlier detection enabled for locality load balancing to work. Istio needs it to detect when local endpoints are unhealthy and should be failed over.
+You must have outlier detection enabled for locality failover to work. Istio needs it to detect when local endpoints are unhealthy and should be failed over.
 
 ## Locality Failover Configuration
 
@@ -294,7 +294,7 @@ This sends 80% of US East traffic to US East and 20% to US West, which helps bal
 
 ## Data Residency Compliance
 
-Some regulations (like GDPR) require that certain data stays within specific geographic boundaries. Use Istio routing to enforce this:
+Some regulatory or contractual requirements can require that certain data stays within specific geographic boundaries. Use Istio routing to enforce this:
 
 ```yaml
 apiVersion: networking.istio.io/v1beta1
