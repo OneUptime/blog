@@ -23,17 +23,17 @@ When istiod goes down:
 When istiod comes back:
 
 1. **All proxies reconnect simultaneously**: This is the "thundering herd" problem
-2. **Full configuration push to all proxies**: Each proxy receives a complete configuration update
+2. **Configuration sync for reconnecting proxies**: Each proxy receives the current xDS configuration it needs
 3. **Sidecar injection resumes**: Pending pod creations can proceed
 4. **Certificate signing resumes**: Any pending CSRs are processed
 
 ## The Thundering Herd Problem
 
-The most impactful part of an istiod restart is the reconnection phase. Every proxy in the mesh tries to reconnect at the same time, and each one expects a full configuration push. For a mesh with 1000 proxies, this means istiod needs to:
+The most impactful part of an istiod restart is the reconnection phase. Every proxy in the mesh tries to reconnect at the same time, and each one needs to resync its xDS configuration. For a mesh with 1000 proxies, this means istiod needs to:
 
 - Accept 1000 gRPC connections
 - Generate xDS configuration for each proxy
-- Push all configurations simultaneously
+- Push configuration to many proxies concurrently
 
 This can spike CPU and memory well above steady-state levels. If istiod does not have enough resources, it can OOM again, creating a restart loop.
 
@@ -42,7 +42,7 @@ Monitor the reconnection:
 ```bash
 # Watch connections recovering
 
-watch "kubectl exec -n istio-system deploy/istiod -- curl -s localhost:15014/metrics | grep pilot_xds_connected"
+watch "kubectl exec -n istio-system deploy/istiod -- curl -s localhost:15014/metrics | grep '^pilot_xds '"
 ```
 
 ## Minimizing Restart Impact
@@ -65,7 +65,7 @@ With 3 replicas, a single replica restart only affects ~33% of proxies.
 
 ### 2. Use Pod Disruption Budgets
 
-Prevent all replicas from going down at once during upgrades or node maintenance:
+Prevent eviction-based maintenance, such as node drains, from taking down all replicas at once:
 
 ```yaml
 apiVersion: policy/v1
@@ -90,7 +90,7 @@ env:
   value: "100"
 ```
 
-With a throttle of 100, istiod processes 100 proxy connections at a time instead of all at once. This takes longer for full convergence but prevents resource spikes.
+With a throttle of 100, istiod allows up to 100 concurrent pushes instead of pushing to every reconnecting proxy at once. This takes longer for full convergence but prevents resource spikes.
 
 ### 4. Over-Provision Resources
 
@@ -125,19 +125,22 @@ During the restart window, existing traffic continues to flow normally because E
 
 How long this matters depends on your traffic patterns. For most services, a few seconds of stale endpoints is tolerable. For services with very fast scaling (like burst workers), it can be a problem.
 
-**Certificate expiration**: If the istiod downtime overlaps with certificate rotation for any workload, that workload's certificate will expire. Expired certificates cause mTLS failures.
+**Certificate expiration**: If istiod remains unavailable long enough that a workload cannot renew its certificate before expiration, that workload's certificate will expire. Expired certificates cause mTLS failures.
 
 Check certificate expiration times:
 
 ```bash
-istioctl proxy-config secret my-pod -o json | jq '.[0].certificate_chain | .[0].valid_from, .[0].expiration_time'
+istioctl proxy-config secret my-pod -o json \
+  | jq -r '[.dynamicActiveSecrets[] | select(.name == "default")][0].secret.tlsCertificate.certificateChain.inlineBytes' \
+  | base64 -d \
+  | openssl x509 -noout -dates
 ```
 
 Default certificate TTL is 24 hours, so a brief istiod restart (minutes) is not a problem. Extended outages (hours) could overlap with rotation.
 
 ## Handling Rolling Upgrades
 
-During an Istio upgrade, istiod replicas are replaced one at a time. This is the best scenario because at least some replicas are always available:
+During an Istio upgrade, istiod replicas are normally replaced by the Deployment rolling update strategy. This is the best scenario because at least some replicas should remain available:
 
 ```bash
 # Check rollout status during upgrade
@@ -147,11 +150,11 @@ kubectl rollout status deployment istiod -n istio-system
 To upgrade gracefully:
 
 1. Ensure you have multiple replicas before upgrading
-2. Set a PDB to keep at least one replica available
+2. Set a PDB to keep at least one replica available during eviction-based maintenance
 3. Monitor xDS connection count during the rollout:
 
 ```promql
-sum(pilot_xds_connected)
+sum(pilot_xds)
 ```
 
 The connection count should dip slightly as each replica restarts and recover as proxies reconnect to the remaining replicas.
@@ -172,10 +175,10 @@ All proxies should show `SYNCED`. If any show `STALE` after a few minutes, inves
 
 ```bash
 # Expected (number of sidecar pods)
-kubectl get pods --all-namespaces -o json | jq '[.items[] | select(.spec.containers[].name == "istio-proxy")] | length'
+kubectl get pods --all-namespaces -o json | jq '[.items[] | select(any(.spec.containers[]?; .name == "istio-proxy"))] | length'
 
 # Actual
-kubectl exec -n istio-system deploy/istiod -- curl -s localhost:15014/metrics | grep pilot_xds_connected
+kubectl exec -n istio-system deploy/istiod -- curl -s localhost:15014/metrics | grep '^pilot_xds '
 ```
 
 ### Verify Configuration Is Current
@@ -188,10 +191,10 @@ istioctl proxy-config routes <pod-name>.<namespace>
 
 Make sure the routes match your current VirtualService definitions.
 
-### Check for Push Errors
+### Check for XDS Errors
 
 ```bash
-kubectl exec -n istio-system deploy/istiod -- curl -s localhost:15014/metrics | grep pilot_xds_push_errors
+kubectl exec -n istio-system deploy/istiod -- curl -s localhost:15014/metrics | grep -E 'pilot_total_xds_internal_errors|pilot_total_xds_rejects|pilot_xds_write_timeout'
 ```
 
 Errors after a restart could indicate configuration problems that were masked before.
@@ -218,11 +221,11 @@ kubectl get pods -n istio-system -l app=istiod
 
 echo ""
 echo "Connected proxies:"
-kubectl exec -n istio-system deploy/istiod -- curl -s localhost:15014/metrics 2>/dev/null | grep pilot_xds_connected
+kubectl exec -n istio-system deploy/istiod -- curl -s localhost:15014/metrics 2>/dev/null | grep '^pilot_xds '
 
 echo ""
-echo "Push errors:"
-kubectl exec -n istio-system deploy/istiod -- curl -s localhost:15014/metrics 2>/dev/null | grep pilot_xds_push_errors
+echo "XDS errors:"
+kubectl exec -n istio-system deploy/istiod -- curl -s localhost:15014/metrics 2>/dev/null | grep -E 'pilot_total_xds_internal_errors|pilot_total_xds_rejects|pilot_xds_write_timeout'
 
 echo ""
 echo "Proxy status:"
