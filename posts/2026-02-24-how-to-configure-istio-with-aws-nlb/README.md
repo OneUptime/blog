@@ -8,14 +8,14 @@ Description: Complete guide to configuring Istio ingress gateway with AWS Networ
 
 ---
 
-The AWS Network Load Balancer is the recommended load balancer type for Istio on EKS. It operates at Layer 4, which means it passes TCP connections straight through to the Istio ingress gateway without terminating TLS. This preserves end-to-end mTLS and gives you lower latency compared to an Application Load Balancer. Here is how to set it up properly.
+The AWS Network Load Balancer is a strong fit for Istio on EKS when you want Layer 4 TCP/TLS load balancing. It passes TCP connections straight through to the Istio ingress gateway without terminating TLS at the load balancer. This keeps TLS termination in Istio and avoids Layer 7 processing at the load balancer. Here is how to set it up properly.
 
 ## Why NLB for Istio?
 
 NLB has several advantages for Istio deployments:
 
-- TCP passthrough preserves the original TLS connection, so Istio handles TLS termination and mTLS end-to-end
-- Much lower latency compared to ALB (operates at Layer 4 vs Layer 7)
+- TCP passthrough preserves the original TLS connection to the gateway, so Istio handles TLS termination and mesh mTLS policies
+- Lower Layer 4 overhead compared to using an ALB for raw TCP/TLS forwarding
 - Can handle millions of requests per second without pre-warming
 - Supports static IP addresses and Elastic IPs
 - Preserves source IP without needing proxy protocol in certain configurations
@@ -83,9 +83,9 @@ spec:
 
 IP target mode skips the kube-proxy hop and sends traffic directly to the Istio gateway pods. This is more efficient and gives you better connection draining during pod replacements.
 
-## TLS Passthrough Configuration
+## TCP Passthrough to Istio TLS
 
-For TLS passthrough (letting Istio handle TLS termination), configure the NLB to forward TCP on port 443:
+For NLB TCP passthrough to Istio (letting Istio handle TLS termination), configure the NLB to forward TCP on port 443:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -122,8 +122,7 @@ metadata:
   namespace: istio-system
 spec:
   selector:
-    matchLabels:
-      istio: ingressgateway
+    istio: ingressgateway
   servers:
   - port:
       number: 443
@@ -155,9 +154,9 @@ kubectl create secret tls my-tls-cert \
 
 ## Preserving Source IP
 
-With NLB, preserving the source client IP depends on the target type:
+With NLB, preserving the source client IP depends on the target type and target group attributes:
 
-For **instance targets** (NodePort), you need proxy protocol:
+For **instance targets** (NodePort), NLB client IP preservation is enabled by default, but Kubernetes can still hide the original source IP if the Service uses `externalTrafficPolicy: Cluster`. If Envoy must see the original client IP across those paths, enable proxy protocol:
 
 ```yaml
 serviceAnnotations:
@@ -189,7 +188,14 @@ spec:
             "@type": type.googleapis.com/envoy.extensions.filters.listener.proxy_protocol.v3.ProxyProtocol
 ```
 
-For **IP targets**, the source IP is preserved automatically because the NLB routes directly to the pod. No proxy protocol needed.
+For **IP targets** with TCP or TLS target groups, client IP preservation is disabled by default. Enable it explicitly when your targets are in the same VPC or a supported peered VPC:
+
+```yaml
+serviceAnnotations:
+  service.beta.kubernetes.io/aws-load-balancer-target-group-attributes: "preserve_client_ip.enabled=true"
+```
+
+If you cannot use client IP preservation, use proxy protocol v2 instead and make sure the Istio gateway listener supports it.
 
 ## Static IP with Elastic IPs
 
@@ -224,7 +230,6 @@ serviceAnnotations:
   service.beta.kubernetes.io/aws-load-balancer-type: "external"
   service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: "ip"
   service.beta.kubernetes.io/aws-load-balancer-scheme: "internal"
-  service.beta.kubernetes.io/aws-load-balancer-internal: "true"
 ```
 
 You can create a separate internal ingress gateway for internal traffic:
@@ -284,6 +289,7 @@ aws cloudwatch put-metric-alarm \
   --alarm-name "istio-nlb-unhealthy-hosts" \
   --metric-name UnHealthyHostCount \
   --namespace AWS/NetworkELB \
+  --dimensions Name=LoadBalancer,Value=net/<nlb-name>/<id> Name=TargetGroup,Value=targetgroup/<target-group-name>/<id> \
   --statistic Maximum \
   --period 60 \
   --threshold 1 \
@@ -298,12 +304,14 @@ Check if the NLB targets are healthy:
 
 ```bash
 # Get the target group ARN
-aws elbv2 describe-target-groups --names k8s-istiosys-istioing-* --query 'TargetGroups[].TargetGroupArn'
+aws elbv2 describe-target-groups \
+  --query "TargetGroups[?starts_with(TargetGroupName, 'k8s-istiosys-istioing-')].TargetGroupArn" \
+  --output text
 
 # Check target health
 aws elbv2 describe-target-health --target-group-arn <arn>
 ```
 
-If targets show unhealthy, verify the health check configuration points to port 15021 and path /healthz/ready. Also make sure the security groups allow traffic from the NLB's IP range to the gateway pods.
+If targets show unhealthy, verify the health check configuration points to port 15021 and path /healthz/ready. Also make sure the backend security groups allow the health check and listener traffic from the required NLB subnet CIDRs or client source CIDRs, depending on whether client IP preservation is enabled.
 
 NLB is the natural pairing for Istio on AWS. It stays out of the way, passes TCP through cleanly, handles massive scale, and supports the features you need like static IPs and cross-zone balancing. For most Istio deployments on EKS, NLB should be your default choice.
