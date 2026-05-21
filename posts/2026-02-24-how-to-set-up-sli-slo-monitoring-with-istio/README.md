@@ -114,6 +114,12 @@ spec:
         /
         sum(rate(istio_requests_total{reporter="destination"}[6h])) by (destination_service_namespace, destination_service_name)
 
+    - record: istio_sli:availability:ratio_rate30d
+      expr: |
+        sum(increase(istio_requests_total{reporter="destination",response_code!~"5.*"}[30d])) by (destination_service_namespace, destination_service_name)
+        /
+        sum(increase(istio_requests_total{reporter="destination"}[30d])) by (destination_service_namespace, destination_service_name)
+
   - name: istio-slo-latency
     interval: 30s
     rules:
