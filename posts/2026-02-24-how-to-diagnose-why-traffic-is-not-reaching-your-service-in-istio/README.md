@@ -23,10 +23,10 @@ kubectl get pods -n my-namespace -l app=my-service
 kubectl get svc my-service -n my-namespace
 
 # Do the endpoints exist?
-kubectl get endpoints my-service -n my-namespace
+kubectl get endpointslice -n my-namespace -l kubernetes.io/service-name=my-service
 
 # Can you reach the service directly (bypassing Istio)?
-kubectl exec deploy/my-service -c my-container -- curl -s localhost:8080/health
+kubectl exec deploy/my-service -n my-namespace -c my-container -- curl -s localhost:8080/health
 ```
 
 If the pod is not running, the service has no endpoints, or the app itself is not responding, the problem is not Istio. Fix the Kubernetes basics first.
@@ -73,16 +73,16 @@ Even if the sidecar is running, it might not have the right configuration. Use `
 istioctl proxy-status
 
 # Check listeners on the destination pod
-istioctl proxy-config listener deploy/my-service -n my-namespace
+istioctl proxy-config listener deployment/my-service -n my-namespace
 
 # Check if there is a route for your service
-istioctl proxy-config route deploy/my-service -n my-namespace
+istioctl proxy-config route deployment/my-service -n my-namespace
 
 # Check if the cluster (upstream) is defined
-istioctl proxy-config cluster deploy/my-service -n my-namespace | grep my-service
+istioctl proxy-config cluster deployment/my-service -n my-namespace | grep my-service
 
 # Check if endpoints are populated
-istioctl proxy-config endpoint deploy/my-service -n my-namespace | grep my-service
+istioctl proxy-config endpoint deployment/my-service -n my-namespace | grep my-service
 ```
 
 If listeners or routes are missing, the configuration has not been pushed from Istiod. Check the Istiod logs:
@@ -144,12 +144,11 @@ Port mismatches are a silent killer. The port in your service definition, your d
 # Check the service ports
 kubectl get svc my-service -n my-namespace -o yaml | grep -A5 ports
 
-# Check what ports the pod is listening on
-kubectl exec deploy/my-service -c istio-proxy -- \
-  pilot-agent request GET listeners | grep -i "my-service"
+# Check the container ports declared by the deployment
+kubectl get deploy my-service -n my-namespace -o jsonpath='{.spec.template.spec.containers[*].ports[*].containerPort}'
 ```
 
-Also verify that the port is named correctly. Istio requires port names to follow the `<protocol>-<suffix>` convention:
+Also verify that the port is named correctly. Istio can infer HTTP and HTTP/2 automatically, but explicit protocol selection uses either the Service port name in the `<protocol>[-<suffix>]` format or the Kubernetes `appProtocol` field:
 
 ```yaml
 apiVersion: v1
@@ -174,7 +173,7 @@ If mTLS is misconfigured, one side might be expecting encrypted traffic while th
 
 ```bash
 # Check mTLS status
-istioctl authn tls-check my-service-pod.my-namespace my-service.my-namespace.svc.cluster.local
+istioctl x describe pod my-service-pod -n my-namespace
 ```
 
 Look for mismatches between the client and server TLS settings. If you see `CONFLICT`, that is your problem.
@@ -211,11 +210,20 @@ Use Envoy access logs to trace exactly where a request goes and where it fails:
 
 ```bash
 # Enable access logs if not already enabled
-kubectl exec deploy/my-service -c istio-proxy -- \
-  pilot-agent request POST 'logging?level=debug'
+kubectl apply -f - <<'EOF'
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
+metadata:
+  name: mesh-default
+  namespace: istio-system
+spec:
+  accessLogging:
+  - providers:
+    - name: envoy
+EOF
 
 # Watch the logs
-kubectl logs deploy/my-service -c istio-proxy -f
+kubectl logs deploy/my-service -n my-namespace -c istio-proxy -f
 ```
 
 Send a test request and look for the access log entry. The response flags column tells you what happened:
@@ -245,13 +253,13 @@ This checks for things like missing DestinationRules, conflicting VirtualService
 When traffic is not reaching your service, work through this checklist in order:
 
 1. Pod running and healthy? (`kubectl get pods`)
-2. Service has endpoints? (`kubectl get endpoints`)
+2. Service has endpoints? (`kubectl get endpointslice`)
 3. Sidecar injected and ready? (check container list and readiness)
 4. Proxy config synced? (`istioctl proxy-status`)
 5. Listeners configured? (`istioctl proxy-config listener`)
 6. Routes configured? (`istioctl proxy-config route`)
 7. Endpoints populated? (`istioctl proxy-config endpoint`)
-8. mTLS aligned? (`istioctl authn tls-check`)
+8. mTLS aligned? (`istioctl x describe pod`)
 9. AuthorizationPolicy blocking? (`kubectl get authorizationpolicy`)
 10. VirtualService/DestinationRule correct? (`istioctl analyze`)
 
