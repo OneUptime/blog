@@ -23,7 +23,7 @@ sudo systemctl status istio
 ps aux | grep envoy
 
 # Verify the VM can reach istiod
-curl -v https://istiod.istio-system.svc:15012/debug/endpointz
+curl -v http://istiod.istio-system.svc:15014/version
 ```
 
 If the sidecar is not running, check the logs:
@@ -33,7 +33,7 @@ If the sidecar is not running, check the logs:
 journalctl -u istio -f
 
 # Look at Envoy proxy logs
-tail -f /var/log/istio/istio.log
+tail -f /var/log/istio/istio.err.log /var/log/istio/istio.log
 ```
 
 ## Verify WorkloadEntry Registration
@@ -51,7 +51,7 @@ kubectl describe workloadentry your-vm-workload -n your-namespace
 Make sure the WorkloadEntry matches your VM setup:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: WorkloadEntry
 metadata:
   name: vm-workload
@@ -68,7 +68,7 @@ spec:
 The address field should match the VM's actual IP. If you are using auto-registration, check that the WorkloadGroup is correctly defined:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: WorkloadGroup
 metadata:
   name: vm-workload-group
@@ -88,6 +88,7 @@ mTLS certificate problems are a frequent source of VM connectivity failures. The
 
 ```bash
 # On the VM, check certificate status
+curl -s localhost:15000/config_dump | istioctl proxy-config secret --file -
 ls -la /etc/certs/ /var/run/secrets/tokens/
 
 # Verify the root certificate
@@ -100,8 +101,8 @@ openssl x509 -in /etc/certs/cert-chain.pem -text -noout | grep -A2 "Validity"
 If certificates are expired or missing, you may need to regenerate the VM bootstrap tokens:
 
 ```bash
-# Generate a new token for the VM
-istioctl x create-remote-secret --name your-vm --namespace your-namespace
+# Generate fresh VM bootstrap files, including the istio-token
+istioctl x workload entry configure -f workloadgroup.yaml -o ./vm-files --clusterID your-cluster
 ```
 
 Check if the Istio CA is issuing certificates correctly:
@@ -116,7 +117,7 @@ kubectl logs -l app=istiod -n istio-system | grep -i "cert\|sign\|error"
 The VM needs to reach the Kubernetes cluster on several ports. If any of these are blocked, things will break.
 
 ```bash
-# Test connectivity to istiod (port 15012 for xDS, 15014 for metrics)
+# Test connectivity to istiod (port 15012 for xDS, 15014 for debug and monitoring)
 nc -zv istiod.istio-system.svc 15012
 nc -zv istiod.istio-system.svc 15014
 
@@ -149,19 +150,19 @@ istioctl analyze -n your-namespace
 If a VM proxy shows as disconnected, the issue is likely network-related. If it shows as STALE, istiod is having trouble pushing configuration updates.
 
 ```bash
-# Get detailed proxy config for a VM workload
-istioctl proxy-config cluster your-vm-workload.your-namespace
+# Get detailed proxy config from a VM Envoy config dump
+curl -s localhost:15000/config_dump | istioctl proxy-config clusters --file -
 
 # Check listeners
-istioctl proxy-config listener your-vm-workload.your-namespace
+curl -s localhost:15000/config_dump | istioctl proxy-config listeners --file -
 
 # Check routes
-istioctl proxy-config route your-vm-workload.your-namespace
+curl -s localhost:15000/config_dump | istioctl proxy-config routes --file -
 ```
 
 ## Check Service Entry Configuration
 
-If the VM is running a service that Kubernetes pods need to reach, you need a proper Service and ServiceEntry configuration.
+If the VM is running a service that Kubernetes pods need to reach, you need a proper Service and, when you are not relying on Kubernetes Service selection, ServiceEntry configuration.
 
 ```bash
 # List service entries in the namespace
@@ -171,7 +172,7 @@ kubectl get serviceentries -n your-namespace
 kubectl exec -it deploy/sleep -n your-namespace -- curl -v http://your-vm-service:8080/
 ```
 
-A common mistake is having a ServiceEntry that does not match the WorkloadEntry labels. The selector in the Service must match the labels on the WorkloadEntry:
+A common mistake is having a Service or ServiceEntry that does not match the WorkloadEntry labels. The selector in the Service, or the `workloadSelector` in the ServiceEntry, must match the labels on the WorkloadEntry:
 
 ```yaml
 apiVersion: v1
@@ -213,7 +214,6 @@ spec:
     defaultConfig:
       proxyMetadata:
         ISTIO_META_DNS_CAPTURE: "true"
-        ISTIO_META_DNS_AUTO_ALLOCATE: "true"
 ```
 
 ## Check Envoy Admin Interface
