@@ -18,7 +18,7 @@ With round robin, each Envoy sidecar maintains its own counter. If you have 50 c
 
 Random load balancing does not have this problem because there is no counter to synchronize. Over a large number of requests, the distribution converges to roughly equal, but without the periodic spikes.
 
-The second scenario where random helps is when you have a large number of upstream endpoints. Round robin needs to iterate through the entire list, which means every pod eventually gets traffic. Random naturally tends to favor pods it has already connected to (since it might pick the same one twice in a row), which can reduce the number of active connections.
+The second scenario where random helps is when you have a large number of upstream endpoints. Round robin cycles through the endpoint list, which means every pod eventually gets traffic. Random can pick the same pod twice in a row, so over a small request window it may touch fewer endpoints than round robin.
 
 ## Setting It Up
 
@@ -66,9 +66,14 @@ spec:
       containers:
       - name: backend
         image: hashicorp/http-echo
+        env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
         args:
         - -listen=:8080
-        - -text=hello
+        - -text=$(POD_NAME)
         ports:
         - containerPort: 8080
 ---
@@ -130,6 +135,8 @@ You should see:
 }
 ```
 
+The actual output contains the full cluster object; look for `lbPolicy` on the cluster that matches the backend service.
+
 ## Random vs Round Robin - A Practical Comparison
 
 Here is a scenario that illustrates when random wins. Imagine you have:
@@ -163,11 +170,11 @@ Random is not always the best choice:
 
 - **When you need session stickiness**: Random sends each request to a potentially different pod. Use consistent hash instead.
 - **When request costs vary significantly**: If some requests take 10x longer than others, random does not account for actual pod load. Use LEAST_REQUEST instead.
-- **When you have very few endpoints**: With only 2 pods, random can create noticeable imbalance over short time periods. Round robin gives perfect 50/50 distribution.
+- **When you have very few endpoints**: With only 2 pods, random can create noticeable imbalance over short time periods. Round robin gives a more even sequence from each proxy.
 
 ## Combining Random with Outlier Detection
 
-Random load balancing should almost always be paired with outlier detection. Since random might keep picking an unhealthy pod, you need outlier detection to remove failing pods from the pool:
+Random load balancing is often a good fit with outlier detection. Since random can still select an unhealthy pod if Envoy has not ejected it from the pool, outlier detection helps remove failing pods:
 
 ```yaml
 apiVersion: networking.istio.io/v1
