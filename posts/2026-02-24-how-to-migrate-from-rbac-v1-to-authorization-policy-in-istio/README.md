@@ -60,7 +60,7 @@ spec:
 
 ## The New API: AuthorizationPolicy
 
-The `AuthorizationPolicy` combines the role definition and the binding into a single resource. The same configuration in the new API:
+The `AuthorizationPolicy` combines the role definition and the binding into a single resource. The same configuration in the current API:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -85,7 +85,7 @@ spec:
 ```
 
 Notice that:
-- No separate `ClusterRbacConfig` is needed. Authorization is always active when policies exist.
+- No separate `ClusterRbacConfig` is needed. Authorization policies are evaluated when they exist, and workloads with ALLOW policies deny requests that do not match any ALLOW rule.
 - The `ServiceRole` and `ServiceRoleBinding` are merged into one `AuthorizationPolicy`.
 - The target service is identified by a label selector, not by hostname.
 - The subject goes in the `from.source` field.
@@ -97,15 +97,17 @@ Here is how each field in the old API maps to the new one:
 
 | RBAC v1 | AuthorizationPolicy |
 |---------|-------------------|
-| `ClusterRbacConfig` | Not needed (policies are always active) |
-| `ServiceRole.spec.rules[].services` | `spec.selector.matchLabels` |
+| `ClusterRbacConfig` | Use policy placement and, when needed, an empty policy spec to preserve default-deny behavior |
+| `ServiceRole.spec.rules[].services` | `spec.selector.matchLabels` on the workloads behind the service |
 | `ServiceRole.spec.rules[].methods` | `spec.rules[].to[].operation.methods` |
 | `ServiceRole.spec.rules[].paths` | `spec.rules[].to[].operation.paths` |
 | `ServiceRoleBinding.spec.subjects[].user` | `spec.rules[].from[].source.principals` |
-| `ServiceRoleBinding.spec.subjects[].group` | `spec.rules[].from[].source.requestPrincipals` |
+| `ServiceRoleBinding.spec.subjects[].group` | `spec.rules[].when[].key: request.auth.claims[group]` |
 | `ServiceRoleBinding.spec.subjects[].properties.source.namespace` | `spec.rules[].from[].source.namespaces` |
 | `ServiceRoleBinding.spec.subjects[].properties.source.ip` | `spec.rules[].from[].source.ipBlocks` |
 | `ServiceRoleBinding.spec.subjects[].properties.request.headers` | `spec.rules[].when[].key: request.headers[name]` |
+
+The `principals` and `namespaces` source fields are derived from the peer certificate, so they require mTLS. JWT identities are matched with `requestPrincipals` or `request.auth.claims[...]` conditions.
 
 ## Step-by-Step Migration Process
 
@@ -114,16 +116,16 @@ Here is how each field in the old API maps to the new one:
 List all v1 resources:
 
 ```bash
-kubectl get clusterrbacconfig --all-namespaces 2>/dev/null
-kubectl get servicerole --all-namespaces
-kubectl get servicerolebinding --all-namespaces
+kubectl get clusterrbacconfigs.rbac.istio.io --all-namespaces 2>/dev/null
+kubectl get serviceroles.rbac.istio.io --all-namespaces
+kubectl get servicerolebindings.rbac.istio.io --all-namespaces
 ```
 
 If these commands return "the server doesn't have a resource type" errors, the CRDs have already been removed (likely because you upgraded past Istio 1.6). In that case, check your GitOps repo or configuration management for the YAML files.
 
 ### Step 2: Convert Each ServiceRole + ServiceRoleBinding Pair
 
-For each pair, create an equivalent AuthorizationPolicy. Here are several common patterns:
+For each pair, create an equivalent AuthorizationPolicy. If one old `ServiceRole` listed multiple services, create policies for each corresponding workload selector. Here are several common patterns:
 
 **Simple service-to-service access:**
 
@@ -231,9 +233,18 @@ from:
 
 ### Step 3: Handle ClusterRbacConfig
 
-If you had `ClusterRbacConfig` with `ON_WITH_INCLUSION`, you were selectively enabling RBAC per namespace. In the new API, there is no equivalent. Authorization policies are always evaluated when they exist. To replicate the "only enforce in these namespaces" behavior, simply apply your authorization policies in the relevant namespaces and leave other namespaces without policies.
+If you had `ClusterRbacConfig` with `ON_WITH_INCLUSION`, you were selectively enabling RBAC per namespace. In the new API, there is no direct equivalent. To replicate the "only enforce in these namespaces" behavior, apply your authorization policies in the relevant namespaces and leave other namespaces without policies. If RBAC was enabled for a whole namespace, also add an empty policy spec in that namespace to preserve the old default-deny behavior:
 
-If you had `ON_WITH_EXCLUSION`, you were enabling RBAC everywhere except certain namespaces. The equivalent is to add a permissive policy in the excluded namespaces:
+```yaml
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: deny-all
+  namespace: default
+spec: {}
+```
+
+If you had `ON_WITH_EXCLUSION`, you were enabling RBAC everywhere except certain namespaces. The equivalent is to add policies, including default-deny policies where needed, in the namespaces that were not excluded. Namespaces without any AuthorizationPolicy remain allowed by default. If you already have a namespace-wide ALLOW policy and need to make one namespace permissive, use an allow-all policy in that namespace:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -247,9 +258,9 @@ spec:
   - {}
 ```
 
-### Step 4: Apply New Policies Alongside Old Ones
+### Step 4: Apply New Policies Carefully
 
-If your Istio version still supports both APIs (versions 1.4 to 1.5), apply the new AuthorizationPolicy resources first while keeping the old resources in place. Both APIs work simultaneously during this transition period.
+If your Istio version still supports both APIs, apply the new AuthorizationPolicy resources first while keeping the old resources in place. Istio 1.5 is the usual transition release for this migration. In Istio 1.4 and 1.5, the AuthorizationPolicy API version was `security.istio.io/v1beta1`; the `security.istio.io/v1` API is for current Istio releases. For a given workload, if both old RBAC v1 policies and new AuthorizationPolicy resources exist, the new AuthorizationPolicy takes precedence and the old RBAC v1 policy for that workload is ignored. Make sure the new policy fully covers the old behavior before applying it.
 
 ```bash
 kubectl apply -f new-authorization-policies/
@@ -262,9 +273,9 @@ Test thoroughly. Make sure all your services can still communicate.
 Once you have verified that the new policies work correctly:
 
 ```bash
-kubectl delete servicerole --all -n default
-kubectl delete servicerolebinding --all -n default
-kubectl delete clusterrbacconfig default
+kubectl delete serviceroles.rbac.istio.io --all -n default
+kubectl delete servicerolebindings.rbac.istio.io --all -n default
+kubectl delete clusterrbacconfigs.rbac.istio.io default
 ```
 
 ### Step 6: Validate After Migration
@@ -291,6 +302,6 @@ kubectl logs deploy/order-service -c istio-proxy | grep rbac
 - **DENY support** - v1 only had ALLOW. The new API supports DENY and CUSTOM actions
 - **Better matching** - Support for notPrincipals, notNamespaces, notPaths, and other exclusion fields
 - **Workload selector** - Target pods by labels instead of hostname
-- **Conditions** - The `when` field supports matching on any Envoy attribute
+- **Conditions** - The `when` field supports matching on Istio's documented authorization condition attributes
 
 The migration from RBAC v1 to AuthorizationPolicy is mostly a straightforward mapping exercise. The hardest part is usually finding all the old resources and understanding what they were doing. Once you have that inventory, converting them is mechanical. The new API is genuinely better, and you will appreciate the simplicity once the migration is complete.
