@@ -90,7 +90,7 @@ Create groups and individual services that map to your user-facing functionality
 Each service on the status page should be backed by one or more monitors. These monitors determine the service status automatically:
 
 ```yaml
-# Monitor configuration for REST API
+# Example settings to enter when creating a OneUptime HTTP/API monitor
 
 monitor:
   type: HTTP
@@ -148,15 +148,15 @@ OneUptime automatically updates service status based on monitor results:
 | Monitor Status | Status Page Display |
 |---|---|
 | All monitors passing | Operational (green) |
-| Some monitors failing | Degraded Performance (yellow) |
-| All monitors failing | Major Outage (red) |
+| Some monitors failing | Degraded (yellow) |
+| All monitors failing | Offline (red) |
 
 ### Based on Metric Thresholds
 
-You can also tie status page updates to Istio metric thresholds:
+You can also tie status page updates to Istio metric thresholds by creating metric monitors or automation rules that evaluate those thresholds:
 
 ```yaml
-# Service status rules based on Istio metrics
+# Example policy for service status rules based on Istio metrics
 status_rules:
   - service: "REST API"
     conditions:
@@ -223,9 +223,10 @@ Allow users to subscribe to status updates through multiple channels:
 - **Webhook**: For programmatic integration with customer systems
 - **RSS**: For teams that prefer RSS feeds
 
-Configure notification rules to avoid spamming subscribers:
+Configure notification policies to avoid spamming subscribers:
 
 ```yaml
+# Example notification policy
 notification_rules:
   - event: service_degraded
     channels: [email, webhook]
