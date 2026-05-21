@@ -44,7 +44,7 @@ kubectl top pod my-service-pod -n my-namespace --containers | grep istio-proxy
 
 # Check Envoy's own timing stats
 kubectl exec deploy/my-service -c istio-proxy -- \
-  pilot-agent request GET stats | grep "downstream_cx_length_ms\|upstream_rq_time"
+  pilot-agent request GET stats | grep "downstream_rq_time\|upstream_rq_time\|upstream_cx_connect_ms"
 ```
 
 If the sidecar CPU is consistently at its limit, requests get queued. Increase the sidecar CPU limit:
@@ -73,12 +73,12 @@ If you have Jaeger or Zipkin set up:
 kubectl port-forward svc/tracing -n istio-system 16686:80
 ```
 
-Open `http://localhost:16686`, find a slow trace, and look at the span waterfall. Each span shows:
+Open `http://localhost:16686`, find a slow trace, and look at the span waterfall. Depending on your tracing setup and application instrumentation, the trace can show:
 
 - Time in the source proxy
-- Network transit time
 - Time in the destination proxy
 - Time in the application
+- Gaps or long waits between spans that point to network or queuing time
 
 The widest span is your bottleneck.
 
@@ -141,9 +141,9 @@ sum(rate(envoy_cluster_upstream_rq_retry[5m])) by (cluster_name)
 Slow connection establishment can add latency, especially for short-lived requests:
 
 ```promql
-# Connection setup time
+# Connection setup time from Envoy cluster metrics
 histogram_quantile(0.99,
-  sum(rate(istio_request_duration_milliseconds_bucket{reporter="source",connection_security_policy="mutual_tls"}[5m])) by (le)
+  sum(rate(envoy_cluster_upstream_cx_connect_ms_bucket[5m])) by (le)
 )
 ```
 
