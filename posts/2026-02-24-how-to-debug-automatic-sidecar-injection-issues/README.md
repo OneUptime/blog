@@ -80,7 +80,7 @@ kubectl get mutatingwebhookconfiguration istio-sidecar-injector \
   -o jsonpath='{.webhooks[0].clientConfig.caBundle}' | base64 -d | openssl x509 -text -noout 2>/dev/null | grep "Not After"
 ```
 
-If the CA bundle has expired, the webhook calls will fail silently. Restart istiod to regenerate certificates:
+If the CA bundle is invalid or does not match Istio's root certificate, the webhook calls can fail. Restart istiod, then recheck the webhook configuration:
 
 ```bash
 kubectl rollout restart deployment istiod -n istio-system
@@ -88,14 +88,14 @@ kubectl rollout restart deployment istiod -n istio-system
 
 ## Check 3: Is Injection Being Blocked at the Pod Level?
 
-Individual pods can opt out of injection with annotations:
+Individual pods can opt out of injection with labels:
 
 ```bash
 # Check if the pod or its template has injection disabled
 kubectl get deployment my-app -o yaml | grep "sidecar.istio.io/inject"
 ```
 
-If you see `sidecar.istio.io/inject: "false"`, that pod will never get a sidecar regardless of namespace labels.
+If you see `sidecar.istio.io/inject: "false"` in the pod template labels, that pod will never get a sidecar regardless of namespace labels.
 
 Also check if the pod uses `hostNetwork`:
 
@@ -201,14 +201,14 @@ spec:
 
 ## Check 9: Pod Security Standards
 
-If your cluster enforces Pod Security Standards (or the older PodSecurityPolicies), the sidecar init container needs specific capabilities:
+If your cluster enforces Pod Security Standards (or the older PodSecurityPolicies), the sidecar init container needs specific capabilities unless you use the Istio CNI plugin:
 
 ```bash
 # Check namespace enforcement level
 kubectl get namespace my-namespace -o jsonpath='{.metadata.labels.pod-security\.kubernetes\.io/enforce}'
 ```
 
-The `istio-init` container needs `NET_ADMIN` and `NET_RAW` capabilities. If the namespace enforces `restricted` or `baseline` pod security standards, sidecar injection will fail.
+The `istio-init` container needs `NET_ADMIN` and `NET_RAW` capabilities. If the namespace enforces `restricted` or `baseline` pod security standards, pod creation can fail after sidecar injection.
 
 Options:
 1. Set the namespace to `privileged` enforcement
