@@ -24,11 +24,22 @@ kubectl exec -n istio-system deploy/istiod -- curl -s localhost:15014/metrics | 
 
 Key metrics include:
 
-**sidecar_injection_requests_total**: Total number of injection requests received, labeled by success or failure.
+**sidecar_injection_requests_total**: Total number of injection requests received.
 
 ```text
-sidecar_injection_requests_total{success="true"} 15234
-sidecar_injection_requests_total{success="false"} 3
+sidecar_injection_requests_total 15237
+```
+
+**sidecar_injection_success_total**: Total number of successful sidecar injection requests.
+
+```text
+sidecar_injection_success_total 15234
+```
+
+**sidecar_injection_failure_total**: Total number of failed sidecar injection requests.
+
+```text
+sidecar_injection_failure_total 3
 ```
 
 **sidecar_injection_time_seconds**: Histogram of injection processing time.
@@ -50,11 +61,11 @@ Once these metrics are being scraped by Prometheus, you can create useful querie
 ### Injection Success Rate
 
 ```promql
-sum(rate(sidecar_injection_requests_total{success="true"}[5m])) /
+sum(rate(sidecar_injection_success_total[5m])) /
 sum(rate(sidecar_injection_requests_total[5m]))
 ```
 
-This gives you the percentage of successful injections. Anything below 100% warrants investigation.
+This gives you the successful injection ratio. Format it as a percentage in dashboards; anything below 100% warrants investigation.
 
 ### Injection Latency (p99)
 
@@ -67,7 +78,7 @@ Healthy injection latency should be under 10ms. If you see p99 latency above 50m
 ### Injection Error Rate
 
 ```promql
-sum(rate(sidecar_injection_requests_total{success="false"}[5m]))
+sum(rate(sidecar_injection_failure_total[5m]))
 ```
 
 This shows the per-second rate of injection failures. Even a small number here is worth investigating.
@@ -91,7 +102,7 @@ Key API server metrics:
 ```promql
 histogram_quantile(0.99,
   sum(rate(apiserver_admission_webhook_admission_duration_seconds_bucket{
-    name="rev.namespace.sidecar-injector.istio.io",
+    name=~".*sidecar-injector.*",
     type="admit"
   }[5m])) by (le)
 )
@@ -101,11 +112,11 @@ histogram_quantile(0.99,
 
 ```promql
 sum(rate(apiserver_admission_webhook_rejection_count{
-  name="rev.namespace.sidecar-injector.istio.io"
+  name=~".*sidecar-injector.*"
 }[5m]))
 ```
 
-These API server metrics include network latency, so they will always be higher than istiod's internal metrics. The difference between the two tells you how much time is spent on network communication.
+These API server metrics include network latency, so they are usually higher than istiod's internal metrics. The difference between the two helps estimate how much time is spent on network communication.
 
 ## Setting Up Grafana Dashboards
 
@@ -158,7 +169,7 @@ spec:
     rules:
     - alert: IstioWebhookHighErrorRate
       expr: |
-        sum(rate(sidecar_injection_requests_total{success="false"}[5m]))
+        sum(rate(sidecar_injection_failure_total[5m]))
         / sum(rate(sidecar_injection_requests_total[5m])) > 0.01
       for: 5m
       labels:
