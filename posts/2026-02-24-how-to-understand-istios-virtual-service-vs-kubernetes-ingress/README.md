@@ -53,12 +53,13 @@ An Ingress requires an Ingress Controller to actually implement the routing. Com
 Istio VirtualService is a much more powerful routing primitive. It handles both external (north-south) and internal (east-west) traffic:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-routes
 spec:
   hosts:
+  - app.example.com
   - api-service
   gateways:
   - my-gateway  # For external traffic
@@ -116,7 +117,7 @@ That is about it. Some Ingress controllers add more features through annotations
 - HTTP headers (exact, prefix, regex)
 - Query parameters
 - HTTP method
-- Source labels (which service is making the request)
+- Source workload labels (which client workloads the rule applies to)
 - Port
 
 ```yaml
@@ -233,7 +234,7 @@ http:
 **VirtualService** works with an Istio Gateway (for external traffic):
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: my-gateway
@@ -251,7 +252,7 @@ spec:
       mode: SIMPLE
       credentialName: app-tls-cert
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: app-routes
