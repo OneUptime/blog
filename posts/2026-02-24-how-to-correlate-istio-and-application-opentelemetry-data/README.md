@@ -8,13 +8,13 @@ Description: How to connect Istio proxy-generated telemetry with application-lev
 
 ---
 
-Istio generates telemetry at the proxy level. Your application generates telemetry at the code level. Both tell part of the story, but the real power comes from correlating them. When you can see a proxy-level span showing network latency connected to an application span showing database query time, you get the complete picture of where time is spent. Setting this up requires getting trace context propagation right and aligning resource attributes between the two data sources.
+Istio generates telemetry at the proxy level. Your application generates telemetry at the code level. Both tell part of the story, but the real power comes from correlating them. When you can see a proxy-level span showing network latency connected to an application span showing database query time, you get the complete picture of where time is spent. Setting this up requires getting trace context propagation right and aligning service-identifying attributes between the two data sources.
 
 ## The Two Layers of Telemetry
 
 **Istio proxy telemetry** captures:
 - Network-level request duration (from proxy receive to proxy send)
-- TLS handshake time
+- TLS and mTLS connection behavior
 - Load balancing decisions
 - Retry and timeout behavior
 - Source and destination service identity
@@ -30,7 +30,7 @@ Neither layer alone tells the full story. A slow request might have fast proxy s
 
 ## Trace Context Propagation: The Connection Point
 
-The mechanism that connects proxy spans to application spans is trace context propagation. When the Envoy proxy creates a span, it generates a trace ID and span ID. These are passed to the application through HTTP headers. If the application uses OpenTelemetry and extracts these headers, its spans share the same trace ID and become part of the same trace.
+The mechanism that connects proxy spans to application spans is trace context propagation. When a request enters the mesh, Envoy uses the incoming trace context, or creates one if none exists, and includes it in HTTP headers. If the application uses OpenTelemetry and extracts these headers, its spans share the same trace ID and become part of the same trace.
 
 The headers Istio uses:
 
@@ -42,6 +42,7 @@ x-b3-traceid: <trace-id>
 x-b3-spanid: <span-id>
 x-b3-parentspanid: <parent-span-id>
 x-b3-sampled: <0 or 1>
+x-b3-flags: <debug flag>
 ```
 
 Istio supports both W3C Trace Context (`traceparent`) and B3 formats. Your application should extract and propagate both for maximum compatibility.
@@ -60,8 +61,9 @@ from opentelemetry.instrumentation.requests import RequestsInstrumentor
 from opentelemetry.propagators.b3 import B3MultiFormat
 from opentelemetry.propagate import set_global_textmap
 from opentelemetry.propagators.composite import CompositePropagator
-from opentelemetry.trace.propagation import TraceContextTextMapPropagator
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 from opentelemetry.sdk.resources import Resource
+import requests
 
 # Configure propagators for both W3C and B3
 
@@ -86,7 +88,7 @@ provider.add_span_processor(BatchSpanProcessor(exporter))
 trace.set_tracer_provider(provider)
 
 # Auto-instrument Flask and outgoing HTTP requests
-from flask import Flask
+from flask import Flask, jsonify, request
 app = Flask(__name__)
 FlaskInstrumentor().instrument_app(app)
 RequestsInstrumentor().instrument()
@@ -97,13 +99,14 @@ tracer = trace.get_tracer(__name__)
 def create_order():
     with tracer.start_as_current_span("create_order") as span:
         span.set_attribute("order.type", "standard")
+        order_data = request.get_json()
 
         # This outgoing request will carry the trace context
         response = requests.post('http://payment-service/charge', json=order_data)
 
         with tracer.start_as_current_span("save_to_database"):
             # Database operation
-            db.save(order)
+            db.save(order_data)
 
         return jsonify({"status": "created"})
 ```
@@ -122,7 +125,7 @@ import (
     "go.opentelemetry.io/otel/propagation"
     "go.opentelemetry.io/otel/sdk/resource"
     sdktrace "go.opentelemetry.io/otel/sdk/trace"
-    semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
+    semconv "go.opentelemetry.io/otel/semconv/v1.40.0"
     "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
     "go.opentelemetry.io/contrib/propagators/b3"
 )
@@ -165,61 +168,54 @@ func main() {
     http.Handle("/orders", handler)
     http.ListenAndServe(":8080", nil)
 }
+
+func orderHandler(w http.ResponseWriter, r *http.Request) {
+    w.WriteHeader(http.StatusCreated)
+}
 ```
 
 ### Node.js with OpenTelemetry
 
 ```javascript
-const { NodeTracerProvider } = require('@opentelemetry/sdk-trace-node');
+const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
-const { BatchSpanProcessor } = require('@opentelemetry/sdk-trace-base');
-const { Resource } = require('@opentelemetry/resources');
-const { SEMRESATTRS_SERVICE_NAME } = require('@opentelemetry/semantic-conventions');
-const { W3CTraceContextPropagator } = require('@opentelemetry/core');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const { ATTR_SERVICE_NAME } = require('@opentelemetry/semantic-conventions');
+const {
+  CompositePropagator,
+  W3CTraceContextPropagator,
+} = require('@opentelemetry/core');
 const { B3Propagator, B3InjectEncoding } = require('@opentelemetry/propagator-b3');
-const { CompositePropagator } = require('@opentelemetry/core');
-const { registerInstrumentations } = require('@opentelemetry/instrumentation');
 const { HttpInstrumentation } = require('@opentelemetry/instrumentation-http');
 const { ExpressInstrumentation } = require('@opentelemetry/instrumentation-express');
 
-const opentelemetry = require('@opentelemetry/api');
-
-// Configure propagators
-opentelemetry.propagation.setGlobalPropagator(
-  new CompositePropagator({
+const sdk = new NodeSDK({
+  resource: resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: 'order-service',
+  }),
+  traceExporter: new OTLPTraceExporter({
+    url: 'http://otel-collector.observability:4317',
+  }),
+  textMapPropagator: new CompositePropagator({
     propagators: [
       new W3CTraceContextPropagator(),
       new B3Propagator({ injectEncoding: B3InjectEncoding.MULTI_HEADER }),
     ],
-  })
-);
-
-const provider = new NodeTracerProvider({
-  resource: new Resource({
-    [SEMRESATTRS_SERVICE_NAME]: 'order-service',
   }),
-});
-
-const exporter = new OTLPTraceExporter({
-  url: 'grpc://otel-collector.observability:4317',
-});
-
-provider.addSpanProcessor(new BatchSpanProcessor(exporter));
-provider.register();
-
-registerInstrumentations({
   instrumentations: [
     new HttpInstrumentation(),
     new ExpressInstrumentation(),
   ],
 });
+
+sdk.start();
 ```
 
 ## The Critical Requirement: Header Forwarding
 
 Even if your application has OpenTelemetry instrumentation, traces will be broken if the application doesn't forward context headers to downstream services. This is the single most common reason for disconnected traces.
 
-The Envoy proxy creates the trace context for inbound requests. Your application MUST:
+The Envoy proxy uses the inbound trace context, or creates one when the request has none. Your application MUST:
 
 1. Extract the trace context from incoming request headers
 2. Use that context as the parent for any spans it creates
@@ -252,19 +248,24 @@ from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 
+metric_reader = PeriodicExportingMetricReader(
+    OTLPMetricExporter(endpoint="otel-collector.observability:4317", insecure=True)
+)
+metrics.set_meter_provider(MeterProvider(metric_readers=[metric_reader]))
+
 meter = metrics.get_meter(__name__)
 request_counter = meter.create_counter(
     "app.requests",
     description="Number of requests processed",
 )
 
-# When recording a metric, the current span context is automatically captured as an exemplar
+# When exemplars are enabled, the current sampled span context can be attached to the measurement
 request_counter.add(1, {"endpoint": "/orders", "method": "POST"})
 ```
 
-Resource Attribute Alignment
+## Resource Attribute Alignment
 
-For correlation to work well in backends like Grafana, resource attributes should be consistent between Istio and application telemetry:
+For correlation to work well in backends like Grafana, service-identifying attributes should be consistent between Istio and application telemetry. Istio `customTags` add span tags to proxy-generated spans, so use them to mirror the identifiers your application sets as resource attributes:
 
 ```yaml
 # Istio custom tags (in Telemetry resource)
