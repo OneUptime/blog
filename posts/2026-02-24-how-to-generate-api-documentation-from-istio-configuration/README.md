@@ -101,15 +101,16 @@ EOF
   echo $VS | jq -r '
     .spec.http[]? |
     "### " + (.match[0].uri.prefix // .match[0].uri.exact // "/*") + "\n" +
-    "- **Timeout:** " + (.timeout // "default (15s)") + "\n" +
+    "- **Timeout:** " + (.timeout // "default (disabled)") + "\n" +
     "- **Retries:** " + ((.retries.attempts // 0) | tostring) + " attempts\n" +
     "- **Destination:** " + .route[0].destination.host + ":" + (.route[0].destination.port.number // 80 | tostring) + "\n"
   ' >> $OUTPUT_DIR/${NAME}.md
 
   # Add traffic policy info from DestinationRule
+  DEST_HOST=$(echo $VS | jq -r '[.spec.http[]?.route[]?.destination.host][0] // empty')
   DR=$(kubectl get destinationrule -n $NS -o json 2>/dev/null | \
-    jq -c --arg host "$(echo $VS | jq -r '.spec.hosts[0]')" \
-    '.items[] | select(.spec.host | contains($host))')
+    jq -c --arg host "$DEST_HOST" \
+    '.items[] | select(.spec.host == $host)')
 
   if [ -n "$DR" ]; then
     cat >> $OUTPUT_DIR/${NAME}.md << EOF
@@ -132,7 +133,7 @@ echo "Documentation generated in $OUTPUT_DIR"
 
 ## Using Python for Richer Documentation
 
-For more structured output, use Python with the Kubernetes client:
+For more structured output, use Python to call `kubectl` and render the results:
 
 ```python
 #!/usr/bin/env python3
@@ -170,7 +171,7 @@ def generate_docs():
         for http_route in vs["spec"].get("http", []):
             route = {
                 "match": [],
-                "timeout": http_route.get("timeout", "15s (default)"),
+                "timeout": http_route.get("timeout", "default (disabled)"),
                 "retries": http_route.get("retries", {}),
                 "destinations": []
             }
@@ -291,6 +292,12 @@ spec:
 The RBAC needed for the doc generator:
 
 ```yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: doc-generator
+  namespace: istio-system
+---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -329,8 +336,8 @@ kubectl get authorizationpolicies -A -o json | jq -r '
   "**Action:** " + (.spec.action // "ALLOW") + "\n" +
   (
     .spec.rules[]? |
-    "- From: " + (.from[].source.principals // ["any"] | join(", ")) + "\n" +
-    "  To: " + (.to[].operation.methods // ["*"] | join(", ")) + " " + (.to[].operation.paths // ["/*"] | join(", "))
+    "- From: " + (((.from // []) | map(.source.principals // ["any"]) | add) // ["any"] | join(", ")) + "\n" +
+    "  To: " + (((.to // []) | map(.operation.methods // ["*"]) | add) // ["*"] | join(", ")) + " " + (((.to // []) | map(.operation.paths // ["/*"]) | add) // ["/*"] | join(", "))
   ) + "\n"
 '
 ```
