@@ -70,6 +70,7 @@ metadata:
   namespace: backend
 spec:
   schedule: "0 9 * * 1-5"  # 9 AM Monday-Friday
+  timeZone: "America/New_York"
   jobTemplate:
     spec:
       template:
@@ -103,6 +104,7 @@ metadata:
   namespace: backend
 spec:
   schedule: "0 18 * * 1-5"  # 6 PM Monday-Friday
+  timeZone: "America/New_York"
   jobTemplate:
     spec:
       template:
@@ -238,7 +240,7 @@ var rules = map[string]TimeRule{
 }
 
 func checkHandler(w http.ResponseWriter, r *http.Request) {
-    path := r.Header.Get("X-Original-Url")
+    path := r.URL.Path
     now := time.Now()
 
     for prefix, rule := range rules {
@@ -259,6 +261,7 @@ func checkHandler(w http.ResponseWriter, r *http.Request) {
             }
 
             if !dayAllowed || !timeAllowed {
+                w.Header().Set("x-time-denied-reason", "outside allowed time window")
                 w.WriteHeader(http.StatusForbidden)
                 json.NewEncoder(w).Encode(map[string]string{
                     "error": "Access denied: outside allowed time window",
@@ -268,11 +271,12 @@ func checkHandler(w http.ResponseWriter, r *http.Request) {
         }
     }
 
+    w.Header().Set("x-time-allowed", "true")
     w.WriteHeader(http.StatusOK)
 }
 
 func main() {
-    http.HandleFunc("/check", checkHandler)
+    http.HandleFunc("/", checkHandler)
     http.ListenAndServe(":8080", nil)
 }
 ```
@@ -291,7 +295,6 @@ spec:
         port: 8080
         headersToUpstreamOnAllow: ["x-time-allowed"]
         headersToDownstreamOnDeny: ["x-time-denied-reason"]
-        includeRequestHeadersInCheck: ["x-original-url"]
 ```
 
 Apply it with an AuthorizationPolicy:
@@ -351,6 +354,7 @@ spec:
             function envoy_on_request(request_handle)
               local hour = tonumber(os.date("%H"))
               local day = tonumber(os.date("%w"))
+              request_handle:headers():remove("x-time-window")
               if hour >= 9 and hour < 18 and day >= 1 and day <= 5 then
                 request_handle:headers():add("x-time-window", "business-hours")
               else
@@ -394,7 +398,7 @@ kubectl get authorizationpolicy maintenance-api-access -n backend -o yaml
 # sum(rate(istio_requests_total{destination_workload="maintenance-api",response_code="403"}[5m]))
 ```
 
-Set up alerts for unexpected denials during business hours, which might indicate the CronJob failed:
+Set up alerts for unexpected denials during business hours, which might indicate the CronJob failed. Prometheus `hour()` and `day_of_week()` evaluate in UTC, so adjust the window to match your policy timezone:
 
 ```yaml
 groups:
