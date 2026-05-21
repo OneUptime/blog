@@ -8,13 +8,13 @@ Description: How to properly configure Kubernetes security contexts for Istio si
 
 ---
 
-Every pod in an Istio mesh runs at least two containers: your application and the Envoy sidecar proxy. Both need proper security context configuration. The sidecar also has an init container that sets up iptables rules for traffic interception. Each of these containers has different security requirements, and getting them right is important for both security and functionality.
+Every application pod in an Istio sidecar mesh runs at least two containers: your application and the Envoy sidecar proxy. Both need proper security context configuration. Without Istio CNI, the sidecar injection also adds an init container that sets up iptables rules for traffic interception. Each of these containers has different security requirements, and getting them right is important for both security and functionality.
 
 This guide explains what security context settings you need, why you need them, and how to configure them without breaking Istio.
 
 ## Understanding the Containers
 
-A typical Istio-injected pod has:
+A typical Istio-injected pod without Istio CNI has:
 
 1. **istio-init** (init container) - Sets up iptables rules to redirect traffic through the sidecar. Requires `NET_ADMIN` and `NET_RAW` capabilities.
 2. **istio-proxy** (sidecar container) - The Envoy proxy that handles all traffic. Runs as user 1337.
@@ -66,7 +66,7 @@ The init container runs as root because iptables operations require it. The side
 
 ## Eliminating Root with Istio CNI
 
-The biggest security improvement you can make is removing the need for the privileged init container by using the Istio CNI plugin. The CNI plugin handles traffic interception at the node level, so pods do not need `NET_ADMIN` capabilities.
+The biggest security improvement you can make is removing the need for the privileged init container by using the Istio CNI plugin. The CNI plugin handles traffic interception during pod network setup, so pods do not need `NET_ADMIN` or `NET_RAW` capabilities.
 
 Enable the CNI plugin:
 
@@ -85,7 +85,7 @@ spec:
       - kube-system
 ```
 
-With CNI enabled, the init container is no longer injected, and you can apply much stricter security contexts to your pods:
+With CNI enabled, the `istio-init` container is no longer injected, and you can apply much stricter security contexts to your pods. Istio may still inject an `istio-validation` init container to verify that traffic redirection was configured correctly:
 
 ```yaml
 apiVersion: apps/v1
@@ -112,9 +112,9 @@ spec:
             - ALL
 ```
 
-## Configuring Security Context via Annotations
+## Configuring Sidecar Resources via Annotations
 
-You can customize the sidecar's security context using pod annotations:
+You can customize the sidecar's resource requests and limits using pod annotations:
 
 ```yaml
 apiVersion: apps/v1
@@ -135,9 +135,9 @@ spec:
         image: myregistry/myapp:v1
 ```
 
-## Global Security Context via IstioOperator
+## Global Proxy Settings via IstioOperator
 
-Set default security context for all sidecar proxies globally:
+Set default resource requests, limits, and related proxy settings for all sidecar proxies globally:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -164,13 +164,13 @@ spec:
 
 Kubernetes Pod Security Admission enforces security standards at three levels: Privileged, Baseline, and Restricted. Here is how Istio works with each.
 
-**Baseline level** (works with default Istio):
+**Baseline level** (requires Istio CNI):
 
 ```bash
 kubectl label namespace myapp pod-security.kubernetes.io/enforce=baseline
 ```
 
-The baseline level allows the init container's `NET_ADMIN` capability, so standard Istio injection works.
+The baseline level does not allow the init container's `NET_ADMIN` or `NET_RAW` capabilities, so standard Istio injection without CNI does not work. Use the Istio CNI plugin so workload pods do not need those capabilities.
 
 **Restricted level** (requires Istio CNI):
 
@@ -180,7 +180,7 @@ kubectl label namespace myapp \
   pod-security.kubernetes.io/warn=restricted
 ```
 
-The restricted level does not allow `NET_ADMIN`, so you must use the Istio CNI plugin. Also, all containers must run as non-root with no privilege escalation.
+The restricted level does not allow `NET_ADMIN`, so you must use the Istio CNI plugin. Also, Linux containers must run as non-root with no privilege escalation, must drop all capabilities, and must set an allowed seccomp profile.
 
 Verify your pods meet the restricted standard:
 
@@ -264,7 +264,7 @@ spec:
             type: RuntimeDefault
 ```
 
-The `RuntimeDefault` profile works well for both application containers and the Istio sidecar. It blocks dangerous system calls while allowing everything Envoy needs to function.
+The `RuntimeDefault` profile is accepted by the Kubernetes restricted Pod Security Standard and is the usual starting point for application containers and the Istio sidecar. Test your workload after enabling it, especially if the application has unusual syscall requirements.
 
 ## Verifying Security Context
 
@@ -299,7 +299,7 @@ kubectl exec deploy/myapp -c istio-proxy -- cat /proc/1/status | grep Cap
 
 **Problem**: Pod fails to start with "operation not permitted" after adding security context.
 
-Solution: Make sure you have the Istio CNI plugin installed if you are using the restricted PSA level.
+Solution: Make sure you have the Istio CNI plugin installed if you are using the baseline or restricted PSA level.
 
 **Problem**: Application cannot write to filesystem.
 
