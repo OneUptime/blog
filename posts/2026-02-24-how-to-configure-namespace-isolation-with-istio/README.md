@@ -206,16 +206,25 @@ spec:
   rules:
   - from:
     - source:
-        namespaces: ["$(NAMESPACE)"]
+        namespaces: ["NAMESPACE_PLACEHOLDER"]
 ```
 
-Then in each namespace overlay, set the namespace:
+Then in each namespace overlay, set the namespace and patch the source namespace value:
 
 ```yaml
 # overlays/production/kustomization.yaml
 namespace: production
 resources:
 - ../../base
+
+patches:
+- target:
+    kind: AuthorizationPolicy
+    name: allow-intra-namespace
+  patch: |-
+    - op: replace
+      path: /spec/rules/0/from/0/source/namespaces/0
+      value: production
 ```
 
 ## Validating Your Isolation
@@ -226,7 +235,7 @@ After applying your policies, test them. The simplest way is to exec into a pod 
 kubectl exec -it deploy/test-client -n frontend -- curl -v http://api-gateway.backend.svc.cluster.local:8080/health
 ```
 
-If your isolation is working, you should get a connection refused or a 403 Forbidden response. If it goes through when it shouldn't, check your policies.
+If your isolation is working, HTTP requests should get a 403 Forbidden response. For raw TCP traffic, you may see the connection fail or close instead. If it goes through when it shouldn't, check your policies.
 
 You can also use `istioctl analyze` to look for configuration issues:
 
@@ -246,7 +255,7 @@ A few things that catch people off guard with namespace isolation:
 
 Services that use headless services or StatefulSets sometimes have different communication patterns. Make sure your policies account for pod-to-pod direct communication, not just service-level traffic.
 
-If you're using Istio's sidecar injection, pods without sidecars won't be subject to authorization policies. Make sure all namespaces have sidecar injection enabled, or use `PeerAuthentication` with `STRICT` mode to reject plaintext connections.
+If you're using Istio's sidecar injection, workloads without sidecars won't enforce authorization policies on their own inbound traffic, and they won't present an Istio identity when calling other workloads. Make sure all namespaces have sidecar injection enabled, or use `PeerAuthentication` with `STRICT` mode to reject plaintext connections to meshed workloads.
 
 Jobs and CronJobs can be tricky because they create short-lived pods. If these pods need cross-namespace access, make sure the service account they run under is included in your allow rules.
 
