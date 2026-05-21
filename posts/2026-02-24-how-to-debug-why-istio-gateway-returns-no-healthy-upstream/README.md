@@ -8,7 +8,7 @@ Description: How to troubleshoot the no healthy upstream error from Istio ingres
 
 ---
 
-The "no healthy upstream" error is one of the most common and frustrating issues with the Istio ingress gateway. You see a 503 status code and a message like `no healthy upstream` or the Envoy response flag `UH`. This means the gateway received the request, matched a route, but couldn't find any healthy backend to send it to. There are several possible causes, and this guide covers all of them.
+The "no healthy upstream" error is one of the most common and frustrating issues with the Istio ingress gateway. You see a 503 status code and a message like `no healthy upstream` or the Envoy response flag `UH`. This means the gateway received the request, matched a route, but couldn't find any healthy backend to send it to. There are several possible causes, and this guide covers the common ones.
 
 ## What "No Healthy Upstream" Means
 
@@ -19,7 +19,7 @@ When Envoy (the proxy behind the Istio gateway) tries to forward a request to a 
 - In a draining state
 - Non-existent
 
-Then Envoy returns 503 with `no healthy upstream`. The response flags in the access log will show `UH` (Upstream Unhealthy).
+Then Envoy returns 503 with `no healthy upstream`. The response flags in the access log will show `UH` (No Healthy Upstream).
 
 ## Step 1: Check the Gateway Access Log
 
@@ -47,11 +47,12 @@ Make sure the service your VirtualService points to actually exists:
 
 kubectl get svc my-service -n production
 
-# Check it has endpoints
-kubectl get endpoints my-service -n production
+# Check it has ready EndpointSlice entries
+kubectl get endpointslice -n production -l kubernetes.io/service-name=my-service \
+  -o jsonpath='{range .items[*].endpoints[*]}{.addresses}{" ready="}{.conditions.ready}{"\n"}{end}'
 ```
 
-If there are no endpoints, the service selector doesn't match any running pods:
+If there are no ready endpoints, the service selector might not match any running pods:
 
 ```bash
 # Check the service selector
@@ -63,7 +64,7 @@ kubectl get pods -n production -l app=my-service
 
 ## Step 3: Check That Pods Are Ready
 
-Endpoints only include pods that pass their readiness check. If all pods are failing readiness:
+Kubernetes EndpointSlices track endpoint readiness, and service traffic is normally sent only to ready pods. If all pods are failing readiness:
 
 ```bash
 kubectl get pods -n production -l app=my-service
@@ -115,7 +116,7 @@ spec:
               number: 8080  # Match the Service port
 ```
 
-Also, Istio uses the port name to determine the protocol. The Service port name should start with the protocol:
+Also, Istio uses the Service port name, or the Kubernetes `appProtocol` field, to determine the protocol explicitly. The Service port name should start with the protocol:
 
 ```yaml
 ports:
@@ -125,26 +126,26 @@ ports:
     name: grpc-api    # The "grpc" prefix tells Istio to use gRPC
 ```
 
-If the port name doesn't have a protocol prefix, Istio treats it as TCP, which can cause problems with HTTP routing.
+If the port name doesn't have a protocol prefix and `appProtocol` is not set, Istio may rely on protocol auto-detection. If the protocol cannot be determined, Istio treats the traffic as plain TCP, which can cause problems with HTTP routing. Gateways also need explicit protocol selection for some HTTP backend protocol behavior.
 
 ## Step 5: Check the Gateway's Endpoint List
 
 See what endpoints the gateway proxy knows about:
 
 ```bash
-istioctl proxy-config endpoints deploy/istio-ingressgateway -n istio-system | grep my-service
+istioctl proxy-config endpoints deployment/istio-ingressgateway -n istio-system | grep my-service
 ```
 
 You should see the pod IPs listed with `HEALTHY` status. If you see:
 
 - No entries: The gateway doesn't know about the service (check the VirtualService host)
-- `UNHEALTHY` entries: Outlier detection has ejected them
+- `UNHEALTHY` entries: Health checks or outlier detection have marked them unhealthy
 - Wrong IPs: Something is wrong with service discovery
 
 For detailed endpoint info:
 
 ```bash
-istioctl proxy-config endpoints deploy/istio-ingressgateway -n istio-system \
+istioctl proxy-config endpoints deployment/istio-ingressgateway -n istio-system \
   --cluster "outbound|8080||my-service.production.svc.cluster.local" -o json
 ```
 
@@ -192,7 +193,7 @@ If no pods have the `version: v2` label, the subset has no endpoints and you get
 The gateway might be trying to use mTLS to connect to a service that doesn't support it (or vice versa):
 
 ```bash
-istioctl proxy-config clusters deploy/istio-ingressgateway -n istio-system \
+istioctl proxy-config clusters deployment/istio-ingressgateway -n istio-system \
   --fqdn my-service.production.svc.cluster.local -o json | \
   python3 -c "
 import sys, json
@@ -223,11 +224,11 @@ spec:
 
 ## Step 9: Check for DNS Resolution Issues
 
-If you're using Istio's DNS proxy, make sure it's resolving the service correctly:
+If you're using Istio's DNS proxy, check DNS proxy activity and failures:
 
 ```bash
-kubectl exec -n istio-system deploy/istio-ingressgateway -c istio-proxy -- \
-  pilot-agent request GET /dns?hostname=my-service.production.svc.cluster.local
+kubectl exec -n istio-system deployment/istio-ingressgateway -c istio-proxy -- \
+  pilot-agent request GET /metrics --debug-port 15020 | grep '^dns_'
 ```
 
 ## Step 10: Comprehensive Diagnosis Script
@@ -244,8 +245,8 @@ echo "=== Service Check ==="
 kubectl get svc ${SERVICE} -n ${NAMESPACE}
 
 echo ""
-echo "=== Endpoints Check ==="
-kubectl get endpoints ${SERVICE} -n ${NAMESPACE}
+echo "=== EndpointSlice Check ==="
+kubectl get endpointslice -n ${NAMESPACE} -l kubernetes.io/service-name=${SERVICE}
 
 echo ""
 echo "=== Pod Status ==="
@@ -253,15 +254,15 @@ kubectl get pods -n ${NAMESPACE} -l app=${SERVICE}
 
 echo ""
 echo "=== Gateway Endpoints ==="
-istioctl proxy-config endpoints deploy/istio-ingressgateway -n istio-system | grep ${SERVICE}
+istioctl proxy-config endpoints deployment/istio-ingressgateway -n istio-system | grep ${SERVICE}
 
 echo ""
 echo "=== Gateway Routes ==="
-istioctl proxy-config routes deploy/istio-ingressgateway -n istio-system | grep ${SERVICE}
+istioctl proxy-config routes deployment/istio-ingressgateway -n istio-system | grep ${SERVICE}
 
 echo ""
 echo "=== Gateway Clusters ==="
-istioctl proxy-config clusters deploy/istio-ingressgateway -n istio-system | grep ${SERVICE}
+istioctl proxy-config clusters deployment/istio-ingressgateway -n istio-system | grep ${SERVICE}
 
 echo ""
 echo "=== VirtualService ==="
