@@ -8,13 +8,13 @@ Description: A practical guide to diagnosing and handling Istio sidecar proxy fa
 
 ---
 
-When an Istio sidecar proxy fails, your application pod effectively loses its network connection. Because iptables rules redirect all traffic through the sidecar, a dead proxy means no inbound or outbound traffic for that pod. Understanding how sidecar failures manifest, how to diagnose them, and how to recover is essential for running Istio in production.
+When an Istio sidecar proxy fails, your application pod effectively loses its mesh network connection. Because iptables rules redirect captured traffic through the sidecar, a dead proxy means no inbound or outbound mesh traffic for that pod. Understanding how sidecar failures manifest, how to diagnose them, and how to recover is essential for running Istio in production.
 
 ## How Sidecar Failures Manifest
 
 Sidecar failures show up in several ways depending on what went wrong:
 
-**Complete crash**: The istio-proxy container crashes and restarts. During the restart, the pod has no network connectivity. Kubernetes restart policies handle this automatically, but there is a gap.
+**Complete crash**: The istio-proxy container crashes and restarts. During the restart, the pod has no mesh network connectivity. Kubernetes restart policies handle this automatically, but there is a gap.
 
 **Memory exhaustion**: The sidecar runs out of memory and gets OOMKilled. This is one of the most common sidecar failures in large meshes.
 
@@ -91,7 +91,7 @@ spec:
 Fix 2: Scope the sidecar configuration to reduce memory usage:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: my-app-sidecar
@@ -119,19 +119,18 @@ spec:
   template:
     metadata:
       annotations:
-        sidecar.istio.io/proxyCPU: "100m"
-        sidecar.istio.io/proxyCPULimit: "500m"
+        proxy.istio.io/config: '{"concurrency": 2}'
     spec:
       containers:
         - name: my-app
           image: my-app:latest
 ```
 
-Lower CPU requests/limits result in fewer Envoy worker threads, which reduces memory consumption.
+Setting `concurrency` controls the number of Envoy worker threads directly. If it is unset, Istio can determine the worker count from CPU limits, but CPU requests alone do not set the number of workers.
 
 ## Handling Startup Race Conditions
 
-The classic race condition: your application starts, tries to connect to a database or another service, and fails because the sidecar proxy is not ready yet. The iptables rules are already in place (set by the init container), so all traffic is redirected to the sidecar, which is not listening.
+The classic race condition: your application starts, tries to connect to a database or another service, and fails because the sidecar proxy is not ready yet. The iptables rules are already in place (set by the init container or Istio CNI), so captured traffic is redirected to the sidecar, which is not listening.
 
 Fix: Enable holdApplicationUntilProxyStarts:
 
@@ -173,7 +172,7 @@ To minimize the impact:
 1. **Configure retries on the caller side**: The calling service's sidecar should retry failed requests:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app-retries
@@ -190,12 +189,12 @@ spec:
         retryOn: reset,connect-failure,refused-stream
 ```
 
-The `retryOn: reset,connect-failure,refused-stream` catches the exact error types that occur during sidecar crashes.
+The `retryOn: reset,connect-failure,refused-stream` setting covers common reset and connection failure cases that can occur during sidecar crashes.
 
 2. **Use outlier detection to remove unhealthy pods**: If a pod's sidecar is crashing repeatedly, take it out of the load balancing pool:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-app-outlier
@@ -209,7 +208,7 @@ spec:
       maxEjectionPercent: 50
 ```
 
-After 3 consecutive 5xx errors within 10 seconds, the pod is ejected from the pool for 30 seconds, giving the sidecar time to stabilize.
+After 3 consecutive 5xx errors, the proxy evaluates ejection on the 10 second interval and can eject the pod from the pool for at least 30 seconds, giving the sidecar time to stabilize.
 
 ## Handling Stuck Sidecars
 
@@ -311,7 +310,7 @@ metadata:
 spec:
   template:
     metadata:
-      annotations:
+      labels:
         sidecar.istio.io/inject: "false"
 ```
 
@@ -319,4 +318,4 @@ Or consider using Istio's ambient mode, which removes the sidecar from pods enti
 
 ## Summary
 
-Sidecar proxy failures are one of the most disruptive issues in an Istio mesh because they cut off all network connectivity for the affected pod. The most common failures are OOMKills (fix with proper resource limits and Sidecar scoping), startup race conditions (fix with holdApplicationUntilProxyStarts), and crash-related traffic drops (mitigate with retries and outlier detection). Monitor sidecar restart counts and memory usage proactively, and exclude unnecessary traffic from the sidecar to reduce its resource footprint.
+Sidecar proxy failures are one of the most disruptive issues in an Istio mesh because they cut off mesh network connectivity for the affected pod. The most common failures are OOMKills (fix with proper resource limits and Sidecar scoping), startup race conditions (fix with holdApplicationUntilProxyStarts), and crash-related traffic drops (mitigate with retries and outlier detection). Monitor sidecar restart counts and memory usage proactively, and exclude unnecessary traffic from the sidecar to reduce its resource footprint.
