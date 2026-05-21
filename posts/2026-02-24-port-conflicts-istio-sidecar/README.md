@@ -16,7 +16,10 @@ The Envoy sidecar proxy in Istio uses several ports by default:
 
 - **15000** - Envoy admin interface
 - **15001** - Envoy outbound listener (all outbound traffic gets redirected here)
+- **15002** - Failure detection listener
+- **15004** - Debug endpoint
 - **15006** - Envoy inbound listener (all inbound traffic gets redirected here)
+- **15008** - HBONE mTLS tunnel port
 - **15020** - Merged Prometheus telemetry and health checks
 - **15021** - Health check endpoint
 - **15053** - DNS proxy (if enabled)
@@ -58,9 +61,9 @@ The output shows the ISTIO_REDIRECT and ISTIO_IN_REDIRECT chains that capture tr
 
 If your application uses a port that conflicts with Istio, you have a few options.
 
-**Option 1: Change the application port.** This is the simplest fix. If your application listens on port 15000, change it to something else. The Istio reserved ports are documented and unlikely to change between versions.
+**Option 1: Change the application port.** This is the simplest fix. If your application listens on port 15000, change it to something else. Istio documents the ports used by Envoy; check the documentation for your installed Istio version before choosing application ports.
 
-**Option 2: Exclude the port from sidecar interception.** If you cannot change the application port, tell Istio to skip intercepting traffic on that port:
+**Option 2: Exclude the port from sidecar interception.** This does not fix a bind conflict with a port Envoy itself uses, but it can fix ports that should not be captured by the sidecar. If you cannot change that traffic pattern, tell Istio to skip intercepting traffic on that port:
 
 ```yaml
 apiVersion: apps/v1
@@ -71,16 +74,16 @@ spec:
   template:
     metadata:
       annotations:
-        traffic.sidecar.istio.io/excludeInboundPorts: "15090"
-        traffic.sidecar.istio.io/excludeOutboundPorts: "15090"
+        traffic.sidecar.istio.io/excludeInboundPorts: "3306"
+        traffic.sidecar.istio.io/excludeOutboundPorts: "3306"
     spec:
       containers:
       - name: my-app
         ports:
-        - containerPort: 15090
+        - containerPort: 3306
 ```
 
-With these annotations, iptables rules will not redirect traffic on port 15090 to the sidecar. Traffic on that port goes directly to the application container.
+With these annotations, iptables rules will not redirect traffic on port 3306 to the sidecar. Traffic on that port goes directly to the application container.
 
 ## Handling Multiple Application Ports
 
@@ -121,7 +124,7 @@ The port names are important. Istio uses the prefix to determine the protocol:
 - `mysql-*` for MySQL
 - `redis-*` for Redis
 
-If you name a port `metrics` without a protocol prefix, Istio defaults to treating it as TCP in auto-detection mode, which might not be what you want for an HTTP metrics endpoint.
+If you name a port `metrics` without a protocol prefix, Istio relies on automatic protocol detection. It can detect HTTP and HTTP/2, but if the protocol cannot be determined, traffic is treated as plain TCP, which might not be what you want for an HTTP metrics endpoint.
 
 ## Excluding Ports from Sidecar Redirection
 
@@ -154,13 +157,13 @@ When you use `includeInboundPorts`, only those ports get redirected to the sidec
 
 ## Handling Port 443 Conflicts
 
-Port 443 is a special case. Many applications want to serve HTTPS on port 443, but Istio's mTLS also operates on the same port conceptually. When an application terminates TLS itself and the sidecar also tries to handle TLS, you get conflicts.
+Port 443 is a special case. Many applications want to serve HTTPS on port 443, while Istio may also use mTLS between sidecars for service-to-service traffic. Port 443 is not one of Envoy's reserved sidecar ports, but you still need to be explicit about where TLS is terminated and how Istio should classify the service port.
 
 The fix depends on your TLS strategy:
 
 **Let Istio handle TLS (recommended):**
 
-Configure your application to listen on plain HTTP, and let the sidecar handle mTLS:
+Configure your application to listen on plain HTTP, and let Istio handle mTLS between sidecars:
 
 ```yaml
 apiVersion: apps/v1
@@ -190,44 +193,30 @@ spec:
 
 **Let the application handle TLS:**
 
-If the application must terminate TLS itself, disable Istio's protocol detection for that port:
+If the application must terminate TLS itself, declare the service port as HTTPS or TLS so the sidecar treats it as encrypted traffic rather than trying to parse it as plaintext HTTP:
 
 ```yaml
-apiVersion: networking.istio.io/v1
-kind: DestinationRule
+apiVersion: v1
+kind: Service
 metadata:
-  name: my-app-tls
-  namespace: my-namespace
+  name: my-app
 spec:
-  host: my-app
-  trafficPolicy:
-    tls:
-      mode: DISABLE
-    portLevelSettings:
-    - port:
-        number: 443
-      tls:
-        mode: DISABLE
+  ports:
+  - name: https
+    port: 443
+    targetPort: 443
+    protocol: TCP
+  selector:
+    app: my-app
 ```
 
 ## The init Container Port Problem
 
-The Istio init container (`istio-init`) runs before your application and sets up iptables rules. If your application has its own init containers that need network access, they will be affected by the iptables rules set up by `istio-init`.
+In clusters that do not use the Istio CNI node agent, the Istio init container (`istio-init`) runs before your application and sets up iptables rules. If your application has its own init containers that need network access, they can be affected by traffic redirection before the sidecar is ready.
 
-The order of init containers matters. By default, `istio-init` runs first. If your init container needs to make outbound calls before the sidecar proxy is ready, those calls will fail because traffic is redirected to a proxy that is not running yet.
+The order of init containers matters. Without the Istio CNI node agent, Istio injects `istio-init` to set up redirection. With Istio CNI, traffic redirection is configured before application init containers run. In either model, an application init container that makes outbound calls before the sidecar proxy is ready can fail because traffic is redirected to a proxy that is not running yet.
 
 Solutions:
-
-**Use the `holdApplicationUntilProxyStarts` option:**
-
-```yaml
-metadata:
-  annotations:
-    proxy.istio.io/config: |
-      holdApplicationUntilProxyStarts: true
-```
-
-This makes the application container wait until the sidecar proxy is ready.
 
 **Exclude your init container's traffic:**
 
@@ -238,6 +227,8 @@ metadata:
 ```
 
 This excludes traffic to the specified IP ranges from sidecar interception, allowing init containers to reach services directly.
+
+You can also exclude the specific outbound ports the init containers use with `traffic.sidecar.istio.io/excludeOutboundPorts`, or run the init container as the proxy UID (`1337` in the default Istio sidecar configuration) so its traffic is not captured.
 
 ## Checking the Effective Port Configuration
 
