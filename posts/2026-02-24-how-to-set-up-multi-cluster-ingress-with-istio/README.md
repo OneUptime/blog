@@ -97,19 +97,20 @@ Use your DNS provider's load balancing features. Here's an example with Google C
 ```bash
 # Create a health check
 gcloud compute health-checks create http istio-health-check \
+  --global \
+  --check-interval=30s \
+  --source-regions=us-central1,us-east1,us-west1 \
   --port 15021 \
   --request-path /healthz/ready
 
 # Set up DNS with weighted routing
-gcloud dns record-sets transaction start --zone=my-zone
-gcloud dns record-sets transaction add \
-  --name="app.example.com." \
+gcloud dns record-sets create "app.example.com." \
   --type=A \
   --ttl=60 \
   --routing-policy-type=WRR \
-  --routing-policy-data="50=CLUSTER1_IP;50=CLUSTER2_IP" \
+  --routing-policy-data="0.5=CLUSTER1_IP;0.5=CLUSTER2_IP" \
+  --health-check=istio-health-check \
   --zone=my-zone
-gcloud dns record-sets transaction execute --zone=my-zone
 ```
 
 ### TLS Certificate Management
@@ -164,7 +165,7 @@ spec:
               number: 8080
 ```
 
-If `api-v2` only exists in cluster2, the ingress gateway in cluster1 will route traffic to it through the east-west gateway. No special configuration needed since Istio discovers endpoints across clusters automatically.
+If `api-v2` only exists in cluster2, the ingress gateway in cluster1 can route traffic to it through the east-west gateway after the multicluster mesh has endpoint discovery and service exposure configured. You do not need a special VirtualService for the remote cluster; Istio discovers endpoints across clusters through the multicluster configuration.
 
 This approach is simpler but creates a single point of failure at the ingress cluster.
 
@@ -181,7 +182,7 @@ The global load balancer handles:
 - Geographic routing (send users to the nearest cluster)
 - Health checking (remove unhealthy clusters)
 - DDoS protection
-- SSL termination (optional)
+- SSL termination if the chosen load balancer supports it
 
 Example with AWS Global Accelerator:
 
@@ -201,17 +202,15 @@ aws globalaccelerator create-listener \
 aws globalaccelerator create-endpoint-group \
   --listener-arn arn:aws:globalaccelerator::123456:listener/abc/def \
   --endpoint-group-region us-east-1 \
-  --endpoint-configurations '[{"EndpointId":"CLUSTER1_NLB_ARN","Weight":50}]' \
-  --health-check-port 15021 \
-  --health-check-path /healthz/ready
+  --endpoint-configurations '[{"EndpointId":"CLUSTER1_NLB_ARN","Weight":50}]'
 
 aws globalaccelerator create-endpoint-group \
   --listener-arn arn:aws:globalaccelerator::123456:listener/abc/def \
   --endpoint-group-region us-west-2 \
-  --endpoint-configurations '[{"EndpointId":"CLUSTER2_NLB_ARN","Weight":50}]' \
-  --health-check-port 15021 \
-  --health-check-path /healthz/ready
+  --endpoint-configurations '[{"EndpointId":"CLUSTER2_NLB_ARN","Weight":50}]'
 ```
+
+For Network Load Balancer endpoints, configure health checks on the NLB target groups. Global Accelerator endpoint group health check options apply to EC2 instance and Elastic IP address endpoints, not to load balancer endpoints.
 
 ## Configuring Health Check Endpoints
 
@@ -267,7 +266,7 @@ spec:
           ttl: 0s
 ```
 
-But this only works within the endpoints known to a single proxy. Across clusters with DNS-based load balancing, you need to handle session affinity at the DNS or global load balancer level.
+But this only works within the endpoints known to a single proxy. Across clusters with DNS-based load balancing, DNS alone does not provide reliable session affinity; use application-level session handling or a global load balancer that supports client affinity.
 
 ## Monitoring Multi-Cluster Ingress
 
