@@ -10,7 +10,7 @@ Description: Configure different traffic policies per port in Istio DestinationR
 
 Many services expose more than one port. A typical example is a service with an HTTP API on port 8080 and a gRPC endpoint on port 9090. Or a service with a public API on one port and an admin/metrics endpoint on another. Each port might need different traffic policies - different connection limits, different load balancing, or different TLS settings.
 
-Istio's DestinationRule supports port-level traffic policy overrides through the `portLevelSettings` field. This lets you define a default traffic policy for the service and then override specific settings for individual ports.
+Istio's DestinationRule supports port-level traffic policy overrides through the `portLevelSettings` field. This lets you define a default traffic policy for the service and then define policies for individual ports. For a port that has `portLevelSettings`, omitted traffic policy fields use Istio's defaults rather than inheriting the top-level traffic policy.
 
 ## How portLevelSettings Works
 
@@ -84,10 +84,6 @@ metadata:
 spec:
   host: api-service
   trafficPolicy:
-    outlierDetection:
-      consecutive5xxErrors: 5
-      interval: 10s
-      baseEjectionTime: 30s
     portLevelSettings:
     - port:
         number: 8080
@@ -98,6 +94,10 @@ spec:
         http:
           http1MaxPendingRequests: 100
           maxRequestsPerConnection: 50
+      outlierDetection:
+        consecutive5xxErrors: 5
+        interval: 10s
+        baseEjectionTime: 30s
     - port:
         number: 9090
       connectionPool:
@@ -107,6 +107,10 @@ spec:
         http:
           http2MaxRequests: 500
           maxRetries: 5
+      outlierDetection:
+        consecutive5xxErrors: 5
+        interval: 10s
+        baseEjectionTime: 30s
 ```
 
 The HTTP port gets more TCP connections (since each handles one request at a time) and cycles connections after 50 requests. The gRPC port gets fewer TCP connections but allows 500 concurrent HTTP/2 requests multiplexed over those connections.
@@ -245,7 +249,7 @@ trafficPolicy:
     baseEjectionTime: 30s
 ```
 
-It applies to both port 8080 and port 9090 independently. A pod that fails on port 8080 might be ejected from the 8080 pool but still serve 9090 traffic normally.
+It applies to both port 8080 and port 9090 independently, as long as those ports do not have their own `portLevelSettings` that override the top-level traffic policy. A pod that fails on port 8080 might be ejected from the 8080 pool but still serve 9090 traffic normally.
 
 If you want different outlier detection per port:
 
@@ -284,7 +288,7 @@ portLevelSettings:
     number: 8080  # Correct
 ```
 
-**Missing port name**: Istio works best when your service ports are named with a protocol prefix (http-, grpc-, tcp-). Without named ports, Istio might not apply some traffic policies correctly.
+**Missing port name**: Istio works best when your service ports use a protocol name or protocol prefix (for example, `http`, `grpc`, `tcp`, or `http-api`). Without named ports, Istio might not apply some traffic policies correctly.
 
 ## Cleanup
 
