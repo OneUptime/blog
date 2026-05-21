@@ -12,7 +12,7 @@ The default trace spans that Istio generates include basic information like HTTP
 
 ## Default Span Tags
 
-Out of the box, Envoy adds these tags to every span:
+Out of the box, Envoy and your tracing backend commonly expose metadata like this on spans. The exact tag names can vary by tracing provider and exporter:
 
 - `http.method` - GET, POST, PUT, etc.
 - `http.url` - The full request URL
@@ -56,9 +56,9 @@ spec:
           header:
             name: x-tenant-id
             defaultValue: unknown
-        pod_name:
+        proxy_cluster_name:
           environment:
-            name: POD_NAME
+            name: CLUSTER_NAME
             defaultValue: unknown
 ```
 
@@ -68,42 +68,24 @@ This configuration adds five custom tags to every span:
 - `cluster_name` - Another literal, useful for multi-cluster setups
 - `app_version` - Extracted from the `X-App-Version` request header
 - `tenant_id` - Extracted from the `X-Tenant-Id` request header
-- `pod_name` - Extracted from the `POD_NAME` environment variable
+- `proxy_cluster_name` - Extracted from the `CLUSTER_NAME` environment variable available to the sidecar
 
 ## Making Environment Variables Available
 
-For environment variable-based tags to work, the sidecar needs access to the variable. You can inject environment variables into the sidecar using pod annotations or IstioOperator configuration:
+For environment variable-based tags to work, the workload proxy needs access to the variable. Setting an environment variable on your application container does not automatically make it available to the Istio sidecar. For mesh-wide proxy environment variables, add them to the proxy metadata in `MeshConfig`:
 
 ```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: my-service
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
 spec:
-  template:
-    metadata:
-      annotations:
-        sidecar.istio.io/userVolume: '[]'
-    spec:
-      containers:
-        - name: my-service
-          image: my-service:latest
-          env:
-            - name: POD_NAME
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.name
-            - name: POD_NAMESPACE
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.namespace
-            - name: NODE_NAME
-              valueFrom:
-                fieldRef:
-                  fieldPath: spec.nodeName
+  meshConfig:
+    defaultConfig:
+      proxyMetadata:
+        POD_NAMESPACE: "production"
+        CLUSTER_NAME: "us-east-1-prod"
 ```
 
-The Envoy sidecar inherits environment variables from the pod spec, so `POD_NAME`, `POD_NAMESPACE`, and `NODE_NAME` will be available for span tags.
+After changing this proxy configuration, restart workloads so new sidecars are injected with the updated proxy environment. If you need dynamic Kubernetes field values such as the pod name or namespace, inject them into the proxy environment explicitly, or use a header tag populated by your application, rather than assuming the sidecar can read the application container's environment.
 
 ## Per-Workload Custom Tags
 
@@ -152,7 +134,7 @@ spec:
     defaultConfig:
       tracing:
         sampling: 10
-        customTags:
+        custom_tags:
           cluster:
             literal:
               value: production-us-east-1
@@ -175,8 +157,10 @@ spec:
     metadata:
       annotations:
         proxy.istio.io/config: |
+          proxyMetadata:
+            BUILD_HASH: "abc123def"
           tracing:
-            customTags:
+            custom_tags:
               canary:
                 literal:
                   value: "true"
@@ -188,14 +172,11 @@ spec:
       containers:
         - name: my-service
           image: my-service:latest
-          env:
-            - name: BUILD_HASH
-              value: "abc123def"
 ```
 
 ## Header-Based Tags for Multi-Tenant Systems
 
-If your system is multi-tenant, adding the tenant ID to every span is incredibly useful. First, make sure your ingress gateway or frontend service sets the tenant header:
+If your system is multi-tenant, adding the tenant ID to every span is incredibly useful. First, make sure your ingress gateway or frontend service sets the tenant header. If you want Istio to add a fixed request header on a route, use `headers.request.set`:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -208,10 +189,10 @@ spec:
   gateways:
     - main-gateway
   http:
-    - match:
-        - headers:
-            x-tenant-id:
-              exact: tenant-a
+    - headers:
+        request:
+          set:
+            x-tenant-id: tenant-a
       route:
         - destination:
             host: frontend
@@ -262,7 +243,7 @@ spec:
       annotations:
         proxy.istio.io/config: |
           tracing:
-            customTags:
+            custom_tags:
               deployment_version:
                 literal:
                   value: stable-v1
@@ -285,7 +266,7 @@ spec:
       annotations:
         proxy.istio.io/config: |
           tracing:
-            customTags:
+            custom_tags:
               deployment_version:
                 literal:
                   value: canary-v2
