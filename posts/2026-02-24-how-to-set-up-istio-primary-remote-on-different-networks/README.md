@@ -28,7 +28,7 @@ export CTX_CLUSTER1=cluster1   # Primary cluster
 export CTX_CLUSTER2=cluster2   # Remote cluster
 ```
 
-Both clusters should have `istioctl` 1.20+ available. The clusters are on separate networks (no pod IP reachability between them).
+Use an `istioctl` version that matches your Istio control plane release. The clusters are on separate networks (no pod IP reachability between them).
 
 ## Step 1: Shared Root CA
 
@@ -65,7 +65,10 @@ Each cluster gets a unique network identity:
 ```bash
 kubectl label namespace istio-system topology.istio.io/network=network1 --context="${CTX_CLUSTER1}"
 kubectl label namespace istio-system topology.istio.io/network=network2 --context="${CTX_CLUSTER2}"
+kubectl annotate namespace istio-system topology.istio.io/controlPlaneClusters=cluster1 --context="${CTX_CLUSTER2}"
 ```
+
+The annotation on the remote cluster tells the primary cluster's Istiod to manage that cluster after it is attached.
 
 ## Step 3: Install Istio on the Primary
 
@@ -104,11 +107,10 @@ Wait for the gateway to get an external IP:
 kubectl get svc istio-eastwestgateway -n istio-system --context="${CTX_CLUSTER1}" -w
 ```
 
-Expose both Istiod and mesh services:
+Expose Istiod through the gateway:
 
 ```bash
 kubectl apply -f samples/multicluster/expose-istiod.yaml -n istio-system --context="${CTX_CLUSTER1}"
-kubectl apply -f samples/multicluster/expose-services.yaml -n istio-system --context="${CTX_CLUSTER1}"
 ```
 
 Save the gateway address:
@@ -157,10 +159,10 @@ samples/multicluster/gen-eastwest-gateway.sh \
   istioctl install --context="${CTX_CLUSTER2}" -y -f -
 ```
 
-Expose services through the remote gateway:
+Expose services through the east-west gateways:
 
 ```bash
-kubectl apply -f samples/multicluster/expose-services.yaml -n istio-system --context="${CTX_CLUSTER2}"
+kubectl apply -f samples/multicluster/expose-services.yaml -n istio-system --context="${CTX_CLUSTER1}"
 ```
 
 ## Step 7: Create Remote Secret
