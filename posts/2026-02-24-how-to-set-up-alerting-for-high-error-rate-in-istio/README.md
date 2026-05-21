@@ -21,9 +21,9 @@ Quick check of your current error rates:
 ```promql
 # Overall mesh error rate
 
-sum(rate(istio_requests_total{response_code=~"5.*"}[5m]))
+sum(rate(istio_requests_total{response_code=~"5.*",reporter="destination"}[5m]))
 /
-sum(rate(istio_requests_total[5m]))
+sum(rate(istio_requests_total{reporter="destination"}[5m]))
 ```
 
 ## Basic Error Rate Alerts
@@ -194,7 +194,7 @@ For production systems, SLO-based alerting with burn rates is more effective tha
         sum(rate(istio_requests_total{reporter="destination"}[1h]))
         by (destination_workload, destination_workload_namespace)
 
-    # Fast burn: 14.4x budget consumption (2% error rate for 99.9% SLO)
+    # Fast burn: 14.4x budget consumption (1.44% error rate for 99.9% SLO)
     - alert: IstioErrorBudgetFastBurn
       expr: |
         istio:service:error_ratio_5m > (14.4 * 0.001)
@@ -205,7 +205,7 @@ For production systems, SLO-based alerting with burn rates is more effective tha
         severity: critical
       annotations:
         summary: "Fast error budget burn for {{ $labels.destination_workload }}"
-        description: "At current error rate, the monthly error budget will be exhausted in less than 2 days"
+        description: "At current error rate, the monthly error budget will be exhausted in about 2 days"
 
     # Slow burn: 3x budget consumption
     - alert: IstioErrorBudgetSlowBurn
