@@ -22,20 +22,16 @@ Gradual rollout gives you time to observe, detect issues, and stop the blast rad
 
 The most straightforward way to gradually roll out changes is through weighted traffic shifting. Say you want to change how traffic flows to a service. Instead of flipping the switch for 100% of traffic, you start small.
 
-First, create two versions of your DestinationRule subsets:
+First, create two DestinationRule subsets, with the new traffic policy scoped to the canary subset:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service
   namespace: production
 spec:
   host: my-service
-  trafficPolicy:
-    connectionPool:
-      tcp:
-        maxConnections: 100
   subsets:
     - name: stable
       labels:
@@ -43,12 +39,16 @@ spec:
     - name: canary
       labels:
         version: v2
+      trafficPolicy:
+        connectionPool:
+          tcp:
+            maxConnections: 100
 ```
 
 Then set up a VirtualService with weighted routing:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service
@@ -131,7 +131,7 @@ When rolling out changes to Istio itself (not just your application configs), re
 istioctl install --set revision=1-20 --set profile=default
 
 # Label a test namespace to use the new revision
-kubectl label namespace test istio.io/rev=1-20 --overwrite
+kubectl label namespace test istio-injection- istio.io/rev=1-20 --overwrite
 
 # Restart pods in the test namespace to pick up the new sidecar
 kubectl rollout restart deployment -n test
@@ -150,7 +150,7 @@ istioctl analyze -n test
 Once you are confident, move more namespaces over:
 
 ```bash
-kubectl label namespace staging istio.io/rev=1-20 --overwrite
+kubectl label namespace staging istio-injection- istio.io/rev=1-20 --overwrite
 kubectl rollout restart deployment -n staging
 ```
 
@@ -163,7 +163,7 @@ Always validate your configuration before applying it. Istio provides tools for 
 kubectl apply -f new-config.yaml --dry-run=server
 
 # Use istioctl analyze to catch common issues
-istioctl analyze -f new-config.yaml
+istioctl analyze new-config.yaml
 
 # Check for conflicts with existing configuration
 istioctl analyze -n production
@@ -175,7 +175,7 @@ You can also build validation into your CI/CD pipeline:
 # Example GitHub Actions step
 - name: Validate Istio Configuration
   run: |
-    istioctl analyze -f istio-configs/ --failure-threshold Error
+    istioctl analyze istio-configs/ --failure-threshold Error
     if [ $? -ne 0 ]; then
       echo "Istio configuration validation failed"
       exit 1
@@ -189,10 +189,10 @@ While rolling out changes, keep a close eye on key metrics. Use Prometheus queri
 ```bash
 # Check for 5xx errors on the canary
 # Prometheus query
-rate(istio_requests_total{response_code=~"5.*", destination_version="v2"}[5m])
+sum(rate(istio_requests_total{response_code=~"5.*", destination_version="v2"}[5m]))
 
 # Check request latency on canary vs stable
-histogram_quantile(0.99, rate(istio_request_duration_milliseconds_bucket{destination_version="v2"}[5m]))
+histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{destination_version="v2"}[5m])) by (le))
 ```
 
 Set up alerts that trigger if error rates exceed thresholds during rollout:
@@ -208,8 +208,8 @@ spec:
       rules:
         - alert: CanaryHighErrorRate
           expr: |
-            rate(istio_requests_total{response_code=~"5.*", destination_version="v2"}[5m])
-            / rate(istio_requests_total{destination_version="v2"}[5m]) > 0.05
+            sum(rate(istio_requests_total{response_code=~"5.*", destination_version="v2"}[5m]))
+            / sum(rate(istio_requests_total{destination_version="v2"}[5m])) > 0.05
           for: 2m
           labels:
             severity: critical
