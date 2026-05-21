@@ -55,7 +55,8 @@ helm repo update
 helm install istio-base istio/base \
   --namespace istio-system \
   --create-namespace \
-  --version 1.23.0
+  --version 1.23.0 \
+  --wait
 ```
 
 ### Step 2: Istiod Control Plane
@@ -82,6 +83,11 @@ meshConfig:
   accessLogFile: /dev/stdout
   accessLogEncoding: JSON
   enableTracing: true
+  extensionProviders:
+    - name: zipkin
+      zipkin:
+        service: zipkin.istio-system.svc.cluster.local
+        port: 9411
 
   outboundTrafficPolicy:
     mode: REGISTRY_ONLY
@@ -114,6 +120,7 @@ helm install istiod istio/istiod \
   --namespace istio-system \
   --version 1.23.0 \
   -f istiod-values.yaml \
+  --set profile=ambient \
   --wait
 ```
 
@@ -126,11 +133,17 @@ Deploy the gateway in its own namespace:
 service:
   type: LoadBalancer
   ports:
-    - name: http
+    - name: status-port
+      port: 15021
+      protocol: TCP
+      targetPort: 15021
+    - name: http2
       port: 80
+      protocol: TCP
       targetPort: 80
     - name: https
       port: 443
+      protocol: TCP
       targetPort: 443
 
 autoscaling:
@@ -155,12 +168,13 @@ helm install istio-gateway istio/gateway \
   --namespace istio-ingress \
   --create-namespace \
   --version 1.23.0 \
-  -f gateway-values.yaml
+  -f gateway-values.yaml \
+  --wait
 ```
 
 ## Installing Ambient Mode
 
-For ambient mesh in 1.23, install these additional components:
+For ambient mesh in 1.23, install these additional components after installing istiod with the ambient profile:
 
 ```bash
 # Install CNI plugin
@@ -304,7 +318,7 @@ spec:
 Configure mesh-wide telemetry:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: mesh-telemetry
