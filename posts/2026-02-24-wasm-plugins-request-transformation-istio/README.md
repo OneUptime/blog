@@ -143,21 +143,24 @@ For complex URL transformations that go beyond what VirtualService supports:
 impl HttpContext for RewriteHttp {
     fn on_http_request_headers(&mut self, _num_headers: usize, _end_of_stream: bool) -> Action {
         if let Some(path) = self.get_http_request_header(":path") {
+            let mut new_path = path.clone();
+
             // Version prefix rewriting: /v1/users -> /api/users with version header
             if path.starts_with("/v1/") {
-                let new_path = path.replacen("/v1/", "/api/", 1);
-                self.set_http_request_header(":path", Some(&new_path));
+                new_path = path.replacen("/v1/", "/api/", 1);
                 self.set_http_request_header("x-api-version", Some("v1"));
             } else if path.starts_with("/v2/") {
-                let new_path = path.replacen("/v2/", "/api/", 1);
-                self.set_http_request_header(":path", Some(&new_path));
+                new_path = path.replacen("/v2/", "/api/", 1);
                 self.set_http_request_header("x-api-version", Some("v2"));
             }
 
             // Normalize trailing slashes
-            if path.ends_with('/') && path.len() > 1 {
-                let trimmed = path.trim_end_matches('/');
-                self.set_http_request_header(":path", Some(trimmed));
+            if new_path.ends_with('/') && new_path.len() > 1 {
+                new_path = new_path.trim_end_matches('/').to_string();
+            }
+
+            if new_path != path {
+                self.set_http_request_header(":path", Some(&new_path));
             }
         }
 
