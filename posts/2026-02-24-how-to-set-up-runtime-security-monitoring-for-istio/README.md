@@ -52,7 +52,7 @@ Create custom rules that specifically monitor Istio components:
   condition: >
     spawned_process
     and container
-    and k8s.pod.label.security.istio.io/tlsMode exists
+    and k8s.pod.label[security.istio.io/tlsMode] exists
     and container.name = "istio-proxy"
     and not proc.name in (pilot-agent, envoy)
   output: >
@@ -111,19 +111,12 @@ Create custom rules that specifically monitor Istio components:
 Apply the custom rules:
 
 ```bash
-kubectl create configmap istio-falco-rules \
-  --from-file=istio-falco-rules.yaml \
-  --namespace falco
-
 # Update Falco to load custom rules
 helm upgrade falco falcosecurity/falco \
   --namespace falco \
   --set falcosidekick.enabled=true \
-  --set "extraVolumes[0].name=istio-rules" \
-  --set "extraVolumes[0].configMap.name=istio-falco-rules" \
-  --set "extraVolumeMounts[0].name=istio-rules" \
-  --set "extraVolumeMounts[0].mountPath=/etc/falco/rules.d/istio-rules.yaml" \
-  --set "extraVolumeMounts[0].subPath=istio-falco-rules.yaml"
+  --set falcosidekick.webui.enabled=true \
+  --set-file "customRules.istio-rules\\.yaml=istio-falco-rules.yaml"
 ```
 
 ## Kubernetes Audit Log Monitoring
@@ -204,9 +197,9 @@ spec:
     # Alert on control plane config rejections
     - alert: IstioConfigRejections
       expr: |
-        sum(rate(pilot_xds_cds_reject[5m])) > 0
-        or sum(rate(pilot_xds_lds_reject[5m])) > 0
-        or sum(rate(pilot_xds_rds_reject[5m])) > 0
+        sum(pilot_xds_cds_reject) > 0
+        or sum(pilot_xds_lds_reject) > 0
+        or sum(pilot_xds_rds_reject) > 0
       for: 5m
       labels:
         severity: critical
@@ -246,13 +239,11 @@ metadata:
   namespace: istio-system
 spec:
   accessLogging:
-  - providers:
-    - name: envoy
-    filter:
+  - filter:
       expression: |
         response.code >= 400 ||
         connection.mtls == false ||
-        request.headers["x-forwarded-for"] != ""
+        has(request.headers["x-forwarded-for"])
 ```
 
 This logs all error responses, non-mTLS connections, and requests with forwarded-for headers (which might indicate proxy bypass attempts).
@@ -288,9 +279,9 @@ if [ "$WEBHOOK_COUNT" -ne 2 ]; then
   echo "ALERT: Unexpected number of webhook rules: $WEBHOOK_COUNT"
 fi
 
-# Check for new AuthorizationPolicies with ALLOW action and no rules
+# Check for new AuthorizationPolicies with an empty ALLOW rule
 kubectl get authorizationpolicy --all-namespaces -o json | \
-  jq '.items[] | select(.spec.action == "ALLOW" and (.spec.rules | length == 0)) |
+  jq '.items[] | select((.spec.action // "ALLOW") == "ALLOW" and any(.spec.rules[]?; . == {})) |
     "ALERT: Open AuthorizationPolicy \(.metadata.name) in \(.metadata.namespace)"'
 ```
 
