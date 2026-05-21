@@ -8,7 +8,7 @@ Description: A hands-on guide to setting CPU and memory resource requests and li
 
 ---
 
-Every pod in an Istio mesh gets a sidecar proxy container, and that container consumes CPU and memory. If you have 200 pods, you have 200 Envoy proxies, each using resources. Without setting proper resource limits, those proxies can eat up a surprising amount of your cluster capacity - or worse, get OOMKilled under load.
+Every injected pod in an Istio sidecar-mode mesh gets a sidecar proxy container, and that container consumes CPU and memory. If you have 200 injected pods, you have 200 Envoy proxies, each using resources. Without setting proper resource limits, those proxies can eat up a surprising amount of your cluster capacity - or worse, get OOMKilled under load.
 
 Setting resource requests and limits for sidecar proxies is essential for production meshes. This post walks through the different ways to configure them and provides guidance on what values to actually use.
 
@@ -91,7 +91,7 @@ These annotations override the global defaults for that specific pod.
 
 ## Setting Resource Limits per Namespace
 
-Istio doesn't have a native per-namespace resource configuration for sidecars, but you can achieve it using a ProxyConfig resource:
+Istio has per-namespace proxy configuration for settings like concurrency, but ProxyConfig does not set Kubernetes resource requests or limits:
 
 ```yaml
 apiVersion: networking.istio.io/v1beta1
@@ -103,7 +103,7 @@ spec:
   concurrency: 2
 ```
 
-For actual resource limits at the namespace level, a better approach is to use Kubernetes LimitRange:
+For actual default resource requests and limits at the namespace level, use Kubernetes LimitRange:
 
 ```yaml
 apiVersion: v1
@@ -122,7 +122,7 @@ spec:
         memory: 64Mi
 ```
 
-This applies to all containers in the namespace, including sidecar proxies, so adjust the values accordingly.
+This applies defaults to containers in the namespace that do not specify their own requests or limits. Because admission controllers can run before Istio injects the sidecar, verify the final injected pod spec in your cluster and adjust the values accordingly.
 
 ## Understanding Sidecar Memory Consumption
 
@@ -167,7 +167,7 @@ Before tuning, measure actual usage. Use Prometheus queries to see real resource
 ```bash
 # CPU usage per sidecar
 
-container_cpu_usage_seconds_total{container="istio-proxy"}
+rate(container_cpu_usage_seconds_total{container="istio-proxy"}[5m])
 
 # Memory usage per sidecar
 container_memory_working_set_bytes{container="istio-proxy"}
@@ -180,7 +180,7 @@ Or use kubectl top:
 kubectl top pods -n production --containers | grep istio-proxy
 ```
 
-You can also check if any proxies are being throttled:
+You can also check if any proxies are being OOMKilled:
 
 ```bash
 # Check for OOMKilled sidecars
@@ -230,25 +230,9 @@ This combination - reasonable resource limits plus scoped Sidecar configuration 
 
 ## Init Container Resources
 
-Don't forget about the `istio-init` container. It runs briefly at pod startup to configure iptables rules. You can configure its resources too:
+Don't forget about the `istio-init` container. It runs briefly at pod startup to configure iptables rules. In the default Istio injection template, the init container uses the same resource settings as the sidecar proxy; there is not a separate `global.proxy_init.resources` setting. If you need different resources for the init container, use a custom injection template.
 
-```yaml
-apiVersion: install.istio.io/v1alpha1
-kind: IstioOperator
-spec:
-  values:
-    global:
-      proxy_init:
-        resources:
-          requests:
-            cpu: 10m
-            memory: 10Mi
-          limits:
-            cpu: 100m
-            memory: 50Mi
-```
-
-The init container only runs for a few seconds, so it doesn't need much. But setting requests is important for scheduling - Kubernetes considers init container resources when scheduling pods.
+The init container only runs for a few seconds, so it doesn't need much. But its requests are still important for scheduling - Kubernetes considers init container resources when scheduling pods.
 
 ## Tips for Production
 
@@ -257,6 +241,6 @@ The init container only runs for a few seconds, so it doesn't need much. But set
 3. **Set limits with headroom**: Limits should be 2-3x the request to handle spikes
 4. **Use Sidecar resources**: Reducing proxy configuration scope is the most effective way to reduce memory usage
 5. **Watch for OOMKill**: If proxies get OOMKilled, increase memory limits. A killed proxy means dropped connections
-6. **Consider pod QoS**: If requests equal limits, the pod gets Guaranteed QoS class, which makes it less likely to be evicted
+6. **Consider pod QoS**: If every container in the pod has CPU and memory requests equal to limits, the pod gets Guaranteed QoS class, which makes it less likely to be evicted
 
 Getting sidecar resource limits right is a balancing act. Too low and you get throttling, OOMKills, and degraded performance. Too high and you waste cluster resources. Measure first, then tune based on real data.
