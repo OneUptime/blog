@@ -268,7 +268,7 @@ spec:
           tagOverrides:
             custom_header:
               operation: UPSERT
-              value: "request.headers['x-custom'] || 'none'"
+              value: '"x-custom" in request.headers ? request.headers["x-custom"] : "none"'
 ```
 
 Delete the EnvoyFilter after confirming the Telemetry resource works.
@@ -307,7 +307,7 @@ Generate traffic and verify logs, metrics, and traces appear correctly.
 
 6. **Remove legacy settings**: Clean up old MeshConfig fields and EnvoyFilters.
 
-7. **Restart workloads**: Roll all namespaces to pick up the new configuration:
+7. **Restart workloads only when needed**: Telemetry resources are delivered dynamically, but rolling workloads is still useful after removing pod-level proxy annotations or changing injection-time proxy settings:
 
 ```bash
 for ns in $(kubectl get ns -l istio-injection=enabled -o jsonpath='{.items[*].metadata.name}'); do
@@ -317,7 +317,7 @@ done
 
 ## Running Old and New Side by Side
 
-During migration, both legacy and Telemetry API configurations can coexist. Istio handles this by merging them, with the Telemetry API taking precedence where there's overlap.
+During migration, some MeshConfig-based legacy settings and Telemetry API configurations can coexist while you test. Metric customizations that use EnvoyFilter should be migrated carefully, because Istio's Telemetry API documentation warns that Telemetry API metric customization does not work together with EnvoyFilter-based metric customization.
 
 This means you can migrate incrementally:
 
@@ -372,7 +372,7 @@ After migration, run these checks:
 ```bash
 # 1. Verify no legacy MeshConfig telemetry settings remain
 
-kubectl get cm istio -n istio-system -o yaml | grep -E "accessLogFile|enableTracing|defaultConfig"
+kubectl get cm istio -n istio-system -o yaml | grep -E "accessLogFile|accessLogEncoding|accessLogFormat|enableTracing|tracing:"
 
 # 2. Verify no telemetry-related EnvoyFilters remain
 kubectl get envoyfilter -A -o json | python3 -c "
