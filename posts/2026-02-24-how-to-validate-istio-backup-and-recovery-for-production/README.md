@@ -22,16 +22,16 @@ Istio stores its configuration as Kubernetes custom resources. Here is what you 
 kubectl get crd | grep istio
 
 # The key resources to back up
-kubectl get virtualservice -A
-kubectl get destinationrule -A
-kubectl get gateway -A
-kubectl get serviceentry -A
-kubectl get sidecar -A
-kubectl get authorizationpolicy -A
-kubectl get peerauthentication -A
-kubectl get requestauthentication -A
-kubectl get telemetry -A
-kubectl get envoyfilter -A
+kubectl get virtualservices.networking.istio.io -A
+kubectl get destinationrules.networking.istio.io -A
+kubectl get gateways.networking.istio.io -A
+kubectl get serviceentries.networking.istio.io -A
+kubectl get sidecars.networking.istio.io -A
+kubectl get authorizationpolicies.security.istio.io -A
+kubectl get peerauthentications.security.istio.io -A
+kubectl get requestauthentications.security.istio.io -A
+kubectl get telemetries.telemetry.istio.io -A
+kubectl get envoyfilters.networking.istio.io -A
 ```
 
 Beyond the custom resources, you also need to back up:
@@ -51,27 +51,32 @@ mkdir -p "$BACKUP_DIR"
 
 # Export all Istio custom resources
 RESOURCES=(
-  virtualservice
-  destinationrule
-  gateway
-  serviceentry
-  sidecar
-  authorizationpolicy
-  peerauthentication
-  requestauthentication
-  telemetry
-  envoyfilter
-  workloadentry
-  workloadgroup
+  virtualservices.networking.istio.io
+  destinationrules.networking.istio.io
+  gateways.networking.istio.io
+  serviceentries.networking.istio.io
+  sidecars.networking.istio.io
+  authorizationpolicies.security.istio.io
+  peerauthentications.security.istio.io
+  requestauthentications.security.istio.io
+  telemetries.telemetry.istio.io
+  envoyfilters.networking.istio.io
+  workloadentries.networking.istio.io
+  workloadgroups.networking.istio.io
+  proxyconfigs.networking.istio.io
+  wasmplugins.extensions.istio.io
+  trafficextensions.extensions.istio.io
 )
 
 for resource in "${RESOURCES[@]}"; do
   echo "Exporting $resource..."
-  kubectl get "$resource" -A -o yaml > "$BACKUP_DIR/$resource.yaml" 2>/dev/null
+  if ! kubectl get "$resource" -A -o yaml > "$BACKUP_DIR/$resource.yaml" 2>/dev/null; then
+    rm -f "$BACKUP_DIR/$resource.yaml"
+  fi
 done
 
 # Export IstioOperator
-kubectl get istiooperator -n istio-system -o yaml > "$BACKUP_DIR/istiooperator.yaml" 2>/dev/null
+kubectl get istiooperator -n istio-system -o yaml > "$BACKUP_DIR/istiooperator.yaml" 2>/dev/null || rm -f "$BACKUP_DIR/istiooperator.yaml"
 
 # Export secrets (certificates)
 kubectl get secret -n istio-system -o yaml > "$BACKUP_DIR/istio-secrets.yaml"
@@ -96,9 +101,9 @@ A backup is worthless if it is incomplete. Cross-check your backup against the l
 
 ```bash
 # Count resources in cluster
-for resource in virtualservice destinationrule gateway serviceentry authorizationpolicy peerauthentication; do
+for resource in virtualservices.networking.istio.io destinationrules.networking.istio.io gateways.networking.istio.io serviceentries.networking.istio.io authorizationpolicies.security.istio.io peerauthentications.security.istio.io; do
   LIVE=$(kubectl get "$resource" -A --no-headers 2>/dev/null | wc -l)
-  BACKUP=$(grep "kind:" "istio-backup-latest/$resource.yaml" 2>/dev/null | wc -l)
+  BACKUP=$(yq eval '.items | length' "istio-backup-latest/$resource.yaml" 2>/dev/null)
   echo "$resource: live=$LIVE backup=$BACKUP"
 done
 ```
@@ -112,7 +117,7 @@ Exported YAML includes metadata that will cause problems during restoration (lik
 ```bash
 # Use yq to clean up exported resources
 for file in "$BACKUP_DIR"/*.yaml; do
-  yq eval 'del(.items[].metadata.resourceVersion, .items[].metadata.uid, .items[].metadata.creationTimestamp, .items[].metadata.generation, .items[].metadata.managedFields, .items[].metadata.annotations["kubectl.kubernetes.io/last-applied-configuration"])' -i "$file"
+  yq eval 'del(.items[].metadata.resourceVersion, .items[].metadata.uid, .items[].metadata.creationTimestamp, .items[].metadata.generation, .items[].metadata.managedFields, .items[].metadata.annotations["kubectl.kubernetes.io/last-applied-configuration"], .items[].status)' -i "$file"
 done
 ```
 
@@ -140,14 +145,14 @@ The `--dry-run=server` flag validates that the resources can be applied without 
 Istio certificates are critical. If you lose your CA certificate, all mTLS communication breaks because new certificates will not be trusted by workloads holding old ones.
 
 ```bash
-# Back up the CA secret
-kubectl get secret istio-ca-secret -n istio-system -o yaml > istio-ca-backup.yaml
+# Back up the plugged-in CA secret, if you use one
+kubectl get secret cacerts -n istio-system -o yaml > istio-ca-backup.yaml
 
-# Back up gateway TLS secrets
-kubectl get secrets -n istio-system -l istio/gateway -o yaml > gateway-certs-backup.yaml
+# Back up a gateway TLS secret referenced by a Gateway credentialName
+kubectl get secret httpbin-credential -n istio-system -o yaml > gateway-certs-backup.yaml
 
 # Verify the CA certificate
-kubectl get secret istio-ca-secret -n istio-system -o jsonpath='{.data.ca-cert\.pem}' | base64 -d | openssl x509 -text -noout | grep "Not After"
+kubectl get secret cacerts -n istio-system -o jsonpath='{.data.ca-cert\.pem}' | base64 -d | openssl x509 -text -noout | grep "Not After"
 ```
 
 Store these secrets encrypted. Never put raw TLS secrets in plaintext storage.
@@ -178,8 +183,8 @@ spec:
                 - |
                   BACKUP_DIR="/backup/istio-$(date +%Y%m%d-%H%M%S)"
                   mkdir -p "$BACKUP_DIR"
-                  for r in virtualservice destinationrule gateway serviceentry authorizationpolicy peerauthentication; do
-                    kubectl get "$r" -A -o yaml > "$BACKUP_DIR/$r.yaml"
+                  for r in virtualservices.networking.istio.io destinationrules.networking.istio.io gateways.networking.istio.io serviceentries.networking.istio.io authorizationpolicies.security.istio.io peerauthentications.security.istio.io; do
+                    kubectl get "$r" -A -o yaml > "$BACKUP_DIR/$r.yaml" || rm -f "$BACKUP_DIR/$r.yaml"
                   done
                   echo "Backup complete: $BACKUP_DIR"
               volumeMounts:
@@ -206,7 +211,7 @@ kind: ClusterRole
 metadata:
   name: istio-backup-reader
 rules:
-  - apiGroups: ["networking.istio.io", "security.istio.io", "telemetry.istio.io"]
+  - apiGroups: ["networking.istio.io", "security.istio.io", "telemetry.istio.io", "extensions.istio.io"]
     resources: ["*"]
     verbs: ["get", "list"]
   - apiGroups: [""]
@@ -235,10 +240,10 @@ Document and practice these specific scenarios:
 
 ```bash
 # Simulate accidental VirtualService deletion
-kubectl delete virtualservice my-service -n production
+kubectl delete virtualservices.networking.istio.io my-service -n production
 
 # Restore from backup
-kubectl apply -f istio-backup-latest/virtualservice.yaml -l app=my-service
+yq eval '.items[] | select(.metadata.name == "my-service" and .metadata.namespace == "production")' istio-backup-latest/virtualservices.networking.istio.io.yaml | kubectl apply -f -
 ```
 
 2. Namespace-wide configuration loss:
@@ -246,18 +251,18 @@ kubectl apply -f istio-backup-latest/virtualservice.yaml -l app=my-service
 ```bash
 # Restore all Istio resources for a namespace
 for file in istio-backup-latest/*.yaml; do
-  kubectl apply -f "$file" -n production
+  yq eval '.items[] | select(.metadata.namespace == "production")' "$file" | kubectl apply -f -
 done
 ```
 
 3. Complete mesh reconstruction:
 
 ```bash
+# Restore plugged-in CA certificates before installing Istio
+kubectl apply -f istio-ca-backup.yaml
+
 # Reinstall Istio
 istioctl install -f istio-backup-latest/istiooperator.yaml
-
-# Restore certificates
-kubectl apply -f istio-ca-backup.yaml
 
 # Restore all configuration
 for file in istio-backup-latest/*.yaml; do
