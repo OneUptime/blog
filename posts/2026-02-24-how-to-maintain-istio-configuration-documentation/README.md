@@ -96,10 +96,10 @@ kubectl get virtualservices -A -o json | jq -r '
     .spec.http[]? |
     "| Path | Destination | Timeout | Retries |\n" +
     "|------|-------------|---------|--------|\n" +
-    "| " + ((.match[0].uri.prefix // .match[0].uri.exact // "/*") // "/*") +
-    " | " + .route[0].destination.host +
-    " | " + (.timeout // "15s") +
-    " | " + ((.retries.attempts // 0) | tostring) + " |\n"
+    "| " + (.match[0].uri.prefix // .match[0].uri.exact // .match[0].uri.regex // "/*") +
+    " | " + (.route[0].destination.host // "n/a") +
+    " | " + (.timeout // "not configured") +
+    " | " + ((.retries.attempts // "not configured") | tostring) + " |\n"
   ) + "\n"
 ' >> $OUTPUT_DIR/routes.md
 
@@ -113,13 +113,26 @@ kubectl get authorizationpolicies -A -o json | jq -r '
   .items[] |
   "## " + .metadata.name + " (" + .metadata.namespace + ")\n" +
   "Action: " + (.spec.action // "ALLOW") + "\n" +
-  "Target: " + (.spec.selector.matchLabels | to_entries | map(.key + "=" + .value) | join(", ")) + "\n\n" +
+  "Target: " + (
+    if .spec.selector.matchLabels then
+      (.spec.selector.matchLabels | to_entries | map(.key + "=" + .value) | join(", "))
+    elif .spec.targetRefs then
+      (.spec.targetRefs | map((.group // "") + "/" + .kind + "/" + .name) | join(", "))
+    else
+      "all workloads in namespace"
+    end
+  ) + "\n\n" +
   "| Source | Methods | Paths |\n|--------|---------|-------|\n" +
   (
-    .spec.rules[]? |
-    "| " + ((.from[0].source.principals // ["any"]) | join(", ")) +
-    " | " + ((.to[0].operation.methods // ["*"]) | join(", ")) +
-    " | " + ((.to[0].operation.paths // ["/*"]) | join(", ")) + " |\n"
+    (.spec.rules // []) |
+    if length > 0 then
+      .[] |
+      "| " + ((.from[0].source.principals // ["any"]) | join(", ")) +
+      " | " + ((.to[0].operation.methods // ["*"]) | join(", ")) +
+      " | " + ((.to[0].operation.paths // ["/*"]) | join(", ")) + " |\n"
+    else
+      "| no rules | n/a | n/a |\n"
+    end
   ) + "\n"
 ' >> $OUTPUT_DIR/security.md
 
@@ -282,6 +295,12 @@ spec:
             - -d
             - '{"text":"Monthly reminder: Review Istio documentation. Check docs/generated/ for drift."}'
             - $(SLACK_WEBHOOK_URL)
+            env:
+            - name: SLACK_WEBHOOK_URL
+              valueFrom:
+                secretKeyRef:
+                  name: slack-webhook
+                  key: url
           restartPolicy: OnFailure
 ```
 
