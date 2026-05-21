@@ -48,7 +48,7 @@ done
 Payment providers go down. It happens. When Stripe or PayPal has an outage, you do not want that to cascade into your entire platform. Configure aggressive circuit breakers for external dependencies:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: payment-provider
@@ -78,7 +78,7 @@ The key setting here is `maxEjectionPercent: 100`. This means all instances of t
 Some services are safe to retry. Product catalog lookups, for example, are purely read operations. Configure retries aggressively for these:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: product-catalog
@@ -100,7 +100,7 @@ spec:
 For the checkout service, be more careful. Payment operations should not be retried blindly:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: checkout-service
@@ -134,7 +134,7 @@ Notice that the checkout submission endpoint has `attempts: 0`, which disables r
 Deploying a new version of the product catalog? Mirror production traffic to the new version before switching:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: product-catalog
@@ -162,7 +162,7 @@ This sends 10% of real traffic as mirrored requests to v2. The responses from v2
 For the checkout flow, use weighted traffic splitting to gradually roll out changes:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: checkout-service
@@ -181,7 +181,7 @@ spec:
         subset: v2
       weight: 5
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: checkout-service
@@ -204,7 +204,7 @@ Start at 5%, watch your conversion rates and error rates, then bump to 25%, 50%,
 During flash sales, your storefront services see massive spikes while payment services see moderate increases. Use connection pooling to protect backend services from being overwhelmed:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: inventory-service
@@ -272,6 +272,7 @@ spec:
   meshConfig:
     accessLogFile: /dev/stdout
     accessLogEncoding: JSON
+    enableTracing: true
     defaultConfig:
       holdApplicationUntilProxyStarts: true
       tracing:
@@ -285,7 +286,7 @@ Use `holdApplicationUntilProxyStarts: true` to prevent your application from sta
 Before a big sale event, test how your platform handles failures by injecting faults:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: inventory-fault-test
