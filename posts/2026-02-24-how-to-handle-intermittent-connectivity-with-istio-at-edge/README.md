@@ -38,12 +38,12 @@ spec:
       retries:
         attempts: 5
         perTryTimeout: 3s
-        retryOn: connect-failure,refused-stream,unavailable,cancelled,retriable-status-codes,reset
+        retryOn: gateway-error,connect-failure,refused-stream,cancelled,reset,503
         retryRemoteLocalities: true
       timeout: 30s
 ```
 
-Notice the retry conditions. `connect-failure` catches TCP connection failures. `reset` catches connections that drop mid-request. `unavailable` catches HTTP 503s which you will see when the remote side is unreachable. The `perTryTimeout` of 3 seconds is generous enough for a slow link but does not wait forever.
+Notice the retry conditions. `connect-failure` catches TCP connection failures. `reset` catches connections that drop mid-request. `gateway-error` catches gateway-style HTTP failures like 502, 503, and 504, and the explicit `503` entry catches a real HTTP 503 returned by the destination. The `perTryTimeout` of 3 seconds is generous enough for a slow link but does not wait forever.
 
 ## Setting Up Circuit Breakers
 
@@ -77,7 +77,7 @@ The outlier detection settings are tuned for edge. After 3 consecutive 5xx error
 
 ## Handling DNS Resolution During Outages
 
-When your edge site loses internet connectivity, DNS resolution for external services will fail. This can cascade into all sorts of weird errors. Configure Istio DNS proxying and static ServiceEntry resources to handle this:
+When your edge site loses internet connectivity, DNS resolution for external services can fail. This can cascade into all sorts of weird errors. Configure Istio DNS proxying and static ServiceEntry resources to reduce the dependency on upstream DNS for known critical services:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -98,7 +98,7 @@ spec:
     - address: 203.0.113.10
 ```
 
-Using `resolution: STATIC` with hardcoded IP addresses means your edge mesh does not depend on DNS for critical services. The trade-off is that you need to update these entries if the IP changes, but for edge stability it is worth it.
+Using `resolution: STATIC` with hardcoded IP addresses means Envoy does not need to resolve the upstream hostname before routing to that service. If the application still performs its own DNS lookup for `cloud-api.example.com`, enable Istio DNS capture or provide another local DNS answer for that name. The trade-off is that you need to update these entries if the IP changes, but for edge stability it is worth it.
 
 ## Configuring Timeout Hierarchies
 
@@ -120,7 +120,7 @@ spec:
       retries:
         attempts: 3
         perTryTimeout: 10s
-        retryOn: connect-failure,reset,unavailable
+        retryOn: gateway-error,connect-failure,reset
       timeout: 45s
 ```
 
@@ -128,13 +128,13 @@ The overall timeout of 45 seconds gives room for 3 retries of 10 seconds each, p
 
 ## Implementing Local Fallbacks
 
-For critical services, configure traffic splitting so that when the remote endpoint is unavailable, traffic falls back to a local cache or default response service:
+For critical services, keep the local fallback as an explicit application behavior. Istio can route the application to a local cache service, while the cache service is responsible for using the remote endpoint when it is reachable and serving cached data when it is not:
 
 ```yaml
 apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
-  name: data-service-with-fallback
+  name: data-service-local-cache
   namespace: edge-app
 spec:
   hosts:
@@ -142,24 +142,14 @@ spec:
   http:
     - route:
         - destination:
-            host: data-service-remote
-            port:
-              number: 8080
-      timeout: 5s
-      retries:
-        attempts: 2
-        perTryTimeout: 2s
-        retryOn: connect-failure,unavailable
-    - route:
-        - destination:
             host: data-service-local-cache
             port:
               number: 8080
 ```
 
-This configuration tries the remote service first, and if it fails within the timeout window, subsequent requests will hit the local cache. Note that this uses multiple HTTP route blocks, where the first match with a failure will cause Envoy to try the next route.
+This configuration keeps callers pointed at the local cache instead of making each caller depend directly on the unstable remote link. The local cache can use the retry and timeout settings above when it refreshes data from the remote service.
 
-Actually, a more reliable approach is to use fault injection testing combined with application-level fallback logic. The VirtualService approach above works for simple cases but for robust fallback behavior, consider using an EnvoyFilter:
+You can still use Istio to pass retry context to the upstream service for observability or debugging. For example, an EnvoyFilter can add the upstream attempt count as a request header:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -184,7 +174,7 @@ spec:
                 value: "%UPSTREAM_REQUEST_ATTEMPT_COUNT%"
 ```
 
-This adds a header that your application can read to know how many retry attempts have been made, letting it implement smart fallback logic.
+This adds a header that the upstream service can read to know how many retry attempts have been made. The caller-side fallback decision should still live in the application or local cache service, based on the error or timeout it receives.
 
 ## Keeping the Control Plane Connected
 
@@ -244,11 +234,11 @@ Set up monitoring to track the health of your edge-to-remote connections:
 # Check retry statistics from a sidecar
 
 kubectl exec -n edge-app deploy/my-app -c istio-proxy -- \
-  pilot-agent request GET /stats | grep retry
+  pilot-agent request GET stats | grep retry
 
 # Check upstream connection failures
 kubectl exec -n edge-app deploy/my-app -c istio-proxy -- \
-  pilot-agent request GET /stats | grep upstream_cx_connect_fail
+  pilot-agent request GET stats | grep upstream_cx_connect_fail
 ```
 
 These metrics tell you how often retries are happening and how many connection attempts are failing. If retries are consistently high, your retry configuration is working but you might need to look at the underlying network.
