@@ -88,7 +88,7 @@ Removing `x-internal-token` and `x-admin-override` prevents external clients fro
 
 ## Global Header Removal with EnvoyFilter
 
-If you want to remove sensitive headers across all services in the mesh, not just specific routes, use an EnvoyFilter:
+If you want to remove sensitive headers across all ingress gateway routes, not just specific VirtualService routes, use an EnvoyFilter:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -113,23 +113,24 @@ spec:
           name: envoy.filters.http.lua
           typed_config:
             "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-            inlineCode: |
-              function envoy_on_response(response_handle)
-                local headers_to_remove = {
-                  "server",
-                  "x-powered-by",
-                  "x-aspnet-version",
-                  "x-aspnetmvc-version",
-                  "x-runtime",
-                  "x-version",
-                  "x-generator",
-                  "x-drupal-cache",
-                  "x-request-id"
-                }
-                for _, header in ipairs(headers_to_remove) do
-                  response_handle:headers():remove(header)
+            default_source_code:
+              inline_string: |
+                function envoy_on_response(response_handle)
+                  local headers_to_remove = {
+                    "server",
+                    "x-powered-by",
+                    "x-aspnet-version",
+                    "x-aspnetmvc-version",
+                    "x-runtime",
+                    "x-version",
+                    "x-generator",
+                    "x-drupal-cache",
+                    "x-request-id"
+                  }
+                  for _, header in ipairs(headers_to_remove) do
+                    response_handle:headers():remove(header)
+                  end
                 end
-              end
 ```
 
 This runs on the ingress gateway and catches all responses going to external clients.
@@ -164,19 +165,20 @@ spec:
           name: envoy.filters.http.lua
           typed_config:
             "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-            inlineCode: |
-              function envoy_on_request(request_handle)
-                -- Remove internal headers from incoming external requests
-                request_handle:headers():remove("x-internal-service-id")
-                request_handle:headers():remove("x-internal-trace")
-                request_handle:headers():remove("x-internal-auth")
-              end
-              function envoy_on_response(response_handle)
-                -- Remove internal headers from outgoing responses
-                response_handle:headers():remove("x-internal-service-id")
-                response_handle:headers():remove("x-internal-trace")
-                response_handle:headers():remove("x-internal-processing-time")
-              end
+            default_source_code:
+              inline_string: |
+                function envoy_on_request(request_handle)
+                  -- Remove internal headers from incoming external requests
+                  request_handle:headers():remove("x-internal-service-id")
+                  request_handle:headers():remove("x-internal-trace")
+                  request_handle:headers():remove("x-internal-auth")
+                end
+                function envoy_on_response(response_handle)
+                  -- Remove internal headers from outgoing responses
+                  response_handle:headers():remove("x-internal-service-id")
+                  response_handle:headers():remove("x-internal-trace")
+                  response_handle:headers():remove("x-internal-processing-time")
+                end
 ```
 
 ## Removing Headers Based on Conditions
@@ -206,17 +208,18 @@ spec:
           name: envoy.filters.http.lua
           typed_config:
             "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-            inlineCode: |
-              function envoy_on_response(response_handle)
-                -- Always remove server fingerprinting
-                response_handle:headers():remove("server")
-                response_handle:headers():remove("x-powered-by")
+            default_source_code:
+              inline_string: |
+                function envoy_on_response(response_handle)
+                  -- Always remove server fingerprinting
+                  response_handle:headers():remove("server")
+                  response_handle:headers():remove("x-powered-by")
 
-                -- Remove debug headers in production
-                response_handle:headers():remove("x-debug-info")
-                response_handle:headers():remove("x-trace-id")
-                response_handle:headers():remove("x-request-duration")
-              end
+                  -- Remove debug headers in production
+                  response_handle:headers():remove("x-debug-info")
+                  response_handle:headers():remove("x-trace-id")
+                  response_handle:headers():remove("x-request-duration")
+                end
 ```
 
 ## Common Headers to Remove
