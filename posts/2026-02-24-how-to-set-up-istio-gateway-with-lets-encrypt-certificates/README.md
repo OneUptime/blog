@@ -32,7 +32,7 @@ graph LR
 If you do not have cert-manager installed yet:
 
 ```bash
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.4/cert-manager.yaml
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml
 ```
 
 Wait for all cert-manager pods to be ready:
@@ -61,7 +61,7 @@ spec:
     solvers:
     - http01:
         ingress:
-          class: istio
+          ingressClassName: istio
 ```
 
 For testing, use the Let's Encrypt staging server first to avoid rate limits:
@@ -80,7 +80,7 @@ spec:
     solvers:
     - http01:
         ingress:
-          class: istio
+          ingressClassName: istio
 ```
 
 Apply the issuer:
@@ -91,29 +91,20 @@ kubectl apply -f cluster-issuer.yaml
 
 ## HTTP-01 Challenge with Istio
 
-The HTTP-01 challenge requires Let's Encrypt to reach a specific URL on your domain to verify ownership. With Istio, you need a Gateway that allows this challenge traffic through on port 80.
+The HTTP-01 challenge requires Let's Encrypt to reach a specific URL on your domain to verify ownership. With the Ingress-based solver above, Istio must be configured to handle Kubernetes Ingress resources for the `istio` ingress class.
 
-Create a Gateway for the ACME challenge:
+Create an IngressClass for Istio if you do not already have one:
 
 ```yaml
-apiVersion: networking.istio.io/v1
-kind: Gateway
+apiVersion: networking.k8s.io/v1
+kind: IngressClass
 metadata:
-  name: acme-gateway
-  namespace: istio-system
+  name: istio
 spec:
-  selector:
-    istio: ingressgateway
-  servers:
-  - port:
-      number: 80
-      name: http
-      protocol: HTTP
-    hosts:
-    - "*.example.com"
+  controller: istio.io/ingress-controller
 ```
 
-cert-manager creates temporary pods and services for the HTTP-01 challenge. The Istio ingress gateway needs to be able to reach these.
+cert-manager creates temporary Ingress resources, pods, and services for the HTTP-01 challenge. The Istio ingress gateway needs to be able to route to these.
 
 ## Creating a Certificate Resource
 
@@ -271,7 +262,7 @@ spec:
 
 ## Automatic Certificate Renewal
 
-cert-manager automatically renews certificates before they expire. By default, it starts the renewal process 30 days before expiration. Let's Encrypt certificates are valid for 90 days, so renewal happens around the 60-day mark.
+cert-manager automatically renews certificates before they expire. By default, it schedules renewal two-thirds of the way through the issued certificate's duration. Let's Encrypt certificates are valid for 90 days, so renewal happens around the 60-day mark, about 30 days before expiration.
 
 You can check when a certificate will be renewed:
 
