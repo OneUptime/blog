@@ -66,7 +66,7 @@ This is where most of the day-to-day changes happen, and it is where teams need 
 Use Kubernetes labels to track ownership:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: checkout-routing
@@ -95,7 +95,6 @@ kind: ClusterPolicy
 metadata:
   name: require-istio-ownership
 spec:
-  validationFailureAction: Enforce
   rules:
     - name: require-owner-labels
       match:
@@ -107,12 +106,13 @@ spec:
                 - AuthorizationPolicy
                 - ServiceEntry
       validate:
+        failureAction: Enforce
         message: "Istio resources must have ownership labels"
         pattern:
           metadata:
             labels:
               app.kubernetes.io/managed-by: "?*"
-              ownership-tier: "mesh | namespace | service"
+              ownership-tier: "mesh|namespace|service"
 ```
 
 ## One Host, One Owner
@@ -127,9 +127,14 @@ kind: ClusterPolicy
 metadata:
   name: single-host-ownership
 spec:
-  validationFailureAction: Audit
+  background: false
   rules:
     - name: check-host-conflict
+      context:
+        - name: existing_hosts
+          apiCall:
+            urlPath: "/apis/networking.istio.io/v1/virtualservices"
+            jmesPath: "items[?metadata.namespace != '{{ request.object.metadata.namespace }}' || metadata.name != '{{ request.object.metadata.name }}'].spec.hosts[]"
       match:
         any:
           - resources:
@@ -141,11 +146,12 @@ spec:
             operator: In
             value: ["CREATE", "UPDATE"]
       validate:
+        failureAction: Audit
         message: "Another VirtualService already manages this host"
         deny:
           conditions:
             any:
-              - key: "{{ request.object.spec.hosts[0] }}"
+              - key: "{{ request.object.spec.hosts[] }}"
                 operator: AnyIn
                 value: "{{ existing_hosts }}"
 ```
@@ -154,14 +160,14 @@ In practice, a simple Kyverno rule may not catch all conflicts. Consider writing
 
 ## DestinationRule Ownership
 
-DestinationRules are particularly tricky because multiple DestinationRules for the same host do not merge. Instead, one takes precedence based on specificity and namespace matching. The rule closest to the client takes precedence.
+DestinationRules are particularly tricky because lookup follows a namespace hierarchy, and multiple DestinationRules for the same host have limited merge semantics. Duplicate subset definitions are not merged, and only one top-level `trafficPolicy` is used for a host.
 
 Best practice: the service owner creates the DestinationRule in the same namespace as the service. If other teams need different destination rules for the same service, they should coordinate with the service owner.
 
 ```yaml
 # Created by the checkout team in the checkout namespace
 
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: checkout-dr
@@ -182,7 +188,7 @@ spec:
       baseEjectionTime: 30s
 ```
 
-If the payments team wants to override circuit breaking settings when calling the checkout service, they should add the configuration to their own namespace's DestinationRule. Istio resolves conflicts by applying the rule in the client's namespace first, then the server's namespace.
+If the payments team wants to override circuit breaking settings when calling the checkout service, they can add the configuration to their own namespace's DestinationRule. Istio's lookup path checks the client namespace first, then the service namespace, then the configured root namespace.
 
 ## Gateway Ownership Model
 
@@ -194,7 +200,7 @@ The platform team owns all Gateway resources. Application teams submit requests 
 
 ```yaml
 # Managed by platform team
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: main-gateway
@@ -220,7 +226,7 @@ Application teams create VirtualServices that reference this gateway:
 
 ```yaml
 # Managed by checkout team
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: checkout-external
@@ -250,7 +256,7 @@ A practical approach is shared ServiceEntries managed by the platform team for c
 
 ```yaml
 # Platform-managed: shared external service
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: datadog-api
@@ -270,7 +276,7 @@ spec:
 
 ---
 # Team-managed: team-specific external dependency
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: stripe-api
