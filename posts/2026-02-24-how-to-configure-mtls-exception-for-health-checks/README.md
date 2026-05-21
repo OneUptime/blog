@@ -16,16 +16,16 @@ This results in a frustrating loop: pods start, fail health checks, get restarte
 
 When a kubelet sends an HTTP health check to a pod, the request goes to the pod's IP on the health check port. With an Istio sidecar, the request first hits the Envoy proxy. If strict mTLS is enabled, the proxy expects a client certificate, which the kubelet does not have.
 
-Istio handles this automatically since version 1.10 through a feature called probe rewriting. When Istio injects the sidecar, it rewrites the pod's health probe configuration to route through a special health check endpoint on the sidecar proxy.
+Istio handles this automatically through a feature called probe rewriting. When Istio injects the sidecar, it rewrites the pod's health probe configuration to route through a special health check endpoint on the sidecar proxy.
 
 ## Automatic Probe Rewriting
 
-By default, Istio rewrites HTTP health probes to go through the sidecar's health check port (15021). This is transparent and usually requires no configuration.
+By default, Istio rewrites HTTP, TCP, and gRPC health probes to go through the sidecar's status port (15020). This is transparent and usually requires no configuration.
 
 Check if probe rewriting is enabled in your mesh:
 
 ```bash
-kubectl get configmap istio -n istio-system -o yaml | grep -A5 "holdApplicationUntilProxyStarts"
+kubectl get configmap istio-sidecar-injector -n istio-system -o yaml | grep -A2 "rewriteAppHTTPProbe"
 ```
 
 The probe rewriting happens during sidecar injection. You can verify it by looking at the injected pod spec:
@@ -34,24 +34,24 @@ The probe rewriting happens during sidecar injection. You can verify it by looki
 kubectl get pod my-pod -o yaml | grep -A10 livenessProbe
 ```
 
-You should see the probe rewritten to point to a path on port 15021, something like:
+You should see the probe rewritten to point to a path on port 15020, something like:
 
 ```yaml
 livenessProbe:
   httpGet:
     path: /app-health/my-app/livez
-    port: 15021
+    port: 15020
     scheme: HTTP
 ```
 
-The sidecar receives the health check on port 15021 (which does not require mTLS), then forwards it to the application's actual health endpoint internally. This way, the kubelet talks plaintext to the sidecar, and the sidecar talks to the application container locally.
+The sidecar receives the health check on port 15020 (which does not require mTLS), then forwards it to the application's actual health endpoint internally. This way, the kubelet talks plaintext to the sidecar, and the sidecar talks to the application container locally.
 
 ## When Automatic Rewriting Does Not Work
 
 There are cases where automatic probe rewriting does not work or is not desirable:
 
-- **TCP probes**: Istio only rewrites HTTP and gRPC probes. TCP probes are passed through as-is.
-- **Custom probe ports**: If your probe uses a port that is not in the Service definition, rewriting might not handle it correctly.
+- **Disabled probe rewriting**: If `sidecar.istio.io/rewriteAppHTTPProbers` is set to `"false"` on the pod, or probe rewriting is disabled globally, HTTP, TCP, and gRPC probes are not rewritten.
+- **Custom probe ports**: If you need a port-level mTLS exception, the port must be the workload port and must be bound to a Kubernetes Service for Istio to apply the setting.
 - **Startup probes with long timeouts**: If the application takes a long time to start and the sidecar is not ready yet, the rewritten probe might fail.
 
 ## Configuring Port-Level mTLS Exceptions
@@ -75,7 +75,7 @@ spec:
       mode: PERMISSIVE
 ```
 
-In this example, port 8081 is the health check port. By setting it to `PERMISSIVE`, the sidecar accepts both mTLS and plaintext on that port. The kubelet's plaintext health checks will succeed, while all other traffic on other ports still requires mTLS.
+In this example, port 8081 is the health check workload port. By setting it to `PERMISSIVE`, the sidecar accepts both mTLS and plaintext on that port. The kubelet's plaintext health checks will succeed, while all other traffic on other ports still requires mTLS. For `portLevelMtls` to apply, use the workload/container port and make sure it is bound to a Kubernetes Service.
 
 This approach works well when your application exposes health checks on a separate port from its main API.
 
@@ -92,7 +92,13 @@ kind: Deployment
 metadata:
   name: my-app
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   template:
+    metadata:
+      labels:
+        app: my-app
     spec:
       containers:
       - name: my-app
@@ -120,7 +126,7 @@ Then create the PeerAuthentication policy with port-level exceptions as shown ab
 
 ## Handling gRPC Health Probes
 
-If your application uses gRPC health probes (common in gRPC services), Istio also rewrites these. The grpc-health-probe binary or Kubernetes native gRPC probes work with Istio's probe rewriting:
+If your application uses Kubernetes native gRPC health probes (common in gRPC services), Istio also rewrites these:
 
 ```yaml
 readinessProbe:
@@ -130,7 +136,7 @@ readinessProbe:
   periodSeconds: 10
 ```
 
-Istio rewrites this to go through port 15021, just like HTTP probes.
+Istio rewrites this to go through port 15020, just like HTTP probes.
 
 ## Dealing with exec Probes
 
@@ -150,7 +156,7 @@ If you are having trouble with HTTP health probes and mTLS, switching to exec pr
 
 ## TCP Probes with mTLS
 
-TCP liveness probes check if a port is open. These are not rewritten by Istio and go directly to the pod. With strict mTLS, a TCP probe will successfully establish a TCP connection (the port is open), but the TLS handshake will not happen because the kubelet does not participate in TLS. This means TCP probes usually still work with strict mTLS because they only check if the port accepts connections, not whether a full TLS handshake succeeds.
+TCP liveness probes check if a port is open. In current Istio releases, TCP probes are also rewritten by default so the sidecar agent performs the port check while avoiding the normal inbound traffic redirection. This matters because, without probe rewriting, the sidecar can make redirected TCP ports appear open even when the application is not actually listening.
 
 ```yaml
 livenessProbe:
@@ -212,7 +218,7 @@ kubectl exec my-pod -c my-app -- curl -s localhost:8080/healthz
 5. Test the rewritten health endpoint:
 
 ```bash
-kubectl exec my-pod -c istio-proxy -- curl -s localhost:15021/app-health/my-app/livez
+kubectl exec my-pod -c istio-proxy -- curl -s localhost:15020/app-health/my-app/livez
 ```
 
 Health check configuration with mTLS is one of those things that usually works automatically in Istio, but when it does not, it can be frustrating. Understanding the probe rewriting mechanism and knowing how to configure port-level exceptions gives you the tools to handle any situation.
