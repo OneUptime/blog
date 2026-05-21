@@ -40,7 +40,7 @@ Because these are just HTTP headers, Istio's VirtualService can route on them ju
 One of the most common patterns is routing events to different services based on the event type. Instead of having a single monolithic event processor, you can have specialized handlers:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: cloudevents-router
@@ -82,7 +82,7 @@ The last route without a match block acts as a catch-all for event types you hav
 You can also route based on the `ce-source` header to handle events differently depending on where they originated:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: source-based-router
@@ -109,7 +109,7 @@ spec:
 
 ## Setting Up a CloudEvents Gateway Service
 
-You need a central entry point for events. Create a simple gateway service:
+You need a central entry point for events. If you already have a CloudEvents-compatible HTTP ingress application, expose it with a Kubernetes service:
 
 ```yaml
 apiVersion: v1
@@ -123,27 +123,6 @@ spec:
   ports:
     - port: 80
       targetPort: 8080
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: events-gateway
-  namespace: default
-spec:
-  replicas: 2
-  selector:
-    matchLabels:
-      app: events-gateway
-  template:
-    metadata:
-      labels:
-        app: events-gateway
-    spec:
-      containers:
-        - name: gateway
-          image: gcr.io/knative-releases/knative.dev/eventing/cmd/broker/ingress
-          ports:
-            - containerPort: 8080
 ```
 
 Or, if you prefer to use Knative Eventing's Broker, it already acts as a CloudEvents gateway:
@@ -208,7 +187,7 @@ spec:
 Event delivery should be reliable. Configure retries with backoff:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: order-handler-vs
@@ -224,6 +203,7 @@ spec:
         attempts: 5
         perTryTimeout: 5s
         retryOn: 5xx,reset,connect-failure,retriable-4xx
+        backoff: 1s
       timeout: 30s
 ```
 
@@ -236,7 +216,7 @@ Since CloudEvents are HTTP requests, Istio captures the standard metrics. But yo
 Edit the Istio Telemetry configuration:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: cloudevents-metrics
@@ -252,7 +232,7 @@ spec:
           tagOverrides:
             ce_type:
               operation: UPSERT
-              value: "request.headers['ce-type'] || 'unknown'"
+              value: "'ce-type' in request.headers ? request.headers['ce-type'] : 'unknown'"
 ```
 
 Now you can query event metrics by type:
@@ -266,7 +246,7 @@ sum(rate(istio_requests_total{ce_type="com.example.order.created"}[5m]))
 You can reject malformed CloudEvents at the mesh level using an AuthorizationPolicy that checks for required headers:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: require-cloudevents-headers
@@ -282,16 +262,18 @@ spec:
           notValues: ["1.0"]
     - when:
         - key: request.headers[ce-type]
-          values: [""]
+          notValues: ["*"]
 ```
 
-This denies any request that does not have the `ce-specversion` set to "1.0" or has an empty `ce-type` header.
+This denies any request that does not have the `ce-specversion` set to "1.0" or does not have a non-empty `ce-type` header.
 
 ## End-to-End Tracing for Event Chains
 
-CloudEvents often trigger chains of processing. Service A produces an event that triggers Service B, which produces another event for Service C. To trace this entire chain, you need to propagate both Istio trace headers and CloudEvents extension attributes:
+CloudEvents often trigger chains of processing. Service A produces an event that triggers Service B, which produces another event for Service C. To trace this entire chain, you need to propagate both Istio trace headers and CloudEvents attributes:
 
 ```python
+import uuid
+
 import requests
 
 def handle_event(event):
