@@ -14,25 +14,30 @@ The Kubernetes Ingress resource is a simpler API compared to Istio's Gateway/Vir
 
 ## How Istio Handles Kubernetes Ingress
 
-When you create a Kubernetes Ingress resource, Istio's control plane (istiod) watches for it and automatically generates the corresponding Gateway and VirtualService configurations. Your Ingress resource is translated into Istio's native config behind the scenes.
+When you create a Kubernetes Ingress resource for Istio, Istio's control plane (istiod) watches for it and translates it into the configuration used by the Istio ingress gateway. You still manage the Kubernetes Ingress resource, but Istio programs the gateway from that resource behind the scenes.
 
 ```mermaid
 graph TD
     A[Kubernetes Ingress Resource] --> B[Istiod Control Plane]
-    B --> C[Auto-generated Gateway]
-    B --> D[Auto-generated VirtualService]
-    C --> E[Istio Ingress Gateway Pod]
-    D --> E
-    E --> F[Backend Services]
+    B --> C[Istio Ingress Gateway Configuration]
+    C --> D[Istio Ingress Gateway Pod]
+    D --> E[Backend Services]
 ```
 
 ## Setting Up Istio as the Ingress Controller
 
-### Step 1: Annotate Your Ingress Resource
+### Step 1: Create an IngressClass and Set `ingressClassName`
 
-For Istio to process your Ingress resource, you need to set the `ingressClassName` to `istio`:
+For Istio to process your Ingress resource, create an `IngressClass` that points to Istio's ingress controller and set the `ingressClassName` to `istio`:
 
 ```yaml
+apiVersion: networking.k8s.io/v1
+kind: IngressClass
+metadata:
+  name: istio
+spec:
+  controller: istio.io/ingress-controller
+---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -111,11 +116,12 @@ Create the TLS secret:
 
 ```bash
 kubectl create secret tls myapp-tls \
+  -n istio-system \
   --cert=fullchain.pem \
   --key=privkey.pem
 ```
 
-Note that with Ingress resources, the TLS secret goes in the same namespace as the Ingress, not in `istio-system`. Istio handles the translation.
+Note that when Istio handles a Kubernetes Ingress, the referenced TLS secret must exist in the namespace of the `istio-ingressgateway` deployment, typically `istio-system`.
 
 ## Multiple Host Routing
 
@@ -199,7 +205,7 @@ paths:
 
 ## Using Annotations for Additional Configuration
 
-While Istio does not support all annotation-based configuration that Nginx Ingress does, there are some Istio-specific annotations you can use:
+While Istio does not support all annotation-based configuration that Nginx Ingress does, older Ingress configurations can still use the Kubernetes ingress class annotation. The `ingressClassName` field is preferred for new manifests:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -207,10 +213,8 @@ kind: Ingress
 metadata:
   name: myapp-ingress
   annotations:
-    # Use a specific Istio ingress gateway
-    istio.io/ingress-use-istio: "true"
+    kubernetes.io/ingress.class: istio
 spec:
-  ingressClassName: istio
   rules:
     - host: "myapp.example.com"
       http:
