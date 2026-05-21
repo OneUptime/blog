@@ -25,9 +25,10 @@ The primary API groups are:
 - `networking.istio.io` - VirtualService, DestinationRule, Gateway, ServiceEntry, Sidecar
 - `security.istio.io` - AuthorizationPolicy, PeerAuthentication, RequestAuthentication
 - `telemetry.istio.io` - Telemetry
-- `install.istio.io` - IstioOperator
+- `extensions.istio.io` - WasmPlugin
+- `install.istio.io` - IstioOperator, if you are using a legacy in-cluster operator setup
 
-Each of these is a separate RBAC resource you can grant or restrict access to.
+Each API group contains Kubernetes resources you can grant or restrict access to with RBAC.
 
 ## Creating an Istio Admin Role
 
@@ -86,6 +87,18 @@ rules:
       - patch
       - delete
   - apiGroups:
+      - extensions.istio.io
+    resources:
+      - wasmplugins
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete
+  - apiGroups:
       - install.istio.io
     resources:
       - istiooperators
@@ -98,6 +111,8 @@ rules:
       - patch
       - delete
 ```
+
+The `install.istio.io` rule is only needed if the `IstioOperator` CRD is installed in your cluster. Istio's in-cluster operator was deprecated in Istio 1.23 and removed in Istio 1.24, although `istioctl install` can still consume an `IstioOperator` YAML file.
 
 Bind it to a group of platform engineers:
 
@@ -203,6 +218,7 @@ rules:
       - networking.istio.io
       - security.istio.io
       - telemetry.istio.io
+      - extensions.istio.io
       - install.istio.io
     resources: ["*"]
     verbs:
