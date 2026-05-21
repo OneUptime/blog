@@ -12,11 +12,11 @@ When you run into a problem with Istio, one of the fastest ways to get help is t
 
 ## Where Istio Lives on Slack
 
-Istio uses the CNCF Slack workspace, not its own standalone Slack. This means you need to join the CNCF Slack first before you can access any Istio channels.
+Istio has its own Slack workspace. The official entry point is `slack.istio.io`.
 
-### Signing Up for CNCF Slack
+### Signing Up for Istio Slack
 
-Head over to `slack.cncf.io` and sign up with your email. The signup is free and open to everyone. Once you get the invitation email, click the link and set up your account.
+Head over to `slack.istio.io` and sign up with your email. The signup is free and open to everyone. Once you get the invitation email, click the link and set up your account.
 
 After you're in, you'll want to search for and join the relevant Istio channels.
 
@@ -26,14 +26,14 @@ Here are the most useful channels for getting support:
 
 | Channel | Purpose |
 |---|---|
-| `#istio` | General Istio discussion and user questions |
-| `#istio-dev` | Development discussions, PR reviews, design proposals |
-| `#istio-networking` | Traffic management, gateways, virtual services |
-| `#istio-security` | mTLS, authorization policies, certificates |
-| `#istio-ambient` | Ambient mesh discussions |
-| `#envoy` | Envoy proxy questions (useful since Istio uses Envoy) |
+| General user channels | General Istio discussion and user questions |
+| `#contributors` | Contributor and development discussions |
+| Working group channels | Focused discussions for areas like networking and security |
+| `#ambient` | Ambient mesh discussions |
+| `#ambient-dev` | Ambient mesh development discussions |
+| `#announcements` | Release and security announcements |
 
-For most support questions, `#istio` is the right starting point. If your question is specifically about networking or security, the dedicated channels can get you more focused help.
+For most support questions, a general user channel is the right starting point. If your question is specifically about networking, security, or ambient mesh, the dedicated working group or topic channels can get you more focused help.
 
 ## How to Ask a Good Question
 
@@ -49,7 +49,7 @@ Always start with your versions. This helps people understand your context immed
 istioctl version
 
 # Get your Kubernetes version
-kubectl version --short
+kubectl version
 
 # Check which platform you're running on
 kubectl get nodes -o wide
@@ -122,7 +122,7 @@ Slack supports code formatting, and you should use it liberally. Wrap inline cod
 - Single backtick for commands: \`kubectl get pods\`
 - Triple backticks for output blocks
 
-For YAML configurations, specify the language after the opening backticks for syntax highlighting.
+For YAML configurations, use a code block for readability. If you need syntax highlighting or have a larger file to share, use Slack's snippet feature and choose the YAML file type.
 
 Also, if you have a lot of output to share, use Slack's "snippet" feature instead of pasting walls of text into the channel. You can create a snippet by clicking the + button in the message input area.
 
@@ -153,8 +153,8 @@ kubectl get secrets -n istio-system
 
 Before posting a question, search the channel history. There's a good chance someone has already asked the same thing. Use Slack's search with channel filters:
 
-- `in:#istio VirtualService 503` finds messages about VirtualService 503 errors in the #istio channel
-- `in:#istio-networking gateway tls` finds TLS gateway discussions
+- `in:#ambient ztunnel` finds messages about ztunnel in the #ambient channel
+- `in:#contributors design proposal` finds contributor discussions about design proposals
 
 You can also search by date range or by person if you remember when or who discussed a topic.
 
