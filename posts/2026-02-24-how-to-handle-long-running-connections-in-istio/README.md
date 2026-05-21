@@ -8,7 +8,7 @@ Description: How to configure Istio for long-running connections like streaming,
 
 ---
 
-Long-running connections are common in modern applications. Server-sent events (SSE), long-polling, streaming APIs, database connections, and message queue consumers all maintain connections that stay open for minutes, hours, or sometimes days. Istio's default timeout settings assume relatively short-lived request-response interactions, which means long-running connections often get killed prematurely.
+Long-running connections are common in modern applications. Server-sent events (SSE), long-polling, streaming APIs, database connections, and message queue consumers all maintain connections that stay open for minutes, hours, or sometimes days. Some Envoy and Istio timeout settings assume relatively short-lived request-response interactions, which means long-running connections can get killed prematurely.
 
 If your connections are dying after 15 seconds, a few minutes, or seemingly at random intervals, your Istio timeout configuration probably needs adjustment. There are multiple timeout settings across different Istio resources, and you need to address all of them for long-running connections to survive.
 
@@ -16,8 +16,8 @@ If your connections are dying after 15 seconds, a few minutes, or seemingly at r
 
 When a connection passes through Istio, it encounters several timeout layers:
 
-1. **Route timeout** - Set in VirtualService, defaults to 15s for HTTP routes
-2. **Stream idle timeout** - Envoy closes idle streams after this duration (default varies)
+1. **Route timeout** - Set in VirtualService; Istio's HTTP request timeout is disabled by default, while Envoy's raw route timeout default is 15s
+2. **Stream idle timeout** - Envoy closes idle streams after this duration (default is 5 minutes)
 3. **Connection idle timeout** - Envoy closes idle TCP connections
 4. **Upstream connection timeout** - How long to wait for establishing an upstream connection
 5. **TCP keepalive** - Detects dead TCP connections at the OS level
@@ -26,7 +26,7 @@ Each of these can independently kill your long-running connection. You need to a
 
 ## Disabling Route Timeout
 
-The most common culprit is the VirtualService route timeout. For long-running connections, set it to `0s`:
+A common culprit is an explicitly configured VirtualService route timeout. For long-running connections, set it to `0s`:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -165,7 +165,7 @@ spec:
 
 ## TCP Keepalives
 
-For long-running TCP connections (databases, message queues), configure keepalives in the DestinationRule:
+For long-running TCP connections (databases, message queues), configure the TCP idle timeout and keepalives in the DestinationRule:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -180,6 +180,7 @@ spec:
       tcp:
         maxConnections: 500
         connectTimeout: 10s
+        idleTimeout: 0s
         tcpKeepalive:
           time: 60s
           interval: 20s
@@ -187,6 +188,7 @@ spec:
 ```
 
 The keepalive settings:
+- `idleTimeout: 0s` - Disable Istio's TCP idle timeout, which otherwise defaults to 1 hour when unset
 - `time: 60s` - Start sending keepalive probes after 60 seconds of idle time
 - `interval: 20s` - Send a probe every 20 seconds
 - `probes: 5` - Close the connection after 5 failed probes
