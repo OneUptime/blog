@@ -8,7 +8,7 @@ Description: Configure Istio to route traffic differently based on the source na
 
 ---
 
-In a Kubernetes cluster with multiple namespaces, you often need different routing behavior depending on where the traffic comes from. Maybe requests from the `staging` namespace should hit a staging version of a shared service, while requests from `production` should hit the production version. Istio lets you do this using source namespace matching in VirtualService, combined with AuthorizationPolicy for enforcement.
+In a Kubernetes cluster with multiple namespaces, you often need different routing behavior depending on where the traffic comes from. Maybe requests from the `staging` namespace should hit a staging version of a shared service, while requests from `production` should hit the production version. Istio lets you do this using source namespace matching in VirtualService. Use AuthorizationPolicy separately if you also need to enforce access control.
 
 ## The Use Case
 
@@ -65,7 +65,7 @@ kubectl apply -f destination-rule.yaml
 
 ## Routing by Source Namespace with VirtualService
 
-Istio VirtualService supports a `sourceNamespace` field in match conditions. This matches against the namespace of the pod making the request:
+Istio VirtualService supports a `sourceNamespace` field in match conditions. This constrains the route rule to source workloads in that namespace:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -101,7 +101,7 @@ spec:
             subset: v1
 ```
 
-The `sourceNamespace` field matches against the Kubernetes namespace of the source workload. This information is available to the sidecar proxy because Istio's control plane populates it.
+The `sourceNamespace` field constrains the rule to the Kubernetes namespace of the source workload. Istio treats this as a selector when generating configuration for workloads, not as a request-time header or payload match.
 
 ```bash
 kubectl apply -f virtual-service.yaml
@@ -109,7 +109,7 @@ kubectl apply -f virtual-service.yaml
 
 ## How It Works Under the Hood
 
-When a pod in namespace `team-a` makes a request to `payment-service.shared-services.svc.cluster.local`, the Envoy sidecar on the calling pod has access to its own namespace information. The VirtualService rules are pushed to the sidecars, and the sidecar applies the routing based on its own namespace identity.
+When a pod in namespace `team-a` makes a request to `payment-service.shared-services.svc.cluster.local`, Istio can generate route configuration for that source workload that includes the `team-a` rule. The VirtualService rules are pushed to the sidecars, and the sidecar applies the route configuration selected for its workload.
 
 This is different from header-based routing where the header comes from the request itself. Source namespace is derived from the workload identity, which makes it harder to spoof.
 
@@ -221,7 +221,7 @@ spec:
         perTryTimeout: 2s
 ```
 
-Staging traffic gets fault injection (10% of requests get a 3-second delay) and more aggressive retries. Production traffic gets standard retries with tighter timeouts.
+Staging traffic gets fault injection (10% of requests get a 3-second delay) and more aggressive retries. Non-staging traffic gets standard retries with tighter timeouts.
 
 ## Testing
 
