@@ -88,27 +88,6 @@ spec:
   jwtRules:
     - issuer: "https://auth.example.com"
       jwksUri: "https://auth.example.com/.well-known/jwks.json"
----
-# Allow public endpoints without JWT
-apiVersion: security.istio.io/v1
-kind: AuthorizationPolicy
-metadata:
-  name: allow-public
-  namespace: backend
-spec:
-  selector:
-    matchLabels:
-      app: api-server
-  action: ALLOW
-  rules:
-    - to:
-        - operation:
-            paths:
-              - "/health"
-              - "/ready"
-              - "/docs/*"
-              - "/public/*"
----
 # Require JWT for everything else
 apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
@@ -124,9 +103,16 @@ spec:
     - from:
         - source:
             notRequestPrincipals: ["*"]
+      to:
+        - operation:
+            notPaths:
+              - "/health"
+              - "/ready"
+              - "/docs/*"
+              - "/public/*"
 ```
 
-The ALLOW policy takes priority for matching paths. The DENY policy catches everything else without a valid token.
+The DENY policy catches requests without a valid token, except for the public paths listed in `notPaths`.
 
 ## Namespace-Wide JWT Requirement
 
@@ -179,21 +165,6 @@ The downstream service includes the same token when calling upstream services.
 apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
-  name: allow-mesh-internal
-  namespace: backend
-spec:
-  selector:
-    matchLabels:
-      app: api-server
-  action: ALLOW
-  rules:
-    - from:
-        - source:
-            principals: ["cluster.local/ns/backend/sa/*"]
----
-apiVersion: security.istio.io/v1
-kind: AuthorizationPolicy
-metadata:
   name: require-jwt-external
   namespace: backend
 spec:
@@ -240,21 +211,6 @@ The catch is that this blocks everything else too, including service mesh intern
 Require JWT only for write operations while allowing reads to be public:
 
 ```yaml
-apiVersion: security.istio.io/v1
-kind: AuthorizationPolicy
-metadata:
-  name: allow-public-reads
-  namespace: backend
-spec:
-  selector:
-    matchLabels:
-      app: api-server
-  action: ALLOW
-  rules:
-    - to:
-        - operation:
-            methods: ["GET", "HEAD", "OPTIONS"]
----
 apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
@@ -309,4 +265,4 @@ kubectl logs <pod> -c istio-proxy --tail=50 | grep -i "rbac\|denied\|allowed"
 istioctl proxy-config log <pod> -n backend --level rbac:debug
 ```
 
-The key takeaway: RequestAuthentication validates tokens, AuthorizationPolicy enforces access. You always need both if you want to reject requests without tokens. Start with the DENY pattern for `notRequestPrincipals` and add ALLOW rules for public endpoints.
+The key takeaway: RequestAuthentication validates tokens, AuthorizationPolicy enforces access. You always need both if you want to reject requests without tokens. Start with the DENY pattern for `notRequestPrincipals` and add path or method exceptions for public endpoints.
