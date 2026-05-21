@@ -22,26 +22,26 @@ The init container needs the `NET_ADMIN` and `NET_RAW` capabilities to modify ip
 
 ## Default Resource Configuration
 
-By default, Istio sets minimal resources on the init container since it only runs briefly:
+By default, the injected init container uses the same default proxy resource settings as the Envoy sidecar:
 
 ```yaml
 initContainers:
 - name: istio-init
-  image: docker.io/istio/proxyv2:1.20.0
+  image: docker.io/istio/proxyv2:1.30.0
   resources:
     limits:
       cpu: "2000m"
       memory: "1024Mi"
     requests:
-      cpu: "10m"
-      memory: "40Mi"
+      cpu: "100m"
+      memory: "128Mi"
 ```
 
 These defaults work for most cases, but there are situations where you need to adjust them.
 
 ## Setting Init Container Resources via Annotations
 
-Use pod annotations to override the init container resources:
+Use pod annotations to override the injected proxy resources. In upstream Istio, these annotations apply to the injected proxy resources, so they affect both the Envoy sidecar and the `istio-init` init container:
 
 ```yaml
 apiVersion: apps/v1
@@ -58,10 +58,10 @@ spec:
       labels:
         app: my-service
       annotations:
-        sidecar.istio.io/initCPU: "100m"
-        sidecar.istio.io/initCPULimit: "500m"
-        sidecar.istio.io/initMemory: "64Mi"
-        sidecar.istio.io/initMemoryLimit: "256Mi"
+        sidecar.istio.io/proxyCPU: "100m"
+        sidecar.istio.io/proxyCPULimit: "500m"
+        sidecar.istio.io/proxyMemory: "64Mi"
+        sidecar.istio.io/proxyMemoryLimit: "256Mi"
     spec:
       containers:
       - name: my-service
@@ -81,7 +81,7 @@ kubectl get pod $POD -o jsonpath='{.spec.initContainers[?(@.name=="istio-init")]
 
 ## Setting Mesh-Wide Defaults
 
-Configure init container resources for all pods through the IstioOperator:
+Configure the injected proxy resources for all pods through the IstioOperator:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -89,11 +89,11 @@ kind: IstioOperator
 spec:
   values:
     global:
-      proxy_init:
+      proxy:
         resources:
           requests:
-            cpu: "10m"
-            memory: "40Mi"
+            cpu: "100m"
+            memory: "128Mi"
           limits:
             cpu: "1000m"
             memory: "256Mi"
@@ -109,7 +109,7 @@ Pod-level annotations override these mesh-wide defaults.
 
 You might wonder why you should care about resource settings for a container that runs for a couple of seconds. Here are the real-world situations where it matters:
 
-**Resource quotas:** If your namespace has a ResourceQuota, the init container's resource requests count toward the quota during pod creation. Even though the init container exits quickly, the scheduler needs to reserve those resources to start the pod.
+**Resource quotas:** If your namespace has a ResourceQuota, the init container's resource requests count toward the pod's effective resource request during pod creation. Even though the init container exits quickly, the scheduler needs to reserve those resources to start the pod.
 
 ```yaml
 apiVersion: v1
@@ -124,7 +124,7 @@ spec:
     limits.memory: "40Gi"
 ```
 
-With 100 pods, each init container requesting 100m CPU adds up to 10 CPU requests against the quota. You may want to lower the request to avoid hitting quota limits.
+With 100 pods where the init container request is the effective CPU request, each init container requesting 100m CPU adds up to 10 CPU requests against the quota. You may want to lower the request to avoid hitting quota limits.
 
 **LimitRange enforcement:** If your namespace has a LimitRange with minimum or maximum constraints, the init container must comply:
 
@@ -161,17 +161,17 @@ For environments where you want to minimize the scheduling footprint:
 ```yaml
 metadata:
   annotations:
-    sidecar.istio.io/initCPU: "10m"
-    sidecar.istio.io/initCPULimit: "200m"
-    sidecar.istio.io/initMemory: "10Mi"
-    sidecar.istio.io/initMemoryLimit: "128Mi"
+    sidecar.istio.io/proxyCPU: "10m"
+    sidecar.istio.io/proxyCPULimit: "200m"
+    sidecar.istio.io/proxyMemory: "64Mi"
+    sidecar.istio.io/proxyMemoryLimit: "128Mi"
 ```
 
-The init container is CPU-light and memory-light. Running `iptables` commands doesn't need much. The main constraint is the binary itself needs to be loaded into memory.
+The init container is CPU-light and memory-light. Running `iptables` commands doesn't need much. The main constraint is the binary itself needs to be loaded into memory. Remember that these annotations also change the Envoy sidecar resources for the pod.
 
 ## Using Istio CNI Instead of Init Containers
 
-If you want to completely remove the init container, Istio offers a CNI plugin alternative. The Istio CNI plugin sets up the iptables rules at the network level during pod creation, eliminating the need for the init container entirely:
+If you want to remove the privileged `istio-init` container, Istio offers a CNI plugin alternative. The Istio CNI plugin sets up the iptables rules at the network level during pod creation, eliminating the need for `istio-init`:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -193,7 +193,7 @@ istioctl install -f istio-cni.yaml
 
 Benefits of using the CNI plugin:
 
-- No init container needed, so no init container resources to manage
+- No privileged `istio-init` container needed, so no `istio-init` resources to manage
 - No `NET_ADMIN` capability required on the pod
 - Works better in restricted environments like OpenShift
 - Reduces pod startup time slightly
@@ -204,7 +204,7 @@ Verify the CNI plugin is working:
 kubectl get pods -n istio-system -l k8s-app=istio-cni-node
 ```
 
-When the CNI plugin is active, Istio still injects the sidecar but skips the init container.
+When the CNI plugin is active, Istio still injects the sidecar but skips the privileged `istio-init` container. Istio may still inject an `istio-validation` init container to verify that traffic redirection was set up correctly.
 
 ## Debugging Init Container Issues
 
@@ -228,7 +228,7 @@ kubectl describe resourcequota -n default
 
 Common init container errors:
 
-- `OOMKilled` - memory limit too low, increase `initMemoryLimit`
+- `OOMKilled` - memory limit too low, increase `sidecar.istio.io/proxyMemoryLimit`
 - `CrashLoopBackOff` on the init container - usually an iptables rule conflict or capability issue
 - Pod stuck in `Init:0/1` - the init container can't complete, check logs
 - `Forbidden` in events - resource quota exceeded
@@ -251,11 +251,11 @@ For Helm-based Istio installations:
 ```yaml
 # values.yaml
 global:
-  proxy_init:
+  proxy:
     resources:
       requests:
-        cpu: "10m"
-        memory: "40Mi"
+        cpu: "100m"
+        memory: "128Mi"
       limits:
         cpu: "500m"
         memory: "256Mi"
@@ -269,9 +269,9 @@ helm upgrade istiod istio/istiod -n istio-system -f values.yaml
 
 | Annotation | Description |
 |---|---|
-| `sidecar.istio.io/initCPU` | CPU request for init container |
-| `sidecar.istio.io/initCPULimit` | CPU limit for init container |
-| `sidecar.istio.io/initMemory` | Memory request for init container |
-| `sidecar.istio.io/initMemoryLimit` | Memory limit for init container |
+| `sidecar.istio.io/proxyCPU` | CPU request for the injected proxy resources |
+| `sidecar.istio.io/proxyCPULimit` | CPU limit for the injected proxy resources |
+| `sidecar.istio.io/proxyMemory` | Memory request for the injected proxy resources |
+| `sidecar.istio.io/proxyMemoryLimit` | Memory limit for the injected proxy resources |
 
 The init container is a small but necessary piece of the Istio sidecar injection process. Most of the time, the defaults work fine. When you run into resource quotas, LimitRanges, or tight scheduling environments, adjusting these settings or switching to the CNI plugin is straightforward and resolves the issues quickly.
