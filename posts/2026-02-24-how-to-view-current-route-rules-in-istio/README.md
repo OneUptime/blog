@@ -49,8 +49,8 @@ The `istioctl proxy-config` command shows you the actual Envoy configuration tha
 # View all routes for a specific pod
 istioctl proxy-config routes my-pod -n production
 
-# View routes for a specific port
-istioctl proxy-config routes my-pod -n production --port 8080
+# View routes for a specific route configuration
+istioctl proxy-config routes my-pod -n production --name 8080
 
 # Get detailed route information in JSON
 istioctl proxy-config routes my-pod -n production -o json
@@ -185,13 +185,13 @@ Use `istioctl analyze` to check for common routing mistakes:
 istioctl analyze -n production
 
 # Analyze specific files before applying
-istioctl analyze -f my-virtualservice.yaml
+istioctl analyze my-virtualservice.yaml
 ```
 
 Common issues it catches:
 - VirtualService references a Gateway that does not exist
 - VirtualService references a host that has no matching Service
-- DestinationRule references a subset that does not exist
+- VirtualService references a subset that does not exist
 - Conflicting VirtualServices for the same host
 
 ## Tracing a Request Through Routes
