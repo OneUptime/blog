@@ -8,7 +8,7 @@ Description: Step-by-step guide to integrating Open Policy Agent with Istio for 
 
 ---
 
-Authorization in a service mesh is one of those things that sounds simple until you try to do it for real. Istio has built-in authorization policies that work fine for basic rules like "service A can call service B." But when you need complex authorization logic based on JWT claims, request body contents, time-of-day rules, or data from external systems, you need something more powerful. That is where Open Policy Agent comes in.
+Authorization in a service mesh is one of those things that sounds simple until you try to do it for real. Istio has built-in authorization policies that work fine for basic rules like "service A can call service B." But when you need complex authorization logic based on JWT claims, request body contents with request body buffering enabled, time-of-day rules, or data from external systems, you need something more powerful. That is where Open Policy Agent comes in.
 
 OPA is a general-purpose policy engine that evaluates policies written in Rego, its purpose-built policy language. By integrating OPA with Istio, you get a centralized authorization system that can handle arbitrarily complex rules while keeping your application code clean.
 
@@ -46,7 +46,7 @@ spec:
     spec:
       containers:
         - name: opa
-          image: openpolicyagent/opa:latest
+          image: openpolicyagent/opa:latest-envoy
           args:
             - "run"
             - "--server"
@@ -101,60 +101,65 @@ data:
   policy.rego: |
     package istio.authz
 
+    import rego.v1
     import input.attributes.request.http as http_request
+    import input.attributes.destination.principal as destination_principal
     import input.attributes.source.principal as source_principal
 
-    default allow = false
+    default allow := false
+
+    # Replace this example secret with your IdP's JWKS or public certificate.
+    jwt_secret := "replace-with-your-jwt-signing-secret"
 
     # Allow health checks without authorization
-    allow {
+    allow if {
       http_request.path == "/healthz"
     }
 
-    allow {
+    allow if {
       http_request.path == "/readyz"
     }
 
     # Allow requests from the frontend to the API
-    allow {
+    allow if {
       source_principal == "spiffe://cluster.local/ns/default/sa/frontend"
       startswith(http_request.path, "/api/")
       http_request.method == "GET"
     }
 
     # Allow the order service to call the payment service
-    allow {
+    allow if {
       source_principal == "spiffe://cluster.local/ns/default/sa/order-service"
-      http_request.headers["x-destination-service"] == "payment-service"
+      destination_principal == "spiffe://cluster.local/ns/default/sa/payment-service"
       http_request.method == "POST"
       startswith(http_request.path, "/api/v1/payments")
     }
 
     # Role-based access using JWT claims
-    allow {
-      token := parse_jwt(http_request.headers.authorization)
-      token.payload.role == "admin"
+    allow if {
+      claims := verified_jwt_claims
+      claims.role == "admin"
     }
 
-    # Time-based access control
-    allow {
+    # Time-based access control in UTC
+    allow if {
       source_principal == "spiffe://cluster.local/ns/default/sa/batch-processor"
       is_business_hours
     }
 
-    is_business_hours {
+    is_business_hours if {
       now := time.now_ns()
       hour := time.clock(now)[0]
       hour >= 9
       hour < 17
     }
 
-    parse_jwt(auth_header) = token {
+    verified_jwt_claims := claims if {
+      auth_header := http_request.headers.authorization
       startswith(auth_header, "Bearer ")
-      encoded := substring(auth_header, 7, -1)
-      parts := split(encoded, ".")
-      payload := json.unmarshal(base64url.decode(parts[1]))
-      token := {"payload": payload}
+      jwt := substring(auth_header, 7, -1)
+      [verified, _, claims] := io.jwt.decode_verify(jwt, {"secret": jwt_secret})
+      verified
     }
 ```
 
@@ -173,7 +178,7 @@ spec:
       - name: opa-authz
         envoyExtAuthzGrpc:
           service: opa.istio-system.svc.cluster.local
-          port: "9191"
+          port: 9191
 ```
 
 If you are using Helm, add this to your values:
@@ -184,7 +189,7 @@ meshConfig:
     - name: opa-authz
       envoyExtAuthzGrpc:
         service: opa.istio-system.svc.cluster.local
-        port: "9191"
+        port: 9191
 ```
 
 ## Applying Authorization Policies
@@ -258,7 +263,7 @@ Configure OPA to pull policies from a bundle server:
 ```yaml
 containers:
   - name: opa
-    image: openpolicyagent/opa:latest
+    image: openpolicyagent/opa:latest-envoy
     args:
       - "run"
       - "--server"
@@ -298,7 +303,7 @@ extensionProviders:
   - name: opa-authz
     envoyExtAuthzGrpc:
       service: opa.istio-system.svc.cluster.local
-      port: "9191"
+      port: 9191
       timeout: 500ms
       failOpen: false
 ```
