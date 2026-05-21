@@ -12,14 +12,15 @@ Not every endpoint in your API needs the same level of security. A public health
 
 ## The Path Matching Basics
 
-Istio's AuthorizationPolicy supports path matching in the `to.operation.paths` field. You can match exact paths, prefixes, or use wildcards:
+Istio's AuthorizationPolicy supports path matching in the `to.operation.paths` field. You can match exact paths, prefixes, or use path template operators:
 
 - `/health` - exact match
-- `/api/*` - single-level wildcard (matches `/api/users` but not `/api/users/123`)
-- `/api/**` - multi-level wildcard (not supported; use `/api/*` which actually matches all sub-paths in Istio)
+- `/api/*` - prefix match (matches `/api/users` and `/api/users/123`)
+- `/api/{*}` - single-segment path template match (matches `/api/users` but not `/api/users/123`)
+- `/api/{**}` - multi-segment path template match (matches `/api/users` and `/api/users/123`)
 - `/admin/*` - matches anything under `/admin/`
 
-Note: In Istio's AuthorizationPolicy, `/api/*` actually matches all sub-paths under `/api/`, including `/api/users/123/orders`. It is equivalent to a prefix match. This differs from some other systems where `*` is single-level only.
+Note: In Istio's AuthorizationPolicy, `/api/*` is equivalent to a prefix match. This differs from some other systems where `*` is single-level only. Use `{*}` and `{**}` when you specifically need URI template segment matching.
 
 ## Prerequisites
 
@@ -331,6 +332,8 @@ spec:
 ```
 
 This blocks access to debug, actuator, and swagger endpoints regardless of other ALLOW policies. DENY always takes precedence.
+
+When you use HTTP fields such as `paths` in a DENY policy on a workload that can also receive TCP traffic, scope the policy to the relevant HTTP port. For DENY rules, missing HTTP attributes on TCP traffic are treated as matches.
 
 ## Path Matching with notPaths
 
