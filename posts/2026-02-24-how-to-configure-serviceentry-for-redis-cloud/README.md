@@ -10,7 +10,7 @@ Description: Set up Istio ServiceEntry for Redis Cloud and other managed Redis s
 
 Managed Redis services like Redis Cloud (by Redis Inc.), Amazon ElastiCache, Google Memorystore, and Azure Cache for Redis are staples in modern architectures. They handle session storage, caching, rate limiting, pub/sub messaging, and more. When your Kubernetes workloads connect to these services through an Istio mesh, you need a ServiceEntry that handles the TCP protocol correctly.
 
-Redis uses a custom protocol over TCP (RESP - Redis Serialization Protocol). Envoy does not understand RESP, so it treats Redis connections as opaque TCP streams. The configuration is straightforward, but there are some gotchas around TLS, connection handling, and timeouts that are worth getting right.
+Redis uses a custom protocol over TCP (RESP - Redis Serialization Protocol). Unless you explicitly enable Redis protocol support in Istio or configure Envoy's Redis proxy filter, Envoy treats Redis connections as opaque TCP streams. The configuration is straightforward, but there are some gotchas around TLS, connection handling, and timeouts that are worth getting right.
 
 ## Redis Cloud ServiceEntry
 
@@ -134,7 +134,7 @@ spec:
   resolution: DNS
 ```
 
-Azure Cache uses port 6380 for TLS connections (6379 for non-TLS, but TLS is recommended and often required).
+Azure Cache for Redis Basic, Standard, and Premium non-clustered caches use port 6380 for TLS connections (6379 for non-TLS, but TLS is recommended and enabled by default for new caches). Enterprise tiers and clustered caches can use different port ranges, so check your cache's connection details.
 
 ## Redis with TLS
 
@@ -170,7 +170,7 @@ spec:
     - "redis-12345.c1.us-east-1-2.ec2.cloud.redislabs.com"
   location: MESH_EXTERNAL
   ports:
-    - number: 16379
+    - number: 16380
       name: tcp-redis
       protocol: TCP
   resolution: DNS
@@ -206,7 +206,7 @@ spec:
         idleTimeout: 300s
 ```
 
-**maxConnections** should be higher than the sum of all your pods' Redis connection pool sizes. If you have 10 pods each with a pool of 20 connections, set maxConnections to at least 250 (with some headroom).
+**maxConnections** applies per Envoy proxy for the upstream host. Set it higher than the Redis connection pool size used by one workload instance behind that proxy. If each pod has a pool of 20 connections, set maxConnections to at least 25-50 per sidecar; if you route through a shared egress gateway, size the gateway limit for the aggregate traffic through that gateway.
 
 **connectTimeout** of 5 seconds is usually generous for Redis. If your Redis is on the same cloud provider, connections establish in under 10ms.
 
@@ -257,7 +257,7 @@ Sentinel uses port 26379 for its own protocol, and the actual Redis instances ru
 Track Redis connections and throughput through Istio metrics:
 
 ```bash
-# Active connections to Redis
+# Connections opened to Redis
 
 istio_tcp_connections_opened_total{
   destination_service=~".*redislabs.*|.*cache.amazonaws.*"
@@ -297,7 +297,7 @@ kubectl logs deploy/my-app -c istio-proxy | grep 6379
 Common issues:
 - Wrong port number (Redis Cloud uses non-standard ports)
 - Missing TLS configuration (connection hangs or resets)
-- Connection pool exhaustion (too many pods, not enough maxConnections)
+- Connection pool exhaustion (client pools or Envoy connection limits too low)
 - Firewall/security group blocking from the pod network to Redis
 
 ## Complete Production Setup
