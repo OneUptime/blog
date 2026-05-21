@@ -22,7 +22,7 @@ mTLS problems typically show up as:
 
 ## Step 1: Check the mTLS Mode
 
-First, understand what mTLS mode is active. There are three levels:
+First, understand what mTLS mode is active. PeerAuthentication can apply at three scopes:
 
 ```bash
 # Mesh-wide PeerAuthentication
@@ -69,7 +69,7 @@ If a pod doesn't have a sidecar:
 
 ```bash
 # Check if the namespace has injection enabled
-kubectl get namespace production --show-labels | grep istio-injection
+kubectl get namespace production -o jsonpath='{.metadata.labels.istio-injection}{"\n"}{.metadata.labels.istio\.io/rev}{"\n"}'
 ```
 
 If injection is enabled but the sidecar is missing, the pod was probably created before injection was enabled. Restart it:
@@ -117,13 +117,13 @@ for s in data.get('dynamicActiveSecrets', []):
 
 ## Step 4: Verify Trust Domain
 
-Both services need to be in the same trust domain for mTLS to work. Check the trust domain:
+Both services need compatible trust domains for identities to be accepted. Check the configured trust domain:
 
 ```bash
 kubectl get configmap istio -n istio-system -o jsonpath='{.data.mesh}' | grep trustDomain
 ```
 
-The default trust domain is `cluster.local`. In multi-cluster setups, if clusters have different trust domains and don't share a root CA, mTLS will fail between them.
+The default trust domain is `cluster.local`. In multi-cluster setups, use the same trust domain or configure trust domain aliases and shared trust roots. If clusters use incompatible trust domains or don't share a trusted root CA, mTLS can fail between them.
 
 ## Step 5: Check DestinationRule TLS Settings
 
@@ -148,7 +148,7 @@ A conflicting configuration would be:
 
 ```yaml
 # Server wants STRICT mTLS
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: strict-mtls
@@ -158,7 +158,7 @@ spec:
     mode: STRICT
 
 # But a DestinationRule disables TLS
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: no-tls
@@ -209,7 +209,7 @@ istioctl proxy-config log deploy/my-service -n production --level connection:war
 PeerAuthentication can set different mTLS modes per port:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: per-port-mtls
@@ -227,7 +227,7 @@ spec:
       mode: STRICT      # This port requires mTLS
 ```
 
-Check if the port you're connecting to has a different mTLS mode:
+The port keys are workload container ports, not Kubernetes Service ports. Check if the workload port you're connecting to has a different mTLS mode:
 
 ```bash
 kubectl get peerauthentication -n production -o yaml
@@ -259,16 +259,17 @@ for c in data:
 "
 ```
 
-You can also test with curl from inside the proxy:
+You can also test with curl from a client pod:
 
 ```bash
 # This calls the service through the sidecar (should use mTLS)
 kubectl exec deploy/frontend -n production -c sleep -- \
   curl -v my-service.production:8080/health
 
-# This bypasses the sidecar (won't use mTLS)
-kubectl exec deploy/frontend -n production -c sleep -- \
-  curl -v --resolve my-service.production:8080:$(kubectl get pod -l app=my-service -n production -o jsonpath='{.items[0].status.podIP}') my-service.production:8080/health
+# This uses a temporary pod without sidecar injection (won't use mTLS)
+kubectl run mtls-plaintext-test -n production --rm -it --restart=Never \
+  --image=curlimages/curl --labels=sidecar.istio.io/inject=false -- \
+  curl -v my-service.production:8080/health
 ```
 
 ## Step 9: Check Certificate Rotation
@@ -277,13 +278,13 @@ Istio automatically rotates workload certificates. If rotation fails, certificat
 
 ```bash
 kubectl exec deploy/my-service -n production -c istio-proxy -- \
-  pilot-agent request GET /stats | grep "sds\."
+  pilot-agent request GET /stats | grep -E "sds\.|ssl_context_update_by_sds|secrets_not_ready"
 ```
 
 Look for:
 
-- `sds.total_active_static_secrets`: Should be > 0
-- `sds.key_rotation_failed`: Should be 0
+- `ssl_context_update_by_sds`: Should increase when Envoy receives SDS certificate updates
+- `sds.<secret-name>.key_rotation_failed`: Should be 0
 
 ## Quick Fix Checklist
 
@@ -292,7 +293,7 @@ If you need to get things working immediately:
 ```bash
 # 1. Switch to PERMISSIVE mode (allows both mTLS and plaintext)
 kubectl apply -f - <<EOF
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
