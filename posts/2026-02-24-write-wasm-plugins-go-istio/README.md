@@ -2,13 +2,13 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, WebAssembly, Go, TinyGo, Envoy
+Tags: Istio, WebAssembly, Go, Envoy
 
-Description: A guide to writing WebAssembly plugins for Istio using Go and TinyGo with the proxy-wasm Go SDK for custom traffic processing.
+Description: A guide to writing WebAssembly plugins for Istio using Go with the proxy-wasm Go SDK for custom traffic processing.
 
 ---
 
-If your team is already working in Go, you can write Wasm plugins for Istio in Go using the proxy-wasm Go SDK and TinyGo compiler. Go plugins are typically larger than Rust ones and have some limitations, but they let you leverage your existing Go knowledge and ecosystem. This post covers the full workflow from setup to deployment.
+If your team is already working in Go, you can write Wasm plugins for Istio in Go using the proxy-wasm Go SDK and the standard Go compiler. Go plugins are typically larger than Rust ones and have some limitations, but they let you leverage your existing Go knowledge and ecosystem. This post covers the full workflow from setup to deployment.
 
 ## Why Go for Wasm Plugins
 
@@ -21,27 +21,23 @@ Go is a natural choice if:
 
 The tradeoffs compared to Rust:
 
-- **Larger binaries**: Go Wasm modules are typically 1-5MB vs 100-500KB for Rust
+- **Larger binaries**: Go Wasm modules are often several MB vs 100-500KB for Rust
 - **Higher memory usage**: Go's runtime and garbage collector add overhead
-- **TinyGo required**: Standard Go does not compile to wasm32-wasi. You need TinyGo, which has a subset of the standard library
+- **Host requirements**: The current proxy-wasm Go SDK uses Go 1.24+ WASI reactors and requires a compatible host, such as Envoy 1.33.0 or later
 
 ## Setting Up the Development Environment
 
 ```bash
-# Install Go (if not already installed)
+# Install Go 1.24 or later (if not already installed)
 
 brew install go  # macOS
 # or download from https://go.dev/dl/
 
-# Install TinyGo
-brew tap tinygo-org/tools
-brew install tinygo
-
-# Verify TinyGo
-tinygo version
+# Verify Go
+go version
 ```
 
-TinyGo is required because the standard Go compiler does not support the `wasm32-wasi` target that Envoy expects. TinyGo compiles Go code to compact Wasm modules.
+Go 1.24 and later can build WASI reactor modules with `GOOS=wasip1`, `GOARCH=wasm`, and `-buildmode=c-shared`, which is what the current proxy-wasm Go SDK uses.
 
 ## Creating the Project
 
@@ -54,7 +50,7 @@ go mod init github.com/myorg/istio-go-plugin
 Add the proxy-wasm Go SDK:
 
 ```bash
-go get github.com/tetratelabs/proxy-wasm-go-sdk
+go get github.com/proxy-wasm/proxy-wasm-go-sdk
 ```
 
 ## Writing Your First Plugin
@@ -67,11 +63,13 @@ package main
 import (
 	"encoding/json"
 
-	"github.com/tetratelabs/proxy-wasm-go-sdk/proxywasm"
-	"github.com/tetratelabs/proxy-wasm-go-sdk/proxywasm/types"
+	"github.com/proxy-wasm/proxy-wasm-go-sdk/proxywasm"
+	"github.com/proxy-wasm/proxy-wasm-go-sdk/proxywasm/types"
 )
 
-func main() {
+func main() {}
+
+func init() {
 	proxywasm.SetVMContext(&vmContext{})
 }
 
@@ -97,20 +95,29 @@ type pluginConfig struct {
 }
 
 func (ctx *pluginContext) OnPluginStart(pluginConfigurationSize int) types.OnPluginStartStatus {
+	ctx.config = pluginConfig{
+		HeaderName:  "x-wasm-plugin",
+		HeaderValue: "go-plugin",
+	}
+
 	data, err := proxywasm.GetPluginConfiguration()
 	if err != nil {
 		proxywasm.LogWarnf("failed to get plugin config: %v", err)
-		// Use defaults
-		ctx.config = pluginConfig{
-			HeaderName:  "x-wasm-plugin",
-			HeaderValue: "go-plugin",
-		}
+		return types.OnPluginStartStatusOK
+	}
+	if len(data) == 0 {
 		return types.OnPluginStartStatusOK
 	}
 
 	if err := json.Unmarshal(data, &ctx.config); err != nil {
 		proxywasm.LogErrorf("failed to parse plugin config: %v", err)
 		return types.OnPluginStartStatusFailed
+	}
+	if ctx.config.HeaderName == "" {
+		ctx.config.HeaderName = "x-wasm-plugin"
+	}
+	if ctx.config.HeaderValue == "" {
+		ctx.config.HeaderValue = "go-plugin"
 	}
 
 	proxywasm.LogInfof("Plugin configured: header=%s, value=%s",
@@ -153,16 +160,17 @@ func (ctx *httpContext) OnHttpResponseHeaders(numHeaders int, endOfStream bool) 
 }
 ```
 
-## Building with TinyGo
+## Building with Go
 
 ```bash
-tinygo build -o plugin.wasm -scheduler=none -target=wasi ./main.go
+GOOS=wasip1 GOARCH=wasm go build -buildmode=c-shared -o plugin.wasm ./main.go
 ```
 
 The key flags:
 
-- `-scheduler=none`: Disables Go's goroutine scheduler (not needed in Wasm context)
-- `-target=wasi`: Compiles to the wasm32-wasi target
+- `GOOS=wasip1`: Compiles for the WASI Preview 1 target
+- `GOARCH=wasm`: Compiles to WebAssembly
+- `-buildmode=c-shared`: Builds a WASI reactor module for the proxy-wasm host
 
 Check the binary size:
 
@@ -170,11 +178,11 @@ Check the binary size:
 ls -lh plugin.wasm
 ```
 
-Go Wasm plugins are typically 1-5MB. You can reduce the size:
+Go Wasm plugins are often several MB. You can reduce the size:
 
 ```bash
 # Strip debug info and optimize
-tinygo build -o plugin.wasm -scheduler=none -target=wasi -no-debug ./main.go
+GOOS=wasip1 GOARCH=wasm go build -buildmode=c-shared -ldflags="-s -w" -o plugin.wasm ./main.go
 
 # Further optimize with wasm-opt
 wasm-opt -O3 plugin.wasm -o plugin-optimized.wasm
@@ -191,11 +199,13 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/tetratelabs/proxy-wasm-go-sdk/proxywasm"
-	"github.com/tetratelabs/proxy-wasm-go-sdk/proxywasm/types"
+	"github.com/proxy-wasm/proxy-wasm-go-sdk/proxywasm"
+	"github.com/proxy-wasm/proxy-wasm-go-sdk/proxywasm/types"
 )
 
-func main() {
+func main() {}
+
+func init() {
 	proxywasm.SetVMContext(&vmContext{})
 }
 
@@ -298,6 +308,14 @@ func (ctx *authHttpContext) OnHttpRequestHeaders(numHeaders int, endOfStream boo
 ## Working with Request Bodies in Go
 
 ```go
+func (ctx *httpContext) OnHttpRequestHeaders(numHeaders int, endOfStream bool) types.Action {
+	// Remove Content-Length before changing the body size.
+	if err := proxywasm.RemoveHttpRequestHeader("content-length"); err != nil {
+		proxywasm.LogWarnf("failed to remove content-length: %v", err)
+	}
+	return types.ActionContinue
+}
+
 func (ctx *httpContext) OnHttpRequestBody(bodySize int, endOfStream bool) types.Action {
 	if !endOfStream {
 		// Wait for the complete body
@@ -348,10 +366,15 @@ func (ctx *httpContext) OnHttpRequestHeaders(numHeaders int, endOfStream bool) t
 		{"content-type", "application/json"},
 	}
 
-	body := []byte(`{"token":"` + token + `"}`)
+	body, err := json.Marshal(map[string]string{"token": token})
+	if err != nil {
+		proxywasm.LogErrorf("failed to marshal auth request: %v", err)
+		proxywasm.SendHttpResponse(500, nil, []byte("auth request failed"), -1)
+		return types.ActionPause
+	}
 
-	_, err := proxywasm.DispatchHttpCall(
-		"auth-service.default.svc.cluster.local",
+	_, err = proxywasm.DispatchHttpCall(
+		"outbound|80||auth-service.default.svc.cluster.local",
 		headers,
 		body,
 		nil,
@@ -369,7 +392,20 @@ func (ctx *httpContext) OnHttpRequestHeaders(numHeaders int, endOfStream bool) t
 }
 
 func (ctx *httpContext) onAuthResponse(numHeaders, bodySize, numTrailers int) {
-	status, _ := proxywasm.GetHttpCallResponseHeader(":status")
+	headers, err := proxywasm.GetHttpCallResponseHeaders()
+	if err != nil {
+		proxywasm.LogErrorf("failed to get auth response headers: %v", err)
+		proxywasm.SendHttpResponse(500, nil, []byte("auth service unavailable"), -1)
+		return
+	}
+
+	status := ""
+	for _, header := range headers {
+		if header[0] == ":status" {
+			status = header[1]
+			break
+		}
+	}
 
 	if status == "200" {
 		proxywasm.ResumeHttpRequest()
@@ -404,21 +440,21 @@ spec:
       key-def-456: web-frontend
 ```
 
-## TinyGo Limitations
+## Go Wasm Plugin Limitations
 
-Be aware of these TinyGo limitations when writing plugins:
+Be aware of these limitations when writing Go Wasm plugins:
 
-- **No reflection**: Many Go libraries that rely on reflection will not work
-- **Limited standard library**: Some packages like `net/http`, `os`, and `io/fs` are not available
-- **No goroutines in Wasm**: The `scheduler=none` flag means goroutines do not work. All code runs synchronously.
+- **Compatible host required**: The current proxy-wasm Go SDK requires Go 1.24+ and a host with the required proxy-wasm imports, such as Envoy 1.33.0 or later
+- **Sandboxed runtime**: Packages that depend on arbitrary local files, sockets, processes, or host OS access are not useful unless the host explicitly exposes those capabilities
+- **Use proxy-wasm APIs for network calls**: Plugins should make outbound calls through `DispatchHttpCall` to configured Envoy clusters, not through `net/http`
 - **Some cgo libraries do not work**: C bindings are not available in the Wasm environment
 
-Libraries that work well with TinyGo and Wasm:
-- `encoding/json` (basic usage)
+Libraries that work well with Go and Wasm:
+- `encoding/json`
 - `strings`
 - `strconv`
-- `fmt` (limited)
+- `fmt`
 
 ## Summary
 
-Writing Wasm plugins in Go with TinyGo is a practical option for teams with Go expertise. The proxy-wasm Go SDK follows the same architectural patterns as the Rust SDK (VMContext, PluginContext, HttpContext), making it straightforward to port concepts between languages. The main tradeoffs are larger binary sizes and some standard library limitations from TinyGo. For most plugin use cases - authentication, header manipulation, logging, and request validation - Go works well.
+Writing Wasm plugins in Go is a practical option for teams with Go expertise. The proxy-wasm Go SDK follows the same architectural patterns as the Rust SDK (VMContext, PluginContext, HttpContext), making it straightforward to port concepts between languages. The main tradeoffs are larger binary sizes and runtime constraints from the Wasm host environment. For most plugin use cases - authentication, header manipulation, logging, and request validation - Go works well.
