@@ -95,7 +95,7 @@ The service registry is dynamic. When pods come and go, the registry updates aut
 5. Istiod pushes the update to all relevant sidecars
 6. Sidecars start routing traffic to the new endpoint
 
-This process typically takes 1-3 seconds, depending on cluster size and configuration push latency.
+This process often completes within seconds, depending on cluster size and configuration push latency.
 
 ## Service Entry: Adding External Services
 
@@ -119,7 +119,7 @@ spec:
   resolution: DNS
 ```
 
-After applying this, `api.example.com` appears in the service registry and sidecars can route traffic to it with full observability and policy enforcement.
+After applying this, `api.example.com` appears in the service registry and sidecars can route traffic to it with Istio traffic management, observability, and policy features for the outbound connection.
 
 For services with static IPs:
 
@@ -146,8 +146,8 @@ spec:
 
 The `location` field in ServiceEntry is important:
 
-- `MESH_EXTERNAL` - The service is outside the mesh. mTLS is not applied. Sidecars route traffic to it but do not expect an Istio sidecar on the other side.
-- `MESH_INTERNAL` - The service is inside the mesh. mTLS is applied. Used for services that should be treated like any other mesh service.
+- `MESH_EXTERNAL` - The service is outside the mesh. Sidecars route traffic to it but do not treat the destination as an in-mesh workload.
+- `MESH_INTERNAL` - The service is inside the mesh. Used for services that should be treated like any other mesh service, such as VM workloads or other unmanaged infrastructure that participates in the mesh. mTLS behavior still depends on your PeerAuthentication and DestinationRule settings.
 
 ## The PassthroughCluster
 
@@ -171,7 +171,7 @@ spec:
       mode: REGISTRY_ONLY
 ```
 
-With `REGISTRY_ONLY`, any request to a service not in the registry will fail. You need to explicitly add ServiceEntry resources for every external dependency.
+With `REGISTRY_ONLY`, requests to hosts that are not known through a Kubernetes service or ServiceEntry will fail. You need to explicitly add ServiceEntry resources for external dependencies that should be allowed.
 
 ```bash
 # Verify the outbound policy
@@ -179,7 +179,7 @@ istioctl proxy-config clusters deploy/my-app -n default | grep BlackHole
 # BlackHoleCluster   -   -   -   STATIC
 ```
 
-When `REGISTRY_ONLY` is active, the BlackHoleCluster replaces the PassthroughCluster, and traffic to unknown destinations gets dropped.
+When `REGISTRY_ONLY` is active, traffic to unknown destinations is routed to the BlackHoleCluster and gets dropped.
 
 ## Service Registry and Namespaces
 
@@ -215,7 +215,7 @@ spec:
     - "istio-system/*"
 ```
 
-This tells all sidecars in the `frontend` namespace to only receive registry information for services in `frontend`, `backend`, and `istio-system`. Services in other namespaces will not be in their registry.
+This tells all sidecars in the `frontend` namespace to only receive outbound configuration for services in `frontend`, `backend`, and `istio-system`. Services in other namespaces will not be in their scoped outbound configuration. This configuration scoping reduces proxy configuration size, but it is not a substitute for an egress access-control policy.
 
 ## Multi-Cluster Service Registry
 
@@ -224,7 +224,8 @@ In multi-cluster Istio setups, the service registry spans multiple clusters. Eac
 Set up remote cluster access:
 
 ```bash
-istioctl create-remote-secret --name=cluster-2 | kubectl apply -f - --context=cluster-1
+istioctl create-remote-secret --context=cluster-2 --name=cluster-2 | \
+  kubectl apply -f - --context=cluster-1
 ```
 
 After this, services in cluster-2 appear in the service registry of cluster-1, and sidecars can route traffic to pods in either cluster.
@@ -254,4 +255,4 @@ kubectl get endpoints payment-service -n default
 kubectl get pods -l app=payment -n default
 ```
 
-The service registry is the foundation of how Istio routes traffic. Every VirtualService, DestinationRule, and AuthorizationPolicy ultimately operates on services that exist in this registry. Knowing how the registry is populated, how it handles external services, and how to debug it gives you a solid foundation for troubleshooting any routing issue in your mesh.
+The service registry is the foundation of how Istio routes traffic. Traffic-management resources such as VirtualService and DestinationRule use hosts that Istio can resolve through Kubernetes services or entries in the registry. AuthorizationPolicy targets workloads, gateways, and request attributes, but registry data still affects which destinations proxies can route to. Knowing how the registry is populated, how it handles external services, and how to debug it gives you a solid foundation for troubleshooting any routing issue in your mesh.
