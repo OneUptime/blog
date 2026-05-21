@@ -12,7 +12,7 @@ Tuning circuit breakers for production is different from configuring them in a l
 
 ## Start by Understanding Your Baseline
 
-Before tuning anything, you need to know what normal looks like. Collect these metrics for at least a week:
+Before tuning anything, you need to know what normal looks like. Envoy statistics are per proxy instance, and Istio only records a minimal set by default, so make sure your mesh or workload `proxyStatsMatcher` includes the upstream cluster stats you want to query. Then collect these metrics for at least a week:
 
 ```bash
 # Current active connections per service
@@ -49,13 +49,13 @@ A good starting point is to set connection pool limits at roughly 2x your observ
 If your service peaks at 50 concurrent connections and 100 concurrent requests:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service
   namespace: production
 spec:
-  host: my-service
+  host: my-service.production.svc.cluster.local
   trafficPolicy:
     connectionPool:
       tcp:
@@ -86,7 +86,7 @@ outlierDetection:
   minHealthPercent: 50
 ```
 
-Low error thresholds (1-2) catch problems quickly. Low `maxEjectionPercent` (25%) ensures you always have 75% capacity. High `minHealthPercent` (50%) disables ejection if too many instances are unhealthy, preventing a death spiral.
+Low error thresholds (1-2) catch problems quickly. Low `maxEjectionPercent` (25%) limits how much capacity can be ejected. High `minHealthPercent` (50%) disables ejection if too many instances are unhealthy, preventing a death spiral.
 
 ### For Standard Services (APIs, Backends)
 
@@ -115,55 +115,57 @@ outlierDetection:
 
 ## Accounting for Retries
 
-Retries amplify traffic, and that amplified traffic counts against circuit breaker limits. If you have 3 retries configured and your service gets 100 RPS, the circuit breaker might see up to 300 RPS in a failure scenario.
+Retries amplify traffic, and that amplified traffic counts against circuit breaker limits. If you allow 3 retries and your service gets 100 RPS, the circuit breaker might see up to 400 RPS in a failure scenario: the original request plus up to 3 retries.
 
 Factor this into your connection pool settings:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service
+  namespace: production
 spec:
   hosts:
-    - my-service
+    - my-service.production.svc.cluster.local
   http:
     - route:
         - destination:
-            host: my-service
+            host: my-service.production.svc.cluster.local
       retries:
         attempts: 3
         perTryTimeout: 2s
         retryOn: "gateway-error,connect-failure"
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service
+  namespace: production
 spec:
-  host: my-service
+  host: my-service.production.svc.cluster.local
   trafficPolicy:
     connectionPool:
       tcp:
-        maxConnections: 300    # 100 base * 3 retry factor
+        maxConnections: 400    # 100 base * (1 original + 3 retries)
       http:
-        http1MaxPendingRequests: 150
-        http2MaxRequests: 600
+        http1MaxPendingRequests: 200
+        http2MaxRequests: 800
 ```
 
 ## Per-Service vs Global Settings
 
-You can set global defaults using a mesh-wide DestinationRule and override for specific services:
+DestinationRules apply to traffic for a specific service-registry host. A wildcard such as `*.production.svc.cluster.local` is not a mesh-wide default for every Kubernetes service, so apply your standard defaults per service and use different values for services that need them:
 
 ```yaml
-# Global default - conservative limits
-apiVersion: networking.istio.io/v1beta1
+# Standard service - conservative limits
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
-  name: global-defaults
-  namespace: istio-system
+  name: standard-api
+  namespace: production
 spec:
-  host: "*.production.svc.cluster.local"
+  host: standard-api.production.svc.cluster.local
   trafficPolicy:
     connectionPool:
       tcp:
@@ -179,8 +181,8 @@ spec:
 ```
 
 ```yaml
-# Override for high-traffic service
-apiVersion: networking.istio.io/v1beta1
+# High-traffic service - higher limits
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: high-traffic-api
@@ -206,11 +208,11 @@ spec:
 Rolling deployments temporarily reduce capacity. Your circuit breaking settings need to handle this gracefully.
 
 During a deployment of a 4-pod service with `maxSurge: 1` and `maxUnavailable: 1`:
-- Minimum capacity: 3 pods (one terminating)
-- If `maxEjectionPercent: 50` ejects 1 pod: 2 pods serving traffic
-- If `maxEjectionPercent: 25` ejects 0 pods (can't eject 25% of 3): 3 pods serving traffic
+- Minimum available capacity: 3 pods
+- If `maxEjectionPercent: 50` ejects multiple pods from a 3-pod pool, you may be left with only 1-2 pods serving traffic
+- If `maxEjectionPercent: 25` ejects 1 pod from a 3-pod pool, 2 pods continue serving traffic
 
-For services with few pods, lower `maxEjectionPercent` to prevent capacity from dropping too far during deployments:
+For services with few pods, lower `maxEjectionPercent` to limit how much capacity can be ejected during deployments:
 
 ```yaml
 # For a 4-pod service
@@ -251,7 +253,7 @@ flowchart TD
 Here is a production-ready template you can adapt:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: SERVICENAME
