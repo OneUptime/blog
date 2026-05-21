@@ -22,7 +22,7 @@ Before you start debugging, configure the graph view for maximum usefulness:
    - Traffic Animation (see request flow in real time)
    - Response Time on edges
    - Security (to spot mTLS issues)
-   - Unused Nodes (to see services with zero traffic)
+   - Idle Nodes or Idle Edges (to see services or edges without traffic in the selected time range)
 
 4. Turn on auto-refresh at 15-second intervals so the graph updates as the situation evolves
 
@@ -74,11 +74,11 @@ Enable "Response Time" edge labels. Scan the graph for edges with unusually high
 
 Click on a slow edge to see the latency breakdown:
 
-- P50 (median) response time
-- P95 response time
-- P99 response time
+- Response-time charts for the selected traffic
+- P95 response time, which is what Kiali uses for Response Time edge labels
+- Any other percentile views available in your Kiali metrics settings
 
-A big gap between P50 and P99 means most requests are fast but some are very slow. This pattern usually indicates:
+A big gap between typical latency and a high percentile means most requests are fast but some are very slow. This pattern usually indicates:
 - Connection pool exhaustion
 - Garbage collection pauses
 - Occasional slow database queries
@@ -99,7 +99,7 @@ Sometimes traffic isn't going where you expect it. VirtualService configurations
 
 ### Traffic Not Reaching a Service
 
-Enable "Unused Nodes" in the display settings. Services with zero traffic show as gray nodes with no edges. If a service should be getting traffic but isn't:
+Enable "Idle Nodes" or "Idle Edges" in the display settings. Services or edges without traffic in the selected time range can show as idle in the graph. If a service should be getting traffic but isn't:
 
 1. Check VirtualService configuration - is the host correct?
 2. Check if the Kubernetes service selector matches the pods
@@ -150,7 +150,7 @@ Look at the edge in Kiali. If you see 503s, click on the destination node and ch
 
 ### 426 Upgrade Required
 
-This appears when a client tries to use HTTP/1.0 to connect to a service that requires HTTP/2. Check that your service ports follow Istio's naming convention:
+This means the server or proxy refused the request using the current protocol and expects the client to upgrade. In an Istio mesh, one common cause is that a gateway forwards traffic to an HTTP/2 or gRPC backend using HTTP/1.1 because the service protocol was not selected explicitly. Check that your service ports follow Istio's naming convention, or use the Kubernetes `appProtocol` field:
 
 ```yaml
 ports:
@@ -167,7 +167,7 @@ In large meshes, the full graph is overwhelming during debugging. Use the Find/H
 ### Hide Healthy Services
 
 ```text
-%healthy = true
+healthy
 ```
 
 Type this in the "Hide" box to remove all healthy nodes from the graph, leaving only the problematic ones.
@@ -175,7 +175,7 @@ Type this in the "Hide" box to remove all healthy nodes from the graph, leaving 
 ### Find a Specific Service
 
 ```text
-node = "reviews"
+name = reviews
 ```
 
 This highlights the reviews service and its immediate connections, dimming everything else.
@@ -183,10 +183,10 @@ This highlights the reviews service and its immediate connections, dimming every
 ### Find All Services with Errors
 
 ```text
-%error > 0
+! healthy
 ```
 
-This highlights any node or edge with a non-zero error rate.
+This highlights unhealthy nodes or edges, including traffic with error rates high enough to affect Kiali health.
 
 ## Comparing Time Ranges
 
