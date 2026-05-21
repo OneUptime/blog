@@ -12,7 +12,7 @@ Sometimes you need traffic from your pods to bypass the Istio sidecar entirely. 
 
 ## The Cloud Metadata Endpoint
 
-The most common IP exclusion is the cloud provider metadata endpoint at 169.254.169.254. Almost every cloud provider uses this address to serve instance metadata, and it should never go through Envoy. On AWS, GCP, and Azure, pods that need to access instance metadata or assume IAM roles need direct access to this IP.
+The most common IP exclusion is the cloud provider metadata endpoint at 169.254.169.254. AWS, GCP, and Azure all use this address to serve instance metadata, and it is often better left outside Envoy interception. On AWS, GCP, and Azure, pods that need to access instance metadata or assume IAM roles may need direct access to this IP.
 
 ```yaml
 metadata:
@@ -20,7 +20,7 @@ metadata:
     traffic.sidecar.istio.io/excludeOutboundIPRanges: "169.254.169.254/32"
 ```
 
-Without this exclusion, requests to the metadata endpoint get intercepted by Envoy, which doesn't know how to route them, and the requests fail or time out.
+Without this exclusion, requests to the metadata endpoint get intercepted by Envoy. Depending on your outbound traffic policy and the cloud provider's metadata service requirements, those requests can fail or time out.
 
 ## Pod-Level IP Range Exclusion
 
@@ -99,10 +99,10 @@ Pod-level annotations always override the mesh-wide configuration. This lets you
 
 When you exclude an IP range, the `istio-init` container (or CNI plugin) adds a RETURN rule to the ISTIO_OUTPUT chain in the pod's iptables. This rule matches packets destined for the excluded IP range and sends them back to the normal routing path, skipping the redirect to Envoy.
 
-You can verify this by inspecting the iptables rules:
+You can verify this by inspecting the iptables rules from a container in the pod network namespace. If your application or proxy image does not include `iptables`, use a temporary debug container:
 
 ```bash
-kubectl exec -it <pod-name> -c istio-proxy -- iptables -t nat -S ISTIO_OUTPUT
+kubectl debug -it <pod-name> --image=gcr.io/istio-release/base --profile=netadmin -- iptables -t nat -S ISTIO_OUTPUT
 ```
 
 With the metadata endpoint excluded, you'll see something like:
@@ -186,34 +186,34 @@ spec:
 
 The difference is that with a ServiceEntry, traffic still goes through Envoy, which means you get metrics and logging. With IP exclusion, traffic completely bypasses Envoy. Choose based on whether you need observability for that traffic.
 
-## Excluding Inbound IP Ranges
+## Excluding Inbound Ports
 
-While less common, you can also exclude inbound traffic from specific IP ranges:
+Istio does not provide a sidecar annotation to exclude inbound traffic by source IP range. For inbound traffic, the sidecar annotations work at the port level:
 
 ```yaml
 metadata:
   annotations:
-    traffic.sidecar.istio.io/excludeInboundIPRanges: "10.0.0.0/8"
+    traffic.sidecar.istio.io/excludeInboundPorts: "8080"
 ```
 
-This means inbound connections from IPs in the 10.0.0.0/8 range won't go through the Envoy inbound listener. This might be useful for load balancer health checks that come from known IP ranges.
+This means inbound connections to port 8080 won't go through the Envoy inbound listener. This might be useful for load balancer health checks that target a dedicated port. If you need source-IP-based inbound control, use Istio authorization policies or Kubernetes network policy instead of a sidecar traffic-capture annotation.
 
 ## Debugging IP Range Issues
 
 If connections to excluded IPs aren't working as expected, check the iptables rules first:
 
 ```bash
-kubectl exec -it <pod-name> -c istio-proxy -- iptables -t nat -L ISTIO_OUTPUT -v -n
+kubectl debug -it <pod-name> --image=gcr.io/istio-release/base --profile=netadmin -- iptables -t nat -L ISTIO_OUTPUT -v -n
 ```
 
 Look at the packet counters. If the RETURN rule for your excluded CIDR shows zero packets, the traffic might not be matching the rule. Double-check the CIDR notation and make sure the destination IP falls within the range.
 
-You can also test connectivity directly:
+You can also test connectivity directly from the application container:
 
 ```bash
-kubectl exec -it <pod-name> -c istio-proxy -- curl -v http://169.254.169.254/latest/meta-data/
+kubectl exec -it <pod-name> -c <app-container> -- curl -v http://169.254.169.254/latest/meta-data/
 ```
 
-If this works but the same request from the application container times out, the iptables rules might not be configured correctly. Compare the rules you see with what you expect.
+If this times out, the iptables rules might not be configured correctly, or the metadata service might require provider-specific headers, tokens, or identity configuration. Compare the rules you see with what you expect.
 
 IP range exclusion is one of the most straightforward ways to carve out exceptions in Istio's traffic management. Use it for external services that don't belong in the mesh, and combine it with ServiceEntries when you still want observability without full mesh features.
