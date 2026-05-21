@@ -33,7 +33,7 @@ A workload in cluster2 with the same service account and namespace has the exact
 A simple policy that allows traffic from the `frontend` service account in the `web` namespace, regardless of which cluster it runs in:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: allow-frontend
@@ -57,7 +57,7 @@ This policy works identically whether the `frontend` workload is in cluster1, cl
 In a multi-cluster mesh, start with a deny-all policy and explicitly allow what should be allowed:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: deny-all
@@ -80,7 +80,7 @@ Then add explicit ALLOW policies for the traffic you want.
 Allow all traffic from a specific namespace across the entire mesh:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: allow-web-namespace
@@ -102,10 +102,10 @@ Sometimes you want to allow traffic only from a specific cluster. Since the SPIF
 
 ### Approach 1: Use Custom Headers
 
-Configure your application or a VirtualService to add a cluster identifier header:
+Configure your application or an EnvoyFilter to add a cluster identifier header. Make sure the proxy overwrites any incoming value so the application cannot spoof the header:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1alpha3
 kind: EnvoyFilter
 metadata:
   name: add-cluster-header
@@ -119,22 +119,25 @@ spec:
         filterChain:
           filter:
             name: envoy.filters.network.http_connection_manager
+            subFilter:
+              name: envoy.filters.http.router
     patch:
       operation: INSERT_BEFORE
       value:
         name: envoy.filters.http.lua
         typed_config:
           "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-          inlineCode: |
-            function envoy_on_request(request_handle)
-              request_handle:headers():add("x-source-cluster", "cluster1")
-            end
+          defaultSourceCode:
+            inlineString: |
+              function envoy_on_request(request_handle)
+                request_handle:headers():replace("x-source-cluster", "cluster1")
+              end
 ```
 
 Then use the header in authorization policies:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: allow-from-cluster1-only
@@ -174,7 +177,7 @@ metadata:
 Then write policies targeting specific service accounts:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: allow-frontend-cluster1-only
@@ -215,12 +218,17 @@ spec:
   generators:
   - clusters: {}
   template:
+    metadata:
+      name: 'istio-authz-{{name}}'
     spec:
+      project: default
       source:
         repoURL: https://github.com/org/istio-config
+        targetRevision: main
         path: authorization
       destination:
         server: '{{server}}'
+        namespace: istio-system
 ```
 
 ## Authorization with Different Trust Domains
@@ -237,10 +245,10 @@ spec:
     - cluster2.example.com
 ```
 
-Then reference the appropriate trust domain in policies:
+Then reference `cluster.local` in policies. In Istio authorization policies, `cluster.local` is treated as a pointer to the current trust domain and its aliases:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: allow-cross-trust-domain
@@ -251,8 +259,7 @@ spec:
   - from:
     - source:
         principals:
-        - "cluster1.example.com/ns/web/sa/frontend"
-        - "cluster2.example.com/ns/web/sa/frontend"
+        - "cluster.local/ns/web/sa/frontend"
 ```
 
 ## Debugging Authorization Policies
@@ -270,7 +277,7 @@ kubectl logs -n bookinfo -c istio-proxy deployment/reviews --context="${CTX_CLUS
 Enable access logging and look at the source principal:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: mesh-default
@@ -291,7 +298,7 @@ kubectl logs -n bookinfo -c istio-proxy deployment/reviews --context="${CTX_CLUS
 istioctl x authz check deployment/reviews -n bookinfo --context="${CTX_CLUSTER2}"
 ```
 
-This shows which policies apply to the workload and what they would do for a given request.
+This shows which policies apply to the workload based on the Envoy configuration received by the proxy.
 
 ## Summary
 
