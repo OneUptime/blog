@@ -15,7 +15,7 @@ Istio's service-level metrics (like `istio_requests_total`) get most of the atte
 Every Envoy sidecar in your mesh exposes its own stats. You can see them raw by hitting the admin endpoint:
 
 ```bash
-kubectl exec <pod-name> -c istio-proxy -- curl -s localhost:15000/stats
+kubectl exec <pod-name> -c istio-proxy -- pilot-agent request GET stats
 ```
 
 This dumps thousands of lines of metrics. The Prometheus-formatted version is available on port 15020:
@@ -199,10 +199,10 @@ These provide HTTP-specific stats:
 envoy_http_downstream_rq_active
 
 # Request rate by response code class
-rate(envoy_http_downstream_rq_xx{envoy_response_code_class="5"}[5m])
+rate(envoy_http_downstream_rq_5xx[5m])
 
-# Websocket connections
-envoy_http_downstream_cx_websocket_active
+# Active upgraded connections, including WebSockets
+envoy_http_downstream_cx_upgrades_active
 ```
 
 ## TLS Metrics
@@ -256,9 +256,6 @@ spec:
           - ".*circuit_breakers.*"
           - ".*upstream_cx.*"
           - ".*upstream_rq.*"
-        inclusionPrefixes:
-          - "envoy.cluster.upstream_cx"
-          - "envoy.cluster.upstream_rq"
 ```
 
 Or on a per-pod basis using annotations:
