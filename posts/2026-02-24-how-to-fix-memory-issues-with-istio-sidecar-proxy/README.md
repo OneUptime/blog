@@ -69,7 +69,7 @@ spec:
         - "cache-namespace/redis"        # Another specific dependency
 ```
 
-This tells the sidecar to only load configuration for services in its own namespace, plus specifically named services in other namespaces. Everything else is excluded, saving significant memory.
+This tells the sidecar to only load configuration for services in its own namespace, plus specifically named services in other namespaces. Everything else is excluded from the generated configuration, saving significant memory. This scopes configuration; it is not an egress security policy by itself.
 
 For a namespace-wide default:
 
@@ -117,11 +117,28 @@ spec:
             cpu: 500m
 ```
 
-Setting memory limits has two benefits: it prevents a single proxy from consuming unbounded memory, and it helps Kubernetes schedule pods more efficiently.
+Setting memory requests and limits has two benefits: requests help Kubernetes schedule pods more accurately, and limits prevent a single proxy from consuming unbounded memory.
 
 ## Reduce Configuration with exportTo
 
-Limit which namespaces can see a service by using exportTo on your Service and VirtualService resources:
+Limit which namespaces can see a service by using `exportTo` on your VirtualService resources and the `networking.istio.io/exportTo` annotation on Kubernetes Services:
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: internal-service
+  namespace: team-a
+  annotations:
+    networking.istio.io/exportTo: "."
+spec:
+  selector:
+    app: internal-service
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+```
 
 ```yaml
 apiVersion: networking.istio.io/v1beta1
@@ -158,11 +175,11 @@ spec:
         maxRequestsPerConnection: 100
 ```
 
-When services are not exported to the entire mesh, other sidecars do not need to load their configuration.
+When services and Istio traffic resources are not exported to the entire mesh, other sidecars do not need to load their configuration.
 
 ## Tune Envoy Concurrency
 
-By default, Envoy creates worker threads based on the number of CPU cores. Each worker thread uses its own memory. Reducing concurrency saves memory at the cost of throughput:
+By default, Istio automatically determines Envoy worker thread concurrency from the proxy CPU limits. Each worker thread uses its own memory. Reducing concurrency saves memory at the cost of throughput:
 
 ```yaml
 metadata:
@@ -234,7 +251,7 @@ spec:
         - alert: IstioProxyHighMemory
           expr: |
             container_memory_working_set_bytes{container="istio-proxy"}
-            / container_spec_memory_limit_bytes{container="istio-proxy"} > 0.85
+            / on(pod, namespace, container) container_spec_memory_limit_bytes{container="istio-proxy"} > 0.85
           for: 5m
           labels:
             severity: warning
@@ -251,7 +268,7 @@ Get a breakdown of where memory is going in the proxy:
 kubectl exec <pod-name> -c istio-proxy -n production -- pilot-agent request GET /clusters | grep "::default_priority" | wc -l
 
 # Check the number of listeners
-kubectl exec <pod-name> -c istio-proxy -n production -- pilot-agent request GET /listeners | jq '. | length'
+kubectl exec <pod-name> -c istio-proxy -n production -- pilot-agent request GET '/listeners?format=json' | jq '.listener_statuses | length'
 
 # Check the number of routes
 kubectl exec <pod-name> -c istio-proxy -n production -- pilot-agent request GET /config_dump | jq '.configs[] | select(."@type" | contains("RoutesConfigDump")) | .dynamic_route_configs | length'
