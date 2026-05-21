@@ -8,17 +8,19 @@ Description: How to configure the Istio sidecar proxy network interception mode 
 
 ---
 
-The Istio sidecar proxy intercepts all network traffic flowing in and out of your application containers. How it intercepts that traffic is controlled by the network mode (also called interception mode). Istio supports two modes: REDIRECT and TPROXY. Each has different trade-offs around source IP preservation, kernel requirements, and compatibility with various Kubernetes networking setups.
+The Istio sidecar proxy intercepts TCP traffic flowing in and out of your application containers, except for ports or ranges that Istio excludes from capture. How inbound traffic is intercepted is controlled by the network mode (also called interception mode). Istio supports two common inbound modes: REDIRECT and TPROXY. Each has different trade-offs around source IP preservation, kernel requirements, and compatibility with various Kubernetes networking setups.
 
 ## How Traffic Interception Works
 
-When a pod with an Istio sidecar starts, the init container (or CNI plugin) sets up iptables rules in the pod's network namespace. These rules redirect traffic so that it passes through the Envoy proxy instead of going directly to or from the application.
+When a pod with an Istio sidecar starts, the init container (or CNI plugin) sets up iptables rules in the pod's network namespace. These rules redirect TCP traffic so that it passes through the Envoy proxy instead of going directly to or from the application.
 
 The interception happens at the kernel level using netfilter/iptables. There are two strategies:
 
 **REDIRECT mode** uses iptables REDIRECT target, which changes the destination of packets to the local proxy. The original destination IP is preserved in the socket option `SO_ORIGINAL_DST`, which Envoy uses to determine where to forward the traffic.
 
 **TPROXY mode** uses iptables TPROXY target, which transparently proxies traffic without modifying packet headers. The proxy binds to the original destination address, preserving both source and destination IPs.
+
+The interception mode setting applies to inbound traffic. Istio uses iptables `REDIRECT` for outbound connections.
 
 ## REDIRECT Mode (Default)
 
@@ -61,7 +63,7 @@ Port 15006 is the inbound listener and port 15001 is the outbound listener on th
 - Compatible with all Kubernetes networking plugins
 
 **Cons of REDIRECT:**
-- The source IP seen by the application is always `127.0.0.6` (the proxy's loopback address)
+- For inbound sidecar-forwarded traffic, the source IP seen by the application is typically `127.0.0.6` (the proxy's loopback address)
 - Cannot preserve the original client IP for inbound connections
 
 ## TPROXY Mode
@@ -147,7 +149,7 @@ The application sees the real source IP of the calling pod.
 
 ## Using X-Forwarded-For Instead
 
-A simpler alternative to TPROXY for getting the client IP is to use the `X-Forwarded-For` header. Envoy adds this header automatically in REDIRECT mode:
+A simpler alternative to TPROXY for getting the client IP for HTTP traffic is to use the `X-Forwarded-For` header. Envoy can append this header when the HTTP connection manager is configured to use the downstream remote address:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -158,6 +160,7 @@ spec:
   configPatches:
   - applyTo: NETWORK_FILTER
     match:
+      context: SIDECAR_INBOUND
       listener:
         filterChain:
           filter:
@@ -171,7 +174,7 @@ spec:
           xff_num_trusted_hops: 0
 ```
 
-Your application can then read the `X-Forwarded-For` header to get the original client IP without needing TPROXY mode.
+Your application can then read the `X-Forwarded-For` header to get the original client IP without needing TPROXY mode. This only applies to HTTP traffic; TCP protocols do not have HTTP headers.
 
 ## Port Exclusions
 
@@ -205,11 +208,11 @@ A common exclusion is the cloud metadata service at `169.254.169.254`, which som
 
 ## Network Mode and Kubernetes Network Policies
 
-Network policies interact with the interception mode. When using REDIRECT, the source IP of all mesh traffic appears to come from the node or proxy address, which can break network policies that match on source pod IPs.
+Network policies can interact with sidecar redirection and any source or destination address rewriting in the data path. Kubernetes `NetworkPolicy` enforcement is implemented by the CNI plugin, and source-IP behavior can vary with the network plugin, cloud provider, and Service implementation.
 
-With TPROXY, network policies based on source IP work correctly since the original IP is preserved.
+With TPROXY, the inbound connection delivered through Envoy preserves the original source IP for the application. This is most useful when the application itself needs the client IP, or when your policy implementation relies on source IPs after traffic has entered the pod namespace.
 
-If you must use REDIRECT with network policies, match on pod labels instead of IP addresses:
+When possible, prefer Kubernetes `NetworkPolicy` peers based on pod or namespace selectors instead of relying on pod IP addresses:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
