@@ -179,7 +179,7 @@ Detect unusual traffic increases that might indicate a DDoS or a misconfigured c
 
 ```yaml
 - alert: IstiodPushErrors
-  expr: sum(rate(pilot_xds_push_errors[5m])) > 0
+  expr: sum(rate(pilot_xds_pushes[5m])) > 0
   for: 5m
   labels:
     severity: warning
@@ -208,9 +208,7 @@ Detect unusual traffic increases that might indicate a DDoS or a misconfigured c
   expr: |
     pilot_conflict_inbound_listener > 0
     or
-    pilot_conflict_outbound_listener_http_over_current_tcp > 0
-    or
-    pilot_conflict_outbound_listener_tcp_over_current_http > 0
+    pilot_conflict_outbound_listener_tcp_over_current_tcp > 0
   for: 15m
   labels:
     severity: warning
@@ -332,7 +330,7 @@ spec:
 
 ## Alerting Best Practices
 
-**Use the `for` clause wisely.** Don't alert on transient spikes. A 5-minute `for` duration means the condition must be true for 5 consecutive evaluation cycles before firing.
+**Use the `for` clause wisely.** Don't alert on transient spikes. A 5-minute `for` duration means the condition must remain active for 5 minutes before firing.
 
 **Set severity levels.** Use `critical` for things that need immediate human attention and `warning` for things that should be investigated during business hours.
 
