@@ -176,35 +176,38 @@ spec:
 
 ## Handling Long-Running Queries
 
-Some queries legitimately take a long time - data migrations, report generation, ETL jobs. For these, you need longer timeouts. Instead of increasing timeouts globally, create a separate DestinationRule subset:
+Some queries legitimately take a long time - data migrations, report generation, ETL jobs. For these, you need longer timeouts. Instead of increasing timeouts globally, create a separate Kubernetes Service that selects the same database pods, then give that service its own DestinationRule:
 
 ```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-analytics
+  namespace: database
+spec:
+  selector:
+    app: postgres
+  ports:
+    - name: tcp-postgres
+      port: 5432
+      targetPort: 5432
+---
 apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
-  name: database
+  name: database-analytics
   namespace: database
 spec:
-  host: postgres.database.svc.cluster.local
+  host: postgres-analytics.database.svc.cluster.local
   trafficPolicy:
     connectionPool:
       tcp:
-        connectTimeout: 10s
-        idleTimeout: 1800s
-        maxConnections: 100
-  subsets:
-    - name: long-running
-      labels:
-        workload: analytics
-      trafficPolicy:
-        connectionPool:
-          tcp:
-            connectTimeout: 30s
-            idleTimeout: 7200s
-            maxConnections: 20
+        connectTimeout: 30s
+        idleTimeout: 7200s
+        maxConnections: 20
 ```
 
-Then route the analytics workload through the subset:
+Then route the analytics workload through that service:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -221,8 +224,7 @@ spec:
             app: analytics-worker
       route:
         - destination:
-            host: postgres.database.svc.cluster.local
-            subset: long-running
+            host: postgres-analytics.database.svc.cluster.local
             port:
               number: 5432
     - route:
@@ -234,32 +236,25 @@ spec:
 
 ## TCP Keepalive Through Istio
 
-TCP keepalives prevent idle connections from being silently dropped by intermediate network devices (load balancers, firewalls). Envoy supports TCP keepalive through Istio's EnvoyFilter:
+TCP keepalives prevent idle connections from being silently dropped by intermediate network devices (load balancers, firewalls). Istio supports TCP keepalive directly in the DestinationRule:
 
 ```yaml
-apiVersion: networking.istio.io/v1alpha3
-kind: EnvoyFilter
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
 metadata:
-  name: tcp-keepalive
+  name: database
   namespace: database
 spec:
-  workloadSelector:
-    labels:
-      app: api-server
-  configPatches:
-    - applyTo: CLUSTER
-      match:
-        context: SIDECAR_OUTBOUND
-        cluster:
-          service: postgres.database.svc.cluster.local
-      patch:
-        operation: MERGE
-        value:
-          upstream_connection_options:
-            tcp_keepalive:
-              keepalive_time: 300
-              keepalive_interval: 30
-              keepalive_probes: 5
+  host: postgres.database.svc.cluster.local
+  trafficPolicy:
+    connectionPool:
+      tcp:
+        connectTimeout: 10s
+        idleTimeout: 1800s
+        tcpKeepalive:
+          time: 300s
+          interval: 30s
+          probes: 5
 ```
 
 This sends a keepalive probe after 300 seconds of inactivity, then every 30 seconds, and gives up after 5 failed probes.
@@ -284,6 +279,6 @@ kubectl exec <app-pod> -c istio-proxy -- pilot-agent request GET stats | grep -E
 istioctl proxy-config cluster <app-pod> -n app --fqdn postgres.database.svc.cluster.local -o json
 ```
 
-Look for the `connectTimeout` and `idleTimeout` values in the output.
+Look for the `connect_timeout` and `idle_timeout` values in the output.
 
 Timeout configuration through Istio is not complicated once you understand the layering. The principle is straightforward: align your timeouts from short (application) to long (database), and make sure Istio's timeouts sit between those two extremes. This way, the application always gets a clean error before the underlying layers give up.
