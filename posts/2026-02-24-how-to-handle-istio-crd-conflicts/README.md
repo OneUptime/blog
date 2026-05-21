@@ -24,7 +24,7 @@ There are several categories of conflicts you'll encounter:
 
 ## Detecting Routing Conflicts
 
-The most common conflict is having multiple VirtualServices for the same host. Istio merges VirtualServices for the same host when they're bound to the same gateway, but the merge order isn't always intuitive.
+The most common conflict is having multiple VirtualServices for the same host. Istio can merge VirtualServices for the same host when they're bound to an ingress gateway, but host merging is not supported for sidecars and the cross-resource route order is not guaranteed.
 
 Find overlapping VirtualServices:
 
@@ -32,12 +32,9 @@ Find overlapping VirtualServices:
 kubectl get vs -A -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}: {.spec.hosts[*]}{"\n"}{end}' | sort -t: -k2
 ```
 
-This lists all VirtualServices grouped by their host. If you see the same host appearing multiple times, you have potential conflicts.
+This lists all VirtualServices sorted by their host. If you see the same host appearing multiple times, you have potential conflicts.
 
-Istio processes VirtualServices in a specific order:
-1. Resources in the same namespace as the destination service
-2. Resources with more specific host matches
-3. Alphabetical by namespace/name as a tiebreaker
+For fragmented VirtualServices bound to a gateway, Istio preserves the route order inside each individual resource, but the order across resources is undefined. This means fragments only behave predictably when their matches do not conflict and do not depend on cross-resource ordering.
 
 This means the merge behavior can be unpredictable. Use `istioctl analyze` to detect issues:
 
@@ -45,10 +42,10 @@ This means the merge behavior can be unpredictable. Use `istioctl analyze` to de
 istioctl analyze -A
 ```
 
-Look for warnings like:
+Look for errors like:
 
 ```text
-Warning [IST0109] (VirtualService default/reviews-1) Conflicting VirtualServices for host "reviews"
+Error [IST0109] (VirtualService default/reviews-1) Conflicting VirtualServices for host "reviews"
 ```
 
 ## Resolving VirtualService Conflicts
@@ -125,7 +122,7 @@ If separate VirtualServices are necessary (different teams, different automation
 
 ## Handling DestinationRule Conflicts
 
-Only one DestinationRule should exist per host per namespace. If multiple exist, Istio uses the first one it finds and ignores the rest, which leads to unpredictable behavior.
+DestinationRules for the same host are resolved using Istio's lookup path: client namespace, service namespace, then the configured root namespace (`istio-system` by default). Istio can merge fragmented DestinationRules, but duplicate subset names and duplicate top-level `trafficPolicy` settings are not merged; the first processed definition is used and later duplicates are discarded.
 
 Find duplicate DestinationRules:
 
@@ -172,10 +169,10 @@ PeerAuthentication policies follow a precedence order:
 Conflicts occur when there are multiple workload-specific policies for the same pods:
 
 ```bash
-kubectl get peerauthentication -A -o yaml | grep -B5 "selector"
+kubectl get peerauthentication -A -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}: {.spec.selector.matchLabels}{"\n"}{end}'
 ```
 
-If two PeerAuthentication policies select the same pods, the behavior is undefined. Resolve by merging them:
+If more than one workload-specific PeerAuthentication policy matches, Istio picks the oldest one. Multiple mesh-wide or namespace-wide PeerAuthentication policies also conflict: Istio ignores newer policies for the same mesh or namespace. Resolve by merging them:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -208,11 +205,11 @@ kubectl get crds | grep istio | while read crd rest; do
 done
 ```
 
-If a CRD is missing versions that istiod expects, resources of that type will fail. The fix is to update the CRDs:
+If a CRD is missing versions that istiod expects, resources of that type will fail. The fix is to update the CRDs as part of the Istio upgrade:
 
 ```bash
 # Using istioctl
-istioctl install --set profile=default
+istioctl upgrade
 
 # Using Helm
 helm upgrade istio-base istio/base -n istio-system
@@ -232,15 +229,15 @@ Kubernetes uses optimistic concurrency control. If two processes try to update t
 Error from server (Conflict): Operation cannot be fulfilled on virtualservices.networking.istio.io "my-route": the object has been modified; please apply your changes to the latest version of the object
 ```
 
-To resolve this, fetch the latest version and reapply:
+To resolve this, fetch the latest version, make your changes against that object, and update it:
 
 ```bash
 kubectl get vs my-route -o yaml > my-route-latest.yaml
 # Edit my-route-latest.yaml with your changes
-kubectl apply -f my-route-latest.yaml
+kubectl replace -f my-route-latest.yaml
 ```
 
-Or use `kubectl edit` which handles the retry automatically:
+Or use `kubectl edit`, which fetches the current object before opening it in your editor:
 
 ```bash
 kubectl edit vs my-route
@@ -298,6 +295,6 @@ istioctl proxy-config all <pod-name>
 istioctl x describe pod <pod-name>
 ```
 
-The `describe` command is particularly useful because it shows all the Istio policies that apply to a specific pod, including merged VirtualServices and applicable AuthorizationPolicies.
+The `describe` command is particularly useful because it shows the Istio configuration that applies to a specific pod, including relevant services, VirtualServices, DestinationRules, and security policies.
 
-Handling CRD conflicts comes down to good practices: one DestinationRule per host, consolidated VirtualServices where possible, clear ownership through labels, and automated analysis in your deployment pipeline. When conflicts do happen, `istioctl analyze` and careful inspection of the resource specs will point you to the resolution.
+Handling CRD conflicts comes down to good practices: avoid duplicate DestinationRule subsets and top-level policies for the same host, consolidate VirtualServices where possible, clear ownership through labels, and automated analysis in your deployment pipeline. When conflicts do happen, `istioctl analyze` and careful inspection of the resource specs will point you to the resolution.
