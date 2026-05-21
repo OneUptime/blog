@@ -79,8 +79,8 @@ kubectl get mutatingwebhookconfiguration | grep istio
 Each revision creates its own webhook:
 
 ```text
-istio-sidecar-injector-stable   1    7d
-istio-sidecar-injector-canary   1    5m
+istio-sidecar-injector-stable   2    7d
+istio-sidecar-injector-canary   2    5m
 ```
 
 ## Assigning Namespaces to Revisions
@@ -95,7 +95,7 @@ kubectl label namespace frontend istio.io/rev=stable
 kubectl label namespace test-app istio.io/rev=canary
 ```
 
-Important: Make sure to remove the `istio-injection=enabled` label if it exists, because having both can cause conflicts:
+Important: Make sure to remove the `istio-injection=enabled` label if it exists, because `istio-injection` takes precedence over `istio.io/rev` for backward compatibility:
 
 ```bash
 kubectl label namespace frontend istio-injection-
@@ -116,7 +116,7 @@ To see the revision label for all namespaces:
 kubectl get namespaces -L istio.io/rev
 ```
 
-This shows a column with the revision label. Namespaces without the label will not have sidecar injection from any revision.
+This shows a column with the revision label. Namespaces without the `istio.io/rev` label will not use revision-based sidecar injection, though they may still be injected if they use `istio-injection=enabled` or a default revision tag.
 
 To see which istiod a specific proxy is connected to:
 
@@ -178,10 +178,11 @@ curl http://localhost:15015/metrics
 
 Key metrics to compare between revisions:
 
-- `pilot_xds_pushes` - Number of config pushes to proxies
+- `pilot_push_triggers` - Number of times a config push was triggered
 - `pilot_proxy_convergence_time` - How long it takes proxies to get new config
-- `pilot_conflict_inbound_listener` - Configuration conflicts
-- `pilot_xds_push_errors` - Push errors (any non-zero value needs investigation)
+- `pilot_total_rejected_configs` - Configs that istiod rejected or ignored
+- `pilot_total_xds_internal_errors` - Internal xDS errors (any non-zero value needs investigation)
+- `pilot_total_xds_rejects` - xDS responses rejected by proxies (any non-zero value needs investigation)
 
 Set up Grafana dashboards that show both revisions side by side so you can compare their health during a migration.
 
@@ -233,7 +234,7 @@ Running two revisions doubles this. For large clusters with autoscaling enabled,
 
 ## Best Practices
 
-- **Use descriptive revision names.** Names like `stable` and `canary` are clear. Avoid version numbers as names (like `1-20`) because they get confusing over time.
+- **Use descriptive revision names.** Names like `stable` and `canary` are clear for examples. In production, version-based names such as `1-21-0` are also common; replace dots with hyphens because dots are not valid in revision names.
 - **Keep the number of active revisions to two at most.** More than two is a sign that migrations are not completing.
 - **Set a timeline for migration completion.** Running two revisions indefinitely wastes resources and adds operational complexity.
 - **Automate revision tracking.** Build dashboards or alerts that show which namespaces are on which revision.
