@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Security, Control Plane, Hardening, Service Mesh
 
-Description: How to secure communication between Istio control plane components and the data plane, including certificate pinning, RBAC, and network policies.
+Description: How to secure communication between Istio control plane components and the data plane, including certificate management, RBAC, and network policies.
 
 ---
 
@@ -49,34 +49,33 @@ xDS (Envoy's configuration discovery protocol) is how istiod delivers configurat
 # Check the xDS connection from a sidecar
 
 istioctl proxy-config bootstrap <pod-name> -o json | \
-  jq '.bootstrap.dynamicResources.adsConfig'
+  jq '.dynamicResources.adsConfig'
 ```
 
 You should see a gRPC connection to istiod with TLS configured. The bootstrap configuration should reference certificates for securing this connection.
 
 ### DNS Certificate for istiod
 
-istiod uses a DNS certificate for its xDS server. Verify it is valid:
+istiod uses a DNS certificate for its xDS server. Check which provider is configured:
 
 ```bash
-kubectl get secret istiod-tls -n istio-system -o jsonpath='{.data.tls\.crt}' | \
-  base64 -d | openssl x509 -text -noout
+kubectl get deployment istiod -n istio-system -o json | \
+  jq -r '.spec.template.spec.containers[] | select(.name == "discovery") |
+    .env[]? | select(.name == "PILOT_CERT_PROVIDER")'
 ```
 
-If this secret does not exist, istiod uses a self-generated certificate. For production, configure a proper certificate:
+By default, `PILOT_CERT_PROVIDER` is `istiod`, which signs the DNS certificate using Istio's built-in CA. For production environments that use Kubernetes CSR integration, configure an explicit provider and the required signer RBAC:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
-  values:
+  components:
     pilot:
-      env:
-        PILOT_CERT_PROVIDER: istiod
       k8s:
         env:
-          - name: ENABLE_CA_SERVER
-            value: "true"
+          - name: PILOT_CERT_PROVIDER
+            value: k8s.io/clusterissuers.cert-manager.io/istio-system
 ```
 
 ## Restricting Control Plane Access with RBAC
@@ -159,12 +158,18 @@ spec:
     - Ingress
     - Egress
   ingress:
-    # Allow xDS connections from sidecars (port 15010/15012)
-    - ports:
-        - port: 15010
-          protocol: TCP
+    # Allow production xDS and CA connections from mesh workloads
+    - from:
+        - namespaceSelector: {}
+      ports:
         - port: 15012
           protocol: TCP
+    # Allow Prometheus or other monitoring systems to scrape istiod
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
         - port: 15014
           protocol: TCP
     # Allow webhook calls from API server
@@ -212,7 +217,7 @@ kubectl get mutatingwebhookconfigurations | grep istio
 kubectl get validatingwebhookconfigurations | grep istio
 ```
 
-Verify the webhook certificates are valid:
+Verify the webhook CA bundle is present and not expired:
 
 ```bash
 kubectl get mutatingwebhookconfiguration istio-sidecar-injector \
@@ -220,7 +225,7 @@ kubectl get mutatingwebhookconfiguration istio-sidecar-injector \
   openssl x509 -text -noout | grep "Not After"
 ```
 
-If webhooks are compromised, an attacker could inject malicious sidecars or bypass configuration validation. Consider using webhook certificate rotation and monitoring.
+If webhooks are compromised, an attacker could inject malicious sidecars or bypass configuration validation. Monitor Istio's webhook patching and certificate rotation behavior.
 
 ## Protecting the CA Root Key
 
@@ -230,10 +235,11 @@ For the self-signed CA:
 
 ```bash
 # Check where the CA key is stored
-kubectl get secret istio-ca-secret -n istio-system -o yaml
+kubectl get secret istio-ca-secret -n istio-system -o yaml || \
+  kubectl get secret cacerts -n istio-system -o yaml
 ```
 
-For production, use a plug-in CA where the root key is stored outside the cluster:
+For Kubernetes CSR integration, `EXTERNAL_CA` must be combined with signer metadata, trusted CA certificates, and signer RBAC. The core settings look like this:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -243,9 +249,15 @@ spec:
     pilot:
       env:
         EXTERNAL_CA: ISTIOD_RA_KUBERNETES_API
+  components:
+    pilot:
+      k8s:
+        env:
+          - name: PILOT_CERT_PROVIDER
+            value: k8s.io/clusterissuers.cert-manager.io/istio-system
 ```
 
-Or integrate with an external CA like Vault or SPIRE so the root key never touches the cluster.
+Or use a plug-in intermediate CA with the root key stored offline, or integrate with an external CA like Vault or SPIRE so the root key never touches the cluster.
 
 ## Monitoring Control Plane Security
 
@@ -261,13 +273,13 @@ Key metrics to watch in Prometheus:
 
 ```text
 # Configuration push errors (could indicate attacks)
-pilot_xds_push_errors
+pilot_total_xds_internal_errors
 
 # Certificate signing requests (unusual spike could indicate attack)
 citadel_server_csr_count
 
-# Failed authentication attempts
-pilot_xds_expired_nonce
+# Authentication failures
+citadel_server_authentication_failure_count
 
 # Configuration push latency (high values could indicate DoS)
 pilot_proxy_convergence_time_bucket
@@ -275,7 +287,7 @@ pilot_proxy_convergence_time_bucket
 
 ## istiod High Availability
 
-Running istiod in high availability mode is both a reliability and security measure. If one istiod instance is compromised, the others continue serving legitimate configuration:
+Running istiod in high availability mode is both a reliability and security measure. If one istiod instance fails or is taken out of service during an incident, the others continue serving configuration. HA does not by itself contain a compromised replica, so combine it with monitoring and rapid isolation procedures:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
