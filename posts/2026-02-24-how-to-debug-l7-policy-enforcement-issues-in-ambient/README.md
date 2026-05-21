@@ -62,16 +62,15 @@ If the `istio.io/use-waypoint` label is missing, add it:
 kubectl label namespace my-app istio.io/use-waypoint=waypoint
 ```
 
-You can also set a waypoint at the service account level for more granular control:
+You can also set a waypoint at the service or pod level for more granular control:
 
 ```bash
-kubectl label serviceaccount my-service-sa -n my-app \
-  istio.io/use-waypoint=waypoint
+kubectl label service backend -n my-app istio.io/use-waypoint=waypoint
 ```
 
 ## Step 3: Verify Traffic Flows Through the Waypoint
 
-Enable access logging on the waypoint to confirm traffic is reaching it:
+If access logging is enabled on the waypoint, check the waypoint logs to confirm traffic is reaching it:
 
 ```bash
 # Check waypoint logs
@@ -91,14 +90,7 @@ NODE=$(kubectl get pod -n my-app -l app=client -o jsonpath='{.items[0].spec.node
 ZTUNNEL=$(kubectl get pods -n istio-system -l app=ztunnel \
   --field-selector spec.nodeName=$NODE -o jsonpath='{.items[0].metadata.name}')
 
-kubectl exec -n istio-system $ZTUNNEL -- \
-  curl -s localhost:15000/config_dump | python3 -c "
-import sys, json
-data = json.load(sys.stdin)
-for svc in data.get('services', {}).values():
-    if 'waypoint' in json.dumps(svc):
-        print(json.dumps(svc, indent=2))
-"
+istioctl ztunnel-config services "$ZTUNNEL.istio-system" | grep backend
 ```
 
 ## Step 4: Check the L7 Authorization Policy
