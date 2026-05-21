@@ -8,28 +8,27 @@ Description: A practical study guide for preparing for the Istio Certified Assoc
 
 ---
 
-The Istio Certified Associate (ICA) exam, administered by the Linux Foundation, validates your ability to work with Istio in production environments. Unlike many certifications that are purely multiple choice, this exam is performance-based, meaning you'll actually work with a real Istio environment during the test. That makes preparation a hands-on affair. Here's how to get ready.
+The Istio Certified Associate (ICA) exam, administered by the Linux Foundation, validates your understanding of Istio principles, terminology, and best practices for setting up Istio. Unlike many certifications that are purely multiple choice, this exam includes performance-based tasks, meaning you'll actually work with a real Istio environment during the test. That makes preparation a hands-on affair. Here's how to get ready.
 
 ## Understanding the ICA Exam
 
 The ICA exam tests your practical skills with Istio. Here are the key details:
 
 - **Duration**: 2 hours
-- **Format**: Performance-based (hands-on tasks in a live environment)
-- **Passing score**: 75%
+- **Format**: Online, proctored exam with performance-based tasks; the Linux Foundation catalog also describes the exam as including multiple-choice items
+- **Passing score**: 68%
 - **Cost**: Check the Linux Foundation website for current pricing
 - **Retake**: One free retake included
-- **Validity**: 3 years from the date of certification
+- **Validity**: 2 years from the date of certification
 
 The exam covers several domains, each weighted differently:
 
 | Domain | Weight |
 |---|---|
-| Istio Installation, Upgrade, and Configuration | 7% |
-| Traffic Management | 40% |
-| Resilience and Fault Injection | 20% |
-| Securing Workloads | 20% |
-| Advanced Scenarios | 13% |
+| Installation, Upgrade, and Configuration | 20% |
+| Traffic Management | 35% |
+| Securing Workloads | 25% |
+| Troubleshooting | 20% |
 
 Traffic Management is the biggest chunk, so spend the most time there.
 
@@ -57,7 +56,7 @@ curl -L https://istio.io/downloadIstio | sh -
 cd istio-*
 export PATH=$PWD/bin:$PATH
 
-# Install Istio with the demo profile (includes all features for practice)
+# Install Istio with the demo profile (good defaults for practice)
 istioctl install --set profile=demo -y
 
 # Enable sidecar injection for the default namespace
@@ -75,23 +74,23 @@ kubectl apply -f samples/bookinfo/networking/bookinfo-gateway.yaml
 
 Keep this environment running and practice with it daily.
 
-## Domain 1: Installation and Configuration (7%)
+## Domain 1: Installation and Configuration (20%)
 
-Even though this is the smallest section, nail the basics:
+Even though this is not the largest section, nail the basics:
 
 ```bash
-# Know how to install with different profiles
-istioctl profile list
-istioctl profile dump demo
-istioctl profile dump default
+# Know how to generate manifests with different profiles
+istioctl manifest generate --set profile=demo
+istioctl manifest generate --set profile=default
 
 # Install with custom configuration
 istioctl install --set profile=default \
   --set meshConfig.accessLogFile=/dev/stdout \
   --set meshConfig.accessLogEncoding=JSON
 
-# Verify the installation
-istioctl verify-install
+# Check readiness before installing or upgrading, and verify after installation
+istioctl x precheck
+istioctl install --set profile=default --verify -y
 
 # Check the mesh configuration
 kubectl get configmap istio -n istio-system -o yaml
@@ -105,16 +104,16 @@ Practice upgrading between versions too. The exam might ask you to perform a can
 
 ```bash
 # Canary upgrade approach
-istioctl install --set revision=1-22-1
+istioctl install --revision=1-29-2
 
-# Label namespaces with the new revision
-kubectl label namespace default istio.io/rev=1-22-1 --overwrite
+# Remove classic injection label and label namespaces with the new revision
+kubectl label namespace default istio-injection- istio.io/rev=1-29-2 --overwrite
 
 # Restart workloads to pick up the new sidecar
 kubectl rollout restart deployment -n default
 ```
 
-## Domain 2: Traffic Management (40%)
+## Domain 2: Traffic Management (35%)
 
 This is where you win or lose the exam. Practice these resources until you can write them from memory:
 
@@ -214,7 +213,7 @@ spec:
 
 Practice creating, modifying, and debugging all of these. Use `istioctl analyze` frequently to check your work.
 
-## Domain 3: Resilience and Fault Injection (20%)
+## Traffic Management: Resilience and Fault Injection
 
 Know how to configure retries, timeouts, circuit breakers, and fault injection:
 
@@ -272,7 +271,7 @@ spec:
       maxEjectionPercent: 50
 ```
 
-## Domain 4: Securing Workloads (20%)
+## Domain 3: Securing Workloads (25%)
 
 Authentication and authorization are critical. Practice these:
 
