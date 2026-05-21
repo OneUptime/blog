@@ -29,7 +29,7 @@ resource "kubernetes_manifest" "http_gateway" {
 
     spec = {
       selector = {
-        istio = "ingress"
+        istio = "ingressgateway"
       }
 
       servers = [{
@@ -45,7 +45,7 @@ resource "kubernetes_manifest" "http_gateway" {
 }
 ```
 
-The `selector` field matches the labels on your Istio ingress gateway pods. If you installed the gateway with the default Helm chart, `istio: ingress` is the right label. Check your gateway pod labels if you are not sure:
+The `selector` field matches the labels on your Istio ingress gateway pods. If you installed the gateway with the standard Istio gateway Helm chart, `istio: ingressgateway` is the usual label. Check your gateway pod labels if you are not sure:
 
 ```bash
 kubectl get pods -n istio-ingress --show-labels
@@ -65,8 +65,8 @@ resource "kubernetes_secret" "tls_cert" {
   type = "kubernetes.io/tls"
 
   data = {
-    "tls.crt" = filebase64("${path.module}/certs/tls.crt")
-    "tls.key" = filebase64("${path.module}/certs/tls.key")
+    "tls.crt" = file("${path.module}/certs/tls.crt")
+    "tls.key" = file("${path.module}/certs/tls.key")
   }
 }
 
@@ -82,7 +82,7 @@ resource "kubernetes_manifest" "https_gateway" {
 
     spec = {
       selector = {
-        istio = "ingress"
+        istio = "ingressgateway"
       }
 
       servers = [
@@ -133,7 +133,7 @@ resource "kubernetes_secret" "mtls_ca" {
   }
 
   data = {
-    "ca.crt" = filebase64("${path.module}/certs/ca.crt")
+    "ca.crt" = file("${path.module}/certs/ca.crt")
   }
 }
 
@@ -149,7 +149,7 @@ resource "kubernetes_manifest" "mtls_gateway" {
 
     spec = {
       selector = {
-        istio = "ingress"
+        istio = "ingressgateway"
       }
 
       servers = [{
@@ -160,13 +160,18 @@ resource "kubernetes_manifest" "mtls_gateway" {
         }
         hosts = ["secure-api.example.com"]
         tls = {
-          mode              = "MUTUAL"
-          credentialName    = "example-com-tls"
-          caCertificates    = "/etc/istio/ingressgateway-ca-certs/ca.crt"
+          mode                 = "MUTUAL"
+          credentialName       = "example-com-tls"
+          caCertCredentialName = "client-ca-cert"
         }
       }]
     }
   }
+
+  depends_on = [
+    kubernetes_secret.tls_cert,
+    kubernetes_secret.mtls_ca
+  ]
 }
 ```
 
@@ -207,7 +212,7 @@ resource "kubernetes_manifest" "multi_domain_gateway" {
 
     spec = {
       selector = {
-        istio = "ingress"
+        istio = "ingressgateway"
       }
 
       servers = concat(
@@ -259,7 +264,7 @@ resource "kubernetes_manifest" "tcp_gateway" {
 
     spec = {
       selector = {
-        istio = "ingress"
+        istio = "ingressgateway"
       }
 
       servers = [{
@@ -294,7 +299,7 @@ resource "kubernetes_manifest" "passthrough_gateway" {
 
     spec = {
       selector = {
-        istio = "ingress"
+        istio = "ingressgateway"
       }
 
       servers = [{
@@ -356,7 +361,7 @@ resource "kubernetes_manifest" "gateway_with_cert_manager" {
 
     spec = {
       selector = {
-        istio = "ingress"
+        istio = "ingressgateway"
       }
 
       servers = [{
@@ -396,4 +401,4 @@ You can also check the gateway proxy status:
 istioctl proxy-status
 ```
 
-Gateways configured through Terraform get all the benefits of the Terraform workflow. You can review changes before applying, track the history of gateway modifications in version control, and roll back by reverting to a previous Terraform state. For teams managing multiple domains and complex TLS configurations, this predictability is exactly what you need.
+Gateways configured through Terraform get all the benefits of the Terraform workflow. You can review changes before applying, track the history of gateway modifications in version control, and roll back by reverting the Terraform configuration and applying it again. For teams managing multiple domains and complex TLS configurations, this predictability is exactly what you need.
