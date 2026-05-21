@@ -36,41 +36,34 @@ A hybrid Istio setup typically looks like this:
 All services in the mesh need to trust each other's mTLS certificates. Generate a shared root CA:
 
 ```bash
-# Create root CA
-
-openssl req -new -newkey rsa:4096 -x509 -sha256 \
-  -days 3650 -nodes -out root-cert.pem -keyout root-key.pem \
-  -subj "/O=MyOrg/CN=Root CA"
+# From the top-level directory of the Istio release
+mkdir -p certs
+pushd certs
+make -f ../tools/certs/Makefile.selfsigned.mk root-ca
 ```
 
 Create intermediate CAs for each environment:
 
 ```bash
 # Kubernetes cluster CA
-openssl req -new -newkey rsa:4096 -nodes \
-  -out k8s-ca-cert.csr -keyout k8s-ca-key.pem \
-  -subj "/O=MyOrg/CN=K8s Intermediate CA"
-
-openssl x509 -req -days 730 -CA root-cert.pem -CAkey root-key.pem \
-  -CAcreateserial -in k8s-ca-cert.csr -out k8s-ca-cert.pem
+make -f ../tools/certs/Makefile.selfsigned.mk k8s-cacerts
 
 # VM environment CA
-openssl req -new -newkey rsa:4096 -nodes \
-  -out vm-ca-cert.csr -keyout vm-ca-key.pem \
-  -subj "/O=MyOrg/CN=VM Intermediate CA"
-
-openssl x509 -req -days 730 -CA root-cert.pem -CAkey root-key.pem \
-  -CAcreateserial -in vm-ca-cert.csr -out vm-ca-cert.pem
+make -f ../tools/certs/Makefile.selfsigned.mk vm-cacerts
 ```
 
 Install the CA certificates in your Kubernetes cluster:
 
 ```bash
+kubectl create namespace istio-system
+
 kubectl create secret generic cacerts -n istio-system \
-  --from-file=ca-cert.pem=k8s-ca-cert.pem \
-  --from-file=ca-key.pem=k8s-ca-key.pem \
-  --from-file=root-cert.pem=root-cert.pem \
-  --from-file=cert-chain.pem=k8s-cert-chain.pem
+  --from-file=k8s/ca-cert.pem \
+  --from-file=k8s/ca-key.pem \
+  --from-file=k8s/root-cert.pem \
+  --from-file=k8s/cert-chain.pem
+
+popd
 ```
 
 ## Step 2: Configure Kubernetes Services
@@ -91,7 +84,6 @@ spec:
     defaultConfig:
       proxyMetadata:
         ISTIO_META_DNS_CAPTURE: "true"
-        ISTIO_META_DNS_AUTO_ALLOCATE: "true"
   components:
     egressGateways:
     - name: istio-egressgateway
@@ -103,6 +95,11 @@ Your Kubernetes services are automatically discovered. No extra configuration ne
 ## Step 3: Register VM Services
 
 For VMs running application services, use WorkloadGroup and WorkloadEntry:
+
+```bash
+kubectl create namespace backend
+kubectl create serviceaccount legacy-billing -n backend
+```
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -185,7 +182,7 @@ spec:
   location: MESH_EXTERNAL
   ports:
   - number: 1521
-    name: oracle
+    name: tcp-oracle
     protocol: TCP
   resolution: STATIC
   endpoints:
@@ -208,7 +205,7 @@ spec:
   location: MESH_EXTERNAL
   ports:
   - number: 443
-    name: https
+    name: tls-https
     protocol: TLS
   resolution: DNS
 ```
@@ -247,7 +244,7 @@ spec:
 
 ## Step 6: Traffic Management Across Environments
 
-Apply traffic policies that work across your hybrid environment. For example, route reads to the on-prem database and writes to the cloud database:
+Apply traffic policies that work across your hybrid environment. For example, tune connection handling and outlier detection for a database service:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -267,7 +264,7 @@ spec:
       baseEjectionTime: 30s
 ```
 
-Use VirtualService to handle failover between environments:
+Use VirtualService to set timeouts and retries for cross-environment calls:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -295,7 +292,7 @@ Track the health of service discovery across all environments:
 
 ```bash
 # Check all registered services including VMs and ServiceEntries
-kubectl exec deploy/istiod -n istio-system -- curl -s localhost:15014/debug/registryz | python3 -m json.tool | grep hostname
+kubectl exec deploy/istiod -n istio-system -- pilot-discovery request GET /debug/registryz | python3 -m json.tool | grep hostname
 ```
 
 Monitor VM connectivity:
@@ -329,6 +326,7 @@ spec:
       consecutiveGatewayErrors: 2
       interval: 5s
       baseEjectionTime: 30s
+      maxEjectionPercent: 100
     connectionPool:
       tcp:
         connectTimeout: 3s
@@ -336,7 +334,7 @@ spec:
         maxRetries: 3
 ```
 
-If the on-prem network goes down, endpoints in that environment get ejected and traffic flows to healthy endpoints in other environments.
+If the on-prem network goes down, unhealthy endpoints in that environment can be ejected and traffic can flow to healthy endpoints in other environments when the service has endpoints available there.
 
 ## Security Across Environments
 
