@@ -37,11 +37,16 @@ DRIFT_FOUND=false
 for file in "$ISTIO_CONFIG_DIR"/*.yaml; do
   echo "Checking $file..."
   DIFF_OUTPUT=$(kubectl diff -f "$file" 2>&1)
+  DIFF_EXIT=$?
 
-  if [ $? -ne 0 ] && [ -n "$DIFF_OUTPUT" ]; then
+  if [ "$DIFF_EXIT" -eq 1 ]; then
     echo "DRIFT DETECTED in $file:"
     echo "$DIFF_OUTPUT"
     DRIFT_FOUND=true
+  elif [ "$DIFF_EXIT" -gt 1 ]; then
+    echo "ERROR checking $file:"
+    echo "$DIFF_OUTPUT"
+    exit "$DIFF_EXIT"
   fi
 done
 
@@ -71,7 +76,8 @@ for ns in $NAMESPACES; do
 
     for resource in $LIVE_RESOURCES; do
       # Check if this resource exists in our source
-      if ! grep -r "name: $resource" "$ISTIO_CONFIG_DIR" | grep -q "namespace: $ns"; then
+      MATCHING_FILES=$(grep -rl "name: $resource" "$ISTIO_CONFIG_DIR" || true)
+      if [ -z "$MATCHING_FILES" ] || ! printf '%s\n' "$MATCHING_FILES" | xargs grep -l "namespace: $ns" >/dev/null 2>&1; then
         echo "WARNING: $resource_type/$resource in namespace $ns exists in cluster but not in source control"
       fi
     done
@@ -102,13 +108,14 @@ spec:
     namespace: default
   syncPolicy:
     automated:
+      enabled: false
       prune: false
       selfHeal: false
     syncOptions:
       - ApplyOutOfSyncOnly=true
 ```
 
-Notice that `selfHeal` is set to false. This means Argo CD will detect and report drift but will not automatically fix it. This is usually what you want initially - you need to understand why drift happened before automatically reverting it.
+Notice that automated sync is disabled and `selfHeal` is set to false. This means Argo CD will detect and report drift but will not automatically fix it. This is usually what you want initially - you need to understand why drift happened before automatically reverting it.
 
 Check for drift using the Argo CD CLI:
 
@@ -169,6 +176,8 @@ flux reconcile kustomization istio-config
 
 If you are not using a GitOps tool, you can build your own drift detection that runs inside the cluster:
 
+Use a container image that includes `kubectl`, `git`, `curl`, and `bash`:
+
 ```yaml
 apiVersion: batch/v1
 kind: CronJob
@@ -184,7 +193,7 @@ spec:
           serviceAccountName: drift-detector-sa
           containers:
             - name: detector
-              image: bitnami/kubectl:latest
+              image: ghcr.io/your-org/kubectl-git-curl:latest
               command:
                 - /bin/bash
                 - -c
@@ -195,10 +204,17 @@ spec:
                   DRIFT_FOUND=false
 
                   for file in /tmp/configs/production/*.yaml; do
-                    if kubectl diff -f "$file" 2>&1 | grep -q "^[-+]"; then
+                    DIFF_OUTPUT=$(kubectl diff -f "$file" 2>&1)
+                    DIFF_EXIT=$?
+
+                    if [ "$DIFF_EXIT" -eq 1 ]; then
                       echo "DRIFT: $(basename $file)"
-                      kubectl diff -f "$file" 2>&1
+                      echo "$DIFF_OUTPUT"
                       DRIFT_FOUND=true
+                    elif [ "$DIFF_EXIT" -gt 1 ]; then
+                      echo "ERROR checking $(basename $file):"
+                      echo "$DIFF_OUTPUT"
+                      exit "$DIFF_EXIT"
                     fi
                   done
 
@@ -233,6 +249,9 @@ spec:
     spec:
       names:
         kind: IstioConfigProtection
+      validation:
+        openAPIV3Schema:
+          type: object
   targets:
     - target: admission.k8s.gatekeeper.sh
       rego: |
@@ -241,7 +260,7 @@ spec:
         violation[{"msg": msg}] {
           input.review.userInfo.username != "system:serviceaccount:argocd:argocd-application-controller"
           input.review.userInfo.username != "system:serviceaccount:flux-system:kustomize-controller"
-          istio_resources := {"VirtualService", "DestinationRule", "Gateway", "AuthorizationPolicy"}
+          istio_resources := {"VirtualService", "DestinationRule", "Gateway", "AuthorizationPolicy", "PeerAuthentication"}
           istio_resources[input.review.kind.kind]
           msg := sprintf("Direct modification of %v is not allowed. Use the GitOps pipeline.", [input.review.kind.kind])
         }
