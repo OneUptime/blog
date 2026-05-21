@@ -19,10 +19,15 @@ readinessProbe:
   httpGet:
     path: /healthz/ready
     port: 15021
-  initialDelaySeconds: 1
-  periodSeconds: 2
-  failureThreshold: 30
+  initialDelaySeconds: 0
+  periodSeconds: 15
+  failureThreshold: 4
   timeoutSeconds: 3
+startupProbe:
+  httpGet:
+    path: /healthz/ready
+    port: 15021
+  failureThreshold: 600
 ```
 
 The probe hits `localhost:15021/healthz/ready` on the pilot-agent process. Pilot-agent checks several conditions and returns 200 (ready) or 503 (not ready).
@@ -33,7 +38,7 @@ The readiness endpoint checks these conditions:
 
 1. **Envoy has started** - The Envoy process is running
 2. **Envoy is ready** - Envoy's own readiness check passes (connected to Istiod, has initial configuration)
-3. **Application ports are ready** (if `holdApplicationUntilProxyStarts` is configured)
+3. **Configured application ports are ready** (when Istio injects application port readiness checks)
 
 If any of these fail, the probe returns 503.
 
@@ -54,11 +59,14 @@ kubectl exec my-service-pod -n my-namespace -c istio-proxy -- \
 
 A 503 response means the proxy is not ready. The response body may contain details about why.
 
-Also check the pilot-agent health endpoint:
+If application health probes were rewritten by Istio, check the generated application probe path on port 15020:
 
 ```bash
 kubectl exec my-service-pod -n my-namespace -c istio-proxy -- \
-  curl -s localhost:15020/healthz/ready
+  env | grep ISTIO_KUBE_APP_PROBERS
+
+kubectl exec my-service-pod -n my-namespace -c istio-proxy -- \
+  curl -s localhost:15020/app-health/my-container/readyz
 ```
 
 ## Common Causes and Fixes
@@ -69,8 +77,13 @@ Envoy needs to connect to Istiod to receive its initial configuration. If this c
 
 ```bash
 # Check if the proxy can reach Istiod
-kubectl exec my-service-pod -n my-namespace -c istio-proxy -- \
-  curl -s -o /dev/null -w "%{http_code}" https://istiod.istio-system.svc:15012/healthz/ready
+kubectl debug -n my-namespace my-service-pod -it \
+  --image=nicolaka/netshoot --target=istio-proxy -- \
+  nc -vz istiod.istio-system.svc 15012
+
+# Check Istiod's own readiness endpoint
+kubectl exec -n istio-system deploy/istiod -- \
+  curl -s -o /dev/null -w "%{http_code}" localhost:8080/ready
 
 # Check proxy logs for connection errors
 kubectl logs my-service-pod -n my-namespace -c istio-proxy | grep -i "error\|fail\|connect"
@@ -96,7 +109,7 @@ kubectl rollout restart deployment/istiod -n istio-system
 
 ### 2. Slow Initial Configuration
 
-For large meshes, the initial configuration push to a new proxy can take a while. If it takes longer than the probe's initial delay + (failure threshold * period), Kubernetes marks the pod as not ready:
+For large meshes, the initial configuration push to a new proxy can take a while. In current Istio releases the sidecar startup probe gives the proxy extra time during startup, and readiness probes continue after the startup probe succeeds:
 
 ```bash
 # Check how long the proxy has been running
@@ -115,12 +128,12 @@ spec:
     metadata:
       annotations:
         # Give the proxy more time to start
-        sidecar.istio.io/readinessInitialDelaySeconds: "5"
-        sidecar.istio.io/readinessFailureThreshold: "60"
-        sidecar.istio.io/readinessPeriodSeconds: "2"
+        readiness.status.sidecar.istio.io/initialDelaySeconds: "5"
+        readiness.status.sidecar.istio.io/failureThreshold: "60"
+        readiness.status.sidecar.istio.io/periodSeconds: "2"
 ```
 
-This gives the proxy 5s + (60 * 2s) = 125 seconds to become ready instead of the default 1s + (30 * 2s) = 61 seconds.
+This gives the readiness probe 5s + (60 * 2s) = 125 seconds of tolerance after the startup probe has completed.
 
 ### 3. Certificate Issues
 
@@ -171,14 +184,14 @@ If your application uses any Istio reserved ports (15000-15021), change the appl
 
 ### 6. Application Readiness Blocking Proxy
 
-When `holdApplicationUntilProxyStarts` is enabled, the proxy waits for the application to be ready before reporting ready. But if the application depends on the proxy being ready (circular dependency), both get stuck:
+When `holdApplicationUntilProxyStarts` is enabled, Istio delays application container startup until the proxy is ready. This prevents startup races, but it can make an application appear stuck if the proxy cannot become ready:
 
 ```bash
 # Check if this is configured
 kubectl get configmap istio -n istio-system -o yaml | grep holdApplicationUntilProxyStarts
 ```
 
-If you have a circular dependency, disable this setting or restructure your application startup:
+If startup is blocked by this setting, disable it for the affected workload or fix the underlying proxy readiness problem:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
