@@ -34,12 +34,14 @@ spec:
 
 This applies 100% trace sampling only to pods with the label `app: reviews` in the `bookinfo` namespace. All other pods in the namespace use the namespace-level or mesh-wide configuration.
 
+The tracing examples assume you have configured an Istio extension provider named `zipkin` in MeshConfig.
+
 ## The Override Priority
 
 Workload-level overrides sit at the top of the hierarchy:
 
-1. Mesh-wide (`default` Telemetry in `istio-system`) - lowest priority
-2. Namespace-level (`default` Telemetry in the workload's namespace)
+1. Mesh-wide (Telemetry without a `selector` in the root configuration namespace, usually `istio-system`) - lowest priority
+2. Namespace-level (Telemetry without a `selector` in the workload's namespace)
 3. Workload-level (Telemetry with `selector` in the workload's namespace) - highest priority
 
 If all three exist, the workload-level configuration wins for the matched pods. Unmatched pods fall back to namespace-level, then mesh-wide.
@@ -111,7 +113,7 @@ spec:
       randomSamplingPercentage: 0
 ```
 
-This completely silences the healthcheck workload from a telemetry perspective.
+This greatly reduces telemetry from the healthcheck workload. Trace context can still be propagated, and any other configured telemetry providers would need their own overrides.
 
 ## Example: Custom Metrics for a Specific Service
 
@@ -161,11 +163,9 @@ spec:
   accessLogging:
     - providers:
         - name: envoy
-      filter:
-        expression: ""
 ```
 
-An empty filter expression logs every request. When the incident is resolved, delete this resource to go back to the namespace default (which might only log errors).
+With no filter specified, this logs every request. When the incident is resolved, delete this resource to go back to the namespace default (which might only log errors).
 
 ## Targeting Specific Versions
 
@@ -337,6 +337,6 @@ for item in data.get('items', []):
 
 4. **Test selectors carefully.** If your selector is too broad, it might match pods you didn't intend. If it's too narrow, it won't match anything.
 
-5. **Watch for selector overlaps.** If two Telemetry resources both match the same pod, the behavior depends on how they merge. Avoid this by keeping selectors specific.
+5. **Watch for selector overlaps.** It isn't valid to have two Telemetry resources select the same workload. Avoid this by keeping selectors specific.
 
 Workload-level overrides give you surgical precision over telemetry. Use them for debugging, special compliance requirements, or to tame individual noisy services. Just make sure to manage their lifecycle so they don't accumulate into configuration debt.
