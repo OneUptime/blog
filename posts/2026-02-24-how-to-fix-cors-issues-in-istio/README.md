@@ -49,21 +49,22 @@ spec:
           number: 8080
 ```
 
-This tells the Envoy proxy to handle CORS at the mesh level, before requests even reach your application.
+This tells the Envoy proxy to handle CORS at the mesh level. Valid preflight OPTIONS requests are answered by Envoy directly, and matching actual CORS requests get the configured CORS headers added to the response.
 
 ## Preflight Requests Getting 403 or 404
 
 If the OPTIONS preflight request returns 403 or 404, the Envoy proxy doesn't have a route configured for it, or an AuthorizationPolicy is blocking it.
 
-First, make sure OPTIONS is in your allowMethods list:
+First, make sure the method from `Access-Control-Request-Method` is in your allowMethods list:
 
 ```yaml
 corsPolicy:
   allowMethods:
   - GET
   - POST
-  - OPTIONS
 ```
+
+If your VirtualService route uses method-based matches, make sure the preflight OPTIONS request can still match a route. The CORS filter only runs after Envoy has selected a route.
 
 Then check if an AuthorizationPolicy is blocking OPTIONS requests:
 
@@ -120,7 +121,7 @@ If both Istio and your application set CORS headers, you'll get duplicate header
 Check the response headers:
 
 ```bash
-curl -v -H "Origin: https://app.example.com" -X OPTIONS https://api.example.com/endpoint
+curl -v -H "Origin: https://app.example.com" https://api.example.com/endpoint
 ```
 
 If you see duplicate `Access-Control-Allow-Origin` headers, decide where to handle CORS:
@@ -168,7 +169,7 @@ corsPolicy:
   - content-type
 ```
 
-Important: when `allowCredentials` is true, `allowOrigins` cannot be a wildcard (`*`). Browsers reject wildcard origins with credentials. You must specify exact origins.
+Important: when `allowCredentials` is true, the response cannot use `Access-Control-Allow-Origin: *`. Browsers reject wildcard origins with credentials. In Istio, avoid catch-all origin patterns such as `regex: ".*"` for credentialed APIs and specify the trusted origins instead.
 
 ## CORS with Istio Ingress Gateway
 
@@ -231,19 +232,15 @@ The response should include:
 
 If any of these are missing, the CORS policy doesn't match the request.
 
-## Envoy CORS Filter Logs
+## Envoy CORS Filter Stats
 
-Enable debug logging for the CORS filter:
-
-```bash
-istioctl proxy-config log <pod-name> -n my-namespace --level cors:debug
-```
-
-Then send a request and check:
+Check Envoy CORS filter stats:
 
 ```bash
-kubectl logs <pod-name> -c istio-proxy -n my-namespace | grep -i cors
+kubectl exec <pod-name> -n my-namespace -c istio-proxy -- pilot-agent request GET stats | grep cors
 ```
+
+You should see counters such as `origin_valid` or `origin_invalid` after requests with an `Origin` header. If you don't see CORS stats, Envoy might not be collecting those stats with the current proxy stats matcher configuration.
 
 ## Expose Headers
 
@@ -258,7 +255,7 @@ corsPolicy:
   - x-custom-response-header
 ```
 
-Without this, the browser JavaScript can only see "simple" response headers (Cache-Control, Content-Language, Content-Type, Expires, Last-Modified, Pragma).
+Without this, the browser JavaScript can only see "simple" response headers (Cache-Control, Content-Language, Content-Length, Content-Type, Expires, Last-Modified, Pragma).
 
 ## Max Age for Preflight Caching
 
@@ -278,4 +275,4 @@ corsPolicy:
 
 ## Summary
 
-CORS issues in Istio come from three main sources: misconfigured VirtualService corsPolicy, AuthorizationPolicy blocking preflight OPTIONS requests, or duplicate CORS headers from both Istio and the application. Pick one place to handle CORS (either Istio or your application, not both). Make sure the allowOrigins match exactly, include OPTIONS in allowMethods, and test with curl to verify the response headers before debugging in the browser.
+CORS issues in Istio come from three main sources: misconfigured VirtualService corsPolicy, AuthorizationPolicy blocking preflight OPTIONS requests, or duplicate CORS headers from both Istio and the application. Pick one place to handle CORS (either Istio or your application, not both). Make sure the allowOrigins match exactly, allow the requested methods and headers, and test with curl to verify the response headers before debugging in the browser.
