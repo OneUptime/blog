@@ -86,14 +86,14 @@ sum(rate(istio_requests_total{
 
 ### Error Rate Excluding 404s
 
-Sometimes 404s are normal (client requesting non-existent resources). Exclude them:
+Sometimes 404s are normal (client requesting non-existent resources). If you count all non-2xx responses as errors, exclude them:
 
 ```promql
 sum(rate(istio_requests_total{
   reporter="destination",
   destination_workload="api-service",
-  response_code=~"5..",
-  response_code!="404"
+  response_code=~".+",
+  response_code!~"2..|404"
 }[5m]))
 /
 sum(rate(istio_requests_total{
@@ -366,18 +366,25 @@ Now your dashboards and alerts can query `istio:service:error_rate_5m` instead o
 
 ## Common Gotchas
 
-**Double counting**: Always filter by `reporter="destination"` or `reporter="source"`, not both. Each request is reported twice.
+**Double counting**: Always filter by `reporter="destination"` or `reporter="source"`, not both. Requests between sidecar-injected workloads can be reported by both the client and server proxies.
 
 **The `le` label**: When using `histogram_quantile()`, you must include `le` in the `by()` clause. Forgetting it returns incorrect results.
 
-**Empty results with division**: If the denominator is zero, PromQL returns no data rather than an error. Use `or vector(0)` if you need a default:
+**Empty results and division**: If one side of a division has no matching series, PromQL omits that result. If the denominator evaluates to zero, the result can be `+Inf` or `NaN`. Filter out zero denominators and use `or vector(0)` if you need a default:
 
 ```promql
-(sum(rate(istio_requests_total{response_code=~"5.."}[5m])) or vector(0))
-/
-sum(rate(istio_requests_total[5m]))
+(
+  (
+    sum(rate(istio_requests_total{response_code=~"5.."}[5m]))
+    /
+    sum(rate(istio_requests_total[5m]))
+  )
+  and
+  sum(rate(istio_requests_total[5m])) > 0
+)
+or vector(0)
 ```
 
-**Rate interval**: Use `[5m]` as a minimum range for `rate()`. Shorter ranges can produce unreliable results, especially with 30-second scrape intervals. A good rule is at least 4x your scrape interval.
+**Rate interval**: Choose a range that is long enough for your scrape interval. Shorter ranges can produce unreliable results, especially with 30-second scrape intervals. A good rule is at least 4x your scrape interval.
 
 PromQL is the key to unlocking Istio's observability data. Master these query patterns and you'll be able to answer almost any question about your mesh's health and performance.
