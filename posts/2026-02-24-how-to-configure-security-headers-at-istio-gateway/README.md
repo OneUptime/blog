@@ -28,7 +28,7 @@ Here are the headers you should add:
 | Strict-Transport-Security (HSTS) | Forces HTTPS connections |
 | X-Content-Type-Options | Prevents MIME type sniffing |
 | X-Frame-Options | Prevents clickjacking |
-| X-XSS-Protection | Legacy XSS protection |
+| X-XSS-Protection | Disables legacy browser XSS filtering |
 | Content-Security-Policy | Controls resource loading |
 | Referrer-Policy | Controls referrer information |
 | Permissions-Policy | Controls browser features |
@@ -68,7 +68,7 @@ spec:
                 response_handle:headers():add("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload")
                 response_handle:headers():add("X-Content-Type-Options", "nosniff")
                 response_handle:headers():add("X-Frame-Options", "DENY")
-                response_handle:headers():add("X-XSS-Protection", "1; mode=block")
+                response_handle:headers():add("X-XSS-Protection", "0")
                 response_handle:headers():add("Referrer-Policy", "strict-origin-when-cross-origin")
                 response_handle:headers():add("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
                 response_handle:headers():add("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'")
@@ -117,7 +117,7 @@ spec:
               append_action: OVERWRITE_IF_EXISTS_OR_ADD
             - header:
                 key: X-XSS-Protection
-                value: "1; mode=block"
+                value: "0"
               append_action: OVERWRITE_IF_EXISTS_OR_ADD
             - header:
                 key: Referrer-Policy
@@ -152,7 +152,7 @@ spec:
             Strict-Transport-Security: "max-age=31536000; includeSubDomains"
             X-Content-Type-Options: "nosniff"
             X-Frame-Options: "DENY"
-            X-XSS-Protection: "1; mode=block"
+            X-XSS-Protection: "0"
             Referrer-Policy: "strict-origin-when-cross-origin"
 ```
 
@@ -165,8 +165,10 @@ CSP is the most complex security header. It controls which resources (scripts, s
 Start with a report-only mode to see what would be blocked:
 
 ```yaml
+response_handle:headers():add("Reporting-Endpoints",
+  'csp-endpoint="https://app.example.com/csp-report"')
 response_handle:headers():add("Content-Security-Policy-Report-Only",
-  "default-src 'self'; script-src 'self'; report-uri /csp-report")
+  "default-src 'self'; script-src 'self'; report-uri /csp-report; report-to csp-endpoint")
 ```
 
 After analyzing the reports and fixing violations, switch to enforcement:
@@ -207,6 +209,14 @@ spec:
           typed_config:
             "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
             inline_code: |
+              function envoy_on_request(request_handle)
+                request_handle:streamInfo():dynamicMetadata():set(
+                  "envoy.filters.http.lua",
+                  "authority",
+                  request_handle:headers():get(":authority")
+                )
+              end
+
               function envoy_on_response(response_handle)
                 local headers = response_handle:headers()
 
@@ -215,8 +225,9 @@ spec:
                 headers:add("X-Frame-Options", "DENY")
                 headers:add("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
 
-                -- Get the request authority to determine CSP
-                local authority = response_handle:headers():get(":authority")
+                -- Get the request authority saved during the request phase
+                local metadata = response_handle:streamInfo():dynamicMetadata():get("envoy.filters.http.lua")
+                local authority = metadata and metadata["authority"]
 
                 if authority == "app.example.com" then
                   headers:add("Content-Security-Policy", "default-src 'self'; script-src 'self' https://cdn.example.com")
@@ -273,7 +284,7 @@ HTTP/2 200
 strict-transport-security: max-age=31536000; includeSubDomains; preload
 x-content-type-options: nosniff
 x-frame-options: DENY
-x-xss-protection: 1; mode=block
+x-xss-protection: 0
 referrer-policy: strict-origin-when-cross-origin
 content-security-policy: default-src 'self'
 ```
