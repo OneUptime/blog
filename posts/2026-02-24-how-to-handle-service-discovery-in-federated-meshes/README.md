@@ -39,7 +39,7 @@ istioctl create-remote-secret \
   kubectl apply --context=cluster-west -f -
 ```
 
-Once this is in place, istiod in cluster-west will watch cluster-east's API server for Service and Endpoint resources. It will then push those remote endpoints to the sidecar proxies in cluster-west.
+Once this is in place, istiod in cluster-west will watch cluster-east's API server for service endpoints. It will then push those remote endpoints to the sidecar proxies in cluster-west for services that are part of the shared mesh view.
 
 Check that the remote endpoints are being discovered:
 
@@ -50,14 +50,14 @@ istioctl proxy-config endpoints \
   --context=cluster-west | grep cluster-east
 ```
 
-The downside of this approach is that it shares everything. Every service in cluster-east becomes visible to cluster-west. That might not be what you want.
+The downside of this approach is that it shares endpoint discovery broadly for the mesh. Services with the same namespace and service name are treated as the same service by default, and Istio merges their endpoints for cross-cluster load balancing. That might not be what you want.
 
 ## Approach 2: ServiceEntry for Selective Discovery
 
 If you want to be selective about which services are discoverable across meshes, use ServiceEntry resources. This gives you explicit control.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: remote-payment-api
@@ -82,7 +82,7 @@ Notice the `.global` suffix on the hostname. This is a common convention for fed
 You also need a DestinationRule to configure how traffic reaches the remote service:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: remote-payment-api
@@ -96,7 +96,7 @@ spec:
 
 ## Approach 3: DNS-Based Discovery with CoreDNS
 
-For a more DNS-native approach, you can configure CoreDNS to resolve remote service names. This works well when you want applications to use standard DNS names without any Istio-specific configuration.
+For a more DNS-native approach, you can configure CoreDNS to forward remote service names to a DNS server that is authoritative for the remote mesh. This works well when you want applications to use standard DNS names without Istio-specific hostnames in application code.
 
 Add a CoreDNS configuration stub for the remote mesh:
 
@@ -109,12 +109,12 @@ metadata:
 data:
   federation.server: |
     payments.global:53 {
-      forward . <east-west-gateway-ip>
+      forward . <remote-dns-server-ip>
       log
     }
 ```
 
-This tells CoreDNS to forward any DNS queries for `*.payments.global` to the east-west gateway of the remote mesh. The gateway can then resolve these to the correct service endpoints.
+This tells CoreDNS to forward any DNS queries for `*.payments.global` to a remote DNS server that can resolve the remote service names. The exact ConfigMap shape depends on your Kubernetes distribution; some managed clusters use a separate custom CoreDNS ConfigMap like this, while others require editing the main `coredns` ConfigMap's `Corefile`.
 
 ## Handling Namespace Conflicts
 
@@ -123,14 +123,14 @@ One tricky aspect of federated discovery is namespace conflicts. Both meshes mig
 Option one is namespace aliasing. You import remote services into a different namespace:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: east-payment-api
   namespace: payments-east
 spec:
   hosts:
-    - payment-api.payments-east.svc.cluster.local
+    - payment-api.payments-east.global
   location: MESH_INTERNAL
   ports:
     - number: 8080
@@ -151,7 +151,7 @@ Option two is using different DNS suffixes. Local services use `.svc.cluster.loc
 When services are available in multiple meshes, you want traffic to prefer local endpoints over remote ones. Istio supports locality-aware load balancing that handles this.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: payment-api-locality
@@ -189,7 +189,9 @@ Key metrics to watch:
 
 - `pilot_xds_pushes`: Number of configuration pushes to proxies
 - `pilot_xds_push_time`: How long pushes take (slow pushes mean discovery delays)
-- `pilot_k8s_endpoints_total`: Total number of endpoints across all watched clusters
+- `pilot_services`: Total number of services known to istiod
+- `remote_cluster_secret_events_total`: Remote-cluster secret changes seen by istiod
+- `remote_cluster_sync_timeouts_total`: Remote clusters that took too long to sync during startup
 
 You can also check the xDS configuration directly:
 
