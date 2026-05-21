@@ -127,8 +127,9 @@ The default TEXT format contains these fields (in order):
 | Method and path | `"GET /status/200 HTTP/1.1"` | HTTP method, path, and protocol |
 | Response code | `200` | HTTP response status code |
 | Response flags | `-` | Envoy response flags (- means none) |
-| Mesh routing | `via_upstream` | How the request was handled |
-| Authority | `-` | The authority/host header |
+| Response code details | `via_upstream` | More detail about how the response was generated |
+| Connection termination details | `-` | Details for connection termination, if any |
+| Upstream transport failure reason | `"-"` | Transport failure reason from the upstream connection, if any |
 | Bytes received | `0` | Request body size |
 | Bytes sent | `0` | Response body size |
 | Duration | `3` | Total duration in milliseconds |
@@ -138,6 +139,12 @@ The default TEXT format contains these fields (in order):
 | Request ID | `"abc123-def456"` | Unique request identifier |
 | Authority | `"httpbin.default:8000"` | Request authority |
 | Upstream host | `"10.244.1.5:80"` | The actual pod IP that handled the request |
+| Upstream cluster | `inbound\|8000\|\|` | The Envoy cluster used for the upstream request |
+| Upstream local address | `10.244.1.3:0` | Local address used for the upstream connection |
+| Downstream local address | `10.244.1.5:8000` | Local address on the downstream connection |
+| Downstream remote address | `10.244.1.3:45678` | Remote address on the downstream connection |
+| Requested server name | `-` | Requested server name from TLS/SNI, if any |
+| Route name | `default` | Envoy route name that matched the request |
 
 ## JSON Encoding
 
@@ -159,6 +166,7 @@ JSON output looks like:
   "authority": "httpbin.default:8000",
   "bytes_received": 0,
   "bytes_sent": 0,
+  "connection_termination_details": null,
   "downstream_local_address": "10.244.1.5:8000",
   "downstream_remote_address": "10.244.1.3:45678",
   "duration": 3,
@@ -166,10 +174,18 @@ JSON output looks like:
   "path": "/status/200",
   "protocol": "HTTP/1.1",
   "request_id": "abc123-def456",
+  "requested_server_name": null,
   "response_code": 200,
+  "response_code_details": "via_upstream",
   "response_flags": "-",
+  "route_name": "default",
+  "start_time": "2026-02-24T10:15:30.123Z",
+  "upstream_cluster": "inbound|8000||",
   "upstream_host": "10.244.1.5:80",
+  "upstream_local_address": "10.244.1.3:0",
   "upstream_service_time": "2",
+  "upstream_transport_failure_reason": null,
+  "x_forwarded_for": null,
   "user_agent": "curl/7.88.1"
 }
 ```
