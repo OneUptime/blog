@@ -37,10 +37,10 @@ Check that:
 Check the endpoints:
 
 ```bash
-kubectl get endpoints my-service -n backend
+kubectl get endpointslice -n backend -l kubernetes.io/service-name=my-service
 ```
 
-If the endpoints list is empty, the service selector doesn't match any running pods. Compare labels:
+If no EndpointSlices are listed, or the listed EndpointSlices have no ready endpoints, the service selector doesn't match any ready pods. Compare labels:
 
 ```bash
 kubectl get pods -n backend --show-labels | grep my-service
@@ -50,7 +50,7 @@ Make sure the pod labels match the service selector exactly. A common mistake is
 
 ## Step 2: Check Sidecar Injection
 
-If the pod doesn't have an Istio sidecar, it won't participate in the mesh's service discovery.
+If the caller pod doesn't have an Istio sidecar, it won't receive Envoy service discovery configuration. If the destination pod is missing a sidecar, it may still be reachable as a Kubernetes service, but it won't fully participate in Istio traffic management and security policy.
 
 ```bash
 kubectl get pods my-service-pod -n backend -o jsonpath='{.spec.containers[*].name}'
@@ -102,7 +102,7 @@ If it's not listed, a Sidecar resource might be filtering it out:
 kubectl get sidecar -n frontend -o yaml
 ```
 
-Look at the egress hosts. If the Sidecar limits egress to specific hosts and `my-service.backend.svc.cluster.local` isn't included, the proxy won't have a route for it.
+Look at the egress hosts. If the Sidecar limits egress to specific hosts and `my-service.backend.svc.cluster.local` isn't included, the proxy won't receive service-specific configuration for it.
 
 Check the endpoints:
 
@@ -144,7 +144,7 @@ kubectl exec deploy/caller-service -n frontend -- curl -v http://my-service.back
 
 Look at the response:
 
-- **Connection refused**: The proxy doesn't have a route for this destination, or the target pod isn't listening
+- **Connection refused**: The target pod isn't listening on that port, or traffic is bypassing the proxy and reaching a closed port
 - **503 Service Unavailable**: The proxy has the route but can't reach any healthy endpoints
 - **404 Not Found**: The connection worked but the service returned a 404 (application issue, not discovery)
 - **403 Forbidden**: An authorization policy is blocking the request
@@ -154,7 +154,7 @@ Look at the response:
 
 **Issue: Service shows in Kubernetes but not in proxy config**
 
-This usually means a Sidecar resource is limiting visibility. Either remove the Sidecar resource or add the service to the egress hosts:
+This usually means a Sidecar resource is limiting visibility. Either remove the Sidecar resource or add the service to the egress hosts so the proxy receives service-specific configuration:
 
 ```yaml
 apiVersion: networking.istio.io/v1
