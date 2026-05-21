@@ -24,9 +24,11 @@ Understanding where the real IP comes from is critical for IP whitelisting. If y
 - Ingress gateway configured
 - Knowledge of your load balancer's behavior with client IPs
 
-## Step 1: Ensure Client IP Is Preserved
+## Step 1: Decide Where Istio Should Read the Client IP
 
-First, make sure your load balancer preserves the client IP. For cloud providers:
+First, make sure you know how your load balancer passes the client IP to Istio.
+
+If you use a network load balancer that preserves the packet source address, configure the ingress gateway Service with `externalTrafficPolicy: Local` and use `ipBlocks` in your AuthorizationPolicy.
 
 **AWS (NLB):**
 ```yaml
@@ -36,7 +38,8 @@ metadata:
   name: istio-ingressgateway
   namespace: istio-system
   annotations:
-    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    service.beta.kubernetes.io/aws-load-balancer-type: "external"
+    service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: "instance"
 spec:
   externalTrafficPolicy: Local
 ```
@@ -54,36 +57,26 @@ spec:
 
 Setting `externalTrafficPolicy: Local` ensures the client IP is preserved instead of being SNATed.
 
+If you use an HTTP/HTTPS load balancer that appends `X-Forwarded-For`, or an L4 load balancer configured with PROXY protocol, configure Istio to trust the right number of proxies and use `remoteIpBlocks`.
+
 ## Step 2: Configure the Gateway to Trust XFF Headers
 
 Tell the ingress gateway how many proxy hops to expect so it reads the correct client IP from X-Forwarded-For:
 
 ```yaml
-apiVersion: networking.istio.io/v1alpha3
-kind: EnvoyFilter
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
 metadata:
-  name: xff-trust-hops
   namespace: istio-system
+  name: istio-control-plane
 spec:
-  workloadSelector:
-    labels:
-      istio: ingressgateway
-  configPatches:
-    - applyTo: NETWORK_FILTER
-      match:
-        listener:
-          filterChain:
-            filter:
-              name: envoy.filters.network.http_connection_manager
-      patch:
-        operation: MERGE
-        value:
-          typed_config:
-            "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
-            xff_num_trusted_hops: 1
+  meshConfig:
+    defaultConfig:
+      gatewayTopology:
+        numTrustedProxies: 1
 ```
 
-Set `xff_num_trusted_hops` to the number of trusted proxies between the client and the ingress gateway. If you have one load balancer in front of Istio, set it to 1.
+Set `numTrustedProxies` to the number of trusted proxies between the client and the ingress gateway. If you have one HTTP load balancer in front of Istio, set it to 1. You can also configure this per gateway with the `proxy.istio.io/config` pod annotation.
 
 ## Step 3: Create the IP Whitelist Policy
 
@@ -111,6 +104,8 @@ spec:
 
 The `remoteIpBlocks` field matches against the client's real IP (as determined by XFF and trusted hops). CIDR notation is supported, so you can whitelist entire subnets or individual IPs.
 
+If your load balancer preserves the packet source address with `externalTrafficPolicy: Local` instead of using XFF or PROXY protocol, use `ipBlocks` in this policy.
+
 ```bash
 kubectl apply -f ip-whitelist.yaml
 ```
@@ -119,12 +114,12 @@ kubectl apply -f ip-whitelist.yaml
 
 Istio provides two fields for IP matching:
 
-- **`ipBlocks`** matches the direct peer IP (the immediate connection source)
-- **`remoteIpBlocks`** matches the original client IP (from X-Forwarded-For)
+- **`ipBlocks`** matches the source address of the IP packet
+- **`remoteIpBlocks`** matches the original client IP from X-Forwarded-For or PROXY protocol
 
-For external traffic through a load balancer, use `remoteIpBlocks` because the direct peer IP will be the load balancer, not the client.
+For external traffic through an HTTP/HTTPS load balancer that appends XFF, or through PROXY protocol, use `remoteIpBlocks`.
 
-For traffic within the mesh (pod-to-pod), use `ipBlocks` since there are no intermediary proxies.
+For external traffic with `externalTrafficPolicy: Local`, use `ipBlocks`. For traffic within the mesh (pod-to-pod), use `ipBlocks` or service identity fields, since there are no intermediary external proxies.
 
 ## Per-Host Whitelisting
 
@@ -258,9 +253,9 @@ kubectl patch authorizationpolicy ip-whitelist -n istio-system --type=merge -p '
 
 ## Common Issues
 
-**Load balancer SNAT.** If your load balancer SNATs the client IP, `remoteIpBlocks` will not see the real client IP. Use `externalTrafficPolicy: Local` to prevent this.
+**Load balancer SNAT.** If your load balancer SNATs the client IP and does not provide XFF or PROXY protocol, Istio will not see the real client IP. Use `externalTrafficPolicy: Local` with `ipBlocks`, or configure XFF or PROXY protocol and use `remoteIpBlocks`.
 
-**Wrong XFF hop count.** If `xff_num_trusted_hops` is wrong, Istio reads the wrong IP from the X-Forwarded-For chain. Too low and you get the load balancer IP. Too high and a client could spoof their IP.
+**Wrong XFF hop count.** If `numTrustedProxies` is wrong, Istio reads the wrong IP from the X-Forwarded-For chain. Too low and you get the load balancer IP. Too high and a client could spoof their IP.
 
 **IPv6.** If your cluster uses IPv6, make sure to include IPv6 CIDR ranges in your whitelist.
 
@@ -275,4 +270,4 @@ kubectl get authorizationpolicy -n istio-system
 
 ## Summary
 
-IP whitelisting in Istio works through AuthorizationPolicy on the ingress gateway with `remoteIpBlocks` for client IP matching. The key setup step is ensuring client IPs are preserved through your load balancer configuration and `xff_num_trusted_hops`. Combine IP whitelisting with JWT authentication for defense in depth, and use CIDR notation to manage IP ranges efficiently. Test from both whitelisted and non-whitelisted IPs to verify your policies are working correctly.
+IP whitelisting in Istio works through AuthorizationPolicy on the ingress gateway with `remoteIpBlocks` for XFF or PROXY protocol client IP matching, or `ipBlocks` when using `externalTrafficPolicy: Local`. The key setup step is ensuring client IPs are preserved through your load balancer configuration and `numTrustedProxies`. Combine IP whitelisting with JWT authentication for defense in depth, and use CIDR notation to manage IP ranges efficiently. Test from both whitelisted and non-whitelisted IPs to verify your policies are working correctly.
