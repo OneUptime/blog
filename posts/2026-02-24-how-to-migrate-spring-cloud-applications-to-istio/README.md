@@ -92,7 +92,7 @@ order-service:
 Configure load balancing in Istio instead:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: order-service
@@ -103,7 +103,7 @@ spec:
       simple: ROUND_ROBIN
 ```
 
-Istio supports ROUND_ROBIN, LEAST_REQUEST, RANDOM, and PASSTHROUGH load balancing algorithms.
+Istio supports ROUND_ROBIN, LEAST_REQUEST, and RANDOM load balancing algorithms. It also supports PASSTHROUGH for advanced original-destination use cases, which forwards traffic without doing load balancing.
 
 ## Step 3: Replace Hystrix with Istio Circuit Breaking
 
@@ -139,7 +139,7 @@ public List<Order> getOrders() {
 Configure circuit breaking in Istio:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: order-service
@@ -167,7 +167,7 @@ Note: Istio's circuit breaking does not have a fallback mechanism like Hystrix. 
 Remove the Zuul gateway service entirely. Replace it with Istio Gateway and VirtualService:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: api-gateway
@@ -185,7 +185,7 @@ spec:
       hosts:
         - "api.example.com"
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-routes
@@ -247,9 +247,10 @@ Remove Spring Cloud Sleuth:
 </dependency>
 ```
 
-Istio automatically generates trace spans for every request. However, your application needs to propagate trace context headers for distributed tracing to work across services. These headers are:
+When distributed tracing is configured in Istio, Envoy proxies can automatically send trace spans for requests. However, your application needs to propagate trace context headers for distributed tracing to work across services. These headers are:
 
 - `x-request-id`
+- `b3`
 - `x-b3-traceid`
 - `x-b3-spanid`
 - `x-b3-parentspanid`
@@ -258,20 +259,26 @@ Istio automatically generates trace spans for every request. However, your appli
 - `traceparent`
 - `tracestate`
 
-In Spring, add a filter or interceptor to propagate these:
+In Spring, add a filter or interceptor and register it with your HTTP client to propagate these:
 
 ```java
 @Component
-public class TracingInterceptor implements ClientHttpRequestInterceptor {
+public class TracingInterceptor implements ClientHttpRequestInterceptor, RestTemplateCustomizer {
 
     @Autowired
     private HttpServletRequest request;
 
     @Override
+    public void customize(RestTemplate restTemplate) {
+        restTemplate.getInterceptors().add(this);
+    }
+
+    @Override
     public ClientHttpResponse intercept(HttpRequest outgoing, byte[] body,
             ClientHttpRequestExecution execution) throws IOException {
-        String[] traceHeaders = {"x-request-id", "x-b3-traceid", "x-b3-spanid",
-                "x-b3-parentspanid", "x-b3-sampled", "traceparent", "tracestate"};
+        String[] traceHeaders = {"x-request-id", "b3", "x-b3-traceid", "x-b3-spanid",
+                "x-b3-parentspanid", "x-b3-sampled", "x-b3-flags",
+                "traceparent", "tracestate"};
         for (String header : traceHeaders) {
             String value = request.getHeader(header);
             if (value != null) {
@@ -298,7 +305,7 @@ Remove Spring Retry:
 Configure retries in the VirtualService:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: order-service
