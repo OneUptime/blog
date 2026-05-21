@@ -14,15 +14,15 @@ Certificate-related outages happen when istiod goes down during a rotation windo
 
 ## Understanding Istio's Certificate Lifecycle
 
-Istio's certificate chain looks like this:
+With plug-in CA certificates, Istio's certificate chain commonly looks like this:
 
 ```text
-Root CA Certificate (10 years default)
+Root CA Certificate
   └── Intermediate CA Certificate (used by istiod)
         └── Workload Certificate (24 hours default)
 ```
 
-Workload certificates are short-lived and auto-rotated. The root CA and intermediate CA certificates have much longer lifetimes but will eventually expire.
+With Istio's default self-signed CA, istiod generates a self-signed CA certificate and uses it to sign workload certificates. Workload certificates are short-lived and auto-rotated. The root CA and intermediate CA certificates have much longer lifetimes but will eventually expire.
 
 When a workload certificate expires, the sidecar cannot establish new mTLS connections. When the root CA expires, no new certificates can be issued and existing certificates cannot be validated.
 
@@ -51,17 +51,17 @@ notAfter=Feb 25 10:00:00 2026 GMT
 
 ## Checking the Root CA Expiration
 
-The root CA certificate has a long lifetime, but you still need to monitor it:
+The root CA certificate has a long lifetime, but you still need to monitor it. For the default Istio CA, check the distributed root certificate:
 
 ```bash
-kubectl get secret istio-ca-secret -n istio-system -o jsonpath='{.data.ca-cert\.pem}' | \
-  base64 -d | openssl x509 -noout -dates
+kubectl get configmap istio-ca-root-cert -n istio-system -o jsonpath='{.data.root-cert\.pem}' | \
+  openssl x509 -noout -dates
 ```
 
 If you used plug-in CA certificates:
 
 ```bash
-kubectl get secret cacerts -n istio-system -o jsonpath='{.data.ca-cert\.pem}' | \
+kubectl get secret cacerts -n istio-system -o jsonpath='{.data.root-cert\.pem}' | \
   base64 -d | openssl x509 -noout -dates
 ```
 
@@ -77,7 +77,7 @@ The Envoy sidecar exposes a metric for certificate expiration:
 envoy_server_days_until_first_cert_expiring
 ```
 
-This metric reports the number of days until the sidecar's certificate expires. In normal operation, this should be between 0 and 1 (since certificates are 24 hours). If it drops to 0 and stays there, certificates are not being rotated.
+This metric reports the number of days until the sidecar's certificate expires. With the default 24-hour certificates, it may report `0` during normal operation because the metric is day-granularity. With longer certificate lifetimes, a value that keeps dropping toward zero without jumping back up after rotation needs investigation.
 
 ### Citadel/istiod Metrics
 
@@ -92,7 +92,7 @@ citadel_server_csr_count
 citadel_server_success_cert_issuance_count
 
 # Certificate signing errors
-citadel_server_csr_signing_error_count
+citadel_server_csr_sign_err_count
 
 # Root certificate expiry time
 citadel_server_root_cert_expiry_timestamp
@@ -112,7 +112,7 @@ groups:
       severity: warning
     annotations:
       summary: "Istio root CA certificate expires in less than 30 days"
-      description: "Root CA certificate expires at {{ $value | humanizeTimestamp }}"
+      description: "Root CA certificate expires in {{ $value | humanizeDuration }}"
 
   - alert: IstioRootCertExpiryCritical
     expr: (citadel_server_root_cert_expiry_timestamp - time()) < 604800
@@ -123,7 +123,7 @@ groups:
       summary: "Istio root CA certificate expires in less than 7 days"
 
   - alert: IstioCertSigningErrors
-    expr: rate(citadel_server_csr_signing_error_count[5m]) > 0
+    expr: rate(citadel_server_csr_sign_err_count[5m]) > 0
     for: 5m
     labels:
       severity: critical
@@ -136,15 +136,17 @@ groups:
 Track certificate rotation health:
 
 ```yaml
-  - alert: IstioWorkloadCertNotRotating
-    expr: envoy_server_days_until_first_cert_expiring == 0
+  - alert: IstioWorkloadCertExpiringSoon
+    expr: envoy_server_days_until_first_cert_expiring < 1
     for: 30m
     labels:
       severity: critical
     annotations:
-      summary: "Workload certificate has expired and is not being rotated"
-      description: "Pod {{ $labels.pod }} in namespace {{ $labels.namespace }} has an expired certificate"
+      summary: "Workload certificate expires in less than one day"
+      description: "Pod {{ $labels.pod }} in namespace {{ $labels.namespace }} has a certificate expiring soon"
 ```
+
+Note that `envoy_server_days_until_first_cert_expiring` is a gauge in days, so with the default 24-hour workload certificate lifetime it can be `0` during normal operation. This alert is most useful if you use a longer `SECRET_TTL`; for 24-hour certificates, combine it with the `istioctl proxy-config secret` checks above when investigating rotation issues.
 
 ## Building a Grafana Dashboard
 
@@ -169,7 +171,7 @@ This should be roughly constant. A drop to zero means istiod stopped issuing cer
 ### Panel 3: Certificate Signing Errors
 
 ```text
-rate(citadel_server_csr_signing_error_count[5m])
+rate(citadel_server_csr_sign_err_count[5m])
 ```
 
 This should be zero. Any non-zero value needs investigation.
@@ -177,7 +179,7 @@ This should be zero. Any non-zero value needs investigation.
 ### Panel 4: Workload Certificate Expiry Distribution
 
 ```text
-histogram_quantile(0.99, envoy_server_days_until_first_cert_expiring)
+quantile(0.99, envoy_server_days_until_first_cert_expiring)
 ```
 
 Shows the certificate expiry distribution across all workloads.
@@ -254,7 +256,7 @@ When rotation fails, the sidecar will keep using its existing certificate until 
 
 Signs of rotation failure:
 - `envoy_server_days_until_first_cert_expiring` dropping toward zero
-- Increasing `citadel_server_csr_signing_error_count`
+- Increasing `citadel_server_csr_sign_err_count`
 - istiod log errors about certificate signing
 
 Recovery steps:
