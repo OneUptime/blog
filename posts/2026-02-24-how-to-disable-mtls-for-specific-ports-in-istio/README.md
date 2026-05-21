@@ -14,7 +14,7 @@ This keeps your main application traffic encrypted while allowing specific ports
 
 ## Port-Level mTLS in PeerAuthentication
 
-The `portLevelMtls` field in PeerAuthentication lets you override the default mTLS mode for specific ports. The field takes a map of port numbers to mTLS settings.
+The `portLevelMtls` field in PeerAuthentication lets you override the default mTLS mode for specific ports on selected workloads. The field takes a map of port numbers to mTLS settings.
 
 Here is a service running in strict mode with port 9090 (metrics) set to permissive:
 
@@ -62,25 +62,7 @@ The difference between PERMISSIVE and DISABLE:
 
 Prometheus typically scrapes metrics by connecting directly to pod endpoints without going through a sidecar. If your service exposes metrics on port 9090 and the namespace runs in strict mTLS mode, Prometheus scrapes will fail because Prometheus does not present an mTLS certificate.
 
-The fix:
-
-```yaml
-apiVersion: security.istio.io/v1
-kind: PeerAuthentication
-metadata:
-  name: default
-  namespace: production
-spec:
-  mtls:
-    mode: STRICT
-  portLevelMtls:
-    9090:
-      mode: PERMISSIVE
-```
-
-Note that this is a namespace-wide policy (no selector). It applies to all pods in the namespace, allowing Prometheus to scrape port 9090 on any pod without mTLS.
-
-If only specific services expose metrics:
+The fix is a workload-selected PeerAuthentication policy:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -99,15 +81,17 @@ spec:
       mode: PERMISSIVE
 ```
 
+Note that `portLevelMtls` only applies when the PeerAuthentication has a workload selector. If multiple workloads expose metrics, create matching workload-level policies for them.
+
 ### Istio's Built-In Prometheus Integration
 
 Worth noting: if you use Istio's Prometheus integration that scrapes sidecar metrics on port 15090, that port is already handled by Istio. You do not need to add a port-level exception for it. The exception is needed for your application's custom metrics port.
 
 ## Use Case: Health Check Endpoints
 
-Kubernetes liveness and readiness probes come from the kubelet, which does not have mesh certificates. Istio handles HTTP probes automatically by rewriting them to go through the sidecar, but there are scenarios where this does not work:
+Kubernetes liveness and readiness probes come from the kubelet, which does not have mesh certificates. Istio handles Kubernetes HTTP, TCP, and gRPC probes automatically by rewriting them to go through the sidecar, but there are scenarios where this is not enough:
 
-- TCP probes (the kubelet opens a raw TCP connection)
+- Probe rewrite has been disabled for the pod or mesh
 - gRPC health checks from external systems
 - Custom health check agents
 
@@ -151,13 +135,13 @@ spec:
   mtls:
     mode: STRICT
   portLevelMtls:
-    8126:
+    8081:
       mode: PERMISSIVE
     9090:
       mode: PERMISSIVE
 ```
 
-Port 8126 is a common port for APM agents to receive trace data, and 9090 for metrics.
+Port 8081 is a custom application monitoring endpoint, and 9090 for metrics. Use the actual inbound workload ports that your monitoring agents need to reach.
 
 ## Multiple Port Exceptions
 
@@ -244,9 +228,13 @@ Consider alternatives before disabling mTLS:
 - Can health checks go through the sidecar's rewritten path?
 - Can the external system be configured to present mTLS certificates?
 
+### Ambient Mode
+
+In Istio ambient mode, `DISABLE` mode is not supported because pod-to-pod security is provided transparently by ztunnel. Use these `DISABLE` examples for sidecar mode workloads.
+
 ### Interaction with AuthorizationPolicy
 
-Port-level mTLS settings affect what connections are accepted at the TLS layer. AuthorizationPolicy works at a higher level (HTTP layer). Even if you disable mTLS on a port, you can still use AuthorizationPolicy to restrict which source IPs or principals can access it:
+Port-level mTLS settings affect what connections are accepted at the TLS layer. AuthorizationPolicy is still evaluated after the connection is accepted and can restrict HTTP or TCP traffic. Even if you disable mTLS on a port, you can still use AuthorizationPolicy to restrict which source IPs can access it:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -270,5 +258,7 @@ spec:
 ```
 
 This allows connections to the metrics port only from internal IPs, adding a layer of protection even without mTLS.
+
+Identity-based fields such as `principals`, `namespaces`, and `serviceAccounts` require mTLS-derived peer identity, so they are not useful for plaintext clients on a port where mTLS is disabled.
 
 Port-level mTLS configuration is a practical necessity in most real-world meshes. Use it sparingly, document why each exception exists, and revisit them periodically to see if they can be removed.
