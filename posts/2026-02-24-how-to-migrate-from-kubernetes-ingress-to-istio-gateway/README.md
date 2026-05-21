@@ -17,7 +17,7 @@ Before migrating, understand what changes:
 | Feature | Kubernetes Ingress | Istio Gateway |
 |---|---|---|
 | Resource types | 1 (Ingress) | 2 (Gateway + VirtualService) |
-| Protocol support | HTTP/HTTPS | HTTP, HTTPS, TCP, gRPC, WebSocket |
+| Protocol support | HTTP/HTTPS | HTTP, HTTPS, HTTP2, gRPC, TCP, TLS |
 | TLS config | In the Ingress resource | In the Gateway resource |
 | Routing rules | In the Ingress resource | In the VirtualService resource |
 | Traffic management | Limited | Full (retries, timeouts, traffic splitting) |
@@ -135,12 +135,12 @@ spec:
 
 **After:**
 
-First, copy the TLS secret to the `istio-system` namespace:
+First, copy the TLS certificate into the namespace where the Istio ingress gateway workload runs. For the default Istio ingress gateway, that is usually `istio-system`:
 
 ```bash
-kubectl get secret secure-tls -o yaml | \
-  sed 's/namespace: default/namespace: istio-system/' | \
-  kubectl apply -f -
+kubectl get secret secure-tls -n default -o jsonpath='{.data.tls\.crt}' | base64 -d > tls.crt
+kubectl get secret secure-tls -n default -o jsonpath='{.data.tls\.key}' | base64 -d > tls.key
+kubectl create secret tls secure-tls -n istio-system --cert=tls.crt --key=tls.key
 ```
 
 Then create the Istio resources:
@@ -189,7 +189,7 @@ spec:
           number: 8080
 ```
 
-Note: TLS secrets for Istio must be in the `istio-system` namespace, while Kubernetes Ingress typically uses secrets in the application namespace.
+Note: TLS secrets for Istio must be in the namespace of the gateway workload that uses them. With the default Istio ingress gateway, that is typically `istio-system`. Kubernetes Ingress typically references secrets in the same namespace as the Ingress resource.
 
 ## Example 3: Path-Based Routing
 
@@ -201,6 +201,7 @@ kind: Ingress
 metadata:
   name: multi-path-ingress
   annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
     nginx.ingress.kubernetes.io/rewrite-target: /$2
 spec:
   rules:
@@ -253,9 +254,11 @@ spec:
   http:
   - match:
     - uri:
-        prefix: /api
+        regex: ^/api(/|$)(.*)
     rewrite:
-      uri: /
+      uriRegexRewrite:
+        match: ^/api(/|$)(.*)
+        rewrite: /\2
     route:
     - destination:
         host: api-service
@@ -263,9 +266,11 @@ spec:
           number: 8080
   - match:
     - uri:
-        prefix: /web
+        regex: ^/web(/|$)(.*)
     rewrite:
-      uri: /
+      uriRegexRewrite:
+        match: ^/web(/|$)(.*)
+        rewrite: /\2
     route:
     - destination:
         host: web-service
