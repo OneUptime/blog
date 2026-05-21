@@ -19,7 +19,7 @@ The `istioctl` CLI is the primary tool for managing Istio. It goes well beyond w
 
 istioctl install --set profile=default
 
-# Install with demo profile (includes extras like Kiali, Grafana)
+# Install with demo profile (installs Istio with settings useful for evaluation)
 istioctl install --set profile=demo
 
 # Install with custom configuration file
@@ -63,14 +63,14 @@ istioctl version --remote=false
 ### Profiles
 
 ```bash
-# List available profiles
-istioctl profile list
+# Generate the default profile manifest
+istioctl manifest generate --set profile=default > default.yaml
 
-# Dump a profile to see its configuration
-istioctl profile dump default
+# Generate the demo profile manifest
+istioctl manifest generate --set profile=demo > demo.yaml
 
 # Diff two profiles
-istioctl profile diff default demo
+diff -u default.yaml demo.yaml
 ```
 
 ### Namespace Management
@@ -256,10 +256,10 @@ istioctl x describe service my-app.default
 
 ```bash
 # Check mTLS status for a workload
-istioctl authn tls-check deploy/my-app.default
+istioctl x describe pod my-app-abc123.default
 
-# Check mTLS for a specific destination
-istioctl authn tls-check deploy/my-app.default api-server.backend.svc.cluster.local
+# Check TLS settings for outbound clusters
+istioctl proxy-config clusters deploy/my-app -n default -o json
 ```
 
 ### Authorization Check
@@ -296,8 +296,8 @@ istioctl dashboard jaeger
 # Open Prometheus
 istioctl dashboard prometheus
 
-# Open Envoy admin for a specific pod
-istioctl dashboard envoy deploy/my-app -n default
+# Open proxy admin for a specific pod
+istioctl dashboard proxy deploy/my-app -n default
 
 # Open istiod control plane dashboard
 istioctl dashboard controlz deploy/istiod -n istio-system
@@ -316,7 +316,7 @@ istioctl version
 istioctl install --revision 1-23
 
 # Verify the upgrade
-istioctl verify-install
+istioctl install --revision 1-23 --verify
 ```
 
 ## Common Patterns
