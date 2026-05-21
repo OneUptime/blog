@@ -60,22 +60,22 @@ istioctl validate -f istio-config/
 Example output for a valid configuration:
 
 ```text
-virtual-service.yaml: valid
-destination-rule.yaml: valid
+"virtual-service.yaml" is valid
+"destination-rule.yaml" is valid
 ```
 
 Example output for an invalid configuration:
 
 ```text
 Error: 1 error occurred:
-  * virtual-service.yaml:1: VirtualService default/my-service references subset "v3" but it is not found in any DestinationRule
+  * VirtualService//my-service: empty domain name not allowed
 ```
 
 `istioctl validate` does local validation, so it doesn't need access to the cluster. This makes it perfect for CI/CD pipelines where the build environment might not have cluster access.
 
 ## Method 3: istioctl analyze
 
-For the most comprehensive validation, use `istioctl analyze`. Unlike `validate`, this command checks your configuration against the live state of the cluster:
+For the most comprehensive validation, use `istioctl analyze`. Unlike `validate`, this command can check your configuration against local files, the live state of the cluster, or both:
 
 ```bash
 # Analyze the current cluster state
@@ -88,18 +88,18 @@ istioctl analyze -n production
 istioctl analyze --all-namespaces
 
 # Analyze local files before applying
-istioctl analyze -f virtual-service.yaml
+istioctl analyze --use-kube=false virtual-service.yaml
 
 # Analyze local files against the cluster state
-istioctl analyze -f virtual-service.yaml --use-kube
+istioctl analyze virtual-service.yaml
 ```
 
 `istioctl analyze` catches a broader range of issues because it knows what's actually deployed:
 
 ```text
 Warning [IST0101] (VirtualService default/my-vs) Referenced host not found: "typo-service.default.svc.cluster.local"
-Warning [IST0104] (Gateway default/my-gateway) The gateway selector istio=ingressgatway does not match any workloads
-Error [IST0134] (DestinationRule default/my-dr) This host has no endpoints
+Error [IST0101] (Gateway default/my-gateway) Referenced selector not found: "istio=ingressgatway"
+Warning [IST0174] (DestinationRule default/my-dr) The host typo-service defined in the DestinationRule does not match any services in the mesh.
 ```
 
 ## Method 4: Admission Webhook Validation
@@ -140,15 +140,16 @@ jobs:
       - name: Install istioctl
         run: |
           curl -L https://istio.io/downloadIstio | sh -
-          export PATH=$PWD/istio-*/bin:$PATH
+          ISTIO_DIR="$(find "$PWD" -maxdepth 1 -type d -name 'istio-*' | head -n 1)"
+          echo "$ISTIO_DIR/bin" >> "$GITHUB_PATH"
 
       - name: Validate Istio resources
         run: |
           istioctl validate -f istio-config/
 
-      - name: Schema validation with kubeval
+      - name: Analyze Istio resources
         run: |
-          kubeval --additional-schema-locations https://raw.githubusercontent.com/istio/istio/master/manifests/charts/base/crds istio-config/*.yaml
+          istioctl analyze --use-kube=false istio-config/
 ```
 
 ## Combining Validation Methods
@@ -157,7 +158,7 @@ The most robust approach uses multiple validation layers:
 
 1. **Local validation** with `istioctl validate` during development
 2. **CI/CD validation** with `istioctl validate` in your pipeline
-3. **Cluster-aware validation** with `istioctl analyze --use-kube` in staging
+3. **Cluster-aware validation** with `istioctl analyze` in staging
 4. **Admission webhook** as the final safety net in production
 
 Here is a script that runs through the first three:
@@ -172,7 +173,7 @@ echo "Step 1: Local schema validation"
 istioctl validate -f $CONFIG_DIR/
 
 echo "Step 2: Semantic analysis against cluster"
-istioctl analyze -f $CONFIG_DIR/ --use-kube
+istioctl analyze $CONFIG_DIR/
 
 echo "Step 3: Dry run against API server"
 kubectl apply --dry-run=server -f $CONFIG_DIR/
