@@ -24,7 +24,7 @@ Most API gateways handle:
 - **CORS**: Cross-origin resource sharing headers
 - **Load balancing**: Distributing traffic across backends
 
-Istio can handle all of these. The approach is different (YAML resources instead of gateway-specific configuration), but the capabilities are there.
+Istio can handle these with its core APIs or, for some gateway-plugin behavior such as API keys and rate limiting, with Envoy extensions or external authorization. The approach is different (YAML resources instead of gateway-specific configuration), but the capabilities are there.
 
 ## Migration from NGINX Ingress Controller
 
@@ -36,10 +36,9 @@ kind: Ingress
 metadata:
   name: my-app
   annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
-    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
 spec:
+  ingressClassName: nginx
   tls:
     - hosts:
         - api.example.com
@@ -67,7 +66,7 @@ spec:
 The Istio equivalent:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: api-gateway
@@ -93,7 +92,7 @@ spec:
       tls:
         httpsRedirect: true
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-routes
@@ -126,33 +125,27 @@ Note: The TLS secret must be in the `istio-system` namespace (where the ingress 
 ```bash
 # Copy the secret to istio-system
 
-kubectl get secret api-tls -n default -o yaml | \
-  sed 's/namespace: default/namespace: istio-system/' | \
-  kubectl apply -f -
+kubectl create secret tls api-tls -n istio-system \
+  --cert=<(kubectl get secret api-tls -n default -o jsonpath='{.data.tls\.crt}' | base64 -d) \
+  --key=<(kubectl get secret api-tls -n default -o jsonpath='{.data.tls\.key}' | base64 -d) \
+  --dry-run=client -o yaml | kubectl apply -f -
 ```
 
 ## Migration from Kong
 
-Kong uses custom resources or its admin API:
+Kong uses annotations, custom resources, or its admin API:
 
 ```yaml
-apiVersion: configuration.konghq.com/v1
-kind: KongIngress
-metadata:
-  name: api-config
-route:
-  strip_path: true
-  protocols:
-    - https
----
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: my-api
   annotations:
-    konghq.com/override: api-config
     konghq.com/plugins: rate-limiting,jwt-auth
+    konghq.com/protocols: "https"
+    konghq.com/strip-path: "true"
 spec:
+  ingressClassName: kong
   rules:
     - host: api.example.com
       http:
@@ -233,7 +226,7 @@ spec:
 Kong JWT plugin becomes Istio RequestAuthentication + AuthorizationPolicy:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: RequestAuthentication
 metadata:
   name: jwt-auth
@@ -247,7 +240,7 @@ spec:
       jwksUri: "https://auth.example.com/.well-known/jwks.json"
       forwardOriginalToken: true
 ---
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: require-jwt
@@ -285,7 +278,7 @@ spec:
 The Istio equivalent:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: order-routes
@@ -317,7 +310,7 @@ List all routes, plugins, and policies on your current gateway:
 
 ```bash
 # For Kong
-kubectl get KongPlugin,KongConsumer,KongIngress --all-namespaces
+kubectl get KongPlugin,KongClusterPlugin,KongConsumer,KongUpstreamPolicy --all-namespaces
 
 # For NGINX Ingress
 kubectl get ingress --all-namespaces -o yaml | grep "annotations" -A 20
