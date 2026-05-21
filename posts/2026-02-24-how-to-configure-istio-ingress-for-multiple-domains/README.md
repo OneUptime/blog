@@ -20,13 +20,13 @@ You need a working Kubernetes cluster with Istio installed. Make sure the ingres
 kubectl get pods -n istio-system -l istio=ingressgateway
 ```
 
-You should see the `istio-ingressgateway` pod in a Running state. Also grab the external IP of the gateway:
+You should see the `istio-ingressgateway` pod in a Running state. Also grab the external address of the gateway:
 
 ```bash
 kubectl get svc istio-ingressgateway -n istio-system
 ```
 
-Point your DNS records for each domain to this external IP address.
+Point your DNS records for each domain to this external address. Depending on your Kubernetes environment, this may be an IP address or a load balancer hostname.
 
 ## Understanding the Architecture
 
@@ -208,7 +208,7 @@ Notice that when the Gateway is in a different namespace than the VirtualService
 Check that your Gateway and VirtualServices are applied correctly:
 
 ```bash
-kubectl get gateway -n istio-system
+kubectl get gateways.networking.istio.io -n istio-system
 kubectl get virtualservice --all-namespaces
 ```
 
