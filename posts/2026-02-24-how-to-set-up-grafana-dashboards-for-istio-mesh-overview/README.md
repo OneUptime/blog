@@ -12,10 +12,10 @@ Running Istio without good dashboards is like driving without a speedometer. You
 
 ## Installing Grafana for Istio
 
-If you installed Istio with the demo profile, Grafana might already be included. If not, install it from the Istio addons:
+The Istio demo profile does not install Grafana automatically. Install it from the Istio addons:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/grafana.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/grafana.yaml
 ```
 
 Wait for it to be ready:
@@ -41,7 +41,7 @@ Istio includes a pre-built "Istio Mesh Dashboard" that gives you a high-level vi
 - Number of services in the mesh
 - Per-service request rates and error rates
 
-If the dashboard isn't already imported, you can find it in the Grafana dashboard store. Istio publishes their dashboards with specific IDs:
+If the dashboard isn't already imported, you can find it in the Grafana dashboard store. Istio publishes the Mesh Dashboard as dashboard ID `7639`:
 
 ```bash
 # The Istio mesh dashboard is typically available at
@@ -142,7 +142,7 @@ If Prometheus isn't already configured as a data source in Grafana, add it:
 3. Set the URL to `http://prometheus.istio-system:9090`
 4. Click "Save & Test"
 
-Alternatively, configure it through a ConfigMap:
+Alternatively, configure it through a ConfigMap that your Grafana deployment mounts into `/etc/grafana/provisioning/datasources`:
 
 ```yaml
 apiVersion: v1
@@ -163,9 +163,9 @@ data:
 
 ## Persistent Dashboard Storage
 
-By default, Grafana dashboards are stored in memory and lost when the pod restarts. To persist them, use a ConfigMap or a persistent volume.
+By default, the sample Grafana deployment stores its database and dashboards on the pod filesystem, so custom dashboards can be lost when the pod is recreated. To persist them, use dashboard provisioning through a ConfigMap or a persistent volume.
 
-Using a ConfigMap to provision dashboards:
+Using a ConfigMap to provision dashboards works when your Grafana deployment is configured to load dashboard files from that ConfigMap, or when you use a chart sidecar that watches the `grafana_dashboard` label:
 
 ```yaml
 apiVersion: v1
@@ -240,12 +240,12 @@ Then use `$namespace` and `$service` in your queries to make panels filterable.
 
 ## Alerting from Grafana
 
-Grafana can also fire alerts based on your dashboard panels. Add an alert to the error rate panel:
+Grafana can also fire alerts based on your Prometheus queries. Add an alert rule for the error rate query:
 
-1. Edit the panel
-2. Go to the Alert tab
-3. Set condition: `WHEN avg() OF query(A) IS ABOVE 5` (5% error rate)
-4. Set evaluation interval and notification channels
+1. Go to Alerts & IRM -> Alerting -> Alert rules -> New alert rule
+2. Add the Prometheus error rate query
+3. Add a threshold expression that fires when the value is above `5` (5% error rate)
+4. Set the evaluation group, folder, labels, and contact point or notification policy
 
 This gives you a visual + alerting setup all in one place.
 
