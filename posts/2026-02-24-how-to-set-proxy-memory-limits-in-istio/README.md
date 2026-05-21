@@ -104,7 +104,7 @@ Before setting limits, measure actual usage. Use Prometheus queries to understan
 
 container_memory_working_set_bytes{container="istio-proxy"}
 
-# Average memory by deployment
+# Average memory by pod
 avg by (pod) (container_memory_working_set_bytes{container="istio-proxy", namespace="default"})
 
 # P99 memory usage across all proxies
@@ -277,6 +277,6 @@ Start with `updateMode: "Off"` to just get recommendations without automatic upd
 kubectl get vpa my-service-vpa -o yaml
 ```
 
-Once you trust the recommendations, switch to `updateMode: "Auto"` for automatic adjustments.
+Once you trust the recommendations, switch to `updateMode: "Recreate"` for automatic adjustments. `updateMode: "Auto"` is deprecated in current VPA versions.
 
 Proxy memory management is one of those things that seems minor until you are running hundreds of pods. Taking the time to measure, set appropriate limits, and scope your sidecars properly saves real money on cluster costs and prevents production incidents from OOMKills.
