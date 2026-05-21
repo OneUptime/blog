@@ -10,7 +10,7 @@ Description: How to configure Istio for server-first protocols like MySQL, SMTP,
 
 Most protocols you deal with daily are client-first. The client connects, sends a request, and the server responds. HTTP, gRPC, Redis - they all follow this pattern. But some protocols flip this around. The server sends the initial data after the TCP connection is established, and only then does the client respond. These are called server-first protocols, and they need special handling in Istio.
 
-MySQL, PostgreSQL, SMTP, FTP, and SSH are all examples of server-first protocols. Getting them to work properly through Istio's sidecar proxy requires understanding why the default behavior breaks and what configuration fixes it.
+MySQL, SMTP, and FTP are common examples of server-first protocols. Getting them to work properly through Istio's sidecar proxy requires understanding why the default behavior breaks and what configuration fixes it.
 
 ## Why Server-First Protocols Break
 
@@ -22,9 +22,9 @@ For server-first protocols, here's the problem:
 2. Envoy intercepts the connection and waits for the client to send data so it can sniff the protocol
 3. The server also waits to send its greeting until the connection is established
 4. Envoy buffers the connection, waiting for client data that won't come until the server speaks first
-5. After the protocol detection timeout (default 100ms), Envoy gives up sniffing and falls back to TCP
+5. If a protocol detection timeout is configured, Envoy eventually gives up sniffing and falls back to TCP. With no timeout, the connection can hang waiting for client data.
 
-In the best case, you get a 100ms delay on every new connection. In the worst case, if the timeout isn't generous enough or there are other factors, the connection can fail entirely.
+In the best case, you get a delay on every new connection. In the worst case, if there is no timeout or the connection state gets out of sync, the connection can fail entirely.
 
 ## Explicit Protocol Configuration
 
@@ -40,7 +40,7 @@ spec:
   selector:
     app: mysql
   ports:
-    - name: mysql
+    - name: tcp-mysql
       port: 3306
       targetPort: 3306
 ```
@@ -49,15 +49,15 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: postgres-service
+  name: ftp-service
   namespace: default
 spec:
   selector:
-    app: postgres
+    app: ftp
   ports:
-    - name: tcp-postgres
-      port: 5432
-      targetPort: 5432
+    - name: tcp-ftp
+      port: 21
+      targetPort: 21
 ```
 
 ```yaml
@@ -75,23 +75,23 @@ spec:
       targetPort: 25
 ```
 
-For MySQL and MongoDB, Istio recognizes their specific protocol prefixes (`mysql`, `mongo`). For all other server-first protocols, use the `tcp` prefix. This tells Istio to handle the traffic as raw TCP without any protocol sniffing.
+For server-first protocols, use the `tcp` prefix. Istio also has experimental application protocol support for labels such as `mysql` and `mongo`, but the current Istio guidance for server-first traffic is to declare the application protocol as `TCP`. This tells Istio to handle the traffic as raw TCP without any protocol sniffing.
 
 ## Adjusting Protocol Detection Timeout
 
-If you can't change port names (maybe the service is managed by someone else, or a Helm chart hardcodes the names), you can adjust the protocol detection timeout globally:
+If you can't change port names (maybe the service is managed by someone else, or a Helm chart hardcodes the names), you might see older examples that adjust the protocol detection timeout globally:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
   meshConfig:
-    protocolDetectionTimeout: 0s
+    protocolDetectionTimeout: 100ms
 ```
 
-Setting it to `0s` disables protocol sniffing entirely. All ports without explicit protocol configuration will be treated as TCP. This eliminates the delay for server-first protocols but also means Istio won't auto-detect HTTP for ports that aren't explicitly labeled.
+This does not disable protocol sniffing. It only changes how long Envoy waits for the client to send the first bytes before falling back to TCP. In current Istio API comments, `0s` disables the timeout, not protocol detection, so it is not a fix for server-first traffic.
 
-A middle ground is to increase the timeout to give the server time to send its greeting:
+A larger timeout is usually worse for server-first protocols because Envoy is still waiting for client data:
 
 ```yaml
 meshConfig:
@@ -102,27 +102,27 @@ But this is not recommended because it means every non-labeled port has a 5-seco
 
 ## Per-Workload Configuration
 
-You can configure protocol detection behavior per workload using annotations:
+You can configure traffic capture behavior per workload using annotations. This does not change protocol detection, but it lets you control which inbound ports are intercepted by the sidecar:
 
 ```yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: postgres
+  name: mysql
   namespace: default
 spec:
   template:
     metadata:
       annotations:
         traffic.sidecar.istio.io/excludeInboundPorts: ""
-        traffic.sidecar.istio.io/includeInboundPorts: "5432"
+        traffic.sidecar.istio.io/includeInboundPorts: "3306"
 ```
 
 Or to exclude specific ports from sidecar interception entirely:
 
 ```yaml
 annotations:
-  traffic.sidecar.istio.io/excludeInboundPorts: "5432"
+  traffic.sidecar.istio.io/excludeInboundPorts: "3306"
 ```
 
 Excluding a port from sidecar interception means traffic on that port bypasses Envoy completely. You lose all Istio features (mTLS, observability, authorization) for that port, but the server-first protocol works without any issues.
@@ -134,18 +134,18 @@ This is a trade-off. If you absolutely need mTLS and authorization for your data
 If you have several server-first services in your cluster, a systematic approach helps:
 
 ```yaml
-# PostgreSQL
+# MySQL
 
 apiVersion: v1
 kind: Service
 metadata:
-  name: postgresql
+  name: mysql
   namespace: databases
 spec:
   ports:
-    - name: tcp-pg
-      port: 5432
-      targetPort: 5432
+    - name: tcp-mysql
+      port: 3306
+      targetPort: 3306
 ---
 # SMTP relay
 apiVersion: v1
@@ -191,15 +191,15 @@ For external server-first services, create ServiceEntries with explicit protocol
 apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
-  name: external-postgres
+  name: external-mysql
   namespace: default
 spec:
   hosts:
-    - postgres.external.example.com
+    - mysql.external.example.com
   location: MESH_EXTERNAL
   ports:
-    - number: 5432
-      name: tcp-postgres
+    - number: 3306
+      name: tcp-mysql
       protocol: TCP
   resolution: DNS
 ```
@@ -231,10 +231,10 @@ Server-first protocol connections are often long-lived. Database connections are
 apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
-  name: postgres-dr
+  name: mysql-dr
   namespace: default
 spec:
-  host: postgresql.databases.svc.cluster.local
+  host: mysql.databases.svc.cluster.local
   trafficPolicy:
     connectionPool:
       tcp:
@@ -254,7 +254,7 @@ After configuring your services, verify that Istio is handling the protocol corr
 
 ```bash
 # Check the listener config for the port
-istioctl proxy-config listener <pod-name> -n default --port 5432 -o json
+istioctl proxy-config listener <pod-name> -n default --port 3306 -o json
 ```
 
 In the JSON output, look for the filter chain. You should see:
@@ -264,7 +264,7 @@ In the JSON output, look for the filter chain. You should see:
 
 ```bash
 # Check that the service description shows the right protocol
-istioctl x describe service postgresql -n databases
+istioctl x describe service mysql -n databases
 ```
 
 ## Testing Connection Behavior
@@ -274,15 +274,15 @@ Test that connections work without delays:
 ```bash
 # Time a connection to the server-first service
 time kubectl exec -it <client-pod> -n default -- \
-  bash -c "echo | nc postgresql.databases.svc.cluster.local 5432"
+  bash -c "nc -vz mysql.databases.svc.cluster.local 3306"
 ```
 
-If the connection establishes quickly (under 100ms), the protocol is configured correctly. If it takes around 100ms or more, protocol sniffing might be kicking in.
+If the connection establishes quickly, the protocol is configured correctly. If it consistently takes about as long as your configured protocol detection timeout, protocol sniffing might be kicking in.
 
 You can also check the sidecar logs for connection events:
 
 ```bash
-kubectl logs <client-pod> -c istio-proxy -n default --tail=50 | grep 5432
+kubectl logs <client-pod> -c istio-proxy -n default --tail=50 | grep 3306
 ```
 
-Server-first protocols in Istio come down to one thing: don't let the sidecar try to sniff them. Name your ports with the `tcp` prefix (or the specific protocol prefix for MySQL and MongoDB), and you're good. Every server-first protocol issue I've seen in production came back to missing or incorrect port naming.
+Server-first protocols in Istio come down to one thing: don't let the sidecar try to sniff them. Name your ports with the `tcp` prefix, and you're good. Every server-first protocol issue I've seen in production came back to missing or incorrect port naming.
