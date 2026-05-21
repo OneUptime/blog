@@ -69,7 +69,7 @@ spec:
 Configure each mesh to send traces to the centralized Jaeger instance. Use the Telemetry API:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: mesh-tracing
@@ -88,50 +88,31 @@ apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
   meshConfig:
+    enableTracing: true
     extensionProviders:
       - name: jaeger
         opentelemetry:
           port: 4317
           service: jaeger-collector.observability.svc.cluster.local
     defaultConfig:
-      tracing:
-        sampling: 10.0
+      tracing: {}
 ```
 
 ### Preserving Trace Context Across Gateways
 
-The critical piece for cross-mesh tracing is making sure trace context headers survive the east-west gateway hop. Istio's sidecars automatically propagate these headers:
+The critical piece for cross-mesh tracing is making sure trace context headers survive the east-west gateway hop. Istio's proxies forward trace headers to applications, but applications must copy the relevant headers from incoming requests to any outbound requests they trigger:
 
 - `x-request-id`
 - `x-b3-traceid`
 - `x-b3-spanid`
 - `x-b3-parentspanid`
 - `x-b3-sampled`
+- `x-b3-flags`
+- `b3`
 - `traceparent` (W3C Trace Context)
 - `tracestate`
 
-The east-west gateway in AUTO_PASSTHROUGH mode preserves these headers because it doesn't terminate the connection. If you're using a different gateway mode, make sure header propagation is configured:
-
-```yaml
-apiVersion: networking.istio.io/v1beta1
-kind: VirtualService
-metadata:
-  name: cross-mesh-tracing
-  namespace: istio-system
-spec:
-  hosts:
-    - "*.local"
-  gateways:
-    - eastwest-gateway
-  http:
-    - headers:
-        request:
-          set:
-            x-forwarded-client-cert: "%DOWNSTREAM_PEER_SUBJECT%"
-      route:
-        - destination:
-            host: "*.local"
-```
+The east-west gateway in AUTO_PASSTHROUGH mode preserves these headers because it doesn't terminate the connection. If you're using a terminating gateway mode, make sure your Gateway, VirtualService, EnvoyFilter, and application middleware do not strip or overwrite the trace context headers.
 
 Your application services also need to propagate trace headers. If they don't forward the headers on outbound requests, the trace breaks. This is the most common reason for broken traces in federated setups.
 
@@ -216,7 +197,7 @@ histogram_quantile(0.95, sum(rate(istio_request_duration_milliseconds_bucket{
 Correlate logs across meshes using the trace ID. Configure Istio access logging to include the trace ID:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: access-logging
@@ -261,28 +242,22 @@ Ship these logs to a centralized logging platform like Elasticsearch, Loki, or S
 Kiali provides a service graph that visualizes traffic flows. For federation, you can set up Kiali to show cross-mesh connections:
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
+apiVersion: kiali.io/v1alpha1
+kind: Kiali
 metadata:
   name: kiali
   namespace: istio-system
-data:
-  config.yaml: |
-    external_services:
-      prometheus:
-        url: "http://prometheus-central.monitoring:9090"
-      tracing:
-        enabled: true
-        url: "http://jaeger-collector.observability:16686"
-    clustering:
-      clusters:
-        - name: cluster-west
-          secret_name: cluster-west-secret
-        - name: cluster-east
-          secret_name: cluster-east-secret
+spec:
+  external_services:
+    prometheus:
+      url: "http://prometheus-central.monitoring:9090"
+    tracing:
+      enabled: true
+      provider: jaeger
+      internal_url: "http://jaeger-collector.observability:16686"
 ```
 
-With this configuration, Kiali shows traffic flowing across mesh boundaries in its service graph, making it easy to spot issues visually.
+Create Kiali remote cluster secrets with the `kiali.io/multiCluster: "true"` label, or use a single `kiali-multi-cluster-secret`, so the Kiali Operator can mount the remote kubeconfigs. With this configuration, Kiali shows traffic flowing across mesh boundaries in its service graph, making it easy to spot issues visually.
 
 ## Alerting on Observability Gaps
 
