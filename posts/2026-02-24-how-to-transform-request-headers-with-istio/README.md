@@ -95,7 +95,7 @@ This sets the `x-api-version` header based on the URL path, so the backend servi
 
 ## Using Dynamic Values
 
-Istio supports a limited set of dynamic values you can use in header transformations. These come from the Envoy proxy's metadata:
+Istio can pass Envoy substitution formatters through in header values:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -114,10 +114,10 @@ spec:
           headers:
             request:
               set:
-                x-envoy-downstream-service-cluster: "%DOWNSTREAM_REMOTE_ADDRESS%"
+                x-client-address: "%DOWNSTREAM_REMOTE_ADDRESS%"
 ```
 
-However, the VirtualService header manipulation does not support many Envoy variables directly. For more advanced dynamic header injection, you need EnvoyFilter.
+However, only values available when request headers are modified are useful for request header transformations. For computed values or conditional logic, you need EnvoyFilter.
 
 ## EnvoyFilter for Advanced Transformations
 
@@ -146,13 +146,14 @@ spec:
           name: envoy.filters.http.lua
           typed_config:
             "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-            inlineCode: |
-              function envoy_on_request(request_handle)
-                request_handle:headers():add("x-request-timestamp", os.time())
-              end
+            defaultSourceCode:
+              inlineString: |
+                function envoy_on_request(request_handle)
+                  request_handle:headers():add("x-request-timestamp", tostring(os.time()))
+                end
 ```
 
-This filter runs on every inbound request to any sidecar in the `istio-system` scope. You can limit it to specific workloads:
+If `istio-system` is your Istio root namespace, this filter runs on inbound requests for sidecars across the mesh. You can limit it to specific workloads:
 
 ```yaml
 spec:
@@ -192,8 +193,8 @@ spec:
               set:
                 x-real-ip: "%DOWNSTREAM_REMOTE_ADDRESS_WITHOUT_PORT%"
               remove:
-                - x-powered-by
-                - server
+                - x-internal-debug
+                - x-legacy-client
 ```
 
 ## Header Transformation for Multi-Tenant Services
@@ -261,29 +262,30 @@ spec:
 
 ## Verifying Header Transformations
 
-To check if your header transformations are working, deploy a simple echo service:
+To check if your header transformations are working, deploy a simple echo service and a curl client from the Istio sample manifests:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/httpbin/httpbin.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.29/samples/httpbin/httpbin.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.29/samples/curl/curl.yaml
 ```
 
 Then make a request and check the headers:
 
 ```bash
-kubectl exec deploy/sleep -- curl -s httpbin:8000/headers | python3 -m json.tool
+kubectl exec deploy/curl -c curl -- curl -s httpbin:8000/headers | python3 -m json.tool
 ```
 
 You can also use `istioctl proxy-config` to inspect the Envoy configuration:
 
 ```bash
-istioctl proxy-config routes deploy/my-service -o json
+istioctl proxy-config routes deployment/my-service -o json
 ```
 
 Look for the `requestHeadersToAdd`, `requestHeadersToRemove` fields in the route configuration.
 
 ## Gotchas and Tips
 
-**Header names are case-insensitive in HTTP/2**: Envoy normalizes headers to lowercase. If your backend expects a specific case, you might run into issues.
+**Header names are case-insensitive**: HTTP/2 requires lowercase header names, and Envoy normalizes headers to lowercase. If your backend expects a specific case, you might run into issues.
 
 **Order of operations**: Headers are modified after route matching but before the request is sent to the upstream. So you cannot match on a header and then remove it in the same rule and expect the match to fail.
 
