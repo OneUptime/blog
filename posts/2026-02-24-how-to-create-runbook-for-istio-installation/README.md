@@ -22,9 +22,9 @@ Install Istio service mesh on a Kubernetes cluster with production-ready configu
 Before starting, verify all of the following:
 
 ```bash
-# 1. Kubernetes cluster version (Istio 1.24 supports K8s 1.28-1.31)
+# 1. Kubernetes cluster version (Istio 1.29 supports K8s 1.31-1.35)
 
-kubectl version --short
+kubectl version
 
 # 2. kubectl access with cluster-admin privileges
 kubectl auth can-i create clusterroles --all-namespaces
@@ -48,7 +48,7 @@ helm version
 
 ```bash
 # Download the target version
-ISTIO_VERSION=1.24.0
+ISTIO_VERSION=1.29.2
 curl -L https://istio.io/downloadIstio | ISTIO_VERSION=$ISTIO_VERSION sh -
 
 # Add to PATH
@@ -74,7 +74,7 @@ Common pre-check failures and fixes:
 |---|---|
 | Insufficient privileges | Ensure RBAC allows cluster-admin |
 | Unsupported K8s version | Upgrade Kubernetes to a supported version |
-| Existing Istio CRDs | Remove old CRDs with `kubectl delete crds -l operator.istio.io/component` |
+| Existing Istio CRDs | Remove old CRDs with `kubectl get crd -oname | grep --color=never 'istio.io' | xargs kubectl delete` |
 
 ### Step 3: Create the IstioOperator Configuration
 
@@ -207,8 +207,8 @@ kubectl wait --for=condition=ready pod -l app=httpbin --timeout=120s
 # Verify the sidecar was injected (should show 2/2 containers)
 kubectl get pods -l app=httpbin
 
-# Test connectivity through the sidecar
-kubectl exec deploy/httpbin -c httpbin -- curl -s localhost:15000/server_info | head -5
+# Inspect the injected proxy configuration
+istioctl proxy-config bootstrap deploy/httpbin | head -5
 ```
 
 ### Step 8: Configure Gateway (if needed)
@@ -278,7 +278,7 @@ istioctl uninstall --purge -y
 kubectl delete namespace istio-system
 
 # 5. Remove CRDs (optional, only if fully removing Istio)
-kubectl get crds -oname | grep istio | xargs kubectl delete
+kubectl get crd -oname | grep --color=never 'istio.io' | xargs kubectl delete
 ```
 
 ### Troubleshooting
