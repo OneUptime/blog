@@ -25,13 +25,13 @@ Each layer catches different types of problems, so you should use all of them.
 
 ## Dealing with Webhook Validation Errors
 
-When `kubectl apply` rejects your Istio resource, the error comes from the Istio validation webhook. Here is an example:
+When `kubectl apply` rejects your Istio resource with an admission webhook error, the error comes from the Istio validation webhook. Here is an example:
 
 ```bash
 $ kubectl apply -f my-virtualservice.yaml
 Error from server: error when applying patch:
 admission webhook "validation.istio.io" denied the request:
-configuration is invalid: host not found: "nonexistent-service.production.svc.cluster.local"
+configuration is invalid: port must be in range 1..65535
 ```
 
 Check if the validation webhook is running:
@@ -41,8 +41,8 @@ Check if the validation webhook is running:
 
 kubectl get validatingwebhookconfiguration
 
-# Look for istio-validator or istiod-<revision>
-kubectl get validatingwebhookconfiguration istiod-default-validator -o yaml
+# Look for istio-validator-istio-system or istio-validator-<revision>-istio-system
+kubectl get validatingwebhookconfiguration istio-validator-istio-system -o yaml
 ```
 
 If the webhook is overly strict and blocking a resource you know is correct (for example, during an upgrade or migration), you can temporarily bypass it:
@@ -58,7 +58,7 @@ This skips Kubernetes schema validation but not the webhook. To bypass the webho
 
 **1. "host not found" or "host not defined"**
 
-This happens when a VirtualService references a host that does not exist as a Kubernetes service:
+This happens when a VirtualService route references a destination host that does not exist in Istio's service registry, such as a Kubernetes service or ServiceEntry:
 
 ```yaml
 # Error: host "orders-service" not found
@@ -76,11 +76,18 @@ Fix: Make sure the service exists in the same namespace, or use the fully qualif
 ```bash
 # Check if the service exists
 kubectl get svc orders-service -n production
+```
 
-# If it is in a different namespace, use FQDN
+If it is in a different namespace, use the fully qualified name:
+
+```yaml
 spec:
   hosts:
     - orders-service.other-namespace.svc.cluster.local
+  http:
+    - route:
+        - destination:
+            host: orders-service.other-namespace.svc.cluster.local
 ```
 
 **2. "gateway not found"**
@@ -96,10 +103,13 @@ The VirtualService references a Gateway that does not exist or is in a different
 
 ```bash
 # Check if the gateway exists
-kubectl get gateway main-gateway -n production
-kubectl get gateway main-gateway -n istio-system
+kubectl get gateways.networking.istio.io main-gateway -n production
+kubectl get gateways.networking.istio.io main-gateway -n istio-system
+```
 
-# Use the full namespace/name reference
+Use the full namespace/name reference:
+
+```yaml
 spec:
   gateways:
     - istio-system/main-gateway
@@ -117,11 +127,11 @@ spec:
             subset: v2
 ```
 
-The VirtualService references a subset that is not defined in any DestinationRule:
+The VirtualService references a subset that is not defined in the corresponding DestinationRule for that host:
 
 ```bash
 # Check the DestinationRule
-kubectl get destinationrule orders-service -n production -o yaml
+kubectl get destinationrules.networking.istio.io orders-service -n production -o yaml
 ```
 
 Either add the missing subset to the DestinationRule or remove the subset reference from the VirtualService.
@@ -147,13 +157,13 @@ kubectl get svc orders-service -n production -o jsonpath='{.spec.ports[*].port}'
 
 **5. Conflicting hosts**
 
-When two VirtualServices bound to the same gateway claim the same host, validation might not catch it, but it will cause runtime issues:
+When two VirtualServices attached to the mesh gateway claim the same host, `istioctl analyze` reports `IST0109`. Istio supports merging VirtualServices attached to ingress gateways, so check the analyzer output before treating an ingress-gateway duplicate as an error:
 
 ```bash
-# Find conflicting VirtualServices
-kubectl get virtualservices --all-namespaces -o json | \
-  jq -r '.items[] | select(.spec.gateways != null) | "\(.metadata.namespace)/\(.metadata.name): \(.spec.hosts[])"' | \
-  sort -t: -k2 | uniq -d -f1
+# Find mesh-gateway VirtualServices with duplicate hosts
+kubectl get virtualservices.networking.istio.io --all-namespaces -o json | \
+  jq -r '.items[] | select((.spec.gateways == null) or (.spec.gateways | index("mesh"))) | .spec.hosts[] as $host | "\($host) \(.metadata.namespace)/\(.metadata.name)"' | \
+  sort | awk '{count[$1]++; lines[$1]=lines[$1] "\n" $0} END {for (host in count) if (count[host] > 1) print lines[host]}'
 ```
 
 ## Using istioctl analyze
@@ -165,7 +175,7 @@ The `istioctl analyze` command catches issues that the webhook misses:
 istioctl analyze -n production
 
 # Analyze local files before applying
-istioctl analyze -f my-config.yaml
+istioctl analyze my-config.yaml
 
 # Analyze everything
 istioctl analyze --all-namespaces
@@ -178,12 +188,12 @@ Common findings from analyze:
 
 ```text
 Warning [IST0101] (VirtualService production/orders-routes) Referenced host not found: "orders-service"
-Warning [IST0104] (VirtualService production/orders-routes) Referenced gateway not found: "missing-gateway"
-Warning [IST0108] (DestinationRule production/orders-service) No matching subsets for host "orders-service"
+Error [IST0101] (VirtualService production/orders-routes) Referenced gateway not found: "missing-gateway"
+Error [IST0109] (VirtualService production/orders-routes) The VirtualServices have overlapping host matching and cannot be used with the mesh gateway
 Info [IST0102] (Namespace production) The namespace is not enabled for Istio injection
 ```
 
-Each warning has a code (like IST0101) that you can look up for more details:
+Each message has a code (like IST0101) that you can look up for more details:
 
 ```bash
 # Get details about a specific warning code
@@ -253,10 +263,10 @@ If the new validation webhook rejects resources that the old version accepted, y
 
 1. Fix the resources to comply with the new schema
 2. Apply the fixes before upgrading
-3. Or temporarily set the webhook failure policy to warn:
+3. Or temporarily set the webhook failure policy to `Ignore`:
 
 ```bash
-kubectl patch validatingwebhookconfiguration istiod-default-validator \
+kubectl patch validatingwebhookconfiguration istio-validator-istio-system \
   --type='json' \
   -p='[{"op": "replace", "path": "/webhooks/0/failurePolicy", "value": "Ignore"}]'
 ```
