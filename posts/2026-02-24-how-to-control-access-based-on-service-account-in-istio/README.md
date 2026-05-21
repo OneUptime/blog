@@ -97,7 +97,7 @@ spec:
               - "cluster.local/ns/backend/sa/order-service"
 ```
 
-The `principals` field takes the full SPIFFE identity. Only pods running as the `order-service` service account in the `backend` namespace can reach the payment service.
+The `principals` field uses Istio's principal format, which is the SPIFFE identity without the `spiffe://` scheme. Only pods running as the `order-service` service account in the `backend` namespace can reach the payment service.
 
 ## Multiple Allowed Service Accounts
 
@@ -307,7 +307,11 @@ Check what service account a pod is running under:
 kubectl get pod -n backend -l app=order-service -o jsonpath='{.items[0].spec.serviceAccountName}'
 
 # Check the SPIFFE identity in the sidecar certificate
-istioctl proxy-config secret deploy/order-service -n backend -o json | jq '.dynamicActiveSecrets[0].secret.tlsCertificate.certificateChain'
+istioctl proxy-config secret deploy/order-service -n backend -o json \
+  | jq -r '.dynamicActiveSecrets[] | select(.name == "default") | .secret.tlsCertificate.certificateChain.inlineBytes' \
+  | base64 -d \
+  | openssl x509 -noout -text \
+  | grep -A1 "Subject Alternative Name"
 ```
 
 ## Testing Service Account Policies
@@ -338,6 +342,6 @@ spec:
     mode: STRICT
 ```
 
-In `PERMISSIVE` mode, plaintext connections bypass identity verification, which means your principal-based policies won't protect against non-mesh traffic.
+In `PERMISSIVE` mode, plaintext connections do not carry a verified peer identity, so rules that match `source.principal` will not match those requests. Use `STRICT` when you want to reject non-mTLS traffic at the authentication layer.
 
 Service account-based authorization is the gold standard for service-to-service access control in Istio. It gives you cryptographic identity verification without any changes to your application code. Combined with mTLS, it provides a strong security foundation that's hard to bypass.
