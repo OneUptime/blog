@@ -12,16 +12,16 @@ The bulkhead pattern comes from shipbuilding. Ships have watertight compartments
 
 ## The Problem Without Bulkheads
 
-Imagine your service calls three downstream services: a payment service, a notification service, and an inventory service. Without bulkheads, all three share the same connection pool and thread pool.
+Imagine your service calls three downstream services: a payment service, a notification service, and an inventory service. Without bulkhead limits, the application can still spend all of its own worker capacity waiting on one slow dependency, and Envoy's default upstream circuit breaker limits may be too large to protect the rest of the workload.
 
-If the payment service becomes slow, all your connections get tied up waiting for payment responses. Now your notification and inventory calls also start failing because there are no free connections left. One slow dependency has taken down your entire service.
+If the payment service becomes slow, your service can build up too many in-flight payment calls. Now your notification and inventory calls also start failing because the application has no free capacity left to process them. One slow dependency has taken down your entire service.
 
 ## Implementing Bulkheads with Connection Pool Limits
 
 In Istio, you create bulkheads by setting separate connection pool limits for each downstream service through DestinationRules:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: payment-service-bulkhead
@@ -36,7 +36,7 @@ spec:
         http1MaxPendingRequests: 25
         http2MaxRequests: 100
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: notification-service-bulkhead
@@ -51,7 +51,7 @@ spec:
         http1MaxPendingRequests: 15
         http2MaxRequests: 50
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: inventory-service-bulkhead
@@ -67,17 +67,17 @@ spec:
         http2MaxRequests: 80
 ```
 
-Now each downstream service has its own isolated connection pool. If the payment service becomes slow and uses up all 50 of its connections, the notification and inventory services are unaffected because they have their own pools.
+Envoy already maintains upstream pools per cluster; these rules put independent limits around each downstream service's pool. If the payment service becomes slow and uses up its connection, pending request, or active request limits, the notification and inventory services are unaffected because their upstream clusters have separate limits.
 
 ## How It Works Under the Hood
 
-Envoy maintains separate connection pools for each upstream cluster. Each cluster corresponds to a Kubernetes service (or a specific subset of a service). The connection pool limits from DestinationRules apply per-cluster, creating natural isolation.
+Envoy maintains separate connection pools for each upstream cluster. In Istio, a cluster commonly represents traffic to a Kubernetes service, service port, and optionally a subset of that service. The connection pool limits from DestinationRules are translated into Envoy circuit breaker thresholds for those clusters, creating natural isolation.
 
 When a request comes in that needs to go to the payment service:
 1. Envoy checks the payment service's connection pool
 2. If a connection is available, the request uses it
-3. If all connections are busy but the pending queue has room, the request waits
-4. If both connections and pending queue are full, the request immediately gets a 503
+3. If the request cannot be dispatched immediately but the pending queue has room, the request waits
+4. If the relevant connection, pending request, or active request limit is exceeded, the request immediately gets a 503
 
 That 503 is the bulkhead doing its job. It is saying "this compartment is full, fail fast rather than let this problem spread."
 
@@ -90,7 +90,7 @@ The key question is how to size each connection pool. Here is a practical approa
 3. Consider the impact of a failure in each dependency
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: critical-service-bulkhead
@@ -104,7 +104,7 @@ spec:
         http1MaxPendingRequests: 50
         http2MaxRequests: 200
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: best-effort-service-bulkhead
@@ -126,7 +126,7 @@ Critical dependencies get larger pools because you want them to have capacity fo
 You can create finer-grained bulkheads using service subsets. For example, if your API has a read path and a write path that go to different backend versions:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: backend-bulkhead
@@ -155,12 +155,12 @@ spec:
           http2MaxRequests: 60
 ```
 
-This isolates read and write traffic. A surge in write traffic will not consume all the connections that read traffic needs.
+This isolates read and write traffic when the VirtualService routes them to different subsets. A surge in write traffic will not consume the connection pool limits that read traffic needs.
 
 Pair this with a VirtualService that routes traffic to the appropriate subset:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: backend-routing
@@ -186,7 +186,7 @@ spec:
 Bulkheads work best when combined with outlier detection. The bulkhead prevents resource exhaustion, while outlier detection removes unhealthy endpoints:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: service-b-resilient
@@ -207,11 +207,11 @@ spec:
       maxEjectionPercent: 50
 ```
 
-The connection pool limits act as the bulkhead walls. Outlier detection pumps water out of the flooded compartment by ejecting unhealthy endpoints and redirecting traffic to healthy ones.
+The connection pool limits act as the bulkhead walls. Outlier detection pumps water out of the flooded compartment by ejecting unhealthy endpoints so Envoy load balances across the remaining healthy ones.
 
 ## Monitoring Bulkhead Utilization
 
-You need to know how close each bulkhead is to its limits. If a bulkhead is always at 10% utilization, it is probably too large. If it is frequently hitting 100%, it is either too small or there is a problem.
+You need to know how close each bulkhead is to its limits. If a bulkhead is always at 10% utilization, it is probably too large. If it is frequently hitting 100%, it is either too small or there is a problem. Istio records a minimal set of Envoy stats by default, so make sure the upstream connection and request stats you alert on are included in your proxy stats matcher.
 
 ```promql
 # Active connections per upstream cluster
@@ -266,7 +266,7 @@ Test your bulkhead configuration by simulating a failure in one dependency and v
 3. Make one dependency slow (e.g., inject a 10-second delay):
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: payment-service-fault
@@ -307,4 +307,4 @@ kubectl delete virtualservice payment-service-fault
 - Combine with timeouts. A bulkhead prevents resource exhaustion, but a timeout prevents individual requests from waiting too long.
 - Review sizes quarterly. Traffic patterns change, and your bulkhead sizes should change with them.
 
-The bulkhead pattern is straightforward to implement in Istio because the connection pool isolation is built into how Envoy handles upstream clusters. Each DestinationRule with connection pool limits creates a natural bulkhead. The key is sizing them appropriately and monitoring their utilization so you can adjust as your traffic patterns evolve.
+The bulkhead pattern is straightforward to implement in Istio because the connection pool isolation is built into how Envoy handles upstream clusters. DestinationRules with connection pool limits turn that per-cluster isolation into an enforceable bulkhead. The key is sizing them appropriately and monitoring their utilization so you can adjust as your traffic patterns evolve.
