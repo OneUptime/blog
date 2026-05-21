@@ -17,7 +17,7 @@ Every sidecar proxy in the mesh holds a workload certificate with a limited life
 The rotation timeline:
 
 1. Certificate is issued with a 24-hour TTL
-2. At approximately 80% of the lifetime (about 19 hours), the sidecar generates a new CSR
+2. At approximately 50% of the lifetime, with a small jitter (about 12 hours by default), the sidecar generates a new CSR
 3. The sidecar sends the CSR to istiod
 4. Istiod signs and returns the new certificate
 5. The sidecar hot-swaps the certificate without dropping connections
@@ -28,8 +28,8 @@ gantt
     title Workload Certificate Lifecycle (24h TTL)
     dateFormat HH:mm
     section Certificate
-    Active certificate    :a1, 00:00, 19h
-    Rotation window       :crit, a2, after a1, 5h
+    Active certificate    :a1, 00:00, 12h
+    Rotation window       :crit, a2, after a1, 12h
     New certificate       :a3, after a1, 24h
 ```
 
@@ -65,9 +65,9 @@ Look for messages about new secrets being received.
 
 ## Configuring the Rotation Grace Period
 
-The default rotation happens at 80% of the certificate lifetime. You can adjust this behavior, though it is rarely necessary.
+The default rotation happens when about 50% of the certificate lifetime remains, with a small jitter to avoid many proxies rotating at the same instant. You can adjust this behavior, though it is rarely necessary.
 
-The sidecar proxy uses the SDS (Secret Discovery Service) protocol to manage certificates. The grace period is hardcoded to about 80% by default, but you can influence when rotation happens by adjusting the certificate TTL itself.
+The sidecar proxy uses the SDS (Secret Discovery Service) protocol to manage certificates. You can influence when rotation happens by adjusting either the requested certificate TTL or the rotation grace period ratio.
 
 If you want faster rotation (more frequent certificate changes):
 
@@ -83,9 +83,10 @@ spec:
         proxy.istio.io/config: |
           proxyMetadata:
             SECRET_TTL: "1h"
+            SECRET_GRACE_PERIOD_RATIO: "0.5"
 ```
 
-With a 1-hour TTL, the certificate rotates approximately every 48 minutes.
+With a 1-hour TTL and the default 0.5 grace period ratio, the certificate rotates after approximately 30 minutes, plus or minus jitter.
 
 ## Root CA Rotation
 
@@ -104,7 +105,7 @@ spec:
       k8s:
         env:
         - name: CITADEL_SELF_SIGNED_CA_CERT_TTL
-          value: "8760h"
+          value: "87600h"
         - name: CITADEL_SELF_SIGNED_ROOT_CERT_CHECK_INTERVAL
           value: "1h"
         - name: CITADEL_SELF_SIGNED_ROOT_CERT_GRACE_PERIOD_PERCENTILE
@@ -113,13 +114,13 @@ spec:
 
 When automatic rotation kicks in:
 
-1. Istiod generates a new root CA certificate
-2. Both the old and new root CAs are distributed to sidecars as trusted roots
-3. New workload certificates are signed with the new CA
-4. After all workloads have rotated their certificates, the old root CA is no longer needed
-5. The old root is eventually removed from the trust bundle
+1. Istiod checks the self-signed root certificate on the configured interval
+2. If it is within the configured grace period, istiod generates a refreshed root certificate from the existing root key
+3. Istiod updates the CA secret, its in-memory key/cert bundle, and the root certificate distributed to workloads
+4. New workload certificates are issued from the refreshed CA certificate
+5. Existing workload certificates continue to be replaced through normal workload certificate rotation
 
-This overlapping trust period is critical. Without it, rotating the root CA would break all existing connections.
+The important point is that the self-signed root rotation refreshes the root certificate before it expires and keeps workload certificate rotation running. If you are changing to a different root key or a different external root of trust, treat that as a root transition and use an overlapping trust bundle.
 
 ### Manual Root CA Rotation (External CA)
 
@@ -261,8 +262,11 @@ To test that your rotation setup handles failures gracefully:
 4. Bring istiod back and verify that pending rotations complete
 
 ```bash
-# Set short TTL for testing
-kubectl set env deployment/istiod -n istio-system DEFAULT_WORKLOAD_CERT_TTL=5m
+# Set short TTL for testing on a workload, then restart it so the proxy picks up the annotation
+kubectl patch deployment <deployment-name> -n default --type merge -p \
+  '{"spec":{"template":{"metadata":{"annotations":{"proxy.istio.io/config":"proxyMetadata:\n  SECRET_TTL: \"5m\"\n  SECRET_GRACE_PERIOD_RATIO: \"0.5\"\n"}}}}}'
+
+kubectl rollout restart deployment <deployment-name> -n default
 
 # Watch certificate changes
 watch -n 30 "istioctl proxy-config secret <pod-name> -n default 2>/dev/null | grep default"
