@@ -33,22 +33,17 @@ If you have a microservices architecture with 20 services all talking to each ot
 Before optimizing, figure out how much cross-zone traffic you currently have. Use Istio metrics:
 
 ```text
-# Total bytes transferred cross-zone (approximate)
+# Total TCP bytes by workload pair over the last 24 hours
 
-sum(rate(istio_tcp_sent_bytes_total{reporter="source"}[24h])) by (source_workload, destination_workload)
+sum(increase(istio_tcp_sent_bytes_total{reporter="source"}[24h])) by (source_workload, destination_workload)
 ```
 
-You can also use Kubernetes-level metrics if you have them:
-
-```bash
-# Check node-to-node traffic patterns
-kubectl top nodes
-```
+This shows which workload pairs move the most data. Istio standard metrics do not include source and destination zones by default, so combine these numbers with cloud flow logs or CNI/network metrics when you need exact zone-to-zone transfer totals.
 
 For a more detailed analysis, enable Envoy access logging and parse the upstream endpoint addresses:
 
 ```bash
-istioctl install --set meshConfig.accessLogFile=/dev/stdout --set meshConfig.accessLogFormat='[%START_TIME%] %REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %UPSTREAM_HOST% %RESPONSE_CODE%\n'
+istioctl install <flags-you-used-to-install-Istio> --set meshConfig.accessLogFile=/dev/stdout --set meshConfig.accessLogFormat='[%START_TIME%] %REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %UPSTREAM_HOST% %RESPONSE_CODE%\n'
 ```
 
 ## Enabling Zone-Local Traffic
@@ -109,7 +104,7 @@ spec:
 
 This sends 100% of traffic to the local zone. If local endpoints fail outlier detection, traffic still fails over to other zones, but under normal conditions, there is zero cross-zone traffic.
 
-The downside is that if one zone has a sudden traffic spike, it cannot borrow capacity from other zones. Make sure your HPA is properly configured for each zone.
+The downside is that if one zone has a sudden traffic spike, it cannot borrow capacity from other zones. Make sure each zone has enough local capacity through replica counts and topology spread constraints.
 
 ## Balancing Cost and Resilience
 
@@ -158,7 +153,7 @@ Multiply that by 20 services and you are saving $7,400/month.
 
 ## Applying Locality Rules to All Services
 
-Rather than configuring each service individually, you can set a default DestinationRule policy using Istio's mesh config:
+Rather than configuring each service individually, you can use a wildcard DestinationRule for a namespace:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -179,7 +174,7 @@ spec:
       simple: ROUND_ROBIN
 ```
 
-This applies locality load balancing to all services in the default namespace. Individual DestinationRules for specific services will override this default.
+This applies locality load balancing to services matching the wildcard host in the default namespace. Individual DestinationRules for specific services will override this default.
 
 ## Services Where Cross-Zone Traffic is Acceptable
 
@@ -193,10 +188,10 @@ For these, either skip locality settings or use a looser distribution.
 
 ## Monitoring Cost Savings
 
-Track the percentage of local vs. cross-zone traffic over time:
+Track data transfer over time and map it to zones using access logs, cloud flow logs, or CNI metrics:
 
 ```text
-# Percentage of same-zone traffic
+# Request rate by workload pair
 sum(rate(istio_requests_total{
   reporter="source",
   source_workload_namespace="default"
@@ -227,7 +222,7 @@ spec:
               app: inventory-service
 ```
 
-And set per-zone PodDisruptionBudgets:
+And set PodDisruptionBudgets so voluntary disruptions do not remove too many replicas at once:
 
 ```yaml
 apiVersion: policy/v1
