@@ -39,12 +39,23 @@ kubectl wait --for=condition=ready pod \
 Crossplane needs a provider to interact with Kubernetes resources. Install the Kubernetes provider:
 
 ```yaml
+apiVersion: pkg.crossplane.io/v1beta1
+kind: DeploymentRuntimeConfig
+metadata:
+  name: provider-kubernetes-runtime
+spec:
+  serviceAccountTemplate:
+    metadata:
+      name: provider-kubernetes
+---
 apiVersion: pkg.crossplane.io/v1
 kind: Provider
 metadata:
   name: provider-kubernetes
 spec:
-  package: xpkg.upbound.io/crossplane-contrib/provider-kubernetes:v0.13.0
+  package: xpkg.upbound.io/crossplane-contrib/provider-kubernetes:v1.2.1
+  runtimeConfigRef:
+    name: provider-kubernetes-runtime
 ```
 
 Apply the provider config:
@@ -98,6 +109,9 @@ kind: CompositeResourceDefinition
 metadata:
   name: xistioservices.mesh.example.com
 spec:
+  defaultCompositionRef:
+    name: istio-service-standard
+  scope: LegacyCluster
   group: mesh.example.com
   names:
     kind: XIstioService
@@ -151,6 +165,17 @@ spec:
 
 ## Creating the Composition
 
+Current Crossplane releases use composition functions for patch-and-transform compositions. Install the function first:
+
+```yaml
+apiVersion: pkg.crossplane.io/v1
+kind: Function
+metadata:
+  name: function-patch-and-transform
+spec:
+  package: xpkg.crossplane.io/crossplane-contrib/function-patch-and-transform:v0.8.2
+```
+
 The Composition defines what resources get created when someone files a claim. This is where you put all the Istio knowledge:
 
 ```yaml
@@ -164,116 +189,124 @@ spec:
   compositeTypeRef:
     apiVersion: mesh.example.com/v1alpha1
     kind: XIstioService
-  resources:
-    - name: virtualservice
-      base:
-        apiVersion: kubernetes.crossplane.io/v1alpha2
-        kind: Object
-        spec:
-          forProvider:
-            manifest:
-              apiVersion: networking.istio.io/v1
-              kind: VirtualService
-              metadata:
-                name: ""
-                namespace: ""
+  mode: Pipeline
+  pipeline:
+    - step: patch-and-transform
+      functionRef:
+        name: function-patch-and-transform
+      input:
+        apiVersion: pt.fn.crossplane.io/v1beta1
+        kind: Resources
+        resources:
+          - name: virtualservice
+            base:
+              apiVersion: kubernetes.crossplane.io/v1alpha2
+              kind: Object
               spec:
-                hosts: []
-                http:
-                  - route:
-                      - destination:
-                          host: ""
-                          port:
-                            number: 8080
-                    timeout: "30s"
-                    retries:
-                      attempts: 3
-                      perTryTimeout: "10s"
-                      retryOn: "5xx,reset,connect-failure"
-          providerConfigRef:
-            name: kubernetes-provider
-      patches:
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.serviceName
-          toFieldPath: spec.forProvider.manifest.metadata.name
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.namespace
-          toFieldPath: spec.forProvider.manifest.metadata.namespace
-        - type: CombineFromComposite
-          combine:
-            variables:
-              - fromFieldPath: spec.serviceName
-              - fromFieldPath: spec.namespace
-            strategy: string
-            string:
-              fmt: "%s.%s.svc.cluster.local"
-          toFieldPath: spec.forProvider.manifest.spec.hosts[0]
-        - type: CombineFromComposite
-          combine:
-            variables:
-              - fromFieldPath: spec.serviceName
-              - fromFieldPath: spec.namespace
-            strategy: string
-            string:
-              fmt: "%s.%s.svc.cluster.local"
-          toFieldPath: spec.forProvider.manifest.spec.http[0].route[0].destination.host
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.port
-          toFieldPath: spec.forProvider.manifest.spec.http[0].route[0].destination.port.number
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.timeout
-          toFieldPath: spec.forProvider.manifest.spec.http[0].timeout
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.retryAttempts
-          toFieldPath: spec.forProvider.manifest.spec.http[0].retries.attempts
+                forProvider:
+                  manifest:
+                    apiVersion: networking.istio.io/v1
+                    kind: VirtualService
+                    metadata:
+                      name: ""
+                      namespace: ""
+                    spec:
+                      hosts: []
+                      http:
+                        - route:
+                            - destination:
+                                host: ""
+                                port:
+                                  number: 8080
+                          timeout: "30s"
+                          retries:
+                            attempts: 3
+                            perTryTimeout: "10s"
+                            retryOn: "5xx,reset,connect-failure"
+                providerConfigRef:
+                  name: kubernetes-provider
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.serviceName
+                toFieldPath: spec.forProvider.manifest.metadata.name
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.namespace
+                toFieldPath: spec.forProvider.manifest.metadata.namespace
+              - type: CombineFromComposite
+                combine:
+                  variables:
+                    - fromFieldPath: spec.serviceName
+                    - fromFieldPath: spec.namespace
+                  strategy: string
+                  string:
+                    fmt: "%s.%s.svc.cluster.local"
+                toFieldPath: spec.forProvider.manifest.spec.hosts[0]
+              - type: CombineFromComposite
+                combine:
+                  variables:
+                    - fromFieldPath: spec.serviceName
+                    - fromFieldPath: spec.namespace
+                  strategy: string
+                  string:
+                    fmt: "%s.%s.svc.cluster.local"
+                toFieldPath: spec.forProvider.manifest.spec.http[0].route[0].destination.host
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.port
+                toFieldPath: spec.forProvider.manifest.spec.http[0].route[0].destination.port.number
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.timeout
+                toFieldPath: spec.forProvider.manifest.spec.http[0].timeout
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.retryAttempts
+                toFieldPath: spec.forProvider.manifest.spec.http[0].retries.attempts
 
-    - name: destinationrule
-      base:
-        apiVersion: kubernetes.crossplane.io/v1alpha2
-        kind: Object
-        spec:
-          forProvider:
-            manifest:
-              apiVersion: networking.istio.io/v1
-              kind: DestinationRule
-              metadata:
-                name: ""
-                namespace: ""
+          - name: destinationrule
+            base:
+              apiVersion: kubernetes.crossplane.io/v1alpha2
+              kind: Object
               spec:
-                host: ""
-                trafficPolicy:
-                  connectionPool:
-                    tcp:
-                      maxConnections: 100
-                    http:
-                      http1MaxPendingRequests: 100
-                      http2MaxRequests: 1000
-                  outlierDetection:
-                    consecutive5xxErrors: 5
-                    interval: "30s"
-                    baseEjectionTime: "30s"
-                    maxEjectionPercent: 50
-          providerConfigRef:
-            name: kubernetes-provider
-      patches:
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.serviceName
-          toFieldPath: spec.forProvider.manifest.metadata.name
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.namespace
-          toFieldPath: spec.forProvider.manifest.metadata.namespace
-        - type: CombineFromComposite
-          combine:
-            variables:
-              - fromFieldPath: spec.serviceName
-              - fromFieldPath: spec.namespace
-            strategy: string
-            string:
-              fmt: "%s.%s.svc.cluster.local"
-          toFieldPath: spec.forProvider.manifest.spec.host
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.maxConnections
-          toFieldPath: spec.forProvider.manifest.spec.trafficPolicy.connectionPool.tcp.maxConnections
+                forProvider:
+                  manifest:
+                    apiVersion: networking.istio.io/v1
+                    kind: DestinationRule
+                    metadata:
+                      name: ""
+                      namespace: ""
+                    spec:
+                      host: ""
+                      trafficPolicy:
+                        connectionPool:
+                          tcp:
+                            maxConnections: 100
+                          http:
+                            http1MaxPendingRequests: 100
+                            http2MaxRequests: 1000
+                        outlierDetection:
+                          consecutive5xxErrors: 5
+                          interval: "30s"
+                          baseEjectionTime: "30s"
+                          maxEjectionPercent: 50
+                providerConfigRef:
+                  name: kubernetes-provider
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.serviceName
+                toFieldPath: spec.forProvider.manifest.metadata.name
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.namespace
+                toFieldPath: spec.forProvider.manifest.metadata.namespace
+              - type: CombineFromComposite
+                combine:
+                  variables:
+                    - fromFieldPath: spec.serviceName
+                    - fromFieldPath: spec.namespace
+                  strategy: string
+                  string:
+                    fmt: "%s.%s.svc.cluster.local"
+                toFieldPath: spec.forProvider.manifest.spec.host
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.maxConnections
+                toFieldPath: spec.forProvider.manifest.spec.trafficPolicy.connectionPool.tcp.maxConnections
 ```
 
 ## Using Claims
@@ -339,11 +372,19 @@ spec:
   compositeTypeRef:
     apiVersion: mesh.example.com/v1alpha1
     kind: XIstioService
-  resources:
-    # Same as standard but with tighter settings
-    # outlierDetection.consecutive5xxErrors: 2
-    # retries.attempts: 5
-    # etc.
+  mode: Pipeline
+  pipeline:
+    - step: patch-and-transform
+      functionRef:
+        name: function-patch-and-transform
+      input:
+        apiVersion: pt.fn.crossplane.io/v1beta1
+        kind: Resources
+        # Same resources as standard but with tighter settings
+        # outlierDetection.consecutive5xxErrors: 2
+        # retries.attempts: 5
+        # etc.
+        resources: []
 ```
 
 Developers select the tier through the compositionSelector:
