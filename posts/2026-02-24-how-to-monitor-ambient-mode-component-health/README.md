@@ -8,15 +8,15 @@ Description: How to set up comprehensive monitoring for Istio ambient mode compo
 
 ---
 
-Monitoring Istio ambient mode requires a different approach than monitoring sidecar mode. Instead of checking individual sidecar proxies, you are monitoring node-level components (ztunnel, CNI agent) and optional namespace-level components (waypoint proxies). Getting visibility into these components is essential for keeping your mesh healthy. Here is how to set it up.
+Monitoring Istio ambient mode requires a different approach than monitoring sidecar mode. Instead of checking individual sidecar proxies, you are monitoring node-level components (ztunnel, CNI agent) and optional L7 components (waypoint proxies). Getting visibility into these components is essential for keeping your mesh healthy. Here is how to set it up.
 
 ## Components to Monitor
 
-In ambient mode, you have three main components to watch:
+In ambient mode, you have four main components to watch:
 
 1. **ztunnel DaemonSet** - runs on every node, handles L4 traffic and mTLS
 2. **Istio CNI agent DaemonSet** - runs on every node, configures traffic redirection
-3. **Waypoint proxies** - optional, deployed per namespace or service account for L7 features
+3. **Waypoint proxies** - optional, deployed for namespaces, services, or pods for L7 features
 4. **istiod** - the control plane, same as sidecar mode
 
 Each has its own health indicators and metrics.
@@ -59,15 +59,15 @@ Key metrics to watch:
 ```bash
 # Active connections
 kubectl exec -n istio-system ztunnel-xxxxx -- \
-  curl -s localhost:15020/metrics | grep "ztunnel_connections"
+  curl -s localhost:15020/metrics | grep -E "istio_tcp_connections_(opened|closed)_total"
 
 # Bytes transferred
 kubectl exec -n istio-system ztunnel-xxxxx -- \
-  curl -s localhost:15020/metrics | grep "ztunnel_bytes"
+  curl -s localhost:15020/metrics | grep -E "istio_tcp_(sent|received)_bytes_total"
 
 # Certificate status
-kubectl exec -n istio-system ztunnel-xxxxx -- \
-  curl -s localhost:15020/metrics | grep "ztunnel_cert"
+ZTUNNEL=$(kubectl get pod -n istio-system -l app=ztunnel -o jsonpath='{.items[0].metadata.name}')
+istioctl ztunnel-config certificates "$ZTUNNEL".istio-system
 ```
 
 ### Prometheus Scrape Configuration for ztunnel
@@ -140,7 +140,7 @@ kubectl exec -n my-app deploy/waypoint -- \
   kubernetes_sd_configs:
     - role: pod
   relabel_configs:
-    - source_labels: [__meta_kubernetes_pod_label_gateway_networking_k8s_io_gateway-name]
+    - source_labels: [__meta_kubernetes_pod_label_gateway_networking_k8s_io_gateway_name]
       action: keep
       regex: .+
     - source_labels: [__address__]
@@ -154,7 +154,7 @@ kubectl exec -n my-app deploy/waypoint -- \
 
 ## Monitoring the CNI Agent
 
-The Istio CNI agent does not expose Prometheus metrics by default, but you can monitor it through Kubernetes:
+The Istio CNI agent exposes Prometheus metrics by default, and you can also monitor it through Kubernetes:
 
 ```bash
 # Check CNI agent status
@@ -166,6 +166,11 @@ NAME:.metadata.name,NODE:.spec.nodeName,RESTARTS:.status.containerStatuses[0].re
 
 # Check logs for errors
 kubectl logs -n istio-system -l k8s-app=istio-cni-node --tail=20
+
+# Check CNI readiness metric
+CNI_POD=$(kubectl get pod -n istio-system -l k8s-app=istio-cni-node -o jsonpath='{.items[0].metadata.name}')
+kubectl exec -n istio-system "$CNI_POD" -- \
+  curl -s localhost:15014/metrics | grep "istio_cni_install_ready"
 ```
 
 ## Setting Up Alerts
@@ -360,4 +365,4 @@ kubectl logs -A -l gateway.networking.k8s.io/gateway-name --all-containers --pre
 
 For production, use a log shipping solution like Fluentd or Promtail to collect these logs automatically and send them to your log management system.
 
-Monitoring ambient mode comes down to watching three layers: the node-level components (ztunnel and CNI agent), the optional namespace-level components (waypoint proxies), and the control plane (istiod). Set up alerts for each layer, and you will catch issues before they impact your workloads.
+Monitoring ambient mode comes down to watching three layers: the node-level components (ztunnel and CNI agent), the optional L7 components (waypoint proxies), and the control plane (istiod). Set up alerts for each layer, and you will catch issues before they impact your workloads.
