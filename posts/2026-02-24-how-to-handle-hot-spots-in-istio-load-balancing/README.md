@@ -24,7 +24,7 @@ In Prometheus, you can see the distribution more clearly:
 
 ```promql
 # Request rate per pod
-sum(rate(istio_requests_total{destination_service="my-service.default.svc.cluster.local"}[5m])) by (destination_workload, pod)
+sum(rate(istio_requests_total{reporter="destination",destination_service="my-service.default.svc.cluster.local"}[5m])) by (destination_service, pod)
 ```
 
 If one pod shows 3x the request rate of others, you have a hot spot.
@@ -33,7 +33,7 @@ Also check response latencies per pod:
 
 ```promql
 # P99 latency per pod
-histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{destination_service="my-service.default.svc.cluster.local"}[5m])) by (le, pod))
+histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{reporter="destination",destination_service="my-service.default.svc.cluster.local"}[5m])) by (le, destination_service, pod))
 ```
 
 The hot pod will typically show higher latencies because it's processing more requests with the same resources.
@@ -46,12 +46,12 @@ If you're using consistent hash-based load balancing and your hash keys are unev
 
 ```yaml
 # This can cause hot spots if tenant IDs are unevenly distributed
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service-dr
 spec:
-  host: my-service
+  host: my-service.default.svc.cluster.local
   trafficPolicy:
     loadBalancer:
       consistentHash:
@@ -63,12 +63,12 @@ If one tenant generates 60% of your traffic, the pod assigned to that tenant's h
 **Fix**: Switch to a more granular hash key (like request ID or user ID) or use `LEAST_REQUEST` if you don't strictly need hash-based affinity:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service-dr
 spec:
-  host: my-service
+  host: my-service.default.svc.cluster.local
   trafficPolicy:
     loadBalancer:
       simple: LEAST_REQUEST
@@ -81,12 +81,12 @@ gRPC uses HTTP/2 with long-lived connections. When a connection is established, 
 **Fix**: Limit the number of requests per connection to force periodic reconnection:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: grpc-service-dr
 spec:
-  host: grpc-service
+  host: grpc-service.default.svc.cluster.local
   trafficPolicy:
     connectionPool:
       http:
@@ -95,13 +95,27 @@ spec:
       simple: LEAST_REQUEST
 ```
 
-After 100 requests, the connection is closed and a new one is established, potentially to a different pod. Combined with `LEAST_REQUEST`, this ensures traffic rebalances regularly.
+After 100 requests, the connection is drained and closed, and a new one is established, potentially to a different pod. Combined with `LEAST_REQUEST`, this helps traffic rebalance regularly.
 
 ### Cause 3: Pod Startup Timing
 
 When a deployment rolls out, new pods come online gradually. The first pods to become ready absorb all the traffic while others are still starting. If the load is heavy enough, these early pods get overwhelmed and may never recover because they're constantly processing a backlog.
 
-**Fix**: Use a slow start mode (if available) or configure readiness probes with appropriate timing:
+**Fix**: Use Istio warmup with `ROUND_ROBIN` or `LEAST_REQUEST` and configure readiness probes with appropriate timing:
+
+```yaml
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: my-service-dr
+spec:
+  host: my-service.default.svc.cluster.local
+  trafficPolicy:
+    loadBalancer:
+      simple: LEAST_REQUEST
+      warmup:
+        duration: 60s
+```
 
 ```yaml
 apiVersion: apps/v1
@@ -109,10 +123,17 @@ kind: Deployment
 metadata:
   name: my-service
 spec:
+  selector:
+    matchLabels:
+      app: my-service
   template:
+    metadata:
+      labels:
+        app: my-service
     spec:
       containers:
         - name: my-service
+          image: my-service:latest
           readinessProbe:
             httpGet:
               path: /ready
@@ -121,7 +142,7 @@ spec:
             periodSeconds: 5
 ```
 
-Also consider using a PodDisruptionBudget to ensure rolling updates don't create capacity bottlenecks:
+Also consider using a PodDisruptionBudget for node drains and other eviction-based disruptions. For rolling updates, configure the Deployment rolling update strategy because workload controllers are not limited by PDBs during their own rollouts.
 
 ```yaml
 apiVersion: policy/v1
@@ -147,12 +168,12 @@ Zone B: 2 pods, receives 50% of traffic -> 25% per pod
 **Fix**: Either ensure equal pod distribution per zone or adjust your locality distribution settings:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service-dr
 spec:
-  host: my-service
+  host: my-service.default.svc.cluster.local
   trafficPolicy:
     outlierDetection:
       consecutive5xxErrors: 3
@@ -177,7 +198,13 @@ kind: Deployment
 metadata:
   name: my-service
 spec:
+  selector:
+    matchLabels:
+      app: my-service
   template:
+    metadata:
+      labels:
+        app: my-service
     spec:
       topologySpreadConstraints:
         - maxSkew: 1
@@ -186,6 +213,9 @@ spec:
           labelSelector:
             matchLabels:
               app: my-service
+      containers:
+        - name: my-service
+          image: my-service:latest
 ```
 
 ### Cause 5: Headless Services Without Proper Configuration
@@ -219,9 +249,17 @@ groups:
     rules:
       - alert: LoadBalancingHotSpot
         expr: |
-          max(rate(istio_requests_total{reporter="destination"}[5m])) by (destination_service)
+          max by (destination_service) (
+            sum by (destination_service, pod) (
+              rate(istio_requests_total{reporter="destination"}[5m])
+            )
+          )
           /
-          avg(rate(istio_requests_total{reporter="destination"}[5m])) by (destination_service)
+          avg by (destination_service) (
+            sum by (destination_service, pod) (
+              rate(istio_requests_total{reporter="destination"}[5m])
+            )
+          )
           > 2
         for: 5m
         labels:
@@ -231,7 +269,7 @@ groups:
           description: "The busiest pod is receiving more than 2x the average traffic"
 ```
 
-This alert fires when any pod is receiving more than twice the average request rate for its service.
+This alert fires when any pod is receiving more than twice the average request rate for its service. If your Prometheus scrape setup does not add a `pod` label, use the equivalent target label from your setup, such as `instance`.
 
 ## Summary
 
