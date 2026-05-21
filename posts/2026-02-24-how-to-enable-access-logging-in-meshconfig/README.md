@@ -111,7 +111,7 @@ The Telemetry API gives you finer control than the MeshConfig approach. You can 
 ### Mesh-Wide
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: mesh-logging
@@ -135,15 +135,15 @@ spec:
     - providers:
         - name: envoy
       filter:
-        expression: "response.code >= 400"
+        expression: "!has(response.code) || response.code >= 400"
 ```
 
-This only logs requests that result in errors, which significantly reduces log volume in production.
+This only logs requests that result in HTTP errors or connection failures, which significantly reduces log volume in production.
 
 ### Workload-Specific
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: payment-logging
@@ -165,15 +165,15 @@ The Telemetry API supports CEL (Common Expression Language) for filtering which 
 # Only log errors
 
 filter:
-  expression: "response.code >= 400"
+  expression: "!has(response.code) || response.code >= 400"
 
 # Only log slow requests (over 1 second)
 filter:
-  expression: "response.duration > duration('1s')"
+  expression: "request.duration > duration('1s')"
 
 # Log errors OR slow requests
 filter:
-  expression: "response.code >= 500 || response.duration > duration('1s')"
+  expression: "!has(response.code) || response.code >= 500 || request.duration > duration('1s')"
 
 # Log requests to specific paths
 filter:
@@ -201,7 +201,7 @@ spec:
 Then reference it in the Telemetry resource:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: otel-logging
@@ -219,7 +219,6 @@ spec:
   accessLogging:
     - providers:
         - name: envoy
-    - providers:
         - name: otel-als
 ```
 
@@ -234,7 +233,7 @@ kubectl logs deploy/my-service -c istio-proxy -n default --tail=20
 
 Key fields to pay attention to:
 
-**response_code**: The HTTP status code. 200 is good, 503 means the upstream is unavailable, 404 means no route, 403 means denied by authorization policy.
+**response_code**: The HTTP status code. 200 is good, 503 often means the upstream is unavailable, 404 can mean no route when paired with an `NR` response flag, and 403 can mean denied by an authorization policy or external authorization service.
 
 **response_flags**: These tell you what went wrong at the proxy level:
 - `-` means no flags (successful request)
@@ -244,7 +243,7 @@ Key fields to pay attention to:
 - `UC` means upstream connection termination
 - `UO` means upstream overflow (circuit breaker)
 - `RL` means rate limited
-- `UAEX` means unauthorized (blocked by outbound policy)
+- `UAEX` means the request was denied by the external authorization service
 
 **duration vs upstream_service_time**: `duration` is the total time including proxy overhead. `upstream_service_time` is how long the upstream took. A big gap between them indicates proxy processing time.
 
