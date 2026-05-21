@@ -39,7 +39,7 @@ Many "bugs" are actually configuration problems. Fix any warnings or errors befo
 istioctl version
 ```
 
-Istio supports the current release and the two previous minor releases. If you are on an older version, try upgrading first.
+Istio minor releases are supported until six weeks after the N+2 minor release is published. If you are outside that support window, try upgrading first.
 
 4. Search the Istio documentation and FAQ:
 
@@ -65,8 +65,8 @@ The `istioctl bug-report` command creates an archive containing:
 - Istio configuration
 
 ```bash
-# The output is a tar.gz file
-ls bug-report-*.tar.gz
+# The output is a tgz file
+ls bug-report.tgz
 ```
 
 For specific issues, also gather:
@@ -112,11 +112,11 @@ Explain what you expected to happen and what actually happened:
 ```text
 Expected behavior:
 Requests to my-service without the x-version header should be routed
-to the v1 subset (default route).
+to the default route.
 
 Actual behavior:
 Requests without the x-version header return HTTP 404 with
-"no healthy upstream" in the Envoy access logs.
+`route_not_found` in the Envoy access logs.
 ```
 
 ### Steps to Reproduce
@@ -128,7 +128,7 @@ This is the most important section. Write step-by-step instructions that someone
    kubectl create namespace test
    kubectl label namespace test istio-injection=enabled
 
-2. Deploy the test application:
+2. Deploy the test application and a curl client:
    kubectl apply -n test -f - <<EOF
    apiVersion: apps/v1
    kind: Deployment
@@ -164,6 +164,26 @@ This is the most important section. Write step-by-step instructions that someone
      ports:
        - port: 8000
          targetPort: 80
+   ---
+   apiVersion: apps/v1
+   kind: Deployment
+   metadata:
+     name: sleep
+     namespace: test
+   spec:
+     replicas: 1
+     selector:
+       matchLabels:
+         app: sleep
+     template:
+       metadata:
+         labels:
+           app: sleep
+       spec:
+         containers:
+           - name: sleep
+             image: curlimages/curl:8.10.1
+             command: ["sleep", "3650"]
    EOF
 
 3. Apply the VirtualService:
@@ -183,10 +203,13 @@ This is the most important section. Write step-by-step instructions that someone
          route:
            - destination:
                host: httpbin
+       - route:
+           - destination:
+               host: httpbin
    EOF
 
 4. Send a request without the header:
-   kubectl exec deploy/sleep -- curl -s -o /dev/null -w "%{http_code}" http://httpbin.test:8000/get
+   kubectl exec -n test deploy/sleep -- curl -s -o /dev/null -w "%{http_code}" http://httpbin:8000/get
 
 5. Observe the 404 response.
 ```
@@ -216,7 +239,7 @@ Upload the `istioctl bug-report` archive to the issue:
 
 ```bash
 # The file will be named something like:
-# bug-report-20250115-102345.tar.gz
+# bug-report.tgz
 ```
 
 GitHub allows file attachments up to 25MB. If the bug report is larger, upload it to a file sharing service and link to it.
