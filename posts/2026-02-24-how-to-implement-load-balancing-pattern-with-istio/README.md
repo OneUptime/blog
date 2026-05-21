@@ -12,28 +12,28 @@ Load balancing in Istio works differently from traditional Kubernetes load balan
 
 ## Default Load Balancing
 
-When you do not configure anything specific, Istio uses round-robin load balancing. Requests are distributed evenly across all healthy endpoints of a service:
+When you do not configure anything specific, Istio uses least-request load balancing. Requests are distributed across healthy endpoints while favoring endpoints with fewer outstanding requests:
 
 ```bash
 # See the current load balancing config for a cluster
 
-istioctl proxy-config clusters deploy/my-app --fqdn service-b.default.svc.cluster.local -o json | python3 -c "
+istioctl proxy-config clusters deployment/my-app --fqdn service-b.default.svc.cluster.local -o json | python3 -c "
 import json, sys
 data = json.load(sys.stdin)
 for cluster in data:
-    lb = cluster.get('lbPolicy', 'ROUND_ROBIN')
+    lb = cluster.get('lbPolicy', 'LEAST_REQUEST')
     print(f\"Cluster: {cluster.get('name', 'unknown')}, LB Policy: {lb}\")
 "
 ```
 
-Round-robin works fine when all your instances are identical and requests have similar costs. But when they are not, you need something better.
+Round-robin can work when all your instances are identical and requests have similar costs. But when they are not, you need something better.
 
 ## Least Request Load Balancing
 
 Least request sends traffic to the instance with the fewest active requests. This is great for services where request processing time varies significantly:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: service-b-lb
@@ -50,14 +50,14 @@ How it works: Envoy randomly picks two endpoints and sends the request to whiche
 Least request is a good default choice when:
 - Request processing times vary (some requests are fast, others are slow)
 - Instances have different capacities (different pod resource limits, or heterogeneous nodes)
-- You are using auto-scaling and new instances need time to warm up
+- You are using auto-scaling and pair it with Istio warmup so new instances ramp up gradually
 
 ## Random Load Balancing
 
 Random load balancing picks a random endpoint for each request:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: service-b-lb
@@ -77,7 +77,7 @@ Consistent hashing routes requests to the same endpoint based on a key derived f
 ### Hash by HTTP Header
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: service-b-lb
@@ -94,7 +94,7 @@ All requests with the same `x-user-id` header go to the same backend pod. This i
 ### Hash by Cookie
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: service-b-lb
@@ -113,7 +113,7 @@ If the client sends a `session-affinity` cookie, it determines which backend han
 ### Hash by Source IP
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: service-b-lb
@@ -130,7 +130,7 @@ All requests from the same source IP go to the same backend. Note that in a Kube
 ### Hash by Query Parameter
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: service-b-lb
@@ -148,10 +148,10 @@ Requests with the same `tenant_id` query parameter go to the same backend. Good 
 
 Envoy supports two consistent hash algorithms. You can configure which one to use:
 
-### Ring Hash (Default)
+### Ring Hash
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: service-b-lb
@@ -161,21 +161,36 @@ spec:
     loadBalancer:
       consistentHash:
         httpHeaderName: x-user-id
-        minimumRingSize: 1024
+        ringHash:
+          minimumRingSize: 1024
 ```
 
 Ring hash places endpoints on a hash ring. The `minimumRingSize` controls the number of virtual nodes on the ring. A larger ring means better distribution but uses more memory.
 
 ### Maglev
 
-Maglev is a consistent hash algorithm developed at Google. It provides very even distribution and faster table lookups than ring hash. To use it, set the simple policy to `ROUND_ROBIN` and rely on the consistent hash configuration (Envoy will automatically use the appropriate algorithm).
+Maglev is a consistent hash algorithm developed at Google. It provides very even distribution and faster table lookups than ring hash. To use it, configure `maglev` under the consistent hash settings:
+
+```yaml
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: service-b-lb
+spec:
+  host: service-b
+  trafficPolicy:
+    loadBalancer:
+      consistentHash:
+        httpHeaderName: x-user-id
+        maglev: {}
+```
 
 ## Load Balancing Per Subset
 
 Different subsets of a service can use different load balancing algorithms:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: service-b-lb
@@ -207,7 +222,7 @@ V1 uses least-request (maybe it has variable request processing times), while v2
 Istio can prioritize endpoints in the same zone or region to reduce latency and egress costs:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: service-b-locality
@@ -224,12 +239,12 @@ spec:
       baseEjectionTime: 30s
 ```
 
-Note: Locality load balancing requires outlier detection to be configured. Without it, Envoy cannot detect when local endpoints are unhealthy and fail over to other zones.
+Note: Locality failover requires outlier detection to be configured. Without it, Envoy cannot detect when local endpoints are unhealthy and fail over to other zones.
 
 You can also set explicit distribution weights:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: service-b-locality
@@ -257,26 +272,26 @@ This sends 80% of traffic from zone us-west1-a to local endpoints and 20% to us-
 Check if load is being distributed as expected:
 
 ```promql
-# Request rate per destination pod
+# Request rate per destination workload
 sum(rate(istio_requests_total{destination_service="service-b.default.svc.cluster.local"}[5m])) by (destination_workload_namespace, destination_workload)
 ```
 
-If one pod is getting significantly more traffic than others, your load balancing may not be working as intended.
+If one destination workload or subset is getting significantly more traffic than others, your load balancing may not be working as intended. Default Istio request metrics do not include a pod label, so use endpoint inspection, access logs, application metrics, or custom telemetry dimensions when you need per-pod distribution.
 
 Check endpoint weights and health:
 
 ```bash
-istioctl proxy-config endpoints deploy/my-app --cluster "outbound|8080||service-b.default.svc.cluster.local"
+istioctl proxy-config endpoints deployment/my-app --cluster "outbound|8080||service-b.default.svc.cluster.local"
 ```
 
 This shows you all endpoints and their health status. Unhealthy endpoints are removed from the load balancing pool.
 
 ## Choosing the Right Algorithm
 
-- **Round Robin**: Default, good for homogeneous instances with uniform request costs
+- **Round Robin**: Good for homogeneous instances with uniform request costs
 - **Least Request**: Better when request costs vary or instances have different capacities
 - **Random**: Simpler than round robin, good enough for most cases at scale
 - **Consistent Hash**: When you need session affinity or want to maximize cache hit rates
 - **Locality-aware**: When you need to minimize cross-zone or cross-region traffic
 
-Start with least-request if you are unsure. It handles a wider range of scenarios well compared to round-robin, and the overhead is negligible.
+Stick with least-request if you are unsure. It handles a wider range of scenarios well compared to round-robin, and the overhead is negligible.
