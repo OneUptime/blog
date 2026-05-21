@@ -16,11 +16,11 @@ Kiali is the default observability console for Istio. It reads data from Prometh
 
 Before you start, make sure you have:
 
-- A running Kubernetes cluster (1.23+)
-- Istio installed (1.16+)
-- Prometheus collecting Istio metrics (usually installed with the Istio demo profile)
+- A running Kubernetes cluster supported by your Istio release
+- A supported Istio release installed
+- Prometheus collecting Istio metrics (for quick-start environments, Istio provides a sample Prometheus addon)
 - kubectl configured to talk to your cluster
-- Helm 3 installed
+- Helm 3.10 or newer installed
 
 You can check your Istio installation with:
 
@@ -52,7 +52,8 @@ helm install \
   --namespace kiali-operator \
   --create-namespace \
   --set cr.create=true \
-  --set cr.namespace=istio-system
+  --set cr.namespace=istio-system \
+  --set cr.spec.auth.strategy=anonymous
 ```
 
 This does two things: it installs the operator in the `kiali-operator` namespace, and it also creates a Kiali CR (Custom Resource) that tells the operator to deploy Kiali Server in the `istio-system` namespace.
@@ -64,12 +65,12 @@ kubectl get pods -n kiali-operator
 kubectl get pods -n istio-system -l app.kubernetes.io/name=kiali
 ```
 
-## Installing with istioctl (Quick Method)
+## Installing the Istio Sample Addon (Quick Method)
 
 If you just want to get Kiali running fast for development, you can install it as an Istio addon:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.22/samples/addons/kiali.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/kiali.yaml
 ```
 
 This approach works great for testing but shouldn't be used in production since it doesn't give you fine-grained control over configuration.
@@ -92,7 +93,7 @@ Then open http://localhost:20001 in your browser.
 
 ## Configuring Kiali with a Custom CR
 
-For production setups, you want to customize Kiali's configuration. Create a Kiali CR that specifies exactly what you need:
+For production setups, you want to customize Kiali's configuration and choose an authentication strategy that fits your environment. Create a Kiali CR that specifies exactly what you need:
 
 ```yaml
 apiVersion: kiali.io/v1alpha1
@@ -104,18 +105,18 @@ spec:
   auth:
     strategy: anonymous
   deployment:
-    accessible_namespaces:
-      - "**"
+    cluster_wide_access: true
     view_only_mode: false
   external_services:
     prometheus:
       url: "http://prometheus.istio-system:9090"
     grafana:
       enabled: true
-      in_cluster_url: "http://grafana.istio-system:3000"
+      internal_url: "http://grafana.istio-system:3000"
     tracing:
       enabled: true
-      in_cluster_url: "http://tracing.istio-system:16685/jaeger"
+      provider: jaeger
+      internal_url: "http://tracing.istio-system:16685/jaeger"
       use_grpc: true
   server:
     web_root: "/kiali"
@@ -144,23 +145,27 @@ You can toggle traffic animation, response time overlays, and error rate highlig
 
 ## Setting Up Namespace Access
 
-By default, Kiali tries to access all namespaces. If you want to restrict which namespaces Kiali can see (common in multi-tenant clusters), adjust the CR:
+By default, Kiali has cluster-wide access. If you want to restrict which namespaces Kiali can access (common in multi-tenant clusters), disable cluster-wide access and configure discovery selectors:
 
 ```yaml
 spec:
   deployment:
-    accessible_namespaces:
-      - "my-app-namespace"
-      - "another-namespace"
+    cluster_wide_access: false
+    discovery_selectors:
+      default:
+        - matchLabels:
+            kiali.io/mesh: "enabled"
 ```
 
 For clusters where you want Kiali to discover namespaces dynamically based on Istio injection:
 
 ```yaml
 spec:
-  api:
-    namespaces:
-      label_selector_include: "istio-injection=enabled"
+  deployment:
+    discovery_selectors:
+      default:
+        - matchLabels:
+            istio-injection: enabled
 ```
 
 ## Configuring Health Thresholds
@@ -238,7 +243,7 @@ Kiali doesn't collect any data on its own. It queries Prometheus for traffic met
 
 **Kiali can't connect to Prometheus**: Verify the Prometheus URL in your Kiali CR matches the actual service name and port. The default is `http://prometheus.istio-system:9090`.
 
-**Missing namespaces**: Check the `accessible_namespaces` setting in your CR. Also verify that the Kiali service account has the necessary RBAC permissions.
+**Missing namespaces**: Check the `deployment.cluster_wide_access` and `deployment.discovery_selectors` settings in your CR. Also verify that the Kiali service account has the necessary RBAC permissions.
 
 **Slow graph rendering**: If you have hundreds of services, the graph can get heavy. Try filtering by namespace or using the "Find/Hide" feature to reduce what's displayed.
 
