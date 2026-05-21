@@ -46,7 +46,7 @@ Check Envoy's TLS statistics on the destination pod:
 
 ```bash
 kubectl exec <dest-pod> -c istio-proxy -n <namespace> -- \
-  pilot-agent request GET /stats | grep "ssl\." | grep -v "^0"
+  pilot-agent request GET /stats | grep "ssl\." | grep -v ": 0$"
 ```
 
 This filters for non-zero SSL stats. The key counters:
@@ -103,8 +103,7 @@ istioctl proxy-config secret <source-pod> -n <namespace> -o json | \
 
 Check:
 - **Issuer**: Should match your Istio CA
-- **Subject**: Should contain the pod's SPIFFE identity
-- **Subject Alternative Name**: Should include `spiffe://cluster.local/ns/<namespace>/sa/<service-account>`
+- **Subject Alternative Name**: Should include `URI:spiffe://cluster.local/ns/<namespace>/sa/<service-account>`
 - **Validity**: Not Before and Not After should be reasonable
 
 ## Step 3: Verify CA Trust
@@ -157,7 +156,7 @@ For more detailed TLS error information, temporarily increase the log level on t
 ```bash
 # Enable debug logging for TLS on the destination
 kubectl exec <dest-pod> -c istio-proxy -- \
-  pilot-agent request POST 'logging?connection=debug&tls=debug'
+  pilot-agent request POST '/logging?connection=debug'
 ```
 
 Then trigger the failing connection and check the logs:
@@ -166,13 +165,13 @@ Then trigger the failing connection and check the logs:
 kubectl logs <dest-pod> -c istio-proxy --tail=200
 ```
 
-You will see detailed TLS handshake messages including the exact step where the failure occurs.
+You can see more detailed connection and transport failure messages that help identify where the failure occurs.
 
 Reset the log level when done:
 
 ```bash
 kubectl exec <dest-pod> -c istio-proxy -- \
-  pilot-agent request POST 'logging?connection=warning&tls=warning'
+  pilot-agent request POST '/logging?connection=warning'
 ```
 
 ## Step 6: Check for DestinationRule Conflicts
@@ -285,7 +284,7 @@ istioctl proxy-config secret $DEST_POD -n $NAMESPACE 2>/dev/null
 echo ""
 echo "=== TLS errors on destination ==="
 kubectl exec $DEST_POD -n $NAMESPACE -c istio-proxy -- \
-  pilot-agent request GET /stats 2>/dev/null | grep "ssl\." | grep -v ":0$"
+  pilot-agent request GET /stats 2>/dev/null | grep "ssl\." | grep -v ": 0$"
 
 echo ""
 echo "=== Effective PeerAuthentication ==="
