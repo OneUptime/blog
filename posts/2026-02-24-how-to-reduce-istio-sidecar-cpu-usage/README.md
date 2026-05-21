@@ -26,7 +26,7 @@ The first two are typically the biggest consumers during normal operation.
 
 ## Set Concurrency Appropriately
 
-Envoy uses worker threads to handle connections. By default, it creates one worker per CPU core visible to the container. If your pod has a CPU limit of 4 cores, Envoy spawns 4 worker threads even if the workload only needs 1 or 2.
+Envoy uses worker threads to handle connections. If concurrency is not set, Istio automatically determines the worker count based on CPU limits. Setting it explicitly can prevent the proxy from running more workers than the workload needs.
 
 ```yaml
 apiVersion: apps/v1
@@ -52,14 +52,14 @@ spec:
       concurrency: 2
 ```
 
-For services handling under 1000 requests per second, 2 worker threads are usually plenty. Each idle worker thread still consumes some CPU for event loop processing, so reducing this number directly lowers baseline usage.
+For many services handling under 1000 requests per second, 2 worker threads are enough, but confirm with load testing for your workload. Each idle worker thread still consumes some CPU for event loop processing, so reducing this number can lower baseline usage.
 
 ## Reduce Configuration Scope
 
 Every time istiod pushes a configuration update, every affected sidecar has to parse and apply it. Large configurations mean more CPU spent on processing. The Sidecar resource limits the configuration each proxy receives:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -80,7 +80,7 @@ Telemetry collection is one of the more CPU-intensive operations in the sidecar.
 Reduce metric cardinality:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: cpu-friendly
@@ -113,16 +113,16 @@ Disabling access logging and span reporting for workloads that do not need them 
 
 ## Optimize TLS Operations
 
-mTLS is the biggest CPU consumer in most Istio deployments. Every new TLS connection requires a handshake involving cryptographic operations. Reduce the frequency of handshakes by keeping connections alive longer:
+mTLS can be one of the biggest CPU consumers in Istio deployments. Every new TLS connection requires a handshake involving cryptographic operations. Reduce the frequency of handshakes by keeping connections alive longer:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: keep-connections
   namespace: my-namespace
 spec:
-  host: "*.my-namespace.svc.cluster.local"
+  host: my-service.my-namespace.svc.cluster.local
   trafficPolicy:
     connectionPool:
       tcp:
@@ -139,7 +139,7 @@ spec:
 
 ## Use Protocol Naming Conventions
 
-When Istio cannot determine the protocol on a port, it falls back to TCP protocol sniffing. Sniffing requires reading the first few bytes of each connection, which takes CPU. Declare protocols explicitly:
+When Istio cannot determine the protocol on a port, it uses automatic protocol detection and treats traffic as plain TCP if the protocol cannot be detected. Detection requires inspecting the first bytes of a connection, which takes CPU. Declare protocols explicitly:
 
 ```yaml
 apiVersion: v1
@@ -175,7 +175,7 @@ spec:
         traffic.sidecar.istio.io/excludeInboundPorts: "15090"
 ```
 
-Database connections (PostgreSQL on 5432, Redis on 6379, Elasticsearch on 9200) typically do not benefit from the mesh. Excluding them reduces the number of connections Envoy has to manage.
+If database connections (PostgreSQL on 5432, Redis on 6379, Elasticsearch on 9200) do not need mesh policy, mTLS, or telemetry, excluding them reduces the number of connections Envoy has to manage.
 
 ## Set CPU Resource Limits
 
@@ -215,15 +215,15 @@ Start conservative and increase if you see throttling. You can check for CPU thr
 ```bash
 # Check if the proxy container is being throttled
 
-kubectl exec -it deploy/my-app -c istio-proxy -- cat /sys/fs/cgroup/cpu/cpu.stat
+kubectl exec -it deploy/my-app -c istio-proxy -- sh -c 'cat /sys/fs/cgroup/cpu.stat 2>/dev/null || cat /sys/fs/cgroup/cpu/cpu.stat'
 ```
 
-## Reduce Health Check Frequency
+## Reduce Outlier Detection Frequency
 
-Istio runs health checks against upstream endpoints. With many services and endpoints, this generates constant background CPU usage:
+Istio can run outlier detection sweeps for upstream endpoints. With many services and endpoints, frequent sweeps add background CPU usage:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: relaxed-health-checks
@@ -237,7 +237,7 @@ spec:
       baseEjectionTime: 60s
 ```
 
-Increasing the health check interval from the default 10s to 30s reduces CPU usage from health checking by roughly 3x. The tradeoff is slightly slower detection of unhealthy endpoints.
+Increasing the outlier detection interval from the default 10s to 30s reduces how often Envoy analyzes hosts for ejection. The tradeoff is slightly slower ejection of unhealthy endpoints.
 
 ## Avoid Complex Routing Rules
 
@@ -245,7 +245,7 @@ VirtualService rules with many match conditions and regex patterns are expensive
 
 ```yaml
 # This is expensive - evaluated on every request
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: complex-routing
@@ -276,7 +276,7 @@ kubectl top pods -n my-namespace --containers | grep istio-proxy | sort -k3 -h
 kubectl exec -it deploy/my-app -c istio-proxy -- curl -s localhost:15000/stats | grep "server.concurrency\|server.total_connections"
 
 # Watch CPU over time with Prometheus
-# Query: container_cpu_usage_seconds_total{container="istio-proxy", namespace="my-namespace"}
+# Query: rate(container_cpu_usage_seconds_total{container="istio-proxy", namespace="my-namespace"}[5m])
 ```
 
 The key principle for CPU optimization is reducing unnecessary work: fewer services in scope, fewer telemetry dimensions, fewer TLS handshakes, and fewer complex routing evaluations. Each optimization compounds, and in a large deployment the aggregate savings are substantial.
