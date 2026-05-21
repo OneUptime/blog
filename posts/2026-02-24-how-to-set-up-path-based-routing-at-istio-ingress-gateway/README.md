@@ -149,7 +149,7 @@ Matches against a regular expression:
 
 This matches `/api/v1/users`, `/api/v2/orders`, `/api/v99/anything`, and so on.
 
-Use regex sparingly. Prefix and exact matches are more efficient because Envoy can optimize them with a prefix tree, while regex requires pattern evaluation for each request.
+Use regex sparingly. Prefix and exact matches are simpler and generally cheaper to evaluate, while regex requires pattern evaluation for each request.
 
 ## Rule Ordering Matters
 
@@ -189,7 +189,7 @@ Sometimes your backend service expects a different path than what the client sen
 ```yaml
 - match:
     - uri:
-        prefix: /api/v1
+        prefix: /api/v1/
   rewrite:
     uri: /
   route:
@@ -199,7 +199,7 @@ Sometimes your backend service expects a different path than what the client sen
           number: 80
 ```
 
-With this config, a request to `/api/v1/users` gets rewritten to `/users` before being sent to api-service-v1. The `rewrite.uri` replaces the matched prefix.
+With this config, a request to `/api/v1/users` gets rewritten to `/users` before being sent to api-service-v1. The `rewrite.uri` replaces the matched prefix, so include the trailing slash in the prefix when you want to strip a path segment cleanly.
 
 More specific rewrite examples:
 
@@ -208,7 +208,7 @@ More specific rewrite examples:
 
 - match:
     - uri:
-        prefix: /api/v1
+        prefix: /api/v1/
   rewrite:
     uri: /
   route:
@@ -218,7 +218,7 @@ More specific rewrite examples:
 # /docs/getting-started -> /getting-started
 - match:
     - uri:
-        prefix: /docs
+        prefix: /docs/
   rewrite:
     uri: /
   route:
@@ -228,9 +228,9 @@ More specific rewrite examples:
 # /old-path/page -> /new-path/page
 - match:
     - uri:
-        prefix: /old-path
+        prefix: /old-path/
   rewrite:
-    uri: /new-path
+    uri: /new-path/
   route:
     - destination:
         host: backend-service
