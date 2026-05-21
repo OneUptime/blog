@@ -29,13 +29,13 @@ metadata:
     istio-injection: enabled
 ```
 
-A pod in sidecar mode has at least two containers:
+A pod in sidecar mode has the application container and the injected `istio-proxy` sidecar. If you are not using the Istio CNI plugin, it also uses an init container to set up traffic redirection:
 
 ```text
 Pod
 ├── app container (your application)
 ├── istio-proxy container (Envoy sidecar)
-└── istio-init container (iptables setup, runs at startup)
+└── istio-init init container (iptables setup, when Istio CNI is not used)
 ```
 
 ### Ambient Mode
@@ -44,7 +44,7 @@ In ambient mode, there are no sidecar containers. Instead, mesh functionality is
 
 **ztunnel** runs as a DaemonSet - one instance per node. It handles L4 concerns: mTLS encryption/decryption, TCP-level authorization, and basic telemetry. All pods on a node share the same ztunnel instance.
 
-**Waypoint proxies** are optional per-namespace or per-service-account Envoy proxies that handle L7 concerns: HTTP routing, retries, fault injection, header-based authorization, and L7 telemetry. You only deploy them where you need L7 features.
+**Waypoint proxies** are optional Envoy proxies that can be shared by a namespace or attached more granularly to services or pods. They handle L7 concerns: HTTP routing, retries, fault injection, header-based authorization, and L7 telemetry. You only deploy them where you need L7 features.
 
 ```yaml
 # Ambient mode: namespace label
@@ -77,7 +77,7 @@ This is where the difference is most dramatic.
 
 Each sidecar proxy typically uses:
 - 50-100MB memory at baseline
-- More memory as the mesh grows (each sidecar stores cluster-wide service info)
+- More memory as the mesh grows (by default, each sidecar stores broad mesh service configuration unless you scope it)
 - CPU overhead for TLS operations on each request
 
 For a cluster with 200 pods, that is 200 sidecar proxies consuming roughly 10-20GB of memory collectively.
@@ -85,9 +85,9 @@ For a cluster with 200 pods, that is 200 sidecar proxies consuming roughly 10-20
 ### Ambient Mode Resource Consumption
 
 With ambient mode on a 5-node cluster running 200 pods:
-- 5 ztunnel instances (one per node), each using about 20-50MB
-- Maybe 2-3 waypoint proxies for namespaces that need L7 features
-- Total proxy memory: roughly 250-500MB instead of 10-20GB
+- 5 ztunnel instances (one per node), each much smaller than a typical sidecar. Istio's published benchmark for Istio 1.24 measured about 12MB per ztunnel under its test conditions
+- Maybe 2-3 waypoint proxies for namespaces that need L7 features, measured at about 60MB each under the same benchmark conditions
+- Total proxy memory: often in the low hundreds of megabytes instead of 10-20GB, depending on traffic, configuration size, and the number of waypoints
 
 The savings are significant, especially in clusters with many small pods.
 
@@ -99,7 +99,7 @@ The savings are significant, especially in clusters with many small pods.
 | L4 AuthorizationPolicy | Yes | Yes | Yes |
 | L7 AuthorizationPolicy | Yes | No | Yes |
 | HTTP routing | Yes | No | Yes |
-| Retries/Timeouts | Yes | No | Yes |
+| HTTP retries/request timeouts | Yes | No | Yes |
 | Fault injection | Yes | No | Yes |
 | Request-level metrics | Yes | No | Yes |
 | TCP-level metrics | Yes | Yes | Yes |
@@ -115,7 +115,7 @@ In sidecar mode, traffic is intercepted using iptables rules configured by the `
 
 ### Ambient Mode
 
-In ambient mode, the istio-cni plugin configures traffic redirection at the node level. Traffic from ambient-labeled pods gets redirected to the ztunnel running on the same node. The ztunnel then establishes an HBONE (HTTP-Based Overlay Network Environment) tunnel to the destination node's ztunnel.
+In ambient mode, the istio-cni plugin configures traffic redirection for ambient pods. Traffic from ambient-labeled pods gets redirected to the ztunnel running on the same node. For cross-node traffic, ztunnel establishes an HBONE (HTTP-Based Overlay Network Environment) tunnel to the destination node's ztunnel.
 
 If a waypoint proxy is in the path, ztunnel forwards traffic through it before delivering to the destination.
 
@@ -131,7 +131,7 @@ Sidecar resource limits need tuning per workload. A high-traffic service might n
 
 ### Ambient Mode Advantages
 
-Adding a namespace to the mesh takes effect immediately - no pod restarts. You just add a label to the namespace and ztunnel starts handling traffic for those pods.
+Adding a namespace to ambient mode takes effect immediately for pods that are not already using sidecars - no pod restarts. You just add a label to the namespace and ztunnel starts handling traffic for those pods.
 
 ```bash
 # Add to mesh - instant, no restarts
