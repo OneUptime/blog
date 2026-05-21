@@ -8,7 +8,7 @@ Description: A practical guide to planning Istio deployment capacity including r
 
 ---
 
-Deploying Istio into a production Kubernetes cluster without proper capacity planning is a recipe for headaches. The service mesh adds overhead to every pod, every request, and every node in your cluster. If you skip the planning step, you will end up with resource contention, throttled services, and possibly outages that are harder to debug than the ones Istio was supposed to help you prevent.
+Deploying Istio into a production Kubernetes cluster without proper capacity planning is a recipe for headaches. The service mesh adds overhead to mesh workloads, requests, and the nodes that run Istio components. If you skip the planning step, you will end up with resource contention, throttled services, and possibly outages that are harder to debug than the ones Istio was supposed to help you prevent.
 
 This guide walks through the key areas you need to think about when sizing your infrastructure for Istio.
 
@@ -17,7 +17,7 @@ This guide walks through the key areas you need to think about when sizing your 
 Before you can plan capacity, you need to understand the components that Istio introduces:
 
 - **istiod (control plane)**: Handles configuration distribution, certificate management, and service discovery.
-- **Envoy sidecar proxies**: Injected into every pod that is part of the mesh. Each sidecar consumes CPU and memory.
+- **Envoy sidecar proxies**: Injected into workloads that use Istio sidecar mode. Each sidecar consumes CPU and memory.
 - **Ingress/Egress gateways**: Handle traffic entering and leaving the mesh.
 - **Telemetry pipeline**: Metrics, traces, and access logs all add processing and storage overhead.
 
@@ -48,17 +48,17 @@ Write down these numbers:
 
 ## Step 2: Estimate Sidecar Overhead
 
-Every pod in the mesh gets an Envoy sidecar. The baseline resource consumption for each sidecar is roughly:
+Every sidecar-mode pod in the mesh gets an Envoy sidecar. The baseline resource consumption for each sidecar is roughly:
 
-- **Memory**: 50-100 MB at idle, scaling up with the number of endpoints and active connections
-- **CPU**: 5-10 millicores at idle, scaling with request throughput
+- **Memory**: Around 60 MB in Istio's published 1,000 RPS benchmark, scaling up with the total configuration state, number of endpoints, and active connections
+- **CPU**: Low at idle, but scaling with request throughput. Istio's published sidecar benchmark uses about 0.20 vCPU at 1,000 HTTP requests per second with 1 KB payloads and two proxy worker threads
 
-For a cluster with 200 pods, that means you need to budget an additional:
+For a cluster with 200 low-throughput sidecar-mode pods, that means you might start by budgeting additional resource requests of:
 
 - Memory: 200 pods x 100 MB = 20 GB
 - CPU: 200 pods x 10m = 2000m (2 full cores)
 
-You can set these as resource requests in the sidecar injection template:
+You can set these as the default proxy resource requests:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -83,7 +83,7 @@ These are starting points. You will need to adjust based on actual traffic patte
 
 ## Step 3: Size the Control Plane
 
-The istiod deployment handles configuration push to all sidecars, issues certificates, and runs the webhook for sidecar injection. Its resource needs scale primarily with:
+The istiod deployment handles configuration push to connected proxies, issues certificates, and runs the webhook for sidecar injection. Its resource needs scale primarily with:
 
 - Number of pods in the mesh
 - Number of services and endpoints
@@ -126,13 +126,13 @@ spec:
 
 ## Step 4: Plan for Ingress Gateway Capacity
 
-Ingress gateways handle all external traffic coming into your mesh. They need to be sized based on:
+Ingress gateways handle external traffic coming into your mesh when that traffic is routed through Istio gateways. They need to be sized based on:
 
 - Peak requests per second
 - Connection concurrency
 - TLS termination overhead (if applicable)
 
-A single Envoy-based ingress gateway pod can typically handle 10,000-30,000 requests per second depending on payload size and TLS configuration. For production, always run at least 2 replicas:
+A single Envoy-based ingress gateway pod can handle high request rates, but the number depends on CPU, payload size, protocol, TLS configuration, filters, and telemetry. Benchmark your own traffic profile and run at least 2 replicas in production:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -164,7 +164,7 @@ spec:
 
 Istio generates metrics, distributed traces, and access logs. Each of these adds overhead:
 
-- **Metrics**: Envoy exports metrics to Prometheus. Expect roughly 500 bytes per metric series per scrape interval. With 200 pods and default metrics, that is around 100,000 time series.
+- **Metrics**: Envoy emits metrics that Prometheus can scrape. The number of time series depends heavily on enabled metrics and label cardinality, so estimate it from a staging mesh before sizing Prometheus.
 - **Traces**: If you enable distributed tracing with a 1% sampling rate, the storage impact is manageable. At 100% sampling, storage needs grow fast.
 - **Access logs**: When enabled, each request generates a log entry. At 10,000 RPS, that is 864 million log entries per day.
 
@@ -235,9 +235,9 @@ spec:
 
 ## Step 8: Build in Headroom
 
-Never plan for exactly the resources you need. Kubernetes scheduling gets flaky when nodes are above 80% utilization, and Istio's resource usage can spike during configuration pushes or certificate rotations. Aim for 20-30% headroom on both CPU and memory across the cluster.
+Never plan for exactly the resources you need. Kubernetes has less room for bursts, evictions, and rescheduling when nodes run near full utilization, and Istio's resource usage can spike during configuration pushes or certificate rotations. Aim for 20-30% headroom on both CPU and memory across the cluster.
 
-Also factor in rolling update scenarios where you temporarily have double the pods during a deployment. Your capacity plan should handle the peak, not just the steady state.
+Also factor in rolling update scenarios where deployments temporarily run extra pods based on their `maxSurge` settings. Your capacity plan should handle the peak, not just the steady state.
 
 ## Putting It All Together
 
