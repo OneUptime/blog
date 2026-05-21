@@ -237,7 +237,7 @@ Using 503 Service Unavailable can be useful when you want clients to treat rate 
 
 ## Adding Rate Limit Headers
 
-Help clients understand rate limit status by adding informational headers:
+Help clients identify rate-limited responses by adding informational headers:
 
 ```yaml
 response_headers_to_add:
@@ -251,7 +251,11 @@ response_headers_to_add:
     value: "0"
 ```
 
-Note that local rate limiting does not natively provide dynamic "remaining" counts in headers. These are static values. For dynamic header values, you would need to use a global rate limit service.
+These values are static and are added only to responses that have been rate limited. For dynamic `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset` headers, enable Envoy's built-in rate limit headers:
+
+```yaml
+enable_x_ratelimit_headers: DRAFT_VERSION_03
+```
 
 ## Testing Local Rate Limits
 
@@ -274,13 +278,22 @@ Check the Envoy stats to confirm rate limiting is active:
 kubectl exec deploy/my-service -c istio-proxy -- curl -s localhost:15000/stats | grep local_rate_limiter
 ```
 
+Istio disables many Envoy stats by default, so you may need to enable local rate limit stats with `proxyStatsMatcher` in the workload's pod template annotations:
+
+```yaml
+proxy.istio.io/config: |-
+  proxyStatsMatcher:
+    inclusionRegexps:
+    - ".*http_local_rate_limit.*"
+```
+
 Look for:
 
 ```text
-http_local_rate_limiter.enabled: 150
-http_local_rate_limiter.enforced: 50
-http_local_rate_limiter.ok: 100
-http_local_rate_limiter.rate_limited: 50
+http_local_rate_limiter.http_local_rate_limit.enabled: 150
+http_local_rate_limiter.http_local_rate_limit.enforced: 50
+http_local_rate_limiter.http_local_rate_limit.ok: 100
+http_local_rate_limiter.http_local_rate_limit.rate_limited: 50
 ```
 
 ## Shadow Mode
