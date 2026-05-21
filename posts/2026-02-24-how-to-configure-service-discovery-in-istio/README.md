@@ -74,7 +74,7 @@ Only namespaces with the label `istio-managed: "true"` will be watched. This red
 Services outside the mesh are not automatically discovered. You register them with ServiceEntry:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-payment-api
@@ -137,7 +137,7 @@ Istio uses the original destination IP from the connection. Use this when the ap
 By default, a ServiceEntry is visible to all namespaces. Control visibility with `exportTo`:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: team-a-database
@@ -165,7 +165,7 @@ Options for `exportTo`:
 When you have workloads running on VMs, use WorkloadEntry to register them:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: WorkloadEntry
 metadata:
   name: legacy-app-vm
@@ -178,23 +178,29 @@ spec:
   serviceAccount: legacy-app-sa
 ```
 
-Pair it with a Service that selects the WorkloadEntry labels:
+Pair it with a ServiceEntry that selects the WorkloadEntry labels:
 
 ```yaml
-apiVersion: v1
-kind: Service
+apiVersion: networking.istio.io/v1
+kind: ServiceEntry
 metadata:
   name: legacy-app
   namespace: default
 spec:
+  hosts:
+    - legacy-app.default.svc.cluster.local
+  location: MESH_INTERNAL
   ports:
-    - name: http
-      port: 8080
-  selector:
-    app: legacy-app
+    - number: 8080
+      name: http
+      protocol: HTTP
+  resolution: STATIC
+  workloadSelector:
+    labels:
+      app: legacy-app
 ```
 
-The Service's selector matches both Kubernetes pods and WorkloadEntry labels, allowing you to have a mix of pod and VM endpoints behind the same service.
+The ServiceEntry's workload selector matches both Kubernetes pods and WorkloadEntry labels, allowing you to have a mix of pod and VM endpoints behind the same service.
 
 ## Multicluster Service Discovery
 
@@ -271,7 +277,7 @@ For large meshes, optimize service discovery:
 
 1. Use discovery selectors to limit watched namespaces
 2. Use Sidecar resources to limit what each proxy sees
-3. Avoid creating ServiceEntry resources with wildcard hosts unless necessary (they add entries for every matching hostname)
+3. Avoid creating ServiceEntry resources with wildcard hosts unless necessary (they broaden the set of hosts the proxy needs to match, and wildcard hosts are not supported by ztunnel or waypoint proxies)
 4. Monitor Istiod memory and CPU - high usage often indicates too many services being processed
 
 ```bash
