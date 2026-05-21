@@ -110,7 +110,7 @@ kubectl apply -f product-catalog-destinationrule.yaml
 
 ## Step 1: Start with All Traffic on v1
 
-Before you begin shifting, make sure all traffic is explicitly routed to v1. Without a VirtualService, Kubernetes round-robins across all pods, which means v2 would already be getting traffic.
+Before you begin shifting, make sure all traffic is explicitly routed to v1. Without a VirtualService, the Kubernetes Service can load balance across all matching pods, which means v2 would already be getting traffic.
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -224,7 +224,7 @@ At every stage, you should be watching these metrics:
 istioctl dashboard prometheus
 ```
 
-Query for error rates:
+Query for success rates:
 
 ```text
 sum(rate(istio_requests_total{destination_service="product-catalog.default.svc.cluster.local",response_code!~"5.*"}[5m])) by (destination_version)
@@ -261,7 +261,7 @@ The Envoy proxy in the sidecar handles the weight distribution. It is not perfec
 
 ## Common Mistakes to Avoid
 
-**Weights not adding up to 100.** Istio requires the weights in a route to sum to 100. If they do not, the configuration will not work as expected.
+**Weights not adding up to 100.** Istio treats weights as relative proportions, so a destination receives `weight / sum(all weights)` requests. Keeping them normalized to 100 makes the percentages clear and avoids mistakes.
 
 **Forgetting the DestinationRule.** Without subsets defined in a DestinationRule, your VirtualService has nothing to reference. You will get routing errors.
 
