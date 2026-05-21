@@ -17,7 +17,7 @@ Google provides a few different token issuers:
 | Flow | Issuer | JWKS URI |
 |------|--------|----------|
 | Google Sign-In / OAuth | `https://accounts.google.com` | `https://www.googleapis.com/oauth2/v3/certs` |
-| Google Service Accounts | `https://accounts.google.com` | `https://www.googleapis.com/oauth2/v3/certs` |
+| Google Service Account ID tokens | `https://accounts.google.com` | `https://www.googleapis.com/oauth2/v3/certs` |
 | Firebase Auth | `https://securetoken.google.com/<project-id>` | `https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com` |
 
 You can verify Google's OpenID Connect configuration:
@@ -52,7 +52,7 @@ Replace `YOUR_GOOGLE_CLIENT_ID` with your actual Google OAuth client ID. This is
 
 ## Google Service Account Tokens
 
-When services authenticate using Google service account keys, they generate JWTs signed with the service account's private key. These tokens have `https://accounts.google.com` as the issuer.
+When services authenticate with Google service account ID tokens, those tokens are signed by Google's JWKS, not by the service account key. These tokens have `https://accounts.google.com` as the issuer.
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -71,7 +71,7 @@ spec:
         - "https://api.example.com"
 ```
 
-For self-signed JWTs from a specific service account, the JWKS URI is different:
+For self-signed JWTs from a specific service account, the token is signed by the service account key, the issuer is the service account email, and the JWKS URI is different:
 
 ```yaml
 jwtRules:
@@ -160,6 +160,7 @@ spec:
 ```
 
 The `requestPrincipal` for Google tokens follows the format `<issuer>/<subject>`.
+If you match on the `email` claim for service account ID tokens, make sure the token request includes that claim.
 
 ## Handling Both Google OAuth and Service Accounts
 
@@ -209,6 +210,7 @@ Test with a service account token:
 ```bash
 SA_TOKEN=$(gcloud auth print-identity-token \
   --impersonate-service-account=my-service@my-project.iam.gserviceaccount.com \
+  --include-email \
   --audiences=https://api.example.com)
 
 kubectl exec deploy/sleep -c sleep -- \
@@ -223,7 +225,7 @@ kubectl exec deploy/sleep -c sleep -- \
 
 Google issues two types of tokens:
 - **ID tokens** - JWTs that contain user identity. These are what you validate with Istio.
-- **Access tokens** - Opaque tokens for calling Google APIs. These are NOT JWTs and cannot be validated by Istio.
+- **Access tokens** - Bearer tokens for calling Google APIs. These are not ID tokens and are not what you validate with Istio RequestAuthentication.
 
 Make sure your clients send ID tokens, not access tokens.
 
@@ -272,11 +274,14 @@ spec:
     - from:
         - source:
             notRequestPrincipals: ["*"]
+      to:
+        - operation:
+            notPaths: ["/health", "/ready"]
 ---
 apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
-  name: allow-health-checks
+  name: allow-google-jwt-and-health-checks
   namespace: backend
 spec:
   selector:
@@ -284,6 +289,9 @@ spec:
       app: api-server
   action: ALLOW
   rules:
+    - from:
+        - source:
+            requestPrincipals: ["*"]
     - to:
         - operation:
             paths: ["/health", "/ready"]
