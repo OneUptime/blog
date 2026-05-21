@@ -123,8 +123,11 @@ spec:
         type: STRICT_DNS
         connect_timeout: 0.5s
         lb_policy: ROUND_ROBIN
-        protocol_selection: USE_CONFIGURED_PROTOCOL
-        http2_protocol_options: {}
+        typed_extension_protocol_options:
+          envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+            "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+            explicit_http_config:
+              http2_protocol_options: {}
         load_assignment:
           cluster_name: rate_limit_cluster
           endpoints:
@@ -182,7 +185,7 @@ kubectl apply -f envoyfilter-actions-apikey.yaml
 
 What happens when a request arrives without the `x-api-key` header? By default, Envoy skips the rate limit check entirely for that action, meaning unauthenticated requests are not rate limited.
 
-To handle this, add a second action that catches requests without the API key:
+To handle this, add a second rate limit entry that catches requests without the API key:
 
 ```yaml
 rate_limits:
@@ -191,19 +194,19 @@ rate_limits:
       header_name: x-api-key
       descriptor_key: api_key
 - actions:
-  - request_headers:
-      header_name: x-api-key
-      descriptor_key: api_key
-      skip_if_absent: true
-  - generic_key:
+  - header_value_match:
       descriptor_value: no-api-key
+      headers:
+      - name: x-api-key
+        present_match: true
+      expect_match: false
 ```
 
 And add a matching descriptor in the rate limit config:
 
 ```yaml
 descriptors:
-- key: generic_key
+- key: header_match
   value: "no-api-key"
   rate_limit:
     unit: minute
@@ -250,7 +253,7 @@ rate_limits:
       descriptor_key: path
 ```
 
-This gives you per-API-key, per-endpoint rate limits. The search endpoint gets 20 requests per minute per API key, upload gets 5, and everything else gets 100.
+This gives you per-API-key, per-path rate limits. The `:path` pseudo-header includes the query string, so use exact values only for paths that do not include query parameters, or use wildcard descriptor values such as `/api/v1/search*` if you want the same limit to apply when query parameters are present. The search endpoint gets 20 requests per minute per API key, upload gets 5, and everything else gets 100.
 
 ## Testing Per-API-Key Rate Limits
 
@@ -281,7 +284,7 @@ kubectl edit configmap ratelimit-config -n rate-limit
 kubectl rollout restart deployment/ratelimit -n rate-limit
 ```
 
-For more dynamic updates, consider using the rate limit service's file watcher mode by setting `RUNTIME_WATCH_ROOT: "true"`. This watches for ConfigMap changes without needing a restart.
+For more dynamic updates, consider using the rate limit service's direct file watch mode by setting `RUNTIME_WATCH_ROOT: "false"`. This watches changes inside `RUNTIME_ROOT/RUNTIME_SUBDIRECTORY/RUNTIME_APPDIRECTORY/` without needing a restart when your ConfigMap mount updates files in place.
 
 ## Checking Redis Counters
 
