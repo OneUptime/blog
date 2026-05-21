@@ -20,10 +20,11 @@ The quickest way to get istioctl is through the official download script:
 curl -L https://istio.io/downloadIstio | sh -
 ```
 
-This downloads the latest version into a directory like `istio-1.20.0/`. Add the `bin/` directory to your PATH:
+This downloads the latest version into a directory like `istio-1.30.0/`. Add the `bin/` directory to your PATH:
 
 ```bash
-export PATH=$PWD/istio-1.20.0/bin:$PATH
+cd istio-1.30.0
+export PATH=$PWD/bin:$PATH
 ```
 
 Verify it works:
@@ -48,7 +49,7 @@ The most common first step is installing Istio itself. The `install` command sup
 istioctl install --set profile=demo
 ```
 
-Available profiles include `default`, `demo`, `minimal`, `remote`, `empty`, and `preview`. For production, `default` is usually the right pick. For testing and learning, `demo` gives you everything including extra addons.
+Available profiles include `default`, `demo`, `minimal`, `remote`, `ambient`, `empty`, and `preview`. For production, `default` is usually the right pick. For testing and learning, `demo` gives you a broad showcase configuration with higher tracing and access logging, but it is not suitable for performance tests.
 
 You can customize any installation with `--set` flags:
 
@@ -111,7 +112,7 @@ The output tells you exactly what's wrong and often suggests how to fix it. For 
 The `describe` command shows you a summary of how Istio is configured for a specific pod:
 
 ```bash
-istioctl describe pod httpbin-abc123 -n default
+istioctl experimental describe pod httpbin-abc123 -n default
 ```
 
 This tells you what VirtualServices affect the pod, what DestinationRules apply, whether mTLS is active, and more. It's a great starting point when you're trying to figure out why traffic isn't routing the way you expect.
@@ -151,13 +152,13 @@ istioctl proxy-config routes httpbin-abc123.default -o json
 Before deploying a workload, you can check whether sidecar injection is properly configured:
 
 ```bash
-istioctl check-inject -n default
+istioctl experimental check-inject -n default -l app=httpbin
 ```
 
 Or check a specific deployment:
 
 ```bash
-istioctl check-inject deployment/httpbin -n default
+istioctl experimental check-inject deployment/httpbin -n default
 ```
 
 This tells you if the namespace label is set, if any webhooks are configured, and whether any pod annotations might override the injection settings.
@@ -201,13 +202,13 @@ istioctl bug-report --namespace default --duration 30m
 
 ## Using Operator Management
 
-If you installed Istio using the IstioOperator resource, you can manage it with istioctl:
+If you manage Istio installation settings with the IstioOperator API, pass the configuration file to `istioctl`:
 
 ```bash
-istioctl operator init
+istioctl install -f istio-operator.yaml
 ```
 
-Then apply an IstioOperator resource:
+The file can use an IstioOperator configuration:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -234,7 +235,7 @@ istioctl has an `experimental` (or `x`) subcommand with additional tools:
 
 ```bash
 # Check the status of waypoint proxies (ambient mesh)
-istioctl x waypoint status
+istioctl waypoint status
 
 # Check authorization policies
 istioctl x authz check httpbin-abc123.default
@@ -264,7 +265,7 @@ istioctl pc clusters httpbin-abc123.default -o json | jq '.[].name'
 **Check the revision.** If you're using canary upgrades with revision labels, specify the revision:
 
 ```bash
-istioctl proxy-status --revision canary
+istioctl proxy-status --xds-label istio.io/rev=canary
 ```
 
 ## Wrapping Up
