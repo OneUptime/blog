@@ -33,7 +33,7 @@ reviews-v1-5984b4b776-7kqvz.bookinfo         Kubernetes     SYNCED     SYNCED   
 
 Each column represents a different type of Envoy configuration (called xDS in Envoy terminology):
 
-**CDS (Cluster Discovery Service)**: Defines the upstream clusters (services) that Envoy knows about. Each Kubernetes service becomes a cluster in Envoy's configuration.
+**CDS (Cluster Discovery Service)**: Defines the upstream clusters that Envoy knows about. Kubernetes services and their ports, subsets, and traffic policies are represented as clusters in Envoy's configuration.
 
 **LDS (Listener Discovery Service)**: Defines the network listeners on the proxy. These determine what ports and protocols the proxy accepts traffic on.
 
@@ -80,12 +80,11 @@ Look for errors related to configuration processing.
 
 ### Problem: A Proxy Is Missing
 
-If a pod that should have a sidecar does not appear in `proxy-status`, the sidecar was not injected:
+If a pod that should have a sidecar does not appear in `proxy-status`, it is not currently connected to istiod. One common reason is that the sidecar was not injected:
 
 ```bash
-# Check if the namespace has injection enabled
-
-kubectl get namespace default --show-labels | grep istio-injection
+# Check if the namespace has injection enabled or is pinned to a revision
+kubectl get namespace default --show-labels | grep -E 'istio-injection|istio.io/rev'
 
 # Check if the pod has the sidecar container
 kubectl get pod httpbin-74fb669cc6-5wq2r -n default -o jsonpath='{.spec.containers[*].name}'
@@ -98,9 +97,9 @@ kubectl exec httpbin-74fb669cc6-5wq2r -c istio-proxy -n default -- \
   curl -s localhost:15000/clusters | head -5
 ```
 
-### Problem: Proxy Connected to Wrong istiod
+### Problem: Proxy Connected to Unexpected istiod
 
-In multi-cluster or multi-revision setups, a proxy might connect to the wrong istiod instance:
+In multi-cluster or multi-revision setups, a proxy might connect to an unexpected istiod instance:
 
 ```text
 NAME                                      ISTIOD
@@ -108,7 +107,7 @@ httpbin-74fb669cc6-5wq2r.default          istiod-canary-abc123
 reviews-v1-5984b.bookinfo                 istiod-7d4f5b7c4f-x2q9p
 ```
 
-This happens when you have multiple Istio revisions installed. Check which revision the namespace is labeled with:
+This can happen when you have multiple Istio revisions installed. Check which revision the namespace is labeled with:
 
 ```bash
 kubectl get namespace default --show-labels | grep istio.io/rev
