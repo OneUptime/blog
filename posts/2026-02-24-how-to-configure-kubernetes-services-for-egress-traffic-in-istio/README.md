@@ -31,10 +31,10 @@ With this, pods can access the external service using `external-api.default.svc.
 
 ### How Istio Handles ExternalName Services
 
-When Istio sees an ExternalName service, it creates a routing entry in the sidecar proxies. However, the behavior depends on your `outboundTrafficPolicy` mode:
+When Istio sees an ExternalName service, it treats it as an alias for the concrete external hostname. However, the behavior depends on your `outboundTrafficPolicy` mode:
 
-- **ALLOW_ANY mode:** The traffic passes through. The sidecar does DNS resolution for the external name and forwards the connection.
-- **REGISTRY_ONLY mode:** The ExternalName service is in the Kubernetes service registry, so traffic is allowed. But you may still need a ServiceEntry if you want full Istio traffic management features.
+- **ALLOW_ANY mode:** The traffic can pass through as unmatched outbound traffic if the concrete external host is not otherwise registered.
+- **REGISTRY_ONLY mode:** An ExternalName service is only an alias. If the concrete external host is not known to Istio, requests can still fail. Add a ServiceEntry for the concrete external host when you want controlled egress and full Istio traffic management features.
 
 Test it:
 
@@ -112,7 +112,7 @@ The Istio ServiceEntry is the native way to register external services. Here is 
 | Full Istio metrics | Yes | Partial | Yes |
 | VirtualService routing | Yes | Limited | Yes |
 | DestinationRule support | Yes | Limited | Yes |
-| Works in REGISTRY_ONLY | Yes | Varies | Yes |
+| Works in REGISTRY_ONLY | Yes | Only if the target host is known to Istio | Yes |
 
 For most cases, ServiceEntry is the recommended approach because it gives you the most control and best integration with Istio features.
 
@@ -251,17 +251,17 @@ Istio handles headless services differently. Each endpoint gets its own DNS reco
 
 If your application uses an ExternalName service to reach an external HTTPS endpoint, you need to be careful about how Istio intercepts the traffic.
 
-For HTTPS connections, the application initiates a TLS handshake. The sidecar proxy sees this as opaque TLS and uses SNI to route it. The SNI will contain the external hostname (not the ExternalName service name), so routing works correctly for HTTPS.
+For HTTPS connections, the application initiates a TLS handshake. The sidecar proxy sees this as opaque TLS and uses SNI to route it. If the application connects to the ExternalName service hostname, the SNI normally contains that Kubernetes service hostname, not the CNAME target, and the external server's certificate may not match.
 
-For HTTP connections, the Host header contains the ExternalName service's name. The sidecar routes based on this header to the external name resolved by DNS.
+For HTTP connections, the Host header contains the ExternalName service's name. The sidecar can route based on this header, but the upstream server will also see that Host header unless the client or proxy configuration rewrites it.
 
 ```bash
-# HTTP - works, Host header is rewritten to external service
+# HTTP - may require a Host header that the upstream service recognizes
 
-kubectl exec deploy/sleep -- curl -s http://external-api.default.svc.cluster.local/get
+kubectl exec deploy/sleep -- curl -s -H "Host: api.external-service.com" http://external-api.default.svc.cluster.local/get
 
-# HTTPS - works, SNI matches the real hostname
-kubectl exec deploy/sleep -- curl -s https://external-api.default.svc.cluster.local/get
+# HTTPS - use the real external hostname for SNI and certificate validation
+kubectl exec deploy/sleep -- curl -s https://api.external-service.com/get
 ```
 
 ## Migrating from ExternalName to ServiceEntry
