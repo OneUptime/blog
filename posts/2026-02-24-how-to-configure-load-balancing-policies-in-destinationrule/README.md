@@ -8,7 +8,7 @@ Description: A practical guide to configuring different load balancing policies 
 
 ---
 
-Istio gives you control over how traffic is distributed across your service instances, and the DestinationRule is where you configure that. By default, Istio uses round robin load balancing, but depending on your use case, you might want something different - random distribution, least connections, or hash-based sticky routing.
+Istio gives you control over how traffic is distributed across your service instances, and the DestinationRule is where you configure that. By default, Istio uses least request load balancing, but depending on your use case, you might want something different - round robin, random distribution, or hash-based sticky routing.
 
 The `trafficPolicy.loadBalancer` field in a DestinationRule is where all load balancing configuration lives. There are two main categories: simple algorithms and consistent hash-based algorithms.
 
@@ -41,9 +41,9 @@ Just swap `ROUND_ROBIN` with any of the other values. No other configuration nee
 
 ## When to Use Which Algorithm
 
-**ROUND_ROBIN** is the default and works well for most cases. If your pods are roughly equal in capacity and your requests are roughly equal in cost, round robin does a fine job.
+**ROUND_ROBIN** works best when your pods are roughly equal in capacity and your requests are roughly equal in cost. Istio generally recommends least request as the safer default, but round robin can still be useful when you explicitly want sequential distribution.
 
-**RANDOM** is similar to round robin in practice but avoids the head-of-line problem that can happen with round robin when you have multiple Envoy proxies. With round robin, each proxy maintains its own counter, so two proxies might end up sending requests to the same pod at the same time. Random avoids this.
+**RANDOM** is similar to round robin in practice, but it picks a random healthy host for each request. Istio notes that random can perform better than round robin when no health checking policy is configured.
 
 **LEAST_REQUEST** is great when requests have unequal processing times. If some requests take 10ms and others take 500ms, round robin could pile up slow requests on one pod while another sits idle. Least request adapts to actual load.
 
@@ -51,7 +51,7 @@ Just swap `ROUND_ROBIN` with any of the other values. No other configuration nee
 
 ## Consistent Hash Load Balancing
 
-The other option is consistent hash-based load balancing, which ensures that requests with the same hash key always go to the same backend. This is used for session affinity (sticky sessions).
+The other option is consistent hash-based load balancing, which gives soft session affinity by sending requests with the same hash key to the same backend while the endpoint set stays stable. Affinity can change when backends are added or removed.
 
 You can hash on several things:
 
@@ -132,7 +132,7 @@ istioctl proxy-config cluster <pod-name> --fqdn my-service.default.svc.cluster.l
 
 In the output, look for the `lbPolicy` field. It should reflect what you configured. For round robin you will see `ROUND_ROBIN`, for random it will show `RANDOM`, and so on.
 
-For consistent hash, the output is a bit more complex. You will see `RING_HASH` or `MAGLEV` as the lb policy, plus additional hash configuration.
+For consistent hash, the output is a bit more complex. You will see `RING_HASH` by default, or `MAGLEV` if you configured Maglev, plus additional hash configuration.
 
 ## Testing Load Balancing Behavior
 
@@ -156,21 +156,22 @@ With round robin, you should see roughly equal distribution. With random, it wil
 
 Most load balancing algorithms have negligible overhead. Round robin, random, and passthrough are all O(1) per request. Least request requires tracking active request counts per endpoint, which adds a small amount of state.
 
-Consistent hash algorithms (ring hash and maglev) have higher memory overhead because they maintain a hash ring data structure. If you have thousands of endpoints, the ring hash table can get large. You can control the ring size with `minimumRingSize`:
+Consistent hash algorithms (ring hash and maglev) have higher memory overhead because they maintain extra lookup structures. If you have thousands of endpoints, the ring hash table can get large. You can control the ring size with `ringHash.minimumRingSize`:
 
 ```yaml
 trafficPolicy:
   loadBalancer:
     consistentHash:
       httpHeaderName: x-user-id
-      minimumRingSize: 1024
+      ringHash:
+        minimumRingSize: 1024
 ```
 
 The default minimum ring size is 1024. Larger values give better distribution but use more memory.
 
 ## A Word About PASSTHROUGH
 
-The `PASSTHROUGH` algorithm is different from the others. It does not load balance at all - it sends the request to the IP address that the application originally resolved. This is useful when you are sending traffic to an external service and you want DNS resolution to handle the load balancing, or when you are using headless services and want the client to pick a specific pod.
+The `PASSTHROUGH` algorithm is different from the others. It does not load balance at all - it sends the request to the IP address that the application originally resolved. This is useful when you are sending traffic to an external service registered in Istio, such as with a ServiceEntry, and you want DNS resolution to handle the load balancing, or when you are using headless services and want the client to pick a specific pod.
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -186,4 +187,4 @@ spec:
 
 ## Summary
 
-Load balancing in Istio is configured through the DestinationRule's trafficPolicy. For most services, the default round robin works fine. Switch to least request when you have variable request costs, use random to avoid synchronization issues across proxies, and use consistent hash when you need session stickiness. You can also apply different policies per subset to fine-tune behavior for different versions of your services.
+Load balancing in Istio is configured through the DestinationRule's trafficPolicy. For most services, the default least request policy works fine. Switch to round robin when you explicitly want sequential distribution, use random when a random healthy-host choice fits your workload, and use consistent hash when you need soft session stickiness. You can also apply different policies per subset to fine-tune behavior for different versions of your services.
