@@ -63,12 +63,15 @@ metadata:
   name: envoy-stats-monitor
   namespace: istio-system
 spec:
+  namespaceSelector:
+    any: true
   selector:
     matchExpressions:
     - key: security.istio.io/tlsMode
       operator: Exists
   podMetricsEndpoints:
-  - path: /stats/prometheus
+  - port: http-envoy-prom
+    path: /stats/prometheus
     interval: 15s
 ```
 
@@ -155,21 +158,28 @@ metadata:
   name: prometheus
   namespace: monitoring
 spec:
+  selector:
+    matchLabels:
+      app: prometheus
   template:
+    metadata:
+      labels:
+        app: prometheus
     spec:
       containers:
       - name: prometheus
         # ... existing prometheus container
       - name: thanos-sidecar
-        image: quay.io/thanos/thanos:v0.34.0
+        image: quay.io/thanos/thanos:v0.40.0
         args:
         - sidecar
         - --tsdb.path=/prometheus
         - --prometheus.url=http://localhost:9090
         - --grpc-address=0.0.0.0:10901
         - --http-address=0.0.0.0:10902
-        - --label=cluster="cluster1"
 ```
+
+Set `external_labels` in each Prometheus configuration, such as `cluster: cluster1`, so Thanos can identify the source Prometheus instance.
 
 Then deploy Thanos Query centrally:
 
@@ -180,16 +190,22 @@ metadata:
   name: thanos-query
   namespace: monitoring
 spec:
+  selector:
+    matchLabels:
+      app: thanos-query
   template:
+    metadata:
+      labels:
+        app: thanos-query
     spec:
       containers:
       - name: thanos-query
-        image: quay.io/thanos/thanos:v0.34.0
+        image: quay.io/thanos/thanos:v0.40.0
         args:
         - query
         - --http-address=0.0.0.0:9090
-        - --store=thanos-sidecar-cluster1.example.com:10901
-        - --store=thanos-sidecar-cluster2.example.com:10901
+        - --endpoint=thanos-sidecar-cluster1.example.com:10901
+        - --endpoint=thanos-sidecar-cluster2.example.com:10901
 ```
 
 ## Grafana Dashboards for Multi-Cluster
@@ -241,8 +257,8 @@ sum(rate(istio_requests_total{destination_workload="istio-eastwestgateway"}[5m])
 # East-west gateway error rate
 sum(rate(istio_requests_total{destination_workload="istio-eastwestgateway", response_code=~"5.."}[5m])) by (cluster)
 
-# Connection count to east-west gateway
-sum(istio_tcp_connections_opened_total{destination_workload="istio-eastwestgateway"}) by (cluster)
+# Connections opened to east-west gateway
+sum(rate(istio_tcp_connections_opened_total{destination_workload="istio-eastwestgateway"}[5m])) by (cluster)
 ```
 
 ## Setting Up Alerts
@@ -274,7 +290,7 @@ groups:
 
   - alert: RemoteClusterDisconnected
     expr: |
-      pilot_remote_cluster_sync_timeouts_total > 0
+      remote_cluster_sync_timeouts_total > 0
     for: 5m
     labels:
       severity: warning
