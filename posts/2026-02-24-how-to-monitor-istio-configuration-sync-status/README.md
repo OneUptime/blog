@@ -45,7 +45,7 @@ The columns represent different xDS configuration types:
 - **RDS** (Route Discovery Service) - routing configuration
 - **ECDS** (Extension Configuration Discovery Service) - extension configs
 
-You want everything to show `SYNCED`. `STALE` means the proxy has not acknowledged the latest config, and `NOT SENT` means Istiod has not pushed config to that proxy at all.
+You want everything to show `SYNCED`. `STALE` means Istiod has sent an update but the proxy has not acknowledged it yet, and `NOT SENT` usually means Istiod has nothing to send for that xDS type.
 
 ## Key Metrics for Configuration Sync
 
@@ -54,18 +54,20 @@ Istiod exposes several Prometheus metrics that track configuration distribution:
 ### Push Metrics
 
 ```promql
-# Total number of xDS pushes
+# Number of times a push was triggered
 
-pilot_xds_pushes
+pilot_push_triggers
 
 # Number of push errors
 pilot_total_xds_internal_errors
+pilot_total_xds_rejects
 
 # Push duration
+pilot_xds_push_time_bucket
 pilot_proxy_convergence_time_bucket
 
 # Number of connected proxies
-pilot_xds_connected_endpoints
+pilot_xds
 ```
 
 ### Configuration Conflict Metrics
@@ -76,8 +78,6 @@ galley_validation_failed
 
 # Duplicate listener conflicts
 pilot_conflict_inbound_listener
-pilot_conflict_outbound_listener_http_over_current_tcp
-pilot_conflict_outbound_listener_tcp_over_current_http
 pilot_conflict_outbound_listener_tcp_over_current_tcp
 ```
 
@@ -98,6 +98,7 @@ spec:
     - alert: IstioPushErrors
       expr: |
         rate(pilot_total_xds_internal_errors[5m]) > 0
+        or rate(pilot_total_xds_rejects[5m]) > 0
       for: 5m
       labels:
         severity: warning
@@ -116,8 +117,7 @@ spec:
     - alert: IstioConfigConflicts
       expr: |
         pilot_conflict_inbound_listener > 0
-        or pilot_conflict_outbound_listener_http_over_current_tcp > 0
-        or pilot_conflict_outbound_listener_tcp_over_current_http > 0
+        or pilot_conflict_outbound_listener_tcp_over_current_tcp > 0
       for: 10m
       labels:
         severity: warning
@@ -126,7 +126,7 @@ spec:
         description: "There are listener conflicts in the Istio configuration"
     - alert: IstioProxyDisconnected
       expr: |
-        pilot_xds_connected_endpoints < kube_pod_container_status_running{container="istio-proxy"}
+        sum(pilot_xds) < count(kube_pod_container_status_running{container="istio-proxy"} == 1)
       for: 5m
       labels:
         severity: critical
@@ -152,7 +152,7 @@ diff /tmp/proxy1.json /tmp/proxy2.json
 You can also compare what Istiod thinks the config should be versus what the proxy actually has:
 
 ```bash
-istioctl proxy-status deploy/my-app -n default
+istioctl proxy-status my-app-pod-1.default
 ```
 
 This shows a detailed diff when there is a mismatch.
@@ -191,8 +191,8 @@ Create a dashboard that visualizes the configuration distribution pipeline:
       "title": "xDS Push Rate",
       "targets": [
         {
-          "expr": "sum(rate(pilot_xds_pushes[5m])) by (type)",
-          "legendFormat": "{{ type }}"
+          "expr": "sum(rate(pilot_push_triggers[5m])) by (reason)",
+          "legendFormat": "{{ reason }}"
         }
       ]
     },
@@ -208,15 +208,20 @@ Create a dashboard that visualizes the configuration distribution pipeline:
       "title": "Connected Proxies",
       "targets": [
         {
-          "expr": "pilot_xds_connected_endpoints"
+          "expr": "sum(pilot_xds)"
         }
       ]
     },
     {
-      "title": "Push Errors",
+      "title": "xDS Errors and Rejects",
       "targets": [
         {
-          "expr": "sum(rate(pilot_total_xds_internal_errors[5m]))"
+          "expr": "sum(rate(pilot_total_xds_internal_errors[5m]))",
+          "legendFormat": "Internal errors"
+        },
+        {
+          "expr": "sum(rate(pilot_total_xds_rejects[5m]))",
+          "legendFormat": "Proxy rejects"
         }
       ]
     },
@@ -228,8 +233,8 @@ Create a dashboard that visualizes the configuration distribution pipeline:
           "legendFormat": "Inbound Listener"
         },
         {
-          "expr": "pilot_conflict_outbound_listener_http_over_current_tcp",
-          "legendFormat": "HTTP over TCP"
+          "expr": "pilot_conflict_outbound_listener_tcp_over_current_tcp",
+          "legendFormat": "TCP over TCP"
         }
       ]
     }
@@ -241,10 +246,10 @@ Create a dashboard that visualizes the configuration distribution pipeline:
 
 When you detect sync problems, here are the common culprits:
 
-**Proxy cannot reach Istiod**: Check that the proxy can connect to Istiod on port 15012. Network policies or service mesh misconfiguration can block this.
+**Proxy cannot reach Istiod**: Check that the workload can reach Istiod's status endpoint on port 15014. Network policies or service mesh misconfiguration can block this.
 
 ```bash
-kubectl exec deploy/my-app -c istio-proxy -- curl -s -o /dev/null -w "%{http_code}" https://istiod.istio-system.svc:15012/debug/connections
+kubectl exec deploy/my-app -c my-app -- curl -sS istiod.istio-system:15014/version
 ```
 
 **Invalid configuration**: Istiod might reject your Istio resources. Check the Istiod logs:
