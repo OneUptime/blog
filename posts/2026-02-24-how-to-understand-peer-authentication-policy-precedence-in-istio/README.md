@@ -16,7 +16,7 @@ Istio evaluates PeerAuthentication policies at three distinct levels:
 
 1. **Mesh-wide** - A policy in the root namespace (usually `istio-system`) with no selector. This is the baseline default.
 2. **Namespace-wide** - A policy in a specific namespace with no selector. Overrides the mesh-wide default for that namespace.
-3. **Workload-specific** - A policy with a `selector` targeting specific pods. Overrides the namespace default for those pods.
+3. **Workload-specific** - A policy in a regular namespace with a `selector` targeting specific pods. Overrides the namespace default for those pods.
 
 The rule is straightforward: **the most specific policy wins**. Workload-specific beats namespace-wide, and namespace-wide beats mesh-wide.
 
@@ -25,8 +25,8 @@ The rule is straightforward: **the most specific policy wins**. Workload-specifi
 ```mermaid
 graph TD
     A["Mesh-wide Policy<br>(istio-system, no selector)<br>Lowest Priority"] --> B["Namespace Policy<br>(any namespace, no selector)<br>Medium Priority"]
-    B --> C["Workload Policy<br>(any namespace, with selector)<br>Highest Priority"]
-    C --> D["Port-Level Override<br>(within any policy)<br>Overrides the policy's own mtls.mode"]
+    B --> C["Workload Policy<br>(regular namespace, with selector)<br>Highest Priority"]
+    C --> D["Port-Level Override<br>(workload policy with selector)<br>Overrides the policy's own mtls.mode"]
 ```
 
 ## Walk-Through Example
@@ -80,15 +80,18 @@ Now, here's what happens for different pods:
 
 ## Port-Level Overrides Add Another Layer
 
-Port-level mTLS settings (`portLevelMtls`) override the `mtls.mode` field within the same policy. They don't change the precedence between policies - they just refine what the winning policy does.
+Port-level mTLS settings (`portLevelMtls`) override the `mtls.mode` field within the same workload-specific policy. Istio only applies `portLevelMtls` when the policy has a workload selector, and the port number is the workload port, not the Kubernetes Service port. They don't change the precedence between policies - they just refine what the winning workload policy does.
 
 ```yaml
 apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
-  name: backend-strict
+  name: api-strict
   namespace: backend
 spec:
+  selector:
+    matchLabels:
+      app: api
   mtls:
     mode: STRICT
   portLevelMtls:
@@ -96,7 +99,7 @@ spec:
       mode: PERMISSIVE
 ```
 
-For pods in the `backend` namespace (that don't have a more specific workload policy):
+For pods in the `backend` namespace with the label `app: api`:
 - Port 9090: PERMISSIVE (from portLevelMtls)
 - All other ports: STRICT (from mtls.mode)
 
@@ -133,18 +136,17 @@ In this case, `my-service` uses whatever mode the namespace policy sets for all 
 When Istio needs to determine the mTLS mode for a specific port on a specific pod, it follows this algorithm:
 
 1. Find all PeerAuthentication policies in the pod's namespace that match the pod (via selector or no selector).
+   If multiple same-scope policies exist, Istio ignores newer mesh-wide or namespace-wide policies, and picks the oldest matching workload-specific policy.
 2. If a workload-specific policy exists that matches the pod:
    a. If it has a `portLevelMtls` entry for this port, use that mode.
    b. Otherwise, use the policy's `mtls.mode`.
    c. If the mode is UNSET, go to step 3.
 3. If a namespace-wide policy exists (no selector):
-   a. If it has a `portLevelMtls` entry for this port, use that mode.
-   b. Otherwise, use the policy's `mtls.mode`.
-   c. If the mode is UNSET, go to step 4.
+   a. Use the policy's `mtls.mode`.
+   b. If the mode is UNSET, go to step 4.
 4. If a mesh-wide policy exists in the root namespace (no selector):
-   a. If it has a `portLevelMtls` entry for this port, use that mode.
-   b. Otherwise, use the policy's `mtls.mode`.
-   c. If the mode is UNSET, use PERMISSIVE (Istio's built-in default).
+   a. Use the policy's `mtls.mode`.
+   b. If the mode is UNSET, use PERMISSIVE (Istio's built-in default).
 
 ## Complex Scenario
 
@@ -160,9 +162,6 @@ metadata:
 spec:
   mtls:
     mode: STRICT
-  portLevelMtls:
-    15014:
-      mode: DISABLE
 ---
 # Namespace
 apiVersion: security.istio.io/v1
@@ -198,11 +197,11 @@ Results for different pods and ports:
 | payment-service | backend | 8080 | STRICT | Workload policy mtls.mode |
 | payment-service | backend | 9090 | DISABLE | Workload policy portLevelMtls |
 | order-service | backend | 8080 | PERMISSIVE | Namespace policy mtls.mode |
-| order-service | backend | 15014 | PERMISSIVE | Namespace policy mtls.mode (NOT mesh portLevelMtls) |
+| order-service | backend | 15014 | PERMISSIVE | Namespace policy mtls.mode |
 | any-service | frontend | 8080 | STRICT | Mesh-wide mtls.mode |
-| any-service | frontend | 15014 | DISABLE | Mesh-wide portLevelMtls |
+| any-service | frontend | 15014 | STRICT | Mesh-wide mtls.mode |
 
-Notice the entry for `order-service` on port 15014. Even though the mesh-wide policy disables mTLS on 15014, the namespace policy overrides the mesh-wide policy entirely. The namespace policy doesn't have a portLevelMtls for 15014, so it uses its own `mtls.mode` (PERMISSIVE). Port-level overrides from a lower-precedence policy do not bleed through.
+Notice the entry for `order-service` on port 15014. The namespace policy overrides the mesh-wide policy entirely, so it uses its own `mtls.mode` (PERMISSIVE). Port-level overrides only apply to workload-specific policies with selectors.
 
 ## Verifying Precedence
 
@@ -228,8 +227,8 @@ istioctl analyze -n backend
 
 **"STRICT should always win because it's more secure."** Nope. Precedence is based on specificity, not strictness. A namespace PERMISSIVE policy overrides a mesh-wide STRICT policy.
 
-**"Port-level overrides from parent policies carry over."** They don't. When a more specific policy takes over, its port-level overrides apply, and the parent's port-level settings are completely ignored.
+**"Port-level overrides work on namespace-wide or mesh-wide defaults."** They don't. Istio only applies `portLevelMtls` when the policy has a workload selector.
 
 **"UNSET means disabled."** UNSET means "inherit from parent." It's not the same as DISABLE.
 
-Understanding precedence saves you from hours of debugging. The key takeaway: most specific wins, port-level settings only apply within the winning policy, and UNSET means inherit. Once you internalize these rules, PeerAuthentication becomes predictable.
+Understanding precedence saves you from hours of debugging. The key takeaway: most specific wins, port-level settings only apply within workload-specific policies, and UNSET means inherit. Once you internalize these rules, PeerAuthentication becomes predictable.
