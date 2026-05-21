@@ -14,12 +14,12 @@ The Istio project has grown into one of the most active open source communities 
 
 Istio is a Cloud Native Computing Foundation (CNCF) graduated project. The community is organized around several key groups:
 
-- **Technical Oversight Committee (TOC)**: Handles overall project governance and technical direction.
+- **Steering Committee**: Handles governance and advocacy for the project.
+- **Technical Oversight Committee (TOC)**: Handles technical direction, project planning, and cross-cutting design decisions.
 - **Working Groups**: Focused teams that handle specific areas like networking, security, and user experience.
-- **Special Interest Groups (SIGs)**: Groups focused on specific topics or use cases.
-- **Maintainers and Reviewers**: People who have commit access and review contributions.
+- **Community Roles**: Members, documentation reviewers, maintainers, leads, and other roles that help review contributions and run the project.
 
-You can find the full community structure on the Istio website at `istio.io/latest/about/community/`.
+You can find the full community structure on the Istio website at `istio.io/latest/get-involved/` and in the `istio/community` repository.
 
 ## Step 1: Join the Communication Channels
 
@@ -27,29 +27,29 @@ The first thing you should do is get onto the communication channels where the c
 
 ### Istio Slack
 
-The Istio project uses the CNCF Slack workspace. To join:
+The Istio project uses its own Slack workspace. To join:
 
-1. Go to `slack.cncf.io` and sign up if you don't have an account.
-2. Once you're in, search for and join channels like `#istio`, `#istio-dev`, and `#istio-networking`.
+1. Go to `slack.istio.io` and sign up if you don't have an account.
+2. Once you're in, search for and join channels like `#contributors`, `#networking`, and `#security`.
 
-### Mailing Lists
+### Discussion Board and Groups
 
-Istio uses Google Groups for mailing lists. The main ones are:
+Istio uses GitHub Discussions for general user questions and Google Groups for calendar and shared drive access. The main ones are:
 
-- `istio-users@googlegroups.com` for general user questions
-- `istio-dev@googlegroups.com` for development discussions
-- `istio-security-vulnerabilities@googlegroups.com` for reporting security issues
+- The `istio/istio` discussion board for general user questions
+- `istio-team-drive-access@googlegroups.com` for access to shared working documents
+- `istio-security-vulnerability-reports@googlegroups.com` for privately reporting security issues
 
-Join them by visiting the Google Groups pages and clicking "Join group."
+Join Google Groups by visiting the Google Groups pages and clicking "Join group."
 
 ### Community Meetings
 
-Istio holds regular community meetings that are open to everyone. These happen on a weekly or biweekly cadence depending on the working group. You can find the meeting schedule in the community calendar:
+Istio holds regular community meetings that are open to everyone. The main community meeting happens monthly, and the working groups share a weekly meeting. You can find the meeting schedule in the community calendar:
 
 ```bash
 # The community calendar is available at:
 
-# https://istio.io/latest/about/community/
+# https://istio.io/latest/get-involved/
 # Click on the "Community Calendar" link to add it to your Google Calendar
 ```
 
@@ -76,10 +76,9 @@ You'll need some prerequisites installed:
 
 ```bash
 # Required tools
-# - Go (check .go-version file in repo for exact version)
+# - Go (check the go directive in go.mod for the exact version)
 # - Docker
-# - kubectl
-# - Kind (for local Kubernetes clusters)
+# - kubectl and kind for cluster-based development and tests
 
 # Check your Go version
 go version
@@ -115,15 +114,17 @@ Working groups are where most of the technical decisions happen. Each group focu
 | Working Group | Focus Area | Meeting Cadence |
 |---|---|---|
 | Networking | Traffic management, gateways | Weekly |
-| Security | mTLS, authorization policies | Biweekly |
-| User Experience | CLI, installation, configuration | Biweekly |
-| Extensions | Wasm, Envoy filters | Biweekly |
+| Security | mTLS, authorization policies | Weekly |
+| User Experience | CLI, installation, configuration | Weekly |
+| Extensions and Telemetry | Wasm, tracing, monitoring, logging | Weekly |
 | Docs | Documentation and website | Weekly |
+| Environments | VM support, hybrid mesh, platform support | Weekly |
+| Test and Release | Build, test, release | Weekly |
 
 To join a working group:
 
 1. Find the working group on the Istio community page
-2. Join their Slack channel (usually named `#istio-<group-name>`)
+2. Join their Slack channel (for example, `#networking`, `#security`, or `#user-experience`)
 3. Add their meeting to your calendar
 4. Show up and introduce yourself
 
@@ -184,15 +185,15 @@ make serve
 - Expected behavior vs. actual behavior
 - Relevant logs
 
-**Answering Questions**: Help other users on Slack, Stack Overflow, or the mailing lists. This is one of the most impactful ways to contribute because it scales the community's ability to support itself.
+**Answering Questions**: Help other users on Slack, Stack Overflow, or GitHub Discussions. This is one of the most impactful ways to contribute because it scales the community's ability to support itself.
 
 ## Step 7: Grow Your Involvement
 
 As you contribute more, you can take on bigger roles:
 
-1. **Member**: After several successful contributions, you can be nominated as an org member.
-2. **Reviewer**: Regular contributors who show good judgment can become reviewers for specific areas.
-3. **Maintainer**: After sustained high-quality contributions, you may be nominated as a maintainer.
+1. **Member**: After regular active contributions, you can apply to become an Istio organization member.
+2. **Documentation Reviewer**: Regular documentation contributors who show good judgment can become reviewers for `istio.io`.
+3. **Maintainer**: After sustained high-quality contributions in a codebase area, you may be sponsored as a maintainer.
 
 The path from newcomer to maintainer is documented in the community membership guidelines in the `istio/community` repository.
 
