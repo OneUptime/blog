@@ -8,9 +8,9 @@ Description: How to configure custom telemetry providers in Istio including Open
 
 ---
 
-Istio's built-in telemetry providers (Prometheus for metrics, Envoy for logging, Zipkin for tracing) cover the basics. But production environments often need custom providers - maybe you're sending traces to Datadog, metrics to an OpenTelemetry Collector, or access logs in a specific JSON format to a centralized logging system.
+Istio's built-in telemetry providers (Prometheus for metrics and Envoy for logging, with tracing integrations configured through MeshConfig) cover the basics. But production environments often need custom providers - maybe you're sending traces to Datadog through an OpenTelemetry Collector, or access logs in a specific JSON format to a centralized logging system.
 
-The Telemetry API references providers by name, and those providers are defined in the Istio MeshConfig. This post covers how to define custom providers for each telemetry type and wire them into your Telemetry resources.
+The Telemetry API references providers by name, and those providers are defined in the Istio MeshConfig. This post covers how to define custom providers for access logging and tracing, then wire them into your Telemetry resources.
 
 ## Where Providers Are Defined
 
@@ -114,7 +114,7 @@ If you have a custom ALS receiver:
 ```yaml
 extensionProviders:
   - name: custom-als
-    envoyExtAuthzGrpc:
+    envoyHttpAls:
       service: als-receiver.observability.svc.cluster.local
       port: 9999
 ```
@@ -147,21 +147,17 @@ extensionProviders:
 
 ### Sending to Multiple Trace Backends
 
-You can define multiple trace providers and use them simultaneously:
+Istio supports one tracing provider per tracing rule. If you need to send traces to multiple backends, send them to an OpenTelemetry Collector first and fan out from the collector:
 
 ```yaml
 extensionProviders:
-  - name: jaeger
-    zipkin:
-      service: jaeger-collector.observability.svc.cluster.local
-      port: 9411
   - name: otel-collector
     opentelemetry:
       service: otel-collector.observability.svc.cluster.local
       port: 4317
 ```
 
-Then in your Telemetry resource, reference both:
+Then in your Telemetry resource, reference the collector:
 
 ```yaml
 apiVersion: telemetry.istio.io/v1
@@ -172,14 +168,11 @@ metadata:
 spec:
   tracing:
     - providers:
-        - name: jaeger
-      randomSamplingPercentage: 1.0
-    - providers:
         - name: otel-collector
-      randomSamplingPercentage: 100.0
+      randomSamplingPercentage: 5.0
 ```
 
-This sends 1% of traces to Jaeger and 100% to the OTel Collector (which might have its own sampling logic).
+Configure the OTel Collector with multiple exporters if you want to send the same trace stream to Jaeger, Datadog, Tempo, or another backend.
 
 ## Setting Up an OpenTelemetry Collector
 
@@ -188,6 +181,11 @@ Since the OTel Collector is the most versatile provider, here's a complete setup
 ### Deploy the Collector
 
 ```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: observability
+---
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -247,7 +245,7 @@ spec:
     spec:
       containers:
         - name: collector
-          image: otel/opentelemetry-collector-contrib:0.93.0
+          image: otel/opentelemetry-collector-contrib:0.152.0
           args:
             - "--config=/etc/otelcol/config.yaml"
           ports:
