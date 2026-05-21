@@ -60,7 +60,7 @@ When a service is returning zero successful responses:
 # This means every single request is failing
 
 # Query concept:
-# sum(rate(istio_requests_total{response_code="200", destination_service="critical-service.default.svc.cluster.local"}[2m])) == 0
+# sum(rate(istio_requests_total{response_code=~"2.*", destination_service="critical-service.default.svc.cluster.local"}[2m])) == 0
 # AND
 # sum(rate(istio_requests_total{destination_service="critical-service.default.svc.cluster.local"}[2m])) > 0
 ```
@@ -106,7 +106,7 @@ Certificate problems can cause sudden service-to-service communication failures:
 
 ```yaml
 # Monitor certificate expiration
-# Condition: citadel_server_root_cert_expiry_timestamp - time() < 604800
+# Condition: citadel_server_root_cert_expiry_seconds < 604800
 # (less than 7 days until expiration)
 # Severity: High
 
@@ -119,8 +119,11 @@ Certificate problems can cause sudden service-to-service communication failures:
 When pods come up without sidecars in namespaces that should have injection enabled:
 
 ```bash
-# You can create a periodic check that runs:
-kubectl get pods -n default -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.containers[*].name}{"\n"}{end}' | grep -v istio-proxy
+# Verify whether injection should apply to a workload:
+istioctl experimental check-inject -n default deploy/my-service
+
+# Then check existing pods for the injected container:
+kubectl get pods -n default -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{range .spec.containers[*]}{.name}{" "}{end}{"\n"}{end}' | grep -v 'istio-proxy'
 ```
 
 Configure OneUptime to run this check and alert when pods are found without the `istio-proxy` container.
