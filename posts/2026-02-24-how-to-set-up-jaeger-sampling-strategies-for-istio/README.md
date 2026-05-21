@@ -12,9 +12,9 @@ Tracing every single request in a busy mesh generates a massive amount of data. 
 
 ## How Sampling Works in Istio
 
-When a request enters the mesh, the Istio sidecar (Envoy) decides whether to trace it. If the request already has trace headers (like `x-b3-traceid`), the sidecar respects the existing sampling decision. If there are no trace headers, the sidecar makes the sampling decision based on the configured rate.
+When a request enters the mesh, the Istio sidecar (Envoy) decides whether to trace it. If the request already has trace headers with a sampling decision (like `x-b3-sampled`), the sidecar respects the existing sampling decision. If there is no sampling decision in the trace headers, the sidecar makes the sampling decision based on the configured rate.
 
-The key thing to understand: the sampling decision is made at the edge of the mesh (the first service to receive the request) and propagated to all downstream services through trace headers. This ensures that if a request is sampled, all its spans are captured.
+The key thing to understand: the sampling decision is made at the edge of the mesh (the first service to receive the request) and propagated to all downstream services through trace headers. This ensures that if a request is sampled, all its spans are captured as long as your applications propagate the trace headers on downstream calls.
 
 ## Configuring Sampling Rate in Istio
 
@@ -67,11 +67,11 @@ spec:
           image: myregistry/payment-service:v1
 ```
 
-This sets a 10% sampling rate for the payment service, regardless of the global setting. This is useful for services where you need more trace data for debugging or performance analysis.
+This overrides the tracing settings for the payment service pod and sets a 10% sampling rate. If your global tracing config also defines provider-specific settings, include those fields in the annotation too, because the annotation replaces the global `tracing` field rather than deep-merging it. This is useful for services where you need more trace data for debugging or performance analysis.
 
 ## Configuring Jaeger Collector Sampling
 
-Beyond Istio's client-side sampling, Jaeger's collector can apply additional sampling strategies. This is configured through a JSON configuration:
+Jaeger's collector can serve remote sampling strategies to Jaeger clients and SDKs that are configured to use remote sampling. This does not cause the collector to resample spans that Istio sidecars have already emitted; for Envoy-generated Istio spans, use Istio's sampling configuration above. If you also have applications using Jaeger remote sampling directly, configure the strategies through a JSON configuration:
 
 ```yaml
 apiVersion: v1
@@ -114,7 +114,7 @@ spec:
     spec:
       containers:
         - name: jaeger-collector
-          image: jaegertracing/jaeger-collector:1.53
+          image: jaegertracing/jaeger-collector:1.76.0
           args:
             - --sampling.strategies-file=/etc/jaeger/sampling.json
           volumeMounts:
@@ -126,9 +126,9 @@ spec:
             name: jaeger-sampling-config
 ```
 
-## Sampling Strategy Types
+## Remote Sampling Strategy Types
 
-Jaeger supports several sampling strategies:
+For clients that use Jaeger remote sampling, Jaeger supports several sampling strategies:
 
 ### Probabilistic Sampling
 
@@ -188,19 +188,20 @@ This samples the checkout endpoint at 50% (because it's critical and you want ma
 
 ## Adaptive Sampling
 
-For the most sophisticated setup, Jaeger supports adaptive sampling that automatically adjusts rates based on traffic patterns:
+For the most sophisticated remote sampling setup, Jaeger supports adaptive sampling that automatically adjusts rates based on traffic patterns:
 
-```json
-{
-  "default_strategy": {
-    "type": "probabilistic",
-    "param": 0.01
-  },
-  "default_sampling_probability": 0.01
-}
+```yaml
+env:
+  - name: SAMPLING_CONFIG_TYPE
+    value: adaptive
+  - name: SAMPLING_STORAGE_TYPE
+    value: elasticsearch
+args:
+  - --sampling.initial-sampling-probability=0.01
+  - --sampling.target-samples-per-second=10
 ```
 
-With adaptive sampling enabled, Jaeger's collector analyzes incoming trace traffic and adjusts sampling rates per service and operation to maintain a target number of traces per second. This requires the collector to be configured with the `--sampling.strategies-file` flag and a running Jaeger backend.
+With adaptive sampling enabled, Jaeger's collector analyzes incoming trace traffic and adjusts remote sampling rates per service and operation to maintain a target number of traces per second. In Jaeger 1.x this requires `SAMPLING_CONFIG_TYPE=adaptive` and a supported sampling storage backend; in Jaeger 2.x it is configured through the `remote_sampling` extension.
 
 ## Choosing the Right Sampling Rate
 
@@ -227,18 +228,19 @@ Sometimes you need to guarantee a trace is captured, regardless of the sampling 
 curl -H "x-b3-sampled: 1" http://my-service/api/checkout
 ```
 
-The `x-b3-sampled: 1` header tells all Istio sidecars in the path to sample this trace. This is useful for synthetic monitoring or when debugging a specific issue.
+The `x-b3-sampled: 1` header tells Istio sidecars in the path to sample this trace, as long as the application forwards the tracing headers to downstream requests. This is useful for synthetic monitoring or when debugging a specific issue.
 
 You can also set this programmatically in your application:
 
 ```python
+import secrets
 import requests
 
 # Always trace this request
 headers = {
     "x-b3-sampled": "1",
-    "x-b3-traceid": generate_trace_id(),
-    "x-b3-spanid": generate_span_id(),
+    "x-b3-traceid": secrets.token_hex(16),
+    "x-b3-spanid": secrets.token_hex(8),
 }
 response = requests.get("http://payment-service/process", headers=headers)
 ```
@@ -283,4 +285,4 @@ done
 
 ## Summary
 
-Jaeger sampling strategies in Istio control the trade-off between trace visibility and resource consumption. Start with Istio's global sampling rate for simplicity, use per-workload annotations for services that need different rates, and configure Jaeger's collector-side strategies for per-operation control. Use rate-limiting sampling for predictable storage costs and probabilistic sampling for proportional coverage. Always monitor your sampling effectiveness and adjust rates as your traffic patterns change.
+Sampling strategies in Istio control the trade-off between trace visibility and resource consumption. Start with Istio's global sampling rate for simplicity, use per-workload annotations for services that need different rates, and use Jaeger remote sampling strategies only for applications that are using Jaeger remote sampling directly. Use rate-limiting sampling for predictable trace volume and probabilistic sampling for proportional coverage. Always monitor your sampling effectiveness and adjust rates as your traffic patterns change.
