@@ -56,7 +56,7 @@ kubectl get pods -n istio-system -l istio=egressgateway
 
 ## Configure Detailed Access Logging
 
-The default Envoy access log format includes basic fields. For auditing, you want more detail. Configure a custom log format through the Telemetry API:
+The default Envoy access log format includes basic fields. For auditing, start by enabling access logging for the egress gateway through the Telemetry API:
 
 ```yaml
 apiVersion: telemetry.istio.io/v1
@@ -73,7 +73,7 @@ spec:
     - name: envoy
 ```
 
-For more control over the log format, use an EnvoyFilter:
+For more control over the log format, use an EnvoyFilter. The routing example below uses TLS passthrough, so the gateway can reliably log connection metadata such as SNI, upstream host, byte counts, and duration. It cannot see encrypted HTTP fields such as method, path, or response code unless you terminate TLS or route cleartext HTTP at the gateway.
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -92,12 +92,12 @@ spec:
       listener:
         filterChain:
           filter:
-            name: envoy.filters.network.http_connection_manager
+            name: envoy.filters.network.tcp_proxy
     patch:
       operation: MERGE
       value:
         typed_config:
-          "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+          "@type": type.googleapis.com/envoy.extensions.filters.network.tcp_proxy.v3.TcpProxy
           access_log:
           - name: envoy.access_loggers.file
             typed_config:
@@ -108,19 +108,12 @@ spec:
                   timestamp: "%START_TIME%"
                   source_ip: "%DOWNSTREAM_REMOTE_ADDRESS%"
                   destination_host: "%UPSTREAM_HOST%"
-                  destination_service: "%REQ(:AUTHORITY)%"
-                  method: "%REQ(:METHOD)%"
-                  path: "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%"
-                  protocol: "%PROTOCOL%"
-                  response_code: "%RESPONSE_CODE%"
+                  destination_service: "%REQUESTED_SERVER_NAME%"
                   response_flags: "%RESPONSE_FLAGS%"
                   bytes_received: "%BYTES_RECEIVED%"
                   bytes_sent: "%BYTES_SENT%"
                   duration_ms: "%DURATION%"
                   upstream_cluster: "%UPSTREAM_CLUSTER%"
-                  request_id: "%REQ(X-REQUEST-ID)%"
-                  user_agent: "%REQ(USER-AGENT)%"
-                  tls_version: "%DOWNSTREAM_TLS_VERSION%"
                   sni: "%REQUESTED_SERVER_NAME%"
 ```
 
@@ -164,6 +157,15 @@ spec:
       mode: PASSTHROUGH
 ---
 apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: egressgateway-for-external-api
+spec:
+  host: istio-egressgateway.istio-system.svc.cluster.local
+  subsets:
+  - name: external-api
+---
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-external-audit
@@ -183,6 +185,7 @@ spec:
     route:
     - destination:
         host: istio-egressgateway.istio-system.svc.cluster.local
+        subset: external-api
         port:
           number: 443
   - match:
@@ -200,7 +203,7 @@ spec:
 
 ## Preventing Bypass
 
-Logging is only useful if all traffic goes through the egress gateway. Enforce this with NetworkPolicies:
+Logging is only useful if all traffic goes through the egress gateway. If your cluster uses a NetworkPolicy-capable CNI, enforce this with NetworkPolicies:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -216,11 +219,14 @@ spec:
   # Allow traffic to other pods in the namespace
   - to:
     - podSelector: {}
-  # Allow traffic to istio-system (egress gateway)
+  # Allow traffic to the egress gateway pods
   - to:
     - namespaceSelector:
         matchLabels:
           kubernetes.io/metadata.name: istio-system
+      podSelector:
+        matchLabels:
+          istio: egressgateway
   # Allow DNS
   - to:
     - namespaceSelector:
@@ -233,7 +239,7 @@ spec:
       protocol: TCP
 ```
 
-This blocks direct internet access from pods. The only path to external services is through the istio-system namespace where the egress gateway runs.
+This blocks direct internet access from pods selected by the policy. The only allowed path to external services is through the egress gateway pods, while the gateway namespace itself still needs its own policy and infrastructure path for outbound internet access.
 
 ## Shipping Logs to a SIEM
 
@@ -304,7 +310,7 @@ This gives you a list of all external services accessed in the last 30 days, whi
 
 ## Monitoring the Egress Gateway Itself
 
-The egress gateway is now a critical piece of infrastructure. Monitor its health:
+The egress gateway is now a critical piece of infrastructure. Monitor its health. For example, if you use Prometheus Operator, kube-state-metrics, and Istio standard metrics:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
@@ -318,25 +324,27 @@ spec:
     rules:
     - alert: EgressGatewayDown
       expr: |
-        absent(up{job="istio-egressgateway"} == 1)
+        kube_deployment_status_replicas_available{
+          namespace="istio-system",
+          deployment="istio-egressgateway"
+        } < 1
       for: 2m
       labels:
         severity: critical
       annotations:
         summary: "Egress gateway is down - external traffic auditing is impaired"
 
-    - alert: EgressGatewayHighLatency
+    - alert: EgressGatewayHighTcpConnectionRate
       expr: |
-        histogram_quantile(0.99,
-          sum(rate(istio_request_duration_milliseconds_bucket{
-            source_workload="istio-egressgateway"
-          }[5m])) by (le)
-        ) > 5000
+        sum(rate(istio_tcp_connections_opened_total{
+          source_workload="istio-egressgateway",
+          source_workload_namespace="istio-system"
+        }[5m])) > 100
       for: 5m
       labels:
         severity: warning
       annotations:
-        summary: "Egress gateway P99 latency exceeds 5 seconds"
+        summary: "Egress gateway TCP connection rate is unusually high"
 
     - alert: EgressGatewayHighMemory
       expr: |
@@ -364,7 +372,7 @@ kubernetes.namespace: "payment-processing" AND upstream_cluster: "outbound|*"
 **Failed egress attempts (unauthorized services):**
 
 ```text
-response_code: 502 AND kubernetes.labels.istio: "egressgateway"
+response_flags: ("UF" OR "NR" OR "UH") AND kubernetes.labels.istio: "egressgateway"
 ```
 
 **Traffic volume by external service:**
@@ -377,15 +385,15 @@ Compare the current week's unique destinations against the previous week's. New 
 
 ## Log Retention
 
-Compliance frameworks have specific retention requirements:
+Compliance frameworks have different retention expectations and requirements:
 
 - PCI DSS: 1 year minimum, with 3 months immediately available
-- SOC 2: Typically 1 year
-- HIPAA: 6 years
+- SOC 2: No fixed log-retention period in the Trust Services Criteria; many organizations use 1 year based on their documented controls and auditor expectations
+- HIPAA: 6 years for required Security Rule documentation; raw audit log retention should be set by your risk analysis, policies, and legal requirements
 - GDPR: As long as necessary for the processing purpose
 
-Configure your log aggregation system's retention policy accordingly. Egress audit logs tend to be smaller than full application logs, so long retention is usually affordable.
+Configure your log aggregation system's retention policy accordingly. Egress audit logs tend to be smaller than full application logs, so longer retention is often affordable.
 
 ## Summary
 
-Setting up an Istio egress gateway for auditing external traffic requires deploying the gateway, configuring JSON access logging with detailed fields, routing all external traffic through it, preventing bypass with NetworkPolicies, and shipping logs to a SIEM for long-term retention and querying. The egress gateway becomes your centralized audit point where every outbound connection is logged with source, destination, timing, and response details. This gives security and compliance teams the visibility they need without requiring changes to application code.
+Setting up an Istio egress gateway for auditing external traffic requires deploying the gateway, configuring JSON access logging with detailed fields, routing all external traffic through it, preventing bypass with NetworkPolicies, and shipping logs to a SIEM for long-term retention and querying. The egress gateway becomes your centralized audit point where every outbound connection is logged with source, destination, timing, and connection outcome details. This gives security and compliance teams the visibility they need without requiring changes to application code.
