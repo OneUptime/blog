@@ -20,7 +20,7 @@ Service discovery updates flow through several stages, each with its own timing:
 
 3. **xDS push to proxies**: Istiod pushes the updated configuration to affected sidecar proxies. The push time depends on the number of proxies and the size of the configuration.
 
-4. **DNS resolution**: For ServiceEntry resources with `resolution: DNS`, the DNS TTL determines how often IP addresses are re-resolved.
+4. **DNS resolution**: For ServiceEntry resources with `resolution: DNS`, Istio proxies periodically re-resolve hostnames on a fixed interval.
 
 ## Tuning the Debounce Interval
 
@@ -40,24 +40,24 @@ spec:
   values:
     pilot:
       env:
-        PILOT_DEBOUNCE_AFTER: "100"
-        PILOT_DEBOUNCE_MAX: "10000"
+        PILOT_DEBOUNCE_AFTER: "100ms"
+        PILOT_DEBOUNCE_MAX: "10s"
 ```
 
 For faster discovery (at the cost of more frequent pushes):
 
 ```yaml
 env:
-  PILOT_DEBOUNCE_AFTER: "50"
-  PILOT_DEBOUNCE_MAX: "3000"
+  PILOT_DEBOUNCE_AFTER: "50ms"
+  PILOT_DEBOUNCE_MAX: "3s"
 ```
 
 For lower control plane load (at the cost of slower discovery):
 
 ```yaml
 env:
-  PILOT_DEBOUNCE_AFTER: "500"
-  PILOT_DEBOUNCE_MAX: "30000"
+  PILOT_DEBOUNCE_AFTER: "500ms"
+  PILOT_DEBOUNCE_MAX: "30s"
 ```
 
 ## Monitoring Push Frequency
@@ -80,9 +80,9 @@ If push latency is high (above 10 seconds), you might need to optimize your conf
 
 ## DNS Refresh for External Services
 
-ServiceEntry resources with `resolution: DNS` rely on DNS TTL for refresh intervals. Istio respects the TTL returned by the DNS server. When the TTL expires, Istio re-resolves the hostname.
+ServiceEntry resources with `resolution: DNS` are resolved by the Istio proxy periodically. Istio documents this proxy-side DNS resolution interval as fixed at 30 seconds; it is separate from the DNS lookups and caching that your application performs.
 
-You can't directly control the DNS TTL from Istio (it comes from the DNS server), but you can influence it:
+You can't directly control that proxy DNS refresh interval from Istio today, but you can influence the DNS load and application-side DNS freshness:
 
 If your CoreDNS is configured with caching:
 
@@ -111,7 +111,7 @@ data:
     }
 ```
 
-The `cache 30` line means CoreDNS caches DNS responses for 30 seconds. Lowering this value means more frequent DNS lookups but faster discovery of IP changes.
+The `cache 30` line means CoreDNS caches DNS responses for up to 30 seconds. Lowering this value means more frequent DNS lookups and can make application-side DNS lookups observe IP changes sooner, but it does not change the Istio proxy's fixed 30-second refresh interval for `resolution: DNS` ServiceEntries.
 
 For critical external services where you need fast failover, consider using `resolution: STATIC` with explicit endpoints that you update through your deployment pipeline:
 
@@ -202,10 +202,10 @@ This detects failures faster but is more sensitive to transient errors. A single
 
 The sidecar proxy maintains a persistent gRPC connection to istiod for receiving configuration updates. If this connection drops, the proxy uses its last known configuration. When the connection is re-established, istiod sends the full configuration.
 
-Control the reconnection behavior with proxy configuration:
+Proxy configuration can set proxy-level metadata and environment variables:
 
 ```yaml
-apiVersion: networking.istio.io/v1
+apiVersion: networking.istio.io/v1beta1
 kind: ProxyConfig
 metadata:
   name: default
@@ -215,7 +215,7 @@ spec:
     ISTIO_META_DNS_CAPTURE: "true"
 ```
 
-The default reconnection behavior uses exponential backoff starting at 1 second. For most environments, the defaults work well.
+This example enables DNS capture metadata for matching proxies; it does not tune xDS reconnect timing. Istio's `ProxyConfig` exposes proxy-level settings such as concurrency, image options, and environment variables, but it does not provide a field for changing the xDS reconnect interval. For most environments, the default xDS connection behavior works well.
 
 ## Scaling Considerations
 
@@ -237,7 +237,7 @@ If proxy CPU usage spikes during deployments, your debounce interval might be to
 
 For most clusters (under 500 services):
 - Keep the default debounce settings (100ms/10s)
-- Use default CoreDNS cache TTL (30s)
+- Use the default CoreDNS cache setting (commonly 30s)
 - Set outlier detection interval to 10s
 
 For large clusters (500+ services):
@@ -248,6 +248,6 @@ For large clusters (500+ services):
 For latency-sensitive applications:
 - Lower debounce: 50ms/5s
 - Lower outlier detection interval: 5s
-- Lower CoreDNS cache TTL: 10s
+- Lower CoreDNS cache TTL: 10s if application-side DNS lookup freshness is the bottleneck
 
 Finding the right balance depends on your specific workload and tolerance for stale configuration. Start with the defaults, monitor the metrics, and adjust when you have data showing that the defaults aren't working for your situation.
