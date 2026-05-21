@@ -14,10 +14,14 @@ This approach brings the same rigor you apply to application code to your servic
 
 ## Setting Up Flux and Weave GitOps
 
-First, install Flux in your cluster:
+First, bootstrap Flux in your cluster so the controllers and the GitRepository source are created:
 
 ```bash
-flux install
+flux bootstrap github \
+  --owner=your-github-user \
+  --repository=your-gitops-repo \
+  --branch=main \
+  --path=clusters/production
 ```
 
 Then install Weave GitOps:
@@ -65,7 +69,7 @@ Organize your Git repository to separate Istio resources from application manife
 
 ## Creating Flux Kustomizations for Istio
 
-Set up a Flux Kustomization that watches for Istio resources:
+Set up a Flux Kustomization that reconciles the Istio installation resources:
 
 ```yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -81,10 +85,10 @@ spec:
     kind: GitRepository
     name: flux-system
   healthChecks:
-  - apiVersion: networking.istio.io/v1
-    kind: VirtualService
-    name: my-app-vsvc
-    namespace: default
+  - apiVersion: apps/v1
+    kind: Deployment
+    name: istiod
+    namespace: istio-system
 ```
 
 And another for your application resources:
@@ -106,7 +110,7 @@ spec:
   - name: istio-config
 ```
 
-The `dependsOn` field makes sure Istio resources are applied before the apps, so VirtualServices and DestinationRules exist before the application pods come up.
+The `dependsOn` field makes sure the Istio installation is ready before the app manifests are applied, so Flux does not try to apply VirtualServices and DestinationRules before the Istio CRDs and control plane are available.
 
 ## Managing Istio VirtualServices Through Git
 
@@ -132,6 +136,26 @@ spec:
         host: my-app
         subset: v2
       weight: 0
+```
+
+Because the VirtualService routes to named subsets, define those subsets in a DestinationRule as well:
+
+```yaml
+# clusters/production/apps/my-app/destinationrule.yaml
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: my-app
+  namespace: default
+spec:
+  host: my-app
+  subsets:
+  - name: v1
+    labels:
+      version: v1
+  - name: v2
+    labels:
+      version: v2
 ```
 
 To do a canary rollout, create a pull request that changes the weights:
@@ -258,12 +282,12 @@ In the Weave GitOps UI, you can see:
 
 ## Handling Drift
 
-If someone manually modifies an Istio resource using kubectl, Flux will detect the drift and revert it to match Git. This is controlled by the `prune` option in the Kustomization:
+If someone manually modifies an Istio resource using kubectl, Flux will detect the drift on its next reconciliation and revert it to match Git. The `prune` option handles garbage collection for resources that were removed from Git:
 
 ```yaml
 spec:
   prune: true  # Remove resources that are no longer in Git
-  force: false # Don't force apply if there are conflicts
+  force: false # Don't recreate resources to work around immutable field changes
 ```
 
 You can also set up alerts for drift detection:
