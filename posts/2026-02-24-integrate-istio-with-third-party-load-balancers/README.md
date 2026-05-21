@@ -72,7 +72,7 @@ spec:
     istio: ingressgateway
 ```
 
-If your load balancer inserts `X-Forwarded-For` headers, configure the Istio gateway to trust them:
+If your load balancer inserts `X-Forwarded-For` headers, configure the Istio gateway listener as usual:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -92,7 +92,7 @@ spec:
     - "*.example.com"
 ```
 
-And set the number of trusted proxies in the mesh config:
+Then set the number of trusted proxies in the mesh config so Istio can determine the trusted client address from `X-Forwarded-For`:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -108,7 +108,7 @@ spec:
 
 F5 BIG-IP is probably the most common enterprise load balancer you will encounter. The integration uses the F5 BIG-IP Controller for Kubernetes (also called the k8s-bigip-ctlr).
 
-Install the F5 controller:
+After you create the BIG-IP login secret required by the chart, install the F5 controller:
 
 ```bash
 helm repo add f5-stable https://f5networks.github.io/charts/stable
@@ -154,50 +154,40 @@ HAProxy can sit in front of Istio either as a Kubernetes Ingress controller or a
 
 ```text
 frontend http-in
+    mode http
     bind *:80
     bind *:443 ssl crt /etc/haproxy/certs/
     default_backend istio-gateway
 
 backend istio-gateway
+    mode http
     balance roundrobin
     option httpchk GET /healthz/ready HTTP/1.1\r\nHost:\ health
     http-check expect status 200
-    server node1 10.0.1.10:30080 check
-    server node2 10.0.1.11:30080 check
-    server node3 10.0.1.12:30080 check
+    server node1 10.0.1.10:30080 check port 30021
+    server node2 10.0.1.11:30080 check port 30021
+    server node3 10.0.1.12:30080 check port 30021
 ```
 
-If you want HAProxy to send the PROXY protocol so Istio can extract the real client IP:
+If you are running HAProxy in Layer 4 mode and want it to send the PROXY protocol so Istio can extract the real client IP:
 
 ```text
 backend istio-gateway
+    mode tcp
     balance roundrobin
-    server node1 10.0.1.10:30080 check send-proxy-v2
+    server node1 10.0.1.10:30443 check port 30021 send-proxy-v2
 ```
 
-Then configure the Istio ingress gateway to accept PROXY protocol by adding an EnvoyFilter:
+Then configure the Istio ingress gateway to accept PROXY protocol:
 
 ```yaml
-apiVersion: networking.istio.io/v1alpha3
-kind: EnvoyFilter
-metadata:
-  name: proxy-protocol
-  namespace: istio-system
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
 spec:
-  workloadSelector:
-    labels:
-      istio: ingressgateway
-  configPatches:
-  - applyTo: LISTENER
-    match:
-      context: GATEWAY
-    patch:
-      operation: MERGE
-      value:
-        listener_filters:
-        - name: envoy.filters.listener.proxy_protocol
-          typed_config:
-            "@type": type.googleapis.com/envoy.extensions.filters.listener.proxy_protocol.v3.ProxyProtocol
+  meshConfig:
+    defaultConfig:
+      gatewayTopology:
+        proxyProtocol: {}
 ```
 
 ## Health Checks
