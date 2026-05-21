@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Locality Priority, Load Balancing, Kubernetes, Multi-Zone
 
-Description: Configure region and zone priority ordering in Istio to control the exact failover chain when local service endpoints are unavailable.
+Description: Configure regional failover and weighted zone preferences in Istio when local service endpoints are unavailable.
 
 ---
 
-When Istio routes traffic using locality-aware load balancing, it assigns a priority to each group of endpoints based on how close they are to the calling pod. Same-zone endpoints get the highest priority, same-region-different-zone gets the next, and other regions come last. But what if you want to customize this ordering? Maybe zone B is geographically closer to zone A than zone C is, or maybe one region has better connectivity than another.
+When Istio routes traffic using locality-aware load balancing, it assigns a priority to each group of endpoints based on how close they are to the calling pod. Endpoints in the same region, zone, and sub-zone get the highest priority, same-region endpoints get the next zone-level priority, and other regions come later. But what if you want to customize this ordering? Maybe zone B is geographically closer to zone A than zone C is, or maybe one region has better connectivity than another.
 
-Istio lets you control the priority order through failover configuration and distribute settings in DestinationRules. You define exactly which localities should be preferred and in what order.
+Istio lets you control regional failover through `failover`, label-based priority chains through `failoverPriority`, and weighted locality preferences through `distribute` settings in DestinationRules.
 
 ## Default Priority Assignment
 
@@ -18,9 +18,10 @@ Without any custom configuration, Istio assigns priorities like this:
 
 | Priority Level | Locality Relationship | Example |
 |---------------|----------------------|---------|
-| 0 (highest) | Same region, same zone | us-east-1a to us-east-1a |
-| 1 | Same region, different zone | us-east-1a to us-east-1b |
-| 2 | Different region | us-east-1a to us-west-2a |
+| 0 (highest) | Same region, same zone, same sub-zone | us-east-1a/rack-1 to us-east-1a/rack-1 |
+| 1 | Same region, same zone, different sub-zone | us-east-1a/rack-1 to us-east-1a/rack-2 |
+| 2 | Same region, different zone | us-east-1a to us-east-1b |
+| 3+ | Different region | us-east-1a to us-west-2a |
 
 This is usually what you want. But there are cases where you need to override this default behavior.
 
@@ -60,7 +61,7 @@ This configuration creates regional affinity groups. US regions failover to each
 
 ## Zone Priority Within a Region
 
-By default, all zones within a region have the same priority (level 1 for non-local zones). If you need specific zone ordering, use the `distribute` configuration instead of `failover`:
+By default, zones in the same region are handled by Istio's locality priority model. If you need weighted zone preferences rather than strict failover ordering, use the `distribute` configuration instead of `failover`:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -96,7 +97,7 @@ spec:
       simple: ROUND_ROBIN
 ```
 
-In this example, zone A and zone B prefer each other as secondary (15%), while zone C is the last resort (5%). This makes sense if A and B are in the same physical data center while C is in a separate facility.
+In this example, traffic from zone A sends 80% to zone A, 15% to zone B, and 5% to zone C. This is a weighted distribution, not a strict priority chain, so zone C still receives some traffic while zone A and zone B are healthy.
 
 ## Understanding How Envoy Uses Priorities
 
@@ -131,36 +132,38 @@ istioctl proxy-config endpoint <pod-name>.default \
 Look for the `priority` field in the output. Each endpoint group has a priority number:
 
 ```json
-{
-  "hostStatuses": [
-    {
-      "address": {
-        "socketAddress": {
-          "address": "10.0.1.5",
-          "portValue": 8080
-        }
+[
+  {
+    "hostStatuses": [
+      {
+        "address": {
+          "socketAddress": {
+            "address": "10.0.1.5",
+            "portValue": 8080
+          }
+        },
+        "locality": {
+          "region": "us-east-1",
+          "zone": "us-east-1a"
+        },
+        "priority": 0
       },
-      "locality": {
-        "region": "us-east-1",
-        "zone": "us-east-1a"
-      },
-      "priority": 0
-    },
-    {
-      "address": {
-        "socketAddress": {
-          "address": "10.0.2.5",
-          "portValue": 8080
-        }
-      },
-      "locality": {
-        "region": "us-east-1",
-        "zone": "us-east-1b"
-      },
-      "priority": 1
-    }
-  ]
-}
+      {
+        "address": {
+          "socketAddress": {
+            "address": "10.0.2.5",
+            "portValue": 8080
+          }
+        },
+        "locality": {
+          "region": "us-east-1",
+          "zone": "us-east-1b"
+        },
+        "priority": 2
+      }
+    ]
+  }
+]
 ```
 
 ## Setting Up a Three-Tier Priority System
@@ -201,8 +204,9 @@ This creates the following priority chain for a pod in us-east-1/us-east-1a:
 
 ```text
 Priority 0: us-east-1/us-east-1a (local zone)
-Priority 1: us-east-1/us-east-1b, us-east-1/us-east-1c (same region)
-Priority 2: us-east-2/* (failover region)
+Priority 1: us-east-1/us-east-1a with a different sub-zone, if sub-zones are configured
+Priority 2: us-east-1/us-east-1b, us-east-1/us-east-1c (same region)
+Priority 3: us-east-2/* (failover region)
 ```
 
 ## Combining with Health Checks
@@ -222,54 +226,32 @@ The `consecutiveGatewayErrors` field catches 502, 503, and 504 errors specifical
 
 ## Testing Priority Configuration
 
-Simulate a zone failure and verify priorities work:
+Simulate endpoint failure and verify priorities work:
 
 ```bash
-# Scale down pods in zone a
+# Drain one service pod's sidecar in the local zone
 
-kubectl get pods -l app=order-processing -o wide \
-  | grep us-east-1a \
-  | awk '{print $1}' \
-  | xargs kubectl delete pod
+kubectl exec -n default <order-processing-pod-in-us-east-1a> \
+  -c istio-proxy -- curl -sSL -X POST 127.0.0.1:15000/drain_listeners
 
 # Watch traffic shift
 kubectl logs -l app=client-app --tail=50 -f
 ```
 
-Or use Istio fault injection for a less destructive test:
-
-```yaml
-apiVersion: networking.istio.io/v1
-kind: VirtualService
-metadata:
-  name: order-processing-fault-test
-spec:
-  hosts:
-    - order-processing
-  http:
-    - fault:
-        abort:
-          httpStatus: 503
-          percentage:
-            value: 100
-      route:
-        - destination:
-            host: order-processing
-```
-
-Apply this temporarily, watch traffic shift to lower-priority zones, then remove it.
+VirtualService fault injection is useful for testing client behavior, but an injected abort happens before an upstream endpoint is selected. It does not prove that outlier detection and locality failover are working.
 
 ## Monitoring Priority-Based Routing
 
-Track which priority level is serving traffic:
+Inspect the endpoint priority assignments:
 
 ```bash
-# Check cluster stats for priority levels
-istioctl proxy-config cluster <pod-name> -o json \
-  | jq '.[] | select(.name | contains("order-processing"))'
+# Check endpoint priorities for the service cluster
+istioctl proxy-config endpoint <pod-name> \
+  --cluster "outbound|80||order-processing.default.svc.cluster.local" -o json \
+  | jq '.[] | .hostStatuses[] | {address, locality, priority, healthStatus}'
 ```
 
-In Prometheus, you can track the destination pod zones:
+In Prometheus, standard Istio request metrics do not expose Envoy priority directly, but you can track which destination workloads are receiving traffic:
 
 ```text
 sum(rate(istio_requests_total{
@@ -285,4 +267,4 @@ sum(rate(istio_requests_total{
 - Document your priority configuration so the on-call team understands the failover behavior
 - Consider the latency impact of each priority level when defining failover chains
 
-Region and zone priority configuration gives you precise control over traffic routing preferences. The default same-zone-first behavior works for many cases, but when you have specific geographic or infrastructure requirements, custom priorities let you match your routing to your actual network topology.
+Region failover and zone distribution settings give you more control over traffic routing preferences. The default same-zone-first behavior works for many cases, but when you have specific geographic or infrastructure requirements, these settings let you match your routing to your actual network topology.
