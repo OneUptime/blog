@@ -137,7 +137,7 @@ spec:
       weight: 5
 ```
 
-The weights must add up to 100. With this configuration, 5% of requests go to v2 and 95% go to v1.
+The weights are relative, so using values that add up to 100 makes the percentages easy to read. With this configuration, 5% of requests go to v2 and 95% go to v1.
 
 Apply it:
 
@@ -153,13 +153,13 @@ istioctl proxy-config routes deploy/web-app-v1 -n production --name "80" -o json
 
 ## Verifying Traffic Distribution
 
-Generate some test traffic and check the distribution:
+Generate some test traffic from a pod inside the mesh and check the distribution:
 
 ```bash
 # Generate 1000 requests
 
 for i in $(seq 1 1000); do
-  curl -s -o /dev/null -w "%{http_code}" http://web-app.production/api/version
+  curl -s -o /dev/null -w "%{http_code}" http://web-app.production.svc.cluster.local/api/version
 done
 ```
 
@@ -237,7 +237,7 @@ kubectl scale deployment web-app-v2 -n production --replicas=1
 # At 25%: scale up proportionally
 kubectl scale deployment web-app-v2 -n production --replicas=1
 
-# At 50%: match the stable replica count
+# At 50%: scale for half the total load
 kubectl scale deployment web-app-v2 -n production --replicas=2
 
 # At 100%: full replica count
