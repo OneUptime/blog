@@ -73,7 +73,7 @@ spec:
           weight: 10
 ```
 
-With this configuration, 90% of traffic goes to v1 and 10% goes to v2. The weights must add up to 100. Apply it:
+With this configuration, 90% of traffic goes to v1 and 10% goes to v2. Istio treats weights as relative proportions, so using values that add up to 100 makes the percentages explicit. Apply it:
 
 ```bash
 kubectl apply -f virtual-service.yaml
@@ -81,11 +81,12 @@ kubectl apply -f virtual-service.yaml
 
 ## Verifying the Traffic Split
 
-You can verify that traffic is being split correctly by sending a bunch of requests and checking the responses. If your service returns a version identifier, this becomes easy:
+You can verify that traffic is being split correctly by sending a bunch of requests from a meshed client pod and checking the responses. If your service returns a version identifier, this becomes easy:
 
 ```bash
+SOURCE_POD=$(kubectl get pod -l app=curl -o jsonpath='{.items[0].metadata.name}')
 for i in $(seq 1 100); do
-  curl -s http://my-service.default.svc.cluster.local | grep -o 'v[0-9]'
+  kubectl exec "$SOURCE_POD" -c curl -- curl -s http://my-service.default.svc.cluster.local | grep -o 'v[0-9]'
 done | sort | uniq -c
 ```
 
@@ -176,7 +177,7 @@ spec:
           weight: 10
 ```
 
-Again, the weights need to add up to 100.
+Again, using weights that add up to 100 makes the intended percentages easy to read.
 
 ## Combining Weight with Match Conditions
 
@@ -249,11 +250,11 @@ This tells Flagger to increase the weight by 10% every 30 seconds, up to a maxim
 
 ## Common Pitfalls
 
-**Weights not adding up to 100.** If your weights do not sum to 100, Istio will normalize them, but the behavior might not be what you expect. Always make them add up to 100 explicitly.
+**Weights not adding up to 100.** Istio uses relative proportions, so a destination receives `weight / sum(all weights)` requests. For clarity, make them add up to 100 when you are describing percentages.
 
 **Missing DestinationRule.** If you define subsets in a VirtualService but do not have a corresponding DestinationRule, traffic will fail with 503 errors. The DestinationRule must exist before the VirtualService references its subsets.
 
-**Sidecar not injected.** Weighted routing only works when both the client and server pods have the Istio sidecar proxy. If a pod is not part of the mesh, the VirtualService rules will not apply to traffic from or to that pod.
+**Sidecar not injected.** Weighted routing is applied by an Istio proxy, such as the client sidecar for in-mesh calls or an ingress gateway for traffic entering the mesh. If traffic bypasses Istio proxies, the VirtualService rules will not apply.
 
 **Session affinity issues.** Weighted routing is per-request, not per-user. If you need a user to consistently hit the same version, you will need to combine this with consistent hashing or header-based routing.
 
