@@ -39,7 +39,9 @@ If you're installing Istio fresh on the target cluster, the CRDs come with the i
 istioctl install --set profile=default
 
 # Or using Helm (CRDs are in the base chart)
-helm install istio-base istio/base -n istio-system --create-namespace
+helm repo add istio https://istio-release.storage.googleapis.com/charts
+helm repo update
+helm install istio-base istio/base -n istio-system --set defaultRevision=default --create-namespace
 ```
 
 If you only need the CRDs without a full Istio installation (for example, you're pre-staging resources before the actual migration):
@@ -89,6 +91,8 @@ kubectl create namespace another-app --dry-run=client -o yaml | kubectl apply -f
 kubectl label namespace my-app istio-injection=enabled --overwrite
 kubectl label namespace another-app istio-injection=enabled --overwrite
 ```
+
+If you use revisioned Istio control planes, label namespaces with `istio.io/rev=<revision>` instead of `istio-injection=enabled`.
 
 If you exported namespace configurations:
 
@@ -196,11 +200,11 @@ Fix: Create the namespace first.
 kubectl create namespace my-app
 ```
 
-**Resource already exists:**
+**Resource already exists or field-manager conflict:**
 ```text
 Error from server (AlreadyExists): ...
 ```
-Fix: Use `--server-side --force-conflicts` or delete the existing resource first.
+Fix: Make sure you're using `kubectl apply` instead of `kubectl create`. If server-side apply reports a field ownership conflict, use `--server-side --force-conflicts` or delete the existing resource first.
 
 ```bash
 kubectl apply -f resource.yaml --server-side --force-conflicts
@@ -238,7 +242,7 @@ After importing, run a full verification:
 ```bash
 # Check resource counts
 echo "Imported resources:"
-for resource in virtualservices destinationrules gateways serviceentries peerauthentications requestauthentications authorizationpolicies sidecars envoyfilters; do
+for resource in virtualservices.networking.istio.io destinationrules.networking.istio.io gateways.networking.istio.io serviceentries.networking.istio.io peerauthentications.security.istio.io requestauthentications.security.istio.io authorizationpolicies.security.istio.io sidecars.networking.istio.io envoyfilters.networking.istio.io proxyconfigs.networking.istio.io telemetries.telemetry.istio.io; do
   count=$(kubectl get "$resource" --all-namespaces --no-headers 2>/dev/null | wc -l)
   echo "  $resource: $count"
 done
