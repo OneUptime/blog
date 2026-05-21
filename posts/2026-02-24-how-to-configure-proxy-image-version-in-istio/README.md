@@ -21,7 +21,7 @@ docker.io/istio/proxyv2:<istio-version>
 You can check the current default:
 
 ```bash
-kubectl get configmap istio-sidecar-injector -n istio-system -o jsonpath='{.data.values}' | jq '.global.proxy.image'
+kubectl get configmap istio-sidecar-injector -n istio-system -o jsonpath='{.data.values}' | yq '.global.proxy.image'
 ```
 
 Or check what a running pod uses:
@@ -147,13 +147,13 @@ kubectl rollout restart deployment canary-service
 ```bash
 # Check proxy version
 
-kubectl exec -l app=canary-service -c istio-proxy -- pilot-agent request GET /server_info | jq '.version'
+kubectl exec deploy/canary-service -c istio-proxy -- pilot-agent request GET /server_info | jq '.version'
 
 # Watch for errors in proxy logs
 kubectl logs -l app=canary-service -c istio-proxy --tail=100
 
 # Check Envoy stats
-kubectl exec -l app=canary-service -c istio-proxy -- pilot-agent request GET /stats | grep -E "upstream_cx_connect_fail|upstream_rq_5xx"
+kubectl exec deploy/canary-service -c istio-proxy -- pilot-agent request GET /stats | grep -E "upstream_cx_connect_fail|upstream_rq_5xx"
 ```
 
 **Step 4: Gradually roll out to more workloads**
@@ -167,7 +167,7 @@ kubectl rollout restart deployment -n production
 
 ## Version Compatibility
 
-The Istio proxy version should be compatible with the control plane version. Istio supports a version skew of +/- 1 minor version. So if your control plane is version 1.20, your proxies can be 1.19, 1.20, or 1.21.
+The Istio proxy version should be compatible with the control plane version. Istio supports the control plane being one minor version ahead of the data plane, but the data plane should not be ahead of the control plane. So if your control plane is version 1.20, your proxies should be 1.19 or 1.20, not 1.21.
 
 Check version compatibility:
 
@@ -194,7 +194,7 @@ This gives you a count of each proxy image version across the cluster.
 
 ## Init Container Image
 
-The init container (`istio-init`) also uses the proxy image. When you override the proxy image, the init container image is not automatically updated. To keep them in sync:
+The init container (`istio-init`) also uses the proxy image. When you override the proxy image with a full image reference, the injector uses the same image for the sidecar and init container:
 
 ```yaml
 metadata:
