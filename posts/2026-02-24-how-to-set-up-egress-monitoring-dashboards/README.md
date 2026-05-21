@@ -19,7 +19,7 @@ You need:
 - Prometheus scraping Istio metrics (typically via the Prometheus Operator or the built-in Istio Prometheus addon)
 - Grafana connected to your Prometheus data source
 
-If you installed Istio with the demo profile, Prometheus and Grafana addons are included. For production, you likely have your own Prometheus and Grafana setup.
+If you installed Istio with the demo profile, the egress gateway is enabled, but Prometheus and Grafana are installed separately as addons. For production, you likely have your own Prometheus and Grafana setup.
 
 ## Key Metrics for Egress Monitoring
 
@@ -76,14 +76,20 @@ Display this as a bar chart or pie chart to see the distribution of outbound tra
 
 ## Dashboard Panel 3: Error Rate
 
-Track errors on outbound connections:
+Track the percentage of outbound requests that return non-2xx responses:
 
 ```promql
+100 *
 sum(rate(istio_requests_total{
   reporter="destination",
   destination_workload="istio-egressgateway",
   response_code!~"2.."
-}[5m])) by (response_code, source_workload)
+}[5m])) by (source_workload)
+/
+sum(rate(istio_requests_total{
+  reporter="destination",
+  destination_workload="istio-egressgateway"
+}[5m])) by (source_workload)
 ```
 
 Set up threshold coloring in Grafana: green when the error rate is below 1%, yellow between 1-5%, and red above 5%.
@@ -114,7 +120,7 @@ Display these as stacked area charts to visualize traffic volume over time. Mult
 
 ## Dashboard Panel 5: TCP Connection Count
 
-Monitor active TCP connections through the egress gateway:
+Monitor new TCP connections through the egress gateway:
 
 ```promql
 sum(rate(istio_tcp_connections_opened_total{
@@ -177,8 +183,8 @@ Here is a JSON snippet for a Grafana dashboard row with two panels. You can impo
       "datasource": "Prometheus",
       "targets": [
         {
-          "expr": "sum(rate(istio_requests_total{reporter=\"destination\", destination_workload=\"istio-egressgateway\", response_code!~\"2..\"}[5m])) by (response_code)",
-          "legendFormat": "HTTP {{response_code}}"
+          "expr": "100 * sum(rate(istio_requests_total{reporter=\"destination\", destination_workload=\"istio-egressgateway\", response_code!~\"2..\"}[5m])) / sum(rate(istio_requests_total{reporter=\"destination\", destination_workload=\"istio-egressgateway\"}[5m]))",
+          "legendFormat": "Error %"
         }
       ],
       "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
