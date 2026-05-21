@@ -41,7 +41,7 @@ metadata:
 spec:
   template:
     metadata:
-      annotations:
+      labels:
         sidecar.istio.io/inject: "false"
     spec:
       restartPolicy: Never
@@ -55,7 +55,7 @@ This works fine if your Job does not need to call services inside the mesh or if
 
 ## Solution 2: Sidecar Lifecycle with Kubernetes Native Support
 
-Starting with Kubernetes 1.28 (stable), the sidecar containers feature allows containers to be marked as sidecars that terminate automatically when the main container exits:
+Starting with Kubernetes 1.33 (stable), the sidecar containers feature allows containers to be marked as sidecars that do not block Job completion when the main container exits. The feature has been enabled by default since Kubernetes 1.29:
 
 ```yaml
 apiVersion: batch/v1
@@ -64,17 +64,17 @@ metadata:
   name: my-job
 spec:
   template:
+    metadata:
+      annotations:
+        sidecar.istio.io/nativeSidecar: "true"
     spec:
       restartPolicy: Never
-      initContainers:
-      - name: istio-proxy
-        restartPolicy: Always  # This marks it as a sidecar
       containers:
       - name: my-job
         image: my-job:latest
 ```
 
-Istio versions 1.22 and later support this native sidecar mode. Enable it during installation:
+With native sidecars enabled, Istio injects `istio-proxy` as an init container with `restartPolicy: Always`. In Istio 1.27 and later, this is enabled by default for eligible pods. For earlier supported Istio versions, enable it during installation:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -86,11 +86,11 @@ spec:
         ENABLE_NATIVE_SIDECARS: "true"
 ```
 
-With native sidecars, the istio-proxy is injected as an init container with `restartPolicy: Always`. Kubernetes automatically terminates it when the main container exits.
+With native sidecars, Kubernetes does not count the running sidecar as blocking Job completion after the main container exits.
 
-## Solution 3: Exit on Zero Active Connections
+## Solution 3: Explicitly Terminate the Sidecar
 
-Istio supports a configuration that makes the sidecar exit when it detects that the application container has stopped:
+For clusters that are not using native sidecars, explicitly ask the Istio sidecar to exit when the application container has stopped:
 
 ```yaml
 apiVersion: batch/v1
@@ -276,4 +276,4 @@ The pod should show status Completed with 0/2 containers ready (both containers 
 
 ## Wrapping Up
 
-The Istio sidecar termination problem with Jobs is a known issue with several good solutions. If you are running Kubernetes 1.28 or later, native sidecar containers are the cleanest approach. Otherwise, use the `/quitquitquit` endpoint to shut down the sidecar when your Job finishes. For Jobs that do not need mesh features, simply disable sidecar injection. Whichever approach you choose, test it thoroughly and monitor for stuck Jobs.
+The Istio sidecar termination problem with Jobs is a known issue with several good solutions. If you are running Kubernetes 1.33 or later, native sidecar containers are the cleanest approach. Otherwise, use the `/quitquitquit` endpoint to shut down the sidecar when your Job finishes. For Jobs that do not need mesh features, simply disable sidecar injection. Whichever approach you choose, test it thoroughly and monitor for stuck Jobs.
