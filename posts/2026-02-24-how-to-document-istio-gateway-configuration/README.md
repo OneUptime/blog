@@ -26,7 +26,7 @@ Every Gateway should have documentation covering:
 Use annotations to embed documentation directly in the Gateway resource:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: production-gateway
@@ -129,7 +129,11 @@ for GW in $(kubectl get gateways -A -o jsonpath='{range .items[*]}{.metadata.nam
 
   kubectl get virtualservices -A -o json | jq -r --arg gw "$GW_NAME" --arg gwns "$GW_NS" '
     .items[] |
-    select(.spec.gateways[]? == $gw or .spec.gateways[]? == ($gwns + "/" + $gw)) |
+    select(
+      .spec.gateways[]? as $ref |
+      ($ref == ($gwns + "/" + $gw)) or
+      ($ref == $gw and .metadata.namespace == $gwns)
+    ) |
     "| " + .metadata.name +
     " | " + .metadata.namespace +
     " | " + (.spec.hosts | join(", ")) +
@@ -155,19 +159,29 @@ echo "|---------|-----------|-----------------|--------|--------|"
 
 kubectl get gateways -A -o json | jq -r '
   .items[] |
+  .metadata.namespace as $gw_ns |
   .metadata.name as $gw |
+  (.spec.selector // {} | to_entries | map(.key + "=" + .value) | join(",")) as $selector |
   .spec.servers[] |
   select(.tls.credentialName != null) |
-  [$gw, .tls.credentialName] | @tsv
-' | while read GW CRED; do
-  # Look for the TLS secret
-  SECRET_DATA=$(kubectl get secret $CRED -n istio-system -o json 2>/dev/null)
+  [$gw_ns, $gw, .tls.credentialName, $selector] | @tsv
+' | while read -r GW_NS GW CRED SELECTOR; do
+  # Look for the TLS secret in the namespace where the gateway workload is running.
+  SECRET_NS=$GW_NS
+  if [ -n "$SELECTOR" ]; then
+    WORKLOAD_NS=$(kubectl get pods -A -l "$SELECTOR" -o jsonpath='{.items[0].metadata.namespace}' 2>/dev/null)
+    if [ -n "$WORKLOAD_NS" ]; then
+      SECRET_NS=$WORKLOAD_NS
+    fi
+  fi
+
+  SECRET_DATA=$(kubectl get secret "$CRED" -n "$SECRET_NS" -o json 2>/dev/null)
   if [ $? -eq 0 ]; then
     EXPIRY=$(echo $SECRET_DATA | jq -r '.data["tls.crt"]' | \
       base64 -d | openssl x509 -noout -enddate 2>/dev/null | cut -d= -f2)
     ISSUER=$(echo $SECRET_DATA | jq -r '.data["tls.crt"]' | \
       base64 -d | openssl x509 -noout -issuer 2>/dev/null | sed 's/issuer=//')
-    echo "| $GW | $CRED | istio-system | $EXPIRY | $ISSUER |"
+    echo "| $GW | $CRED | $SECRET_NS | $EXPIRY | $ISSUER |"
   else
     echo "| $GW | $CRED | NOT FOUND | N/A | N/A |"
   fi
@@ -237,21 +251,21 @@ echo "## Active Listeners"
 GATEWAY_POD=$(kubectl get pods -n istio-system -l istio=ingressgateway -o jsonpath='{.items[0].metadata.name}')
 if [ -n "$GATEWAY_POD" ]; then
   kubectl exec -n istio-system $GATEWAY_POD -- \
-    pilot-agent request GET /listeners | python3 -m json.tool | \
-    jq -r '.[].name'
+    pilot-agent request GET '/listeners?format=json' | python3 -m json.tool | \
+    jq -r '.listener_statuses[]?.name'
+
+  echo ""
+  echo "## Certificate Status"
+  kubectl exec -n istio-system $GATEWAY_POD -- \
+    pilot-agent request GET /certs | python3 -m json.tool 2>/dev/null | \
+    jq -r '.certificates[]? | .cert_chain[0] | "- Subject: " + .subject + " | Expires: " + .valid_to'
+
+  echo ""
+  echo "## Active Routes"
+  kubectl exec -n istio-system $GATEWAY_POD -- \
+    pilot-agent request GET /config_dump | python3 -m json.tool 2>/dev/null | \
+    jq -r '.configs[]? | select(.["@type"] | contains("RoutesConfigDump")) | .dynamic_route_configs[]? | .route_config.name'
 fi
-
-echo ""
-echo "## Certificate Status"
-kubectl exec -n istio-system $GATEWAY_POD -- \
-  pilot-agent request GET /certs | python3 -m json.tool 2>/dev/null | \
-  jq -r '.certificates[]? | .cert_chain[0] | "- Subject: " + .subject + " | Expires: " + .valid_to'
-
-echo ""
-echo "## Active Routes"
-kubectl exec -n istio-system $GATEWAY_POD -- \
-  pilot-agent request GET /config_dump | python3 -m json.tool 2>/dev/null | \
-  jq -r '.configs[]? | select(.["@type"] | contains("RouteConfiguration")) | .dynamic_route_configs[]? | .route_config.name'
 ```
 
 ## Runbook Entry for Gateway Issues
@@ -268,8 +282,8 @@ Include troubleshooting steps in your documentation:
 4. Verify: `istioctl proxy-config routes -n istio-system deploy/istio-ingressgateway`
 
 ### Symptom: TLS handshake failure
-1. Verify the TLS secret exists: `kubectl get secret <cred-name> -n istio-system`
-2. Check cert expiry: `kubectl get secret <cred-name> -n istio-system -o json | jq '.data["tls.crt"]' -r | base64 -d | openssl x509 -noout -dates`
+1. Verify the TLS secret exists in the gateway workload namespace: `kubectl get secret <cred-name> -n <gateway-workload-namespace>`
+2. Check cert expiry: `kubectl get secret <cred-name> -n <gateway-workload-namespace> -o json | jq '.data["tls.crt"]' -r | base64 -d | openssl x509 -noout -dates`
 3. Verify cert matches hostname: `openssl s_client -connect gateway.example.com:443 -servername api.example.com`
 
 ### Symptom: 503 Service Unavailable
