@@ -12,10 +12,11 @@ Istio is a large software project with many dependencies, including Envoy, Go st
 
 ## Tracking Istio CVEs
 
-Istio publishes security advisories at https://istio.io/latest/news/security/. Subscribe to their mailing list to get notified:
+Istio publishes security advisories at https://istio.io/latest/news/security/. Watch the announcement channels listed in their security vulnerability process to get notified:
 
-- Security announcements: istio-security-vulnerabilities@googlegroups.com
-- General announcements: istio-announce@googlegroups.com
+- The Istio blog
+- The Announcements category on discuss.istio.io
+- The #announcements channel on Istio Slack
 
 You can also watch the GitHub repository for security advisories:
 
@@ -34,16 +35,16 @@ Regularly scan your Istio images for known vulnerabilities:
 
 ```bash
 # Scan the control plane image
-trivy image istio/pilot:1.22.0
+trivy image istio/pilot:1.29.2
 
 # Scan the sidecar proxy image
-trivy image istio/proxyv2:1.22.0
+trivy image istio/proxyv2:1.29.2
 
 # Scan with severity filter
-trivy image --severity CRITICAL,HIGH istio/pilot:1.22.0
+trivy image --severity CRITICAL,HIGH istio/pilot:1.29.2
 
 # Output as JSON for automation
-trivy image --format json --output pilot-cves.json istio/pilot:1.22.0
+trivy image --format json --output pilot-cves.json istio/pilot:1.29.2
 ```
 
 Set up automated scanning in your CI pipeline:
@@ -58,20 +59,20 @@ jobs:
   scan:
     runs-on: ubuntu-latest
     steps:
-    - name: Get current Istio version
+    - name: Set Istio version to scan
       run: |
-        ISTIO_VERSION=$(istioctl version --remote=false 2>/dev/null || echo "1.22.0")
+        ISTIO_VERSION="${ISTIO_VERSION:-1.29.2}"
         echo "ISTIO_VERSION=$ISTIO_VERSION" >> $GITHUB_ENV
 
     - name: Scan pilot image
-      uses: aquasecurity/trivy-action@master
+      uses: aquasecurity/trivy-action@v0.36.0
       with:
         image-ref: 'istio/pilot:${{ env.ISTIO_VERSION }}'
         severity: 'CRITICAL,HIGH'
         exit-code: '1'
 
     - name: Scan proxyv2 image
-      uses: aquasecurity/trivy-action@master
+      uses: aquasecurity/trivy-action@v0.36.0
       with:
         image-ref: 'istio/proxyv2:${{ env.ISTIO_VERSION }}'
         severity: 'CRITICAL,HIGH'
@@ -82,7 +83,7 @@ jobs:
 
 Not every CVE requires an immediate response. Assess the impact based on:
 
-1. **Severity** - CVSS score (Critical > 9.0, High > 7.0)
+1. **Severity** - CVSS score (Critical >= 9.0, High >= 7.0)
 2. **Exploitability** - Is there a known exploit? Is it remotely exploitable?
 3. **Affected component** - Control plane CVEs are often more critical than data plane ones
 4. **Your exposure** - Do you use the affected feature? Is the vulnerable port exposed?
@@ -99,24 +100,24 @@ MEDIUM/LOW                             = Patch in next scheduled upgrade
 
 ## Applying Security Patches
 
-Istio releases patch versions specifically for security fixes. These are usually minor version bumps like 1.22.1 to 1.22.2.
+Istio releases patch versions specifically for security fixes. These are usually patch version bumps like 1.29.2 to 1.29.3.
 
 **Check for available patches:**
 
 ```bash
 # List available versions
 curl -s https://api.github.com/repos/istio/istio/releases | \
-  jq '.[] | select(.tag_name | startswith("1.22")) | {tag: .tag_name, date: .published_at}'
+  jq '.[] | select(.tag_name | startswith("1.29")) | {tag: .tag_name, date: .published_at}'
 ```
 
 **Upgrade the control plane:**
 
 ```bash
 # Download the new version
-curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.22.2 sh -
+curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.29.3 sh -
 
 # Upgrade istiod
-istioctl upgrade --set values.global.tag=1.22.2
+istioctl upgrade --set values.global.tag=1.29.3
 
 # Verify the upgrade
 istioctl version
@@ -131,7 +132,7 @@ After upgrading the control plane, you need to restart workloads to pick up the 
 kubectl rollout restart deployment -n myapp
 
 # Verify proxies are updated
-istioctl proxy-status | grep "1.22.2"
+istioctl proxy-status | grep "1.29.3"
 ```
 
 For a rolling restart with zero downtime:
@@ -151,7 +152,7 @@ Envoy vulnerabilities are particularly important because the proxy handles all m
 Check which Envoy version your proxies are running:
 
 ```bash
-kubectl exec deploy/myapp -c istio-proxy -- pilot-agent request GET server_info | \
+kubectl exec deploy/myapp -c istio-proxy -- pilot-agent request GET /server_info | \
   jq '.version'
 ```
 
@@ -194,10 +195,10 @@ For base image CVEs, check if the vulnerability is actually reachable in Istio's
 
 ```bash
 # List all packages in the image
-trivy image --list-all-pkgs istio/pilot:1.22.0
+trivy image --list-all-pkgs istio/pilot:1.29.2
 
 # Check specific package versions
-trivy image --vuln-type os istio/pilot:1.22.0
+trivy image --vuln-type os istio/pilot:1.29.2
 ```
 
 Many base image CVEs are in packages that Istio does not use at runtime. Document your risk acceptance for these and focus on CVEs in packages that are actually used.
@@ -248,9 +249,9 @@ spec:
     rules:
     - alert: UnusualProxyErrors
       expr: |
-        sum(rate(envoy_server_total_connections{pod=~".*istio.*"}[5m])) > 1000
+        sum(rate(istio_tcp_connections_opened_total[5m])) > 1000
         and
-        sum(rate(envoy_http_downstream_cx_destroy_remote_with_active_rq[5m])) > 100
+        sum(rate(istio_requests_total{response_code=~"5.."}[5m])) > 100
       for: 5m
       labels:
         severity: critical
@@ -273,9 +274,10 @@ CURRENT=$(istioctl version --remote -o json 2>/dev/null | jq -r '.meshVersion[0]
 echo "Current version: $CURRENT"
 
 # Check for newer patch versions
+MINOR=$(echo "$CURRENT" | cut -d. -f1-2)
 LATEST=$(curl -s https://api.github.com/repos/istio/istio/releases | \
-  jq -r '.[0].tag_name')
-echo "Latest version: $LATEST"
+  jq -r --arg minor "$MINOR" '[.[] | select(.prerelease | not) | select(.tag_name | startswith($minor + "."))][0].tag_name')
+echo "Latest patch for $MINOR: $LATEST"
 
 if [ "$CURRENT" != "$LATEST" ]; then
   echo "WARNING: Running outdated version. Check for security patches."
