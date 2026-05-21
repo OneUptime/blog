@@ -55,8 +55,9 @@ istio-gitops/
       istio-ingress/
         namespace.yaml
         istio-gateway.yaml
-      production/
-        kustomization.yaml
+      istio-control-plane.yaml
+      istio-ingress.yaml
+      istio-config.yaml
   istio-config/
     base/
       gateway.yaml
@@ -103,7 +104,10 @@ metadata:
   name: istio-system
   labels:
     istio-injection: disabled
----
+```
+
+```yaml
+# clusters/production/istio-ingress/namespace.yaml
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -126,7 +130,7 @@ spec:
   chart:
     spec:
       chart: base
-      version: "1.22.0"
+      version: "1.29.2"
       sourceRef:
         kind: HelmRepository
         name: istio
@@ -155,7 +159,7 @@ spec:
   chart:
     spec:
       chart: istiod
-      version: "1.22.0"
+      version: "1.29.2"
       sourceRef:
         kind: HelmRepository
         name: istio
@@ -200,7 +204,7 @@ spec:
   chart:
     spec:
       chart: gateway
-      version: "1.22.0"
+      version: "1.29.2"
       sourceRef:
         kind: HelmRepository
         name: istio
@@ -222,10 +226,54 @@ spec:
 
 ## Managing Istio Configuration Resources
 
-Use a Flux Kustomization to manage your Istio custom resources:
+Use Flux Kustomizations to manage your Istio installation and custom resources:
 
 ```yaml
-# clusters/production/production/kustomization.yaml
+# clusters/production/istio-control-plane.yaml
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: istio-control-plane
+  namespace: flux-system
+spec:
+  interval: 10m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./clusters/production/istio-system
+  prune: true
+  healthChecks:
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: istio-base
+      namespace: istio-system
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: istiod
+      namespace: istio-system
+---
+# clusters/production/istio-ingress.yaml
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: istio-ingress
+  namespace: flux-system
+spec:
+  interval: 10m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./clusters/production/istio-ingress
+  prune: true
+  dependsOn:
+    - name: istio-control-plane
+  healthChecks:
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: istio-ingress
+      namespace: istio-ingress
+---
+# clusters/production/istio-config.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -239,13 +287,7 @@ spec:
   path: ./istio-config/overlays/production
   prune: true
   dependsOn:
-    - name: istiod
-      namespace: istio-system
-  healthChecks:
-    - apiVersion: networking.istio.io/v1
-      kind: VirtualService
-      name: api-gateway
-      namespace: production
+    - name: istio-ingress
 ```
 
 ## The Istio Configuration Files
@@ -357,7 +399,7 @@ flux resume kustomization istio-config
 Configure Flux to send alerts when Istio resources change:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack
@@ -368,7 +410,7 @@ spec:
   secretRef:
     name: slack-webhook-url
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: istio-alerts
@@ -393,7 +435,7 @@ To upgrade Istio, update the chart version in your HelmRelease files and push to
 spec:
   chart:
     spec:
-      version: "1.23.0"  # Changed from 1.22.0
+      version: "1.30.0"  # Changed from 1.29.2
 ```
 
 Flux detects the change during its next reconciliation interval and performs the upgrade. The `dependsOn` chain ensures components upgrade in the correct order.
