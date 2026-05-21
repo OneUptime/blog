@@ -8,18 +8,18 @@ Description: A practical guide to running Istio service mesh on Kubernetes clust
 
 ---
 
-Weave Net is a CNI plugin that creates a virtual network connecting Docker containers and Kubernetes pods across multiple hosts. It provides automatic mesh networking with built-in encryption and DNS-based service discovery. When running Istio on top of Weave Net, there are a few things to be aware of since both systems operate in the networking space and have some overlapping features.
+Weave Net is a CNI plugin that creates a virtual network connecting Docker containers and Kubernetes pods across multiple hosts. It provides automatic mesh networking with built-in encryption and can provide DNS-based service discovery outside the Kubernetes add-on path. When running Istio on top of Weave Net, there are a few things to be aware of since both systems operate in the networking space and have some overlapping features.
 
 ## How Weave Net and Istio Interact
 
-Weave Net handles the underlying pod network using a combination of a kernel datapath (fast datapath using Open vSwitch) and a userspace fallback (sleeve mode). Istio sits on top of this network and intercepts traffic at the pod level using iptables NAT rules.
+Weave Net handles the underlying pod network using a combination of a kernel datapath (fast datapath using the Open vSwitch datapath) and a userspace fallback (sleeve mode). Istio sits on top of this network and intercepts traffic at the pod level using iptables NAT rules.
 
 The main interaction points are:
 
 1. **Traffic interception**: Istio's iptables rules capture traffic in the NAT table. Weave Net uses the FORWARD chain for routing. These generally do not conflict.
-2. **Encryption**: Weave Net has built-in encryption using NaCl. Istio uses mTLS. Running both encrypts traffic twice.
+2. **Encryption**: Weave Net has built-in encryption using NaCl for control traffic and sleeve datapath traffic, and ESP/IPsec for encrypted fast datapath traffic. Istio uses mTLS. Running both encrypts traffic twice.
 3. **Network Policy**: Weave Net implements Kubernetes NetworkPolicy. This works alongside Istio's AuthorizationPolicy.
-4. **DNS**: Weave Net includes WeaveDNS. Istio can capture DNS for its own purposes. This needs attention.
+4. **DNS**: The Weave Net Kubernetes add-on disables WeaveDNS, so DNS is usually handled by CoreDNS or kube-dns. Istio can capture DNS for its own purposes. This needs attention.
 
 ## Prerequisites
 
@@ -54,7 +54,6 @@ spec:
       holdApplicationUntilProxyStarts: true
       proxyMetadata:
         ISTIO_META_DNS_CAPTURE: "true"
-        ISTIO_META_DNS_AUTO_ALLOCATE: "true"
   components:
     pilot:
       k8s:
@@ -103,7 +102,7 @@ Both Weave Net and Istio can encrypt pod-to-pod traffic. Running both is wastefu
 
 ```bash
 # Check Weave Net encryption status
-kubectl exec -n kube-system <weave-pod> -c weave -- /home/weave/weave --local status | grep encryption
+kubectl exec -n kube-system <weave-pod> -c weave -- /home/weave/weave --local status | grep -i encryption
 ```
 
 ### Recommended: Disable Weave Net Encryption
@@ -169,7 +168,7 @@ spec:
 
 ### Allow DNS Traffic
 
-Weave Net includes WeaveDNS, but Kubernetes clusters typically use CoreDNS. Make sure DNS traffic is allowed:
+Weave Net's Kubernetes add-on typically relies on the cluster DNS service, usually CoreDNS. Make sure DNS traffic is allowed:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -180,8 +179,7 @@ metadata:
 spec:
   podSelector: {}
   egress:
-    - to: []
-      ports:
+    - ports:
         - port: 53
           protocol: UDP
         - port: 53
@@ -232,7 +230,7 @@ spec:
 
 ## DNS Configuration
 
-Weave Net includes WeaveDNS, but it is not typically used in modern Kubernetes clusters (CoreDNS is the default). If your cluster has both WeaveDNS and CoreDNS, combined with Istio's DNS capture feature, you can run into resolution conflicts.
+Weave Net includes WeaveDNS for some deployment modes, but the Kubernetes add-on disables it and modern Kubernetes clusters typically use CoreDNS. If your cluster has a custom WeaveDNS setup alongside CoreDNS, combined with Istio's DNS capture feature, you can run into resolution conflicts.
 
 ### Verify DNS Resolution Works
 
@@ -249,14 +247,14 @@ kubectl exec <pod> -c <app-container> -- cat /etc/resolv.conf
 
 ### If DNS Issues Arise
 
-Disable WeaveDNS if it is conflicting with CoreDNS:
+If a custom WeaveDNS deployment is conflicting with CoreDNS, remove that custom DNS configuration and let Kubernetes use CoreDNS:
 
 ```bash
 # Check if WeaveDNS is running
 kubectl get pods -n kube-system | grep weavedns
 
-# Disable WeaveDNS by setting the WEAVE_DNS environment variable
-kubectl set env daemonset/weave-net -n kube-system WEAVE_DNS=false
+# Verify the cluster DNS deployment
+kubectl get deployment -n kube-system coredns
 ```
 
 If Istio DNS capture causes issues:
@@ -278,7 +276,7 @@ Weave Net's VXLAN overhead reduces the effective MTU. With Istio adding headers 
 
 ```bash
 # Check Weave MTU
-kubectl exec -n kube-system <weave-pod> -c weave -- /home/weave/weave --local status | grep MTU
+kubectl exec -n kube-system <weave-pod> -c weave -- /home/weave/weave --local status connections | grep -i mtu
 
 # Typical Weave VXLAN MTU: 1376 (1500 - 124 bytes overhead)
 ```
