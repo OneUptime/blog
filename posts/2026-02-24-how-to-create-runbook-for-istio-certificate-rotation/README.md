@@ -8,7 +8,7 @@ Description: A detailed runbook for rotating Istio root CA certificates, interme
 
 ---
 
-Certificate rotation in Istio is one of those tasks that sounds simple but can go very wrong if you do not follow the right steps. Workload certificates rotate automatically, which is great, but the root CA certificate does not. When it is time to rotate the CA, or when you need to switch from the self-signed CA to a custom one, you need a careful procedure to avoid breaking mTLS across the entire mesh.
+Certificate rotation in Istio is one of those tasks that sounds simple but can go very wrong if you do not follow the right steps. Workload certificates rotate automatically, which is great, but plugged-in custom CA certificates do not rotate by themselves. When it is time to rotate the CA, or when you need to switch from the self-signed CA to a custom one, you need a careful procedure to avoid breaking mTLS across the entire mesh.
 
 This runbook covers all the certificate rotation scenarios you will encounter.
 
@@ -47,11 +47,11 @@ kubectl get secret cacerts -n istio-system -o jsonpath='{.data.root-cert\.pem}' 
 
 # Check a workload certificate
 istioctl proxy-config secret <any-pod> -o json | \
-  jq -r '.dynamicActiveSecrets[0].secret.tlsCertificate.certificateChain.inlineBytes' | \
+  jq -r '[.dynamicActiveSecrets[] | select(.name == "default")][0].secret.tlsCertificate.certificateChain.inlineBytes' | \
   base64 -d | openssl x509 -noout -dates
 
-# Verify all workload certs are valid
-istioctl proxy-config secret --all
+# Verify all proxies are connected and synchronized
+istioctl proxy-status
 ```
 
 ### Scenario 1: Routine Workload Certificate Check
@@ -76,6 +76,8 @@ kubectl delete pod <pod-name> -n <namespace>
 
 ### Scenario 2: Switching from Self-Signed to Custom CA
 
+If this is an existing mesh with live workloads, treat the switch as a root CA rotation: first add the old self-signed root and the new custom root to the trust bundle, then switch istiod to the new signing CA as shown in Scenario 3. The direct cutover below is only appropriate before workloads depend on the mesh, or during a controlled maintenance window.
+
 #### Step 1: Generate the Custom CA Certificates
 
 ```bash
@@ -84,8 +86,10 @@ mkdir -p istio-certs && cd istio-certs
 
 # Generate root CA key and certificate
 openssl req -newkey rsa:4096 -nodes -keyout root-key.pem \
-  -x509 -days 3650 -out root-cert.pem \
-  -subj "/O=MyOrg/CN=Root CA"
+  -x509 -sha256 -days 3650 -out root-cert.pem \
+  -subj "/O=MyOrg/CN=Root CA" \
+  -addext "basicConstraints=critical,CA:TRUE" \
+  -addext "keyUsage=critical,keyCertSign,cRLSign"
 
 # Generate intermediate CA key and CSR
 openssl req -newkey rsa:4096 -nodes -keyout ca-key.pem \
@@ -94,8 +98,8 @@ openssl req -newkey rsa:4096 -nodes -keyout ca-key.pem \
 
 # Sign the intermediate CA with the root CA
 openssl x509 -req -in ca-csr.pem -CA root-cert.pem -CAkey root-key.pem \
-  -CAcreateserial -out ca-cert.pem -days 1825 \
-  -extfile <(printf "basicConstraints=CA:TRUE\nkeyUsage=keyCertSign,cRLSign")
+  -CAcreateserial -out ca-cert.pem -days 1825 -sha256 \
+  -extfile <(printf "basicConstraints=critical,CA:TRUE,pathlen:0\nkeyUsage=critical,keyCertSign,cRLSign\nsubjectKeyIdentifier=hash\nauthorityKeyIdentifier=keyid,issuer")
 
 # Create the certificate chain
 cat ca-cert.pem root-cert.pem > cert-chain.pem
@@ -126,7 +130,12 @@ kubectl rollout status deployment/istiod -n istio-system --timeout=120s
 Rolling restart all meshed workloads so they receive certificates signed by the new CA:
 
 ```bash
-MESHED_NS=$(kubectl get namespaces -l istio-injection=enabled -o jsonpath='{.items[*].metadata.name}')
+MESHED_NS=$(
+  {
+    kubectl get namespaces -l istio-injection=enabled -o jsonpath='{.items[*].metadata.name}{"\n"}'
+    kubectl get namespaces -l istio.io/rev -o jsonpath='{.items[*].metadata.name}{"\n"}'
+  } | tr ' ' '\n' | sort -u
+)
 
 for ns in $MESHED_NS; do
   echo "Restarting deployments in namespace: $ns"
@@ -141,7 +150,7 @@ done
 ```bash
 # Verify workloads have certificates signed by the new CA
 istioctl proxy-config secret <pod-name> -o json | \
-  jq -r '.dynamicActiveSecrets[0].secret.tlsCertificate.certificateChain.inlineBytes' | \
+  jq -r '[.dynamicActiveSecrets[] | select(.name == "default")][0].secret.tlsCertificate.certificateChain.inlineBytes' | \
   base64 -d | openssl x509 -noout -issuer
 
 # Should show the new intermediate CA as the issuer
@@ -156,8 +165,10 @@ Root CA rotation is the most sensitive operation because you need both the old a
 ```bash
 # Generate new root CA
 openssl req -newkey rsa:4096 -nodes -keyout new-root-key.pem \
-  -x509 -days 3650 -out new-root-cert.pem \
-  -subj "/O=MyOrg/CN=Root CA v2"
+  -x509 -sha256 -days 3650 -out new-root-cert.pem \
+  -subj "/O=MyOrg/CN=Root CA v2" \
+  -addext "basicConstraints=critical,CA:TRUE" \
+  -addext "keyUsage=critical,keyCertSign,cRLSign"
 
 # Generate new intermediate CA signed by the new root
 openssl req -newkey rsa:4096 -nodes -keyout new-ca-key.pem \
@@ -165,8 +176,8 @@ openssl req -newkey rsa:4096 -nodes -keyout new-ca-key.pem \
   -subj "/O=MyOrg/CN=Istio Intermediate CA v2"
 
 openssl x509 -req -in new-ca-csr.pem -CA new-root-cert.pem -CAkey new-root-key.pem \
-  -CAcreateserial -out new-ca-cert.pem -days 1825 \
-  -extfile <(printf "basicConstraints=CA:TRUE\nkeyUsage=keyCertSign,cRLSign")
+  -CAcreateserial -out new-ca-cert.pem -days 1825 -sha256 \
+  -extfile <(printf "basicConstraints=critical,CA:TRUE,pathlen:0\nkeyUsage=critical,keyCertSign,cRLSign\nsubjectKeyIdentifier=hash\nauthorityKeyIdentifier=keyid,issuer")
 
 cat new-ca-cert.pem new-root-cert.pem > new-cert-chain.pem
 ```
@@ -183,12 +194,12 @@ cat root-cert.pem new-root-cert.pem > combined-root-cert.pem
 #### Step 3: Update the Secret with Combined Roots
 
 ```bash
-# Update the cacerts secret with new intermediate but COMBINED roots
+# First update the trust bundle with old and new roots, while keeping the old signing CA
 kubectl create secret generic cacerts -n istio-system \
-  --from-file=ca-cert.pem=new-ca-cert.pem \
-  --from-file=ca-key.pem=new-ca-key.pem \
+  --from-file=ca-cert.pem=ca-cert.pem \
+  --from-file=ca-key.pem=ca-key.pem \
   --from-file=root-cert.pem=combined-root-cert.pem \
-  --from-file=cert-chain.pem=new-cert-chain.pem \
+  --from-file=cert-chain.pem=cert-chain.pem \
   --dry-run=client -o yaml | kubectl apply -f -
 ```
 
@@ -197,13 +208,38 @@ kubectl create secret generic cacerts -n istio-system \
 ```bash
 kubectl rollout restart deployment/istiod -n istio-system
 kubectl rollout status deployment/istiod -n istio-system --timeout=120s
+
+# Confirm proxies have the updated trust bundle before changing the signing CA
+istioctl proxy-status
 ```
 
-#### Step 5: Rolling Restart All Workloads
+#### Step 5: Switch istiod to the New Intermediate CA
+
+```bash
+# Now start issuing workload certificates from the new intermediate CA
+kubectl create secret generic cacerts -n istio-system \
+  --from-file=ca-cert.pem=new-ca-cert.pem \
+  --from-file=ca-key.pem=new-ca-key.pem \
+  --from-file=root-cert.pem=combined-root-cert.pem \
+  --from-file=cert-chain.pem=new-cert-chain.pem \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+kubectl rollout restart deployment/istiod -n istio-system
+kubectl rollout status deployment/istiod -n istio-system --timeout=120s
+```
+
+#### Step 6: Rolling Restart All Workloads
 
 ```bash
 # Restart workloads namespace by namespace
-for ns in $(kubectl get namespaces -l istio-injection=enabled -o jsonpath='{.items[*].metadata.name}'); do
+MESHED_NS=$(
+  {
+    kubectl get namespaces -l istio-injection=enabled -o jsonpath='{.items[*].metadata.name}{"\n"}'
+    kubectl get namespaces -l istio.io/rev -o jsonpath='{.items[*].metadata.name}{"\n"}'
+  } | tr ' ' '\n' | sort -u
+)
+
+for ns in $MESHED_NS; do
   echo "=== Restarting $ns ==="
   kubectl rollout restart deployment -n $ns
   kubectl rollout status deployment --all -n $ns --timeout=300s
@@ -214,7 +250,7 @@ for ns in $(kubectl get namespaces -l istio-injection=enabled -o jsonpath='{.ite
 done
 ```
 
-#### Step 6: Remove Old Root (After Full Rotation)
+#### Step 7: Remove Old Root (After Full Rotation)
 
 Once all workloads have been restarted and are using the new certificates:
 
@@ -231,7 +267,14 @@ kubectl create secret generic cacerts -n istio-system \
 kubectl rollout restart deployment/istiod -n istio-system
 
 # One more rolling restart of workloads
-for ns in $(kubectl get namespaces -l istio-injection=enabled -o jsonpath='{.items[*].metadata.name}'); do
+MESHED_NS=$(
+  {
+    kubectl get namespaces -l istio-injection=enabled -o jsonpath='{.items[*].metadata.name}{"\n"}'
+    kubectl get namespaces -l istio.io/rev -o jsonpath='{.items[*].metadata.name}{"\n"}'
+  } | tr ' ' '\n' | sort -u
+)
+
+for ns in $MESHED_NS; do
   kubectl rollout restart deployment -n $ns
   kubectl rollout status deployment --all -n $ns --timeout=300s
 done
