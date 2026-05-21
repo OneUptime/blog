@@ -182,47 +182,64 @@ spec:
 
 Breaking this down:
 
-- **maxConnections: 100** - Limits concurrent connections. When this limit is hit, new connection attempts queue up. Tune this based on your database's max_connections setting.
+- **maxConnections: 100** - Limits concurrent upstream connections. When this circuit breaker overflows, Envoy rejects additional upstream connection attempts instead of opening more. Tune this based on your database's max_connections setting.
 - **connectTimeout: 10s** - How long to wait for the TCP handshake. Increase this for services across high-latency networks.
 - **idleTimeout: 3600s** - Close idle connections after 1 hour. Match this to your database server's connection timeout.
 - **maxConnectionDuration: 0s** - No limit on how long a connection lives. Set a value if you want to force connection recycling.
 
 ## TCP with TLS
 
-For TCP services that require TLS (encrypted database connections, for example):
+For TCP services where the application already starts TLS itself:
 
 ```yaml
 apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
-  name: encrypted-database
+  name: external-tls-service
 spec:
   hosts:
-    - encrypted-db.external.com
+    - tls-service.external.com
   location: MESH_EXTERNAL
   ports:
-    - number: 5432
-      name: tls-postgres
+    - number: 9443
+      name: tls-custom
       protocol: TLS
   resolution: DNS
 ```
 
-Using `protocol: TLS` instead of `TCP` tells Envoy this is TLS-encrypted traffic. Envoy can extract the SNI header for routing without decrypting the payload.
+Using `protocol: TLS` instead of `TCP` tells Envoy the connection begins with a TLS ClientHello. Envoy can extract the SNI header for routing without decrypting the payload. Keep negotiated TLS protocols such as STARTTLS, PostgreSQL SSL negotiation, and MySQL TLS upgrade configured as `TCP` because they do not start with a TLS ClientHello.
 
 For Envoy to originate TLS (your app sends plaintext, Envoy encrypts):
 
 ```yaml
 apiVersion: networking.istio.io/v1
+kind: ServiceEntry
+metadata:
+  name: external-redis-tls
+spec:
+  hosts:
+    - redis-tls.external.com
+  location: MESH_EXTERNAL
+  ports:
+    - number: 6379
+      name: tcp-redis
+      protocol: TCP
+      targetPort: 6380
+  resolution: DNS
+---
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
-  name: db-tls-origination
+  name: redis-tls-origination
 spec:
-  host: encrypted-db.external.com
+  host: redis-tls.external.com
   trafficPolicy:
     tls:
       mode: SIMPLE
-      sni: encrypted-db.external.com
+      sni: redis-tls.external.com
 ```
+
+The ServiceEntry stays `protocol: TCP` because the application still speaks plaintext to its sidecar. The `DestinationRule` makes Envoy open a TLS connection to the upstream service.
 
 ## Outlier Detection for TCP
 
@@ -245,14 +262,14 @@ spec:
       baseEjectionTime: 60s
 ```
 
-For TCP, "5xx errors" means connection failures (refused connections, timeouts). When an endpoint accumulates 5 connection failures in 30 seconds, it gets ejected for 60 seconds.
+For opaque TCP, `consecutive5xxErrors` counts connection timeouts, connection errors or failures, and request failure events. With this policy, an endpoint is checked every 30 seconds and is ejected for at least 60 seconds after 5 consecutive qualifying failures.
 
 ## Monitoring TCP External Services
 
 TCP metrics are connection-level rather than request-level:
 
 ```bash
-# Active TCP connections
+# Opened connections counter
 
 istio_tcp_connections_opened_total{
   destination_service="postgres.external.company.com"
