@@ -17,7 +17,7 @@ There are two main ways to use cert-manager with Istio:
 1. **cert-manager for gateway certificates** - Use cert-manager to provision TLS certificates for Istio's ingress gateway (for external-facing HTTPS)
 2. **cert-manager as Istio's CA** - Use cert-manager's istio-csr component to replace Istio's built-in CA for workload certificates
 
-These are independent and you can use either or both.
+These are independent and you can use either or both. For Pattern 2, plan the change before installing Istio; installing istio-csr after Istio is not supported.
 
 ## Pattern 1: Gateway TLS with cert-manager
 
@@ -26,7 +26,7 @@ This is the most common setup. cert-manager handles the HTTPS certificates for y
 ### Install cert-manager
 
 ```bash
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.0/cert-manager.yaml
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml
 ```
 
 Wait for it to be ready:
@@ -53,7 +53,7 @@ spec:
     solvers:
     - http01:
         ingress:
-          class: istio
+          ingressClassName: istio
 ```
 
 For a private CA:
@@ -81,7 +81,6 @@ spec:
   issuerRef:
     name: letsencrypt-prod
     kind: ClusterIssuer
-  commonName: "*.example.com"
   dnsNames:
   - "example.com"
   - "*.example.com"
@@ -109,6 +108,7 @@ spec:
       mode: SIMPLE
       credentialName: gateway-tls
     hosts:
+    - "example.com"
     - "*.example.com"
   - port:
       number: 80
@@ -117,6 +117,7 @@ spec:
     tls:
       httpsRedirect: true
     hosts:
+    - "example.com"
     - "*.example.com"
 ```
 
@@ -128,34 +129,11 @@ cert-manager automatically renews the certificate before it expires. The gateway
 
 This is the more advanced setup where cert-manager completely replaces Istio's built-in CA. Workload certificates are issued by cert-manager instead of istiod.
 
-### Install istio-csr
-
-istio-csr is a cert-manager project that acts as a bridge between Istio and cert-manager:
-
-```bash
-helm repo add jetstack https://charts.jetstack.io
-helm repo update
-
-helm install istio-csr jetstack/cert-manager-istio-csr \
-  --namespace cert-manager \
-  --set "app.tls.rootCAFile=/var/run/secrets/istio-csr/ca.pem" \
-  --set "app.server.clusterID=cluster.local" \
-  --set "app.certmanager.issuerRef.name=istio-ca" \
-  --set "app.certmanager.issuerRef.kind=ClusterIssuer" \
-  --set "app.certmanager.issuerRef.group=cert-manager.io"
-```
-
 ### Create a CA Issuer for Istio
 
+Create the issuer before installing istio-csr:
+
 ```yaml
-apiVersion: cert-manager.io/v1
-kind: ClusterIssuer
-metadata:
-  name: istio-ca
-spec:
-  ca:
-    secretName: istio-ca-key-pair
----
 apiVersion: v1
 kind: Secret
 metadata:
@@ -165,7 +143,46 @@ type: kubernetes.io/tls
 data:
   tls.crt: <base64-encoded-ca-cert>
   tls.key: <base64-encoded-ca-key>
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: istio-root-ca
+  namespace: cert-manager
+type: Opaque
+data:
+  ca.pem: <base64-encoded-root-ca-cert>
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: istio-ca
+spec:
+  ca:
+    secretName: istio-ca-key-pair
 ```
+
+### Install istio-csr
+
+istio-csr is a cert-manager project that acts as a bridge between Istio and cert-manager:
+
+```bash
+helm upgrade cert-manager-istio-csr oci://quay.io/jetstack/charts/cert-manager-istio-csr \
+  --install \
+  --namespace cert-manager \
+  --wait \
+  --set "app.tls.rootCAFile=/var/run/secrets/istio-csr/ca.pem" \
+  --set "app.server.clusterID=Kubernetes" \
+  --set "app.certmanager.issuer.name=istio-ca" \
+  --set "app.certmanager.issuer.kind=ClusterIssuer" \
+  --set "app.certmanager.issuer.group=cert-manager.io" \
+  --set "volumeMounts[0].name=root-ca" \
+  --set "volumeMounts[0].mountPath=/var/run/secrets/istio-csr" \
+  --set "volumes[0].name=root-ca" \
+  --set "volumes[0].secret.secretName=istio-root-ca"
+```
+
+The `istio-root-ca` secret mounts the root CA file that istio-csr serves to workloads.
 
 ### Install Istio with External CA Configuration
 
@@ -175,6 +192,9 @@ When installing Istio, configure it to use istio-csr instead of the built-in CA:
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
+  profile: demo
+  meshConfig:
+    trustDomain: cluster.local
   values:
     global:
       caAddress: cert-manager-istio-csr.cert-manager.svc:443
@@ -184,22 +204,6 @@ spec:
         env:
         - name: ENABLE_CA_SERVER
           value: "false"
-        overlays:
-        - apiVersion: apps/v1
-          kind: Deployment
-          name: istiod
-          patches:
-          - path: spec.template.spec.containers[0].volumeMounts[-1]
-            value:
-              name: root-ca
-              mountPath: /var/run/secrets/istio/root-cert.pem
-              subPath: ca.pem
-              readOnly: true
-          - path: spec.template.spec.volumes[-1]
-            value:
-              name: root-ca
-              configMap:
-                name: istio-root-cert
 ```
 
 The key settings:
@@ -211,7 +215,7 @@ The key settings:
 Check that workloads are getting certificates from cert-manager:
 
 ```bash
-kubectl get certificaterequests -n cert-manager
+kubectl get certificaterequests -n istio-system
 ```
 
 You should see certificate requests being created for each workload in the mesh.
@@ -259,7 +263,7 @@ spec:
     solvers:
     - http01:
         ingress:
-          class: istio
+          ingressClassName: istio
 ---
 # Private CA for mesh traffic
 apiVersion: cert-manager.io/v1
@@ -283,6 +287,8 @@ spec:
       kubernetes:
         role: cert-manager
         mountPath: /v1/auth/kubernetes
+        serviceAccountRef:
+          name: vault-issuer
 ```
 
 ## Monitoring cert-manager
@@ -296,7 +302,7 @@ certmanager_certificate_ready_status{condition="True"}
 # Monitor certificate expiry
 certmanager_certificate_expiration_timestamp_seconds
 
-# Track renewal failures
+# Monitor next renewal time
 certmanager_certificate_renewal_timestamp_seconds
 ```
 
