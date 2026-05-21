@@ -8,7 +8,7 @@ Description: Learn how to properly manage secrets in Istio including TLS certifi
 
 ---
 
-Secret management in Istio is one of those things that seems simple on the surface but has a lot of depth once you start peeling back the layers. Istio deals with several types of secrets - TLS certificates for mTLS, gateway certificates for ingress traffic, CA signing keys, and sometimes application-level secrets that flow through the mesh. Getting this right is critical for production deployments.
+Secret management in Istio is one of those things that seems simple on the surface but has a lot of depth once you start peeling back the layers. Istio deals with several types of secrets - TLS certificates for mTLS, gateway certificates for ingress traffic, and CA signing keys. Application-level secrets may also be carried by workloads that communicate through the mesh. Getting this right is critical for production deployments.
 
 ## How Istio Handles Secrets by Default
 
@@ -93,8 +93,7 @@ metadata:
   namespace: istio-system
 spec:
   selector:
-    matchLabels:
-      istio: ingressgateway
+    istio: ingressgateway
   servers:
   - port:
       number: 443
@@ -138,7 +137,7 @@ For organizations with strict security requirements, storing secrets in Kubernet
 First, install the External Secrets Operator, then create an ExternalSecret that pulls from AWS Secrets Manager, HashiCorp Vault, or similar:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: istio-ca-external
@@ -166,7 +165,7 @@ spec:
       key: istio/cert-chain
 ```
 
-This pulls the CA materials from Vault and creates the `cacerts` secret that Istio expects. The `refreshInterval` handles automatic rotation.
+This pulls the CA materials from Vault and creates the `cacerts` secret that Istio expects. With the default periodic refresh policy, the `refreshInterval` controls how often the Kubernetes secret is reconciled from the external store.
 
 ## Securing the CA Private Key
 
@@ -219,7 +218,7 @@ spec:
         SECRET_TTL: "12h"
 ```
 
-Or configure certificate properties through Envoy proxy settings:
+You can also configure traffic to use Istio-managed mutual TLS with a `DestinationRule`:
 
 ```yaml
 apiVersion: networking.istio.io/v1
