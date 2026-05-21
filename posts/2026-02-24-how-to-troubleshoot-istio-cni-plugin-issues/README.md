@@ -72,8 +72,7 @@ If you're using chained mode (the default), look for your primary CNI config fil
   "cniVersion": "0.3.1",
   "plugins": [
     {
-      "type": "calico",
-      ...
+      "type": "calico"
     },
     {
       "type": "istio-cni",
@@ -95,10 +94,10 @@ ls /host/opt/cni/bin/istio-cni
 
 ## Step 3: Check Pod Traffic Redirection
 
-If the CNI plugin is installed but traffic isn't being redirected properly, check the iptables rules inside a pod:
+If the CNI plugin is installed but traffic isn't being redirected properly, check the iptables rules inside a pod with a debug container that has the needed networking tools and privileges:
 
 ```bash
-kubectl exec httpbin-abc123 -c istio-proxy -- iptables -t nat -L -n
+kubectl debug httpbin-abc123 -n default -it --image=gcr.io/istio-release/base --profile=netadmin -- iptables -t nat -L -n
 ```
 
 You should see rules like:
@@ -137,7 +136,7 @@ kubectl logs istio-cni-node-abc12 -n istio-system | grep "chained"
 
 ### Cilium
 
-Cilium uses a different CNI model. If you're using Cilium's chaining mode, configure Istio CNI accordingly:
+Cilium can remove other CNI configuration unless it is configured to allow chaining. Make sure Cilium is installed with `cni.exclusive=false`. If you run Cilium with full kube-proxy replacement, also set `socketLB.hostNamespaceOnly=true` so socket load balancing does not interfere with Istio proxying. Istio CNI should remain in chained mode:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -163,11 +162,11 @@ ls /etc/cni/net.d/
 
 ## Step 5: Race Conditions During Pod Startup
 
-A common issue is a race condition where the application container starts before the iptables rules are in place. The CNI plugin should set up rules before any container starts, but there can be edge cases.
+A common issue is a race condition where a node becomes schedulable before the Istio CNI plugin is installed and ready on that node. A pod that starts during that gap can come up without Istio traffic redirection.
 
-Symptoms: intermittent connection failures only during pod startup, with traffic working fine after a few seconds.
+Symptoms: pods fail startup validation, get repaired or evicted by the CNI repair controller, or bypass the sidecar if repair is disabled.
 
-Istio addresses this with a readiness probe on the sidecar. The sidecar won't report ready until it's configured. If you're seeing race conditions, make sure your app container depends on the sidecar being ready:
+Istio addresses this by injecting an `istio-validation` init container that checks whether traffic redirection is set up correctly and blocks pod startup when it is not. If your app also needs network access during startup and must wait for the proxy itself to be ready, configure the app container to depend on the sidecar being ready:
 
 ```yaml
 apiVersion: apps/v1
@@ -178,15 +177,14 @@ spec:
   template:
     metadata:
       annotations:
-        proxy.istio.io/config: |
-          holdApplicationUntilProxyStarts: true
+        proxy.istio.io/config: '{ "holdApplicationUntilProxyStarts": true }'
     spec:
       containers:
       - name: httpbin
         image: kennethreitz/httpbin
 ```
 
-The `holdApplicationUntilProxyStarts` annotation tells the injection webhook to add a postStart hook that waits for the sidecar.
+The `holdApplicationUntilProxyStarts` annotation tells the injection webhook to block application container startup until the sidecar proxy is ready.
 
 ## Step 6: Ambient Mode CNI
 
@@ -222,10 +220,10 @@ spec:
       logLevel: debug
 ```
 
-Or set it at runtime:
+After updating the install config, restart the CNI DaemonSet pods so the new log level is picked up:
 
 ```bash
-kubectl set env daemonset/istio-cni-node -n istio-system CNI_LOG_LEVEL=debug
+kubectl rollout restart daemonset/istio-cni-node -n istio-system
 ```
 
 Then watch the logs while creating a new pod:
