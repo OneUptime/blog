@@ -16,7 +16,7 @@ Here is how to quickly figure out what is going on with your authorization polic
 
 Before debugging, you need to know how Istio evaluates authorization policies:
 
-1. If any CUSTOM action policy matches, delegate to the external authorizer
+1. If any CUSTOM action policy matches, evaluate it and deny the request if the external authorizer denies it
 2. If any DENY policy matches, deny the request
 3. If there are no ALLOW policies, allow the request
 4. If any ALLOW policy matches, allow the request
@@ -38,20 +38,20 @@ For a specific namespace:
 kubectl get authorizationpolicies -n default -o yaml
 ```
 
-Check for mesh-wide policies in istio-system:
+Check for mesh-wide policies in the Istio root namespace, which is usually `istio-system`:
 
 ```bash
 kubectl get authorizationpolicies -n istio-system
 ```
 
-A policy in `istio-system` with no selector applies to the entire mesh.
+A policy in the root namespace with no selector applies to the entire mesh.
 
 ## Check Which Policies Apply to a Workload
 
 Use `istioctl x authz check` to see which policies affect a specific workload:
 
 ```bash
-istioctl x authz check deploy/my-app.default
+istioctl x authz check deployment/my-app.default
 ```
 
 This shows:
@@ -89,7 +89,7 @@ Look for the `RBAC: access denied` message in the response body, which confirms 
 Enable debug logging for the RBAC filter to see detailed evaluation:
 
 ```bash
-istioctl proxy-config log deploy/my-app -n default --level rbac:debug
+istioctl proxy-config log deployment/my-app -n default --level rbac:debug
 ```
 
 Now make a request and check the proxy logs:
@@ -115,7 +115,7 @@ This tells you exactly which policy matched (or did not match) for each request.
 Do not forget to reset the log level when you are done:
 
 ```bash
-istioctl proxy-config log deploy/my-app -n default --level rbac:warning
+istioctl proxy-config log deployment/my-app -n default --level rbac:warning
 ```
 
 ## Common Debugging Scenarios
@@ -225,7 +225,7 @@ for s in data.get('dynamicActiveSecrets', []):
 "
 ```
 
-This prints the SPIFFE URI like `spiffe://cluster.local/ns/default/sa/frontend-sa`. Use this exact value in your policy's `principals` field.
+This prints the SPIFFE URI like `spiffe://cluster.local/ns/default/sa/frontend-sa`. In your policy's `principals` field, use the identity without the `spiffe://` prefix, for example `cluster.local/ns/default/sa/frontend-sa`.
 
 ## Check Stats for RBAC Decisions
 
@@ -236,18 +236,18 @@ kubectl exec deploy/my-app -n default -c istio-proxy -- \
   curl -s localhost:15000/stats | grep rbac
 ```
 
-Key stats:
+Key stats have names ending like this:
 
 ```text
-rbac.allowed: 150     # Requests that passed authorization
-rbac.denied: 23       # Requests denied by authorization
-rbac.shadow_allowed: 0  # Would-be-allowed in shadow mode
-rbac.shadow_denied: 0   # Would-be-denied in shadow mode
+http.inbound_0.0.0.0_8080.rbac.allowed: 150     # Requests that passed authorization
+http.inbound_0.0.0.0_8080.rbac.denied: 23       # Requests denied by authorization
+http.inbound_0.0.0.0_8080.rbac.shadow_allowed: 0  # Would-be-allowed in shadow mode
+http.inbound_0.0.0.0_8080.rbac.shadow_denied: 0   # Would-be-denied in shadow mode
 ```
 
 ## Using Dry Run Mode
 
-You can test authorization policies without actually enforcing them using the `AUDIT` action:
+You can test an ALLOW or DENY authorization policy without actually enforcing it by adding the `istio.io/dry-run` annotation:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -255,25 +255,27 @@ kind: AuthorizationPolicy
 metadata:
   name: test-policy
   namespace: default
+  annotations:
+    "istio.io/dry-run": "true"
 spec:
   selector:
     matchLabels:
       app: my-app
-  action: AUDIT
+  action: DENY
   rules:
     - from:
         - source:
             namespaces: ["frontend"]
 ```
 
-AUDIT policies log whether the request would have matched without actually allowing or denying it. Check the Envoy access logs for the RBAC audit result.
+Dry-run policies do not actually allow or deny requests. Check the proxy debug logs, metrics, or tracing output for the dry-run result.
 
 ## Viewing the RBAC Filter Configuration
 
 To see the actual RBAC configuration in the Envoy proxy:
 
 ```bash
-istioctl proxy-config listener deploy/my-app -n default -o json | \
+istioctl proxy-config listener deployment/my-app -n default -o json | \
   python3 -c "
 import sys, json
 data = json.load(sys.stdin)
