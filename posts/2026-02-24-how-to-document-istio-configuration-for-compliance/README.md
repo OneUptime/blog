@@ -16,22 +16,22 @@ Before generating documentation, understand which Istio features map to which co
 
 **SOC 2 (Trust Services Criteria):**
 - CC6.1 (Logical access security) -> AuthorizationPolicy
-- CC6.6 (Encryption in transit) -> PeerAuthentication (mTLS)
+- CC6.7 (Restricted transmission of information) -> PeerAuthentication (mTLS)
 - CC7.2 (System monitoring) -> Istio telemetry and access logs
 
-**PCI-DSS:**
-- Requirement 4.1 (Encrypt transmission) -> PeerAuthentication (STRICT mTLS)
-- Requirement 7.1 (Limit access by business need) -> AuthorizationPolicy
-- Requirement 10.1 (Audit trail) -> Istio access logging
+**PCI-DSS 4.0:**
+- Requirement 4.2 (Protect cardholder data during transmission over open, public networks) -> PeerAuthentication (STRICT mTLS)
+- Requirement 7.2 (Define and assign access by business need) -> AuthorizationPolicy
+- Requirement 10.2 (Audit logs) -> Istio access logging
 
 **HIPAA:**
 - 164.312(a)(1) (Access control) -> AuthorizationPolicy
 - 164.312(e)(1) (Transmission security) -> PeerAuthentication (mTLS)
 
-**ISO 27001:**
-- A.13.1.1 (Network controls) -> NetworkPolicy + AuthorizationPolicy
-- A.13.2.1 (Information transfer) -> PeerAuthentication (mTLS)
-- A.9.4.1 (Information access restriction) -> AuthorizationPolicy
+**ISO/IEC 27001:2022:**
+- A.8.20 (Network security) -> NetworkPolicy + AuthorizationPolicy
+- A.5.14 (Information transfer) -> PeerAuthentication (mTLS)
+- A.5.15 (Access control) and A.8.3 (Information access restriction) -> AuthorizationPolicy
 
 ## Generating a Compliance Evidence Report
 
@@ -89,12 +89,13 @@ EOF
 
 # Count namespaces
 TOTAL=$(kubectl get ns -l istio-injection=enabled -o name 2>/dev/null | wc -l | tr -d ' ')
-STRICT=$(kubectl get peerauthentications -A -o json 2>/dev/null | \
-  jq '[.items[] | select(.spec.mtls.mode == "STRICT")] | length')
+STRICT_NS=$(kubectl get peerauthentications -A -o json 2>/dev/null | \
+  jq '[.items[] | select(.metadata.namespace != "istio-system" and .metadata.name == "default" and .spec.mtls.mode == "STRICT")] | length')
 
 echo "- Istio-enabled namespaces: $TOTAL"
-echo "- Namespaces with STRICT mTLS: $STRICT"
-if [ "$TOTAL" = "$STRICT" ]; then
+echo "- Mesh-wide mTLS mode: ${MESH_MTLS:-NOT CONFIGURED}"
+echo "- Namespace default policies with STRICT mTLS: $STRICT_NS"
+if [ "$MESH_MTLS" = "STRICT" ] || [ "$TOTAL" = "$STRICT_NS" ]; then
   echo "- **Status: COMPLIANT** - All Istio namespaces enforce strict mTLS"
 else
   echo "- **Status: FINDING** - Some namespaces do not enforce strict mTLS"
@@ -116,7 +117,7 @@ kubectl get authorizationpolicies -A -o json | jq -r '
   "| " + .metadata.namespace +
   " | " + .metadata.name +
   " | " + (.spec.action // "ALLOW") +
-  " | " + (.spec.selector.matchLabels | to_entries | map(.value) | join(",")) +
+  " | " + ((.spec.selector.matchLabels // {}) | to_entries | map(.key + "=" + .value) | join(",")) +
   " | " + ((.spec.rules // []) | length | tostring) + " rules |"
 '
 
@@ -128,7 +129,7 @@ EOF
 
 # Check for default deny policies
 DENY_ALL=$(kubectl get authorizationpolicies -A -o json | \
-  jq '[.items[] | select(.metadata.name == "deny-all" or .metadata.name == "default-deny")] | length')
+  jq '[.items[] | select((.spec.action // "ALLOW") == "ALLOW" and ((.spec.rules // []) | length) == 0)] | length')
 
 echo "- Default deny policies found: $DENY_ALL"
 if [ "$DENY_ALL" -gt 0 ]; then
@@ -167,10 +168,11 @@ echo "### Certificate Details"
 echo ""
 
 # Show certificate info for a sample workload
-SAMPLE_POD=$(kubectl get pods -n production -o name | head -1)
+SAMPLE_POD=$(kubectl get pods -n production -l app=curl -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
 if [ -n "$SAMPLE_POD" ]; then
-  kubectl exec -n production $SAMPLE_POD -c istio-proxy -- \
-    openssl x509 -text -noout -in /var/run/secrets/istio/cert-chain.pem 2>/dev/null | \
+  kubectl exec -n production "$SAMPLE_POD" -c istio-proxy -- \
+    openssl s_client -showcerts -connect payment-service.production.svc.cluster.local:8080 </dev/null 2>/dev/null | \
+    openssl x509 -text -noout 2>/dev/null | \
     grep -E "Issuer|Subject|Not Before|Not After"
 fi
 ```
@@ -181,7 +183,7 @@ Compliance frameworks require regular review of access controls. Track review da
 
 ```yaml
 # Example policy with review tracking
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: payment-access
@@ -224,13 +226,13 @@ TODAY=$(date +%Y-%m-%d)
 kubectl get authorizationpolicies -A -o json | jq -r --arg today "$TODAY" '
   .items[] |
   . as $item |
-  ($item.metadata.annotations["compliance/next-review"] // "NOT SET") as $next |
+  (($item.metadata.annotations // {})["compliance/next-review"] // "NOT SET") as $next |
   (if $next < $today and $next != "NOT SET" then "OVERDUE" elif $next == "NOT SET" then "NO SCHEDULE" else "OK" end) as $status |
   "| " + $item.metadata.name +
   " | " + $item.metadata.namespace +
-  " | " + ($item.metadata.annotations["compliance/last-reviewed"] // "Never") +
+  " | " + (($item.metadata.annotations // {})["compliance/last-reviewed"] // "Never") +
   " | " + $next +
-  " | " + ($item.metadata.annotations["compliance/reviewer"] // "Unassigned") +
+  " | " + (($item.metadata.annotations // {})["compliance/reviewer"] // "Unassigned") +
   " | " + $status + " |"
 '
 ```
@@ -251,7 +253,7 @@ data:
     ## Istio Access Logging Configuration
 
     ### Log Format
-    Istio access logs capture the following fields:
+    Configure Istio access logs to capture the following fields:
     - Source identity (service account, namespace)
     - Destination identity (service, pod, port)
     - Request details (method, path, protocol)
@@ -295,13 +297,15 @@ echo ""
 
 # Check 1: mTLS is STRICT everywhere
 echo "## Check 1: mTLS Enforcement"
-NON_STRICT=$(kubectl get peerauthentications -A -o json | \
-  jq '[.items[] | select(.spec.mtls.mode != "STRICT")] | length')
-if [ "$NON_STRICT" -gt 0 ]; then
-  echo "FINDING: $NON_STRICT namespaces without STRICT mTLS"
+MESH_MTLS=$(kubectl get peerauthentication -n istio-system -o json 2>/dev/null | \
+  jq -r '.items[] | select(.metadata.name == "default") | .spec.mtls.mode // "NOT SET"')
+WEAK_MTLS=$(kubectl get peerauthentications -A -o json | \
+  jq '[.items[] | select(.spec.mtls.mode == "PERMISSIVE" or .spec.mtls.mode == "DISABLE")] | length')
+if [ "$MESH_MTLS" != "STRICT" ] || [ "$WEAK_MTLS" -gt 0 ]; then
+  echo "FINDING: Mesh-wide STRICT mTLS is not configured or weaker policies exist"
   FINDINGS=$((FINDINGS + 1))
 else
-  echo "PASS: All namespaces enforce STRICT mTLS"
+  echo "PASS: Mesh-wide STRICT mTLS is configured and no PERMISSIVE/DISABLE policies were found"
 fi
 
 # Check 2: No wildcard authorization policies
@@ -320,7 +324,7 @@ fi
 echo ""
 echo "## Check 3: Policy Documentation"
 UNDOCUMENTED=$(kubectl get authorizationpolicies -A -o json | \
-  jq '[.items[] | select(.metadata.annotations["compliance/framework"] == null)] | length')
+  jq '[.items[] | select((.metadata.annotations // {})["compliance/framework"] == null)] | length')
 if [ "$UNDOCUMENTED" -gt 0 ]; then
   echo "FINDING: $UNDOCUMENTED policies without compliance framework annotation"
   FINDINGS=$((FINDINGS + 1))
