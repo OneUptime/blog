@@ -19,7 +19,7 @@ AKS supports several authentication methods:
 3. **Managed Identity** - Uses Azure's managed identity for passwordless auth (recommended)
 4. **Service Principal** - Uses an Azure AD app registration
 
-## Method 1: Local Account with Static Token
+## Method 1: Local Account with Admin Kubeconfig
 
 The quickest approach uses AKS local accounts. Note that many organizations disable local accounts for security.
 
@@ -38,9 +38,9 @@ kubectl config get-contexts
 argocd cluster add my-aks-cluster-admin
 ```
 
-## Method 2: Service Account Token (Recommended for Simplicity)
+## Method 2: Service Account Token (Simple Static Credential)
 
-Create a dedicated service account in the AKS cluster with a long-lived token:
+Create a dedicated service account in the AKS cluster with a long-lived token. This is simple, but it creates a static credential, so managed identity or another non-static authentication method is preferred for production environments that can support it.
 
 ### Step 1: Create RBAC in AKS
 
@@ -197,12 +197,16 @@ AKS Azure AD integration requires `kubelogin` for token acquisition. You need to
 
 ```yaml
 # Custom ArgoCD image with kubelogin
-FROM quay.io/argoproj/argocd:v2.10.0
+FROM quay.io/argoproj/argocd:v3.4.1
 
 USER root
-RUN curl -LO https://github.com/Azure/kubelogin/releases/download/v0.1.0/kubelogin-linux-amd64.zip && \
-    unzip kubelogin-linux-amd64.zip -d /usr/local/bin/ && \
-    rm kubelogin-linux-amd64.zip
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ca-certificates curl unzip && \
+    curl -LO https://github.com/Azure/kubelogin/releases/download/v0.2.12/kubelogin-linux-amd64.zip && \
+    unzip kubelogin-linux-amd64.zip && \
+    mv bin/linux_amd64/kubelogin /usr/local/bin/kubelogin && \
+    chmod +x /usr/local/bin/kubelogin && \
+    rm -rf bin kubelogin-linux-amd64.zip /var/lib/apt/lists/*
 USER argocd
 ```
 
@@ -253,8 +257,14 @@ az aks update \
   --name argocd-cluster \
   --enable-managed-identity
 
-# Get the managed identity's object ID
-IDENTITY_ID=$(az aks show \
+# Get the kubelet managed identity's client ID and object ID
+IDENTITY_CLIENT_ID=$(az aks show \
+  --resource-group argocd-rg \
+  --name argocd-cluster \
+  --query identityProfile.kubeletidentity.clientId \
+  -o tsv)
+
+IDENTITY_OBJECT_ID=$(az aks show \
   --resource-group argocd-rg \
   --name argocd-cluster \
   --query identityProfile.kubeletidentity.objectId \
@@ -262,7 +272,7 @@ IDENTITY_ID=$(az aks show \
 
 # Grant access to the target AKS cluster
 az role assignment create \
-  --assignee-object-id $IDENTITY_ID \
+  --assignee-object-id $IDENTITY_OBJECT_ID \
   --role "Azure Kubernetes Service Cluster User Role" \
   --scope $AKS_ID
 ```
@@ -288,6 +298,7 @@ stringData:
         "args": [
           "get-token",
           "--login", "msi",
+          "--client-id", "<managed-identity-client-id>",
           "--server-id", "6dae42f8-4368-4678-94ff-3960e28e3630"
         ],
         "apiVersion": "client.authentication.k8s.io/v1beta1"
@@ -354,4 +365,4 @@ argocd cluster get https://my-aks-cluster-dns.hcp.eastus.azmk8s.io:443 -o json |
 
 ## Summary
 
-Adding an AKS cluster to ArgoCD depends on your organization's authentication requirements. For quick setups, use a Kubernetes service account token. For production with Azure AD-integrated clusters, use kubelogin with either a service principal or managed identity. The managed identity approach is the most secure since it eliminates all static credentials. Regardless of the method, always encrypt your cluster registration secrets using Sealed Secrets or External Secrets Operator before storing them in Git.
+Adding an AKS cluster to ArgoCD depends on your organization's authentication requirements. For simple setups, use a Kubernetes service account token. For production with Azure AD-integrated clusters, use kubelogin with either a service principal or managed identity. The managed identity approach is the most secure since it eliminates all static credentials. Regardless of the method, always encrypt your cluster registration secrets using Sealed Secrets or External Secrets Operator before storing them in Git.
