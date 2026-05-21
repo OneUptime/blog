@@ -69,7 +69,7 @@ var circuitBreakerPolicy = Policy
 ### gobreaker (Go)
 
 ```go
-cb := gobreaker.NewCircuitBreaker(gobreaker.Settings{
+cb := gobreaker.NewCircuitBreaker[string](gobreaker.Settings{
     Name:        "backend",
     MaxRequests: 3,
     Interval:    10 * time.Second,
@@ -94,7 +94,7 @@ Together, these provide effective circuit breaking at the proxy level.
 Connection pool settings prevent any single service from overwhelming a backend:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: backend-service
@@ -118,7 +118,7 @@ When these limits are exceeded, Envoy returns a 503 with the `UO` (upstream over
 Outlier detection is the Istio equivalent of per-host circuit breaking. It monitors endpoints and ejects unhealthy ones:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: backend-service
@@ -134,8 +134,8 @@ spec:
 ```
 
 - **consecutive5xxErrors**: Number of consecutive 5xx errors before ejecting a host (like the error threshold)
-- **interval**: How often the detection algorithm runs (like the sliding window)
-- **baseEjectionTime**: How long an ejected host stays out (like the sleep window)
+- **interval**: Time between ejection sweep analyses
+- **baseEjectionTime**: Minimum ejection duration. Repeated ejections multiply this duration.
 - **maxEjectionPercent**: Maximum percentage of hosts that can be ejected at once
 - **minHealthPercent**: If the percentage of healthy hosts drops below this, outlier detection is disabled to prevent ejecting everything
 
@@ -147,7 +147,7 @@ Here is how to translate your existing circuit breaker settings:
 |---|---|
 | Error threshold percentage | `outlierDetection.consecutive5xxErrors` (count-based, not percentage) |
 | Sleep window | `outlierDetection.baseEjectionTime` |
-| Request volume threshold | `outlierDetection.interval` + `consecutive5xxErrors` |
+| Request volume threshold | No direct equivalent; tune `consecutive5xxErrors` and connection pool limits |
 | Max concurrent requests | `connectionPool.http.http2MaxRequests` |
 | Timeout | VirtualService `timeout` field |
 | Fallback | Keep in application code |
@@ -161,7 +161,7 @@ Note that Istio uses consecutive error counts instead of error percentages. If y
 Based on your current circuit breaker settings, create a DestinationRule:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: backend-service
@@ -194,7 +194,7 @@ You can test by overloading the service and watching for 503s:
 ```bash
 # Use fortio for load testing
 
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/httpbin/sample-client/fortio-deploy.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/httpbin/sample-client/fortio-deploy.yaml
 
 FORTIO_POD=$(kubectl get pod -l app=fortio -o jsonpath='{.items[0].metadata.name}')
 kubectl exec $FORTIO_POD -c fortio -- fortio load -c 200 -qps 0 -n 2000 http://backend-service:8080/api/data
@@ -203,7 +203,7 @@ kubectl exec $FORTIO_POD -c fortio -- fortio load -c 200 -qps 0 -n 2000 http://b
 Check for overflow:
 
 ```bash
-kubectl exec $FORTIO_POD -c istio-proxy -- curl -s localhost:15000/stats | grep "upstream_rq_pending_overflow"
+kubectl exec "$FORTIO_POD" -c istio-proxy -- pilot-agent request GET stats 2>/dev/null | grep "upstream_rq_pending_overflow"
 ```
 
 ### Step 3: Remove Application Circuit Breakers
@@ -255,14 +255,14 @@ This is simpler than a full circuit breaker library. You just need error handlin
 Check Envoy stats:
 
 ```bash
-kubectl exec my-app-xxxxx -c istio-proxy -- curl -s localhost:15000/stats | grep -E "overflow|ejection"
+kubectl exec my-app-xxxxx -c istio-proxy -- pilot-agent request GET stats 2>/dev/null | grep -E "overflow|ejection"
 ```
 
 Key metrics:
 - `upstream_rq_pending_overflow` - Requests rejected due to connection pool limits
 - `outlier_detection.ejections_active` - Currently ejected hosts
-- `outlier_detection.ejections_total` - Total ejections over time
-- `outlier_detection.ejections_consecutive_5xx` - Ejections due to 5xx errors
+- `outlier_detection.ejections_enforced_total` - Total enforced ejections over time
+- `outlier_detection.ejections_enforced_consecutive_5xx` - Enforced ejections due to 5xx errors
 
 In Prometheus:
 
@@ -276,6 +276,6 @@ envoy_cluster_upstream_rq_pending_overflow{cluster_name="outbound|8080||backend-
 
 2. **No half-open state**: Istio does not have a formal half-open state. After `baseEjectionTime` expires, the host is added back to the pool. If it fails again, it gets ejected for `baseEjectionTime * number_of_ejections`, implementing exponential backoff.
 
-3. **No custom error conditions**: Istio circuit breaking triggers on 5xx errors and connection failures. If your application-level breaker triggered on specific business logic errors (e.g., specific response body content), you need to keep that logic in the application.
+3. **No custom error conditions**: Istio outlier detection uses fixed failure categories such as 5xx errors, gateway errors, and local-origin failures. If your application-level breaker triggered on specific business logic errors (e.g., specific response body content), you need to keep that logic in the application.
 
 Replacing application-level circuit breakers with Istio is mostly about trusting the infrastructure to handle a concern that was previously in your code. The result is simpler services, consistent behavior, and circuit breaking that works the same across all languages and frameworks in your mesh.
