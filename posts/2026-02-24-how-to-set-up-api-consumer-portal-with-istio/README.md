@@ -241,7 +241,7 @@ spec:
     # Docs and frontend are public
     - to:
         - operation:
-            paths: ["/portal/docs*", "/", "/static/*", "/assets/*"]
+            paths: ["/portal/docs*", "/portal*", "/", "/static/*", "/assets/*"]
             hosts: ["developers.example.com"]
 ```
 
@@ -287,7 +287,7 @@ spec:
       targetPort: 8080
 ```
 
-The analytics service queries Prometheus with client-specific metrics:
+The analytics service queries Prometheus with client-specific metrics. The `x_client_id` label is not part of Istio's default metrics; add it with the Telemetry API from a trusted client identifier before using these queries:
 
 ```text
 # Total requests for a specific client today
@@ -369,7 +369,7 @@ http:
 
 ## Rate Limit Visibility
 
-Show developers their current rate limit status through response headers. Configure Istio to include quota information:
+Show developers their current rate limit tier through response headers. Configure Istio to include tier information:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -401,11 +401,11 @@ spec:
               function envoy_on_response(response_handle)
                 local tier = response_handle:headers():get("x-client-tier")
                 if tier == "premium" then
-                  response_handle:headers():add("x-ratelimit-limit", "10000/hour")
+                  response_handle:headers():replace("x-ratelimit-limit", "10000/hour")
                 elseif tier == "standard" then
-                  response_handle:headers():add("x-ratelimit-limit", "1000/hour")
+                  response_handle:headers():replace("x-ratelimit-limit", "1000/hour")
                 else
-                  response_handle:headers():add("x-ratelimit-limit", "100/hour")
+                  response_handle:headers():replace("x-ratelimit-limit", "100/hour")
                 end
               end
 ```
@@ -463,6 +463,12 @@ spec:
     - applyTo: HTTP_FILTER
       match:
         context: GATEWAY
+        listener:
+          filterChain:
+            filter:
+              name: envoy.filters.network.http_connection_manager
+              subFilter:
+                name: envoy.filters.http.router
       patch:
         operation: INSERT_BEFORE
         value:
