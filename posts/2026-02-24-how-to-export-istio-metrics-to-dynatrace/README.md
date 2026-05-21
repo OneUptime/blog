@@ -25,12 +25,12 @@ The istiod control plane also exposes metrics on port 15014, including pilot con
 
 ## Option 1: Dynatrace Prometheus Integration
 
-Dynatrace has a built-in Prometheus integration that can scrape endpoints and ingest the metrics natively. You configure this through annotations on the Dynatrace OneAgent or through the Dynatrace Operator.
+Dynatrace has a built-in Prometheus integration that can scrape endpoints and ingest the metrics natively. You configure this through annotations on pods or services, with the Dynatrace Operator managing the in-cluster ActiveGate that performs the scraping.
 
-If you are using the Dynatrace Operator, enable Prometheus monitoring in your DynaKube custom resource:
+If you are using the Dynatrace Operator, make sure Kubernetes monitoring is enabled and that **Monitor annotated Prometheus exporters** is turned on for the cluster in Dynatrace. Your DynaKube should include an ActiveGate with Kubernetes monitoring enabled:
 
 ```yaml
-apiVersion: dynatrace.com/v1beta1
+apiVersion: dynatrace.com/v1beta6
 kind: DynaKube
 metadata:
   name: dynakube
@@ -43,15 +43,11 @@ spec:
     capabilities:
       - kubernetes-monitoring
       - routing
-      - metrics-ingest
 
   oneAgent:
     classicFullStack:
       tolerations:
         - operator: Exists
-      env:
-        - name: DT_PROMETHEUS_ENABLED
-          value: "true"
 ```
 
 Then annotate your Istio-injected pods to tell Dynatrace to scrape the sidecar:
@@ -73,9 +69,7 @@ spec:
             "mode": "include",
             "names": [
               "istio_requests_total",
-              "istio_request_duration_milliseconds_bucket",
-              "istio_request_duration_milliseconds_sum",
-              "istio_request_duration_milliseconds_count"
+              "istio_request_duration_milliseconds"
             ]
           }
 ```
@@ -139,7 +133,10 @@ data:
               - istio_response_bytes.*
               - istio_tcp_.*
 
-      cumulativetodelta: {}
+      metricstarttime: {}
+
+      cumulativetodelta:
+        max_staleness: 25h
 
       memory_limiter:
         check_interval: 5s
@@ -149,13 +146,13 @@ data:
       otlphttp:
         endpoint: https://<your-environment>.live.dynatrace.com/api/v2/otlp
         headers:
-          Authorization: "Api-Token ${DT_API_TOKEN}"
+          Authorization: "Api-Token ${env:DT_API_TOKEN}"
 
     service:
       pipelines:
         metrics:
           receivers: [prometheus]
-          processors: [memory_limiter, filter, cumulativetodelta, batch]
+          processors: [memory_limiter, filter, metricstarttime, cumulativetodelta, batch]
           exporters: [otlphttp]
 ```
 
@@ -168,6 +165,34 @@ kubectl create secret generic dynatrace-secret \
 ```
 
 ```yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: otel-collector
+  namespace: istio-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: otel-collector-istio-scrape
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: otel-collector-istio-scrape
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: otel-collector-istio-scrape
+subjects:
+  - kind: ServiceAccount
+    name: otel-collector
+    namespace: istio-system
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -211,25 +236,27 @@ spec:
             name: otel-collector-config
 ```
 
-Notice the `cumulativetodelta` processor. Dynatrace prefers delta metrics for counters rather than cumulative counters. This processor converts Prometheus cumulative counters into delta values that Dynatrace handles more efficiently.
+Notice the `metricstarttime` and `cumulativetodelta` processors. Dynatrace requires delta temporality for counters, and the start time processor gives the cumulative-to-delta conversion the start timestamps it needs.
 
-## Option 3: Prometheus Remote Write via ActiveGate
+## Option 3: Existing Prometheus via Federation
 
-If you already have Prometheus scraping Istio metrics, you can use Prometheus remote write to push them through a Dynatrace ActiveGate:
+If you already have Prometheus scraping Istio metrics, do not point Prometheus `remote_write` directly at the Dynatrace metrics ingest API. Prometheus remote write uses its own protobuf protocol, while the Dynatrace metrics ingest API expects the Dynatrace metric line protocol. Instead, have the OTel Collector scrape Prometheus's federation endpoint and export the metrics to Dynatrace over OTLP:
 
 ```yaml
-# prometheus remote write config
-
-remote_write:
-  - url: https://<your-environment>.live.dynatrace.com/api/v2/metrics/ingest
-    bearer_token: <YOUR_DT_API_TOKEN>
-    write_relabel_configs:
-      - source_labels: [__name__]
-        regex: 'istio_.*'
-        action: keep
-    metadata_config:
-      send: true
-      send_interval: 1m
+receivers:
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: 'istio-federate'
+          scrape_interval: 30s
+          honor_labels: true
+          metrics_path: /federate
+          params:
+            'match[]':
+              - '{__name__=~"istio_.*"}'
+          static_configs:
+            - targets:
+                - prometheus-server.monitoring.svc.cluster.local:9090
 ```
 
 ## Querying Metrics in Dynatrace
@@ -237,7 +264,7 @@ remote_write:
 Once metrics land in Dynatrace, you can query them using DQL (Dynatrace Query Language):
 
 ```text
-timeseries avg(istio_requests_total), by: {destination_service}
+timeseries requests=sum(istio_requests_total, rate: 1m), by: {destination_service}
 | filter destination_service != ""
 ```
 
@@ -263,7 +290,7 @@ Dynatrace bills based on DDU consumption, and Istio metrics can generate a lot o
 - Always use metric filters to only ingest what you need
 - Drop high-cardinality labels you do not use (like `request_protocol` or `connection_security_policy` if they are not relevant)
 - Set scrape intervals to 30 seconds or higher unless you need sub-minute granularity
-- Use the `cumulativetodelta` processor to reduce storage overhead
+- Use the `metricstarttime` and `cumulativetodelta` processors when exporting Prometheus metrics over OTLP
 - Monitor your DDU consumption in the Dynatrace billing dashboard after enabling the integration
 
 ## Troubleshooting
@@ -274,8 +301,8 @@ If metrics are not showing up:
 # Check if the OTel Collector is running
 kubectl logs -n istio-system deploy/otel-collector
 
-# Verify the collector can reach Dynatrace
-kubectl exec -n istio-system deploy/otel-collector -- wget -q -O- https://<your-environment>.live.dynatrace.com/api/v2/metrics/ingest --header="Authorization: Api-Token $DT_API_TOKEN" --post-data=""
+# Verify the collector can reach the Dynatrace OTLP metrics endpoint
+kubectl exec -n istio-system deploy/otel-collector -- wget -S --spider https://<your-environment>.live.dynatrace.com/api/v2/otlp/v1/metrics
 
 # Check if metrics are being scraped
 kubectl port-forward -n istio-system deploy/otel-collector 8888:8888
