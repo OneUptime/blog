@@ -14,7 +14,7 @@ The good news is that Istio has a well-organized release process. The challenge 
 
 ## Understanding the Istio Release Cycle
 
-Istio releases minor versions roughly every quarter (about every 3-4 months). Each minor version gets patch releases for bug fixes and security issues. The support policy is that each minor version is supported for about six months after release, though only the latest three minor versions typically get active security patches.
+Istio releases minor versions roughly every quarter. Each minor version gets patch releases for bug fixes and security issues. The support policy is that each minor version is supported until six weeks after the N+2 minor release, so the active support window is usually around six to eight months.
 
 The version numbering follows `MAJOR.MINOR.PATCH`:
 - **1.24.0**: Initial release of 1.24
@@ -93,11 +93,10 @@ These list every PR that went into the release, categorized by area (traffic man
 Watch the Istio repository for releases:
 
 ```bash
-# Using GitHub CLI
-gh repo set-default istio/istio
+# Open the repository in your browser
+gh repo view istio/istio --web
 
-# You can also subscribe through the GitHub UI:
-# Go to https://github.com/istio/istio
+# Then subscribe through the GitHub UI:
 # Click "Watch" > "Custom" > Select "Releases"
 ```
 
@@ -113,12 +112,13 @@ Add this to your RSS reader or Slack via an RSS integration.
 
 ### GitHub Release Notifications via Slack
 
-Set up a GitHub to Slack integration that posts whenever a new Istio release is published:
+For release-specific Slack notifications, use an RSS integration with the GitHub releases Atom feed:
 
-1. In Slack, add the GitHub app
-2. In your ops channel, run: `/github subscribe istio/istio releases`
+```text
+https://github.com/istio/istio/releases.atom
+```
 
-This gives you real-time notifications for every release.
+The GitHub app for Slack can also subscribe a channel to repository activity with `/github subscribe istio/istio`, but its documented default notifications are repository events such as pull request, issue, and default-branch push activity, not release-only alerts.
 
 ### Custom Monitoring Script
 
@@ -129,12 +129,12 @@ Build a simple script that checks for new releases:
 # check-istio-releases.sh
 
 LATEST=$(curl -s https://api.github.com/repos/istio/istio/releases/latest | jq -r '.tag_name')
-CURRENT=$(istioctl version --short 2>/dev/null | head -1)
+CURRENT=$(kubectl -n istio-system get deploy istiod -o jsonpath='{.spec.template.spec.containers[?(@.name=="discovery")].image}' 2>/dev/null | awk -F: '{print $NF}')
 
 echo "Current Istio version: $CURRENT"
 echo "Latest Istio release: $LATEST"
 
-if [ "$CURRENT" != "$LATEST" ]; then
+if [ -n "$CURRENT" ] && [ "$CURRENT" != "$LATEST" ]; then
   echo "WARNING: You are not on the latest version!"
   echo "Release notes: https://github.com/istio/istio/releases/tag/$LATEST"
 fi
@@ -219,9 +219,9 @@ Maintain a simple document or dashboard showing:
 
 | Cluster | Current Version | Latest Supported | Next Upgrade |
 |---------|----------------|-----------------|--------------|
-| staging | 1.22.3 | 1.24.1 | 1.23.x |
-| prod-us | 1.23.1 | 1.24.1 | 1.24.x |
-| prod-eu | 1.23.1 | 1.24.1 | 1.24.x |
+| staging | 1.28.6 | 1.30.0 | 1.29.x |
+| prod-us | 1.29.2 | 1.30.0 | 1.30.x |
+| prod-eu | 1.29.2 | 1.30.0 | 1.30.x |
 
 ### 4. Prometheus Alert for Version Drift
 
@@ -239,7 +239,7 @@ spec:
         - alert: IstioVersionOutdated
           expr: |
             istio_build{component="pilot"} unless
-            istio_build{component="pilot", tag="1.24.0"}
+            istio_build{component="pilot", tag="1.30.0"}
           for: 168h
           labels:
             severity: warning
@@ -259,7 +259,7 @@ istio-dev@googlegroups.com - Development discussions
 istio-users@googlegroups.com - User support and discussions
 ```
 
-Subscribe to at least `istio-announce`. This is where security advisories first appear:
+Subscribe to at least `istio-announce` if your organization uses Google Groups. Istio also publishes public security announcements on the Istio blog, the Announcements category on discuss.istio.io, the Istio social feed, and the `#announcements` channel on Istio Slack:
 
 ```text
 https://groups.google.com/g/istio-announce
@@ -270,7 +270,7 @@ https://groups.google.com/g/istio-announce
 istioctl itself can help identify version-related issues:
 
 ```bash
-# Check if your configuration is compatible with a target version
+# Analyze your live cluster configuration with the installed istioctl version
 istioctl analyze --all-namespaces
 
 # Check for deprecated configurations
