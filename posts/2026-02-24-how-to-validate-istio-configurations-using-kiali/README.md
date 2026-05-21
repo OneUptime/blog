@@ -79,9 +79,9 @@ spec:
 
 If no DestinationRule defines subset `v3` for the `reviews` host, Kiali reports: "Subset not found."
 
-### Weight Sum Errors
+### Single Destination Weight Warning
 
-When route weights don't add up to 100:
+When a route has only one destination with a weight less than 100:
 
 ```yaml
 http:
@@ -90,13 +90,9 @@ http:
           host: reviews
           subset: v1
         weight: 60
-      - destination:
-          host: reviews
-          subset: v2
-        weight: 30
 ```
 
-Kiali warns: "Route weights should add up to 100."
+Kiali warns that Istio will assume the weight is 100 because there is only one route destination. For routes with multiple destinations, Istio treats weights as relative proportions.
 
 ### Duplicate VirtualServices
 
@@ -242,21 +238,20 @@ NAMESPACE="bookinfo"
 KIALI_URL="http://localhost:20001"
 
 # Get all Istio configs with validation
-RESPONSE=$(curl -s "${KIALI_URL}/kiali/api/namespaces/${NAMESPACE}/istio")
+RESPONSE=$(curl -s "${KIALI_URL}/kiali/api/namespaces/${NAMESPACE}/istio?validate=true")
 
 # Count errors
 ERRORS=$(echo "$RESPONSE" | python3 -c "
 import json, sys
 data = json.load(sys.stdin)
 errors = 0
-for resource_type in data:
-    if isinstance(data[resource_type], list):
-        for item in data[resource_type]:
-            if 'validation' in item:
-                if not item['validation'].get('valid', True):
-                    errors += 1
-                    name = item.get('name', 'unknown')
-                    print(f'  ERROR in {resource_type}/{name}', file=sys.stderr)
+for resource_type, resources in data.get('validations', {}).items():
+    for key, validation in resources.items():
+        if not validation.get('valid', True):
+            errors += 1
+            name = validation.get('name', key)
+            namespace = validation.get('namespace', 'unknown')
+            print(f'  ERROR in {resource_type}/{namespace}/{name}', file=sys.stderr)
 print(errors)
 ")
 
@@ -283,7 +278,7 @@ Kiali validations and `istioctl analyze` have different strengths:
 The best approach is to use `istioctl analyze` in your CI pipeline before deploying:
 
 ```bash
-istioctl analyze -f my-istio-configs/ --namespace bookinfo
+istioctl analyze --use-kube=false my-istio-configs/ --namespace bookinfo
 ```
 
 And use Kiali for ongoing monitoring of live configuration after deployment.
