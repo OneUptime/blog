@@ -278,6 +278,10 @@ spec:
       labels:
         app: my-app
         version: v2
+    spec:
+      containers:
+      - name: app
+        image: my-app:v2.0.0
 ```
 
 Scale the deployments appropriately. If version v2 is getting 20% of traffic, it doesn't need as many replicas as v1.
@@ -339,7 +343,7 @@ done | sort | uniq -c
 Check Envoy's route configuration:
 
 ```bash
-istioctl proxy-config route deploy/web-gateway-istio -n production -o json
+istioctl proxy-config route deployment/web-gateway-istio -n production -o json
 ```
 
 Look for the `weightedClusters` section to see the configured weights.
@@ -357,7 +361,7 @@ kubectl exec -it deploy/web-gateway-istio -c istio-proxy -n production -- \
 Traffic splitting also works with GRPCRoute:
 
 ```yaml
-apiVersion: gateway.networking.k8s.io/v1alpha2
+apiVersion: gateway.networking.k8s.io/v1
 kind: GRPCRoute
 metadata:
   name: grpc-split
