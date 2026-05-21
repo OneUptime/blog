@@ -8,7 +8,7 @@ Description: How to safely upgrade Istio across multiple minor versions using a 
 
 ---
 
-You are running Istio 1.18 and you want to get to 1.22. Can you jump straight there? No. Istio only supports upgrading one minor version at a time. Skipping versions is unsupported and can break your mesh in subtle ways that are hard to debug. The control plane, CRDs, and data plane proxies are designed to be compatible within a one-version window, not across arbitrary version gaps.
+You are running Istio 1.18 and you want to get to 1.22 using an in-place `istioctl upgrade`. Can you jump straight there? No. In-place Istio upgrades require upgrading one minor version at a time. Skipping versions with an in-place upgrade is unsupported and can break your mesh in subtle ways that are hard to debug. The control plane, CRDs, and data plane proxies are designed to be compatible within a limited version-skew window, not across arbitrary version gaps.
 
 So if you need to cross multiple minor versions, you have to do it step by step. Here is how to plan and execute a multi-hop Istio upgrade safely.
 
@@ -18,12 +18,12 @@ Each Istio minor version may introduce:
 
 - CRD schema changes that assume the previous version's schema is in place
 - Configuration migrations that build on the prior version
-- API deprecations with a one-version grace period
+- API deprecations with version-specific migration windows
 - Internal protocol changes between istiod and the sidecar proxies
 
 When you skip a version, you skip those incremental migration steps. Resources might not validate correctly. Internal APIs might be incompatible. The result is a control plane that looks like it is running but is actually broken in unpredictable ways.
 
-The official Istio documentation is clear: upgrade one minor version at a time.
+The official Istio documentation is clear: in-place upgrades must move one minor version at a time.
 
 ## Planning the Upgrade Path
 
@@ -43,14 +43,16 @@ For each version in the path, you need:
 2. The release notes reviewed for breaking changes
 3. A validation plan
 
-Pick the latest patch release for each minor version. For example, if the latest 1.19 patch is 1.19.7, use that instead of 1.19.0. Patch releases contain bug fixes that make the upgrade smoother.
+Pick the latest patch release for each minor version. For example, if the latest 1.19 patch is 1.19.10, use that instead of 1.19.0. Patch releases contain bug fixes that make the upgrade smoother.
 
 ## Step 0: Prepare
+
+This walkthrough assumes your existing Istio installation was installed with `istioctl` and was not installed with the `--revision` flag. If you use revision-based installs, follow Istio's canary upgrade workflow instead.
 
 Download all the istioctl binaries you will need:
 
 ```bash
-for version in 1.19.7 1.20.5 1.21.3 1.22.0; do
+for version in 1.19.10 1.20.8 1.21.6 1.22.8; do
   curl -L https://istio.io/downloadIstio | ISTIO_VERSION=$version sh -
 done
 ```
@@ -74,7 +76,7 @@ kubectl get vs,dr,gw,se --all-namespaces -o yaml > istio-resources-backup.yaml
 Set the path to the 1.19 binary:
 
 ```bash
-export PATH=$PWD/istio-1.19.7/bin:$PATH
+export PATH=$PWD/istio-1.19.10/bin:$PATH
 istioctl version --remote=false
 ```
 
@@ -102,7 +104,7 @@ Verify:
 istioctl version
 ```
 
-Now update the sidecar proxies. You do not necessarily need to update all proxies at every hop - Istio supports one minor version of skew between control plane and data plane. But it is cleaner to update them, especially if you are doing multiple hops:
+Now update the sidecar proxies. You do not necessarily need to update all proxies at every hop - Istio supports the control plane being one minor version ahead of the data plane, but not the data plane being ahead of the control plane. Still, it is cleaner to update them, especially if you are doing multiple hops:
 
 ```bash
 for ns in $(kubectl get ns -l istio-injection=enabled -o jsonpath='{.items[*].metadata.name}'); do
@@ -124,7 +126,7 @@ Run your application tests. Check error rates and latency in your monitoring. Gi
 Same process with the next binary:
 
 ```bash
-export PATH=$PWD/istio-1.20.5/bin:$PATH
+export PATH=$PWD/istio-1.20.8/bin:$PATH
 istioctl x precheck
 istioctl upgrade -y
 kubectl rollout status deployment/istiod -n istio-system
@@ -144,7 +146,7 @@ Validate again. Same checks, same patience.
 ## Step 3: Upgrade 1.20 to 1.21
 
 ```bash
-export PATH=$PWD/istio-1.21.3/bin:$PATH
+export PATH=$PWD/istio-1.21.6/bin:$PATH
 istioctl x precheck
 istioctl upgrade -y
 kubectl rollout status deployment/istiod -n istio-system
@@ -158,7 +160,7 @@ Restart sidecars and validate. At this point you are three hops in, and you shou
 Final hop:
 
 ```bash
-export PATH=$PWD/istio-1.22.0/bin:$PATH
+export PATH=$PWD/istio-1.22.8/bin:$PATH
 istioctl x precheck
 istioctl upgrade -y
 kubectl rollout status deployment/istiod -n istio-system
@@ -209,7 +211,7 @@ If you need to perform multi-hop upgrades regularly (for example, in multiple cl
 #!/bin/bash
 set -e
 
-VERSIONS=("1.19.7" "1.20.5" "1.21.3" "1.22.0")
+VERSIONS=("1.19.10" "1.20.8" "1.21.6" "1.22.8")
 
 for version in "${VERSIONS[@]}"; do
   echo "=== Upgrading to Istio $version ==="
@@ -228,7 +230,9 @@ for version in "${VERSIONS[@]}"; do
   echo "Restarting sidecars..."
   for ns in $(kubectl get ns -l istio-injection=enabled -o jsonpath='{.items[*].metadata.name}'); do
     kubectl rollout restart deployment -n $ns
-    kubectl rollout status deployment -n $ns --timeout=300s
+    for deploy in $(kubectl get deployment -n $ns -o jsonpath='{.items[*].metadata.name}'); do
+      kubectl rollout status deployment/$deploy -n $ns --timeout=300s
+    done
   done
 
   echo "Validating..."
