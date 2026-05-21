@@ -67,6 +67,7 @@ rules:
   - apiGroups:
       - extensions.istio.io
     resources:
+      - trafficextensions
       - wasmplugins
     verbs:
       - get
@@ -229,6 +230,8 @@ rules:
       - networking.istio.io
       - security.istio.io
       - telemetry.istio.io
+      - install.istio.io
+      - extensions.istio.io
     resources: ["*"]
     verbs:
       - get
@@ -255,21 +258,21 @@ rules:
       - get
       - list
       - watch
-  # Required for proxy-config commands
-  - apiGroups: [""]
-    resources:
-      - pods/exec
-    verbs:
-      - create
-  # Required for proxy-status
+  # Required for proxy-config and proxy-status
   - apiGroups: [""]
     resources:
       - pods/portforward
     verbs:
       - create
+  # Required for proxy-status XDS requests
+  - apiGroups: [""]
+    resources:
+      - serviceaccounts/token
+    verbs:
+      - create
 ```
 
-The `pods/exec` and `pods/portforward` permissions are necessary because commands like `istioctl proxy-config` and `istioctl proxy-status` exec into the istio-proxy container to fetch configuration. Without these, most diagnostic istioctl commands will fail.
+The `pods/portforward` permission is necessary because commands like `istioctl proxy-config` and `istioctl proxy-status` connect to the Envoy admin endpoint or Istiod through Kubernetes port forwarding. The `serviceaccounts/token` permission lets `istioctl proxy-status` create a short-lived token for XDS requests. Without these, many diagnostic istioctl commands will fail.
 
 ## Read-Only Access with Resource Filtering
 
