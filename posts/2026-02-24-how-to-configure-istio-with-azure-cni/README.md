@@ -22,7 +22,7 @@ Before getting started, make sure you have:
 
 - An AKS cluster with Azure CNI enabled
 - kubectl configured to talk to your cluster
-- istioctl installed (version 1.20+)
+- istioctl installed from a currently supported Istio release
 - Sufficient IP address space in your subnet
 
 Check your AKS cluster's network plugin:
@@ -35,7 +35,7 @@ This should return `"azure"` if Azure CNI is enabled.
 
 ## Step 1: Plan Your IP Address Space
 
-This is where most people run into trouble. Azure CNI allocates IPs from your subnet for both nodes and pods. With Istio sidecars, you effectively double your pod count since each application pod gets an envoy sidecar container (though the sidecar shares the pod's IP).
+This is where most people run into trouble. Azure CNI allocates IPs from your subnet for both nodes and pods. With Istio sidecars, you effectively double your container count since each application pod gets an envoy sidecar container (though the sidecar shares the pod's IP).
 
 The good news is that sidecar containers share the same pod IP, so Istio doesn't increase your IP consumption. But you still need to plan for the pods themselves:
 
@@ -64,6 +64,7 @@ spec:
   profile: default
   components:
     cni:
+      namespace: istio-system
       enabled: true
   values:
     cni:
@@ -72,7 +73,7 @@ spec:
         - istio-system
       chained: true
     sidecarInjectorWebhook:
-      rewriteAppHTTPProbers: true
+      rewriteAppHTTPProbe: true
     global:
       proxy:
         resources:
@@ -94,32 +95,23 @@ The `chained: true` setting is important. It tells the Istio CNI plugin to work 
 
 ## Step 3: Configure Network Policies
 
-Azure CNI supports Kubernetes network policies natively. When using Istio, you might want to use both Kubernetes network policies and Istio authorization policies. Here's how they interact:
+AKS supports Kubernetes network policies when the cluster has a network policy engine such as Azure CNI powered by Cilium, Azure Network Policy Manager, or Calico. When using Istio, you might want to use both Kubernetes network policies and Istio authorization policies. Here's how they interact:
 
 Kubernetes network policies operate at L3/L4 (IP and port level), while Istio authorization policies work at L7 (HTTP level). You can use both together for defense in depth.
 
+If you want Istio to create network policies for its own control-plane components, enable the built-in setting during installation:
+
 ```yaml
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: allow-istio-sidecar
-  namespace: default
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
 spec:
-  podSelector: {}
-  ingress:
-    - from: []
-      ports:
-        - port: 15006
-          protocol: TCP
-        - port: 15001
-          protocol: TCP
-        - port: 15090
-          protocol: TCP
-  policyTypes:
-    - Ingress
+  values:
+    global:
+      networkPolicy:
+        enabled: true
 ```
 
-This network policy ensures that Istio sidecar ports remain accessible even when you have restrictive network policies in place.
+For application namespaces, write your Kubernetes network policies around the application ports you actually expose. If you need Prometheus to scrape sidecar metrics, allow access to port `15090` from your metrics namespace.
 
 ## Step 4: Handle Azure Load Balancer Integration
 
@@ -136,7 +128,8 @@ spec:
         k8s:
           serviceAnnotations:
             service.beta.kubernetes.io/azure-load-balancer-internal: "false"
-            service.beta.kubernetes.io/azure-load-balancer-health-probe-request-path: "/healthz/ready"
+            service.beta.kubernetes.io/port_80_health-probe_protocol: "tcp"
+            service.beta.kubernetes.io/port_443_health-probe_protocol: "tcp"
           service:
             ports:
               - port: 80
@@ -168,7 +161,7 @@ Deploy a test application to verify traffic flows correctly:
 
 ```bash
 kubectl label namespace default istio-injection=enabled
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/bookinfo/platform/kube/bookinfo.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/bookinfo/platform/kube/bookinfo.yaml
 ```
 
 Then verify the sidecars are injected:
@@ -223,4 +216,4 @@ spec:
 
 ## Summary
 
-Configuring Istio on AKS with Azure CNI is straightforward once you understand how the pieces fit together. The Istio CNI plugin is the recommended approach because it eliminates the need for privileged init containers. Plan your IP space carefully, configure network policies to allow sidecar traffic, and set up your ingress gateway with the right Azure Load Balancer annotations. With these pieces in place, you get a fully functional service mesh running on Azure's native container networking.
+Configuring Istio on AKS with Azure CNI is straightforward once you understand how the pieces fit together. The Istio CNI plugin is the recommended approach because it eliminates the need for privileged init containers. Plan your IP space carefully, configure network policies around the application ports you expose, and set up your ingress gateway with the right Azure Load Balancer annotations. With these pieces in place, you get a fully functional service mesh running on Azure's native container networking.
