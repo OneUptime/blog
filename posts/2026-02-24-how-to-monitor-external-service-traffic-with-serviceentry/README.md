@@ -28,7 +28,7 @@ The metrics you receive depend on the protocol and how Envoy handles the traffic
 - Connection duration
 - TCP connection open/close events
 
-You get L7 metrics when Envoy can see the HTTP layer. This happens with plain HTTP or when you use TLS origination (Envoy terminates and re-originates TLS). For HTTPS passthrough, Envoy only sees encrypted bytes, so you get L4 metrics.
+You get L7 metrics when Envoy can see the HTTP layer. This happens with plain HTTP or when you use TLS origination (Envoy originates TLS for the upstream connection after receiving an HTTP request). For HTTPS passthrough, Envoy only sees encrypted bytes, so you get L4 metrics.
 
 ## Prometheus Metrics for External Services
 
@@ -36,7 +36,7 @@ After creating a ServiceEntry, Istio automatically generates metrics. Here are t
 
 ### Request-Level Metrics (HTTP/gRPC)
 
-```bash
+```promql
 # Total requests to an external service
 
 istio_requests_total{
@@ -63,7 +63,7 @@ istio_response_bytes_bucket{
 
 ### TCP-Level Metrics
 
-```bash
+```promql
 # TCP connections opened
 istio_tcp_connections_opened_total{
   destination_service="database.external.com"
@@ -142,12 +142,13 @@ Create a Grafana dashboard that shows your external service dependencies at a gl
 sum by (destination_service) (
   rate(istio_requests_total{
     reporter="source",
-    destination_service_namespace="unknown"
+    destination_service_namespace="default",
+    destination_service!~".*\\.svc\\.cluster\\.local"
   }[5m])
 )
 ```
 
-The `destination_service_namespace="unknown"` filter catches external services since they do not have a Kubernetes namespace.
+Replace `default` with the namespace where your ServiceEntry resources live. The `destination_service!~".*\\.svc\\.cluster\\.local"` filter keeps the panel focused on non-Kubernetes service hosts.
 
 **Panel 2: External Service Error Rate**
 
@@ -155,20 +156,22 @@ The `destination_service_namespace="unknown"` filter catches external services s
 sum by (destination_service) (
   rate(istio_requests_total{
     reporter="source",
-    destination_service_namespace="unknown",
+    destination_service_namespace="default",
+    destination_service!~".*\\.svc\\.cluster\\.local",
     response_code=~"5.*"
   }[5m])
 )
 ```
 
-**Panel 3: External Service Latency (P50, P95, P99)**
+**Panel 3: External Service Latency (P95)**
 
 ```promql
 histogram_quantile(0.95,
   sum by (destination_service, le) (
     rate(istio_request_duration_milliseconds_bucket{
       reporter="source",
-      destination_service_namespace="unknown"
+      destination_service_namespace="default",
+      destination_service!~".*\\.svc\\.cluster\\.local"
     }[5m])
   )
 )
@@ -176,15 +179,15 @@ histogram_quantile(0.95,
 
 ## Kiali Service Graph
 
-Kiali automatically shows registered external services in the service graph. They appear as nodes with a special icon indicating they are external.
+Kiali can show registered external services as ServiceEntry nodes in the service graph.
 
 To see external services in Kiali:
 
 1. Open the Kiali dashboard
 2. Navigate to the Graph page
 3. Select the namespace where your workloads run
-4. Make sure "Service Nodes" is enabled in the display options
-5. External services appear as diamond-shaped nodes
+4. Make sure "Display Service Nodes" is enabled in the display options
+5. External services appear as ServiceEntry nodes
 
 The graph shows traffic flow from your internal services to external services, complete with request rates, error rates, and response times on the edges.
 
@@ -210,7 +213,7 @@ Then check the logs:
 
 ```bash
 kubectl logs deploy/my-app -c istio-proxy | \
-  jq 'select(.upstream_host | contains("stripe"))'
+  jq 'select((.authority // "") | contains("api.stripe.com"))'
 ```
 
 The JSON access log includes:
