@@ -22,7 +22,7 @@ The order of evaluation is: NetworkPolicy first, then Istio AuthorizationPolicy.
 
 ## Default Deny with NetworkPolicy
 
-Start with a default deny policy. This blocks all ingress traffic to pods in the namespace unless explicitly allowed:
+Start with a default deny policy. This blocks all ingress and egress traffic to pods in the namespace unless explicitly allowed:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -41,9 +41,9 @@ This is a good security baseline. Now you need to add rules to allow legitimate 
 
 ## Allowing Istio Control Plane Traffic
 
-If you have a default deny policy, you need to explicitly allow traffic from the Istio control plane (istiod) and between sidecars. Without this, Istio will not work.
+If you have a default deny egress policy, you need to explicitly allow sidecars to connect to the Istio control plane (istiod). Service-to-service traffic still needs workload-specific allow rules.
 
-Allow istiod to communicate with sidecars:
+Allow sidecars to connect to istiod:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -54,18 +54,15 @@ metadata:
 spec:
   podSelector: {}
   policyTypes:
-  - Ingress
   - Egress
-  ingress:
-  - from:
-    - namespaceSelector:
-        matchLabels:
-          kubernetes.io/metadata.name: istio-system
   egress:
   - to:
     - namespaceSelector:
         matchLabels:
           kubernetes.io/metadata.name: istio-system
+    ports:
+    - protocol: TCP
+      port: 15012
 ```
 
 ## Allowing DNS Resolution
@@ -183,10 +180,10 @@ This adds method and path restrictions on top of the NetworkPolicy's namespace a
 
 ## A Complete Example
 
-Here is a full configuration for a three-tier application (frontend, backend, database):
+Here is a configuration for the backend tier of a three-tier application (frontend, backend, database):
 
 ```yaml
-# Default deny for all namespaces
+# Default deny for the backend namespace
 
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -227,18 +224,15 @@ metadata:
 spec:
   podSelector: {}
   policyTypes:
-  - Ingress
   - Egress
-  ingress:
-  - from:
-    - namespaceSelector:
-        matchLabels:
-          kubernetes.io/metadata.name: istio-system
   egress:
   - to:
     - namespaceSelector:
         matchLabels:
           kubernetes.io/metadata.name: istio-system
+    ports:
+    - protocol: TCP
+      port: 15012
 ---
 # Allow frontend -> backend
 apiVersion: networking.k8s.io/v1
@@ -288,10 +282,10 @@ Verify that allowed traffic flows and blocked traffic is denied:
 kubectl exec -n frontend deploy/web -c web -- \
   curl -s -o /dev/null -w "%{http_code}" http://api.backend:8080/health
 
-# Should fail: frontend -> database (blocked by NetworkPolicy)
-kubectl exec -n frontend deploy/web -c web -- \
+# Should fail: database -> backend (blocked by backend NetworkPolicy)
+kubectl exec -n database deploy/db -c db -- \
   curl -s -o /dev/null -w "%{http_code}" --connect-timeout 5 \
-  http://db.database:5432
+  http://api.backend:8080/health
 ```
 
 ## Troubleshooting
