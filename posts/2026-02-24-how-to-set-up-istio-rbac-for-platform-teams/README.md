@@ -16,9 +16,9 @@ Not all Istio resources carry the same risk. Here is how to categorize them:
 
 **High risk (platform team only):**
 - `EnvoyFilter` - Direct Envoy manipulation, can break anything
-- `PeerAuthentication` in istio-system - Mesh-wide mTLS policy
-- `Sidecar` in istio-system - Mesh-wide sidecar configuration
-- `Telemetry` in istio-system - Mesh-wide telemetry settings
+- `PeerAuthentication` in the Istio root namespace, often `istio-system` - Mesh-wide mTLS policy
+- `Sidecar` in the Istio root namespace, often `istio-system` - Mesh-wide sidecar configuration
+- `Telemetry` in the Istio root namespace, often `istio-system` - Mesh-wide telemetry settings
 - `WasmPlugin` - Custom proxy extensions
 
 **Medium risk (team leads with platform review):**
@@ -30,12 +30,12 @@ Not all Istio resources carry the same risk. Here is how to categorize them:
 - `VirtualService`
 - `DestinationRule`
 - `ServiceEntry`
-- `AuthorizationPolicy` with selector
+- `AuthorizationPolicy` with selector, if you enforce that requirement with admission control
 - `RequestAuthentication`
 
 ## Platform Team ClusterRole
 
-Create a ClusterRole that gives the platform team full control over all Istio resources:
+Create a ClusterRole that gives the platform team full control over the Istio runtime resources and read access to IstioOperator installation objects:
 
 ```yaml
 apiVersion: rbac.authorization.k8s.io/v1
@@ -128,6 +128,8 @@ rules:
 
 Notice that application teams get full CRUD access to VirtualServices, DestinationRules, ServiceEntries, AuthorizationPolicies, and RequestAuthentications. They get read-only access to EnvoyFilters, Sidecars, Gateways, and PeerAuthentications so they can see what is configured but not modify it.
 
+Kubernetes RBAC cannot tell the difference between an AuthorizationPolicy with a selector and one without a selector. If you want to require selectors for application teams, enforce that with a ValidatingAdmissionPolicy, Kyverno, Gatekeeper, or another admission control layer.
+
 Bind it to the team:
 
 ```yaml
@@ -191,10 +193,9 @@ rules:
     resources:
       - secrets
     verbs: ["get", "list", "watch", "create", "update", "patch"]
-    resourceNames: []
 ```
 
-Be careful with the secrets permission. Gateway TLS certificates are stored as secrets, so gateway managers need access to create and update them. You might want to limit this to specific secret names using `resourceNames` if you want finer control.
+Be careful with the secrets permission. Gateway TLS certificates are stored as secrets, so gateway managers need access to create and update them. You can use `resourceNames` to limit read, update, and patch access to specific existing secret names, but Kubernetes RBAC cannot restrict top-level `create` requests by resource name. Use admission control or a separate certificate provisioning workflow if you need to control which secret names can be created.
 
 ## Automating RBAC with Helm
 
@@ -358,12 +359,12 @@ The `istio-app-full` role automatically includes all rules from roles labeled wi
 Enable audit logging to catch RBAC denials:
 
 ```bash
-# Check for recent denied requests to Istio resources
-kubectl get events -A --field-selector reason=Forbidden | grep istio
+# Example for file-based kube-apiserver audit logs
+jq 'select(.responseStatus.code == 403 and ((.objectRef.apiGroup // "") | test("^(networking|security|telemetry|extensions)\\.istio\\.io$")))' /var/log/kubernetes/audit/audit.log
 ```
 
 Monitor these in your logging system and set up alerts for repeated denials, which might indicate a misconfigured role or a team that needs additional permissions.
 
 ## Summary
 
-Setting up RBAC for Istio is about matching permissions to risk. The platform team gets full access to all resources, especially the dangerous ones like EnvoyFilter and mesh-wide PeerAuthentication. Application teams get self-service access to safe resources like VirtualServices and DestinationRules, scoped to their own namespaces. CI/CD service accounts get the minimum permissions needed for deployment. Use aggregated ClusterRoles for composability, Helm charts for consistency across namespaces, and regular testing to verify permissions work as intended.
+Setting up RBAC for Istio is about matching permissions to risk. The platform team gets full access to runtime resources, especially the dangerous ones like EnvoyFilter and mesh-wide PeerAuthentication. Application teams get self-service access to safe resources like VirtualServices and DestinationRules, scoped to their own namespaces. CI/CD service accounts get the minimum permissions needed for deployment. Use aggregated ClusterRoles for composability, Helm charts for consistency across namespaces, admission controls for field-level guardrails, and regular testing to verify permissions work as intended.
