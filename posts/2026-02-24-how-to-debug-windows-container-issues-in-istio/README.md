@@ -53,11 +53,19 @@ metadata:
   name: windows-api
   namespace: windows-apps
 spec:
+  selector:
+    matchLabels:
+      app: windows-api
   template:
     metadata:
+      labels:
+        app: windows-api
+        workload.os: windows
       annotations:
         sidecar.istio.io/inject: "false"
     spec:
+      os:
+        name: windows
       nodeSelector:
         kubernetes.io/os: windows
       containers:
@@ -75,7 +83,7 @@ spec:
     sidecarInjectorWebhook:
       neverInjectSelector:
         - matchExpressions:
-            - key: kubernetes.io/os
+            - key: workload.os
               operator: In
               values:
                 - windows
@@ -138,38 +146,29 @@ spec:
       mode: DISABLE
 ```
 
-### Step 3: Check PeerAuthentication
+### Step 3: Check PeerAuthentication Expectations
 
-If there is a mesh-wide STRICT PeerAuthentication, it will reject plaintext traffic from Windows pods:
+A `PeerAuthentication` policy is enforced by Istio proxies on incoming connections. A Windows workload without a sidecar cannot terminate Istio mTLS, so a `PeerAuthentication` in the Windows namespace does not make that Windows pod accept mTLS:
 
 ```bash
 kubectl get peerauthentication -A
 ```
 
-If you have STRICT mode, either switch to PERMISSIVE for the affected namespace or create a port-level exception:
-
-```yaml
-apiVersion: security.istio.io/v1
-kind: PeerAuthentication
-metadata:
-  name: allow-plaintext-for-windows
-  namespace: windows-apps
-spec:
-  mtls:
-    mode: PERMISSIVE
-```
+If the client sidecar is still attempting mTLS to the Windows service, fix that with the `DestinationRule` TLS setting in the previous step. Use `PERMISSIVE` on Linux destinations when Windows pods call into those Linux services, as shown later in this guide.
 
 ### Step 4: Test Direct Pod-to-Pod Connectivity
 
-Bypass Istio completely to test basic networking:
+Use a non-injected Linux debug pod to test basic networking without sidecar interception:
 
 ```bash
 # Get the Windows pod IP
 WIN_IP=$(kubectl get pod -n windows-apps -l app=windows-api -o jsonpath='{.items[0].status.podIP}')
 
-# Test from Linux pod directly (bypass sidecar)
-kubectl exec -n linux-apps deploy/linux-client -c app -- \
-  curl -v --connect-timeout 5 http://$WIN_IP:80/
+# Test from a temporary Linux pod without sidecar injection
+kubectl run direct-debug -n linux-apps --rm -it --restart=Never \
+  --image=curlimages/curl \
+  --overrides='{"metadata":{"annotations":{"sidecar.istio.io/inject":"false"}}}' \
+  --command -- curl -v --connect-timeout 5 http://$WIN_IP:80/
 ```
 
 If direct IP access works but service name does not, the issue is in DNS or Istio routing.
@@ -224,10 +223,21 @@ metadata:
   name: windows-api
   namespace: windows-apps
 spec:
+  selector:
+    matchLabels:
+      app: windows-api
   template:
+    metadata:
+      labels:
+        app: windows-api
     spec:
+      os:
+        name: windows
+      nodeSelector:
+        kubernetes.io/os: windows
       containers:
         - name: api
+          image: my-windows-api:latest
           readinessProbe:
             httpGet:
               path: /health
@@ -257,12 +267,15 @@ spec:
         maxConnections: 50
         connectTimeout: 10s
       http:
-        maxRetries: 3
+        http1MaxPendingRequests: 100
+        maxRequestsPerConnection: 100
     outlierDetection:
       consecutive5xxErrors: 3
       interval: 15s
       baseEjectionTime: 30s
 ```
+
+If you need request retry attempts, configure them in a `VirtualService`; `connectionPool.http.maxRetries` in a `DestinationRule` limits outstanding retries and is not the per-request retry count.
 
 ## Issue: Authorization Policies Not Working for Windows Traffic
 
@@ -277,13 +290,13 @@ rules:
             - "cluster.local/ns/windows-apps/sa/windows-api"
 ```
 
-Instead, use namespace-based or IP-based rules:
+Namespace-based rules also require mTLS identity, so use IP-based rules or route the traffic through a gateway that can authenticate the caller:
 
 ```yaml
 apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
-  name: allow-windows-ns
+  name: allow-windows-cidr
   namespace: linux-apps
 spec:
   selector:
@@ -293,8 +306,8 @@ spec:
   rules:
     - from:
         - source:
-            namespaces:
-              - windows-apps
+            ipBlocks:
+              - "10.244.0.0/16" # replace with your Windows pod CIDR
       to:
         - operation:
             ports: ["8080"]
@@ -323,12 +336,21 @@ metadata:
   name: windows-api
   namespace: windows-apps
 spec:
+  selector:
+    matchLabels:
+      app: windows-api
   template:
+    metadata:
+      labels:
+        app: windows-api
     spec:
+      os:
+        name: windows
       nodeSelector:
         kubernetes.io/os: windows
       containers:
         - name: api
+          image: my-windows-api:latest
           env:
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: "http://otel-collector.monitoring:4317"
