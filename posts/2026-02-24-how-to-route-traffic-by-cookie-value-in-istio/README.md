@@ -137,7 +137,7 @@ You can match on multiple cookie values by combining regex patterns:
   route:
     - destination:
         host: webapp
-        subset: beta-feature-x
+        subset: beta
 ```
 
 Be careful with this pattern. The regex requires `beta=true` to appear before `feature_x=enabled` in the cookie string. Cookies do not have a guaranteed order, so a safer approach is to use separate match blocks with OR logic:
@@ -166,12 +166,12 @@ This routes to the beta if the cookie contains either `beta=true` OR `feature_x=
   route:
     - destination:
         host: webapp
-        subset: beta-feature-x
+        subset: beta
 ```
 
 ## Setting Cookies from Istio
 
-If you want Istio to set a cookie on the response (so users get assigned to a group on their first visit), you can use the `headers` field in the route to add a Set-Cookie response header:
+If you want Istio to set a static cookie on the response (so users get assigned to a group on their first visit), you can use the `headers` field in the route to add a Set-Cookie response header:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -186,23 +186,39 @@ spec:
     - match:
         - headers:
             cookie:
-              regex: ".*ab_group=.*"
+              regex: ".*(^|;\\s*)ab_group=A(;|$).*"
       route:
         - destination:
             host: webapp
             subset: stable
+    - match:
+        - headers:
+            cookie:
+              regex: ".*(^|;\\s*)ab_group=B(;|$).*"
+      route:
+        - destination:
+            host: webapp
+            subset: canary
     - route:
         - destination:
             host: webapp
             subset: stable
           weight: 50
+          headers:
+            response:
+              set:
+                Set-Cookie: "ab_group=A; Path=/; Max-Age=86400"
         - destination:
             host: webapp
             subset: canary
           weight: 50
+          headers:
+            response:
+              set:
+                Set-Cookie: "ab_group=B; Path=/; Max-Age=86400"
 ```
 
-The actual Set-Cookie header would need to be set by your application or an EnvoyFilter. Istio VirtualService does not directly support setting arbitrary response headers for cookie assignment. For that, you would create an EnvoyFilter:
+This works for static cookie values. If you need more complex assignment logic, generate the cookie in your application or use an EnvoyFilter:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -225,7 +241,7 @@ spec:
             - header:
                 key: Set-Cookie
                 value: "ab_group=assigned; Path=/; Max-Age=86400"
-              append: true
+              append_action: APPEND_IF_EXISTS_OR_ADD
 ```
 
 ## Testing Cookie Routing
@@ -269,9 +285,9 @@ Remember that Envoy uses RE2 regex syntax, so no lookaheads or lookbehinds.
 
 **Missing cookie header.** If a client sends no cookies at all, the `Cookie` header will not exist in the request. The regex match will not apply, and the request falls through to the catch-all route. This is actually the behavior you want.
 
-**Partial matches.** The regex `.*beta=true.*` would also match a cookie like `superbeta=true123`. To be more precise, anchor with word boundaries or use the cookie separator: `(^|;\\s*)beta=true(;|$)`.
+**Partial matches.** The regex `.*beta=true.*` would also match a cookie like `superbeta=true123`. To be more precise, use the cookie separator and keep the leading and trailing `.*` because Envoy regex header matches must match the full header value: `.*(^|;\\s*)beta=true(;|$).*`.
 
-**Cookie size limits.** Browsers limit cookies to about 4KB per domain. This should not affect routing, but if your application sets too many cookies, the header parsing overhead in Envoy could add latency.
+**Cookie size limits.** Browsers commonly limit individual cookies to about 4KB and also limit the number of cookies per domain. This should not affect routing, but if your application sets too many cookies, the header parsing overhead in Envoy could add latency.
 
 **HTTPS and Secure cookies.** Cookie routing works regardless of whether the cookie has the Secure flag. The Secure flag only affects whether the browser sends the cookie, not how the proxy handles it.
 
