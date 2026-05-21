@@ -102,7 +102,7 @@ kubectl apply -f backend.yaml
 
 ## Deploying a Frontend
 
-Now add a frontend that calls the backend:
+Now add a frontend service:
 
 ```yaml
 # frontend.yaml
@@ -240,14 +240,18 @@ kubectl apply -f ingress.yaml
 Test it:
 
 ```bash
-INGRESS_IP=$(kubectl get svc -n istio-system istio-ingressgateway \
+INGRESS_HOST=$(kubectl get svc -n istio-system istio-ingressgateway \
   -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+if [ -z "$INGRESS_HOST" ]; then
+  INGRESS_HOST=$(kubectl get svc -n istio-system istio-ingressgateway \
+    -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+fi
 
 # Test frontend
-curl -H "Host: myapp.example.com" http://${INGRESS_IP}/
+curl -H "Host: myapp.example.com" http://${INGRESS_HOST}/
 
 # Test backend API
-curl -H "Host: myapp.example.com" http://${INGRESS_IP}/api
+curl -H "Host: myapp.example.com" http://${INGRESS_HOST}/api
 ```
 
 ## Adding a DestinationRule
@@ -326,11 +330,10 @@ kubectl apply -f resilient-routing.yaml
 
 ## Verifying mTLS
 
-By default, Istio uses mTLS in PERMISSIVE mode (accepts both plain and encrypted). Check the current state:
+By default, Istio automatically uses mTLS between workloads with sidecars when possible, while sidecar servers accept both mTLS and plaintext unless you require STRICT mode. Check that the proxy has Istio workload certificates:
 
 ```bash
-kubectl exec -n my-first-app deploy/frontend -c istio-proxy -- \
-  curl -s localhost:15000/stats | grep ssl.handshake
+istioctl proxy-config secret deploy/frontend -n my-first-app
 ```
 
 To enforce strict mTLS:
@@ -431,6 +434,15 @@ metadata:
   namespace: my-first-app
 spec:
   host: backend-api
+  trafficPolicy:
+    connectionPool:
+      http:
+        http1MaxPendingRequests: 100
+        http2MaxRequests: 1000
+    outlierDetection:
+      consecutive5xxErrors: 3
+      interval: 10s
+      baseEjectionTime: 30s
   subsets:
     - name: v1
       labels:
@@ -461,6 +473,11 @@ spec:
             host: backend-api
             subset: v2
           weight: 10
+      timeout: 5s
+      retries:
+        attempts: 3
+        perTryTimeout: 2s
+        retryOn: 5xx,reset,connect-failure,retriable-4xx
 ```
 
 ## Running Analysis
