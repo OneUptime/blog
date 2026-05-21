@@ -50,42 +50,20 @@ export CTX_REMOTE=remote-cluster
 
 ## Step 1: Set Up a Shared Root CA
 
-Both clusters need to trust each other for mTLS. Create a shared root CA:
+Both clusters need to trust each other for mTLS. From the top-level directory of the Istio release package, create a shared root CA and per-cluster intermediate certificates:
 
 ```bash
 mkdir -p certs
+pushd certs
 
 # Create root CA
+make -f ../tools/certs/Makefile.selfsigned.mk root-ca
 
-openssl req -new -newkey rsa:4096 -x509 -sha256 \
-  -days 3650 -nodes \
-  -out certs/root-cert.pem \
-  -keyout certs/root-key.pem \
-  -subj "/O=my-mesh/CN=root-ca"
+# Create intermediate CA for primary and remote
+make -f ../tools/certs/Makefile.selfsigned.mk primary-cacerts
+make -f ../tools/certs/Makefile.selfsigned.mk remote-cacerts
 
-# Create intermediate CA for primary
-openssl req -new -newkey rsa:4096 -nodes \
-  -out certs/primary.csr \
-  -keyout certs/primary-ca-key.pem \
-  -subj "/O=my-mesh/CN=primary-ca"
-
-openssl x509 -req -days 730 \
-  -CA certs/root-cert.pem -CAkey certs/root-key.pem \
-  -set_serial 01 \
-  -in certs/primary.csr \
-  -out certs/primary-ca-cert.pem
-
-# Create intermediate CA for remote
-openssl req -new -newkey rsa:4096 -nodes \
-  -out certs/remote.csr \
-  -keyout certs/remote-ca-key.pem \
-  -subj "/O=my-mesh/CN=remote-ca"
-
-openssl x509 -req -days 730 \
-  -CA certs/root-cert.pem -CAkey certs/root-key.pem \
-  -set_serial 02 \
-  -in certs/remote.csr \
-  -out certs/remote-ca-cert.pem
+popd
 ```
 
 Install the CA secrets:
@@ -93,21 +71,27 @@ Install the CA secrets:
 ```bash
 # Primary cluster
 kubectl create namespace istio-system --context=$CTX_PRIMARY
+kubectl label namespace istio-system topology.istio.io/network=network1 \
+  --context=$CTX_PRIMARY
 kubectl create secret generic cacerts -n istio-system \
   --context=$CTX_PRIMARY \
-  --from-file=ca-cert.pem=certs/primary-ca-cert.pem \
-  --from-file=ca-key.pem=certs/primary-ca-key.pem \
-  --from-file=root-cert.pem=certs/root-cert.pem \
-  --from-file=cert-chain.pem=certs/primary-ca-cert.pem
+  --from-file=certs/primary/ca-cert.pem \
+  --from-file=certs/primary/ca-key.pem \
+  --from-file=certs/primary/root-cert.pem \
+  --from-file=certs/primary/cert-chain.pem
 
 # Remote cluster
 kubectl create namespace istio-system --context=$CTX_REMOTE
+kubectl annotate namespace istio-system topology.istio.io/controlPlaneClusters=primary \
+  --context=$CTX_REMOTE
+kubectl label namespace istio-system topology.istio.io/network=network2 \
+  --context=$CTX_REMOTE
 kubectl create secret generic cacerts -n istio-system \
   --context=$CTX_REMOTE \
-  --from-file=ca-cert.pem=certs/remote-ca-cert.pem \
-  --from-file=ca-key.pem=certs/remote-ca-key.pem \
-  --from-file=root-cert.pem=certs/root-cert.pem \
-  --from-file=cert-chain.pem=certs/remote-ca-cert.pem
+  --from-file=certs/remote/ca-cert.pem \
+  --from-file=certs/remote/ca-key.pem \
+  --from-file=certs/remote/root-cert.pem \
+  --from-file=certs/remote/cert-chain.pem
 ```
 
 ## Step 2: Install Istio on the Primary Cluster
@@ -125,6 +109,7 @@ spec:
       multiCluster:
         clusterName: primary
       network: network1
+      externalIstiod: true
   components:
     pilot:
       k8s:
@@ -153,89 +138,16 @@ The remote cluster's proxies need to reach istiod. If the clusters are on differ
 
 ```bash
 # Install the east-west gateway on the primary cluster
-istioctl install --context=$CTX_PRIMARY -f - <<EOF
-apiVersion: install.istio.io/v1alpha1
-kind: IstioOperator
-metadata:
-  name: eastwest
-spec:
-  profile: empty
-  components:
-    ingressGateways:
-    - name: istio-eastwestgateway
-      label:
-        istio: eastwestgateway
-        app: istio-eastwestgateway
-      enabled: true
-      k8s:
-        env:
-        - name: ISTIO_META_REQUESTED_NETWORK_VIEW
-          value: network2
-        service:
-          ports:
-          - name: status-port
-            port: 15021
-            targetPort: 15021
-          - name: tls
-            port: 15443
-            targetPort: 15443
-          - name: tls-istiod
-            port: 15012
-            targetPort: 15012
-          - name: tls-webhook
-            port: 15017
-            targetPort: 15017
-  values:
-    global:
-      meshID: my-mesh
-      multiCluster:
-        clusterName: primary
-      network: network1
-EOF
+samples/multicluster/gen-eastwest-gateway.sh \
+  --network network1 | \
+  istioctl install --context=$CTX_PRIMARY -y -f -
 ```
 
-Expose istiod and services through the gateway:
-
-```yaml
-apiVersion: networking.istio.io/v1
-kind: Gateway
-metadata:
-  name: istiod-gateway
-  namespace: istio-system
-spec:
-  selector:
-    istio: eastwestgateway
-  servers:
-  - port:
-      number: 15012
-      name: tls-istiod
-      protocol: TLS
-    tls:
-      mode: AUTO_PASSTHROUGH
-    hosts:
-    - "*.global"
----
-apiVersion: networking.istio.io/v1
-kind: Gateway
-metadata:
-  name: cross-network-gateway
-  namespace: istio-system
-spec:
-  selector:
-    istio: eastwestgateway
-  servers:
-  - port:
-      number: 15443
-      name: tls
-      protocol: TLS
-    tls:
-      mode: AUTO_PASSTHROUGH
-    hosts:
-    - "*.local"
-```
+Expose istiod through the gateway:
 
 ```bash
-kubectl apply --context=$CTX_PRIMARY -f - -n istio-system
+kubectl apply --context=$CTX_PRIMARY -n istio-system \
+  -f samples/multicluster/expose-istiod.yaml
 ```
 
 Get the east-west gateway's external IP:
@@ -280,6 +192,17 @@ istioctl create-remote-secret \
   --context=$CTX_REMOTE \
   --name=remote | \
   kubectl apply -f - --context=$CTX_PRIMARY
+```
+
+Because the clusters are on different networks, install an east-west gateway for the remote cluster and expose cross-network service traffic:
+
+```bash
+samples/multicluster/gen-eastwest-gateway.sh \
+  --network network2 | \
+  istioctl install --context=$CTX_REMOTE -y -f -
+
+kubectl apply --context=$CTX_PRIMARY -n istio-system \
+  -f samples/multicluster/expose-services.yaml
 ```
 
 Verify the remote cluster is connected:
