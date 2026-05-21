@@ -17,7 +17,7 @@ Istio handles retries at the sidecar proxy level, which means you get retry beha
 Retries are configured in the VirtualService under the HTTP route:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: order-service
@@ -41,7 +41,7 @@ This configuration says:
 
 ## Retry Conditions (retryOn)
 
-The `retryOn` field determines which failures trigger a retry. If you don't specify it, Istio uses a default of `connect-failure,refused-stream,unavailable,cancelled,retriable-status-codes`.
+The `retryOn` field determines which failures trigger a retry. If you don't specify it, Istio uses a default of `connect-failure,refused-stream,unavailable,cancelled`.
 
 You can configure specific conditions:
 
@@ -109,13 +109,13 @@ If the upstream doesn't respond within 1.5 seconds, that attempt is aborted and 
 
 Without a perTryTimeout, each attempt can take as long as the overall route timeout allows. This means your retries might consume all the available time on the first slow attempt, leaving no time for subsequent retries.
 
-A good rule: set `perTryTimeout` shorter than the overall route timeout divided by the number of attempts:
+A good rule: set `perTryTimeout` shorter than the overall route timeout divided by the maximum total attempts (`1 + attempts`):
 
 ```yaml
 timeout: 10s  # Overall timeout
 retries:
   attempts: 3
-  perTryTimeout: 3s  # 3 attempts * 3s = 9s, within the 10s overall timeout
+  perTryTimeout: 2s  # 4 total attempts * 2s = 8s, leaving room for backoff within 10s
 ```
 
 ## Retry with Backoff
@@ -127,10 +127,10 @@ retries:
   attempts: 3
   perTryTimeout: 2s
   retryOn: 5xx,connect-failure
-  retryRemoteLocalities: true
+  backoff: 100ms
 ```
 
-Envoy automatically adds a jittered backoff between retries. The base interval is 25ms, and it increases exponentially up to 250ms. You don't have a direct configuration option for the backoff duration in Istio's VirtualService, but this built-in backoff provides reasonable spacing between attempts.
+Envoy automatically adds a jittered backoff between retries. The default base interval is 25ms, and it increases exponentially up to a default maximum of 250ms. In Istio, the `backoff` field sets the minimum duration used as the base interval for this exponential backoff.
 
 ## Retries Across Different Hosts
 
@@ -152,7 +152,7 @@ Setting `retryRemoteLocalities: true` allows retries to be sent to upstream inst
 Here's a production-ready retry configuration for a typical API service:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: product-service
@@ -204,7 +204,7 @@ Read operations get more retries because they're idempotent. Write operations on
 
 ## Monitoring Retries
 
-Track retry behavior with Istio metrics:
+Track retry behavior with access logs and Envoy stats:
 
 ```bash
 # Check for retry exhaustion (all retries failed)
@@ -254,7 +254,7 @@ Mitigation strategies:
 3. **Set retry budgets implicitly**: Keep max pending requests low in the DestinationRule connection pool.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: product-service
