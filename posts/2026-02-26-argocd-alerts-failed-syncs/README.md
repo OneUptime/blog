@@ -20,6 +20,7 @@ ArgoCD tracks sync operations through the `argocd_app_sync_total` counter. Each 
 - `Failed` - Sync encountered an error during apply
 - `Error` - Sync could not even start (e.g., Git fetch failed)
 - `Running` - Sync is currently in progress
+- `Terminating` - Sync is being terminated
 
 ```promql
 # All failed syncs in the last 5 minutes
@@ -84,7 +85,9 @@ groups:
   # Critical: Repeated sync failures (application stuck)
   - alert: ArgocdSyncRepeatedFailures
     expr: |
-      increase(argocd_app_sync_total{phase=~"Failed|Error"}[30m]) > 3
+      sum by (name, namespace, project) (
+        increase(argocd_app_sync_total{phase=~"Failed|Error"}[30m])
+      ) > 3
     for: 5m
     labels:
       severity: critical
@@ -96,7 +99,9 @@ groups:
   - alert: ArgocdMassSyncFailure
     expr: |
       count(
-        increase(argocd_app_sync_total{phase=~"Failed|Error"}[15m]) > 0
+        count by (name, namespace, project) (
+          increase(argocd_app_sync_total{phase=~"Failed|Error"}[15m]) > 0
+        )
       ) > 5
     for: 5m
     labels:
@@ -131,7 +136,7 @@ groups:
     expr: |
       increase(argocd_app_sync_total{
         phase=~"Failed|Error",
-        dest_namespace=~"production|prod|prod-.*"
+        project=~"production|prod|prod-.*"
       }[5m]) > 0
     for: 1m
     labels:
@@ -147,7 +152,7 @@ groups:
     expr: |
       increase(argocd_app_sync_total{
         phase=~"Failed|Error",
-        dest_namespace=~"staging|stage|stg-.*"
+        project=~"staging|stage|stg-.*"
       }[10m]) > 0
     for: 5m
     labels:
@@ -162,7 +167,7 @@ groups:
     expr: |
       increase(argocd_app_sync_total{
         phase=~"Failed|Error",
-        dest_namespace=~"dev|development|dev-.*"
+        project=~"dev|development|dev-.*"
       }[15m]) > 2
     for: 10m
     labels:
@@ -183,14 +188,14 @@ route:
   receiver: default
   routes:
   # Production sync failures go to PagerDuty
-  - match:
-      alertname: ArgocdProductionSyncFailed
+  - matchers:
+    - alertname="ArgocdProductionSyncFailed"
     receiver: pagerduty-critical
     continue: true
 
   # All sync failures go to Slack
-  - match_re:
-      alertname: Argocd.*SyncFail.*
+  - matchers:
+    - alertname=~"Argocd.*SyncFail.*"
     receiver: slack-argocd
     group_by: [alertname, name]
     group_wait: 30s
@@ -206,7 +211,7 @@ receivers:
 
 - name: pagerduty-critical
   pagerduty_configs:
-  - service_key: '<your-pagerduty-key>'
+  - routing_key: '<your-pagerduty-integration-key>'
     severity: critical
 
 - name: slack-argocd
@@ -241,7 +246,7 @@ data:
     - description: Application sync failed
       send:
       - app-sync-failed
-      when: app.status.operationState.phase in ['Error', 'Failed']
+      when: app.status?.operationState.phase in ['Error', 'Failed']
 
   template.app-sync-failed: |
     message: |
@@ -251,6 +256,12 @@ data:
 
   service.slack: |
     token: $slack-token
+
+  subscriptions: |
+    - recipients:
+      - slack:argocd-alerts
+      triggers:
+      - on-sync-failed
 ```
 
 And use Prometheus alerts for pattern detection:
