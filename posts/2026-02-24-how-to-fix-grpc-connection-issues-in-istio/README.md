@@ -12,7 +12,7 @@ gRPC and Istio should be a great combination since Envoy natively supports HTTP/
 
 ## Service Port Naming Is Critical
 
-The single most important thing for gRPC in Istio: name your service port correctly. Istio uses the port name to determine the protocol. For gRPC, the port name must start with `grpc`:
+The single most important thing for gRPC in Istio: declare the service port protocol correctly. Istio can infer some protocols automatically, but explicit protocol selection is the reliable path. For gRPC, the port name should start with `grpc`:
 
 ```yaml
 apiVersion: v1
@@ -29,7 +29,7 @@ spec:
     app: grpc-service
 ```
 
-If you name it `tcp-api` or just `api`, Istio treats it as plain TCP and gRPC-specific features (like per-RPC load balancing) won't work. You'll also lose HTTP/2 header-based routing.
+If you name it `tcp-api`, Istio treats it as plain TCP and gRPC-specific features (like per-RPC load balancing) won't work. If you use a non-protocol name like `api`, Istio falls back to protocol detection; that can work, but if detection fails the traffic is treated as plain TCP and you'll lose HTTP/2 header-based routing.
 
 Valid naming patterns:
 - `grpc-*` (e.g., `grpc-api`, `grpc-web`)
@@ -47,17 +47,17 @@ ports:
 
 ## HTTP/2 Protocol Detection
 
-gRPC requires HTTP/2. If Istio doesn't detect the protocol correctly, it might try to proxy gRPC as HTTP/1.1, which breaks everything.
+gRPC requires HTTP/2. If Istio doesn't detect the protocol correctly, it will treat the traffic as opaque TCP, which breaks gRPC-aware routing and telemetry.
 
 Verify the protocol being used:
 
 ```bash
-istioctl proxy-config clusters <pod-name> -n my-namespace | grep grpc-service
+istioctl proxy-config clusters <pod-name> -n my-namespace -o json | grep -A 20 grpc-service
 ```
 
-Look for the protocol column. It should show `http2` or `grpc`.
+Look for HTTP/2 settings such as `http2ProtocolOptions` or `typedExtensionProtocolOptions`.
 
-If it shows `http`, the port naming is wrong. Fix the service port name and restart the pods.
+If the cluster is configured as plain TCP, the port protocol is wrong. Fix the service port name or `appProtocol`, then let the sidecar configuration update and reconnect long-lived clients if needed.
 
 ## Load Balancing for gRPC
 
@@ -95,7 +95,7 @@ trafficPolicy:
       maxRequestsPerConnection: 100
 ```
 
-This closes the connection after 100 requests, which kills all active gRPC streams. For gRPC, set this higher or remove it:
+This limits how many requests can use each upstream connection and can create avoidable connection churn for gRPC. For long-lived gRPC traffic, set this higher or remove it:
 
 ```yaml
 trafficPolicy:
@@ -104,7 +104,7 @@ trafficPolicy:
       maxRequestsPerConnection: 0  # Unlimited
 ```
 
-**2. Idle timeout**: Long-running gRPC streams that are idle can get terminated:
+**2. Request or idle timeout**: Long-running gRPC streams can get terminated by route request timeouts you configure, or by connection idle timeouts:
 
 ```yaml
 apiVersion: networking.istio.io/v1beta1
@@ -124,13 +124,13 @@ spec:
           number: 50051
 ```
 
-Setting `timeout: 0s` disables the request timeout for long-running streams.
+Setting `timeout: 0s` disables the route request timeout for long-running streams. If your issue is an idle connection timeout instead, configure the `connectionPool.tcp.idleTimeout` or `connectionPool.http.idleTimeout` setting in a DestinationRule.
 
 ## gRPC Streaming Issues
 
 Server-side and bidirectional streaming gRPC calls need special attention in Istio.
 
-For server streaming, the client sends one request and the server streams back multiple responses. Istio's default timeout will kill these streams:
+For server streaming, the client sends one request and the server streams back multiple responses. Istio's route timeout is disabled by default, but an explicit timeout on the route can kill these streams:
 
 ```yaml
 http:
@@ -192,7 +192,7 @@ kubectl get pod <pod-name> -n my-namespace -o yaml | grep -A 5 "readinessProbe"
 
 ## gRPC Through the Ingress Gateway
 
-For external gRPC traffic, configure the Gateway with HTTP2:
+For external gRPC traffic over TLS, configure the Gateway for HTTPS and make sure the backend service port is explicitly declared as `grpc` or `http2`:
 
 ```yaml
 apiVersion: networking.istio.io/v1beta1
@@ -258,18 +258,18 @@ Check Envoy access logs for gRPC-specific response flags:
 kubectl logs <pod-name> -c istio-proxy -n my-namespace | grep "grpc-service"
 ```
 
-Look at the `grpc_status` in the access log. Values like `0` (OK), `14` (UNAVAILABLE), or `13` (INTERNAL) tell you what went wrong.
+If your access log format includes Envoy's gRPC status operator, look at the gRPC status in the access log. Values like `0` (OK), `14` (UNAVAILABLE), or `13` (INTERNAL) tell you what went wrong.
 
 ## Max Message Size
 
-gRPC has message size limits. If your messages exceed the Envoy buffer limit, you'll get errors:
+gRPC has message size limits. If your messages exceed the client or server receive limit, you'll get errors:
 
 ```text
 grpc: received message larger than max
 ```
 
-The default max is typically 4MB. For larger messages, you may need to adjust the gRPC settings in your application and potentially the Envoy buffer limits.
+The default receive limit in many gRPC implementations is typically 4MB. For larger messages, adjust the gRPC client and server settings in your application, and check Envoy buffer limits only if you are using filters or features that buffer request or response bodies.
 
 ## Summary
 
-gRPC issues in Istio almost always start with port naming - make sure your service port name starts with `grpc`. After that, configure appropriate timeouts for streaming RPCs (use `timeout: 0s` for long-lived streams), set `maxRequestsPerConnection: 0` to avoid killing active streams, and use gRPC-specific retry codes. Load balancing works per-RPC by default, which is one of the biggest advantages of running gRPC through Istio.
+gRPC issues in Istio often start with protocol selection - make sure your service port name starts with `grpc` or set `appProtocol: grpc`. After that, configure appropriate timeouts for streaming RPCs (use `timeout: 0s` if you need to override an explicit route timeout), avoid unnecessary `maxRequestsPerConnection` limits for long-lived traffic, and use gRPC-specific retry codes. Load balancing works per-RPC by default, which is one of the biggest advantages of running gRPC through Istio.
