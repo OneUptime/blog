@@ -52,15 +52,13 @@ For this guide, we'll set up Jaeger as the backend and then configure Istio to s
 
 ## Installing Jaeger
 
-Deploy Jaeger to your cluster:
+For a quick demo, Istio provides a Jaeger add-on:
 
 ```bash
-kubectl create namespace observability
-
-kubectl apply -f https://raw.githubusercontent.com/jaegertracing/jaeger-operator/main/examples/simplest.yaml -n observability
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.29/samples/addons/jaeger.yaml
 ```
 
-Or use a simple all-in-one deployment for development:
+Or use a simple all-in-one deployment for development. The examples below assume this manifest and the `observability` namespace:
 
 ```yaml
 apiVersion: apps/v1
@@ -80,16 +78,16 @@ spec:
     spec:
       containers:
         - name: jaeger
-          image: jaegertracing/all-in-one:1.54
+          image: jaegertracing/all-in-one:1.76.0
           ports:
             - containerPort: 16686
               name: ui
             - containerPort: 4317
-              name: otlp-grpc
+              name: grpc-otlp
             - containerPort: 4318
-              name: otlp-http
+              name: http-otlp
             - containerPort: 9411
-              name: zipkin
+              name: http-zipkin
 ---
 apiVersion: v1
 kind: Service
@@ -100,13 +98,13 @@ spec:
   selector:
     app: jaeger
   ports:
-    - name: zipkin
+    - name: http-zipkin
       port: 9411
       targetPort: 9411
-    - name: otlp-grpc
+    - name: grpc-otlp
       port: 4317
       targetPort: 4317
-    - name: otlp-http
+    - name: http-otlp
       port: 4318
       targetPort: 4318
 ---
@@ -125,6 +123,7 @@ spec:
 ```
 
 ```bash
+kubectl create namespace observability
 kubectl apply -f jaeger.yaml
 ```
 
@@ -138,11 +137,13 @@ kind: IstioOperator
 spec:
   meshConfig:
     enableTracing: true
+    defaultConfig:
+      tracing: {} # disable legacy MeshConfig tracing options
     extensionProviders:
       - name: jaeger
-        zipkin:
+        opentelemetry:
           service: jaeger-collector.observability.svc.cluster.local
-          port: 9411
+          port: 4317
 ```
 
 If you're using `istioctl` to install:
@@ -150,8 +151,8 @@ If you're using `istioctl` to install:
 ```bash
 istioctl install --set meshConfig.enableTracing=true \
   --set meshConfig.extensionProviders[0].name=jaeger \
-  --set meshConfig.extensionProviders[0].zipkin.service=jaeger-collector.observability.svc.cluster.local \
-  --set meshConfig.extensionProviders[0].zipkin.port=9411
+  --set meshConfig.extensionProviders[0].opentelemetry.service=jaeger-collector.observability.svc.cluster.local \
+  --set meshConfig.extensionProviders[0].opentelemetry.port=4317
 ```
 
 Then activate the tracing provider with a Telemetry resource:
@@ -169,7 +170,7 @@ spec:
       randomSamplingPercentage: 100
 ```
 
-Setting `randomSamplingPercentage` to 100 means every request gets traced. This is fine for development but too aggressive for production. We'll cover sampling rates in more detail later.
+Setting `randomSamplingPercentage` to 100 means requests without an existing sampling decision are selected for tracing. This is fine for development but too aggressive for production. We'll cover sampling rates in more detail later.
 
 ## Header Propagation - The Critical Step
 
@@ -183,6 +184,7 @@ The headers that need propagating are:
 - `x-b3-parentspanid`
 - `x-b3-sampled`
 - `x-b3-flags`
+- `b3`
 
 Or if using W3C Trace Context:
 
@@ -206,6 +208,7 @@ TRACE_HEADERS = [
     'x-b3-parentspanid',
     'x-b3-sampled',
     'x-b3-flags',
+    'b3',
     'traceparent',
     'tracestate',
 ]
@@ -230,7 +233,7 @@ func propagateHeaders(r *http.Request) http.Header {
     headers := make(http.Header)
     traceHeaders := []string{
         "x-request-id", "x-b3-traceid", "x-b3-spanid",
-        "x-b3-parentspanid", "x-b3-sampled", "x-b3-flags",
+        "x-b3-parentspanid", "x-b3-sampled", "x-b3-flags", "b3",
         "traceparent", "tracestate",
     }
     for _, h := range traceHeaders {
@@ -249,7 +252,10 @@ Deploy a sample application and generate some traffic:
 ```bash
 # Deploy the Bookinfo sample app
 
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.24/samples/bookinfo/platform/kube/bookinfo.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.29/samples/bookinfo/platform/kube/bookinfo.yaml
+
+# Deploy the sleep sample app used to generate in-mesh traffic
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.29/samples/sleep/sleep.yaml
 
 # Generate traffic
 for i in $(seq 1 100); do
@@ -299,10 +305,10 @@ If you see no traces at all:
 istioctl proxy-config bootstrap <pod-name> -o json | grep -A5 tracing
 
 # Verify the tracing backend is reachable
-kubectl exec <pod-name> -c istio-proxy -- curl -s http://jaeger-collector.observability:9411/
+kubectl exec deploy/sleep -- curl -s http://jaeger-query.observability:16686/
 
 # Check Envoy stats for trace-related metrics
-kubectl exec <pod-name> -c istio-proxy -- curl -s localhost:15000/stats | grep tracing
+kubectl exec <pod-name> -c istio-proxy -- pilot-agent request GET stats | grep tracing
 ```
 
 ## Summary
