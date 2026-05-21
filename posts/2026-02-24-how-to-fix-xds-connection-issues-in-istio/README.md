@@ -8,7 +8,7 @@ Description: Guide to diagnosing and resolving xDS discovery service connection 
 
 ---
 
-xDS is the protocol that Envoy uses to receive configuration from the Istio control plane (Istiod). When xDS connections fail, your sidecars can't get route updates, certificate refreshes, or endpoint changes. The mesh keeps working with stale config for a while, but eventually things start breaking.
+xDS is the protocol that Envoy uses to receive configuration from the Istio control plane (Istiod). When xDS connections fail, your sidecars can't get route updates, listener updates, or endpoint changes. The mesh keeps working with stale config for a while, but eventually things start breaking.
 
 ## What Is xDS?
 
@@ -20,7 +20,7 @@ xDS is actually a family of discovery service APIs:
 - **EDS** (Endpoint Discovery Service): Individual pod IP addresses
 - **SDS** (Secret Discovery Service): TLS certificates
 
-Istiod serves all of these over a single gRPC connection on port 15012.
+Istiod serves ADS configuration such as LDS, RDS, CDS, and EDS over a gRPC connection on port 15012. Workload certificate SDS is typically served locally by istio-agent inside the proxy container, while istio-agent talks to Istiod's CA service for certificate issuance and rotation.
 
 ## Check Connection Status
 
@@ -62,7 +62,7 @@ kubectl get svc istiod -n istio-system
 From inside the problematic pod, test connectivity:
 
 ```bash
-kubectl exec <pod-name> -c istio-proxy -n my-namespace -- curl -sk https://istiod.istio-system.svc:15012/debug/connections
+kubectl exec <pod-name> -c istio-proxy -n my-namespace -- curl -sS http://istiod.istio-system:15014/version
 ```
 
 If this fails, there's a network issue between the pod and Istiod.
@@ -121,10 +121,10 @@ Check for push errors in Istiod logs:
 kubectl logs -l app=istiod -n istio-system | grep -i "push\|error\|timeout"
 ```
 
-You can also check Istiod's debug endpoint for push metrics:
+You can also check Istiod's metrics endpoint for xDS push metrics:
 
 ```bash
-kubectl exec -n istio-system -l app=istiod -- curl -s localhost:15014/debug/pushStatusJSON
+kubectl exec -n istio-system deploy/istiod -- curl -s localhost:15014/metrics | grep "pilot_xds_push"
 ```
 
 If pushes are slow, consider:
@@ -221,7 +221,7 @@ spec:
 For deeper debugging, increase the xDS-related log level:
 
 ```bash
-istioctl proxy-config log <pod-name> -n my-namespace --level ads:debug,config:debug
+istioctl proxy-config log <pod-name> -n my-namespace --level config:debug,upstream:debug
 ```
 
 Then trigger the issue and check the logs:
