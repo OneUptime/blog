@@ -54,6 +54,16 @@ var traceHeaderNames = []string{
     "tracestate",
 }
 
+// TraceHeaderNames returns the headers this package propagates
+func TraceHeaderNames() []string {
+    return append([]string(nil), traceHeaderNames...)
+}
+
+// WithHeaders stores trace headers in context
+func WithHeaders(ctx context.Context, headers http.Header) context.Context {
+    return context.WithValue(ctx, headersKey, headers)
+}
+
 // Middleware extracts trace headers and stores them in context
 func Middleware(next http.Handler) http.Handler {
     return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -63,7 +73,7 @@ func Middleware(next http.Handler) http.Handler {
                 headers.Set(name, value)
             }
         }
-        ctx := context.WithValue(r.Context(), headersKey, headers)
+        ctx := WithHeaders(r.Context(), headers)
         next.ServeHTTP(w, r.WithContext(ctx))
     })
 }
@@ -243,7 +253,7 @@ func fetchProducts(ctx context.Context) (interface{}, error) {
 
 ## Method 2: gRPC Interceptors
 
-For gRPC services, use unary and streaming interceptors:
+For gRPC services, use unary interceptors. Add analogous streaming interceptors if your service uses streaming RPCs:
 
 ### Server-Side Interceptor (Extract Headers)
 
@@ -252,6 +262,7 @@ package tracing
 
 import (
     "context"
+    "net/http"
 
     "google.golang.org/grpc"
     "google.golang.org/grpc/metadata"
@@ -273,7 +284,7 @@ func UnaryServerInterceptor() grpc.UnaryServerInterceptor {
                     headers.Set(name, values[0])
                 }
             }
-            ctx = context.WithValue(ctx, headersKey, headers)
+            ctx = WithHeaders(ctx, headers)
         }
         return handler(ctx, req)
     }
@@ -302,8 +313,7 @@ func UnaryClientInterceptor() grpc.UnaryClientInterceptor {
         }
 
         if len(pairs) > 0 {
-            md := metadata.Pairs(pairs...)
-            ctx = metadata.NewOutgoingContext(ctx, md)
+            ctx = metadata.AppendToOutgoingContext(ctx, pairs...)
         }
 
         return invoker(ctx, method, req, reply, cc, opts...)
@@ -322,7 +332,7 @@ server := grpc.NewServer(
 // Client
 conn, err := grpc.Dial(
     "payment-service:9090",
-    grpc.WithInsecure(),
+    grpc.WithTransportCredentials(insecure.NewCredentials()),
     grpc.WithUnaryInterceptor(tracing.UnaryClientInterceptor()),
 )
 ```
@@ -369,7 +379,7 @@ func ginTraceMiddleware() gin.HandlerFunc {
                 headers.Set(name, value)
             }
         }
-        ctx := context.WithValue(c.Request.Context(), tracing.HeadersKey, headers)
+        ctx := tracing.WithHeaders(c.Request.Context(), headers)
         c.Request = c.Request.WithContext(ctx)
         c.Next()
     }
@@ -388,7 +398,7 @@ func main() {
 }
 ```
 
-## Method 5: OpenTelemetry Auto-Instrumentation
+## Method 5: OpenTelemetry HTTP Instrumentation
 
 Use the OpenTelemetry Go SDK for automatic propagation:
 
@@ -396,18 +406,24 @@ Use the OpenTelemetry Go SDK for automatic propagation:
 package main
 
 import (
-    "context"
     "net/http"
 
+    "go.opentelemetry.io/contrib/propagators/b3"
     "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/propagation"
 )
 
+// Create a traced HTTP client for downstream calls
+var tracedClient = &http.Client{
+    Transport: otelhttp.NewTransport(http.DefaultTransport),
+}
+
 func init() {
     // Set up propagators for both B3 and W3C formats
     otel.SetTextMapPropagator(
         propagation.NewCompositeTextMapPropagator(
+            b3.New(b3.WithInjectEncoding(b3.B3MultipleHeader | b3.B3SingleHeader)),
             propagation.TraceContext{},
             propagation.Baggage{},
         ),
@@ -420,11 +436,6 @@ func main() {
 
     // Wrap server with OTel instrumentation
     handler := otelhttp.NewHandler(mux, "order-service")
-
-    // Create a traced HTTP client
-    client := &http.Client{
-        Transport: otelhttp.NewTransport(http.DefaultTransport),
-    }
 
     http.ListenAndServe(":8080", handler)
 }
@@ -497,7 +508,7 @@ go func(ctx context.Context) {
     client.Do(req)
 }(ctx)
 
-// Bad - ctx might be cancelled by the time goroutine runs
+// Bad - ctx is hidden in the closure, which makes it easier to use the wrong context later
 go func() {
     req, _ := http.NewRequestWithContext(ctx, "POST", url, body)
     // ...
