@@ -8,7 +8,7 @@ Description: How to manage the privileged init container requirements of Istio s
 
 ---
 
-When Istio injects its sidecar into a pod, it also injects an init container called `istio-init` that requires the `NET_ADMIN` and `NET_RAW` Linux capabilities. These capabilities let the init container modify the pod's iptables rules to redirect traffic through Envoy. In many production environments, granting these capabilities is a security concern. This post covers how to handle this requirement across different Kubernetes security frameworks.
+When Istio injects its sidecar into a pod without the Istio CNI plugin enabled, it also injects an init container called `istio-init` that requires the `NET_ADMIN` and `NET_RAW` Linux capabilities. These capabilities let the init container modify the pod's iptables rules to redirect traffic through Envoy. In many production environments, granting these capabilities is a security concern. This post covers how to handle this requirement across different Kubernetes security frameworks.
 
 ## What Capabilities Does istio-init Need?
 
@@ -56,7 +56,7 @@ Notice it also runs as root (UID 0). This is because iptables modifications typi
 
 Kubernetes has Pod Security Standards (PSS) that replace the older PodSecurityPolicies. The three levels are Privileged, Baseline, and Restricted.
 
-The `istio-init` container requires at least the **Baseline** level because it needs NET_ADMIN and NET_RAW capabilities. The **Restricted** level blocks these capabilities entirely.
+The `istio-init` container does not fit the built-in **Baseline** or **Restricted** levels because both block adding NET_ADMIN and NET_RAW capabilities. With the built-in Pod Security Admission profiles, it requires the **Privileged** level unless you avoid the init container with Istio CNI or use a separate policy engine that supports targeted exceptions.
 
 If your namespace is enforced with the Restricted standard:
 
@@ -79,11 +79,11 @@ The cleanest solution is to switch to the Istio CNI plugin. With CNI, the networ
 istioctl install --set components.cni.enabled=true
 ```
 
-This removes the init container from injected pods, making them compatible with the Restricted security standard.
+This removes this init-container capability requirement from injected pods, making Restricted enforcement possible as long as the application containers also satisfy the Restricted controls.
 
 ### Option 2: Relax Security for the Namespace
 
-If you can't use CNI, you can set the namespace to Baseline enforcement:
+If you can't use CNI and you rely only on the built-in Pod Security Admission profiles, you can set the namespace to Privileged enforcement:
 
 ```yaml
 apiVersion: v1
@@ -91,12 +91,12 @@ kind: Namespace
 metadata:
   name: my-namespace
   labels:
-    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/enforce: privileged
     pod-security.kubernetes.io/warn: restricted
     pod-security.kubernetes.io/audit: restricted
 ```
 
-This allows the init container to run while still warning and auditing against the Restricted standard. You get visibility into what would break if you moved to Restricted.
+This allows the init container to run while still warning and auditing against the Restricted standard. You get visibility into what would break if you moved to Restricted. Treat this as a broad exception; if you need tighter control, use CNI or an admission policy engine that can exempt only the Istio init container.
 
 ### Option 3: Use a Policy Exception
 
@@ -110,7 +110,6 @@ kind: ClusterPolicy
 metadata:
   name: allow-istio-init
 spec:
-  validationFailureAction: Enforce
   background: true
   rules:
   - name: allow-istio-init-capabilities
@@ -125,6 +124,7 @@ spec:
         operator: GreaterThan
         value: 0
     validate:
+      failureAction: Enforce
       message: "Istio init container is allowed NET_ADMIN and NET_RAW"
       podSecurity:
         level: baseline
@@ -139,7 +139,7 @@ For OPA Gatekeeper, you'd create a ConstraintTemplate that exempts init containe
 
 ## Working with PodSecurityPolicies (Legacy)
 
-If your cluster still uses the deprecated PodSecurityPolicies, you need a PSP that allows the required capabilities:
+If your Kubernetes 1.24 or earlier cluster still uses the deprecated PodSecurityPolicies, you need a PSP that allows the required capabilities. PodSecurityPolicy was removed in Kubernetes 1.25:
 
 ```yaml
 apiVersion: policy/v1beta1
@@ -215,14 +215,9 @@ This is good practice and compatible with most security policies. The init conta
 
 ## OpenShift Considerations
 
-OpenShift has its own Security Context Constraints (SCCs) that are more restrictive than standard Kubernetes. For Istio to work on OpenShift, you typically need to grant the `anyuid` SCC to the service accounts:
+OpenShift has its own Security Context Constraints (SCCs) that are more restrictive than standard Kubernetes. For Istio on OpenShift, prefer the Service Mesh or Istio CNI approach so application pods do not need an init container with elevated SCC permissions.
 
-```bash
-oc adm policy add-scc-to-group anyuid system:serviceaccounts:istio-system
-oc adm policy add-scc-to-group anyuid system:serviceaccounts:my-namespace
-```
-
-Or create a custom SCC:
+If you cannot use CNI, create a custom SCC that allows the required capabilities and UID 0 for the affected service accounts. The `anyuid` SCC only addresses UID restrictions; it does not by itself allow NET_ADMIN or NET_RAW.
 
 ```yaml
 apiVersion: security.openshift.io/v1
@@ -236,6 +231,12 @@ runAsUser:
   type: RunAsAny
 seLinuxContext:
   type: RunAsAny
+```
+
+Then bind it to the service accounts that run injected workloads:
+
+```bash
+oc adm policy add-scc-to-group istio-init-scc system:serviceaccounts:my-namespace
 ```
 
 ## Auditing Init Container Permissions
