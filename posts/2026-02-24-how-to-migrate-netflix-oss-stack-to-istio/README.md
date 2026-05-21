@@ -18,9 +18,9 @@ Here is a practical migration path from the Netflix OSS stack to Istio.
 |---|---|---|
 | Eureka | Service discovery | Kubernetes Services + Istio registry |
 | Ribbon | Client-side load balancing | Envoy sidecar load balancing |
-| Hystrix | Circuit breaker | DestinationRule outlierDetection + connectionPool |
+| Hystrix | Circuit breaker, timeout, isolation, fallback | DestinationRule outlierDetection + connectionPool + VirtualService timeout for network-level controls |
 | Zuul 1 / Zuul 2 | API gateway / edge proxy | Istio Gateway + VirtualService |
-| Archaius | Dynamic configuration | ConfigMap + Helm values |
+| Archaius | Dynamic configuration | ConfigMap, Secret, and application configuration |
 | Turbine | Hystrix metrics aggregation | Prometheus + Grafana via Istio metrics |
 
 ## Phase 1: Set Up Istio Alongside Netflix OSS
@@ -34,7 +34,7 @@ istioctl install --set profile=default
 Configure PERMISSIVE mTLS so existing services continue to work:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -73,7 +73,7 @@ public RestTemplate restTemplate() {
 restTemplate.getForObject("http://payment-service/api/pay", Response.class);
 ```
 
-With Kubernetes DNS, the same code works without `@LoadBalanced` because Kubernetes resolves `payment-service` to the ClusterIP:
+With Kubernetes DNS, the same code works without `@LoadBalanced` if there is a Kubernetes Service named `payment-service` in the same namespace and it exposes the expected HTTP port. For cross-namespace calls, use the fully qualified service name such as `payment-service.payments.svc.cluster.local`:
 
 ```java
 @Bean
@@ -90,12 +90,12 @@ restTemplate.getForObject("http://payment-service/api/pay", Response.class);
 ```xml
 <!-- Remove from pom.xml -->
 <dependency>
-    <groupId>com.netflix.eureka</groupId>
-    <artifactId>eureka-client</artifactId>
+    <groupId>org.springframework.cloud</groupId>
+    <artifactId>spring-cloud-starter-netflix-eureka-client</artifactId>
 </dependency>
 ```
 
-Remove `@EnableEurekaClient` from your application class and Eureka configuration from `application.yml`.
+Remove `@EnableEurekaClient` or `@EnableDiscoveryClient` if present, and remove Eureka configuration from `application.yml`.
 
 ### Step 3: Decommission the Eureka server
 
@@ -103,14 +103,14 @@ After all services are updated and tested, shut down the Eureka server deploymen
 
 ## Phase 3: Replace Ribbon with Envoy Load Balancing
 
-With Eureka gone, Ribbon has no service registry to work with anyway. But even if you kept Eureka, Envoy's load balancing is better because it works at the proxy level and supports more algorithms.
+If Ribbon was using Eureka for discovery, removing Eureka also removes its service registry source. But even if you kept Eureka, Envoy's load balancing is usually a better fit in a Kubernetes mesh because it works at the proxy level and supports more algorithms.
 
 Remove Ribbon:
 
 ```xml
 <dependency>
-    <groupId>com.netflix.ribbon</groupId>
-    <artifactId>ribbon</artifactId>
+    <groupId>org.springframework.cloud</groupId>
+    <artifactId>spring-cloud-starter-netflix-ribbon</artifactId>
 </dependency>
 ```
 
@@ -119,7 +119,7 @@ Remove the `@LoadBalanced` annotation from your RestTemplate beans. The Envoy si
 Configure the load balancing strategy in Istio:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: payment-service
@@ -130,7 +130,7 @@ spec:
       simple: LEAST_REQUEST
 ```
 
-For consistent hashing (sticky sessions):
+For consistent hashing (soft session affinity):
 
 ```yaml
     loadBalancer:
@@ -140,18 +140,14 @@ For consistent hashing (sticky sessions):
 
 ## Phase 4: Replace Hystrix with Istio Circuit Breaking
 
-Hystrix is in maintenance mode and Netflix recommends moving away from it. Istio provides equivalent circuit breaking at the proxy level.
+Hystrix is in maintenance mode and Netflix recommends moving away from it. Istio provides network-level circuit breaking controls at the proxy level, but it is not a one-for-one replacement for Hystrix thread isolation, semaphore isolation, or fallback methods.
 
 Remove Hystrix:
 
 ```xml
 <dependency>
-    <groupId>com.netflix.hystrix</groupId>
-    <artifactId>hystrix-core</artifactId>
-</dependency>
-<dependency>
-    <groupId>com.netflix.hystrix</groupId>
-    <artifactId>hystrix-javanica</artifactId>
+    <groupId>org.springframework.cloud</groupId>
+    <artifactId>spring-cloud-starter-netflix-hystrix</artifactId>
 </dependency>
 ```
 
@@ -171,10 +167,10 @@ The Hystrix configuration:
 )
 ```
 
-Translates to this Istio configuration:
+Roughly maps to this Istio configuration for connection limits and unhealthy endpoint ejection:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: payment-service
@@ -197,7 +193,7 @@ spec:
 And the timeout goes in the VirtualService:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: payment-service
@@ -218,7 +214,7 @@ Important note: Istio does not have a built-in fallback mechanism like Hystrix's
 Zuul (or Zuul 2) serves as the API gateway. Replace it with Istio's ingress gateway:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: api-gateway
@@ -236,7 +232,7 @@ spec:
       hosts:
         - "api.example.com"
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-routes
@@ -277,8 +273,8 @@ After verifying the Istio ingress works, decommission the Zuul deployment.
 Turbine aggregated Hystrix metrics across services. With Istio, you get richer metrics automatically through Prometheus:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/prometheus.yaml
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/grafana.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.29/samples/addons/prometheus.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.29/samples/addons/grafana.yaml
 ```
 
 Istio generates metrics like:
@@ -293,7 +289,7 @@ These are far more detailed than Hystrix metrics and do not require any client l
 After all Netflix OSS components are removed and all services have sidecars:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: strict
