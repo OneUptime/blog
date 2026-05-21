@@ -76,10 +76,6 @@ spec:
           - name: my-app-vsvc
             routes:
             - primary
-          destinationRule:
-            name: my-app-destrule
-            canarySubsetName: canary
-            stableSubsetName: stable
       steps:
       - setWeight: 10
       - pause: {duration: 2m}
@@ -91,7 +87,7 @@ spec:
       - pause: {duration: 5m}
 ```
 
-You also need the supporting Service, VirtualService, and DestinationRule resources:
+You also need the supporting Service and VirtualService resources:
 
 ```yaml
 apiVersion: v1
@@ -128,26 +124,10 @@ spec:
     route:
     - destination:
         host: my-app-stable
-        subset: stable
       weight: 100
     - destination:
         host: my-app-canary
-        subset: canary
       weight: 0
----
-apiVersion: networking.istio.io/v1
-kind: DestinationRule
-metadata:
-  name: my-app-destrule
-spec:
-  host: my-app
-  subsets:
-  - name: stable
-    labels:
-      app: my-app
-  - name: canary
-    labels:
-      app: my-app
 ```
 
 ## Triggering a Rollout
@@ -230,7 +210,7 @@ strategy:
 
 ## Blue-Green Deployments with Istio
 
-Argo Rollouts also supports blue-green deployments. With Istio, this means the VirtualService switches 100% of traffic from the old version to the new version after verification:
+Argo Rollouts also supports blue-green deployments. With Istio, you typically route the VirtualService to the active Service, and Argo Rollouts switches the active Service from the old version to the new version after verification:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -301,7 +281,7 @@ Argo Rollouts includes a web dashboard:
 kubectl argo rollouts dashboard
 ```
 
-This opens a browser showing all your Rollouts with their status, revision history, and traffic weights. It is useful for teams that prefer a visual interface over the command line.
+This serves a local dashboard. Visit `localhost:3100/rollouts` to view your Rollouts with their status, revision history, and traffic weights. It is useful for teams that prefer a visual interface over the command line.
 
 ## Notifications
 
