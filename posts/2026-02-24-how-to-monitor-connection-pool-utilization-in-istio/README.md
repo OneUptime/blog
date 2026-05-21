@@ -19,7 +19,7 @@ Every Envoy sidecar maintains connection pools to upstream services. When Servic
 Istio lets you configure these pools through the `DestinationRule` resource:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service-pool
@@ -43,7 +43,7 @@ The key settings here are:
 
 - `maxConnections`: Maximum number of TCP connections to the upstream host
 - `http1MaxPendingRequests`: Maximum number of requests waiting for a connection from the pool
-- `http2MaxRequests`: Maximum number of concurrent requests to the upstream cluster (for HTTP/2)
+- `http2MaxRequests`: Maximum number of active requests to the upstream cluster
 - `maxRequestsPerConnection`: How many requests to send over a single connection before closing it
 
 ## Envoy Connection Pool Metrics
@@ -64,16 +64,18 @@ cluster.outbound|80||my-service.default.svc.cluster.local.upstream_cx_overflow
 cluster.outbound|80||my-service.default.svc.cluster.local.upstream_rq_pending_active
 cluster.outbound|80||my-service.default.svc.cluster.local.upstream_rq_pending_overflow
 cluster.outbound|80||my-service.default.svc.cluster.local.upstream_rq_pending_total
+cluster.outbound|80||my-service.default.svc.cluster.local.upstream_rq_active_overflow
 ```
 
 Here is what each one tells you:
 
 - `upstream_cx_active`: Current number of active connections
 - `upstream_cx_total`: Total connections opened over the lifetime of the proxy
-- `upstream_cx_overflow`: Number of times the connection pool overflowed (hit maxConnections)
+- `upstream_cx_overflow`: Number of times the connection circuit breaker overflowed (hit maxConnections)
 - `upstream_rq_pending_active`: Requests currently waiting for a connection
-- `upstream_rq_pending_overflow`: Requests rejected because the pending queue was full
+- `upstream_rq_pending_overflow`: Requests failed because the pending request or request circuit breaker overflowed
 - `upstream_rq_pending_total`: Total requests that had to wait for a connection
+- `upstream_rq_active_overflow`: Requests rejected because the maximum active request circuit breaker was exhausted
 
 ## Exposing Metrics to Prometheus
 
@@ -131,7 +133,7 @@ envoy_cluster_upstream_cx_active{cluster_name="outbound|80||my-service.default.s
 
 Replace `100` with your actual `maxConnections` value from the DestinationRule.
 
-**Connection overflow rate (connections rejected per second):**
+**Connection circuit-breaker overflow rate:**
 
 ```promql
 rate(envoy_cluster_upstream_cx_overflow{
@@ -139,7 +141,7 @@ rate(envoy_cluster_upstream_cx_overflow{
 }[5m])
 ```
 
-If this number is above zero, you are hitting your connection limit and requests are being rejected.
+If this number is above zero, you are hitting the connection circuit breaker limit.
 
 **Pending request queue depth:**
 
@@ -157,7 +159,17 @@ rate(envoy_cluster_upstream_rq_pending_overflow{
 }[5m])
 ```
 
-This is the most critical metric. When this goes above zero, requests are being dropped because both the connection pool AND the pending queue are full.
+This is one of the most critical metrics. When this goes above zero, requests are being dropped because pending request or request circuit breaking is exhausted.
+
+**Active request overflow rate:**
+
+```promql
+rate(envoy_cluster_upstream_rq_active_overflow{
+  cluster_name=~"outbound.*my-service.*"
+}[5m])
+```
+
+This indicates requests rejected because the active request circuit breaker was exhausted.
 
 ## Setting Up Alerts
 
@@ -193,6 +205,16 @@ spec:
             summary: "Pending request overflow - requests being dropped"
             description: "Cluster {{ $labels.cluster_name }} is dropping requests due to full pending queue"
 
+        - alert: ActiveRequestOverflow
+          expr: |
+            rate(envoy_cluster_upstream_rq_active_overflow[5m]) > 0
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Active request overflow - requests being dropped"
+            description: "Cluster {{ $labels.cluster_name }} is dropping requests due to active request circuit breaking"
+
         - alert: HighConnectionUtilization
           expr: |
             envoy_cluster_upstream_cx_active > 80
@@ -212,7 +234,8 @@ A useful Grafana dashboard for connection pool monitoring should have these pane
 2. **Connection Overflow Events** - Bar chart of `rate(envoy_cluster_upstream_cx_overflow[5m])`
 3. **Pending Requests** - Line chart of `envoy_cluster_upstream_rq_pending_active`
 4. **Pending Overflow Events** - Bar chart highlighting dropped requests
-5. **New Connections per Second** - Shows `rate(envoy_cluster_upstream_cx_total[5m])`
+5. **Active Request Overflow Events** - Bar chart of `rate(envoy_cluster_upstream_rq_active_overflow[5m])`
+6. **New Connections per Second** - Shows `rate(envoy_cluster_upstream_cx_total[5m])`
 
 Here is a sample panel configuration:
 
@@ -237,12 +260,14 @@ When your monitoring shows you are hitting limits, here is how to think about tu
 
 If `upstream_cx_overflow` is non-zero, increase `maxConnections`. But do not just set it to some huge number. Each connection consumes memory and file descriptors on both the client and server side.
 
-If `upstream_rq_pending_overflow` is non-zero but `upstream_cx_overflow` is zero, increase `http1MaxPendingRequests`. Your connection pool is big enough, but requests are queuing up faster than connections become available.
+If `upstream_rq_pending_overflow` is non-zero but `upstream_cx_overflow` is zero, increase `http1MaxPendingRequests` or, for HTTP/2-heavy traffic, check whether `http2MaxRequests` is too low. Requests are queuing up faster than connections or active request capacity become available.
+
+If `upstream_rq_active_overflow` is non-zero, increase `http2MaxRequests` if the upstream service can safely handle more concurrent requests.
 
 If `maxRequestsPerConnection` is set low and you see high connection churn (high rate of `upstream_cx_total`), consider increasing it to reuse connections longer.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service-tuned
