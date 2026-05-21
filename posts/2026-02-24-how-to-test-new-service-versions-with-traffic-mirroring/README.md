@@ -8,15 +8,15 @@ Description: Learn how to use Istio traffic mirroring to safely test new service
 
 ---
 
-Traffic mirroring (sometimes called shadowing) is one of the most underused features in Istio, and honestly, it should be part of every team's deployment toolkit. The idea is simple: you copy real production traffic and send it to a new version of your service, but the mirrored responses get discarded. Your users never see the results from the new version. You get to see how it handles real-world load and data without any risk.
+Traffic mirroring (sometimes called shadowing) is one of the most underused features in Istio, and honestly, it should be part of every team's deployment toolkit. The idea is simple: you copy real production traffic and send it to a new version of your service, but the mirrored responses get discarded. Your users never see the results from the new version. You get to see how it handles real-world load and data without putting the new version in the user-facing response path.
 
-This is way safer than spinning up a canary and hoping for the best. With mirroring, there is zero impact on production traffic if the new version crashes, returns errors, or takes too long.
+This is way safer than spinning up a canary and hoping for the best. With mirroring, errors or latency from the new version do not affect the response returned from the stable version.
 
 ## Prerequisites
 
 Before you get started, make sure you have:
 
-- A Kubernetes cluster with Istio installed (1.18+ recommended)
+- A Kubernetes cluster with a supported Istio release installed
 - `istioctl` and `kubectl` configured
 - A service with at least two versions deployed (v1 and v2)
 - Sidecar injection enabled in your namespace
@@ -154,7 +154,7 @@ Here is what happens with this configuration:
 1. Every request to `payment-service` goes to v1 (the stable version)
 2. A copy of every request also goes to v2
 3. Responses from v2 are thrown away - users only see responses from v1
-4. The mirrored requests include a `-shadow` suffix on the `Host` header
+4. The mirrored requests include a `-shadow` suffix on the `Host`/`Authority` header
 
 ## Controlling Mirror Percentage
 
@@ -174,7 +174,7 @@ This mirrors only 10% of traffic. Start low, watch the metrics, and ramp up if t
 
 When Istio mirrors traffic, the Envoy sidecar proxy handles the duplication. The original request goes through the normal routing path to v1. Envoy also fires off an asynchronous copy to v2. Critically, the mirrored request is fire-and-forget. Envoy does not wait for a response from v2 before returning the v1 response to the caller.
 
-The mirrored request has a modified `Host` header. If the original request targets `payment-service`, the mirrored request header becomes `payment-service-shadow`. This helps you distinguish mirrored traffic in your logs and metrics.
+The mirrored request has a modified `Host`/`Authority` header. If the original request targets `payment-service`, the mirrored request header becomes `payment-service-shadow`. This helps you distinguish mirrored traffic in your logs and metrics.
 
 ```mermaid
 sequenceDiagram
@@ -194,10 +194,10 @@ sequenceDiagram
 
 The whole point of mirroring is to observe how v2 behaves. Here are the things you want to keep an eye on:
 
-**Check Envoy metrics for the mirrored cluster:**
+**Check Envoy cluster configuration for the mirrored subset:**
 
 ```bash
-istioctl proxy-config cluster <pod-name> -o json | grep -A 5 "payment-service-v2"
+istioctl proxy-config cluster <pod-name> --fqdn payment-service.default.svc.cluster.local --subset v2
 ```
 
 **Look at v2 pod logs:**
