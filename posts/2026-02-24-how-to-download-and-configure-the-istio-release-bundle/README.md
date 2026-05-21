@@ -20,7 +20,7 @@ The easiest method is the official download script:
 curl -L https://istio.io/downloadIstio | sh -
 ```
 
-This downloads the latest stable release for your operating system and architecture. The script detects whether you're on Linux, macOS, or Windows (via WSL) and grabs the right binary.
+This downloads the latest stable release for your operating system and architecture. The script detects whether you're on Linux or macOS (including Linux under WSL) and grabs the right binary.
 
 ### Specifying a Version
 
@@ -70,22 +70,32 @@ istio-1.24.0/
 ├── manifests/
 │   ├── charts/
 │   │   ├── base/
+│   │   ├── default/
 │   │   ├── gateway/
-│   │   ├── istiod-remote/
-│   │   └── istio-control/
+│   │   ├── gateways/
+│   │   ├── istio-cni/
+│   │   ├── istio-control/
+│   │   └── ztunnel/
 │   └── profiles/
+│       ├── ambient.yaml
 │       ├── default.yaml
 │       ├── demo.yaml
 │       ├── empty.yaml
 │       ├── minimal.yaml
-│       └── remote.yaml
+│       ├── openshift-ambient.yaml
+│       ├── openshift.yaml
+│       ├── preview.yaml
+│       ├── remote.yaml
+│       └── stable.yaml
 ├── samples/
 │   ├── addons/
 │   │   ├── grafana.yaml
 │   │   ├── jaeger.yaml
 │   │   ├── kiali.yaml
+│   │   ├── loki.yaml
 │   │   └── prometheus.yaml
 │   ├── bookinfo/
+│   ├── curl/
 │   ├── helloworld/
 │   ├── httpbin/
 │   └── sleep/
@@ -142,7 +152,7 @@ istioctl supports tab completion for bash and zsh:
 
 ```bash
 # Bash
-istioctl completion bash > /etc/bash_completion.d/istioctl
+istioctl completion bash | sudo tee /etc/bash_completion.d/istioctl > /dev/null
 
 # Zsh
 istioctl completion zsh > "${fpath[1]}/_istioctl"
@@ -155,25 +165,25 @@ The release bundle includes several predefined profiles. Each profile is a YAML 
 View the available profiles:
 
 ```bash
-istioctl profile list
+ls manifests/profiles | sed 's/\.yaml$//' | sort
 ```
 
-Compare two profiles:
+Compare two profile files:
 
 ```bash
-istioctl profile diff default demo
+diff -u manifests/profiles/default.yaml manifests/profiles/demo.yaml
 ```
 
-Dump a profile to see its full configuration:
+Render a profile to see the Kubernetes manifests it would apply:
 
 ```bash
-istioctl profile dump default
+istioctl manifest generate --set profile=default
 ```
 
-This outputs the complete IstioOperator configuration that the profile uses. You can redirect it to a file and customize it:
+This outputs the complete generated Kubernetes manifest for that profile. You can redirect it to a file for review or GitOps workflows:
 
 ```bash
-istioctl profile dump default > my-config.yaml
+istioctl manifest generate --set profile=default > generated-manifest.yaml
 ```
 
 ### Profile Summary
@@ -251,16 +261,16 @@ spec:
       logAsJson: true
 ```
 
-Validate your configuration before applying:
+Render your configuration before applying to catch configuration errors and inspect the generated manifest:
 
 ```bash
-istioctl verify-install -f my-istio-config.yaml
+istioctl manifest generate -f my-istio-config.yaml > generated-manifest.yaml
 ```
 
 Install with it:
 
 ```bash
-istioctl install -f my-istio-config.yaml -y
+istioctl install -f my-istio-config.yaml --verify -y
 ```
 
 ## Working with Multiple Configurations
@@ -337,11 +347,25 @@ VERSION="1.24.0"
 OS=$(uname -s | tr '[:upper:]' '[:lower:]')
 ARCH=$(uname -m)
 
-if [ "$ARCH" = "x86_64" ]; then
-  ARCH="amd64"
+if [ "$OS" = "darwin" ]; then
+  OS="osx"
 fi
 
-URL="https://github.com/istio/istio/releases/download/${VERSION}/istio-${VERSION}-${OS}-${ARCH}.tar.gz"
+case "$ARCH" in
+  x86_64|amd64)
+    ARCH="amd64"
+    ;;
+  arm64|aarch64)
+    ARCH="arm64"
+    ;;
+esac
+
+if [ "$OS" = "osx" ] && [ "$ARCH" = "amd64" ]; then
+  URL="https://github.com/istio/istio/releases/download/${VERSION}/istio-${VERSION}-${OS}.tar.gz"
+else
+  URL="https://github.com/istio/istio/releases/download/${VERSION}/istio-${VERSION}-${OS}-${ARCH}.tar.gz"
+fi
+
 curl -L "$URL" -o "istio-${VERSION}.tar.gz"
 tar -xzf "istio-${VERSION}.tar.gz"
 ```
