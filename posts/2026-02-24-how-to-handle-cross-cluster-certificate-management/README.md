@@ -34,7 +34,9 @@ openssl genrsa -out root-key.pem 4096
 
 # Generate root certificate
 openssl req -new -x509 -key root-key.pem -out root-cert.pem \
-  -days 3650 -subj "/O=my-org/CN=root-ca"
+  -days 3650 -subj "/O=my-org/CN=root-ca" \
+  -addext "basicConstraints=critical,CA:TRUE,pathlen:1" \
+  -addext "keyUsage=critical,keyCertSign,cRLSign"
 ```
 
 Now create intermediate CAs for each cluster. Each cluster should have its own intermediate CA signed by the shared root:
@@ -47,7 +49,7 @@ openssl req -new -key cluster-a-ca-key.pem -out cluster-a-ca-csr.pem \
 openssl x509 -req -in cluster-a-ca-csr.pem -CA root-cert.pem \
   -CAkey root-key.pem -CAcreateserial \
   -out cluster-a-ca-cert.pem -days 1825 \
-  -extfile <(printf "basicConstraints=CA:TRUE\nkeyUsage=critical,digitalSignature,keyCertSign")
+  -extfile <(printf "basicConstraints=critical,CA:TRUE,pathlen:0\nkeyUsage=critical,keyCertSign,cRLSign")
 
 # Create the cert chain for cluster A
 cat cluster-a-ca-cert.pem root-cert.pem > cluster-a-cert-chain.pem
@@ -59,7 +61,7 @@ openssl req -new -key cluster-b-ca-key.pem -out cluster-b-ca-csr.pem \
 openssl x509 -req -in cluster-b-ca-csr.pem -CA root-cert.pem \
   -CAkey root-key.pem -CAcreateserial \
   -out cluster-b-ca-cert.pem -days 1825 \
-  -extfile <(printf "basicConstraints=CA:TRUE\nkeyUsage=critical,digitalSignature,keyCertSign")
+  -extfile <(printf "basicConstraints=critical,CA:TRUE,pathlen:0\nkeyUsage=critical,keyCertSign,cRLSign")
 
 # Create the cert chain for cluster B
 cat cluster-b-ca-cert.pem root-cert.pem > cluster-b-cert-chain.pem
@@ -114,22 +116,22 @@ Manually managing certificates is fine for small setups, but for production you 
 Install cert-manager in each cluster:
 
 ```bash
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.0/cert-manager.yaml --context=cluster-a
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.0/cert-manager.yaml --context=cluster-b
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml --context=cluster-a
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml --context=cluster-b
 ```
 
-Create a ClusterIssuer that uses your root CA:
+Create a ClusterIssuer that uses the cluster intermediate CA, keeping the shared root CA offline:
 
 ```yaml
-apiVersion: cert-manager.io/v1
+apiVersion: v1
 kind: Secret
 metadata:
-  name: root-ca-secret
+  name: cluster-a-ca-secret
   namespace: cert-manager
 type: kubernetes.io/tls
 data:
-  tls.crt: <base64-encoded-root-cert>
-  tls.key: <base64-encoded-root-key>
+  tls.crt: <base64-encoded-cluster-a-cert-chain>
+  tls.key: <base64-encoded-cluster-a-ca-key>
 ---
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
@@ -137,20 +139,33 @@ metadata:
   name: istio-ca
 spec:
   ca:
-    secretName: root-ca-secret
+    secretName: cluster-a-ca-secret
 ```
 
 Configure istio-csr to bridge cert-manager and Istio:
 
 ```bash
-helm install istio-csr jetstack/cert-manager-istio-csr \
+kubectl create secret generic istio-root-ca -n cert-manager \
+  --from-file=ca.pem=root-cert.pem \
+  --context=cluster-a
+
+helm upgrade cert-manager-istio-csr oci://quay.io/jetstack/charts/cert-manager-istio-csr \
+  --install \
   --namespace cert-manager \
-  --set "app.tls.rootCACertFile=/var/run/secrets/istio-csr/ca.pem" \
+  --wait \
+  --set "app.tls.rootCAFile=/var/run/secrets/istio-csr/ca.pem" \
   --set "app.server.clusterID=cluster-a" \
-  --set "app.certmanager.issuerRef.name=istio-ca" \
-  --set "app.certmanager.issuerRef.kind=ClusterIssuer" \
+  --set "app.certmanager.issuer.name=istio-ca" \
+  --set "app.certmanager.issuer.kind=ClusterIssuer" \
+  --set "app.certmanager.issuer.group=cert-manager.io" \
+  --set "volumeMounts[0].name=root-ca" \
+  --set "volumeMounts[0].mountPath=/var/run/secrets/istio-csr" \
+  --set "volumes[0].name=root-ca" \
+  --set "volumes[0].secret.secretName=istio-root-ca" \
   --kube-context=cluster-a
 ```
+
+Repeat the same steps in cluster B, using cluster B's intermediate CA and `app.server.clusterID=cluster-b`.
 
 Then install Istio to use the external CA:
 
@@ -230,7 +245,7 @@ openssl req -new -key cluster-a-ca-key-new.pem -out cluster-a-ca-csr-new.pem \
 openssl x509 -req -in cluster-a-ca-csr-new.pem -CA root-cert.pem \
   -CAkey root-key.pem -CAcreateserial \
   -out cluster-a-ca-cert-new.pem -days 1825 \
-  -extfile <(printf "basicConstraints=CA:TRUE\nkeyUsage=critical,digitalSignature,keyCertSign")
+  -extfile <(printf "basicConstraints=critical,CA:TRUE,pathlen:0\nkeyUsage=critical,keyCertSign,cRLSign")
 
 cat cluster-a-ca-cert-new.pem root-cert.pem > cluster-a-cert-chain-new.pem
 
