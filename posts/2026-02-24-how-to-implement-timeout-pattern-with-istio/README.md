@@ -15,7 +15,7 @@ Timeouts prevent your services from waiting forever on a slow or unresponsive do
 The most common way to set timeouts in Istio is through a VirtualService:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: service-b
@@ -43,7 +43,7 @@ However, you should always set explicit timeouts. Relying on "no timeout" is a r
 Different endpoints on the same service might have different latency characteristics. You can set different timeouts for different paths:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: service-b
@@ -78,7 +78,7 @@ The report generation endpoint gets 30 seconds (it is expected to be slow), the 
 Separate from the request timeout, there is a connection timeout that controls how long Envoy waits to establish a TCP connection to the upstream:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: service-b
@@ -99,7 +99,7 @@ For services within the same Kubernetes cluster, 100ms is usually generous. For 
 The idle timeout controls how long a connection can sit unused before Envoy closes it:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: service-b
@@ -121,7 +121,7 @@ When you combine timeouts with retries, you need to think about how they interac
 2. The per-try timeout (set in the retries section)
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: service-b
@@ -147,12 +147,12 @@ A common mistake is setting the per-try timeout equal to the overall timeout. If
 
 Good formula: `overall timeout >= (perTryTimeout * attempts) + some_buffer`
 
-## Downstream Timeout Headers
+## Timeout Headers
 
-Envoy can propagate timeout information through headers. The `x-envoy-upstream-rq-timeout-ms` header tells the upstream how long the caller is willing to wait:
+Envoy can propagate timeout information through headers. The `x-envoy-expected-rq-timeout-ms` header tells the upstream how long the caller is willing to wait:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: service-b
@@ -166,7 +166,7 @@ spec:
     timeout: 5s
 ```
 
-When Envoy sends this request upstream, it includes `x-envoy-upstream-rq-timeout-ms: 5000`. If the upstream is also an Envoy proxy, it will respect this timeout.
+When Envoy sends this request upstream, it includes `x-envoy-expected-rq-timeout-ms: 5000` for internal requests. If the upstream is also an Envoy proxy, it can use this timeout information when deriving its upstream request timeout.
 
 ## Timeout Budget for Multi-Hop Requests
 
@@ -175,7 +175,7 @@ In a microservice architecture, a request often traverses multiple services: A -
 ```yaml
 # Service A calling Service B: generous timeout
 
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: service-b
@@ -190,7 +190,7 @@ spec:
     timeout: 10s
 ---
 # Service B calling Service C: tighter timeout
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: service-c
@@ -205,7 +205,7 @@ spec:
     timeout: 5s
 ---
 # Service C calling Service D: tightest timeout
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: service-d
@@ -246,8 +246,8 @@ groups:
   rules:
   - alert: HighTimeoutRate
     expr: |
-      rate(istio_requests_total{response_code="504"}[5m])
-      / rate(istio_requests_total[5m])
+      sum by (destination_service) (rate(istio_requests_total{response_code="504"}[5m]))
+      / sum by (destination_service) (rate(istio_requests_total[5m]))
       > 0.01
     for: 5m
     labels:
@@ -263,7 +263,7 @@ When you see timeouts, check if the problem is the timeout configuration or the 
 Check the actual latency distribution:
 
 ```promql
-histogram_quantile(0.99, rate(istio_request_duration_milliseconds_bucket{destination_service="service-b.default.svc.cluster.local"}[5m]))
+histogram_quantile(0.99, sum by (le) (rate(istio_request_duration_milliseconds_bucket{destination_service="service-b.default.svc.cluster.local"}[5m])))
 ```
 
 If p99 latency is 8 seconds and your timeout is 5 seconds, you will see a lot of timeouts. Either the service needs to be faster or the timeout needs to be increased.
