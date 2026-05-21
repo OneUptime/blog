@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, TLS, Wildcard Certificate, Gateway, Kubernetes
 
-Description: How to configure wildcard TLS certificates on Istio ingress gateway to serve all subdomains under a single domain with one certificate and automatic renewal.
+Description: How to configure wildcard TLS certificates on Istio ingress gateway to serve one level of subdomains under a single domain with one certificate and automatic renewal.
 
 ---
 
-If you have multiple subdomains like `api.example.com`, `app.example.com`, and `admin.example.com`, managing individual TLS certificates for each one gets tedious fast. A wildcard certificate covers all subdomains under a domain with a single certificate. Instead of managing 10 certificates for 10 subdomains, you manage one certificate for `*.example.com`.
+If you have multiple subdomains like `api.example.com`, `app.example.com`, and `admin.example.com`, managing individual TLS certificates for each one gets tedious fast. A wildcard certificate covers one level of subdomains under a domain with a single certificate. Instead of managing 10 certificates for 10 subdomains, you manage one certificate for `*.example.com`.
 
 Setting this up with Istio is straightforward, and when you add cert-manager to the mix, the certificate renews itself automatically.
 
@@ -41,7 +41,7 @@ Note that we include both `*.example.com` and `example.com` in the SAN (Subject 
 Create a Gateway that uses the wildcard certificate:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: wildcard-gateway
@@ -69,14 +69,14 @@ spec:
         - "*.example.com"
 ```
 
-The `hosts` field uses `*.example.com` to match any subdomain. The HTTP server redirects all HTTP traffic to HTTPS.
+The `hosts` field uses `*.example.com` to match any one-level subdomain. The HTTP server redirects all HTTP traffic to HTTPS.
 
 ## Routing to Different Services
 
 Now create VirtualService resources for each subdomain:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-vs
@@ -94,7 +94,7 @@ spec:
               number: 80
 
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: app-vs
@@ -112,7 +112,7 @@ spec:
               number: 80
 
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: admin-vs
@@ -137,7 +137,7 @@ Each VirtualService matches a specific subdomain and routes to the corresponding
 If you also want to serve the root domain `example.com` (without the subdomain), you need to include it in the gateway. A wildcard certificate for `*.example.com` does not cover the bare domain:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: wildcard-gateway
@@ -176,7 +176,11 @@ For production, use cert-manager with Let's Encrypt to get free, automatically r
 First, install cert-manager:
 
 ```bash
-helm install cert-manager jetstack/cert-manager -n cert-manager --create-namespace --set installCRDs=true
+helm install cert-manager oci://quay.io/jetstack/charts/cert-manager \
+  --version v1.20.2 \
+  --namespace cert-manager \
+  --create-namespace \
+  --set crds.enabled=true
 ```
 
 Create a ClusterIssuer with DNS-01 challenge. Here is an example using Cloudflare DNS:
@@ -195,7 +199,6 @@ spec:
     solvers:
       - dns01:
           cloudflare:
-            email: admin@example.com
             apiTokenSecretRef:
               name: cloudflare-api-token
               key: api-token
@@ -209,7 +212,7 @@ kubectl create secret generic cloudflare-api-token \
   -n cert-manager
 ```
 
-For AWS Route53:
+For AWS Route53, assuming cert-manager has AWS credentials available through IRSA, EKS Pod Identity, or another ambient credential source:
 
 ```yaml
 apiVersion: cert-manager.io/v1
@@ -258,7 +261,7 @@ cert-manager will:
 If you have multiple domains, you can use separate wildcard certificates for each:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: multi-wildcard-gateway
@@ -312,7 +315,7 @@ istioctl proxy-config secrets $INGRESS_POD -n istio-system
 
 ## Troubleshooting
 
-**Certificate not matching:** Make sure the SAN field in the certificate includes `*.example.com`. Some CAs issue certificates where the CN is the wildcard but the SAN only has the specific domain. Both need the wildcard.
+**Certificate not matching:** Make sure the SAN field in the certificate includes `*.example.com`. Some certificates have the wildcard in the CN but not in the SAN. Modern clients use the SAN for hostname verification, so the SAN needs the wildcard.
 
 **DNS-01 challenge failing:** Check that the DNS API credentials are correct and that cert-manager has permission to create TXT records. Check cert-manager logs:
 
@@ -324,4 +327,4 @@ kubectl logs -n cert-manager deployment/cert-manager -f
 
 ## Summary
 
-Wildcard TLS certificates on Istio simplify certificate management when you have multiple subdomains. Instead of managing individual certificates, one wildcard covers everything. The Gateway resource uses `*.example.com` as the host pattern, and VirtualService resources route specific subdomains to their backends. For production use, combine with cert-manager using DNS-01 challenges for automatic issuance and renewal. Remember that wildcards only cover one level of subdomains and do not include the bare domain, so include the bare domain separately in your certificate SAN.
+Wildcard TLS certificates on Istio simplify certificate management when you have multiple subdomains. Instead of managing individual certificates, one wildcard covers the one-level subdomains. The Gateway resource uses `*.example.com` as the host pattern, and VirtualService resources route specific subdomains to their backends. For production use, combine with cert-manager using DNS-01 challenges for automatic issuance and renewal. Remember that wildcards only cover one level of subdomains and do not include the bare domain, so include the bare domain separately in your certificate SAN.
