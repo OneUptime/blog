@@ -12,7 +12,7 @@ MongoDB connections through Istio can be finicky. MongoDB uses its own wire prot
 
 ## Service Port Configuration
 
-MongoDB's binary protocol runs on port 27017 by default. Name the service port with a `tcp` or `mongo` prefix:
+MongoDB's binary protocol runs on port 27017 by default. Name the service port with a `tcp` prefix:
 
 ```yaml
 apiVersion: v1
@@ -29,7 +29,7 @@ spec:
     app: mongodb
 ```
 
-Using `mongo` as the port name also works:
+Using `mongo` as the port name only works if Istio's experimental Mongo protocol support is enabled. If it is not enabled, Istio treats the port as opaque TCP traffic, so `tcp-mongo` is the safer default:
 
 ```yaml
 ports:
@@ -72,10 +72,10 @@ spec:
     app: mongodb
 ```
 
-And verify DNS resolution from the client pod:
+And verify DNS resolution from the client pod. Run this from your application container or a debug container that has DNS tools installed:
 
 ```bash
-kubectl exec <client-pod> -c istio-proxy -n my-namespace -- nslookup mongodb-0.mongodb-headless.database.svc.cluster.local
+kubectl exec <client-pod> -c my-app -n my-namespace -- nslookup mongodb-0.mongodb-headless.database.svc.cluster.local
 ```
 
 ## Connection String Format
@@ -90,9 +90,9 @@ If you use just `mongodb://mongodb:27017/mydb`, the driver connects to the servi
 
 ## mTLS Configuration
 
-For MongoDB pods with Istio sidecars, mTLS works transparently. But if MongoDB manages its own TLS (using `--tlsMode` and certificates), having both Istio mTLS and MongoDB TLS creates double encryption.
+For MongoDB pods with Istio sidecars, Istio mTLS works transparently. MongoDB can also manage its own TLS (using `--tlsMode` and certificates); in that case, Istio passes the application TLS connection through and the traffic between sidecars is also protected by Istio mTLS.
 
-If both client and server have sidecars, disable MongoDB's native TLS and let Istio handle it:
+If both client and server have sidecars and you decide to rely on Istio mTLS instead of MongoDB's native TLS, disable MongoDB's native TLS:
 
 ```yaml
 # MongoDB config - disable native TLS
@@ -102,7 +102,7 @@ net:
     mode: disabled
 ```
 
-If MongoDB doesn't have a sidecar, disable Istio mTLS for the MongoDB destination:
+If MongoDB doesn't have a sidecar and an existing DestinationRule or policy is causing the client sidecar to originate Istio mTLS anyway, disable Istio mTLS for the MongoDB destination:
 
 ```yaml
 apiVersion: networking.istio.io/v1beta1
@@ -141,7 +141,7 @@ The MongoDB default connection pool size varies by driver but is typically aroun
 
 ## Idle Connection Handling
 
-MongoDB drivers send periodic heartbeats to check server status (every 10 seconds by default). This keeps connections alive, but if Envoy's idle timeout is shorter than the heartbeat interval, connections get dropped between heartbeats.
+MongoDB drivers send periodic heartbeats to check server status (every 10 seconds by default for multi-threaded drivers). This keeps monitoring connections active, but pooled application connections can still sit idle. If Envoy's idle timeout is too short for your workload, idle connections can be dropped and the driver has to open replacements.
 
 Set the `idleTimeout` to a value much longer than the heartbeat interval:
 
@@ -151,7 +151,7 @@ connectionPool:
     idleTimeout: 7200s
 ```
 
-If you see frequent "connection closed" or "topology changes" in your MongoDB driver logs, it's likely idle connections being dropped by Envoy.
+If you see frequent "connection closed" messages in your MongoDB driver logs, idle connections being dropped by Envoy is one possible cause. Frequent topology changes can also indicate monitor connection interruptions or replica set discovery problems.
 
 ## Startup Race Condition
 
@@ -252,4 +252,4 @@ kubectl exec <pod-name> -c my-app -n my-namespace -- mongosh --host mongodb-0.mo
 
 ## Summary
 
-MongoDB through Istio works once you name ports correctly (`tcp-mongo` or `mongo`), use headless services for replica sets, and configure adequate connection pool sizes. The main gotcha is replica set/sharded cluster topology discovery, which requires that all individual member addresses are resolvable from the client pod. For managed services like Atlas, consider bypassing the proxy for MongoDB traffic to avoid complications with SRV record resolution and multi-server connections.
+MongoDB through Istio works once you name ports correctly (`tcp-mongo` is the safest default), use headless services for replica sets, and configure adequate connection pool sizes. The main gotcha is replica set/sharded cluster topology discovery, which requires that all individual member addresses are resolvable from the client pod. For managed services like Atlas, consider bypassing the proxy for MongoDB traffic to avoid complications with SRV record resolution and multi-server connections.
