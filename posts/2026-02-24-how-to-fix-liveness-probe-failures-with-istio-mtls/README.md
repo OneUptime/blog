@@ -24,7 +24,7 @@ This results in a CrashLoopBackOff pattern where pods constantly restart.
 
 ## The Fix: Probe Rewriting
 
-Istio's probe rewriting feature solves this by redirecting health checks through the pilot-agent process on port 15021, which is excluded from mTLS.
+Istio's probe rewriting feature solves this by redirecting health checks through the pilot-agent process on port 15020, which is excluded from mTLS.
 
 Verify probe rewriting is enabled:
 
@@ -42,7 +42,7 @@ Or patch the ConfigMap directly:
 
 ```bash
 kubectl get configmap istio-sidecar-injector -n istio-system -o yaml | \
-  sed 's/rewriteAppHTTPProbe: false/rewriteAppHTTPProbe: true/' | \
+  sed 's/"rewriteAppHTTPProbe": false/"rewriteAppHTTPProbe": true/' | \
   kubectl apply -f -
 ```
 
@@ -79,7 +79,7 @@ spec:
           periodSeconds: 15
 ```
 
-After the sidecar injector processes this, the actual probe in the running pod will target port 15021 instead of 8080.
+After the sidecar injector processes this, the actual probe in the running pod will target port 15020 instead of 8080.
 
 ## Verify the Rewrite Is Applied
 
@@ -95,7 +95,7 @@ You should see something like:
 {
   "httpGet": {
     "path": "/app-health/my-app/livez",
-    "port": 15021,
+    "port": 15020,
     "scheme": "HTTP"
   },
   "initialDelaySeconds": 10,
@@ -110,7 +110,7 @@ If the probe still shows the original port, the injection didn't rewrite it. Che
 Make sure the rewritten health endpoint actually works:
 
 ```bash
-kubectl exec <pod-name> -c istio-proxy -n my-namespace -- curl -s -o /dev/null -w "%{http_code}" http://localhost:15021/app-health/my-app/livez
+kubectl exec <pod-name> -c istio-proxy -n my-namespace -- curl -s -o /dev/null -w "%{http_code}" http://localhost:15020/app-health/my-app/livez
 ```
 
 If this returns 200, the health check path through pilot-agent is working. If it returns something else, check what your application returns:
@@ -133,9 +133,9 @@ livenessProbe:
     scheme: HTTPS
 ```
 
-Pilot-agent will forward the request using the specified scheme. Make sure the certificate your application uses is trusted by pilot-agent, or the forwarded health check will fail.
+Pilot-agent will forward the request using the specified scheme. Like the kubelet's HTTPS probes, it skips certificate verification for the forwarded health check.
 
-For self-signed certificates, it's simpler to have a separate HTTP health endpoint that doesn't require TLS.
+For self-signed certificates, rewriting should still work, but it's simpler to have a separate HTTP health endpoint if you want to avoid debugging TLS behavior in health checks.
 
 ## Port Exclusion Approach
 
