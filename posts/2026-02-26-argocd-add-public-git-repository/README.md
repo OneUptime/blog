@@ -14,7 +14,7 @@ Adding a public Git repository to ArgoCD is one of the first things you will do 
 
 Public Git repositories are common in many scenarios. You might be deploying open-source tools like Prometheus, Grafana, or NGINX configurations from a public repo. You might maintain a public infrastructure-as-code repository for community projects. Or you might simply be testing ArgoCD with a public demo repository before moving to private repos.
 
-ArgoCD treats public repositories differently from private ones because no authentication is required. This simplifies the setup considerably, but you still need to register the repository properly for ArgoCD to track it.
+ArgoCD treats public repositories differently from private ones because no authentication is required. This simplifies the setup considerably, and registering the repository gives you an explicit place to manage and verify its connection settings.
 
 ## Adding a Public Repository via the CLI
 
@@ -118,7 +118,7 @@ ArgoCD will sync the application and deploy whatever manifests exist in the `gue
 
 ### Rate Limiting
 
-Public Git hosting services like GitHub, GitLab, and Bitbucket impose rate limits on unauthenticated requests. GitHub, for instance, limits unauthenticated API calls to 60 per hour per IP address. ArgoCD periodically polls repositories to detect changes, which means a busy ArgoCD instance with many public repositories can hit these limits.
+Public Git hosting services like GitHub, GitLab, and Bitbucket can throttle unauthenticated traffic. GitHub, for instance, limits unauthenticated REST API calls to 60 per hour per IP address. ArgoCD periodically polls repositories to detect changes using Git requests, so the exact limits depend on the Git provider, but a busy ArgoCD instance with many public repositories can still create avoidable load.
 
 To mitigate this, you can configure the polling interval:
 
@@ -134,7 +134,7 @@ data:
   timeout.reconciliation: 300s
 ```
 
-Even for public repos, consider adding a personal access token with no special permissions. This bumps GitHub's rate limit from 60 to 5,000 requests per hour:
+Even for public repos, consider adding a personal access token if you run into provider-side throttling or use workflows that make GitHub API callbacks. For GitHub REST API calls, authentication bumps the primary rate limit from 60 to 5,000 requests per hour:
 
 ```yaml
 apiVersion: v1
@@ -156,38 +156,32 @@ stringData:
 Instead of relying solely on polling, you can configure webhooks to notify ArgoCD immediately when changes are pushed. For a public GitHub repository where you have admin access:
 
 ```yaml
-# In the argocd-cm ConfigMap, add a webhook secret
+# In the argocd-secret Secret, add a webhook secret
 apiVersion: v1
-kind: ConfigMap
+kind: Secret
 metadata:
-  name: argocd-cm
+  name: argocd-secret
   namespace: argocd
-data:
+stringData:
   webhook.github.secret: my-webhook-secret
 ```
 
-Then configure the webhook in your GitHub repository settings to point to your ArgoCD server's webhook endpoint at `https://argocd.example.com/api/webhook`.
+Then configure the webhook in your GitHub repository settings to send JSON payloads to your ArgoCD server's webhook endpoint at `https://argocd.example.com/api/webhook`.
 
 ### Repository Caching
 
 ArgoCD's repo-server component caches repository content to reduce the number of Git clone operations. For large public repositories, you might want to tune the cache settings:
 
 ```yaml
-# argocd-repo-server deployment adjustment
-apiVersion: apps/v1
-kind: Deployment
+# argocd-cmd-params-cm ConfigMap adjustment
+apiVersion: v1
+kind: ConfigMap
 metadata:
-  name: argocd-repo-server
+  name: argocd-cmd-params-cm
   namespace: argocd
-spec:
-  template:
-    spec:
-      containers:
-        - name: argocd-repo-server
-          env:
-            # Set repo cache expiration (default is 24h)
-            - name: ARGOCD_REPO_CACHE_EXPIRATION
-              value: "48h"
+data:
+  # Set repo cache expiration (default is 24h0m0s)
+  reposerver.repo.cache.expiration: "48h0m0s"
 ```
 
 ## Connecting to Different Git Providers
@@ -246,7 +240,7 @@ Note that removing a repository does not delete the applications that reference 
 
 ## Best Practices
 
-First, always use HTTPS URLs for public repositories. SSH URLs require key configuration and are unnecessary for public repos. Second, even for public repos, add an authentication token to avoid rate limiting. Third, use declarative repository definitions stored in Git so your ArgoCD configuration itself follows GitOps principles. Fourth, configure webhooks when possible to reduce polling overhead and get faster sync responses.
+First, always use HTTPS URLs for public repositories. SSH URLs require key configuration and are unnecessary for public repos. Second, add an authentication token for public repos when provider throttling or API callbacks become a concern. Third, use declarative repository definitions stored in Git so your ArgoCD configuration itself follows GitOps principles. Fourth, configure webhooks when possible to reduce polling overhead and get faster sync responses.
 
 For monitoring your ArgoCD deployments and tracking the health of applications deployed from public repositories, consider using [OneUptime](https://oneuptime.com/blog/post/2026-01-25-gitops-argocd-kubernetes/view) to get visibility into your GitOps pipeline.
 
