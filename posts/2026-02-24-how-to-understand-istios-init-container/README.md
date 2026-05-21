@@ -14,7 +14,7 @@ The init container is a small but critical piece of the Istio sidecar injection.
 
 The init container, named `istio-init`, has exactly one job: configure iptables rules in the pod's network namespace so that all inbound and outbound TCP traffic gets redirected to the Envoy proxy.
 
-Here is the init container spec as injected by Istio:
+Here is an example init container spec, shown with an Istio 1.20.0 image tag. Newer Istio releases may use a different image tag or add extra arguments, but the core traffic redirection arguments are the same:
 
 ```yaml
 initContainers:
@@ -70,7 +70,7 @@ The `istio-iptables` command is a Go binary that generates and applies iptables 
 | `-p` | 15001 | Port where Envoy listens for outbound traffic |
 | `-z` | 15006 | Port where Envoy listens for inbound traffic |
 | `-u` | 1337 | UID of the Envoy proxy process (traffic from this UID is not redirected to avoid loops) |
-| `-m` | REDIRECT | iptables mode to use (REDIRECT or TPROXY) |
+| `-m` | REDIRECT | Mode used to redirect inbound connections to Envoy (REDIRECT or TPROXY) |
 | `-i` | * | Include all outbound IP ranges for redirection |
 | `-x` | "" | Exclude no IP ranges from outbound redirection |
 | `-b` | * | Include all inbound ports for redirection |
@@ -158,9 +158,10 @@ The `owner UID match 1337` rule prevents this. Traffic from Envoy's UID is allow
 
 Some ports are excluded from redirection:
 
+- **15008** - HBONE mTLS tunnel port
 - **15090** - Envoy Prometheus metrics endpoint
 - **15021** - Health check endpoint (used by kubelet for readiness probes)
-- **15020** - Istio agent Prometheus metrics
+- **15020** - Merged Prometheus telemetry from Istio agent, Envoy, and the application
 
 These ports need to be directly accessible by Kubernetes and monitoring systems without going through the proxy.
 
@@ -199,9 +200,9 @@ metadata:
 
 The init container supports two iptables modes:
 
-**REDIRECT** (default) - Uses NAT table REDIRECT target. The original destination IP is lost, so Envoy uses the SO_ORIGINAL_DST socket option to recover it. This is simpler but does not preserve the source IP.
+**REDIRECT** (default) - Uses the NAT table REDIRECT target for inbound interception. The packet destination is rewritten to Envoy, and Envoy uses the SO_ORIGINAL_DST socket option to recover the original destination. This is simpler but does not preserve the source IP for inbound connections.
 
-**TPROXY** - Uses the TPROXY target in the mangle table. Preserves both source and destination IP. Requires additional kernel capabilities and is generally used when source IP preservation is important.
+**TPROXY** - Uses the TPROXY target in the mangle table for inbound interception. Preserves both source and destination IP addresses and ports. Requires additional kernel capabilities and is generally used when source IP preservation is important. Istio's outbound traffic capture still uses REDIRECT.
 
 To use TPROXY:
 
@@ -213,7 +214,7 @@ metadata:
 
 ## The CNI Plugin Alternative
 
-Istio also offers a CNI plugin that can replace the init container. Instead of running an init container in every pod, the CNI plugin configures iptables rules at the node level when pods are created:
+Istio also offers a CNI plugin that can replace the init container. Instead of running an init container in every pod, the CNI node agent installs a chained CNI plugin on each node. When pods are created, that plugin configures the iptables rules in the pod's network namespace during pod network setup:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -242,7 +243,7 @@ kubectl logs my-app-xyz -c istio-init
 ```
 
 Common errors:
-- **Permission denied** - The init container needs NET_ADMIN capability. Check if PodSecurityPolicy or PodSecurityStandards are blocking it.
+- **Permission denied** - The init container needs NET_ADMIN and NET_RAW capabilities. Check if Pod Security Admission, SecurityContextConstraints, or another admission policy is blocking them.
 - **iptables command not found** - The container image might be corrupted or wrong.
 
 ### Traffic Not Being Intercepted
