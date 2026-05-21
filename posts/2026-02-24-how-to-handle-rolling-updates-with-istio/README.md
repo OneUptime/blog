@@ -23,9 +23,9 @@ When Kubernetes performs a rolling update on a deployment in the mesh, here is w
 5. The pod is added to the Service's endpoints
 6. istiod pushes the updated endpoint list to all sidecars in the mesh
 7. An old pod is selected for termination
-8. Kubernetes removes the old pod from the Service's endpoints
-9. istiod pushes the updated endpoint list (without the old pod)
-10. Kubernetes sends SIGTERM to the old pod
+8. Kubernetes marks the old pod as terminating and starts removing it from Service EndpointSlices
+9. istiod pushes the updated endpoint list (without the ready old pod)
+10. The kubelet runs any preStop hook, then sends SIGTERM to the old pod's containers
 11. The sidecar drains in-flight connections
 12. The pod terminates
 
@@ -44,6 +44,9 @@ metadata:
   name: my-service
 spec:
   replicas: 4
+  selector:
+    matchLabels:
+      app: my-service
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -82,7 +85,7 @@ Key settings:
 - **maxUnavailable: 0**: Kubernetes creates a new pod before killing an old one. You always have at least the desired number of running pods.
 - **maxSurge: 1**: Only one extra pod is created during the rollout. This limits resource usage during updates.
 - **terminationGracePeriodSeconds: 60**: Gives the pod (and sidecar) 60 seconds to drain before force kill.
-- **preStop hook with sleep 10**: This delay is critical. It gives Kubernetes and Istio time to remove the pod from endpoints and propagate the change before the application starts shutting down.
+- **preStop hook with sleep 10**: This delay is critical. It keeps the application process running briefly while Kubernetes and Istio remove the pod from endpoints and propagate the change.
 
 ### Sidecar Drain Configuration
 
@@ -137,14 +140,14 @@ This ensures the sidecar is fully connected to istiod and has its routes before 
 
 ## Traffic-Aware Rolling Updates
 
-For more control over how traffic shifts during an update, combine the rolling update with Istio traffic management.
+For more control over how traffic shifts during an update, combine your versioned rollout with Istio traffic management.
 
 ### Canary Rollout with VirtualService
 
-Instead of relying on Kubernetes round-robin to gradually shift traffic, use Istio to control exactly how much traffic goes to the new version:
+Instead of relying on Kubernetes Service load balancing to gradually shift traffic, use Istio to control exactly how much traffic goes to the new version:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service
@@ -158,7 +161,7 @@ spec:
       labels:
         version: v2
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service
@@ -183,7 +186,7 @@ Start with 10% traffic to v2. Monitor error rates and latency. If everything loo
 # Gradually shift traffic
 
 kubectl apply -f - <<EOF
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service
@@ -205,12 +208,12 @@ EOF
 
 When you are confident, shift 100% to v2 and scale down v1.
 
-### Using Istio for Automatic Rollback
+### Using Istio for Bad-Pod Ejection
 
-Configure outlier detection to automatically stop sending traffic to bad pods during a rollout:
+Configure outlier detection to automatically eject bad pods from a proxy's load balancing pool during a rollout:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service
@@ -224,16 +227,16 @@ spec:
       maxEjectionPercent: 50
 ```
 
-If the new version starts returning 5xx errors, Istio ejects those pods from the load balancing pool within seconds. This is faster than a Kubernetes rollback, which takes time to scale down new pods and scale up old ones.
+If the new version starts returning 5xx errors, Istio can eject those pods from the load balancing pool for the configured ejection period. This reduces the impact faster than a Kubernetes rollback, which takes time to scale down new pods and scale up old ones, but it does not replace having an explicit rollback plan.
 
 ## Handling Long-Lived Connections
 
 Rolling updates are more complex when services maintain long-lived connections (WebSockets, gRPC streams, Server-Sent Events).
 
-The sidecar drain duration only applies to HTTP/1.1 connections with keep-alive. For long-lived connections, you need to signal to clients that they should reconnect:
+Envoy's graceful drain behavior is protocol-aware: the HTTP connection manager can discourage new HTTP/1.1 requests with `Connection: close` and send HTTP/2 GOAWAY, but long-lived streams can still run until they finish or the drain period expires. For long-lived connections, you need to signal to clients that they should reconnect:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service
@@ -300,7 +303,7 @@ kubectl rollout undo deployment/my-service
 
 # If using VirtualService-based canary, shift traffic back
 kubectl apply -f - <<EOF
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service
@@ -316,7 +319,7 @@ spec:
 EOF
 ```
 
-The VirtualService-based rollback is instant (traffic shifts immediately). The Kubernetes rollback takes time for new pods to start and old pods to terminate.
+The VirtualService-based rollback is fast because it only changes routing. The Kubernetes rollback takes time for new pods to start and old pods to terminate.
 
 ## Rolling Update Checklist
 
@@ -334,4 +337,4 @@ Before performing a rolling update in an Istio mesh:
 
 ## Summary
 
-Rolling updates with Istio require coordination between Kubernetes pod lifecycle management and Istio's traffic management. The key ingredients for zero-downtime updates are: maxUnavailable of 0, proper termination drain duration, a preStop sleep to allow endpoint propagation, holdApplicationUntilProxyStarts for clean pod startup, and outlier detection for automatic bad-pod ejection. For more control, layer Istio VirtualService traffic splitting on top of the rolling update to do proper canary deployments with instant rollback capability.
+Rolling updates with Istio require coordination between Kubernetes pod lifecycle management and Istio's traffic management. The key ingredients for zero-downtime updates are: maxUnavailable of 0, proper termination drain duration, a preStop sleep to allow endpoint propagation, holdApplicationUntilProxyStarts for clean pod startup, and outlier detection for automatic bad-pod ejection. For more control, layer Istio VirtualService traffic splitting on top of the rollout to do proper canary deployments with fast rollback capability.
