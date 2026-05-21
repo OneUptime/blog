@@ -23,11 +23,13 @@ Start a capture inside the pod, save to a file, then download it:
 
 kubectl debug -it my-service-pod -n my-namespace \
   --image=nicolaka/netshoot \
+  --container=packet-capture \
+  --profile=netadmin \
   --target=istio-proxy \
   -- tcpdump -i any -n -w /tmp/capture.pcap -c 5000 port 8080
 
 # After the capture completes, copy the file
-kubectl cp my-namespace/my-service-pod:/tmp/capture.pcap ./capture.pcap
+kubectl cp -c packet-capture my-namespace/my-service-pod:/tmp/capture.pcap ./capture.pcap
 ```
 
 Open the file in Wireshark:
@@ -41,13 +43,15 @@ wireshark capture.pcap
 For real-time analysis, pipe the capture directly to Wireshark:
 
 ```bash
-kubectl debug -it my-service-pod -n my-namespace \
+kubectl debug -i -q my-service-pod -n my-namespace \
   --image=nicolaka/netshoot \
+  --container=packet-capture \
+  --profile=netadmin \
   --target=istio-proxy \
-  -- tcpdump -i any -n -w - port 8080 | wireshark -k -i -
+  -- tcpdump -U -i any -n -w - port 8080 | wireshark -k -i -
 ```
 
-The `-w -` flag sends pcap data to stdout, and Wireshark reads it from stdin with `-i -`. The `-k` flag starts the capture immediately.
+The `-w -` flag sends pcap data to stdout, and Wireshark reads it from stdin with `-i -`. The `-U` flag makes tcpdump write packets as they arrive, and the `-k` flag starts the Wireshark capture immediately.
 
 ### Method 3: Using ksniff
 
@@ -98,14 +102,16 @@ tcp.analysis.retransmission
 
 ### Inspecting HTTP Traffic (Unencrypted Side)
 
-Traffic between the application container and the sidecar proxy is unencrypted (it goes over localhost). Capture on the loopback interface to see plaintext HTTP:
+Traffic between the application container and the sidecar proxy is unencrypted before Envoy applies mTLS. Capture inside the pod and filter for the application port to see plaintext HTTP; depending on the interception mode and application bind address, this traffic may appear on loopback or another pod interface:
 
 ```bash
-# Capture localhost traffic
+# Capture in-pod application traffic
 kubectl debug -it my-service-pod -n my-namespace \
   --image=nicolaka/netshoot \
+  --container=packet-capture \
+  --profile=netadmin \
   --target=istio-proxy \
-  -- tcpdump -i lo -n -w /tmp/local-capture.pcap port 8080
+  -- tcpdump -i any -n -w /tmp/local-capture.pcap port 8080
 ```
 
 In Wireshark, you can:
@@ -121,6 +127,8 @@ Traffic between pods is encrypted with mTLS. Capture on the eth0 interface:
 ```bash
 kubectl debug -it my-service-pod -n my-namespace \
   --image=nicolaka/netshoot \
+  --container=packet-capture \
+  --profile=netadmin \
   --target=istio-proxy \
   -- tcpdump -i eth0 -n -w /tmp/mtls-capture.pcap
 ```
@@ -131,35 +139,24 @@ In Wireshark, filter for TLS:
 tls.handshake.type == 1  # ClientHello
 tls.handshake.type == 2  # ServerHello
 tls.handshake.type == 11 # Certificate
-tls.handshake.type == 21 # Alert
+tls.alert_message        # TLS Alert
 ```
 
-For mTLS, you should see both a client certificate and a server certificate in the handshake. If the handshake fails, look for TLS Alert messages which contain the failure reason.
+For mTLS with TLS 1.2, or with TLS 1.3 traffic after you have configured decryption, you should see both a client certificate and a server certificate in the handshake. If the handshake fails, look for TLS Alert messages; depending on the TLS version and how far the handshake got, the alert description may itself be encrypted.
 
 ### Decoding TLS with Keys
 
-If you need to see the encrypted content (for debugging, not in production), you can export the TLS keys. Envoy can be configured to log TLS keys:
+If you need to see the encrypted content (for debugging, not in production), you can export the TLS keys. Envoy supports TLS key logging through the TLS context `key_log` configuration:
 
-Setting the `ENVOY_SSLKEYLOGFILE` environment variable:
+Configuring a TLS context with a key log path:
 
 ```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: my-service
-spec:
-  template:
-    metadata:
-      annotations:
-        sidecar.istio.io/userVolume: '[{"name":"keylog","emptyDir":{}}]'
-        sidecar.istio.io/userVolumeMount: '[{"name":"keylog","mountPath":"/var/log/envoy"}]'
-    spec:
-      containers:
-      - name: my-app
-        env:
-        - name: ENVOY_SSLKEYLOGFILE
-          value: /var/log/envoy/keys.log
+common_tls_context:
+  key_log:
+    path: /var/log/envoy/keys.log
 ```
+
+In Istio-managed sidecars, applying this usually requires an `EnvoyFilter` or custom proxy bootstrap, and the exact patch depends on the generated listener or cluster you want to debug. Verify the resulting configuration with `istioctl proxy-config` before capturing traffic.
 
 Then in Wireshark: Edit > Preferences > Protocols > TLS > (Pre)-Master-Secret log filename, and point it to the key log file.
 
