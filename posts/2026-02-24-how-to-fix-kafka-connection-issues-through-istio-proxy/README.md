@@ -40,7 +40,7 @@ spec:
     app: kafka
 ```
 
-Never use an `http` prefix for Kafka ports. Envoy will try to parse Kafka's binary protocol as HTTP and reject everything.
+Never use an `http` prefix for Kafka ports. Envoy will treat the port as HTTP, which can break Kafka's binary protocol.
 
 ## The Advertised Listeners Problem
 
@@ -57,7 +57,7 @@ kafka-2.kafka-headless.kafka.svc.cluster.local:9092
 Make sure these are resolvable from the client pod:
 
 ```bash
-kubectl exec <client-pod> -c istio-proxy -n my-namespace -- nslookup kafka-0.kafka-headless.kafka.svc.cluster.local
+kubectl exec <client-pod> -c <app-container> -n my-namespace -- nslookup kafka-0.kafka-headless.kafka.svc.cluster.local
 ```
 
 If DNS resolution fails, the client can't connect to individual brokers.
@@ -86,9 +86,9 @@ The headless service (clusterIP: None) creates DNS records for each pod. This is
 
 ## mTLS Configuration
 
-If you have STRICT mTLS in the Kafka namespace but Kafka itself handles its own SSL/TLS, you get a conflict. The sidecar tries to terminate the connection with mTLS while the Kafka client also tries to do SSL.
+If you have STRICT mTLS in the Kafka namespace, make sure the Kafka path is consistent. When both the Kafka client and broker pods have sidecars, Istio mTLS can carry either Kafka PLAINTEXT or Kafka SSL/TLS. Kafka SSL/TLS inside Istio mTLS is valid, but it means double encryption.
 
-For Kafka brokers with sidecars, let Istio handle encryption and disable Kafka's native SSL:
+For Kafka brokers with sidecars, you can let Istio handle in-mesh encryption and disable Kafka's native SSL:
 
 ```properties
 # Kafka broker config
@@ -98,7 +98,7 @@ listeners=PLAINTEXT://0.0.0.0:9092
 
 The sidecar provides mTLS encryption between the client and broker pods.
 
-If Kafka brokers don't have sidecars, disable mTLS for the Kafka destination:
+If Kafka brokers don't have sidecars, disable Istio mTLS for the Kafka destination so the client sidecar does not try to use Istio mutual TLS with a non-mesh endpoint:
 
 ```yaml
 apiVersion: networking.istio.io/v1beta1
@@ -150,7 +150,7 @@ kubectl logs <consumer-pod> -c istio-proxy -n my-namespace | grep "9092"
 
 2. There's no connection pool overflow:
 ```bash
-kubectl exec <consumer-pod> -c istio-proxy -n my-namespace -- curl -s localhost:15000/stats | grep "overflow"
+kubectl exec <consumer-pod> -c istio-proxy -n my-namespace -- pilot-agent request GET stats | grep "overflow"
 ```
 
 3. The proxy isn't adding too much latency. Kafka's `session.timeout.ms` is 45 seconds by default, and `heartbeat.interval.ms` is 3 seconds. If the proxy adds significant latency, increase these values in your consumer configuration.
@@ -193,14 +193,15 @@ This loses Istio features (mTLS, observability) for Kafka traffic, but it's a pr
 For managed Kafka services outside the cluster:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-kafka
   namespace: my-namespace
 spec:
   hosts:
-  - "*.confluent.cloud"
+  - broker-1.example.kafka.provider.com
+  - broker-2.example.kafka.provider.com
   ports:
   - number: 9092
     name: tcp-kafka
@@ -209,20 +210,24 @@ spec:
   resolution: DNS
 ```
 
-If the external Kafka uses SSL/TLS, configure the DestinationRule:
+For raw TCP traffic, use the actual bootstrap and broker hostnames returned by Kafka metadata. Istio DNS resolution cannot use a wildcard host for raw TCP traffic because the original hostname is not available after the client opens the TCP connection.
+
+If the Kafka client sends plaintext and you want Envoy to originate TLS to the external Kafka endpoint, configure the DestinationRule:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: external-kafka-dr
   namespace: my-namespace
 spec:
-  host: "*.confluent.cloud"
+  host: broker-1.example.kafka.provider.com
   trafficPolicy:
     tls:
       mode: SIMPLE
 ```
+
+Create matching DestinationRules for the broker hostnames that need Envoy TLS origination. If the Kafka client is already configured with Kafka SSL/TLS, do not add TLS origination in the DestinationRule; let the client establish TLS directly through the TCP proxy.
 
 ## Debugging Kafka Connections
 
@@ -241,9 +246,9 @@ istioctl proxy-config clusters <pod-name> -n my-namespace | grep kafka
 Look at Envoy stats for TCP connection issues:
 
 ```bash
-kubectl exec <pod-name> -c istio-proxy -n my-namespace -- curl -s localhost:15000/stats | grep "kafka\|9092"
+kubectl exec <pod-name> -c istio-proxy -n my-namespace -- pilot-agent request GET stats | grep "kafka\|9092"
 ```
 
 ## Summary
 
-Kafka in Istio is tricky because of Kafka's multi-broker connection pattern. The main things to get right are: name ports with `tcp` prefix, make sure advertised listeners are resolvable, use headless services for StatefulSet-based Kafka, configure adequate connection pool sizes and idle timeouts, and decide whether to handle TLS at the Istio level or the Kafka level (not both). If Kafka through the proxy is too problematic, excluding Kafka traffic from the sidecar is a reasonable workaround.
+Kafka in Istio is tricky because of Kafka's multi-broker connection pattern. The main things to get right are: name ports with `tcp` prefix, make sure advertised listeners are resolvable, use headless services for StatefulSet-based Kafka, configure adequate connection pool sizes and idle timeouts, and decide where TLS is handled so you do not accidentally originate TLS twice. If Kafka through the proxy is too problematic, excluding Kafka traffic from the sidecar is a reasonable workaround.
