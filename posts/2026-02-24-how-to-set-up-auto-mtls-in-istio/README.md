@@ -14,7 +14,7 @@ This makes it possible to gradually add services to the mesh without breaking an
 
 ## How Auto mTLS Works Under the Hood
 
-When a source sidecar needs to connect to a destination service, it checks with istiod to determine if the destination has an Envoy sidecar. Istiod knows this because it tracks all pod configurations in the cluster.
+When a source sidecar needs to connect to a destination service, it uses proxy configuration pushed by istiod to determine whether the destination can accept Istio mutual TLS. Istiod knows this because it tracks services, endpoints, and workload metadata in the cluster.
 
 ```mermaid
 sequenceDiagram
@@ -22,8 +22,7 @@ sequenceDiagram
     participant ID as istiod
     participant DS as Dest Sidecar
 
-    SA->>ID: Does destination have a sidecar?
-    ID-->>SA: Yes, here are the TLS settings
+    ID->>SA: Push cluster config with TLS settings
     SA->>DS: mTLS connection
 ```
 
@@ -149,18 +148,19 @@ kubectl exec deploy/service-a -c service-a -- curl -s http://service-b:8080/heal
 Check if mTLS was used:
 
 ```bash
-kubectl exec deploy/service-a -c istio-proxy -- pilot-agent request GET /stats | \
+kubectl exec deploy/service-a -c istio-proxy -- pilot-agent request GET stats | \
   grep "cluster.outbound|8080||service-b" | grep ssl
 ```
 
-If `ssl.handshake` is incrementing, mTLS is working.
+If `ssl.handshake` is incrementing, mTLS is working. Depending on your proxy stats configuration, SSL counters may need to be enabled before they appear.
 
 ### Test 2: Destination Has No Sidecar
 
 ```bash
 # Deploy a service without sidecar
 kubectl create deployment no-sidecar --image=nginx -n default
-kubectl label deployment no-sidecar sidecar.istio.io/inject=false
+kubectl patch deployment no-sidecar -n default -p '{"spec":{"template":{"metadata":{"labels":{"sidecar.istio.io/inject":"false"}}}}}'
+kubectl rollout status deployment/no-sidecar -n default
 kubectl expose deployment no-sidecar --port=80
 
 # Call it from a sidecar-injected pod
@@ -170,7 +170,7 @@ kubectl exec deploy/service-a -c service-a -- curl -s http://no-sidecar:80
 This should succeed with plain text. Check the proxy stats:
 
 ```bash
-kubectl exec deploy/service-a -c istio-proxy -- pilot-agent request GET /stats | \
+kubectl exec deploy/service-a -c istio-proxy -- pilot-agent request GET stats | \
   grep "cluster.outbound|80||no-sidecar" | grep ssl
 ```
 
@@ -180,8 +180,8 @@ No `ssl.handshake` counter means plain text was used, which is the expected auto
 
 ```bash
 # Add sidecar to the no-sidecar service
-kubectl label deployment no-sidecar sidecar.istio.io/inject=true --overwrite
-kubectl rollout restart deployment no-sidecar
+kubectl patch deployment no-sidecar -n default -p '{"spec":{"template":{"metadata":{"labels":{"sidecar.istio.io/inject":"true"}}}}}'
+kubectl rollout status deployment/no-sidecar -n default
 ```
 
 Wait for the pod to restart with the sidecar, then test again:
@@ -196,7 +196,7 @@ Now check the stats. Auto mTLS should have detected the new sidecar and switched
 
 There are edge cases where auto mTLS does not behave as expected:
 
-**Headless services**: For headless services (ClusterIP: None), auto mTLS might not detect the sidecar correctly because the traffic goes directly to pod IPs. Explicit DestinationRules might be needed.
+**Headless services and direct pod IP traffic**: Auto mTLS works from Istio's service and workload metadata. If clients bypass the service registry or use ports that are not declared on the service, explicit configuration or service changes might be needed.
 
 **External services**: Auto mTLS only applies to services within the mesh. For ServiceEntry resources pointing to external services, you need explicit DestinationRules to set the TLS mode.
 
@@ -210,14 +210,14 @@ Track the effectiveness of auto mTLS with Prometheus:
 
 ```text
 # Percentage of traffic using mTLS
-sum(rate(istio_requests_total{connection_security_policy="mutual_tls"}[5m]))
+sum(rate(istio_requests_total{reporter="destination",connection_security_policy="mutual_tls"}[5m]))
 /
-sum(rate(istio_requests_total[5m]))
+sum(rate(istio_requests_total{reporter="destination"}[5m]))
 ```
 
 ```text
 # Traffic NOT using mTLS (should decrease over time)
-sum(rate(istio_requests_total{connection_security_policy="none"}[5m])) by (source_workload, destination_service)
+sum(rate(istio_requests_total{reporter="destination",connection_security_policy!="mutual_tls"}[5m])) by (source_workload, destination_service)
 ```
 
 Auto mTLS is the feature that makes Istio's mTLS practical at scale. Without it, you would need to maintain DestinationRules for every service pair in the mesh. With it, mTLS just works as you add sidecars to services. Keep it enabled, monitor its effectiveness, and only fall back to explicit DestinationRules when the automatic detection does not cover your edge case.
