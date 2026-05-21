@@ -50,7 +50,7 @@ The `ipFamilies` field specifies which IP family the service uses. For IPv6-only
 
 ## Istio Installation for IPv6
 
-When installing Istio on an IPv6 cluster, the installation should auto-detect the IP family. But you can explicitly configure it:
+When installing Istio on a dual-stack cluster, enable Istio's dual-stack support explicitly:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -59,14 +59,18 @@ spec:
   meshConfig:
     defaultConfig:
       proxyMetadata:
-        ISTIO_DUAL_STACK: "false"
+        ISTIO_DUAL_STACK: "true"
   values:
-    global:
-      proxy:
-        privileged: false
+    pilot:
+      env:
+        ISTIO_DUAL_STACK: "true"
+      ipFamilyPolicy: RequireDualStack
+    gateways:
+      istio-ingressgateway:
+        ipFamilyPolicy: RequireDualStack
 ```
 
-For IPv6-only clusters, Istio's init container needs to set up ip6tables instead of iptables. This should happen automatically when Istio detects IPv6 pod IPs.
+For IPv6-only clusters, Istio's init container needs to set up ip6tables rules for IPv6 traffic. In dual-stack clusters, Istio needs both iptables and ip6tables support.
 
 Verify that the sidecar is using ip6tables:
 
@@ -119,23 +123,35 @@ spec:
 
 ## Envoy Listener Binding
 
-In an IPv6 cluster, Envoy needs to bind its listeners to IPv6 addresses. By default, Envoy binds to `0.0.0.0` (IPv4 wildcard) for outbound and `[::]:15006` for inbound when IPv6 is detected.
+In an IPv6 cluster, Envoy needs to bind its listeners to IPv6 addresses. In dual-stack mode, Istio configures listeners with both IPv4 and IPv6 addresses. For example, the virtual inbound listener uses `0.0.0.0:15006` with `::` as an additional address.
 
 Check the listener configuration:
 
 ```bash
-istioctl proxy-config listener deploy/my-api -n my-namespace -o json | \
-  jq '.[].address'
+istioctl proxy-config listeners deploy/my-api -n my-namespace -o json | \
+  jq '.[] | select(.name=="virtualInbound") | {address: .address, additionalAddresses: .additionalAddresses}'
 ```
 
 You should see addresses like:
 
 ```json
 {
-  "socketAddress": {
-    "address": "::",
-    "portValue": 15006
-  }
+  "address": {
+    "socketAddress": {
+      "address": "0.0.0.0",
+      "portValue": 15006
+    }
+  },
+  "additionalAddresses": [
+    {
+      "address": {
+        "socketAddress": {
+          "address": "::",
+          "portValue": 15006
+        }
+      }
+    }
+  ]
 }
 ```
 
@@ -230,7 +246,7 @@ kubectl exec deploy/my-app -- nslookup my-api.my-namespace.svc.cluster.local
 The response will contain IPv6 addresses. Istio's DNS proxy also handles AAAA records:
 
 ```bash
-kubectl exec deploy/my-app -c istio-proxy -- curl -v http://my-api:8080/health
+kubectl exec deploy/my-app -- curl -v http://my-api:8080/health
 ```
 
 In the verbose output, you should see the connection going to an IPv6 address.
@@ -305,10 +321,10 @@ If IPv6 rules are missing, the init container did not detect IPv6 or failed to s
 
 **Connection failures to IPv6 addresses:**
 
-Verify that the Envoy proxy can reach IPv6 addresses:
+Verify that the workload can reach IPv6 addresses through the sidecar:
 
 ```bash
-kubectl exec my-pod -c istio-proxy -- curl -6 -v http://[2001:db8::100]:8080/health
+kubectl exec my-pod -- curl -6 -v http://[2001:db8::100]:8080/health
 ```
 
 **Proxy config not showing IPv6 endpoints:**
