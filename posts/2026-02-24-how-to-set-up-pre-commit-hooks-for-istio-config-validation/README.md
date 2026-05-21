@@ -133,7 +133,7 @@ Now everyone who clones the repo and runs `pre-commit install` gets the same val
 `istioctl validate` checks Istio-specific resources, but you might also have plain Kubernetes resources mixed in. Adding `kubeconform` gives you broader coverage:
 
 ```bash
-pip install kubeconform
+brew install kubeconform
 ```
 
 Update your `.pre-commit-config.yaml`:
@@ -168,7 +168,7 @@ Create a policy file at `policies/istio/require-timeout.rego`:
 ```rego
 package istio.virtualservice
 
-deny[msg] {
+deny contains msg if {
     input.kind == "VirtualService"
     route := input.spec.http[_]
     not route.timeout
