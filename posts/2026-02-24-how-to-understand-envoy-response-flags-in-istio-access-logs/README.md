@@ -27,14 +27,13 @@ In JSON access logs, response flags appear in the `response_flags` field:
 ```json
 {
   "response_code": 503,
-  "response_flags": "UF",
-  ...
+  "response_flags": "UF"
 }
 ```
 
-A dash (`-`) means no flags were set - the response was normal.
+A dash (`-`) means no response flags were set.
 
-## Complete Response Flags Reference
+## Common Response Flags Reference
 
 ### Upstream Connection Flags
 
@@ -68,7 +67,7 @@ Common causes:
 
 **UH - No Healthy Upstream**
 
-Envoy found the service but all upstream endpoints are marked as unhealthy.
+Envoy found the upstream cluster but there were no healthy upstream hosts available.
 
 Common causes:
 - Health checks are failing for all pods
@@ -78,7 +77,7 @@ Common causes:
 How to investigate:
 ```bash
 # Check endpoint health in Envoy
-istioctl proxy-config endpoint deploy/source-service | grep destination-service
+istioctl proxy-config endpoint deployment/source-service | grep destination-service
 # Look for UNHEALTHY status
 ```
 
@@ -102,7 +101,7 @@ kubectl get virtualservice -o yaml | grep -A5 timeout
 The request was rejected because the circuit breaker tripped. The upstream has too many pending requests or connections.
 
 Common causes:
-- The `maxConnections`, `maxPendingRequests`, or `maxRequestsPerConnection` limit in the DestinationRule was exceeded
+- The `maxConnections`, `http1MaxPendingRequests`, `http2MaxRequests`, or `maxRetries` limit in the DestinationRule was exceeded
 - A sudden traffic spike overwhelmed the upstream
 
 How to check:
@@ -121,17 +120,17 @@ This often appears combined with another flag, like `URX,UC` (retries exhausted 
 
 **NR - No Route Configured**
 
-Envoy could not find a route for this request. There is no matching VirtualService, or the service does not exist in the mesh.
+Envoy could not find a route for this request.
 
 Common causes:
-- Misspelled service name in the application
-- Missing VirtualService for the destination
-- The destination service is in a namespace not included in the mesh
+- The requested host or path does not match any configured route
+- Missing or incorrect VirtualService when traffic is expected to be routed by one
+- The destination is outside the mesh service registry and has no matching ServiceEntry
 
 How to investigate:
 ```bash
 # Check if the route exists in the proxy configuration
-istioctl proxy-config route deploy/source-service | grep destination-service
+istioctl proxy-config route deployment/source-service | grep destination-service
 ```
 
 **UMSDR - Upstream Max Stream Duration Reached**
@@ -172,9 +171,9 @@ The request was aborted by a fault injection rule. Envoy returned an error witho
 
 The request was rate-limited by Envoy's local rate limiter.
 
-**RLSE - Rate Limited by Service Extension**
+**RLSE - Rate Limit Service Error**
 
-The request was rate-limited by an external rate limiting service.
+The request was rejected because Envoy encountered an error while calling the rate limit service.
 
 ### Connection Flags
 
@@ -189,7 +188,7 @@ Common causes:
 
 **LH - Local Healthcheck Failed**
 
-The local Envoy sidecar's health check failed. This means Envoy itself is unhealthy.
+The local service failed a health check request handled by Envoy.
 
 **IH - Invalid Headers**
 
