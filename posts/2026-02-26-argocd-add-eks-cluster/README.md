@@ -8,9 +8,9 @@ Description: Learn how to register an Amazon EKS cluster with ArgoCD for multi-c
 
 ---
 
-Adding an Amazon EKS cluster to ArgoCD is more involved than adding a generic Kubernetes cluster because EKS uses AWS IAM for authentication rather than static tokens. You need to configure ArgoCD to authenticate with AWS, which means setting up IAM roles, configuring the aws-iam-authenticator, and ensuring the ArgoCD controller can obtain valid AWS credentials.
+Adding an Amazon EKS cluster to ArgoCD is more involved than adding a generic Kubernetes cluster because EKS uses AWS IAM for authentication rather than static tokens. You need to configure ArgoCD to authenticate with AWS, which means setting up IAM roles and ensuring ArgoCD can obtain valid AWS credentials.
 
-In this guide, I will cover three approaches: the quick CLI method, the IRSA-based production setup, and the declarative approach.
+In this guide, I will cover three approaches: the quick CLI method, the IRSA-based production setup, and cross-account access.
 
 ## Understanding EKS Authentication
 
@@ -53,12 +53,12 @@ This approach creates a ServiceAccount with a static token. It works but is not 
 
 ## Method 2: IRSA-Based Authentication (Recommended)
 
-IAM Roles for Service Accounts (IRSA) is the production-grade approach. ArgoCD's service account assumes an IAM role that has EKS access.
+IAM Roles for Service Accounts (IRSA) is the production-grade approach. ArgoCD's service accounts assume a management IAM role, which then assumes a target cluster role that EKS authorizes.
 
 ### Step 1: Create the IAM Policy
 
 ```bash
-# Create a policy that allows EKS cluster access
+# Create a policy that allows ArgoCD to assume the target cluster role
 cat > argocd-eks-policy.json << 'EOF'
 {
   "Version": "2012-10-17",
@@ -66,17 +66,16 @@ cat > argocd-eks-policy.json << 'EOF'
     {
       "Effect": "Allow",
       "Action": [
-        "eks:DescribeCluster",
-        "eks:ListClusters"
+        "sts:AssumeRole"
       ],
-      "Resource": "*"
+      "Resource": "arn:aws:iam::123456789012:role/ArgoCD-Production-Cluster"
     }
   ]
 }
 EOF
 
 aws iam create-policy \
-  --policy-name ArgoCD-EKS-Access \
+  --policy-name ArgoCD-EKS-Management \
   --policy-document file://argocd-eks-policy.json
 ```
 
@@ -103,7 +102,11 @@ cat > trust-policy.json << EOF
       "Action": "sts:AssumeRoleWithWebIdentity",
       "Condition": {
         "StringEquals": {
-          "${OIDC_PROVIDER}:sub": "system:serviceaccount:argocd:argocd-application-controller",
+          "${OIDC_PROVIDER}:sub": [
+            "system:serviceaccount:argocd:argocd-application-controller",
+            "system:serviceaccount:argocd:argocd-applicationset-controller",
+            "system:serviceaccount:argocd:argocd-server"
+          ],
           "${OIDC_PROVIDER}:aud": "sts.amazonaws.com"
         }
       }
@@ -112,7 +115,7 @@ cat > trust-policy.json << EOF
 }
 EOF
 
-# Create the IAM role
+# Create the IAM management role
 aws iam create-role \
   --role-name ArgoCD-EKS-Controller \
   --assume-role-policy-document file://trust-policy.json
@@ -120,19 +123,52 @@ aws iam create-role \
 # Attach the policy
 aws iam attach-role-policy \
   --role-name ArgoCD-EKS-Controller \
-  --policy-arn arn:aws:iam::123456789012:policy/ArgoCD-EKS-Access
+  --policy-arn arn:aws:iam::123456789012:policy/ArgoCD-EKS-Management
 ```
 
-### Step 3: Map the IAM Role to EKS RBAC
+### Step 3: Create and Authorize the Target Cluster Role
 
-In the remote EKS cluster, map the IAM role to a Kubernetes ClusterRole:
+Create a role for the remote EKS cluster that the ArgoCD management role can assume:
 
 ```bash
-# Edit the aws-auth ConfigMap in the remote EKS cluster
-kubectl edit configmap aws-auth -n kube-system --context remote-eks
+cat > cluster-role-trust.json << EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "arn:aws:iam::123456789012:role/ArgoCD-EKS-Controller"
+      },
+      "Action": "sts:AssumeRole"
+    }
+  ]
+}
+EOF
+
+aws iam create-role \
+  --role-name ArgoCD-Production-Cluster \
+  --assume-role-policy-document file://cluster-role-trust.json
 ```
 
-Add the ArgoCD role mapping:
+Authorize the target cluster role with an EKS access entry:
+
+```bash
+aws eks create-access-entry \
+  --cluster-name production-cluster \
+  --region us-east-1 \
+  --principal-arn arn:aws:iam::123456789012:role/ArgoCD-Production-Cluster \
+  --type STANDARD
+
+aws eks associate-access-policy \
+  --cluster-name production-cluster \
+  --region us-east-1 \
+  --principal-arn arn:aws:iam::123456789012:role/ArgoCD-Production-Cluster \
+  --policy-arn arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy \
+  --access-scope type=cluster
+```
+
+If your cluster still uses the deprecated `aws-auth` ConfigMap, map the target cluster role to a Kubernetes group instead:
 
 ```yaml
 apiVersion: v1
@@ -142,8 +178,8 @@ metadata:
   namespace: kube-system
 data:
   mapRoles: |
-    - rolearn: arn:aws:iam::123456789012:role/ArgoCD-EKS-Controller
-      username: argocd-controller
+    - rolearn: arn:aws:iam::123456789012:role/ArgoCD-Production-Cluster
+      username: arn:aws:iam::123456789012:role/ArgoCD-Production-Cluster
       groups:
         - system:masters  # Or use a custom ClusterRole for least privilege
 ```
@@ -178,20 +214,28 @@ roleRef:
   name: argocd-manager
 subjects:
   - kind: User
-    name: argocd-controller
+    name: arn:aws:iam::123456789012:role/ArgoCD-Production-Cluster
     apiGroup: rbac.authorization.k8s.io
 ```
 
-### Step 4: Annotate the ArgoCD Service Account
+### Step 4: Annotate the ArgoCD Service Accounts
 
 ```bash
-# Annotate the ArgoCD application controller SA with the IAM role
+# Annotate the ArgoCD service accounts with the management IAM role
 kubectl annotate serviceaccount argocd-application-controller \
+  -n argocd \
+  eks.amazonaws.com/role-arn=arn:aws:iam::123456789012:role/ArgoCD-EKS-Controller
+
+kubectl annotate serviceaccount argocd-applicationset-controller \
+  -n argocd \
+  eks.amazonaws.com/role-arn=arn:aws:iam::123456789012:role/ArgoCD-EKS-Controller
+
+kubectl annotate serviceaccount argocd-server \
   -n argocd \
   eks.amazonaws.com/role-arn=arn:aws:iam::123456789012:role/ArgoCD-EKS-Controller
 ```
 
-### Step 5: Register the Cluster with exec-based Auth
+### Step 5: Register the Cluster with AWS IAM Auth
 
 ```yaml
 apiVersion: v1
@@ -212,7 +256,7 @@ stringData:
     {
       "awsAuthConfig": {
         "clusterName": "production-cluster",
-        "roleARN": "arn:aws:iam::123456789012:role/ArgoCD-EKS-Controller"
+        "roleARN": "arn:aws:iam::123456789012:role/ArgoCD-Production-Cluster"
       },
       "tlsClientConfig": {
         "insecure": false,
@@ -222,9 +266,10 @@ stringData:
 ```
 
 The `awsAuthConfig` tells ArgoCD to use the AWS IAM authenticator. ArgoCD will:
-1. Assume the specified IAM role using IRSA
-2. Generate a pre-signed STS token
-3. Use this token to authenticate with the EKS API server
+1. Use IRSA to obtain credentials for the ArgoCD management role
+2. Assume the target cluster role specified in `roleARN`
+3. Generate a pre-signed STS token
+4. Use this token to authenticate with the EKS API server
 
 ## Getting the EKS Cluster Details
 
@@ -271,6 +316,8 @@ aws iam create-role \
   --assume-role-policy-document file://cross-account-trust.json \
   --profile target-account
 ```
+
+The ArgoCD management role also needs an IAM permission policy allowing `sts:AssumeRole` on `arn:aws:iam::222222222222:role/ArgoCD-Remote-Access`, and the target EKS cluster must authorize that remote role with an access entry or `aws-auth` mapping.
 
 Register with role chaining:
 
@@ -337,10 +384,10 @@ argocd cluster get https://ABCDEF.gr7.us-east-1.eks.amazonaws.com -o json | \
 # Common issues:
 # - IRSA not configured: no AWS_WEB_IDENTITY_TOKEN_FILE env var
 # - Role ARN wrong: "AccessDenied" in connection state
-# - aws-auth ConfigMap missing role mapping: "Unauthorized"
+# - EKS access entry or aws-auth mapping missing: "Unauthorized"
 # - Cluster CA cert wrong: "x509: certificate signed by unknown authority"
 ```
 
 ## Summary
 
-Adding an EKS cluster to ArgoCD requires bridging AWS IAM authentication with Kubernetes RBAC. For production, use IRSA to avoid static credentials and maintain AWS CloudTrail auditing. The key steps are creating an IAM role with IRSA trust, mapping it in the EKS cluster's aws-auth ConfigMap, and registering the cluster with `awsAuthConfig`. For managing EKS-specific authentication patterns, see our guide on [ArgoCD EKS IRSA auth](https://oneuptime.com/blog/post/2026-02-26-argocd-eks-irsa-auth/view).
+Adding an EKS cluster to ArgoCD requires bridging AWS IAM authentication with Kubernetes RBAC. For production, use IRSA to avoid static credentials and maintain AWS CloudTrail auditing. The key steps are creating an IAM management role with IRSA trust, creating a target cluster role that it can assume, authorizing that target role in EKS, and registering the cluster with `awsAuthConfig`. For managing EKS-specific authentication patterns, see our guide on [ArgoCD EKS IRSA auth](https://oneuptime.com/blog/post/2026-02-26-argocd-eks-irsa-auth/view).
