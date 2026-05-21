@@ -8,7 +8,7 @@ Description: Configure Kubernetes startup probes to work correctly with Istio si
 
 ---
 
-Startup probes were introduced in Kubernetes 1.18 to solve a specific problem: applications that take a long time to start. Before startup probes, you had to hack around this with large `initialDelaySeconds` on liveness probes, which also meant slow failure detection after startup. Startup probes give your application as much time as it needs to start, and once they pass, liveness and readiness probes take over.
+Startup probes became available by default in Kubernetes 1.18 to solve a specific problem: applications that take a long time to start. Before startup probes, you had to hack around this with large `initialDelaySeconds` on liveness probes, which also meant slower failure detection during startup. Startup probes give your application as much time as it needs to start, and once they pass, liveness and readiness probes take over.
 
 With Istio in the mix, startup probes need a bit of extra thought because the sidecar proxy adds its own startup time.
 
@@ -25,7 +25,7 @@ livenessProbe:
   periodSeconds: 10
 ```
 
-The problem: after the application is running, if it hangs, it takes 120 + (10 * failureThreshold) seconds before Kubernetes restarts it. That is way too long for incident response.
+The problem: Kubernetes waits 120 seconds before the liveness probe starts checking. If the application gets stuck during startup, that delay slows down detection, and it also makes the startup grace period part of the liveness configuration instead of a separate startup-only policy.
 
 With a startup probe:
 
@@ -101,7 +101,7 @@ With `holdApplicationUntilProxyStarts: true`, the proxy starts first, and your a
 
 ## How Istio Rewrites Startup Probes
 
-Just like liveness and readiness probes, Istio rewrites startup probes to go through the sidecar agent. The rewritten probe targets port 15021:
+Just like liveness and readiness probes, Istio rewrites startup probes to go through the sidecar agent. The rewritten probe targets port 15020:
 
 Original:
 ```yaml
@@ -116,7 +116,7 @@ Rewritten by Istio:
 startupProbe:
   httpGet:
     path: /app-health/slow-starter/startupz
-    port: 15021
+    port: 15020
 ```
 
 You can verify the rewriting:
@@ -161,7 +161,7 @@ startupProbe:
 
 ## gRPC Startup Probes
 
-If your application uses gRPC, you can use native gRPC probes (Kubernetes 1.24+):
+If your application uses gRPC, you can use native gRPC probes (available by default in Kubernetes 1.24+ and stable in Kubernetes 1.27+):
 
 ```yaml
 startupProbe:
@@ -183,14 +183,14 @@ startupProbe:
   failureThreshold: 30
 ```
 
-Both work with Istio probe rewriting.
+Native gRPC probes work with Istio probe rewriting. The exec-based fallback also works in an Istio mesh, but it does not need rewriting because it runs inside the application container.
 
 ## TCP Startup Probes
 
-TCP probes check if a port is accepting connections. With Istio, be careful: Envoy starts listening on application ports almost immediately, so a TCP probe might pass before your application is actually ready:
+TCP probes check if a port is accepting connections. Istio rewrites TCP probes by default so the sidecar agent performs the port check while avoiding traffic redirection. If probe rewriting is disabled, be careful: Envoy can make TCP ports appear open before your application is actually ready:
 
 ```yaml
-# This might give false positives with Istio
+# This might give false positives if Istio probe rewriting is disabled
 startupProbe:
   tcpSocket:
     port: 8080
@@ -198,7 +198,7 @@ startupProbe:
   failureThreshold: 30
 ```
 
-The probe succeeds as soon as Envoy accepts the connection, even if your application is not ready. Prefer HTTP probes over TCP probes in an Istio mesh.
+Without probe rewriting, the probe can succeed as soon as Envoy accepts the connection, even if your application is not ready. Prefer HTTP probes over TCP probes when you need to verify application-level startup behavior.
 
 ## Startup Probe with Init Containers
 
@@ -299,4 +299,4 @@ spec:
 
 This gives the Java app 180 seconds to start, has a 30-second liveness detection window after startup, requires two consecutive readiness successes before receiving traffic, and gives 15 seconds for graceful shutdown. The `holdApplicationUntilProxyStarts` annotation ensures the sidecar is ready before the Java process begins.
 
-Startup probes with Istio follow the same patterns as other probes. The main things to remember are to use HTTP probes instead of TCP, enable `holdApplicationUntilProxyStarts` for reliable startup ordering, and calculate your failureThreshold based on your actual application startup time plus a reasonable buffer.
+Startup probes with Istio follow the same patterns as other probes. The main things to remember are to use HTTP probes when you need application-level health semantics, enable `holdApplicationUntilProxyStarts` for reliable startup ordering, and calculate your failureThreshold based on your actual application startup time plus a reasonable buffer.
