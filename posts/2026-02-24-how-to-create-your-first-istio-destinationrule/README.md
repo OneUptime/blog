@@ -18,7 +18,7 @@ A DestinationRule is an Istio custom resource that applies after routing has hap
 
 Here is what a DestinationRule can configure:
 
-- Load balancing algorithm (round robin, random, least connections, etc.)
+- Load balancing algorithm (least request, random, round robin, etc.)
 - Connection pool settings (max connections, max requests per connection)
 - Outlier detection (ejecting unhealthy hosts)
 - TLS settings for upstream connections
@@ -30,7 +30,7 @@ Before you start, make sure you have:
 
 - A Kubernetes cluster running (minikube, kind, or a cloud provider)
 - Istio installed with the default profile or higher
-- At least one service deployed with an Envoy sidecar injected
+- At least one client workload deployed with an Envoy sidecar injected
 - `kubectl` and `istioctl` available on your machine
 
 You can verify Istio is running:
@@ -39,7 +39,7 @@ You can verify Istio is running:
 kubectl get pods -n istio-system
 ```
 
-And confirm sidecar injection is enabled for your namespace:
+And enable sidecar injection for your namespace:
 
 ```bash
 kubectl label namespace default istio-injection=enabled
@@ -125,7 +125,7 @@ spec:
 EOF
 ```
 
-That is it. You just created a DestinationRule. Every request routed to the httpbin service will now use random load balancing instead of the default round robin.
+That is it. You just created a DestinationRule. Mesh traffic routed from Envoy proxies to the httpbin service will now use random load balancing instead of Istio's default least-request load balancing.
 
 ## Understanding the Key Fields
 
@@ -137,7 +137,7 @@ The `trafficPolicy` section is where all the good stuff lives. It can contain:
 trafficPolicy:
   loadBalancer: {}      # Load balancing algorithm
   connectionPool: {}    # Connection pool limits
-  outlierDetection: {}  # Health checking / ejection
+  outlierDetection: {}  # Passive health checks / ejection
   tls: {}               # TLS settings
 ```
 
@@ -163,7 +163,7 @@ To see the actual Envoy configuration that your DestinationRule generates, use:
 istioctl proxy-config cluster <pod-name> --fqdn httpbin.default.svc.cluster.local -o json
 ```
 
-Replace `<pod-name>` with any pod that has a sidecar. This shows you the raw cluster configuration in Envoy, including the load balancing policy.
+Replace `<pod-name>` with a workload pod that has a sidecar. This shows you the raw cluster configuration in Envoy, including the load balancing policy.
 
 ## A More Complete Example
 
@@ -208,7 +208,7 @@ This DestinationRule does four things:
 
 **Conflicting DestinationRules**: Having two DestinationRules for the same host in the same namespace leads to undefined behavior. Stick to one DestinationRule per host per namespace.
 
-**Forgetting the sidecar**: DestinationRules only work when the Envoy sidecar is injected. If your pod does not have a sidecar, the rule does nothing.
+**Forgetting the sidecar**: In this sidecar-based setup, DestinationRules are enforced by Envoy proxies. If the calling workload does not have a sidecar, its outbound traffic will not use the rule.
 
 ## Cleaning Up
 
