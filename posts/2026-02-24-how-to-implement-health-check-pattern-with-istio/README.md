@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Istio, Health Check, Kubernetes, Envoy, Outlier Detection
 
-Description: How to configure health checks in Istio including Kubernetes probes with sidecar interaction, outlier detection, and Envoy active health checking.
+Description: How to configure health checks in Istio including Kubernetes probes with sidecar interaction, outlier detection, and sidecar readiness checks.
 
 ---
 
@@ -12,9 +12,9 @@ Health checking in a service mesh is more nuanced than in plain Kubernetes. You 
 
 ## Kubernetes Probes with Istio Sidecars
 
-When Istio's sidecar is injected into a pod, it intercepts all traffic, including health check probes from the kubelet. This can cause issues because the kubelet sends probes in plain HTTP, but the sidecar might be expecting mTLS.
+When Istio's sidecar is injected into a pod, it intercepts inbound HTTP, TCP, and gRPC probe traffic from the kubelet. This can cause issues because the kubelet sends probes in plain HTTP, but the sidecar might be expecting mTLS.
 
-Istio handles this automatically by rewriting probe ports. When the sidecar injector sees a liveness or readiness probe, it rewrites it to go through the pilot-agent, which handles the mTLS termination:
+Istio handles this automatically by rewriting probe ports. When the sidecar injector sees a liveness or readiness probe that needs rewriting, it rewrites it to go through the pilot-agent:
 
 ```yaml
 apiVersion: apps/v1
@@ -48,7 +48,7 @@ After sidecar injection, Istio rewrites these probes to go through port 15020 (t
 You can verify the rewritten probes:
 
 ```bash
-kubectl get pod my-app-xyz -o jsonpath='{.spec.containers[?(@.name=="istio-proxy")].args}' | python3 -m json.tool
+kubectl get pod my-app-xyz -o jsonpath='{.spec.containers[?(@.name=="my-app")].livenessProbe.httpGet}'
 ```
 
 ## Configuring the Sidecar Health Check
@@ -98,7 +98,7 @@ This delays the application container startup until the sidecar is ready.
 Kubernetes probes catch slow application startups and crashes, but they do not detect when a pod starts returning errors under load. Outlier detection fills this gap by monitoring actual traffic responses:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service-health
@@ -118,11 +118,11 @@ spec:
 
 **interval: 10s** - Check for outliers every 10 seconds.
 
-**baseEjectionTime: 30s** - Minimum ejection duration. Doubles with each subsequent ejection (30s, 60s, 90s, etc.).
+**baseEjectionTime: 30s** - Minimum ejection duration. The actual ejection time is multiplied by the number of times the host has been ejected in a row (30s, 60s, 90s, etc.).
 
 **maxEjectionPercent: 50** - At most 50% of endpoints can be ejected at once. This prevents removing all backends.
 
-**minHealthPercent: 30** - Outlier detection is only active when at least 30% of endpoints are healthy. Below that threshold, all endpoints are kept in the pool regardless of errors (panic mode).
+**minHealthPercent: 30** - Outlier detection is only active when at least 30% of endpoints are healthy. Below that threshold, outlier detection is disabled and the proxy load balances across all endpoints in the pool.
 
 ## Checking Outlier Detection Status
 
@@ -149,7 +149,7 @@ kubectl exec deploy/my-app -c istio-proxy -- curl -s localhost:15000/stats | gre
 Different service versions might need different health check parameters:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service-health
@@ -186,7 +186,7 @@ v1 has stricter health checking (maybe it is an older version that fails more of
 Sometimes external health checkers (like a load balancer or monitoring system) need to call your health endpoint without mTLS. You can exclude specific ports from mTLS:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: my-service-mtls
@@ -202,7 +202,7 @@ spec:
       mode: DISABLE
 ```
 
-This enforces strict mTLS on all ports except 8081, which your health check endpoint could use.
+This enforces strict mTLS on all ports except workload port 8081, which your health check endpoint could use. The key under `portLevelMtls` is the workload port, not the Kubernetes Service port.
 
 ## gRPC Health Checking
 
@@ -233,7 +233,7 @@ spec:
           periodSeconds: 10
 ```
 
-Kubernetes 1.24+ supports native gRPC probes. For older versions, you can use the grpc-health-probe binary:
+Kubernetes 1.27+ supports native gRPC probes as stable. Kubernetes 1.24 through 1.26 included native gRPC probes as a beta feature; for older versions, you can use the grpc-health-probe binary:
 
 ```yaml
 livenessProbe:
@@ -251,7 +251,7 @@ Track health check outcomes with Prometheus:
 envoy_cluster_outlier_detection_ejections_active{cluster_name=~"outbound.*my-service.*"}
 
 # Total ejections over time
-rate(envoy_cluster_outlier_detection_ejections_total{cluster_name=~"outbound.*my-service.*"}[5m])
+rate(envoy_cluster_outlier_detection_ejections_enforced_total{cluster_name=~"outbound.*my-service.*"}[5m])
 
 # Healthy endpoint count
 envoy_cluster_membership_healthy{cluster_name=~"outbound.*my-service.*"}
