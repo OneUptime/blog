@@ -8,7 +8,7 @@ Description: Configure outlier detection in Istio DestinationRule to automatical
 
 ---
 
-Outlier detection is Istio's mechanism for automatically removing unhealthy pods from the load balancing pool. When a pod starts returning errors or becomes slow, outlier detection detects the problem and temporarily stops sending traffic to it. After a cooldown period, the pod is added back and monitored again.
+Outlier detection is Istio's mechanism for automatically removing unhealthy pods from the load balancing pool. When a pod starts returning errors, timing out, or resetting connections, outlier detection detects the problem and temporarily stops sending traffic to it. After a cooldown period, the pod is added back and monitored again.
 
 This is different from Kubernetes readiness probes. Readiness probes check health at the kubelet level, and they take time to react. Outlier detection happens at the Envoy proxy level and can react in seconds. It also looks at actual traffic patterns rather than synthetic health check endpoints.
 
@@ -27,7 +27,7 @@ graph TD
     H -->|Healthy again| B
 ```
 
-Envoy tracks the responses from each endpoint. When an endpoint hits the configured error threshold, it gets ejected from the pool. After the ejection time expires, it gets added back. If it keeps failing, the ejection time increases exponentially.
+Envoy tracks the responses from each endpoint. When an endpoint hits the configured error threshold, it gets ejected from the pool. After the ejection time expires, it gets added back. If it keeps failing, the ejection time increases based on the number of consecutive ejections.
 
 ## Basic Configuration
 
@@ -51,7 +51,7 @@ spec:
 What each field does:
 
 - **consecutive5xxErrors**: Number of consecutive 5xx errors before a pod is ejected. Set to 5 means the pod must fail 5 times in a row.
-- **interval**: How often Envoy evaluates the outlier detection criteria. Every 10 seconds in this example.
+- **interval**: How often Envoy runs periodic outlier detection analysis and health checks for ejected hosts. Consecutive 5xx detection happens as responses are processed.
 - **baseEjectionTime**: How long a pod stays ejected before being added back. Gets multiplied by the number of times the pod has been ejected.
 - **maxEjectionPercent**: Maximum percentage of pods that can be ejected at the same time. Setting this to 50 means at least half your pods will always remain in the pool.
 
@@ -61,11 +61,11 @@ This is the most commonly used detection criterion. Envoy counts consecutive (ba
 
 "Consecutive" is important here. If a pod returns: 200, 500, 200, 500, 200, 500, the consecutive error count never exceeds 1. But if it returns: 200, 500, 500, 500, 500, 500, the count reaches 5 and the pod gets ejected.
 
-The value of `consecutive5xxErrors` is evaluated at each `interval`. So with an interval of 10 seconds and `consecutive5xxErrors: 5`, the pod must have 5 consecutive errors within the time it takes Envoy to check.
+The value of `consecutive5xxErrors` is evaluated as Envoy processes responses, not only at each `interval`. So with `consecutive5xxErrors: 5`, the pod must return 5 consecutive errors to be ejected. The `interval` controls periodic analysis and how often Envoy checks ejected hosts while reducing the ejection multiplier after they become healthy.
 
 ## Using consecutiveGatewayErrors
 
-Sometimes you want to only eject pods that return gateway errors (502, 503, 504) rather than all 5xx errors. A 500 Internal Server Error might be a bug in your code that affects all pods equally, but a 503 likely means that specific pod is overloaded:
+Sometimes you want to only eject pods that return gateway errors (502, 503, 504) rather than all 5xx errors. A 500 Internal Server Error might be a bug in your code that affects all pods equally, while a 502, 503, or 504 can indicate a pod-specific connectivity or availability problem:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -143,11 +143,11 @@ spec:
         http1MaxPendingRequests: 50
 ```
 
-This detects both general 5xx errors and gateway errors, with gateway errors having a lower threshold since they more strongly indicate a pod-specific problem.
+This detects both general 5xx errors and gateway errors, with gateway errors having a lower threshold since they can more strongly indicate a pod-specific connectivity or availability problem. Gateway errors also count toward `consecutive5xxErrors`, so `consecutiveGatewayErrors` only has an effect when it is lower than `consecutive5xxErrors`.
 
 ## Testing Outlier Detection
 
-Deploy a service where you can control failures:
+Deploy a simple test service:
 
 ```bash
 kubectl apply -f - <<EOF
@@ -204,7 +204,7 @@ spec:
 EOF
 ```
 
-Now crash one of the pods (exec in and kill nginx) and observe that after 3 consecutive errors, Envoy stops sending traffic to it.
+Now send repeated requests from a sidecar-injected client and make one endpoint fail. Terminating nginx inside a pod can produce connection failures, but Kubernetes may also restart or remove the endpoint quickly, so a test app that reliably returns 5xx from one pod is a more repeatable way to observe Envoy ejecting it after 3 consecutive errors.
 
 ## Monitoring Ejections
 
@@ -216,9 +216,9 @@ kubectl exec <pod> -c istio-proxy -- curl -s localhost:15000/stats | grep outlie
 
 Key metrics:
 - `outlier_detection.ejections_active` - Currently ejected hosts
-- `outlier_detection.ejections_total` - Total ejections since startup
+- `outlier_detection.ejections_enforced_total` - Total enforced ejections since startup
 - `outlier_detection.ejections_overflow` - Ejections blocked by maxEjectionPercent
-- `outlier_detection.ejections_consecutive_5xx` - Ejections triggered by consecutive 5xx
+- `outlier_detection.ejections_enforced_consecutive_5xx` - Enforced ejections triggered by consecutive 5xx
 
 You can also check endpoint health through istioctl:
 
