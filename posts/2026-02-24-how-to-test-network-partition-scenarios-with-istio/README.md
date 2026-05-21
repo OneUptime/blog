@@ -121,7 +121,7 @@ spec:
         host: ratings
 ```
 
-Wait, Istio VirtualService does not directly support `sourceLabels` matching in the `match` block for fault injection in this way. Instead, you can use source namespace or header-based matching. A better approach is to use AuthorizationPolicy to block specific traffic:
+Istio supports `sourceLabels` in HTTP match rules, but it is a workload selector rather than a per-request runtime match. Another approach is to use AuthorizationPolicy to block specific traffic when Istio can authenticate the source workload identity, for example with mutual TLS:
 
 ```yaml
 apiVersion: security.istio.io/v1
