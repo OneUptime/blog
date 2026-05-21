@@ -20,7 +20,7 @@ Before jumping into fixes, it helps to understand the typical mismatch scenarios
 
 **gRPC port serving HTTP/1.1**: Your port is named `grpc-api` but some clients send regular HTTP/1.1 requests. The HTTP/2 filter chain rejects the HTTP/1.1 traffic.
 
-**Unnamed port with protocol sniffing guessing wrong**: No explicit protocol, and Istio's sniffing occasionally misidentifies the protocol based on initial bytes.
+**Unnamed port with protocol sniffing falling back to TCP**: No explicit protocol, and Istio cannot automatically determine the protocol from the connection, so it treats the traffic as plain TCP.
 
 **HTTP port with TLS**: Your port is named `http-web` but the application terminates TLS itself, so the sidecar receives encrypted bytes that do not look like HTTP.
 
@@ -113,7 +113,7 @@ spec:
       protocol: TCP
 ```
 
-After changing the port name, restart any pods that connect to this service so they pick up the new configuration:
+After changing the port name, Istio normally pushes the updated proxy configuration automatically. If a client continues using stale configuration or your application caches connection settings, restart the affected client pods:
 
 ```bash
 kubectl rollout restart deploy/my-client -n default
@@ -123,7 +123,7 @@ kubectl rollout restart deploy/my-client -n default
 
 A tricky case is when your service speaks HTTP/2 but the port is named `http`. Istio will set up an HTTP/1.1 filter chain, but if the service sends HTTP/2 frames, the parser will choke.
 
-For services that support both HTTP/1.1 and HTTP/2 (like most modern web servers with h2c upgrade), naming the port `http` is fine. Envoy handles the HTTP/1.1 to HTTP/2 upgrade transparently.
+For services that support both HTTP/1.1 and HTTP/2, naming the port `http` is fine when the upstream can accept HTTP/1.1. If you need Istio to use HTTP/2 to the backend, select `http2` or `grpc`, or configure HTTP/2 upgrade behavior explicitly with a DestinationRule.
 
 But if your service only speaks HTTP/2 (like many gRPC services), use the `grpc` or `http2` prefix:
 
@@ -173,7 +173,7 @@ Sometimes the protocol mismatch is between what the DestinationRule configures a
 
 ```yaml
 # WRONG: Setting ISTIO_MUTUAL when the upstream does not have a sidecar
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: external-service
@@ -184,7 +184,7 @@ spec:
       mode: ISTIO_MUTUAL
 
 # CORRECT: Use DISABLE if upstream has no sidecar
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: external-service
@@ -195,13 +195,14 @@ spec:
       mode: DISABLE
 ```
 
-Check the mTLS status for your services:
+Inspect the generated cluster configuration for the client proxy:
 
 ```bash
-istioctl authn tls-check deploy/my-app -n default
+istioctl proxy-config clusters deploy/my-app -n default \
+  --fqdn external-service.default.svc.cluster.local -o json
 ```
 
-This shows the actual TLS mode in use for each destination and whether it conflicts with the configured policy.
+Look for a `transport_socket` or TLS context in the matching cluster. If TLS is configured for a destination that only accepts plaintext, or plaintext is configured for a destination that requires TLS, the DestinationRule and the upstream expectation do not match.
 
 ## Debugging with Envoy Admin Interface
 
@@ -219,7 +220,7 @@ kubectl exec deploy/my-app -c istio-proxy -- \
   pilot-agent request GET stats | grep -E "cx_protocol_error|downstream_cx_protocol_error"
 ```
 
-The `cx_protocol_error` counter is particularly telling. If it is incrementing, Envoy is detecting protocol errors on connections, which is a strong indicator of a mismatch.
+The `upstream_cx_protocol_error` and `downstream_cx_protocol_error` counters are particularly telling. If either is incrementing, Envoy is detecting protocol errors on connections, which is a strong indicator of a mismatch.
 
 ## Using appProtocol as an Alternative
 
@@ -238,10 +239,10 @@ spec:
     - name: api
       port: 8080
       targetPort: 8080
-      appProtocol: kubernetes.io/h2c
+      appProtocol: http2
 ```
 
-Istio recognizes several appProtocol values including `http`, `https`, `tcp`, `tls`, `grpc`, `http2`, and `kubernetes.io/h2c`.
+Istio recognizes several appProtocol values including `http`, `https`, `tcp`, `tls`, `grpc`, and `http2`.
 
 ## Prevention
 
@@ -252,25 +253,27 @@ The best way to deal with protocol mismatches is to prevent them:
 3. Use OPA or Kyverno policies to enforce port naming:
 
 ```yaml
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+apiVersion: policies.kyverno.io/v1alpha1
+kind: ValidatingPolicy
 metadata:
   name: require-port-naming
 spec:
-  validationFailureAction: Enforce
-  rules:
-    - name: check-port-names
-      match:
-        any:
-          - resources:
-              kinds:
-                - Service
-      validate:
-        message: "Service port names must start with a recognized protocol prefix"
-        pattern:
-          spec:
-            ports:
-              - name: "http*|grpc*|tcp*|tls*|https*|mongo*|mysql*|redis*"
+  validationActions:
+    - Enforce
+  matchConstraints:
+    resourceRules:
+      - apiGroups:
+          - ""
+        apiVersions:
+          - v1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - services
+  validations:
+    - expression: "object.spec.ports.all(port, has(port.name) && port.name.matches('^(http|http2|grpc|tcp|tls|https|mongo|mysql|redis)(-.+)?$'))"
+      message: "Service port names must start with a recognized protocol prefix"
 ```
 
 This policy rejects any Service that does not follow the naming convention.
