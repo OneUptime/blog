@@ -8,7 +8,7 @@ Description: Step-by-step guide to upgrading Istio ambient mode installations in
 
 ---
 
-Upgrading Istio in ambient mode is simpler than upgrading a sidecar deployment because you do not need to restart application pods. The mesh components - istiod, ztunnel, and istio-cni - are infrastructure that runs independently of your workloads. When you upgrade them, your application pods keep running without interruption.
+Upgrading Istio in ambient mode is simpler than upgrading a sidecar deployment because you do not need to restart application pods. The mesh components - istiod, ztunnel, and istio-cni - are infrastructure that runs independently of your workloads. When you upgrade them, your application pods keep running, although a ztunnel rollout can briefly interrupt ambient traffic on the node being updated.
 
 That said, there is a specific order to follow and some gotchas to watch out for.
 
@@ -48,10 +48,10 @@ The components should be upgraded in this order:
 2. **istiod** (control plane)
 3. **istio-cni** (CNI plugin)
 4. **ztunnel** (data plane)
-5. **Waypoint proxies** (L7 data plane)
-6. **Ingress gateways** (if installed)
+5. **Gateways** (if manually deployed)
+6. **Waypoint proxies and gateways using revision tags** (L7 data plane)
 
-The control plane must be upgraded before the data plane. Istio supports the control plane being one minor version ahead of the data plane, but not the other way around.
+The control plane must be upgraded before the ambient data plane. Istio supports ztunnel and istio-cni at version 1.x with a control plane at version 1.x or 1.x+1, but not with a data plane that is newer than the control plane.
 
 ## Upgrading with istioctl
 
@@ -60,10 +60,10 @@ The control plane must be upgraded before the data plane. Istio supports the con
 The simplest approach for non-production clusters:
 
 ```bash
-istioctl install --set profile=ambient -y
+istioctl upgrade --set profile=ambient -y
 ```
 
-Running `istioctl install` with a newer istioctl binary automatically upgrades the existing installation. It updates istiod, ztunnel, and istio-cni.
+Running `istioctl upgrade` with a newer istioctl binary upgrades the existing installation. It is an alias for `istioctl install`, but is clearer for in-place upgrades. Pass the same `--set` flags or `-f` file that you used for the original install so custom settings are not reverted.
 
 ### Canary Upgrade (Recommended for Production)
 
@@ -72,10 +72,12 @@ For production, use a canary upgrade to run two control plane versions side by s
 ```bash
 # Install the new control plane revision
 istioctl install --set profile=ambient \
-  --set revision=1-24-1 -y
+  --set components.cni.enabled=false \
+  --set components.ztunnel.enabled=false \
+  --revision=1-24-1 -y
 ```
 
-This creates a new istiod deployment named `istiod-1-24-1` alongside the existing one. Both run simultaneously.
+This creates a new istiod deployment named `istiod-1-24-1` alongside the existing one. Both run simultaneously. Ambient components such as istio-cni and ztunnel are still upgraded in place.
 
 Verify both revisions are running:
 
@@ -86,14 +88,19 @@ kubectl get pods -n istio-system -l app=istiod
 Now migrate workloads to the new revision. For ambient mode, update the namespace labels:
 
 ```bash
-# Remove old label and add new one
+# Remove old injection label if present and add the new revision label
+kubectl label namespace bookinfo istio-injection-
 kubectl label namespace bookinfo istio.io/rev=1-24-1 --overwrite
 ```
 
 After all namespaces are migrated, remove the old control plane:
 
 ```bash
-istioctl uninstall --revision=default -y
+# For a revisioned old control plane
+istioctl uninstall --revision=1-24-0 -y
+
+# For a non-revisioned old control plane, use the original install options
+istioctl uninstall --set profile=ambient -y
 ```
 
 ## Upgrading with Helm
@@ -103,7 +110,7 @@ Helm upgrades give you the most control and are easier to automate in CI/CD pipe
 ### Step 1: Update CRDs
 
 ```bash
-helm repo update
+helm repo update istio
 helm upgrade istio-base istio/base -n istio-system
 ```
 
@@ -122,7 +129,7 @@ kubectl get pods -n istio-system -l app=istiod -o jsonpath='{.items[0].spec.cont
 ### Step 3: Upgrade istio-cni
 
 ```bash
-helm upgrade istio-cni istio/cni -n istio-system --wait
+helm upgrade istio-cni istio/cni -n istio-system --set profile=ambient --wait
 ```
 
 Check that CNI pods are updated on all nodes:
@@ -146,28 +153,28 @@ kubectl rollout status ds/ztunnel -n istio-system
 
 The ztunnel DaemonSet rolls out one node at a time by default. During the rollout, the old ztunnel on a node is terminated and a new one starts. Traffic for workloads on that node is briefly interrupted (typically under a second) as the new ztunnel initializes.
 
-### Step 5: Upgrade Waypoint Proxies
+### Step 5: Upgrade Ingress Gateways
 
-Waypoint proxies are managed through the Kubernetes Gateway API. To upgrade them, update the waypoint deployment:
+```bash
+helm upgrade istio-ingress istio/gateway -n istio-ingress --wait
+```
+
+### Step 6: Upgrade Waypoint Proxies
+
+Waypoint proxies are managed through the Kubernetes Gateway API. To upgrade them in a revisioned installation, move the revision tag used by your namespaces and gateways to the new revision:
 
 ```bash
 # List waypoint proxies
 kubectl get gateways -A -l istio.io/waypoint-for
 
-# Restart waypoint proxies to pick up new version
-kubectl rollout restart deployment -l gateway.networking.k8s.io/gateway-name -n bookinfo
+# Move a revision tag to the new revision
+istioctl tag set prod-stable --revision 1-24-1 --overwrite
 ```
 
-Or if you created waypoints with istioctl:
+Or if you created waypoints with istioctl and want to apply a specific revision directly:
 
 ```bash
-istioctl waypoint apply -n bookinfo --enroll-namespace
-```
-
-### Step 6: Upgrade Ingress Gateways
-
-```bash
-helm upgrade istio-ingress istio/gateway -n istio-system --wait
+istioctl waypoint apply -n bookinfo --enroll-namespace --revision=1-24-1
 ```
 
 ## Verifying the Upgrade
@@ -256,12 +263,12 @@ During the upgrade:
 - [ ] Upgrade istiod
 - [ ] Upgrade istio-cni
 - [ ] Upgrade ztunnel
-- [ ] Upgrade waypoint proxies
 - [ ] Upgrade gateways
+- [ ] Upgrade waypoint proxies
 
 After the upgrade:
 - [ ] Run `istioctl version` to confirm
-- [ ] Run `istioctl verify-install`
+- [ ] Run `istioctl analyze`
 - [ ] Test application traffic
 - [ ] Check ztunnel and waypoint logs for errors
 - [ ] Monitor metrics for anomalies
