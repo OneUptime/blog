@@ -8,7 +8,7 @@ Description: How to identify, diagnose, and resolve memory leaks in Envoy sideca
 
 ---
 
-You notice that the istio-proxy containers in your pods keep consuming more and more memory over time. Eventually they hit their memory limits and get OOMKilled, which restarts the entire pod. This is a common problem in Istio deployments, and while it sometimes looks like a memory leak, it's often caused by configuration issues.
+You notice that the istio-proxy containers in your pods keep consuming more and more memory over time. Eventually they hit their memory limits and get OOMKilled, which restarts the proxy container and disrupts pod traffic. This is a common problem in Istio deployments, and while it sometimes looks like a memory leak, it's often caused by configuration issues.
 
 ## Is It Actually a Leak?
 
@@ -66,7 +66,7 @@ istioctl proxy-config all <pod-name> -n my-namespace -o json | wc -c
 If this is tens or hundreds of megabytes, you need to scope it down with a Sidecar resource:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -83,7 +83,7 @@ This tells the proxy to only load configuration for services in its own namespac
 Apply it to every namespace:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -100,7 +100,7 @@ Only include the specific cross-namespace services that the workload actually ne
 
 ## Connection Pool Growth
 
-If your service makes many outbound connections to different hosts, the connection pools can grow unbounded. This is especially bad for services that connect to many external APIs.
+If your service makes many outbound connections to different hosts, connection pools can consume a lot of memory. This is especially bad for services that connect to many external APIs.
 
 Check active connections:
 
@@ -111,7 +111,7 @@ kubectl exec <pod-name> -c istio-proxy -n my-namespace -- curl -s localhost:1500
 Set connection limits with a DestinationRule:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: connection-limits
@@ -130,7 +130,7 @@ spec:
         idleTimeout: 60s
 ```
 
-The `idleTimeout` is particularly important. Without it, idle connections stay open forever, consuming memory.
+The `idleTimeout` is particularly important. Istio's default upstream connection pool idle timeout is 1 hour, so setting a shorter value can release idle connections sooner.
 
 ## Access Logging Overhead
 
@@ -145,7 +145,7 @@ kubectl get configmap istio -n istio-system -o yaml | grep accessLog
 If you have detailed access logs enabled, consider switching to a more compact format or disabling them for high-traffic services:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: disable-access-log
@@ -168,27 +168,30 @@ Check the number of stats:
 kubectl exec <pod-name> -c istio-proxy -n my-namespace -- curl -s localhost:15000/stats | wc -l
 ```
 
-If you have tens of thousands of stats, the overhead is significant. Reduce cardinality by using stats filters:
+If you have tens of thousands of stats, the overhead is significant. Reduce Istio standard metric cardinality by removing unneeded dimensions with the Telemetry API:
 
 ```yaml
-apiVersion: networking.istio.io/v1alpha3
-kind: EnvoyFilter
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
 metadata:
-  name: reduce-stats
-  namespace: istio-system
+  name: reduce-metric-cardinality
+  namespace: my-namespace
 spec:
-  configPatches:
-  - applyTo: BOOTSTRAP
-    patch:
-      operation: MERGE
-      value:
-        stats_config:
-          stats_tags:
-          - tag_name: destination_service
-            regex: "(.+?)\\..+?\\.svc\\.cluster\\.local"
+  selector:
+    matchLabels:
+      app: high-traffic-service
+  metrics:
+  - providers:
+    - name: prometheus
+    overrides:
+    - match:
+        metric: REQUEST_COUNT
+      tagOverrides:
+        response_code:
+          operation: REMOVE
 ```
 
-Or disable specific stat prefixes in the mesh config:
+If you previously enabled broad optional Envoy stat prefixes, narrow them with `proxyStatsMatcher`:
 
 ```yaml
 apiVersion: v1
@@ -200,9 +203,8 @@ data:
   mesh: |
     defaultConfig:
       proxyStatsMatcher:
-        inclusionPrefixes:
-        - "cluster.outbound"
-        - "listener"
+        inclusionRegexps:
+        - ".*cx_active$"
 ```
 
 ## Wasm Extensions
@@ -242,39 +244,49 @@ metadata:
 Envoy has a built-in overload manager that can take action when memory usage gets too high. You can configure it to start shedding load before hitting OOM:
 
 ```yaml
+apiVersion: networking.istio.io/v1alpha3
+kind: EnvoyFilter
 metadata:
-  annotations:
-    proxy.istio.io/config: |
-      concurrency: 2
-      overloadManager:
-        refreshInterval: 0.25s
-        resourceMonitors:
-        - name: "envoy.resource_monitors.fixed_heap"
-          typedConfig:
-            '@type': type.googleapis.com/envoy.extensions.resource_monitors.fixed_heap.v3.FixedHeapConfig
-            maxHeapSizeBytes: 268435456
+  name: overload-manager
+  namespace: istio-system
+spec:
+  configPatches:
+  - applyTo: BOOTSTRAP
+    patch:
+      operation: MERGE
+      value:
+        overload_manager:
+          refresh_interval: 0.25s
+          resource_monitors:
+          - name: "envoy.resource_monitors.fixed_heap"
+            typed_config:
+              '@type': type.googleapis.com/envoy.extensions.resource_monitors.fixed_heap.v3.FixedHeapConfig
+              max_heap_size_bytes: 268435456
+          actions:
+          - name: "envoy.overload_actions.disable_http_keepalive"
+            triggers:
+            - name: "envoy.resource_monitors.fixed_heap"
+              threshold:
+                value: 0.92
+          - name: "envoy.overload_actions.stop_accepting_requests"
+            triggers:
+            - name: "envoy.resource_monitors.fixed_heap"
+              threshold:
+                value: 0.95
+          loadshed_points:
+          - name: "envoy.load_shed_points.tcp_listener_accept"
+            triggers:
+            - name: "envoy.resource_monitors.fixed_heap"
+              threshold:
+                value: 0.95
 ```
 
-This configures the overload manager to monitor heap usage against a 256MB limit.
+This configures the overload manager to monitor heap usage against a 256MB limit, disable HTTP keepalive at 92% heap pressure, and start rejecting new work at 95%. EnvoyFilter patches are advanced and can be sensitive to Envoy and Istio version changes, so test them before rolling them out broadly.
 
 ## Restart Strategy
 
-If you can't find the root cause quickly and need a workaround, configure the pod to restart gracefully when memory gets high. Setting proper memory limits ensures Kubernetes restarts the container when it exceeds the limit.
-
-For a more graceful approach, you can use a liveness probe that checks memory:
-
-```yaml
-spec:
-  containers:
-  - name: istio-proxy
-    livenessProbe:
-      httpGet:
-        path: /healthz/ready
-        port: 15021
-      initialDelaySeconds: 10
-      periodSeconds: 15
-```
+If you can't find the root cause quickly and need a workaround, setting proper memory limits ensures Kubernetes restarts the proxy container when it exceeds the limit. The standard Istio readiness endpoint on port 15021 checks proxy readiness, not memory usage, so a memory-triggered graceful restart needs separate automation or an explicit custom health check.
 
 ## Summary
 
-Envoy memory growth in Istio is usually caused by large configuration scope (fix with Sidecar resources), unbounded connection pools (fix with DestinationRule limits), or high stats cardinality (fix with stats filters). True memory leaks in Envoy are rare but can happen with specific features or Wasm plugins. Always set memory limits on the sidecar, and use the Sidecar resource to reduce configuration scope as a first step.
+Envoy memory growth in Istio is usually caused by large configuration scope (fix with Sidecar resources), large connection pools (fix with DestinationRule limits), or high stats cardinality (fix with Telemetry metric overrides and narrower Envoy stat matching). True memory leaks in Envoy are rare but can happen with specific features or Wasm plugins. Always set memory limits on the sidecar, and use the Sidecar resource to reduce configuration scope as a first step.
