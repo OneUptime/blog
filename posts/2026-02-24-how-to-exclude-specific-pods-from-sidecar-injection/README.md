@@ -12,9 +12,9 @@ Sometimes you do not want a sidecar. Maybe you have a batch job that runs for 30
 
 There are several methods depending on whether you want to exclude individual pods, entire workload types, or specific scenarios. Here is every option available to you.
 
-## Method 1: Pod Annotation
+## Method 1: Pod Label
 
-The most direct way to exclude a pod is the `sidecar.istio.io/inject` annotation:
+The most direct way to exclude a pod is the `sidecar.istio.io/inject` label:
 
 ```yaml
 apiVersion: apps/v1
@@ -23,9 +23,13 @@ metadata:
   name: batch-processor
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: batch-processor
   template:
     metadata:
-      annotations:
+      labels:
+        app: batch-processor
         sidecar.istio.io/inject: "false"
     spec:
       containers:
@@ -33,13 +37,13 @@ spec:
         image: batch-processor:latest
 ```
 
-This works even if the namespace has `istio-injection=enabled`. The pod-level annotation takes precedence over the namespace label.
+This works even if the namespace has `istio-injection=enabled`. A pod-level `sidecar.istio.io/inject: "false"` label prevents injection even when the namespace is enabled.
 
-Important: The annotation must be on the pod template (`spec.template.metadata.annotations`), not on the Deployment metadata. A common mistake is putting it on the Deployment itself where it has no effect on injection.
+Important: The label must be on the pod template (`spec.template.metadata.labels`), not on the Deployment metadata. A common mistake is putting it on the Deployment itself where it has no effect on injection.
 
-## Method 2: Pod Label
+## Method 2: Pod Annotation
 
-Istio also supports a label-based approach:
+Istio also supports the `sidecar.istio.io/inject` annotation, although it is deprecated in favor of the label:
 
 ```yaml
 apiVersion: apps/v1
@@ -48,9 +52,14 @@ metadata:
   name: legacy-service
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: legacy-service
   template:
     metadata:
       labels:
+        app: legacy-service
+      annotations:
         sidecar.istio.io/inject: "false"
     spec:
       containers:
@@ -58,11 +67,11 @@ spec:
         image: legacy-service:latest
 ```
 
-The label works the same as the annotation. Both are checked during the injection decision.
+The annotation is still checked during the injection decision, but new manifests should use the label.
 
 ## Method 3: Namespace-Level Exclusion
 
-If an entire namespace should not have injection, either remove the injection label or set it to disabled:
+If an entire namespace should not have injection, either remove the injection label in the standard opt-in configuration or set it to disabled:
 
 ```bash
 # Remove the label entirely
@@ -73,11 +82,11 @@ kubectl label namespace monitoring istio-injection-
 kubectl label namespace monitoring istio-injection=disabled
 ```
 
-The second approach is more explicit and documents the intent that this namespace should never have injection.
+The second approach is more explicit, documents the intent that this namespace should never have injection, and remains safe if the injector is configured to inject namespaces by default.
 
 ## Excluding Jobs and CronJobs
 
-Kubernetes Jobs and CronJobs are one of the most common cases for exclusion. The problem with sidecars on Jobs is that the sidecar does not exit when the main container finishes, leaving the pod in a Running state indefinitely.
+Kubernetes Jobs and CronJobs are one of the most common cases for exclusion. With classic sidecar injection, the problem with sidecars on Jobs is that the sidecar does not exit when the main container finishes, leaving the pod in a Running state indefinitely.
 
 ```yaml
 apiVersion: batch/v1
@@ -88,7 +97,7 @@ metadata:
 spec:
   template:
     metadata:
-      annotations:
+      labels:
         sidecar.istio.io/inject: "false"
     spec:
       restartPolicy: Never
@@ -100,7 +109,7 @@ spec:
 
 If you do need the Job to be in the mesh (for example, it calls mesh services that require mTLS), you have a few options:
 
-**Option A: Use the `EXIT_ON_ZERO_ACTIVE_CONNECTIONS` feature:**
+**Option A: Use Kubernetes native sidecars when they are enabled for your Istio installation:**
 
 ```yaml
 apiVersion: batch/v1
@@ -112,9 +121,7 @@ spec:
   template:
     metadata:
       annotations:
-        proxy.istio.io/config: |
-          proxyMetadata:
-            EXIT_ON_ZERO_ACTIVE_CONNECTIONS: "true"
+        sidecar.istio.io/nativeSidecar: "true"
     spec:
       restartPolicy: Never
       containers:
@@ -122,7 +129,7 @@ spec:
         image: worker:latest
 ```
 
-This tells the sidecar to exit when there are no active connections, which happens after the main container finishes and closes all its connections.
+When Istio injects the proxy as a Kubernetes native sidecar, Kubernetes can complete the Job after the worker container exits even though the proxy sidecar is still managed as part of the pod lifecycle. This depends on Kubernetes and Istio native sidecar support being enabled.
 
 **Option B: Send a quit signal to the sidecar from the main container:**
 
@@ -152,9 +159,13 @@ metadata:
   name: node-exporter
   namespace: monitoring
 spec:
+  selector:
+    matchLabels:
+      app: node-exporter
   template:
     metadata:
-      annotations:
+      labels:
+        app: node-exporter
         sidecar.istio.io/inject: "false"
     spec:
       hostNetwork: true
@@ -163,11 +174,11 @@ spec:
         image: prom/node-exporter:latest
 ```
 
-Istio actually detects host networking and skips injection automatically in most cases, but adding the annotation makes the intent explicit and avoids relying on implicit behavior.
+Istio actually detects host networking and skips injection automatically, but adding the label makes the intent explicit and avoids relying on implicit behavior.
 
 ## Excluding Init Containers and Sidecar Containers
 
-Init containers in your pod spec are not affected by Istio injection. They run before the sidecar starts, so they do not have access to the mesh. If your init container needs to make HTTP calls (like downloading configuration from an API), those calls bypass the sidecar.
+With classic Istio sidecar injection, init containers in your pod spec run before the sidecar starts, so they do not have access to the mesh. If your init container needs to make HTTP calls (like downloading configuration from an API), those calls bypass the sidecar. With Kubernetes native sidecars enabled, init container ordering is different, so verify the behavior for your Istio and Kubernetes versions.
 
 This is usually fine, but if the init container needs to reach a mesh service that requires mTLS, you have a problem. The solution is to either:
 
@@ -254,7 +265,7 @@ If the status annotation is empty and `istio-proxy` is not in the container list
 
 ## Common Pitfalls
 
-**1. Annotation on the wrong level**
+**1. Label or annotation on the wrong level**
 
 This does NOT work:
 
@@ -262,7 +273,7 @@ This does NOT work:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  annotations:
+  labels:
     sidecar.istio.io/inject: "false"  # Wrong! This is on the Deployment, not the pod template
 ```
 
@@ -274,13 +285,13 @@ kind: Deployment
 spec:
   template:
     metadata:
-      annotations:
+      labels:
         sidecar.istio.io/inject: "false"  # Correct! This is on the pod template
 ```
 
 **2. Existing pods not affected**
 
-Changing the injection annotation on a Deployment requires a rollout to take effect:
+Changing the injection label or annotation on a Deployment requires a rollout to take effect:
 
 ```bash
 kubectl rollout restart deployment/batch-processor -n production
@@ -288,7 +299,7 @@ kubectl rollout restart deployment/batch-processor -n production
 
 **3. String values required**
 
-The annotation value must be a string, not a boolean:
+The label or annotation value must be a string, not a boolean:
 
 ```yaml
 # Wrong
@@ -302,4 +313,4 @@ YAML interprets `false` without quotes as a boolean. The injection webhook expec
 
 ## Summary
 
-Excluding pods from sidecar injection is straightforward once you know the right annotation. Use `sidecar.istio.io/inject: "false"` on the pod template for individual exclusions, port exclusion annotations for partial exclusion, and namespace labels for bulk exclusion. For Jobs and CronJobs, either exclude entirely or use `EXIT_ON_ZERO_ACTIVE_CONNECTIONS` to handle the sidecar lifecycle. Always verify exclusion after deployment and watch for the common pitfalls around annotation placement and string values.
+Excluding pods from sidecar injection is straightforward once you know the right label. Use `sidecar.istio.io/inject: "false"` on the pod template for individual exclusions, port exclusion annotations for partial exclusion, and namespace labels for bulk exclusion. For Jobs and CronJobs, either exclude entirely or use Kubernetes native sidecar support where it is available. Always verify exclusion after deployment and watch for the common pitfalls around label placement and string values.
