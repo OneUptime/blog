@@ -21,8 +21,9 @@ Before you start troubleshooting upgrade failures, here is what you should have 
 
 istioctl version
 
-# Check if the upgrade path is supported (only 1 minor version jump)
-# For example, 1.19 -> 1.20 is supported, 1.18 -> 1.20 is not
+# Check if the upgrade path is supported
+# In-place upgrades require one minor version at a time.
+# Revision-based canary upgrades can jump across two minor versions.
 
 # Run pre-upgrade checks
 istioctl x precheck
@@ -78,7 +79,7 @@ kubectl get mutatingwebhookconfiguration -o name | grep istio
 kubectl get validatingwebhookconfiguration -o name | grep istio
 
 # Check what service/endpoint they point to
-kubectl get mutatingwebhookconfiguration istio-sidecar-injector -o jsonpath='{.webhooks[0].clientConfig}'
+kubectl get mutatingwebhookconfiguration <webhook-name> -o jsonpath='{.webhooks[0].clientConfig}'
 ```
 
 **3. Resource quota exceeded**: The new istiod might request more resources:
@@ -90,7 +91,7 @@ kubectl describe pod -n istio-system -l app=istiod | grep -A 5 "Events"
 
 ## Version Skew Problems
 
-The most common post-upgrade issue is version skew between the control plane and data plane (sidecars). Istio supports a version difference of up to one minor version, but mixing versions can still cause problems.
+The most common post-upgrade issue is version skew between the control plane and data plane (sidecars). Istio supports the control plane being one minor version ahead of the data plane, but the data plane must not be ahead of the control plane. Even supported skew can still cause operational confusion.
 
 Check for version mismatches:
 
@@ -98,8 +99,8 @@ Check for version mismatches:
 # See all proxy versions in the mesh
 istioctl proxy-status
 
-# Find pods running old sidecar versions
-istioctl proxy-status | grep -v $(istioctl version --short 2>/dev/null | head -1)
+# Find pods that are not on the expected sidecar version
+istioctl proxy-status | awk -v expected="<new-version>" 'NR == 1 || $NF != expected'
 ```
 
 Fix version skew by restarting deployments to pick up the new sidecar:
@@ -118,7 +119,7 @@ For large clusters, roll this out gradually:
 #!/bin/bash
 
 NAMESPACES=("staging" "production-canary" "production")
-NEW_VERSION=$(istioctl version --short 2>/dev/null | head -1)
+EXPECTED_VERSION="<new-version>"
 
 for ns in "${NAMESPACES[@]}"; do
   echo "Restarting deployments in $ns"
@@ -129,10 +130,14 @@ for ns in "${NAMESPACES[@]}"; do
     kubectl rollout status "$deploy" -n "$ns" --timeout=300s
 
     # Check that the new sidecar version is running
-    POD=$(kubectl get pods -n "$ns" -l "$(kubectl get "$deploy" -n "$ns" -o jsonpath='{.spec.selector.matchLabels}' | jq -r 'to_entries | map("\(.key)=\(.value)") | join(",")')" -o name | head -1)
+    SELECTOR=$(kubectl get "$deploy" -n "$ns" -o json | jq -r '.spec.selector.matchLabels | to_entries | map("\(.key)=\(.value)") | join(",")')
+    POD=$(kubectl get pods -n "$ns" -l "$SELECTOR" -o name | head -1)
 
     PROXY_VERSION=$(istioctl proxy-status | grep "$(echo $POD | sed 's/pod\///')" | awk '{print $NF}')
     echo "  $deploy: proxy version $PROXY_VERSION"
+    if [ "$PROXY_VERSION" != "$EXPECTED_VERSION" ]; then
+      echo "  WARNING: expected proxy version $EXPECTED_VERSION"
+    fi
   done
 
   echo "Waiting 5 minutes before next namespace..."
@@ -244,8 +249,8 @@ istioctl analyze --all-namespaces
 # Check proxy sync status
 istioctl proxy-status
 
-# Verify mTLS is working
-istioctl authn tls-check <pod-name> -n production
+# Verify that the proxy has workload certificates
+istioctl proxy-config secret <pod-name>.production
 
 # Test a known service-to-service call
 kubectl exec <pod-name> -n production -- curl -v http://other-service:8080/health
@@ -256,8 +261,8 @@ kubectl exec <pod-name> -n production -- curl -v http://other-service:8080/healt
 If the upgrade is causing production issues and you need to roll back:
 
 ```bash
-# For istioctl installations
-istioctl install --set profile=default --set tag=<previous-version>
+# For istioctl installations, use the istioctl binary for the target version
+istioctl upgrade --set profile=default
 
 # For Helm installations
 helm rollback istiod -n istio-system
