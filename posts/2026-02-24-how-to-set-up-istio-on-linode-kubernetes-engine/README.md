@@ -18,12 +18,12 @@ Use the Linode CLI to create a cluster:
 linode-cli lke cluster-create \
   --label istio-cluster \
   --region us-east \
-  --k8s_version 1.28 \
+  --k8s_version 1.33 \
   --node_pools.type g6-standard-4 \
   --node_pools.count 3
 ```
 
-The `g6-standard-4` instance type gives you 4 vCPUs and 8GB RAM, which is a good baseline for Istio. With three nodes, you have enough capacity for the control plane, ingress gateway, and your application workloads plus sidecars.
+The `g6-standard-4` instance type gives you 4 vCPUs and 8GB RAM, which is a good baseline for Istio. With three nodes, you have enough capacity for the Istio control plane, ingress gateway, and your application workloads plus sidecars.
 
 Download the kubeconfig:
 
@@ -71,9 +71,9 @@ spec:
       k8s:
         serviceAnnotations:
           service.beta.kubernetes.io/linode-loadbalancer-throttle: "0"
-          service.beta.kubernetes.io/linode-loadbalancer-check-type: "http"
-          service.beta.kubernetes.io/linode-loadbalancer-check-path: "/healthz/ready"
-          service.beta.kubernetes.io/linode-loadbalancer-port-protocol: '{"443":"tcp","80":"tcp"}'
+          service.beta.kubernetes.io/linode-loadbalancer-check-type: "connection"
+          service.beta.kubernetes.io/linode-loadbalancer-port-80: '{"protocol":"tcp"}'
+          service.beta.kubernetes.io/linode-loadbalancer-port-443: '{"protocol":"tcp"}'
         hpaSpec:
           minReplicas: 2
           maxReplicas: 5
@@ -108,11 +108,11 @@ When you create a LoadBalancer service on LKE, the Linode cloud controller manag
 kubectl get svc istio-ingressgateway -n istio-system
 ```
 
-You should see an external IP or hostname in the EXTERNAL-IP column. It might take a minute for the NodeBalancer to be provisioned.
+You should see an external IP in the EXTERNAL-IP column. It might take a minute for the NodeBalancer to be provisioned.
 
 ## Configuring the NodeBalancer
 
-Linode NodeBalancers operate at Layer 4 (TCP), which is perfect for Istio. The TCP passthrough lets Istio handle TLS termination directly. You can configure NodeBalancer behavior through annotations:
+Linode NodeBalancers can be configured for TCP, which is a good fit for Istio. The TCP passthrough lets Istio handle TLS termination directly. You can configure NodeBalancer behavior through annotations:
 
 ```yaml
 serviceAnnotations:
@@ -120,17 +120,17 @@ serviceAnnotations:
   service.beta.kubernetes.io/linode-loadbalancer-throttle: "0"
 
   # Configure health checks
-  service.beta.kubernetes.io/linode-loadbalancer-check-type: "http"
-  service.beta.kubernetes.io/linode-loadbalancer-check-path: "/healthz/ready"
+  service.beta.kubernetes.io/linode-loadbalancer-check-type: "connection"
   service.beta.kubernetes.io/linode-loadbalancer-check-interval: "10"
   service.beta.kubernetes.io/linode-loadbalancer-check-timeout: "5"
   service.beta.kubernetes.io/linode-loadbalancer-check-attempts: "3"
 
   # Use TCP protocol for TLS passthrough
-  service.beta.kubernetes.io/linode-loadbalancer-port-protocol: '{"443":"tcp","80":"tcp"}'
+  service.beta.kubernetes.io/linode-loadbalancer-port-80: '{"protocol":"tcp"}'
+  service.beta.kubernetes.io/linode-loadbalancer-port-443: '{"protocol":"tcp"}'
 ```
 
-The health check configuration is important. The NodeBalancer needs to verify that the Istio gateway pods are healthy. Port 15021 with path /healthz/ready is the standard Istio health check endpoint.
+The health check configuration is important. The NodeBalancer needs to verify that the Istio gateway backends are reachable. Istio also exposes `/healthz/ready` on the gateway status port, 15021, if you want to build a more specific readiness check around that port.
 
 ## Setting Up TLS
 
@@ -153,8 +153,7 @@ metadata:
   namespace: istio-system
 spec:
   selector:
-    matchLabels:
-      istio: ingressgateway
+    istio: ingressgateway
   servers:
   - port:
       number: 443
@@ -186,7 +185,16 @@ helm install cert-manager jetstack/cert-manager \
   --set installCRDs=true
 ```
 
-Create a ClusterIssuer with HTTP01 challenge (works well with LKE since the NodeBalancer forwards traffic directly):
+Create an IngressClass and ClusterIssuer with an HTTP01 challenge:
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: IngressClass
+metadata:
+  name: istio
+spec:
+  controller: istio.io/ingress-controller
+```
 
 ```yaml
 apiVersion: cert-manager.io/v1
@@ -202,10 +210,10 @@ spec:
     solvers:
     - http01:
         ingress:
-          class: istio
+          ingressClassName: istio
 ```
 
-For the HTTP01 solver to work with Istio, you need a Gateway and VirtualService that can handle the ACME challenge path. Alternatively, use DNS01 challenges if you manage your DNS through an API-compatible provider.
+For the HTTP01 solver to work with Istio, port 80 must reach the Istio ingress gateway, and the `istio` IngressClass must be present so cert-manager's temporary challenge Ingress is handled by Istio. Alternatively, use DNS01 challenges if you manage your DNS through an API-compatible provider.
 
 Request a certificate:
 
@@ -299,7 +307,7 @@ linode-cli domains records-create <domain-id> \
 
 ## Monitoring Stack
 
-Deploy the standard monitoring tools:
+Deploy the sample monitoring tools:
 
 ```bash
 kubectl apply -f samples/addons/prometheus.yaml
@@ -317,7 +325,7 @@ kubectl port-forward svc/prometheus -n istio-system 9090:9090
 
 ## Persistent Storage for Monitoring
 
-LKE supports Linode Block Storage through the CSI driver. Use it for Prometheus data persistence:
+LKE supports Linode Block Storage through the CSI driver. Use a claim like this when you customize Prometheus for persistent data:
 
 ```yaml
 apiVersion: v1
