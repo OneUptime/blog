@@ -10,7 +10,7 @@ Description: A practical guide to monitoring serverless workloads running on Kub
 
 Serverless workloads on Kubernetes are great until something goes wrong and you have no idea what happened. The ephemeral nature of serverless makes monitoring tricky. Pods come and go, sometimes lasting only a few seconds, and traditional monitoring approaches that rely on long-lived processes do not work well.
 
-This is where Istio really shines. Because the sidecar proxy intercepts every request, you get consistent telemetry data regardless of how short-lived your workload is. The proxy outlives the application container in many cases, which means you capture metrics even for functions that scale to zero immediately after processing.
+This is where Istio really shines. Because the sidecar proxy intercepts requests while the pod is running, you get consistent telemetry data for mesh traffic without instrumenting every function. For workloads that scale to zero, make sure Prometheus scrapes frequently enough for your traffic pattern, because pull-based scrapes can still miss metrics from pods that start and terminate between scrape intervals.
 
 ## What Metrics Istio Collects Automatically
 
@@ -30,7 +30,7 @@ These metrics follow the RED method (Rate, Errors, Duration) out of the box, whi
 If you installed Istio with the default profile, Prometheus is not included. You need to install it separately. The easiest way is with the Istio addons:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/prometheus.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/prometheus.yaml
 ```
 
 Or if you prefer Helm with the kube-prometheus-stack:
@@ -40,7 +40,7 @@ helm repo add prometheus-community https://prometheus-community.github.io/helm-c
 helm install prometheus prometheus-community/kube-prometheus-stack -n monitoring --create-namespace
 ```
 
-When using a separate Prometheus installation, you need to add a scrape config for Istio. Create a PodMonitor:
+When using a separate Prometheus installation, you need to add a scrape config for Istio. With Prometheus Operator, make sure the labels match your Prometheus `podMonitorSelector`, then create a PodMonitor:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
@@ -57,9 +57,9 @@ spec:
         operator: DoesNotExist
   namespaceSelector:
     any: true
-  jobLabel: envoy-stats
   podMetricsEndpoints:
-    - path: /stats/prometheus
+    - port: http-envoy-prom
+      path: /stats/prometheus
       interval: 15s
       relabelings:
         - action: keep
@@ -109,7 +109,7 @@ Using a 1-minute window instead of 5 minutes makes cold start spikes more visibl
 Install Grafana if you have not already:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/grafana.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/grafana.yaml
 ```
 
 Access it:
@@ -164,7 +164,7 @@ Kiali is probably the most underrated tool in the Istio ecosystem for serverless
 Install it:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/kiali.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/kiali.yaml
 ```
 
 Open the dashboard:
@@ -179,38 +179,77 @@ For serverless workloads specifically, I recommend setting the graph refresh int
 
 ## Distributed Tracing for Serverless
 
-Metrics tell you what is happening but traces tell you why. Install Jaeger for distributed tracing:
+Metrics tell you what is happening but traces tell you why. Install Jaeger, then configure Istio to send traces to it:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/jaeger.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/jaeger.yaml
+cat <<EOF > tracing.yaml
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
+spec:
+  meshConfig:
+    enableTracing: true
+    defaultConfig:
+      tracing: {}
+    extensionProviders:
+      - name: jaeger
+        opentelemetry:
+          port: 4317
+          service: jaeger-collector.istio-system.svc.cluster.local
+EOF
+istioctl install -f tracing.yaml --skip-confirmation
+kubectl apply -f - <<EOF
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
+metadata:
+  name: mesh-default
+  namespace: istio-system
+spec:
+  tracing:
+    - providers:
+        - name: jaeger
+EOF
 ```
 
-Istio automatically generates trace spans for every request. However, your functions need to propagate trace headers for the traces to be connected. The headers to propagate are:
+Istio automatically generates trace spans for sampled requests. However, your functions need to propagate trace headers for the traces to be connected. The headers to propagate are:
 
 - `x-request-id`
+- `traceparent`
+- `tracestate`
 - `x-b3-traceid`
 - `x-b3-spanid`
 - `x-b3-parentspanid`
 - `x-b3-sampled`
 - `x-b3-flags`
+- `b3`
 
 In your function code, just copy these headers from the incoming request to any outgoing requests. Here is a Go example:
 
 ```go
 func handler(w http.ResponseWriter, r *http.Request) {
     headers := []string{
-        "x-request-id", "x-b3-traceid", "x-b3-spanid",
+        "x-request-id", "traceparent", "tracestate", "x-b3-traceid", "x-b3-spanid",
         "x-b3-parentspanid", "x-b3-sampled", "x-b3-flags",
+        "b3",
     }
 
     client := &http.Client{}
-    req, _ := http.NewRequest("GET", "http://downstream-service", nil)
+    req, err := http.NewRequest("GET", "http://downstream-service", nil)
+    if err != nil {
+        http.Error(w, err.Error(), http.StatusInternalServerError)
+        return
+    }
     for _, h := range headers {
         if v := r.Header.Get(h); v != "" {
             req.Header.Set(h, v)
         }
     }
-    client.Do(req)
+    resp, err := client.Do(req)
+    if err != nil {
+        http.Error(w, err.Error(), http.StatusBadGateway)
+        return
+    }
+    defer resp.Body.Close()
 }
 ```
 
