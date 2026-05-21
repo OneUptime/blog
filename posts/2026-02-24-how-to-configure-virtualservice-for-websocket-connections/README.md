@@ -16,20 +16,23 @@ A WebSocket connection starts with an HTTP Upgrade request. The client sends:
 
 ```text
 GET /ws HTTP/1.1
+Host: ws.example.com
 Upgrade: websocket
 Connection: Upgrade
+Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==
+Sec-WebSocket-Version: 13
 ```
 
 Envoy (Istio's data plane proxy) detects this upgrade and switches the connection to WebSocket mode. From that point, the connection is a raw TCP pipe between client and server, carrying WebSocket frames in both directions.
 
-The good news is that Envoy supports WebSocket upgrades by default. The tricky part is making sure your VirtualService does not accidentally close the connection due to timeouts.
+The good news is that Envoy supports WebSocket upgrades by default. The tricky part is making sure any timeout you configure for the route does not accidentally close the connection.
 
 ## Basic WebSocket VirtualService
 
 Here is a simple configuration for a WebSocket service:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: ws-service
@@ -49,14 +52,14 @@ spec:
       timeout: 0s
 ```
 
-The `timeout: 0s` is critical. By default, Istio applies a 15-second timeout to HTTP routes. For WebSocket connections that are supposed to stay open for minutes or hours, this timeout would kill the connection. Setting it to `0s` disables the timeout entirely.
+The `timeout: 0s` explicitly disables the route timeout. Istio disables HTTP request timeouts by default, but if you have set a timeout on the WebSocket route, it can close connections that are supposed to stay open for minutes or hours.
 
 ## Mixed HTTP and WebSocket Service
 
 If your service handles both regular HTTP and WebSocket traffic:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -97,7 +100,7 @@ The WebSocket route has no timeout, while regular API routes have a 30-second ti
 To expose WebSocket services externally:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: ws-gateway
@@ -122,7 +125,7 @@ spec:
         mode: SIMPLE
         credentialName: ws-tls-cert
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: ws-external
@@ -148,7 +151,7 @@ For production WebSocket services, always use TLS (wss://). Secure WebSocket con
 If your WebSocket server uses different paths for different functionality:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: ws-service
@@ -190,10 +193,10 @@ Different WebSocket endpoints get routed to different backend services.
 
 ## Session Stickiness for WebSockets
 
-WebSocket connections are stateful, so you need to make sure reconnects go to the same backend pod. Use consistent hashing in the DestinationRule:
+If your WebSocket backend keeps session state in memory, you might want reconnects from the same user to go to the same backend pod. Use consistent hashing in the DestinationRule:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: ws-service
@@ -209,7 +212,7 @@ spec:
 Or use a cookie for stickiness:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: ws-service
@@ -229,7 +232,7 @@ spec:
 For WebSocket services, you might want to control connection pool settings:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: ws-service
@@ -245,14 +248,14 @@ spec:
         maxRequestsPerConnection: 0
 ```
 
-Setting `maxRequestsPerConnection: 0` means unlimited requests per connection, which is what you want for WebSockets. The `h2UpgradePolicy: DO_NOT_UPGRADE` keeps the connection as HTTP/1.1, which WebSockets require (WebSocket upgrades happen over HTTP/1.1, not HTTP/2).
+Setting `maxRequestsPerConnection: 0` means unlimited requests per connection, which is what you want for WebSockets. The `h2UpgradePolicy: DO_NOT_UPGRADE` keeps the upstream connection as HTTP/1.1. The classic WebSocket Upgrade handshake uses HTTP/1.1; Envoy can tunnel WebSockets over HTTP/2 with additional configuration, but do not force HTTP/2 to a backend unless you know the full path supports it.
 
 ## Canary Deployments with WebSockets
 
 You can do weight-based traffic splitting for WebSocket services:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: ws-service
@@ -275,12 +278,12 @@ spec:
 
 The weight applies to new connection establishment. Once a WebSocket connection is established to v1 or v2, it stays connected to that version for the life of the connection.
 
-## Idle Timeout Configuration
+## TCP Keepalive Configuration
 
-While you want to disable the route timeout, you might still want an idle timeout to clean up abandoned connections:
+While you want to disable the route timeout, you might still want TCP keepalive to detect dead connections:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: ws-service
@@ -297,7 +300,7 @@ spec:
           probes: 3
 ```
 
-The TCP keepalive settings detect dead connections. If no data is exchanged for 300 seconds, the proxy sends a keepalive probe every 75 seconds. After 3 failed probes, the connection is closed.
+The TCP keepalive settings detect dead peers. If no data is exchanged for 300 seconds, the proxy sends a keepalive probe every 75 seconds. After 3 failed probes, the connection is considered dead.
 
 ## Debugging WebSocket Issues
 
@@ -306,7 +309,12 @@ Common WebSocket problems and how to troubleshoot them:
 ```bash
 # Check if the upgrade is happening
 
-curl -v -H "Upgrade: websocket" -H "Connection: Upgrade" http://ws-service.default.svc.cluster.local/ws
+curl -i -N --http1.1 \
+  -H "Connection: Upgrade" \
+  -H "Upgrade: websocket" \
+  -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \
+  -H "Sec-WebSocket-Version: 13" \
+  http://ws-service.default.svc.cluster.local/ws
 
 # Check Envoy logs for upgrade requests
 kubectl logs deploy/ws-service -c istio-proxy | grep "upgrade"
@@ -315,10 +323,10 @@ kubectl logs deploy/ws-service -c istio-proxy | grep "upgrade"
 istioctl proxy-config routes deploy/ws-service -o json
 
 # Check connection count
-kubectl exec deploy/ws-service -c istio-proxy -- curl -s localhost:15090/stats/prometheus | grep downstream_cx_active
+kubectl exec deploy/ws-service -c istio-proxy -- curl -s localhost:15090/stats/prometheus | grep downstream_cx_upgrades_active
 ```
 
-**Connection drops after 15 seconds?** You forgot to set `timeout: 0s`.
+**Connection drops after a configured timeout?** Check the route timeout and set `timeout: 0s` for the WebSocket route if the connection should remain open indefinitely.
 
 **Connection refused?** Check that the Gateway is set up correctly and the port matches.
 
@@ -326,9 +334,9 @@ kubectl exec deploy/ws-service -c istio-proxy -- curl -s localhost:15090/stats/p
 
 ## Things to Watch Out For
 
-1. **Default timeout kills connections.** Always set `timeout: 0s` for WebSocket routes.
+1. **Configured route timeouts can kill connections.** Istio disables request timeouts by default, but if you configure one for a WebSocket route, set `timeout: 0s` or a value long enough for your use case.
 2. **Load balancer timeouts.** If you have a cloud load balancer in front of Istio, it might have its own idle timeout. AWS ALB defaults to 60 seconds, for example.
-3. **HTTP/2 vs HTTP/1.1.** WebSocket uses HTTP/1.1 for the upgrade. Do not force HTTP/2 on WebSocket connections.
+3. **HTTP/2 vs HTTP/1.1.** The classic WebSocket upgrade uses HTTP/1.1. Envoy can tunnel WebSockets over HTTP/2 with explicit support, but do not force HTTP/2 unless your mesh and backend support that path.
 4. **Scale considerations.** WebSocket connections are persistent. If you have 10,000 connected clients, that is 10,000 open connections. Plan your connection pool and pod scaling accordingly.
 5. **Retries do not make sense.** Do not configure retries for WebSocket routes - the connection upgrade either succeeds or fails. Retrying a long-lived connection is not meaningful.
 
