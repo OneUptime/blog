@@ -51,6 +51,14 @@ spec:
         retryOn: gateway-error,connect-failure,refused-stream
 ```
 
+```yaml
+# base/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - virtual-service.yaml
+```
+
 ### Kustomize Overlays
 
 ```yaml
@@ -134,6 +142,7 @@ istio-service-chart/
 ```yaml
 # templates/virtual-service.yaml
 {{- range .Values.services }}
+{{- $retries := default dict .retries }}
 apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
@@ -163,9 +172,9 @@ spec:
       timeout: {{ .timeout | default $.Values.defaults.timeout }}
     {{- end }}
       retries:
-        attempts: {{ .retries.attempts | default $.Values.defaults.retries.attempts }}
-        perTryTimeout: {{ .retries.perTryTimeout | default $.Values.defaults.retries.perTryTimeout }}
-        retryOn: {{ .retries.retryOn | default $.Values.defaults.retries.retryOn }}
+        attempts: {{ $retries.attempts | default $.Values.defaults.retries.attempts }}
+        perTryTimeout: {{ $retries.perTryTimeout | default $.Values.defaults.retries.perTryTimeout }}
+        retryOn: {{ $retries.retryOn | default $.Values.defaults.retries.retryOn }}
 ---
 {{- end }}
 ```
@@ -173,6 +182,8 @@ spec:
 ```yaml
 # templates/destination-rule.yaml
 {{- range .Values.services }}
+{{- $connectionPool := default dict .connectionPool }}
+{{- $outlierDetection := default dict .outlierDetection }}
 apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
@@ -183,14 +194,14 @@ spec:
   trafficPolicy:
     connectionPool:
       tcp:
-        maxConnections: {{ .connectionPool.maxConnections | default $.Values.defaults.connectionPool.maxConnections }}
+        maxConnections: {{ $connectionPool.maxConnections | default $.Values.defaults.connectionPool.maxConnections }}
       http:
-        http1MaxPendingRequests: {{ .connectionPool.maxPendingRequests | default $.Values.defaults.connectionPool.maxPendingRequests }}
-        http2MaxRequests: {{ .connectionPool.maxRequests | default $.Values.defaults.connectionPool.maxRequests }}
+        http1MaxPendingRequests: {{ $connectionPool.maxPendingRequests | default $.Values.defaults.connectionPool.maxPendingRequests }}
+        http2MaxRequests: {{ $connectionPool.maxRequests | default $.Values.defaults.connectionPool.maxRequests }}
     outlierDetection:
-      consecutive5xxErrors: {{ .outlierDetection.errors | default $.Values.defaults.outlierDetection.errors }}
-      interval: {{ .outlierDetection.interval | default $.Values.defaults.outlierDetection.interval }}
-      baseEjectionTime: {{ .outlierDetection.ejectionTime | default $.Values.defaults.outlierDetection.ejectionTime }}
+      consecutive5xxErrors: {{ $outlierDetection.errors | default $.Values.defaults.outlierDetection.errors }}
+      interval: {{ $outlierDetection.interval | default $.Values.defaults.outlierDetection.interval }}
+      baseEjectionTime: {{ $outlierDetection.ejectionTime | default $.Values.defaults.outlierDetection.ejectionTime }}
   {{- if .subsets }}
   subsets:
     {{- range .subsets }}
@@ -259,7 +270,7 @@ services:
 Deploy with:
 
 ```bash
-helm template istio-config ./istio-service-chart -f values-production.yaml | kubectl apply -f -
+helm template istio-config ./istio-service-chart -f ./istio-service-chart/values-production.yaml | kubectl apply -f -
 ```
 
 ## Using Terraform
@@ -341,12 +352,12 @@ Test your generated configuration before applying:
 
 ```bash
 # Helm - render and validate
-helm template my-release ./istio-service-chart -f values-production.yaml > rendered.yaml
-istioctl analyze -R rendered.yaml
+helm template my-release ./istio-service-chart -f ./istio-service-chart/values-production.yaml > rendered.yaml
+istioctl analyze --use-kube=false rendered.yaml
 
 # Kustomize - build and validate
-kustomize build overlays/production > rendered.yaml
-istioctl analyze -R rendered.yaml
+kubectl kustomize overlays/production > rendered.yaml
+istioctl analyze --use-kube=false rendered.yaml
 
 # Dry run
 kubectl apply --dry-run=server -f rendered.yaml
@@ -362,7 +373,6 @@ kind: ClusterPolicy
 metadata:
   name: require-istio-timeout
 spec:
-  validationFailureAction: Enforce
   rules:
     - name: require-timeout
       match:
@@ -371,6 +381,7 @@ spec:
               kinds:
                 - VirtualService
       validate:
+        failureAction: Enforce
         message: "All VirtualServices must have a timeout configured"
         pattern:
           spec:
