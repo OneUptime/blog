@@ -83,7 +83,7 @@ The `issuer` field in your RequestAuthentication must match the `iss` claim in t
 Decode your JWT to check the issuer (you can use jwt.io or the command line):
 
 ```bash
-echo "YOUR_JWT_TOKEN" | cut -d. -f2 | base64 -d 2>/dev/null | jq .iss
+jq -R 'split(".")[1] | @base64d | fromjson | .iss' <<< "YOUR_JWT_TOKEN"
 ```
 
 If the token has `"iss": "https://my-auth.example.com/"` (with trailing slash) but your config has `issuer: "https://my-auth.example.com"` (without), validation will fail.
@@ -112,17 +112,17 @@ jwtRules:
 Check the audience in your token:
 
 ```bash
-echo "YOUR_JWT_TOKEN" | cut -d. -f2 | base64 -d 2>/dev/null | jq .aud
+jq -R 'split(".")[1] | @base64d | fromjson | .aud' <<< "YOUR_JWT_TOKEN"
 ```
 
-If the token's `aud` is `"my-app"` but you only listed `"my-service"` and `"my-api"`, validation fails. Either update the audiences list or remove the field entirely (which skips audience validation).
+If the token's `aud` is `"my-app"` but you only listed `"my-service"` and `"my-api"`, validation fails. Either update the audiences list or remove the field if you do not need custom audience matching. When `audiences` is empty, Istio accepts the service name as an audience.
 
 ## Token Expired
 
 This seems obvious but it happens more than you'd think, especially in development. Check the token's expiration:
 
 ```bash
-echo "YOUR_JWT_TOKEN" | cut -d. -f2 | base64 -d 2>/dev/null | jq .exp
+jq -R 'split(".")[1] | @base64d | fromjson | .exp' <<< "YOUR_JWT_TOKEN"
 ```
 
 The value is a Unix timestamp. Convert it to see if it's in the past:
@@ -160,7 +160,7 @@ This tells Istio to also look in the `x-custom-auth` header and the `access_toke
 
 JWT issuers rotate their signing keys periodically. Istio caches the JWKS and refreshes it on a schedule. If the issuer rotated keys and Istio's cache is stale, tokens signed with the new key will fail validation.
 
-Istio refreshes JWKS every 20 minutes by default. If you need to force a refresh, restart the istiod pod:
+In the default istiod JWKS mode, Istio refreshes JWKS every 20 minutes by default. If you need to force a refresh, restart the istiod pod:
 
 ```bash
 kubectl rollout restart deployment istiod -n istio-system
@@ -170,18 +170,18 @@ A more graceful approach is to ensure your JWKS endpoint always includes both th
 
 ## Algorithm Mismatch
 
-The signing algorithm in the JWT header must match what's in the JWKS. If your JWKS advertises RS256 keys but the token is signed with ES256, validation fails.
+The signing algorithm in the JWT header must be compatible with the signing key in the JWKS, and with the key's `alg` value if one is present. For example, if your JWKS only contains RSA signing keys but the token is signed with ES256, validation fails.
 
 Check the token header:
 
 ```bash
-echo "YOUR_JWT_TOKEN" | cut -d. -f1 | base64 -d 2>/dev/null | jq .alg
+jq -R 'split(".")[0] | @base64d | fromjson | .alg' <<< "YOUR_JWT_TOKEN"
 ```
 
-And verify the JWKS has matching key types:
+And verify the JWKS has matching key types and any advertised algorithms:
 
 ```bash
-curl -s https://my-auth.example.com/.well-known/jwks.json | jq '.keys[] | .alg'
+curl -s https://my-auth.example.com/.well-known/jwks.json | jq '.keys[] | {kid, kty, alg}'
 ```
 
 ## Debugging with Envoy Logs
@@ -213,7 +213,7 @@ spec:
     jwksUri: "https://issuer-two.example.com/.well-known/jwks.json"
 ```
 
-Istio will try each issuer rule until one matches. If the token's `iss` claim doesn't match any configured issuer, the request is treated as unauthenticated (not rejected, unless you have an AuthorizationPolicy that requires authentication).
+Istio will accept a valid token from any configured issuer rule. If a presented token's `iss` claim doesn't match the configured issuer rules, the token is invalid and the request is rejected.
 
 ## Forwarding JWT Claims
 
