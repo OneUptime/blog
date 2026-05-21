@@ -24,12 +24,13 @@ sequenceDiagram
     participant Istiod as istiod (CA)
 
     K8s->>PA: Pod starts, mounts SA token
+    Envoy->>PA: Request cert and key via SDS
     PA->>Istiod: CSR + SA JWT token
     Istiod->>K8s: Validate JWT token via TokenReview
     K8s-->>Istiod: Token valid, identity confirmed
     Istiod->>Istiod: Sign certificate with mesh CA
     Istiod-->>PA: Signed certificate + CA chain
-    PA->>Envoy: Deliver cert via SDS API
+    PA->>Envoy: Deliver cert and key via SDS API
     Envoy->>Envoy: Use cert for mTLS connections
 ```
 
@@ -37,9 +38,9 @@ Each of these steps deserves a closer look.
 
 ## Step 1: Pod Startup and Service Account Token
 
-When Kubernetes schedules a pod with Istio injection enabled, the sidecar injector adds the `istio-proxy` container to the pod spec. This container runs both the pilot-agent process and the Envoy proxy.
+When Kubernetes schedules a pod with Istio injection enabled, the sidecar injector adds the `istio-proxy` container to the pod spec. This container runs pilot-agent, which bootstraps and manages the Envoy proxy.
 
-Kubernetes also mounts a service account token into the pod. In modern Kubernetes (1.21+), this is a projected volume with a bound service account token that has a limited audience and expiration time.
+Istio also injects a projected service account token volume into the pod. This bound service account token has a limited audience and expiration time.
 
 The relevant volume mount looks something like this in the pod spec:
 
@@ -58,7 +59,7 @@ The `audience: istio-ca` part is critical. It tells Kubernetes to issue a token 
 
 ## Step 2: Certificate Signing Request
 
-Once the pilot-agent process starts, it generates an RSA or EC private key (EC P-256 by default) and creates a Certificate Signing Request (CSR). The CSR contains the workload's desired identity in the Subject Alternative Name (SAN) field.
+Once the pilot-agent process starts, it generates a private key and creates a Certificate Signing Request (CSR). By default, sidecars create RSA keys; ECC can be enabled with `ECC_SIGNATURE_ALGORITHM: "ECDSA"`, and P-256 is the default curve when ECC is enabled. The CSR contains the workload's desired identity in the Subject Alternative Name (SAN) field.
 
 The SPIFFE ID format for the SAN is:
 
@@ -85,9 +86,16 @@ kubectl logs <pod-name> -c istio-proxy | grep "CSR"
 When istiod receives the CSR and JWT token, it needs to verify that the request is legitimate. It does this by calling the Kubernetes TokenReview API:
 
 ```bash
-# This is what istiod does internally
+# This is similar to what istiod does internally
 
-kubectl create tokenreview --token=<the-jwt-token>
+kubectl create -f - -o yaml <<EOF
+apiVersion: authentication.k8s.io/v1
+kind: TokenReview
+spec:
+  token: <the-jwt-token>
+  audiences:
+  - istio-ca
+EOF
 ```
 
 The TokenReview API tells istiod:
@@ -99,7 +107,7 @@ Istiod then checks that the identity requested in the CSR matches the identity p
 
 ## Step 4: Certificate Signing
 
-After validation, istiod signs the CSR using its CA private key. The resulting certificate contains:
+After validation, istiod signs the CSR using its CA private key. The resulting response includes:
 
 - The workload's SPIFFE ID in the SAN field
 - A validity period (default is 24 hours)
@@ -107,11 +115,11 @@ After validation, istiod signs the CSR using its CA private key. The resulting c
 
 Istiod's CA can operate in several modes:
 
-**Self-signed mode** (default): Istiod generates its own root CA at startup and signs workload certificates directly. The root CA certificate is stored in a Kubernetes secret called `istio-ca-secret` in the `istio-system` namespace.
+**Self-signed mode** (default): Istiod generates its own root CA and key and uses them to sign workload certificates. Istio manages this internally; some installations persist the generated CA material in a secret such as `istio-ca-secret`, while newer or customized installations may use different storage settings.
 
-**Plug-in CA mode**: You provide your own CA certificate and key, and istiod uses them as an intermediate CA to sign workload certificates. This is the recommended approach for production.
+**Plug-in CA mode**: You provide your own root certificate, signing certificate, signing key, and certificate chain in the `cacerts` secret, and istiod uses them to sign workload certificates. This is the recommended approach for production because the root CA can be kept outside the cluster.
 
-**External CA mode**: Istiod forwards CSRs to an external certificate authority (like Vault, SPIRE, or a cloud KMS).
+**External CA mode**: Istiod acts as a registration authority and forwards CSRs to an external certificate authority, such as one integrated through the Kubernetes CSR API.
 
 Check which mode your installation uses:
 
@@ -120,14 +128,14 @@ kubectl get secret cacerts -n istio-system
 # If this exists, you are in plug-in CA mode
 
 kubectl get secret istio-ca-secret -n istio-system
-# If this exists (and cacerts does not), you are in self-signed mode
+# If this exists (and cacerts does not), you are likely in self-signed mode
 ```
 
 ## Step 5: Certificate Delivery via SDS
 
-The signed certificate travels back from istiod to the pilot-agent, which then delivers it to the Envoy proxy through the Secret Discovery Service (SDS) API. SDS is part of Envoy's xDS protocol family.
+The signed certificate travels back from istiod to the pilot-agent, which then delivers the certificate, certificate chain, and private key to the Envoy proxy through the Secret Discovery Service (SDS) API. SDS is part of Envoy's xDS protocol family.
 
-This is a significant design choice. Instead of writing certificates to disk (where they could be read by other processes in the pod), certificates are delivered through an in-memory gRPC API. The pilot-agent acts as the local SDS server for the Envoy instance in the same pod.
+This is a significant design choice. Instead of writing workload certificates to application-visible files by default, secrets are delivered through the local SDS API. The pilot-agent acts as the local SDS server for the Envoy instance in the same pod.
 
 You can inspect the certificates that Envoy currently holds:
 
@@ -147,7 +155,7 @@ ROOTCA            CA             ACTIVE   true         f4a..                  20
 
 Certificates do not last forever. By default, Istio workload certificates have a 24-hour lifetime. The pilot-agent handles rotation automatically before the certificate expires.
 
-The rotation happens at roughly 50% of the certificate's remaining lifetime. So for a 24-hour certificate, rotation kicks in around the 12-hour mark. This gives plenty of buffer in case the rotation fails and needs to be retried.
+The rotation happens before expiration using the agent's grace period ratio, which defaults to 0.5 with a small jitter. So for a 24-hour certificate, rotation usually starts around the 12-hour mark. This gives plenty of buffer in case the rotation fails and needs to be retried.
 
 You can adjust the certificate TTL through mesh configuration:
 
@@ -185,7 +193,7 @@ You will see log lines about receiving CSR requests, validating tokens, and sign
 
 ```bash
 # Check if the pod can reach istiod
-kubectl exec <pod-name> -c istio-proxy -- curl -s https://istiod.istio-system.svc:15012/debug/endpointz
+kubectl exec <pod-name> -c istio-proxy -- curl -sS http://istiod.istio-system.svc:15014/version
 ```
 
 **Root CA rotation without overlap**: If you rotate the root CA without keeping the old one trusted during the transition, existing certificates signed by the old CA will fail verification. Always overlap trust during rotation.
