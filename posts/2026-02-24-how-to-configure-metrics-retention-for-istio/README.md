@@ -140,7 +140,7 @@ spec:
             )
 ```
 
-These recorded metrics use far less storage because they have fewer labels and are already aggregated. You can keep these for 90 days while only keeping raw metrics for 15 days.
+These recorded metrics use far less storage because they have fewer labels and are already aggregated. In a single Prometheus server, recorded metrics use the same retention settings as raw metrics. If you need to keep these for 90 days while only keeping raw metrics locally for 15 days, send them to long-term storage or a separate Prometheus setup with its own retention policy.
 
 ## Long-Term Storage with Thanos
 
@@ -158,7 +158,7 @@ spec:
   retention: 6h  # Keep only 6 hours locally
 
   thanos:
-    baseImage: quay.io/thanos/thanos
+    image: quay.io/thanos/thanos:v0.34.0
     version: v0.34.0
     objectStorageConfig:
       key: thanos.yaml
@@ -196,6 +196,9 @@ spec:
     matchLabels:
       app: thanos-compactor
   template:
+    metadata:
+      labels:
+        app: thanos-compactor
     spec:
       containers:
         - name: compactor
@@ -209,6 +212,18 @@ spec:
             - --retention.resolution-1h=365d
             - --downsample.concurrency=2
             - --wait
+          volumeMounts:
+            - name: objstore-config
+              mountPath: /etc/thanos
+              readOnly: true
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: objstore-config
+          secret:
+            secretName: thanos-objstore-config
+        - name: data
+          emptyDir: {}
 ```
 
 This gives you three tiers of retention:
@@ -233,11 +248,11 @@ spec:
         - name: prometheus
       overrides:
         - match:
-            metric: REQUEST_BYTES
+            metric: REQUEST_SIZE
             mode: CLIENT_AND_SERVER
           disabled: true
         - match:
-            metric: RESPONSE_BYTES
+            metric: RESPONSE_SIZE
             mode: CLIENT_AND_SERVER
           disabled: true
         - match:
