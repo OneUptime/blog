@@ -8,7 +8,7 @@ Description: A complete guide to setting up TPROXY transparent proxy mode in Ist
 
 ---
 
-TPROXY (transparent proxy) is an alternative to Istio's default REDIRECT mode for traffic interception. While REDIRECT rewrites packet source addresses and breaks source IP visibility, TPROXY preserves the original source and destination IPs throughout the entire proxy chain. This makes it valuable for workloads that need accurate source IP information at the network level.
+TPROXY (transparent proxy) is an alternative to Istio's default REDIRECT mode for inbound traffic interception. While REDIRECT rewrites packet destination addresses and breaks source IP visibility for the application, TPROXY preserves the original source and destination IPs during inbound interception. This makes it valuable for workloads that need accurate source IP information at the network level.
 
 ## How TPROXY Differs from REDIRECT
 
@@ -24,10 +24,10 @@ In TPROXY mode, packets go through the mangle table instead. The destination add
 
 ```text
 # TPROXY mode - mangle table
--A ISTIO_INBOUND -p tcp -j TPROXY --on-port 15006 --on-ip 0.0.0.0 --tproxy-mark 0x1/0x1
+-A ISTIO_TPROXY ! -d 127.0.0.1/32 -p tcp -j TPROXY --on-port 15006 --tproxy-mark 1337/0xffffffff
 ```
 
-The practical difference: with REDIRECT, your app sees connections from 127.0.0.1. With TPROXY, your app sees the actual client IP.
+The practical difference: with REDIRECT, your app sees the proxied connection from a loopback address. With TPROXY, your app sees the actual client IP.
 
 ## Prerequisites
 
@@ -35,16 +35,17 @@ TPROXY requires kernel support. Most modern Linux kernels (3.x and later) includ
 
 ```bash
 # On the node (not the pod)
-lsmod | grep xt_TPROXY
+lsmod | grep -E 'xt_TPROXY|xt_socket|xt_mark|xt_connmark'
 ```
 
-If the module isn't loaded:
+If the modules aren't loaded:
 
 ```bash
 modprobe xt_TPROXY
+modprobe xt_socket
 ```
 
-On managed Kubernetes services (GKE, EKS, AKS), TPROXY support is generally available but you should verify. GKE nodes with Container-Optimized OS have it enabled by default. EKS nodes with Amazon Linux 2 also support it.
+On managed Kubernetes services (GKE, EKS, AKS), TPROXY support is generally available on standard Linux node images, but you should verify the required kernel modules and iptables backend on your actual node image.
 
 ## Enabling TPROXY for a Single Workload
 
@@ -77,7 +78,7 @@ spec:
 After deployment, verify the interception mode:
 
 ```bash
-kubectl exec -it <pod-name> -c istio-proxy -- pilot-agent request GET server_info | grep -i mode
+kubectl exec -it <pod-name> -c istio-proxy -- printenv ISTIO_META_INTERCEPTION_MODE
 ```
 
 And check the iptables rules to confirm TPROXY is active:
@@ -128,12 +129,16 @@ kubectl exec -it <pod-name> -c istio-proxy -- iptables -t mangle -S
 -A ISTIO_INBOUND -p tcp --dport 15008 -j RETURN
 -A ISTIO_INBOUND -p tcp --dport 15090 -j RETURN
 -A ISTIO_INBOUND -p tcp --dport 15021 -j RETURN
--A ISTIO_INBOUND -p tcp -j TPROXY --on-port 15006 --on-ip 0.0.0.0 --tproxy-mark 0x1/0x1
+-A ISTIO_INBOUND -p tcp -m conntrack --ctstate RELATED,ESTABLISHED -j ISTIO_DIVERT
+-A ISTIO_INBOUND -p tcp -j ISTIO_TPROXY
+-A ISTIO_DIVERT -j MARK --set-mark 1337
+-A ISTIO_DIVERT -j ACCEPT
+-A ISTIO_TPROXY ! -d 127.0.0.1/32 -p tcp -j TPROXY --on-port 15006 --tproxy-mark 1337/0xffffffff
 ```
 
 The `--tproxy-mark` sets a firewall mark on the packet, which is used by the routing policy to direct packets to the local routing table.
 
-For outbound traffic, a routing policy rule directs marked packets:
+For inbound TPROXY traffic, a routing policy rule directs marked packets:
 
 ```bash
 kubectl exec -it <pod-name> -c istio-proxy -- ip rule show
@@ -141,7 +146,7 @@ kubectl exec -it <pod-name> -c istio-proxy -- ip rule show
 
 ```text
 0:      from all lookup local
-32765:  from all fwmark 0x1/0x1 lookup 133
+32765:  from all fwmark 0x539 lookup 133
 32766:  from all lookup main
 32767:  from all lookup default
 ```
@@ -153,7 +158,7 @@ kubectl exec -it <pod-name> -c istio-proxy -- ip route show table 133
 ```
 
 ```text
-default via 127.0.0.1 dev lo
+local default dev lo scope host
 ```
 
 ## Security Context Requirements
@@ -167,12 +172,11 @@ containers:
     capabilities:
       add:
       - NET_ADMIN
-      - NET_RAW
 ```
 
 This is because the Envoy process needs to create transparent sockets using the `IP_TRANSPARENT` socket option. This is a notable difference from REDIRECT mode, where only the init container needs elevated privileges.
 
-If you're using Pod Security Standards, TPROXY mode requires the Baseline level for the sidecar container, not just the init container.
+If you're using Pod Security Standards, TPROXY mode requires the Privileged profile or an explicit policy exemption for the sidecar container. The Baseline and Restricted profiles do not allow adding `NET_ADMIN`.
 
 ## Testing Source IP Preservation
 
@@ -238,13 +242,13 @@ spec:
       interceptionMode: TPROXY
 ```
 
-The CNI plugin handles the iptables configuration, but the sidecar still needs NET_ADMIN capability for the transparent socket operations.
+The CNI plugin handles the iptables configuration, but the sidecar still needs the `NET_ADMIN` capability for the transparent socket operations.
 
 ## Troubleshooting TPROXY
 
 If TPROXY isn't working, check these things:
 
-**Kernel module**: Make sure `xt_TPROXY` is loaded on the node. Without it, the iptables rules will fail to apply.
+**Kernel modules**: Make sure TPROXY and the related netfilter modules are available on the node. Without them, the iptables rules will fail to apply.
 
 **Routing rules**: Verify the custom routing table and policy are in place:
 
