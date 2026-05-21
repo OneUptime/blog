@@ -14,10 +14,10 @@ This guide provides a systematic approach to diagnosing and fixing webhook failu
 
 ## Types of Webhook Failures
 
-Istio uses two webhooks:
+Istio uses two categories of admission webhooks:
 
-1. **Mutating webhook (istio-sidecar-injector)**: Handles sidecar injection. Failures here mean pods either cannot be created or are created without sidecars.
-2. **Validating webhook (istio-validator)**: Handles configuration validation. Failures here mean you cannot create or update Istio resources like VirtualServices.
+1. **Mutating webhook (often `istio-sidecar-injector`, or a revision-specific name)**: Handles sidecar injection. Failures here mean pods either cannot be created or are created without sidecars.
+2. **Validating webhook (often `istio-validator-istio-system`, or a revision-specific name)**: Handles configuration validation. Failures here mean you cannot create or update Istio resources like VirtualServices.
 
 Each type has different symptoms and different fixes.
 
@@ -76,7 +76,7 @@ kubectl get events -n istio-system --sort-by='.lastTimestamp'
 If you uninstalled Istio but the webhook configuration remains:
 
 ```bash
-# Remove the stale webhook configuration
+# Remove the stale webhook configuration. Replace the names if your install uses revisions.
 kubectl delete mutatingwebhookconfiguration istio-sidecar-injector
 kubectl delete validatingwebhookconfiguration istio-validator-istio-system
 ```
@@ -173,11 +173,14 @@ This means istiod is reachable but too slow to respond.
 # Check istiod resource usage
 kubectl top pod -n istio-system -l app=istiod
 
-# Check istiod push queue
-kubectl exec -n istio-system deploy/istiod -- curl -s localhost:15014/metrics | grep pilot_push_status
+# Check istiod push and queue latency metrics
+ISTIOD=$(kubectl get pod -n istio-system -l app=istiod -o jsonpath='{.items[0].metadata.name}')
+kubectl debug -n istio-system "$ISTIOD" --image=curlimages/curl -- \
+  curl -s localhost:15014/metrics | grep -E 'pilot_(proxy_queue_time|debounce_time|xds_push_time)'
 
-# Check if istiod is overwhelmed
-kubectl exec -n istio-system deploy/istiod -- curl -s localhost:15014/metrics | grep pilot_xds_connected
+# Check how many clients are connected to istiod over XDS
+kubectl debug -n istio-system "$ISTIOD" --image=curlimages/curl -- \
+  curl -s localhost:15014/metrics | grep '^pilot_xds '
 ```
 
 ### Fix: Increase Resources or Timeout
@@ -222,9 +225,15 @@ Post "https://istiod.istio-system.svc:443/inject": x509: certificate has expired
 kubectl get mutatingwebhookconfiguration istio-sidecar-injector \
   -o jsonpath='{.webhooks[0].clientConfig.caBundle}' | base64 -d | openssl x509 -noout -dates
 
-# Check istiod's serving certificate
-kubectl exec -n istio-system deploy/istiod -- \
-  cat /var/run/secrets/istio-dns/cert-chain.pem | openssl x509 -noout -dates
+# Check the namespace root certificate that Istio uses for webhook CA bundle patching
+kubectl -n istio-system get configmap istio-ca-root-cert \
+  -o jsonpath='{.data.root-cert\.pem}' | openssl x509 -noout -dates
+
+# Compare the webhook CA bundle with the namespace root certificate
+kubectl get mutatingwebhookconfiguration istio-sidecar-injector \
+  -o jsonpath='{.webhooks[0].clientConfig.caBundle}' | md5sum
+kubectl -n istio-system get configmap istio-ca-root-cert \
+  -o jsonpath='{.data.root-cert\.pem}' | base64 -w 0 | md5sum
 ```
 
 ### Fix: Rotate Certificates
@@ -301,7 +310,8 @@ kubectl logs -n istio-system deploy/istiod --tail=100 2>/dev/null | grep -i "err
 If webhooks are blocking all pod creation and you need to restore service immediately:
 
 ```bash
-# Change failure policy to Ignore (pods will be created without sidecars)
+# Change failure policy to Ignore (pods will be created without sidecars).
+# Replace the webhook configuration names if your install uses revisions.
 kubectl patch mutatingwebhookconfiguration istio-sidecar-injector \
   --type='json' \
   -p='[{"op": "replace", "path": "/webhooks/0/failurePolicy", "value": "Ignore"}]'
