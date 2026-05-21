@@ -25,7 +25,7 @@ For real-time monitoring, most teams use both: Kiali for topology visualization 
 Deploy Grafana with the Istio addon:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.22/samples/addons/grafana.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.29/samples/addons/grafana.yaml
 ```
 
 For production, use the Grafana Helm chart with persistent storage:
@@ -34,21 +34,17 @@ For production, use the Grafana Helm chart with persistent storage:
 helm repo add grafana https://grafana.github.io/helm-charts
 helm install grafana grafana/grafana \
   --namespace monitoring \
+  --create-namespace \
   --set persistence.enabled=true \
   --set persistence.size=10Gi \
   --set adminPassword=your-secure-password
 ```
 
-Configure the Prometheus data source:
+Configure the Prometheus data source in your Grafana Helm values:
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: grafana-datasources
-  namespace: monitoring
-data:
-  prometheus.yaml: |
+datasources:
+  datasources.yaml:
     apiVersion: 1
     datasources:
     - name: Prometheus
@@ -155,7 +151,7 @@ The mesh overview dashboard gives you a bird's-eye view of your entire service m
 }
 ```
 
-Set the refresh interval to 10 seconds for real-time feel. Going lower than 10 seconds is usually not useful because Prometheus scrapes at 15-second intervals.
+Set the refresh interval to 10 seconds for real-time feel. Going lower than 10 seconds is usually not useful when Prometheus is scraping every 15 seconds, as the Istio sample Prometheus configuration does.
 
 ## Service Detail Dashboard
 
@@ -167,12 +163,26 @@ A drill-down dashboard for individual services:
     "title": "Istio Service Detail",
     "refresh": "10s",
     "templating": {
-      "list": [{
-        "name": "service",
-        "type": "query",
-        "query": "label_values(istio_requests_total{reporter=\"destination\"}, destination_service_name)",
-        "refresh": 2
-      }]
+      "list": [
+        {
+          "name": "namespace",
+          "type": "query",
+          "query": "label_values(istio_requests_total{reporter=\"destination\"}, destination_service_namespace)",
+          "refresh": 2
+        },
+        {
+          "name": "service",
+          "type": "query",
+          "query": "label_values(istio_requests_total{reporter=\"destination\", destination_service_namespace=\"$namespace\"}, destination_service_name)",
+          "refresh": 2
+        },
+        {
+          "name": "workload",
+          "type": "query",
+          "query": "label_values(istio_requests_total{reporter=\"destination\", destination_service_namespace=\"$namespace\", destination_service_name=\"$service\"}, destination_workload)",
+          "refresh": 2
+        }
+      ]
     },
     "panels": [
       {
@@ -181,11 +191,11 @@ A drill-down dashboard for individual services:
         "gridPos": {"h": 8, "w": 8, "x": 0, "y": 0},
         "targets": [
           {
-            "expr": "sum(rate(istio_requests_total{destination_service_name=\"$service\", reporter=\"destination\"}[5m]))",
+            "expr": "sum(rate(istio_requests_total{destination_service_namespace=\"$namespace\", destination_service_name=\"$service\", reporter=\"destination\"}[5m]))",
             "legendFormat": "Total"
           },
           {
-            "expr": "sum(rate(istio_requests_total{destination_service_name=\"$service\", reporter=\"destination\"}[5m])) by (response_code)",
+            "expr": "sum(rate(istio_requests_total{destination_service_namespace=\"$namespace\", destination_service_name=\"$service\", reporter=\"destination\"}[5m])) by (response_code)",
             "legendFormat": "{{response_code}}"
           }
         ]
@@ -195,7 +205,7 @@ A drill-down dashboard for individual services:
         "type": "timeseries",
         "gridPos": {"h": 8, "w": 8, "x": 8, "y": 0},
         "targets": [{
-          "expr": "sum(rate(istio_requests_total{destination_service_name=\"$service\", response_code=~\"5..\", reporter=\"destination\"}[5m])) / sum(rate(istio_requests_total{destination_service_name=\"$service\", reporter=\"destination\"}[5m])) * 100",
+          "expr": "sum(rate(istio_requests_total{destination_service_namespace=\"$namespace\", destination_service_name=\"$service\", response_code=~\"5..\", reporter=\"destination\"}[5m])) / sum(rate(istio_requests_total{destination_service_namespace=\"$namespace\", destination_service_name=\"$service\", reporter=\"destination\"}[5m])) * 100",
           "legendFormat": "Error %"
         }],
         "fieldConfig": {"defaults": {"unit": "percent"}}
@@ -205,9 +215,9 @@ A drill-down dashboard for individual services:
         "type": "timeseries",
         "gridPos": {"h": 8, "w": 8, "x": 16, "y": 0},
         "targets": [
-          {"expr": "histogram_quantile(0.50, sum(rate(istio_request_duration_milliseconds_bucket{destination_service_name=\"$service\", reporter=\"destination\"}[5m])) by (le))", "legendFormat": "P50"},
-          {"expr": "histogram_quantile(0.90, sum(rate(istio_request_duration_milliseconds_bucket{destination_service_name=\"$service\", reporter=\"destination\"}[5m])) by (le))", "legendFormat": "P90"},
-          {"expr": "histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{destination_service_name=\"$service\", reporter=\"destination\"}[5m])) by (le))", "legendFormat": "P99"}
+          {"expr": "histogram_quantile(0.50, sum(rate(istio_request_duration_milliseconds_bucket{destination_service_namespace=\"$namespace\", destination_service_name=\"$service\", reporter=\"destination\"}[5m])) by (le))", "legendFormat": "P50"},
+          {"expr": "histogram_quantile(0.90, sum(rate(istio_request_duration_milliseconds_bucket{destination_service_namespace=\"$namespace\", destination_service_name=\"$service\", reporter=\"destination\"}[5m])) by (le))", "legendFormat": "P90"},
+          {"expr": "histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{destination_service_namespace=\"$namespace\", destination_service_name=\"$service\", reporter=\"destination\"}[5m])) by (le))", "legendFormat": "P99"}
         ],
         "fieldConfig": {"defaults": {"unit": "ms"}}
       },
@@ -216,7 +226,7 @@ A drill-down dashboard for individual services:
         "type": "timeseries",
         "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
         "targets": [{
-          "expr": "sum(rate(istio_requests_total{destination_service_name=\"$service\", reporter=\"destination\"}[5m])) by (source_workload)",
+          "expr": "sum(rate(istio_requests_total{destination_service_namespace=\"$namespace\", destination_service_name=\"$service\", reporter=\"destination\"}[5m])) by (source_workload)",
           "legendFormat": "{{source_workload}}"
         }]
       },
@@ -225,7 +235,7 @@ A drill-down dashboard for individual services:
         "type": "timeseries",
         "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
         "targets": [{
-          "expr": "sum(rate(istio_requests_total{source_workload=\"$service\", reporter=\"source\"}[5m])) by (destination_service_name)",
+          "expr": "sum(rate(istio_requests_total{source_workload_namespace=\"$namespace\", source_workload=\"$workload\", reporter=\"source\"}[5m])) by (destination_service_name)",
           "legendFormat": "{{destination_service_name}}"
         }]
       },
@@ -234,8 +244,8 @@ A drill-down dashboard for individual services:
         "type": "timeseries",
         "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
         "targets": [
-          {"expr": "sum(rate(container_cpu_usage_seconds_total{container=\"$service\"}[5m])) by (pod)", "legendFormat": "App - {{pod}}"},
-          {"expr": "sum(rate(container_cpu_usage_seconds_total{container=\"istio-proxy\", pod=~\"$service.*\"}[5m])) by (pod)", "legendFormat": "Proxy - {{pod}}"}
+          {"expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"$namespace\", pod=~\"$workload-.*\", container!=\"\", container!=\"POD\", container!=\"istio-proxy\"}[5m])) by (pod)", "legendFormat": "App - {{pod}}"},
+          {"expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"$namespace\", pod=~\"$workload-.*\", container=\"istio-proxy\"}[5m])) by (pod)", "legendFormat": "Proxy - {{pod}}"}
         ]
       },
       {
@@ -243,8 +253,8 @@ A drill-down dashboard for individual services:
         "type": "timeseries",
         "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
         "targets": [
-          {"expr": "sum(container_memory_working_set_bytes{container=\"$service\"}) by (pod)", "legendFormat": "App - {{pod}}"},
-          {"expr": "sum(container_memory_working_set_bytes{container=\"istio-proxy\", pod=~\"$service.*\"}) by (pod)", "legendFormat": "Proxy - {{pod}}"}
+          {"expr": "sum(container_memory_working_set_bytes{namespace=\"$namespace\", pod=~\"$workload-.*\", container!=\"\", container!=\"POD\", container!=\"istio-proxy\"}) by (pod)", "legendFormat": "App - {{pod}}"},
+          {"expr": "sum(container_memory_working_set_bytes{namespace=\"$namespace\", pod=~\"$workload-.*\", container=\"istio-proxy\"}) by (pod)", "legendFormat": "Proxy - {{pod}}"}
         ],
         "fieldConfig": {"defaults": {"unit": "bytes"}}
       }
@@ -258,7 +268,7 @@ A drill-down dashboard for individual services:
 Deploy Kiali:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.22/samples/addons/kiali.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.29/samples/addons/kiali.yaml
 ```
 
 Access the Kiali dashboard:
@@ -277,7 +287,7 @@ Create a dashboard specifically for on-call engineers:
 {
   "dashboard": {
     "title": "Istio Alerts Dashboard",
-    "refresh": "5s",
+    "refresh": "10s",
     "panels": [
       {
         "title": "Active Alerts",
@@ -319,7 +329,7 @@ Create a dashboard specifically for on-call engineers:
 
 ## Dashboard Auto-Provisioning
 
-Store dashboards as ConfigMaps so they are version-controlled and automatically loaded:
+Store the dashboard model JSON (the object inside the `dashboard` field in the API examples above) as ConfigMaps so they are version-controlled and automatically loaded:
 
 ```yaml
 apiVersion: v1
@@ -362,8 +372,8 @@ sidecar:
 
 ```bash
 # Check Prometheus query performance
-curl -s 'http://prometheus:9090/api/v1/query?query=sum(rate(istio_requests_total[5m]))' | \
-  python3 -c "import json,sys; d=json.load(sys.stdin); print(f'Query time: {d.get(\"stats\",{}).get(\"timings\",{}).get(\"evalTotalTime\",\"N/A\")}')"
+time curl -sG 'http://prometheus:9090/api/v1/query' \
+  --data-urlencode 'query=sum(rate(istio_requests_total[5m]))' > /dev/null
 ```
 
 ## Sharing and Access
