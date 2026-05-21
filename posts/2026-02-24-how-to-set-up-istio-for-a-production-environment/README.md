@@ -36,29 +36,25 @@ Here is a production-grade istiod configuration:
 
 ```yaml
 # values-production.yaml
-pilot:
-  autoscaleEnabled: true
-  autoscaleMin: 2
-  autoscaleMax: 5
-  resources:
-    requests:
-      cpu: "1"
-      memory: 2Gi
-    limits:
-      cpu: "2"
-      memory: 4Gi
-  env:
-    PILOT_ENABLE_PROTOCOL_SNIFFING_FOR_INBOUND: "true"
-    PILOT_ENABLE_PROTOCOL_SNIFFING_FOR_OUTBOUND: "true"
-  topologySpreadConstraints:
-    - maxSkew: 1
-      topologyKey: topology.kubernetes.io/zone
-      whenUnsatisfiable: ScheduleAnyway
-      labelSelector:
-        matchLabels:
-          app: istiod
-  podDisruptionBudget:
-    minAvailable: 1
+autoscaleEnabled: true
+autoscaleMin: 2
+autoscaleMax: 5
+resources:
+  requests:
+    cpu: "1"
+    memory: 2Gi
+  limits:
+    cpu: "2"
+    memory: 4Gi
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: topology.kubernetes.io/zone
+    whenUnsatisfiable: ScheduleAnyway
+    labelSelector:
+      matchLabels:
+        app: istiod
+pdb:
+  minAvailable: 1
 
 meshConfig:
   accessLogFile: /dev/stdout
@@ -67,6 +63,7 @@ meshConfig:
   defaultConfig:
     holdApplicationUntilProxyStarts: true
     concurrency: 2
+    terminationDrainDuration: 30s
     proxyMetadata:
       ISTIO_META_DNS_CAPTURE: "true"
       ISTIO_META_DNS_AUTO_ALLOCATE: "true"
@@ -82,13 +79,6 @@ global:
       limits:
         cpu: "1"
         memory: 512Mi
-    lifecycle:
-      preStop:
-        exec:
-          command:
-            - /bin/sh
-            - -c
-            - "sleep 5"
   logging:
     level: "default:warn"
 ```
@@ -99,12 +89,15 @@ Key decisions here:
 - **holdApplicationUntilProxyStarts: true** - Prevents race conditions where the app starts before the proxy
 - **outboundTrafficPolicy: REGISTRY_ONLY** - Only allow traffic to known services (whitelisting)
 - **accessLogEncoding: JSON** - Structured logging for log aggregation
-- **preStop hook with sleep** - Gives time for connections to drain during pod shutdown
+- **terminationDrainDuration: 30s** - Gives time for proxy connections to drain during shutdown
 
 ## Gateway Configuration
 
 ```yaml
 # values-gateway-production.yaml
+labels:
+  istio: ingressgateway
+
 service:
   type: LoadBalancer
   annotations:
@@ -236,8 +229,8 @@ meshConfig:
 Set up alerts for these critical metrics:
 
 - **istiod availability**: `up{job="istiod"}` should always be 1
-- **Proxy sync errors**: `pilot_xds_push_errors` increasing
-- **mTLS handshake failures**: `envoy_ssl_connection_error`
+- **Proxy sync errors**: `pilot_total_xds_internal_errors` or `pilot_total_xds_rejects` increasing
+- **mTLS handshake failures**: Envoy TLS error counters such as `envoy_listener_ssl_connection_error`
 - **5xx error rates**: `istio_requests_total{response_code=~"5.."}`
 - **High proxy memory**: Envoy using more than 80% of its limit
 
@@ -259,11 +252,19 @@ These are starting points. Monitor actual usage and adjust.
 Use revision-based canary upgrades:
 
 ```bash
+istioctl x precheck
+helm upgrade istio-base istio/base -n istio-system
+
 # Install new version as canary
 helm install istiod-canary istio/istiod -n istio-system \
   --set revision=canary \
   -f values-production.yaml \
-  --version 1.24.0
+  --version 1.30.0
+
+helm install istio-ingress-canary istio/gateway -n istio-ingress \
+  --set revision=canary \
+  -f values-gateway-production.yaml \
+  --version 1.30.0
 
 # Test with a non-critical namespace
 kubectl label namespace staging istio.io/rev=canary --overwrite
@@ -275,6 +276,7 @@ kubectl rollout restart deployment -n production
 
 # Remove old version
 helm uninstall istiod -n istio-system
+helm upgrade istio-base istio/base --set defaultRevision=canary -n istio-system
 ```
 
 ## Backup and Disaster Recovery
@@ -282,8 +284,8 @@ helm uninstall istiod -n istio-system
 Back up your Istio configuration regularly:
 
 ```bash
-# Export all Istio resources
-kubectl get virtualservices,destinationrules,gateways,serviceentries,authorizationpolicies,peerauthentications -A -o yaml > istio-config-backup.yaml
+# Export common Istio resources
+kubectl get virtualservices,destinationrules,gateways,serviceentries,sidecars,envoyfilters,authorizationpolicies,peerauthentications,requestauthentications,telemetries,wasmplugins -A -o yaml > istio-config-backup.yaml
 ```
 
 Store this in version control.
