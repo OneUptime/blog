@@ -33,6 +33,7 @@ requestauthentications.security.istio.io
 serviceentries.networking.istio.io
 sidecars.networking.istio.io
 telemetries.telemetry.istio.io
+trafficextensions.extensions.istio.io
 virtualservices.networking.istio.io
 wasmplugins.extensions.istio.io
 workloadentries.networking.istio.io
@@ -49,7 +50,7 @@ The networking API group contains the most commonly used Istio resources. List t
 kubectl get virtualservices,destinationrules,gateways,serviceentries,sidecars,envoyfilters -n default
 ```
 
-This gives you a combined view of all networking resources in the `default` namespace. The output shows each resource type with its name, host, and age.
+This gives you a combined view of all networking resources in the `default` namespace. The output shows each resource type with its name and the additional columns defined by that resource, such as hosts, gateways, or age.
 
 For a more compact view:
 
@@ -70,7 +71,7 @@ kubectl get peerauthentications,requestauthentications,authorizationpolicies -n 
 Or using short names:
 
 ```bash
-kubectl get pa,ra,authorizationpolicies -n default
+kubectl get pa,ra,ap -n default
 ```
 
 This shows you all the mTLS policies, JWT validation rules, and access control policies in the namespace.
@@ -91,14 +92,14 @@ If you want to see all Istio resources in a namespace with a single command, you
 kubectl get \
   virtualservices,destinationrules,gateways,serviceentries,sidecars,envoyfilters,\
   peerauthentications,requestauthentications,authorizationpolicies,\
-  telemetries,wasmplugins,workloadentries,workloadgroups,proxyconfigs \
+  telemetries,trafficextensions,wasmplugins,workloadentries,workloadgroups,proxyconfigs \
   -n default
 ```
 
 That is a long command, so you might want to save it as an alias in your shell configuration:
 
 ```bash
-alias kistio='kubectl get virtualservices,destinationrules,gateways,serviceentries,sidecars,envoyfilters,peerauthentications,requestauthentications,authorizationpolicies,telemetries,wasmplugins,workloadentries,workloadgroups,proxyconfigs'
+alias kistio='kubectl get virtualservices,destinationrules,gateways,serviceentries,sidecars,envoyfilters,peerauthentications,requestauthentications,authorizationpolicies,telemetries,trafficextensions,wasmplugins,workloadentries,workloadgroups,proxyconfigs'
 ```
 
 Then just use:
@@ -120,7 +121,7 @@ kubectl get authorizationpolicies --all-namespaces
 Or combine them:
 
 ```bash
-kubectl get vs,dr,gw,se,pa,ra,authorizationpolicies -A
+kubectl get vs,dr,gw,se,pa,ra,ap -A
 ```
 
 The `-A` flag is shorthand for `--all-namespaces`. This is great for getting a cluster-wide picture of your Istio configuration.
@@ -210,24 +211,24 @@ envoyfilters: 1
 
 ## Checking Resource Status
 
-Many Istio resources have status conditions that tell you whether they have been accepted by the control plane. Check the status of a VirtualService:
+Some Istio installations enable the configuration status field, which can show whether a resource has been accepted by the control plane. Check the status of a VirtualService:
 
 ```bash
 kubectl get vs my-vs -n default -o jsonpath='{.status}' | python3 -m json.tool
 ```
 
-If the resource has validation errors, they will show up in the status section. This is especially useful for catching typos in hostnames or mismatched ports.
+If configuration status is enabled and the resource has validation errors, they can show up in the status section. This is especially useful for catching typos in hostnames or mismatched ports.
 
 ## Using Labels and Annotations
 
 Istio adds labels and annotations to resources it manages. You can use these to filter:
 
 ```bash
-# Find all pods with Istio sidecars
+# Find pods with generated sidecar injection status
+kubectl get pods -n default -o json | \
+  python3 -c "import sys,json; data=json.load(sys.stdin); [print(i['metadata']['name']) for i in data['items'] if i.get('metadata',{}).get('annotations',{}).get('sidecar.istio.io/status')]"
 
-kubectl get pods -n default -l security.istio.io/tlsMode=istio
-
-# Find pods with specific sidecar version
+# Show sidecar injection status details
 kubectl get pods -n default -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.metadata.annotations.sidecar\.istio\.io/status}{"\n"}{end}'
 ```
 
@@ -243,7 +244,8 @@ echo ""
 
 for resource in virtualservices destinationrules gateways serviceentries \
   sidecars envoyfilters peerauthentications requestauthentications \
-  authorizationpolicies telemetries wasmplugins workloadentries; do
+  authorizationpolicies telemetries trafficextensions wasmplugins \
+  workloadentries workloadgroups proxyconfigs; do
 
   count=$(kubectl get $resource -n $NS --no-headers 2>/dev/null | wc -l | tr -d ' ')
   if [ "$count" -gt "0" ]; then
