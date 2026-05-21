@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Security, Admission Control
 
-Description: Learn how to implement Kubernetes admission control for ArgoCD deployments using validating webhooks, OPA Gatekeeper, and Kyverno to enforce security and compliance policies.
+Description: Learn how to implement Kubernetes admission control for ArgoCD deployments using validating webhooks and OPA Gatekeeper to enforce security and compliance policies.
 
 ---
 
@@ -33,7 +33,7 @@ sequenceDiagram
     API-->>ArgoCD: Success or failure
 ```
 
-If a validating webhook rejects a resource, ArgoCD will report the sync as failed and show the rejection reason in the UI.
+If a validating webhook rejects a resource that ArgoCD applies directly, ArgoCD will report the sync as failed and show the rejection reason in the UI. Pod-scoped policies are evaluated when Pods are created; if a Deployment creates a rejected Pod later, the sync may succeed but the application will not become healthy.
 
 ## Deploying OPA Gatekeeper with ArgoCD
 
@@ -63,11 +63,12 @@ spec:
         logLevel: INFO
         emitAdmissionEvents: true
         emitAuditEvents: true
-        # Exempt ArgoCD and system namespaces
-        exemptNamespaces:
-          - kube-system
-          - argocd
-          - gatekeeper-system
+        # Allow these namespaces to use the admission.gatekeeper.sh/ignore label
+        controllerManager:
+          exemptNamespaces:
+            - kube-system
+            - argocd
+            - gatekeeper-system
   destination:
     server: https://kubernetes.default.svc
     namespace: gatekeeper-system
@@ -84,7 +85,7 @@ spec:
 
 ### Require Resource Limits
 
-Ensure every container has resource limits set:
+Ensure every Pod container has resource limits set:
 
 ```yaml
 # policies/templates/require-limits.yaml
@@ -155,6 +156,9 @@ spec:
     spec:
       names:
         kind: K8sRequireNonRoot
+      validation:
+        openAPIV3Schema:
+          type: object
   targets:
     - target: admission.k8s.gatekeeper.sh
       rego: |
@@ -311,7 +315,7 @@ spec:
         kinds: ["Pod"]
 ```
 
-ArgoCD will show warnings in the sync output without failing the sync. Once you are confident the policy is correct, change to `deny`.
+Kubernetes will return warning headers for matching admission requests without failing the request. Once you are confident the policy is correct, change to `deny`.
 
 ## Handling ArgoCD Sync Failures from Admission Control
 
@@ -320,8 +324,8 @@ When admission controllers reject resources, ArgoCD shows specific error message
 ```yaml
 # In argocd-notifications-cm
 data:
-  trigger.on-sync-status-unknown: |
-    - when: app.status.operationState.phase in ['Error', 'Failed']
+  trigger.on-sync-failed: |
+    - when: app.status?.operationState?.phase in ['Error', 'Failed']
       send: [admission-control-alert]
   template.admission-control-alert: |
     message: |
@@ -359,4 +363,4 @@ Use Gatekeeper's audit feature to track violations across the cluster. You can a
 
 ## Summary
 
-Admission control for ArgoCD deployments works transparently through the Kubernetes API server. Deploy OPA Gatekeeper or Kyverno through ArgoCD, manage policies as Git resources, use sync waves to order template and constraint creation, and start new policies in warn mode before enforcing. The key is exempting ArgoCD and system namespaces from policies to prevent self-locking, and configuring notifications so teams know immediately when a deployment is blocked by a policy violation.
+Admission control for ArgoCD deployments works transparently through the Kubernetes API server. Deploy OPA Gatekeeper through ArgoCD, manage policies as Git resources, use sync waves to order template and constraint creation, and start new policies in warn mode before enforcing. The key is exempting ArgoCD and system namespaces from policies to prevent self-locking, and configuring notifications so teams know immediately when a deployment is blocked by a policy violation.
