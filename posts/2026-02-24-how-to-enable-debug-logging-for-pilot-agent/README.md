@@ -41,12 +41,15 @@ kind: Deployment
 metadata:
   name: my-service
 spec:
+  selector:
+    matchLabels:
+      app: my-service
   template:
     metadata:
+      labels:
+        app: my-service
       annotations:
-        proxy.istio.io/config: |
-          proxyMetadata:
-            OUTPUT_LOG_LEVEL: "default:debug"
+        sidecar.istio.io/agentLogLevel: "default:debug"
     spec:
       containers:
         - name: my-service
@@ -59,28 +62,35 @@ After applying this, restart the pods:
 kubectl rollout restart deployment/my-service -n my-namespace
 ```
 
-## Enabling Debug Logging via ProxyConfig
+## Enabling Debug Logging for Specific Scopes
 
-You can also use the ProxyConfig resource, which is a cleaner approach when you want to target specific workloads:
+You can also target specific pilot-agent logging scopes in the same annotation:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
-kind: ProxyConfig
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: debug-logging
-  namespace: my-namespace
+  name: my-service
 spec:
   selector:
     matchLabels:
       app: my-service
-  environmentVariables:
-    ISTIO_LOG_LEVEL: "default:debug"
+  template:
+    metadata:
+      labels:
+        app: my-service
+      annotations:
+        sidecar.istio.io/agentLogLevel: "ca:debug,sds:debug"
+    spec:
+      containers:
+        - name: my-service
+          image: my-service:v1
 ```
 
 Apply it:
 
 ```bash
-kubectl apply -f proxyconfig.yaml
+kubectl apply -f deployment.yaml
 ```
 
 Then restart the affected pods to pick up the change.
@@ -93,38 +103,35 @@ If you want every pilot-agent instance across the mesh to run at debug level, yo
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
-  meshConfig:
-    defaultConfig:
-      proxyMetadata:
-        ISTIO_LOG_LEVEL: "default:debug"
+  values:
+    global:
+      logging:
+        level: "default:debug"
 ```
 
 Or through Helm values:
 
 ```yaml
-meshConfig:
-  defaultConfig:
-    proxyMetadata:
-      ISTIO_LOG_LEVEL: "default:debug"
+global:
+  logging:
+    level: "default:debug"
 ```
 
 ## Runtime Log Level Changes
 
-Similar to Istiod, pilot-agent exposes a logging endpoint. You can change log levels at runtime without restarting the pod:
+Unlike Envoy, pilot-agent log levels in injected sidecars are set from the `--log_output_level` argument when the sidecar starts. Change the annotation or global logging value, then restart the pod to pick up the new pilot-agent log level.
 
 ```bash
-kubectl exec my-pod -n my-namespace -c istio-proxy -- \
-  curl -s -XPUT "localhost:15004/logging?level=debug"
+kubectl rollout restart deployment/my-service -n my-namespace
 ```
 
-To check the current level:
+You can check what level a running sidecar was started with by looking at the container args:
 
 ```bash
-kubectl exec my-pod -n my-namespace -c istio-proxy -- \
-  curl -s "localhost:15004/logging"
+kubectl get pod my-pod -n my-namespace -o jsonpath='{.spec.containers[?(@.name=="istio-proxy")].args}'
 ```
 
-Note that port 15004 is the pilot-agent debug port. It's different from port 15000 which is the Envoy admin port.
+Port 15004 is used for the pilot-agent XDS debug endpoint. Port 15000 is the Envoy admin port.
 
 ## Pilot-Agent Scopes
 
@@ -138,9 +145,8 @@ Just like Istiod, pilot-agent has logging scopes. The key ones are:
 
 You can target specific scopes:
 
-```bash
-kubectl exec my-pod -n my-namespace -c istio-proxy -- \
-  curl -s -XPUT "localhost:15004/logging?ca=debug"
+```yaml
+sidecar.istio.io/agentLogLevel: "ca:debug"
 ```
 
 ## Debugging Common Pilot-Agent Issues
@@ -157,9 +163,8 @@ Common causes include the pilot-agent not being able to reach Istiod, certificat
 
 **Certificate rotation failures**: If mTLS is breaking periodically, it might be certificate rotation going wrong. Enable the `ca` and `sds` scopes:
 
-```bash
-kubectl exec my-pod -n my-namespace -c istio-proxy -- \
-  curl -s -XPUT "localhost:15004/logging?ca=debug&sds=debug"
+```yaml
+sidecar.istio.io/agentLogLevel: "ca:debug,sds:debug"
 ```
 
 Then watch for certificate-related log messages:
@@ -178,9 +183,8 @@ The `--previous` flag is important here because if the container is crash-loopin
 
 **DNS resolution issues**: When using Istio DNS proxying and name resolution isn't working:
 
-```bash
-kubectl exec my-pod -n my-namespace -c istio-proxy -- \
-  curl -s -XPUT "localhost:15004/logging?dns=debug"
+```yaml
+sidecar.istio.io/agentLogLevel: "dns:debug"
 ```
 
 ## Separating Pilot-Agent and Envoy Logs
@@ -215,14 +219,13 @@ This shows you the exact Envoy configuration that pilot-agent created at startup
 
 ## Resetting Log Levels
 
-Once you're done debugging, bring the log levels back to normal:
+Once you're done debugging, bring the log levels back to normal by removing the annotation or setting it back to info:
 
-```bash
-kubectl exec my-pod -n my-namespace -c istio-proxy -- \
-  curl -s -XPUT "localhost:15004/logging?level=warning"
+```yaml
+sidecar.istio.io/agentLogLevel: "default:info"
 ```
 
-Or if you used annotations or ProxyConfig, remove those and restart the pods:
+Then restart the pods:
 
 ```bash
 kubectl rollout restart deployment/my-service -n my-namespace
