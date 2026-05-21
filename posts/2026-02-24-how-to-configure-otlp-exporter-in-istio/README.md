@@ -17,7 +17,7 @@ OTLP supports two transport mechanisms:
 - **gRPC** (port 4317 by convention) - binary protocol, efficient for high-volume telemetry
 - **HTTP/protobuf** (port 4318 by convention) - HTTP-based, easier to route through load balancers and proxies
 
-Istio's built-in OTLP exporter uses gRPC. If you need HTTP, you can route through an OpenTelemetry Collector that bridges the two.
+Istio can export OTLP traces over gRPC or HTTP. When the `http` block is omitted from the OpenTelemetry extension provider, Istio uses OTLP/gRPC.
 
 ## Basic OTLP Exporter Configuration
 
@@ -49,6 +49,23 @@ Restart existing workloads to pick up the change:
 
 ```bash
 kubectl rollout restart deployment -n default
+```
+
+To export traces over OTLP/HTTP instead, add the `http` settings to the provider and use the collector's HTTP port:
+
+```yaml
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
+spec:
+  meshConfig:
+    enableTracing: true
+    extensionProviders:
+    - name: otel
+      opentelemetry:
+        service: otel-collector.observability.svc.cluster.local
+        port: 4318
+        http:
+          path: /v1/traces
 ```
 
 ## Verifying the OTLP Exporter
@@ -190,10 +207,22 @@ spec:
         service: otel-collector.observability.svc.cluster.local
         port: 4317
     defaultProviders:
-      tracing:
-      - otel
       accessLogging:
       - otel-als
+```
+
+Then enable access logging with the Telemetry API:
+
+```yaml
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
+metadata:
+  name: otel-access-logging
+  namespace: default
+spec:
+  accessLogging:
+  - providers:
+    - name: otel-als
 ```
 
 Access logs sent via OTLP include request-level details like method, path, response code, duration, and source/destination information.
@@ -284,8 +313,8 @@ When traces aren't arriving at the backend:
 # Step 1: Check if the proxy is sending spans
 kubectl exec $POD -c istio-proxy -- pilot-agent request GET /stats | grep tracing
 
-# Step 2: Check connectivity to the collector
-kubectl exec $POD -c istio-proxy -- curl -v otel-collector.observability:4317
+# Step 2: Check TCP connectivity to the collector from the namespace
+kubectl run otlp-port-check --rm -i --restart=Never --image=busybox:1.36 -- nc -vz otel-collector.observability 4317
 
 # Step 3: Check collector is receiving data
 kubectl logs -n observability -l app=otel-collector --tail=20
@@ -297,12 +326,12 @@ kubectl get configmap istio -n istio-system -o jsonpath='{.data.mesh}' | grep -A
 kubectl get telemetry -A
 
 # Step 6: Check for DNS resolution issues
-kubectl exec $POD -c istio-proxy -- nslookup otel-collector.observability
+kubectl run otlp-dns-check --rm -i --restart=Never --image=busybox:1.36 -- nslookup otel-collector.observability
 ```
 
 Common issues:
 
-- **Wrong service name** in the extension provider (must be a fully qualified service name)
+- **Wrong service name** in the extension provider (use a fully qualified service name when the short name could be ambiguous)
 - **Port mismatch** between the provider config and the collector's listening port
 - **Sampling rate at 0** so no traces are generated
 - **Pod hasn't been restarted** after changing mesh configuration
@@ -310,11 +339,11 @@ Common issues:
 
 ## Performance Impact
 
-The OTLP exporter adds minimal overhead to each request:
+The OTLP exporter is designed to keep request-path overhead low:
 
-- Span creation: ~1-2 microseconds per span
-- gRPC export: batched, so the per-request cost is negligible
-- Memory: small buffer for pending spans (~10KB typical)
+- Span creation happens in the proxy for sampled requests
+- gRPC export is batched, so export work is not one request at a time
+- Memory use depends on traffic volume, sampling rate, and whether the endpoint is reachable
 
 The main performance lever is the sampling rate. At 100% sampling with high traffic, the export overhead becomes noticeable. For production, keep sampling between 0.1% and 10% depending on your traffic volume and observability needs.
 
