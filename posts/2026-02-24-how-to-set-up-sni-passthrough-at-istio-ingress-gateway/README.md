@@ -73,7 +73,7 @@ spec:
 ```
 
 Key points:
-- The protocol is `TLS`, not `HTTPS`. This tells Istio it is a raw TLS connection, not HTTP over TLS.
+- Use `TLS` for raw TLS traffic. If the traffic is HTTPS, `HTTPS` with `mode: PASSTHROUGH` is also valid.
 - The `mode: PASSTHROUGH` means the gateway forwards the connection without decrypting.
 - No `credentialName` is needed because the gateway does not need any certificates.
 
@@ -228,13 +228,13 @@ All three services share port 443 at the gateway. The SNI field determines where
 
 ## Handling Sidecar Interaction
 
-When using SNI passthrough, there is an important consideration with Istio sidecars. If the backend pod has an Istio sidecar, the sidecar will try to intercept the TLS traffic. Since the traffic is already encrypted, this can cause issues.
+When using SNI passthrough, there is an important consideration with Istio sidecars. The client TLS connection is still encrypted when it leaves the gateway, but the gateway's outbound connection to the backend can also be affected by Istio mTLS policy. If you do not want Istio to originate another TLS or mTLS connection between the gateway and backend, configure the upstream traffic accordingly.
 
 You have two options:
 
-### Option 1: Disable Sidecar Protocol Detection for the Port
+### Option 1: Disable Upstream TLS Origination
 
-Use a DestinationRule with `DISABLE` tls mode:
+Use a DestinationRule with `DISABLE` tls mode so the gateway forwards the original TLS stream to the upstream endpoint without originating another TLS connection:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -248,9 +248,11 @@ spec:
       mode: DISABLE
 ```
 
+If the backend workload has a sidecar and requires strict Istio mTLS, make sure the corresponding PeerAuthentication policy allows non-Istio-mTLS traffic on that workload port, or keep Istio mTLS enabled and account for the additional mesh TLS hop.
+
 ### Option 2: Use Port Naming Convention
 
-Name the service port with a `tls-` prefix so Istio knows not to do protocol sniffing:
+Name the service port with a `tls-` prefix so Istio explicitly treats the port as TLS traffic:
 
 ```yaml
 apiVersion: v1
