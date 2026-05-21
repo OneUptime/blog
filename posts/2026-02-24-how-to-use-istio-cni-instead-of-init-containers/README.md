@@ -12,7 +12,7 @@ By default, Istio uses an init container called `istio-init` to set up iptables 
 
 ## Why Use the CNI Plugin?
 
-The `istio-init` container requires elevated privileges to modify iptables rules. In environments with strict PodSecurityPolicies, PodSecurityStandards, or OPA/Gatekeeper constraints, running containers with `NET_ADMIN` capability is often blocked. The CNI plugin solves this because it runs as a DaemonSet on each node with the necessary permissions already in place.
+The `istio-init` container requires elevated privileges to modify iptables rules. In environments with strict legacy PodSecurityPolicies, Pod Security Standards, or OPA/Gatekeeper constraints, running containers with `NET_ADMIN` capability is often blocked. The CNI plugin solves this because it runs as a DaemonSet on each node with the necessary permissions already in place.
 
 Other benefits include:
 
@@ -45,20 +45,21 @@ spec:
       excludeNamespaces:
         - istio-system
         - kube-system
-      logLevel: info
+      logging:
+        level: info
 EOF
 ```
 
 If you're using Helm, the CNI is installed as a separate chart:
 
 ```bash
-helm install istio-cni istio/cni -n istio-system --set global.cni.enabled=true
+helm install istio-cni istio/cni -n istio-system --wait
 ```
 
 Then install istiod with CNI awareness:
 
 ```bash
-helm install istiod istio/istiod -n istio-system --set istio_cni.enabled=true
+helm install istiod istio/istiod -n istio-system --set pilot.cni.enabled=true --wait
 ```
 
 ## How the CNI Plugin Works
@@ -111,7 +112,9 @@ kubectl apply -f samples/httpbin/httpbin.yaml
 kubectl get pod -l app=httpbin -o jsonpath='{.items[0].spec.initContainers[*].name}'
 ```
 
-With the CNI plugin active, you should NOT see `istio-init` in the list of init containers. The pod should only have the application container and the `istio-proxy` sidecar.
+With the CNI plugin active, you should NOT see `istio-init` in the list of init containers. The pod should have the application container and the `istio-proxy` sidecar as regular containers.
+
+Recent Istio releases may still inject an `istio-validation` init container. That container checks whether traffic redirection was configured correctly and is separate from the privileged `istio-init` container that CNI replaces.
 
 Also verify that the sidecar doesn't have elevated privileges:
 
@@ -152,7 +155,9 @@ The `repair` section enables the CNI race condition repair feature. Sometimes po
 
 ## Handling the CNI Race Condition
 
-One known issue with the CNI approach is a race condition during node startup. If a pod is scheduled on a node before the Istio CNI DaemonSet pod is ready, the Istio iptables rules won't be configured. The pod will run without traffic interception.
+One known issue with the CNI approach is a race condition during node startup. If a pod is scheduled on a node before the Istio CNI DaemonSet pod is ready, the Istio iptables rules won't be configured. Without mitigation, the pod could run without traffic interception.
+
+In current Istio releases, this is mitigated by the `istio-validation` init container, which blocks pod startup if redirection was not configured correctly. You should still understand and configure the repair behavior because the CNI DaemonSet decides how to handle pods stuck in that state.
 
 Istio includes a repair controller to handle this. When enabled, it watches for pods that should have been configured by the CNI plugin but weren't. It can either label those pods for manual intervention or delete them so they get rescheduled.
 
@@ -163,6 +168,7 @@ values:
       enabled: true
       labelPods: true
       deletePods: false
+      repairPods: false
 ```
 
 With `labelPods: true`, affected pods get a label `cni.istio.io/uninitialized=true`. You can then handle them with your own automation or restart them manually.
@@ -194,7 +200,7 @@ If you already have Istio running with init containers, you can migrate to CNI:
 3. Restart your workloads so they pick up the new injection template (without the init container).
 
 ```bash
-istioctl upgrade --set components.cni.enabled=true --set values.sidecar_injector.istio_cni.enabled=true
+istioctl upgrade --set components.cni.enabled=true --set values.pilot.cni.enabled=true
 ```
 
 Then do a rolling restart of your namespaces:
