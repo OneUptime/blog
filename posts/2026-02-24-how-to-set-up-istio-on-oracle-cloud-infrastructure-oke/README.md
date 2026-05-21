@@ -32,7 +32,7 @@ You can create a cluster through the OCI Console or the CLI. Here's the CLI appr
 oci ce cluster create \
   --compartment-id ocid1.compartment.oc1..your-compartment-id \
   --name istio-cluster \
-  --kubernetes-version v1.30.1 \
+  --kubernetes-version v1.35.2 \
   --vcn-id ocid1.vcn.oc1..your-vcn-id \
   --service-lb-subnet-ids '["ocid1.subnet.oc1..your-lb-subnet-id"]'
 ```
@@ -44,11 +44,11 @@ oci ce node-pool create \
   --cluster-id ocid1.cluster.oc1..your-cluster-id \
   --compartment-id ocid1.compartment.oc1..your-compartment-id \
   --name istio-nodes \
-  --kubernetes-version v1.30.1 \
+  --kubernetes-version v1.35.2 \
   --node-shape VM.Standard.E4.Flex \
   --node-shape-config '{"ocpus": 4, "memoryInGBs": 32}' \
   --size 3 \
-  --placement-configs '[{"availabilityDomain": "AD-1", "subnetId": "ocid1.subnet.oc1..your-subnet-id"}]'
+  --placement-configs '[{"availabilityDomain": "your-region-ad-name", "subnetId": "ocid1.subnet.oc1..your-subnet-id"}]'
 ```
 
 The VM.Standard.E4.Flex shape is a good choice because you can configure the exact amount of CPU and memory you need.
@@ -74,8 +74,8 @@ kubectl get nodes
 ## Step 3: Install Istio
 
 ```bash
-curl -L https://istio.io/downloadIstio | sh -
-cd istio-1.24.0
+curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.30.0 sh -
+cd istio-1.30.0
 export PATH=$PWD/bin:$PATH
 ```
 
@@ -174,41 +174,39 @@ k8s:
 
 OCI uses security lists or network security groups (NSGs) to control traffic. Make sure your worker node subnet allows:
 
-- Inbound traffic from the load balancer subnet on the ingress gateway ports (80, 443)
+- Inbound traffic from the load balancer subnet to worker node NodePorts (typically 30000-32767) and kube-proxy health checks on 10256
 - Node-to-node communication on all ports (for Istio mesh traffic)
 - Outbound internet access for pulling images
 
-Create a security list rule for the ingress gateway:
+Create or update security list rules for the worker node subnet. When using `oci network security-list update`, include your existing ingress rules too because the command replaces the rule list:
 
 ```bash
 oci network security-list update \
   --security-list-id ocid1.securitylist.oc1..your-sl-id \
   --ingress-security-rules '[
     {
-      "source": "0.0.0.0/0",
+      "source": "10.0.20.0/24",
       "protocol": "6",
-      "tcpOptions": {"destinationPortRange": {"min": 80, "max": 80}}
+      "tcpOptions": {"destinationPortRange": {"min": 30000, "max": 32767}},
+      "description": "Load balancer subnet to worker node NodePorts"
     },
     {
-      "source": "0.0.0.0/0",
+      "source": "10.0.20.0/24",
       "protocol": "6",
-      "tcpOptions": {"destinationPortRange": {"min": 443, "max": 443}}
+      "tcpOptions": {"destinationPortRange": {"min": 10256, "max": 10256}},
+      "description": "Load balancer health checks to kube-proxy"
     }
   ]'
 ```
 
-## Setting Up TLS with OCI Certificates
+## Setting Up TLS with Kubernetes Secrets
 
-OCI has its own certificate service. You can use it with Istio by creating a certificate and referencing it:
+For Istio to terminate TLS at the ingress gateway, create a Kubernetes TLS secret in the namespace where the gateway workload runs. If you use OCI Certificates, import or sync the certificate material into a Kubernetes secret before referencing it from an Istio `Gateway`:
 
 ```bash
-# Create a certificate in OCI Certificate Service
-oci certs-mgmt certificate create-by-importing-config \
-  --compartment-id ocid1.compartment.oc1..your-id \
-  --name istio-cert \
-  --cert-chain-pem "$(cat chain.pem)" \
-  --certificate-pem "$(cat cert.pem)" \
-  --private-key-pem "$(cat key.pem)"
+kubectl create -n istio-system secret tls istio-tls-secret \
+  --cert=cert.pem \
+  --key=key.pem
 ```
 
 Then configure Istio's Gateway to use TLS:
@@ -235,10 +233,12 @@ spec:
 
 ## Monitoring with OCI Monitoring Service
 
-You can export Istio metrics to OCI's monitoring service using the OCI monitoring agent. Install it as a DaemonSet:
+OKE emits cluster and node metrics to the `oci_oke` namespace in OCI Monitoring automatically. To publish Istio application or proxy metrics to OCI Monitoring, use a custom metric pipeline or a collector that posts custom metrics to OCI Monitoring.
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/oracle/oci-cloud-controller-manager/master/manifests/monitoring/oci-metrics-agent.yaml
+oci monitoring metric-data post \
+  --metric-data file://metric-data.json \
+  --endpoint https://telemetry-ingestion.us-ashburn-1.oraclecloud.com
 ```
 
 Or use the standard Istio observability stack:
