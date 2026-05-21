@@ -36,7 +36,7 @@ The central server does not scrape pods directly. It pulls pre-aggregated or sel
 Each cluster needs a Prometheus instance that scrapes Istio metrics. If you installed Istio with the default configuration, you can deploy Prometheus using:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/prometheus.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/prometheus.yaml
 ```
 
 Or if you use the Prometheus Operator, create a ServiceMonitor for istiod:
@@ -142,7 +142,6 @@ scrape_configs:
     - '{__name__=~"istio_.*"}'
     - '{__name__=~"pilot_.*"}'
     - '{__name__=~"envoy_.*"}'
-    - '{__name__=~"galley_.*"}'
   static_configs:
   - targets:
     - 'prometheus.cluster1.example.com:9090'
@@ -202,7 +201,7 @@ When federating from multiple clusters, you might get label conflicts. For examp
 sum(rate(istio_requests_total{cluster="cluster1"}[5m])) by (destination_service)
 ```
 
-But if local Prometheus instances already have a `cluster` label on their metrics, it will conflict with the one you add. Use `metric_relabel_configs` to handle this:
+With `honor_labels: true`, if local Prometheus instances already have a `cluster` label on their metrics, Prometheus keeps that scraped label and renames the target label from `static_configs` to `exported_cluster`. Use `metric_relabel_configs` if you want to preserve the original value under a different name and set a consistent cluster label:
 
 ```yaml
 - job_name: 'federate-cluster1'
