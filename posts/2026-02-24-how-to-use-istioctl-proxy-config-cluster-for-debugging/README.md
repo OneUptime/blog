@@ -8,7 +8,7 @@ Description: How to use istioctl proxy-config cluster to inspect Envoy cluster c
 
 ---
 
-In Envoy's terminology, a "cluster" is an upstream service that the proxy can route traffic to. Every Kubernetes service in your mesh becomes one or more Envoy clusters in every sidecar proxy. When traffic is not reaching the right destination, or connections are failing to upstream services, inspecting the cluster configuration is one of the most useful debugging steps.
+In Envoy's terminology, a "cluster" is an upstream service that the proxy can route traffic to. By default, Kubernetes services in your mesh become one or more Envoy clusters in sidecar proxies, unless Istio configuration scoping limits what a proxy can see. When traffic is not reaching the right destination, or connections are failing to upstream services, inspecting the cluster configuration is one of the most useful debugging steps.
 
 The `istioctl proxy-config cluster` command shows you exactly what upstream services an Envoy proxy knows about and how it is configured to connect to them.
 
@@ -63,7 +63,7 @@ reviews.bookinfo.svc.cluster.local                9080     v3         outbound  
 
 If a service is not appearing in the cluster list, the proxy does not know how to reach it. This can happen when:
 
-1. The service is in a different namespace and there is no ServiceEntry for it
+1. The service is hidden by configuration scoping such as `exportTo` or `discoverySelectors`
 2. The Sidecar resource restricts the proxy's view of services
 3. The service was just created and the proxy has not synced yet
 
@@ -135,7 +135,11 @@ This shows the complete Envoy cluster definition including:
       "name": "envoy.transport_sockets.tls",
       "typedConfig": {
         "commonTlsContext": {
-          "tlsCertificateSdsSecretConfigs": [...]
+          "tlsCertificateSdsSecretConfigs": [
+            {
+              "name": "default"
+            }
+          ]
         }
       }
     }
@@ -243,6 +247,6 @@ istioctl proxy-config cluster pod-b.namespace > /tmp/clusters-b.txt
 diff /tmp/clusters-a.txt /tmp/clusters-b.txt
 ```
 
-Differences indicate that the proxies have different DestinationRules or Sidecar configurations applied.
+Differences can indicate that the proxies have different DestinationRules, Sidecar configuration, service visibility, or sync state.
 
 The `istioctl proxy-config cluster` command is essential for debugging routing and connectivity issues. Whenever traffic is not reaching the right upstream service, start here to verify that the Envoy proxy even knows about the destination and how it is configured to connect.
