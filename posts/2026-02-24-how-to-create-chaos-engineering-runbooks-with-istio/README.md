@@ -132,7 +132,7 @@ echo "Recovery status: $STATUS"  # Should be 200
 
 ### Experiment: Ratings Service Latency Spike
 
-**Description**: Test how the system handles a 5-second latency spike in the ratings service. We expect the reviews service to time out and show reviews without ratings, and the productpage to remain responsive.
+**Description**: Test how the system handles a 5-second latency spike in the ratings service when traffic is routed through a version of reviews that calls ratings. In the default Bookinfo timeout behavior, we expect the productpage to return HTTP 200 but take about 5 seconds longer. If you are testing a reviews version with a shorter ratings timeout, the page should stay responsive and show reviews without ratings.
 
 **Fault Injection**:
 ```yaml
@@ -158,12 +158,12 @@ spec:
 
 **Observation Steps**:
 ```bash
-# Check 1: Page load time should not exceed the reviews timeout
+# Check 1: Page load time should reflect the injected delay unless reviews has a shorter timeout
 TIME=$(kubectl exec -n bookinfo deploy/ratings-v1 -- \
   curl -s -o /dev/null -w "%{time_total}" productpage:9080/productpage)
 echo "Check 1 - Total page load: ${TIME}s"
-# PASS if productpage has a timeout < 5s for reviews
-# FAIL if page takes full 5+ seconds
+# PASS if the page returns 200 and either takes about 5s longer, or stays below 5s
+# because the reviews service timed out its ratings call first
 
 # Check 2: Multiple requests to check consistency
 for i in $(seq 1 5); do
@@ -203,7 +203,8 @@ spec:
 
 **Load Generation**:
 ```bash
-kubectl exec -n bookinfo deploy/ratings-v1 -- \
+kubectl run fortio-load -n bookinfo --rm -i --restart=Never \
+  --image=fortio/fortio -- \
   fortio load -c 32 -qps 100 -t 120s \
   http://productpage.bookinfo.svc.cluster.local:9080/productpage
 ```
