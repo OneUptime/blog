@@ -16,10 +16,10 @@ Istio does not have a built-in deduplication feature. There is no "deduplicate: 
 
 The most reliable deduplication strategy is idempotency keys. The client generates a unique identifier for each logical request and includes it as a header. If the same key arrives twice, the second request returns the cached response from the first.
 
-First, make sure the idempotency key header flows through the mesh. Use VirtualService header configuration to preserve it:
+By default, Envoy forwards custom request headers unless you remove or rewrite them. If your service expects a different header name, use VirtualService header configuration to copy the idempotency key:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: order-service
@@ -34,7 +34,7 @@ spec:
     headers:
       request:
         set:
-          x-request-id-preserved: "%REQ(x-idempotency-key)%"
+          x-idempotency-key-copy: "%REQ(x-idempotency-key)%"
 ```
 
 ## Adding Idempotency Keys at the Gateway
@@ -94,7 +94,7 @@ import hashlib
 from flask import Flask, request, jsonify
 
 app = Flask(__name__)
-redis_client = redis.Redis(host='redis', port=6379, db=0)
+redis_client = redis.Redis(host='redis-dedup', port=6379, db=0)
 
 DEDUP_TTL = 3600  # 1 hour
 
@@ -105,14 +105,20 @@ def create_order():
     if not idempotency_key:
         return jsonify({"error": "x-idempotency-key header required"}), 400
 
-    # Check if we already processed this key
     cache_key = f"dedup:{idempotency_key}"
+    processing_key = f"{cache_key}:processing"
+
+    # Check if we already processed this key
     cached_response = redis_client.get(cache_key)
 
     if cached_response:
         # Return the cached response
         cached = json.loads(cached_response)
         return jsonify(cached['body']), cached['status']
+
+    # Claim the key atomically so concurrent duplicate requests do not both run
+    if not redis_client.set(processing_key, "1", nx=True, ex=DEDUP_TTL):
+        return jsonify({"error": "request already in progress"}), 409
 
     # Process the order
     try:
@@ -130,6 +136,8 @@ def create_order():
         return jsonify(response_body), status_code
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+    finally:
+        redis_client.delete(processing_key)
 ```
 
 ## Deploying the Redis Cache in the Mesh
@@ -149,6 +157,8 @@ spec:
       app: redis-dedup
   template:
     metadata:
+      annotations:
+        sidecar.istio.io/inject: "true"
       labels:
         app: redis-dedup
     spec:
@@ -180,7 +190,7 @@ spec:
 One of the easiest ways to reduce duplicates is to prevent Istio from retrying requests that should not be retried. Disable retries for mutation endpoints:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: order-service
@@ -219,7 +229,7 @@ spec:
       perTryTimeout: 5s
 ```
 
-GET requests are safe to retry because they do not modify state. POST requests get zero retries because they might cause duplicates.
+GET requests should be safe to retry when they follow HTTP semantics and do not modify state. POST requests get zero retries because they might cause duplicates.
 
 ## Deduplication Through Content Hashing
 
@@ -240,9 +250,9 @@ def generate_dedup_key(request):
 
 The downside: two legitimately different requests with the same body will be deduplicated. Use a short TTL (a few seconds) to minimize this risk.
 
-## Handling Duplicate Detection at the Gateway Level
+## Handling Duplicate Detection at the Service Boundary
 
-You can implement a lightweight duplicate check at the Istio ingress gateway using an external authorization service. This intercepts requests before they reach your services:
+You can implement a lightweight duplicate check at the service boundary using an external authorization service. This intercepts requests before they reach your application container:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -270,7 +280,7 @@ Configure the external authorization provider in the Istio mesh config:
 ```yaml
 extensionProviders:
 - name: dedup-service
-  envoyExtAuthz:
+  envoyExtAuthzHttp:
     service: dedup-service.production.svc.cluster.local
     port: 8080
     includeRequestHeadersInCheck:
