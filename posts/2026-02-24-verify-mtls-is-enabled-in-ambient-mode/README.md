@@ -32,6 +32,8 @@ default      sleep-abc           10.0.1.8    node-1    None      TCP
 
 The key column is `PROTOCOL`. Workloads showing `HBONE` are part of the ambient mesh and their traffic is encrypted with mTLS via the HBONE protocol. Workloads showing `TCP` are not enrolled.
 
+Having `HBONE` configured confirms that the workload is configured to send and accept HBONE traffic. It does not, by itself, prove that the workload will reject plaintext traffic that bypasses the mesh. Use a `PeerAuthentication` policy in `STRICT` mode if you need to verify plaintext rejection.
+
 ## Check ztunnel Logs
 
 ztunnel logs show connection details including whether mTLS was used. Send some traffic between meshed services:
@@ -52,13 +54,13 @@ Look for log entries that mention HBONE connections and source/destination ident
 info    access  connection complete src.addr=10.0.1.8:45234
   src.workload="sleep-abc" src.namespace="bookinfo"
   src.identity="spiffe://cluster.local/ns/bookinfo/sa/sleep"
-  dst.addr=10.0.1.5:9080 dst.service="productpage.bookinfo.svc.cluster.local"
+  dst.addr=10.0.1.5:15008 dst.hbone_addr="10.0.1.5:9080"
+  dst.service="productpage.bookinfo.svc.cluster.local"
   dst.identity="spiffe://cluster.local/ns/bookinfo/sa/bookinfo-productpage"
   direction="outbound" bytes_sent=1234 bytes_recv=5678
-  connection_security_policy="mutual_tls"
 ```
 
-The `connection_security_policy="mutual_tls"` confirms mTLS is active. The `src.identity` and `dst.identity` fields show the SPIFFE identities used for the TLS handshake.
+The `dst.addr` value using the HBONE port and the `dst.hbone_addr` value for the application port confirm that traffic was sent over the HBONE tunnel. The `src.identity` and `dst.identity` fields show the SPIFFE identities used for the mTLS communication.
 
 ## Use Prometheus Metrics
 
@@ -141,12 +143,12 @@ This shows the certificates ztunnel is using:
 
 ```text
 CERTIFICATE NAME                                        TYPE     STATUS  VALID CERT
-spiffe://cluster.local/ns/bookinfo/sa/bookinfo-productpage  Leaf     Active  true
-spiffe://cluster.local/ns/bookinfo/sa/sleep                 Leaf     Active  true
-spiffe://cluster.local/ns/bookinfo/sa/bookinfo-reviews      Leaf     Active  true
+spiffe://cluster.local/ns/bookinfo/sa/bookinfo-productpage  Leaf     Available  true
+spiffe://cluster.local/ns/bookinfo/sa/sleep                 Leaf     Available  true
+spiffe://cluster.local/ns/bookinfo/sa/bookinfo-reviews      Leaf     Available  true
 ```
 
-If you see certificates with `Active` status and `VALID CERT: true`, ztunnel has valid SPIFFE certificates for those identities and can perform mTLS.
+If you see certificates with `Available` status and `VALID CERT: true`, ztunnel has valid SPIFFE certificates for those identities and can perform mTLS.
 
 ## Network Packet Inspection
 
@@ -158,10 +160,10 @@ Deploy a debug pod on the same node as your workload:
 kubectl debug node/your-node -it --image=nicolaka/netshoot
 ```
 
-Capture traffic between two pods:
+Capture traffic on the application port and the HBONE port. In ambient mode, HBONE traffic uses port `15008` by convention:
 
 ```bash
-tcpdump -i any -n host 10.0.1.5 and host 10.0.1.6 -w /tmp/capture.pcap -c 100
+tcpdump -i any -n '(port 9080 or port 15008)' -w /tmp/capture.pcap -c 100
 ```
 
 Generate some traffic between those pods, then examine the capture:
@@ -172,7 +174,7 @@ tcpdump -r /tmp/capture.pcap -X | head -100
 
 If mTLS is working, you should see TLS handshake packets and encrypted payloads. The data should look like random bytes, not readable HTTP text.
 
-If you see plaintext HTTP requests in the capture, mTLS is not working for that traffic path.
+If you see plaintext HTTP requests on the network path between ztunnels instead of encrypted HBONE traffic on port `15008`, mTLS is not working for that traffic path. Plaintext traffic on the local application port can still appear before traffic is captured and tunneled by the node-local ztunnel.
 
 ## Check the Istio Dashboard (Kiali)
 
