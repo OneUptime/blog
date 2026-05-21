@@ -17,7 +17,7 @@ Measuring Istio migration success requires looking at it from multiple angles: o
 You cannot measure improvement without a baseline. Capture these metrics before you start:
 
 ```bash
-# Record current error rates
+# Record current resource usage
 
 kubectl top pods --all-namespaces --sort-by=cpu > baseline-resource-usage.txt
 
@@ -42,9 +42,22 @@ Every pod in a labeled namespace should have a sidecar. Track the injection succ
 
 ```bash
 # Count pods with and without sidecars in meshed namespaces
-TOTAL=$(kubectl get pods -l 'security.istio.io/tlsMode=istio' --all-namespaces --no-headers | wc -l)
-INJECTED=$(kubectl get pods --all-namespaces -o json | \
-  jq '[.items[] | select(.spec.containers[].name == "istio-proxy")] | length')
+NAMESPACES=$(
+  {
+    kubectl get ns -l istio-injection=enabled -o jsonpath='{.items[*].metadata.name}'
+    echo
+    kubectl get ns -l istio.io/rev -o jsonpath='{.items[*].metadata.name}'
+    echo
+  } | tr ' ' '\n' | sort -u
+)
+TOTAL=0
+INJECTED=0
+for NS in $NAMESPACES; do
+  TOTAL=$((TOTAL + $(kubectl get pods -n "$NS" --no-headers | wc -l)))
+  INJECTED=$((INJECTED + $(kubectl get pods -n "$NS" -o json | \
+    jq '[.items[] | select(.spec.containers[].name == "istio-proxy")] | length')
+  ))
+done
 
 echo "Injection rate: $INJECTED / $TOTAL"
 ```
@@ -63,7 +76,7 @@ Monitor istiod for errors and resource consumption:
 
 ```promql
 # Pilot push errors
-sum(rate(pilot_xds_push_errors[5m]))
+sum(rate(pilot_total_xds_internal_errors[5m])) + sum(rate(pilot_total_xds_rejects[5m]))
 
 # Configuration push latency
 histogram_quantile(0.99, sum(rate(pilot_proxy_convergence_time_bucket[5m])) by (le))
@@ -106,8 +119,8 @@ One of the main reasons to adopt Istio is improved security. Measure it.
 
 ```promql
 # Percentage of traffic using mTLS
-sum(istio_requests_total{connection_security_policy="mutual_tls"}) /
-sum(istio_requests_total) * 100
+sum(rate(istio_requests_total{reporter="destination", connection_security_policy="mutual_tls"}[5m])) /
+sum(rate(istio_requests_total{reporter="destination"}[5m])) * 100
 ```
 
 Target: 100% mTLS coverage for all in-mesh traffic.
@@ -115,8 +128,9 @@ Target: 100% mTLS coverage for all in-mesh traffic.
 Check for services still using plaintext:
 
 ```bash
-# Find connections not using mTLS
-istioctl proxy-config listeners -n production | grep -v "filterChainMatch"
+# Find destination-side requests not using mTLS
+curl -G http://prometheus:9090/api/v1/query \
+  --data-urlencode 'query=sum by (destination_service_name) (rate(istio_requests_total{reporter="destination", connection_security_policy!="mutual_tls"}[5m]))'
 
 # Check PeerAuthentication policies
 kubectl get peerauthentication -A
@@ -150,10 +164,13 @@ Compare this to the total number of services in the mesh.
 
 ### Distributed Tracing Coverage
 
-If you set up tracing, measure the percentage of requests that generate traces:
+If you set up tracing, measure the configured sampling percentage and verify trace-related proxy stats:
 
 ```bash
-# Check trace propagation
+# Check configured sampling percentages
+kubectl get telemetry -A -o yaml | grep randomSamplingPercentage
+
+# Check trace-related Envoy stats for one workload
 kubectl exec deploy/my-app -c istio-proxy -- \
   pilot-agent request GET stats | grep "tracing"
 ```
@@ -174,13 +191,13 @@ Track the cost of running Istio:
 
 ```promql
 # Total CPU used by sidecars
-sum(container_cpu_usage_seconds_total{container="istio-proxy"})
+sum(rate(container_cpu_usage_seconds_total{container="istio-proxy"}[5m]))
 
 # Total memory used by sidecars
 sum(container_memory_working_set_bytes{container="istio-proxy"})
 
 # Control plane resource usage
-sum(container_cpu_usage_seconds_total{namespace="istio-system"})
+sum(rate(container_cpu_usage_seconds_total{namespace="istio-system"}[5m]))
 sum(container_memory_working_set_bytes{namespace="istio-system"})
 ```
 
