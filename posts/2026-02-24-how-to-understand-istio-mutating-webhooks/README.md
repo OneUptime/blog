@@ -112,7 +112,7 @@ namespaceSelector:
 
 ## What the Webhook Actually Adds
 
-When the webhook processes a pod, it adds several things:
+When the webhook processes a pod in a default sidecar installation without Istio CNI, it adds several things:
 
 ### The istio-init Container
 
@@ -145,7 +145,7 @@ initContainers:
       - NET_RAW
 ```
 
-This init container sets up iptables rules to redirect all traffic through the Envoy proxy.
+This init container sets up iptables rules to redirect traffic through the Envoy proxy. If Istio CNI is enabled, the CNI node agent sets up traffic redirection instead, so the injector does not add the `istio-init` container.
 
 ### The istio-proxy Container
 
@@ -192,29 +192,29 @@ You can test webhook behavior without actually creating a pod:
 ```bash
 # Generate the injection template for a deployment
 
-istioctl kube-inject -f my-deployment.yaml --meshConfigFile /dev/null
+istioctl kube-inject -f my-deployment.yaml
 
 # See what would be injected in a specific namespace
 kubectl run test-pod --image=nginx --dry-run=server -n my-namespace -o yaml
 ```
 
-The `istioctl kube-inject` command shows you exactly what the webhook would add.
+The `istioctl kube-inject` command shows you what Istio would add using the current cluster configuration. To reproduce a webhook's output exactly, use the same injection template, mesh config, and values as the webhook.
 
 ## Customizing Injection Behavior
 
-### Per-Pod Annotations
+### Per-Pod Labels
 
 Control injection at the pod level:
 
 ```yaml
 # Disable injection for a specific pod
 metadata:
-  annotations:
+  labels:
     sidecar.istio.io/inject: "false"
 
 # Force injection even if namespace is not labeled
 metadata:
-  annotations:
+  labels:
     sidecar.istio.io/inject: "true"
 ```
 
@@ -282,6 +282,8 @@ kubectl run test --image=curlimages/curl --rm -it --restart=Never -- \
   curl -k https://istiod.istio-system.svc:443/inject -v
 ```
 
+The `/inject` endpoint expects an AdmissionReview POST from the Kubernetes API server, so a direct `curl` request is only a connectivity check.
+
 ## Summary
 
-Istio's mutating webhook is the mechanism behind automatic sidecar injection. It intercepts pod creation requests, adds the init container (for iptables setup), the istio-proxy container (the Envoy sidecar), and necessary volumes. The webhook is controlled by namespace labels and pod annotations, and its behavior can be customized through the injection template. Understanding how it works helps you debug injection failures, control which pods get sidecars, and make informed decisions about the failurePolicy setting.
+Istio's mutating webhook is the mechanism behind automatic sidecar injection. It intercepts pod creation requests, adds the istio-proxy container (the Envoy sidecar), necessary volumes, and, in non-CNI installations, the init container for iptables setup. The webhook is controlled by namespace and pod labels, and its behavior can be customized through the injection template. Understanding how it works helps you debug injection failures, control which pods get sidecars, and make informed decisions about the failurePolicy setting.
