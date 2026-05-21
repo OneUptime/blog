@@ -27,7 +27,7 @@ export CTX_CLUSTER1=cluster1
 export CTX_CLUSTER2=cluster2
 ```
 
-Make sure you have `istioctl` 1.20+ and `kubectl` configured for both clusters.
+Make sure you have a supported `istioctl` release and `kubectl` configured for both clusters. The Kubernetes API server in each cluster must also be reachable by the other cluster so Istiod can use the remote secrets for endpoint discovery.
 
 ## Step 1: Create a Shared Root CA
 
@@ -97,7 +97,7 @@ istioctl install --context="${CTX_CLUSTER1}" -f cluster1-config.yaml -y
 
 ## Step 4: Install the East-West Gateway on Cluster 1
 
-After Istio is installed, deploy the east-west gateway. Istio provides a helper for this:
+After Istio is installed, deploy the east-west gateway. Istio provides a helper for this. Do not expose the east-west gateway through a Layer 7 load balancer, because TLS termination is incompatible with `AUTO_PASSTHROUGH` and can cause mTLS handshake failures.
 
 ```bash
 samples/multicluster/gen-eastwest-gateway.sh \
@@ -243,6 +243,6 @@ You should see endpoints pointing to both local pod IPs and the remote east-west
 
 ## Performance Considerations
 
-Cross-network traffic goes through an extra hop (the east-west gateway), which adds some latency. For latency-sensitive workloads, you can use locality-aware load balancing to prefer local endpoints and only fall back to remote endpoints when local ones are unhealthy. This happens naturally with Istio's locality settings.
+Cross-network traffic goes through an extra hop (the east-west gateway), which adds some latency. For latency-sensitive workloads, you can use locality-aware load balancing with outlier detection to prefer local endpoints and fall back to remote endpoints when local ones are unhealthy.
 
 The multi-primary multi-network topology is the most common production setup for organizations running Kubernetes across multiple cloud regions or providers. It gives you full control plane redundancy and works even when your clusters cannot share a flat network.
