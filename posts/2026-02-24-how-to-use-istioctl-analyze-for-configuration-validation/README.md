@@ -34,8 +34,8 @@ The output looks like this:
 
 ```text
 Info [IST0102] (Namespace default) The namespace is not enabled for Istio injection.
-Warning [IST0101] (VirtualService production/api-routes) Referenced host not found: "api-service-typo"
-Error [IST0134] (DestinationRule production/api-dr) This subset references a host with no endpoints
+Error [IST0101] (VirtualService production/api-routes) Referenced host not found: "api-service-typo"
+Warning [IST0134] (ServiceEntry production/external-api) ServiceEntry addresses are required for this protocol.
 ```
 
 Messages are categorized as Info, Warning, or Error, each with a unique code (like IST0101) that you can look up for more details.
@@ -47,13 +47,13 @@ You don't need a running cluster to use analyze. You can validate local YAML fil
 ```bash
 # Analyze a single file
 
-istioctl analyze -f virtual-service.yaml
+istioctl analyze --use-kube=false virtual-service.yaml
 
 # Analyze multiple files
-istioctl analyze -f virtual-service.yaml -f destination-rule.yaml
+istioctl analyze --use-kube=false virtual-service.yaml destination-rule.yaml
 
 # Analyze a directory
-istioctl analyze -f ./istio-config/
+istioctl analyze --use-kube=false ./istio-config/
 ```
 
 ## Analyzing Local Files Against Cluster State
@@ -61,12 +61,12 @@ istioctl analyze -f ./istio-config/
 The most powerful mode combines local files with cluster state. This tells you if your new configuration will cause issues with existing resources:
 
 ```bash
-istioctl analyze -f new-virtual-service.yaml --use-kube
+istioctl analyze new-virtual-service.yaml
 ```
 
-The `--use-kube` flag tells analyze to also check the live cluster resources. So if your new VirtualService references a subset defined in an existing DestinationRule, analyze will find it.
+By default, analyze checks the live cluster resources when you provide local files. So if your new VirtualService references a subset defined in an existing DestinationRule, analyze will find it.
 
-Without `--use-kube`, analyze can only check relationships between the files you provide. It won't know about resources already in the cluster.
+With `--use-kube=false`, analyze can only check relationships between the files you provide. It won't know about resources already in the cluster.
 
 ## Common Analysis Messages
 
@@ -75,7 +75,7 @@ Here are the most frequent messages you'll encounter and what to do about them:
 ### IST0101: ReferencedResourceNotFound
 
 ```text
-Warning [IST0101] (VirtualService default/my-vs) Referenced host not found: "payment-svc"
+Error [IST0101] (VirtualService default/my-vs) Referenced host not found: "payment-svc"
 ```
 
 Your VirtualService references a host that doesn't match any Kubernetes Service. Fix: check the host name matches the actual service name. For cross-namespace references, use the fully qualified name:
@@ -85,13 +85,13 @@ hosts:
   - payment-svc.production.svc.cluster.local
 ```
 
-### IST0104: GatewayPortNotOnWorkload
+### IST0162: GatewayPortNotDefinedOnService
 
 ```text
-Warning [IST0104] (Gateway default/my-gateway) The gateway refers to a port that is not exposed by the gateway workload
+Warning [IST0162] (Gateway default/my-gateway) The gateway refers to a port that is not exposed by the gateway service
 ```
 
-Your Gateway resource specifies a port that the gateway pod doesn't listen on. Fix: check the port numbers in your Gateway match the ports exposed by the ingress gateway deployment.
+Your Gateway resource specifies a port that the Kubernetes Service for the gateway doesn't expose. Fix: check the port numbers in your Gateway match the ports exposed by the ingress gateway Service.
 
 ### IST0106: SchemaValidationError
 
@@ -104,7 +104,7 @@ A typo in your YAML. Fix: correct the field name.
 ### IST0108: UnknownAnnotation
 
 ```text
-Warning [IST0108] (Pod default/my-pod) Unknown annotation: networking.istio.io/exportToo
+Warning [IST0108] (Namespace default) Unknown annotation: networking.istio.io/exportToo
 ```
 
 An annotation that Istio doesn't recognize. Usually a typo.
@@ -112,15 +112,15 @@ An annotation that Istio doesn't recognize. Usually a typo.
 ### IST0128: NoServerCertificateVerificationDestinationLevel
 
 ```text
-Warning [IST0128] (DestinationRule default/my-dr) DestinationRule enables TLS but doesn't configure caCertificates
+Error [IST0128] (DestinationRule default/my-dr) DestinationRule has TLS mode set to SIMPLE but no caCertificates are set
 ```
 
-You've enabled TLS in your DestinationRule but didn't provide CA certificates for verification. Fix: add the `caCertificates` field or use `ISTIO_MUTUAL` mode which handles certificates automatically.
+You've enabled TLS in your DestinationRule but didn't provide CA certificates for verification. Fix: add the `caCertificates` field or change the traffic policy so server certificate verification is not required.
 
 ### IST0131: VirtualServiceIneffectiveMatch
 
 ```text
-Warning [IST0131] (VirtualService default/my-vs) This match clause is not used because a previous match clause (HTTP route 0) is a superset
+Info [IST0131] (VirtualService default/my-vs) This match clause is not used because a previous match clause (HTTP route 0) is a superset
 ```
 
 A match rule in your VirtualService is unreachable because a broader rule above it catches all the same traffic. Fix: reorder your match rules from most specific to least specific.
@@ -133,10 +133,10 @@ If you've acknowledged an issue and want to suppress it, use the `--suppress` fl
 istioctl analyze --suppress "IST0102=Namespace default"
 ```
 
-Or suppress all messages of a type:
+Or suppress a code across matching resources with a wildcard:
 
 ```bash
-istioctl analyze --suppress "IST0102"
+istioctl analyze --all-namespaces --suppress "IST0102=Namespace *"
 ```
 
 You can also suppress messages through annotations on the resource:
@@ -169,7 +169,7 @@ The JSON output is especially useful in CI/CD pipelines where you want to parse 
 
 ```bash
 # Check for errors in CI
-ERRORS=$(istioctl analyze -o json 2>/dev/null | python3 -c "
+ERRORS=$({ istioctl analyze -o json 2>/dev/null || true; } | python3 -c "
 import json, sys
 data = json.load(sys.stdin)
 errors = [m for m in data if m.get('level') == 'Error']
@@ -193,7 +193,7 @@ set -e
 echo "Running Istio configuration analysis..."
 
 # Run analyze and capture output
-OUTPUT=$(istioctl analyze -f ./istio-config/ -o json 2>&1)
+OUTPUT=$(istioctl analyze --use-kube=false ./istio-config/ -o json 2>/dev/null || true)
 
 # Count errors and warnings
 ERRORS=$(echo "$OUTPUT" | python3 -c "
@@ -219,7 +219,7 @@ except:
 echo "Found $ERRORS errors and $WARNINGS warnings"
 
 # Show the human-readable output
-istioctl analyze -f ./istio-config/
+istioctl analyze --use-kube=false ./istio-config/ || true
 
 # Fail on errors, warn on warnings
 if [ "$ERRORS" -gt 0 ]; then
@@ -234,13 +234,16 @@ fi
 echo "Configuration analysis passed"
 ```
 
-## Analyzing Specific Resource Types
+## Analyzing Specific Analyzers
 
-You can focus analysis on specific resource types:
+You can focus analysis on specific analyzers:
 
 ```bash
-# Only analyze VirtualServices
-istioctl analyze --meshConfigFile /dev/null -f vs.yaml
+# List available analyzers
+istioctl analyze -L
+
+# Run only VirtualService schema validation
+istioctl analyze --use-kube=false --analyzer "schema.ValidationAnalyzer.VirtualService" vs.yaml
 
 # Analyze resources in a specific revision
 istioctl analyze --revision canary
