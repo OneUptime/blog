@@ -29,7 +29,7 @@ kubectl exec <pod-name> -c istio-proxy -- curl -s localhost:15000/stats
 This returns thousands of lines. Filter to what you need:
 
 ```bash
-# Filter by prefix
+# Filter by stat name
 
 kubectl exec <pod-name> -c istio-proxy -- curl -s "localhost:15000/stats?filter=cluster.outbound"
 
@@ -169,7 +169,7 @@ These are the metrics that populate the standard Istio Grafana dashboards.
 
 ## Controlling Which Stats Are Generated
 
-By default, Envoy generates stats for every cluster, listener, and route. In large meshes this uses significant memory. Control what gets generated:
+By default, Istio configures Envoy to record a minimal set of statistics to reduce CPU and memory usage. In large meshes, enabling additional high-cardinality stats can use significant memory. Control which additional stats are generated:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -190,7 +190,7 @@ spec:
         - ".*upstream_rq_time.*"
 ```
 
-This keeps only the stats you care about and drops the rest, saving memory and CPU.
+This enables only the additional stats you care about, saving memory and CPU compared with collecting broad sets of Envoy statistics.
 
 For per-pod customization:
 
@@ -204,19 +204,7 @@ annotations:
 
 ## Adding Custom Stats Tags
 
-Add custom tags to all Envoy metrics for better filtering in your monitoring system:
-
-```yaml
-apiVersion: install.istio.io/v1alpha1
-kind: IstioOperator
-spec:
-  meshConfig:
-    defaultConfig:
-      extraStatTags:
-      - "request_operation"
-```
-
-Combine with Istio's Telemetry API to define tag values:
+Add custom tags to Istio standard metrics for better filtering in your monitoring system. Use Istio's Telemetry API to define tag values:
 
 ```yaml
 apiVersion: telemetry.istio.io/v1
