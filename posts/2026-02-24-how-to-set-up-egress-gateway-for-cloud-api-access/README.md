@@ -47,7 +47,7 @@ Apply it:
 istioctl install -f egress-gateway.yaml
 ```
 
-You also want to configure the mesh to block direct external access so that traffic must go through the gateway. Set the outbound traffic policy to `REGISTRY_ONLY`:
+You also want to configure the mesh to block access to external hosts that are not registered in Istio. Set the outbound traffic policy to `REGISTRY_ONLY`:
 
 ```bash
 kubectl get configmap istio -n istio-system -o yaml | grep -A1 outboundTrafficPolicy
@@ -111,7 +111,7 @@ spec:
       mode: PASSTHROUGH
 ```
 
-Now create VirtualService and DestinationRule resources to route traffic from the sidecars to the egress gateway, and from the egress gateway to the external service:
+Now create a VirtualService resource to route traffic from the sidecars to the egress gateway, and from the egress gateway to the external service:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -145,10 +145,21 @@ spec:
       port: 443
       sniHosts:
       - s3.amazonaws.com
-      - s3.us-east-1.amazonaws.com
     route:
     - destination:
         host: s3.amazonaws.com
+        port:
+          number: 443
+      weight: 100
+  - match:
+    - gateways:
+      - aws-s3-egress-gateway
+      port: 443
+      sniHosts:
+      - s3.us-east-1.amazonaws.com
+    route:
+    - destination:
+        host: s3.us-east-1.amazonaws.com
         port:
           number: 443
       weight: 100
@@ -229,10 +240,21 @@ spec:
       port: 443
       sniHosts:
       - storage.googleapis.com
-      - www.googleapis.com
     route:
     - destination:
         host: storage.googleapis.com
+        port:
+          number: 443
+      weight: 100
+  - match:
+    - gateways:
+      - gcp-egress-gateway
+      port: 443
+      sniHosts:
+      - www.googleapis.com
+    route:
+    - destination:
+        host: www.googleapis.com
         port:
           number: 443
       weight: 100
@@ -288,11 +310,11 @@ This policy only allows workloads from the `data-pipeline` namespace to send tra
 
 ## Common Issues
 
-**Traffic bypasses the egress gateway**: Make sure `outboundTrafficPolicy` is set to `REGISTRY_ONLY`. If it is `ALLOW_ANY`, sidecars will route directly to external services without going through the gateway.
+**Traffic bypasses the egress gateway**: Make sure `outboundTrafficPolicy` is set to `REGISTRY_ONLY` and that your VirtualService routes the registered hosts through the egress gateway. If it is `ALLOW_ANY`, sidecars can reach unregistered external services directly. To prevent pods from bypassing the sidecar or gateway entirely, use Kubernetes NetworkPolicy or equivalent firewall controls.
 
 **DNS resolution fails**: The ServiceEntry must have `resolution: DNS` for external hostnames. If you use `resolution: NONE`, Istio will not resolve the hostname and the connection will fail.
 
-**TLS handshake errors**: When using `PASSTHROUGH` mode on the gateway, the original TLS connection from the application passes through untouched. Make sure your application is initiating TLS connections to the cloud APIs. If you want the gateway to handle TLS, use `mode: ISTIO_MUTUAL` on the gateway and configure TLS origination in the DestinationRule.
+**TLS handshake errors**: When using `PASSTHROUGH` mode on the gateway, the original TLS connection from the application passes through untouched. Make sure your application is initiating TLS connections to the cloud APIs. If you want the gateway to originate TLS instead, use Istio's egress gateway TLS origination pattern and configure the Gateway, VirtualService, and DestinationRule consistently for that flow.
 
 ## Summary
 
