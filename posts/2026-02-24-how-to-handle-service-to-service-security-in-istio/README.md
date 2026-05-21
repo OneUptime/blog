@@ -10,7 +10,7 @@ Description: How to secure service-to-service communication in Istio with mutual
 
 In a microservices architecture, the majority of traffic is service-to-service (east-west) communication within the cluster. Securing this internal traffic is where Istio provides the most value. Without a service mesh, internal communication is typically unencrypted and unauthenticated. Any pod in the cluster can impersonate any other service just by sending traffic to the right endpoint.
 
-Istio changes this by providing mutual TLS between all services, cryptographic identity verification, and fine-grained authorization policies. Each service gets a verifiable identity, and you can control exactly which services can communicate with each other.
+Istio changes this by providing mutual TLS between meshed workloads, cryptographic identity verification, and fine-grained authorization policies. Each service gets a verifiable identity, and you can control exactly which services can communicate with each other.
 
 ## Mutual TLS Fundamentals
 
@@ -43,7 +43,7 @@ spec:
     mode: STRICT
 ```
 
-Applying this in the `istio-system` namespace makes it a mesh-wide default. Every service must use mTLS, and plain-text connections are rejected.
+Applying this in the Istio root namespace, commonly `istio-system`, makes it a mesh-wide default. Every meshed workload must use mTLS for inbound traffic, and plain-text connections are rejected.
 
 If you have services that haven't been onboarded to the mesh yet, start with `PERMISSIVE` mode:
 
@@ -240,7 +240,7 @@ kubectl exec -it <pod-name> -c istio-proxy -n production -- \
   pilot-agent request GET stats | grep "ssl.handshake"
 ```
 
-A non-zero `ssl.handshake` count confirms mTLS connections are happening.
+A non-zero `ssl.handshake` count confirms TLS handshakes are happening. Use this together with the PeerAuthentication policy and `istioctl x describe` output to confirm mTLS is enforced.
 
 ## Handling Services Without Sidecars
 
@@ -318,7 +318,7 @@ spec:
         - name: envoy
 ```
 
-The access logs include the source and destination identities, making it easy to see which services are communicating.
+The default access logs include request, response, upstream, downstream, and cluster fields, making it easier to see which services are communicating. If you need peer certificate details in each log entry, customize the access log format with Envoy TLS operators such as `%DOWNSTREAM_PEER_URI_SAN%` or `%UPSTREAM_PEER_URI_SAN%`.
 
 Check the logs:
 
@@ -326,6 +326,6 @@ Check the logs:
 kubectl logs <pod-name> -c istio-proxy -n production --tail=20
 ```
 
-Each log entry includes fields like `upstream_peer_identity` and `downstream_peer_identity` that show the SPIFFE identities of the communicating services.
+Each default log entry includes fields like `%UPSTREAM_CLUSTER_RAW%`, `%UPSTREAM_HOST%`, `%DOWNSTREAM_LOCAL_ADDRESS%`, and `%DOWNSTREAM_REMOTE_ADDRESS%`. With a custom access log format, the peer URI SAN operators can include SPIFFE identities when they are available from the TLS connection.
 
 Service-to-service security in Istio is built on three pillars: mutual TLS for encryption and authentication, service accounts for identity, and authorization policies for access control. Use dedicated service accounts for each service, enforce strict mTLS, and write explicit authorization policies that follow the principle of least privilege. This gives you a true zero-trust network inside your cluster.
