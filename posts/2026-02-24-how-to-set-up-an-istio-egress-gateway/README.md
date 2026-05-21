@@ -325,13 +325,19 @@ This allows pods in the `default` namespace to talk to each other, to the istio-
 
 ## Monitoring Egress Gateway Traffic
 
-The egress gateway generates the same Istio metrics as any other proxy. Query them in Prometheus:
+The egress gateway generates the same Istio metrics as any other proxy. For HTTP traffic, query request metrics in Prometheus:
 
 ```promql
 sum(rate(istio_requests_total{source_workload="istio-egressgateway"}[5m])) by (destination_service_name)
 ```
 
-This shows which external services are being accessed through the egress gateway and at what rate.
+For TLS passthrough or other TCP traffic, use TCP metrics instead:
+
+```promql
+sum(rate(istio_tcp_connections_opened_total{source_workload="istio-egressgateway"}[5m])) by (destination_service_name)
+```
+
+These queries show which external services are being accessed through the egress gateway and at what rate.
 
 ## Troubleshooting
 
