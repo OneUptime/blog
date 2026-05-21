@@ -41,7 +41,9 @@ Look for response flags that indicate a reset:
 - **`UC`** - Upstream connection termination (the upstream closed the connection)
 - **`DC`** - Downstream connection termination (the downstream closed the connection)
 - **`UF`** - Upstream connection failure
-- **`UR`** - Upstream request timeout (not a reset, but related)
+- **`UR`** - Upstream remote reset
+- **`UT`** - Upstream request timeout (not a reset, but related)
+- **`UO`** - Upstream overflow (circuit breaking)
 - **`URX`** - Upstream retry limit exceeded
 
 A log line with the `UC` flag looks like:
@@ -65,7 +67,7 @@ When the app closes the connection after 60 seconds of idle time, Envoy might tr
 Fix this by configuring the DestinationRule:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service
@@ -122,7 +124,7 @@ HTTP/2 connections are multiplexed, and issues with HTTP/2 in Istio can cause re
 Check the DestinationRule for h2UpgradePolicy:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service
@@ -150,10 +152,10 @@ Check for overflow:
 kubectl exec my-app-xxxxx -c istio-proxy -- curl -s localhost:15000/stats | grep overflow
 ```
 
-If you see overflow counts increasing, the connection pool is full and Envoy is rejecting new connections. Increase the limits:
+If you see overflow counts increasing, a circuit breaker is being hit and Envoy may reject new requests or connections. Increase the limits:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service
@@ -170,7 +172,7 @@ spec:
 
 ## Step 6: Check Outlier Detection
 
-Outlier detection (circuit breaking) can eject hosts that return errors, leading to resets if all hosts get ejected:
+Outlier detection can eject hosts that return errors, leading to 503s or connection failures if too many hosts get ejected:
 
 ```bash
 kubectl exec my-app-xxxxx -c istio-proxy -- curl -s localhost:15000/stats | grep "outlier_detection"
@@ -179,7 +181,7 @@ kubectl exec my-app-xxxxx -c istio-proxy -- curl -s localhost:15000/stats | grep
 Look for `ejections_active` and `ejections_total`. If hosts are being ejected, either the hosts are actually unhealthy or the outlier detection settings are too aggressive:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service
@@ -242,7 +244,7 @@ kubectl exec $POD -c istio-proxy -- curl -s localhost:15000/stats | grep -E "cx_
 
 echo ""
 echo "=== Recent access logs with errors ==="
-kubectl logs $POD -c istio-proxy --tail=50 | grep -E "5[0-9]{2}|UC|DC|UF"
+kubectl logs $POD -c istio-proxy --tail=50 | grep -E "5[0-9]{2}|UC|DC|UF|UR|UT|UO|URX"
 
 echo ""
 echo "=== Cluster health ==="
