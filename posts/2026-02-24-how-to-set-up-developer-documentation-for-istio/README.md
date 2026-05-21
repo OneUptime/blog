@@ -82,7 +82,7 @@ Deploy your application as usual:
 kubectl apply -f deployment.yaml -n your-namespace
 \```
 
-Istio automatically injects a sidecar proxy into every pod. Verify
+Istio automatically injects a sidecar proxy into every new pod. Verify
 by checking that each pod has 2 containers:
 
 \```bash
@@ -103,8 +103,8 @@ kubectl exec deploy/your-service -n your-namespace -- curl -s http://other-servi
 
 Your service automatically gets:
 - Request rate, error rate, and latency (RED metrics)
-- Distributed traces (10% sampling by default)
-- Access logs for error responses
+- Distributed traces at the platform's configured sampling rate
+- Access logs for error responses, if your platform has enabled them
 
 View your metrics at: https://grafana.internal.company.com
 View your traces at: https://jaeger.internal.company.com
@@ -198,16 +198,16 @@ Troubleshooting guides are the most-read documentation. Make them actionable:
 
 ## Quick Check
 
-First, identify where the 503 is coming from:
+First, identify where the error is coming from:
 
 \```bash
-kubectl logs deploy/your-service -c istio-proxy --tail=50 | grep 503
+kubectl logs deploy/your-service -c istio-proxy --tail=50 | grep -E ' 503 | 404 '
 \```
 
 Look at the `response_flags` field in the log:
 - `UF` = Upstream connection failure (service is down)
 - `UO` = Upstream overflow (circuit breaker tripped)
-- `NR` = No route configured
+- `NR` = No route configured (often a 404, not a 503)
 - `UC` = Upstream connection termination
 
 ## Common Causes
@@ -221,7 +221,7 @@ kubectl exec deploy/your-service -c istio-proxy -- \
   curl -s localhost:15000/stats | grep upstream_cx_active
 \```
 
-If connections are near the limit (default: 100), either:
+If connections are near your configured limit, either:
 - Increase the limit in your DestinationRule
 - Fix the downstream service that is creating too many connections
 - Reduce response time to free up connections faster
@@ -274,7 +274,7 @@ Good: `name: http-api, port: 8080`
 Every namespace gets these policies automatically:
 - Strict mTLS (all traffic is encrypted)
 - Default-deny authorization (must explicitly allow callers)
-- Circuit breaking (100 max connections, 50 pending requests)
+- Circuit breaking (using the platform's configured connection and request limits)
 - Access logging for 4xx and 5xx responses
 
 ## Requesting Cross-Namespace Access
@@ -308,7 +308,7 @@ crd-ref-docs \
   --source-path=./api/v1/ \
   --config=./docs-config.yaml \
   --renderer=markdown \
-  --output-path=./docs/reference/
+  --output-path=./docs/reference/api.md
 
 # Or using gen-crd-api-reference-docs
 gen-crd-api-reference-docs \
@@ -333,15 +333,30 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
+    - name: Install validation tools
+      run: |
+        python3 -m pip install pyyaml
+        curl -L https://istio.io/downloadIstio | sh -
+        ISTIO_DIR="$(find . -maxdepth 1 -type d -name 'istio-*' | head -n1)"
+        echo "$PWD/${ISTIO_DIR#./}/bin" >> "$GITHUB_PATH"
     - name: Extract YAML from docs
       run: |
-        grep -r '```yaml' docs/ -A 100 | grep -B1 '```$' > examples.yaml
+        python3 - <<'PY' > examples.yaml
+        from pathlib import Path
+        import re
+
+        for path in Path("docs").rglob("*.md"):
+            text = path.read_text()
+            for match in re.finditer(r"```ya?ml\n(.*?)\n```", text, re.S):
+                print("---")
+                print(match.group(1))
+        PY
     - name: Validate YAML
       run: |
-        python3 -c "import yaml; yaml.safe_load_all(open('examples.yaml'))"
+        python3 -c "import yaml; list(yaml.safe_load_all(open('examples.yaml')))"
     - name: Validate Istio resources
       run: |
-        istioctl analyze --use-kube=false examples.yaml
+        istioctl analyze --use-kube=false --ignore-unknown examples.yaml
 ```
 
 3. Review docs in every PR that changes Istio configurations
