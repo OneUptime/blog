@@ -44,7 +44,7 @@ spec:
 
 A few important things about this configuration:
 
-- The `resolution: NONE` setting is required for wildcard hosts. You cannot use `resolution: DNS` with wildcards because Istio cannot resolve `*.example.com` to IP addresses.
+- The `resolution: NONE` setting is the traditional passthrough option for wildcard hosts. You cannot use `resolution: DNS` with wildcards because Istio cannot resolve `*.example.com` to IP addresses. In current Istio versions, `resolution: DYNAMIC_DNS` is also available for wildcard hosts when the proxy can recover the original host from HTTP `Host` headers or TLS SNI.
 - The `*` only matches one level of subdomain. `*.example.com` matches `api.example.com` but does not match `us-east-1.api.example.com`.
 - You cannot use just `*` as a host. The wildcard must be in the format `*.domain.tld`.
 
@@ -155,9 +155,9 @@ spec:
   location: MESH_EXTERNAL
 ```
 
-### Option 2: Use an Egress Gateway with SNI Forwarding
+### Option 2: Use Dynamic DNS for SNI Forwarding
 
-Route all traffic to the domain through an egress gateway that passes through TLS connections:
+If your Istio version supports it, use `DYNAMIC_DNS` so the sidecar can resolve the actual hostname from TLS SNI and forward the connection directly:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -171,61 +171,11 @@ spec:
   - number: 443
     name: tls
     protocol: TLS
-  resolution: NONE
+  resolution: DYNAMIC_DNS
   location: MESH_EXTERNAL
----
-apiVersion: networking.istio.io/v1
-kind: Gateway
-metadata:
-  name: aws-egress
-  namespace: istio-system
-spec:
-  selector:
-    istio: egressgateway
-  servers:
-  - port:
-      number: 443
-      name: tls
-      protocol: TLS
-    hosts:
-    - "*.amazonaws.com"
-    tls:
-      mode: PASSTHROUGH
----
-apiVersion: networking.istio.io/v1
-kind: VirtualService
-metadata:
-  name: aws-egress-vs
-spec:
-  hosts:
-  - "*.amazonaws.com"
-  gateways:
-  - mesh
-  - istio-system/aws-egress
-  tls:
-  - match:
-    - gateways:
-      - mesh
-      port: 443
-      sniHosts:
-      - "*.amazonaws.com"
-    route:
-    - destination:
-        host: istio-egressgateway.istio-system.svc.cluster.local
-        port:
-          number: 443
-  - match:
-    - gateways:
-      - istio-system/aws-egress
-      port: 443
-      sniHosts:
-      - "*.amazonaws.com"
-    route:
-    - destination:
-        host: "*.amazonaws.com"
-        port:
-          number: 443
 ```
+
+An egress gateway with TLS passthrough can still be useful for centralized logging, but a normal `VirtualService` route cannot dynamically forward to `*.amazonaws.com` as a destination. Gateway-based wildcard forwarding for arbitrary domains requires either routing to a known concrete host or using Istio's documented dynamic SNI forwarding approach.
 
 ### Option 3: Use Sidecar Configuration
 
@@ -238,6 +188,9 @@ metadata:
   name: s3-access
   namespace: data-pipeline
 spec:
+  workloadSelector:
+    labels:
+      app: data-processor
   outboundTrafficPolicy:
     mode: ALLOW_ANY
   egress:
@@ -246,13 +199,13 @@ spec:
     - "./*"
 ```
 
-This gives pods in the `data-pipeline` namespace unrestricted outbound access. It is a broader permission, so use it only when you cannot enumerate the specific hosts.
+This gives matching pods in the `data-pipeline` namespace unrestricted outbound access to unknown destinations. It is a broader permission, so use it only when you cannot enumerate the specific hosts.
 
 ## Wildcard Hosts with REGISTRY_ONLY Mode
 
 Wildcard ServiceEntries work with `REGISTRY_ONLY` mode. When a pod tries to reach `api.example.com`, the sidecar checks the registry and finds `*.example.com` as a match. The traffic is allowed through.
 
-However, since `resolution: NONE` is required for wildcards, Istio does not track individual endpoints. This means you lose some visibility compared to non-wildcard entries with `resolution: DNS`.
+However, when you use `resolution: NONE`, Istio does not track individual endpoints. This means you lose some visibility compared to non-wildcard entries with `resolution: DNS`. If your Istio version supports `DYNAMIC_DNS`, the proxy can resolve the actual host from SNI or the HTTP `Host` header for matching wildcard entries.
 
 ## Monitoring Wildcard Egress Traffic
 
@@ -262,10 +215,16 @@ With wildcard entries, monitoring becomes more important since you are allowing 
 kubectl logs deploy/my-app -c istio-proxy | grep "outbound" | grep "example.com"
 ```
 
-Use Prometheus queries to track traffic:
+Use Prometheus queries to track HTTP traffic:
 
 ```promql
 sum(rate(istio_requests_total{destination_service=~".*example.com.*"}[5m])) by (destination_service_name)
+```
+
+For TLS passthrough traffic, use TCP metrics instead:
+
+```promql
+sum(rate(istio_tcp_connections_opened_total{destination_service=~".*example.com.*"}[5m])) by (destination_service_name)
 ```
 
 ## Security Considerations
@@ -274,33 +233,33 @@ Wildcard hosts are convenient but they widen the attack surface. A few things to
 
 - `*.example.com` allows access to any subdomain, including ones that might not exist yet
 - If an attacker compromises a pod, they can reach any subdomain, not just the ones your app legitimately uses
-- Consider combining wildcard ServiceEntries with AuthorizationPolicies to restrict which workloads can access them
+- Consider combining wildcard ServiceEntries with Sidecar scoping or an egress gateway to restrict which workloads can access them
 - Use an egress gateway with logging to audit all outbound traffic
 
 ## Restricting Wildcard Access to Specific Workloads
 
-Use AuthorizationPolicy to limit which pods can access wildcard destinations:
+Use a `Sidecar` resource with a workload selector to limit which pods receive configuration for wildcard destinations:
 
 ```yaml
-apiVersion: security.istio.io/v1
-kind: AuthorizationPolicy
+apiVersion: networking.istio.io/v1
+kind: Sidecar
 metadata:
   name: restrict-aws-access
   namespace: default
 spec:
-  selector:
-    matchLabels:
+  workloadSelector:
+    labels:
       app: data-processor
-  action: ALLOW
-  rules:
-  - to:
-    - operation:
-        hosts:
-        - "*.amazonaws.com"
+  outboundTrafficPolicy:
+    mode: REGISTRY_ONLY
+  egress:
+  - hosts:
+    - "istio-system/*"
+    - "./*.amazonaws.com"
 ```
 
-This only allows the `data-processor` workload to access AWS services. Other pods in the namespace will be denied.
+This scopes the sidecar configuration for the `data-processor` workload. Istio `AuthorizationPolicy` is not a general outbound firewall for TLS egress hosts; its `operation.hosts` field matches HTTP request hosts and should only be used for HTTP traffic.
 
 ## Summary
 
-Wildcard hosts in Istio ServiceEntry resources let you allow access to entire domain families without listing every subdomain. Use `resolution: NONE` with wildcards and remember that `*` only matches a single subdomain level. For multi-level subdomains, list specific patterns or use an egress gateway with SNI passthrough. Always combine wildcard access with monitoring and authorization policies to maintain security visibility.
+Wildcard hosts in Istio ServiceEntry resources let you allow access to entire domain families without listing every subdomain. Use `resolution: NONE` for passthrough wildcard entries, or `resolution: DYNAMIC_DNS` in Istio versions that support it, and remember that `*` only matches a single subdomain level. For multi-level subdomains, list specific patterns or use dynamic DNS-based forwarding where available. Always combine wildcard access with monitoring and workload scoping to maintain security visibility.
