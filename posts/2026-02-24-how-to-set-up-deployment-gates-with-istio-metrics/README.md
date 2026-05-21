@@ -46,7 +46,7 @@ MAX_ERROR_RATE="0.02"  # 2% max error rate
 echo "Checking system health in namespace: ${NAMESPACE}"
 
 # Global error rate for the namespace
-QUERY="sum(rate(istio_requests_total{namespace=\"${NAMESPACE}\",response_code=~\"5.*\"}[10m])) / sum(rate(istio_requests_total{namespace=\"${NAMESPACE}\"}[10m]))"
+QUERY="sum(rate(istio_requests_total{reporter=\"destination\",destination_workload_namespace=\"${NAMESPACE}\",response_code=~\"5.*\"}[10m])) / sum(rate(istio_requests_total{reporter=\"destination\",destination_workload_namespace=\"${NAMESPACE}\"}[10m]))"
 
 RESULT=$(curl -s "${PROM_URL}/api/v1/query" --data-urlencode "query=${QUERY}" \
   | python3 -c "import sys,json; d=json.load(sys.stdin); r=d['data']['result']; print(r[0]['value'][1] if r else '0')")
@@ -75,19 +75,19 @@ NAMESPACE="${2:-default}"
 echo "Checking health of ${SERVICE_NAME} in ${NAMESPACE}"
 
 # Success rate
-SUCCESS_QUERY="sum(rate(istio_requests_total{destination_workload=\"${SERVICE_NAME}\",namespace=\"${NAMESPACE}\",response_code!~\"5.*\"}[5m])) / sum(rate(istio_requests_total{destination_workload=\"${SERVICE_NAME}\",namespace=\"${NAMESPACE}\"}[5m]))"
+SUCCESS_QUERY="sum(rate(istio_requests_total{reporter=\"destination\",destination_workload=\"${SERVICE_NAME}\",destination_workload_namespace=\"${NAMESPACE}\",response_code!~\"5.*\"}[5m])) / sum(rate(istio_requests_total{reporter=\"destination\",destination_workload=\"${SERVICE_NAME}\",destination_workload_namespace=\"${NAMESPACE}\"}[5m]))"
 
 SUCCESS_RATE=$(curl -s "${PROM_URL}/api/v1/query" --data-urlencode "query=${SUCCESS_QUERY}" \
   | python3 -c "import sys,json; d=json.load(sys.stdin); r=d['data']['result']; print(r[0]['value'][1] if r else '1')")
 
 # P99 latency
-LATENCY_QUERY="histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{destination_workload=\"${SERVICE_NAME}\",namespace=\"${NAMESPACE}\"}[5m])) by (le))"
+LATENCY_QUERY="histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{reporter=\"destination\",destination_workload=\"${SERVICE_NAME}\",destination_workload_namespace=\"${NAMESPACE}\"}[5m])) by (le))"
 
 P99_LATENCY=$(curl -s "${PROM_URL}/api/v1/query" --data-urlencode "query=${LATENCY_QUERY}" \
   | python3 -c "import sys,json; d=json.load(sys.stdin); r=d['data']['result']; print(r[0]['value'][1] if r else '0')")
 
 # Traffic volume (make sure we're getting requests)
-TRAFFIC_QUERY="sum(rate(istio_requests_total{destination_workload=\"${SERVICE_NAME}\",namespace=\"${NAMESPACE}\"}[5m]))"
+TRAFFIC_QUERY="sum(rate(istio_requests_total{reporter=\"destination\",destination_workload=\"${SERVICE_NAME}\",destination_workload_namespace=\"${NAMESPACE}\"}[5m]))"
 
 TRAFFIC=$(curl -s "${PROM_URL}/api/v1/query" --data-urlencode "query=${TRAFFIC_QUERY}" \
   | python3 -c "import sys,json; d=json.load(sys.stdin); r=d['data']['result']; print(r[0]['value'][1] if r else '0')")
@@ -132,7 +132,7 @@ NAMESPACE="${2:-default}"
 echo "Checking health of dependencies for ${SOURCE_SERVICE}"
 
 # Find all services that this service calls
-DEPS_QUERY="count by (destination_workload) (rate(istio_requests_total{source_workload=\"${SOURCE_SERVICE}\",namespace=\"${NAMESPACE}\"}[30m]))"
+DEPS_QUERY="count by (destination_workload) (rate(istio_requests_total{reporter=\"source\",source_workload=\"${SOURCE_SERVICE}\",source_workload_namespace=\"${NAMESPACE}\"}[30m]))"
 
 DEPS=$(curl -s "${PROM_URL}/api/v1/query" --data-urlencode "query=${DEPS_QUERY}" \
   | python3 -c "
@@ -146,7 +146,7 @@ echo "Dependencies found: ${DEPS}"
 
 FAILED=0
 for DEP in $DEPS; do
-    DEP_QUERY="sum(rate(istio_requests_total{destination_workload=\"${DEP}\",namespace=\"${NAMESPACE}\",response_code=~\"5.*\"}[5m])) / sum(rate(istio_requests_total{destination_workload=\"${DEP}\",namespace=\"${NAMESPACE}\"}[5m]))"
+    DEP_QUERY="sum(rate(istio_requests_total{reporter=\"destination\",destination_workload=\"${DEP}\",destination_workload_namespace=\"${NAMESPACE}\",response_code=~\"5.*\"}[5m])) / sum(rate(istio_requests_total{reporter=\"destination\",destination_workload=\"${DEP}\",destination_workload_namespace=\"${NAMESPACE}\"}[5m]))"
 
     ERROR_RATE=$(curl -s "${PROM_URL}/api/v1/query" --data-urlencode "query=${DEP_QUERY}" \
       | python3 -c "import sys,json; d=json.load(sys.stdin); r=d['data']['result']; print(r[0]['value'][1] if r else '0')")
@@ -181,7 +181,7 @@ SLO_TARGET="0.999"  # 99.9% SLO
 echo "Checking SLO budget for ${SERVICE_NAME}"
 
 # Calculate success rate over the past 30 days
-QUERY="sum(rate(istio_requests_total{destination_workload=\"${SERVICE_NAME}\",namespace=\"${NAMESPACE}\",response_code!~\"5.*\"}[30d])) / sum(rate(istio_requests_total{destination_workload=\"${SERVICE_NAME}\",namespace=\"${NAMESPACE}\"}[30d]))"
+QUERY="sum(rate(istio_requests_total{reporter=\"destination\",destination_workload=\"${SERVICE_NAME}\",destination_workload_namespace=\"${NAMESPACE}\",response_code!~\"5.*\"}[30d])) / sum(rate(istio_requests_total{reporter=\"destination\",destination_workload=\"${SERVICE_NAME}\",destination_workload_namespace=\"${NAMESPACE}\"}[30d]))"
 
 MONTHLY_SUCCESS=$(curl -s "${PROM_URL}/api/v1/query" --data-urlencode "query=${QUERY}" \
   | python3 -c "import sys,json; d=json.load(sys.stdin); r=d['data']['result']; print(r[0]['value'][1] if r else '1')")
@@ -251,11 +251,11 @@ spec:
       prometheus:
         address: http://prometheus.monitoring.svc.cluster.local:9090
         query: |
-          sum(rate(istio_requests_total{namespace="default",response_code=~"5.*"}[10m]))
-          / sum(rate(istio_requests_total{namespace="default"}[10m]))
+          sum(rate(istio_requests_total{reporter="destination",destination_workload_namespace="default",response_code=~"5.*"}[10m]))
+          / sum(rate(istio_requests_total{reporter="destination",destination_workload_namespace="default"}[10m]))
 ```
 
-Reference it as a pre-promotion analysis in your Rollout:
+Reference it as a background canary analysis in your Rollout:
 
 ```yaml
 spec:
