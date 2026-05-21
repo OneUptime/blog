@@ -45,7 +45,6 @@ spec:
   profile: minimal
   meshConfig:
     accessLogFile: ""
-    enableAutoMtls: true
     defaultConfig:
       holdApplicationUntilProxyStarts: true
   components:
@@ -63,7 +62,7 @@ spec:
           maxReplicas: 2
 ```
 
-A few things to note here. We turned off access logging (`accessLogFile: ""`) to save on log storage costs. Auto mTLS is enabled so all service-to-service traffic is encrypted without any extra configuration. The control plane HPA is set to scale between 1 and 2 replicas, which is enough for a startup workload.
+A few things to note here. We turned off access logging (`accessLogFile: ""`) to save on log storage costs. Istio automatically upgrades traffic between sidecar proxies to mTLS, and you can add a `PeerAuthentication` policy in `STRICT` mode later if you need to reject plaintext traffic. The control plane HPA is set to scale between 1 and 2 replicas, which is enough for a startup workload.
 
 ## Namespace Strategy
 
@@ -113,7 +112,7 @@ By default, every Envoy sidecar knows about every service in the mesh. If you ha
 Use the `Sidecar` resource to limit what each service sees:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -134,7 +133,7 @@ Startups rarely need strict egress control on day one. An egress gateway adds an
 If you need to track outbound traffic, use `ServiceEntry` resources instead:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-api
