@@ -10,17 +10,17 @@ Description: A comprehensive guide to migrating from Linkerd to Istio covering f
 
 Linkerd and Istio are both service meshes, but they have different philosophies. Linkerd focuses on simplicity and low resource usage. Istio offers more features and configurability. Teams often start with Linkerd for its ease of adoption and later consider Istio when they need advanced traffic management, richer policy control, or features like traffic mirroring and request-level authorization.
 
-Migrating between service meshes is more involved than switching ingress controllers because the sidecar proxies are deeply integrated with every pod in your cluster. You can't run both meshes on the same pod - a pod gets either a Linkerd proxy or an Envoy sidecar, not both.
+Migrating between service meshes is more involved than switching ingress controllers because the sidecar proxies are deeply integrated with every pod in your cluster. You should not inject both meshes into the same pod - a pod should get either a Linkerd proxy or an Envoy sidecar, not both.
 
 ## Planning the Migration
 
-The migration needs to happen namespace by namespace or service by service. During the transition, some namespaces will be on Linkerd and some on Istio. Cross-mesh communication works because both meshes can do mTLS in PERMISSIVE mode, allowing plaintext connections from the other mesh.
+The migration needs to happen namespace by namespace or service by service. During the transition, some namespaces will be on Linkerd and some on Istio. Cross-mesh communication works when Istio accepts plaintext traffic in PERMISSIVE mTLS mode and Linkerd's inbound policy allows traffic from non-Linkerd-meshed clients.
 
 Here's the approach:
 
 1. Install Istio alongside Linkerd
 2. Set Istio to PERMISSIVE mTLS mode
-3. Keep Linkerd in its default mode (permissive)
+3. Keep Linkerd's default inbound policy, `all-unauthenticated`, or explicitly allow traffic from Istio clients where you have stricter Linkerd policies
 4. Migrate one namespace at a time
 5. After all namespaces are migrated, switch Istio to STRICT mode
 6. Remove Linkerd
@@ -35,7 +35,7 @@ Here's the approach:
 | linkerd-viz | Kiali + Prometheus + Grafana |
 | Retries (ServiceProfile) | VirtualService retries |
 | Timeouts (ServiceProfile) | VirtualService timeout |
-| tap/top | istioctl proxy-config / Kiali |
+| tap/top | proxy logs, istioctl proxy-config, Kiali |
 | Multicluster (gateway) | Istio multi-cluster |
 | proxy-init | istio-init |
 
@@ -50,7 +50,7 @@ istioctl install --set profile=default
 Set mesh-wide PERMISSIVE mode:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -62,7 +62,7 @@ spec:
 
 ## Step 2: Convert ServiceProfiles to VirtualServices
 
-Linkerd uses ServiceProfile resources for retries, timeouts, and per-route configuration.
+Older Linkerd installations may use ServiceProfile resources for retries, timeouts, and per-route configuration. In Linkerd 2.16 and later, Gateway API resources supersede ServiceProfiles, although ServiceProfiles are still supported for backwards compatibility.
 
 Linkerd ServiceProfile:
 
@@ -95,7 +95,7 @@ spec:
 Istio VirtualService equivalent:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: order-service-vs
@@ -130,11 +130,11 @@ spec:
         host: order-service
 ```
 
-Note: Istio doesn't have a built-in retry budget like Linkerd. You can approximate it with circuit breaking in the DestinationRule.
+Note: In current Istio versions, retry budgets are configured in a DestinationRule with `trafficPolicy.retryBudget`, while per-route retry behavior still belongs in the VirtualService. Limit retries with `attempts` and `perTryTimeout`, and use DestinationRule retry budgets, circuit breaking, or outlier detection as additional safeguards.
 
 ## Step 3: Convert TrafficSplits
 
-Linkerd uses the SMI TrafficSplit resource for canary deployments.
+Older Linkerd deployments may use the SMI TrafficSplit resource for canary deployments. In current Linkerd versions, TrafficSplit and the `linkerd-smi` extension are deprecated in favor of Gateway API-based dynamic request routing.
 
 Linkerd TrafficSplit:
 
@@ -156,7 +156,7 @@ spec:
 Istio equivalent:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: order-service-dr
@@ -171,7 +171,7 @@ spec:
     labels:
       version: canary
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: order-service-vs
@@ -211,7 +211,7 @@ spec:
       app: order-service
   port: 8080
 ---
-apiVersion: policy.linkerd.io/v1alpha1
+apiVersion: policy.linkerd.io/v1beta1
 kind: ServerAuthorization
 metadata:
   name: order-service-authz
@@ -228,7 +228,7 @@ spec:
 Istio equivalent:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: order-service-authz
@@ -286,7 +286,7 @@ kubectl exec -it deploy/frontend -n istio-namespace -- \
 istioctl proxy-config cluster deploy/frontend -n istio-namespace | grep order-service
 ```
 
-Since both meshes are in PERMISSIVE mode, the Istio sidecar will send plaintext to Linkerd services, and vice versa. This works but means traffic between meshes is unencrypted during the transition period. Keep this window as short as practical.
+With Istio in PERMISSIVE mode and Linkerd configured to allow non-meshed clients, the Istio sidecar will send plaintext to Linkerd services, and Linkerd will send plaintext to Istio services. This works but means traffic between meshes is unencrypted during the transition period. Keep this window as short as practical.
 
 ## Step 7: Replace Linkerd Observability
 
@@ -294,13 +294,13 @@ Linkerd comes with linkerd-viz for dashboards and metrics. Replace it with Istio
 
 ```bash
 # Install Kiali for service mesh visualization
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/kiali.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/kiali.yaml
 
 # Install Prometheus for metrics
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/prometheus.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/prometheus.yaml
 
 # Install Grafana for dashboards
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/grafana.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/grafana.yaml
 ```
 
 Linkerd's `tap` command (for real-time traffic inspection) maps to:
@@ -320,7 +320,7 @@ istioctl proxy-config listener deploy/order-service -n default
 After all namespaces are migrated, switch Istio to STRICT mTLS:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -360,4 +360,4 @@ kubectl rollout restart deployment -n problem-namespace
 
 Keep Linkerd installed until you're fully confident in the Istio setup. Only uninstall it after all namespaces have been successfully running on Istio for a reasonable period.
 
-The migration from Linkerd to Istio requires careful planning because you're swapping the data plane proxy on every pod. The namespace-by-namespace approach limits risk, and running both meshes in PERMISSIVE mode ensures cross-mesh communication works during the transition. Take your time, test thoroughly, and don't rush the final cleanup.
+The migration from Linkerd to Istio requires careful planning because you're swapping the data plane proxy on every pod. The namespace-by-namespace approach limits risk, and running Istio in PERMISSIVE mode while Linkerd allows non-meshed clients ensures cross-mesh communication works during the transition. Take your time, test thoroughly, and don't rush the final cleanup.
