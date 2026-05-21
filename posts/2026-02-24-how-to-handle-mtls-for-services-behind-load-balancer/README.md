@@ -118,7 +118,7 @@ Some architectures use internal load balancers between service tiers, especially
 Service A (sidecar) --mTLS--> Internal LB --???--> Service B (sidecar)
 ```
 
-This is problematic. The internal load balancer sits between two sidecars and breaks the mTLS connection. The sidecar on Service A initiates mTLS, but the load balancer does not understand mTLS certificates from Istio's CA.
+This is problematic when the internal load balancer terminates or inspects the connection. The sidecar on Service A initiates mTLS, but a layer 7 load balancer does not understand mTLS certificates from Istio's CA.
 
 **Solution 1: Remove the internal load balancer.** In a mesh, you do not need it. Istio handles load balancing through the sidecar proxies. Configure the Service directly:
 
@@ -177,9 +177,9 @@ spec:
 
 This is less secure because it also allows other plaintext connections, but it works as a transitional step.
 
-**Solution 3: Use DestinationRule to disable mTLS from the ingress controller's perspective:**
+**Solution 3: Use DestinationRule to explicitly enable mTLS from the ingress controller's perspective:**
 
-If the ingress controller has a sidecar but should not use mTLS for certain backends (unlikely but possible), configure it with a DestinationRule:
+If the ingress controller has a sidecar and should use mTLS for certain backends, configure it with a DestinationRule:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -224,10 +224,11 @@ And use the `X-Forwarded-For` header or PROXY protocol depending on your load ba
 Cloud load balancers perform health checks on the ingress gateway pods. These health checks do not use mTLS. Configure the health check to use the Istio status port:
 
 ```yaml
-# AWS ALB health check target
-
-healthCheckPort: 15021
-healthCheckPath: /healthz/ready
+metadata:
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-protocol: "http"
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-port: "15021"
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-path: "/healthz/ready"
 ```
 
 The Istio ingress gateway exposes a health endpoint on port 15021 that does not require TLS or mTLS.
