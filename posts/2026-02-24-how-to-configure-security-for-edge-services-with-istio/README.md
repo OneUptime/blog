@@ -45,7 +45,7 @@ Verify mTLS is working:
 ```bash
 # Check mTLS status for all services
 
-istioctl authn tls-check -n edge-app
+istioctl proxy-config secret deployment/my-service -n edge-app
 
 # Verify from proxy stats
 kubectl exec -n edge-app deploy/my-service -c istio-proxy -- \
@@ -54,7 +54,7 @@ kubectl exec -n edge-app deploy/my-service -c istio-proxy -- \
 
 ## Certificate Management at the Edge
 
-Istio uses its own CA (citadel, built into istiod) to issue workload certificates. By default, certificates are valid for 24 hours and automatically rotated. For edge environments, you might want to adjust this:
+Istio uses its own CA in istiod to issue workload certificates. By default, certificates are valid for 24 hours and automatically rotated. For edge environments, you might want to adjust this:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -64,10 +64,6 @@ spec:
     defaultConfig:
       proxyMetadata:
         SECRET_TTL: "12h"
-  values:
-    pilot:
-      env:
-        CITADEL_WORKLOAD_CERT_TTL: "12h"
 ```
 
 Shorter certificate lifetimes reduce the window of exposure if a certificate is compromised. The trade-off is more frequent rotation, which generates more CPU load for signing operations. At 12 hours, the balance is reasonable for most edge deployments.
@@ -75,10 +71,10 @@ Shorter certificate lifetimes reduce the window of exposure if a certificate is 
 If your edge site might lose connectivity to istiod, make sure workload certificates are valid long enough to survive the outage:
 
 ```yaml
-values:
-  pilot:
-    env:
-      CITADEL_WORKLOAD_CERT_TTL: "48h"
+meshConfig:
+  defaultConfig:
+    proxyMetadata:
+      SECRET_TTL: "48h"
 ```
 
 With 48-hour certificates, your services keep working with valid certificates even if istiod is down for a full day.
@@ -167,7 +163,7 @@ spec:
         credentialName: edge-tls-cert
 ```
 
-Add JWT authentication for device requests:
+Add JWT authentication for device requests, and update the gateway-to-API allow policy to require the token:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -187,7 +183,7 @@ spec:
 apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
-  name: require-valid-token
+  name: allow-gateway-to-api
   namespace: edge-app
 spec:
   selector:
@@ -197,7 +193,12 @@ spec:
   rules:
     - from:
         - source:
-            requestPrincipals: ["*"]
+            principals:
+              - "cluster.local/ns/istio-system/sa/istio-ingressgateway-service-account"
+      to:
+        - operation:
+            methods: ["GET", "POST"]
+            paths: ["/api/*"]
       when:
         - key: request.auth.claims[scope]
           values: ["device:write"]
@@ -224,18 +225,18 @@ spec:
     - from:
         - namespaceSelector:
             matchLabels:
-              name: edge-app
+              kubernetes.io/metadata.name: edge-app
         - namespaceSelector:
             matchLabels:
-              name: istio-system
+              kubernetes.io/metadata.name: istio-system
   egress:
     - to:
         - namespaceSelector:
             matchLabels:
-              name: edge-app
+              kubernetes.io/metadata.name: edge-app
         - namespaceSelector:
             matchLabels:
-              name: istio-system
+              kubernetes.io/metadata.name: istio-system
     - to:
         - namespaceSelector: {}
       ports:
@@ -249,25 +250,33 @@ Network policies work at the network level even if someone bypasses the sidecar 
 
 ## Securing the Control Plane
 
-Protect istiod itself from unauthorized access:
+Protect istiod itself from unauthorized access with a Kubernetes network policy:
 
 ```yaml
-apiVersion: security.istio.io/v1
-kind: AuthorizationPolicy
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
 metadata:
   name: istiod-access
   namespace: istio-system
 spec:
-  selector:
+  podSelector:
     matchLabels:
       app: istiod
-  action: ALLOW
-  rules:
+  policyTypes:
+    - Ingress
+  ingress:
     - from:
-        - source:
-            namespaces:
-              - istio-system
-              - edge-app
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: istio-system
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: edge-app
+      ports:
+        - port: 15012
+          protocol: TCP
+        - port: 443
+          protocol: TCP
 ```
 
 This ensures only workloads in known namespaces can communicate with istiod.
