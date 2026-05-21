@@ -140,13 +140,13 @@ Now watch the logs:
 kubectl logs productpage-v1-6b746f74dc-9rlmh -c istio-proxy -n bookinfo -f --tail=100
 ```
 
-With router debug enabled, you will see detailed output for every request showing:
+With router debug enabled, you may see detailed output showing:
 - Which route matched
 - What cluster the request was routed to
 - Whether retries were attempted
 - What response code the upstream returned
 
-Example log lines:
+Simplified example log lines:
 
 ```text
 [debug][router] router_rq_route_config_update: 9080
@@ -168,7 +168,7 @@ istioctl proxy-config log productpage-v1-6b746f74dc-9rlmh.bookinfo \
 kubectl logs productpage-v1-6b746f74dc-9rlmh -c istio-proxy -n bookinfo -f --tail=100
 ```
 
-You will see connection establishment, pooling, and failure details:
+You may see connection establishment, pooling, and failure details:
 
 ```text
 [debug][connection] connecting to 10.244.0.17:9080
@@ -190,7 +190,7 @@ istioctl proxy-config log productpage-v1-6b746f74dc-9rlmh.bookinfo \
 kubectl logs productpage-v1-6b746f74dc-9rlmh -c istio-proxy -n bookinfo -f --tail=100
 ```
 
-You will see certificate loading and TLS negotiation details:
+You may see certificate loading and TLS negotiation details:
 
 ```text
 [debug][secret] loaded certificate chain from SDS
@@ -213,7 +213,7 @@ Note: authorization is enforced on the server side, so set the log level on the 
 kubectl logs reviews-v1-5984b4b776-7kqvz -c istio-proxy -n bookinfo -f --tail=100
 ```
 
-You will see RBAC evaluation details:
+You may see RBAC evaluation details:
 
 ```text
 [debug][rbac] checking request: path=/reviews/0, method=GET
@@ -229,6 +229,12 @@ After debugging, always reset log levels back to warning to avoid performance de
 istioctl proxy-config log productpage-v1-6b746f74dc-9rlmh.bookinfo --level warning
 ```
 
+You can also use the reset flag:
+
+```bash
+istioctl proxy-config log productpage-v1-6b746f74dc-9rlmh.bookinfo --reset
+```
+
 Confirm they are reset:
 
 ```bash
@@ -239,9 +245,9 @@ istioctl proxy-config log productpage-v1-6b746f74dc-9rlmh.bookinfo | head -5
 
 Debug logging has a real performance impact. Each log statement requires CPU time and I/O. In high-traffic services, setting all loggers to debug can:
 
-- Increase CPU usage by 10-30%
-- Generate gigabytes of log data per hour
-- Increase latency due to synchronous log writes
+- Increase CPU usage
+- Generate a large volume of log data
+- Increase latency due to additional logging work and I/O pressure
 
 That is why you should:
 1. Only enable debug on specific loggers you need
