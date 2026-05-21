@@ -70,7 +70,13 @@ metadata:
   name: order-service
   namespace: backend
 spec:
+  selector:
+    matchLabels:
+      app: order-service
   template:
+    metadata:
+      labels:
+        app: order-service
     spec:
       serviceAccountName: order-service
       containers:
@@ -207,7 +213,7 @@ spec:
     - "api.example.com"
 ```
 
-For egress, use Istio's egress gateway to control and encrypt outbound traffic:
+For egress, start by registering allowed external HTTPS services with a `ServiceEntry`:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -225,6 +231,8 @@ spec:
   resolution: DNS
   location: MESH_EXTERNAL
 ```
+
+If you need all outbound traffic through a dedicated egress gateway, add the corresponding egress `Gateway`, `VirtualService`, and `DestinationRule` routing.
 
 ## Step 7: Monitor and Audit
 
