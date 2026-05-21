@@ -149,7 +149,7 @@ A heatmap shows the distribution of request durations over time, making it easy 
 
 ## Istio Health Check Configuration
 
-Beyond passive monitoring, you can configure Istio to actively check service health and take action.
+Beyond dashboards and alerts, you can configure Istio to react to observed service health and take action.
 
 ### Outlier Detection
 
@@ -172,7 +172,7 @@ spec:
       minHealthPercent: 30
 ```
 
-This ejects a pod from the pool after 3 consecutive 5xx errors, checks every 30 seconds, and keeps it ejected for at least 30 seconds before trying it again. The `maxEjectionPercent` prevents ejecting too many pods at once.
+This ejects a pod from the pool after 3 consecutive 5xx errors, runs ejection sweep analysis every 30 seconds, and keeps it ejected for at least 30 seconds before trying it again. The `maxEjectionPercent` prevents ejecting too many pods at once.
 
 ### Health Checking with Probes
 
@@ -236,23 +236,22 @@ kubectl port-forward svc/kiali -n istio-system 20001:20001
 
 Kiali computes health based on:
 
-- Request error rate (both inbound and outbound)
-- Envoy proxy health
-- Pod availability
+- Request traffic health
+- Pod status
+- Mesh infrastructure status in the Kiali masthead and overview
 
 You can configure health thresholds in Kiali:
 
 ```yaml
 health_config:
   rate:
-  - namespace:
-      name: "production"
+  - namespace: "production"
     tolerance:
-    - code: "5XX"
+    - code: "^5\\d\\d$"
       degraded: 1
       failure: 5
       protocol: http
-    - code: "4XX"
+    - code: "^4\\d\\d$"
       degraded: 10
       failure: 20
       protocol: http
