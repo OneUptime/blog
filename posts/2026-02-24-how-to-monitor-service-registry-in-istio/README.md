@@ -8,7 +8,7 @@ Description: Monitor Istio's internal service registry to track registered servi
 
 ---
 
-Istio's service registry is the backbone of service discovery in the mesh. It keeps track of every service, every endpoint, and every piece of configuration that proxies need to route traffic correctly. When something goes wrong with the registry, services can't find each other, traffic gets misrouted, and debugging gets painful. Monitoring the registry proactively helps you catch problems before they affect your users.
+Istio's service registry is the backbone of service discovery in the mesh. It keeps track of every service and every endpoint that proxies need to route traffic correctly, while istiod combines that registry data with Istio configuration when generating proxy config. When something goes wrong with the registry, services can't find each other, traffic gets misrouted, and debugging gets painful. Monitoring the registry proactively helps you catch problems before they affect your users.
 
 ## What Lives in the Service Registry
 
@@ -16,9 +16,10 @@ Istio's service registry is maintained by istiod and contains:
 
 - **Services**: All Kubernetes services plus any ServiceEntry resources you've created
 - **Endpoints**: The IP addresses and ports of pods (and VMs) that back those services
-- **Configuration**: VirtualServices, DestinationRules, AuthorizationPolicies, and other Istio resources that affect routing
 
-Istiod watches the Kubernetes API server for changes and updates the registry in real time. When something changes, istiod pushes updated configuration to the affected sidecar proxies via the xDS API.
+Istiod also watches VirtualServices, DestinationRules, AuthorizationPolicies, and other Istio resources that affect routing.
+
+Istiod watches the Kubernetes API server for changes and updates its service and configuration state in real time. When something changes, istiod pushes updated configuration to the affected sidecar proxies via the xDS API.
 
 ## Checking Registry Contents
 
@@ -38,10 +39,10 @@ For a more readable output, pipe it through a JSON formatter:
 kubectl exec deploy/istiod -n istio-system -- curl -s localhost:15014/debug/registryz | python3 -m json.tool | head -100
 ```
 
-To check endpoints for a specific service:
+To check endpoint discovery output:
 
 ```bash
-kubectl exec deploy/istiod -n istio-system -- curl -s localhost:15014/debug/endpointz
+kubectl exec deploy/istiod -n istio-system -- curl -s localhost:15014/debug/edsz
 ```
 
 ## Monitoring Proxy Sync Status
@@ -59,7 +60,7 @@ This shows every proxy and its sync status for each xDS type:
 - **EDS** (Endpoint Discovery Service): Endpoint addresses
 - **RDS** (Route Discovery Service): Routing rules
 
-Each should say `SYNCED`. If you see `STALE`, the proxy hasn't acknowledged the latest configuration push.
+Sidecar proxies should generally say `SYNCED`. `NOT SENT` can be normal when istiod has nothing to send for that xDS type. If you see `STALE`, istiod has sent an update but has not received an acknowledgement.
 
 ## Istiod Metrics for Registry Health
 
@@ -107,14 +108,14 @@ If push times are increasing, istiod might be struggling under load.
 histogram_quantile(0.99, sum(rate(pilot_proxy_convergence_time_bucket[5m])) by (le))
 ```
 
-**pilot_conflict_inbound_listener** and **pilot_conflict_outbound_listener_tcp_over_current_tcp**: Configuration conflicts that can cause routing issues.
+**pilot_total_rejected_configs** and **pilot_total_xds_rejects**: Configurations rejected or ignored by istiod, and xDS responses rejected by proxies.
 
 ```text
-pilot_conflict_inbound_listener
-pilot_conflict_outbound_listener_tcp_over_current_tcp
+pilot_total_rejected_configs
+pilot_total_xds_rejects
 ```
 
-These should be zero. Any non-zero value indicates conflicting configurations that need investigation.
+These should be zero or flat. Any increase indicates configuration or generated xDS that needs investigation.
 
 ## Setting Up Prometheus Alerts
 
@@ -139,21 +140,21 @@ spec:
         summary: "Istio service registry lost services"
         description: "{{ $value }} services disappeared from the registry in the last 10 minutes"
 
-    - alert: IstioPilotPushErrors
-      expr: sum(rate(pilot_xds_pushes{type="cds_senderr"}[5m])) > 0
+    - alert: IstioPilotXdsInternalErrors
+      expr: sum(rate(pilot_total_xds_internal_errors[5m])) > 0
       for: 5m
       labels:
         severity: critical
       annotations:
-        summary: "Istio xDS push errors detected"
+        summary: "Istio xDS internal errors detected"
 
-    - alert: IstioProxyStale
-      expr: count(pilot_proxy_convergence_time_bucket) by (le) > 0
+    - alert: IstioProxyConvergenceSlow
+      expr: histogram_quantile(0.99, sum(rate(pilot_proxy_convergence_time_bucket[5m])) by (le)) > 30
       for: 10m
       labels:
         severity: warning
       annotations:
-        summary: "Stale proxies detected in the mesh"
+        summary: "Istio proxy convergence is above 30 seconds"
 
     - alert: IstioPilotHighPushLatency
       expr: histogram_quantile(0.99, sum(rate(pilot_xds_push_time_bucket[5m])) by (le)) > 30
@@ -186,7 +187,7 @@ Look at the "Services" page for a list of all registered services and their conf
 For compliance and debugging, it's useful to track changes to the service registry. You can do this by monitoring the Kubernetes events related to Istio resources:
 
 ```bash
-kubectl get events -A --field-selector reason=Updated --sort-by='.lastTimestamp' | grep -E "virtualservice|destinationrule|serviceentry|authorizationpolicy"
+kubectl get events -A --field-selector reason=Updated --sort-by='.lastTimestamp' | grep -Ei "virtualservice|destinationrule|serviceentry|authorizationpolicy"
 ```
 
 For a more comprehensive approach, use a GitOps tool like ArgoCD or Flux to manage your Istio configurations. Every change goes through a Git commit, giving you a full audit trail.
@@ -215,10 +216,10 @@ spec:
     - "database/*"
 ```
 
-Monitor the pilot_xds metric to see configuration sizes across the mesh:
+Monitor the pilot_xds_config_size_bytes metric to see configuration sizes across the mesh:
 
 ```text
-pilot_xds{type="cds"}
+histogram_quantile(0.99, sum(rate(pilot_xds_config_size_bytes_bucket{type="cds"}[5m])) by (le))
 ```
 
 ## Health Checking Istiod Itself
@@ -229,7 +230,7 @@ Monitor istiod's health directly:
 kubectl exec deploy/istiod -n istio-system -- curl -s localhost:15014/healthz/ready
 ```
 
-Set up a liveness check in your monitoring system that hits this endpoint. If istiod goes down, the registry stops updating (though existing proxies continue to work with their last known configuration).
+Set up a readiness check in your monitoring system that hits this endpoint. If istiod goes down, the registry stops updating (though existing proxies continue to work with their last known configuration).
 
 Monitor istiod resource usage:
 
@@ -248,7 +249,7 @@ Create a Grafana dashboard that combines the key registry metrics:
 - xDS push rate and errors (pilot_xds_pushes)
 - Push latency (pilot_xds_push_time)
 - Proxy sync status (number of SYNCED vs STALE proxies)
-- Configuration conflicts (pilot_conflict_*)
+- Rejected configs and xDS rejects (pilot_total_rejected_configs, pilot_total_xds_rejects)
 - Istiod CPU and memory usage
 
 This dashboard becomes your go-to for understanding the health of service discovery in your mesh. Review it regularly and investigate any anomalies before they become incidents.
