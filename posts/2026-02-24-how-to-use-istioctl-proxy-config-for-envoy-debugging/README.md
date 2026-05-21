@@ -12,9 +12,9 @@ The `istioctl proxy-config` command (often shortened to `istioctl pc`) is the si
 
 When your Istio configuration doesn't produce the expected traffic behavior, proxy-config tells you what Envoy actually sees, which is often different from what you think you configured.
 
-## The Five Subcommands
+## Common Subcommands
 
-proxy-config has five main subcommands, each corresponding to an Envoy configuration type:
+proxy-config has several subcommands. The most common ones correspond to these Envoy configuration types:
 
 ```bash
 istioctl proxy-config listeners <pod>.<namespace>    # LDS
@@ -36,9 +36,11 @@ And a `log` subcommand for managing Envoy log levels:
 istioctl proxy-config log <pod>.<namespace>
 ```
 
+Current Istio versions also include other specialized subcommands such as `secret` and `ecds`.
+
 ## Listener Debugging
 
-Listeners define what ports and protocols Envoy accepts connections on. Every Kubernetes Service port that Istiod knows about typically creates a listener:
+Listeners define what ports and protocols Envoy accepts connections on. Istio generates virtual listeners for service traffic: HTTP service ports often appear as wildcard listeners by port, while TCP and HTTPS services are represented by service-IP listeners:
 
 ```bash
 istioctl pc listeners productpage-v1-abc123.default
@@ -57,9 +59,9 @@ ADDRESS       PORT  MATCH                                    DESTINATION
 Key ports:
 - **15001** - Outbound traffic interceptor (virtual listener)
 - **15006** - Inbound traffic interceptor
-- **Service ports** (9080, 9090, etc.) - Actual listeners for each service
+- **Service ports** (9080, 9090, etc.) - Virtual listeners for service traffic
 
-If a service port is missing from the listeners, Envoy won't handle traffic to that service. This usually means the Kubernetes Service doesn't exist or Istiod hasn't processed it yet.
+If a service port is missing from the listeners, Envoy does not have service-specific configuration for that port. Depending on your outbound traffic policy, traffic may fall through to passthrough handling or be blocked. This usually means the Kubernetes Service doesn't exist, its port naming/protocol detection is not what you expect, or Istiod hasn't processed it yet.
 
 Filter by port or address:
 
@@ -207,17 +209,16 @@ This includes the control plane address, tracing configuration, stats settings, 
 
 ## Output Formats
 
-All proxy-config commands support multiple output formats:
+proxy-config commands support multiple output formats:
 
 ```bash
-# Table (default)
-
+# Short/table summary (default for most subcommands)
 istioctl pc clusters pod.namespace
 
 # JSON
 istioctl pc clusters pod.namespace -o json
 
-# Short format (just names)
+# Explicit short/table summary
 istioctl pc clusters pod.namespace -o short
 ```
 
@@ -230,7 +231,10 @@ istioctl pc clusters pod.namespace -o json | \
 
 # Find all endpoints that are unhealthy
 istioctl pc endpoints pod.namespace -o json | \
-  jq '.[] | select(.status != "HEALTHY") | {endpoint: .endpoint, status: .status, cluster: .clusterName}'
+  jq '.[] as $cluster
+      | $cluster.hostStatuses[]
+      | select(.healthStatus.edsHealthStatus != "HEALTHY")
+      | {address: .address, status: .healthStatus.edsHealthStatus, cluster: $cluster.name}'
 ```
 
 ## Debugging Workflow
