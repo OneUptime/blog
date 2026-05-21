@@ -43,7 +43,7 @@ const istioNamespace = new k8s.core.v1.Namespace("istio-system", {
 // Install Istio base chart (CRDs)
 const istioBase = new k8s.helm.v3.Release("istio-base", {
     chart: "base",
-    version: "1.22.0",
+    version: "1.29.2",
     repositoryOpts: {
         repo: "https://istio-release.storage.googleapis.com/charts",
     },
@@ -56,21 +56,19 @@ const istioBase = new k8s.helm.v3.Release("istio-base", {
 // Install istiod
 const istiod = new k8s.helm.v3.Release("istiod", {
     chart: "istiod",
-    version: "1.22.0",
+    version: "1.29.2",
     repositoryOpts: {
         repo: "https://istio-release.storage.googleapis.com/charts",
     },
     namespace: istioNamespace.metadata.name,
     values: {
-        pilot: {
-            autoscaleEnabled: true,
-            autoscaleMin: 2,
-            autoscaleMax: 5,
-            resources: {
-                requests: {
-                    cpu: "500m",
-                    memory: "2Gi",
-                },
+        autoscaleEnabled: true,
+        autoscaleMin: 2,
+        autoscaleMax: 5,
+        resources: {
+            requests: {
+                cpu: "500m",
+                memory: "2Gi",
             },
         },
         meshConfig: {
@@ -95,7 +93,7 @@ const ingressNamespace = new k8s.core.v1.Namespace("istio-ingress", {
 
 const istioIngress = new k8s.helm.v3.Release("istio-ingress", {
     chart: "gateway",
-    version: "1.22.0",
+    version: "1.29.2",
     repositoryOpts: {
         repo: "https://istio-release.storage.googleapis.com/charts",
     },
@@ -185,7 +183,7 @@ interface IstioServiceArgs {
     allowedCallers?: string[];
 }
 
-class IstioService extends pulumi.ComponentResource {
+export class IstioService extends pulumi.ComponentResource {
     public virtualService: k8s.apiextensions.CustomResource;
     public destinationRule: k8s.apiextensions.CustomResource;
     public authPolicy?: k8s.apiextensions.CustomResource;
@@ -350,7 +348,7 @@ Use Pulumi's configuration system for environment-specific values:
 ```typescript
 const config = new pulumi.Config();
 const environment = config.require("environment");
-const istioVersion = config.get("istioVersion") || "1.22.0";
+const istioVersion = config.get("istioVersion") || "1.29.2";
 const enableCanary = config.getBoolean("enableCanary") || false;
 ```
 
@@ -358,7 +356,7 @@ Set values per stack:
 
 ```bash
 pulumi config set environment production
-pulumi config set istioVersion 1.22.0
+pulumi config set istioVersion 1.29.2
 pulumi config set enableCanary true
 ```
 
@@ -376,7 +374,7 @@ Deploy the changes:
 pulumi up
 ```
 
-Roll back to a previous state if something goes wrong:
+Restore a previous stack checkpoint if you need to repair Pulumi state:
 
 ```bash
 pulumi stack history
@@ -404,11 +402,7 @@ describe("IstioService", () => {
             port: 8080,
         });
 
-        const vs = await new Promise<any>((resolve) => {
-            svc.virtualService.spec.apply(spec => {
-                resolve(spec);
-            });
-        });
+        const vs = svc.virtualService.getInputs().spec as any;
 
         expect(vs.hosts).toContain("test-svc.default.svc.cluster.local");
     });
