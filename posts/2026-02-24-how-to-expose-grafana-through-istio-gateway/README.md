@@ -122,7 +122,7 @@ kubectl apply -f grafana-vs.yaml
 
 ## Step 4: Configure Grafana's Root URL
 
-This step is critical. Grafana needs to know its public URL for redirects, WebSocket connections, and OAuth callbacks to work correctly. If you skip this, you'll get broken login flows and CORS errors.
+This step is critical. Grafana needs to know its public URL for redirects, WebSocket Origin checks, and OAuth callbacks to work correctly. If you skip this, you'll get broken login flows and origin-check errors.
 
 If Grafana was installed as an Istio addon, edit its deployment:
 
@@ -207,7 +207,7 @@ env:
 
 ### Option C: Istio-Level Authentication
 
-Use an Istio AuthorizationPolicy to control access at the gateway level:
+Use an Istio AuthorizationPolicy to control access at the gateway level. Use `remoteIpBlocks` when Istio is configured to use `X-Forwarded-For` or PROXY protocol for the original client IP. If your gateway preserves the packet source address with `externalTrafficPolicy: Local`, use `ipBlocks` instead.
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -378,7 +378,7 @@ volumes:
 
 **Dashboard loads but data is stale**: WebSocket connections might be dropping. Check the WebSocket route configuration.
 
-**CORS errors in browser console**: Grafana's `GF_SECURITY_ALLOW_EMBEDDING` needs to be `true` if you're embedding dashboards in other pages.
+**Browser blocks embedded dashboards**: Grafana's `GF_SECURITY_ALLOW_EMBEDDING` needs to be `true` if you're embedding dashboards in frames on other pages. By default, Grafana sends `X-Frame-Options: deny`.
 
 **502 Bad Gateway after login**: Grafana might be running out of memory. Check pod resources:
 
