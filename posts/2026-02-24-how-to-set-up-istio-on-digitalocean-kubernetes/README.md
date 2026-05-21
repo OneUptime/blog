@@ -19,10 +19,10 @@ doctl kubernetes cluster create istio-cluster \
   --region nyc1 \
   --size s-4vcpu-8gb \
   --count 3 \
-  --version 1.28.2-do.0
+  --version latest
 ```
 
-Node sizing is important. The `s-4vcpu-8gb` droplet type gives you 4 vCPUs and 8GB RAM per node. This is the minimum recommended size for running Istio, because each sidecar consumes around 100m CPU and 128Mi memory. On smaller nodes, you will run into scheduling problems quickly.
+Node sizing is important. The `s-4vcpu-8gb` droplet type gives you 4 vCPUs and 8GB RAM per node. This is a practical starting size for running Istio because sidecar resource use adds up across workloads. On smaller nodes, you can run into scheduling problems quickly.
 
 Get your kubeconfig:
 
@@ -69,7 +69,8 @@ spec:
       k8s:
         serviceAnnotations:
           service.beta.kubernetes.io/do-loadbalancer-protocol: "tcp"
-          service.beta.kubernetes.io/do-loadbalancer-size-slug: "lb-small"
+          service.beta.kubernetes.io/do-loadbalancer-size-unit: "1"
+          service.beta.kubernetes.io/do-loadbalancer-override-health-check: "true"
           service.beta.kubernetes.io/do-loadbalancer-healthcheck-port: "15021"
           service.beta.kubernetes.io/do-loadbalancer-healthcheck-path: "/healthz/ready"
           service.beta.kubernetes.io/do-loadbalancer-healthcheck-protocol: "http"
@@ -113,7 +114,7 @@ The DigitalOcean cloud controller manager will automatically provision a Digital
 
 ## Configuring the DigitalOcean Load Balancer
 
-DigitalOcean Load Balancers are Layer 4 (TCP/UDP), which is actually ideal for Istio since it lets Istio handle TLS termination. You can configure the load balancer through service annotations:
+DigitalOcean Load Balancers can be configured with TCP forwarding, which is ideal for Istio when you want Istio to handle TLS termination. You can configure the load balancer through service annotations:
 
 ```yaml
 serviceAnnotations:
@@ -121,12 +122,13 @@ serviceAnnotations:
   service.beta.kubernetes.io/do-loadbalancer-protocol: "tcp"
 
   # Set the load balancer size
-  service.beta.kubernetes.io/do-loadbalancer-size-slug: "lb-small"
+  service.beta.kubernetes.io/do-loadbalancer-size-unit: "1"
 
   # Enable proxy protocol to preserve client IP
   service.beta.kubernetes.io/do-loadbalancer-enable-proxy-protocol: "true"
 
   # Configure health checks
+  service.beta.kubernetes.io/do-loadbalancer-override-health-check: "true"
   service.beta.kubernetes.io/do-loadbalancer-healthcheck-port: "15021"
   service.beta.kubernetes.io/do-loadbalancer-healthcheck-path: "/healthz/ready"
   service.beta.kubernetes.io/do-loadbalancer-healthcheck-protocol: "http"
@@ -156,16 +158,17 @@ spec:
     labels:
       istio: ingressgateway
   configPatches:
-  - applyTo: LISTENER
+  - applyTo: LISTENER_FILTER
     match:
       context: GATEWAY
+      listener:
+        listenerFilter: envoy.filters.listener.tls_inspector
     patch:
-      operation: MERGE
+      operation: INSERT_BEFORE
       value:
-        listenerFilters:
-        - name: envoy.filters.listener.proxy_protocol
-          typedConfig:
-            "@type": type.googleapis.com/envoy.extensions.filters.listener.proxy_protocol.v3.ProxyProtocol
+        name: envoy.filters.listener.proxy_protocol
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.filters.listener.proxy_protocol.v3.ProxyProtocol
 ```
 
 ## Setting Up TLS
@@ -189,8 +192,7 @@ metadata:
   namespace: istio-system
 spec:
   selector:
-    matchLabels:
-      istio: ingressgateway
+    istio: ingressgateway
   servers:
   - port:
       number: 443
@@ -219,7 +221,7 @@ Install cert-manager for automated Let's Encrypt certificates:
 helm repo add jetstack https://charts.jetstack.io
 helm install cert-manager jetstack/cert-manager \
   -n cert-manager --create-namespace \
-  --set installCRDs=true
+  --set crds.enabled=true
 ```
 
 Create a ClusterIssuer using DigitalOcean DNS for ACME challenges:
@@ -366,9 +368,10 @@ DigitalOcean droplets have fixed CPU and memory. Unlike AWS or GCP, you cannot i
 Set up cluster autoscaling if your workload varies:
 
 ```bash
-doctl kubernetes cluster update istio-cluster \
-  --auto-upgrade \
-  --node-pool "name=default;min-nodes=3;max-nodes=6;auto-scale=true"
+doctl kubernetes cluster node-pool update istio-cluster default \
+  --auto-scale \
+  --min-nodes 3 \
+  --max-nodes 6
 ```
 
 DigitalOcean Kubernetes is a great platform for Istio if you want a simpler, more cost-effective setup compared to the big cloud providers. The TCP load balancer works well with Istio's TLS management, cert-manager handles certificate automation, and the straightforward networking model means fewer surprises in production.
