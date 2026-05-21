@@ -23,6 +23,11 @@ You need the same infrastructure as global rate limiting: Redis and the rate lim
 Deploy Redis:
 
 ```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: rate-limit
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -63,7 +68,7 @@ spec:
   - port: 6379
 ```
 
-Note the `--save 60 1` flag. For quotas with longer time windows, you want Redis persistence so counters survive restarts.
+Note the `--save 60 1` flag. For quotas with longer time windows, you want Redis snapshots so counters survive Redis process restarts. The `emptyDir` volume in this example is fine for a demo, but use a PersistentVolumeClaim or managed Redis in production so counters also survive Pod rescheduling.
 
 ## Defining Quota Rules
 
@@ -82,29 +87,37 @@ data:
     # Free tier: 1000 requests per day
     - key: api_tier
       value: free
-      rate_limit:
-        unit: day
-        requests_per_unit: 1000
+      descriptors:
+      - key: client_id
+        rate_limit:
+          unit: day
+          requests_per_unit: 1000
 
     # Basic tier: 10000 requests per day
     - key: api_tier
       value: basic
-      rate_limit:
-        unit: day
-        requests_per_unit: 10000
+      descriptors:
+      - key: client_id
+        rate_limit:
+          unit: day
+          requests_per_unit: 10000
 
     # Premium tier: 100000 requests per day
     - key: api_tier
       value: premium
-      rate_limit:
-        unit: day
-        requests_per_unit: 100000
+      descriptors:
+      - key: client_id
+        rate_limit:
+          unit: day
+          requests_per_unit: 100000
 
     # Default for unrecognized clients
     - key: api_tier
-      rate_limit:
-        unit: day
-        requests_per_unit: 500
+      descriptors:
+      - key: client_id
+        rate_limit:
+          unit: day
+          requests_per_unit: 500
 ```
 
 ## Deploying the Rate Limit Service for Quotas
@@ -127,7 +140,8 @@ spec:
     spec:
       containers:
       - name: ratelimit
-        image: envoyproxy/ratelimit:master
+        image: docker.io/envoyproxy/ratelimit:30a4ce1a
+        command: ["/bin/ratelimit"]
         ports:
         - containerPort: 8080
         - containerPort: 8081
@@ -144,6 +158,10 @@ spec:
           value: redis.rate-limit.svc.cluster.local:6379
         - name: USE_STATSD
           value: "false"
+        - name: RUNTIME_WATCH_ROOT
+          value: "false"
+        - name: RUNTIME_IGNOREDOTFILES
+          value: "true"
         volumeMounts:
         - name: config
           mountPath: /data/ratelimit/config
@@ -253,6 +271,9 @@ spec:
           - request_headers:
               header_name: "x-api-tier"
               descriptor_key: api_tier
+          - request_headers:
+              header_name: "x-api-client"
+              descriptor_key: client_id
 ```
 
 The `enable_x_ratelimit_headers` setting adds standard rate limit headers to responses so clients can see their quota usage.
@@ -268,6 +289,7 @@ metadata:
   name: api-key-resolver
   namespace: default
 spec:
+  priority: -10
   workloadSelector:
     labels:
       app: api-gateway
@@ -299,9 +321,11 @@ spec:
               local api_key = request_handle:headers():get("x-api-key")
               if api_key then
                 local tier = tier_map[api_key] or "free"
-                request_handle:headers():add("x-api-tier", tier)
+                request_handle:headers():replace("x-api-tier", tier)
+                request_handle:headers():replace("x-api-client", api_key)
               else
-                request_handle:headers():add("x-api-tier", "free")
+                request_handle:headers():replace("x-api-tier", "free")
+                request_handle:headers():replace("x-api-client", "anonymous")
               end
             end
 ```
@@ -342,7 +366,7 @@ You should see headers like:
 ```text
 x-ratelimit-limit: 1000
 x-ratelimit-remaining: 985
-x-ratelimit-reset: 3600
+x-ratelimit-reset: 86340
 ```
 
 ## Monitoring Quota Usage
@@ -357,8 +381,8 @@ kubectl exec api-gateway-pod -c istio-proxy -- \
 You can also query Redis directly to see current counters:
 
 ```bash
-kubectl exec -n rate-limit redis-pod -- redis-cli keys "*"
-kubectl exec -n rate-limit redis-pod -- redis-cli get "api-quotas_api_tier_free_1234567890"
+kubectl exec -n rate-limit redis-pod -- redis-cli --scan
+kubectl exec -n rate-limit redis-pod -- redis-cli get "<key-from-scan>"
 ```
 
 ## Handling Quota Exhaustion Gracefully
@@ -368,19 +392,27 @@ When a client runs out of quota, return helpful information. The rate limit head
 Consider also providing a quota check endpoint that does not consume quota:
 
 ```yaml
-# In your rate limit config, exclude the quota check path
-descriptors:
-- key: api_tier
-  value: free
-  rate_limit:
-    unit: day
-    requests_per_unit: 1000
-  descriptors:
-  - key: PATH
-    value: "/api/quota-status"
-    rate_limit:
-      unit: day
-      requests_per_unit: 100000
+# In your EnvoyFilter, attach rate limits only to API routes that should consume quota.
+# Leave the /api/quota-status route without this route-level rate_limits block.
+- applyTo: HTTP_ROUTE
+  match:
+    context: SIDECAR_INBOUND
+    routeConfiguration:
+      vhost:
+        route:
+          name: api-data
+  patch:
+    operation: MERGE
+    value:
+      route:
+        rate_limits:
+        - actions:
+          - request_headers:
+              header_name: "x-api-tier"
+              descriptor_key: api_tier
+          - request_headers:
+              header_name: "x-api-client"
+              descriptor_key: client_id
 ```
 
 ## Summary
