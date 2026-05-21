@@ -14,7 +14,7 @@ This is the "circuit breaker" in the classic sense - it detects failures and sto
 
 ## How Outlier Detection Works
 
-Envoy tracks the error rate of each upstream instance (pod). When an instance exceeds the configured error threshold, it gets ejected from the pool for a specified duration. The process looks like this:
+Envoy tracks failure counters for each upstream instance (pod). When an instance exceeds the configured error threshold, it gets ejected from the pool for a specified duration. The process looks like this:
 
 ```mermaid
 flowchart TD
@@ -29,12 +29,12 @@ flowchart TD
     G -->|No| A
 ```
 
-Each subsequent ejection multiplies the ejection time. First ejection: 30s. Second: 60s. Third: 90s. This progressive backoff gives failing instances more time to recover.
+Each subsequent ejection multiplies the ejection time, up to Envoy's maximum ejection time. First ejection: 30s. Second: 60s. Third: 90s. This progressive backoff gives failing instances more time to recover.
 
 ## Basic Outlier Detection Configuration
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: payment-service
@@ -51,7 +51,7 @@ spec:
 
 This configuration:
 - Ejects an instance after 5 consecutive 5xx errors
-- Checks for outliers every 10 seconds
+- Runs outlier detection sweeps every 10 seconds
 - Keeps ejected instances out for at least 30 seconds
 - Never ejects more than 50% of instances at once
 
@@ -75,7 +75,7 @@ outlierDetection:
   consecutiveGatewayErrors: 3
 ```
 
-Similar to `consecutive5xxErrors`, but only counts 502, 503, and 504 errors. This is useful when you want to distinguish between gateway-level errors (which often indicate infrastructure problems) and application-level 500 errors (which might be expected for certain inputs).
+Similar to `consecutive5xxErrors`, but for HTTP traffic it only counts 502, 503, and 504 responses. This is useful when you want to distinguish between gateway-level errors (which often indicate infrastructure problems) and application-level 500 errors (which might be expected for certain inputs).
 
 ### interval
 
@@ -84,9 +84,9 @@ outlierDetection:
   interval: 10s
 ```
 
-How often the outlier detection algorithm runs. Every 10 seconds, Envoy checks whether any instances have exceeded their error threshold.
+How often Envoy runs the outlier detection sweep. Every 10 seconds, Envoy can run periodic analysis and return hosts whose ejection time has elapsed. Consecutive 5xx ejections happen as failures are observed, not only during the sweep.
 
-Shorter intervals (5s) detect failures faster but add more processing overhead. Longer intervals (30s) are gentler on resources but slower to react. For most cases, 10-15 seconds is fine.
+Shorter intervals (5s) return recovered hosts sooner and affect periodic outlier checks, but add more processing overhead. Longer intervals (30s) are gentler on resources but slower to re-admit hosts. For most cases, 10-15 seconds is fine.
 
 ### baseEjectionTime
 
@@ -95,11 +95,11 @@ outlierDetection:
   baseEjectionTime: 30s
 ```
 
-How long an ejected instance stays out of the pool. The actual ejection time increases with each consecutive ejection: `baseEjectionTime * number_of_ejections`. So with a 30s base:
+How long an ejected instance stays out of the pool. The actual ejection time increases with each consecutive ejection: `baseEjectionTime * number_of_ejections`, up to Envoy's maximum ejection time. So with a 30s base:
 - First ejection: 30s
 - Second ejection: 60s
 - Third ejection: 90s
-- And so on
+- And so on, up to the maximum ejection time
 
 ### maxEjectionPercent
 
@@ -117,7 +117,7 @@ With 4 pods and `maxEjectionPercent: 50`, at most 2 pods can be ejected. The oth
 Here is a configuration tuned for production use:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: order-service
@@ -149,7 +149,7 @@ The `minHealthPercent: 30` field is important. It says: if fewer than 30% of ins
 For services where uptime is critical, be aggressive with ejection:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: auth-service
@@ -164,14 +164,14 @@ spec:
       maxEjectionPercent: 30
 ```
 
-Eject after just 2 consecutive errors, check frequently, and keep ejected instances out longer. The low `maxEjectionPercent` ensures you always have capacity.
+Eject after just 2 consecutive errors, run sweeps frequently, and keep ejected instances out longer. The low `maxEjectionPercent` ensures you always have capacity.
 
 ### Batch Processing Services
 
 For services where occasional errors are expected:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: batch-processor
@@ -186,7 +186,7 @@ spec:
       maxEjectionPercent: 60
 ```
 
-Higher error threshold, less frequent checks, shorter ejection time. This tolerates more failures before acting and lets instances back in sooner.
+Higher error threshold, less frequent sweeps, shorter ejection time. This tolerates more failures before acting and lets instances back in sooner.
 
 ## Verifying Outlier Detection
 
