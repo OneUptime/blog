@@ -23,6 +23,14 @@ AGIC runs as a pod in your AKS cluster and configures the Application Gateway ba
 Enable AGIC on your AKS cluster:
 
 ```bash
+# Create a public IP for Application Gateway
+az network public-ip create \
+  --name istio-appgw-pip \
+  --resource-group istio-rg \
+  --location eastus \
+  --sku Standard \
+  --allocation-method Static
+
 # Create an Application Gateway
 
 az network application-gateway create \
@@ -33,9 +41,10 @@ az network application-gateway create \
   --capacity 2 \
   --vnet-name istio-vnet \
   --subnet appgw-subnet \
+  --public-ip-address istio-appgw-pip \
   --http-settings-port 80 \
   --http-settings-protocol Http \
-  --frontend-port 443
+  --frontend-port 80
 
 # Enable AGIC addon
 az aks enable-addons \
@@ -75,7 +84,7 @@ metadata:
     appgw.ingress.kubernetes.io/health-probe-port: "15021"
     appgw.ingress.kubernetes.io/health-probe-status-codes: "200"
     appgw.ingress.kubernetes.io/ssl-redirect: "true"
-    appgw.ingress.kubernetes.io/waf-policy-for-path: "/subscriptions/<sub>/resourceGroups/istio-rg/providers/Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies/istio-waf"
+    appgw.ingress.kubernetes.io/waf-policy-for-path: "/subscriptions/<sub>/resourceGroups/istio-rg/providers/Microsoft.Network/applicationGatewayWebApplicationFirewallPolicies/istio-waf"
 spec:
   tls:
   - hosts:
@@ -104,11 +113,10 @@ metadata:
   namespace: istio-system
 spec:
   selector:
-    matchLabels:
-      istio: ingressgateway
+    istio: ingressgateway
   servers:
   - port:
-      number: 8080
+      number: 80
       name: http
       protocol: HTTP
     hosts:
@@ -130,15 +138,6 @@ az network application-gateway address-pool create \
   --name istio-backend-pool \
   --servers $ISTIO_IP
 
-# Create an HTTP settings that health checks the Istio gateway
-az network application-gateway http-settings create \
-  --gateway-name istio-appgw \
-  --resource-group istio-rg \
-  --name istio-http-settings \
-  --port 80 \
-  --protocol Http \
-  --probe istio-health-probe
-
 # Create a health probe
 az network application-gateway probe create \
   --gateway-name istio-appgw \
@@ -149,6 +148,15 @@ az network application-gateway probe create \
   --host 127.0.0.1 \
   --path /healthz/ready \
   --port 15021
+
+# Create HTTP settings that use the Istio gateway and the custom probe
+az network application-gateway http-settings create \
+  --gateway-name istio-appgw \
+  --resource-group istio-rg \
+  --name istio-http-settings \
+  --port 80 \
+  --protocol Http \
+  --probe istio-health-probe
 ```
 
 In this case, the Istio gateway service is a standard LoadBalancer type with an Azure internal or external load balancer, and Application Gateway sits in front as an additional layer.
@@ -161,11 +169,6 @@ Set up the WAF policy for Application Gateway:
 # Create a WAF policy
 az network application-gateway waf-policy create \
   --name istio-waf \
-  --resource-group istio-rg
-
-# Enable OWASP rule set
-az network application-gateway waf-policy managed-rule rule-set add \
-  --policy-name istio-waf \
   --resource-group istio-rg \
   --type OWASP \
   --version 3.2
@@ -179,11 +182,25 @@ az network application-gateway waf-policy custom-rule create \
   --rule-type MatchRule \
   --action Block
 
-# Associate the WAF policy with Application Gateway
-az network application-gateway waf-policy set \
-  --gateway-name istio-appgw \
+az network application-gateway waf-policy custom-rule match-condition add \
+  --policy-name istio-waf \
   --resource-group istio-rg \
-  --policy-name istio-waf
+  --name block-bad-bots \
+  --match-variables RequestHeaders.User-Agent \
+  --operator Contains \
+  --values BadBot
+
+# Associate the WAF policy with Application Gateway
+WAF_POLICY_ID=$(az network application-gateway waf-policy show \
+  --name istio-waf \
+  --resource-group istio-rg \
+  --query id \
+  -o tsv)
+
+az network application-gateway update \
+  --name istio-appgw \
+  --resource-group istio-rg \
+  --set firewallPolicy.id=$WAF_POLICY_ID
 ```
 
 ## Preserving Client IP
@@ -229,6 +246,7 @@ If you need encryption between Application Gateway and the Istio gateway (re-enc
 annotations:
   appgw.ingress.kubernetes.io/backend-protocol: "https"
   appgw.ingress.kubernetes.io/backend-hostname: "app.example.com"
+  appgw.ingress.kubernetes.io/appgw-trusted-root-certificate: "istio-backend-root"
 ```
 
 And configure the Istio Gateway for TLS:
@@ -241,11 +259,10 @@ metadata:
   namespace: istio-system
 spec:
   selector:
-    matchLabels:
-      istio: ingressgateway
+    istio: ingressgateway
   servers:
   - port:
-      number: 8443
+      number: 443
       name: https
       protocol: HTTPS
     tls:
@@ -255,7 +272,7 @@ spec:
     - "app.example.com"
 ```
 
-You need to upload the Istio gateway's certificate to Application Gateway as a trusted root certificate so it can verify the backend connection.
+You need to upload the Istio gateway's root certificate to Application Gateway as a trusted root certificate so it can verify the backend connection, and route the Ingress backend to the Istio service's HTTPS port.
 
 ## Session Affinity
 
