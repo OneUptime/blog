@@ -20,7 +20,7 @@ Istio resources have specific scoping rules. Some resources are namespace-scoped
 - **DestinationRules**: Should be in the same namespace as the service they target, or in the root namespace.
 - **Gateways**: Typically in `istio-system` or a dedicated gateway namespace, since they bind to specific load balancers.
 - **AuthorizationPolicies**: Apply to the namespace they are created in. A policy in namespace `foo` applies to workloads in `foo`.
-- **PeerAuthentication**: Namespace-scoped. A mesh-wide policy goes in `istio-system`.
+- **PeerAuthentication**: Namespace-scoped. A mesh-wide policy goes in the mesh root namespace, which is `istio-system` by default.
 - **Sidecar**: Namespace-scoped. Controls the egress behavior of sidecars in that namespace.
 
 ## Pattern 1: Co-locate with the Service
@@ -46,7 +46,7 @@ namespaces/
 Example VirtualService in the same namespace as the service:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: orders-service
@@ -75,7 +75,7 @@ A common production pattern uses a centralized Gateway resource in `istio-system
 Gateway in the central namespace:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: main-gateway
@@ -98,7 +98,7 @@ spec:
 VirtualService in the application namespace referencing the central Gateway:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: orders-routes
@@ -138,10 +138,10 @@ namespaces/
     orders-dr.yaml
 ```
 
-Use the Sidecar resource to limit cross-namespace visibility:
+Use the Sidecar resource to limit cross-namespace configuration visibility:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -154,7 +154,7 @@ spec:
         - "staging/*"
 ```
 
-This prevents staging workloads from accidentally discovering and calling production services.
+This keeps staging sidecars from receiving production service configuration by default. It is a configuration-scoping tool, not a security boundary; use authorization policy, network policy, or egress controls if you need to block traffic.
 
 ## Pattern 4: Shared Infrastructure Namespace
 
@@ -175,7 +175,7 @@ Put shared resources there:
 
 ```yaml
 # Shared external service entry
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-payment-api
@@ -194,7 +194,7 @@ spec:
 Teams reference the shared resources from their own namespaces:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: payment-routing
@@ -251,7 +251,7 @@ There are a few things that trip people up with namespace organization:
 **Host conflicts**: If two VirtualServices in different namespaces claim the same host, Istio will merge them. This can cause unexpected routing behavior. Use `exportTo` to limit the scope:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service-routes
@@ -269,10 +269,10 @@ spec:
 
 The `exportTo: ["."]` means this VirtualService is only visible within the `team-a` namespace.
 
-**DestinationRule scope**: A DestinationRule for a service should live in the same namespace as the service, or you need to use the fully qualified hostname:
+**DestinationRule scope**: A DestinationRule for a service should live in the same namespace as the service, the client namespace for client-specific policy, or the mesh root namespace for global policy. Use fully qualified hostnames to avoid short-name resolution surprises:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: orders-service
@@ -285,7 +285,7 @@ spec:
         h2UpgradePolicy: DEFAULT
 ```
 
-**Mesh-wide policies**: PeerAuthentication and AuthorizationPolicy in `istio-system` apply mesh-wide. Be very careful about what goes there, since a mistake affects every namespace.
+**Mesh-wide policies**: PeerAuthentication and AuthorizationPolicy in the mesh root namespace (`istio-system` by default) apply mesh-wide. Be very careful about what goes there, since a mistake affects every namespace.
 
 ## Practical Directory Structure
 
@@ -314,4 +314,4 @@ This makes it clear who owns what and makes code reviews straightforward. When s
 
 ## Summary
 
-Good namespace organization for Istio comes down to clear ownership, proper scoping with `exportTo`, and RBAC enforcement. Start with co-locating resources with their services, centralize Gateways and mesh-wide policies, and use the Sidecar resource to limit cross-namespace visibility. The exact pattern depends on your team structure, but these building blocks will get you to a maintainable setup.
+Good namespace organization for Istio comes down to clear ownership, proper scoping with `exportTo`, and RBAC enforcement. Start with co-locating resources with their services, centralize Gateways and mesh-wide policies, and use the Sidecar resource to limit cross-namespace configuration visibility. The exact pattern depends on your team structure, but these building blocks will get you to a maintainable setup.
