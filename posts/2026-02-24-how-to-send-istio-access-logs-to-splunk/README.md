@@ -35,42 +35,28 @@ splunkObservability:
   realm: us0
 
 splunkPlatform:
-  endpoint: https://splunk-hec.example.com:8088/services/collector
+  endpoint: https://splunk-hec.example.com:8088/services/collector/event
   token: <SPLUNK_HEC_TOKEN>
   index: istio_access_logs
   insecureSkipVerify: false
 
+autodetect:
+  istio: true
+
 logsCollection:
-  enabled: true
   containers:
     excludePaths:
-      - /var/log/containers/*kube-system*.log
+      - /var/log/pods/kube-system_*/*/*.log
     extraOperators:
       - type: filter
-        expr: 'body matches "istio-proxy"'
-
-agent:
-  config:
-    receivers:
-      filelog/istio:
-        include:
-          - /var/log/containers/*istio-proxy*.log
-        start_at: end
-        operators:
-          - type: json_parser
-            timestamp:
-              parse_from: attributes.time
-              layout: '%Y-%m-%dT%H:%M:%S.%LZ'
-          - type: json_parser
-            parse_from: attributes.log
-            if: 'attributes.log != nil and attributes.log matches "^{"'
-
-    service:
-      pipelines:
-        logs/istio:
-          receivers: [filelog/istio]
-          processors: [batch, resourcedetection, resource]
-          exporters: [splunk_hec]
+        expr: 'resource["k8s.container.name"] == "istio-proxy"'
+      - type: json_parser
+        if: 'body matches "^\\{"'
+        parse_from: body
+        parse_to: body
+        timestamp:
+          parse_from: body.timestamp
+          layout: '%Y-%m-%dT%H:%M:%S.%LZ'
 ```
 
 Install it:
@@ -120,16 +106,16 @@ data:
         Skip_Long_Lines   On
 
     [FILTER]
+        Name    grep
+        Match   istio.*
+        Regex   log ^\{
+
+    [FILTER]
         Name         kubernetes
         Match        istio.*
         Merge_Log    On
         Keep_Log     Off
         Labels       On
-
-    [FILTER]
-        Name    grep
-        Match   istio.*
-        Regex   log ^{
 
     [OUTPUT]
         Name            splunk
@@ -137,7 +123,7 @@ data:
         Host            splunk-hec.example.com
         Port            8088
         Splunk_Token    ${SPLUNK_HEC_TOKEN}
-        Splunk_Send_Raw On
+        Splunk_Send_Raw Off
         TLS             On
         TLS.Verify      On
         event_sourcetype istio:access:json
@@ -201,7 +187,7 @@ spec:
 
 ## Option 3: Splunk Connect for Kubernetes
 
-Splunk provides an official Helm chart called Splunk Connect for Kubernetes (SC4K) that handles log collection:
+Splunk Connect for Kubernetes (SC4K) is a legacy Splunk Helm chart for Kubernetes log collection. It reached end of support on January 1, 2024, so prefer the Splunk OpenTelemetry Collector for new deployments. If you still run SC4K, configure it like this:
 
 ```bash
 helm repo add splunk https://splunk.github.io/splunk-connect-for-kubernetes/
@@ -221,13 +207,19 @@ global:
 
 splunk-kubernetes-logging:
   enabled: true
+  fluentd:
+    path: /var/log/containers/*istio-proxy*.log
   containers:
     logFormatType: cri
   customFilters:
     IstioAccessFilter:
-      tag: "**istio-proxy**"
+      tag: "tail.containers.**"
       type: grep
-      body: '/^{/'
+      body: |
+        <regexp>
+          key log
+          pattern /^\{/
+        </regexp>
 ```
 
 ```bash
