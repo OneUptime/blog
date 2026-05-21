@@ -10,7 +10,7 @@ Description: How to configure istiod push throttling to control the rate of xDS 
 
 Every time a service endpoint changes, a VirtualService is updated, or a new pod joins the mesh, istiod needs to push updated configuration to the affected Envoy proxies. In a busy cluster, these events can cascade into hundreds or thousands of pushes per second. Without throttling, istiod can get overwhelmed, causing high latency, memory spikes, and even OOM kills.
 
-Push throttling controls how istiod batches and rate-limits these configuration updates. Configuring it properly keeps the control plane healthy without sacrificing configuration propagation speed.
+Push throttling and debouncing control how istiod batches and rate-limits these configuration updates. Configuring them properly keeps the control plane healthy without sacrificing configuration propagation speed.
 
 ## How Istiod Pushes Work
 
@@ -20,12 +20,12 @@ When a change is detected (endpoint update, config change, etc.), istiod does no
 2. Istiod debounces the change, waiting briefly for more changes to arrive
 3. After the debounce window, istiod starts a push cycle
 4. During the push cycle, istiod generates xDS configuration and sends it to affected proxies
-5. Pushes are rate-limited to prevent overloading istiod or the proxies
+5. Push concurrency can be limited to prevent overloading istiod or the proxies
 
 Check current push activity:
 
 ```bash
-kubectl exec -n istio-system deploy/istiod -- curl -s localhost:15014/metrics | grep pilot_xds_push
+kubectl exec -n istio-system deploy/istiod -- curl -s localhost:15014/metrics | grep -E 'pilot_push_triggers|pilot_xds_push_time|pilot_proxy_convergence_time'
 ```
 
 ## Debounce Configuration
@@ -67,12 +67,9 @@ Increasing `PILOT_DEBOUNCE_AFTER` reduces push frequency but adds latency to con
 Monitor debounce behavior:
 
 ```promql
-# Push events that were debounced
+# Debounce delay p99
 
-rate(pilot_debounce_send[5m])
-
-# How often the max debounce time was hit
-rate(pilot_debounce_max[5m])
+histogram_quantile(0.99, sum(rate(pilot_debounce_time_bucket[5m])) by (le))
 ```
 
 ## Push Throttling
@@ -91,7 +88,7 @@ spec:
           value: "100"
 ```
 
-The default value is 0, which means no limit. Setting it to 100 means istiod will push to at most 100 proxies concurrently during a push cycle.
+The default value is 0, which means Istio automatically determines the limit based on machine size. Setting it to 100 means istiod will push to at most 100 proxies concurrently during a push cycle.
 
 When to use push throttling:
 
@@ -99,7 +96,7 @@ When to use push throttling:
 - After istiod restarts when all proxies reconnect simultaneously
 - When istiod is CPU-bound and push generation is causing latency
 
-The tradeoff is that throttling slows down configuration convergence. With 1000 proxies and a throttle of 100, a full push takes at least 10 rounds.
+The tradeoff is that throttling slows down configuration convergence. With 1000 proxies and a throttle of 100, a full push needs roughly 10 batches of proxy work.
 
 ## EDS Debouncing
 
@@ -200,8 +197,8 @@ spec:
 Track these metrics to know if your throttling settings are appropriate:
 
 ```promql
-# Push rate
-sum(rate(pilot_xds_pushes[5m])) by (type)
+# Push trigger rate
+sum(rate(pilot_push_triggers[5m])) by (reason)
 
 # Push latency p99
 histogram_quantile(0.99, sum(rate(pilot_xds_push_time_bucket[5m])) by (le))
@@ -209,15 +206,14 @@ histogram_quantile(0.99, sum(rate(pilot_xds_push_time_bucket[5m])) by (le))
 # Proxy convergence time (full push cycle)
 histogram_quantile(0.99, sum(rate(pilot_proxy_convergence_time_bucket[5m])) by (le))
 
-# Push queue size
-pilot_push_triggers
+# Proxy queue latency p99
+histogram_quantile(0.99, sum(rate(pilot_proxy_queue_time_bucket[5m])) by (le))
 
 # Debounce metrics
-rate(pilot_debounce_send[5m])
-rate(pilot_debounce_max[5m])
+histogram_quantile(0.99, sum(rate(pilot_debounce_time_bucket[5m])) by (le))
 ```
 
-If `pilot_proxy_convergence_time` is consistently high (above 5 seconds), your throttling might be too aggressive. If istiod CPU and memory spike during pushes, increase throttling.
+If p99 `pilot_proxy_convergence_time` is consistently high (above 5 seconds), your throttling might be too aggressive. If istiod CPU and memory spike during pushes, lower `PILOT_PUSH_THROTTLE` to reduce push concurrency.
 
 ## Handling Burst Scenarios
 
