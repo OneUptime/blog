@@ -27,7 +27,7 @@ Header-based classification is the most flexible. You add the header at the edge
 Configure your Istio Gateway and VirtualService to add priority headers based on the incoming path:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-gateway
@@ -51,7 +51,6 @@ spec:
     route:
     - destination:
         host: api-service
-        subset: default
   # Medium priority routes
   - match:
     - uri:
@@ -65,7 +64,6 @@ spec:
     route:
     - destination:
         host: api-service
-        subset: default
   # Low priority (everything else)
   - headers:
       request:
@@ -74,7 +72,6 @@ spec:
     route:
     - destination:
         host: api-service
-        subset: default
 ```
 
 ## Separate Connection Pools per Priority
@@ -82,7 +79,7 @@ spec:
 The real power comes from using different DestinationRule settings for different priority levels. Create separate subsets with different connection pool and outlier detection settings:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: backend-service
@@ -144,7 +141,7 @@ High priority gets more connections (200), a larger pending request queue (200),
 Now route traffic to the correct subset based on the priority header:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: backend-service
@@ -153,7 +150,8 @@ spec:
   hosts:
   - backend-service
   http:
-  - match:
+  - name: high-priority
+    match:
     - headers:
         x-priority:
           exact: "high"
@@ -166,7 +164,8 @@ spec:
       attempts: 3
       perTryTimeout: 10s
       retryOn: 5xx,reset,connect-failure
-  - match:
+  - name: medium-priority
+    match:
     - headers:
         x-priority:
           exact: "medium"
@@ -179,7 +178,8 @@ spec:
       attempts: 2
       perTryTimeout: 7s
       retryOn: 5xx,reset,connect-failure
-  - route:
+  - name: low-priority
+    route:
     - destination:
         host: backend-service
         subset: low-priority
@@ -193,7 +193,7 @@ Notice the different timeout and retry configurations. High priority gets longer
 
 ## Rate Limiting by Priority
 
-For more explicit control, add rate limiting using Istio's local rate limiting via EnvoyFilter. This limits the requests per second for each priority tier:
+For more explicit control, add rate limiting using Istio's local rate limiting via EnvoyFilter. When you run separate workload pools for each priority tier, this limits the low-priority pool to 100 requests per minute per proxy:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -205,6 +205,7 @@ spec:
   workloadSelector:
     labels:
       app: backend-service
+      priority: low
   configPatches:
   - applyTo: HTTP_FILTER
     match:
@@ -237,9 +238,9 @@ spec:
                 numerator: 100
                 denominator: HUNDRED
             response_headers_to_add:
-            - append_action: OVERWRITE_IF_EXISTS_OR_ADD
+            - append: false
               header:
-                key: x-rate-limited
+                key: x-local-rate-limit
                 value: "true"
 ```
 
@@ -312,16 +313,16 @@ Track how each priority tier is performing using Prometheus queries:
 ```bash
 # Request rate by priority
 
-sum(rate(istio_requests_total{destination_service="backend-service.production.svc.cluster.local"}[5m])) by (request_headers_x_priority)
+sum(rate(istio_requests_total{destination_service="backend-service.production.svc.cluster.local"}[5m])) by (request_priority)
 
 # Error rate by priority
-sum(rate(istio_requests_total{destination_service="backend-service.production.svc.cluster.local",response_code=~"5.*"}[5m])) by (request_headers_x_priority)
+sum(rate(istio_requests_total{destination_service="backend-service.production.svc.cluster.local",response_code=~"5.*"}[5m])) by (request_priority)
 ```
 
 Note that custom request headers are not captured in Istio metrics by default. You need to configure Istio telemetry to include them. This is done through the Telemetry API:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: custom-metrics
