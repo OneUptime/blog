@@ -8,7 +8,7 @@ Description: Understanding Istio's secure naming mechanism that maps service ide
 
 ---
 
-Secure naming is an Istio security feature that prevents a compromised workload from impersonating another service. It works by mapping service identities (SPIFFE IDs) to service names, ensuring that the certificate presented during mTLS actually belongs to the service the client intended to reach. Without secure naming, a compromised pod could intercept DNS and redirect traffic to itself while presenting a valid mesh certificate.
+Secure naming is an Istio security feature that prevents a compromised workload from impersonating another service. It works by mapping service identities (SPIFFE IDs) to service names, ensuring that the certificate presented during mTLS actually belongs to the service the client intended to reach. Without secure naming, a compromised pod could intercept DNS and redirect HTTP/HTTPS traffic to itself while presenting a valid mesh certificate.
 
 ## The Spoofing Problem
 
@@ -25,7 +25,7 @@ The mTLS handshake succeeds because Service C's certificate is legitimately sign
 
 ## How Secure Naming Works
 
-Secure naming adds an extra validation step after the mTLS handshake:
+Secure naming adds an extra validation step during mTLS certificate validation:
 
 1. Service A resolves `service-b.default.svc.cluster.local` and connects
 2. The mTLS handshake happens, and Service A gets the peer's SPIFFE identity from the certificate SAN
@@ -47,7 +47,7 @@ When Istiod configures Envoy, it tells Envoy which SPIFFE identities are allowed
 
 ```bash
 istioctl proxy-config cluster my-pod \
-  --fqdn "outbound|8080||service-b.default.svc.cluster.local" -o json
+  --fqdn service-b.default.svc.cluster.local --port 8080 -o json
 ```
 
 In the output, look for the `transportSocketMatches` or `transportSocket` section, which contains the expected Subject Alternative Names:
@@ -154,7 +154,7 @@ You can verify secure naming is working by checking what SANs Envoy expects for 
 # Check the expected SANs for outbound connections to service-b
 
 istioctl proxy-config cluster service-a-pod \
-  --fqdn "outbound|8080||service-b.default.svc.cluster.local" -o json | \
+  --fqdn service-b.default.svc.cluster.local --port 8080 -o json | \
   python3 -c "
 import json, sys
 data = json.load(sys.stdin)
@@ -176,6 +176,8 @@ To test that secure naming actually blocks connections, you'd need to:
 2. Try to redirect traffic to it (e.g., by modifying endpoints)
 3. Verify the connection is rejected
 
+This test applies to traffic where Envoy can identify the intended service, such as HTTP/HTTPS. For non-HTTP/HTTPS traffic, Istio's secure naming does not protect against DNS spoofing that changes the destination IP before the client-side proxy sees the traffic.
+
 In practice, you can check the Envoy logs for TLS validation failures:
 
 ```bash
@@ -185,13 +187,13 @@ kubectl logs service-a-pod -c istio-proxy | grep "SAN\|subject\|verify"
 
 ## Secure Naming in Multi-Cluster
 
-In multi-cluster setups, secure naming extends across clusters. When cluster A calls a service in cluster B, the expected SANs might include identities from both clusters:
+In multi-cluster setups, secure naming extends across clusters. When a mesh uses multiple trust domains, the expected SANs might include identities from the mesh trust domain and configured aliases:
 
 ```json
 {
   "matchSubjectAltNames": [
     {
-      "exact": "spiffe://cluster.local/ns/default/sa/service-b"
+      "exact": "spiffe://cluster-a.example.com/ns/default/sa/service-b"
     },
     {
       "exact": "spiffe://cluster-b.example.com/ns/default/sa/service-b"
@@ -214,7 +216,24 @@ spec:
 
 ## ServiceEntry and Secure Naming
 
-For external services defined through ServiceEntry, you can specify the expected SAN:
+For external services that are part of Istio's service registry, for example through a ServiceEntry, you can specify the expected SAN:
+
+```yaml
+apiVersion: networking.istio.io/v1
+kind: ServiceEntry
+metadata:
+  name: external-service
+spec:
+  hosts:
+    - external-service.example.com
+  location: MESH_EXTERNAL
+  ports:
+    - number: 80
+      name: http
+      protocol: HTTP
+      targetPort: 443
+  resolution: DNS
+```
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -224,17 +243,21 @@ metadata:
 spec:
   host: external-service.example.com
   trafficPolicy:
-    tls:
-      mode: SIMPLE
-      subjectAltNames:
-        - "spiffe://external.example.com/ns/prod/sa/api-server"
+    portLevelSettings:
+      - port:
+          number: 80
+        tls:
+          mode: SIMPLE
+          caCertificates: /etc/ssl/certs/ca-certificates.crt
+          subjectAltNames:
+            - "spiffe://external.example.com/ns/prod/sa/api-server"
 ```
 
 The `subjectAltNames` field in the DestinationRule acts as a secure naming check for external services. The connection is rejected if the server's certificate doesn't contain one of the listed SANs.
 
 ## Common Issues
 
-**Connection refused with SAN mismatch:** This happens when the service account doesn't match what's expected. Check the service account of the target pods and compare with the expected SANs in the client's cluster configuration.
+**TLS validation failure with SAN mismatch:** This happens when the service account doesn't match what's expected. Check the service account of the target pods and compare with the expected SANs in the client's cluster configuration.
 
 **Stale naming information:** If you change a service's service account, Istiod needs time to propagate the update. During this window, connections might fail. Check `istioctl proxy-status` for sync state.
 
