@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Protocol Sniffing, Envoy, Kubernetes, Traffic Management
 
-Description: Learn how Istio protocol sniffing works to automatically detect HTTP and TCP traffic and how to configure it for various service types.
+Description: Learn how Istio protocol sniffing works to automatically detect HTTP, HTTP/2, and TCP traffic and how to configure it for various service types.
 
 ---
 
-Protocol sniffing is Istio's ability to automatically detect whether incoming traffic is HTTP or TCP without you explicitly declaring the protocol. When the sidecar receives a new connection, it peeks at the initial bytes of data to determine the protocol. If it looks like HTTP, the sidecar applies HTTP filters (giving you all the HTTP-specific features). If not, it falls back to raw TCP handling.
+Protocol sniffing is Istio's ability to automatically detect whether incoming traffic is HTTP, HTTP/2, or TCP without you explicitly declaring the protocol. When the sidecar receives a new connection, it peeks at the initial bytes of data to determine the protocol. If it looks like HTTP, the sidecar applies HTTP filters (giving you all the HTTP-specific features). If not, it falls back to raw TCP handling.
 
 This feature exists because in practice, not every team names their service ports with protocol prefixes. Protocol sniffing provides a safety net so that HTTP services still get proper handling even when port naming is missing.
 
@@ -18,9 +18,9 @@ When a connection arrives at the sidecar (on the inbound side, meaning someone i
 
 1. Accepts the TCP connection
 2. Waits for the client to send initial data
-3. Inspects the first bytes to check if they match HTTP patterns
-4. If the bytes start with a valid HTTP method (GET, POST, PUT, DELETE, HEAD, OPTIONS, PATCH, CONNECT, TRACE), it routes through the HTTP filter chain
-5. If the bytes do not match any HTTP method, it routes through the TCP filter chain
+3. Inspects the first bytes to check if they match HTTP/1.x or HTTP/2 patterns
+4. If the bytes match HTTP/1.x (for example, a request method such as GET or POST) or the HTTP/2 connection preface, it routes through the HTTP filter chain
+5. If the bytes do not match HTTP/1.x or HTTP/2, it routes through the TCP filter chain
 
 For outbound traffic (this service calling another service), the sniffing works differently. The sidecar already knows the destination from the original request, so it checks the service registry for protocol information first.
 
@@ -28,8 +28,8 @@ For outbound traffic (this service calling another service), the sniffing works 
 
 Protocol sniffing only kicks in when Istio cannot determine the protocol through other means. The detection order is:
 
-1. Check the Service port name for a protocol prefix (e.g., `http-`, `grpc-`)
-2. Check the `appProtocol` field on the Service port
+1. Check the `appProtocol` field on the Service port
+2. Check the Service port name for a protocol prefix (e.g., `http-`, `grpc-`)
 3. Fall back to protocol sniffing
 
 If step 1 or 2 provides a protocol, sniffing is skipped entirely.
@@ -87,11 +87,11 @@ Sniffing has several important limitations you need to understand:
 
 MySQL, SMTP, and some other protocols have the server send data before the client. Since the sidecar waits for client data to sniff, these connections stall until the detection timeout. The server is waiting for the client, and the sidecar is waiting for the client - nobody makes progress.
 
-For server-speaks-first protocols, you must use explicit port naming:
+For server-speaks-first protocols, declare the port as TCP so Istio skips HTTP protocol sniffing:
 
 ```yaml
 ports:
-  - name: mysql
+  - name: tcp-mysql
     port: 3306
   - name: tcp-smtp
     port: 25
@@ -101,18 +101,27 @@ ports:
 
 When the client sends TLS-encrypted data, the sidecar cannot see through the encryption. The initial bytes are TLS ClientHello, not HTTP methods. So TLS-originated traffic (where the app handles TLS itself) will always be detected as non-HTTP.
 
-If you need HTTP features for TLS services, configure the sidecar to handle TLS termination:
+If you need HTTP features for TLS services, the sidecar needs to terminate the downstream TLS connection before forwarding plaintext HTTP to the application. A `DestinationRule` configures outbound TLS origination, not inbound TLS termination. For sidecar TLS termination, use a `Sidecar` ingress configuration:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
-kind: DestinationRule
+apiVersion: networking.istio.io/v1
+kind: Sidecar
 metadata:
-  name: my-api
+  name: my-api-ingress
 spec:
-  host: my-api.default.svc.cluster.local
-  trafficPolicy:
+  workloadSelector:
+    labels:
+      app: my-api
+  ingress:
+  - port:
+      number: 8443
+      protocol: HTTPS
+      name: https-api
+    defaultEndpoint: 127.0.0.1:8080
     tls:
-      mode: ISTIO_MUTUAL
+      mode: SIMPLE
+      privateKey: /etc/istio/tls-certs/tls.key
+      serverCertificate: /etc/istio/tls-certs/tls.crt
 ```
 
 ### Detection Delay
@@ -140,14 +149,14 @@ Look for the `filterChainMatch` section. If protocol sniffing is active, you wil
 istioctl proxy-config clusters deploy/sleep -n default | grep my-api
 ```
 
-You can also check the Envoy stats to see how many connections were detected as HTTP vs TCP:
+You can also check the Envoy HTTP inspector stats to see how often traffic was detected as HTTP or not HTTP:
 
 ```bash
 kubectl exec deploy/my-api -c istio-proxy -n default -- \
-  pilot-agent request GET stats | grep "http.inbound"
+  pilot-agent request GET stats | grep "http_inspector"
 ```
 
-If you see `http.inbound` stats, HTTP detection is working. If you only see `tcp.inbound` stats, your traffic is being handled as TCP.
+If you see counters such as `http_inspector.http11_found` or `http_inspector.http2_found` increasing, HTTP detection is working. If `http_inspector.http_not_found` increases for that traffic, it is being handled as TCP.
 
 ## Improving Sniffing Reliability
 
@@ -167,7 +176,7 @@ For services that use persistent connections, the protocol is detected once at c
 
 ### Health Check Considerations
 
-Kubernetes health probes (liveness, readiness) go through the sidecar. If your health check endpoint uses HTTP, protocol sniffing will detect it. But if your health check is a TCP port check, the sidecar might not detect the protocol correctly for subsequent real traffic.
+Kubernetes health probes (liveness, readiness) are handled specially by Istio. By default, Istio rewrites HTTP, TCP, and gRPC probes so that the kubelet checks the sidecar agent, which then checks the application without being confused by mTLS or inbound traffic redirection. This probe handling is separate from protocol sniffing for normal service traffic.
 
 Use HTTP health checks when possible:
 
