@@ -12,7 +12,7 @@ Istio configuration can be tricky. You write a VirtualService, apply it, and eve
 
 ## Running a Basic Analysis
 
-The simplest form analyzes everything in the cluster:
+The simplest form analyzes the current Kubernetes context:
 
 ```bash
 istioctl analyze
@@ -34,7 +34,7 @@ Output looks like:
 
 ```text
 Warning [IST0101] (VirtualService reviews-route.default) Referenced host not found: "reviews-v2"
-Warning [IST0108] (DestinationRule reviews-dr.default) This destination rule is not used by any virtual service
+Warning [IST0108] (Pod reviews.default) Unknown annotation: "sidecar.istio.io/bad-annotation"
 Error [IST0145] (Gateway my-gateway.istio-system) Conflict with other gateway: gateway-2
 Info [IST0102] (Namespace default) The namespace is not enabled for Istio injection
 ```
@@ -95,13 +95,13 @@ spec:
 
 Common causes: typos in the service name, the service is in a different namespace (use the FQDN like `reviews.production.svc.cluster.local`), or the service simply doesn't exist yet.
 
-### IST0108: Unused Destination Rule
+### IST0108: Unknown Annotation
 
 ```text
-Warning [IST0108] (DestinationRule reviews-dr.default) This destination rule is not used
+Warning [IST0108] (Pod reviews.default) Unknown annotation: "sidecar.istio.io/bad-annotation"
 ```
 
-A DestinationRule exists but no VirtualService or traffic policy references it. This isn't necessarily a problem (the DestinationRule still applies its traffic policies), but it might indicate a misconfiguration where you forgot to create the corresponding VirtualService.
+An Istio annotation isn't recognized for any kind of resource. This usually means the annotation name has a typo or was copied from an older example. Check the annotation against Istio's supported resource annotations.
 
 ### IST0102: Namespace Not Injected
 
@@ -131,13 +131,13 @@ Error [IST0145] (Gateway my-gateway.istio-system) Conflict with gateway-2: both 
 
 Two Gateways are trying to bind to the same port on the same ingress gateway pods. You need to either merge them into one Gateway or use different selector labels.
 
-### IST0128: Missing Destination Rule for Subset
+### IST0128: No Server Certificate Verification
 
 ```text
-Warning [IST0128] (VirtualService reviews-route.default) This host has no DestinationRule with subset "v3"
+Warning [IST0128] (DestinationRule reviews-dr.default) No caCertificates are set in DestinationRule, this results in no verification of presented server certificate
 ```
 
-Your VirtualService routes to a subset that doesn't exist in any DestinationRule. Traffic to that subset will fail with 503 errors.
+Your DestinationRule enables client TLS without configuring CA certificates for server certificate verification. Add the appropriate `caCertificates` value, or use `ISTIO_MUTUAL` when you want Istio to manage mutual TLS certificates automatically.
 
 ## Integrating analyze into CI/CD
 
@@ -159,7 +159,7 @@ jobs:
     - name: Analyze Istio configuration
       run: |
         istioctl analyze --use-kube=false \
-          -A kubernetes/istio/*.yaml \
+          kubernetes/istio/*.yaml \
           --failure-threshold Warning
 ```
 
@@ -205,27 +205,27 @@ istioctl analyze -n default -o json
 [
   {
     "code": "IST0101",
-    "level": "Warning",
-    "message": "Referenced host not found: \"reviews\"",
-    "origin": "VirtualService reviews-route.default",
-    "reference": "https://istio.io/docs/reference/config/analysis/ist0101/"
+    "documentationUrl": "https://istio.io/v1.30/docs/reference/config/analysis/ist0101/?ref=istioctl-analyze",
+    "level": "Error",
+    "message": "Referenced host+subset in destinationrule not found: \"reviews+v1\"",
+    "origin": "VirtualService default/reviews-route",
+    "reference": "my-virtualservice.yaml:12"
   }
 ]
 ```
 
 This is handy for parsing in scripts or sending to monitoring systems.
 
-## Analyzing Specific Resource Types
+## Running Specific Analyzers
 
-You can narrow the analysis to specific resource types if you're only interested in certain kinds of issues:
+You can list and run specific analyzers if you're only interested in certain kinds of issues:
 
 ```bash
-# Only check VirtualServices
+# List available analyzers
+istioctl analyze -L
 
-istioctl analyze -n default --resource virtualservice
-
-# Only check Gateways
-istioctl analyze -n default --resource gateway
+# Run one analyzer
+istioctl analyze -n default --analyzer "gateway.ConflictingGatewayAnalyzer"
 ```
 
 ## Real-World Usage Tips
