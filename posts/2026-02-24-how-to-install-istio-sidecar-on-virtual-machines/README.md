@@ -28,10 +28,26 @@ Before installing the sidecar, you need the bootstrap files generated from the K
 ```bash
 # Generate on a machine with kubectl access
 
+cat <<EOF > workloadgroup.yaml
+apiVersion: networking.istio.io/v1
+kind: WorkloadGroup
+metadata:
+  name: my-vm-workload
+  namespace: vm-apps
+spec:
+  metadata:
+    labels:
+      app: my-vm-workload
+  template:
+    serviceAccount: vm-sa
+    network: vm-network
+EOF
+
+kubectl --namespace vm-apps apply -f workloadgroup.yaml
+
+# Use --autoregister only if Istiod has WorkloadEntry autoregistration enabled.
 istioctl x workload entry configure \
-  --name my-vm-workload \
-  --namespace vm-apps \
-  --serviceAccount vm-sa \
+  -f workloadgroup.yaml \
   --clusterID cluster1 \
   --output /tmp/vm-config \
   --autoregister
@@ -51,7 +67,7 @@ Transfer these files to the VM.
 Download the sidecar package for your Istio version:
 
 ```bash
-ISTIO_VERSION="1.20.0"
+ISTIO_VERSION="1.30.0"
 curl -LO "https://storage.googleapis.com/istio-release/releases/${ISTIO_VERSION}/deb/istio-sidecar.deb"
 ```
 
@@ -73,12 +89,14 @@ The package installs files to:
 - `/var/lib/istio/envoy/` - runtime configuration directory
 - `/etc/istio/config/` - mesh configuration directory
 
-## Installation on CentOS/RHEL/Amazon Linux
+## Installation on CentOS
 
 ```bash
-ISTIO_VERSION="1.20.0"
+ISTIO_VERSION="1.30.0"
 curl -LO "https://storage.googleapis.com/istio-release/releases/${ISTIO_VERSION}/rpm/istio-sidecar.rpm"
 ```
+
+The official Istio VM installation guide currently supports the RPM package on CentOS 8.
 
 Install:
 
@@ -112,6 +130,9 @@ sudo cp cluster.env /var/lib/istio/envoy/cluster.env
 sudo mkdir -p /etc/istio/config
 sudo cp mesh.yaml /etc/istio/config/mesh
 
+# Proxy runtime directory
+sudo mkdir -p /etc/istio/proxy
+
 # Additional hosts (if needed for DNS resolution)
 if [ -f hosts ]; then
   sudo sh -c 'cat hosts >> /etc/hosts'
@@ -122,9 +143,10 @@ Set correct ownership:
 
 ```bash
 sudo chown -R istio-proxy:istio-proxy /etc/certs
-sudo chown -R istio-proxy:istio-proxy /var/run/secrets/tokens
+sudo chown -R istio-proxy:istio-proxy /var/run/secrets
 sudo chown -R istio-proxy:istio-proxy /var/lib/istio/envoy
 sudo chown -R istio-proxy:istio-proxy /etc/istio/config
+sudo chown -R istio-proxy:istio-proxy /etc/istio/proxy
 ```
 
 ## Understanding cluster.env
@@ -276,7 +298,8 @@ sudo journalctl -u istio --no-pager | tail -50
 **Cannot reach Istiod**: Verify network connectivity to the discovery address:
 
 ```bash
-curl -v ${DISCOVERY_ADDRESS}:15012
+DISCOVERY_HOST="34.123.45.67"
+nc -vz "${DISCOVERY_HOST}" 15012
 ```
 
 **Certificate errors**: Make sure root-cert.pem matches the mesh's root CA.
@@ -293,9 +316,7 @@ If iptables rules are missing, restart the istio service which should reinstall 
 
 ```bash
 istioctl x workload entry configure \
-  --name my-vm-workload \
-  --namespace vm-apps \
-  --serviceAccount vm-sa \
+  -f workloadgroup.yaml \
   --clusterID cluster1 \
   --output /tmp/vm-config-refresh
 ```
