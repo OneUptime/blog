@@ -203,7 +203,8 @@ spec:
     spec:
       containers:
       - name: ratelimit
-        image: envoyproxy/ratelimit:latest
+        image: envoyproxy/ratelimit:30a4ce1a
+        command: ["/bin/ratelimit"]
         ports:
         - containerPort: 8080
         - containerPort: 8081
@@ -221,6 +222,10 @@ spec:
           value: /data
         - name: RUNTIME_SUBDIRECTORY
           value: ratelimit
+        - name: RUNTIME_WATCH_ROOT
+          value: "false"
+        - name: RUNTIME_IGNOREDOTFILES
+          value: "true"
         volumeMounts:
         - name: config
           mountPath: /data/ratelimit/config
@@ -380,13 +385,14 @@ rate_limits:
 Check rate limit metrics in Envoy:
 
 ```bash
-kubectl exec -n istio-system deploy/istio-ingressgateway -- \
-  curl -s localhost:15000/stats | grep ratelimit
+kubectl exec -n istio-system deploy/istio-ingressgateway -c istio-proxy -- \
+  pilot-agent request GET stats | grep ratelimit
 ```
 
 Look for counters like:
-- `ratelimit.production.over_limit` - requests that were rate limited
-- `ratelimit.production.ok` - requests that passed the rate limit check
+- `cluster.<route target cluster>.ratelimit.over_limit` - requests that were rate limited by the global rate limit service
+- `cluster.<route target cluster>.ratelimit.ok` - requests that passed the global rate limit check
+- `http_local_rate_limiter.http_local_rate_limit.rate_limited` - requests that exceeded the local rate limit token bucket
 
 ## Troubleshooting
 
