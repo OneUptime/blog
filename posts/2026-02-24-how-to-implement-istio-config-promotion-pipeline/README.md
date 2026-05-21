@@ -87,7 +87,7 @@ echo "Promoting from ${SOURCE_ENV} to ${TARGET_ENV}..."
 
 # Create a promotion branch
 
-git checkout -b "$BRANCH" main
+git checkout -b "$BRANCH"
 
 # Compare the rendered output of both environments
 echo "Checking for differences..."
@@ -97,11 +97,11 @@ kubectl kustomize "environments/${TARGET_ENV}" > /tmp/target.yaml
 # Show what would change (accounting for expected env differences)
 # We compare the base resources, not the full rendered output
 echo "Base changes that will be promoted:"
-git diff main -- base/
+git diff main...HEAD -- base/
 
 # Validate the target environment configuration
 echo "Validating ${TARGET_ENV} configuration..."
-istioctl analyze /tmp/target.yaml
+istioctl analyze --use-kube=false /tmp/target.yaml
 kubeconform -strict \
   -schema-location default \
   -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
@@ -117,7 +117,7 @@ gh pr create \
 ## Promotion: ${SOURCE_ENV} -> ${TARGET_ENV}
 
 ### Changes being promoted
-$(git diff main -- base/ | head -200)
+$(git diff main...HEAD -- base/ | head -200)
 
 ### Validation
 - istioctl analyze: passed
@@ -159,13 +159,13 @@ jobs:
 
       - name: Install tools
         run: |
-          curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.22.0 sh -
-          echo "$PWD/istio-1.22.0/bin" >> $GITHUB_PATH
+          curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.30.0 sh -
+          echo "$PWD/istio-1.30.0/bin" >> $GITHUB_PATH
 
       - name: Validate ${{ matrix.environment }}
         run: |
           kubectl kustomize environments/${{ matrix.environment }} > /tmp/config.yaml
-          istioctl analyze /tmp/config.yaml
+          istioctl analyze --use-kube=false /tmp/config.yaml
 
   deploy-dev:
     needs: validate-all
@@ -177,7 +177,7 @@ jobs:
       - name: Configure kubectl for dev
         run: |
           echo "${{ secrets.DEV_KUBECONFIG }}" | base64 -d > /tmp/kubeconfig
-          export KUBECONFIG=/tmp/kubeconfig
+          echo "KUBECONFIG=/tmp/kubeconfig" >> "$GITHUB_ENV"
 
       - name: Apply to dev
         run: |
@@ -211,7 +211,7 @@ jobs:
       - name: Configure kubectl for staging
         run: |
           echo "${{ secrets.STAGING_KUBECONFIG }}" | base64 -d > /tmp/kubeconfig
-          export KUBECONFIG=/tmp/kubeconfig
+          echo "KUBECONFIG=/tmp/kubeconfig" >> "$GITHUB_ENV"
 
       - name: Apply to staging
         run: kubectl apply -k environments/staging/
@@ -233,7 +233,7 @@ jobs:
       - name: Run load test
         run: |
           # Light load test to verify routing under traffic
-          hey -n 1000 -c 10 https://api.staging.example.com/health
+          go run github.com/rakyll/hey@latest -n 1000 -c 10 https://api.staging.example.com/health
 
   promote-production:
     needs: test-staging
@@ -247,7 +247,7 @@ jobs:
       - name: Configure kubectl for production
         run: |
           echo "${{ secrets.PROD_KUBECONFIG }}" | base64 -d > /tmp/kubeconfig
-          export KUBECONFIG=/tmp/kubeconfig
+          echo "KUBECONFIG=/tmp/kubeconfig" >> "$GITHUB_ENV"
 
       - name: Show diff before applying
         run: kubectl diff -k environments/production/ || true
@@ -278,36 +278,39 @@ metadata:
   name: istio-config
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     - list:
         elements:
           - environment: dev
             cluster: dev-cluster
             autoSync: "true"
-            selfHeal: "true"
           - environment: staging
             cluster: staging-cluster
             autoSync: "true"
-            selfHeal: "true"
           - environment: production
             cluster: prod-cluster
             autoSync: "false"
-            selfHeal: "false"
   template:
     metadata:
-      name: "istio-config-{{environment}}"
+      name: "istio-config-{{.environment}}"
     spec:
       project: default
       source:
         repoURL: https://github.com/your-org/istio-config.git
         targetRevision: main
-        path: "environments/{{environment}}"
+        path: "environments/{{.environment}}"
       destination:
-        server: "{{cluster}}"
+        name: "{{.cluster}}"
+  templatePatch: |
+    {{- if eq .autoSync "true" }}
+    spec:
       syncPolicy:
         automated:
           prune: true
-          selfHeal: "{{selfHeal}}"
+          selfHeal: true
+    {{- end }}
 ```
 
 Dev and staging auto-sync from Git. Production requires a manual sync trigger:
