@@ -193,8 +193,8 @@ istioctl dashboard prometheus
 # Open Envoy admin for a specific pod
 istioctl dashboard envoy <pod-name> -n <namespace>
 
-# Open istiod's ControlZ
-istioctl dashboard controlz deployment/istiod -n istio-system
+# Open istiod's debug dashboard
+istioctl dashboard istiod-debug deployment/istiod.istio-system
 ```
 
 The dashboard commands set up port forwarding and open the browser automatically. The `envoy` dashboard is particularly useful for debugging - it gives you access to Envoy's admin interface where you can view stats, toggle logging levels, and dump configuration.
@@ -232,41 +232,35 @@ istioctl bug-report --duration 1h
 
 ```bash
 # Check injection status
-istioctl x check-inject -n <namespace>
+istioctl x check-inject -n <namespace> -l <label-key>=<label-value>
 
 # View effective injection config for a pod
 istioctl x check-inject <pod-name> -n <namespace>
 ```
 
-## WAYpoint and Ztunnel Commands (Ambient Mode)
+## Waypoint and Ztunnel Commands (Ambient Mode)
 
 If you are using Istio ambient mode:
 
 ```bash
 # Check ztunnel proxy status
-istioctl proxy-config all <ztunnel-pod> -n istio-system -o json
+istioctl ztunnel-config all <ztunnel-pod> -n istio-system -o json
 
 # Check waypoint proxy status
-istioctl x waypoint status -n <namespace>
+istioctl waypoint status -n <namespace>
 ```
 
 ## Install and Profile Commands
 
 ```bash
-# List available profiles
-istioctl profile list
-
-# Dump a profile's configuration
-istioctl profile dump demo
-
-# Compare two profiles
-istioctl profile diff default demo
+# Install a profile
+istioctl install --set profile=demo --skip-confirmation
 
 # Generate manifest without installing
 istioctl manifest generate --set profile=demo > istio-manifest.yaml
 
-# Verify installation
-istioctl verify-install
+# Verify the control plane during installation
+istioctl install --set profile=demo --verify
 ```
 
 ## Practical Debugging Workflow
