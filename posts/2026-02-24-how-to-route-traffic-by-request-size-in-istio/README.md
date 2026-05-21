@@ -36,6 +36,9 @@ spec:
     - name: standard
       labels:
         version: v1
+    - name: medium-payload
+      labels:
+        version: v1-medium
     - name: large-payload
       labels:
         version: v1-large
@@ -58,7 +61,7 @@ spec:
     - match:
         - headers:
             content-length:
-              regex: "[0-9]{7,}"
+              regex: "^[0-9]{7,}$"
       route:
         - destination:
             host: upload-service
@@ -69,7 +72,7 @@ spec:
             subset: standard
 ```
 
-The regex `[0-9]{7,}` matches any number with 7 or more digits, which covers values of 1,000,000 and above (approximately 1MB+). This is a rough approximation since `9999999` is about 10MB while `1000000` is 1MB, but for routing purposes, this level of granularity is usually fine.
+The regex `^[0-9]{7,}$` matches any Content-Length value with 7 or more digits, which covers values of 1,000,000 and above (approximately 1MB+). This is a rough approximation since `9999999` is about 10MB while `1000000` is 1MB, but for routing purposes, this level of granularity is usually fine.
 
 ```bash
 kubectl apply -f destination-rule.yaml
@@ -162,15 +165,16 @@ spec:
                 if content_length then
                   local size = tonumber(content_length)
                   if size and size > 10000000 then
-                    request_handle:headers():add("x-size-class", "large")
+                    request_handle:headers():replace("x-size-class", "large")
                   elseif size and size > 1000000 then
-                    request_handle:headers():add("x-size-class", "medium")
+                    request_handle:headers():replace("x-size-class", "medium")
                   else
-                    request_handle:headers():add("x-size-class", "small")
+                    request_handle:headers():replace("x-size-class", "small")
                   end
                 else
-                  request_handle:headers():add("x-size-class", "unknown")
+                  request_handle:headers():replace("x-size-class", "unknown")
                 end
+                request_handle:clearRouteCache()
               end
 ```
 
@@ -210,7 +214,7 @@ spec:
 
 ## Configuring the Large Payload Backend
 
-The large-payload backend should be configured to handle big requests. Set appropriate buffer sizes and timeouts:
+The large-payload backend should be configured to handle big requests. Set appropriate resource requests, limits, and timeouts:
 
 ```yaml
 apiVersion: apps/v1
@@ -244,7 +248,7 @@ spec:
             - containerPort: 8080
 ```
 
-You might also want to adjust Istio's proxy buffer limits for the large-payload pods using an annotation:
+You might also want to enable additional Envoy cluster statistics while testing the large-payload pods using an annotation:
 
 ```yaml
 metadata:
@@ -296,10 +300,10 @@ Large uploads get 5 minutes with no retries (retrying a large upload is usually 
 
 ```bash
 # Small request
-kubectl exec deploy/sleep -c sleep -- curl -s -X POST -H "Content-Length: 100" -d '{"small":"payload"}' http://upload-service.default.svc.cluster.local/upload
+kubectl exec deploy/sleep -c sleep -- curl -s -X POST -d '{"small":"payload"}' http://upload-service.default.svc.cluster.local/upload
 
-# Large request (simulate with header)
-kubectl exec deploy/sleep -c sleep -- curl -s -X POST -H "Content-Length: 15000000" http://upload-service.default.svc.cluster.local/upload
+# Large request
+kubectl exec deploy/sleep -c sleep -- sh -c 'dd if=/dev/zero of=/tmp/large-payload.bin bs=1M count=15 2>/dev/null && curl -s -X POST --data-binary @/tmp/large-payload.bin http://upload-service.default.svc.cluster.local/upload'
 
 # Check which pod handled it
 kubectl logs deploy/upload-service-large -c istio-proxy --tail=5
