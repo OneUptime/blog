@@ -93,12 +93,12 @@ Only switch to STRICT after confirming every service in the mesh has a sidecar:
 ```bash
 # Check for pods without sidecars
 kubectl get pods --all-namespaces -o json | \
-  jq -r '.items[] | select(.spec.containers | length == 1) | .metadata.namespace + "/" + .metadata.name'
+  jq -r '.items[] | select([.spec.containers[].name] | index("istio-proxy") | not) | .metadata.namespace + "/" + .metadata.name'
 ```
 
 ## Mistake 4: Forgetting About Non-HTTP Protocols
 
-Istio handles HTTP traffic beautifully, but teams forget that they also have TCP, gRPC, and database connections flowing through their cluster. If you don't name your Service ports correctly, Istio treats everything as opaque TCP and you lose all the Layer 7 features.
+Istio handles HTTP traffic beautifully, but teams forget that they also have TCP, gRPC, and database connections flowing through their cluster. Istio can automatically detect HTTP and HTTP/2 traffic, but anything it cannot determine is treated as plain TCP. For predictable behavior, explicitly name your Service ports or set `appProtocol`.
 
 ```yaml
 apiVersion: v1
@@ -118,7 +118,7 @@ spec:
     targetPort: 5432
 ```
 
-The naming convention matters. Istio uses the port name prefix to determine protocol detection. Without it, you won't get proper metrics, tracing, or routing capabilities.
+The naming convention matters. Istio uses the port name prefix, or the Kubernetes `appProtocol` field, to explicitly determine protocols. Without explicit protocol selection, unsupported or ambiguous protocols fall back to opaque TCP and you won't get the same Layer 7 metrics, tracing, or routing capabilities.
 
 ## Mistake 5: Skipping the Canary Control Plane Upgrade
 
@@ -126,10 +126,10 @@ When upgrading Istio versions, running two control planes side by side (canary u
 
 ```bash
 # Install canary revision
-istioctl install --set revision=canary --set tag=canary
+istioctl install --set revision=canary
 
 # Migrate namespaces one at a time
-kubectl label namespace backend istio.io/rev=canary --overwrite
+kubectl label namespace backend istio-injection- istio.io/rev=canary
 
 # Restart pods to pick up new sidecar
 kubectl rollout restart deployment -n backend
@@ -144,9 +144,9 @@ You need visibility into what's happening during migration. Setting up monitorin
 
 ```bash
 # Install observability addons
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.24/samples/addons/prometheus.yaml
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.24/samples/addons/grafana.yaml
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.24/samples/addons/kiali.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/prometheus.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/grafana.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/kiali.yaml
 
 # Verify they're running
 kubectl get pods -n istio-system
@@ -160,7 +160,7 @@ istioctl dashboard prometheus
 # Query: istio_requests_total{response_code=~"5.*"}
 
 # Check sidecar injection status
-kubectl get namespace -L istio-injection
+kubectl get namespace -L istio-injection,istio.io/rev
 
 # Monitor pilot errors
 kubectl logs -n istio-system -l app=istiod --tail=100
