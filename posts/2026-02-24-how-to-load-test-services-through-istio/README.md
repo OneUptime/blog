@@ -14,7 +14,7 @@ This guide covers how to run meaningful load tests against Istio-proxied service
 
 ## Understanding the Istio Overhead
 
-Every request in an Istio mesh goes through two Envoy proxies: one on the client side and one on the server side. Each proxy handles TLS termination, policy checks, telemetry collection, and routing. This typically adds 1-3ms of latency per hop, but it can vary depending on the number of policies applied and whether you have access logging enabled.
+In Istio sidecar mode, service-to-service requests typically go through two Envoy proxies: one on the client side and one on the server side. Each proxy handles mutual TLS, policy checks, telemetry collection, and routing. This adds measurable latency, but the amount varies depending on request rate, payload size, protocol, proxy resources, the number of policies applied, and whether you have access logging enabled.
 
 Before load testing your application, establish a baseline by measuring the sidecar overhead:
 
@@ -24,10 +24,10 @@ Before load testing your application, establish a baseline by measuring the side
 kubectl exec -n default deploy/sleep -c sleep -- \
   curl -s -o /dev/null -w "Time: %{time_total}s\n" http://httpbin:8000/status/200
 
-# Bypass the sidecar on the client side
-kubectl exec -n default deploy/sleep -c sleep -- \
+# Compare with a client that does not have a sidecar
+kubectl run curl-no-sidecar -n default --image=curlimages/curl --restart=Never \
+  --labels=sidecar.istio.io/inject=false --command -- \
   curl -s -o /dev/null -w "Time: %{time_total}s\n" \
-  --resolve httpbin:8000:$(kubectl get pod -l app=httpbin -o jsonpath='{.items[0].status.podIP}') \
   http://httpbin:8000/status/200
 ```
 
@@ -38,13 +38,13 @@ Several tools work well for load testing through Istio. Here are the most practi
 **Fortio** is developed by the Istio team and is designed specifically for this use case:
 
 ```bash
-kubectl apply -n default -f https://raw.githubusercontent.com/fortio/fortio/master/docs/fortio-deployment.yaml
+kubectl apply -n default -f https://raw.githubusercontent.com/istio/istio/master/samples/httpbin/sample-client/fortio-deploy.yaml
 ```
 
 Run a basic load test with Fortio:
 
 ```bash
-kubectl exec -n default deploy/fortio -c fortio -- \
+kubectl exec -n default deploy/fortio-deploy -c fortio -- \
   fortio load -c 8 -qps 100 -t 30s http://httpbin:8000/status/200
 ```
 
@@ -111,7 +111,7 @@ spec:
 Make sure the namespace has sidecar injection enabled:
 
 ```bash
-kubectl label namespace default istio-injection=enabled
+kubectl label namespace default istio-injection=enabled --overwrite
 ```
 
 ## Testing Connection Pool Limits
@@ -138,11 +138,11 @@ spec:
 Now run a load test that exceeds these limits:
 
 ```bash
-kubectl exec -n default deploy/fortio -c fortio -- \
+kubectl exec -n default deploy/fortio-deploy -c fortio -- \
   fortio load -c 100 -qps 0 -t 30s http://httpbin:8000/status/200
 ```
 
-Using 100 concurrent connections with no rate limit (-qps 0 means unlimited) should hit the maxConnections limit of 50. Check the results for 503 responses, which indicate that Envoy rejected connections due to the pool being full.
+Using 100 concurrent connections with no rate limit (-qps 0 means maximum QPS) can hit the maxConnections limit of 50, depending on protocol and connection reuse. Check the results for 503 responses and Envoy overflow metrics, which indicate that Envoy rejected requests because a circuit breaker limit was reached.
 
 ## Monitoring During Load Tests
 
@@ -155,7 +155,7 @@ istio_requests_total{destination_service="httpbin.default.svc.cluster.local"}
 # Request duration histogram
 istio_request_duration_milliseconds_bucket{destination_service="httpbin.default.svc.cluster.local"}
 
-# Connection pool overflow
+# Connection pool overflow, if Envoy cluster stats are enabled
 envoy_cluster_upstream_cx_overflow{cluster_name="outbound|8000||httpbin.default.svc.cluster.local"}
 ```
 
@@ -171,14 +171,14 @@ kubectl port-forward -n istio-system svc/grafana 3000:3000 &
 Constant-rate load tests are useful for finding limits, but real traffic is bursty. Use a ramp-up pattern:
 
 ```bash
-# Start at 10 QPS, ramp to 500 over 5 minutes
-kubectl exec -n default deploy/fortio -c fortio -- \
+# Step from 10 QPS to 500 QPS over three one-minute runs
+kubectl exec -n default deploy/fortio-deploy -c fortio -- \
   fortio load -c 20 -qps 10 -t 60s http://httpbin:8000/status/200
 
-kubectl exec -n default deploy/fortio -c fortio -- \
+kubectl exec -n default deploy/fortio-deploy -c fortio -- \
   fortio load -c 20 -qps 100 -t 60s http://httpbin:8000/status/200
 
-kubectl exec -n default deploy/fortio -c fortio -- \
+kubectl exec -n default deploy/fortio-deploy -c fortio -- \
   fortio load -c 20 -qps 500 -t 60s http://httpbin:8000/status/200
 ```
 
@@ -213,7 +213,7 @@ For testing end-to-end latency including the ingress path, send load from outsid
 
 ```bash
 INGRESS_HOST=$(kubectl -n istio-system get service istio-ingressgateway \
-  -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+  -o jsonpath='{.status.loadBalancer.ingress[0].ip}{.status.loadBalancer.ingress[0].hostname}')
 INGRESS_PORT=$(kubectl -n istio-system get service istio-ingressgateway \
   -o jsonpath='{.spec.ports[?(@.name=="http2")].port}')
 
