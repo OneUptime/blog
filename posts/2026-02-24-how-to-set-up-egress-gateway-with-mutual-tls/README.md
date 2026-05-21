@@ -10,7 +10,7 @@ Description: Step-by-step guide to configuring an Istio egress gateway with mutu
 
 An egress gateway gives you a centralized exit point for all outbound traffic leaving your mesh. Instead of every pod directly connecting to external services, traffic flows through a dedicated gateway pod. When you combine this with mutual TLS between sidecars and the gateway, you get encrypted, auditable, and controllable egress traffic.
 
-This is particularly important in environments with strict compliance requirements where you need to prove that all outbound connections go through a known point and are encrypted in transit.
+This is particularly important in environments with strict compliance requirements where you need to prove that outbound connections go through a known point and use encryption on the mesh-to-gateway and gateway-to-external-service legs.
 
 ## Why Use an Egress Gateway
 
@@ -52,9 +52,12 @@ spec:
   hosts:
   - api.example.com
   ports:
+  - number: 80
+    name: http
+    protocol: HTTP
   - number: 443
-    name: tls
-    protocol: TLS
+    name: https
+    protocol: HTTPS
   resolution: DNS
   location: MESH_EXTERNAL
 ```
@@ -74,9 +77,9 @@ spec:
     istio: egressgateway
   servers:
   - port:
-      number: 443
-      name: tls
-      protocol: TLS
+      number: 80
+      name: https-for-tls-origination
+      protocol: HTTPS
     hosts:
     - api.example.com
     tls:
@@ -101,25 +104,22 @@ spec:
   gateways:
   - external-api-egressgateway
   - mesh
-  tls:
+  http:
   - match:
     - gateways:
       - mesh
-      port: 443
-      sniHosts:
-      - api.example.com
+      port: 80
     route:
     - destination:
         host: istio-egressgateway.istio-system.svc.cluster.local
         subset: external-api
         port:
-          number: 443
+          number: 80
+      weight: 100
   - match:
     - gateways:
       - external-api-egressgateway
-      port: 443
-      sniHosts:
-      - api.example.com
+      port: 80
     route:
     - destination:
         host: api.example.com
@@ -145,9 +145,12 @@ spec:
   subsets:
   - name: external-api
     trafficPolicy:
-      tls:
-        mode: ISTIO_MUTUAL
-        sni: api.example.com
+      portLevelSettings:
+      - port:
+          number: 80
+        tls:
+          mode: ISTIO_MUTUAL
+          sni: api.example.com
 ```
 
 And one for the external service itself:
@@ -161,9 +164,12 @@ metadata:
 spec:
   host: api.example.com
   trafficPolicy:
-    tls:
-      mode: SIMPLE
-      sni: api.example.com
+    portLevelSettings:
+    - port:
+        number: 443
+      tls:
+        mode: SIMPLE
+        sni: api.example.com
 ```
 
 ## The Full Traffic Flow
@@ -177,7 +183,7 @@ sequenceDiagram
     participant EGW as Egress Gateway
     participant Ext as api.example.com
 
-    App->>Sidecar: HTTPS request to api.example.com
+    App->>Sidecar: HTTP request to api.example.com
     Sidecar->>EGW: mTLS connection (ISTIO_MUTUAL)
     EGW->>Ext: TLS connection (SIMPLE)
     Ext-->>EGW: Response
@@ -185,7 +191,7 @@ sequenceDiagram
     Sidecar-->>App: Response
 ```
 
-Traffic is encrypted with Istio mTLS between the sidecar and the egress gateway. The egress gateway then initiates a new TLS connection to the external service.
+Traffic is encrypted with Istio mTLS between the sidecar and the egress gateway. The egress gateway then initiates a new TLS connection to the external service. If your application sends HTTPS directly, the gateway can route the original TLS stream, but it cannot originate a fresh TLS connection unless the application sends HTTP into the mesh.
 
 ## Step 5: Apply Everything and Test
 
@@ -201,7 +207,7 @@ kubectl apply -f destination-rules.yaml
 Test from a pod in the mesh:
 
 ```bash
-kubectl exec deploy/my-app -c my-app -- curl -s -o /dev/null -w "%{http_code}" https://api.example.com/health
+kubectl exec deploy/my-app -c my-app -- curl -s -o /dev/null -w "%{http_code}" http://api.example.com/health
 ```
 
 Check the egress gateway logs to confirm traffic is flowing through it:
@@ -250,7 +256,7 @@ If things are not working, check these common issues:
 
 3. **SNI consistency**: The SNI host must be consistent across the Gateway, VirtualService, and DestinationRule resources.
 
-4. **Port conflicts**: If another Gateway already uses port 443 on the egress gateway, you will get conflicts. Use different port numbers or merge the configurations.
+4. **Port conflicts**: If another Gateway already uses port 80 on the egress gateway, you will get conflicts. Use different port numbers or merge the configurations.
 
 Run the analysis tool to catch configuration issues:
 
