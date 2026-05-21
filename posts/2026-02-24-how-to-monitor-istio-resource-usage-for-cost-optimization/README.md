@@ -23,12 +23,15 @@ The most important thing to track is the gap between what sidecars request and w
 **CPU utilization ratio (actual usage vs requests):**
 
 ```promql
-avg(
-  rate(container_cpu_usage_seconds_total{container="istio-proxy"}[5m])
+avg by (namespace) (
+  sum by (namespace, pod) (
+    rate(container_cpu_usage_seconds_total{container="istio-proxy"}[5m])
+  )
   /
-  on(namespace, pod) group_left()
-  kube_pod_container_resource_requests{container="istio-proxy", resource="cpu"}
-) by (namespace)
+  sum by (namespace, pod) (
+    kube_pod_container_resource_requests{container="istio-proxy", resource="cpu"}
+  )
+)
 ```
 
 If this ratio is consistently below 0.3 (30%), your sidecars are over-provisioned by at least 2x.
@@ -36,12 +39,15 @@ If this ratio is consistently below 0.3 (30%), your sidecars are over-provisione
 **Memory utilization ratio:**
 
 ```promql
-avg(
-  container_memory_working_set_bytes{container="istio-proxy"}
+avg by (namespace) (
+  sum by (namespace, pod) (
+    container_memory_working_set_bytes{container="istio-proxy"}
+  )
   /
-  on(namespace, pod) group_left()
-  kube_pod_container_resource_requests{container="istio-proxy", resource="memory"}
-) by (namespace)
+  sum by (namespace, pod) (
+    kube_pod_container_resource_requests{container="istio-proxy", resource="memory"}
+  )
+)
 ```
 
 Same logic. Below 0.3 means significant waste.
@@ -50,10 +56,16 @@ Same logic. Below 0.3 means significant waste.
 
 ```promql
 sum(
-  kube_pod_container_resource_requests{container="istio-proxy", resource="cpu"}
-  -
-  on(namespace, pod) group_left()
-  rate(container_cpu_usage_seconds_total{container="istio-proxy"}[5m])
+  clamp_min(
+    sum by (namespace, pod) (
+      kube_pod_container_resource_requests{container="istio-proxy", resource="cpu"}
+    )
+    -
+    sum by (namespace, pod) (
+      rate(container_cpu_usage_seconds_total{container="istio-proxy"}[5m])
+    ),
+    0
+  )
 )
 ```
 
@@ -63,10 +75,16 @@ Multiply this number by your cost-per-core to get dollars wasted per month.
 
 ```promql
 sum(
-  kube_pod_container_resource_requests{container="istio-proxy", resource="memory"}
-  -
-  on(namespace, pod) group_left()
-  container_memory_working_set_bytes{container="istio-proxy"}
+  clamp_min(
+    sum by (namespace, pod) (
+      kube_pod_container_resource_requests{container="istio-proxy", resource="memory"}
+    )
+    -
+    sum by (namespace, pod) (
+      container_memory_working_set_bytes{container="istio-proxy"}
+    ),
+    0
+  )
 ) / 1024 / 1024 / 1024
 ```
 
@@ -84,7 +102,7 @@ sum(container_memory_working_set_bytes{namespace="istio-system", container="disc
 rate(pilot_xds_pushes[5m])
 
 # xDS push latency (p99)
-histogram_quantile(0.99, rate(pilot_xds_push_time_bucket[5m]))
+histogram_quantile(0.99, sum by (le) (rate(pilot_xds_push_time_bucket[5m])))
 ```
 
 ### Gateway Resource Usage
@@ -120,10 +138,18 @@ Show a table panel with per-namespace waste:
 ```promql
 # CPU waste per namespace (in millicores)
 sum by (namespace) (
-  kube_pod_container_resource_requests{container="istio-proxy", resource="cpu"} * 1000
-  -
-  on(namespace, pod) group_left()
-  rate(container_cpu_usage_seconds_total{container="istio-proxy"}[5m]) * 1000
+  clamp_min(
+    (
+      sum by (namespace, pod) (
+        kube_pod_container_resource_requests{container="istio-proxy", resource="cpu"}
+      )
+      -
+      sum by (namespace, pod) (
+        rate(container_cpu_usage_seconds_total{container="istio-proxy"}[5m])
+      )
+    ) * 1000,
+    0
+  )
 )
 ```
 
@@ -136,10 +162,16 @@ A table panel showing individual pod sidecar usage:
 ```promql
 # Top 20 most over-provisioned sidecars by CPU
 topk(20,
-  kube_pod_container_resource_requests{container="istio-proxy", resource="cpu"}
-  -
-  on(namespace, pod) group_left()
-  rate(container_cpu_usage_seconds_total{container="istio-proxy"}[5m])
+  clamp_min(
+    sum by (namespace, pod) (
+      kube_pod_container_resource_requests{container="istio-proxy", resource="cpu"}
+    )
+    -
+    sum by (namespace, pod) (
+      rate(container_cpu_usage_seconds_total{container="istio-proxy"}[5m])
+    ),
+    0
+  )
 )
 ```
 
@@ -183,10 +215,13 @@ groups:
   - alert: SidecarOOMRisk
     expr: |
       max by (namespace, pod) (
-        container_memory_working_set_bytes{container="istio-proxy"}
+        sum by (namespace, pod) (
+          container_memory_working_set_bytes{container="istio-proxy"}
+        )
         /
-        on(namespace, pod) group_left()
-        kube_pod_container_resource_limits{container="istio-proxy", resource="memory"}
+        sum by (namespace, pod) (
+          kube_pod_container_resource_limits{container="istio-proxy", resource="memory"}
+        )
       ) > 0.9
     for: 10m
     labels:
@@ -206,10 +241,15 @@ groups:
 
   - alert: IstiodHighMemory
     expr: |
-      container_memory_working_set_bytes{namespace="istio-system", container="discovery"}
-      /
-      kube_pod_container_resource_limits{namespace="istio-system", container="discovery", resource="memory"}
-      > 0.85
+      max by (namespace, pod) (
+        sum by (namespace, pod) (
+          container_memory_working_set_bytes{namespace="istio-system", container="discovery"}
+        )
+        /
+        sum by (namespace, pod) (
+          kube_pod_container_resource_limits{namespace="istio-system", container="discovery", resource="memory"}
+        )
+      ) > 0.85
     for: 15m
     labels:
       severity: warning
