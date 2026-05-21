@@ -94,7 +94,13 @@ metadata:
   name: payment-service
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: payment-service
   template:
+    metadata:
+      labels:
+        app: payment-service
     spec:
       serviceAccountName: payment-service
       containers:
@@ -183,7 +189,20 @@ Istio automatically rotates workload certificates. The default lifetime is 24 ho
 istioctl proxy-config secret deploy/my-service -n production
 ```
 
-For the control plane certificates, ensure your root CA is properly managed. If you are using the default self-signed CA, consider switching to a production CA:
+For workload certificates, ensure your root CA is properly managed. If you are using the default self-signed CA, consider switching to a production CA:
+
+```bash
+kubectl create namespace istio-system
+kubectl create secret generic cacerts -n istio-system \
+  --from-file=ca-cert.pem \
+  --from-file=ca-key.pem \
+  --from-file=root-cert.pem \
+  --from-file=cert-chain.pem
+
+istioctl install
+```
+
+For enterprise deployments, integrate with an external CA like cert-manager or HashiCorp Vault:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -192,14 +211,24 @@ spec:
   values:
     pilot:
       env:
-        PILOT_CERT_PROVIDER: "istiod"
-```
-
-For enterprise deployments, integrate with an external CA like cert-manager or HashiCorp Vault:
-
-```bash
-# Using cert-manager as the CA
-istioctl install --set values.pilot.env.EXTERNAL_CA=ISTIOD_RA_KUBERNETES_API
+        EXTERNAL_CA: ISTIOD_RA_KUBERNETES_API
+  meshConfig:
+    defaultConfig:
+      proxyMetadata:
+        ISTIO_META_CERT_SIGNER: istio-system
+    caCertificates:
+      - pem: |
+          <CA PEM>
+        certSigners:
+          - clusterissuers.cert-manager.io/istio-system
+  components:
+    pilot:
+      k8s:
+        env:
+          - name: CERT_SIGNER_DOMAIN
+            value: clusterissuers.cert-manager.io
+          - name: PILOT_CERT_PROVIDER
+            value: k8s.io/clusterissuers.cert-manager.io/istio-system
 ```
 
 ## Limit External Access
@@ -251,7 +280,7 @@ spec:
     - providers:
         - name: envoy
       filter:
-        expression: "response.code == 403 || response.code == 401 || connection.mtls == false"
+        expression: "(has(response.code) && (response.code == 403 || response.code == 401)) || connection.mtls == false"
 ```
 
 This logs all forbidden and unauthorized responses, plus any plaintext connections. These logs are essential for detecting security incidents.
