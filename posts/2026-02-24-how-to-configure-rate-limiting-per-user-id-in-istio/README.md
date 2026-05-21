@@ -28,8 +28,11 @@ apiVersion: security.istio.io/v1
 kind: RequestAuthentication
 metadata:
   name: jwt-auth
-  namespace: default
+  namespace: istio-system
 spec:
+  selector:
+    matchLabels:
+      istio: ingressgateway
   jwtRules:
   - issuer: "https://auth.example.com"
     jwksUri: "https://auth.example.com/.well-known/jwks.json"
@@ -55,8 +58,11 @@ apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: ext-auth
-  namespace: default
+  namespace: istio-system
 spec:
+  selector:
+    matchLabels:
+      istio: ingressgateway
   action: CUSTOM
   provider:
     name: ext-auth-provider
@@ -98,13 +104,16 @@ data:
   config.yaml: |
     domain: user-ratelimit
     descriptors:
-    - key: user_id
-      rate_limit:
-        unit: minute
-        requests_per_unit: 60
+    - key: user_tier
+      value: "none"
+      descriptors:
+      - key: user_id
+        rate_limit:
+          unit: minute
+          requests_per_unit: 60
 ```
 
-This applies a blanket 60 requests per minute limit to every user. If you need different limits for different users or tiers, you can use nested descriptors:
+This applies a blanket 60 requests per minute limit to every user when no tier header is present. If you need different limits for different users or tiers, you can use nested descriptors:
 
 ```yaml
 domain: user-ratelimit
@@ -130,10 +139,13 @@ descriptors:
     rate_limit:
       unit: minute
       requests_per_unit: 10
-- key: user_id
-  rate_limit:
-    unit: minute
-    requests_per_unit: 30
+- key: user_tier
+  value: "none"
+  descriptors:
+  - key: user_id
+    rate_limit:
+      unit: minute
+      requests_per_unit: 30
 ```
 
 The last entry catches users without a tier header.
@@ -174,29 +186,9 @@ spec:
           rate_limit_service:
             grpc_service:
               envoy_grpc:
-                cluster_name: rate_limit_cluster
+                cluster_name: outbound|8081||ratelimit.rate-limit.svc.cluster.local
+                authority: ratelimit.rate-limit.svc.cluster.local
             transport_api_version: V3
-  - applyTo: CLUSTER
-    match:
-      context: GATEWAY
-    patch:
-      operation: ADD
-      value:
-        name: rate_limit_cluster
-        type: STRICT_DNS
-        connect_timeout: 0.5s
-        lb_policy: ROUND_ROBIN
-        protocol_selection: USE_CONFIGURED_PROTOCOL
-        http2_protocol_options: {}
-        load_assignment:
-          cluster_name: rate_limit_cluster
-          endpoints:
-          - lb_endpoints:
-            - endpoint:
-                address:
-                  socket_address:
-                    address: ratelimit.rate-limit.svc.cluster.local
-                    port_value: 8081
 ```
 
 Now add the rate limit actions that extract headers:
@@ -232,16 +224,23 @@ spec:
               header_name: x-user-id
               descriptor_key: user_id
         - actions:
+          - header_value_match:
+              descriptor_key: user_tier
+              descriptor_value: "none"
+              expect_match: false
+              headers:
+              - name: x-user-tier
+                present_match: true
           - request_headers:
               header_name: x-user-id
               descriptor_key: user_id
 ```
 
-The first action sends both tier and user ID (matching the nested descriptors). The second action sends just the user ID as a fallback if the tier header is missing.
+The first action sends both tier and user ID (matching the nested descriptors). The second action sends a `user_tier=none` descriptor with the user ID as a fallback only if the tier header is missing.
 
 ## Ensuring Header Order
 
-There is a subtlety here. The JWT validation and header extraction must happen before the rate limit check. In Istio, RequestAuthentication runs before HTTP filters in the filter chain, so the `x-user-id` header from JWT claim extraction will be available when the rate limit filter runs.
+There is a subtlety here. The JWT validation and header extraction must happen before the rate limit check. With this gateway-scoped policy, Istio's JWT authentication filter runs before the rate limit filter inserted ahead of the router, so the `x-user-id` header from JWT claim extraction will be available when the rate limit filter runs.
 
 Verify the filter chain order:
 
@@ -285,7 +284,7 @@ This should also return 200s for the first 60 requests, independent of the first
 
 ## Handling Unauthenticated Requests
 
-For requests without a valid JWT (and therefore no user ID), add a fallback rate limit:
+For requests without a JWT (and therefore no user ID), add a fallback rate limit:
 
 ```yaml
 rate_limits:
@@ -294,8 +293,13 @@ rate_limits:
       header_name: x-user-id
       descriptor_key: user_id
 - actions:
-  - generic_key:
+  - header_value_match:
+      descriptor_key: generic_key
       descriptor_value: anonymous
+      expect_match: false
+      headers:
+      - name: x-user-id
+        present_match: true
 ```
 
 And in the rate limit config:
