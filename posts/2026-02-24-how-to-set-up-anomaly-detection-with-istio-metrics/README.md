@@ -172,9 +172,9 @@ Notice the `and` clauses in the alerts. The `service:error_rate:5m > 0.001` cond
 
 ## Seasonal Anomaly Detection
 
-The 1-hour baseline works for catching sudden changes, but what about services that have predictable daily or weekly patterns? For these, you need a longer baseline that captures the seasonal pattern.
+The 1-hour baseline works for catching sudden changes, but what about services that have predictable daily or weekly patterns? For these, a longer baseline can smooth out short-term noise and include a full week of behavior, though it does not compare each point to the same hour from previous days or weeks.
 
-Use a 7-day average to account for weekly patterns:
+Use a 7-day average to smooth over weekly behavior:
 
 ```yaml
 - record: service:request_rate:avg_7d
@@ -199,7 +199,7 @@ Then create an alert that uses the weekly baseline:
     summary: "Traffic significantly below weekly average for {{ $labels.destination_service_name }}"
 ```
 
-A 2-sigma threshold with a 7-day window is more appropriate here since weekly patterns have more natural variance.
+A 2-sigma threshold with a 7-day window is more appropriate here since a longer baseline includes more natural variance.
 
 ## Rate of Change Detection
 
@@ -208,7 +208,7 @@ Sometimes the absolute value is not what matters. What matters is how fast thing
 ```yaml
 - alert: RapidErrorRateIncrease
   expr: |
-    deriv(service:error_rate:5m[15m]) > 0.01
+    deriv(service:error_rate:5m[15m]) > 0.00005
     and service:error_rate:5m > 0.005
   for: 5m
   labels:
@@ -218,7 +218,7 @@ Sometimes the absolute value is not what matters. What matters is how fast thing
     description: "Error rate is increasing at {{ $value }} per second"
 ```
 
-The `deriv()` function calculates the per-second derivative, so `> 0.01` means the error rate is increasing by 1 percentage point per second.
+The `deriv()` function calculates the per-second derivative, so `> 0.00005` means the error rate is increasing by 0.005 percentage points per second, or about 0.3 percentage points per minute.
 
 ## Multi-Signal Anomaly Detection
 
