@@ -39,7 +39,7 @@ flowchart TB
 For multicluster Istio, you need:
 
 - Two or more Kubernetes clusters
-- Network connectivity between clusters (pods in one cluster can reach pods in another)
+- Network connectivity appropriate to the topology (direct pod-to-pod routing for a single network, or reachable east-west gateways for different networks)
 - A shared root CA for mTLS across clusters
 - kubeconfig access to all clusters
 
@@ -59,45 +59,26 @@ kubectl --context="${CTX_CLUSTER2}" get nodes
 
 ## Setting Up a Shared Root CA
 
-Both clusters must trust each other's certificates. Create a shared root CA:
+Both clusters must trust each other's certificates. From the top-level directory of the Istio release, create a shared root CA and intermediate CA for each cluster:
 
 ```bash
-# Create root CA directory
-
 mkdir -p certs
 cd certs
 
-# Generate root CA key and cert
-openssl req -new -x509 -nodes -days 3650 \
-  -keyout root-key.pem \
-  -out root-cert.pem \
-  -subj "/O=Istio/CN=Root CA"
+make -f ../tools/certs/Makefile.selfsigned.mk \
+  ROOTCA_CN="Root CA" \
+  ROOTCA_ORG=istio.io \
+  root-ca
 
-# Generate intermediate CA for cluster1
-openssl req -new -nodes \
-  -keyout cluster1-ca-key.pem \
-  -out cluster1-ca-csr.pem \
-  -subj "/O=Istio/CN=Intermediate CA Cluster1"
+make -f ../tools/certs/Makefile.selfsigned.mk \
+  INTERMEDIATE_CN="Cluster 1 Intermediate CA" \
+  INTERMEDIATE_ORG=istio.io \
+  cluster1-cacerts
 
-openssl x509 -req -days 730 \
-  -CA root-cert.pem \
-  -CAkey root-key.pem \
-  -CAcreateserial \
-  -in cluster1-ca-csr.pem \
-  -out cluster1-ca-cert.pem
-
-# Generate intermediate CA for cluster2
-openssl req -new -nodes \
-  -keyout cluster2-ca-key.pem \
-  -out cluster2-ca-csr.pem \
-  -subj "/O=Istio/CN=Intermediate CA Cluster2"
-
-openssl x509 -req -days 730 \
-  -CA root-cert.pem \
-  -CAkey root-key.pem \
-  -CAcreateserial \
-  -in cluster2-ca-csr.pem \
-  -out cluster2-ca-cert.pem
+make -f ../tools/certs/Makefile.selfsigned.mk \
+  INTERMEDIATE_CN="Cluster 2 Intermediate CA" \
+  INTERMEDIATE_ORG=istio.io \
+  cluster2-cacerts
 ```
 
 Create the CA secrets on each cluster:
@@ -105,23 +86,25 @@ Create the CA secrets on each cluster:
 ```bash
 # Cluster 1
 kubectl --context="${CTX_CLUSTER1}" create namespace istio-system
+kubectl --context="${CTX_CLUSTER1}" label namespace istio-system topology.istio.io/network=network1
 
 kubectl --context="${CTX_CLUSTER1}" create secret generic cacerts \
   -n istio-system \
-  --from-file=ca-cert.pem=cluster1-ca-cert.pem \
-  --from-file=ca-key.pem=cluster1-ca-key.pem \
-  --from-file=root-cert.pem=root-cert.pem \
-  --from-file=cert-chain.pem=cluster1-ca-cert.pem
+  --from-file=ca-cert.pem=cluster1/ca-cert.pem \
+  --from-file=ca-key.pem=cluster1/ca-key.pem \
+  --from-file=root-cert.pem=cluster1/root-cert.pem \
+  --from-file=cert-chain.pem=cluster1/cert-chain.pem
 
 # Cluster 2
 kubectl --context="${CTX_CLUSTER2}" create namespace istio-system
+kubectl --context="${CTX_CLUSTER2}" label namespace istio-system topology.istio.io/network=network2
 
 kubectl --context="${CTX_CLUSTER2}" create secret generic cacerts \
   -n istio-system \
-  --from-file=ca-cert.pem=cluster2-ca-cert.pem \
-  --from-file=ca-key.pem=cluster2-ca-key.pem \
-  --from-file=root-cert.pem=root-cert.pem \
-  --from-file=cert-chain.pem=cluster2-ca-cert.pem
+  --from-file=ca-cert.pem=cluster2/ca-cert.pem \
+  --from-file=ca-key.pem=cluster2/ca-key.pem \
+  --from-file=root-cert.pem=cluster2/root-cert.pem \
+  --from-file=cert-chain.pem=cluster2/cert-chain.pem
 ```
 
 ## Multi-Primary Setup on Different Networks
@@ -188,6 +171,9 @@ spec:
                 port: 15017
                 targetPort: 15017
   values:
+    gateways:
+      istio-ingressgateway:
+        injectionTemplate: gateway
     global:
       meshID: mesh1
       multiCluster:
