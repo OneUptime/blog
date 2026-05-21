@@ -111,7 +111,7 @@ When your GitOps tool applies this resource, the Sealed Secrets controller decry
 
 ## Option 2: SOPS with Age or AWS KMS
 
-Mozilla SOPS encrypts individual values within a YAML file, leaving the structure readable. This is nice because you can still see the resource kind and metadata in plain text.
+SOPS encrypts individual values within a YAML file, leaving the structure readable. This is nice because you can still see the resource kind and metadata in plain text.
 
 Install SOPS:
 
@@ -215,24 +215,19 @@ kubectl create secret generic sops-age-key \
 
 ### Using SOPS with Argo CD
 
-Install the SOPS plugin for Argo CD:
+Install a SOPS config management plugin as an Argo CD repo-server sidecar. The plugin configuration file should be mounted in the sidecar at `/home/argocd/cmp-server/config/plugin.yaml`:
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
+apiVersion: argoproj.io/v1alpha1
+kind: ConfigManagementPlugin
 metadata:
-  name: argocd-cm
-  namespace: argocd
-data:
-  configManagementPlugins: |
-    - name: sops
-      generate:
-        command: ["bash", "-c"]
-        args:
-          - |
-            for f in *.yaml; do
-              sops --decrypt "$f"
-            done
+  name: sops
+spec:
+  generate:
+    command: ["bash", "-c"]
+    args:
+      - |
+        find . -name '*.yaml' -exec sh -c 'for f; do sops --decrypt "$f"; printf "\n---\n"; done' sh {} +
 ```
 
 ## Option 3: External Secrets Operator
@@ -250,7 +245,7 @@ helm install external-secrets external-secrets/external-secrets \
 Configure a SecretStore:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
   name: aws-secrets
@@ -269,7 +264,7 @@ spec:
 Create an ExternalSecret that pulls the TLS cert:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: example-com-tls
@@ -322,10 +317,16 @@ This Certificate resource lives in Git. cert-manager handles the actual certific
 
 Regardless of which approach you use, you need a rotation strategy.
 
-For Sealed Secrets, re-encrypt and commit:
+For Sealed Secrets, create a new TLS secret manifest with the rotated certificate and private key, seal it, and commit the updated SealedSecret:
 
 ```bash
-kubeseal --re-encrypt < sealed-secret.yaml > sealed-secret-new.yaml
+kubectl create secret tls example-com-tls \
+  --cert=tls.crt \
+  --key=tls.key \
+  --namespace=istio-ingress \
+  --dry-run=client \
+  -o yaml | \
+  kubeseal --format yaml > sealed-secret-new.yaml
 mv sealed-secret-new.yaml sealed-secret.yaml
 git add sealed-secret.yaml
 git commit -m "rotate TLS certificate for example.com"
@@ -333,6 +334,6 @@ git commit -m "rotate TLS certificate for example.com"
 
 For External Secrets, update the secret in the external store and the operator handles the rest. Set `refreshInterval` to control how quickly changes propagate.
 
-For cert-manager, rotation is fully automatic. Certificates renew before expiration with no manual intervention.
+For cert-manager, rotation is automatic under normal conditions. Certificates renew before expiration without manually committing new certificate material.
 
 Handling secrets in a GitOps workflow for Istio comes down to choosing the right tool for your environment. If you already have a secret management system like Vault or AWS Secrets Manager, External Secrets Operator is the cleanest integration. If you want everything self-contained within the cluster, Sealed Secrets or SOPS work well. And for TLS certificates specifically, cert-manager eliminates the problem entirely by automating the full lifecycle.
