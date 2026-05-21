@@ -18,7 +18,7 @@ The DNS behavior is different:
 - Regular service: DNS returns the ClusterIP
 - Headless service: DNS returns all pod IPs
 
-With Istio's DNS proxy enabled, DNS resolution for headless services can change, which affects how your application discovers and connects to individual pods.
+With Istio's DNS proxy enabled, Kubernetes service DNS answers should normally stay the same, but DNS capture can still affect how queries are handled and how `ServiceEntry` hosts are resolved.
 
 ## DNS Resolution Not Returning Pod IPs
 
@@ -65,13 +65,13 @@ kubectl get pods -n my-namespace -l app=my-app -o jsonpath='{range .items[*]}{.m
 
 ## Istio DNS Proxy Interference
 
-Istio's DNS proxy intercepts DNS queries and can handle them differently for headless services. If it's causing issues, check if it's enabled:
+Istio's DNS proxy intercepts DNS queries and answers from its local name table when it can, otherwise it forwards queries to the upstream resolver. If it's causing issues, check if it's enabled:
 
 ```bash
 kubectl get configmap istio -n istio-system -o yaml | grep -A 5 "DNS_CAPTURE\|DNS_AUTO_ALLOCATE"
 ```
 
-If DNS_AUTO_ALLOCATE is true, Istio assigns virtual IPs to ServiceEntries. This shouldn't affect headless services, but in some edge cases it can cause unexpected behavior.
+If DNS_AUTO_ALLOCATE is true, Istio assigns virtual IPs to `ServiceEntry` hosts that do not have addresses. This is for `ServiceEntry` resolution, not for normal Kubernetes headless services.
 
 To disable DNS proxy for a specific pod:
 
@@ -85,17 +85,17 @@ metadata:
 
 ## mTLS with Headless Services
 
-mTLS works with headless services, but there's a subtlety. When connecting to individual pod DNS names (like `pod-0.my-headless-svc.my-namespace.svc.cluster.local`), the certificate SAN must match.
+mTLS works with headless services, but there's a subtlety. Istio mTLS validates workload identity, not the Kubernetes DNS name like `pod-0.my-headless-svc.my-namespace.svc.cluster.local`. If your application also uses its own TLS connection to a pod DNS name, that separate application-level certificate still needs the right hostname/SAN.
 
 Istio generates certificates with SANs that include the service account identity. As long as both pods are in the mesh, mTLS should work regardless of whether you use the headless service name or the individual pod name.
 
-Verify mTLS status:
+Check that the client proxy has endpoints for the headless service:
 
 ```bash
 istioctl proxy-config endpoints <client-pod> -n my-namespace | grep my-headless-svc
 ```
 
-If you see `HEALTHY` endpoints, mTLS is working. If they show as `UNHEALTHY`, check the certificate:
+If you see `HEALTHY` endpoints, Envoy has healthy upstream endpoints for the service. That does not by itself prove mTLS is being used; to inspect the workload certificate, check the secret:
 
 ```bash
 istioctl proxy-config secret <pod-name> -n my-namespace
@@ -125,13 +125,13 @@ spec:
           number: 8080
 ```
 
-This works, but be aware that with headless services, the client typically resolves DNS to get individual pod IPs and connects directly. The VirtualService applies to traffic going to the service name, not to direct pod-IP connections.
+This works, but be aware that with headless services, the client typically resolves DNS to get individual pod IPs and connects directly. For HTTP traffic, Istio routes primarily by port and `Host` header, so rules for the service host can still apply when the request uses that host. Direct pod-IP connections that do not carry the service host are not matched by a `VirtualService` for the service name.
 
 ## Load Balancing Differences
 
 With headless services, the client gets all pod IPs from DNS and can choose which one to connect to. This is client-side load balancing by DNS.
 
-Istio's Envoy proxy can still do load balancing if traffic goes through the service name. But if the application resolves DNS and connects to specific pod IPs directly, the proxy's load balancing doesn't apply.
+Istio's Envoy proxy can still do request-level load balancing for HTTP traffic it recognizes as going to the service. But if the application resolves DNS and connects to specific pod IPs directly without using the service host, the proxy's service-level load balancing doesn't apply.
 
 For DestinationRules with headless services:
 
@@ -149,7 +149,7 @@ spec:
         maxConnections: 100
 ```
 
-The traffic policy applies to all connections to the headless service, including connections to individual pod IPs (since Istio knows they belong to the headless service).
+The traffic policy applies when Istio recognizes the traffic as intended for the headless service host. Do not assume it applies to arbitrary direct pod-IP connections that do not use the service host.
 
 ## Port Naming for Headless Services
 
@@ -187,7 +187,7 @@ spec:
     - "istio-system/*"
 ```
 
-If the headless service is in the `database` namespace and you don't include it, connections fail because the proxy doesn't know about those endpoints.
+If the headless service is in the `database` namespace and you don't include it, the proxy will not get service-specific configuration for those endpoints. Depending on your outbound traffic policy and protocol, the traffic may fail or be treated as unmatched passthrough traffic with reduced Istio functionality.
 
 ## StatefulSet Pod-Specific DNS
 
