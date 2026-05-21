@@ -98,7 +98,13 @@ kind: Deployment
 metadata:
   name: my-service
 spec:
+  selector:
+    matchLabels:
+      app: my-service
   template:
+    metadata:
+      labels:
+        app: my-service
     spec:
       containers:
       - name: my-service
@@ -153,11 +159,11 @@ Set alerts for when p99 latency exceeds your SLO target.
 
 ### Connection Errors
 
-Track TCP connection failures:
+Track upstream connection failures for HTTP services:
 
 ```text
-# Rate of connection failures
-sum(rate(istio_tcp_connections_closed_total{connection_security_policy="mutual_tls", destination_service="my-service.default.svc.cluster.local"}[5m]))
+# Rate of upstream connection failures
+sum(rate(istio_requests_total{response_code="503", response_flags=~".*UC.*", destination_service="my-service.default.svc.cluster.local"}[5m]))
 ```
 
 ## Layer 4: Control Plane Health
@@ -168,7 +174,7 @@ The Istio control plane (istiod) is critical. If it goes down, new configuration
 # Key istiod health metrics to track:
 
 # Configuration push errors
-# pilot_xds_push_errors should be 0 or very low
+# pilot_total_xds_internal_errors should be 0 or very low
 # pilot_total_xds_rejects should be 0
 
 # Control plane resource usage
@@ -261,14 +267,13 @@ Some health issues are unique to service mesh environments:
 
 ```bash
 # Find pods without sidecars in labeled namespaces
-kubectl get pods -A -o json | jq -r '
-  .items[] |
-  select(.metadata.labels["istio.io/rev"] != null or
-         .metadata.namespace as $ns |
-         ["default"] | index($ns) != null) |
-  select([.spec.containers[].name] | index("istio-proxy") == null) |
-  "\(.metadata.namespace)/\(.metadata.name)"
-'
+for ns in $(kubectl get ns -l istio-injection=enabled -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}'; kubectl get ns -l istio.io/rev -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}'); do
+  kubectl get pods -n "$ns" -o json | jq -r '
+    .items[] |
+    select([.spec.containers[].name] | index("istio-proxy") == null) |
+    "\(.metadata.namespace)/\(.metadata.name)"
+  '
+done | sort -u
 ```
 
 **mTLS failures**: If mTLS is misconfigured, services can't communicate. Watch for spikes in connection errors and 503 responses with the `UC` (upstream connection failure) response flag.
