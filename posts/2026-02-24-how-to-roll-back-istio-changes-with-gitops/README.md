@@ -14,7 +14,7 @@ This guide covers rollback strategies for Istio configuration managed through Gi
 
 ## The Golden Rule
 
-With GitOps, every cluster state corresponds to a Git commit. Rolling back means pointing the cluster at a previous commit. You should never need to edit live resources directly. If you find yourself reaching for kubectl edit during a rollback, something in your workflow is broken.
+With GitOps, every desired cluster state corresponds to a Git commit. Rolling back means pointing the cluster at a previous commit. You should never need to edit live resources directly. If you find yourself reaching for kubectl edit during a rollback, something in your workflow is broken.
 
 ## Quick Rollback with Git Revert
 
@@ -40,8 +40,8 @@ git push origin main
 If multiple recent commits need to be reverted:
 
 ```bash
-# Revert a range of commits (newest to oldest)
-git revert --no-edit a1b2c3d..HEAD
+# Revert a range of commits, including the oldest commit in the range
+git revert --no-edit a1b2c3d^..HEAD
 git push origin main
 ```
 
@@ -111,8 +111,8 @@ git push origin main
 # Resume reconciliation
 flux resume kustomization istio-config
 
-# Force immediate reconciliation
-flux reconcile kustomization istio-config
+# Force Flux to fetch the latest source revision and apply it
+flux reconcile kustomization istio-config --with-source
 ```
 
 ### Using Flux Source Revision
@@ -186,6 +186,8 @@ kind: VirtualService
 metadata:
   name: api-gateway
 spec:
+  hosts:
+    - api-gateway
   http:
     - route:
         - destination:
@@ -222,7 +224,7 @@ To minimize this:
 argocd app sync istio-config
 
 # Flux: Force reconciliation immediately
-flux reconcile kustomization istio-config
+flux reconcile kustomization istio-config --with-source
 ```
 
 ## Testing Rollback Before You Need It
