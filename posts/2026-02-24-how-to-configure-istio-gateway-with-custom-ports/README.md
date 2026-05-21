@@ -203,7 +203,7 @@ spec:
 
 ## Port Naming Conventions
 
-Port names in the Gateway resource matter. Istio uses them to determine how to handle traffic:
+Port names on Kubernetes Services matter because Istio can use them to determine how to handle traffic. In a Gateway resource, the `protocol` field is the explicit protocol setting, and the `name` field should still use a clear protocol-based name:
 
 | Name prefix | Protocol | Behavior |
 |---|---|---|
@@ -214,7 +214,7 @@ Port names in the Gateway resource matter. Istio uses them to determine how to h
 | `tcp` | TCP | Raw TCP forwarding |
 | `tls` | TLS | TLS routing without HTTP parsing |
 
-Using the right name prefix ensures Istio applies the correct protocol handling. A port named `tcp-custom` will be treated as TCP even on port 80.
+Using the right Service port name prefix helps Istio apply the correct protocol handling. A Service port named `tcp-custom` will be treated as TCP even on port 80, unless `appProtocol` is set and takes precedence.
 
 ## Port Conflicts
 
@@ -235,6 +235,10 @@ Test that your custom port is accessible:
 ```bash
 export GATEWAY_IP=$(kubectl -n istio-system get service istio-ingressgateway \
   -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+
+# If your load balancer uses a hostname instead of an IP, use:
+# export GATEWAY_IP=$(kubectl -n istio-system get service istio-ingressgateway \
+#   -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
 
 # Test custom HTTP port
 
