@@ -8,11 +8,11 @@ Description: A practical reference for all standard Istio metrics including requ
 
 ---
 
-Istio generates a rich set of metrics from every sidecar proxy in your mesh. These metrics cover HTTP requests, TCP connections, gRPC calls, and more. Understanding what each metric means and what labels are available is essential for building effective dashboards and alerts. This post covers every standard metric Istio produces.
+Istio generates a rich set of service-level metrics from every sidecar proxy in your mesh. These metrics cover HTTP requests, TCP connections, gRPC calls, and more. Understanding what each metric means and what labels are available is essential for building effective dashboards and alerts. This post covers the standard service-level metrics Istio produces.
 
 ## How Istio Metrics Work
 
-Each Envoy sidecar collects metrics about traffic flowing through it. These metrics are exposed on port 15020 at the `/stats/prometheus` endpoint and scraped by Prometheus. Istio generates metrics on both the client side (outbound) and server side (inbound) of every request, giving you visibility from both perspectives.
+Each Envoy sidecar collects metrics about traffic flowing through it. With Prometheus metrics merging enabled, these metrics are exposed on port 15020 at the `/stats/prometheus` endpoint and scraped by Prometheus. Istio generates metrics on both the client side (outbound) and server side (inbound) when both sides of a request are observed by proxies, giving you visibility from both perspectives.
 
 The metrics follow Prometheus naming conventions and use labels (also called dimensions or tags) to add context like source service, destination service, response code, and more.
 
@@ -159,7 +159,7 @@ Total bytes received over TCP connections.
 
 ## Standard Labels
 
-Every Istio metric includes a set of standard labels. Here is what each one means:
+Istio metrics include a set of standard labels, with some labels present only for specific protocols or reporters. Here is what each one means:
 
 ### Reporter
 
@@ -168,13 +168,13 @@ reporter="source"   # Metric reported by the client-side proxy
 reporter="destination"  # Metric reported by the server-side proxy
 ```
 
-Every request generates metrics on both sides. The source reporter measures from the caller's perspective, the destination reporter from the receiver's perspective. The difference in latency between the two is roughly the network latency plus sidecar processing overhead.
+Requests generate metrics on both sides when both the source and destination are observed by Istio proxies. The source reporter measures from the caller's perspective, the destination reporter from the receiver's perspective. The difference in latency between the two is roughly the network latency plus sidecar processing overhead.
 
 ### Source Labels
 
 - `source_workload` - the name of the source workload (deployment name)
 - `source_workload_namespace` - namespace of the source
-- `source_principal` - SPIFFE identity of the source (from mTLS cert)
+- `source_principal` - peer principal of the source when peer authentication is used
 - `source_app` - the `app` label on the source pod
 - `source_version` - the `version` label on the source pod
 - `source_cluster` - the cluster name the source belongs to
@@ -183,7 +183,7 @@ Every request generates metrics on both sides. The source reporter measures from
 
 - `destination_workload` - name of the destination workload
 - `destination_workload_namespace` - namespace of the destination
-- `destination_principal` - SPIFFE identity of the destination
+- `destination_principal` - peer principal of the destination when peer authentication is used
 - `destination_app` - the `app` label on the destination pod
 - `destination_version` - the `version` label on the destination pod
 - `destination_service` - FQDN of the destination service
@@ -193,10 +193,10 @@ Every request generates metrics on both sides. The source reporter measures from
 
 ### Request Labels
 
-- `request_protocol` - HTTP, gRPC, or tcp
-- `response_code` - HTTP status code (200, 404, 503, etc.)
-- `grpc_response_status` - gRPC status code (0 for OK, etc.)
-- `connection_security_policy` - `mutual_tls`, `none`, or `unknown`
+- `request_protocol` - request or connection protocol, such as `http`, `grpc`, or `tcp`
+- `response_code` - HTTP status code (200, 404, 503, etc.); present only on HTTP metrics
+- `grpc_response_status` - gRPC status code (0 for OK, etc.); present only on gRPC metrics
+- `connection_security_policy` - `mutual_tls` when destination-side telemetry observes Istio-secured traffic, or `unknown` when the policy cannot be populated
 
 ### Response Flags
 
@@ -230,21 +230,21 @@ sum(rate(istio_requests_total{response_flags="UO"}[5m])) by (destination_service
 
 Istio also exposes control plane metrics from istiod:
 
-### pilot_xds_pushes
+### pilot_push_triggers
 
-Counts configuration pushes to proxies.
+Counts the number of times Istiod triggered a push, labeled by the reason for the push.
 
 ```promql
-rate(pilot_xds_pushes[5m])
+rate(pilot_push_triggers[5m])
 ```
 
 ### pilot_proxy_convergence_time
 
 How long it takes for configuration changes to reach all proxies.
 
-### pilot_conflict_inbound_listener and pilot_conflict_outbound_listener_tcp_over_current_tcp
+### pilot_total_rejected_configs and pilot_total_xds_internal_errors
 
-Indicate configuration conflicts detected by istiod.
+Indicate configs rejected or ignored by Pilot and internal XDS errors.
 
 ### pilot_xds
 
@@ -259,7 +259,7 @@ pilot_xds{type="cds"}
 You can add, remove, or modify metric labels using the Telemetry API:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: custom-metrics
