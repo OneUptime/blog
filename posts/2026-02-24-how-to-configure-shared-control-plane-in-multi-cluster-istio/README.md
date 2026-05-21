@@ -24,6 +24,7 @@ The remote cluster's sidecars get their configuration from the primary cluster's
 - Two Kubernetes clusters
 - Network connectivity from remote cluster pods to the primary cluster's istiod (port 15012)
 - istioctl 1.20+
+- The matching Istio release directory available locally for the `samples` and `tools/certs` files
 - kubectl contexts configured
 
 ```bash
@@ -39,36 +40,34 @@ kubectl --context=${CTX_REMOTE} get nodes
 As with any multi-cluster Istio setup, you need a shared root of trust:
 
 ```bash
-mkdir -p certs && cd certs
+mkdir -p certs
+pushd certs
 
-openssl req -new -newkey rsa:4096 -x509 -sha256 \
-  -days 3650 -nodes \
-  -subj "/O=Istio/CN=Root CA" \
-  -keyout root-key.pem -out root-cert.pem
-
-for cluster in primary remote; do
-  openssl req -new -newkey rsa:4096 -nodes \
-    -subj "/O=Istio/CN=Intermediate CA ${cluster}" \
-    -keyout ${cluster}-ca-key.pem -out ${cluster}-ca-csr.pem
-
-  openssl x509 -req -sha256 -days 3650 \
-    -CA root-cert.pem -CAkey root-key.pem -CAcreateserial \
-    -in ${cluster}-ca-csr.pem -out ${cluster}-ca-cert.pem
-done
+# Run these from the top-level directory of an Istio release.
+make -f ../tools/certs/Makefile.selfsigned.mk root-ca
+make -f ../tools/certs/Makefile.selfsigned.mk primary-cacerts
+make -f ../tools/certs/Makefile.selfsigned.mk remote-cacerts
 ```
 
 Create the secrets:
 
 ```bash
-for ctx in ${CTX_PRIMARY} ${CTX_REMOTE}; do
-  cluster=${ctx}
+for cluster in primary remote; do
+  if [ "${cluster}" = "primary" ]; then
+    ctx=${CTX_PRIMARY}
+  else
+    ctx=${CTX_REMOTE}
+  fi
+
   kubectl --context=${ctx} create namespace istio-system
   kubectl --context=${ctx} create secret generic cacerts -n istio-system \
-    --from-file=ca-cert.pem=${cluster}-ca-cert.pem \
-    --from-file=ca-key.pem=${cluster}-ca-key.pem \
-    --from-file=root-cert.pem=root-cert.pem \
-    --from-file=cert-chain.pem=${cluster}-ca-cert.pem
+    --from-file=${cluster}/ca-cert.pem \
+    --from-file=${cluster}/ca-key.pem \
+    --from-file=${cluster}/root-cert.pem \
+    --from-file=${cluster}/cert-chain.pem
 done
+
+popd
 ```
 
 ## Step 2: Install Istio on the Primary Cluster
@@ -95,9 +94,12 @@ spec:
       multiCluster:
         clusterName: primary
       network: network1
+      externalIstiod: true
 ```
 
 ```bash
+kubectl --context=${CTX_PRIMARY} label namespace istio-system topology.istio.io/network=network1
+
 istioctl install --context=${CTX_PRIMARY} -f primary-cluster.yaml -y
 ```
 
@@ -107,104 +109,15 @@ The remote cluster's sidecars need to reach istiod. If both clusters are on diff
 
 Install the east-west gateway on the primary:
 
-```yaml
-# eastwest-gateway.yaml
-apiVersion: install.istio.io/v1alpha1
-kind: IstioOperator
-metadata:
-  name: eastwest
-spec:
-  profile: empty
-  components:
-    ingressGateways:
-      - name: istio-eastwestgateway
-        label:
-          istio: eastwestgateway
-          app: istio-eastwestgateway
-          topology.istio.io/network: network1
-        enabled: true
-        k8s:
-          env:
-            - name: ISTIO_META_REQUESTED_NETWORK_VIEW
-              value: network1
-          service:
-            ports:
-              - name: status-port
-                port: 15021
-                targetPort: 15021
-              - name: tls
-                port: 15443
-                targetPort: 15443
-              - name: tls-istiod
-                port: 15012
-                targetPort: 15012
-              - name: tls-webhook
-                port: 15017
-                targetPort: 15017
-  values:
-    global:
-      meshID: mesh1
-      multiCluster:
-        clusterName: primary
-      network: network1
-```
-
 ```bash
-istioctl install --context=${CTX_PRIMARY} -f eastwest-gateway.yaml -y
+samples/multicluster/gen-eastwest-gateway.sh --network network1 | \
+  istioctl --context=${CTX_PRIMARY} install -y -f -
 ```
 
 Expose istiod through the gateway:
 
 ```bash
-kubectl --context=${CTX_PRIMARY} apply -n istio-system -f - <<EOF
-apiVersion: networking.istio.io/v1beta1
-kind: Gateway
-metadata:
-  name: istiod-gateway
-spec:
-  selector:
-    istio: eastwestgateway
-  servers:
-    - port:
-        number: 15012
-        name: tls-istiod
-        protocol: TLS
-      tls:
-        mode: AUTO_PASSTHROUGH
-      hosts:
-        - "*.local"
-    - port:
-        number: 15017
-        name: tls-istiodwebhook
-        protocol: TLS
-      tls:
-        mode: AUTO_PASSTHROUGH
-      hosts:
-        - "*.local"
-EOF
-```
-
-Also expose services for cross-cluster traffic:
-
-```bash
-kubectl --context=${CTX_PRIMARY} apply -n istio-system -f - <<EOF
-apiVersion: networking.istio.io/v1beta1
-kind: Gateway
-metadata:
-  name: cross-network-gateway
-spec:
-  selector:
-    istio: eastwestgateway
-  servers:
-    - port:
-        number: 15443
-        name: tls
-        protocol: TLS
-      tls:
-        mode: AUTO_PASSTHROUGH
-      hosts:
-        - "*.local"
-EOF
+kubectl --context=${CTX_PRIMARY} apply -n istio-system -f samples/multicluster/expose-istiod.yaml
 ```
 
 Get the east-west gateway external IP:
@@ -218,6 +131,11 @@ echo "Discovery address: ${DISCOVERY_ADDRESS}"
 ## Step 4: Install Istio on the Remote Cluster
 
 The remote cluster uses the `remote` profile, which skips the control plane and configures sidecars to connect to the primary's istiod:
+
+```bash
+kubectl --context=${CTX_REMOTE} annotate namespace istio-system topology.istio.io/controlPlaneClusters=primary
+kubectl --context=${CTX_REMOTE} label namespace istio-system topology.istio.io/network=network2
+```
 
 ```yaml
 # remote-cluster.yaml
@@ -242,6 +160,19 @@ Replace `${DISCOVERY_ADDRESS}` with the actual IP from the previous step, then i
 
 ```bash
 istioctl install --context=${CTX_REMOTE} -f remote-cluster.yaml -y
+```
+
+Because this example uses different networks, install an east-west gateway in the remote cluster too:
+
+```bash
+samples/multicluster/gen-eastwest-gateway.sh --network network2 | \
+  istioctl --context=${CTX_REMOTE} install -y -f -
+```
+
+Then expose services for cross-cluster traffic:
+
+```bash
+kubectl --context=${CTX_PRIMARY} apply -n istio-system -f samples/multicluster/expose-services.yaml
 ```
 
 ## Step 5: Register the Remote Cluster
@@ -278,8 +209,12 @@ kubectl --context=${CTX_REMOTE} label namespace sample istio-injection=enabled
 # Deploy sleep on primary
 kubectl --context=${CTX_PRIMARY} apply -n sample -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/sleep/sleep.yaml
 
+# Create the helloworld service in both clusters so DNS lookup succeeds
+kubectl --context=${CTX_PRIMARY} apply -n sample -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/helloworld/helloworld.yaml -l service=helloworld
+kubectl --context=${CTX_REMOTE} apply -n sample -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/helloworld/helloworld.yaml -l service=helloworld
+
 # Deploy helloworld on remote
-kubectl --context=${CTX_REMOTE} apply -n sample -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/helloworld/helloworld.yaml
+kubectl --context=${CTX_REMOTE} apply -n sample -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/helloworld/helloworld.yaml -l version=v1
 ```
 
 Test cross-cluster connectivity:
