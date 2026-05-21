@@ -8,7 +8,7 @@ Description: How to create and distribute a shared root certificate authority ac
 
 ---
 
-Every multi-cluster Istio deployment needs a shared root certificate authority. Without it, workloads in different clusters cannot verify each other's certificates, and cross-cluster mTLS breaks completely. The root CA is the single trust anchor that makes the entire multi-cluster mesh work.
+Most multi-primary Istio deployments need a shared root certificate authority. Without a common trust bundle, workloads in different clusters cannot verify each other's certificates, and cross-cluster mTLS breaks. The root CA is the trust anchor that makes the multi-cluster mesh work. In a primary-remote deployment with a single Istiod CA issuing certificates for all clusters, you may not need to generate separate per-cluster CAs.
 
 This guide covers multiple approaches to sharing a root CA: using Istio's built-in tools, integrating with an external CA like cert-manager, and using a cloud-managed CA service.
 
@@ -18,7 +18,7 @@ Istio issues X.509 certificates to every sidecar proxy. These certificates are u
 
 Certificate validation works by checking the chain of trust. A workload cert is signed by an intermediate CA, which is signed by the root CA. If both clusters share the same root CA, any workload can validate any other workload's certificate, regardless of which cluster issued it.
 
-If you skip this step and let each cluster generate its own self-signed root CA (the default Istio behavior), cross-cluster mTLS will fail with certificate verification errors.
+If you skip this step and let each primary cluster generate its own self-signed root CA (the default Istio behavior), cross-cluster mTLS will fail with certificate verification errors.
 
 ## Approach 1: Istio's Built-in Certificate Generation
 
@@ -89,7 +89,7 @@ rm root-key.pem
 
 ## Approach 2: Using cert-manager as the CA
 
-If you already use cert-manager in your clusters, you can use it to manage Istio's CA certificates. This gives you automatic rotation and integration with external issuers.
+If you already use cert-manager in your clusters, you can use it as the CA behind Istio by integrating through istio-csr, or by issuing an intermediate certificate and converting it into Istio's `cacerts` secret format. This gives you integration with external issuers and cert-manager-managed renewal for the certificates it owns.
 
 First, create a root CA as a cert-manager Issuer:
 
@@ -118,7 +118,7 @@ data:
   ca.crt: <base64-root-cert>
 ```
 
-Then create a Certificate resource that generates the intermediate CA for Istio:
+Then create a Certificate resource that generates an intermediate CA:
 
 ```yaml
 apiVersion: cert-manager.io/v1
@@ -129,7 +129,7 @@ metadata:
 spec:
   isCA: true
   commonName: istio-ca
-  secretName: cacerts
+  secretName: istio-ca-tls
   duration: 8760h    # 1 year
   renewBefore: 720h  # 30 days before expiry
   issuerRef:
@@ -140,25 +140,34 @@ spec:
       istio.io/key-and-cert: istio-ca
 ```
 
-Note that cert-manager uses different key names in the secret (`tls.crt`, `tls.key`, `ca.crt`) than what Istio expects (`ca-cert.pem`, `ca-key.pem`, `root-cert.pem`, `cert-chain.pem`). You need to configure Istio to use the cert-manager format:
+Note that cert-manager uses different key names in the secret (`tls.crt`, `tls.key`, `ca.crt`) than what Istio's plug-in CA mode expects (`ca-cert.pem`, `ca-key.pem`, `root-cert.pem`, `cert-chain.pem`). Istiod will not read a cert-manager TLS secret as `cacerts` just because it has the same secret name.
+
+If you use istio-csr, install Istio so workloads request certificates from the istio-csr service and disable Istiod's built-in CA server:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
   values:
+    global:
+      caAddress: cert-manager-istio-csr.cert-manager.svc:443
+  components:
     pilot:
-      env:
-        EXTERNAL_CA: ISTIOD_RA_KUBERNETES_API
+      k8s:
+        env:
+        - name: ENABLE_CA_SERVER
+          value: "false"
 ```
 
-Alternatively, use the istio-csr project which is specifically designed to integrate cert-manager with Istio.
+Alternatively, build the `cacerts` secret yourself from the issued cert-manager secret by mapping the issued certificate, private key, root certificate, and certificate chain to the file names Istio expects.
 
 ## Approach 3: Cloud Provider CA
 
 Major cloud providers offer managed CA services that can serve as your root CA:
 
 ### Google Cloud Certificate Authority Service
+
+For a Kubernetes CSR-based integration, the exact signer name and trust bundle come from the CA controller you install. The Istio configuration needs to point workloads at that signer and include the corresponding root certificate in `meshConfig.caCertificates`:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -171,7 +180,20 @@ spec:
   meshConfig:
     defaultConfig:
       proxyMetadata:
-        ISTIO_META_CERT_SIGNER: istio-system/ca
+        ISTIO_META_CERT_SIGNER: istio-system
+    caCertificates:
+    - pem: |
+        <root-ca-pem>
+      certSigners:
+      - <signer-domain>/istio-system
+  components:
+    pilot:
+      k8s:
+        env:
+        - name: CERT_SIGNER_DOMAIN
+          value: <signer-domain>
+        - name: PILOT_CERT_PROVIDER
+          value: k8s.io/<signer-domain>/istio-system
 ```
 
 ### AWS Private CA
