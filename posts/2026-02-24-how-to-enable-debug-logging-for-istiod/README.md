@@ -19,10 +19,12 @@ Istiod organizes its logs into "scopes." Each scope represents a different funct
 - `ads` - Aggregate Discovery Service, handles xDS configuration push to proxies
 - `adsc` - ADS client, used for debugging xDS connections
 - `authorization` - Authorization policy processing
+- `ca` - certificate authority logging
 - `default` - General logging that doesn't fall under a specific scope
-- `grpcAdapter` - gRPC adapter logging
+- `grpc` - gRPC logging
+- `kube` - Kubernetes registry and watcher logging
 - `model` - Service model and configuration model
-- `tpath` - Translation path for configuration
+- `fullpush` - full xDS push logging
 - `validation` - Configuration validation
 - `wle` - WorkloadEntry auto-registration
 
@@ -30,31 +32,26 @@ Each scope can have its own log level, which means you can turn on debug logging
 
 ## Enabling Debug Logging at Runtime
 
-The fastest way to turn on debug logging for Istiod is to use its admin API. Istiod exposes an HTTP endpoint on port 8080 that lets you change log levels without restarting anything:
+The fastest way to turn on debug logging for Istiod is to use `istioctl admin log`. Under the hood, this talks to Istiod's ControlZ admin API and lets you change log levels without restarting anything:
 
 ```bash
 # Enable debug for the ADS scope
-
-kubectl exec -n istio-system deploy/istiod -- \
-  curl -s -XPUT "localhost:8080/scopej/ads" -d '{"output_level":"debug"}'
+istioctl admin log --level ads:debug
 
 # Enable debug for authorization
-kubectl exec -n istio-system deploy/istiod -- \
-  curl -s -XPUT "localhost:8080/scopej/authorization" -d '{"output_level":"debug"}'
+istioctl admin log --level authorization:debug
 
 # Enable debug for everything
-kubectl exec -n istio-system deploy/istiod -- \
-  curl -s -XPUT "localhost:8080/scopej/default" -d '{"output_level":"debug"}'
+istioctl admin log --level all:debug
 ```
 
 To verify the current level of a scope:
 
 ```bash
-kubectl exec -n istio-system deploy/istiod -- \
-  curl -s "localhost:8080/scopej/ads" | python3 -m json.tool
+istioctl admin log -o json
 ```
 
-The response will look something like:
+The response will include entries that look something like:
 
 ```json
 {
@@ -71,13 +68,13 @@ The response will look something like:
 You might not know which scope to target. To see every scope that Istiod has:
 
 ```bash
-kubectl exec -n istio-system deploy/istiod -- curl -s "localhost:8080/scopez"
+istioctl admin log
 ```
 
-This returns a JSON array of all scopes with their current settings. Pipe it through jq or python to make it readable:
+To get the same information in machine-readable form:
 
 ```bash
-kubectl exec -n istio-system deploy/istiod -- curl -s "localhost:8080/scopez" | python3 -m json.tool
+istioctl admin log -o json
 ```
 
 ## Enabling Debug Logging at Startup
@@ -88,12 +85,10 @@ If you want debug logging from the moment Istiod starts (useful for catching sta
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
-  components:
-    pilot:
-      k8s:
-        env:
-          - name: PILOT_LOG_LEVEL
-            value: "default:debug"
+  values:
+    global:
+      logging:
+        level: "default:debug"
 ```
 
 Apply this with istioctl:
@@ -108,12 +103,10 @@ You can also set multiple scopes at different levels:
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
-  components:
-    pilot:
-      k8s:
-        env:
-          - name: PILOT_LOG_LEVEL
-            value: "default:info,ads:debug,authorization:debug,model:warn"
+  values:
+    global:
+      logging:
+        level: "default:info,ads:debug,authorization:debug,model:warn"
 ```
 
 ## Using Command-Line Flags
@@ -125,7 +118,7 @@ If you're starting Istiod manually (which is rare but happens in development), y
 pilot-discovery discovery --log_output_level=default:debug,ads:debug
 ```
 
-In practice, you'll usually set these through environment variables in the deployment rather than direct flags.
+In practice, you'll usually set these through Istio installation values rather than direct flags.
 
 ## Debugging Common Scenarios
 
@@ -134,32 +127,28 @@ Here's when to enable debug logging on specific scopes.
 **Configuration not reaching proxies**: Turn on the `ads` scope. This will show you the xDS pushes happening from Istiod to each connected proxy. You'll see which configs are being sent and to which proxies:
 
 ```bash
-kubectl exec -n istio-system deploy/istiod -- \
-  curl -s -XPUT "localhost:8080/scopej/ads" -d '{"output_level":"debug"}'
+istioctl admin log --level ads:debug
 
 # Then watch the logs
 kubectl logs -n istio-system deploy/istiod -f | grep -i "ads"
 ```
 
-**Authorization policy not working**: Enable the `authorization` scope to see how policies are being evaluated and distributed:
+**Authorization policy not working**: Enable the `authorization` scope to see how policies are being processed and pushed:
 
 ```bash
-kubectl exec -n istio-system deploy/istiod -- \
-  curl -s -XPUT "localhost:8080/scopej/authorization" -d '{"output_level":"debug"}'
+istioctl admin log --level authorization:debug
 ```
 
-**Certificate issues**: The default scope covers most certificate-related logging. You can also look at the `ca` scope:
+**Certificate issues**: Start with the `ca` scope for certificate authority logging. The `security`, `serverca`, and `rootcertrotator` scopes can also be useful depending on the issue:
 
 ```bash
-kubectl exec -n istio-system deploy/istiod -- \
-  curl -s -XPUT "localhost:8080/scopej/default" -d '{"output_level":"debug"}'
+istioctl admin log --level ca:debug
 ```
 
 **Service discovery problems**: The `model` scope shows how Istiod builds its internal model of your services:
 
 ```bash
-kubectl exec -n istio-system deploy/istiod -- \
-  curl -s -XPUT "localhost:8080/scopej/model" -d '{"output_level":"debug"}'
+istioctl admin log --level model:debug
 ```
 
 ## Reading the Debug Output
@@ -182,9 +171,7 @@ kubectl logs -n istio-system deploy/istiod -f | grep "my-pod-name"
 For really tricky bugs, you can also enable stack trace logging for a scope. This adds a Go stack trace to every log line at or above the specified level:
 
 ```bash
-kubectl exec -n istio-system deploy/istiod -- \
-  curl -s -XPUT "localhost:8080/scopej/ads" \
-  -d '{"output_level":"debug","stack_trace_level":"error"}'
+istioctl admin log --level ads:debug --stack-trace-level ads:error
 ```
 
 This adds a stack trace to every error-level log in the ADS scope, which can help you trace exactly where an error is originating.
@@ -195,11 +182,10 @@ This is important and easy to forget. Once you're done debugging, reset the log 
 
 ```bash
 # Reset ADS to info
-kubectl exec -n istio-system deploy/istiod -- \
-  curl -s -XPUT "localhost:8080/scopej/ads" -d '{"output_level":"info"}'
+istioctl admin log --level ads:info
 
-# Or reset everything at once by restarting
-kubectl rollout restart deployment/istiod -n istio-system
+# Or reset all output levels at once
+istioctl admin log --log-reset
 ```
 
 Debug logging produces a lot of output. In a busy cluster, Istiod with debug logging can generate gigabytes of logs per hour. That's not something you want running for days on end.
