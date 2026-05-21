@@ -8,7 +8,7 @@ Description: A systematic approach to debugging 503 Service Unavailable errors i
 
 ---
 
-503 errors in Istio are one of the most common issues teams deal with, and they are also one of the trickiest because a 503 can come from so many different places. The upstream application might return a 503. Envoy might generate a 503 because it could not connect to the upstream. The circuit breaker might trigger a 503. Even a missing route can result in a 503.
+503 errors in Istio are one of the most common issues teams deal with, and they are also one of the trickiest because a 503 can come from so many different places. The upstream application might return a 503. Envoy might generate a 503 because it could not connect to the upstream. The circuit breaker might trigger a 503. Even a routing or cluster configuration issue can result in a local Envoy error.
 
 The good news is that Istio access logs contain all the information you need to pinpoint the exact cause. This guide walks through a systematic debugging process.
 
@@ -36,7 +36,7 @@ kubectl logs deploy/calling-service -c istio-proxy --tail=200 | grep '" 503 '
 
 ## Step 2: Read the Response Flags
 
-The response flag is the fourth field - the key to diagnosing the 503. Here is what each flag means for 503s:
+The response flag is the field immediately after the response code - the key to diagnosing the failure. Here is what the common flags mean when investigating 503s and nearby routing failures:
 
 ### 503 + UF (Upstream Connection Failure)
 
@@ -74,7 +74,7 @@ All upstream endpoints are marked as unhealthy. Envoy has nowhere to send the re
 istioctl proxy-config endpoint deploy/calling-service | grep my-service
 
 # Look for UNHEALTHY endpoints
-istioctl proxy-config endpoint deploy/calling-service --cluster "outbound|8080||my-service.default.svc.cluster.local" -o json | jq '.[].hostStatuses[] | {address: .address.socketAddress, healthStatus: .healthStatus}'
+istioctl proxy-config endpoint deploy/calling-service --cluster "outbound|8080||my-service.default.svc.cluster.local" -o json | jq '.[].endpoints[].lbEndpoints[] | {address: .endpoint.address.socketAddress, healthStatus: .healthStatus}'
 
 # Check if outlier detection ejected all endpoints
 istioctl proxy-config cluster deploy/calling-service --fqdn my-service.default.svc.cluster.local -o json | jq '.[].outlierDetection'
@@ -108,9 +108,9 @@ kubectl get destinationrule -o yaml | grep -A20 connectionPool
 - Keep-alive settings mismatch between client and server
 - Application-level timeouts are causing premature connection closes
 
-### 503 + UT (Upstream Request Timeout)
+### 504 + UT (Upstream Request Timeout)
 
-The upstream did not respond within the configured timeout.
+The upstream did not respond within the configured timeout. Envoy normally records this as a 504 with the `UT` response flag, not a 503, but it is worth checking while investigating service availability errors.
 
 **Investigation steps:**
 
@@ -122,7 +122,7 @@ kubectl get virtualservice -o yaml | grep -B5 -A5 timeout
 istioctl proxy-config route deploy/calling-service -o json | jq '.[].virtualHosts[].routes[].route.timeout'
 
 # Check how long the request actually took (from the Duration field in the log)
-# A duration of exactly 15000ms suggests a 15s timeout
+# A duration close to 15000ms suggests a 15s timeout
 ```
 
 **Common fixes:**
@@ -190,9 +190,9 @@ spec:
 - Scale up the destination service
 - Reduce the request rate from callers
 
-### 503 + NR (No Route)
+### 404 + NR (No Route)
 
-Envoy does not have a route for this request. This is technically more of a 404-type issue, but Envoy returns 503 in some cases.
+Envoy does not have a route for this request. For HTTP requests, Envoy normally records this as a 404 with the `NR` response flag, not a 503. It is still useful to check when a failure looks like an Istio routing problem.
 
 **Investigation steps:**
 
@@ -243,7 +243,8 @@ kubectl logs deploy/my-service -c istio-proxy | grep '" 503 '
 If the source shows a 503 but the destination has no corresponding log entry, the request never reached the destination. This points to:
 - Connection failure (UF)
 - No healthy upstream (UH)
-- Route not found (NR)
+- Circuit breaker overflow (UO)
+- Cluster or routing configuration problems before upstream selection
 
 If both sides have log entries, compare the timing:
 - Source duration: 15000ms, Destination duration: 14995ms - The upstream was slow
@@ -255,7 +256,7 @@ Trace a specific failed request across the entire call chain:
 
 ```bash
 # Find a 503 and get its request ID
-REQUEST_ID=$(kubectl logs deploy/calling-service -c istio-proxy --tail=100 | grep '" 503 ' | head -1 | grep -oP '"[a-f0-9-]+"' | head -4 | tail -1 | tr -d '"')
+REQUEST_ID=$(kubectl logs deploy/calling-service -c istio-proxy --tail=100 | grep '" 503 ' | head -1 | awk -F'"' '{print $10}')
 
 # Search for this request ID in all services
 for pod in $(kubectl get pods -o name); do
