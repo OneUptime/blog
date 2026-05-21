@@ -59,6 +59,10 @@ spec:
         service:
           type: NodePort
           ports:
+          - name: status-port
+            port: 15021
+            targetPort: 15021
+            nodePort: 30021
           - name: http2
             port: 80
             targetPort: 8080
@@ -89,18 +93,18 @@ metadata:
   name: istio-alb-ingress
   namespace: istio-system
   annotations:
-    kubernetes.io/ingress.class: alb
     alb.ingress.kubernetes.io/scheme: internet-facing
     alb.ingress.kubernetes.io/target-type: instance
     alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443},{"HTTP":80}]'
     alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:us-east-1:123456789:certificate/abc-123
     alb.ingress.kubernetes.io/ssl-redirect: "443"
     alb.ingress.kubernetes.io/healthcheck-path: /healthz/ready
-    alb.ingress.kubernetes.io/healthcheck-port: "15021"
+    alb.ingress.kubernetes.io/healthcheck-port: "30021"
     alb.ingress.kubernetes.io/backend-protocol: HTTP
     alb.ingress.kubernetes.io/wafv2-acl-arn: arn:aws:wafv2:us-east-1:123456789:regional/webacl/my-acl/abc
     alb.ingress.kubernetes.io/load-balancer-attributes: idle_timeout.timeout_seconds=60
 spec:
+  ingressClassName: alb
   rules:
   - http:
       paths:
@@ -117,7 +121,7 @@ This creates an internet-facing ALB that:
 - Listens on both HTTP and HTTPS
 - Redirects HTTP to HTTPS
 - Uses an ACM certificate for TLS
-- Health checks the Istio gateway on port 15021
+- Health checks the Istio gateway readiness endpoint through node port 30021
 - Attaches a WAF ACL for security
 - Forwards traffic to the Istio gateway on port 80
 
@@ -133,11 +137,10 @@ metadata:
   namespace: istio-system
 spec:
   selector:
-    matchLabels:
-      istio: ingressgateway
+    istio: ingressgateway
   servers:
   - port:
-      number: 8080
+      number: 80
       name: http
       protocol: HTTP
     hosts:
@@ -145,7 +148,7 @@ spec:
     - "api.example.com"
 ```
 
-Note that we use port 8080 (the actual container port) and HTTP protocol since TLS is already terminated at the ALB.
+Note that we use the gateway service port 80 and HTTP protocol since TLS is already terminated at the ALB.
 
 ## Preserving Client IP
 
@@ -194,7 +197,6 @@ metadata:
   name: istio-alb-ingress
   namespace: istio-system
   annotations:
-    kubernetes.io/ingress.class: alb
     alb.ingress.kubernetes.io/target-type: ip
     alb.ingress.kubernetes.io/scheme: internet-facing
     alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
@@ -202,6 +204,7 @@ metadata:
     alb.ingress.kubernetes.io/healthcheck-path: /healthz/ready
     alb.ingress.kubernetes.io/healthcheck-port: "15021"
 spec:
+  ingressClassName: alb
   rules:
   - http:
       paths:
@@ -211,7 +214,7 @@ spec:
           service:
             name: istio-ingressgateway
             port:
-              number: 8080
+              number: 80
 ```
 
 With `target-type: ip`, the ALB sends traffic directly to the Istio gateway pod IP, skipping the kube-proxy hop. This reduces latency slightly and gives you better connection draining.
@@ -254,13 +257,24 @@ spec:
           number: 8080
 ```
 
-## mTLS Between ALB and Istio Gateway
+## TLS Between ALB and Istio Gateway
 
-If you want encryption between the ALB and the Istio gateway (re-encryption), you can configure the ALB backend protocol as HTTPS:
+If you want encryption between the ALB and the Istio gateway (re-encryption), you can configure the ALB backend protocol as HTTPS and forward to the gateway's HTTPS service port:
 
 ```yaml
 annotations:
   alb.ingress.kubernetes.io/backend-protocol: HTTPS
+spec:
+  rules:
+  - http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: istio-ingressgateway
+            port:
+              number: 443
 ```
 
 And configure the Istio Gateway to use TLS:
@@ -272,11 +286,10 @@ metadata:
   name: main-gateway
 spec:
   selector:
-    matchLabels:
-      istio: ingressgateway
+    istio: ingressgateway
   servers:
   - port:
-      number: 8443
+      number: 443
       name: https
       protocol: HTTPS
     tls:
