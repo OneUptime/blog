@@ -77,7 +77,13 @@ metadata:
   name: order-service
   namespace: backend
 spec:
+  selector:
+    matchLabels:
+      app: order-service
   template:
+    metadata:
+      labels:
+        app: order-service
     spec:
       serviceAccountName: order-service
       containers:
@@ -236,11 +242,11 @@ spec:
       values: ["admin"]
 ```
 
-This ensures that even though the admin portal can call the admin service, the JWT token must contain an admin role claim. The service identity alone isn't enough.
+This ensures that even though the admin portal can call the admin service, the JWT token must contain an admin role claim. This requires a RequestAuthentication policy that validates the JWT. The service identity alone isn't enough.
 
 ## Controlling Egress per Service
 
-Micro-segmentation isn't just about who can call your service. It's also about what your service can call externally. Use Istio's Sidecar resource to limit what each service can reach:
+Micro-segmentation isn't just about who can call your service. It's also about what your service can call externally. Use Istio's Sidecar resource to scope each service's outbound proxy configuration:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -260,7 +266,7 @@ spec:
     - "istio-system/*"
 ```
 
-This tells the order service's Envoy proxy to only include configuration for the services it actually needs to reach. Any attempt to call a service not in this list will fail. It also improves proxy performance by reducing the configuration size.
+This tells the order service's Envoy proxy to only include configuration for the services it actually needs to reach. Traffic to destinations outside this scoped configuration is treated as unmatched traffic and may still be allowed depending on the mesh outbound traffic policy, so use AuthorizationPolicy, ServiceEntry, or an egress gateway for enforced controls. It also improves proxy performance by reducing the configuration size.
 
 ## Testing Micro-Segmentation
 
@@ -290,8 +296,8 @@ Store your AuthorizationPolicy resources alongside your service code. When devel
 Run regular audits by comparing your policies against actual traffic. If a policy allows traffic that never happens, the dependency might have been removed and the rule can be tightened.
 
 ```bash
-# Check for services that haven't received traffic recently
-istioctl proxy-config cluster deploy/order-service -n backend
+# Inspect the outbound clusters configured for a workload
+istioctl proxy-config cluster deployment/order-service -n backend
 ```
 
 Use CI/CD validation to ensure that new deployments don't break micro-segmentation. You can write integration tests that verify authorization policies allow the expected paths and block everything else.
