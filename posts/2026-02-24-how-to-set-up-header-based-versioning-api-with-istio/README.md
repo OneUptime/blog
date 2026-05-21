@@ -118,7 +118,8 @@ spec:
   selector:
     app: user-api
   ports:
-    - port: 80
+    - name: http
+      port: 80
       targetPort: 8080
 ```
 
@@ -127,7 +128,7 @@ spec:
 The DestinationRule defines subsets that map to each version of your service:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: user-api-versions
@@ -151,7 +152,7 @@ spec:
 Now the interesting part. The VirtualService inspects the `X-API-Version` header and routes traffic accordingly:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: user-api-routing
@@ -189,7 +190,7 @@ The last route without a `match` clause acts as the default. If no `X-API-Versio
 Some APIs use the Accept header for versioning, following the pattern `Accept: application/vnd.myapi.v2+json`. You can match on this with a regex:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: user-api-accept-routing
@@ -225,7 +226,7 @@ spec:
 It is helpful for clients to know which API version served their request. You can add a response header using the VirtualService:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: user-api-with-response-version
@@ -273,7 +274,7 @@ spec:
 When you plan to sunset an old API version, you can add deprecation headers to warn clients:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: user-api-deprecation
@@ -305,8 +306,8 @@ spec:
       headers:
         response:
           set:
-            sunset: "Sat, 01 Jun 2026 00:00:00 GMT"
-            deprecation: "true"
+            sunset: "Mon, 01 Jun 2026 00:00:00 GMT"
+            deprecation: "@1780272000"
             link: "<https://docs.myapi.com/migration>; rel=\"deprecation\""
 ```
 
@@ -317,7 +318,7 @@ Clients hitting v1 now get standard deprecation headers telling them the version
 You can combine header-based routing with traffic splitting to gradually migrate clients from one version to another. For requests without a version header, you can split traffic:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: user-api-migration
@@ -349,7 +350,7 @@ This sends 20% of versionless traffic to v2 while keeping explicit version reque
 
 ## Testing the Setup
 
-Test your routing with curl:
+From a pod in the mesh in the same namespace, test your routing with curl:
 
 ```bash
 # Should hit v1 (default)
