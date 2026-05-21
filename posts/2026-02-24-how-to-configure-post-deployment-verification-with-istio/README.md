@@ -18,22 +18,22 @@ Istio gives you several metrics that are useful for post-deployment checks:
 
 **Request success rate** - The percentage of non-5xx responses:
 ```text
-sum(rate(istio_requests_total{destination_workload="my-app",response_code!~"5.*"}[5m])) / sum(rate(istio_requests_total{destination_workload="my-app"}[5m]))
+sum(rate(istio_requests_total{reporter="destination",destination_workload="my-app",response_code!~"5.*"}[5m])) / sum(rate(istio_requests_total{reporter="destination",destination_workload="my-app"}[5m]))
 ```
 
-**P99 latency** - The worst-case response time:
+**P99 latency** - The 99th percentile response time:
 ```text
-histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{destination_workload="my-app"}[5m])) by (le))
+histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{reporter="destination",destination_workload="my-app"}[5m])) by (le))
 ```
 
 **Request throughput** - Make sure traffic is actually flowing:
 ```text
-sum(rate(istio_requests_total{destination_workload="my-app"}[5m]))
+sum(rate(istio_requests_total{reporter="destination",destination_workload="my-app"}[5m]))
 ```
 
-**TCP connection errors** - For non-HTTP services:
+**TCP connection closes with response flags** - For non-HTTP services:
 ```text
-sum(rate(istio_tcp_connections_closed_total{destination_workload="my-app",response_flags!=""}[5m]))
+sum(rate(istio_tcp_connections_closed_total{reporter="destination",destination_workload="my-app",response_flags!="-"}[5m]))
 ```
 
 ## Building a Verification Script
@@ -61,12 +61,12 @@ END_TIME=$(($(date +%s) + DURATION))
 while [ $(date +%s) -lt $END_TIME ]; do
     # Check success rate
     SUCCESS_RATE=$(curl -s "${PROM_URL}/api/v1/query" \
-        --data-urlencode "query=sum(rate(istio_requests_total{destination_workload=\"${APP_NAME}\",namespace=\"${NAMESPACE}\",response_code!~\"5.*\"}[2m]))/sum(rate(istio_requests_total{destination_workload=\"${APP_NAME}\",namespace=\"${NAMESPACE}\"}[2m]))" \
+        --data-urlencode "query=sum(rate(istio_requests_total{reporter=\"destination\",destination_workload=\"${APP_NAME}\",destination_workload_namespace=\"${NAMESPACE}\",response_code!~\"5.*\"}[2m]))/sum(rate(istio_requests_total{reporter=\"destination\",destination_workload=\"${APP_NAME}\",destination_workload_namespace=\"${NAMESPACE}\"}[2m]))" \
         | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['data']['result'][0]['value'][1] if d['data']['result'] else '1')")
 
     # Check P99 latency
     LATENCY=$(curl -s "${PROM_URL}/api/v1/query" \
-        --data-urlencode "query=histogram_quantile(0.99,sum(rate(istio_request_duration_milliseconds_bucket{destination_workload=\"${APP_NAME}\",namespace=\"${NAMESPACE}\"}[2m])) by (le))" \
+        --data-urlencode "query=histogram_quantile(0.99,sum(rate(istio_request_duration_milliseconds_bucket{reporter=\"destination\",destination_workload=\"${APP_NAME}\",destination_workload_namespace=\"${NAMESPACE}\"}[2m])) by (le))" \
         | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['data']['result'][0]['value'][1] if d['data']['result'] else '0')")
 
     echo "[$(date)] Success rate: ${SUCCESS_RATE} | P99 latency: ${LATENCY}ms"
@@ -115,11 +115,13 @@ spec:
       restartPolicy: Never
       containers:
       - name: verifier
-        image: curlimages/curl:latest
+        image: alpine:3.20
         command: ["/bin/sh"]
         args:
         - -c
         - |
+          apk add --no-cache curl jq bc
+
           PROM_URL="http://prometheus.monitoring.svc.cluster.local:9090"
           APP_NAME="my-app"
           NAMESPACE="default"
@@ -129,8 +131,8 @@ spec:
 
           for i in $(seq 1 10); do
             SUCCESS_RATE=$(curl -s "${PROM_URL}/api/v1/query" \
-              --data-urlencode "query=sum(rate(istio_requests_total{destination_workload=\"${APP_NAME}\",namespace=\"${NAMESPACE}\",response_code!~\"5.*\"}[2m]))/sum(rate(istio_requests_total{destination_workload=\"${APP_NAME}\",namespace=\"${NAMESPACE}\"}[2m]))" \
-              | grep -o '"value":\[.*\]' | grep -o '[0-9.]*"' | head -1 | tr -d '"')
+              --data-urlencode "query=sum(rate(istio_requests_total{reporter=\"destination\",destination_workload=\"${APP_NAME}\",destination_workload_namespace=\"${NAMESPACE}\",response_code!~\"5.*\"}[2m]))/sum(rate(istio_requests_total{reporter=\"destination\",destination_workload=\"${APP_NAME}\",destination_workload_namespace=\"${NAMESPACE}\"}[2m]))" \
+              | jq -r '.data.result[0].value[1] // "1"')
 
             echo "Check ${i}/10: Success rate = ${SUCCESS_RATE}"
 
@@ -186,13 +188,13 @@ spec:
 
 Flagger's analysis section defines the post-deployment verification logic:
 - Check every 30 seconds
-- Fail if more than 5 consecutive checks fail
+- Fail when the failed-check threshold of 5 is reached
 - Require 99% success rate
 - Require P99 latency under 500ms
 
 ## Custom Metrics for Verification
 
-Beyond the standard Istio metrics, you can verify business-specific metrics. Define custom metrics in Flagger:
+Beyond the standard Istio metrics, you can verify business-specific metrics. If you have configured Istio telemetry to add a `request_path` tag, define custom metrics in Flagger:
 
 ```yaml
 apiVersion: flagger.app/v1beta1
@@ -206,15 +208,17 @@ spec:
     address: http://prometheus.monitoring.svc.cluster.local:9090
   query: |
     sum(rate(istio_requests_total{
+      reporter="destination",
       destination_workload="{{ target }}",
-      namespace="{{ namespace }}",
+      destination_workload_namespace="{{ namespace }}",
       request_path=~"/api/v1/.*",
       response_code=~"5.*"
     }[{{ interval }}]))
     /
     sum(rate(istio_requests_total{
+      reporter="destination",
       destination_workload="{{ target }}",
-      namespace="{{ namespace }}",
+      destination_workload_namespace="{{ namespace }}",
       request_path=~"/api/v1/.*"
     }[{{ interval }}]))
 ```
@@ -245,9 +249,9 @@ groups:
   - alert: HighErrorRateAfterDeploy
     expr: |
       (
-        sum(rate(istio_requests_total{response_code=~"5.*"}[5m])) by (destination_workload, namespace)
+        sum(rate(istio_requests_total{reporter="destination",response_code=~"5.*"}[5m])) by (destination_workload, destination_workload_namespace)
         /
-        sum(rate(istio_requests_total{}[5m])) by (destination_workload, namespace)
+        sum(rate(istio_requests_total{reporter="destination"}[5m])) by (destination_workload, destination_workload_namespace)
       ) > 0.05
     for: 2m
     labels:
@@ -259,7 +263,7 @@ groups:
   - alert: HighLatencyAfterDeploy
     expr: |
       histogram_quantile(0.99,
-        sum(rate(istio_request_duration_milliseconds_bucket[5m])) by (destination_workload, namespace, le)
+        sum(rate(istio_request_duration_milliseconds_bucket{reporter="destination"}[5m])) by (destination_workload, destination_workload_namespace, le)
       ) > 1000
     for: 2m
     labels:
