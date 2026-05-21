@@ -54,7 +54,7 @@ spec:
   {}
 ```
 
-This empty spec with no rules means "deny everything." Apply it to the `istio-system` namespace and it takes effect mesh-wide (because of the root namespace).
+This empty spec with no rules means "deny everything." Apply it to the `istio-system` namespace and it takes effect mesh-wide if `istio-system` is your mesh root namespace, which is the default.
 
 Now, allow intra-namespace traffic for each tenant:
 
@@ -90,6 +90,8 @@ spec:
 
 With these policies, services in `tenant-a` can talk to other services in `tenant-a`, but they cannot reach anything in `tenant-b`, and vice versa.
 
+These namespace matches are derived from the peer certificate, so keep the strict mTLS policy below enabled for this to work reliably.
+
 ## Using Sidecar Resources for Service Discovery Isolation
 
 Authorization policies block the actual traffic, but tenants can still discover services in other namespaces through Istio's service registry. A tenant's sidecar proxy will receive configuration for every service in the mesh unless you limit it.
@@ -110,7 +112,7 @@ spec:
     - "shared-services/*"
 ```
 
-This tells Envoy proxies in `tenant-a` to only load configuration for services in their own namespace, `istio-system`, and `shared-services`. They will not even know `tenant-b` exists.
+This tells Envoy proxies in `tenant-a` to only load Istio configuration for services in their own namespace, `istio-system`, and `shared-services`. Envoy will not receive routing configuration for `tenant-b` services.
 
 Do the same for tenant-b:
 
