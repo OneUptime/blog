@@ -8,19 +8,19 @@ Description: How to configure Istio sidecar injection for services that already 
 
 ---
 
-Adding Istio sidecars to services that already handle their own TLS can be confusing. The sidecar intercepts all traffic, and if your service expects encrypted connections while the sidecar also tries to encrypt with mTLS, you end up with double encryption or broken connections. Understanding how these layers interact is the key to getting it right.
+Adding Istio sidecars to services that already handle their own TLS can be confusing. The sidecar intercepts traffic, and if your DestinationRule, PeerAuthentication, and application protocol do not agree on which layer is handling TLS, you can end up with double encryption or broken connections. Understanding how these layers interact is the key to getting it right.
 
-## The Problem: Double TLS
+## The Problem: TLS Layer Mismatch
 
-When your application serves HTTPS and Istio adds mTLS on top, here is what happens:
+When your application sends HTTPS and Istio adds mTLS on top, here is what happens:
 
-1. Client sends request
-2. Client's sidecar encrypts with mTLS (Istio layer)
-3. Server's sidecar decrypts mTLS
-4. Server's sidecar forwards to your app on localhost
-5. Your app expects HTTPS, but gets plaintext (or vice versa)
+1. Client sends an HTTPS request
+2. Client's sidecar may encrypt the connection with mTLS (Istio layer)
+3. Server's sidecar decrypts the Istio mTLS layer
+4. Server's sidecar forwards the original application connection to your app
+5. Your app still receives HTTPS because local inbound traffic is forwarded as-is
 
-This mismatch causes connection failures, certificate errors, or unexpected behavior.
+This works when both layers are configured intentionally. Problems happen when the client sends plaintext HTTP to an app that expects HTTPS, when a DestinationRule originates TLS for traffic that is already HTTPS, or when a workload requires Istio mTLS but the caller sends plaintext.
 
 ## Option 1: Let Istio Handle TLS, Remove Application TLS
 
@@ -61,7 +61,7 @@ spec:
     app: my-https-service
 ```
 
-This is the recommended approach for most services. Istio's mTLS provides the same encryption guarantee, and removing application TLS eliminates the double-encryption problem.
+This is the recommended approach for most services. Istio's mTLS encrypts traffic between sidecar proxies, and removing application TLS simplifies the configuration.
 
 ## Option 2: Keep Application TLS with DISABLE mTLS
 
@@ -81,7 +81,7 @@ spec:
     mode: DISABLE
 ```
 
-And configure the DestinationRule so callers know to use the application's TLS:
+And configure the DestinationRule so sidecars do not originate another TLS layer. Callers must still use `https://` because the application is handling TLS:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -90,12 +90,10 @@ metadata:
   name: my-https-service
   namespace: production
 spec:
-  host: my-https-service
+  host: my-https-service.production.svc.cluster.local
   trafficPolicy:
     tls:
-      mode: SIMPLE                    # Client-side TLS (not mTLS)
-      # If the app uses a self-signed cert, you might need:
-      # caCertificates: /etc/certs/ca.pem
+      mode: DISABLE                   # Do not add Istio TLS to app-originated HTTPS
 ```
 
 Name the service port to indicate HTTPS:
@@ -116,7 +114,22 @@ spec:
 
 ## Option 3: TLS Origination at the Sidecar
 
-If your upstream service requires HTTPS but you want to keep things simple for the calling service, configure TLS origination. The calling service sends plaintext HTTP, and its sidecar upgrades the connection to HTTPS before sending it to the upstream.
+If your upstream service requires HTTPS but you want to keep things simple for the calling service, configure TLS origination. The calling service sends plaintext HTTP to an HTTP service port, and its sidecar upgrades the connection to HTTPS before sending it to the upstream.
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-https-service
+  namespace: production
+spec:
+  ports:
+  - name: http-web
+    port: 80
+    targetPort: 8443
+  selector:
+    app: my-https-service
+```
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -127,16 +140,14 @@ metadata:
 spec:
   host: my-https-service.production.svc.cluster.local
   trafficPolicy:
-    tls:
-      mode: SIMPLE
     portLevelSettings:
     - port:
-        number: 443
+        number: 80
       tls:
         mode: SIMPLE
 ```
 
-The calling service sends HTTP to the sidecar, the sidecar establishes a TLS connection to the upstream, and the upstream receives HTTPS. The upstream service does not need to be in the mesh for this to work.
+The calling service sends HTTP to the sidecar, the sidecar establishes a TLS connection to the upstream application's HTTPS port, and the upstream receives HTTPS. The upstream service does not need to be in the mesh for this to work.
 
 ## Option 4: Exclude HTTPS Ports from Sidecar
 
@@ -168,7 +179,7 @@ Port 8443 traffic goes directly to the application, bypassing the sidecar. Port 
 
 ## Handling External HTTPS Services
 
-When your application calls external HTTPS APIs, the sidecar needs to know how to handle the outbound TLS:
+When your application calls external HTTPS APIs with `https://`, the sidecar can pass that TLS connection through. In `REGISTRY_ONLY` mode, add a ServiceEntry so the external host is in Istio's service registry:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -187,18 +198,7 @@ spec:
   resolution: DNS
 ```
 
-```yaml
-apiVersion: networking.istio.io/v1
-kind: DestinationRule
-metadata:
-  name: external-api-tls
-  namespace: production
-spec:
-  host: api.external-service.com
-  trafficPolicy:
-    tls:
-      mode: SIMPLE
-```
+Do not add a `DestinationRule` with `tls.mode: SIMPLE` for application-originated HTTPS traffic, because that tells the sidecar to originate another TLS connection. Use `SIMPLE` only when the application sends plaintext HTTP and you want the sidecar to originate TLS.
 
 ## Verifying the Configuration
 
@@ -212,8 +212,11 @@ istioctl proxy-config listeners my-pod --port 8443
 # Check outbound clusters
 istioctl proxy-config clusters my-pod | grep my-https-service
 
-# Test the actual connection
+# Test an application-TLS service
 kubectl exec deploy/test-client -- curl -v https://my-https-service:443/health
+
+# Test a sidecar TLS origination service
+kubectl exec deploy/test-client -- curl -v http://my-https-service:80/health
 
 # Check Envoy stats for TLS connections
 kubectl exec my-pod -c istio-proxy -- \
@@ -276,7 +279,7 @@ spec:
           readOnly: true
 ```
 
-This way your application can use the same Istio-managed certificates for its own TLS, ensuring certificate rotation is handled automatically.
+This way your application can read Istio-managed workload certificates for TLS use cases where clients trust the Istio workload identity. These certificates are SPIFFE workload certificates, so they are not a drop-in replacement for public DNS certificates used by ordinary HTTPS clients.
 
 ## Recommendation
 
