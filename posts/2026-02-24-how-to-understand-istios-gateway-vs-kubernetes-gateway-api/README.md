@@ -161,19 +161,19 @@ spec:
 # After creating a K8s Gateway API Gateway:
 
 kubectl get deploy -n default
-# NAME           READY
-# my-gateway     1/1     # Automatically created
+# NAME                READY
+# my-gateway-istio    1/1     # Automatically created
 
 kubectl get svc -n default
-# NAME           TYPE           EXTERNAL-IP
-# my-gateway     LoadBalancer   34.x.x.x    # Automatically created
+# NAME                TYPE           EXTERNAL-IP
+# my-gateway-istio    LoadBalancer   34.x.x.x    # Automatically created
 ```
 
 This is a big operational difference. With the Kubernetes Gateway API, the gateway lifecycle is tied to the Gateway resource. Delete the resource, and the deployment goes away.
 
 ### Role-Based Access
 
-**Istio Gateway** - The Gateway and VirtualService can be in different namespaces, but access control is implicit. Anyone who can create a VirtualService that references a Gateway can route traffic through it.
+**Istio Gateway** - The Gateway and VirtualService can be in different namespaces, but access control is mostly implicit. Gateway hosts and VirtualService `exportTo` can restrict which virtual services bind to a gateway, but the model is not as explicit as Gateway API route attachment.
 
 **Kubernetes Gateway API** - Has explicit role separation built in:
 - **Infrastructure provider** - Manages GatewayClass (cluster-wide)
@@ -211,7 +211,7 @@ Only namespaces with the `gateway-access: true` label can attach routes to this 
 **Kubernetes Gateway API** - Separate route types:
 - `HTTPRoute` - HTTP/HTTPS traffic
 - `TLSRoute` - TLS passthrough
-- `TCPRoute` - Raw TCP
+- `TCPRoute` - Raw TCP (currently in the Experimental channel)
 - `GRPCRoute` - gRPC-specific routing
 
 ```yaml
@@ -297,12 +297,12 @@ rules:
 | Role-based access | Implicit | Explicit |
 | Traffic splitting | Via VirtualService subsets | Via multiple Services |
 | Header matching | Yes | Yes |
-| Retry/timeout | Yes (VirtualService) | Yes (HTTPRoute backendRef timeout, policy) |
-| Fault injection | Yes | Via filter extensions |
+| Retry/timeout | Yes (VirtualService) | Yes for HTTPRoute rule timeouts; retry support is experimental and implementation-dependent |
+| Fault injection | Yes | Via implementation-specific extensions |
 | Request mirroring | Yes | Yes (HTTPRoute filters) |
-| TCP routing | Yes | Yes (TCPRoute) |
+| TCP routing | Yes | Yes (TCPRoute, Experimental channel) |
 | gRPC routing | Yes (in VirtualService) | Yes (GRPCRoute) |
-| Cross-namespace | Yes | Yes (with explicit grants) |
+| Cross-namespace | Yes | Yes (with `allowedRoutes` and `ReferenceGrant`) |
 | Status reporting | Limited | Rich status on Gateway and Routes |
 
 ## Which Should You Use?
