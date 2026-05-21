@@ -15,10 +15,10 @@ Azure Arc lets you manage Kubernetes clusters running anywhere, whether they are
 Before you start, make sure you have a few things ready:
 
 - An Azure subscription with the Arc-enabled Kubernetes resource provider registered
-- A Kubernetes cluster (1.24+) that is already connected to Azure Arc
+- A Kubernetes cluster version supported by your Istio release. For Istio 1.30, use Kubernetes 1.32 through 1.36.
 - `kubectl` configured to talk to your cluster
 - The Azure CLI with the `connectedk8s` extension
-- `istioctl` installed locally (version 1.20+)
+- `istioctl` installed locally for a currently supported Istio release
 - Helm 3.x
 
 If your cluster is not yet Arc-enabled, connect it first:
@@ -43,15 +43,15 @@ The key benefit here is that you can use Azure Policy, Azure Monitor, and GitOps
 
 ## Step 1: Prepare the Cluster
 
-Arc-enabled clusters sometimes have specific RBAC configurations. Make sure your current context has cluster-admin permissions:
+Arc-enabled clusters sometimes have specific RBAC configurations. Make sure your current Kubernetes context has cluster-admin permissions:
 
 ```bash
-kubectl create clusterrolebinding cluster-admin-binding \
-  --clusterrole=cluster-admin \
-  --user=$(az ad signed-in-user show --query id -o tsv)
+kubectl auth can-i '*' '*' --all-namespaces
 ```
 
-Check that your cluster has enough resources. Istio's control plane needs at least 2 CPU cores and 2GB of memory available:
+If that command does not return `yes`, ask a cluster administrator to grant the required Kubernetes RBAC permissions before installing Istio.
+
+Check that your cluster has enough headroom for the Istio control plane and gateway pods. Exact sizing depends on traffic volume and mesh size, but you should verify node capacity before installing:
 
 ```bash
 kubectl top nodes
@@ -137,7 +137,7 @@ kubectl get namespace default --show-labels
 
 ## Step 4: Integrate with Azure Monitor
 
-One of the nice things about running Istio on Arc is that you can pipe telemetry data into Azure Monitor. If you have the monitoring extension installed on your Arc cluster, Istio's metrics are automatically scraped by the Azure Monitor agent.
+One of the nice things about running Istio on Arc is that you can pipe telemetry data into Azure Monitor. If you have the managed Prometheus metrics extension installed on your Arc cluster, you can add a custom scrape configuration for Istio metrics.
 
 First, enable the monitoring extension if it is not already active:
 
@@ -149,41 +149,36 @@ az k8s-extension create --name azuremonitor-metrics \
   --extension-type Microsoft.AzureMonitor.Containers.Metrics
 ```
 
-Create a ConfigMap to tell the Azure Monitor agent to scrape Istio metrics:
+Create a file named `prometheus-config` to tell the Azure Monitor agent to scrape Istio metrics:
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: ama-metrics-prometheus-config
-  namespace: kube-system
-data:
-  prometheus-config: |
-    scrape_configs:
-      - job_name: 'istiod'
-        kubernetes_sd_configs:
-          - role: endpoints
-            namespaces:
-              names:
-                - istio-system
-        relabel_configs:
-          - source_labels: [__meta_kubernetes_service_name]
-            action: keep
-            regex: istiod
-      - job_name: 'envoy-stats'
-        metrics_path: /stats/prometheus
-        kubernetes_sd_configs:
-          - role: pod
-        relabel_configs:
-          - source_labels: [__meta_kubernetes_pod_container_name]
-            action: keep
-            regex: istio-proxy
+scrape_configs:
+  - job_name: 'istiod'
+    kubernetes_sd_configs:
+      - role: endpoints
+        namespaces:
+          names:
+            - istio-system
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_service_name]
+        action: keep
+        regex: istiod
+  - job_name: 'envoy-stats'
+    metrics_path: /stats/prometheus
+    kubernetes_sd_configs:
+      - role: pod
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_container_name]
+        action: keep
+        regex: istio-proxy
 ```
 
-Apply the ConfigMap:
+Create the ConfigMap from that file:
 
 ```bash
-kubectl apply -f ama-metrics-config.yaml
+kubectl create configmap ama-metrics-prometheus-config \
+  --from-file=prometheus-config \
+  -n kube-system
 ```
 
 ## Step 5: Use Azure Policy with Istio
@@ -207,6 +202,7 @@ az k8s-configuration flux create \
   --cluster-type connectedClusters \
   --namespace istio-system \
   --scope cluster \
+  --kind git \
   --url https://github.com/your-org/istio-configs \
   --branch main \
   --kustomization name=istio-resources path=./overlays/production
@@ -217,7 +213,7 @@ az k8s-configuration flux create \
 Deploy a sample workload to verify everything works:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/bookinfo/platform/kube/bookinfo.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/bookinfo/platform/kube/bookinfo.yaml
 ```
 
 Check that the sidecar proxy was injected:
