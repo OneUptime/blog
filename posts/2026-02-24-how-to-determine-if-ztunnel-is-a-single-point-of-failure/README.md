@@ -14,7 +14,7 @@ The short answer is that ztunnel is a single point of failure per node, but not 
 
 ## How ztunnel Works
 
-In ambient mesh mode, ztunnel runs as a DaemonSet, meaning there is exactly one ztunnel pod per node:
+In ambient mesh mode, ztunnel runs as a DaemonSet, meaning there is one ztunnel pod on each eligible node:
 
 ```bash
 # Check ztunnel pods
@@ -34,7 +34,7 @@ ztunnel handles:
 - Telemetry collection at the connection level
 - Traffic tunneling between nodes using HBONE (HTTP-Based Overlay Network Environment)
 
-All traffic from pods in ambient mode on a given node flows through that node's ztunnel instance.
+Captured traffic from pods in ambient mode on a given node flows through that node's ztunnel instance.
 
 ## What Happens When ztunnel Fails
 
@@ -42,7 +42,7 @@ If a ztunnel pod crashes or becomes unresponsive, the impact depends on the fail
 
 ### Scenario 1: ztunnel Pod Crash
 
-When ztunnel crashes, the DaemonSet controller immediately restarts it. The restart typically takes a few seconds.
+When ztunnel crashes, the DaemonSet controller creates a replacement pod. The restart often takes only a few seconds, but the exact timing depends on image availability, node load, and Kubernetes scheduling.
 
 ```bash
 # Simulate a crash (for testing only)
@@ -52,7 +52,7 @@ kubectl delete pod -n istio-system -l app=ztunnel --field-selector spec.nodeName
 kubectl get pods -n istio-system -l app=ztunnel -w
 ```
 
-During the restart window, traffic behavior depends on how ztunnel integrates with the node's networking stack. The iptables or eBPF rules that redirect traffic to ztunnel may cause packets to be dropped until ztunnel is back.
+During the restart window, traffic behavior depends on how ztunnel and the Istio CNI redirection on that node are configured. Ambient mesh traffic on the affected node can be interrupted until ztunnel is healthy again.
 
 Test this in your environment:
 
@@ -81,8 +81,11 @@ kubectl get pods -n istio-system -l app=ztunnel -o jsonpath='{range .items[*]}{.
 ztunnel has built-in health endpoints. Verify they are working:
 
 ```bash
-# Check ztunnel health
-kubectl exec -n istio-system ztunnel-abc12 -- curl -s localhost:15021/healthz/ready
+# In one terminal, forward the readiness endpoint for a specific ztunnel pod
+kubectl port-forward -n istio-system pod/ztunnel-abc12 15021:15021
+
+# In another terminal, check ztunnel readiness
+curl -s http://localhost:15021/healthz/ready
 ```
 
 ## Comparing to Sidecar Model
@@ -95,7 +98,7 @@ However, this is not as different as it sounds. In both models:
 - Kubernetes reschedules pods to other nodes
 - DaemonSets restart quickly
 
-The blast radius of a ztunnel failure is the same as a node-level network failure, which is a failure mode you already need to handle.
+The blast radius of a ztunnel failure is similar to a node-level network failure, which is a failure mode you already need to handle.
 
 ## Mitigations
 
@@ -107,15 +110,16 @@ Make sure ztunnel has enough resources that it will not be OOM killed:
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
-  values:
+  components:
     ztunnel:
-      resources:
-        requests:
-          cpu: 200m
-          memory: 256Mi
-        limits:
-          cpu: "1"
-          memory: 1Gi
+      k8s:
+        resources:
+          requests:
+            cpu: 200m
+            memory: 256Mi
+          limits:
+            cpu: "1"
+            memory: 1Gi
 ```
 
 Check current resource usage:
@@ -124,21 +128,13 @@ Check current resource usage:
 kubectl top pods -n istio-system -l app=ztunnel
 ```
 
-### 2. Set Pod Disruption Budget
+### 2. Set DaemonSet Rolling Update Limits
 
-Prevent too many ztunnel pods from being unavailable at once during node maintenance:
+Prevent too many ztunnel pods from being replaced at once during DaemonSet rolling updates:
 
-```yaml
-apiVersion: policy/v1
-kind: PodDisruptionBudget
-metadata:
-  name: ztunnel-pdb
-  namespace: istio-system
-spec:
-  maxUnavailable: 1
-  selector:
-    matchLabels:
-      app: ztunnel
+```bash
+kubectl patch daemonset ztunnel -n istio-system --type merge -p \
+  '{"spec":{"updateStrategy":{"type":"RollingUpdate","rollingUpdate":{"maxUnavailable":1}}}}'
 ```
 
 ### 3. Monitor ztunnel Health
@@ -215,7 +211,7 @@ kubectl exec deploy/fortio -- fortio load -c 10 -qps 100 -t 60s http://my-servic
 
 ## Is ztunnel Really a Single Point of Failure?
 
-ztunnel is a single point of failure for mesh functionality on a single node. If it goes down, pods on that node lose mTLS, telemetry, and L4 policy enforcement.
+ztunnel is a single point of failure for mesh functionality on a single node. If it goes down, ambient mesh traffic through that node can be interrupted, and mesh features such as mTLS, telemetry, and L4 policy enforcement are unavailable while ztunnel is down.
 
 But calling it a "single point of failure" in the traditional sense overstates the risk because:
 
@@ -223,7 +219,7 @@ But calling it a "single point of failure" in the traditional sense overstates t
 2. The blast radius is one node, not the entire cluster
 3. The same node already has other single points of failure (kubelet, container runtime, node networking)
 4. ztunnel is written in Rust and is designed to be lightweight and reliable
-5. In most failure scenarios, traffic either continues without mesh features or is briefly interrupted
+5. In most failure scenarios, traffic on the affected node is briefly interrupted rather than bypassing mesh policy silently
 
 The practical risk is low for most environments. If you spread your critical workloads across multiple nodes and monitor ztunnel health, the remaining risk is comparable to any other node-level infrastructure component.
 
