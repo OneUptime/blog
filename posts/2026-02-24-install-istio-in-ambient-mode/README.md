@@ -4,32 +4,33 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Ambient Mode, Installation, Kubernetes, Service Mesh
 
-Description: Complete installation guide for Istio ambient mode using istioctl, Helm, and the Istio Operator with verification steps and troubleshooting tips.
+Description: Complete installation guide for Istio ambient mode using istioctl, Helm, and the legacy Istio Operator with verification steps and troubleshooting tips.
 
 ---
 
-Installing Istio in ambient mode is straightforward, but there are a few things you need to know that differ from the traditional sidecar installation. The ambient profile installs different components - ztunnel and istio-cni instead of the sidecar injector - and the installation method you choose affects how you manage upgrades later.
+Installing Istio in ambient mode is straightforward, but there are a few things you need to know that differ from the traditional sidecar installation. The ambient profile installs additional data plane components - ztunnel and istio-cni - and the installation method you choose affects how you manage upgrades later.
 
-This guide covers three installation methods: istioctl, Helm, and the Istio Operator.
+This guide covers istioctl and Helm for current Istio releases, plus notes on the legacy Istio Operator.
 
 ## Prerequisites
 
 Before installing, check your environment:
 
 ```bash
-# Kubernetes version 1.27+
+# A supported Kubernetes version for your Istio release
+# For Istio 1.30, Kubernetes 1.32-1.36 are supported
 
 kubectl version
 
-# istioctl version 1.22+ (1.24+ recommended for GA ambient features)
+# Use an istioctl version that matches the Istio release you are installing
 istioctl version --remote=false
 ```
 
 Download istioctl if you do not have it:
 
 ```bash
-curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.24.0 sh -
-export PATH=$HOME/istio-1.24.0/bin:$PATH
+curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.30.0 sh -
+export PATH=$HOME/istio-1.30.0/bin:$PATH
 ```
 
 Run the pre-flight check:
@@ -57,7 +58,7 @@ If you need to customize the installation, pass additional `--set` flags:
 
 ```bash
 istioctl install --set profile=ambient \
-  --set values.global.proxy.resources.requests.memory=128Mi \
+  --set values.ztunnel.resources.requests.memory=128Mi \
   --set values.cni.resources.requests.memory=64Mi \
   -y
 ```
@@ -114,13 +115,15 @@ helm install istio-base istio/base -n istio-system --create-namespace
 Then install istiod with ambient-compatible settings:
 
 ```bash
-helm install istiod istio/istiod -n istio-system --wait
+helm install istiod istio/istiod -n istio-system \
+  --set profile=ambient --wait
 ```
 
 Install the CNI plugin:
 
 ```bash
-helm install istio-cni istio/cni -n istio-system --wait
+helm install istio-cni istio/cni -n istio-system \
+  --set profile=ambient --wait
 ```
 
 Install ztunnel:
@@ -152,9 +155,11 @@ helm install ztunnel istio/ztunnel -n istio-system \
   -f ztunnel-values.yaml --wait
 ```
 
-## Method 3: Istio Operator
+## Method 3: Legacy Istio Operator
 
-The Istio Operator watches for IstioOperator custom resources and manages the installation:
+The in-cluster Istio Operator was deprecated in Istio 1.23 and removed in Istio 1.24, so do not use it for new installations on current Istio releases. Existing operator-based installations on Istio 1.23 or earlier should migrate to istioctl or Helm.
+
+On legacy Istio releases, the Istio Operator watched for IstioOperator custom resources and managed the installation:
 
 ```bash
 istioctl operator init
@@ -176,14 +181,14 @@ spec:
 kubectl apply -f ambient-operator.yaml
 ```
 
-The operator will reconcile the installation. Check its progress:
+On those legacy releases, the operator will reconcile the installation. Check its progress:
 
 ```bash
 kubectl get istiooperator -n istio-system
 kubectl logs -l name=istio-operator -n istio-operator --tail=50
 ```
 
-Note: The Istio project recommends istioctl or Helm over the Operator for new installations. The Operator is still supported but is not the primary focus going forward.
+Note: The Istio project recommends istioctl or Helm for new installations. Operator-based installations cannot be upgraded past Istio 1.23.x.
 
 ## Verifying the Installation
 
@@ -218,13 +223,13 @@ Run the built-in verification:
 istioctl verify-install
 ```
 
-Check that the ambient profile components are present and the sidecar injector is not:
+Check that the ambient profile components are present:
 
 ```bash
-kubectl get mutatingwebhookconfigurations | grep istio
+kubectl get deployments,daemonsets -n istio-system
 ```
 
-With ambient mode, you should not see a sidecar injector webhook.
+With ambient mode, workloads join the mesh with the `istio.io/dataplane-mode=ambient` namespace label and do not need sidecar proxies injected.
 
 ## Installing Telemetry Addons
 
@@ -246,7 +251,8 @@ istioctl install --set profile=ambient \
   --set components.ingressGateways[0].enabled=true -y
 
 # Or using Helm
-helm install istio-ingress istio/gateway -n istio-system
+helm install istio-ingress istio/gateway -n istio-ingress \
+  --create-namespace --wait
 ```
 
 ## Common Installation Issues
@@ -269,11 +275,11 @@ The CNI plugin needs host-level access. Check if your cluster has a restrictive 
 kubectl logs -l k8s-app=istio-cni-node -n istio-system --tail=50
 ```
 
-On some managed Kubernetes platforms, you may need to configure CNI plugin settings. For example, on GKE:
+On some managed Kubernetes platforms, you may need to configure platform-specific settings. For example, on GKE, use the GKE platform profile. If you install the CNI plugin and ztunnel in `istio-system` on GKE, create a `ResourceQuota` that allows `system-node-critical` pods in that namespace first.
 
 ```bash
 helm install istio-cni istio/cni -n istio-system \
-  --set cni.cniBinDir=/home/kubernetes/bin
+  --set profile=ambient --set global.platform=gke --wait
 ```
 
 ### Traffic Not Being Intercepted
