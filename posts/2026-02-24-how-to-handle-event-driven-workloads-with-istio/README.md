@@ -14,13 +14,13 @@ Istio does not replace your message broker or event bus. What it does is provide
 
 ## Setting Up Knative Eventing with Istio
 
-Knative Eventing provides primitives for event routing on Kubernetes. It works alongside Istio, using it as the transport layer.
+Knative Eventing provides primitives for event routing on Kubernetes. It works alongside Istio, which can secure, observe, and manage the HTTP traffic for meshed Eventing components and event consumers. The examples below use Knative Serving services as sinks, so they assume Knative Serving is installed with a networking layer such as net-istio.
 
 Install Knative Eventing:
 
 ```bash
-kubectl apply -f https://github.com/knative/eventing/releases/download/knative-v1.13.0/eventing-crds.yaml
-kubectl apply -f https://github.com/knative/eventing/releases/download/knative-v1.13.0/eventing-core.yaml
+kubectl apply -f https://github.com/knative/eventing/releases/download/knative-v1.22.0/eventing-crds.yaml
+kubectl apply -f https://github.com/knative/eventing/releases/download/knative-v1.22.0/eventing-core.yaml
 ```
 
 Install the in-memory channel (for development) or a production-ready channel like Kafka:
@@ -28,11 +28,13 @@ Install the in-memory channel (for development) or a production-ready channel li
 ```bash
 # For development
 
-kubectl apply -f https://github.com/knative/eventing/releases/download/knative-v1.13.0/in-memory-channel.yaml
+kubectl apply -f https://github.com/knative/eventing/releases/download/knative-v1.22.0/in-memory-channel.yaml
+kubectl apply -f https://github.com/knative/eventing/releases/download/knative-v1.22.0/mt-channel-broker.yaml
 
 # For production with Kafka
-kubectl apply -f https://github.com/knative-extensions/eventing-kafka-broker/releases/download/knative-v1.13.0/eventing-kafka-controller.yaml
-kubectl apply -f https://github.com/knative-extensions/eventing-kafka-broker/releases/download/knative-v1.13.0/eventing-kafka-channel.yaml
+kubectl apply -f https://github.com/knative-extensions/eventing-kafka-broker/releases/download/knative-v1.22.0/eventing-kafka-controller.yaml
+kubectl apply -f https://github.com/knative-extensions/eventing-kafka-broker/releases/download/knative-v1.22.0/eventing-kafka-channel.yaml
+kubectl apply -f https://github.com/knative-extensions/eventing-kafka-broker/releases/download/knative-v1.22.0/eventing-kafka-source.yaml
 ```
 
 ## Creating an Event Source
@@ -56,10 +58,10 @@ spec:
       name: event-processor
 ```
 
-For production scenarios, you would use sources like KafkaSource:
+For production scenarios, you would use sources like KafkaSource. This example assumes the KafkaSource components are installed and the target Knative Serving service exists:
 
 ```yaml
-apiVersion: sources.knative.dev/v1beta1
+apiVersion: sources.knative.dev/v1
 kind: KafkaSource
 metadata:
   name: order-events
@@ -103,9 +105,9 @@ metadata:
   namespace: default
 spec:
   broker: default
-  filter:
-    attributes:
-      type: com.example.order.created
+  filters:
+    - exact:
+        type: com.example.order.created
   subscriber:
     ref:
       apiVersion: serving.knative.dev/v1
@@ -119,9 +121,9 @@ metadata:
   namespace: default
 spec:
   broker: default
-  filter:
-    attributes:
-      type: com.example.payment.completed
+  filters:
+    - exact:
+        type: com.example.payment.completed
   subscriber:
     ref:
       apiVersion: serving.knative.dev/v1
@@ -131,12 +133,12 @@ spec:
 
 ## Applying Istio Policies to Event Traffic
 
-Since Knative Eventing uses HTTP to deliver events, all that traffic flows through the Istio sidecar. This means you can apply standard Istio policies.
+Knative Eventing delivers CloudEvents over HTTP to sinks. When the relevant namespaces and workloads are part of the mesh, that HTTP traffic flows through the Istio sidecars. This means you can apply standard Istio policies.
 
 Add retry logic for event delivery:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: event-processor-vs
@@ -158,7 +160,7 @@ spec:
 Add circuit breaking to protect downstream services from event floods:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: event-processor-dr
@@ -183,7 +185,7 @@ spec:
 In an event-driven system, you want to make sure that only authorized services can produce or consume events. Istio's mTLS handles the transport security:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: strict-mtls
@@ -196,7 +198,7 @@ spec:
 You can also use AuthorizationPolicy to control which services can send events to which consumers:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: allow-broker-to-processor
@@ -226,9 +228,9 @@ metadata:
   namespace: default
 spec:
   broker: default
-  filter:
-    attributes:
-      type: com.example.order.created
+  filters:
+    - exact:
+        type: com.example.order.created
   subscriber:
     ref:
       apiVersion: serving.knative.dev/v1
@@ -249,7 +251,7 @@ The `dlq-handler` service receives events that failed all retry attempts. You ca
 
 ## Monitoring Event Flow with Istio
 
-Since event delivery happens over HTTP, Istio captures all the standard metrics. You can track event throughput, error rates, and latency using Prometheus:
+For meshed HTTP event delivery, Istio captures the standard request metrics. You can track event throughput, error rates, and latency using Prometheus:
 
 ```promql
 # Event delivery rate per consumer
@@ -259,11 +261,11 @@ sum(rate(istio_requests_total{destination_service_name=~".*processor.*"}[5m])) b
 sum(rate(istio_requests_total{destination_service_name=~".*processor.*", response_code=~"5.."}[5m])) by (destination_service_name)
 ```
 
-For tracing event flows across multiple services, make sure your event processors propagate the trace headers. Knative Eventing includes trace context in CloudEvents extensions, but your processors need to forward them when producing new events.
+For tracing event flows across multiple services, make sure your event processors propagate trace context. Knative Eventing can be configured to trace CloudEvents, but your processors need to forward trace headers or CloudEvents trace extensions when producing new events.
 
 ## Scaling Event Consumers
 
-Knative automatically scales event consumers based on the number of events. But you should configure the autoscaling behavior through annotations:
+Knative Serving automatically scales event consumers based on the request load created by event delivery. But you should configure the autoscaling behavior through annotations:
 
 ```yaml
 apiVersion: serving.knative.dev/v1
