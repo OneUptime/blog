@@ -16,13 +16,13 @@ The Istio Telemetry API supports this through a hierarchical configuration model
 
 The Telemetry API uses a simple override model with three levels:
 
-1. **Mesh-wide** - A Telemetry resource named `default` in the root namespace (usually `istio-system`)
-2. **Namespace-level** - A Telemetry resource named `default` in a specific namespace
+1. **Mesh-wide** - A selector-less Telemetry resource in the root namespace (usually `istio-system`)
+2. **Namespace-level** - A selector-less Telemetry resource in a specific namespace
 3. **Workload-level** - A Telemetry resource with a `selector` in the workload's namespace
 
 Each level overrides the one above it. Namespace-level overrides mesh-wide settings. Workload-level overrides namespace-level settings.
 
-The merge behavior is per-section. If you only specify `tracing` in a namespace-level override, the `metrics` and `accessLogging` configuration from the mesh-wide default still applies.
+The merge behavior is field-based. If you only specify `tracing` in a namespace-level override, the `metrics` and `accessLogging` configuration from the mesh-wide default still applies.
 
 ## Setting Up Mesh-Wide Defaults
 
@@ -95,11 +95,9 @@ spec:
   accessLogging:
     - providers:
         - name: envoy
-      filter:
-        expression: ""
 ```
 
-An empty filter expression (or omitting the filter entirely) logs all requests. The mesh-wide filter that only logs errors is overridden for this namespace.
+Omitting the filter logs all requests. The mesh-wide filter that only logs errors is overridden for this namespace.
 
 If you need a more detailed log format for the payments namespace, use a different provider:
 
@@ -168,7 +166,7 @@ spec:
           tagOverrides:
             tenant:
               operation: UPSERT
-              value: "request.headers['x-tenant-id'] || 'default'"
+              value: "'x-tenant-id' in request.headers ? request.headers['x-tenant-id'] : 'default'"
 ```
 
 Services in `multi-tenant-app` will have a `tenant` label on their request count metrics, while services in other namespaces won't.
@@ -228,10 +226,7 @@ load-test      default   1d
 To verify a specific namespace's effective configuration, check the Envoy config on a pod in that namespace:
 
 ```bash
-# Check tracing config
-istioctl proxy-config log <pod-name> -n staging --level trace:debug
-
-# Or dump the full bootstrap config
+# Dump the full bootstrap config and inspect tracing settings
 istioctl proxy-config bootstrap <pod-name> -n staging -o json | grep -A 10 "tracing"
 ```
 
@@ -329,9 +324,9 @@ spec:
 
 ## Gotchas
 
-**Name must be "default"**: A namespace-level Telemetry override must be named `default` to override the mesh-wide configuration. A Telemetry with any other name in a namespace is treated as an additional configuration (not an override) and merges differently.
+**Only one selector-less resource per namespace**: A namespace-level Telemetry override can use any Kubernetes resource name, but it must omit `selector`. Istio only allows one selector-less Telemetry resource in a namespace, including the root namespace.
 
-**Sections don't partially merge**: If you override the `tracing` section, you need to specify the complete tracing configuration for that namespace. The mesh-wide tracing config is replaced entirely, not merged field by field.
+**Fields override inherited fields**: Fields specified in a namespace resource override the inherited field configuration. Unspecified fields continue to inherit from the parent configuration, while repeated fields such as `customTags` replace the inherited value for that field.
 
 **Provider must exist in MeshConfig**: Any provider you reference in a namespace-level override must be defined in the mesh-wide MeshConfig. You can't define new providers at the namespace level.
 
