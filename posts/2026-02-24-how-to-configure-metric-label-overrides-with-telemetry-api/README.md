@@ -36,7 +36,7 @@ spec:
           tagOverrides:
             my_custom_label:
               operation: UPSERT
-              value: "request.headers['x-custom'] || 'none'"
+              value: "'x-custom' in request.headers ? request.headers['x-custom'] : 'none'"
             unwanted_label:
               operation: REMOVE
 ```
@@ -129,10 +129,10 @@ overrides:
     tagOverrides:
       api_version:
         operation: UPSERT
-        value: "request.headers['x-api-version'] || 'v1'"
+        value: "'x-api-version' in request.headers ? request.headers['x-api-version'] : 'v1'"
       client_type:
         operation: UPSERT
-        value: "request.headers['x-client-type'] || 'unknown'"
+        value: "'x-client-type' in request.headers ? request.headers['x-client-type'] : 'unknown'"
 ```
 
 Be very careful here. If the header has unbounded values (like a user ID or session ID), you'll create a cardinality explosion. Only add headers as labels when you know the set of possible values is small and fixed.
@@ -146,10 +146,10 @@ overrides:
     tagOverrides:
       mesh_id:
         operation: UPSERT
-        value: "node.metadata['MESH_ID'] || 'default'"
+        value: "'MESH_ID' in node.metadata ? node.metadata['MESH_ID'] : 'default'"
       cluster_id:
         operation: UPSERT
-        value: "node.metadata['CLUSTER_ID'] || 'unknown'"
+        value: "'CLUSTER_ID' in node.metadata ? node.metadata['CLUSTER_ID'] : 'unknown'"
 ```
 
 These values come from the proxy's bootstrap metadata and are typically set during installation.
@@ -169,7 +169,7 @@ value: "request.method"
 value: "request.url_path"
 
 # Specific header
-value: "request.headers['x-my-header'] || 'default'"
+value: "'x-my-header' in request.headers ? request.headers['x-my-header'] : 'default'"
 
 # Host header
 value: "request.host"
@@ -185,7 +185,7 @@ value: "string(response.code)"
 value: "string(int(response.code / 100)) + 'xx'"
 
 # Specific response header
-value: "response.headers['x-custom'] || 'none'"
+value: "'x-custom' in response.headers ? response.headers['x-custom'] : 'none'"
 ```
 
 ### Connection Attributes
@@ -199,9 +199,9 @@ value: "connection.mtls ? connection.requested_server_name : 'plaintext'"
 
 ```yaml
 # From proxy metadata
-value: "node.metadata['NAMESPACE'] || 'unknown'"
-value: "node.metadata['CLUSTER_ID'] || 'unknown'"
-value: "node.metadata['MESH_ID'] || 'default'"
+value: "'NAMESPACE' in node.metadata ? node.metadata['NAMESPACE'] : 'unknown'"
+value: "'CLUSTER_ID' in node.metadata ? node.metadata['CLUSTER_ID'] : 'unknown'"
+value: "'MESH_ID' in node.metadata ? node.metadata['MESH_ID'] : 'default'"
 ```
 
 ### Conditional Expressions
@@ -211,7 +211,7 @@ value: "node.metadata['MESH_ID'] || 'default'"
 value: "response.code >= 500 ? 'error' : 'success'"
 
 # Map header values to categories
-value: "request.headers['x-priority'] == 'high' ? 'high' : 'normal'"
+value: "'x-priority' in request.headers && request.headers['x-priority'] == 'high' ? 'high' : 'normal'"
 ```
 
 ## Practical Recipes
@@ -283,13 +283,13 @@ spec:
           tagOverrides:
             tenant:
               operation: UPSERT
-              value: "request.headers['x-tenant-id'] || 'system'"
+              value: "'x-tenant-id' in request.headers ? request.headers['x-tenant-id'] : 'system'"
         - match:
             metric: REQUEST_DURATION
           tagOverrides:
             tenant:
               operation: UPSERT
-              value: "request.headers['x-tenant-id'] || 'system'"
+              value: "'x-tenant-id' in request.headers ? request.headers['x-tenant-id'] : 'system'"
 ```
 
 ### Recipe 3: API Version Tracking
@@ -328,17 +328,17 @@ You can also check the raw metrics from a specific proxy:
 
 ```bash
 kubectl exec -it <pod-name> -c istio-proxy -- \
-  pilot-agent request GET stats/prometheus | grep istio_requests_total | head -5
+  curl -sS 'localhost:15000/stats/prometheus' | grep istio_requests_total | head -5
 ```
 
 ## Common Pitfalls
 
 **Adding path-based labels**: `request.url_path` has infinite cardinality. Never add it directly as a label unless you bucket it into categories first.
 
-**Header-based labels with missing headers**: Always provide a default with the `||` operator: `request.headers['x-foo'] || 'default'`. Without a default, the expression might produce unexpected results.
+**Header-based labels with missing headers**: Always provide a default with a CEL conditional: `'x-foo' in request.headers ? request.headers['x-foo'] : 'default'`. Without a default, the expression might produce unexpected results.
 
 **Forgetting about both modes**: If you modify server-side labels, client-side labels remain unchanged (and vice versa). Be explicit about `mode: CLIENT_AND_SERVER` if you want changes on both sides.
 
-**Override order matters**: Within a single `overrides` list, later entries can reference labels created by earlier entries. But it's cleaner to handle each label independently.
+**Override order matters**: Istio applies metric overrides in order, from less specific to more specific matches. But it's cleaner to handle each label independently.
 
 Label overrides are the precision tool for managing metric cardinality in Istio. Invest the time to tune your labels early - it'll save you significant money on metrics storage and make your dashboards faster to query.
