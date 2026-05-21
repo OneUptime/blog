@@ -46,10 +46,10 @@ You should see log entries like:
 enforced denied, matched policy ns[default]-policy[deny-all]-rule[0]
 ```
 
-or
+or a denial without a matching ALLOW rule, for example:
 
 ```text
-enforced denied, no matched policy found
+rbac_log: enforced denied, no matched policy found
 ```
 
 The first message tells you which specific policy and rule caused the denial. The second message means no ALLOW policy matched the request.
@@ -90,6 +90,8 @@ Istio evaluates authorization policies in a specific order:
 2. **DENY** policies are evaluated next
 3. **ALLOW** policies are evaluated last
 
+AUDIT policies can mark matching requests for audit logging, but they do not allow or deny traffic.
+
 ```mermaid
 flowchart TD
     A[Request arrives] --> B{CUSTOM policy exists?}
@@ -105,17 +107,17 @@ flowchart TD
     I -->|No| D
 ```
 
-Key insight: if there are no ALLOW policies at all, traffic is allowed by default. But the moment you add any ALLOW policy (even with empty rules), all traffic that does not match an ALLOW rule is denied. This is the most common source of unexpected denials.
+Key insight: if there are no ALLOW policies for the workload, traffic is allowed by default. But the moment you add an ALLOW policy that applies to the workload, all traffic that does not match an ALLOW rule is denied. This is the most common source of unexpected denials.
 
-## Step 6: Check for Empty ALLOW Policies
+## Step 6: Check for ALLOW Policies With No Rules
 
-An ALLOW policy with empty rules denies everything:
+An ALLOW policy with no rules matches nothing. If there are no other ALLOW policies for the workload, this denies everything:
 
 ```yaml
 apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
-  name: deny-all
+  name: allow-nothing
   namespace: default
 spec:
   selector:
@@ -130,6 +132,8 @@ This is sometimes used intentionally as a "deny all" mechanism, but it can also 
 ```bash
 kubectl get authorizationpolicy -n <namespace> -o yaml | grep -A 5 "rules: \[\]"
 ```
+
+Also check for ALLOW policies where the `rules` field is omitted entirely.
 
 ## Step 7: Verify Source Identity
 
@@ -192,9 +196,9 @@ istioctl proxy-config listener <pod-name> -n <namespace> --port 80 -o json | pyt
 
 ## Step 10: Common Denial Scenarios and Fixes
 
-**Scenario: Added an ALLOW policy for one service but all other services broke.**
+**Scenario: Added an ALLOW policy for one workload but other traffic to that workload broke.**
 
-This happens because adding any ALLOW policy switches the default behavior from "allow all" to "deny all unless explicitly allowed." Fix: add ALLOW rules for all services that need access, or restructure your policies.
+This happens because adding an ALLOW policy to a workload switches that workload's default behavior from "allow all" to "deny all unless explicitly allowed." Fix: add ALLOW rules for all callers that need access, or restructure your policies.
 
 **Scenario: Policy works in one namespace but not another.**
 
@@ -221,7 +225,7 @@ Make sure the `RequestAuthentication` policy is correctly configured and the JWT
 3. List all authorization policies in all relevant namespaces
 4. Run `istioctl x authz check` on the destination pod
 5. Verify source identity (service account, mTLS status)
-6. Check for empty ALLOW policies
+6. Check for ALLOW policies with no rules
 7. Verify policy evaluation order (CUSTOM > DENY > ALLOW)
 8. Check PeerAuthentication and RequestAuthentication settings
 9. Inspect raw Envoy configuration if needed
