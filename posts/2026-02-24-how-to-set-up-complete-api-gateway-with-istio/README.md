@@ -19,7 +19,7 @@ The Istio Ingress Gateway is an Envoy proxy deployed at the edge of your mesh. I
 - Rate limiting
 - Authentication and authorization
 - CORS headers
-- Request/response transformation
+- Request header and response header manipulation
 - Load balancing
 
 ## Step 1: TLS Termination
@@ -250,7 +250,7 @@ spec:
   # Allow unauthenticated access to public endpoints
   - to:
     - operation:
-        paths: ["/health", "/v1/products", "/v1/search"]
+        paths: ["/health", "/v1/products*", "/v1/search*"]
         methods: ["GET"]
   # Require authentication for everything else
   - from:
@@ -302,7 +302,7 @@ spec:
 
 ## Step 6: Rate Limiting
 
-Istio supports rate limiting through Envoy's rate limiting features. You can use local rate limiting directly on the gateway:
+Istio supports rate limiting through Envoy's rate limiting features. You can use local rate limiting directly on the gateway. Local rate limits are enforced per gateway proxy instance, so use global rate limiting with an external rate limit service if you need one shared quota across all gateway replicas.
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -448,7 +448,7 @@ curl -v -X OPTIONS https://api.example.com/v1/users \
 for i in $(seq 1 1100); do
   curl -s -o /dev/null -w "%{http_code}" https://api.example.com/health
 done
-# Should start seeing 429 responses after 1000 requests
+# Should start seeing 429 responses after 1000 requests per gateway proxy instance
 
 # Check the gateway configuration
 istioctl proxy-config routes deploy/istio-ingressgateway -n istio-system
