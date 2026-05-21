@@ -46,7 +46,7 @@ Rate broken down by source service:
 sum(rate(istio_requests_total{destination_service_name="my-api", reporter="destination"}[5m])) by (source_workload)
 ```
 
-Rate by HTTP method:
+Rate by protocol and response code:
 
 ```promql
 sum(rate(istio_requests_total{destination_service_name="my-api", reporter="destination"}[5m])) by (request_protocol, response_code)
