@@ -126,7 +126,7 @@ spec:
       app: istio-ingressgateway
 ```
 
-`maxUnavailable: 0` means no gateway pods can be evicted. This effectively blocks node drains until you manually scale up the gateway first or temporarily relax the PDB. This is extreme but appropriate for very high-traffic gateways.
+`maxUnavailable: 0` means no gateway pods can be evicted. This effectively blocks node drains until you temporarily relax the PDB. Scaling up the gateway does not change this because the budget still requires zero unavailable pods. This is extreme but appropriate for very high-traffic gateways.
 
 ## PDB for Egress Gateway
 
@@ -245,10 +245,7 @@ replicas = 2, minAvailable = 1  -> OK (1 can be evicted)
 A PDB with `maxUnavailable: 0` will completely block voluntary disruptions. Use this only for the most critical components and have a procedure for temporarily relaxing it during maintenance:
 
 ```bash
-# Temporarily increase gateway replicas before maintenance
-kubectl scale deployment istio-ingressgateway -n istio-system --replicas=5
-
-# Or temporarily patch the PDB
+# Temporarily patch the PDB
 kubectl patch pdb istio-ingressgateway -n istio-system --type=merge -p '{"spec":{"maxUnavailable":1}}'
 
 # Perform maintenance...
@@ -259,7 +256,7 @@ kubectl patch pdb istio-ingressgateway -n istio-system --type=merge -p '{"spec":
 
 ### Matching Labels Incorrectly
 
-The PDB selector must exactly match the pod labels. A common mistake is using deployment labels instead of pod template labels:
+The PDB selector must match the pod labels for the pods you intend to protect. A common mistake is using deployment labels instead of pod template labels:
 
 ```bash
 # Verify which pods the PDB selects
