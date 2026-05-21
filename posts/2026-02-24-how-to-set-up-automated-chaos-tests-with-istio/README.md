@@ -37,9 +37,23 @@ kubectl label namespace chaos-auto istio-injection=enabled
 Deploy the application:
 
 ```bash
-kubectl apply -n chaos-auto -f https://raw.githubusercontent.com/istio/istio/release-1.22/samples/bookinfo/platform/kube/bookinfo.yaml
-kubectl apply -n chaos-auto -f https://raw.githubusercontent.com/istio/istio/release-1.22/samples/bookinfo/networking/destination-rule-all.yaml
+kubectl apply -n chaos-auto -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/bookinfo/platform/kube/bookinfo.yaml
+kubectl apply -n chaos-auto -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/bookinfo/networking/destination-rule-all.yaml
 kubectl wait --for=condition=ready pod --all -n chaos-auto --timeout=120s
+kubectl apply -n chaos-auto -f - <<EOF
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: reviews-route
+spec:
+  hosts:
+  - reviews
+  http:
+  - route:
+    - destination:
+        host: reviews
+        subset: v2
+EOF
 ```
 
 ## Writing Chaos Test Scripts
@@ -53,6 +67,12 @@ set -e
 NAMESPACE="chaos-auto"
 PRODUCTPAGE_URL="http://productpage.${NAMESPACE}.svc.cluster.local:9080/productpage"
 
+cleanup() {
+  kubectl delete virtualservice ratings-fault -n "$NAMESPACE" --ignore-not-found
+}
+
+trap cleanup EXIT
+
 # Function to check if productpage returns 200
 
 check_health() {
@@ -60,7 +80,7 @@ check_health() {
   local expected_code=$2
   local actual_code
 
-  actual_code=$(kubectl exec -n $NAMESPACE deploy/ratings-v1 -- \
+  actual_code=$(kubectl exec -n "$NAMESPACE" deploy/ratings-v1 -c ratings -- \
     curl -s -o /dev/null -w "%{http_code}" $PRODUCTPAGE_URL)
 
   if [ "$actual_code" == "$expected_code" ]; then
@@ -78,7 +98,7 @@ check_latency() {
   local max_seconds=$2
   local actual_time
 
-  actual_time=$(kubectl exec -n $NAMESPACE deploy/ratings-v1 -- \
+  actual_time=$(kubectl exec -n "$NAMESPACE" deploy/ratings-v1 -c ratings -- \
     curl -s -o /dev/null -w "%{time_total}" $PRODUCTPAGE_URL)
 
   if (( $(echo "$actual_time < $max_seconds" | bc -l) )); then
@@ -95,7 +115,7 @@ check_health "Productpage is healthy" "200"
 check_latency "Productpage responds within 5s" "5"
 
 echo "=== Step 2: Inject Fault ==="
-kubectl apply -n $NAMESPACE -f - <<EOF
+kubectl apply -n "$NAMESPACE" -f - <<EOF
 apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
@@ -121,7 +141,7 @@ check_health "Productpage still returns 200 with ratings down" "200"
 check_latency "Productpage still responds within 5s" "5"
 
 echo "=== Step 4: Remove Fault ==="
-kubectl delete virtualservice ratings-fault -n $NAMESPACE
+cleanup
 
 sleep 5
 
@@ -201,15 +221,23 @@ spec:
         - -c
         - |
           set -e
+          NAMESPACE="chaos-auto"
+          PRODUCTPAGE_URL="http://productpage.${NAMESPACE}.svc.cluster.local:9080/productpage"
+
+          cleanup() {
+            kubectl delete virtualservice ratings-fault -n "$NAMESPACE" --ignore-not-found
+          }
+
+          trap cleanup EXIT
 
           echo "Checking steady state..."
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-            http://productpage.chaos-auto.svc.cluster.local:9080/productpage)
+          STATUS=$(kubectl exec -n "$NAMESPACE" deploy/ratings-v1 -c ratings -- \
+            curl -s -o /dev/null -w "%{http_code}" "$PRODUCTPAGE_URL")
           [ "$STATUS" = "200" ] || exit 1
           echo "Steady state OK"
 
           echo "Injecting fault..."
-          cat <<FAULT | kubectl apply -n chaos-auto -f -
+          cat <<FAULT | kubectl apply -n "$NAMESPACE" -f -
           apiVersion: networking.istio.io/v1
           kind: VirtualService
           metadata:
@@ -231,13 +259,13 @@ spec:
           sleep 5
 
           echo "Checking degradation..."
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-            http://productpage.chaos-auto.svc.cluster.local:9080/productpage)
+          STATUS=$(kubectl exec -n "$NAMESPACE" deploy/ratings-v1 -c ratings -- \
+            curl -s -o /dev/null -w "%{http_code}" "$PRODUCTPAGE_URL")
           [ "$STATUS" = "200" ] || exit 1
           echo "Graceful degradation OK"
 
           echo "Removing fault..."
-          kubectl delete virtualservice ratings-fault -n chaos-auto
+          cleanup
 
           echo "ALL TESTS PASSED"
       restartPolicy: Never
@@ -264,6 +292,9 @@ rules:
 - apiGroups: [""]
   resources: ["pods"]
   verbs: ["get", "list"]
+- apiGroups: [""]
+  resources: ["pods/exec"]
+  verbs: ["create"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -311,7 +342,7 @@ jobs:
     - name: Cleanup on failure
       if: failure()
       run: |
-        kubectl delete virtualservice --all -n chaos-auto
+        kubectl delete virtualservice --all -n chaos-auto --ignore-not-found
 ```
 
 ## Scheduling Recurring Chaos Tests
