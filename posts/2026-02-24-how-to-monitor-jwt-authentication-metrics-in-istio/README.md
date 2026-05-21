@@ -17,11 +17,11 @@ Istio's Envoy sidecars expose metrics that let you track all of this. This post 
 Istio's Envoy sidecars generate several metrics relevant to JWT authentication. The most important ones are the standard HTTP metrics that include response code labels:
 
 - `istio_requests_total` - Total request count with labels for response code, source, destination, etc.
-- `envoy_http_downstream_rq_xx` - Envoy's native request counters by response code class
+- `http.<stat_prefix>.downstream_rq_xx` - Envoy's native request counters by response code class (exposed to Prometheus as `envoy_http_..._downstream_rq_xx`)
 
 When JWT validation fails, Istio returns specific HTTP status codes:
 - **401 Unauthorized** - The JWT token is invalid (bad signature, expired, wrong issuer)
-- **403 Forbidden** - The request doesn't have a required JWT token, or the AuthorizationPolicy denies access
+- **403 Forbidden** - The AuthorizationPolicy denies access, including the common case where a request doesn't have a required JWT token
 
 You can filter on these response codes to track authentication failures.
 
@@ -101,16 +101,27 @@ These give you direct counts of JWT operations:
 - `jwt_authn.jwks_fetch_success` - successful JWKS key fetches from the provider
 - `jwt_authn.jwks_fetch_failed` - failed JWKS key fetches (could indicate connectivity issues with your OIDC provider)
 
-## Setting Up Custom Metrics with EnvoyFilter
+## Surfacing Envoy JWT Metrics in Prometheus
 
-To get the Envoy JWT stats into Prometheus, you can use Istio's telemetry configuration to surface them. First, check what stats are available:
+Istio configures Envoy to record only a minimal set of Envoy statistics by default, so JWT filter stats may not appear until you include them with `proxyStatsMatcher`. You can enable them globally in the mesh config or per workload with the `proxy.istio.io/config` annotation:
+
+```yaml
+metadata:
+  annotations:
+    proxy.istio.io/config: |-
+      proxyStatsMatcher:
+        inclusionRegexps:
+        - ".*jwt_authn.*"
+```
+
+Restart the affected pods after changing this setting. Then check what stats are available:
 
 ```bash
 kubectl exec -n my-app deploy/my-service -c istio-proxy -- \
   curl -s localhost:15000/stats/prometheus | grep jwt_authn
 ```
 
-If you want these stats scraped by Prometheus, make sure your Prometheus config includes the Envoy stats endpoint. The standard Istio Prometheus configuration usually scrapes port 15020 which includes both Istio and Envoy metrics.
+If you want these stats scraped by Prometheus, make sure your Prometheus config includes the sidecar metrics endpoint. Istio's default metrics merging exposes merged metrics on port 15020 at `/stats/prometheus`; Envoy-only metrics are available on port 15090.
 
 ## Building a Grafana Dashboard
 
@@ -201,7 +212,7 @@ spec:
 
         - alert: JWKSFetchFailure
           expr: |
-            increase(envoy_http_jwt_authn_jwks_fetch_failed[5m]) > 0
+            sum(increase({__name__=~"envoy_http_.*_jwt_authn_jwks_fetch_failed"}[5m])) > 0
           for: 2m
           labels:
             severity: critical
@@ -264,7 +275,7 @@ kubectl exec -n my-app deploy/my-service -c istio-proxy -- \
   curl -s localhost:15000/stats | grep jwks_fetch
 ```
 
-A healthy system shows `jwks_fetch_success` incrementing periodically and `jwks_fetch_failed` staying at zero.
+A healthy system shows `jwks_fetch_success` incrementing when keys are fetched or refreshed and `jwks_fetch_failed` staying at zero.
 
 ## Practical Tips
 
@@ -272,7 +283,7 @@ A few things I've learned from running JWT auth monitoring in production:
 
 1. **Baseline your failure rate first.** Some level of 401/403 is normal - bots, misconfigured clients, expired sessions. Know what your normal rate is before setting alert thresholds.
 
-2. **Separate 401 from 403 in your dashboards.** 401 means the token itself is bad. 403 means the token is valid but the request isn't authorized. These are different problems with different fixes.
+2. **Separate 401 from 403 in your dashboards.** 401 means the token itself is bad. 403 means the request isn't authorized, which can include requests with no token when an AuthorizationPolicy requires one. These are different problems with different fixes.
 
 3. **Watch for gradual increases.** A slow increase in auth failures over days might indicate a certificate rotation issue or a client library bug in a new deployment.
 
