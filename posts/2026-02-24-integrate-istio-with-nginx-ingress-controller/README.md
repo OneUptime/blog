@@ -25,19 +25,21 @@ Pattern 1 is the most common, so that is what we will focus on.
 Install NGINX Ingress Controller using Helm. The key is to make sure the NGINX pods get the Istio sidecar injected:
 
 ```bash
+kubectl create namespace ingress-nginx
+kubectl label namespace ingress-nginx istio-injection=enabled --overwrite
+
 helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
 helm repo update
 
 helm install ingress-nginx ingress-nginx/ingress-nginx \
   --namespace ingress-nginx \
-  --create-namespace \
-  --set controller.podAnnotations."sidecar\.istio\.io/inject"="true"
+  --set-string controller.podLabels."sidecar\.istio\.io/inject"="true"
 ```
 
-Make sure the `ingress-nginx` namespace has the Istio injection label:
+If the `ingress-nginx` namespace already exists, make sure it has the Istio injection label before the controller pods are created:
 
 ```bash
-kubectl label namespace ingress-nginx istio-injection=enabled
+kubectl label namespace ingress-nginx istio-injection=enabled --overwrite
 ```
 
 Verify that the NGINX pods have the sidecar:
@@ -64,9 +66,7 @@ spec:
   template:
     metadata:
       annotations:
-        traffic.sidecar.istio.io/includeInboundPorts: ""
         traffic.sidecar.istio.io/excludeInboundPorts: "80,443"
-        traffic.sidecar.istio.io/excludeOutboundIPRanges: ""
 ```
 
 Or through the Helm values:
@@ -74,10 +74,8 @@ Or through the Helm values:
 ```bash
 helm install ingress-nginx ingress-nginx/ingress-nginx \
   --namespace ingress-nginx \
-  --create-namespace \
-  --set controller.podAnnotations."sidecar\.istio\.io/inject"="true" \
-  --set controller.podAnnotations."traffic\.sidecar\.istio\.io/includeInboundPorts"="" \
-  --set controller.podAnnotations."traffic\.sidecar\.istio\.io/excludeInboundPorts"="80\,443"
+  --set-string controller.podLabels."sidecar\.istio\.io/inject"="true" \
+  --set-string controller.podAnnotations."traffic\.sidecar\.istio\.io/excludeInboundPorts"="80\,443"
 ```
 
 This tells the Istio sidecar to not capture inbound traffic to ports 80 and 443. External traffic hits NGINX directly, and NGINX's outbound traffic to backend services goes through the Istio sidecar.
@@ -123,8 +121,12 @@ Because NGINX pods have Istio sidecars, the outbound connections from NGINX to b
 ```bash
 # Check that mTLS is being used
 
-istioctl authn tls-check <nginx-pod-name>.ingress-nginx <backend-service>.default.svc.cluster.local
+istioctl proxy-config clusters <nginx-pod-name>.ingress-nginx \
+  --fqdn <backend-service>.default.svc.cluster.local \
+  --output json
 ```
+
+In the cluster output for the backend service, look for an Istio mutual TLS transport socket such as `envoy.transport_sockets.tls`.
 
 If you are using STRICT mTLS mode in your mesh:
 
@@ -227,6 +229,6 @@ kubectl logs -n ingress-nginx <nginx-pod> -c istio-proxy
 istioctl proxy-config clusters <nginx-pod>.ingress-nginx
 ```
 
-A common mistake is not excluding inbound ports, which causes NGINX to receive traffic through the sidecar instead of directly. This creates routing loops and connection failures.
+A common mistake is not excluding inbound ports, which causes NGINX to receive external traffic through the sidecar instead of directly. This can break health checks, source IP handling, or TLS assumptions in some setups.
 
 Running NGINX Ingress Controller with Istio is a practical setup for teams that are either migrating incrementally or need specific NGINX features. The sidecar injection makes the integration smooth because NGINX traffic automatically participates in the mesh. The important things to get right are the port exclusions and making sure the NGINX namespace has sidecar injection enabled.
