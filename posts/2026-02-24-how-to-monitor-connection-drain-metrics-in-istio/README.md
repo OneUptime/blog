@@ -8,7 +8,7 @@ Description: Track and analyze connection drain metrics in Istio to verify grace
 
 ---
 
-You've configured drain durations, preStop hooks, and retry policies. But how do you know if they're actually working? Without monitoring, you're just hoping your drain configuration is correct. Connection drain metrics tell you exactly what happens during pod shutdown: how many connections were active, how long the drain took, whether any connections were forcibly closed, and if clients experienced errors.
+You've configured drain durations, preStop hooks, and retry policies. But how do you know if they're actually working? Without monitoring, you're just hoping your drain configuration is correct. Connection drain metrics tell you what happens during pod shutdown: how many connections were active, how long the drain took, whether listeners stopped accepting traffic, and if clients experienced errors.
 
 ## Key Metrics for Connection Drain
 
@@ -19,8 +19,9 @@ The most important ones:
 - `istio_tcp_connections_opened_total` - New TCP connections being established
 - `istio_tcp_connections_closed_total` - TCP connections being closed
 - `istio_requests_total` - HTTP request count (watch for 5xx during drain)
-- `envoy_server_drain_count` - Number of times the drain sequence was initiated
-- `envoy_server_total_connections` - Current active connections
+- `envoy_server_live` - `1` when Envoy is live, `0` when it is draining
+- `envoy_server_total_connections` - Current Envoy connections
+- `envoy_listener_manager_listener_stopped` - Number of listeners stopped
 
 ## Setting Up Prometheus Queries
 
@@ -109,10 +110,8 @@ kube_deployment_status_observed_generation{deployment="api"}
 **Panel 3: Active Connection Count**
 
 ```text
-# Active connections (should drain to zero during shutdown)
-sum(istio_tcp_connections_opened_total{destination_workload="api"}) by (destination_workload_namespace)
--
-sum(istio_tcp_connections_closed_total{destination_workload="api"}) by (destination_workload_namespace)
+# Active Envoy connections (should drain to zero during shutdown)
+sum(envoy_server_total_connections{pod=~"api-.*"}) by (namespace, pod)
 ```
 
 **Panel 4: Request Duration During Drain**
@@ -152,7 +151,7 @@ spec:
         summary: "Error rate above 1% for {{ $labels.destination_service }}"
         description: "This often indicates connection drain issues during deployment"
 
-    - alert: ConnectionResetSpike
+    - alert: ConnectionCloseSpike
       expr: |
         sum(rate(istio_tcp_connections_closed_total[1m])) by (destination_service)
         >
@@ -186,10 +185,10 @@ spec:
               - "-c"
               - |
                 # Log drain start
-                echo "$(date -u +%FT%TZ) drain_start connections=$(curl -s http://localhost:15020/stats | grep 'server.total_connections' | awk '{print $2}')" >> /dev/stderr
+                echo "$(date -u +%FT%TZ) drain_start connections=$(curl -s 'http://localhost:15000/stats?filter=^server.total_connections$' | awk '{print $2}')" >> /dev/stderr
                 sleep 5
                 # Log drain midpoint
-                echo "$(date -u +%FT%TZ) drain_mid connections=$(curl -s http://localhost:15020/stats | grep 'server.total_connections' | awk '{print $2}')" >> /dev/stderr
+                echo "$(date -u +%FT%TZ) drain_mid connections=$(curl -s 'http://localhost:15000/stats?filter=^server.total_connections$' | awk '{print $2}')" >> /dev/stderr
 ```
 
 This writes drain telemetry to stderr, which gets picked up by the container log collector. You can search for `drain_start` and `drain_mid` entries to see connection counts during the drain process.
@@ -204,7 +203,7 @@ kubectl exec -n istio-system deploy/prometheus -- \
   promtool query instant http://localhost:9090 \
   'topk(10, sum(rate(istio_requests_total{response_code=~"5.."}[24h])) by (destination_service) / sum(rate(istio_requests_total[24h])) by (destination_service))'
 
-# Services with the most connection resets
+# Services with the highest connection close rates
 kubectl exec -n istio-system deploy/prometheus -- \
   promtool query instant http://localhost:9090 \
   'topk(10, sum(rate(istio_tcp_connections_closed_total[24h])) by (destination_service))'
@@ -225,8 +224,8 @@ NAMESPACE="default"
 DEPLOY="api"
 
 echo "Starting load test..."
-kubectl run drain-test --image=fortio/fortio --rm -it -- \
-  load -c 10 -qps 50 -t 120s -json /dev/stdout \
+kubectl run drain-test -n ${NAMESPACE} --image=fortio/fortio --restart=Never --attach --rm -- \
+  load -c 10 -qps 50 -t 120s -json - \
   http://${SERVICE}:8080/health > /tmp/fortio-before.json &
 
 LOADTEST_PID=$!
