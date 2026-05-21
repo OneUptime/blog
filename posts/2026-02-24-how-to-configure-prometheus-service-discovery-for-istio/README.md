@@ -17,7 +17,7 @@ Before configuring service discovery, it helps to know what endpoints exist:
 - **istiod**: Exposes metrics on port 15014 at `/metrics`
 - **Envoy sidecars**: Expose metrics on port 15090 at `/stats/prometheus`
 - **Istio gateways**: Same as sidecars, port 15090 at `/stats/prometheus`
-- **Istio agent (pilot-agent)**: Shares the sidecar pod, metrics on port 15020 at `/stats/prometheus`
+- **Istio agent (pilot-agent)**: Serves merged Prometheus telemetry from the Istio agent, Envoy, and application on port 15020 at `/stats/prometheus` when metrics merging is enabled
 
 ## Kubernetes Service Discovery Basics
 
@@ -72,7 +72,7 @@ spec:
 
 ## Scraping Envoy Sidecars
 
-Envoy sidecars are trickier because they are not exposed through a service. You need to use the `pod` role and filter for pods that have the sidecar:
+Envoy sidecars are trickier because they are not exposed through a service. You need to use the `pod` role and filter for the Envoy metrics port:
 
 ```yaml
 scrape_configs:
@@ -81,16 +81,10 @@ scrape_configs:
   kubernetes_sd_configs:
   - role: pod
   relabel_configs:
-  # Only scrape pods with the Istio sidecar
-  - source_labels: [__meta_kubernetes_pod_container_name]
+  # Only scrape the Envoy Prometheus port
+  - source_labels: [__meta_kubernetes_pod_container_port_name]
     action: keep
-    regex: istio-proxy
-  # Set the scrape port to the Envoy stats port
-  - source_labels: [__address__]
-    action: replace
-    regex: ([^:]+)(?::\d+)?
-    replacement: ${1}:15090
-    target_label: __address__
+    regex: '.*-envoy-prom'
   # Add useful labels
   - source_labels: [__meta_kubernetes_namespace]
     target_label: namespace
@@ -124,29 +118,28 @@ spec:
       targetLabel: app
 ```
 
-The label `security.istio.io/tlsMode` is added by Istio to all pods with sidecars, so it works as a reliable selector.
+The label `security.istio.io/tlsMode` is commonly added by Istio to sidecar-injected pods. The `port: http-envoy-prom` setting selects the Envoy Prometheus port exposed by the sidecar.
 
 ## Scraping Istio Gateways
 
-Istio gateways (ingress and egress) are standalone Envoy instances. They expose metrics the same way as sidecars. You can scrape them through their service:
+Istio gateways (ingress and egress) are standalone Envoy instances. They expose metrics the same way as sidecars. You can scrape their Envoy metrics port with the `pod` role:
 
 ```yaml
 scrape_configs:
 - job_name: 'istio-ingressgateway'
+  metrics_path: /stats/prometheus
   kubernetes_sd_configs:
-  - role: endpoints
+  - role: pod
     namespaces:
       names:
       - istio-system
   relabel_configs:
-  - source_labels: [__meta_kubernetes_service_name]
+  - source_labels: [__meta_kubernetes_pod_label_app]
     action: keep
     regex: istio-ingressgateway
-  - source_labels: [__address__]
-    action: replace
-    regex: ([^:]+)(?::\d+)?
-    replacement: ${1}:15090
-    target_label: __address__
+  - source_labels: [__meta_kubernetes_pod_container_port_name]
+    action: keep
+    regex: '.*-envoy-prom'
   - source_labels: [__meta_kubernetes_namespace]
     target_label: namespace
   - source_labels: [__meta_kubernetes_pod_name]
@@ -155,7 +148,7 @@ scrape_configs:
 
 ## Using Prometheus Annotations
 
-An alternative approach is to use Prometheus annotations on pods. Istio can add scrape annotations automatically if you configure it:
+An alternative approach is to use Prometheus annotations on pods. Istio's metrics merging feature is enabled by default in current Istio installs, and you can also enable it explicitly:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -165,7 +158,7 @@ spec:
     enablePrometheusMerge: true
 ```
 
-When `enablePrometheusMerge` is true, Istio configures the sidecar to merge application metrics with Envoy metrics on a single endpoint. It also adds the standard Prometheus annotations:
+When `enablePrometheusMerge` is true, Istio configures the sidecar to merge application metrics with Envoy metrics on a single endpoint. It also adds Prometheus annotations like these:
 
 ```yaml
 annotations:
