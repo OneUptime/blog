@@ -34,7 +34,7 @@ kubectl get virtualservice my-vs -n my-namespace -o yaml
 kubectl get virtualservice my-vs -n my-namespace -o jsonpath='{.status}'
 ```
 
-If the resource does not exist, the kubectl apply probably failed silently or was applied to the wrong namespace.
+If the resource does not exist, the kubectl apply probably failed or was applied to the wrong namespace. The `status` field may be empty unless Istio resource status and analysis are enabled.
 
 ## Step 2: Validate the Configuration
 
@@ -45,7 +45,7 @@ Use `istioctl analyze` to catch configuration errors:
 istioctl analyze -n my-namespace
 
 # Analyze from a file before applying
-istioctl analyze -f my-virtualservice.yaml
+istioctl analyze my-virtualservice.yaml
 ```
 
 Common issues it catches:
@@ -128,7 +128,7 @@ istioctl proxy-config route deploy/my-service -n my-namespace --name "80" -o jso
 
 ### Wrong Namespace
 
-Istio resources are namespace-scoped. A VirtualService in namespace A does not affect traffic in namespace B unless it explicitly targets services in namespace B:
+Istio resources are namespace-scoped, and the namespace affects short-name resolution and configuration visibility. A short host name in a VirtualService is resolved relative to the VirtualService's namespace:
 
 ```yaml
 # This only affects my-namespace
@@ -144,14 +144,12 @@ spec:
 
 ### Host Mismatch
 
-The host in your VirtualService must exactly match the Kubernetes service name:
+The host in your VirtualService must match the destination host after Istio resolves it. For Kubernetes services, short names are resolved relative to the VirtualService's namespace, so fully qualified service names are less ambiguous:
 
 ```yaml
-# These are all different hosts:
 hosts:
-- my-service                                    # Short name (same namespace)
-- my-service.my-namespace                       # Partial FQDN
-- my-service.my-namespace.svc.cluster.local     # Full FQDN
+- my-service                                    # Short name, resolved in the VirtualService namespace
+- my-service.my-namespace.svc.cluster.local     # Full FQDN, recommended for cross-namespace services
 - my-service.example.com                        # External hostname
 ```
 
@@ -210,7 +208,7 @@ Multiple VirtualServices for the same host can conflict. Check for overlapping r
 kubectl get virtualservice -A -o json | jq -r '.items[] | "\(.metadata.namespace)/\(.metadata.name): \(.spec.hosts[])"' | sort
 ```
 
-If two VirtualServices in the same namespace target the same host, the behavior is undefined and Istio may merge them unpredictably.
+Multiple VirtualServices for the same host can be merged when they are bound to a gateway, but rule ordering across resources is undefined. Host merging is not supported for sidecars, so keep mesh-internal rules for a host in a single VirtualService where possible.
 
 ## Forcing a Configuration Refresh
 
@@ -224,12 +222,12 @@ kubectl rollout restart deployment/my-service -n my-namespace
 kubectl rollout restart deployment/istiod -n istio-system
 ```
 
-## Using istioctl Experimental Commands
+## Using Additional istioctl Commands
 
 For deeper debugging:
 
 ```bash
-# Show what config Istiod will push for a specific proxy
+# Show all config currently loaded by a specific proxy
 istioctl proxy-config all deploy/my-service -n my-namespace
 
 # Compare two proxies
