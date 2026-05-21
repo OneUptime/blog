@@ -56,11 +56,11 @@ istioctl proxy-status
 ```
 
 The output shows the sync status for each proxy. Look for:
-- **SYNCED**: The proxy has the latest configuration
-- **NOT SENT**: istiod has not sent configuration to this proxy yet
-- **STALE**: The proxy has outdated configuration
+- **SYNCED**: Envoy has acknowledged the last configuration istiod sent
+- **NOT SENT**: istiod has not sent that type of configuration to the proxy, usually because there is nothing to send
+- **STALE**: istiod sent an update but has not received an acknowledgement
 
-If many proxies show STALE or NOT SENT, the control plane is having issues pushing configuration.
+If many proxies show STALE, are missing from the list, or show unexpected NOT SENT values, the control plane may be having issues pushing configuration.
 
 ## Common Failure Scenarios
 
@@ -76,13 +76,26 @@ Common causes:
 - **Out of memory**: istiod is running out of memory in large clusters. Increase the memory limit:
 
 ```bash
-kubectl patch deployment istiod -n istio-system --type=json -p='[
-  {"op": "replace", "path": "/spec/template/spec/containers/0/resources/limits/memory", "value": "4Gi"},
-  {"op": "replace", "path": "/spec/template/spec/containers/0/resources/requests/memory", "value": "2Gi"}
-]'
+kubectl patch deployment istiod -n istio-system --type=strategic -p='{
+  "spec": {
+    "template": {
+      "spec": {
+        "containers": [
+          {
+            "name": "discovery",
+            "resources": {
+              "requests": {"memory": "2Gi"},
+              "limits": {"memory": "4Gi"}
+            }
+          }
+        ]
+      }
+    }
+  }
+}'
 ```
 
-- **Invalid configuration**: A malformed Istio CRD can crash istiod. Check for validation errors:
+- **Invalid configuration**: A malformed Istio resource is normally rejected or reported by Istio analyzers, but it can still cause configuration push problems. Check for validation errors:
 
 ```bash
 istioctl analyze --all-namespaces
@@ -132,7 +145,7 @@ Sometimes istiod is healthy but cannot push configuration to specific sidecars. 
 
 ```bash
 # Check if a specific proxy can reach istiod
-kubectl exec deploy/my-app -c istio-proxy -- curl -s http://istiod.istio-system.svc:15014/debug/connections
+kubectl exec deploy/my-app -c my-app -- curl -sS http://istiod.istio-system.svc:15014/version
 ```
 
 Check if there are NetworkPolicies blocking control plane traffic:
@@ -199,7 +212,7 @@ kubectl delete deployment istiod -n istio-system
 istioctl install --set profile=default --set revision=recovery
 
 # Migrate workloads to the new control plane
-kubectl label namespace default istio.io/rev=recovery --overwrite
+kubectl label namespace default istio-injection- istio.io/rev=recovery --overwrite
 kubectl rollout restart deployment -n default
 ```
 
@@ -207,7 +220,7 @@ kubectl rollout restart deployment -n default
 
 ### Run Multiple Replicas
 
-Three istiod replicas across different nodes is the minimum for production:
+Run at least two istiod replicas to reduce disruption during restarts and upgrades. Many production clusters use three replicas across different nodes:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -229,7 +242,7 @@ groups:
   - name: istio-control-plane
     rules:
       - alert: IstiodUnavailable
-        expr: sum(up{app="istiod"}) == 0
+        expr: absent(up{app="istiod"}) or sum(up{app="istiod"}) == 0
         for: 1m
         labels:
           severity: critical
@@ -237,20 +250,20 @@ groups:
           summary: "All istiod replicas are down"
 
       - alert: IstiodHighMemory
-        expr: container_memory_usage_bytes{container="discovery", namespace="istio-system"} / container_spec_memory_limit_bytes > 0.85
+        expr: container_memory_usage_bytes{container="discovery", namespace="istio-system"} / on (namespace, pod, container) container_spec_memory_limit_bytes{container="discovery", namespace="istio-system"} > 0.85
         for: 5m
         labels:
           severity: warning
         annotations:
           summary: "istiod memory usage above 85%"
 
-      - alert: ProxySyncErrors
-        expr: rate(pilot_xds_push_errors[5m]) > 0
+      - alert: ProxyConfigRejects
+        expr: rate(pilot_total_xds_rejects[5m]) > 0
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "istiod failing to push configuration to proxies"
+          summary: "Proxies are rejecting xDS configuration from istiod"
 ```
 
 ### Configure Resource Limits Appropriately
