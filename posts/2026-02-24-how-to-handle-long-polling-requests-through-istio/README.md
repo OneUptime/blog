@@ -8,7 +8,7 @@ Description: How to configure Istio for long-polling requests including timeout 
 
 ---
 
-Long polling is a technique where the client sends an HTTP request and the server holds it open until new data is available or a timeout occurs. It is used by applications like chat systems, notification services, and dashboards that need near-real-time updates without WebSockets or SSE. The problem is that Istio's default timeout settings will kill these long-held connections before the server is ready to respond.
+Long polling is a technique where the client sends an HTTP request and the server holds it open until new data is available or a timeout occurs. It is used by applications like chat systems, notification services, and dashboards that need near-real-time updates without WebSockets or SSE. The problem is that proxy timeouts that are shorter than the server's hold time will kill these long-held connections before the server is ready to respond.
 
 ## How Long Polling Works
 
@@ -21,18 +21,18 @@ The typical long-polling flow:
 5. If the timeout expires without data, the server sends an empty response
 6. The client immediately sends a new request
 
-This cycle repeats continuously. The challenge with Istio is that step 4 looks like a hanging request to the proxy. Envoy's default timeouts (particularly the 15-second route timeout) will terminate the request before the server gets a chance to respond.
+This cycle repeats continuously. The challenge with Istio is that step 4 looks like a hanging request to the proxy. If the route has a timeout shorter than the server's hold time, Envoy will terminate the request before the server gets a chance to respond.
 
 ## The Core Problem: Route Timeout
 
-Istio's default route timeout is 15 seconds (set by Istio, not Envoy). For regular API calls this is fine, but long polling requires the request to be held for 30 seconds or more. When the timeout fires, Envoy returns a 504 Gateway Timeout to the client.
+Envoy's route timeout defaults to 15 seconds when it is not overridden, but Istio's `VirtualService` HTTP `timeout` field defaults to disabled. For regular API calls a short route timeout is fine, but long polling requires the request to be held for 30 seconds or more. If you configure a route timeout, it must be longer than the server's long-poll hold time. When the route timeout fires, Envoy returns a 504 Gateway Timeout to the client.
 
 ## Adjusting VirtualService Timeout
 
 The first and most important change is extending the route timeout:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: polling-service
@@ -58,7 +58,7 @@ spec:
       timeout: 15s
 ```
 
-This sets a 120-second timeout for the long-polling endpoint and keeps the default 15-second timeout for everything else. The timeout should be longer than the server's long-poll hold time. If your server holds requests for 60 seconds, set the timeout to at least 90 seconds to allow for network latency and processing time.
+This sets a 120-second timeout for the long-polling endpoint and keeps a shorter 15-second timeout for everything else. The timeout should be longer than the server's long-poll hold time. If your server holds requests for 60 seconds, set the timeout to at least 90 seconds to allow for network latency and processing time.
 
 ## Stream Idle Timeout
 
@@ -90,7 +90,7 @@ spec:
             stream_idle_timeout: 300s
 ```
 
-The stream idle timeout triggers when no data flows in either direction on a stream. During a long-poll hold, no data is flowing, so this timeout is very relevant. Set it higher than your long-poll hold time.
+The stream idle timeout triggers when no data flows in either direction on a stream. During a long-poll hold, no data is flowing, so this timeout is relevant if your hold time can exceed Envoy's default 5-minute stream idle timeout or if your mesh has a lower value. Set it higher than your long-poll hold time.
 
 For the outbound direction (if the long-polling service calls another service that uses long polling):
 
@@ -125,7 +125,7 @@ spec:
 If long-polling traffic enters through the Istio gateway:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: polling-gateway-routes
@@ -185,7 +185,7 @@ spec:
 Retries on long-polling requests need special attention:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: polling-service
@@ -211,16 +211,16 @@ spec:
 
 Key points:
 
-- `perTryTimeout` must be at least as long as the route timeout, otherwise the retry timeout will fire before the route timeout
-- Only retry on connection failures and resets, not on 5xx errors. A long-poll timeout returning an empty response might look like a 5xx to some implementations
-- Keep `attempts` low. Retrying a 60-second long-poll request means potentially holding the connection for 120 seconds before giving up
+- `perTryTimeout` should be at least as long as the expected long-poll hold time, or omitted so it defaults to the route timeout. If it is shorter, the retry timeout can fire before the server's normal response
+- Only retry on connection failures and resets, not on 5xx errors. A long-poll timeout should return 200 or 204, not a 5xx response
+- Keep `attempts` low. In Istio, `attempts` is the number of retries, so `attempts: 1` can make up to two total attempts. Retrying a 60-second long-poll request means potentially holding the connection for 120 seconds before giving up
 
 ## Connection Pool Settings
 
 Long-polling connections are held open for extended periods, so you need enough connection capacity:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: polling-service
@@ -243,7 +243,7 @@ spec:
       simple: LEAST_REQUEST
 ```
 
-The `maxConnections` needs to handle all concurrent long-polling clients. If you have 2000 clients each holding one long-poll connection, you need at least 2000 connections available.
+For HTTP/1.1, `maxConnections` needs to handle all concurrent long-polling clients. If you have 2000 clients each holding one HTTP/1.1 long-poll connection, you need at least 2000 connections available. For HTTP/2, concurrent requests are primarily controlled by `http2MaxRequests`.
 
 TCP keepalive is important for long-polling because the connections sit idle (from a TCP perspective) for extended periods. Without keepalive, intermediate network devices (firewalls, NATs, load balancers) might close idle connections.
 
@@ -276,12 +276,17 @@ kind: Deployment
 metadata:
   name: polling-service
 spec:
+  selector:
+    matchLabels:
+      app: polling-service
   strategy:
     rollingUpdate:
       maxSurge: 1
       maxUnavailable: 0
   template:
     metadata:
+      labels:
+        app: polling-service
       annotations:
         proxy.istio.io/config: |
           drainDuration: 90s
@@ -304,7 +309,7 @@ The `drainDuration` gives the proxy time to finish serving existing long-poll re
 Be careful with outlier detection for long-polling services. A pod that frequently returns empty responses (normal for long polling) might look like it is failing:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: polling-service
@@ -347,7 +352,7 @@ wait
 ## Complete Configuration
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: polling-service
@@ -375,7 +380,7 @@ spec:
             port:
               number: 8080
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: polling-service
@@ -424,4 +429,4 @@ spec:
             stream_idle_timeout: 300s
 ```
 
-Long polling through Istio is straightforward once you adjust the timeouts. The main things to remember are: extend the route timeout beyond your server's hold time, increase the stream idle timeout, size your connection pools for long-lived connections, and configure TCP keepalive to prevent intermediate devices from closing idle connections.
+Long polling through Istio is straightforward once you adjust the timeouts. The main things to remember are: extend the route timeout beyond your server's hold time, increase the stream idle timeout when your hold time can exceed it, size your connection pools for long-lived connections, and configure TCP keepalive to prevent intermediate devices from closing idle connections.
