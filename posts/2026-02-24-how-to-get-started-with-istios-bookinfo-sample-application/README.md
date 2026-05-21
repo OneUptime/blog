@@ -112,6 +112,10 @@ Get the ingress gateway address:
 ```bash
 export INGRESS_HOST=$(kubectl get svc -n istio-system istio-ingressgateway \
   -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+if [ -z "$INGRESS_HOST" ]; then
+  export INGRESS_HOST=$(kubectl get svc -n istio-system istio-ingressgateway \
+    -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+fi
 export INGRESS_PORT=$(kubectl get svc -n istio-system istio-ingressgateway \
   -o jsonpath='{.spec.ports[?(@.name=="http2")].port}')
 export GATEWAY_URL=${INGRESS_HOST}:${INGRESS_PORT}
@@ -121,7 +125,7 @@ echo "http://${GATEWAY_URL}/productpage"
 
 Open that URL in your browser. You should see the Bookinfo product page.
 
-Refresh a few times - you will notice the reviews section changes between no stars, black stars, and red stars. That is because Kubernetes is round-robin load balancing across the three versions of the reviews service.
+Refresh a few times - you will notice the reviews section changes between no stars, black stars, and red stars. That is because, without an explicit Istio route, requests are sent across the three available versions of the reviews service.
 
 ## Applying Destination Rules
 
@@ -234,7 +238,11 @@ Refresh the page multiple times. About 75% of the time you will see no stars (v1
 
 ## Fault Injection
 
-Test resilience by injecting a delay to the ratings service for user jason:
+First reapply the header-based route so user jason goes through reviews v2, then inject a delay to the ratings service:
+
+```bash
+kubectl apply -f reviews-user-routing.yaml
+```
 
 ```yaml
 # ratings-fault-delay.yaml
@@ -270,11 +278,11 @@ spec:
 kubectl apply -f ratings-fault-delay.yaml
 ```
 
-When logged in as jason, the reviews section will show an error because the reviews service has a 6-second timeout for calls to ratings. This demonstrates how fault injection helps you test timeout handling.
+When logged in as jason, the reviews section will show an error. The injected 7-second delay is less than the 10-second timeout from reviews v2 to ratings, but the productpage service has a 3-second timeout plus one retry when calling reviews, for a total of about 6 seconds. This demonstrates how fault injection helps you test timeout handling.
 
 ## Viewing Metrics
 
-If you installed the demo profile, you have access to observability tools. Install the addons:
+If you installed the demo profile, you can install Istio's sample observability addons:
 
 ```bash
 kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.24/samples/addons/kiali.yaml
