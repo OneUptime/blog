@@ -158,8 +158,11 @@ done
 After all workloads are on the new revision:
 
 ```bash
-# Remove the old canary tag if not needed
+# Move any remaining canary namespaces back to stable before removing the tag
+kubectl label namespace test-app istio.io/rev=stable --overwrite
+kubectl rollout restart deployment -n test-app
 
+# Remove the canary tag if no namespaces still reference it
 istioctl tag remove canary
 
 # Remove the old revision
@@ -217,7 +220,7 @@ For detailed information:
 kubectl get mutatingwebhookconfiguration istio-revision-tag-stable -o yaml
 ```
 
-The webhook configuration contains the `objectSelector` matching the tag name and the client config pointing to the revision's istiod service.
+The webhook configuration contains selectors matching the tag name and the client config pointing to the revision's istiod service.
 
 ## Troubleshooting Revision Tags
 
@@ -238,7 +241,7 @@ kubectl get namespace my-app -o jsonpath='{.metadata.labels}'
 
 ### Multiple Webhooks Competing
 
-If a namespace has both `istio-injection=enabled` and `istio.io/rev=stable`, the behavior is unpredictable. Remove the old label:
+If a namespace has both `istio-injection=enabled` and `istio.io/rev=stable`, the `istio-injection` label takes precedence for backward compatibility. Remove the old label:
 
 ```bash
 kubectl label namespace my-app istio-injection-
