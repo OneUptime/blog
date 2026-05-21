@@ -8,7 +8,7 @@ Description: How to handle trust domain migration in Istio when changing cluster
 
 ---
 
-Trust domains in Istio define the identity boundary for your service mesh. By default, every Istio installation uses `cluster.local` as its trust domain. The trust domain appears in every service identity: `spiffe://cluster.local/ns/default/sa/my-service`. When you need to change this trust domain - during cluster migrations, mesh mergers, or when adopting a naming convention - authorization policies that reference the old trust domain will break.
+Trust domains in Istio define the identity boundary for your service mesh. By default, every Istio installation uses `cluster.local` as its trust domain. The trust domain appears in every service identity: `spiffe://cluster.local/ns/default/sa/my-service`. When you need to change this trust domain - during cluster migrations, mesh mergers, or when adopting a naming convention - authorization policies that reference an explicit old trust domain can break.
 
 Istio's trust domain migration feature lets you change trust domains gracefully without breaking existing authorization policies.
 
@@ -34,7 +34,7 @@ rules:
           principals: ["cluster.local/ns/backend/sa/api-service"]
 ```
 
-If you change the trust domain from `cluster.local` to `prod.example.com`, this policy stops matching because the identity string changes.
+In Istio authorization policies, `cluster.local` is a special value that points to the current trust domain and its aliases. Policies that use a different explicit trust domain, such as `old-td/ns/backend/sa/api-service`, stop matching after a trust domain change unless you update the policy or configure aliases.
 
 ## Why Change Trust Domains?
 
@@ -131,18 +131,17 @@ This doesn't change any identities yet. It just tells Istio that `prod.example.c
 
 ### Step 2: Update Authorization Policies
 
-Update your authorization policies to use the new trust domain:
+If your authorization policies use the explicit old trust domain, update them to use the new trust domain or the `cluster.local` pointer:
 
 ```yaml
 # Before
-
-principals: ["cluster.local/ns/backend/sa/api-service"]
+principals: ["old-td/ns/backend/sa/api-service"]
 
 # After
 principals: ["prod.example.com/ns/backend/sa/api-service"]
 ```
 
-Since both trust domains are aliased, both the old and new policy values work.
+Since both trust domains are aliased, both the old and new policy values work. For long-term policies, Istio recommends using `cluster.local/ns/.../sa/...` as the trust domain part because it follows the current trust domain and aliases.
 
 ### Step 3: Switch the Primary Trust Domain
 
@@ -181,7 +180,7 @@ Only do this when you're confident that no policies or workloads still reference
 
 ## Multi-Cluster Trust Domain Migration
 
-In a multi-cluster setup, each cluster typically has its own trust domain. When you add a new cluster to the mesh, configure its trust domain and add it as an alias on existing clusters:
+In a multi-cluster setup, clusters can share one trust domain or use multiple trust domains, as long as they share a root of trust. When you add a new trust domain to the mesh, configure it and add it as an alias on existing clusters:
 
 ```yaml
 # Cluster 1 config
@@ -199,7 +198,7 @@ meshConfig:
     - "eu-west-1.example.com"
 ```
 
-Authorization policies on cluster 1 can reference services from cluster 2 using either trust domain:
+Authorization policies on cluster 1 can reference services from cluster 2 using either trust domain when the domains are configured as aliases:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -243,7 +242,7 @@ kubectl exec -n backend deploy/api-service -- curl -s -o /dev/null -w "%{http_co
 
 ## Authorization Policy Patterns for Migration
 
-During migration, write policies that work with both trust domains:
+During migration, you can write policies that work with both trust domains:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -267,7 +266,7 @@ spec:
             principals: ["prod.example.com/ns/frontend/sa/web-app"]
 ```
 
-With trust domain aliases configured, you only need one of these entries. But listing both is a safe approach during the transition when you're not sure if aliases are fully propagated.
+With trust domain aliases configured, you only need one of these entries. Using `cluster.local/ns/frontend/sa/web-app` is usually the simplest long-term form because Istio treats `cluster.local` in authorization policies as the current trust domain and its aliases.
 
 ## Common Mistakes
 
@@ -279,6 +278,6 @@ With trust domain aliases configured, you only need one of these entries. But li
 
 4. **Certificate chain issues in multi-cluster.** When different clusters use different trust domains, they need a shared root CA or intermediate CA for cross-cluster mTLS to work.
 
-5. **Forgetting about namespace-based policies.** Namespace-based policies (`namespaces: ["frontend"]`) are not affected by trust domain changes because they don't reference the trust domain directly. Only `principals`-based policies are affected.
+5. **Forgetting about namespace-based policies.** Namespace-based policies (`namespaces: ["frontend"]`) are not affected by trust domain changes because they don't reference the trust domain directly. Policies that match `principals` or `trustDomains` are the ones that need attention.
 
 Trust domain migration is a careful process, but the aliases feature makes it safe. Take it step by step, validate at each stage, and keep the old aliases until the migration is fully complete.
