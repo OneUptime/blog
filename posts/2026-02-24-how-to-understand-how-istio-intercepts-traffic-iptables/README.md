@@ -8,17 +8,17 @@ Description: A detailed guide to how Istio uses iptables rules to intercept and 
 
 ---
 
-Traffic interception is the fundamental mechanism that makes Istio work transparently. Your application code does not need to know about Istio, sidecars, or proxies. It just makes normal network calls, and iptables rules silently redirect those calls through the Envoy sidecar. Understanding exactly how this works is essential for debugging networking issues in the mesh.
+Traffic interception is the fundamental mechanism that makes Istio sidecars work transparently. Your application code does not need to know about Istio, sidecars, or proxies. It just makes normal network calls, and iptables rules silently redirect those calls through the Envoy sidecar. Understanding exactly how this works is essential for debugging networking issues in the mesh.
 
 ## The Big Picture
 
-Every pod in the Istio mesh has iptables rules in its network namespace. These rules redirect:
+Every sidecar-injected pod in the Istio mesh has traffic interception rules in its network namespace. With the default iptables interception mode, these rules redirect:
 
 - All outbound TCP traffic from the application to Envoy's outbound listener (port 15001)
 - All inbound TCP traffic to the pod to Envoy's inbound listener (port 15006)
 - Traffic from Envoy itself passes through without redirection (to prevent loops)
 
-The result is that every TCP connection, both in and out, passes through Envoy. This is how Istio can apply routing rules, enforce mTLS, collect metrics, and implement authorization - all without modifying your application.
+The result is that captured TCP connections, both in and out, pass through Envoy. This is how Istio can apply routing rules, enforce mTLS, collect metrics, and implement authorization - all without modifying your application.
 
 ## Examining the iptables Rules
 
@@ -76,7 +76,7 @@ These RETURN rules skip redirection for Istio's own ports:
 - 15008: HBONE mTLS tunnel
 - 15090: Envoy Prometheus metrics
 - 15021: Sidecar health check
-- 15020: Istio agent metrics
+- 15020: Merged Prometheus telemetry from the Istio agent, Envoy, and the application
 
 ```text
 -A ISTIO_INBOUND -p tcp -j ISTIO_IN_REDIRECT
@@ -187,17 +187,17 @@ kubectl exec deploy/my-app -c istio-proxy -- iptables -t nat -L -n -v --line-num
 
 The `-v` flag adds packet counters, which tell you if traffic is actually hitting each rule.
 
-### Check for dropped packets:
+### Check packet counters:
 
 ```bash
-kubectl exec deploy/my-app -c istio-proxy -- iptables -t nat -L -n -v | grep -c "pkts"
+kubectl exec deploy/my-app -c istio-proxy -- iptables -t nat -L ISTIO_REDIRECT -n -v --line-numbers
 ```
 
 If the ISTIO_REDIRECT rule shows 0 packets, outbound traffic is not being intercepted.
 
 ### DNS resolution issues:
 
-UDP traffic (including DNS) is NOT redirected by the iptables rules (they only match TCP). DNS queries go directly to CoreDNS. If DNS is not working, it is not an iptables problem.
+With the default sidecar interception settings, UDP traffic (including DNS) is NOT redirected by the TCP iptables rules shown above. DNS queries go directly to the cluster DNS server. If DNS capture is enabled, Istio adds separate DNS interception behavior and listens on port 15053.
 
 However, Istio can optionally intercept DNS using the Istio DNS proxy:
 
@@ -209,7 +209,6 @@ spec:
     defaultConfig:
       proxyMetadata:
         ISTIO_META_DNS_CAPTURE: "true"
-        ISTIO_META_DNS_AUTO_ALLOCATE: "true"
 ```
 
 ### Connection timeouts:
@@ -229,7 +228,7 @@ If Envoy is not listening on those ports, the sidecar is not running properly.
 The iptables redirection adds some overhead:
 
 - Each packet traverses the NAT table rules (a few microseconds per packet)
-- REDIRECT creates a new socket pair, adding latency
+- REDIRECT changes the destination to the local proxy port, and Envoy then creates upstream connections, adding some latency
 - Connection tracking (conntrack) entries are created for each connection
 
 For most workloads, this overhead is negligible. But for high-throughput services doing thousands of connections per second, it can add up.
@@ -248,6 +247,6 @@ Istio also supports other traffic interception methods:
 
 **Istio CNI** - Moves iptables setup from an init container to a node-level CNI plugin. Removes the need for NET_ADMIN capability in pods.
 
-**eBPF-based interception** - Some implementations like Cilium can replace iptables with eBPF programs for lower overhead. Istio's ambient mode uses this approach.
+**eBPF-based interception** - Some integrations can replace or accelerate parts of the sidecar datapath with eBPF programs for lower overhead. Istio's ambient mode removes sidecars and uses the Istio CNI with ztunnel, but its standard redirection model still relies on iptables or nftables rules rather than being purely eBPF-based.
 
 Understanding iptables-based traffic interception is fundamental to understanding Istio. Every feature that Istio provides depends on traffic flowing through the sidecar, and iptables is the mechanism that makes it happen. When things go wrong at the networking level, the iptables rules are always one of the first things to check.
