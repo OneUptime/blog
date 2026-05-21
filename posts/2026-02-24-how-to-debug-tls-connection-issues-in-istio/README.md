@@ -50,7 +50,7 @@ When certificates look suspicious, dig deeper:
 ```bash
 # Extract and decode the workload certificate
 istioctl proxy-config secret <pod-name> -n <namespace> -o json | \
-  jq -r '.dynamicActiveSecrets[0].secret.tlsCertificate.certificateChain.inlineBytes' | \
+  jq -r '[.dynamicActiveSecrets[] | select(.name == "default")][0].secret.tlsCertificate.certificateChain.inlineBytes' | \
   base64 -d | openssl x509 -text -noout
 ```
 
@@ -65,7 +65,7 @@ Also check the root CA:
 
 ```bash
 istioctl proxy-config secret <pod-name> -n <namespace> -o json | \
-  jq -r '.dynamicActiveSecrets[1].secret.validationContext.trustedCa.inlineBytes' | \
+  jq -r '[.dynamicActiveSecrets[] | select(.name == "ROOTCA")][0].secret.validationContext.trustedCa.inlineBytes' | \
   base64 -d | openssl x509 -text -noout
 ```
 
@@ -111,11 +111,11 @@ Common mismatches:
 
 ## Step 5: Read the Envoy Logs
 
-Envoy logs contain detailed TLS error information. Enable debug logging for TLS:
+Envoy logs contain detailed TLS error information. Temporarily enable debug logging while you reproduce the issue:
 
 ```bash
-# Set TLS debug logging on a specific pod
-istioctl proxy-config log <pod-name> -n <namespace> --level connection:debug,tls:debug
+# Set debug logging on a specific pod
+istioctl proxy-config log <pod-name> -n <namespace> --level debug
 ```
 
 Then reproduce the issue and check logs:
@@ -132,29 +132,20 @@ Common log messages and what they mean:
 
 ## Step 6: Test Connections Manually
 
-Use `openssl` from within the mesh to test TLS connections:
+Use a client from within the mesh to test connections:
 
 ```bash
-# Test TLS to a service from a pod with a sidecar
-kubectl exec <pod-name> -c istio-proxy -- \
-  openssl s_client -connect <service>:443 -showcerts 2>&1 | head -50
+# Test traffic to a service from an application container with a sidecar
+kubectl exec <pod-name> -c <app-container> -- \
+  curl -v http://<service>:<port>/
 ```
 
-For testing mTLS specifically, you need to provide the client certificate:
+For testing TLS to a gateway or an external service, `openssl` is useful:
 
 ```bash
-# Get the certificate and key from the sidecar
-kubectl exec <pod-name> -c istio-proxy -- \
-  cat /var/run/secrets/istio/cert-chain.pem > /tmp/cert.pem
-
-kubectl exec <pod-name> -c istio-proxy -- \
-  cat /var/run/secrets/istio/key.pem > /tmp/key.pem
-
-# Test mTLS connection
-kubectl exec <pod-name> -c istio-proxy -- \
-  openssl s_client -connect <service>:15006 \
-    -cert /var/run/secrets/istio/cert-chain.pem \
-    -key /var/run/secrets/istio/key.pem
+# Test TLS from a pod that has openssl installed
+kubectl exec <pod-name> -c <container-with-openssl> -- \
+  openssl s_client -connect <host>:443 -servername <host> -showcerts
 ```
 
 ## Step 7: Analyze with istioctl
