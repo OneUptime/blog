@@ -34,7 +34,7 @@ kubectl describe nodes | grep -A 5 "Allocated resources"
 
 Your EKS Anywhere cluster should have:
 - At least 3 worker nodes
-- Kubernetes 1.25 or newer
+- A Kubernetes version supported by both your EKS Anywhere release and the Istio version you install
 - A load balancer solution (MetalLB, kube-vip, or your own)
 - kubectl configured for the cluster
 
@@ -48,10 +48,12 @@ Check your CNI:
 kubectl get pods -n kube-system | grep cilium
 ```
 
-Cilium has its own service mesh capabilities, but you can run Istio on top of it. Make sure Cilium is not configured in kube-proxy replacement mode if you want Istio to handle all traffic management:
+Cilium has its own service mesh capabilities, but you can run Istio on top of it. The default and simplest setup is to run Istio with kube-proxy still present. If Cilium is configured in kube-proxy replacement mode, make sure Cilium is also configured with `socketLB.hostNamespaceOnly=true` and `cni.exclusive=false` so it does not interfere with Istio's proxying:
 
 ```bash
 kubectl get configmap -n kube-system cilium-config -o yaml | grep kube-proxy
+kubectl get configmap -n kube-system cilium-config -o yaml | grep bpf-lb-sock-hostns
+kubectl get configmap -n kube-system cilium-config -o yaml | grep cni-exclusive
 ```
 
 ## Installing Istio
@@ -111,6 +113,9 @@ spec:
       enabled: true
       namespace: kube-system
   values:
+    pilot:
+      cni:
+        enabled: true
     cni:
       excludeNamespaces:
       - istio-system
@@ -193,7 +198,13 @@ metadata:
   name: kube-vip
   namespace: kube-system
 spec:
+  selector:
+    matchLabels:
+      app: kube-vip
   template:
+    metadata:
+      labels:
+        app: kube-vip
     spec:
       containers:
       - name: kube-vip
@@ -205,8 +216,12 @@ spec:
           value: "true"
         - name: svc_election
           value: "true"
-        - name: cidr-global
-          value: "192.168.1.200/29"
+```
+
+With kube-vip service load balancing, allocate a service IP with the kube-vip load balancer annotation:
+
+```bash
+kubectl annotate svc istio-ingressgateway -n istio-system kube-vip.io/loadbalancerIPs=192.168.1.200
 ```
 
 After setting up the load balancer, verify the ingress gateway gets an external IP:
@@ -376,12 +391,12 @@ Since EKS Anywhere runs on-premises, you need to set up your own monitoring stac
 Deploy Prometheus and Grafana:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.22/samples/addons/prometheus.yaml
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.22/samples/addons/grafana.yaml
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.22/samples/addons/kiali.yaml
+kubectl apply -f samples/addons/prometheus.yaml
+kubectl apply -f samples/addons/grafana.yaml
+kubectl apply -f samples/addons/kiali.yaml
 ```
 
-If you want to send metrics to AWS CloudWatch (hybrid monitoring):
+If you want to send metrics to AWS CloudWatch (hybrid monitoring), deploy the CloudWatch agent with an agent configuration and AWS credentials or IAM integration for your environment. A minimal Deployment skeleton looks like this:
 
 ```yaml
 apiVersion: apps/v1
@@ -390,7 +405,13 @@ metadata:
   name: cloudwatch-agent
   namespace: monitoring
 spec:
+  selector:
+    matchLabels:
+      app: cloudwatch-agent
   template:
+    metadata:
+      labels:
+        app: cloudwatch-agent
     spec:
       containers:
       - name: cloudwatch-agent
@@ -402,7 +423,7 @@ spec:
 
 ## EKS Anywhere Cluster Lifecycle
 
-EKS Anywhere uses GitOps (Flux) for cluster management. When upgrading the cluster, make sure Istio is included in the upgrade plan:
+EKS Anywhere supports GitOps (Flux) for cluster management when GitOps is enabled. When upgrading the cluster, make sure Istio is included in the upgrade plan:
 
 ```bash
 # Check current versions
