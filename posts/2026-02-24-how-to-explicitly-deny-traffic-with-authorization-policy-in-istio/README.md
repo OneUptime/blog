@@ -18,14 +18,15 @@ An explicit DENY policy acts as a hard boundary. No matter what ALLOW policies e
 
 ## Evaluation Order
 
-Istio evaluates policies in this strict order:
+Istio evaluates enforcement policies in this strict order:
 
-1. If any DENY policy matches, the request is denied (no exceptions)
-2. If no ALLOW policies exist, the request is allowed
-3. If ALLOW policies exist and any matches, the request is allowed
-4. If ALLOW policies exist but none match, the request is denied
+1. If any CUSTOM policy matches, Istio calls the extension provider and denies the request if the extension denies it
+2. If any DENY policy matches, the request is denied
+3. If no ALLOW policies exist, the request is allowed
+4. If ALLOW policies exist and any matches, the request is allowed
+5. If ALLOW policies exist but none match, the request is denied
 
-The key insight is step 1: DENY always wins. An ALLOW policy cannot override a DENY.
+AUDIT policies are evaluated separately and do not affect whether the request is allowed or denied. The key insight is step 2: DENY always wins over ALLOW. An ALLOW policy cannot override a DENY.
 
 ## Blocking Specific Services
 
@@ -50,7 +51,7 @@ spec:
               - "cluster.local/ns/legacy/sa/deprecated-api"
 ```
 
-Even if someone adds an ALLOW policy that permits traffic from the `legacy` namespace, these specific services are still blocked.
+Even if someone adds an ALLOW policy that permits traffic from the `legacy` namespace, these specific services are still blocked. The `principals` field is derived from peer certificates, so this kind of service identity matching requires mTLS.
 
 ## Blocking Cross-Environment Traffic
 
@@ -74,7 +75,7 @@ spec:
               - "load-testing"
 ```
 
-No selector means this applies to all workloads in the `production` namespace. Nothing from development environments can reach production services.
+No selector means this applies to all workloads in the `production` namespace. With mTLS enabled, nothing from development environments can reach production services.
 
 ## Blocking Specific Paths Explicitly
 
@@ -215,7 +216,7 @@ spec:
           values: ["suspended", "banned", "deactivated"]
 ```
 
-Even if the JWT is valid and other ALLOW policies would permit the request, users with these account statuses are blocked.
+Even if the JWT is valid and other ALLOW policies would permit the request, users with these account statuses are blocked. This requires a RequestAuthentication policy so Istio can validate the JWT and populate the request identity and claims.
 
 ## Defense-in-Depth Example
 
@@ -303,7 +304,7 @@ kubectl logs -n production deploy/api-service -c istio-proxy --tail=50
 istioctl analyze -n production
 ```
 
-When debugging, remember that DENY policies are evaluated first. If a request matches any DENY rule, it stops there - ALLOW policies are never checked.
+When debugging, remember that DENY policies are evaluated before ALLOW policies. If a request matches any DENY rule, it stops there - ALLOW policies are never checked.
 
 ## Temporary DENY for Incident Response
 
