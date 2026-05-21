@@ -14,29 +14,30 @@ Your circuit breaker just tripped in production. Users are seeing 503 errors. Th
 
 Not all 503 errors come from circuit breaking. Before you start adjusting circuit breaker settings, confirm that is actually what is happening.
 
+Run these checks from the sidecar of a workload that calls the affected service, because Istio applies these upstream circuit breaker decisions in the caller's Envoy proxy.
+
 ```bash
 # Check for circuit breaker overflow
-
-kubectl exec deploy/affected-service -c istio-proxy -- \
-  curl -s localhost:15000/stats | grep -E "overflow|ejections_active"
+kubectl exec deploy/caller-service -c istio-proxy -- \
+  pilot-agent request GET stats 2>/dev/null | grep -E "overflow|ejections_active"
 
 # Look at specific metrics
-# upstream_rq_pending_overflow > 0 = connection pool circuit breaker tripped
+# upstream_cx_overflow, upstream_rq_pending_overflow, or upstream_rq_active_overflow > 0 = connection pool/request circuit breaker tripped
 # ejections_active > 0 = outlier detection ejected hosts
 ```
 
-If `upstream_rq_pending_overflow` is increasing, the connection pool limits are being hit. If `ejections_active` is greater than zero, pods are being ejected by outlier detection. If both are zero, the 503s are coming from somewhere else.
+If `upstream_cx_overflow`, `upstream_rq_pending_overflow`, or `upstream_rq_active_overflow` is increasing, connection pool or request limits are being hit. If `ejections_active` is greater than zero, pods are being ejected by outlier detection. If none of those metrics show activity, the 503s are coming from somewhere else.
 
 ## Scenario 1: Connection Pool Overflow
 
-The connection pool limits (`maxConnections`, `http1MaxPendingRequests`) are being exceeded. This means more traffic is hitting the service than the circuit breaker allows through.
+The connection pool or request limits (`maxConnections`, `http1MaxPendingRequests`, `http2MaxRequests`) are being exceeded. This means more traffic is hitting the service than the circuit breaker allows through.
 
 ### Diagnosis
 
 ```bash
 # Check current active connections and requests
-kubectl exec deploy/affected-service -c istio-proxy -- \
-  curl -s localhost:15000/stats | grep -E "cx_active|rq_active|rq_pending"
+kubectl exec deploy/caller-service -c istio-proxy -- \
+  pilot-agent request GET stats 2>/dev/null | grep -E "cx_active|rq_active|rq_pending|circuit_breakers"
 
 # Check the configured limits
 kubectl get destinationrule affected-service -o yaml | grep -A 10 connectionPool
@@ -89,12 +90,12 @@ Pods are being ejected from the load balancing pool because they are returning t
 
 ```bash
 # How many pods are ejected?
-kubectl exec deploy/affected-service -c istio-proxy -- \
-  curl -s localhost:15000/stats | grep "ejections_active"
+kubectl exec deploy/caller-service -c istio-proxy -- \
+  pilot-agent request GET stats 2>/dev/null | grep "ejections_active"
 
 # Which pods are ejected?
-kubectl exec deploy/affected-service -c istio-proxy -- \
-  curl -s localhost:15000/clusters | grep -B 2 "failed_outlier_check"
+kubectl exec deploy/caller-service -c istio-proxy -- \
+  pilot-agent request GET clusters 2>/dev/null | grep -B 2 "failed_outlier_check"
 
 # What errors are the pods returning?
 kubectl logs deploy/affected-service --tail=50
@@ -132,8 +133,8 @@ This raises the threshold so pods are not ejected as easily. Remember to revert 
 **Option C: Restart the failing pods**
 
 ```bash
-# Delete the failing pods so Kubernetes recreates them
-kubectl delete pod -l app=affected-service
+# Delete a failing pod so Kubernetes recreates it
+kubectl delete pod FAILING_POD_NAME
 ```
 
 This is a blunt instrument but sometimes effective, especially for memory leaks or corrupted state.
@@ -236,21 +237,21 @@ After handling the immediate issue, review and adjust your circuit breaker setti
 ```bash
 # Gather data from the incident
 # How many requests were rejected?
-kubectl exec deploy/affected-service -c istio-proxy -- \
-  curl -s localhost:15000/stats | grep "pending_overflow"
+kubectl exec deploy/caller-service -c istio-proxy -- \
+  pilot-agent request GET stats 2>/dev/null | grep -E "cx_overflow|rq_pending_overflow|rq_active_overflow"
 
 # What was the peak traffic during the incident?
 # (Check your Prometheus/Grafana dashboards for this timeframe)
 
 # How long were pods ejected?
-kubectl exec deploy/affected-service -c istio-proxy -- \
-  curl -s localhost:15000/stats | grep "ejections_total"
+kubectl exec deploy/caller-service -c istio-proxy -- \
+  pilot-agent request GET stats 2>/dev/null | grep "ejections_enforced_total"
 ```
 
 Then update your DestinationRule with settings that would have handled the incident better:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: affected-service
@@ -278,19 +279,19 @@ Keep these handy for when things go wrong:
 
 ```bash
 # Check circuit breaker status
-kubectl exec deploy/SERVICE -c istio-proxy -- curl -s localhost:15000/stats | grep -E "overflow|ejections"
+kubectl exec deploy/CALLER_SERVICE -c istio-proxy -- pilot-agent request GET stats 2>/dev/null | grep -E "overflow|ejections"
 
-# Temporarily disable circuit breaking
-kubectl delete destinationrule SERVICE
+# Temporarily remove top-level connection pool circuit breaking
+kubectl patch dr SERVICE --type merge -p '{"spec":{"trafficPolicy":{"connectionPool":null}}}'
 
 # Temporarily disable outlier detection only
-kubectl patch dr SERVICE --type merge -p '{"spec":{"trafficPolicy":{"outlierDetection":{"consecutive5xxErrors":999}}}}'
+kubectl patch dr SERVICE --type merge -p '{"spec":{"trafficPolicy":{"outlierDetection":null}}}'
 
 # Scale up the service
 kubectl scale deploy SERVICE --replicas=N
 
 # Check which pods are ejected
-kubectl exec deploy/SERVICE -c istio-proxy -- curl -s localhost:15000/clusters | grep failed_outlier
+kubectl exec deploy/CALLER_SERVICE -c istio-proxy -- pilot-agent request GET clusters 2>/dev/null | grep failed_outlier
 ```
 
 The most important thing when circuit breakers trip in production is to stay calm and be methodical. Confirm the circuit breaker is the cause, identify which type of circuit breaking is happening, apply the appropriate fix, and follow up with better settings after the dust settles.
