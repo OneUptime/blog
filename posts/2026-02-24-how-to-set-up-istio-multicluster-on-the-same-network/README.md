@@ -38,6 +38,7 @@ Before configuring anything, confirm that pods can reach each other across clust
 # On cluster 1, get a pod IP
 
 kubectl run test-pod --image=nginx -n default --context="${CTX_CLUSTER1}"
+kubectl wait --for=condition=Ready pod/test-pod -n default --context="${CTX_CLUSTER1}" --timeout=90s
 POD_IP=$(kubectl get pod test-pod -n default --context="${CTX_CLUSTER1}" -o jsonpath='{.status.podIP}')
 
 # From cluster 2, try to reach it
