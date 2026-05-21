@@ -98,7 +98,7 @@ Common Gateway misconfigurations:
 The Gateway must select the correct ingress gateway pod:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: my-gateway
@@ -141,20 +141,20 @@ For HTTPS, the Gateway needs a valid TLS secret:
         - "my-app.example.com"
 ```
 
-Check that the secret exists in the istio-system namespace:
+Check that the secret exists in the ingress gateway workload namespace:
 
 ```bash
 kubectl get secret my-tls-secret -n istio-system
 ```
 
-The secret must be in the same namespace as the ingress gateway pod (typically istio-system), not in the application namespace.
+The secret must be in the same namespace as the ingress gateway workload (typically istio-system or istio-ingress), not in the application namespace.
 
 ## Step 4: Check VirtualService Binding
 
 The VirtualService must reference the Gateway and match the host:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -213,7 +213,7 @@ curl -v http://EXTERNAL_IP -H "Host: my-app.example.com"
 curl -v https://my-app.example.com --resolve "my-app.example.com:443:EXTERNAL_IP"
 ```
 
-Check the ingress gateway access logs:
+Check the ingress gateway access logs if Envoy access logging is enabled:
 
 ```bash
 kubectl logs -n istio-system -l istio=ingressgateway --tail=50
@@ -224,7 +224,7 @@ The access log shows the response code and flags:
 - `404 NR` - No route found (VirtualService not matching)
 - `503 UH` - No healthy upstream (backend service is down)
 - `503 UF` - Upstream connection failure
-- `426` - Upgrade required (trying HTTP when HTTPS is configured)
+- `426` - Upgrade required (for example, an HTTP/1.0 request)
 
 ## Step 7: Check Backend Service Health
 
@@ -235,7 +235,7 @@ If the ingress gateway is receiving the request but returning 503, the backend m
 kubectl get pods -l app=my-app
 
 # Check backend endpoints
-kubectl get endpoints my-app
+kubectl get endpointslice -l kubernetes.io/service-name=my-app
 
 # Check from the ingress gateway's perspective
 istioctl proxy-config endpoints $INGRESS_POD.istio-system --cluster "outbound|8080||my-app.default.svc.cluster.local"
