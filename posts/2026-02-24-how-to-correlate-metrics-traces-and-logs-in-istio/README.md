@@ -8,7 +8,7 @@ Description: How to correlate metrics, distributed traces, and logs across your 
 
 ---
 
-When something goes wrong in a microservices system, you usually start with a metric alert, then dig into traces to find the failing service, and finally look at logs for the specific error. The problem is connecting these three signals together. Istio helps by injecting correlation identifiers into all three telemetry types, but you need to set things up correctly to make the correlation work.
+When something goes wrong in a microservices system, you usually start with a metric alert, then dig into traces to find the failing service, and finally look at logs for the specific error. The problem is connecting these three signals together. Istio helps by propagating trace context and emitting telemetry with shared service metadata, but you need to set things up correctly to make the correlation work.
 
 ## The Three Pillars and How They Connect
 
@@ -17,7 +17,7 @@ Metrics tell you something is wrong (error rate spiked). Traces tell you where t
 When Istio processes a request, it generates or propagates a trace ID. That same trace ID can appear in:
 - Trace spans (obviously)
 - Access logs (as the `x-request-id` or trace ID header)
-- Metric labels (through custom configuration)
+- Metric exemplars, when your metrics pipeline supports them, or indirectly through shared labels
 
 ## Configuring Access Logs with Trace IDs
 
@@ -66,7 +66,7 @@ If you are using OpenTelemetry (W3C trace context) instead of Zipkin (B3), the h
 accessLogFormat: |
   {
     "timestamp": "%START_TIME%",
-    "trace_id": "%REQ(TRACEPARENT)%",
+    "traceparent": "%REQ(TRACEPARENT)%",
     "method": "%REQ(:METHOD)%",
     "path": "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%",
     "response_code": "%RESPONSE_CODE%",
@@ -74,18 +74,21 @@ accessLogFormat: |
   }
 ```
 
-Configure Istio to use W3C trace context:
+The `traceparent` value contains the trace ID, parent span ID, and trace flags. For example, in `00-<trace-id>-<span-id>-01`, the trace ID is the second field.
+
+Configure Istio to export traces to an OpenTelemetry collector:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
   meshConfig:
-    defaultConfig:
-      tracing:
-        openCensusAgent:
-          context:
-          - W3C_TRACE_CONTEXT
+    enableTracing: true
+    extensionProviders:
+    - name: otel-tracing
+      opentelemetry:
+        service: opentelemetry-collector.observability.svc.cluster.local
+        port: 4317
 ```
 
 ## Linking Metrics to Traces
@@ -118,9 +121,9 @@ spec:
 
 ## Exemplars: Linking Metrics Directly to Traces
 
-Prometheus supports exemplars, which attach a trace ID to individual metric samples. This creates a direct link from a metric to a specific trace.
+Prometheus supports exemplars, which can attach a trace ID to individual metric samples. This creates a direct link from a metric to a specific trace when the metric source records exemplars and the scrape/export path preserves them.
 
-Configure the OpenTelemetry Collector to export exemplars:
+Configure the OpenTelemetry Collector Prometheus exporter to use OpenMetrics format, which is required for the collector to expose exemplars:
 
 ```yaml
 exporters:
@@ -129,7 +132,7 @@ exporters:
     enable_open_metrics: true
 ```
 
-In Grafana, when you hover over a metric data point, you can see the exemplar trace ID and click through to your trace backend.
+In Grafana, when you hover over a metric data point that has exemplars, you can see the exemplar trace ID and click through to your trace backend.
 
 ## Application-Level Log Correlation
 
@@ -142,8 +145,10 @@ const express = require('express');
 const app = express();
 
 app.use((req, res, next) => {
-  const traceId = req.headers['x-b3-traceid'] || req.headers['traceparent'];
-  req.traceId = traceId;
+  const traceparent = req.headers['traceparent'];
+  const parts = traceparent && traceparent.split('-');
+  const traceId = req.headers['x-b3-traceid'] || (parts && parts.length >= 4 && parts[1]);
+  req.traceId = traceId || 'unknown';
   next();
 });
 
@@ -185,7 +190,12 @@ logging.root.setLevel(logging.INFO)
 
 @app.route('/api/users')
 def get_users():
-    trace_id = request.headers.get('x-b3-traceid', 'unknown')
+    traceparent = request.headers.get('traceparent')
+    trace_id = request.headers.get('x-b3-traceid')
+    if trace_id is None and traceparent:
+        parts = traceparent.split('-')
+        trace_id = parts[1] if len(parts) >= 4 else None
+    trace_id = trace_id or 'unknown'
     logging.info('Fetching users', extra={'trace_id': trace_id})
     # ... handler logic
 ```
@@ -199,11 +209,13 @@ processors:
   resource:
     attributes:
     - key: service.name
-      from_attribute: k8s.pod.labels.app
+      from_attribute: app
       action: insert
     - key: service.namespace
       from_attribute: k8s.namespace.name
       action: insert
+
+  batch: {}
 
   k8sattributes:
     extract:
@@ -225,7 +237,7 @@ service:
     logs:
       receivers: [otlp]
       processors: [k8sattributes, resource, batch]
-      exporters: [loki]
+      exporters: [otlphttp/loki]
     metrics:
       receivers: [otlp]
       processors: [k8sattributes, resource, batch]
