@@ -86,7 +86,7 @@ The second holds the CA certificate used to validate client certificates. This n
 
 ```bash
 kubectl create secret generic api-server-credential-cacert \
-  --from-file=ca.crt=ca.crt \
+  --from-file=cacert=ca.crt \
   -n istio-system
 ```
 
@@ -116,7 +116,7 @@ spec:
       credentialName: api-server-credential
 ```
 
-The `mode: MUTUAL` tells the gateway to require client certificates. Istio automatically looks for the CA certificate in the `api-server-credential-cacert` secret.
+The `mode: MUTUAL` tells the gateway to require client certificates. Istio automatically looks for the CA certificate in the `api-server-credential-cacert` secret under the `cacert` key.
 
 ## Creating the VirtualService
 
@@ -215,7 +215,7 @@ If you have clients with certificates from different CAs, bundle all CA certific
 cat ca1.crt ca2.crt ca3.crt > combined-ca.crt
 
 kubectl create secret generic api-server-credential-cacert \
-  --from-file=ca.crt=combined-ca.crt \
+  --from-file=cacert=combined-ca.crt \
   -n istio-system
 ```
 
@@ -223,11 +223,12 @@ The gateway will accept client certificates signed by any of the CAs in the bund
 
 ## Revoking Client Certificates
 
-Istio does not natively support Certificate Revocation Lists (CRLs) or OCSP at the gateway level. If you need to revoke a client certificate, your options are:
+Istio Gateway can use a Certificate Revocation List (CRL) when it is provided with the gateway credential. For the separate `<credentialName>-cacert` secret format used above, include the CRL under the `crl` key. Istio Gateway TLS configuration does not provide OCSP-based client certificate revocation checking. If you need to revoke a client certificate, your options are:
 
-1. Remove the CA that signed it from the CA bundle (affects all certs from that CA)
-2. Use short-lived certificates and stop issuing new ones for revoked clients
-3. Implement application-level checking of the client identity from the XFCC header
+1. Add the revoked certificate to the CRL used by the gateway
+2. Remove the CA that signed it from the CA bundle (affects all certs from that CA)
+3. Use short-lived certificates and stop issuing new ones for revoked clients
+4. Implement application-level checking of the client identity from the XFCC header
 
 Short-lived certificates with automated rotation (using tools like cert-manager or Vault) are generally the best approach.
 
