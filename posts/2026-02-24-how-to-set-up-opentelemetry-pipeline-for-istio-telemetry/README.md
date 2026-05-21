@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, OpenTelemetry, Telemetry Pipeline, Observability, Kubernetes
 
-Description: End-to-end guide for building a complete OpenTelemetry pipeline that handles metrics, traces, and logs from an Istio service mesh in production.
+Description: End-to-end guide for building a complete OpenTelemetry pipeline that handles scraped metrics, traces, and logs from an Istio service mesh in production.
 
 ---
 
-Building a complete telemetry pipeline for Istio means handling three types of data: metrics from every proxy in the mesh, distributed traces that show request flows, and access logs that record individual requests. With OpenTelemetry, you can build a single pipeline that collects all three and routes them to the right backends. This post covers the full setup from Istio configuration through the collector to backend integration.
+Building a complete telemetry pipeline for Istio means handling three types of data: metrics scraped from every proxy in the mesh, distributed traces that show request flows, and access logs that record individual requests. With OpenTelemetry, you can build a single pipeline that collects all three and routes them to the right backends. This post covers the full setup from Istio configuration through the collector to backend integration.
 
 ## Pipeline Architecture Overview
 
 The pipeline has three layers:
 
-1. **Data generation** - Istio Envoy proxies generate metrics, traces, and access logs for every request
+1. **Data generation** - Istio Envoy proxies expose Prometheus metrics and send traces and access logs for requests
 2. **Collection and processing** - OpenTelemetry Collectors receive the data, process it, and prepare it for export
 3. **Backend storage and visualization** - Backends like Prometheus, Tempo/Jaeger, and Loki store the data for querying
 
@@ -77,7 +77,7 @@ Disabling injection for the observability namespace prevents circular dependenci
 
 ## Step 3: Deploy the Collector Agent (Per-Node)
 
-The agent runs as a DaemonSet on every node, providing a local endpoint for proxies to send data to. This reduces cross-node network traffic:
+The agent runs as a DaemonSet on every node, providing a node-local endpoint for proxies to send traces and access logs to. The Service uses `internalTrafficPolicy: Local` so in-cluster traffic only routes to an agent on the same node:
 
 ```yaml
 apiVersion: v1
@@ -111,14 +111,20 @@ data:
           receivers: [otlp]
           processors: [memory_limiter, batch]
           exporters: [otlp]
-        metrics:
-          receivers: [otlp]
-          processors: [memory_limiter, batch]
-          exporters: [otlp]
         logs:
           receivers: [otlp]
           processors: [memory_limiter, batch]
           exporters: [otlp]
+      telemetry:
+        metrics:
+          readers:
+          - pull:
+              exporter:
+                prometheus:
+                  host: 0.0.0.0
+                  port: 8888
+                  without_type_suffix: true
+                  without_units: true
 ---
 apiVersion: apps/v1
 kind: DaemonSet
@@ -136,7 +142,7 @@ spec:
     spec:
       containers:
       - name: collector
-        image: otel/opentelemetry-collector-contrib:0.96.0
+        image: otel/opentelemetry-collector-contrib:0.151.0
         args: ["--config=/etc/otel/config.yaml"]
         resources:
           requests:
@@ -149,6 +155,8 @@ spec:
         - containerPort: 4317
           hostPort: 4317
           name: otlp-grpc
+        - containerPort: 8888
+          name: metrics
         volumeMounts:
         - name: config
           mountPath: /etc/otel
@@ -165,9 +173,14 @@ metadata:
 spec:
   selector:
     app: otel-agent
+  internalTrafficPolicy: Local
   ports:
   - port: 4317
+    targetPort: 4317
     name: otlp-grpc
+  - port: 8888
+    targetPort: 8888
+    name: internal-metrics
 ```
 
 ## Step 4: Deploy the Collector Gateway
@@ -192,17 +205,39 @@ data:
           scrape_configs:
           - job_name: 'istiod'
             kubernetes_sd_configs:
-            - role: pod
+            - role: endpoints
               namespaces:
                 names: [istio-system]
             relabel_configs:
-            - source_labels: [__meta_kubernetes_pod_label_app]
+            - source_labels: [__meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
               action: keep
-              regex: istiod
-            - source_labels: [__address__]
-              regex: ([^:]+)(?::\d+)?
-              replacement: ${1}:15014
-              target_label: __address__
+              regex: istiod;http-monitoring
+          - job_name: 'envoy-stats'
+            metrics_path: /stats/prometheus
+            kubernetes_sd_configs:
+            - role: pod
+            relabel_configs:
+            - source_labels: [__meta_kubernetes_pod_container_port_name]
+              action: keep
+              regex: '.*-envoy-prom'
+          - job_name: 'otel-agent'
+            kubernetes_sd_configs:
+            - role: endpoints
+              namespaces:
+                names: [observability]
+            relabel_configs:
+            - source_labels: [__meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
+              action: keep
+              regex: otel-collector;internal-metrics
+          - job_name: 'otel-gateway'
+            kubernetes_sd_configs:
+            - role: endpoints
+              namespaces:
+                names: [observability]
+            relabel_configs:
+            - source_labels: [__meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
+              action: keep
+              regex: otel-gateway;internal-metrics
 
     processors:
       memory_limiter:
@@ -221,6 +256,7 @@ data:
           action: upsert
 
       filter/traces:
+        error_mode: ignore
         traces:
           span:
           - 'attributes["http.target"] == "/healthz"'
@@ -256,8 +292,8 @@ data:
         resource_to_telemetry_conversion:
           enabled: true
 
-      loki:
-        endpoint: "http://loki.observability:3100/loki/api/v1/push"
+      otlphttp/loki:
+        endpoint: "http://loki.observability:3100/otlp"
 
     extensions:
       health_check:
@@ -271,13 +307,23 @@ data:
           processors: [memory_limiter, filter/traces, tail_sampling, resource, batch]
           exporters: [otlp/tempo]
         metrics:
-          receivers: [otlp, prometheus]
+          receivers: [prometheus]
           processors: [memory_limiter, resource, batch]
           exporters: [prometheus]
         logs:
           receivers: [otlp]
           processors: [memory_limiter, resource, batch]
-          exporters: [loki]
+          exporters: [otlphttp/loki]
+      telemetry:
+        metrics:
+          readers:
+          - pull:
+              exporter:
+                prometheus:
+                  host: 0.0.0.0
+                  port: 8888
+                  without_type_suffix: true
+                  without_units: true
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -296,7 +342,7 @@ spec:
     spec:
       containers:
       - name: collector
-        image: otel/opentelemetry-collector-contrib:0.96.0
+        image: otel/opentelemetry-collector-contrib:0.151.0
         args: ["--config=/etc/otel/config.yaml"]
         resources:
           requests:
@@ -308,6 +354,7 @@ spec:
         ports:
         - containerPort: 4317
         - containerPort: 8889
+        - containerPort: 8888
         - containerPort: 13133
         volumeMounts:
         - name: config
@@ -322,6 +369,10 @@ kind: Service
 metadata:
   name: otel-gateway
   namespace: observability
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8889"
+    prometheus.io/path: "/metrics"
 spec:
   selector:
     app: otel-gateway
@@ -330,6 +381,8 @@ spec:
     name: otlp-grpc
   - port: 8889
     name: prometheus
+  - port: 8888
+    name: internal-metrics
   - port: 13133
     name: health
 ```
@@ -363,8 +416,12 @@ spec:
 Deploy the backends that store and visualize telemetry:
 
 ```bash
-# Install Prometheus for metrics
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo add grafana https://grafana.github.io/helm-charts
+helm repo add grafana-community https://grafana-community.github.io/helm-charts
+helm repo update
 
+# Install Prometheus for metrics
 helm install prometheus prometheus-community/prometheus \
   -n observability \
   --set server.persistentVolume.size=50Gi
@@ -374,6 +431,25 @@ helm install tempo grafana/tempo \
   -n observability \
   --set persistence.enabled=true \
   --set persistence.size=50Gi
+
+# Install Loki for logs
+helm install loki grafana-community/loki \
+  -n observability \
+  --set deploymentMode=SingleBinary \
+  --set singleBinary.replicas=1 \
+  --set loki.commonConfig.replication_factor=1 \
+  --set loki.limits_config.allow_structured_metadata=true \
+  --set minio.enabled=true \
+  --set backend.replicas=0 \
+  --set read.replicas=0 \
+  --set write.replicas=0 \
+  --set ingester.replicas=0 \
+  --set querier.replicas=0 \
+  --set queryFrontend.replicas=0 \
+  --set queryScheduler.replicas=0 \
+  --set distributor.replicas=0 \
+  --set compactor.replicas=0 \
+  --set indexGateway.replicas=0
 
 # Install Grafana for visualization
 helm install grafana grafana/grafana \
@@ -406,6 +482,10 @@ kubectl port-forward -n observability svc/prometheus-server 9090:80
 # Check traces
 kubectl port-forward -n observability svc/tempo 3200:3200
 # Query the Tempo API
+
+# Check logs
+kubectl port-forward -n observability svc/loki 3100:3100
+# Query Loki in Grafana or with LogQL
 ```
 
 ## Pipeline Health Dashboard
@@ -422,11 +502,11 @@ sum(rate(otelcol_processor_batch_batch_send_size{job="otel-gateway"}[5m]))
 # Export success rate
 sum(rate(otelcol_exporter_sent_spans{job="otel-gateway"}[5m]))
 
-# Pipeline latency (receive to export)
-histogram_quantile(0.99, rate(otelcol_processor_batch_timeout_trigger_send{job="otel-gateway"}[5m]))
+# Batch send size p99
+histogram_quantile(0.99, rate(otelcol_processor_batch_batch_send_size_bucket{job="otel-gateway"}[5m]))
 
 # Memory pressure
-process_resident_memory_bytes{job=~"otel-.*"} / on(pod) kube_pod_container_resource_limits{resource="memory"}
+otelcol_process_memory_rss{job=~"otel-.*"} / on(pod) kube_pod_container_resource_limits{resource="memory"}
 ```
 
 ## Cost Optimization Tips
