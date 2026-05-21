@@ -15,6 +15,7 @@ Validating JWTs at the API gateway level means tokens are checked before traffic
 Validating JWTs at individual services works, but it has drawbacks:
 
 - Every service needs its own RequestAuthentication policy.
+- You may need separate workload or namespace policies across services.
 - Invalid requests consume bandwidth and processing reaching backend services.
 - A misconfigured service might skip validation entirely.
 
@@ -89,29 +90,34 @@ spec:
 
 ## Allowing Public Routes
 
-Not every route through the gateway needs authentication. Allow public paths:
+Not every route through the gateway needs authentication. Exclude public paths from the JWT requirement:
 
 ```yaml
 apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
-  name: gateway-public-routes
+  name: gateway-require-jwt
   namespace: istio-system
 spec:
   selector:
     matchLabels:
       istio: ingressgateway
-  action: ALLOW
+  action: DENY
   rules:
-    - to:
+    - from:
+        - source:
+            notRequestPrincipals: ["*"]
+      to:
         - operation:
-            paths:
+            notPaths:
               - "/health"
               - "/public/*"
               - "/docs/*"
               - "/swagger/*"
               - "/.well-known/*"
 ```
+
+This denies unauthenticated requests to every path except the public paths listed above. Avoid adding a separate `ALLOW` policy just for public paths unless you also include allow rules for every protected route, because any `ALLOW` policy on the gateway turns authorization into an allow-list for that workload.
 
 ## Route-Specific Authentication
 
@@ -286,23 +292,7 @@ spec:
         - "https://api.example.com"
       forwardOriginalToken: true
 ---
-# Allow public endpoints
-apiVersion: security.istio.io/v1
-kind: AuthorizationPolicy
-metadata:
-  name: gateway-allow-public
-  namespace: istio-system
-spec:
-  selector:
-    matchLabels:
-      istio: ingressgateway
-  action: ALLOW
-  rules:
-    - to:
-        - operation:
-            paths: ["/health", "/public/*"]
----
-# Require JWT for protected endpoints
+# Require JWT except for public endpoints
 apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
@@ -319,7 +309,7 @@ spec:
             notRequestPrincipals: ["*"]
       to:
         - operation:
-            paths: ["/api/*"]
+            notPaths: ["/health", "/public/*"]
 ```
 
 ## Testing
