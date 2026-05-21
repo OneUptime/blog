@@ -12,10 +12,10 @@ Upgrading Istio in a single cluster is already a careful process. When you have 
 
 ## Istio Version Compatibility
 
-Istio supports running mixed versions across clusters during upgrades. The general rule is that the control plane and data plane should be within one minor version of each other. For example:
+Istio supports running mixed versions across clusters during upgrades. The general rule is that the control plane can be one minor version ahead of the data plane, but the data plane should not be ahead of the control plane. For example:
 
 - Istiod 1.20 can manage proxies running 1.19 or 1.20
-- Istiod 1.19 can work alongside Istiod 1.20 in a multi-primary mesh
+- Istiod 1.19 can work alongside Istiod 1.20 in a multi-primary mesh while workloads connect to a compatible control plane
 
 This gives you a window to upgrade clusters one at a time without rushing.
 
@@ -54,6 +54,8 @@ spec:
         clusterName: cluster1
       network: network1
 ```
+
+If this cluster is a primary that serves remote clusters, also set `values.global.externalIstiod: true` and expose the revised Istiod before updating the remote clusters.
 
 ```bash
 istioctl install --context="${CTX_CLUSTER1}" -f cluster1-upgrade.yaml -y
@@ -138,10 +140,10 @@ For ingress gateways, follow the same revision-based approach.
 
 ### Step 7: Remove the Old Control Plane
 
-After all workloads and gateways are migrated to the new revision:
+After all workloads and gateways are migrated to the new revision, uninstall a non-revisioned old control plane with the same installation options you originally used:
 
 ```bash
-istioctl uninstall --revision=default --context="${CTX_CLUSTER1}" -y
+istioctl uninstall -f original-install.yaml --context="${CTX_CLUSTER1}" -y
 ```
 
 Or if the old version also used a revision:
@@ -171,7 +173,7 @@ For primary-remote, always upgrade the primary first:
 
 1. Upgrade the primary cluster's Istiod (new revision)
 2. Migrate primary cluster workloads
-3. Update the remote cluster configuration to point to the new Istiod revision
+3. Expose the new revision of Istiod on the primary and update the remote cluster configuration to use that revision
 4. Restart remote cluster workloads to get new sidecars
 5. Remove old revision from the primary
 
@@ -198,7 +200,7 @@ If something goes wrong during the upgrade, rolling back is straightforward with
 ```bash
 # Switch namespaces back to the old revision
 kubectl label namespace sample istio.io/rev- --context="${CTX_CLUSTER1}"
-kubectl label namespace sample istio-injection=enabled --context="${CTX_CLUSTER1}"
+kubectl label namespace sample istio.io/rev=1-20 --context="${CTX_CLUSTER1}"
 
 # Restart workloads to get old sidecars back
 kubectl rollout restart deployment -n sample --context="${CTX_CLUSTER1}"
