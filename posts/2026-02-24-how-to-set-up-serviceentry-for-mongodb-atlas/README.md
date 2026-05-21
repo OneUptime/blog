@@ -98,12 +98,15 @@ Atlas free tier and shared clusters sometimes use different hostname patterns. C
 
 ```bash
 # Get your exact hostnames
-mongosh "mongodb+srv://cluster0.abc123.mongodb.net" --eval "db.adminCommand({getParameter: 1, 'hostInfo': 1})" --username youruser
+dig SRV _mongodb._tcp.cluster0.abc123.mongodb.net
+
+# Resolve one of the returned targets
+dig A cluster0-shard-00-00.abc123.mongodb.net
 ```
 
 ## Connection Pool Configuration
 
-MongoDB connections are long-lived and multiplexed. Configure the connection pool to match your usage:
+MongoDB connections are long-lived and usually managed by driver-side connection pools. Configure Envoy's TCP connection limits to match your usage:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -120,9 +123,9 @@ spec:
         idleTimeout: 1800s
 ```
 
-Atlas has connection limits based on your cluster tier. A free-tier cluster allows 500 connections. A dedicated M10 allows 1,500. Make sure your `maxConnections` stays well under the Atlas limit, especially if you have multiple pods connecting.
+Atlas has connection limits based on your cluster tier. A free-tier cluster allows 500 connections. A dedicated M10 allows 1,500 connections per node. Make sure your `maxConnections` and your MongoDB driver's pool size stay well under the Atlas limit, especially if you have multiple pods connecting.
 
-The `idleTimeout: 1800s` (30 minutes) matches Atlas's default idle connection timeout. If you set this higher than what Atlas allows, Atlas closes the connection first and your application sees unexpected disconnections.
+The `idleTimeout: 1800s` (30 minutes) closes TCP connections that have no bytes sent or received for 30 minutes. Istio's default TCP idle timeout is 1 hour, and setting `idleTimeout: 0s` disables it. Tune this with your MongoDB driver's pool and keepalive settings so Envoy does not close connections earlier than your application expects.
 
 ## Handling Atlas Failover
 
@@ -137,7 +140,7 @@ hosts:
 
 With explicit hostnames, make sure all replica set members are listed. If Atlas adds a new member during a scaling event, you need to update the ServiceEntry.
 
-For extra resilience, add outlier detection:
+For additional circuit breaking on TCP connection failures, add outlier detection:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -193,13 +196,13 @@ spec:
     - "*.abc123.mongodb.net"
   location: MESH_EXTERNAL
   ports:
-    - number: 27017
+    - number: 1024
       name: tls-mongodb
       protocol: TLS
   resolution: NONE
 ```
 
-The configuration is the same, but the DNS resolution happens through your VPC's private DNS, pointing to the PrivateLink endpoint instead of public IPs.
+Use the hostname pattern and port from the Private Endpoint connection string that Atlas gives you. For example, AWS PrivateLink and Azure Private Link connection strings commonly use hostnames such as `pl-0-us-east-1a.abc123.mongodb.net` and port `1024`. DNS resolution happens through your VPC or VNet private DNS, pointing to the PrivateLink endpoint instead of public IPs.
 
 ## Monitoring Atlas Connections
 
