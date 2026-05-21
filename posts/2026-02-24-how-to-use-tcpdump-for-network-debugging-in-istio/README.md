@@ -27,16 +27,17 @@ Most Istio sidecar images do not include tcpdump. You have a few options:
 
 ### Option 1: Ephemeral Debug Container
 
-Kubernetes 1.23+ supports ephemeral containers that share the network namespace:
+Kubernetes 1.25+ supports stable ephemeral containers. Containers in the same pod share the network namespace, so an ephemeral container can capture pod traffic:
 
 ```bash
 kubectl debug -it my-service-pod -n my-namespace \
   --image=nicolaka/netshoot \
+  --container=debug-container \
   --target=istio-proxy \
   -- tcpdump -i any -n port 8080
 ```
 
-The `--target=istio-proxy` flag means the debug container shares the network namespace with the istio-proxy container.
+The `--target=istio-proxy` flag targets the istio-proxy container's process namespace when the container runtime supports it. The network namespace is shared because the debug container is added to the same pod.
 
 ### Option 2: Using nsenter from the Node
 
@@ -48,14 +49,10 @@ If you have node access:
 NODE=$(kubectl get pod my-service-pod -n my-namespace -o jsonpath='{.spec.nodeName}')
 
 # Find the container PID
-CONTAINER_ID=$(kubectl get pod my-service-pod -n my-namespace -o jsonpath='{.status.containerStatuses[?(@.name=="istio-proxy")].containerID}' | sed 's|containerd://||')
+CONTAINER_ID=$(kubectl get pod my-service-pod -n my-namespace -o jsonpath='{.status.containerStatuses[?(@.name=="istio-proxy")].containerID}' | sed 's|^[^:]*://||')
 
-# SSH to the node and find PID
-ssh $NODE
-PID=$(crictl inspect $CONTAINER_ID | jq .info.pid)
-
-# Run tcpdump in the container's network namespace
-nsenter -t $PID -n tcpdump -i any -n port 8080
+# SSH to the node and run tcpdump in the container's network namespace
+ssh "$NODE" "PID=\$(sudo crictl inspect $CONTAINER_ID | jq -r .info.pid); sudo nsenter -t \$PID -n tcpdump -i any -n port 8080"
 ```
 
 ### Option 3: Modified Sidecar Image
@@ -91,28 +88,31 @@ tcpdump -i any -n -X port 8080
 
 ### Capture mTLS Traffic
 
-mTLS traffic between sidecars runs on port 15006 (inbound) and uses the original destination port for outbound:
+Istio redirects outbound pod traffic to Envoy on port 15001 and inbound pod traffic to Envoy on port 15006. On the pod network interface, sidecar-to-sidecar mTLS traffic is usually still addressed to the original destination service port:
 
 ```bash
-# Capture inbound mTLS traffic
+# Capture inbound traffic after iptables redirects it to Envoy
 tcpdump -i any -n port 15006
 
 # Capture all Envoy-related ports
-tcpdump -i any -n 'port 15000 or port 15001 or port 15006 or port 15021 or port 15090'
+tcpdump -i any -n 'port 15000 or port 15001 or port 15006 or port 15008 or port 15021 or port 15090'
 ```
 
 ### Capture Traffic Between App and Sidecar
 
-Traffic between the application and its local sidecar goes through the loopback interface on the original service port:
+Traffic between the application and the local sidecar is local to the pod. Outbound application traffic is redirected to Envoy on port 15001, while inbound traffic from Envoy to the application uses the original service port:
 
 ```bash
-# Capture localhost traffic (app to sidecar)
-tcpdump -i lo -n port 8080
+# Capture application traffic redirected to outbound Envoy
+tcpdump -i any -n port 15001
+
+# Capture traffic from inbound Envoy to the application
+tcpdump -i any -n port 8080
 ```
 
 ### Capture Traffic Leaving the Pod
 
-Traffic leaving the pod goes through the eth0 interface and is encrypted with mTLS:
+Traffic leaving the pod through the pod network interface is encrypted with mTLS when Istio mutual TLS is applied:
 
 ```bash
 # Capture outbound traffic
@@ -239,7 +239,7 @@ For a complete picture, capture at multiple points simultaneously:
 ```bash
 # Terminal 1: Capture app to sidecar (source)
 kubectl debug -it source-pod --image=nicolaka/netshoot --target=istio-proxy \
-  -- tcpdump -i lo -n -w /tmp/source-local.pcap port 8080
+  -- tcpdump -i any -n -w /tmp/source-local.pcap port 15001
 
 # Terminal 2: Capture sidecar to network (source)
 kubectl debug -it source-pod --image=nicolaka/netshoot --target=istio-proxy \
@@ -251,7 +251,7 @@ kubectl debug -it dest-pod --image=nicolaka/netshoot --target=istio-proxy \
 
 # Terminal 4: Capture sidecar to app (destination)
 kubectl debug -it dest-pod --image=nicolaka/netshoot --target=istio-proxy \
-  -- tcpdump -i lo -n -w /tmp/dest-local.pcap port 8080
+  -- tcpdump -i any -n -w /tmp/dest-local.pcap port 8080
 ```
 
 Compare the captures to find where packets get dropped, modified, or delayed.
