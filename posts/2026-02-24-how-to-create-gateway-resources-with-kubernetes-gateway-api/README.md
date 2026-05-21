@@ -17,7 +17,8 @@ Make sure you have the Gateway API CRDs and Istio installed:
 ```bash
 # Install Gateway API CRDs
 
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.2.0/standard-install.yaml
+kubectl get crd gateways.gateway.networking.k8s.io &> /dev/null || \
+  { kubectl kustomize "github.com/kubernetes-sigs/gateway-api/config/crd?ref=v1.5.1" | kubectl apply -f -; }
 
 # Verify Istio's GatewayClass exists
 kubectl get gatewayclass istio
@@ -290,10 +291,12 @@ kind: Gateway
 metadata:
   name: high-traffic-gateway
   namespace: production
-  annotations:
-    autoscaling.istio.io/minReplicas: "3"
-    autoscaling.istio.io/maxReplicas: "10"
 spec:
+  infrastructure:
+    parametersRef:
+      group: ""
+      kind: ConfigMap
+      name: high-traffic-gateway-options
   gatewayClassName: istio
   listeners:
   - name: http
@@ -302,9 +305,20 @@ spec:
     allowedRoutes:
       namespaces:
         from: All
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: high-traffic-gateway-options
+  namespace: production
+data:
+  horizontalPodAutoscaler: |
+    spec:
+      minReplicas: 3
+      maxReplicas: 10
 ```
 
-Istio creates an HPA (Horizontal Pod Autoscaler) for the gateway deployment with these settings.
+Istio creates an HPA (Horizontal Pod Autoscaler) for the gateway deployment when the `horizontalPodAutoscaler` customization is present.
 
 ## Cross-Namespace Route Attachment
 
