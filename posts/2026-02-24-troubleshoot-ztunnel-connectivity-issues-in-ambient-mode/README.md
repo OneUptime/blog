@@ -99,8 +99,9 @@ You can also check if the redirect rules are in place by examining the network n
 
 ```bash
 # Get the pod's network namespace (requires node access)
-kubectl debug node/$NODE -it --image=nicolaka/netshoot -- \
-  nsenter -t $(kubectl get pod my-pod -n my-namespace -o jsonpath='{.status.containerStatuses[0].containerID}' | cut -d/ -f3 | cut -c1-12) -n iptables -t nat -L -n
+CONTAINER_ID=$(kubectl get pod my-pod -n my-namespace -o jsonpath='{.status.containerStatuses[0].containerID}' | sed 's#^[^/]*://##')
+kubectl debug node/$NODE -it --image=nicolaka/netshoot --profile=sysadmin -- \
+  sh -c "PID=\$(chroot /host crictl inspect $CONTAINER_ID | sed -n 's/.*\"pid\": \([0-9]*\).*/\1/p' | head -1); nsenter -t \$PID -n iptables -t nat -L -n"
 ```
 
 ## Step 4: Check ztunnel Connectivity to istiod
@@ -121,8 +122,10 @@ If ztunnel cannot reach istiod, check:
 # Is istiod running?
 kubectl get pods -l app=istiod -n istio-system
 
-# Can ztunnel reach istiod's service?
-kubectl exec -n istio-system -l app=ztunnel -- wget -q -O- --timeout=5 https://istiod.istio-system.svc:15012/debug/endpointz 2>&1 | head -5
+# Does istiod have service endpoints, and is the XDS/CA port reachable inside the cluster?
+kubectl get endpoints istiod -n istio-system
+kubectl run istiod-port-check --rm -it --restart=Never --image=nicolaka/netshoot -- \
+  nc -vz istiod.istio-system.svc 15012
 ```
 
 ## Step 5: Check mTLS Certificate Issues
@@ -218,7 +221,8 @@ Cross-node issues often come down to:
 Check if port 15008 is reachable between nodes:
 
 ```bash
-kubectl exec -n istio-system ztunnel-node1 -- wget -q -O- --timeout=5 http://ztunnel-node2-ip:15008/ 2>&1
+kubectl debug -n istio-system -it ztunnel-node1 --image=nicolaka/netshoot -- \
+  nc -vz ztunnel-node2-ip 15008
 ```
 
 ## Step 9: DNS Resolution
@@ -239,7 +243,7 @@ DNS issues are not ztunnel-specific but can look like ztunnel problems.
 | Workload not in ztunnel config | Missing namespace label | Add `istio.io/dataplane-mode=ambient` label |
 | Traffic not intercepted | istio-cni not running | Check CNI DaemonSet status |
 | Cross-node traffic fails | Port 15008 blocked | Open firewall for HBONE traffic |
-| Connections refused | AuthorizationPolicy blocking | Check policies and ztunnel RBAC logs |
+| RBAC access denied | AuthorizationPolicy blocking | Check policies and ztunnel RBAC logs |
 | Certificate errors | istiod CA issues | Check istiod logs and certificate status |
 
 When troubleshooting, always start from the outside in: verify the pods are enrolled, verify traffic is being intercepted, verify ztunnel can route the traffic, and verify policies allow it. This systematic approach saves time compared to jumping around randomly.
