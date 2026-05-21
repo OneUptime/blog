@@ -110,12 +110,13 @@ spec:
           name: envoy.filters.http.lua
           typed_config:
             "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-            inlineCode: |
-              function envoy_on_response(response_handle)
-                response_handle:headers():add("x-mesh-processed", "true")
-                response_handle:headers():remove("server")
-                response_handle:headers():remove("x-powered-by")
-              end
+            defaultSourceCode:
+              inlineString: |
+                function envoy_on_response(response_handle)
+                  response_handle:headers():add("x-mesh-processed", "true")
+                  response_handle:headers():remove("server")
+                  response_handle:headers():remove("x-powered-by")
+                end
 ```
 
 For the ingress gateway specifically:
@@ -146,11 +147,12 @@ spec:
           name: envoy.filters.http.lua
           typed_config:
             "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-            inlineCode: |
-              function envoy_on_response(response_handle)
-                response_handle:headers():add("strict-transport-security", "max-age=31536000")
-                response_handle:headers():remove("server")
-              end
+            defaultSourceCode:
+              inlineString: |
+                function envoy_on_response(response_handle)
+                  response_handle:headers():add("strict-transport-security", "max-age=31536000")
+                  response_handle:headers():remove("server")
+                end
 ```
 
 ## Conditional Response Header Transformation
@@ -183,16 +185,17 @@ spec:
           name: envoy.filters.http.lua
           typed_config:
             "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-            inlineCode: |
-              function envoy_on_response(response_handle)
-                local status = response_handle:headers():get(":status")
-                if status == "200" then
-                  response_handle:headers():add("x-cache-control", "public, max-age=3600")
-                elseif status == "500" then
-                  response_handle:headers():add("x-error-tracking", "enabled")
-                  response_handle:headers():remove("x-debug-info")
+            defaultSourceCode:
+              inlineString: |
+                function envoy_on_response(response_handle)
+                  local status = response_handle:headers():get(":status")
+                  if status == "200" then
+                    response_handle:headers():add("x-cache-control", "public, max-age=3600")
+                  elseif status == "500" then
+                    response_handle:headers():add("x-error-tracking", "enabled")
+                    response_handle:headers():remove("x-debug-info")
+                  end
                 end
-              end
 ```
 
 ## Removing Server Fingerprinting Headers
@@ -293,12 +296,13 @@ spec:
           name: envoy.filters.http.lua
           typed_config:
             "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-            inlineCode: |
-              function envoy_on_response(response_handle)
-                local headers = response_handle:headers()
-                headers:add("x-upstream-service", os.getenv("HOSTNAME") or "unknown")
-                headers:add("x-response-time-ms", response_handle:streamInfo():dynamicMetadata():get("envoy.lua") or "N/A")
-              end
+            defaultSourceCode:
+              inlineString: |
+                function envoy_on_response(response_handle)
+                  local headers = response_handle:headers()
+                  headers:add("x-upstream-service", os.getenv("HOSTNAME") or "unknown")
+                  headers:add("x-envoy-route", response_handle:streamInfo():routeName() or "unknown")
+                end
 ```
 
 ## Verifying Response Headers
@@ -331,6 +335,6 @@ istioctl proxy-config routes deploy/my-service -o json | grep -A 5 "responseHead
 
 Response header transformations via VirtualService happen after the upstream service responds but before the response leaves the Envoy proxy. This means the backend never sees these changes. It is purely a proxy-level modification.
 
-If you have both VirtualService and EnvoyFilter response header transformations, the EnvoyFilter runs first (at the Envoy filter chain level), and VirtualService modifications are applied as part of the route configuration. If they try to set the same header, the last one wins.
+If you have both VirtualService and EnvoyFilter response header transformations, the final result depends on the generated Envoy route configuration and where your filter is inserted in the HTTP filter chain. Avoid configuring both mechanisms to mutate the same header unless you have tested the resulting behavior.
 
 Keep your response header transformations minimal and purposeful. Every header you add increases response size, and while individual headers are tiny, they add up across millions of requests.
