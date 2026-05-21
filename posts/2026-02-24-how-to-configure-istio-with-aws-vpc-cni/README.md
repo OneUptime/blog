@@ -35,8 +35,8 @@ kubectl get daemonset aws-node -n kube-system -o jsonpath='{.spec.template.spec.
 # Verify the CNI is healthy
 kubectl get pods -n kube-system -l k8s-app=aws-node
 
-# Check available IPs
-kubectl get nodes -o custom-columns=NAME:.metadata.name,PODS:.status.capacity.pods
+# Check pod capacity
+kubectl get nodes -o custom-columns=NAME:.metadata.name,PODS_CAPACITY:.status.capacity.pods
 ```
 
 ## Installing Istio on EKS
@@ -146,7 +146,7 @@ metadata:
     service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
     service.beta.kubernetes.io/aws-load-balancer-healthcheck-path: "/healthz/ready"
     service.beta.kubernetes.io/aws-load-balancer-healthcheck-port: "15021"
-    service.beta.kubernetes.io/aws-load-balancer-healthcheck-protocol: "http"
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-protocol: "HTTP"
 spec:
   type: LoadBalancer
   selector:
@@ -187,13 +187,15 @@ Instance type IP limits (examples):
 If you are hitting IP limits, consider:
 
 1. Using larger instance types with more ENI capacity
-2. Enabling the VPC CNI prefix delegation feature:
+2. Enabling the VPC CNI prefix delegation feature on Nitro-based instances with Amazon VPC CNI 1.9.0 or later for IPv4 clusters:
 
 ```bash
 # Enable prefix delegation for more IPs per node
 kubectl set env daemonset aws-node -n kube-system ENABLE_PREFIX_DELEGATION=true
 kubectl set env daemonset aws-node -n kube-system WARM_PREFIX_TARGET=1
 ```
+
+If you use self-managed nodes or managed node groups with a launch template that specifies an AMI ID, also update the kubelet `maxPods` value. Managed node groups without a custom AMI calculate the value automatically.
 
 ## Security Group Configuration
 
@@ -209,11 +211,18 @@ Your VPC security groups need to allow Istio traffic:
 # - Port 15021 (health check) from NLB CIDR
 # - Port 443 (API server to webhook)
 
-# If using NLB with IP target type, allow traffic from NLB subnets
+# If using NLB with IP target type and managing backend security group rules yourself,
+# allow traffic from NLB subnets
 aws ec2 authorize-security-group-ingress \
   --group-id <node-security-group-id> \
   --protocol tcp \
   --port 8080 \
+  --cidr <nlb-subnet-cidr>
+
+aws ec2 authorize-security-group-ingress \
+  --group-id <node-security-group-id> \
+  --protocol tcp \
+  --port 15021 \
   --cidr <nlb-subnet-cidr>
 ```
 
@@ -230,7 +239,7 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      security.istio.io/tlsMode: istio
+      app: backend
   securityGroups:
     groupIds:
       - sg-0123456789abcdef0
@@ -251,12 +260,12 @@ aws ec2 authorize-security-group-ingress \
 
 ### AWS App Mesh vs Istio
 
-EKS supports both AWS App Mesh and Istio. They should not be used simultaneously. If you are using Istio, make sure App Mesh is not installed:
+EKS can run both AWS App Mesh and Istio, but avoid injecting both sidecars into the same workloads. AWS has also announced that App Mesh support ends on September 30, 2026. If you are using Istio, make sure App Mesh is not installed for the same workloads:
 
 ```bash
 # Check if App Mesh controller is installed
-kubectl get pods -n appmesh-system
-# This should return nothing if you are using Istio
+kubectl get pods -n appmesh-system --ignore-not-found
+# This should return no App Mesh controller pods if you are using Istio for these workloads
 ```
 
 ### External Service Access
@@ -368,8 +377,8 @@ kubectl logs -n kube-system deploy/aws-load-balancer-controller --tail=50
 ### Issue: Pod IP Exhaustion
 
 ```bash
-# Check available IPs
-kubectl get nodes -o custom-columns=NAME:.metadata.name,PODS_CAPACITY:.status.capacity.pods,PODS_USED:.status.allocatable.pods
+# Check pod capacity and allocatable pod slots
+kubectl get nodes -o custom-columns=NAME:.metadata.name,PODS_CAPACITY:.status.capacity.pods,PODS_ALLOCATABLE:.status.allocatable.pods
 
 # Check CNI metrics
 kubectl exec -n kube-system <aws-node-pod> -- curl localhost:61678/v1/enis
