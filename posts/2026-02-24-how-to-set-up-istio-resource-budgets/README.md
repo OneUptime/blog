@@ -22,11 +22,19 @@ To figure out your total Istio overhead, add up these components:
 # Check current control plane resource requests
 
 kubectl get pods -n istio-system -o json | jq '
-  [.items[].spec.containers[].resources.requests // {} |
-    {cpu: (.cpu // "0"), memory: (.memory // "0")}
-  ] | {
-    total_cpu: [.[].cpu] | join(", "),
-    total_memory: [.[].memory] | join(", ")
+  def cpu_m:
+    if test("m$") then sub("m$"; "") | tonumber
+    else tonumber * 1000
+    end;
+  def memory_mi:
+    if test("Ki$") then (sub("Ki$"; "") | tonumber) / 1024
+    elif test("Mi$") then sub("Mi$"; "") | tonumber
+    elif test("Gi$") then (sub("Gi$"; "") | tonumber) * 1024
+    else tonumber / 1048576
+    end;
+  [.items[].spec.containers[].resources.requests // {}] | {
+    total_cpu_m: ([.[].cpu // "0" | cpu_m] | add // 0),
+    total_memory_mi: ([.[].memory // "0" | memory_mi] | add // 0)
   }'
 ```
 
@@ -45,7 +53,7 @@ echo "Total sidecar memory request: ${SIDECAR_COUNT} * 128Mi"
 
 For example, a cluster with 1000 pods and Istio sidecars requesting 100m CPU and 128Mi memory each uses:
 - CPU: 1000 * 100m = 100 CPU cores just for sidecars
-- Memory: 1000 * 128Mi = 128 GiB just for sidecars
+- Memory: 1000 * 128Mi = 125 GiB just for sidecars
 
 This is a significant chunk of cluster capacity.
 
@@ -92,9 +100,9 @@ spec:
 
 These are aggressive limits suited for budget-conscious clusters. Adjust based on your workload patterns.
 
-## Using LimitRange for Sidecar Defaults
+## Using LimitRange for Namespace Defaults
 
-LimitRange can provide default resource values for containers that do not specify them. This acts as a safety net:
+LimitRange can provide default resource values for containers that do not specify them. It applies at the namespace level rather than only to Istio sidecars, so use it as a general safety net:
 
 ```yaml
 apiVersion: v1
@@ -286,13 +294,26 @@ Monitor whether your namespaces are staying within budget:
 kubectl get resourcequota -n istio-system
 
 # Check actual vs budgeted resources for sidecars
-kubectl top pods -A --containers | grep istio-proxy | \
-  awk '{cpu_sum+=$3; mem_sum+=$4; count++} END {
+kubectl top pods -A --containers --no-headers | \
+  awk '$3=="istio-proxy" {
+    cpu=$4; mem=$5;
+    if (cpu ~ /n$/) cpu = cpu / 1000000;
+    else if (cpu ~ /u$/) cpu = cpu / 1000;
+    else if (cpu ~ /m$/) cpu = cpu + 0;
+    else cpu = cpu * 1000;
+    if (mem ~ /Ki$/) mem = mem / 1024;
+    else if (mem ~ /Mi$/) mem = mem + 0;
+    else if (mem ~ /Gi$/) mem = mem * 1024;
+    else mem = mem / 1048576;
+    cpu_sum+=cpu; mem_sum+=mem; count++
+  } END {
     print "Sidecars:", count;
     print "Total CPU:", cpu_sum, "m";
     print "Total Memory:", mem_sum, "Mi";
-    print "Avg CPU per sidecar:", cpu_sum/count, "m";
-    print "Avg Memory per sidecar:", mem_sum/count, "Mi"
+    if (count > 0) {
+      print "Avg CPU per sidecar:", cpu_sum/count, "m";
+      print "Avg Memory per sidecar:", mem_sum/count, "Mi"
+    }
   }'
 ```
 
@@ -319,7 +340,7 @@ kubectl get resourcequota -A --no-headers 2>/dev/null || echo "No resource quota
 
 echo ""
 echo "--- Top 10 Memory-Consuming Sidecars ---"
-kubectl top pods -A --containers --no-headers | grep istio-proxy | sort -k4 -rn | head -10
+kubectl top pods -A --containers --no-headers | awk '$3=="istio-proxy"' | sort -k5 -hr | head -10
 ```
 
 ## Reducing the Budget
@@ -332,7 +353,7 @@ If you need to reduce Istio's resource footprint:
 4. Disable access logging where not needed
 5. Consider disabling sidecar injection for workloads that do not benefit from the mesh
 
-```yaml
+```bash
 # Example: opt-out specific namespaces from injection
 kubectl label namespace batch-jobs istio-injection-
 ```
