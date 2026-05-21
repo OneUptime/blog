@@ -8,7 +8,7 @@ Description: How to control and secure outbound traffic from your Istio mesh usi
 
 ---
 
-Controlling outbound traffic is just as important as controlling inbound traffic. Without egress controls, a compromised pod can communicate with any external server, exfiltrate data, download malware, or establish command-and-control channels. Istio provides several mechanisms to lock down egress traffic, from simple allow-lists to fine-grained authorization policies.
+Controlling outbound traffic is just as important as controlling inbound traffic. Without egress controls, a compromised pod can communicate with any external server, exfiltrate data, download malware, or establish command-and-control channels. Istio provides several mechanisms to control and observe egress traffic, from simple allow-lists to fine-grained authorization policies.
 
 By default, Istio allows all outbound traffic from the mesh. This permissive default makes initial adoption easier but leaves a significant security gap. Moving to a restrictive egress policy is one of the most impactful security improvements you can make.
 
@@ -23,7 +23,7 @@ meshConfig:
 ```
 
 - `ALLOW_ANY` - All outbound traffic is allowed. Unknown destinations pass through the sidecar without restriction.
-- `REGISTRY_ONLY` - Only traffic to services in the Istio service registry (Kubernetes services + ServiceEntries) is allowed. Everything else is blocked.
+- `REGISTRY_ONLY` - Traffic destinations must be declared in the Istio service registry (Kubernetes services + ServiceEntries). Unknown outbound traffic is dropped by the sidecar, but this setting is not a replacement for a network firewall.
 
 To switch to `REGISTRY_ONLY`:
 
@@ -49,7 +49,7 @@ After setting `REGISTRY_ONLY`, pods can only reach:
 - Other services in the Kubernetes cluster
 - External services defined in ServiceEntries
 
-Any attempt to reach an undefined external service gets a 502 Bad Gateway response.
+Attempts to reach undefined external services are blocked. Depending on the protocol and client, this may appear as an HTTP 502 response or as a connection/TLS error.
 
 ## Creating ServiceEntries for Allowed External Services
 
@@ -88,7 +88,7 @@ spec:
   resolution: DNS
 ```
 
-Each ServiceEntry is an explicit declaration: "services in this namespace are allowed to reach these external hosts."
+Each ServiceEntry adds the external host to Istio's service registry. By default, a ServiceEntry is exported to all namespaces unless you restrict its visibility with `exportTo`.
 
 ## Namespace-Scoped Egress Control
 
@@ -256,7 +256,7 @@ This allows only the `payment-processor` service account to use the egress gatew
 
 ## Blocking Specific Destinations
 
-Sometimes you want to allow most outbound traffic but block specific dangerous destinations:
+Sometimes you want to allow most outbound traffic but block specific dangerous HTTP destinations:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -273,9 +273,6 @@ spec:
     - number: 80
       name: http
       protocol: HTTP
-    - number: 443
-      name: https
-      protocol: TLS
   resolution: NONE
 ---
 apiVersion: networking.istio.io/v1
@@ -298,13 +295,32 @@ spec:
             host: malware-site.com
 ```
 
-This creates a ServiceEntry for the blocked domains and then uses fault injection to return 403 for all requests.
+This creates a ServiceEntry for the blocked domains and then uses fault injection to return 403 for HTTP requests. Blocking HTTPS destinations this way requires TLS termination/inspection at a gateway or network controls outside Istio.
 
 ## TLS Origination at the Egress
 
-For external HTTPS services, you can have the egress gateway handle TLS:
+For external HTTPS services, you can have Istio originate TLS for outbound traffic. The ServiceEntry must expose an HTTP port and redirect it to the HTTPS target port, and the DestinationRule should originate TLS for that port:
 
 ```yaml
+apiVersion: networking.istio.io/v1
+kind: ServiceEntry
+metadata:
+  name: external-api
+  namespace: default
+spec:
+  hosts:
+    - api.external.com
+  location: MESH_EXTERNAL
+  ports:
+    - number: 80
+      name: http
+      protocol: HTTP
+      targetPort: 443
+    - number: 443
+      name: https
+      protocol: HTTPS
+  resolution: DNS
+---
 apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
@@ -313,11 +329,14 @@ metadata:
 spec:
   host: api.external.com
   trafficPolicy:
-    tls:
-      mode: SIMPLE
+    portLevelSettings:
+      - port:
+          number: 80
+        tls:
+          mode: SIMPLE
 ```
 
-This lets application code make plain HTTP requests to the ServiceEntry, and the egress gateway upgrades the connection to HTTPS. This simplifies application configuration and centralizes TLS certificate management.
+This lets application code make plain HTTP requests to the ServiceEntry, and Istio originates HTTPS upstream. This simplifies application configuration and centralizes TLS origination settings such as SNI, SAN validation, and trusted CAs.
 
 ## Monitoring Egress Traffic
 
@@ -368,4 +387,4 @@ kubectl exec -it <pod> -n staging -- \
   curl -s -o /dev/null -w "%{http_code}" https://api.stripe.com
 ```
 
-Egress security in Istio is about moving from "everything is allowed" to "only explicitly permitted traffic leaves the mesh." Switch to `REGISTRY_ONLY`, create ServiceEntries for legitimate external dependencies, scope them to the right namespaces, and use an egress gateway for centralized control and auditing. This significantly reduces the attack surface of your cluster.
+Egress security in Istio is about moving from "everything is allowed" to "only explicitly registered traffic leaves the mesh through the sidecar." Switch to `REGISTRY_ONLY`, create ServiceEntries for legitimate external dependencies, scope them to the right namespaces, and use an egress gateway for centralized control and auditing. For strict enforcement, combine this with Kubernetes network policies or firewall rules that prevent workloads from bypassing the sidecar or egress gateway.
