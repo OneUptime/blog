@@ -14,8 +14,8 @@ Knative Serving provides serverless capabilities on Kubernetes, allowing your ap
 
 Before setting up the integration, you need:
 
-- A Kubernetes cluster (1.26+)
-- Istio installed (1.17+)
+- A Kubernetes cluster supported by your Knative and Istio releases
+- Istio installed with `istioctl`
 - Sufficient cluster resources for both Istio and Knative components
 
 Make sure Istio is installed and running:
@@ -30,14 +30,18 @@ kubectl get pods -n istio-system
 Install the Knative Serving core components:
 
 ```bash
-kubectl apply -f https://github.com/knative/serving/releases/download/knative-v1.13.0/serving-crds.yaml
-kubectl apply -f https://github.com/knative/serving/releases/download/knative-v1.13.0/serving-core.yaml
+kubectl apply -f https://github.com/knative/serving/releases/download/knative-v1.22.0/serving-crds.yaml
+kubectl apply -f https://github.com/knative/serving/releases/download/knative-v1.22.0/serving-core.yaml
 ```
 
 Then install the Istio networking layer for Knative:
 
 ```bash
-kubectl apply -f https://github.com/knative/net-istio/releases/download/knative-v1.13.0/net-istio.yaml
+kubectl apply -f https://github.com/knative-extensions/net-istio/releases/download/knative-v1.22.0/net-istio.yaml
+kubectl patch configmap/config-network \
+  --namespace knative-serving \
+  --type merge \
+  --patch '{"data":{"ingress-class":"istio.ingress.networking.knative.dev"}}'
 ```
 
 Verify everything is running:
@@ -80,57 +84,60 @@ metadata:
   name: config-istio
   namespace: knative-serving
 data:
-  gateway.knative-serving.knative-ingress-gateway: "istio-ingressgateway.istio-system.svc.cluster.local"
-  local-gateway.knative-serving.knative-local-gateway: "knative-local-gateway.istio-system.svc.cluster.local"
+  external-gateways: |
+    - name: knative-ingress-gateway
+      namespace: knative-serving
+      service: istio-ingressgateway.istio-system.svc.cluster.local
+  local-gateways: |
+    - name: knative-local-gateway
+      namespace: knative-serving
+      service: knative-local-gateway.istio-system.svc.cluster.local
 ```
 
-The `gateway` setting controls external traffic, and `local-gateway` controls cluster-internal traffic.
+The `external-gateways` setting controls external traffic, and `local-gateways` controls cluster-internal traffic.
 
 ## Creating a Local Gateway
 
-For mesh-internal (cluster-local) traffic, you need a local gateway:
+For mesh-internal (cluster-local) traffic, you may need a local gateway:
 
 ```yaml
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: knative-local-gateway
+  namespace: knative-serving
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+  - port:
+      number: 8081
+      name: http
+      protocol: HTTP
+    hosts:
+    - "*"
+---
 apiVersion: v1
 kind: Service
 metadata:
   name: knative-local-gateway
   namespace: istio-system
   labels:
-    istio: knative-local-gateway
+    networking.knative.dev/ingress-provider: istio
 spec:
   type: ClusterIP
   selector:
-    istio: knative-local-gateway
+    istio: ingressgateway
   ports:
   - name: http2
     port: 80
     targetPort: 8081
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: knative-local-gateway
-  namespace: istio-system
-spec:
-  selector:
-    matchLabels:
-      istio: knative-local-gateway
-  template:
-    metadata:
-      labels:
-        istio: knative-local-gateway
-      annotations:
-        sidecar.istio.io/inject: "false"
-    spec:
-      containers:
-      - name: istio-proxy
-        image: docker.io/istio/proxyv2:1.22.0
-        ports:
-        - containerPort: 8081
+  - name: https
+    port: 443
+    targetPort: 8444
 ```
 
-Alternatively, you can reuse the existing Istio ingress gateway for local traffic by configuring the ConfigMap appropriately.
+This setup reuses the existing Istio ingress gateway pods for local traffic. Alternatively, you can create a separate gateway deployment and configure the ConfigMap appropriately.
 
 ## Deploying a Knative Service
 
@@ -180,7 +187,7 @@ hello   http://hello.default.example.com        hello-00001     hello-00001     
 For external access, you need DNS configured. The simplest approach for testing is to use the magic DNS domain:
 
 ```bash
-kubectl apply -f https://github.com/knative/serving/releases/download/knative-v1.13.0/serving-default-domain.yaml
+kubectl apply -f https://github.com/knative/serving/releases/download/knative-v1.22.0/serving-default-domain.yaml
 ```
 
 This sets up `sslip.io` as the default domain. For production, configure a real domain in the `config-domain` ConfigMap:
@@ -233,20 +240,24 @@ The VirtualService will have weighted routing rules matching the traffic split y
 
 ## Enabling mTLS for Knative Services
 
-Since Istio is the networking layer, you can enable mutual TLS for Knative services. Apply a PeerAuthentication policy:
+Since Istio is the networking layer, you can enable mutual TLS for Knative services. Make sure the Knative system pods get sidecars, then apply a PeerAuthentication policy for the Knative system namespace:
+
+```bash
+kubectl label namespace knative-serving istio-injection=enabled
+```
 
 ```yaml
 apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
-  namespace: default
+  namespace: knative-serving
 spec:
   mtls:
     mode: PERMISSIVE
 ```
 
-Using PERMISSIVE mode is important because the Knative activator needs to send plaintext traffic to pods when scaling from zero. If you set STRICT mode, the activator won't be able to reach pods that are just starting up.
+Using PERMISSIVE mode is important if the Knative activator is not injected with an Istio sidecar. If you set STRICT mode while the activator can still be in the request path without a sidecar, requests forwarded through the activator will be rejected.
 
 ## Authorization Policies for Knative
 
@@ -266,13 +277,13 @@ spec:
   rules:
   - from:
     - source:
-        namespaces: ["frontend"]
+        namespaces: ["frontend", "knative-serving"]
     to:
     - operation:
         methods: ["GET"]
 ```
 
-This restricts access to the `hello` Knative service to only GET requests from the `frontend` namespace.
+This restricts access to the `hello` Knative service to GET requests from the `frontend` namespace while still allowing requests forwarded through Knative system pods in the `knative-serving` namespace.
 
 ## Observability
 
