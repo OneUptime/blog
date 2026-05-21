@@ -16,7 +16,7 @@ Istio makes mTLS almost automatic. The sidecars handle certificate provisioning,
 
 When service A calls service B, the following happens:
 
-1. Service A's application sends a plain HTTP request to localhost (the sidecar intercepts it)
+1. Service A's application sends a plain HTTP request as usual (the sidecar intercepts it)
 2. Service A's sidecar initiates a TLS handshake with service B's sidecar
 3. Both sidecars exchange certificates and verify them against the mesh CA
 4. The TLS connection is established with both identities verified
@@ -65,10 +65,10 @@ spec:
 
 ## Verifying mTLS is Working
 
-Even in permissive mode, sidecars will use mTLS when talking to other sidecars. Verify this with:
+Even in permissive mode, sidecars will use mTLS when talking to other sidecars. First, check the effective mTLS policy for a pod:
 
 ```bash
-# Check if mTLS is active between two services
+# Check the effective mTLS policy for a pod
 
 istioctl x describe pod <pod-name> -n <namespace>
 ```
@@ -145,7 +145,7 @@ This policy in the `istio-system` namespace applies to all namespaces in the mes
 
 ## Exceptions for Specific Workloads
 
-Some workloads might need exceptions. For example, a service that receives health checks from a Kubernetes component without a sidecar:
+Some workloads might need exceptions. For example, a service that receives non-rewritten health checks from a Kubernetes component or external load balancer without a sidecar:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -164,7 +164,7 @@ spec:
       mode: PERMISSIVE
 ```
 
-This keeps strict mTLS on all ports except 8081, which accepts both mTLS and plaintext. This is handy for health check endpoints that need to be accessible from the kubelet.
+This keeps strict mTLS on all ports except workload port 8081, which accepts both mTLS and plaintext. This is handy for health check endpoints that need to be accessible from a client that cannot present an Istio certificate. Kubernetes HTTP, TCP, and gRPC probes are rewritten by Istio by default, so they usually do not need this exception unless probe rewrite is disabled or the check comes from outside that mechanism.
 
 ## Configuring the Client Side
 
@@ -210,7 +210,7 @@ istioctl analyze --all-namespaces 2>&1 | grep -i "mtls\|tls\|authentication"
 ```bash
 # Find pods without sidecars
 kubectl get pods --all-namespaces -o json | \
-  jq -r '.items[] | select(.spec.containers | length == 1) | .metadata.namespace + "/" + .metadata.name'
+  jq -r '.items[] | select([.spec.containers[].name] | index("istio-proxy") | not) | .metadata.namespace + "/" + .metadata.name'
 ```
 
 **503 errors between services**: Check that both source and destination have valid certificates:
@@ -231,7 +231,7 @@ Both should show ACTIVE status with valid certificates.
 kubectl get destinationrules --all-namespaces -o yaml | grep -A5 "tls:"
 ```
 
-A DestinationRule with `mode: DISABLE` will override PeerAuthentication settings for outbound connections.
+A DestinationRule with `mode: DISABLE` forces plaintext for outbound connections. If the destination requires strict mTLS, that client-side setting conflicts with the server-side PeerAuthentication policy and the request will fail.
 
 **Certificate errors in logs**: Check the istio-proxy container logs:
 
@@ -247,10 +247,10 @@ Track mTLS adoption across your mesh using Prometheus metrics:
 
 ```bash
 # Query for connections using mTLS
-istio_tcp_connections_opened_total{connection_security_policy="mutual_tls"}
+istio_tcp_connections_opened_total{reporter="destination", connection_security_policy="mutual_tls"}
 
 # Query for connections NOT using mTLS
-istio_tcp_connections_opened_total{connection_security_policy="none"}
+istio_tcp_connections_opened_total{reporter="destination", connection_security_policy="none"}
 ```
 
 Set up alerts for any plaintext connections in namespaces where strict mTLS is expected. This catches configuration drift early.
