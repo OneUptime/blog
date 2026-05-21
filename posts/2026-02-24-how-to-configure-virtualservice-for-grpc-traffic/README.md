@@ -218,6 +218,8 @@ The `retryOn` field accepts gRPC status codes as strings:
 - `internal` - Internal server error
 - `cancelled` - Request was cancelled
 
+Envoy applies these gRPC retry policies to gRPC status codes in response headers, so trailer-only statuses may not trigger a retry.
+
 You can also use the standard HTTP retry conditions like `5xx`, `connect-failure`, and `reset`.
 
 ## gRPC Timeouts
@@ -289,7 +291,7 @@ spec:
               number: 50051
 ```
 
-Note: For gRPC through a Gateway, you need TLS. gRPC-Web or gRPC over plain HTTP/2 requires specific protocol settings.
+Note: TLS is common for external gRPC, but it is not required by Istio. For plaintext gRPC through a Gateway, use `GRPC` or `HTTP2` as the Gateway port protocol. Also make sure the backend Kubernetes Service port is explicitly declared as `grpc` or `http2` using the port name or `appProtocol`; otherwise gateways may forward backend HTTP traffic as HTTP/1.1.
 
 ## gRPC Mirror
 
@@ -320,7 +322,7 @@ Be careful with mirroring write operations. If your gRPC methods have side effec
 
 ## DestinationRule for gRPC
 
-When configuring a DestinationRule for gRPC, you might want to use HTTP/2 explicitly:
+When configuring a DestinationRule for gRPC, you usually do not need to force HTTP/2 in the DestinationRule. gRPC traffic is already HTTP/2 when Istio detects the protocol or the Kubernetes Service port is declared as `grpc` or `http2`. DestinationRules are still useful for subsets and traffic policies:
 
 ```yaml
 apiVersion: networking.istio.io/v1beta1
@@ -330,10 +332,6 @@ metadata:
   namespace: default
 spec:
   host: product-service
-  trafficPolicy:
-    connectionPool:
-      http:
-        h2UpgradePolicy: UPGRADE
   subsets:
     - name: v1
       labels:
@@ -343,7 +341,7 @@ spec:
         version: v2
 ```
 
-The `h2UpgradePolicy: UPGRADE` ensures HTTP/2 is used for the connection, which is required for gRPC.
+If you do use `h2UpgradePolicy: UPGRADE`, remember that it upgrades HTTP/1.1 upstream connections to HTTP/2. It is not a substitute for correctly declaring native gRPC service ports.
 
 ## Fault Injection for gRPC Testing
 
