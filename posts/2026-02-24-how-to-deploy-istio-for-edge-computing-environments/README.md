@@ -35,7 +35,7 @@ Check your node resources to understand what you are working with:
 kubectl describe nodes | grep -A 5 "Allocated resources"
 ```
 
-For edge nodes, you typically want at least 2 CPU cores and 2GB of RAM available for Istio components, though you can push it lower with careful tuning.
+For a small K3s server node, plan on at least 2 CPU cores and 2GB of RAM before adding Istio and your application workloads. Istio's actual resource use depends on the number of workloads, services, and configuration objects in the mesh.
 
 ## Installing Istio with a Minimal Profile
 
@@ -191,7 +191,7 @@ spec:
   resolution: DNS
 ```
 
-This ensures that even when local DNS is unreliable, the mesh can resolve external services properly.
+With DNS capture enabled, Istio can answer DNS requests for known mesh hosts and ServiceEntries from the local proxy, and it forwards anything else to the upstream resolver from `/etc/resolv.conf`. For `resolution: DNS` ServiceEntries, the proxy still performs its own periodic DNS lookups for the configured host.
 
 ## Verifying the Installation
 
@@ -244,7 +244,7 @@ First, always pin your Istio version. Edge environments are harder to update, so
 
 Second, consider using Istio ambient mode if your edge nodes support it. Ambient mode removes the sidecar entirely and uses a per-node ztunnel proxy, which can save significant resources when you have many pods per node.
 
-Third, set up proper health checks for istiod. If the control plane goes down at an edge site, existing proxies will continue working with their last known configuration, but new pods will not get their sidecar injected.
+Third, set up proper readiness and reachability checks for istiod. If the control plane goes down at an edge site, existing proxies will continue working with their last known configuration, but new pods will not get their sidecar injected.
 
 ```yaml
 apiVersion: v1
@@ -260,9 +260,9 @@ spec:
         - -c
         - |
           while true; do
-            curl -s http://istiod.istio-system:15014/debug/endpointz > /dev/null
+            curl -fsS http://istiod.istio-system:15014/version > /dev/null
             if [ $? -ne 0 ]; then
-              echo "istiod health check failed"
+              echo "istiod reachability check failed"
             fi
             sleep 30
           done
