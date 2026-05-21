@@ -8,7 +8,7 @@ Description: Practical methods for using Kubernetes RBAC to restrict who can cre
 
 ---
 
-Not everyone in your cluster should be able to create Istio resources. An EnvoyFilter created by a well-meaning developer can redirect traffic in unexpected ways. A PeerAuthentication resource in the wrong namespace can break mTLS for the entire mesh. RBAC is your first line of defense against configuration mishaps, and it is worth getting right.
+Not everyone in your cluster should be able to create Istio resources. An EnvoyFilter created by a well-meaning developer can redirect traffic in unexpected ways. A PeerAuthentication resource in the Istio root configuration namespace can change mTLS for the entire mesh. RBAC is your first line of defense against configuration mishaps, and it is worth getting right.
 
 The core idea is simple: use Kubernetes RBAC to control which users, groups, and service accounts can create, update, and delete specific Istio CRDs. But the implementation gets interesting when you want granular control, like allowing VirtualService creation but blocking EnvoyFilter creation for the same user.
 
@@ -17,10 +17,10 @@ The core idea is simple: use Kubernetes RBAC to control which users, groups, and
 Not all Istio resources carry the same risk. Here is a rough categorization:
 
 **High risk** (restrict to platform teams):
-- EnvoyFilter - can modify any Envoy configuration
+- EnvoyFilter - can modify generated Envoy configuration
 - Gateway - controls ingress to the cluster
 - PeerAuthentication - controls mTLS enforcement
-- Sidecar (in istio-system) - affects mesh-wide proxy configuration
+- Sidecar (in the Istio root configuration namespace, often istio-system) - affects mesh-wide proxy configuration
 
 **Medium risk** (allow for team leads or senior developers):
 - AuthorizationPolicy - controls access between services
@@ -80,7 +80,7 @@ rules:
       - watch
 ```
 
-Developers bound to this role can read all Istio resources but only create/modify the safe ones.
+Developers bound to this role can read the listed Istio networking and security resources but only create/modify the safe ones.
 
 ## Restricting by Namespace
 
@@ -106,7 +106,7 @@ This way, team-alpha developers can only create VirtualServices in the `team-alp
 
 ## Protecting the istio-system Namespace
 
-Resources created in the `istio-system` namespace often have mesh-wide effects. A Telemetry resource in `istio-system` applies to every sidecar in the mesh. Lock down this namespace tightly:
+Resources created in the Istio root configuration namespace, often `istio-system`, can have mesh-wide effects. A selector-less Telemetry resource in that namespace applies mesh-wide. Lock down this namespace tightly:
 
 ```yaml
 apiVersion: rbac.authorization.k8s.io/v1
