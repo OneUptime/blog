@@ -25,7 +25,7 @@ In both cases, DNS needs to work correctly for cross-cluster communication.
 
 ## Setting Up CoreDNS for Multi-Cluster
 
-The first step is configuring CoreDNS in each cluster to handle cross-cluster resolution. You need to set up stub domains that forward queries for remote cluster services to the appropriate DNS server.
+The first step is configuring CoreDNS in each cluster to handle cross-cluster resolution when remote clusters use distinct service domains. You need to set up stub domains that forward queries for remote cluster services to the appropriate DNS server.
 
 Here is a ConfigMap that configures CoreDNS to forward queries for a remote cluster:
 
@@ -39,9 +39,7 @@ data:
   Corefile: |
     .:53 {
         errors
-        health {
-            lazystart
-        }
+        health
         ready
         kubernetes cluster.local in-addr.arpa ip6.arpa {
             pods insecure
@@ -57,14 +55,14 @@ data:
         reload
         loadbalance
     }
-    global:53 {
+    cluster-b.local:53 {
         errors
         cache 30
         forward . 10.96.0.10
     }
 ```
 
-The `global` zone handles queries for services that need cross-cluster resolution.
+The `cluster-b.local` zone handles queries for services in the remote cluster. Replace `10.96.0.10` with a DNS endpoint for cluster B that is reachable from cluster A.
 
 ## Using Istio ServiceEntry for Cross-Cluster DNS
 
@@ -97,7 +95,7 @@ This tells Istio that the `payment` service exists in cluster B and should be tr
 
 ## Configuring Istio DNS Proxying
 
-Istio 1.8 and later includes a DNS proxy feature built into the sidecar. This is extremely useful for multi-cluster setups because it intercepts DNS queries from application pods and resolves them using Istio's service registry.
+Istio 1.8 and later includes a DNS proxy feature built into the sidecar, and ambient mode enables DNS proxying by default in Istio 1.25 and later. This is extremely useful for multi-cluster setups because it intercepts DNS queries from application pods and resolves them using Istio's service registry.
 
 Enable DNS proxying in your Istio configuration:
 
@@ -105,14 +103,17 @@ Enable DNS proxying in your Istio configuration:
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
+  values:
+    pilot:
+      env:
+        PILOT_ENABLE_IP_AUTOALLOCATE: "true"
   meshConfig:
     defaultConfig:
       proxyMetadata:
         ISTIO_META_DNS_CAPTURE: "true"
-        ISTIO_META_DNS_AUTO_ALLOCATE: "true"
 ```
 
-With `ISTIO_META_DNS_CAPTURE` enabled, the Istio sidecar intercepts DNS queries from the application container. The `ISTIO_META_DNS_AUTO_ALLOCATE` setting automatically assigns virtual IPs to ServiceEntry hosts that do not already have one.
+With `ISTIO_META_DNS_CAPTURE` enabled, the Istio sidecar intercepts DNS queries from the application container. The `PILOT_ENABLE_IP_AUTOALLOCATE` setting controls automatic virtual IP allocation for ServiceEntry hosts that do not already have one.
 
 To verify DNS proxying is working, exec into a pod and try resolving a cross-cluster service:
 
@@ -132,14 +133,14 @@ This is the simplest solution. Instead of `default`, use `cluster-a-default` and
 
 **Use Istio's network labeling:**
 
-Label each cluster's pods with the network they belong to:
+Set the default network for each cluster by labeling the `istio-system` namespace:
 
 ```bash
-kubectl label namespace default topology.istio.io/network=network-a --context=cluster-a
-kubectl label namespace default topology.istio.io/network=network-b --context=cluster-b
+kubectl label namespace istio-system topology.istio.io/network=network-a --context=cluster-a
+kubectl label namespace istio-system topology.istio.io/network=network-b --context=cluster-b
 ```
 
-**Use DestinationRule for traffic routing:**
+**Use DestinationRule subsets for traffic routing:**
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -149,14 +150,13 @@ metadata:
   namespace: default
 spec:
   host: frontend.default.svc.cluster.local
-  trafficPolicy:
-    connectionPool:
-      tcp:
-        maxConnections: 100
-    outlierDetection:
-      consecutive5xxErrors: 5
-      interval: 30s
-      baseEjectionTime: 30s
+  subsets:
+  - name: cluster-a
+    labels:
+      topology.istio.io/cluster: cluster-a
+  - name: cluster-b
+    labels:
+      topology.istio.io/cluster: cluster-b
 ```
 
 ## Setting Up East-West Gateway for DNS Resolution
@@ -166,10 +166,9 @@ For multi-cluster Istio, you typically need an east-west gateway that handles cr
 Deploy the east-west gateway:
 
 ```bash
-istioctl install \
-  --set values.global.meshID=mesh1 \
-  --set values.global.multiCluster.clusterName=cluster-a \
-  --set values.global.network=network-a
+samples/multicluster/gen-eastwest-gateway.sh \
+  --network network-a | \
+  istioctl --context=cluster-a install -y -f -
 ```
 
 Then expose the services through the gateway:
@@ -202,20 +201,20 @@ From cluster A, check if you can resolve a service in cluster B:
 
 ```bash
 kubectl exec -it deploy/sleep -c sleep --context=cluster-a -- \
-  nslookup payment.default.svc.cluster.local
+  nslookup payment.default.svc.cluster-b.local
 
 kubectl exec -it deploy/sleep -c sleep --context=cluster-a -- \
-  curl -s payment.default.svc.cluster.local:8080/health
+  curl -s payment.default.svc.cluster-b.local:8080/health
 ```
 
 From cluster B, check if you can resolve a service in cluster A:
 
 ```bash
 kubectl exec -it deploy/sleep -c sleep --context=cluster-b -- \
-  nslookup frontend.default.svc.cluster.local
+  nslookup frontend.default.svc.cluster-a.local
 
 kubectl exec -it deploy/sleep -c sleep --context=cluster-b -- \
-  curl -s frontend.default.svc.cluster.local:8080/health
+  curl -s frontend.default.svc.cluster-a.local:8080/health
 ```
 
 ## Debugging DNS Issues
