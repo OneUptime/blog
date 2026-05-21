@@ -29,7 +29,7 @@ This is the single most impactful optimization. Use the Sidecar resource to limi
 Start with a namespace-wide Sidecar that limits egress to the same namespace plus istio-system:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -44,7 +44,7 @@ spec:
 Apply this to every namespace. If a service needs to talk to another namespace, add that namespace explicitly:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -91,11 +91,6 @@ Enable configuration debouncing to batch changes:
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
-  meshConfig:
-    defaultConfig:
-      discoverySelectors:
-        - matchLabels:
-            istio-discovery: enabled
   values:
     pilot:
       env:
@@ -150,7 +145,7 @@ For most workloads, 2 worker threads is a good balance between performance and r
 Telemetry is one of the biggest resource consumers in the sidecar. If you don't need all the default metrics, disable the ones you don't use:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: mesh-default
@@ -174,10 +169,10 @@ spec:
 
 Removing metric labels reduces the cardinality of your metrics, which reduces both memory in the proxy and storage in Prometheus.
 
-You can also disable tracing if you don't need distributed traces for every service:
+You can also reduce trace sampling if you don't need distributed traces for every request:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: low-priority-tracing
@@ -187,9 +182,9 @@ spec:
     - randomSamplingPercentage: 1.0
 ```
 
-## Step 6: Enable Proxy Compression
+## Step 6: Include Endpoint Updates in Debouncing
 
-Envoy can compress the configuration it receives from istiod. This reduces network bandwidth and speeds up configuration pushes:
+Endpoint updates can be included in istiod's push debouncing. This is enabled by default in current Istio releases, but if you manage Pilot environment variables explicitly, make sure it stays enabled:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -211,10 +206,10 @@ You can't optimize what you don't measure. Key metrics to watch:
 kubectl exec -n istio-system deploy/istiod -- curl -s localhost:15014/metrics | grep pilot_xds_push_time
 
 # Check number of proxies connected
-kubectl exec -n istio-system deploy/istiod -- curl -s localhost:15014/metrics | grep pilot_xds_pushes
+kubectl exec -n istio-system deploy/istiod -- curl -s localhost:15014/metrics | grep '^pilot_xds '
 
 # Check proxy configuration size
-istioctl proxy-config all deploy/my-app -n production -o json | wc -c
+kubectl exec -n production deploy/my-app -c istio-proxy -- pilot-agent request GET config_dump | wc -c
 ```
 
 Track these metrics over time to identify when optimization is needed and to verify that your changes had the desired effect.
