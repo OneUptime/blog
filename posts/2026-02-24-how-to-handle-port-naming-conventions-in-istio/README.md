@@ -8,7 +8,7 @@ Description: Understanding Istio's port naming conventions and why getting them 
 
 ---
 
-Port naming in Istio is one of those small details that has outsized consequences. If you name your service ports incorrectly - or don't name them at all - Istio can't determine the protocol of the traffic. When that happens, all traffic on that port gets treated as opaque TCP, which means you lose HTTP routing, retries, metrics, and all the Layer 7 features you deployed a service mesh for.
+Port naming in Istio is one of those small details that has outsized consequences. If you name your service ports incorrectly - or don't name them at all - Istio has to rely on automatic protocol detection. If detection is disabled or Istio can't determine the protocol, traffic on that port gets treated as opaque TCP, which means you lose HTTP routing, retries, metrics, and all the Layer 7 features you deployed a service mesh for.
 
 ## Why Port Names Matter
 
@@ -20,7 +20,7 @@ When Istio knows the protocol:
 - TLS traffic gets SNI-based routing without termination
 - TCP traffic gets basic connection-level metrics and routing
 
-Without protocol information, everything is TCP.
+Without protocol information, Istio either relies on automatic protocol detection or treats the traffic as TCP.
 
 ## The Naming Convention
 
@@ -76,13 +76,13 @@ The recognized protocol prefixes are:
 - `grpc-web` - gRPC-Web
 - `tls` - TLS passthrough
 - `tcp` - Raw TCP
-- `mongo` - MongoDB
-- `mysql` - MySQL
-- `redis` - Redis
+- `mongo` - MongoDB (experimental application protocol support)
+- `mysql` - MySQL (experimental application protocol support)
+- `redis` - Redis (experimental application protocol support)
 
 ## The appProtocol Alternative
 
-Starting with Kubernetes 1.20, you can use the `appProtocol` field instead of port naming:
+Starting with Kubernetes 1.18, you can use the `appProtocol` field instead of port naming. The field became stable in Kubernetes 1.20:
 
 ```yaml
 apiVersion: v1
@@ -130,10 +130,10 @@ spec:
       targetPort: 9090
 ```
 
-All three of these ports will be treated as plain TCP. That means:
+All three of these ports will rely on automatic protocol detection. If detection is disabled or the protocol cannot be detected, they will be treated as plain TCP. That means:
 
 - No HTTP-level routing with VirtualService
-- No automatic retries on 5xx errors
+- No HTTP retry policies or default HTTP retries
 - No HTTP metrics (request count, latency histograms, etc.)
 - No fault injection
 - No request-level access logs (only connection-level)
@@ -149,7 +149,7 @@ istioctl analyze -n default
 Look for messages like:
 
 ```text
-Warning [IST0118] (Service my-service.default) Port name backend
+Info [IST0118] (Service my-service.default) Port name backend
 (on service my-service.default) doesn't follow the naming convention
 of Istio port.
 ```
@@ -161,15 +161,15 @@ You can also check all services in your cluster:
 kubectl get services -A -o json | python3 -c "
 import json, sys
 data = json.load(sys.stdin)
-protocols = ['http', 'http2', 'https', 'grpc', 'grpc-web', 'tls', 'tcp', 'mongo', 'mysql', 'redis']
+protocols = ['grpc-web', 'http2', 'https', 'grpc', 'http', 'tls', 'tcp', 'mongo', 'mysql', 'redis']
 for svc in data['items']:
   ns = svc['metadata']['namespace']
   name = svc['metadata']['name']
   for port in svc['spec'].get('ports', []):
     pname = port.get('name', '')
     app_proto = port.get('appProtocol', '')
-    prefix = pname.split('-')[0] if pname else ''
-    if not app_proto and prefix not in protocols:
+    valid_name = pname in protocols or any(pname.startswith(proto + '-') for proto in protocols)
+    if not app_proto and not valid_name:
       print(f'{ns}/{name}: port {port[\"port\"]} name=\"{pname}\" - may need fixing')
 "
 ```
@@ -216,7 +216,7 @@ spec:
     protocolDetectionTimeout: 100ms
 ```
 
-Envoy waits up to `protocolDetectionTimeout` (default 100ms) for the first bytes of data. If it looks like HTTP, Envoy treats it as HTTP. Otherwise, it falls back to TCP.
+Envoy waits for the first bytes of data to classify the connection. If you set `protocolDetectionTimeout`, Envoy waits up to that value before falling back to TCP; the current Istio API default is `0s`, which means no timeout. If the traffic looks like HTTP, Envoy treats it as HTTP. Otherwise, it falls back to TCP.
 
 This detection has limitations:
 - It adds latency (up to the timeout value) for the first request on a connection
@@ -231,7 +231,7 @@ Some protocols have the server send the first message (MySQL, PostgreSQL, SMTP).
 
 For server-first protocols, you must either:
 
-1. Name the port correctly: `name: mysql`, `name: tcp-postgres`
+1. Declare the port as TCP: `name: tcp-mysql`, `name: tcp-postgres`
 2. Use `appProtocol: tcp`
 3. Exclude the port from interception
 
