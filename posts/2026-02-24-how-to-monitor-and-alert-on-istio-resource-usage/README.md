@@ -25,7 +25,7 @@ The monitoring strategy breaks down into three areas:
 If you are using the Istio addon Prometheus, deploy it:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.22/samples/addons/prometheus.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/prometheus.yaml
 ```
 
 For an existing Prometheus installation, add scrape configs for Istio:
@@ -36,19 +36,14 @@ For an existing Prometheus installation, add scrape configs for Istio:
 scrape_configs:
 - job_name: 'istiod'
   kubernetes_sd_configs:
-  - role: pod
+  - role: endpoints
     namespaces:
       names:
       - istio-system
   relabel_configs:
-  - source_labels: [__meta_kubernetes_pod_label_app]
+  - source_labels: [__meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
     action: keep
-    regex: istiod
-  - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
-    action: replace
-    target_label: __address__
-    regex: (.+)
-    replacement: $1:15014
+    regex: istiod;http-monitoring
 
 - job_name: 'envoy-stats'
   metrics_path: /stats/prometheus
@@ -73,7 +68,7 @@ rate(container_cpu_usage_seconds_total{namespace="istio-system", container="disc
 
 # Memory usage as percentage of limit
 container_memory_working_set_bytes{namespace="istio-system", container="discovery"}
-/ container_spec_memory_limit_bytes{namespace="istio-system", container="discovery"} * 100
+/ (container_spec_memory_limit_bytes{namespace="istio-system", container="discovery"} > 0) * 100
 ```
 
 ### Configuration Push Health
@@ -82,14 +77,14 @@ container_memory_working_set_bytes{namespace="istio-system", container="discover
 # Push rate by type
 sum(rate(pilot_xds_pushes[5m])) by (type)
 
-# Push errors
-sum(rate(pilot_xds_push_errors[5m]))
+# xDS internal errors and proxy rejects
+sum(rate(pilot_total_xds_internal_errors[5m])) + sum(rate(pilot_total_xds_rejects[5m]))
 
 # Configuration convergence time (p99)
 histogram_quantile(0.99, sum(rate(pilot_proxy_convergence_time_bucket[5m])) by (le))
 
 # Connected sidecars
-pilot_xds_connected_clients
+pilot_xds
 ```
 
 ### Gateway Resources
@@ -135,10 +130,11 @@ Resource Limit Proximity
 ```promql
 # Sidecars near their memory limit (above 80%)
 (container_memory_working_set_bytes{container="istio-proxy"}
-/ container_spec_memory_limit_bytes{container="istio-proxy"}) > 0.8
+/ (container_spec_memory_limit_bytes{container="istio-proxy"} > 0)) > 0.8
 
 # Sidecars being CPU throttled
-rate(container_cpu_cfs_throttled_seconds_total{container="istio-proxy"}[5m])
+rate(container_cpu_cfs_throttled_periods_total{container="istio-proxy"}[5m])
+/ rate(container_cpu_cfs_periods_total{container="istio-proxy"}[5m])
 ```
 
 ## Alert Configuration
@@ -163,16 +159,17 @@ spec:
       annotations:
         summary: "istiod is not running"
 
-    - alert: IstiodOOMRestart
+    - alert: IstiodOOMKilled
       expr: |
-        increase(kube_pod_container_status_restarts_total{
+        kube_pod_container_status_last_terminated_reason{
           namespace="istio-system",
-          container="discovery"
-        }[30m]) > 0
+          container="discovery",
+          reason="OOMKilled"
+        } == 1
       labels:
         severity: critical
       annotations:
-        summary: "istiod has restarted, possible OOMKill"
+        summary: "istiod was OOMKilled"
 
     - alert: IngressGatewayDown
       expr: |
@@ -193,7 +190,7 @@ spec:
     - alert: IstiodHighMemory
       expr: |
         container_memory_working_set_bytes{namespace="istio-system", container="discovery"}
-        / container_spec_memory_limit_bytes{namespace="istio-system", container="discovery"} > 0.75
+        / (container_spec_memory_limit_bytes{namespace="istio-system", container="discovery"} > 0) > 0.75
       for: 10m
       labels:
         severity: warning
@@ -203,7 +200,7 @@ spec:
     - alert: SidecarMemoryNearLimit
       expr: |
         container_memory_working_set_bytes{container="istio-proxy"}
-        / container_spec_memory_limit_bytes{container="istio-proxy"} > 0.85
+        / (container_spec_memory_limit_bytes{container="istio-proxy"} > 0) > 0.85
       for: 5m
       labels:
         severity: warning
@@ -212,8 +209,8 @@ spec:
 
     - alert: HighSidecarCPUThrottling
       expr: |
-        rate(container_cpu_cfs_throttled_seconds_total{container="istio-proxy"}[5m])
-        / rate(container_cpu_usage_seconds_total{container="istio-proxy"}[5m]) > 0.5
+        rate(container_cpu_cfs_throttled_periods_total{container="istio-proxy"}[5m])
+        / rate(container_cpu_cfs_periods_total{container="istio-proxy"}[5m]) > 0.5
       for: 10m
       labels:
         severity: warning
@@ -221,7 +218,9 @@ spec:
         summary: "Sidecar in {{ $labels.pod }} is heavily CPU throttled"
 
     - alert: XDSPushErrors
-      expr: sum(rate(pilot_xds_push_errors[5m])) > 0
+      expr: |
+        sum(rate(pilot_total_xds_internal_errors[5m]))
+        + sum(rate(pilot_total_xds_rejects[5m])) > 0
       for: 5m
       labels:
         severity: warning
@@ -253,16 +252,20 @@ metadata:
 data:
   istio-resources.json: |
     {
-      "dashboard": {
-        "title": "Istio Resource Usage",
-        "refresh": "30s",
-        "rows": [
+      "title": "Istio Resource Usage",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "30s",
+      "panels": [
           {
             "title": "Control Plane",
-            "panels": [
+            "type": "row",
+            "gridPos": {"h": 1, "w": 24, "x": 0, "y": 0}
+          },
               {
                 "title": "Istiod Memory",
                 "type": "timeseries",
+                "gridPos": {"h": 8, "w": 8, "x": 0, "y": 1},
                 "targets": [{
                   "expr": "container_memory_working_set_bytes{namespace='istio-system', container='discovery'} / 1073741824"
                 }]
@@ -270,6 +273,7 @@ data:
               {
                 "title": "Istiod CPU",
                 "type": "timeseries",
+                "gridPos": {"h": 8, "w": 8, "x": 8, "y": 1},
                 "targets": [{
                   "expr": "rate(container_cpu_usage_seconds_total{namespace='istio-system', container='discovery'}[5m])"
                 }]
@@ -277,18 +281,20 @@ data:
               {
                 "title": "Connected Sidecars",
                 "type": "stat",
+                "gridPos": {"h": 8, "w": 8, "x": 16, "y": 1},
                 "targets": [{
-                  "expr": "pilot_xds_connected_clients"
+                  "expr": "pilot_xds"
                 }]
-              }
-            ]
-          },
+              },
           {
             "title": "Data Plane",
-            "panels": [
+            "type": "row",
+            "gridPos": {"h": 1, "w": 24, "x": 0, "y": 9}
+          },
               {
                 "title": "Total Sidecar Memory (GiB)",
                 "type": "timeseries",
+                "gridPos": {"h": 8, "w": 8, "x": 0, "y": 10},
                 "targets": [{
                   "expr": "sum(container_memory_working_set_bytes{container='istio-proxy'}) / 1073741824"
                 }]
@@ -296,6 +302,7 @@ data:
               {
                 "title": "Sidecar Memory by Namespace",
                 "type": "timeseries",
+                "gridPos": {"h": 8, "w": 8, "x": 8, "y": 10},
                 "targets": [{
                   "expr": "sum(container_memory_working_set_bytes{container='istio-proxy'}) by (namespace) / 1048576"
                 }]
@@ -303,14 +310,12 @@ data:
               {
                 "title": "Average Memory per Sidecar (MiB)",
                 "type": "stat",
+                "gridPos": {"h": 8, "w": 8, "x": 16, "y": 10},
                 "targets": [{
                   "expr": "avg(container_memory_working_set_bytes{container='istio-proxy'}) / 1048576"
                 }]
               }
-            ]
-          }
         ]
-      }
     }
 ```
 
@@ -340,7 +345,7 @@ spec:
     - record: istio:sidecar_memory_utilization:ratio
       expr: |
         container_memory_working_set_bytes{container="istio-proxy"}
-        / container_spec_memory_limit_bytes{container="istio-proxy"}
+        / (container_spec_memory_limit_bytes{container="istio-proxy"} > 0)
 ```
 
 ## Quick Health Check Script
@@ -359,12 +364,20 @@ TOTAL_SIDECARS=$(kubectl get pods -A -o json | jq '[.items[] | select(.spec.cont
 echo "Total sidecars: $TOTAL_SIDECARS"
 
 echo -e "\n--- Top 5 Memory-Consuming Sidecars ---"
-kubectl top pods -A --containers --no-headers 2>/dev/null | grep istio-proxy | sort -k4 -rn | head -5
+kubectl top pods -A --containers --no-headers 2>/dev/null | grep istio-proxy | sort -k5 -hr | head -5
 
 echo -e "\n--- OOMKilled Sidecars (last 24h) ---"
-kubectl get events -A --field-selector reason=OOMKilling --sort-by='.lastTimestamp' 2>/dev/null | grep istio-proxy | tail -5
+CUTOFF=$(date -u -d '24 hours ago' +%s)
+kubectl get pods -A -o json | jq -r --argjson cutoff "$CUTOFF" '
+  .items[] as $pod
+  | $pod.status.containerStatuses[]?
+  | select(.name == "istio-proxy")
+  | select(.lastState.terminated.reason == "OOMKilled")
+  | select((.lastState.terminated.finishedAt | fromdateiso8601) >= $cutoff)
+  | "\($pod.metadata.namespace)\t\($pod.metadata.name)\t\(.lastState.terminated.finishedAt)"
+' | tail -5
 ```
 
 ## Summary
 
-Effective monitoring and alerting for Istio resources requires tracking both the control plane and data plane. Set up Prometheus to scrape istiod metrics and container resource metrics. Create alerts at multiple severity levels: critical for outages (istiod down, gateway down, OOMKill), and warning for approaching limits (memory above 75-85%, CPU throttling). Use Grafana dashboards for ongoing visibility and recording rules to keep queries efficient. A well-instrumented Istio deployment gives you early warning before resource issues turn into service outages.
+Effective monitoring and alerting for Istio resources requires tracking both the control plane and data plane. Set up Prometheus to scrape istiod metrics and container resource metrics. Create alerts at multiple severity levels: critical for outages (istiod down, gateway down, OOMKilled), and warning for approaching limits (memory above 75-85%, CPU throttling). Use Grafana dashboards for ongoing visibility and recording rules to keep queries efficient. A well-instrumented Istio deployment gives you early warning before resource issues turn into service outages.
