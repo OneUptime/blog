@@ -12,7 +12,7 @@ Everyone who runs Istio asks the same question: "How much latency does it add?" 
 
 ## Understanding the Latency Components
 
-A request between two meshed services goes through four proxy hops:
+A request between two meshed services has five main latency components:
 
 1. Client application to client-side Envoy (loopback, very fast)
 2. Client-side Envoy processing (route matching, load balancing, TLS initiation)
@@ -37,7 +37,7 @@ kubectl create ns latency-test-mesh
 kubectl label ns latency-test-mesh istio-injection=enabled
 ```
 
-Deploy identical services in both:
+Deploy identical services and a Fortio client in both:
 
 ```yaml
 apiVersion: apps/v1
@@ -70,6 +70,24 @@ spec:
     port: 8080
   selector:
     app: echo-server
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fortio-client
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fortio-client
+  template:
+    metadata:
+      labels:
+        app: fortio-client
+    spec:
+      containers:
+      - name: fortio
+        image: fortio/fortio:latest
 ```
 
 Run latency tests with fixed QPS to avoid saturating the system:
@@ -107,9 +125,9 @@ spec:
 The key fields are:
 
 - `%DURATION%` - Total time the request took from Envoy's perspective (in ms)
-- `%RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)%` - Time the upstream took to respond
+- `%RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)%` - Time spent by the upstream host processing the request plus the network latency between Envoy and that upstream host
 
-The difference between DURATION and X-ENVOY-UPSTREAM-SERVICE-TIME is the time Envoy spent processing the request.
+The difference between DURATION and X-ENVOY-UPSTREAM-SERVICE-TIME is a useful approximation of downstream-side proxy time, but it is not a perfect measure of total Envoy processing.
 
 ```bash
 # Get access logs from the sidecar
@@ -135,22 +153,23 @@ The difference between client-side and server-side latency at each percentile ro
 If you have tracing enabled, the trace spans show exactly where time is spent:
 
 ```yaml
-apiVersion: install.istio.io/v1alpha1
-kind: IstioOperator
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
+metadata:
+  name: mesh-default
+  namespace: istio-system
 spec:
-  meshConfig:
-    enableTracing: true
-    defaultConfig:
-      tracing:
-        sampling: 100
+  tracing:
+  - providers:
+    - name: jaeger
+    randomSamplingPercentage: 100
 ```
 
-With 100% sampling (only for testing, not production), every request generates a trace. Each trace shows the time spent in each Envoy proxy and the application.
+With 100% sampling (only for testing, not production), every request can generate a trace, assuming Istio is configured with a tracing extension provider and your applications propagate trace headers. Each trace shows the time spent in each Envoy proxy and the application.
 
 ```bash
 # If using Jaeger
-kubectl port-forward svc/tracing -n istio-system 16686:80
-# Open http://localhost:16686 and search for your service
+istioctl dashboard jaeger
 ```
 
 The trace will show spans like:
@@ -164,14 +183,25 @@ To isolate just the mTLS overhead from the total proxy overhead:
 ```bash
 # Test with mTLS STRICT
 kubectl apply -f - <<EOF
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
-  name: test-strict
+  name: default
   namespace: latency-test-mesh
 spec:
   mtls:
     mode: STRICT
+---
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: echo-server
+  namespace: latency-test-mesh
+spec:
+  host: echo-server.latency-test-mesh.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
 EOF
 
 # Run benchmark
@@ -180,14 +210,25 @@ kubectl exec deploy/fortio-client -n latency-test-mesh -- fortio load \
 
 # Switch to DISABLE
 kubectl apply -f - <<EOF
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
-  name: test-disabled
+  name: default
   namespace: latency-test-mesh
 spec:
   mtls:
     mode: DISABLE
+---
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: echo-server
+  namespace: latency-test-mesh
+spec:
+  host: echo-server.latency-test-mesh.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: DISABLE
 EOF
 
 # Run same benchmark
