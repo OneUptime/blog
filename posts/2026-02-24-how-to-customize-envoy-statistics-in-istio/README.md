@@ -71,9 +71,9 @@ spec:
             request_protocol:
               operation: UPSERT
               value: "request.protocol"
-            upstream_cluster:
+            upstream_app:
               operation: UPSERT
-              value: "upstream_peer.name"
+              value: "filter_state.upstream_peer.app"
 ```
 
 ## Removing Default Dimensions
@@ -159,9 +159,9 @@ spec:
 
 After applying this and restarting your workloads, you will see additional metrics on the `/stats/prometheus` endpoint of each proxy.
 
-## Creating Custom Stats with EnvoyFilter
+## Customizing Envoy Stat Tags with EnvoyFilter
 
-For advanced use cases, you can create entirely new metrics using Envoy's stats configuration through an EnvoyFilter:
+For advanced use cases, Envoy's stats configuration can extract additional tags from existing Envoy stats. In current Istio releases, `EnvoyFilter` bootstrap patches are deprecated, so prefer the Telemetry API and `proxyStatsMatcher` for normal metric customization. If you still need to patch Envoy bootstrap configuration, treat it as version-sensitive and test it carefully during Istio upgrades:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -250,7 +250,7 @@ spec:
           tagOverrides:
             upstream_cluster_name:
               operation: UPSERT
-              value: "upstream_peer.name"
+              value: "filter_state.upstream_peer.name"
 ```
 
 ## Verifying Your Customizations
