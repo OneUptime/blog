@@ -26,7 +26,7 @@ The important thing to understand is that Istio needs to match the outbound conn
 
 ## Resolution Strategies
 
-ServiceEntries support three resolution strategies:
+ServiceEntries support several resolution strategies. The most common ones for DNS-based egress are:
 
 ### DNS Resolution
 
@@ -47,7 +47,7 @@ spec:
   resolution: DNS
 ```
 
-With `resolution: DNS`, Istio's control plane resolves the hostname and programs the Envoy proxy with the resulting IP addresses. Envoy uses these IPs as upstream endpoints. The proxy refreshes the DNS resolution periodically (based on the DNS TTL).
+With `resolution: DNS`, the proxy resolves the hostname asynchronously and uses the resulting IP addresses as upstream endpoints. The proxy refreshes DNS periodically.
 
 This is the most common setting and works well for external services with stable DNS records.
 
@@ -70,7 +70,7 @@ spec:
   resolution: NONE
 ```
 
-With `resolution: NONE`, Istio does not resolve the hostname at all. It relies on the original destination IP from the application's own DNS resolution. This is required for wildcard hosts because you cannot resolve a wildcard DNS entry.
+With `resolution: NONE`, Istio does not resolve the hostname at all. It relies on the original destination IP from the application's own DNS resolution. This is commonly used for wildcard hosts because you cannot resolve a wildcard DNS entry directly.
 
 Use `NONE` when:
 - You are using wildcard hosts
@@ -116,13 +116,12 @@ spec:
     defaultConfig:
       proxyMetadata:
         ISTIO_META_DNS_CAPTURE: "true"
-        ISTIO_META_DNS_AUTO_ALLOCATE: "true"
 ```
 
-With DNS capture enabled, the sidecar proxy intercepts DNS queries from the application. When `DNS_AUTO_ALLOCATE` is true, Istio automatically assigns virtual IPs to ServiceEntries that do not have addresses specified. This solves several problems:
+With DNS capture enabled, the sidecar proxy intercepts DNS queries from the application. Istio can automatically assign virtual IPs to ServiceEntries that do not have addresses specified, and you can control this per ServiceEntry with the `networking.istio.io/enable-autoallocate-ip` label. This solves several problems:
 
 - **TCP traffic to external services**: Without a virtual IP, Istio cannot distinguish between different external services on the same port for plain TCP traffic. Auto-allocation assigns unique virtual IPs so Envoy can route correctly.
-- **Wildcard matching**: DNS capture allows Istio to see the actual hostname being resolved, improving matching for wildcard ServiceEntries.
+- **ServiceEntry hostnames without real DNS records**: DNS capture can answer application DNS queries for ServiceEntry hostnames, including hostnames that would otherwise be unknown to CoreDNS.
 
 ## Handling Multiple Ports
 
@@ -148,27 +147,30 @@ spec:
   resolution: DNS
 ```
 
-## DNS Refresh and TTL
+## DNS Refresh
 
-When using `resolution: DNS`, Istio respects the TTL from the DNS response when deciding how often to re-resolve. But Envoy also has its own DNS refresh rate. If you are connecting to a service that changes IPs frequently (like a service behind a load balancer that scales), you might need to adjust the refresh rate.
+When using `resolution: DNS`, the proxy resolves DNS asynchronously on a fixed interval. At the time of writing, Istio documents this interval as 30 seconds and not configurable. If you are connecting to a service that changes IPs frequently (like a service behind a load balancer that scales), you can consider `resolution: DNS_ROUND_ROBIN`, which is designed for large web-scale services that must be accessed through DNS and whose records change frequently.
 
-You can configure this through a DestinationRule:
+For example:
 
 ```yaml
 apiVersion: networking.istio.io/v1
-kind: DestinationRule
+kind: ServiceEntry
 metadata:
-  name: external-api-dr
+  name: external-api
   namespace: default
 spec:
-  host: api.example.com
-  trafficPolicy:
-    connectionPool:
-      tcp:
-        connectTimeout: 10s
+  hosts:
+  - api.example.com
+  ports:
+  - number: 443
+    name: tls
+    protocol: TLS
+  location: MESH_EXTERNAL
+  resolution: DNS_ROUND_ROBIN
 ```
 
-For services with very short DNS TTLs, the DNS proxy mode (`ISTIO_META_DNS_CAPTURE`) is often more reliable because it refreshes at the sidecar level.
+DNS proxy mode (`ISTIO_META_DNS_CAPTURE`) only affects DNS requests made by the application. It does not change how the proxy itself performs `resolution: DNS` lookups for ServiceEntries.
 
 ## Troubleshooting DNS Issues
 
@@ -210,7 +212,7 @@ If an external service changes its IP address and your connections are failing, 
 kubectl rollout restart deploy/my-app
 ```
 
-Or if you have DNS proxy enabled, it will pick up changes based on the DNS TTL.
+If you have DNS proxy enabled, remember that it only changes how application DNS queries are handled. It does not change the proxy's own refresh interval for `resolution: DNS` ServiceEntries.
 
 ## Working with Internal DNS Names
 
@@ -241,8 +243,8 @@ Make sure CoreDNS in your cluster can resolve the hostname, either through a for
 
 **Enable DNS capture for complex setups**: If you have many external services, wildcard entries, or TCP-based protocols, the DNS proxy feature simplifies configuration significantly.
 
-**Monitor DNS resolution failures**: DNS issues are a common source of egress problems. Check the `pilot_dns_requests_total` and `pilot_dns_failures_total` metrics in istiod to see if there are resolution problems.
+**Monitor DNS resolution failures**: DNS issues are a common source of egress problems. With DNS proxying enabled, check agent metrics such as `dns_requests_total`, `dns_upstream_requests_total`, and `dns_upstream_failures_total` to see if there are resolution problems.
 
 **Be careful with wildcard entries**: Wildcards are convenient but they reduce your visibility. You do not know which specific subdomains are being accessed. Use them only when the set of subdomains is truly dynamic and cannot be enumerated.
 
-DNS handling in Istio can feel complex, but once you understand the three resolution modes and when to use each one, configuring egress for DNS-based services becomes straightforward.
+DNS handling in Istio can feel complex, but once you understand the common resolution modes and when to use each one, configuring egress for DNS-based services becomes straightforward.
