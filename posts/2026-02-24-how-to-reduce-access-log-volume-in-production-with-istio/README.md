@@ -14,7 +14,7 @@ Running Istio in production with full access logging can generate an enormous am
 
 Before optimizing, it helps to know what generates the most log entries. In a typical Istio mesh:
 
-- Each HTTP request generates two log entries by default - one from the client-side sidecar and one from the server-side sidecar
+- With mesh-wide sidecar access logging enabled, each HTTP request generates two log entries - one from the client-side sidecar and one from the server-side sidecar
 - Health check probes from Kubernetes (liveness, readiness, startup) generate log entries every few seconds per pod
 - Internal service-to-service calls for retries, circuit breaker probes, and keep-alives add up
 - Ingress gateway traffic gets logged at the gateway plus the destination sidecar
@@ -36,7 +36,7 @@ spec:
     - providers:
         - name: envoy
       filter:
-        expression: "!request.url_path.contains('/health') && !request.url_path.contains('/ready') && !request.url_path.contains('/livez') && !request.url_path.contains('/readyz')"
+        expression: "!has(request.url_path) || (!request.url_path.contains('/health') && !request.url_path.contains('/ready') && !request.url_path.contains('/livez') && !request.url_path.contains('/readyz'))"
 ```
 
 This filters out requests to common health check endpoints. Adjust the paths to match your application's health check URLs.
@@ -56,18 +56,18 @@ spec:
     - providers:
         - name: envoy
       filter:
-        expression: "response.code >= 400 || response.code == 0 || response.duration > duration('2s')"
+        expression: "!has(response.code) || response.code >= 400 || response.duration > duration('2s')"
 ```
 
-The `response.code == 0` catches connection failures where no response was received. The duration threshold should match your SLO - if your SLO is 500ms p99, set the threshold a bit above that.
+The `!has(response.code)` check catches connection failures where no response code was recorded. The duration threshold should match your SLO - if your SLO is 500ms p99, set the threshold a bit above that.
 
 This single change typically reduces log volume by 95% or more in a healthy production system.
 
 ## Strategy 3: Disable Client-Side Logging
 
-Every request generates logs on both the client sidecar and the server sidecar. The server-side log has most of the useful information (upstream timing, actual response code, etc.). Disabling client-side logging cuts volume in half.
+Every request generates logs on both the client sidecar and the server sidecar when sidecar access logging is enabled mesh-wide. The server-side log has most of the useful information (upstream timing, actual response code, etc.). Disabling client-side logging cuts volume in half.
 
-You can't directly disable client vs. server logging through the Telemetry API, but you can achieve it through the Envoy access log configuration. Use the `%RESPONSE_FLAGS%` variable and a filter to identify server-side logs:
+You can target server-side logging through the Telemetry API with `match.mode: SERVER`:
 
 ```yaml
 apiVersion: telemetry.istio.io/v1
@@ -82,11 +82,11 @@ spec:
   accessLogging:
     - providers:
         - name: envoy
-      filter:
-        expression: "connection.requested_server_name != ''"
+      match:
+        mode: SERVER
 ```
 
-The `requested_server_name` is typically populated on the server side when mTLS is active, making it a reasonable heuristic for server-side logging.
+The `SERVER` mode applies to inbound traffic where the workload is the destination. Use `CLIENT` if you need the opposite behavior for a specific workload.
 
 ## Strategy 4: Different Rates for Different Services
 
@@ -154,6 +154,7 @@ spec:
   accessLogging:
     - providers:
         - name: envoy
+      disabled: false
       filter:
         expression: "response.code >= 400 || response.duration > duration('1s')"
 ```
@@ -187,7 +188,7 @@ Short field names save bytes per entry. At scale, this adds up. A typical access
 
 Sometimes it's easier to filter logs at the collection layer rather than at the source. Tools like Fluentd, Fluent Bit, and Vector can drop log entries based on content:
 
-```yaml
+```conf
 # Fluent Bit filter to drop health check logs
 [FILTER]
     Name    grep
@@ -195,7 +196,7 @@ Sometimes it's easier to filter logs at the collection layer rather than at the 
     Exclude log /health|/ready|/livez
 ```
 
-```yaml
+```toml
 # Vector transform to filter by status code
 [transforms.filter_success]
   type = "filter"
@@ -214,7 +215,7 @@ Before and after making changes, measure your log volume:
 kubectl logs -l app=my-service -c istio-proxy --tail=1000 --timestamps | \
   awk '{print substr($1,1,19)}' | sort | uniq -c | tail -5
 
-# Check the size of logs being generated
+# Check istio-proxy CPU and memory while logs are being generated
 kubectl top pod -l app=my-service --containers | grep istio-proxy
 ```
 
@@ -241,10 +242,11 @@ spec:
         - name: envoy
       filter:
         expression: >
-          (response.code >= 400 || response.code == 0 || response.duration > duration('2s'))
-          && !request.url_path.contains('/health')
+          (!has(response.code) || response.code >= 400 || response.duration > duration('2s'))
+          && (!has(request.url_path)
+          || (!request.url_path.contains('/health')
           && !request.url_path.contains('/ready')
-          && !request.url_path.contains('/metrics')
+          && !request.url_path.contains('/metrics')))
 ```
 
 This logs errors and slow requests while filtering out health checks and metrics endpoints. Apply it mesh-wide, then add overrides for specific namespaces or workloads that need more or less logging.
