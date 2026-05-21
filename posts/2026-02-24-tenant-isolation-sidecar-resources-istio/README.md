@@ -8,7 +8,7 @@ Description: Use Istio Sidecar resources to isolate tenant service discovery, re
 
 ---
 
-When you run a multi-tenant Istio mesh without Sidecar resources, every Envoy proxy in the mesh knows about every service in every namespace. That means a proxy in tenant-a's namespace has full configuration for services in tenant-b, tenant-c, and every other namespace. This is wasteful in terms of memory and CPU, and it is a potential security concern because the proxy configuration reveals the existence of other tenants' services.
+When you run a multi-tenant Istio mesh without Sidecar resources, every Envoy proxy in the mesh knows about every exported service in every namespace. That means a proxy in tenant-a's namespace has full configuration for services in tenant-b, tenant-c, and every other namespace. This is wasteful in terms of memory and CPU, and it is a potential security concern because the proxy configuration reveals the existence of other tenants' services.
 
 The Istio Sidecar resource fixes this by scoping what each proxy can see.
 
@@ -41,7 +41,7 @@ spec:
     - "istio-system/*"
 ```
 
-The `./*` means "all services in my own namespace" and `istio-system/*` allows access to Istio's own services (like the ingress gateway). The proxy will not receive configuration for any other namespace.
+The `./*` means "all services in my own namespace" and `istio-system/*` allows access to Istio's own services (like control plane, telemetry, or gateway services). The proxy will not receive service-specific configuration for any other namespace.
 
 Apply this for every tenant:
 
@@ -145,7 +145,7 @@ spec:
     - "istio-system/*"
 ```
 
-The frontend can only reach the backend API. The worker can reach the task queue and RabbitMQ. Neither can reach anything else.
+The frontend only receives service-specific configuration for the backend API. The worker receives service-specific configuration for the task queue and RabbitMQ. If you also set `outboundTrafficPolicy.mode` to `REGISTRY_ONLY`, traffic to unknown destinations is dropped.
 
 ## Controlling Inbound Configuration
 
@@ -195,7 +195,7 @@ spec:
     - "shared-services/*"
 ```
 
-With `REGISTRY_ONLY`, any attempt to reach a service not listed in the egress hosts returns a 502 error. This prevents data exfiltration and accidental connections to external services.
+With `REGISTRY_ONLY`, unknown outbound traffic is dropped, and HTTP requests commonly surface this as a 502 error. This helps catch missing `ServiceEntry` or Sidecar host configuration and reduces accidental connections to external services. Istio does not treat this setting as a complete outbound security policy or firewall, so enforce egress security with network policy, firewall rules, or an egress gateway when that boundary matters.
 
 The alternative is `ALLOW_ANY`, which lets traffic to unknown destinations pass through. Use this only if your tenants need to reach arbitrary external services and you control egress through other means (like a proxy or firewall).
 
@@ -221,8 +221,9 @@ kubectl top pod -n tenant-a -l app=my-service --containers | grep istio-proxy
 Check xDS configuration push time:
 
 ```bash
-kubectl exec -n istio-system deploy/istiod -- \
-  curl -s localhost:15014/metrics | grep pilot_xds_push_time
+kubectl port-forward -n istio-system deploy/istiod 15014:15014
+
+curl -s http://localhost:15014/metrics | grep pilot_xds_push_time
 ```
 
 In large meshes (hundreds of services), applying Sidecar resources can reduce proxy memory usage by 50-80% and cut configuration push times significantly. This directly translates to faster pod startup (less time waiting for proxy configuration) and lower resource costs.
