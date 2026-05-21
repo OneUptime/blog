@@ -18,14 +18,7 @@ Before configuring rotation, you need to understand where the logs actually end 
 
 By default, Istio components log to stdout/stderr. In a Kubernetes environment, the container runtime (containerd or CRI-O) captures these streams and writes them to files on the node, typically under `/var/log/containers/` and `/var/log/pods/`.
 
-The container runtime itself handles rotation of these files. For containerd, the default configuration lives at `/etc/containerd/config.toml`:
-
-```toml
-[plugins."io.containerd.grpc.v1.cri".containerd]
-  [plugins."io.containerd.grpc.v1.cri".containerd.runtimes]
-    [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc]
-      runtime_type = "io.containerd.runc.v2"
-```
+The kubelet manages rotation of these container log files. The exact runtime configuration varies by distribution, but Kubernetes exposes the portable rotation settings through the kubelet configuration.
 
 ## Kubelet Log Rotation
 
@@ -82,7 +75,7 @@ spec:
                   SIZE=$(stat -f%z /var/log/istio/access.log 2>/dev/null || stat -c%s /var/log/istio/access.log 2>/dev/null)
                   if [ "$SIZE" -gt 104857600 ]; then
                     mv /var/log/istio/access.log /var/log/istio/access.log.1
-                    # Envoy will reopen the file
+                    wget -q -O- --post-data='' http://127.0.0.1:15000/reopen_logs >/dev/null 2>&1 || true
                   fi
                 fi
                 sleep 60
@@ -96,33 +89,24 @@ spec:
             sizeLimit: 500Mi
 ```
 
-But honestly, the better approach is to just log to stdout and let the container runtime handle it. That's the Kubernetes-native way to do things.
+But honestly, the better approach is to just log to stdout and let the kubelet handle container log rotation. That's the Kubernetes-native way to do things.
 
 ## Istiod Log Rotation
 
-Istiod logs to stdout by default, so the container runtime handles rotation. However, Istiod has built-in log rotation support for when you configure file-based logging.
+Istiod logs to stdout by default, so the kubelet handles rotation of the container log files. However, Istiod has built-in log rotation support for when you configure file-based logging.
 
 You can set these through command-line flags on the pilot-discovery binary:
 
-```yaml
-apiVersion: install.istio.io/v1alpha1
-kind: IstioOperator
-spec:
-  components:
-    pilot:
-      k8s:
-        containers:
-          - name: discovery
-            args:
-              - "discovery"
-              - "--log_rotate=/var/log/istiod/istiod.log"
-              - "--log_rotate_max_age=7"
-              - "--log_rotate_max_size=100"
-              - "--log_rotate_max_backups=3"
+```bash
+pilot-discovery discovery \
+  --log_rotate=/var/log/istiod/istiod.log \
+  --log_rotate_max_age=7 \
+  --log_rotate_max_size=100 \
+  --log_rotate_max_backups=3
 ```
 
 The parameters mean:
-- `log_rotate` - Path to the log file (enables file-based logging with rotation)
+- `log_rotate` - Base path for the rotating log file
 - `log_rotate_max_age` - Maximum number of days to retain old log files
 - `log_rotate_max_size` - Maximum size in megabytes before rotation
 - `log_rotate_max_backups` - Maximum number of old log files to keep
@@ -147,7 +131,7 @@ spec:
             mountPath: /var/log/istiod
 ```
 
-When the emptyDir hits its size limit, the kubelet will evict the pod. That's a blunt instrument, but it prevents disk exhaustion on the node.
+When the pod exceeds its local ephemeral storage limit, the kubelet can evict the pod. That's a blunt instrument, but it prevents disk exhaustion on the node.
 
 ## Log Rotation with Fluentd/Fluent Bit
 
@@ -181,7 +165,7 @@ Fluent Bit handles file rotation automatically through its tail input plugin. Th
 
 ## Setting Resource Limits
 
-Another way to indirectly control log growth is through resource limits on the Istio sidecar. If the sidecar has an ephemeral storage limit, it can't grow its logs beyond that:
+Another way to indirectly control log growth is through resource limits on the Istio sidecar. If the sidecar has an ephemeral storage limit, Kubernetes can evict the pod if the proxy's writable layer and logs exceed that limit:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -203,13 +187,13 @@ Set up monitoring to catch log volume issues before they become problems:
 
 ```bash
 # Check log file sizes on a node
-kubectl debug node/my-node -it --image=busybox -- du -sh /var/log/containers/*istio*
+kubectl debug node/my-node -it --image=busybox -- sh -c 'du -sh /host/var/log/containers/*istio*'
 
-# Check ephemeral storage usage for Istio pods
-kubectl get pods -n istio-system -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.ephemeralContainerStatuses}{"\n"}{end}'
+# Check configured ephemeral storage requests and limits for Istio pods
+kubectl get pods -n istio-system -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{range .spec.containers[*]}{.name}{": "}{.resources.requests.ephemeral-storage}{"/"}{.resources.limits.ephemeral-storage}{" "}{end}{"\n"}{end}'
 
-# Check disk usage on nodes
-kubectl top nodes
+# Check node DiskPressure status
+kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{range .status.conditions[?(@.type=="DiskPressure")]}{.status}{"\n"}{end}{end}'
 ```
 
 ## Recommended Setup
