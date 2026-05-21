@@ -153,6 +153,10 @@ spec:
     - api-server
   http:
     - timeout: 10s
+      retries:
+        attempts: 3
+        perTryTimeout: 2s
+        retryOn: gateway-error,connect-failure,refused-stream
       route:
         - destination:
             host: api-server
@@ -195,10 +199,16 @@ A 1% sampling rate is a common starting point for production.
 Check that your root CA certificate is not the default self-signed one. For production, you should use a custom CA or integrate with cert-manager.
 
 ```bash
-kubectl get secret -n istio-system istio-ca-secret -o jsonpath='{.data.ca-cert\.pem}' | base64 -d | openssl x509 -text -noout
+kubectl get secret -n istio-system cacerts -o jsonpath='{.data.root-cert\.pem}' | base64 -d | openssl x509 -text -noout
 ```
 
 Make sure the certificate is not expiring soon and has an appropriate validity period.
+
+If you still use Istio's self-signed CA, inspect the generated CA secret instead:
+
+```bash
+kubectl get secret -n istio-system istio-ca-secret -o jsonpath='{.data.ca-cert\.pem}' | base64 -d | openssl x509 -text -noout
+```
 
 Resource Limits for Sidecars
 
@@ -237,8 +247,10 @@ kubectl get virtualservice -A
 Verify TLS certificates on your gateways:
 
 ```bash
-kubectl get secret -n istio-system -l istio/gateway
+kubectl -n istio-system get secrets
 ```
+
+Compare the secret names with the `credentialName` values configured on your Gateway resources.
 
 Check that your gateway has enough replicas and appropriate resource allocations:
 
