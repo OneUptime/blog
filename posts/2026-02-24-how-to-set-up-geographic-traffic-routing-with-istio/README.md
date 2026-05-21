@@ -39,8 +39,8 @@ aws route53 change-resource-record-sets --hosted-zone-id ZXXXXX --change-batch '
         "SetIdentifier": "us-east",
         "GeoLocation": {"ContinentCode": "NA"},
         "AliasTarget": {
-          "HostedZoneId": "ZXXXXX",
-          "DNSName": "us-east-1-ingress.myapp.com",
+          "HostedZoneId": "ZELBHOSTEDZONEIDUSE1",
+          "DNSName": "dualstack.us-east-1-ingress-1234567890.us-east-1.elb.amazonaws.com.",
           "EvaluateTargetHealth": true
         }
       }
@@ -53,8 +53,8 @@ aws route53 change-resource-record-sets --hosted-zone-id ZXXXXX --change-batch '
         "SetIdentifier": "eu-west",
         "GeoLocation": {"ContinentCode": "EU"},
         "AliasTarget": {
-          "HostedZoneId": "ZYYYYY",
-          "DNSName": "eu-west-1-ingress.myapp.com",
+          "HostedZoneId": "ZELBHOSTEDZONEIDEUW1",
+          "DNSName": "dualstack.eu-west-1-ingress-1234567890.eu-west-1.elb.amazonaws.com.",
           "EvaluateTargetHealth": true
         }
       }
@@ -76,6 +76,7 @@ metadata:
   annotations:
     external-dns.alpha.kubernetes.io/hostname: api.myapp.com
     external-dns.alpha.kubernetes.io/set-identifier: us-east-1
+    external-dns.alpha.kubernetes.io/aws-geolocation-continent-code: "NA"
 spec:
   type: LoadBalancer
   selector:
@@ -92,7 +93,7 @@ spec:
 Each region has its own Istio Ingress Gateway. Configure it to accept traffic for your domain:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: main-gateway
@@ -121,7 +122,7 @@ spec:
 Then route traffic to your services:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-routing
@@ -154,12 +155,19 @@ spec:
 Once traffic enters the mesh through the regional ingress gateway, you want to keep it in the same region. Configure locality load balancing on each service:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: user-service
 spec:
   host: user-service
+  subsets:
+    - name: eu
+      labels:
+        region: eu
+    - name: default
+      labels:
+        region: default
   trafficPolicy:
     outlierDetection:
       consecutive5xxErrors: 3
@@ -187,10 +195,10 @@ Some regulations (GDPR, data sovereignty laws) require that user data stays in s
 
 ### Region-Specific Routing
 
-Use Istio headers to tag requests with their origin region:
+Use headers set by each regional ingress gateway or front proxy to route requests by their origin region:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: user-service
@@ -212,14 +220,14 @@ spec:
             subset: default
 ```
 
-Your ingress gateway or a front-proxy can set the `x-user-region` header based on the geographic DNS record that was used.
+Your ingress gateway or a front-proxy can set the `x-user-region` header from its own regional configuration.
 
 ## Weighted Geographic Distribution
 
 Instead of strict locality preference, you can distribute traffic across regions with explicit weights. This works well for capacity balancing across regions or for keeping secondary regions warm:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: api-service
@@ -250,7 +258,7 @@ Traffic from us-east-1 goes 80% local and 20% to us-west-2. EU traffic stays 90%
 If an entire region goes down, DNS health checks should detect the failure and stop routing users to that region. But DNS propagation takes time (minutes to hours depending on TTL). During that window, Istio's failover can help:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: user-service
@@ -282,14 +290,14 @@ Track where your traffic is coming from and where it is going:
 sum(rate(istio_requests_total{
   destination_service_name="user-service",
   source_workload="istio-ingressgateway"
-}[5m])) by (source_workload_namespace)
+}[5m])) by (source_cluster)
 ```
 
 Build a Grafana dashboard showing traffic per region:
 
 ```text
 # Traffic heatmap by region
-sum(rate(istio_requests_total{reporter="source"}[5m])) by (source_workload, destination_workload)
+sum(rate(istio_requests_total{reporter="source"}[5m])) by (source_cluster, destination_cluster)
 ```
 
 ## Testing Geographic Routing
@@ -303,16 +311,16 @@ Check that DNS returns the right endpoint for each region:
 dig api.myapp.com
 # Should return us-east-1 load balancer IP
 
-# Using a specific DNS resolver in another region
-dig @8.8.8.8 api.myapp.com
+# From a VM or shell running in another region
+dig api.myapp.com
 ```
 
 ### Test with curl
 
 ```bash
-# Direct to each region's ingress
-curl -H "Host: api.myapp.com" https://us-east-1-ingress.myapp.com/api/v1/users
-curl -H "Host: api.myapp.com" https://eu-west-1-ingress.myapp.com/api/v1/users
+# Direct to each region's ingress while preserving the Host header and TLS SNI
+curl --connect-to api.myapp.com:443:us-east-1-ingress.myapp.com:443 https://api.myapp.com/api/v1/users
+curl --connect-to api.myapp.com:443:eu-west-1-ingress.myapp.com:443 https://api.myapp.com/api/v1/users
 ```
 
 ### Verify Locality
