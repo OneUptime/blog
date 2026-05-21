@@ -8,7 +8,7 @@ Description: Diagnose and fix pods that fail to start or get stuck when the Isti
 
 ---
 
-Your deployment worked perfectly before you added it to the Istio mesh. Now pods are stuck in Init, CrashLoopBackOff, or they start but the application cannot make any network calls. Adding the Istio sidecar to a pod introduces two extra containers (the init container and the proxy), and either one can cause startup failures.
+Your deployment worked perfectly before you added it to the Istio mesh. Now pods are stuck in Init, CrashLoopBackOff, or they start but the application cannot make any network calls. Adding the Istio sidecar to a pod usually introduces an init container and the proxy container, and either one can cause startup failures. If Istio CNI is enabled, the CNI node agent replaces the privileged init container.
 
 This guide covers every common reason pods fail to start with the Istio sidecar and how to fix each one.
 
@@ -28,7 +28,7 @@ kubectl get pod <pod-name> -n production -o jsonpath='{.status.containerStatuses
 kubectl get pod <pod-name> -n production -o jsonpath='{.status.initContainerStatuses[*]}'
 ```
 
-The pod has these containers:
+The pod usually has these containers:
 - `istio-init` (init container) - Sets up iptables rules
 - `istio-proxy` (sidecar container) - The Envoy proxy
 - Your application container(s)
@@ -50,7 +50,7 @@ The `istio-init` container needs NET_ADMIN and NET_RAW capabilities to set up ip
 iptables: Permission denied (you must be root)
 ```
 
-Check if a PodSecurityPolicy, Pod Security Admission, or OPA policy is stripping capabilities:
+Check if Pod Security Admission, an older PodSecurityPolicy setup, or an OPA policy is stripping capabilities:
 
 ```bash
 # Check if pod security admission is enforcing
@@ -85,12 +85,13 @@ Option 2: Allow the init container capabilities in your security policy.
 kubectl get pod <pod-name> -n production -o jsonpath='{.metadata.annotations}' | grep apparmor
 ```
 
-If AppArmor is blocking the init container, add an exception:
+If AppArmor is blocking the init container, use an unconfined AppArmor profile for the pod or adjust the Istio sidecar injector template for the injected init container. On Kubernetes v1.30 and later, use `appArmorProfile` instead of the deprecated AppArmor annotation:
 
 ```yaml
-metadata:
-  annotations:
-    container.apparmor.security.beta.kubernetes.io/istio-init: unconfined
+spec:
+  securityContext:
+    appArmorProfile:
+      type: Unconfined
 ```
 
 ## Sidecar Proxy Not Starting
@@ -139,10 +140,8 @@ Mirror the image to your private registry and configure Istio to use it:
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
-  values:
-    global:
-      hub: my-registry.example.com/istio
-      tag: 1.20.0
+  hub: my-registry.example.com/istio
+  tag: 1.20.0
 ```
 
 **Cause 3: Resource limits too low**
@@ -192,11 +191,11 @@ spec:
           holdApplicationUntilProxyStarts: true
 ```
 
-This adds a postStart hook to the sidecar that blocks the application container from starting until the proxy is ready.
+This configures sidecar injection so the proxy starts first and other containers are blocked until the proxy is ready.
 
 **Cause 2: Application health checks fail through the sidecar**
 
-If your liveness or readiness probe is an HTTP check, it goes through the sidecar. If the sidecar is not ready when the first probe fires, the probe fails and Kubernetes restarts the container:
+Istio rewrites HTTP, TCP, and gRPC liveness and readiness probes by default so kubelet probes are handled by the sidecar agent. If the application or sidecar is not ready when the first liveness probe fires, the probe can fail and Kubernetes may restart the container:
 
 ```yaml
 # Increase the initial delay to give the sidecar time to start
@@ -214,9 +213,13 @@ The sidecar uses several ports. If your application uses any of these, there wil
 
 - 15000 - Envoy admin interface
 - 15001 - Envoy outbound
+- 15002 - Failure detection
+- 15004 - Debug port
 - 15006 - Envoy inbound
-- 15020 - Health check
+- 15008 - HBONE mTLS tunnel
+- 15020 - Merged Prometheus telemetry
 - 15021 - Health check
+- 15053 - DNS port, if DNS capture is enabled
 - 15090 - Prometheus metrics
 
 ```bash
@@ -242,7 +245,9 @@ The sidecar adds resource requests (typically 100m CPU and 128Mi memory by defau
 metadata:
   annotations:
     sidecar.istio.io/proxyCPU: "10m"
+    sidecar.istio.io/proxyCPULimit: "100m"
     sidecar.istio.io/proxyMemory: "64Mi"
+    sidecar.istio.io/proxyMemoryLimit: "128Mi"
 ```
 
 ## Stuck in Terminating
