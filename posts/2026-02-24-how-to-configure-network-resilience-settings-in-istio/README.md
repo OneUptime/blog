@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Network Resilience, Circuit Breaking, Retries, Service Mesh, Kubernetes
 
-Description: Complete guide to configuring network resilience in Istio including retries, timeouts, circuit breaking, outlier detection, and rate limiting.
+Description: Complete guide to configuring network resilience in Istio including retries, timeouts, circuit breaking, and outlier detection.
 
 ---
 
@@ -38,13 +38,13 @@ This sets a 5-second timeout for all requests to the payment service. If the ser
 
 Some things to keep in mind about timeouts:
 
-- The timeout includes retry time. If you have 3 retries with a 2-second per-try timeout, your overall timeout should be at least 6 seconds.
+- The timeout includes retry time. If you have 3 retries with a 2-second per-try timeout, your overall timeout should be at least 8 seconds because the original try also gets a per-try timeout.
 - Set timeouts based on your SLO, not on the average response time. If your P99 latency is 2 seconds, a 5-second timeout gives you headroom for spikes.
 - Timeouts propagate through the call chain. If Service A calls B with a 5-second timeout, and B calls C with a 3-second timeout, the total time A waits includes B's processing plus the call to C.
 
 ## Retries
 
-Retries automatically resend failed requests to another instance of the service. They handle transient failures like network blips and temporary pod unavailability.
+Retries automatically resend failed requests, usually avoiding hosts that were already tried. They handle transient failures like network blips and temporary pod unavailability.
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -64,7 +64,7 @@ spec:
       retries:
         attempts: 3
         perTryTimeout: 2s
-        retryOn: 5xx,reset,connect-failure,retriable-status-codes
+        retryOn: 5xx,reset,connect-failure,503
         retryRemoteLocalities: true
 ```
 
@@ -81,7 +81,7 @@ The `retryOn` conditions you can use:
 - `gateway-error` - 502, 503, 504 responses
 - `reset` - Connection resets
 - `connect-failure` - Failed to connect to upstream
-- `retriable-status-codes` - Custom status codes (configured separately)
+- Custom status codes such as `503` - add the status code directly to the comma-separated `retryOn` list
 - `refused-stream` - Upstream refused the stream (HTTP/2)
 
 Be very careful with retries on non-idempotent operations. Retrying a POST that creates an order could create duplicate orders. Only retry operations that are safe to repeat.
@@ -120,10 +120,10 @@ The connection pool settings act as circuit breaker thresholds:
 
 - `maxConnections: 100` limits the total TCP connections to the service
 - `http1MaxPendingRequests: 100` limits pending requests waiting for a connection
-- `http2MaxRequests: 1000` limits active requests to the service (HTTP/2)
-- `maxRetries: 3` limits concurrent retries
+- `http2MaxRequests: 1000` limits active requests to the service
+- `maxRetries: 3` limits outstanding retries across the cluster
 
-When these limits are hit, new requests get a 503 response immediately instead of being queued. This is the "fast fail" behavior that prevents cascading failures.
+When these limits are hit, affected new requests or retries get a 503 response immediately instead of being queued. This is the "fast fail" behavior that prevents cascading failures.
 
 ## Outlier Detection
 
@@ -148,7 +148,7 @@ spec:
 
 How outlier detection works:
 
-1. Every `interval` seconds, Envoy checks the error rate for each upstream pod
+1. Envoy tracks errors for each upstream pod and performs ejection analysis according to the configured detection type and `interval`
 2. If a pod has `consecutive5xxErrors` or more errors in a row, it gets ejected from the load balancing pool
 3. The pod stays ejected for `baseEjectionTime`, which increases with each consecutive ejection
 4. No more than `maxEjectionPercent` of pods can be ejected at once
@@ -233,14 +233,9 @@ spec:
             host: order-service.default.svc.cluster.local
             port:
               number: 8080
-      timeout: 10s
-      retries:
-        attempts: 2
-        perTryTimeout: 3s
-        retryOn: 5xx
 ```
 
-This injects a 5-second delay on 50% of requests and returns 503 on 10% of requests. With these faults active, you can verify that your retries, timeouts, and circuit breakers behave as expected.
+This injects a 5-second delay on 50% of requests and returns 503 on 10% of requests. Use fault injection to create controlled failures, then test retry and timeout behavior with a separate VirtualService rule because Istio does not enable timeouts or retries on a route where client-side fault injection is enabled.
 
 ## Monitoring Resilience Behavior
 
@@ -253,10 +248,10 @@ kubectl exec -it <pod-name> -c istio-proxy -n default -- \
 
 Key metrics to watch:
 
-- `upstream_rq_pending_overflow` - Requests rejected because pending queue was full
+- `upstream_rq_pending_overflow` - Requests rejected because connection pool or request circuit breaking overflowed
 - `upstream_cx_overflow` - Connections rejected because max connections was reached
 - `upstream_rq_retry` - Number of retries
-- `outlier_detection.ejections_active` - Currently ejected endpoints
+- `outlier_detection.ejections_active` - Currently ejected endpoints for a cluster with outlier detection configured
 
 These metrics tell you whether your resilience settings are too aggressive or too permissive. If you see a lot of overflows, your limits might be too low. If you never see any, they might be too high to provide meaningful protection.
 
