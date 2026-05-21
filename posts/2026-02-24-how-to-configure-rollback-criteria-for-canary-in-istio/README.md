@@ -64,7 +64,7 @@ spec:
       interval: 30s
 ```
 
-The `threshold: 3` means three consecutive metric check failures trigger rollback. This prevents rollback on transient blips while still catching sustained degradation.
+The `threshold: 3` means three failed metric or webhook checks trigger rollback. This prevents rollback on transient blips while still catching sustained degradation.
 
 ## Tuning the Failure Threshold
 
@@ -81,7 +81,7 @@ Match the threshold to your analysis interval to control the total time before r
 Time to rollback = threshold * interval
 ```
 
-With `threshold: 3` and `interval: 30s`, rollback happens within 90 seconds of sustained failure.
+With `threshold: 3` and `interval: 30s`, rollback happens within 90 seconds if each analysis loop continues to fail.
 
 ## Multi-Metric Rollback Criteria
 
@@ -236,7 +236,7 @@ analysis:
     retries: 1
 ```
 
-If the webhook returns a non-200 status code, it counts as a failure toward the threshold.
+If the webhook times out or returns a non-2xx status code, it counts as a failure toward the threshold.
 
 ## Instant Rollback Triggers
 
@@ -282,12 +282,21 @@ analysis:
     interval: 30s
 ```
 
-But this has the downside of also triggering on any other metric failure. The better approach is to use the standard threshold for gradual degradation and manual intervention for emergencies:
+But this has the downside of also triggering on any other metric failure. The better approach is to use the standard threshold for gradual degradation and a rollback webhook for emergencies:
+
+```yaml
+analysis:
+  webhooks:
+  - name: emergency-rollback
+    type: rollback
+    url: http://flagger-loadtester.production/rollback/check
+```
 
 ```bash
-# Manual rollback
+# Open the rollback gate from the load tester pod
+kubectl -n production exec -it deploy/flagger-loadtester -- sh
 
-kubectl annotate canary api-service -n production "flagger.app/rollback=true"
+curl -d '{"name":"api-service","namespace":"production"}' http://localhost:8080/rollback/open
 ```
 
 ## Testing Your Rollback Criteria
