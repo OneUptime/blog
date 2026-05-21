@@ -43,16 +43,21 @@ tccli tke CreateCluster \
   --ClusterCIDRSettings '{"ClusterCIDR": "10.0.0.0/14"}' \
   --ClusterBasicSettings '{
     "ClusterOs": "tlinux2.4(tkernel4)x86_64",
-    "ClusterVersion": "1.30.0",
+    "ClusterVersion": "1.32.0",
     "ClusterName": "istio-cluster",
-    "VpcId": "vpc-xxx",
-    "SubnetId": "subnet-xxx"
+    "VpcId": "vpc-xxx"
+  }' \
+  --ClusterAdvancedSettings '{
+    "ContainerRuntime": "containerd",
+    "NetworkType": "GR"
   }' \
   --RunInstancesForNode '[{
     "NodeRole": "WORKER",
-    "RunInstancesPara": ["{\"InstanceType\":\"S5.XLARGE8\",\"InstanceCount\":3}"]
+    "RunInstancesPara": ["{\"InstanceChargeType\":\"POSTPAID_BY_HOUR\",\"Placement\":{\"Zone\":\"ap-guangzhou-6\"},\"InstanceType\":\"S5.XLARGE8\",\"VirtualPrivateCloud\":{\"VpcId\":\"vpc-xxx\",\"SubnetId\":\"subnet-xxx\"},\"SystemDisk\":{\"DiskType\":\"CLOUD_BSSD\",\"DiskSize\":50},\"InternetAccessible\":{\"PublicIpAssigned\":true,\"InternetMaxBandwidthOut\":1},\"LoginSettings\":{\"KeyIds\":[\"skey-xxx\"]},\"SecurityGroupIds\":[\"sg-xxx\"],\"InstanceCount\":3}"]
   }]'
 ```
+
+The exact Kubernetes versions, zones, instance types, and OS image names available to `CreateCluster` vary by region. Use API Explorer or the TKE console to confirm the values for your account before running the command.
 
 ## Step 2: Configure kubectl
 
@@ -78,8 +83,8 @@ kubectl get nodes
 ## Step 3: Install Istio
 
 ```bash
-curl -L https://istio.io/downloadIstio | sh -
-cd istio-1.24.0
+curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.30.0 sh -
+cd istio-1.30.0
 export PATH=$PWD/bin:$PATH
 ```
 
@@ -202,13 +207,13 @@ In China regions, pulling from Docker Hub can be unreliable. Use Tencent's conta
 
 ```bash
 # Push Istio images to Tencent Container Registry (TCR)
-docker pull docker.io/istio/proxyv2:1.24.0
-docker tag docker.io/istio/proxyv2:1.24.0 ccr.ccs.tencentyun.com/istio/proxyv2:1.24.0
-docker push ccr.ccs.tencentyun.com/istio/proxyv2:1.24.0
+docker pull docker.io/istio/proxyv2:1.30.0
+docker tag docker.io/istio/proxyv2:1.30.0 ccr.ccs.tencentyun.com/istio/proxyv2:1.30.0
+docker push ccr.ccs.tencentyun.com/istio/proxyv2:1.30.0
 
-docker pull docker.io/istio/pilot:1.24.0
-docker tag docker.io/istio/pilot:1.24.0 ccr.ccs.tencentyun.com/istio/pilot:1.24.0
-docker push ccr.ccs.tencentyun.com/istio/pilot:1.24.0
+docker pull docker.io/istio/pilot:1.30.0
+docker tag docker.io/istio/pilot:1.30.0 ccr.ccs.tencentyun.com/istio/pilot:1.30.0
+docker push ccr.ccs.tencentyun.com/istio/pilot:1.30.0
 ```
 
 Then install Istio with the custom hub:
@@ -218,7 +223,7 @@ apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
   hub: ccr.ccs.tencentyun.com/istio
-  tag: 1.24.0
+  tag: 1.30.0
   profile: default
 ```
 
@@ -228,11 +233,10 @@ TKE supports VPC-CNI networking, which assigns VPC IPs directly to pods. This pr
 
 When using VPC-CNI:
 - Each pod gets a VPC IP address
-- No IP masquerading needed
 - Lower latency for inter-pod communication
-- Security groups can be applied directly to pods
+- Security groups can be applied directly to pods when you enable the supported Pod security group mode
 
-To use VPC-CNI with Istio, make sure your subnet has enough IP addresses for all pods plus their sidecars.
+To use VPC-CNI with Istio, make sure your container subnets have enough IP addresses for all pods. Istio sidecars share the same pod network namespace, so they do not consume separate pod IPs.
 
 ## Security Groups
 
@@ -322,7 +326,7 @@ spec:
 
 If the CLB isn't provisioning, check your Tencent Cloud CLB quotas in the console under "Overview > Resource Limits."
 
-If pod-to-pod communication fails, verify the container network mode. GlobalRouter mode adds an overlay that can sometimes conflict with Istio's iptables rules. VPC-CNI mode avoids this issue.
+If pod-to-pod communication fails, verify the container network mode, route tables, security groups, and whether the VPC-CNI subnets have enough available IP addresses.
 
 If images fail to pull, set up a pull-through proxy or use Tencent's container registry as described above.
 
