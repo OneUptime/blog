@@ -29,10 +29,10 @@ These tell you how well istiod is distributing configuration to proxies.
 ### Push Count
 
 ```promql
-sum(rate(pilot_xds_pushes[5m])) by (type)
+sum(rate(pilot_xds_pushes{type!~".*_senderr"}[5m])) by (type)
 ```
 
-Shows the rate of xDS pushes by type (CDS, EDS, LDS, RDS). A steady rate during normal operation is expected. Spikes correspond to configuration changes or endpoint updates.
+Shows the rate of xDS pushes by type, such as CDS, EDS, LDS, RDS, and other xDS resources. A steady rate during normal operation is expected. Spikes correspond to configuration changes or endpoint updates.
 
 ### Push Latency
 
@@ -45,7 +45,7 @@ The time it takes istiod to generate and send a push. Healthy values are under 1
 ### Push Errors
 
 ```promql
-sum(rate(pilot_xds_push_errors[5m])) by (type)
+sum(rate(pilot_xds_pushes{type=~".*_senderr"}[5m])) by (type)
 ```
 
 Non-zero error rates mean pushes are failing. Check istiod logs for the cause.
@@ -63,25 +63,25 @@ The end-to-end time from when istiod detects a change to when all affected proxi
 ### Connected Proxy Count
 
 ```promql
-pilot_xds_connected
+sum(pilot_xds)
 ```
 
 The number of Envoy proxies currently connected to istiod. This should match the number of sidecar pods in your mesh. If it drops, proxies are disconnecting.
 
-### Connection Terminations
+### Connected Proxy Count by Version
 
 ```promql
-sum(rate(pilot_xds_connection_terminations[5m]))
+sum(pilot_xds) by (version)
 ```
 
-The rate of proxy disconnections. Some disconnections are normal (pod restarts, rolling updates), but a high rate could indicate network issues or istiod instability.
+The number of current XDS connections broken down by version label. Unexpected drops for one version can indicate a bad rollout, network issues, or istiod instability.
 
 ## Configuration Metrics
 
 ### Config Updates
 
 ```promql
-sum(rate(pilot_k8s_cfg_events[5m])) by (type)
+sum(rate(pilot_k8s_cfg_events[5m])) by (type, event)
 ```
 
 The rate of Kubernetes configuration events istiod is processing. High rates during deployments are expected. Continuously high rates without deployments could indicate a controller loop or API server issue.
@@ -107,7 +107,7 @@ The rate of successful certificate issuances. Should correlate with pod creation
 ### CSR Errors
 
 ```promql
-sum(rate(citadel_server_csr_sign_error_count[5m]))
+sum(rate(citadel_server_csr_sign_err_count[5m]))
 ```
 
 Signing errors are bad. If this is non-zero, workloads cannot get certificates and mTLS will break for new connections.
@@ -162,7 +162,7 @@ histogram_quantile(0.99, sum(rate(sidecar_injection_time_seconds_bucket[5m])) by
 ### Injection Errors
 
 ```promql
-sum(rate(sidecar_injection_requests_total{success="false"}[5m]))
+sum(rate(sidecar_injection_failure_total[5m]))
 ```
 
 ## Setting Up Alerts
@@ -188,20 +188,20 @@ spec:
         summary: "Istiod push latency p99 is above 1 second"
 
     - alert: IstiodPushErrors
-      expr: sum(rate(pilot_xds_push_errors[5m])) > 0
+      expr: sum(rate(pilot_xds_pushes{type=~".*_senderr"}[5m])) > 0
       for: 5m
       labels:
         severity: warning
       annotations:
         summary: "Istiod is experiencing push errors"
 
-    - alert: IstiodProxyDisconnections
-      expr: sum(rate(pilot_xds_connection_terminations[5m])) > 10
+    - alert: IstiodNoXDSConnections
+      expr: sum(pilot_xds) == 0 or absent(pilot_xds)
       for: 5m
       labels:
         severity: warning
       annotations:
-        summary: "High rate of proxy disconnections from istiod"
+        summary: "Istiod has no connected XDS clients"
 
     - alert: IstiodConfigRejections
       expr: increase(pilot_total_xds_rejects[5m]) > 0
@@ -212,7 +212,7 @@ spec:
         summary: "Proxies are rejecting configuration from istiod"
 
     - alert: IstiodCertSignErrors
-      expr: sum(rate(citadel_server_csr_sign_error_count[5m])) > 0
+      expr: sum(rate(citadel_server_csr_sign_err_count[5m])) > 0
       for: 2m
       labels:
         severity: critical
@@ -220,7 +220,14 @@ spec:
         summary: "Istiod CA is failing to sign certificates"
 
     - alert: IstiodHighMemory
-      expr: container_memory_working_set_bytes{pod=~"istiod-.*"} / container_spec_memory_limit_bytes{pod=~"istiod-.*"} > 0.85
+      expr: |
+        (
+          sum by (namespace, pod) (container_memory_working_set_bytes{namespace="istio-system", container="discovery", pod=~"istiod-.*"})
+          /
+          sum by (namespace, pod) (container_spec_memory_limit_bytes{namespace="istio-system", container="discovery", pod=~"istiod-.*"})
+        ) > 0.85
+        and on(namespace, pod)
+        sum by (namespace, pod) (container_spec_memory_limit_bytes{namespace="istio-system", container="discovery", pod=~"istiod-.*"}) > 0
       for: 5m
       labels:
         severity: warning
@@ -228,7 +235,7 @@ spec:
         summary: "Istiod memory usage is above 85% of limit"
 
     - alert: IstiodDown
-      expr: absent(up{app="istiod"} == 1)
+      expr: absent(up{job="istiod"} == 1)
       for: 1m
       labels:
         severity: critical
@@ -240,11 +247,11 @@ spec:
 
 Key panels for an istiod dashboard:
 
-1. **Push rate** by type (line chart): `sum(rate(pilot_xds_pushes[5m])) by (type)`
+1. **Push rate** by type (line chart): `sum(rate(pilot_xds_pushes{type!~".*_senderr"}[5m])) by (type)`
 2. **Push latency** percentiles (line chart): p50, p95, p99
-3. **Connected proxies** (single stat): `pilot_xds_connected`
-4. **Push errors** (line chart): `sum(rate(pilot_xds_push_errors[5m]))`
-5. **Config events** (line chart): `sum(rate(pilot_k8s_cfg_events[5m])) by (type)`
+3. **Connected proxies** (single stat): `sum(pilot_xds)`
+4. **Push errors** (line chart): `sum(rate(pilot_xds_pushes{type=~".*_senderr"}[5m]))`
+5. **Config events** (line chart): `sum(rate(pilot_k8s_cfg_events[5m])) by (type, event)`
 6. **CPU usage** (line chart)
 7. **Memory usage** (line chart with limit line)
 8. **Certificate issuance rate** (line chart)
@@ -253,7 +260,7 @@ Key panels for an istiod dashboard:
 Istio ships with a pre-built Grafana dashboard for the control plane. Import it from:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/grafana.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/grafana.yaml
 ```
 
 The built-in dashboard is a good starting point, but add the custom alerts from above since the default dashboards do not include alerting rules.
