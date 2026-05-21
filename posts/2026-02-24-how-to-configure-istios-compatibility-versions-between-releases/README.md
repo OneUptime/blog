@@ -25,7 +25,7 @@ When you upgrade from 1.23 to 1.24, you get all of 1.24's new defaults at once. 
 
 Compatibility versions let you run Istio 1.24 with 1.23 behavior. You get the new binary (with bug fixes and security patches) but the behavioral defaults from the previous version. Then you can switch individual features to the new behavior one at a time.
 
-This is configured through the `compatibilityVersion` field in the mesh configuration.
+This is configured through the `compatibilityVersion` installation value.
 
 ## Setting the Compatibility Version
 
@@ -37,13 +37,7 @@ This is configured through the `compatibilityVersion` field in the mesh configur
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
-  meshConfig:
-    defaultConfig:
-      proxyMetadata: {}
   values:
-    pilot:
-      env:
-        ISTIO_DELTA_XDS: "false"
     compatibilityVersion: "1.23"
 ```
 
@@ -56,10 +50,6 @@ istioctl install -f istio-compat.yaml -y
 ```yaml
 # values-compat.yaml
 compatibilityVersion: "1.23"
-
-pilot:
-  env:
-    ISTIO_DELTA_XDS: "false"
 ```
 
 ```bash
@@ -118,7 +108,7 @@ Restart your workload pods to get the new proxy version:
 kubectl rollout restart deployment -n my-app
 ```
 
-At this point, you are running the new Istio binary with old behavior. Everything should work exactly as before.
+At this point, you are running the new Istio binary with the old compatibility profile. You still need to verify the mesh, but this avoids adopting the new behavioral defaults at the same time as the binary upgrade.
 
 ### Phase 2: Test New Defaults in Staging
 
@@ -145,11 +135,10 @@ kind: IstioOperator
 spec:
   values:
     compatibilityVersion: "1.23"
-  meshConfig:
-    # Explicitly opt into specific new behaviors
-    defaultConfig:
-      holdApplicationUntilProxyStarts: true
-    enableAutoMtls: true
+    pilot:
+      env:
+        # Opt into a 1.24 behavior that the 1.23 profile disables.
+        ENABLE_INBOUND_RETRY_POLICY: "true"
 ```
 
 ### Phase 4: Remove Compatibility Version
@@ -179,9 +168,9 @@ Check effective configuration:
 istioctl proxy-config bootstrap deploy/my-app -n my-app | head -30
 ```
 
-## Per-Namespace Override
+## Per-Workload ProxyConfig Override
 
-You can run different namespaces with different compatibility settings using proxy annotations:
+`compatibilityVersion` is an installation-level setting, not a per-namespace setting. For specific proxy-level settings, you can still use the `proxy.istio.io/config` annotation:
 
 ```yaml
 apiVersion: apps/v1
@@ -195,25 +184,25 @@ spec:
       annotations:
         proxy.istio.io/config: |
           proxyMetadata:
-            SOME_FEATURE_FLAG: "old_behavior"
+            ISTIO_META_DNS_CAPTURE: "true"
     spec:
       containers:
         - name: app
           image: my-app:latest
 ```
 
-This lets you test new behavior for specific workloads while keeping the rest of the mesh on old defaults.
+This lets you test proxy-level settings for specific workloads while keeping the rest of the mesh unchanged.
 
 ## Skipping Versions
 
-If you are upgrading across multiple minor versions (say from 1.21 to 1.24), set the compatibility version to your starting version:
+If you are upgrading across multiple minor versions, do not assume that you can jump directly to the latest version with the compatibility version set to your starting version. Istio does not officially test or recommend upgrades across more than two minor versions in one step.
 
 ```yaml
 values:
-  compatibilityVersion: "1.21"
+  compatibilityVersion: "1.23"
 ```
 
-Then gradually step through each version's changes. This is safer than jumping straight to the latest defaults.
+For example, when upgrading to Istio 1.24, use a supported compatibility profile such as `1.23`, then gradually step through each version's changes.
 
 ## Monitoring for Issues After Changing Defaults
 
@@ -283,4 +272,4 @@ kubectl rollout restart deployment -n my-app
 
 ## Wrapping Up
 
-Compatibility versions are a safety net for Istio upgrades. They let you decouple the binary upgrade from behavioral changes, which dramatically reduces the risk of upgrades breaking things. Use them for every minor version upgrade, verify the new defaults in a non-production environment, and remove the compatibility flag only after thorough testing. It adds one extra step to the upgrade process but can save hours of troubleshooting.
+Compatibility versions are a safety net for Istio upgrades. They let you decouple the binary upgrade from behavioral changes, which dramatically reduces the risk of upgrades breaking things. Use them when an incompatibility exists, verify the new defaults in a non-production environment, and remove the compatibility flag as soon as practical after thorough testing. It adds one extra step to the upgrade process but can save hours of troubleshooting.
