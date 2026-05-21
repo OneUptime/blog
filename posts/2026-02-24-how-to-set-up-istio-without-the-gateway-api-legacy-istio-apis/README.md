@@ -26,12 +26,16 @@ spec:
   components:
     ingressGateways:
       - name: istio-ingressgateway
+        namespace: istio-ingress
         enabled: true
+        label:
+          istio: ingressgateway
   meshConfig:
     accessLogFile: /dev/stdout
 ```
 
 ```bash
+kubectl create namespace istio-ingress
 istioctl install -f istio-classic.yaml -y
 ```
 
@@ -40,7 +44,7 @@ Or using Helm:
 ```bash
 helm install istio-base istio/base -n istio-system --create-namespace
 helm install istiod istio/istiod -n istio-system
-helm install istio-ingress istio/gateway -n istio-ingress --create-namespace
+helm install istio-ingressgateway istio/gateway -n istio-ingress --create-namespace
 ```
 
 ## The Classic Istio API Resources
@@ -279,13 +283,17 @@ spec:
     - api.external-service.com
   location: MESH_EXTERNAL
   ports:
+    - number: 80
+      name: http
+      protocol: HTTP
+      targetPort: 443
     - number: 443
       name: https
-      protocol: TLS
+      protocol: HTTPS
   resolution: DNS
 ```
 
-Apply a DestinationRule for mTLS to the external service:
+Apply a DestinationRule for TLS origination to the external service:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -296,8 +304,11 @@ metadata:
 spec:
   host: api.external-service.com
   trafficPolicy:
-    tls:
-      mode: SIMPLE
+    portLevelSettings:
+      - port:
+          number: 80
+        tls:
+          mode: SIMPLE
 ```
 
 ## Mesh-Internal VirtualService
@@ -334,13 +345,13 @@ spec:
 Check gateway listeners:
 
 ```bash
-istioctl proxy-config listener deploy/istio-ingress -n istio-ingress
+istioctl proxy-config listeners deployment/istio-ingressgateway -n istio-ingress
 ```
 
 Check routes:
 
 ```bash
-istioctl proxy-config routes deploy/istio-ingress -n istio-ingress -o json
+istioctl proxy-config routes deployment/istio-ingressgateway -n istio-ingress -o json
 ```
 
 Analyze for errors:
