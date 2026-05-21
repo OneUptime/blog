@@ -28,17 +28,17 @@ You will see something like `istio-sidecar-injector` or `istio-revision-tag-defa
 kubectl get mutatingwebhookconfiguration istio-sidecar-injector -o yaml
 ```
 
-The webhook matches pods based on namespace labels and pod annotations. When a matching pod is created, Kubernetes sends the pod spec to istiod's injection endpoint.
+The webhook matches pods based on namespace labels and pod labels or annotations. When a matching pod is created, Kubernetes sends the pod spec to istiod's injection endpoint.
 
 ## Stage 2: Injection Decision
 
 istiod receives the pod spec and decides whether to inject a sidecar based on several factors:
 
 1. **Namespace label**: Is `istio-injection=enabled` or `istio.io/rev=<revision>` present on the namespace?
-2. **Pod annotation**: Does the pod have `sidecar.istio.io/inject: "true"` or `"false"`?
-3. **Pod owner**: Is the pod owned by a host networking workload (like a DaemonSet with `hostNetwork: true`)?
+2. **Pod label**: Does the pod have `sidecar.istio.io/inject: "true"` or `"false"`?
+3. **Pod network mode**: Does the pod set `hostNetwork: true`?
 
-The pod-level annotation takes precedence over the namespace label. If the namespace has injection enabled but the pod has `sidecar.istio.io/inject: "false"`, the sidecar is not injected.
+The pod-level label can override the namespace label. If the namespace has injection enabled but the pod has `sidecar.istio.io/inject: "false"`, the sidecar is not injected.
 
 Check the injection status of a pod:
 
@@ -161,9 +161,9 @@ Using CNI eliminates the need for `NET_ADMIN` and `NET_RAW` capabilities on the 
 After the init container completes, the sidecar (istio-proxy) and application containers start. The sidecar goes through its own startup sequence:
 
 1. **pilot-agent starts**: This is the sidecar management process
-2. **pilot-agent connects to istiod**: Establishes an xDS gRPC stream
-3. **Configuration is received**: istiod sends Listener, Cluster, Route, and Endpoint configuration
-4. **Envoy starts**: pilot-agent spawns the Envoy process with the received configuration
+2. **Envoy starts**: pilot-agent bootstraps and starts the Envoy process
+3. **Envoy connects to istiod**: Establishes an xDS gRPC stream, typically through the agent's xDS proxy path
+4. **Configuration is received**: istiod sends Listener, Cluster, Route, and Endpoint configuration
 5. **Envoy becomes ready**: The sidecar starts accepting traffic
 
 You can see this startup in the sidecar logs:
@@ -187,7 +187,7 @@ spec:
       holdApplicationUntilProxyStarts: true
 ```
 
-When enabled, this adds a postStart lifecycle hook to the sidecar that blocks until Envoy is ready. The application container's startup is delayed until after this hook completes.
+When enabled, Istio injects the sidecar at the start of the pod's container list and adds startup hooks so other containers are blocked until the proxy is ready. The application container's startup is delayed until after this completes.
 
 Or enable it per-pod:
 
@@ -219,12 +219,12 @@ istioctl proxy-config all deploy/your-deployment
 
 ## Stage 7: Graceful Shutdown
 
-When a pod is deleted, Kubernetes sends a SIGTERM to all containers. The shutdown sequence matters for avoiding dropped requests.
+When a pod is deleted, Kubernetes begins graceful termination for its containers. The shutdown sequence matters for avoiding dropped requests.
 
 The default behavior:
 
-1. Kubernetes removes the pod from Service endpoints
-2. SIGTERM is sent to all containers simultaneously
+1. Kubernetes marks the pod as terminating and EndpointSlices mark the endpoint as not ready
+2. The kubelet asks the container runtime to stop the containers; these stop requests are processed asynchronously and have no guaranteed order
 3. Both the application and sidecar begin shutting down
 4. If the sidecar shuts down before the application, in-flight requests from the application fail
 
@@ -241,7 +241,7 @@ spec:
 
 This tells the sidecar to stop accepting new connections but continue processing existing ones for 10 seconds before shutting down.
 
-You can also configure the sidecar to exit after the application exits:
+You can also configure the sidecar to exit once active connections reach zero during draining:
 
 ```yaml
 annotations:
@@ -270,7 +270,7 @@ istioctl proxy-config bootstrap your-pod -n your-namespace -o json | \
   jq '.bootstrap.dynamicResources'
 ```
 
-If a sidecar is stuck in "STALE" status, it means it has not received a recent configuration push from istiod. This usually indicates connectivity issues between the sidecar and the control plane.
+If a sidecar is stuck in "STALE" status, it means istiod has sent an update to Envoy but has not received an acknowledgement. This usually indicates connectivity issues between the sidecar and the control plane or an overloaded control plane.
 
 ## Debugging Injection Issues
 
