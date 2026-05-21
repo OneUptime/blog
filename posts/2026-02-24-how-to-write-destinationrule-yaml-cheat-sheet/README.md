@@ -32,7 +32,7 @@ spec:
   subsets: []
 ```
 
-The `host` field specifies which service this rule applies to. It can be a short name (resolved in the same namespace) or a full FQDN like `my-service.default.svc.cluster.local`.
+The `host` field specifies which service this rule applies to. It can be a short name (resolved in the namespace of the DestinationRule) or a full FQDN like `my-service.default.svc.cluster.local`.
 
 ## Subsets
 
@@ -97,7 +97,7 @@ spec:
 
 ## Load Balancing
 
-### Round Robin (default)
+### Round Robin
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -111,6 +111,8 @@ spec:
       simple: ROUND_ROBIN
 ```
 
+If no load balancer is specified, Istio uses least requests by default.
+
 ### Random
 
 ```yaml
@@ -119,7 +121,7 @@ spec:
       simple: RANDOM
 ```
 
-### Least Connections
+### Least Requests
 
 ```yaml
   trafficPolicy:
@@ -127,7 +129,7 @@ spec:
       simple: LEAST_REQUEST
 ```
 
-### Passthrough (let the OS decide)
+### Passthrough (original destination)
 
 ```yaml
   trafficPolicy:
@@ -455,4 +457,4 @@ spec:
             maxConnections: 50
 ```
 
-This gives you a well-tuned DestinationRule with connection limits, circuit breaking, least-connection load balancing, mTLS, and separate subsets for stable and canary versions with different connection limits. Adjust the numbers based on your service's actual capacity and traffic patterns.
+This gives you a well-tuned DestinationRule with connection limits, circuit breaking, least-request load balancing, mTLS, and separate subsets for stable and canary versions with different connection limits. Adjust the numbers based on your service's actual capacity and traffic patterns.
