@@ -34,15 +34,16 @@ When your application calls a cloud storage API like AWS S3:
 
 ```python
 import boto3
+import json
 
 s3 = boto3.client('s3', region_name='us-east-1')
 s3.put_object(Bucket='my-bucket', Key='data.json', Body=json.dumps(data))
 ```
 
-This HTTP request goes through the Envoy sidecar. You need to make sure Envoy can reach the S3 endpoint. By default, Istio allows outbound traffic to any external IP (the `outboundTrafficPolicy` is set to `ALLOW_ANY`). But if you have restricted it to `REGISTRY_ONLY`, you need a ServiceEntry:
+This HTTPS request goes through the Envoy sidecar. You need to make sure Envoy can reach the S3 endpoint. By default, Istio allows outbound traffic to any external IP (the `outboundTrafficPolicy` is set to `ALLOW_ANY`). But if you have restricted it to `REGISTRY_ONLY`, you need a ServiceEntry:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: aws-s3
@@ -58,8 +59,10 @@ spec:
       name: https
       protocol: TLS
   location: MESH_EXTERNAL
-  resolution: DNS
+  resolution: NONE
 ```
+
+For wildcard S3 hostnames, `resolution: NONE` lets Envoy forward to the IP address the application resolved. If you enumerate only exact S3 hostnames, you can use `resolution: DNS`.
 
 ## Database Connection Traffic
 
@@ -85,7 +88,7 @@ The port name `tcp-postgres` tells Istio this is TCP traffic. Envoy handles it a
 For connection pooling, configure the DestinationRule:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: postgres
@@ -109,12 +112,12 @@ metadata:
     traffic.sidecar.istio.io/excludeOutboundIPRanges: "52.216.0.0/15"
 ```
 
-This excludes S3 IP ranges from the proxy. Traffic goes directly from the container to S3 without Envoy in the middle. The downside is you lose observability and mTLS for that traffic.
+This excludes the configured IP range from the proxy. For AWS services, use the current ranges from AWS `ip-ranges.json` instead of hard-coding an example CIDR. Traffic goes directly from the container to S3 without Envoy in the middle. The downside is you lose Istio observability and policy enforcement for that traffic.
 
-A better approach for in-cluster storage is to keep it through the proxy but tune the buffer sizes:
+A better approach for in-cluster storage is to keep it through the proxy but tune the connection pool:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: minio
@@ -136,7 +139,7 @@ For storage services running outside the cluster, create ServiceEntry resources:
 ```yaml
 # Redis on ElastiCache
 
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: elasticache-redis
@@ -151,7 +154,7 @@ spec:
   location: MESH_EXTERNAL
   resolution: DNS
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: elasticache-redis
@@ -163,11 +166,13 @@ spec:
       mode: SIMPLE
 ```
 
+Use `tls.mode: SIMPLE` only when the application speaks plaintext to Envoy and the upstream service expects TLS immediately. If the client already uses TLS, do not originate TLS again in Envoy.
+
 For managed databases:
 
 ```yaml
 # RDS PostgreSQL
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: rds-postgres
@@ -182,7 +187,7 @@ spec:
   location: MESH_EXTERNAL
   resolution: DNS
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: rds-postgres
@@ -190,13 +195,13 @@ metadata:
 spec:
   host: mydb.abc123.us-east-1.rds.amazonaws.com
   trafficPolicy:
-    tls:
-      mode: SIMPLE
     connectionPool:
       tcp:
         maxConnections: 30
         connectTimeout: 10s
 ```
+
+For PostgreSQL TLS, configure TLS in the database client or use a protocol-aware proxy. Generic Istio TLS origination starts TLS immediately on the upstream connection, which does not match PostgreSQL's SSL negotiation.
 
 ## Monitoring Storage Traffic
 
@@ -204,13 +209,13 @@ One of the benefits of routing storage traffic through Istio is observability. Y
 
 ```promql
 # Bytes sent to S3
-sum(rate(istio_tcp_sent_bytes_total{destination_service_name="*.s3.amazonaws.com"}[5m]))
+sum(rate(istio_tcp_sent_bytes_total{destination_service=~".*s3.*amazonaws\\.com"}[5m]))
 
 # Request rate to MinIO
-sum(rate(istio_requests_total{destination_service_name="minio.default.svc.cluster.local"}[5m]))
+sum(rate(istio_requests_total{destination_service="minio.default.svc.cluster.local"}[5m]))
 
-# Latency to external database
-histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{destination_service_name="mydb.abc123.us-east-1.rds.amazonaws.com"}[5m])) by (le))
+# Request latency to MinIO
+histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{destination_service="minio.default.svc.cluster.local"}[5m])) by (le))
 ```
 
 For TCP traffic (databases), the metrics are different:
@@ -228,7 +233,7 @@ rate(envoy_cluster_upstream_cx_connect_fail{cluster_name=~".*postgres.*"}[5m])
 Storage operations can be slow, especially for large file uploads. Make sure your timeouts accommodate this:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: minio
@@ -246,7 +251,7 @@ spec:
 A 5-minute timeout for object storage operations is reasonable. For database queries, you probably want shorter timeouts:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: postgres
@@ -264,7 +269,7 @@ spec:
 If your application connects to external storage over plain HTTP but you want to upgrade to HTTPS at the proxy level:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-storage
@@ -275,14 +280,15 @@ spec:
   ports:
     - number: 443
       name: https
-      protocol: TLS
+      protocol: HTTPS
     - number: 80
       name: http
       protocol: HTTP
+      targetPort: 443
   resolution: DNS
   location: MESH_EXTERNAL
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: external-storage
@@ -292,7 +298,7 @@ spec:
   trafficPolicy:
     portLevelSettings:
       - port:
-          number: 443
+          number: 80
         tls:
           mode: SIMPLE
 ```
@@ -311,7 +317,7 @@ metadata:
     traffic.sidecar.istio.io/excludeOutboundPorts: "6379,5432"
 ```
 
-Use this sparingly. Every excluded path is a path without observability and security.
+Use this sparingly. Every excluded path is a path without Istio observability and Istio-managed security policy.
 
 ## Debugging Storage Traffic Issues
 
