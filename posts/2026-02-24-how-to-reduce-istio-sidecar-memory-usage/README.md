@@ -33,7 +33,7 @@ The biggest memory consumer is usually the xDS configuration - the routing rules
 This is the single most impactful change you can make. By default, every sidecar receives configuration for every service in the entire mesh. A namespace-scoped Sidecar resource limits what each proxy knows about:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -48,7 +48,7 @@ spec:
 This tells every sidecar in `my-namespace` to only load configuration for services within the same namespace and istio-system. If a pod in this namespace only talks to two other services, be even more specific:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: frontend-sidecar
@@ -59,16 +59,16 @@ spec:
       app: frontend
   egress:
   - hosts:
-    - "./api-service.my-namespace.svc.cluster.local"
-    - "./auth-service.my-namespace.svc.cluster.local"
+    - "./api-service"
+    - "./auth-service"
     - "istio-system/*"
 ```
 
 In a mesh with 500 services, this change alone can reduce sidecar memory from 100MB+ down to 20-30MB per proxy.
 
-## Reduce Endpoint Discovery Scope
+## Reduce Endpoint and DNS Scope
 
-Even with scoped Sidecar resources, the proxy still discovers all endpoints for the services it knows about. In large clusters, a single service might have hundreds of endpoints. You can limit endpoint discovery per namespace:
+Even with scoped Sidecar resources, the proxy still discovers endpoints for the services it knows about. In large clusters, a single service might have hundreds of endpoints. Separately, you can enable DNS capture to reduce DNS lookup load and make ServiceEntry DNS resolution local to the proxy:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -80,7 +80,7 @@ spec:
         ISTIO_META_DNS_CAPTURE: "true"
 ```
 
-For more aggressive filtering, use the discovery selectors feature:
+For actual mesh-wide filtering, use the discovery selectors feature:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -129,12 +129,12 @@ spec:
             memory: 128Mi
 ```
 
-## Reduce Access Log Buffering
+## Reduce Access Log Overhead
 
-Access logs consume memory for buffering. If you do not need detailed access logs, disable them or reduce their scope:
+Access log generation has resource overhead. If you do not need detailed access logs, disable them or reduce their scope:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: reduce-logging
@@ -144,7 +144,7 @@ spec:
   - disabled: true
 ```
 
-If you do need access logs, consider reducing the buffer size or writing to stdout instead of keeping them in memory:
+If you do need access logs, configure the output explicitly. Writing to stdout is the common Kubernetes-friendly option:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -160,7 +160,7 @@ spec:
 Each metric the sidecar tracks consumes memory. High-cardinality metrics are the worst offenders. You can reduce metric labels:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: lean-metrics
@@ -196,17 +196,13 @@ kind: IstioOperator
 spec:
   meshConfig:
     enableTracing: false
-    defaultConfig:
-      holdApplicationUntilProxyStarts: true
-      proxyMetadata:
-        BOOTSTRAP_XDS_AGENT: "true"
 ```
 
 Disabling tracing when you are not collecting traces saves both memory and CPU.
 
 ## Use Distroless Proxy Images
 
-The distroless proxy image is smaller and uses slightly less memory because it has no shell, package manager, or other OS utilities:
+The distroless proxy image is smaller and has a reduced attack surface because it has no shell, package manager, or other OS utilities:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -214,18 +210,17 @@ kind: IstioOperator
 spec:
   values:
     global:
-      proxy:
-        image: distroless
+      variant: distroless
 ```
 
-The memory savings are modest (a few MB), but in a large cluster every bit counts.
+The runtime memory savings are not the main reason to use distroless images, but the smaller image and reduced attack surface are useful in large clusters.
 
 ## Reduce Connection Buffer Sizes
 
 Envoy allocates buffers for each connection. If your services handle many concurrent connections, the default buffer sizes can consume significant memory:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1alpha3
 kind: EnvoyFilter
 metadata:
   name: reduce-buffers
