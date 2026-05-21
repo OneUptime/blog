@@ -8,7 +8,7 @@ Description: How to use Kubernetes pod annotations to customize Istio tracing be
 
 ---
 
-Sometimes you need to tweak tracing for a single deployment without touching the mesh-wide configuration. Maybe you're debugging a specific service and want to temporarily increase the sampling rate, or you want one service to use different custom tags. Istio's pod annotations let you override tracing settings at the individual workload level, and the changes take effect when the pod restarts - no changes to MeshConfig or Telemetry resources required.
+Sometimes you need to tweak tracing for a single deployment without touching the mesh-wide configuration. Maybe you're debugging a specific service and want to temporarily increase the sampling rate, or you want one service to use different custom tags. Istio's pod annotations let you override mesh-wide proxy tracing settings at the individual workload level, and the changes take effect when the pod restarts - no changes to MeshConfig or Telemetry resources required.
 
 ## The proxy.istio.io/config Annotation
 
@@ -34,6 +34,8 @@ spec:
 
 This sets the sampling rate to 100% for just this deployment. All other workloads in the mesh keep their default sampling rate.
 
+Important: `tracing` is a single field in `ProxyConfig`. When you set it in the annotation, it replaces the mesh-wide `defaultConfig.tracing` field rather than deeply merging with it. Include any tracing settings you need to preserve, such as the desired sampling rate and any legacy tracing backend address configured in `defaultConfig.tracing`.
+
 ## Available Tracing Configuration Options
 
 Within the `proxy.istio.io/config` annotation, you can configure these tracing-related fields:
@@ -56,7 +58,7 @@ annotations:
   proxy.istio.io/config: |
     tracing:
       sampling: 10
-      customTags:
+      custom_tags:
         deployment.version:
           literal:
             value: canary-v2
@@ -71,7 +73,7 @@ annotations:
 annotations:
   proxy.istio.io/config: |
     tracing:
-      customTags:
+      custom_tags:
         tenant.id:
           header:
             name: x-tenant-id
@@ -94,32 +96,26 @@ spec:
     metadata:
       annotations:
         proxy.istio.io/config: |
+          proxyMetadata:
+            POD_NAME: my-service
+            NODE_POOL: general
           tracing:
-            customTags:
+            custom_tags:
               pod.name:
                 environment:
                   name: POD_NAME
                   defaultValue: unknown
-              node.name:
+              node.pool:
                 environment:
-                  name: NODE_NAME
+                  name: NODE_POOL
                   defaultValue: unknown
     spec:
       containers:
         - name: my-service
           image: my-service:latest
-          env:
-            - name: POD_NAME
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.name
-            - name: NODE_NAME
-              valueFrom:
-                fieldRef:
-                  fieldPath: spec.nodeName
 ```
 
-The environment variables are available to the Envoy sidecar, which runs in the same pod and shares the environment.
+The environment variables used by environment custom tags must be available to the Envoy sidecar. Container environment variables are defined per container in Kubernetes, so application container `env` entries are not automatically visible to `istio-proxy`. For simple static values, set them with `proxyMetadata` in the proxy config annotation; for dynamic downward API values, customize the sidecar injection template so those variables are added to the proxy container.
 
 ## Use Case: Temporary Debug Tracing
 
@@ -180,7 +176,8 @@ spec:
       annotations:
         proxy.istio.io/config: |
           tracing:
-            customTags:
+            sampling: 1
+            custom_tags:
               deployment.track:
                 literal:
                   value: stable
@@ -208,7 +205,7 @@ spec:
         proxy.istio.io/config: |
           tracing:
             sampling: 100
-            customTags:
+            custom_tags:
               deployment.track:
                 literal:
                   value: canary
@@ -221,7 +218,7 @@ spec:
           image: my-service:v1.3.0-rc1
 ```
 
-The canary deployment gets 100% sampling (to capture all canary traffic) and tags identifying it as canary. The stable deployment uses the default sampling rate with its own version tags.
+The canary deployment gets 100% sampling (to capture all canary traffic) and tags identifying it as canary. The stable deployment sets its normal sampling rate with its own version tags.
 
 ## Use Case: Per-Team Configuration
 
@@ -241,7 +238,7 @@ spec:
         proxy.istio.io/config: |
           tracing:
             sampling: 50
-            customTags:
+            custom_tags:
               team:
                 literal:
                   value: alpha
@@ -262,7 +259,7 @@ spec:
         proxy.istio.io/config: |
           tracing:
             sampling: 1
-            customTags:
+            custom_tags:
               team:
                 literal:
                   value: beta
@@ -273,17 +270,17 @@ spec:
 
 ## Priority and Override Order
 
-When tracing configuration exists at multiple levels, the most specific wins:
+When random sampling is configured in multiple places, Istio documents this order of precedence:
 
-1. **Pod annotation** (`proxy.istio.io/config`) - Highest priority
-2. **Workload-level Telemetry** (Telemetry with selector.matchLabels)
-3. **Namespace-level Telemetry** (Telemetry in the workload's namespace)
-4. **Mesh-wide Telemetry** (Telemetry in istio-system)
-5. **MeshConfig defaultConfig** - Lowest priority
+1. **Telemetry API** - Highest priority
+2. **Pod annotation** (`proxy.istio.io/config`)
+3. **MeshConfig defaultConfig** - Lowest priority
 
-If you set sampling to 100% in a pod annotation and 1% in the namespace Telemetry, the pod gets 100%.
+Within the Telemetry API itself, workload-level Telemetry overrides namespace-level Telemetry, and namespace-level Telemetry overrides root-namespace mesh defaults.
 
-Important nuance: The Telemetry API and pod annotations configure tracing at slightly different levels. The Telemetry API's `randomSamplingPercentage` is applied by the Envoy's tracing extension, while the annotation's `tracing.sampling` is set in the bootstrap configuration. In practice, the more specific configuration wins, but if you're mixing both approaches, test to confirm the expected behavior.
+If you set sampling to 100% in a pod annotation and 1% in a namespace Telemetry resource, the Telemetry API value is selected. If no Telemetry resource sets `randomSamplingPercentage` for the workload, the pod annotation overrides the MeshConfig default.
+
+Important nuance: The Telemetry API and pod annotations configure tracing at slightly different levels. The Telemetry API's `randomSamplingPercentage` is applied by the Envoy tracing extension, while the annotation's `tracing.sampling` is set in the bootstrap configuration. If you're mixing both approaches, test to confirm the expected behavior.
 
 ## Verifying Annotation-Based Configuration
 
@@ -302,7 +299,7 @@ print(json.dumps(tracing, indent=2))
 "
 
 # Check if custom tags are present
-istioctl proxy-config bootstrap deploy/my-service -o json | grep -A5 customTags
+istioctl proxy-config bootstrap deploy/my-service -o json | grep -A5 custom_tags
 ```
 
 ## Other Tracing-Related Annotations
@@ -385,8 +382,8 @@ kubectl patch deployment my-service -p "{\"spec\":{\"template\":{\"metadata\":{\
 - You want dynamic changes without pod restarts
 - Managing configuration across multiple workloads
 - Setting namespace-wide policies
-- Using CEL-based filtering
+- Configuring tracing providers, context propagation, and span reporting
 
 ## Summary
 
-Pod annotations give you fine-grained, per-workload control over Istio tracing without touching global configuration. Use `proxy.istio.io/config` to override sampling rates, add custom tags, and configure per-deployment tracing behavior. This is particularly useful for canary deployments, temporary debugging sessions, and team-level customization. Remember that annotations require a pod restart to take effect, and they take priority over both Telemetry API and MeshConfig settings.
+Pod annotations give you fine-grained, per-workload control over Istio tracing without touching global configuration. Use `proxy.istio.io/config` to override sampling rates, add custom tags, and configure per-deployment tracing behavior. This is particularly useful for canary deployments, temporary debugging sessions, and team-level customization. Remember that annotations require a pod restart to take effect, and Telemetry API settings take priority over pod annotations when both configure the same sampling behavior.
