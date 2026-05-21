@@ -14,29 +14,29 @@ This guide covers both approaches and the KubeSphere-specific features that make
 
 ## Prerequisites
 
-- A Kubernetes cluster (1.25+)
+- A Kubernetes cluster supported by KubeSphere 3.4.x (v1.20.x through v1.26.x)
 - kubectl access with cluster-admin privileges
+- A default StorageClass configured in the cluster
 - At least 4 CPU cores and 8 GB RAM available for KubeSphere and Istio
 
 ## Option A: Install KubeSphere with Istio Enabled
 
 If you're setting up KubeSphere from scratch, you can enable Istio during installation.
 
-### Step 1: Install KubeSphere
+### Step 1: Download the KubeSphere Configuration
 
-Deploy KubeSphere on an existing Kubernetes cluster:
+Download the KubeSphere cluster configuration:
 
 ```bash
-kubectl apply -f https://github.com/kubesphere/ks-installer/releases/download/v3.4.1/kubesphere-installer.yaml
-kubectl apply -f https://github.com/kubesphere/ks-installer/releases/download/v3.4.1/cluster-configuration.yaml
+curl -LO https://github.com/kubesphere/ks-installer/releases/download/v3.4.1/cluster-configuration.yaml
 ```
 
 ### Step 2: Enable Service Mesh in Configuration
 
-Before the installation completes, edit the ClusterConfiguration to enable the service mesh:
+Before applying the configuration, edit `cluster-configuration.yaml` to enable the service mesh:
 
 ```bash
-kubectl edit clusterconfiguration ks-installer -n kubesphere-system
+vi cluster-configuration.yaml
 ```
 
 Find the `servicemesh` section and set it to enabled:
@@ -46,22 +46,31 @@ servicemesh:
   enabled: true
 ```
 
+### Step 3: Install KubeSphere
+
+Deploy KubeSphere on an existing Kubernetes cluster:
+
+```bash
+kubectl apply -f https://github.com/kubesphere/ks-installer/releases/download/v3.4.1/kubesphere-installer.yaml
+kubectl apply -f cluster-configuration.yaml
+```
+
 KubeSphere will install Istio as part of its setup. The installation takes about 10-15 minutes.
 
 Monitor the progress:
 
 ```bash
-kubectl logs -n kubesphere-system deploy/ks-installer -f
+kubectl logs -n kubesphere-system "$(kubectl get pod -n kubesphere-system -l 'app in (ks-install, ks-installer)' -o jsonpath='{.items[0].metadata.name}')" -f
 ```
 
 When you see "Welcome to KubeSphere!" in the logs, the installation is complete.
 
-### Step 3: Access the KubeSphere Console
+### Step 4: Access the KubeSphere Console
 
 Get the console URL:
 
 ```bash
-kubectl get svc -n kubesphere-system ks-console
+kubectl get svc/ks-console -n kubesphere-system
 ```
 
 The default credentials are:
@@ -70,12 +79,12 @@ The default credentials are:
 
 ## Option B: Manual Istio Installation Alongside KubeSphere
 
-If you already have KubeSphere running without the service mesh enabled, or you want a specific Istio version, install Istio manually.
+If you already have KubeSphere running without the service mesh enabled, or you want a specific Istio version, install Istio manually. The example below pins Istio 1.24.0 for repeatability, but Istio 1.24 is no longer supported as of May 2026. For production, choose a currently supported Istio release and verify that your Kubernetes version is in that release's support matrix.
 
 ### Step 1: Install Istio with istioctl
 
 ```bash
-curl -L https://istio.io/downloadIstio | sh -
+curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.24.0 sh -
 cd istio-1.24.0
 export PATH=$PWD/bin:$PATH
 ```
@@ -96,7 +105,7 @@ kubectl get pods -n istio-system
 kubectl label namespace default istio-injection=enabled
 ```
 
-KubeSphere's console will detect the Istio installation and show mesh-related information in its UI, though some of the deeper integration features (like the traffic topology graph) only work when Istio is installed through KubeSphere's built-in setup.
+Manual Istio installation gives you the Istio control plane and APIs, but it does not enable KubeSphere's service mesh component in the console. For KubeSphere's grayscale release, tracing, and traffic monitoring UI, enable the KubeSphere Service Mesh component through the `ClusterConfiguration`.
 
 ## Using KubeSphere's Service Mesh Features
 
@@ -111,7 +120,7 @@ KubeSphere shows a visual topology of your microservices, including the traffic 
 Instead of writing YAML for VirtualServices and DestinationRules, KubeSphere provides a graphical interface:
 
 1. Go to your project in the KubeSphere console
-2. Navigate to "Composing App" or "Services"
+2. Navigate to "Composed Apps" or "Services"
 3. Select a service
 4. Click "Traffic Management"
 5. Configure canary releases, traffic mirroring, or circuit breaking through the UI
@@ -165,14 +174,14 @@ spec:
 
 ## Deploying a Sample Application
 
-Whether you used Option A or B, deploy the Bookinfo sample to test:
+To test with Istio's Bookinfo sample from the command line, run these commands from an Istio release directory:
 
 ```bash
 kubectl apply -f samples/bookinfo/platform/kube/bookinfo.yaml -n default
 kubectl apply -f samples/bookinfo/networking/bookinfo-gateway.yaml -n default
 ```
 
-In the KubeSphere console, navigate to your project. You should see all the Bookinfo services in the service list with their mesh status indicated.
+You can also deploy KubeSphere's Bookinfo sample from the console. In the KubeSphere console, navigate to your project. If KubeSphere Service Mesh is enabled and Application Governance is turned on for the app, you should see Bookinfo's mesh traffic information in the KubeSphere views.
 
 ## Custom Istio Configuration with KubeSphere
 
@@ -196,11 +205,7 @@ servicemesh:
 
 After saving, KubeSphere reconciles the changes.
 
-For more detailed customization, you can also directly edit Istio resources:
-
-```bash
-kubectl edit configmap istio -n istio-system
-```
+For more detailed customization, use the Istio APIs and configuration fields supported by the Istio version that KubeSphere installed.
 
 ## Monitoring and Tracing
 
@@ -216,11 +221,7 @@ You get:
 - Per-service dashboards in the KubeSphere console
 - Distributed tracing (if Jaeger is enabled)
 
-Access tracing through the KubeSphere console under "Tracing" in your project, or directly:
-
-```bash
-istioctl dashboard jaeger
-```
+Access tracing through the KubeSphere console under "Tracing" in your project when KubeSphere Service Mesh and the required logging/tracing components are enabled.
 
 ## Multi-Tenant Mesh with KubeSphere
 
@@ -231,10 +232,10 @@ KubeSphere's multi-tenancy model works well with Istio. Each KubeSphere workspac
 
 Each workspace admin can manage their own VirtualServices and DestinationRules without affecting other workspaces.
 
-Enable sidecar injection per namespace through the console:
+Enable KubeSphere's app governance features through the console:
 1. Go to Project Settings
-2. Click "Gateway"
-3. Enable "Application Governance"
+2. Click "Gateway Settings"
+3. Enable a gateway and turn on Application Governance when creating composed applications that need tracing and grayscale release features
 
 ## Troubleshooting
 
