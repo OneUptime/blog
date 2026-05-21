@@ -8,11 +8,11 @@ Description: How to configure where Istio looks for JWT tokens in incoming reque
 
 ---
 
-By default, Istio looks for JWTs in the `Authorization` header with a `Bearer` prefix. But not every API follows that convention. Some APIs pass tokens in custom headers, others use query parameters, and some legacy systems use cookies. Istio's RequestAuthentication supports configuring custom token locations through `fromHeaders` and `fromParams`.
+By default, Istio looks for JWTs in the `Authorization` header with a `Bearer` prefix. But not every API follows that convention. Some APIs pass tokens in custom headers, others use query parameters, and some legacy systems use cookies. Istio's RequestAuthentication supports configuring custom token locations through `fromHeaders`, `fromParams`, and `fromCookies`.
 
 ## Default Behavior
 
-When you don't specify `fromHeaders` or `fromParams`, Istio looks for the JWT in:
+When you don't specify any custom token locations, Istio looks for the JWT in:
 
 ```text
 Authorization: Bearer <token>
@@ -30,7 +30,7 @@ spec:
   jwtRules:
     - issuer: "https://auth.example.com"
       jwksUri: "https://auth.example.com/.well-known/jwks.json"
-      # No fromHeaders or fromParams - uses Authorization: Bearer by default
+      # No fromHeaders, fromParams, or fromCookies - uses Authorization: Bearer by default
 ```
 
 ## Custom Header Location
@@ -119,7 +119,7 @@ curl "http://api-server/endpoint?access_token=eyJhbGciOiJSUzI1NiJ9..."
 
 ## Multiple Locations
 
-You can specify multiple headers and parameters. Istio checks them in order and uses the first one that contains a token:
+You can specify multiple headers and parameters, but clients should send the token in only one configured location. Requests with multiple tokens at different locations are not supported by Istio, and the output principal is undefined:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -144,7 +144,7 @@ spec:
         - "token"
 ```
 
-This configuration checks in order:
+With this configuration, clients can send the JWT in any one of these locations:
 1. `Authorization: Bearer <token>`
 2. `x-jwt-token: <token>`
 3. `x-api-token: <token>`
@@ -170,11 +170,9 @@ fromHeaders:
 
 ## Cookie-Based Tokens
 
-Istio doesn't have native cookie extraction for JWTs, but you can use a header that your reverse proxy or gateway sets from a cookie. For example, if your gateway extracts the JWT from a cookie and puts it in a header:
+Istio supports reading JWTs from named cookies with `fromCookies`:
 
 ```yaml
-# Gateway or EnvoyFilter extracts cookie to header
-# Then RequestAuthentication reads from that header
 apiVersion: security.istio.io/v1
 kind: RequestAuthentication
 metadata:
@@ -187,11 +185,11 @@ spec:
   jwtRules:
     - issuer: "https://auth.example.com"
       jwksUri: "https://auth.example.com/.well-known/jwks.json"
-      fromHeaders:
-        - name: x-jwt-from-cookie
+      fromCookies:
+        - auth-token
 ```
 
-You'd need an EnvoyFilter or Lua filter at the gateway to copy the cookie value to the `x-jwt-from-cookie` header before it reaches the RequestAuthentication logic.
+Now Istio extracts the JWT from the `auth-token` cookie in the request.
 
 ## Practical Example: API with Multiple Auth Methods
 
@@ -267,7 +265,7 @@ kubectl exec deploy/sleep -c sleep -- \
 Common mistakes:
 - Forgetting the space in the prefix (e.g., `"Bearer"` instead of `"Bearer "`)
 - Not including the default `Authorization: Bearer` when adding custom headers
-- Using the wrong header name (case-sensitive)
+- Using the wrong header name
 - Using `fromHeaders` when the token is in a query parameter
 
 ## Security Considerations
