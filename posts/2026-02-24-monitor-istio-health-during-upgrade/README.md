@@ -30,10 +30,10 @@ sum(rate(pilot_xds_pushes{type="cds"}[1m]))
 histogram_quantile(0.99, sum(rate(pilot_proxy_convergence_time_bucket[5m])) by (le))
 ```
 
-**pilot_xds_push_errors** - Push errors indicate the control plane failed to send configuration to one or more proxies. Any non-zero value during an upgrade needs investigation.
+**pilot_total_xds_internal_errors** and **pilot_total_xds_rejects** - Internal XDS errors and proxy rejections indicate that the control plane failed to generate valid configuration or a proxy rejected what it received. Any non-zero rate during an upgrade needs investigation.
 
 ```text
-sum(rate(pilot_xds_push_errors[5m]))
+sum(rate(pilot_total_xds_internal_errors[5m])) + sum(rate(pilot_total_xds_rejects[5m]))
 ```
 
 **pilot_conflict_inbound_listener** and **pilot_conflict_outbound_listener_tcp_over_current_tcp** - Configuration conflicts between resources. If these appear during an upgrade, a resource incompatibility was introduced.
@@ -86,7 +86,7 @@ Create a Grafana dashboard specifically for Istio upgrades. Here is a layout tha
 
 - Panel 1: istiod CPU and memory usage (time series)
 - Panel 2: XDS push rate by type (time series)
-- Panel 3: XDS push errors (time series)
+- Panel 3: XDS internal errors and proxy rejects (time series)
 - Panel 4: Proxy convergence time p99 (time series)
 
 ### Row 2: Data Plane Health
@@ -130,8 +130,8 @@ spec:
     - record: istio:request_latency_p99:5m
       expr: histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket[5m])) by (le))
 
-    - record: istio:xds_push_error_rate:5m
-      expr: sum(rate(pilot_xds_push_errors[5m]))
+    - record: istio:xds_error_rate:5m
+      expr: sum(rate(pilot_total_xds_internal_errors[5m])) + sum(rate(pilot_total_xds_rejects[5m]))
 
     - record: istio:proxy_convergence_p99:5m
       expr: histogram_quantile(0.99, sum(rate(pilot_proxy_convergence_time_bucket[5m])) by (le))
@@ -168,13 +168,13 @@ spec:
       annotations:
         summary: "p99 latency above 5s during Istio upgrade"
 
-    - alert: IstioUpgradeStaleProxies
-      expr: count(envoy_server_live{} unless on(pod) kube_pod_status_ready{condition="true"}) > 10
+    - alert: IstioUpgradeUnreadyProxyContainers
+      expr: sum(kube_pod_container_status_ready{container="istio-proxy"} == 0) > 10
       for: 10m
       labels:
         severity: warning
       annotations:
-        summary: "More than 10 proxies are not ready"
+        summary: "More than 10 istio-proxy containers are not ready"
 
     - alert: IstiodCrashLooping
       expr: rate(kube_pod_container_status_restarts_total{container="discovery",namespace="istio-system"}[5m]) > 0
@@ -207,10 +207,10 @@ Monitor pod restarts:
 watch -n 5 'kubectl get pods -n istio-system'
 ```
 
-Quick error rate check using proxy logs:
+Quick response-code check using proxy logs, if Envoy access logging is enabled:
 
 ```bash
-kubectl logs -n my-app -l app=my-service -c istio-proxy --tail=1000 | awk '{print $NF}' | sort | uniq -c | sort -rn | head
+kubectl logs -n my-app -l app=my-service -c istio-proxy --tail=1000 | awk 'match($0, /" [0-9]{3} /) {print substr($0, RSTART+2, 3)}' | sort | uniq -c | sort -rn | head
 ```
 
 ## What Normal Looks Like During an Upgrade
@@ -224,7 +224,7 @@ During a healthy upgrade, expect to see:
 
 What is NOT normal:
 
-- Sustained push errors
+- Sustained XDS internal errors or proxy rejects
 - Error rate above your baseline
 - Latency significantly above baseline
 - STALE proxies that do not resolve within a few minutes
@@ -242,4 +242,4 @@ Keep your upgrade-specific alerts active for a week after the upgrade. Disable t
 
 ## Summary
 
-Monitoring during an Istio upgrade requires tracking both control plane metrics (XDS pushes, convergence time, push errors) and data plane metrics (error rates, latency, connection failures). Set up dedicated dashboards before the upgrade, configure temporary alerts, and keep watching for at least 24 hours after completion. The metrics tell you whether to proceed, pause, or roll back - but only if you are looking at them.
+Monitoring during an Istio upgrade requires tracking both control plane metrics (XDS pushes, convergence time, XDS errors and rejects) and data plane metrics (error rates, latency, connection failures). Set up dedicated dashboards before the upgrade, configure temporary alerts, and keep watching for at least 24 hours after completion. The metrics tell you whether to proceed, pause, or roll back - but only if you are looking at them.
