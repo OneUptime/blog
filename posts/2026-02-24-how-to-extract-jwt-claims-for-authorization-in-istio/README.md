@@ -8,7 +8,7 @@ Description: How to extract and use JWT claims in Istio AuthorizationPolicy rule
 
 ---
 
-Once Istio validates a JWT, it makes the token's claims available for use in AuthorizationPolicy rules. This means you can build access control based on user roles, email addresses, tenant IDs, or any other claim in the token - all at the mesh level without touching application code.
+Once Istio validates a JWT, it makes the token's supported string and string-list claims available for use in AuthorizationPolicy rules. This means you can build access control based on user roles, email addresses, tenant IDs, or other supported claims in the token - all at the mesh level without touching application code.
 
 ## How Claims Become Available
 
@@ -16,7 +16,7 @@ When a JWT passes validation through RequestAuthentication, Istio extracts the t
 
 - `request.auth.principal` - The request principal, formatted as `<issuer>/<subject>`
 - `request.auth.audiences` - The audiences from the token
-- `request.auth.claims` - All claims from the JWT payload
+- `request.auth.claims` - Raw claims from the JWT payload that Istio can match in policies
 - `request.auth.presenter` - The authorized presenter (from the `azp` claim)
 
 ## Basic Claim-Based Authorization
@@ -113,7 +113,7 @@ You can require multiple claims by adding more `when` conditions. All conditions
 apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
-  name: require-admin-verified
+  name: require-admin-paid
   namespace: backend
 spec:
   selector:
@@ -124,11 +124,11 @@ spec:
     - when:
         - key: request.auth.claims[role]
           values: ["admin"]
-        - key: request.auth.claims[email_verified]
-          values: ["true"]
+        - key: request.auth.claims[tier]
+          values: ["paid"]
 ```
 
-This requires both `role=admin` AND `email_verified=true`.
+This requires both `role=admin` AND `tier=paid`.
 
 For OR logic, use multiple rules:
 
@@ -271,7 +271,7 @@ spec:
 
 Deploy similar policies in each tenant's namespace with the appropriate tenant ID.
 
-## Negation with notValues
+## Denying Specific Claim Values
 
 You can also exclude specific claim values:
 
@@ -311,7 +311,7 @@ kubectl logs <pod> -c istio-proxy --tail=100 | grep -i "rbac\|authz"
 Common issues:
 - Claim names are case-sensitive: `Role` is different from `role`.
 - Nested claim access uses brackets: `claims[realm_access][roles]`, not dot notation.
-- Boolean claims like `email_verified` are strings in the Istio context - use `"true"` not `true`.
+- `request.auth.claims` matching supports string and list-of-string claims.
 - Array claims match if any element matches, not all elements.
 
 Claims-based authorization in Istio is flexible and powerful. You can build complex access control rules entirely in YAML without modifying your application code. The key is understanding how Istio surfaces JWT claims through the `request.auth.claims` attribute and how AuthorizationPolicy's `when` conditions work.
