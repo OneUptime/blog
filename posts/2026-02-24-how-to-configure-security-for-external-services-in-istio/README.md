@@ -78,9 +78,10 @@ spec:
     - number: 80
       name: http
       protocol: HTTP
+      targetPort: 443
     - number: 443
       name: https
-      protocol: TLS
+      protocol: HTTPS
   resolution: DNS
 ---
 apiVersion: networking.istio.io/v1
@@ -97,29 +98,12 @@ spec:
         tls:
           mode: SIMPLE
           sni: api.external.com
----
-apiVersion: networking.istio.io/v1
-kind: VirtualService
-metadata:
-  name: external-api-redirect
-  namespace: default
-spec:
-  hosts:
-    - api.external.com
-  http:
-    - match:
-        - port: 80
-      route:
-        - destination:
-            host: api.external.com
-            port:
-              number: 443
 ```
 
 Your application calls `http://api.external.com:80`, and the sidecar:
 
 1. Intercepts the HTTP request
-2. Redirects it to port 443 (VirtualService)
+2. Redirects it to port 443 (`targetPort` in the ServiceEntry)
 3. Initiates a TLS connection to the external server (DestinationRule)
 4. Forwards the request over the encrypted connection
 
