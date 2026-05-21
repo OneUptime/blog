@@ -82,11 +82,11 @@ spec:
             notPaths: ["/healthz", "/readyz", "/public/*"]
 ```
 
-This denies all requests without a valid JWT, except for health checks and public paths.
+This denies requests in the `default` namespace without a valid JWT, except for health checks and public paths. If the namespace also contains TCP services, scope the policy to the HTTP ports you want to protect because Istio treats missing HTTP attributes as matches for `DENY` rules.
 
 ## Using Auth0 Permissions and Roles
 
-Auth0 supports RBAC through its Authorization Extension or the newer Auth0 Authorization Core. Permissions are included in the token as custom claims.
+Auth0 supports API RBAC through Authorization Core. When enabled, permissions can be included in access tokens in the `permissions` claim.
 
 In Auth0's dashboard, go to your API settings and enable "Enable RBAC" and "Add Permissions in the Access Token". Then create permissions:
 
@@ -241,14 +241,14 @@ curl -s -w "\n%{http_code}" https://app.mycompany.com/public/info
 Inspect the token to see what claims it contains:
 
 ```bash
-echo $TOKEN | cut -d'.' -f2 | base64 -d 2>/dev/null | jq .
+jq -R 'split(".")[1] | gsub("-"; "+") | gsub("_"; "/") | @base64d | fromjson' <<< "$TOKEN"
 ```
 
 ## Handling Token Refresh
 
 Auth0 access tokens have an expiration time (configurable in the API settings, default is 86400 seconds). Your services need to handle token refresh.
 
-For machine-to-machine tokens, simply request a new token before the current one expires. For user-facing applications, use refresh tokens:
+For machine-to-machine tokens, simply request a new token before the current one expires. For user-facing applications, use refresh tokens. This example is for a confidential application; public clients such as SPAs and native apps do not send a client secret:
 
 ```bash
 curl -s -X POST "https://mycompany.auth0.com/oauth/token" \
@@ -273,8 +273,9 @@ The most common issues:
 # Check istiod logs for JWT errors
 kubectl logs -n istio-system deploy/istiod | grep -i jwt
 
-# Verify JWKS endpoint is reachable
-kubectl exec -n istio-system deploy/istiod -- curl -s https://mycompany.auth0.com/.well-known/jwks.json | jq .
+# Verify the JWKS endpoint is reachable from the cluster
+kubectl run -n istio-system jwks-check --rm -i --restart=Never \
+  --image=curlimages/curl -- https://mycompany.auth0.com/.well-known/jwks.json | jq .
 ```
 
 Auth0 with Istio is a production-ready authentication setup that gets you managed identity without the operational overhead of running your own identity provider. The managed OIDC endpoints, built-in rate limiting, and enterprise features like anomaly detection make it a strong choice for teams that want to focus on building their product rather than managing identity infrastructure.
