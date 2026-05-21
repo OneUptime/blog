@@ -33,7 +33,7 @@ You need somewhere to store and visualize traces. The most common options are:
 Install Jaeger as an Istio addon:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.22/samples/addons/jaeger.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/jaeger.yaml
 ```
 
 Verify it's running:
@@ -45,7 +45,7 @@ kubectl get pods -n istio-system -l app=jaeger
 ### Zipkin
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.22/samples/addons/extras/zipkin.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/extras/zipkin.yaml
 ```
 
 ### OpenTelemetry Collector
@@ -53,6 +53,11 @@ kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.22/samp
 For production setups, the OpenTelemetry Collector gives you more flexibility:
 
 ```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: observability
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -70,7 +75,9 @@ spec:
     spec:
       containers:
         - name: collector
-          image: otel/opentelemetry-collector-contrib:0.93.0
+          image: otel/opentelemetry-collector-contrib:0.143.0
+          args:
+            - "--config=/etc/otelcol/config.yaml"
           ports:
             - containerPort: 4317  # gRPC OTLP
             - containerPort: 9411  # Zipkin
@@ -102,7 +109,7 @@ data:
         send_batch_size: 1024
     exporters:
       otlp:
-        endpoint: "jaeger-collector.observability:4317"
+        endpoint: "jaeger-collector.istio-system.svc.cluster.local:4317"
         tls:
           insecure: true
     service:
@@ -143,6 +150,9 @@ metadata:
   namespace: istio-system
 data:
   mesh: |
+    enableTracing: true
+    defaultConfig:
+      tracing: {} # disable legacy MeshConfig tracing options
     extensionProviders:
       - name: zipkin
         zipkin:
@@ -153,6 +163,9 @@ data:
 ### OpenTelemetry Provider
 
 ```yaml
+enableTracing: true
+defaultConfig:
+  tracing: {} # disable legacy MeshConfig tracing options
 extensionProviders:
   - name: otel-tracing
     opentelemetry:
@@ -160,10 +173,11 @@ extensionProviders:
       port: 4317
 ```
 
-After updating MeshConfig, restart istiod:
+After updating MeshConfig, restart istiod and roll your workloads so sidecars pick up the tracing bootstrap configuration:
 
 ```bash
 kubectl rollout restart deployment istiod -n istio-system
+kubectl rollout restart deployment -n your-namespace
 ```
 
 ## Configuring Tracing with the Telemetry API
@@ -284,7 +298,7 @@ This is the part that trips people up. Istio's sidecars generate spans automatic
 
 The headers your application needs to propagate:
 
-For B3 format (default):
+For B3 format (default for the Zipkin provider):
 - `x-request-id`
 - `x-b3-traceid`
 - `x-b3-spanid`
@@ -337,7 +351,7 @@ istioctl dashboard zipkin
 Or port-forward directly:
 
 ```bash
-kubectl port-forward svc/tracing 16686:16686 -n istio-system
+kubectl port-forward svc/tracing 16686:80 -n istio-system
 ```
 
 In the Jaeger UI, search for traces by service name, operation, tags, or duration. Look for:
