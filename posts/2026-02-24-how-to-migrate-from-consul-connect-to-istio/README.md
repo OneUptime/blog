@@ -24,7 +24,7 @@ The migration is more involved than switching between Kubernetes-native meshes b
 | Service splitter | VirtualService (weights) |
 | Service resolver | DestinationRule (subsets) |
 | Proxy defaults | MeshConfig / EnvoyFilter |
-| Mesh gateway | Istio ingress/egress gateway |
+| Mesh gateway | Istio east-west gateway / ingress or egress gateway depending on traffic direction |
 | TLS (built-in CA) | mTLS (Istio CA / istiod) |
 | Consul KV | N/A (use ConfigMaps) |
 | Health checks | Kubernetes probes |
@@ -64,7 +64,7 @@ istioctl install --set profile=default
 Configure Istio with PERMISSIVE mTLS initially:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -98,9 +98,9 @@ spec:
   - name: frontend
     action: allow
   - name: admin-dashboard
-    action: allow
     permissions:
-    - http:
+    - action: allow
+      http:
         pathPrefix: /api/admin
         methods:
         - GET
@@ -109,7 +109,7 @@ spec:
 Istio equivalent:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: order-service-authz
@@ -145,7 +145,7 @@ consul intention create -deny '*' '*'
 Create an Istio default-deny policy:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: deny-all
@@ -224,7 +224,7 @@ Subsets = {
 Istio equivalent (combining all three):
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: api-service-dr
@@ -239,7 +239,7 @@ spec:
     labels:
       version: v2
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-service-vs
@@ -302,7 +302,7 @@ UpstreamConfig {
 Istio equivalent:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: api-service-defaults
@@ -343,7 +343,7 @@ kubectl get pods -n target-namespace
 
 ## Step 7: Handle Cross-Mesh Communication
 
-During migration, Consul-meshed and Istio-meshed services need to communicate. Since both are in permissive mode, connections work but without mutual TLS between the meshes.
+During migration, Consul-meshed and Istio-meshed services need to communicate. If Istio is in PERMISSIVE mode and Consul services are configured to accept non-mTLS traffic during migration, connections can work but without mutual TLS between the meshes.
 
 Verify cross-mesh connectivity:
 
@@ -357,7 +357,7 @@ If Consul uses transparent proxy, traffic is intercepted by the Consul sidecar. 
 
 ## Step 8: Deregister from Consul
 
-After all services in a namespace are on Istio, deregister them from Consul:
+After all services in a namespace are on Istio, deregister any services that were registered directly with a Consul agent:
 
 ```bash
 # Remove Consul service registrations
@@ -373,7 +373,7 @@ After all namespaces are migrated:
 ```bash
 # Switch Istio to STRICT mTLS
 kubectl apply -f - <<EOF
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
