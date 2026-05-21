@@ -228,7 +228,27 @@ spec:
           type: LoadBalancer
 ```
 
-VirtualServices in any namespace can reference this gateway:
+Create a Gateway resource that selects the gateway workload:
+
+```yaml
+apiVersion: networking.istio.io/v1
+kind: Gateway
+metadata:
+  name: team-a-gw
+  namespace: team-a
+spec:
+  selector:
+    istio: team-a-gateway
+  servers:
+  - port:
+      number: 80
+      name: http
+      protocol: HTTP
+    hosts:
+    - "team-a.example.com"
+```
+
+VirtualServices in any namespace can reference this Gateway resource:
 
 ```yaml
 apiVersion: networking.istio.io/v1
