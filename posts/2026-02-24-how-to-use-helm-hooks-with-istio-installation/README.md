@@ -10,7 +10,7 @@ Description: Learn how to use Helm hooks to automate pre-install checks, post-in
 
 Helm hooks let you run actions at specific points during a release lifecycle: before install, after install, before upgrade, after upgrade, and so on. When managing Istio with Helm, hooks are really useful for automating validation, migration tasks, and health checks that you'd otherwise have to do manually.
 
-Istio's own Helm charts already include some hooks internally, but you can add your own to customize the installation workflow for your environment.
+Istio's official Helm charts manage the Istio resources themselves, and you can add your own hooks in a wrapper chart to customize the installation workflow for your environment.
 
 ## How Helm Hooks Work
 
@@ -32,6 +32,7 @@ The available hook types are:
 - `post-delete` - Run after all resources are deleted
 - `pre-rollback` - Run before a rollback
 - `post-rollback` - Run after a rollback
+- `test` - Run when `helm test` is executed
 
 ## Pre-Install: Cluster Readiness Check
 
@@ -65,10 +66,10 @@ spec:
               echo "=== Istio Pre-Install Checks ==="
 
               # Check Kubernetes version
-              K8S_VERSION=$(kubectl version -o json | python3 -c "import json,sys; print(json.load(sys.stdin)['serverVersion']['minor'])")
+              K8S_VERSION=$(kubectl version -o jsonpath='{.serverVersion.minor}' | sed 's/[^0-9].*$//')
               echo "Kubernetes minor version: $K8S_VERSION"
-              if [ "$K8S_VERSION" -lt 25 ]; then
-                echo "ERROR: Kubernetes 1.25+ required"
+              if [ "$K8S_VERSION" -lt 28 ]; then
+                echo "ERROR: Istio 1.24 requires Kubernetes 1.28+"
                 exit 1
               fi
 
@@ -239,7 +240,8 @@ spec:
               kubectl create configmap "istio-backup-$(date +%Y%m%d%H%M%S)" \
                 -n "$BACKUP_NS" \
                 --from-literal=timestamp="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-                --from-literal=version="{{ .Chart.AppVersion }}"
+                --from-literal=version="{{ .Chart.AppVersion }}" \
+                --from-literal=resources="$BACKUP_DATA"
 
               echo "Backup stored in $BACKUP_NS namespace"
               echo "=== Backup Complete ==="
