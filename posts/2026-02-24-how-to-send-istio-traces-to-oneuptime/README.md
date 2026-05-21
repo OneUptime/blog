@@ -14,11 +14,13 @@ Distributed tracing is one of the most valuable observability signals you get fr
 
 When a request enters the mesh, the Envoy proxy generates a trace span for each hop. These spans contain timing information, HTTP metadata, and relationship data that lets you reconstruct the full journey of a request across services.
 
-Istio supports several tracing protocols:
+Istio supports several tracing providers:
 
 - OpenTelemetry (OTLP)
 - Zipkin
-- OpenCensus (legacy)
+- Apache SkyWalking
+- Datadog
+- Stackdriver (legacy)
 
 For OneUptime integration, we'll use OpenTelemetry since it's the modern standard and what OneUptime natively supports.
 
@@ -40,7 +42,7 @@ spec:
         port: 4317
         service: otel-collector.istio-system.svc.cluster.local
         resource_detectors:
-          - environment
+          environment: {}
     defaultConfig:
       tracing:
         sampling: 100.0  # 100% sampling for testing, reduce in production
@@ -110,19 +112,19 @@ data:
             action: upsert
 
     exporters:
-      otlp/oneuptime:
-        endpoint: "https://otlp.oneuptime.com"
+      otlphttp/oneuptime:
+        endpoint: "https://oneuptime.com/otlp"
+        encoding: json
         headers:
-          x-oneuptime-token: "${ONEUPTIME_TOKEN}"
-        tls:
-          insecure: false
+          Content-Type: "application/json"
+          x-oneuptime-token: "${env:ONEUPTIME_TOKEN}"
 
     service:
       pipelines:
         traces:
           receivers: [otlp]
-          processors: [memory_limiter, batch, resource]
-          exporters: [otlp/oneuptime]
+          processors: [memory_limiter, resource, batch]
+          exporters: [otlphttp/oneuptime]
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -256,7 +258,11 @@ func handler(w http.ResponseWriter, r *http.Request) {
     }
 
     // Create outgoing request
-    req, _ := http.NewRequest("GET", "http://reviews:8080/reviews", nil)
+    req, err := http.NewRequest("GET", "http://reviews:8080/reviews", nil)
+    if err != nil {
+        http.Error(w, err.Error(), http.StatusInternalServerError)
+        return
+    }
 
     // Propagate trace headers
     for _, h := range traceHeaders {
@@ -267,6 +273,11 @@ func handler(w http.ResponseWriter, r *http.Request) {
 
     client := &http.Client{}
     resp, err := client.Do(req)
+    if err != nil {
+        http.Error(w, err.Error(), http.StatusBadGateway)
+        return
+    }
+    defer resp.Body.Close()
     // handle response...
 }
 ```
