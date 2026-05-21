@@ -74,10 +74,10 @@ payment-xxxxx.default         STALE      SYNCED     SYNCED     SYNCED     IGNORE
 The statuses mean:
 
 - **SYNCED**: The proxy has the latest configuration from istiod
-- **STALE**: The proxy has not received the latest configuration push
+- **STALE**: Istiod sent an update, but the proxy has not acknowledged it
 - **NOT SENT**: Istiod has not sent any configuration to this proxy (possibly not needed)
 
-If a proxy shows STALE, there is a communication problem between istiod and that proxy.
+If a proxy shows STALE, there is usually a communication problem between istiod and that proxy, or the proxy rejected the update.
 
 ## Step 4: Diagnose STALE Proxies
 
@@ -158,15 +158,17 @@ When you specify a single proxy, it shows detailed diff information.
 Istiod tracks push errors in its metrics. If you have Prometheus set up:
 
 ```text
-pilot_xds_push_errors
-pilot_proxy_convergence_time_bucket
+pilot_total_xds_internal_errors
+pilot_total_xds_rejects
+pilot_proxy_convergence_time
 pilot_xds_pushes
 ```
 
 Query these in Prometheus or Grafana to see if pushes are failing:
 
 ```bash
-kubectl exec -n istio-system deploy/istiod -- curl -s localhost:15014/metrics | grep pilot_xds_push_errors
+kubectl -n istio-system port-forward deploy/istiod 15014:15014
+curl -s localhost:15014/metrics | grep -E "pilot_total_xds_internal_errors|pilot_total_xds_rejects|pilot_xds_pushes"
 ```
 
 ## Step 7: Resource Limits on istiod
@@ -199,20 +201,21 @@ pilot:
 
 ## Step 8: Check Push Debounce Settings
 
-Istiod debounces configuration pushes to avoid sending too many updates in quick succession. The default debounce period is 100ms. If you are making rapid changes and expecting immediate updates, the debounce might be grouping your changes.
+Istiod debounces configuration pushes to avoid sending too many updates in quick succession. The default debounce delay is 100ms, and the default maximum debounce delay is 10s. If you are making rapid changes and expecting immediate updates, the debounce might be grouping your changes.
 
 Check the debounce settings:
 
 ```bash
-kubectl get configmap istio -n istio-system -o jsonpath='{.data.mesh}' | grep -A 5 debounce
+kubectl get deployment istiod -n istio-system -o jsonpath='{.spec.template.spec.containers[0].env}' | grep -E "PILOT_DEBOUNCE_AFTER|PILOT_DEBOUNCE_MAX"
 ```
 
 For testing, you can reduce the debounce (not recommended for production):
 
 ```yaml
-meshConfig:
-  defaultConfig:
-    discoveryAddress: istiod.istio-system.svc:15012
+pilot:
+  env:
+    PILOT_DEBOUNCE_AFTER: 50ms
+    PILOT_DEBOUNCE_MAX: 1s
 ```
 
 ## Step 9: Sidecar Resource Scope
