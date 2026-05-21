@@ -8,7 +8,7 @@ Description: Learn how to use the alphabetical update strategy in ArgoCD Image U
 
 ---
 
-The alphabetical strategy in ArgoCD Image Updater selects images by sorting tag names lexicographically (alphabetically). This strategy works well with tagging schemes where newer images have alphabetically "higher" tags, such as date-based tags (2026-02-26), timestamp tags (20260226-153045), or zero-padded build numbers (build-0042).
+The alphabetical strategy in ArgoCD Image Updater selects images by sorting tag names lexicographically (alphabetically). This strategy works well with tagging schemes where newer images have alphabetically "higher" tags, such as date-based tags (2026-02-26), timestamp tags (20260226153045), or zero-padded build numbers (build-0042).
 
 ## How the Alphabetical Strategy Works
 
@@ -120,7 +120,7 @@ build-100
 
 # BAD: Non-ISO date formats
 02-26-2026    # Month-first does not sort by date
-26/02/2026    # Slashes cause issues
+26/02/2026    # Slashes are not valid in image tags
 
 # BAD: Mixed formats
 v1, v2, v10   # v10 sorts between v1 and v2
@@ -128,16 +128,15 @@ v1, v2, v10   # v10 sorts between v1 and v2
 
 ## Sorting Direction
 
-By default, alphabetical sorts in ascending order and picks the last (highest) value. You can reverse this:
+The alphabetical strategy sorts in ascending order and picks the last (highest) value. The selection direction is not configured per image, so design your tag format so newer tags sort higher.
 
 ```yaml
 annotations:
   argocd-image-updater.argoproj.io/myapp.update-strategy: alphabetical
-  # Sort descending - pick the first (lowest) value
-  argocd-image-updater.argoproj.io/myapp.sort-mode: desc
+  argocd-image-updater.argoproj.io/myapp.allow-tags: "regexp:^[0-9]{4}-[0-9]{2}-[0-9]{2}"
 ```
 
-In practice, ascending order (the default) is almost always what you want, since newer tags should sort higher.
+In practice, this is almost always what you want, since newer tags should sort higher.
 
 ## Combining with Tag Filters
 
@@ -149,7 +148,7 @@ annotations:
   # Only consider production-tagged images
   argocd-image-updater.argoproj.io/myapp.allow-tags: "regexp:^prod-[0-9]{4}-[0-9]{2}-[0-9]{2}"
   # Ignore any debug builds
-  argocd-image-updater.argoproj.io/myapp.ignore-tags: "regexp:-debug$"
+  argocd-image-updater.argoproj.io/myapp.ignore-tags: "*-debug"
 ```
 
 Without filters, a tag like `zzz-test` would sort after `2026-02-26` and get selected.
@@ -209,16 +208,16 @@ annotations:
 
 ## Alphabetical vs Other Strategies
 
-| Feature | Alphabetical | Latest | Semver |
-|---------|-------------|--------|--------|
-| Selection criteria | Tag name sort | Push timestamp | Version comparison |
+| Feature | Alphabetical | Newest-build | Semver |
+|---------|--------------|--------------|--------|
+| Selection criteria | Tag name sort | Image creation/build date | Version comparison |
 | Requires specific format | Yes (sortable) | No | Yes (semver) |
 | Works with dates | Excellent | Good | No |
 | Works with build numbers | If zero-padded | Yes | No |
 | Works with semver tags | Poorly | Yes | Excellent |
-| Deterministic | Yes (same tags always same result) | No (depends on timestamps) | Yes |
+| Deterministic | Yes (same tags always same result) | No (depends on image metadata) | Yes |
 
-The key advantage of alphabetical over latest is determinism. With the latest strategy, the selection depends on image push timestamps, which can be unreliable if images are rebuilt or mirrored. The alphabetical strategy only cares about tag names, making it more predictable.
+The key advantage of alphabetical over newest-build is determinism. With the newest-build strategy, the selection depends on image creation timestamps, which can be unreliable if images are rebuilt or mirrored. The alphabetical strategy only cares about tag names, making it more predictable.
 
 ## Complete Working Example
 
@@ -255,9 +254,9 @@ spec:
 CI pipeline produces tags like:
 - `release-2026-02-24-abc1234`
 - `release-2026-02-25-def5678`
-- `release-2026-02-26-ghi9012`
+- `release-2026-02-26-f9e8d7c`
 
-Image Updater picks `release-2026-02-26-ghi9012` because it sorts last alphabetically.
+Image Updater picks `release-2026-02-26-f9e8d7c` because it sorts last alphabetically.
 
 ## Troubleshooting
 
@@ -283,4 +282,4 @@ kubectl logs -n argocd deployment/argocd-image-updater --tail=100
 
 For monitoring your image updates, set up [ArgoCD notifications](https://oneuptime.com/blog/post/2026-01-25-notifications-argocd/view) to track when new images are deployed.
 
-The alphabetical strategy is the best choice when your CI pipeline produces date-based or timestamp-based tags. It provides deterministic, predictable image selection without depending on registry metadata like push timestamps.
+The alphabetical strategy is the best choice when your CI pipeline produces date-based or timestamp-based tags. It provides deterministic, predictable image selection without depending on image metadata like creation timestamps.
