@@ -20,7 +20,7 @@ Istio publishes security advisories in several places:
 
 2. **GitHub**: Security advisories are also posted as GitHub security advisories on the istio/istio repository.
 
-3. **Mailing list**: Subscribe to the istio-security-announce mailing list for email notifications.
+3. **Istio announcements**: Follow the Istio blog, the Announcements category on discuss.istio.io, or the #announcements channel on Istio Slack for public disclosure notifications.
 
 4. **CVE databases**: Istio CVEs are published in the standard CVE databases (NVD, MITRE).
 
@@ -113,10 +113,14 @@ spec:
     - applyTo: HTTP_FILTER
       match:
         context: ANY
+        listener:
+          filterChain:
+            filter:
+              name: envoy.filters.network.http_connection_manager
+              subFilter:
+                name: envoy.filters.http.vulnerable_filter
       patch:
         operation: REMOVE
-        value:
-          name: envoy.filters.http.vulnerable_filter
 ```
 
 Workarounds are temporary. Always follow up with the actual patch.
@@ -138,9 +142,12 @@ For control plane upgrades:
 # Check available versions
 helm search repo istio/istiod --versions
 
-# Upgrade istiod
+# Upgrade the base chart and istiod
+helm upgrade istio-base istio/base -n istio-system \
+  --version <fixed-patch-version>
+
 helm upgrade istiod istio/istiod -n istio-system \
-  --version 1.22.x \
+  --version <fixed-patch-version> \
   --reuse-values
 ```
 
@@ -208,10 +215,10 @@ echo "Current Istio version: $CURRENT_VERSION"
 
 ## Version Support and End of Life
 
-Istio supports the last three minor releases. Once a version goes end-of-life, it no longer receives security patches. Running an unsupported version means you're exposed to any future CVEs without a fix.
+Istio minor releases are supported until six weeks after the N+2 minor release. In practice this is usually about the last three minor releases, but always check the supported releases page for the current end-of-life dates. Once a version goes end-of-life, it no longer receives security patches. Running an unsupported version means you're exposed to any future CVEs without a fix.
 
 ```bash
-# Check the current version support status
+# Check your installed Istio version, then compare it with the supported releases page
 istioctl version --short
 ```
 
@@ -233,8 +240,8 @@ For critical CVEs that are being actively exploited, have a rapid response plan:
 # Check access logs for suspicious patterns
 kubectl logs -l istio=ingressgateway -c istio-proxy -n istio-system --since=24h | grep -i "suspicious_pattern"
 
-# Check for unusual authorization denials
-kubectl exec -it <istiod-pod> -c discovery -n istio-system -- \
+# Check Envoy stats on an affected proxy for unusual authorization denials
+kubectl exec -it <proxy-pod> -c istio-proxy -n <namespace> -- \
   pilot-agent request GET stats | grep "rbac"
 ```
 
