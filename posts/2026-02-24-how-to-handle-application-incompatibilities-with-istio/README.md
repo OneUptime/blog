@@ -24,7 +24,7 @@ metadata:
 spec:
   template:
     metadata:
-      annotations:
+      labels:
         sidecar.istio.io/inject: "false"
     spec:
       containers:
@@ -54,13 +54,13 @@ spec:
 
 ## Applications with Init Containers That Need Network
 
-Init containers run before the sidecar starts. If your init containers need to make network calls (like downloading configuration or running database migrations), they will fail because the Envoy proxy is not ready yet.
+With standard sidecar injection, init containers run before the sidecar starts. If your init containers need to make network calls (like downloading configuration or running database migrations), they can fail because traffic has already been redirected to Envoy but the Envoy proxy is not ready yet.
 
-The fix depends on your Istio version. With newer Istio versions, you can use the `holdApplicationUntilProxyStarts` setting, but this only affects regular containers, not init containers.
+The fix depends on your Istio version and sidecar mode. You can use the `holdApplicationUntilProxyStarts` setting, but this only affects regular containers, not init containers. Kubernetes native sidecars can also change the startup ordering so later init containers and regular containers wait for the proxy to be ready.
 
 For init containers that need network access, you have two options.
 
-Option 1: Move the initialization logic to a regular container with a startup probe:
+Option 1: Move the initialization logic to a regular container and have the application wait for it to complete:
 
 ```yaml
 apiVersion: apps/v1
@@ -73,20 +73,25 @@ spec:
       annotations:
         proxy.istio.io/config: '{"holdApplicationUntilProxyStarts": true}'
     spec:
+      volumes:
+      - name: init-state
+        emptyDir: {}
       containers:
       - name: initializer
         image: my-init-image:latest
-        command: ["/bin/sh", "-c", "run-migrations.sh && sleep infinity"]
-        startupProbe:
-          exec:
-            command: ["cat", "/tmp/init-complete"]
-          periodSeconds: 5
-          failureThreshold: 30
+        command: ["/bin/sh", "-c", "run-migrations.sh && touch /init-state/complete && sleep infinity"]
+        volumeMounts:
+        - name: init-state
+          mountPath: /init-state
       - name: my-app
         image: my-app:latest
+        command: ["/bin/sh", "-c", "until test -f /init-state/complete; do sleep 1; done; exec /start-my-app"]
+        volumeMounts:
+        - name: init-state
+          mountPath: /init-state
 ```
 
-Option 2: Exclude the init container traffic from sidecar capture:
+Option 2: Exclude the init container traffic from sidecar capture. For example, run the init container as the Istio proxy user so its traffic bypasses Istio's iptables redirection:
 
 ```yaml
 apiVersion: apps/v1
@@ -96,12 +101,14 @@ metadata:
 spec:
   template:
     metadata:
-      annotations:
+      labels:
         sidecar.istio.io/inject: "true"
     spec:
       initContainers:
       - name: db-migration
         image: migration-tool:latest
+        securityContext:
+          runAsUser: 1337
         command: ["/bin/sh", "-c"]
         args:
         - |
@@ -147,16 +154,20 @@ spec:
 
 ## Applications That Bind to Specific Ports
 
-If your application binds to port 15000, 15001, 15006, 15020, 15021, or 15090, it will conflict with the Envoy sidecar. These ports are reserved by Istio.
+If your application binds to port 15000, 15001, 15002, 15004, 15006, 15008, 15020, 15021, 15053, or 15090, it can conflict with the Envoy sidecar or Istio agent. These ports are used by Istio.
 
 ```bash
 # Check which ports Istio uses
 
 # 15000 - Envoy admin interface
 # 15001 - Envoy outbound
+# 15002 - Failure detection
+# 15004 - Debug port
 # 15006 - Envoy inbound
-# 15020 - Istio agent health check
+# 15008 - HBONE mTLS tunnel
+# 15020 - Merged Prometheus telemetry from Istio agent, Envoy, and application
 # 15021 - Health check
+# 15053 - DNS capture, if enabled
 # 15090 - Envoy Prometheus telemetry
 ```
 
@@ -174,7 +185,7 @@ metadata:
 spec:
   template:
     metadata:
-      annotations:
+      labels:
         sidecar.istio.io/inject: "false"  # Must disable for hostNetwork pods
     spec:
       hostNetwork: true
@@ -217,11 +228,11 @@ spec:
         h2UpgradePolicy: DEFAULT
 ```
 
-The recommended approach is to let Istio handle load balancing and configure your gRPC client to use a single connection per call. Alternatively, you can use gRPC proxyless mode to let the application handle it directly with xDS.
+The recommended approach is to let Istio handle load balancing and configure your gRPC client to use normal service discovery instead of endpoint-level client-side load balancing. Alternatively, you can use gRPC proxyless mode to let the application handle it directly with xDS.
 
 ## WebSocket Applications
 
-WebSocket connections generally work with Istio, but long-lived WebSocket connections can hit timeout issues. The default idle timeout for HTTP connections in Envoy is 1 hour.
+WebSocket connections generally work with Istio, but long-lived WebSocket connections can hit timeout issues. Setting the route timeout to `0s` disables the route timeout for that WebSocket route. If idle connections are still being closed, check Envoy and any external load balancer idle timeouts separately.
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -239,7 +250,7 @@ spec:
     route:
     - destination:
         host: websocket-service
-    timeout: 0s  # Disable timeout for websocket connections
+    timeout: 0s  # Disable the route timeout for websocket connections
 ```
 
 ## Creating a Compatibility Matrix
