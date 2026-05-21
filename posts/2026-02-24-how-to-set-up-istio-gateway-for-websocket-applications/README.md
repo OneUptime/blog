@@ -23,8 +23,10 @@ sequenceDiagram
     Gateway->>Service: Forward upgrade request
     Service->>Gateway: 101 Switching Protocols
     Gateway->>Client: 101 Switching Protocols
-    Client->>Service: WebSocket frames (bidirectional)
-    Service->>Client: WebSocket frames (bidirectional)
+    Client->>Gateway: WebSocket frames
+    Gateway->>Service: WebSocket frames
+    Service->>Gateway: WebSocket frames
+    Gateway->>Client: WebSocket frames
 ```
 
 Envoy (the proxy behind Istio's Gateway) handles the HTTP upgrade transparently. You do not need any special WebSocket-specific configuration in most cases.
@@ -82,7 +84,7 @@ This routes WebSocket connections (which start as HTTP requests to `/ws`) to the
 
 ## Handling Timeouts
 
-This is the most important configuration for WebSockets. By default, Istio sets an idle timeout on connections. If no data is sent for a while, the connection gets closed. For WebSocket applications, you typically want to disable or increase this timeout:
+This is the most important configuration for WebSockets if your mesh or route has an HTTP request timeout configured. WebSocket connections can stay open much longer than normal HTTP requests, so you typically want to disable or increase the route timeout for the WebSocket path:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -106,9 +108,9 @@ spec:
     timeout: 0s
 ```
 
-Setting `timeout: 0s` disables the request timeout entirely. This is necessary for WebSocket connections that may stay open indefinitely.
+Setting `timeout: 0s` disables the request timeout entirely. This is useful for WebSocket connections that may stay open indefinitely, especially when you have configured shorter timeouts elsewhere.
 
-For the idle timeout (closing connections with no activity), you can configure it with a DestinationRule or through EnvoyFilter if the default is not sufficient.
+For the idle timeout (closing connections with no activity), you can configure `connectionPool.tcp.idleTimeout` or `connectionPool.http.idleTimeout` in a DestinationRule if the default is not sufficient.
 
 ## WebSocket with TLS (WSS)
 
@@ -144,9 +146,9 @@ spec:
 
 The VirtualService stays the same. TLS termination happens at the gateway level, so the WebSocket upgrade and frames flow over the decrypted connection internally.
 
-## Connection Draining
+## Connection Handling
 
-When you update your WebSocket service, existing connections should be drained gracefully. Configure a DestinationRule with connection pool settings:
+WebSocket services need explicit connection limits and keep-alives because each client holds a long-lived connection. Configure a DestinationRule with connection pool settings:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -159,11 +161,14 @@ spec:
     connectionPool:
       tcp:
         maxConnections: 1000
+        tcpKeepalive:
+          time: 300s
+          interval: 30s
       http:
-        h2UpgradePolicy: UPGRADE
+        idleTimeout: 1h
 ```
 
-The `h2UpgradePolicy: UPGRADE` tells Envoy to allow HTTP/1.1 to HTTP/2 upgrades, which is relevant for WebSocket connections.
+The `maxConnections` setting limits concurrent upstream connections, `tcpKeepalive` enables TCP keep-alive probes, and `idleTimeout` controls how long an idle upstream connection can remain open. The `h2UpgradePolicy` setting is for upgrading HTTP/1.1 upstream connections to HTTP/2; it is not required for normal HTTP/1.1 WebSocket upgrades.
 
 ## Load Balancing for WebSocket
 
@@ -306,7 +311,7 @@ Monitor these metrics:
 istioctl proxy-config cluster deploy/istio-ingressgateway -n istio-system -o json | grep -A 5 websocket-service
 ```
 
-If you see connection imbalance after scaling, new connections will naturally go to pods with fewer connections if you use the LEAST_CONN load balancing policy:
+If you see connection imbalance after scaling, new connections can be biased toward less-loaded endpoints if you use the LEAST_REQUEST load balancing policy:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -317,14 +322,14 @@ spec:
   host: websocket-service
   trafficPolicy:
     loadBalancer:
-      simple: LEAST_CONN
+      simple: LEAST_REQUEST
 ```
 
 ## Troubleshooting WebSocket Issues
 
 **Connection drops after 15 seconds**
 
-The default Istio/Envoy idle timeout might be too low. Set `timeout: 0s` on the VirtualService route.
+A route-level request timeout or infrastructure idle timeout might be too low. Set `timeout: 0s` on the WebSocket VirtualService route if a request timeout is configured, and adjust idle timeouts or add application-level ping/pong keep-alives for idle connections.
 
 **Upgrade rejected (426 or other errors)**
 
