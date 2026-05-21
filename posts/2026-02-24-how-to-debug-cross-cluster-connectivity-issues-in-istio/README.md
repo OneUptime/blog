@@ -19,17 +19,17 @@ Before going deep into Istio-specific debugging, verify the fundamentals.
 **Check if the clusters can reach each other at the network level:**
 
 ```bash
-# Get the east-west gateway IP in cluster B
+# Get the east-west gateway address in cluster B
 
-EW_IP=$(kubectl get svc -n istio-system istio-eastwestgateway --context=cluster-b \
-  -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+EW_ADDR=$(kubectl get svc -n istio-system istio-eastwestgateway --context=cluster-b \
+  -o jsonpath='{.status.loadBalancer.ingress[0].ip}{.status.loadBalancer.ingress[0].hostname}')
 
 # From a pod in cluster A, try to reach it
 kubectl exec deploy/sleep -c sleep --context=cluster-a -- \
-  curl -v -k https://$EW_IP:15443 --connect-timeout 5
+  curl -v -k https://$EW_ADDR:15443 --connect-timeout 5
 ```
 
-If this fails, the problem is at the network level, not Istio. Check security groups, firewall rules, and VPC peering.
+If the TCP connection cannot be established, the problem is at the network level, not Istio routing. A TLS or HTTP error after curl reports that it connected can still be expected because the east-west gateway uses SNI-based TLS passthrough. Check security groups, firewall rules, and VPC peering.
 
 **Verify the multi-cluster setup is recognized:**
 
@@ -105,7 +105,7 @@ istioctl proxy-config listeners \
 The gateway should have a listener on port 15443 for AUTO_PASSTHROUGH TLS. If this listener is missing, check the Gateway resource:
 
 ```bash
-kubectl get gateway -n istio-system --context=cluster-b
+kubectl get gateways.networking.istio.io -n istio-system --context=cluster-b
 ```
 
 Make sure the cross-network gateway exists:
@@ -137,16 +137,16 @@ Cross-cluster traffic requires mTLS, and both clusters need to trust each other'
 **Verify the root CA is the same in both clusters:**
 
 ```bash
-# Get the root cert from cluster A
-kubectl get secret cacerts -n istio-system --context=cluster-a \
-  -o jsonpath='{.data.root-cert\.pem}' | base64 -d | openssl x509 -text -noout | head -20
+# Get the root cert fingerprint from cluster A
+kubectl get configmap istio-ca-root-cert -n default --context=cluster-a \
+  -o jsonpath='{.data.root-cert\.pem}' | openssl x509 -noout -fingerprint -sha256
 
-# Get the root cert from cluster B
-kubectl get secret cacerts -n istio-system --context=cluster-b \
-  -o jsonpath='{.data.root-cert\.pem}' | base64 -d | openssl x509 -text -noout | head -20
+# Get the root cert fingerprint from cluster B
+kubectl get configmap istio-ca-root-cert -n default --context=cluster-b \
+  -o jsonpath='{.data.root-cert\.pem}' | openssl x509 -noout -fingerprint -sha256
 ```
 
-The issuer and subject should match. If they do not, you need to configure a shared root CA.
+The SHA256 fingerprints should match. If they do not, you need to configure a shared root CA or a shared trust bundle.
 
 **Check if mTLS handshakes are succeeding:**
 
@@ -173,12 +173,16 @@ istioctl proxy-config listeners deploy/sleep --context=cluster-a --port 15053
 If you are using Istio DNS proxying, make sure it is enabled:
 
 ```bash
-kubectl get cm istio -n istio-system --context=cluster-a -o yaml | grep DNS
+kubectl get cm istio -n istio-system --context=cluster-a -o jsonpath='{.data.mesh}' | \
+  grep ISTIO_META_DNS_CAPTURE
+
+kubectl get pod -l app=sleep --context=cluster-a \
+  -o jsonpath='{.items[0].metadata.annotations.proxy\.istio\.io/config}'
 ```
 
 ## Network Label Debugging
 
-For multi-network setups, pods and namespaces need proper network labels. Missing labels mean Istio does not know that traffic needs to go through the east-west gateway.
+For multi-network setups, Istio needs proper network labels or mesh network configuration. Missing labels mean Istio does not know that traffic needs to go through the east-west gateway.
 
 ```bash
 # Check namespace labels
@@ -246,7 +250,7 @@ Solution: Check the remote secret and ensure the API server is reachable. Recrea
 
 **Problem: Endpoints from the remote cluster are not showing up**
 
-Solution: Verify the remote secret has correct RBAC permissions. The service account needs at least read access to services and endpoints.
+Solution: Verify the remote secret has correct RBAC permissions. The service account needs read access to the Kubernetes resources Istio watches for service discovery, including services, pods, endpoints, and EndpointSlices.
 
 **Problem: Traffic reaches the east-west gateway but gets dropped**
 
@@ -265,8 +269,7 @@ istioctl proxy-config listeners \
 Solution: Verify both clusters share the same root CA. Check certificate expiration dates:
 
 ```bash
-istioctl proxy-config secret deploy/sleep --context=cluster-a -o json | \
-  jq '.dynamicActiveSecrets[0].secret.tlsCertificate.certificateChain'
+istioctl proxy-config secret deploy/sleep --context=cluster-a
 ```
 
 Debugging cross-cluster Istio connectivity takes patience and a systematic approach. Start from the network layer, move to Istio configuration, then to proxy-level details. Most problems fall into a few categories: network unreachability, misconfigured secrets, missing labels, or certificate issues.
