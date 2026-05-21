@@ -22,11 +22,11 @@ Before changing anything, you need a clear picture of what is going on in your m
 kubectl get peerauthentication --all-namespaces
 ```
 
-If you see no PeerAuthentication resources, you are running with the default (PERMISSIVE). If you see one in istio-system, that is the mesh-wide policy.
+If you see no PeerAuthentication resources, you are running with the default (PERMISSIVE). If you see one in Istio's root namespace (commonly `istio-system`), that is the mesh-wide policy.
 
 ### Identify All Non-Sidecar Workloads
 
-These are the workloads that will break when you switch to strict mode because they cannot initiate mTLS connections:
+These are the workloads that can break when they call services in strict mode because they cannot initiate Istio mTLS connections:
 
 ```bash
 # List all pods without istio-proxy container
@@ -39,7 +39,7 @@ Pay attention to:
 - Pods in namespaces without injection labels
 - Jobs and CronJobs
 - DaemonSets (monitoring agents, log collectors)
-- Pods with `sidecar.istio.io/inject: "false"` annotations
+- Pods with `sidecar.istio.io/inject: "false"` labels
 
 ### Check Connection Security Metrics
 
@@ -79,7 +79,7 @@ kubectl rollout restart deployment -n <namespace>
 
 ### Handle Special Workloads
 
-**Jobs and CronJobs**: These need special handling because the sidecar does not terminate when the job completes. Add the `sidecar.istio.io/inject: "true"` annotation and configure the job to signal the sidecar to quit:
+**Jobs and CronJobs**: These need special handling because the sidecar does not terminate when the job completes. Add the `sidecar.istio.io/inject: "true"` label and configure the job to signal the sidecar to quit:
 
 ```yaml
 apiVersion: batch/v1
@@ -93,7 +93,7 @@ spec:
     spec:
       template:
         metadata:
-          annotations:
+          labels:
             sidecar.istio.io/inject: "true"
         spec:
           containers:
@@ -103,7 +103,10 @@ spec:
             - /bin/sh
             - -c
             - |
-              /app/sync && curl -X POST http://localhost:15020/quitquitquit
+              /app/sync
+              status=$?
+              curl -sf -XPOST http://localhost:15020/quitquitquit
+              exit $status
           restartPolicy: OnFailure
 ```
 
@@ -170,7 +173,7 @@ rate(istio_requests_total{response_code=~"5.*", destination_workload_namespace="
 
 ### Create Exceptions Where Needed
 
-If a specific service needs to accept plain text (for example, a metrics endpoint scraped by Prometheus), create a workload-specific exception:
+If a specific workload port needs to accept plain text (for example, a metrics endpoint scraped by Prometheus), create a workload-specific exception. The `portLevelMtls` value is the workload container port, not the Kubernetes Service port:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -213,7 +216,7 @@ done
 
 ## Phase 4: Mesh-Wide Strict Mode
 
-Once all namespaces have their own strict PeerAuthentication and are stable, apply the mesh-wide policy:
+Once all namespaces have their own strict PeerAuthentication and are stable, apply the mesh-wide policy in Istio's root namespace. This example uses the common default, `istio-system`:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -246,7 +249,7 @@ spec:
 EOF
 ```
 
-Or revert the entire mesh:
+Or revert the entire mesh if you have not created namespace-level strict policies:
 
 ```bash
 kubectl apply -f - <<EOF
@@ -263,16 +266,18 @@ EOF
 
 Changes propagate to sidecars within seconds, so recovery is quick.
 
+If namespace-level strict policies already exist, delete or change those namespace policies as well. A mesh-wide PERMISSIVE policy does not override a namespace-level STRICT policy.
+
 ## Post-Migration Validation
 
-After the migration is complete, confirm everything is encrypted:
+After the migration is complete, confirm there are no remaining plain text HTTP, HTTP/2, or gRPC requests reported by Istio:
 
 ```bash
-# No plain text connections should exist
+# No plain text requests should exist
 sum(rate(istio_requests_total{connection_security_policy="none", reporter="destination"}[5m]))
 ```
 
-This query should return 0 (or very close to it). If it does not, investigate the remaining plain text connections.
+This query should return 0 (or very close to it). If it does not, investigate the remaining plain text requests.
 
 Run the analyzer to check for configuration issues:
 
