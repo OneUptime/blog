@@ -32,9 +32,10 @@ metadata:
   name: istio-shoot
   namespace: garden-my-project
 spec:
-  cloudProfileName: aws
+  cloudProfile:
+    name: aws
   region: eu-west-1
-  secretBindingName: my-aws-secret
+  credentialsBindingName: my-aws-credentials
   provider:
     type: aws
     infrastructureConfig:
@@ -54,7 +55,6 @@ spec:
           type: m5.xlarge
           image:
             name: gardenlinux
-            version: 1312.3.0
         maximum: 5
         minimum: 3
         maxSurge: 1
@@ -63,7 +63,7 @@ spec:
           type: gp3
           size: 50Gi
   kubernetes:
-    version: "1.30.2"
+    version: "1.32.0"
   networking:
     type: calico
     pods: 100.96.0.0/11
@@ -92,7 +92,7 @@ Download the kubeconfig for your shoot:
 
 # Or using gardenctl
 gardenctl target --garden my-garden --project my-project --shoot istio-shoot
-export KUBECONFIG=$(gardenctl kubectl-env)
+eval "$(gardenctl kubectl-env bash)"
 ```
 
 Verify:
@@ -105,7 +105,7 @@ kubectl get nodes
 
 ```bash
 curl -L https://istio.io/downloadIstio | sh -
-cd istio-1.24.0
+cd istio-1.30.0
 export PATH=$PWD/bin:$PATH
 ```
 
@@ -136,7 +136,9 @@ If your shoot is on AWS, add NLB annotations:
 ```yaml
         k8s:
           serviceAnnotations:
-            service.beta.kubernetes.io/aws-load-balancer-type: nlb
+            service.beta.kubernetes.io/aws-load-balancer-type: external
+            service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: instance
+            service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing
 ```
 
 If on GCP, no extra annotations are needed. If on Azure, add the health probe annotation:
@@ -183,7 +185,7 @@ Interestingly, Gardener itself uses Istio internally for managing the networking
 
 ## NetworkPolicy Considerations
 
-Gardener shoots come with default NetworkPolicies that restrict some traffic. If Istio components can't communicate, you might need to add exceptions:
+Some Gardener landscapes or project templates add default NetworkPolicies that restrict traffic. If Istio components can't communicate, you might need to add exceptions:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
