@@ -54,6 +54,23 @@ spec:
       randomSamplingPercentage: 5
 ```
 
+Make sure the collector has a Kubernetes Service that matches the hostname in the Istio configuration:
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: otel-collector
+  namespace: observability
+spec:
+  selector:
+    app: otel-collector
+  ports:
+    - name: otlp-grpc
+      port: 4317
+      targetPort: 4317
+```
+
 ## Exporting to AWS X-Ray
 
 AWS X-Ray expects traces in its own format, but the OTel Collector has a built-in X-Ray exporter that handles the conversion.
@@ -363,7 +380,8 @@ aws xray get-trace-summaries \
 
 **Google Cloud Trace:**
 ```bash
-gcloud traces list --project=my-gcp-project --limit=5
+curl -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  "https://cloudtrace.googleapis.com/v1/projects/my-gcp-project/traces?pageSize=5&startTime=$(date -u -d '5 minutes ago' +%Y-%m-%dT%H:%M:%SZ)&endTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 ```
 
 **Azure Monitor:**
@@ -372,7 +390,7 @@ Check the Application Insights "Transaction search" blade in the Azure portal.
 Also check the collector's own metrics:
 
 ```bash
-kubectl port-forward svc/otel-collector -n observability 8888:8888
+kubectl port-forward deploy/otel-collector -n observability 8888:8888
 curl http://localhost:8888/metrics | grep otelcol_exporter_sent_spans
 ```
 
@@ -392,4 +410,4 @@ Common issues:
 
 ## Summary
 
-Exporting Istio traces to cloud providers follows a consistent pattern: configure Istio to send OTLP to an OpenTelemetry Collector, then configure the collector with the appropriate exporter for your cloud provider. AWS X-Ray, Google Cloud Trace, and Azure Monitor all have dedicated exporters in the OTel Collector contrib distribution. Use cloud-native authentication methods (IRSA, Workload Identity, managed identity) rather than static credentials, and verify your export pipeline with both collector metrics and cloud provider queries.
+Exporting Istio traces to cloud providers follows a consistent pattern: configure Istio to send OTLP to an OpenTelemetry Collector, then configure the collector with the appropriate exporter for your cloud provider. AWS X-Ray, Google Cloud Trace, and Azure Monitor all have dedicated exporters in the OTel Collector contrib distribution. Use cloud-native authentication methods where supported, or store required connection strings in Kubernetes Secrets, and verify your export pipeline with both collector metrics and cloud provider queries.
