@@ -54,7 +54,7 @@ data:
       holdApplicationUntilProxyStarts: true
 ```
 
-This uses a postStart hook to block the application container until the sidecar proxy reports ready. It's the cleanest solution for most cases.
+This adds startup hooks so the injected sidecar starts first and the application containers wait until the proxy reports ready. It's the cleanest solution for most cases.
 
 ## Reduce the Configuration Scope
 
@@ -63,7 +63,7 @@ A big chunk of startup time is spent fetching and processing the xDS configurati
 Use the Sidecar resource to limit what the proxy receives:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -130,6 +130,8 @@ metadata:
   annotations:
     sidecar.istio.io/proxyCPU: "200m"
     sidecar.istio.io/proxyMemory: "256Mi"
+    sidecar.istio.io/proxyCPULimit: "500m"
+    sidecar.istio.io/proxyMemoryLimit: "512Mi"
 ```
 
 During startup, the proxy does a lot of TLS handshaking and config processing. Give it enough CPU to handle this quickly.
@@ -181,7 +183,7 @@ This makes your application resilient to the sidecar startup delay without needi
 
 ## DNS Proxy Startup
 
-Istio's DNS proxy feature can add startup time because it needs to intercept DNS before regular resolution works:
+Istio's DNS proxy feature is not enabled by default in sidecar mode, but some meshes turn it on to resolve `ServiceEntry` hosts through the sidecar. If startup is slow and DNS capture is enabled in your mesh, check the DNS proxy stats:
 
 Check if DNS proxy is causing delays:
 
@@ -189,7 +191,7 @@ Check if DNS proxy is causing delays:
 kubectl exec <pod-name> -c istio-proxy -n my-namespace -- curl -s localhost:15000/stats | grep dns
 ```
 
-If DNS is slow during startup, you can disable it:
+If DNS capture is causing problems and your workload does not need it, you can disable it for that pod:
 
 ```yaml
 metadata:
@@ -197,22 +199,19 @@ metadata:
     proxy.istio.io/config: |
       proxyMetadata:
         ISTIO_META_DNS_CAPTURE: "false"
-        ISTIO_META_DNS_AUTO_ALLOCATE: "false"
 ```
 
 ## Concurrent Container Startup
 
-By default, Kubernetes starts containers within a pod sequentially. If you're running Kubernetes 1.28+, you can use sidecar containers (native sidecar support) which start before the main containers:
+By default, regular Kubernetes containers in the same pod do not give you a reliable startup-ordering contract. Kubernetes native sidecars fix this by defining long-running sidecars as init containers with `restartPolicy: Always`. The feature became enabled by default in Kubernetes 1.29 and stable in Kubernetes 1.33.
 
-```yaml
-spec:
-  initContainers:
-  - name: istio-proxy
-    restartPolicy: Always  # This makes it a sidecar container
-    image: istio/proxyv2:latest
+For Istio, do not hand-write an `istio-proxy` init container. Let Istio inject it. In Istio 1.27 and later, native sidecars are enabled by default for eligible pods. On older Istio versions that support the feature, enable native sidecar injection through Istio's native sidecar setting, then verify that `istio-proxy` appears under `initContainers`:
+
+```bash
+kubectl get pod <pod-name> -n my-namespace -o jsonpath='{.spec.initContainers[*].name}'
 ```
 
-This is the Kubernetes-native way to handle the startup ordering problem. The sidecar starts first and the main container only starts after the sidecar is running.
+This is the Kubernetes-native way to handle the startup ordering problem. The sidecar starts first, and Kubernetes starts the main containers only after the sidecar has reached its started state.
 
 ## Measure Startup Time
 
