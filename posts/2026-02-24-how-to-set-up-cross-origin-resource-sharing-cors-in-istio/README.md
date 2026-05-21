@@ -12,7 +12,7 @@ If you have ever seen the error "Access to XMLHttpRequest has been blocked by CO
 
 ## What CORS Does
 
-Cross-Origin Resource Sharing controls which websites can make requests to your API from a browser. When your frontend at `https://app.example.com` makes an API call to `https://api.example.com`, the browser sends a preflight OPTIONS request to check if this cross-origin request is allowed. The server responds with CORS headers that tell the browser what is permitted.
+Cross-Origin Resource Sharing controls which browser-based web applications can access your API across origins. When your frontend at `https://app.example.com` makes a non-simple API call to `https://api.example.com`, the browser sends a preflight OPTIONS request to check if this cross-origin request is allowed. The server responds with CORS headers that tell the browser what is permitted.
 
 ```mermaid
 sequenceDiagram
@@ -32,7 +32,7 @@ sequenceDiagram
 Here is a straightforward CORS setup that allows requests from a specific origin:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-service
@@ -73,7 +73,7 @@ This configuration tells the browser:
 For multiple origins, list each one:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-service
@@ -94,7 +94,6 @@ spec:
           - POST
           - PUT
           - DELETE
-          - OPTIONS
         allowHeaders:
           - content-type
           - authorization
@@ -114,7 +113,7 @@ Including `http://localhost:3000` is common for development environments where y
 If you have many subdomains, use regex matching:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-service
@@ -127,7 +126,7 @@ spec:
   http:
     - corsPolicy:
         allowOrigins:
-          - regex: "https://.*[.]example[.]com"
+          - regex: "^https://([a-zA-Z0-9-]+[.])+example[.]com$"
         allowMethods:
           - GET
           - POST
@@ -151,7 +150,7 @@ This allows requests from any subdomain of `example.com` over HTTPS.
 If your API uses cookies or HTTP authentication, you need to allow credentials:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-service
@@ -171,7 +170,6 @@ spec:
         allowHeaders:
           - content-type
           - authorization
-          - cookie
         allowCredentials: true
         maxAge: "24h"
       route:
@@ -188,7 +186,7 @@ When `allowCredentials` is true, you cannot use a wildcard `*` for `allowOrigins
 By default, browsers only expose a small set of response headers to JavaScript. To let your frontend read custom response headers, use `exposeHeaders`:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-service
@@ -226,7 +224,7 @@ Now your frontend JavaScript can access `x-total-count`, `x-request-id`, and `x-
 You can apply different CORS policies to different paths:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-service
@@ -281,7 +279,7 @@ Public endpoints are open to any origin with GET-only access. Private endpoints 
 Here is a production-ready configuration:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: api-gateway
@@ -300,7 +298,7 @@ spec:
         mode: SIMPLE
         credentialName: api-tls-cert
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-service
@@ -321,13 +319,11 @@ spec:
           - PUT
           - DELETE
           - PATCH
-          - OPTIONS
         allowHeaders:
           - content-type
           - authorization
           - x-request-id
           - accept
-          - origin
         exposeHeaders:
           - x-total-count
           - x-rate-limit-remaining
@@ -367,7 +363,7 @@ istioctl proxy-config routes deploy/istio-ingressgateway -n istio-system -o json
 
 Common problems:
 - **Origin mismatch** - The origin must match exactly, including protocol and port
-- **Missing OPTIONS in allowMethods** - Some browsers require OPTIONS to be explicitly listed
+- **Missing requested method in allowMethods** - The preflight response must allow the method from `Access-Control-Request-Method`
 - **Backend also setting CORS headers** - Double CORS headers can confuse browsers. Remove CORS handling from the backend if Istio handles it
 - **Credentials with wildcard origin** - This combination is not allowed by the CORS spec
 
