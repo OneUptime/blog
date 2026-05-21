@@ -73,10 +73,27 @@ spec:
             - containerPort: 8080
 ```
 
+Expose both versions behind one Kubernetes Service. Istio routes to this Service first, then uses the subset labels to choose the version:
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-service
+  namespace: default
+spec:
+  selector:
+    app: my-service
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+```
+
 Next, define the subsets in a DestinationRule:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service
@@ -97,7 +114,7 @@ spec:
 Before deploying v2, make sure all traffic goes to v1:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service
@@ -122,7 +139,7 @@ kubectl apply -f my-service-vs.yaml
 Deploy v2 and shift a small amount of traffic:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service
@@ -152,8 +169,7 @@ Watch error rates and latency for v2. Compare them against v1 using Istio's metr
 # Check error rates for both versions
 
 # In Prometheus or Grafana:
-# rate(istio_requests_total{destination_service="my-service",response_code=~"5.."}[5m])
-# grouped by destination_version
+# sum(rate(istio_requests_total{reporter="destination",destination_service_name="my-service",response_code=~"5.."}[5m])) by (destination_version)
 ```
 
 ## Step 3: Increase to 25%
@@ -161,7 +177,7 @@ Watch error rates and latency for v2. Compare them against v1 using Istio's metr
 If v2 looks healthy after 10-15 minutes:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service
@@ -184,7 +200,7 @@ spec:
 ## Step 4: Move to 50%
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service
@@ -213,7 +229,7 @@ kubectl scale deployment my-service-v2 --replicas=3
 ## Step 5: Complete the Shift to 100%
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service
@@ -240,7 +256,7 @@ kubectl delete deployment my-service-v1
 If at any step you see problems with v2, roll back immediately:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service
@@ -273,13 +289,20 @@ You can script the gradual shift:
 STEPS=(5 10 25 50 75 100)
 WAIT_MINUTES=10
 
+check_v2_health() {
+  # Replace this with a Prometheus query or your deployment gate.
+  # Example PromQL:
+  # sum(rate(istio_requests_total{reporter="destination",destination_service_name="my-service",destination_version="v2",response_code=~"5.."}[5m]))
+  return 0
+}
+
 for weight in "${STEPS[@]}"; do
   v1_weight=$((100 - weight))
 
   echo "Shifting to v2: ${weight}%, v1: ${v1_weight}%"
 
   kubectl apply -f - <<EOF
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service
@@ -302,11 +325,9 @@ EOF
   echo "Waiting ${WAIT_MINUTES} minutes before next step..."
   sleep $((WAIT_MINUTES * 60))
 
-  # Check error rate (simplified - use real monitoring in practice)
-  ERROR_COUNT=$(kubectl exec deploy/my-service-v2 -c istio-proxy -- \
-    curl -s localhost:15000/stats | grep "rq_5xx" | awk '{print $2}')
-
-  if [ "$ERROR_COUNT" -gt 10 ]; then
+  if check_v2_health; then
+    echo "v2 looks healthy."
+  else
     echo "High error rate detected! Rolling back."
     kubectl apply -f my-service-vs-rollback.yaml
     exit 1
@@ -321,7 +342,7 @@ echo "Traffic shift complete!"
 Sometimes you want specific users to test v2 before opening it to everyone:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service
@@ -359,13 +380,13 @@ Keep an eye on these metrics during each step:
 
 ```bash
 # Error rate comparison between versions
-# PromQL: sum(rate(istio_requests_total{response_code=~"5.."}[5m])) by (destination_version)
+# PromQL: sum(rate(istio_requests_total{reporter="destination",destination_service_name="my-service",response_code=~"5.."}[5m])) by (destination_version)
 
 # Latency comparison
-# PromQL: histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket[5m])) by (le, destination_version))
+# PromQL: histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{reporter="destination",destination_service_name="my-service"}[5m])) by (le, destination_version))
 
 # Request volume per version (verify weights are working)
-# PromQL: sum(rate(istio_requests_total[5m])) by (destination_version)
+# PromQL: sum(rate(istio_requests_total{reporter="destination",destination_service_name="my-service"}[5m])) by (destination_version)
 ```
 
 Verify the actual traffic distribution matches your configured weights. Small discrepancies are normal (a 90/10 split might show as 88/12), but large deviations could indicate a routing issue.
