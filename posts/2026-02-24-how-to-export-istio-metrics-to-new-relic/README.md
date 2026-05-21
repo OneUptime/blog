@@ -26,12 +26,12 @@ Each sidecar exposes these at `http://localhost:15090/stats/prometheus`.
 
 ## Option 1: New Relic Prometheus Agent
 
-New Relic provides a Prometheus agent that can scrape endpoints and forward metrics to the New Relic OTLP endpoint. This is the most direct path.
+New Relic provides a Prometheus agent that runs Prometheus in agent mode and forwards metrics to New Relic through remote write. This is the most direct path.
 
 Install the New Relic Prometheus agent:
 
 ```bash
-helm repo add newrelic https://helm-charts.newrelic.com
+helm repo add newrelic-prometheus https://newrelic.github.io/newrelic-prometheus-configurator
 helm repo update
 ```
 
@@ -45,14 +45,17 @@ cluster: my-cluster
 
 config:
   static_targets:
-    - targets:
-        - "istiod.istio-system.svc.cluster.local:15014"
-      labels:
-        job: istiod
+    jobs:
+      - job_name: istiod
+        targets:
+          - "istiod.istio-system.svc.cluster.local:15014"
+        labels:
+          job: istiod
 
   kubernetes:
     jobs:
       - job_name_prefix: istio-mesh
+        metrics_path: /stats/prometheus
         target_discovery:
           pod: true
           filter:
@@ -62,6 +65,7 @@ config:
           enabled: false
 
       - job_name_prefix: istio-proxy
+        metrics_path: /stats/prometheus
         target_discovery:
           pod: true
           filter:
@@ -74,13 +78,13 @@ config:
 Install it:
 
 ```bash
-helm install newrelic-prometheus newrelic/nri-prometheus \
+helm install newrelic-prometheus newrelic-prometheus/newrelic-prometheus-agent \
   -n newrelic \
   --create-namespace \
   -f newrelic-prom-values.yaml
 ```
 
-The challenge with this approach is that not all Istio-injected pods have the `prometheus.io/scrape` annotation by default. You may need to add scrape annotations or use a different discovery mechanism.
+The challenge with this approach is that Istio's default metrics merging uses `prometheus.io` annotations and scrapes merged metrics from port `15020`, while direct Envoy scraping uses port `15090` and the `/stats/prometheus` path. If metrics merging has been disabled, or if you want to scrape Envoy directly, you may need to add scrape annotations or use a different discovery mechanism.
 
 ## Option 2: OpenTelemetry Collector to New Relic
 
@@ -107,6 +111,7 @@ data:
 
             - job_name: 'istio-proxy'
               scrape_interval: 15s
+              metrics_path: /stats/prometheus
               kubernetes_sd_configs:
                 - role: pod
               relabel_configs:
@@ -166,7 +171,7 @@ metadata:
   name: otel-collector
   namespace: istio-system
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: otel-collector
@@ -267,13 +272,13 @@ FACET destination_service
 SINCE 1 hour ago
 
 -- Error rate
-SELECT filter(count(istio_requests_total), WHERE response_code LIKE '5%') / count(istio_requests_total) * 100 as 'Error Rate %'
+SELECT filter(sum(istio_requests_total), WHERE response_code LIKE '5%') / sum(istio_requests_total) * 100 as 'Error Rate %'
 FROM Metric
 FACET destination_service
 SINCE 1 hour ago
 
 -- P99 latency
-SELECT percentile(istio_request_duration_milliseconds, 99)
+SELECT bucketPercentile(istio_request_duration_milliseconds_bucket, 99)
 FROM Metric
 FACET destination_service
 SINCE 1 hour ago
