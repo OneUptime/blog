@@ -8,15 +8,15 @@ Description: How to configure Istio to work with Kubernetes Pod Security Standar
 
 ---
 
-Kubernetes Pod Security Standards (PSS) define three security levels: Privileged, Baseline, and Restricted. If you are running Istio in a cluster that enforces these standards through Pod Security Admission (PSA), you need to make sure the Istio sidecar and init containers meet the security requirements. Otherwise, your pods will fail to schedule.
+Kubernetes Pod Security Standards (PSS) define three security levels: Privileged, Baseline, and Restricted. If you are running Istio in a cluster that enforces these standards through Pod Security Admission (PSA), you need to make sure the Istio sidecar and init containers meet the security requirements. Otherwise, your pods will be rejected at admission time.
 
 This guide covers how to make Istio work seamlessly with each PSS level.
 
 ## Understanding the Conflict
 
-Istio's sidecar injection adds an init container (`istio-init`) and a sidecar container (`istio-proxy`) to every pod. The init container historically required the `NET_ADMIN` and `NET_RAW` capabilities to set up iptables rules for traffic interception. These capabilities violate the Restricted PSS level and sometimes the Baseline level depending on your configuration.
+By default, Istio's sidecar injection adds an init container (`istio-init`) and a sidecar container (`istio-proxy`) to pods in the mesh. The init container requires the `NET_ADMIN` and `NET_RAW` capabilities to set up iptables rules for traffic interception. These capabilities violate both the Baseline and Restricted PSS levels.
 
-Starting with Istio 1.22, the Istio CNI plugin is the recommended approach for clusters that enforce strict pod security. The CNI plugin handles the iptables setup at the node level, eliminating the need for privileged init containers.
+The Istio CNI plugin is the recommended approach for clusters that enforce strict pod security. The CNI plugin handles the iptables setup at the node level, eliminating the need for the privileged `istio-init` container in application pods.
 
 ## Checking Your Current PSS Configuration
 
@@ -29,14 +29,14 @@ kubectl get namespaces --show-labels | grep pod-security
 Look for labels like:
 
 ```text
-pod-security.kubernetes.io/enforce: restricted
-pod-security.kubernetes.io/warn: restricted
-pod-security.kubernetes.io/audit: restricted
+pod-security.kubernetes.io/enforce=restricted
+pod-security.kubernetes.io/warn=restricted
+pod-security.kubernetes.io/audit=restricted
 ```
 
 ## Running Istio with Baseline PSS
 
-The Baseline level prohibits privileged containers but allows most capabilities. Istio's default sidecar injection works with Baseline if you use the Istio CNI plugin.
+The Baseline level prohibits privileged containers and only allows a limited set of added capabilities. Istio sidecar injection works with Baseline if you use the Istio CNI plugin so application pods do not need `NET_ADMIN` or `NET_RAW`.
 
 Install Istio with the CNI plugin:
 
@@ -81,7 +81,7 @@ The Restricted level is the strictest. It requires:
 - No privilege escalation
 - Running as non-root
 - Specific seccomp profile
-- No host networking or ports
+- No host networking or host ports
 - Read-only root filesystem (optional but recommended)
 
 To make Istio work with Restricted PSS, you need the CNI plugin and additional sidecar configuration.
@@ -105,9 +105,10 @@ spec:
     cni:
       cniBinDir: /opt/cni/bin
       cniConfDir: /etc/cni/net.d
-    sidecarInjectorWebhook:
-      injectedAnnotations:
-        seccomp.security.alpha.kubernetes.io/pod: runtime/default
+    global:
+      proxy:
+        seccompProfile:
+          type: RuntimeDefault
 ```
 
 Your application pods also need to meet the Restricted requirements. Here is an example deployment:
@@ -153,7 +154,7 @@ The Istio sidecar injector will add the `istio-proxy` container with compatible 
 After deploying a pod with sidecar injection, check the security context of the injected containers:
 
 ```bash
-kubectl get pod -n my-app -l app=my-app -o json | \
+kubectl get pod -n restricted-ns -l app=my-app -o json | \
   python3 -c "
 import json, sys
 pod = json.load(sys.stdin)['items'][0]
@@ -168,11 +169,11 @@ for c in pod['spec']['containers'] + pod['spec'].get('initContainers', []):
 "
 ```
 
-With the CNI plugin, the `istio-init` container should not require `NET_ADMIN` or `NET_RAW`.
+With the CNI plugin, the privileged `istio-init` container should not be injected. You may see an `istio-validation` init container instead, and it should not require `NET_ADMIN` or `NET_RAW`.
 
 ## Handling the istio-system Namespace
 
-The `istio-system` namespace needs to be exempt from strict PSS enforcement because istiod and the ingress gateway may require capabilities that the Restricted level does not allow:
+The `istio-system` namespace needs to be exempt from strict PSS enforcement because the Istio CNI DaemonSet requires host-level access that the Baseline and Restricted levels do not allow:
 
 ```bash
 kubectl label namespace istio-system \
@@ -229,7 +230,7 @@ Solution: Enable the Istio CNI plugin. The init container is trying to run iptab
 
 **Problem**: istio-proxy container fails PSS checks
 
-Solution: Ensure you are running a recent Istio version (1.22+) with the CNI plugin. Older versions may inject sidecar containers with non-compliant security contexts.
+Solution: Ensure you are running a recent Istio version with the CNI plugin, and set `global.proxy.seccompProfile.type=RuntimeDefault` if your Istio version does not set a seccomp profile on `istio-proxy` and `istio-validation` by default.
 
 **Problem**: Application container cannot write to temp directories
 
