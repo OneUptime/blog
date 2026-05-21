@@ -35,10 +35,10 @@ histogram_quantile(0.50, sum(rate(pilot_proxy_convergence_time_bucket[5m])) by (
 histogram_quantile(0.99, sum(rate(pilot_proxy_convergence_time_bucket[5m])) by (le))
 
 # Push rate by type (CDS, EDS, LDS, RDS)
-sum(rate(pilot_xds_pushes[5m])) by (type)
+sum(rate(pilot_xds_push_time_count[5m])) by (type)
 
-# Number of pushes in the queue
-pilot_push_triggers
+# P99 time a proxy spends in the push queue
+histogram_quantile(0.99, sum(rate(pilot_proxy_queue_time_bucket[5m])) by (le))
 ```
 
 Normal P99 convergence time should be under 5 seconds. If it is consistently above 10 seconds, you have a problem.
@@ -57,8 +57,8 @@ curl -s localhost:15014/debug/push_status
 # Check connected endpoints and their sync status
 curl -s localhost:15014/debug/syncz
 
-# Check the configuration distribution status
-curl -s localhost:15014/debug/config_distribution
+# Check connected ADS clients and push status
+curl -s localhost:15014/debug/adsz
 ```
 
 The `syncz` endpoint shows each connected proxy, when it was last updated, and whether it has acknowledged the latest config.
@@ -71,7 +71,7 @@ Each push requires computing and sending config to every connected proxy. More p
 
 ```promql
 # Number of connected proxies
-pilot_xds_connected_endpoints
+sum(pilot_xds)
 ```
 
 **Fix**: Scale Istiod horizontally:
@@ -114,7 +114,7 @@ If endpoints are changing rapidly (e.g., aggressive pod autoscaling), Istiod is 
 
 ```promql
 # EDS push rate (endpoint changes)
-sum(rate(pilot_xds_pushes{type="eds"}[5m]))
+sum(rate(pilot_xds_push_time_count{type="eds"}[5m]))
 ```
 
 If EDS pushes are very frequent, tune the debounce settings to batch more changes together:
@@ -127,10 +127,10 @@ spec:
     pilot:
       env:
         PILOT_DEBOUNCE_AFTER: "200ms"
-        PILOT_DEBOUNCE_MAX: "2s"
+        PILOT_DEBOUNCE_MAX: "10s"
 ```
 
-The default is 100ms after the first event and 1s max wait. Increasing these values reduces the number of pushes at the cost of slightly higher propagation delay.
+The default is 100ms after the first event and 10s max wait. Increasing the first value reduces the number of pushes at the cost of slightly higher propagation delay.
 
 ### 4. Istiod Resource Constraints
 
@@ -140,7 +140,7 @@ If Istiod is CPU-throttled or memory-constrained, push processing slows down:
 # Check Istiod resource usage
 kubectl top pod -n istio-system -l app=istiod
 
-# Check for CPU throttling
+# Check configured requests and limits
 kubectl get pod -n istio-system -l app=istiod -o json | \
   jq '.items[0].spec.containers[0].resources'
 ```
@@ -173,12 +173,12 @@ Istiod throttles pushes to prevent overwhelming proxies. If the throttle is too 
 
 ```yaml
 # Adjust push throttle
-PILOT_PUSH_THROTTLE: "200"  # Max concurrent pushes (default: 100)
+PILOT_PUSH_THROTTLE: "200"  # Max concurrent pushes; unset/0 lets Istio auto-size this
 ```
 
 ### 6. Slow Proxy ACKs
 
-Proxies must acknowledge (ACK) each push before the next one is sent. If proxies are slow to ACK (due to high CPU or complex config validation), the pipeline backs up:
+Istiod tracks whether proxies ACK or reject (NACK) pushed configuration. If proxies are slow to process updates (due to high CPU or complex config validation), they can remain stale for longer:
 
 ```bash
 # Check proxy-side push timing
@@ -186,21 +186,24 @@ kubectl exec deploy/my-service -c istio-proxy -- \
   pilot-agent request GET stats | grep "update_success\|update_rejected\|update_time"
 ```
 
-If `update_rejected` is non-zero, the proxy is rejecting config, which causes Istiod to retry.
+If `update_rejected` is non-zero, the proxy is rejecting config, so inspect the Envoy and Istiod logs for the rejected resource and validation error.
 
 ## Monitoring the Push Queue
 
-Track the push queue depth to detect backpressure:
+Track push queue wait time to detect backpressure:
 
 ```promql
-# Push queue size
-pilot_push_triggers
+# P99 time a proxy spends in the push queue
+histogram_quantile(0.99, sum(rate(pilot_proxy_queue_time_bucket[5m])) by (le))
 
-# Pushes that timed out
-pilot_total_xds_rejects
+# XDS responses rejected by proxies
+rate(pilot_total_xds_rejects[5m])
+
+# XDS response write timeouts
+rate(pilot_xds_write_timeout[5m])
 
 # Internal push errors
-pilot_total_xds_internal_errors
+rate(pilot_total_xds_internal_errors[5m])
 ```
 
 Set up alerts for push performance:
@@ -225,7 +228,7 @@ spec:
         summary: "xDS push P99 latency is {{ $value }}s"
     - alert: HighPushRate
       expr: |
-        sum(rate(pilot_xds_pushes[5m])) > 50
+        sum(rate(pilot_xds_push_time_count[5m])) > 50
       for: 10m
       labels:
         severity: warning
@@ -278,7 +281,7 @@ spec:
     pilot:
       env:
         PILOT_DEBOUNCE_AFTER: "200ms"     # Batch more changes
-        PILOT_DEBOUNCE_MAX: "2s"          # Max debounce wait
+        PILOT_DEBOUNCE_MAX: "10s"         # Max debounce wait
         PILOT_PUSH_THROTTLE: "200"        # Max concurrent pushes
         PILOT_ENABLE_EDS_DEBOUNCE: "true" # Debounce endpoint updates
 ```
@@ -288,4 +291,4 @@ Combined with:
 - Horizontal scaling of Istiod
 - Adequate CPU and memory resources
 
-These changes should bring your P99 push time well under 5 seconds even in large meshes. The key insight is that push performance is a function of three things: the number of proxies, the size of the configuration, and the frequency of changes. Optimize any of these three and push performance improves.
+These changes can help bring your P99 push time well under 5 seconds even in large meshes. The key insight is that push performance is a function of three things: the number of proxies, the size of the configuration, and the frequency of changes. Optimize any of these three and push performance improves.
