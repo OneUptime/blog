@@ -144,6 +144,9 @@ kind: DestinationRule
 metadata:
   name: partner-api
 spec:
+  workloadSelector:
+    matchLabels:
+      app: payment-service
   host: api.partner.com
   trafficPolicy:
     tls:
@@ -151,7 +154,7 @@ spec:
       credentialName: partner-api-certs
 ```
 
-The `credentialName` references a Kubernetes secret containing the certificates.
+The `credentialName` references a Kubernetes secret containing the certificates. For sidecars, use `credentialName` with a `workloadSelector` so Istio knows which workloads should receive the secret.
 
 ## Configuring Gateway TLS
 
@@ -255,9 +258,10 @@ spec:
   hosts:
     - api.external.com
   ports:
-    - number: 443
-      name: https
-      protocol: TLS
+    - number: 80
+      name: http
+      protocol: HTTP
+      targetPort: 443
   resolution: DNS
   location: MESH_EXTERNAL
 ---
@@ -268,9 +272,12 @@ metadata:
 spec:
   host: api.external.com
   trafficPolicy:
-    tls:
-      mode: SIMPLE
-      sni: api.external.com
+    portLevelSettings:
+      - port:
+          number: 80
+        tls:
+          mode: SIMPLE
+          sni: api.external.com
 ```
 
 ## Verifying TLS Configuration
@@ -297,7 +304,7 @@ This will flag common issues like missing destination rules, conflicting peer au
 
 ## Common Pitfalls
 
-**Forgetting the DestinationRule when PeerAuthentication is STRICT**: If you enable strict mTLS via PeerAuthentication but a client does not have a matching DestinationRule with ISTIO_MUTUAL, connections will fail. Inside the mesh, Istio auto-detects this and uses mTLS, but for services without sidecars you need explicit configuration.
+**Forgetting the DestinationRule when PeerAuthentication is STRICT**: If you enable strict mTLS via PeerAuthentication but a client's outbound TLS settings explicitly disable or bypass Istio mutual TLS, connections will fail. Inside the mesh, Istio auto-detects this and uses mTLS when possible, but for services without sidecars or traffic that cannot be associated with a mesh service you need explicit configuration.
 
 **TLS conflict between ServiceEntry and DestinationRule**: If you define a ServiceEntry with protocol TLS on port 443, and also set a DestinationRule with TLS mode SIMPLE, Istio will try to do double TLS encryption. Make sure the protocol and TLS mode are consistent.
 
