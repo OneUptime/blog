@@ -174,7 +174,7 @@ If a catch-all route (no match condition) appears before your specific rules, it
 kubectl get vs -A -o yaml | grep -B 5 "my-app"
 ```
 
-Multiple VirtualServices for the same host get merged, and the merge order is not guaranteed. Consolidate them into a single VirtualService.
+Multiple VirtualServices for the same host are supported only when they are bound to a gateway. In that case, Istio merges them, but the cross-resource merge order is not guaranteed. For mesh-internal traffic, overlapping hosts across VirtualServices conflict. Consolidate them into a single VirtualService, or make the hosts or `exportTo` scope unique.
 
 ### Issue: VirtualService works for some pods but not others
 
@@ -187,7 +187,7 @@ Multiple VirtualServices for the same host get merged, and the merge order is no
 kubectl get pods -n default -o jsonpath='{.items[*].spec.containers[*].name}' | tr ' ' '\n' | sort | uniq
 
 # Look for pods without istio-proxy container
-kubectl get pods -n default -o json | jq '.items[] | select(.spec.containers | length == 1) | .metadata.name'
+kubectl get pods -n default -o json | jq -r '.items[] | select(any(.spec.containers[]; .name == "istio-proxy") | not) | .metadata.name'
 ```
 
 Pods without the Istio sidecar bypass VirtualService rules entirely.
