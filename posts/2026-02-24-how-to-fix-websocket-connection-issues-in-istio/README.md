@@ -21,7 +21,7 @@ Envoy handles this by supporting HTTP upgrade in its route configuration. By def
 Here's a working VirtualService for a WebSocket backend:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: ws-service-vs
@@ -51,7 +51,7 @@ WebSocket connections are long-lived. By default, Envoy's idle timeout for HTTP 
 If WebSocket connections drop after about 5 minutes of inactivity, it's the idle timeout. Configure the timeout in your VirtualService:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: ws-service-vs
@@ -106,10 +106,10 @@ This sets the stream idle timeout to 1 hour.
 
 If the WebSocket upgrade fails with a 400 or 426 response, the Upgrade header might be getting stripped somewhere.
 
-Check if the Ingress Gateway is passing upgrade headers correctly. The Gateway configuration should use HTTP, not HTTPS with TLS termination that might strip headers:
+Check if the Ingress Gateway is passing upgrade headers correctly. For plain WebSockets, the Gateway configuration should use HTTP:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: my-gateway
@@ -126,7 +126,7 @@ spec:
     - "ws.example.com"
 ```
 
-For HTTPS with WebSockets, make sure TLS is configured as SIMPLE (not PASSTHROUGH):
+For HTTPS with WebSockets (`wss://`), use TLS termination with `SIMPLE` if you want Istio HTTP routing to see the upgrade request:
 
 ```yaml
 servers:
@@ -141,6 +141,8 @@ servers:
     credentialName: ws-tls-secret
 ```
 
+If you use TLS `PASSTHROUGH`, the gateway will not terminate TLS and will not see HTTP upgrade headers, so route it with a TLS route and let the backend terminate TLS.
+
 ## Load Balancing Issues
 
 WebSocket connections are persistent, so once established, they stick to one backend pod. Standard round-robin load balancing doesn't distribute WebSocket connections evenly.
@@ -148,7 +150,7 @@ WebSocket connections are persistent, so once established, they stick to one bac
 If you have multiple backend pods and want even distribution of new connections, the default round-robin works for new connections. But if you're using consistent hash load balancing, make sure the hash key makes sense for WebSocket traffic:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: ws-service-dr
@@ -165,7 +167,7 @@ spec:
 If too many WebSocket connections overwhelm your service, configure connection limits:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: ws-service-dr
@@ -204,10 +206,10 @@ Be careful with retries on the upgrade request - if the upgrade partially succee
 
 ## Circuit Breaking with WebSockets
 
-Outlier detection and circuit breaking affect WebSocket connections. If a backend pod gets ejected due to outlier detection, existing WebSocket connections to that pod will be disrupted:
+Outlier detection and circuit breaking affect WebSocket traffic. If a backend pod gets ejected due to outlier detection, Envoy removes it from the healthy load-balancing set for new connections while it is ejected:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: ws-service-dr
@@ -221,7 +223,7 @@ spec:
       baseEjectionTime: 30s
 ```
 
-Set conservative thresholds for WebSocket backends to avoid unnecessary ejections.
+Set conservative thresholds for WebSocket backends to avoid unnecessary ejections and failed reconnects.
 
 ## Debugging WebSocket Issues
 
@@ -250,7 +252,7 @@ istioctl proxy-config log <pod-name> -n my-namespace --level connection:debug,ht
 If your WebSocket service requires session affinity (multiple initial connections from the same client must go to the same pod), use consistent hash load balancing with a header or cookie:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: ws-service-dr
@@ -286,4 +288,4 @@ The port name should start with `http` so Istio treats it as HTTP traffic and su
 
 ## Summary
 
-WebSocket connections work in Istio by default, but timeouts, header stripping, and connection limits can cause problems. Set appropriate timeouts (or disable them with `timeout: 0s`), make sure service ports are named with the `http` prefix, and configure connection pool limits that account for long-lived connections. Use EnvoyFilters for fine-grained idle timeout control, and test WebSocket upgrades from inside the cluster to isolate issues.
+WebSocket connections work in Istio by default, but timeouts, header stripping, and connection limits can cause problems. Set appropriate timeouts (or disable request timeout with `timeout: 0s`), make sure service ports are named with the `http` prefix, and configure connection pool limits that account for long-lived connections. Use EnvoyFilters for fine-grained idle timeout control, and test WebSocket upgrades from inside the cluster to isolate issues.
