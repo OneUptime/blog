@@ -16,8 +16,8 @@ Here is a practical approach to getting your monolith into the mesh without brea
 
 Even if you have a single large application, Istio gives you:
 
-- Mutual TLS between your monolith and any services it talks to (databases, caches, third-party APIs)
-- Request-level metrics and distributed tracing without code changes
+- Mutual TLS between your monolith and other workloads in the mesh
+- Request-level metrics without code changes, and distributed tracing when your application propagates trace headers
 - Traffic splitting for canary deployments of the monolith itself
 - Rate limiting and circuit breaking at the network layer
 - Authorization policies for fine-grained access control
@@ -87,7 +87,7 @@ istioctl install --set profile=default
 Set the mesh-wide PeerAuthentication to PERMISSIVE:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -107,11 +107,11 @@ You can inject the sidecar at the namespace level:
 kubectl label namespace default istio-injection=enabled
 ```
 
-Or annotate specific pods if you want more control:
+Or label specific pods if you want more control:
 
 ```yaml
 metadata:
-  annotations:
+  labels:
     sidecar.istio.io/inject: "true"
 ```
 
@@ -137,7 +137,7 @@ After injection, test that everything still works:
 kubectl exec -it $(kubectl get pod -l app=monolith -o jsonpath='{.items[0].metadata.name}') -c monolith -- curl -s localhost:8080/health
 ```
 
-Check the Envoy access logs to see traffic flowing:
+Check the Envoy proxy logs for startup or connection errors. Access logs require access logging to be enabled, as shown later:
 
 ```bash
 kubectl logs -l app=monolith -c istio-proxy --tail=20
@@ -154,7 +154,7 @@ istioctl analyze -n default
 Your monolith probably talks to external services (databases, APIs, etc.). If you are using `REGISTRY_ONLY` outbound traffic policy, you need ServiceEntries:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-database
@@ -172,7 +172,7 @@ spec:
 For external HTTPS APIs:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-api
@@ -192,7 +192,7 @@ spec:
 Replace your existing Ingress or LoadBalancer with an Istio Gateway:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: monolith-gateway
@@ -216,7 +216,7 @@ spec:
       hosts:
         - "app.example.com"
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: monolith
@@ -266,7 +266,7 @@ spec:
 Split traffic:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: monolith
@@ -284,7 +284,7 @@ spec:
             subset: v2
           weight: 10
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: monolith
@@ -301,10 +301,10 @@ spec:
 
 ## Step 8: Add Resilience Features
 
-Add circuit breaking and timeouts:
+Add circuit breaking with connection pool limits and outlier detection:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: monolith
@@ -328,7 +328,7 @@ spec:
 Once all services communicating with the monolith have sidecars, switch to STRICT mTLS:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: strict
@@ -345,7 +345,7 @@ Test thoroughly before applying to production. Make sure all clients have sideca
 Enable access logging:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: mesh-default
@@ -359,9 +359,9 @@ spec:
 Istio automatically generates metrics that you can scrape with Prometheus. Install the Istio addons for a quick observability stack:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/prometheus.yaml
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/grafana.yaml
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/kiali.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.29/samples/addons/prometheus.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.29/samples/addons/grafana.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.29/samples/addons/kiali.yaml
 ```
 
 ## Migration Tips
