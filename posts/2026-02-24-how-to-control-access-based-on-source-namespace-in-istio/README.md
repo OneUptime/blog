@@ -14,7 +14,7 @@ This is simpler than service-account-based policies and provides a strong securi
 
 ## How Namespace Identity Works in Istio
 
-When Istio's mTLS is enabled (which is the default in most installations), every sidecar gets a certificate that encodes the pod's identity. This identity includes the namespace. When service A in namespace `frontend` calls service B in namespace `backend`, the sidecar for service B can verify that the call came from the `frontend` namespace.
+When Istio uses mTLS for a request, every sidecar gets a certificate that encodes the pod's identity. Istio sends mTLS automatically between meshed workloads by default, but destination workloads are usually in `PERMISSIVE` mode unless you configure strict mTLS. This identity includes the namespace. When service A in namespace `frontend` calls service B in namespace `backend`, the sidecar for service B can verify that the call came from the `frontend` namespace.
 
 The identity looks like this in SPIFFE format:
 
@@ -135,7 +135,7 @@ spec:
             notNamespaces: ["sandbox"]
 ```
 
-This allows traffic from every namespace except `sandbox`.
+With strict mTLS enforced, this allows traffic from every namespace except `sandbox`.
 
 ## Combining Namespace with Other Conditions
 
@@ -313,7 +313,7 @@ spec:
     mode: STRICT
 ```
 
-**External traffic has no namespace.** Traffic coming from outside the mesh (not through the ingress gateway) doesn't have a namespace identity. It won't match any `namespaces` condition, so it will be denied by ALLOW policies that require specific namespaces.
+**External traffic has no namespace.** Traffic coming from outside the mesh (not through the ingress gateway) doesn't have a namespace identity. It won't match a positive `namespaces` condition, so it will be denied by ALLOW policies that require specific namespaces.
 
 **Gateway namespace matters.** If you deploy your ingress gateway in a custom namespace instead of `istio-system`, update your policies accordingly.
 
