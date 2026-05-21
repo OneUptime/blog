@@ -33,7 +33,7 @@ default           STRICT      30d
 backend-policy    PERMISSIVE  2d
 ```
 
-Both have no selector, so both are namespace-wide. Istio will pick one based on its internal ordering, but the result is unpredictable. You might get STRICT or PERMISSIVE depending on which one Istio processes first.
+Both have no selector, so both are namespace-wide. Istio only allows one namespace-wide peer authentication policy per namespace. If you create more than one, Istio ignores the newer policies, so the oldest one keeps taking effect.
 
 **How to fix it:** Delete the duplicate policy and keep only one namespace-wide policy per namespace.
 
@@ -44,10 +44,11 @@ kubectl delete peerauthentication backend-policy -n backend
 **How to prevent it:** Before creating a namespace-wide policy, always check for existing ones:
 
 ```bash
-kubectl get peerauthentication -n backend -o jsonpath='{range .items[?(!.spec.selector)]}{.metadata.name}{"\n"}{end}'
+kubectl get peerauthentication -n backend -o json | \
+  jq -r '.items[] | select(.spec.selector == null or .spec.selector == {}) | .metadata.name'
 ```
 
-This lists all PeerAuthentication policies in the namespace that don't have a selector.
+This lists all PeerAuthentication policies in the namespace that don't have a selector, or that have an empty selector.
 
 ## Conflict 2: Overlapping Workload Selectors
 
@@ -82,12 +83,12 @@ spec:
     mode: PERMISSIVE
 ```
 
-A pod with labels `app: order-service` and `version: v2` matches both policies. Istio doesn't define a clear winner here. The older policy typically takes precedence, but this behavior is not guaranteed across Istio versions.
+A pod with labels `app: order-service` and `version: v2` matches both policies. When more than one workload-specific peer authentication policy matches, Istio picks the oldest one.
 
 **How to fix it:** Restructure your policies so selectors don't overlap. Either:
 
 - Combine both into a single policy with a more specific selector.
-- Add the `version` label to Policy A so it covers all versions explicitly.
+- Split the broader policy into version-specific policies so each pod matches only one workload-specific policy.
 
 ```yaml
 # Single combined policy
@@ -210,14 +211,18 @@ Then for each set of labels, check which pods match.
 
 ```bash
 kubectl get destinationrules --all-namespaces -o json | \
-  jq -r '.items[] | select(.spec.trafficPolicy.tls != null) | "\(.metadata.namespace)/\(.metadata.name): \(.spec.trafficPolicy.tls.mode)"'
+  jq -r '.items[] as $dr |
+    ($dr.spec.trafficPolicy.tls? | select(. != null) |
+      "\($dr.metadata.namespace)/\($dr.metadata.name): trafficPolicy.tls.mode=\(.mode)"),
+    ($dr.spec.subsets[]? | select(.trafficPolicy.tls != null) |
+      "\($dr.metadata.namespace)/\($dr.metadata.name) subset \(.name): trafficPolicy.tls.mode=\(.trafficPolicy.tls.mode)")'
 ```
 
 Any DestinationRule with explicit TLS settings could conflict with PeerAuthentication.
 
 ## Using istioctl to Diagnose
 
-The `istioctl analyze` command can detect some policy conflicts:
+The `istioctl analyze` command can detect invalid or suboptimal Istio configuration that may be related to policy issues:
 
 ```bash
 istioctl analyze --all-namespaces
@@ -226,7 +231,7 @@ istioctl analyze --all-namespaces
 For a specific pod, the describe command shows which policies apply:
 
 ```bash
-istioctl x describe pod order-service-abc123 -n backend
+istioctl experimental describe pod order-service-abc123 -n backend
 ```
 
 And the proxy-config command shows what the Envoy proxy actually sees:
