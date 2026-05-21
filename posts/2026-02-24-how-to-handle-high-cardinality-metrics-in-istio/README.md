@@ -118,7 +118,7 @@ spec:
           operation: REMOVE
 ```
 
-This removes four labels from every metric. If `source_principal` had 50 unique values, that alone removes a 50x multiplier from your cardinality.
+This removes four labels from every metric where those labels are present. If `source_principal` had 50 unique values, removing it can significantly reduce cardinality, especially when it is not already redundant with labels you keep.
 
 ## Strategy 2: Collapse Response Codes
 
@@ -141,10 +141,10 @@ spec:
         response_code:
           operation: UPSERT
           value: |
-            response.code >= 500 ? '5xx' :
-            response.code >= 400 ? '4xx' :
-            response.code >= 200 ? '2xx' :
-            'other'
+            response.code >= 500 ? "5xx" :
+            response.code >= 400 ? "4xx" :
+            response.code >= 200 ? "2xx" :
+            "other"
 ```
 
 This reduces response code cardinality from 12+ values to 4.
@@ -153,27 +153,13 @@ This reduces response code cardinality from 12+ values to 4.
 
 Histograms are the biggest cardinality offenders because each bucket is a separate time series. The default `istio_request_duration_milliseconds` histogram has many buckets.
 
-You cannot easily change the bucket boundaries through the Telemetry API, but you can use an EnvoyFilter or process them in the OTel Collector:
-
-```yaml
-# OTel Collector processor to reduce histogram buckets
-processors:
-  metricstransform:
-    transforms:
-    - include: istio_request_duration_milliseconds
-      action: update
-      operations:
-      - action: experimental_scale_value
-        experimental_scale: 0.001
-```
-
-Or use Prometheus relabeling to drop unwanted bucket boundaries:
+You cannot easily change the bucket boundaries through the Telemetry API. As a scrape-time safety net, you can use Prometheus relabeling to drop unwanted bucket boundaries:
 
 ```yaml
 # In Prometheus scrape config
 metric_relabel_configs:
 - source_labels: [__name__, le]
-  regex: 'istio_request_duration_milliseconds_bucket;(0\.005|0\.01|0\.025|25|50|100)'
+  regex: 'istio_request_duration_milliseconds_bucket;(0\.5|1|5|300000|600000|1800000|3600000)'
   action: drop
 ```
 
@@ -214,7 +200,7 @@ spec:
 
 ## Strategy 5: Use Recording Rules to Replace Raw Metrics
 
-If you only use aggregated metrics in dashboards and alerts, you can drop the raw high-cardinality metrics after computing recording rules:
+If you only use aggregated metrics in dashboards and alerts, you can compute recording rules for the labels you care about:
 
 ```yaml
 # Recording rules
@@ -222,17 +208,18 @@ If you only use aggregated metrics in dashboards and alerts, you can drop the ra
   expr: sum(rate(istio_requests_total{reporter="destination"}[5m])) by (destination_service_name, response_code)
 ```
 
-Then in Prometheus, set a shorter retention for the raw metrics:
+Core Prometheus retention is global, not per metric. If this Prometheus instance is only used for short-lived raw mesh metrics before remote write or federation stores the lower-cardinality recording rules, set a shorter retention for the instance:
 
 ```yaml
 # prometheus.yml
 global:
   scrape_interval: 15s
 
-# Drop raw Istio metrics after 2 hours (recording rules run on them first)
+# Keep local TSDB data for 24 hours.
 storage:
   tsdb:
-    retention.time: 24h
+    retention:
+      time: 24h
 ```
 
 ## Strategy 6: Metric Relabeling in Prometheus
@@ -250,12 +237,18 @@ scrape_configs:
   # Limit cardinality on custom dimensions
   - source_labels: [api_version]
     regex: '(v1|v2|v3)'
-    target_label: api_version
+    target_label: tmp_api_version_keep
     replacement: '$1'
   - source_labels: [api_version]
-    regex: '(?!v1|v2|v3).*'
+    regex: '.+'
     target_label: api_version
     replacement: 'other'
+  - source_labels: [tmp_api_version_keep]
+    regex: '(.+)'
+    target_label: api_version
+    replacement: '$1'
+  - action: labeldrop
+    regex: 'tmp_api_version_keep'
 
   # Drop metrics with too many series
   - source_labels: [__name__]
@@ -311,9 +304,9 @@ Before removing labels, check if anyone is using them:
 
 A rough guideline for Prometheus resource planning:
 
-- Each time series uses about 1-2 bytes of memory per sample
+- Prometheus stores samples on disk at about 1-2 bytes per sample on average
 - At 15-second scrape interval, that is 240 samples per hour per series
-- 100,000 time series at 15s interval needs roughly 2-4 GB of RAM
+- 100,000 time series at 15s interval produces about 24 million samples per hour, before accounting for index, WAL, head block, and query overhead
 
 If your Istio metrics alone exceed 100,000 series, it is time to start reducing cardinality.
 
