@@ -12,7 +12,7 @@ Envoy, the sidecar proxy that Istio deploys alongside your application, uses a c
 
 ## The Two Main Listeners
 
-When Istio configures a sidecar Envoy, it creates two virtual listeners:
+When Istio configures a sidecar Envoy, it creates two catch-all listeners:
 
 - **Port 15001 (outbound)**: Catches all outbound traffic from the application container that has been redirected by iptables.
 - **Port 15006 (inbound)**: Catches all inbound traffic destined for the application container that has been redirected by iptables.
@@ -38,17 +38,17 @@ ADDRESS      PORT  MATCH                                                       D
 
 ## How the Outbound Listener Works
 
-The outbound listener on port 15001 is a special "virtual" listener that uses the original destination address of the connection to figure out where the traffic should go. When your application makes a request to, say, `http://user-service:8080`, the iptables rules redirect that connection to port 15001 on localhost.
+The outbound listener on port 15001 is a special "virtual" listener that uses the original destination address of the connection to figure out where the traffic should go. When your application makes a request to, say, `http://user-service:8080`, the iptables rules redirect that connection to Envoy on port 15001 in the pod.
 
-Envoy on port 15001 looks at the original destination (the IP and port of user-service) and matches it against its listener table. If there's a specific listener for that IP:port combination, traffic goes there. If not, it falls back to the PassthroughCluster, which forwards the traffic directly to the original destination without any Istio policies applied.
+Envoy on port 15001 looks at the original destination (the IP and port of user-service) and matches it against its listener table. If there's a listener for that destination, traffic goes there. If not, it falls back to the PassthroughCluster, which forwards the traffic directly to the original destination with limited Istio functionality for that unknown destination.
 
-To see how a specific outbound route is configured:
+To see how the outbound listener is configured:
 
 ```bash
 istioctl proxy-config listener <pod-name> --port 15001 -o json
 ```
 
-The JSON output shows the `useOriginalDst` field set to true, which tells Envoy to use the original destination from the redirected connection:
+The JSON output shows the original-destination setting set to true. Depending on the Istio and Envoy versions, this may appear as `useOriginalDst` or `hiddenEnvoyDeprecatedUseOriginalDst`, and it tells Envoy to hand redirected connections to the listener that matches the original destination:
 
 ```json
 {
@@ -59,7 +59,7 @@ The JSON output shows the `useOriginalDst` field set to true, which tells Envoy 
       "portValue": 15001
     }
   },
-  "useOriginalDst": true,
+  "hiddenEnvoyDeprecatedUseOriginalDst": true,
   "filterChains": [
     {
       "filters": [
@@ -78,7 +78,7 @@ The JSON output shows the `useOriginalDst` field set to true, which tells Envoy 
 
 ## How the Inbound Listener Works
 
-The inbound listener on port 15006 handles all traffic arriving at the pod. When external traffic comes in on your application port (like 8080), iptables redirects it to port 15006. Envoy then inspects the traffic, applies any inbound policies (like authentication and authorization), collects metrics, and forwards the request to the actual application on localhost.
+The inbound listener on port 15006 handles traffic arriving at the pod that Istio's iptables rules intercept. When traffic comes in on your application port (like 8080), iptables redirects it to Envoy on port 15006. Envoy then inspects the traffic, applies any inbound policies (like authentication and authorization), collects metrics, and forwards the request to the actual application.
 
 ```bash
 istioctl proxy-config listener <pod-name> --port 15006 -o json
@@ -99,7 +99,7 @@ You'll see filter chains for:
 
 ## Outbound Service Listeners
 
-Beyond the two main listeners, Istio creates individual listeners for each service in the mesh that your pod might need to reach. These are the service-specific listeners you see in the `istioctl proxy-config listener` output.
+Beyond the two main listeners, Istio creates virtual listeners for outbound destinations your pod might need to reach. For HTTP traffic, these are commonly wildcard listeners per port; for TCP and HTTPS traffic, they are commonly service-IP-specific listeners. These are the additional listeners you see in the `istioctl proxy-config listener` output.
 
 ```text
 10.96.45.100 8080  Trans: raw_buffer; App: http/1.1,h2c    Route: 8080
@@ -138,7 +138,7 @@ You'll see filters like:
 
 ## The PassthroughCluster
 
-When Envoy can't match a connection to any known service, it uses the PassthroughCluster. This cluster forwards traffic directly to the original destination IP. It's what allows pods in the mesh to reach external services that don't have a ServiceEntry defined.
+When Envoy can't match a connection to any known service and outbound traffic policy is `ALLOW_ANY`, it uses the PassthroughCluster. This cluster forwards traffic directly to the original destination IP. It's what allows pods in the mesh to reach external services that don't have a ServiceEntry defined, with reduced Istio traffic management and observability for those unknown destinations.
 
 You can see the passthrough cluster configuration:
 
@@ -146,7 +146,7 @@ You can see the passthrough cluster configuration:
 istioctl proxy-config cluster <pod-name> --fqdn PassthroughCluster -o json
 ```
 
-If you set `outboundTrafficPolicy.mode` to `REGISTRY_ONLY` in the mesh config, the PassthroughCluster gets replaced with a BlackHoleCluster that drops traffic to unknown destinations:
+If you set `outboundTrafficPolicy.mode` to `REGISTRY_ONLY` in the mesh config, unknown outbound traffic is dropped instead of being allowed through PassthroughCluster:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
