@@ -49,7 +49,7 @@ Inspect the actual Envoy configuration to see if TLS is configured on the inboun
 istioctl proxy-config listener <pod-name> -n <namespace> --port 8080 -o json
 ```
 
-In the JSON output, look for `transportSocket` entries. If mTLS is enabled, you will see a transport socket with type `envoy.transport_sockets.tls` and it will reference certificate paths like `/etc/certs/` or SDS (Secret Discovery Service) configuration.
+In the JSON output, look for `transportSocket` entries on the TLS filter chain. If mTLS is enabled, you will see a transport socket with type `envoy.transport_sockets.tls` and it will usually reference SDS (Secret Discovery Service) secrets for the workload certificate and validation context.
 
 For a more targeted check, look at the cluster configuration for a specific destination:
 
@@ -116,7 +116,7 @@ Enable access logging and check the log entries for TLS information:
 kubectl logs <pod-name> -c istio-proxy --tail=50
 ```
 
-In the default access log format, look for the `DOWNSTREAM_TLS_VERSION` and `DOWNSTREAM_TLS_CIPHER` fields. If the connection uses mTLS, these will show values like `TLSv1.3` and cipher suite names.
+The default Istio access log format does not include TLS fields. To log them, customize the access log format and include `DOWNSTREAM_TLS_VERSION`, `DOWNSTREAM_TLS_CIPHER`, and peer certificate fields. If the connection uses mTLS, these will show values like `TLSv1.3`, cipher suite names, and peer certificate details.
 
 To get more detailed TLS information in the access logs, you can customize the log format:
 
@@ -147,13 +147,15 @@ Key stats to look for:
 listener.0.0.0.0_8080.ssl.connection_error: 0
 listener.0.0.0.0_8080.ssl.handshake: 1523
 listener.0.0.0.0_8080.ssl.no_certificate: 0
-listener.0.0.0.0_8080.ssl.peer_certificate_error: 0
+listener.0.0.0.0_8080.ssl.fail_verify_no_cert: 0
+listener.0.0.0.0_8080.ssl.fail_verify_error: 0
 ```
 
 - `ssl.handshake` - Number of successful TLS handshakes
 - `ssl.connection_error` - TLS connection errors
-- `ssl.no_certificate` - Connections where the client did not present a certificate
-- `ssl.peer_certificate_error` - Client certificate validation failures
+- `ssl.no_certificate` - Successful TLS connections where the client did not present a certificate
+- `ssl.fail_verify_no_cert` - Failed TLS connections where the client did not present a required certificate
+- `ssl.fail_verify_error` - Client certificate validation failures
 
 If `ssl.handshake` is incrementing and the error counters are zero, mTLS is working correctly.
 
@@ -182,25 +184,32 @@ If you really want to prove that traffic is encrypted on the wire, capture packe
 
 kubectl get pod <dest-pod> -o jsonpath='{.status.podIP}'
 
-# Capture traffic on the source pod's sidecar
+# Capture traffic from the source pod network namespace.
+# If the proxy image does not include tcpdump, use a debug container or capture on the node.
 kubectl exec <source-pod> -c istio-proxy -- tcpdump -i eth0 host <dest-pod-ip> -w /tmp/capture.pcap -c 100
 
 # Copy the capture file
 kubectl cp <source-pod>:/tmp/capture.pcap ./capture.pcap -c istio-proxy
 ```
 
-Open the capture in Wireshark. If mTLS is working, you will see TLS handshake packets (ClientHello, ServerHello, Certificate, etc.) followed by encrypted application data. You should NOT see readable HTTP requests or responses.
+Open the capture in Wireshark. If mTLS is working, you will see TLS records followed by encrypted application data. Depending on TLS version and when the capture starts, you may not see every handshake message or certificate in clear text. You should NOT see readable HTTP requests or responses on the proxy-to-proxy connection.
 
 ## Automated Verification Script
 
-Here is a script that checks mTLS status across all services:
+Here is a script that checks the namespace PeerAuthentication mode and sidecar coverage across injected namespaces:
 
 ```bash
 #!/bin/bash
 
-echo "Checking mTLS status for all pods..."
+echo "Checking PeerAuthentication mode and sidecar coverage..."
 
-for ns in $(kubectl get namespaces -l istio-injection=enabled -o jsonpath='{.items[*].metadata.name}'); do
+for ns in $(
+  {
+    kubectl get namespaces -l istio-injection=enabled -o jsonpath='{.items[*].metadata.name}'
+    echo
+    kubectl get namespaces -l istio.io/rev -o jsonpath='{.items[*].metadata.name}'
+  } | tr ' ' '\n' | sort -u
+); do
   echo ""
   echo "=== Namespace: $ns ==="
 
@@ -208,18 +217,15 @@ for ns in $(kubectl get namespaces -l istio-injection=enabled -o jsonpath='{.ite
   pa=$(kubectl get peerauthentication -n $ns -o jsonpath='{.items[0].spec.mtls.mode}' 2>/dev/null)
   echo "PeerAuthentication mode: ${pa:-not set (using mesh default)}"
 
-  # Check each deployment
-  for deploy in $(kubectl get deploy -n $ns -o jsonpath='{.items[*].metadata.name}'); do
-    pod=$(kubectl get pod -n $ns -l app=$deploy -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
-    if [ -n "$pod" ]; then
-      has_sidecar=$(kubectl get pod $pod -n $ns -o jsonpath='{.spec.containers[*].name}' | grep -c istio-proxy)
-      echo "  $deploy: sidecar=$has_sidecar"
-    fi
+  # Check each pod
+  for pod in $(kubectl get pod -n $ns -o jsonpath='{.items[*].metadata.name}'); do
+    has_sidecar=$(kubectl get pod $pod -n $ns -o jsonpath='{.spec.containers[*].name}' | grep -c istio-proxy)
+    echo "  $pod: sidecar=$has_sidecar"
   done
 done
 ```
 
-Run this periodically or as part of your CI/CD pipeline to catch any drift in mTLS coverage.
+Run this periodically or as part of your CI/CD pipeline to catch drift in sidecar coverage. Use metrics or proxy configuration checks above to confirm that traffic is actually using mTLS.
 
 ## What to Do When mTLS is Not Working
 
