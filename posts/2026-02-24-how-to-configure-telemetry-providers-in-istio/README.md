@@ -14,9 +14,9 @@ Istio supports multiple telemetry backends for metrics, tracing, and logging. Yo
 
 A telemetry provider in Istio is a backend that receives and stores telemetry data. Istio supports different providers for each type of telemetry:
 
-**Metrics providers**: Prometheus (default), Stackdriver/Google Cloud Monitoring
-**Tracing providers**: Zipkin, Jaeger, OpenTelemetry, Datadog, Lightstep, Stackdriver
-**Logging providers**: Envoy (stdout), OpenTelemetry, Stackdriver
+**Metrics providers**: Prometheus (built in)
+**Tracing providers**: Zipkin, OpenTelemetry, Datadog, SkyWalking, Lightstep, Stackdriver (legacy)
+**Logging providers**: Envoy (stdout/file), Envoy access log service, OpenTelemetry access log service, Stackdriver
 
 You configure providers in two places:
 1. The mesh configuration (IstioOperator) for defining available providers
@@ -48,7 +48,7 @@ spec:
 Use the Telemetry API to customize which labels are included in your metrics:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: custom-metrics
@@ -84,26 +84,26 @@ apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
   meshConfig:
+    enableTracing: true
     extensionProviders:
     - name: zipkin
       zipkin:
         service: zipkin.istio-system.svc.cluster.local
         port: 9411
     defaultConfig:
-      tracing:
-        sampling: 1.0
+      tracing: {}
 ```
 
 Deploy Zipkin:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/extras/zipkin.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/extras/zipkin.yaml
 ```
 
 Then configure it via the Telemetry API:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: tracing-config
@@ -132,19 +132,37 @@ apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
   meshConfig:
+    enableTracing: true
+    defaultConfig:
+      tracing: {}
     extensionProviders:
     - name: jaeger
-      zipkin:
+      opentelemetry:
         service: jaeger-collector.istio-system.svc.cluster.local
-        port: 9411
+        port: 4317
 ```
 
-Note that Jaeger accepts Zipkin-format traces on port 9411, so the configuration uses the `zipkin` provider type.
+Jaeger supports OTLP, so the Istio provider uses the `opentelemetry` provider type and sends traces to the Jaeger collector's OTLP gRPC port.
 
 Deploy Jaeger:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/jaeger.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/jaeger.yaml
+```
+
+Then configure it via the Telemetry API:
+
+```yaml
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
+metadata:
+  name: jaeger-tracing
+  namespace: istio-system
+spec:
+  tracing:
+  - providers:
+    - name: jaeger
+    randomSamplingPercentage: 5.0
 ```
 
 Access the Jaeger UI:
@@ -162,16 +180,18 @@ apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
   meshConfig:
+    enableTracing: true
+    defaultConfig:
+      tracing: {}
     extensionProviders:
     - name: otel-tracing
       opentelemetry:
         service: otel-collector.istio-system.svc.cluster.local
         port: 4317
     - name: otel-logging
-      opentelemetry:
+      envoyOtelAls:
         service: otel-collector.istio-system.svc.cluster.local
         port: 4317
-        logging: {}
 ```
 
 Deploy the OpenTelemetry Collector:
@@ -253,29 +273,33 @@ data:
     exporters:
       prometheus:
         endpoint: 0.0.0.0:8889
-      jaeger:
-        endpoint: jaeger-collector.istio-system.svc:14250
+      otlp/jaeger:
+        endpoint: jaeger-collector.istio-system.svc:4317
         tls:
           insecure: true
-      logging:
-        loglevel: info
+      debug:
+        verbosity: normal
 
     service:
       pipelines:
         traces:
           receivers: [otlp]
           processors: [batch]
-          exporters: [jaeger, logging]
+          exporters: [otlp/jaeger, debug]
         metrics:
           receivers: [otlp]
           processors: [batch]
           exporters: [prometheus]
+        logs:
+          receivers: [otlp]
+          processors: [batch]
+          exporters: [debug]
 ```
 
 Then enable the provider:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: otel-config
@@ -289,10 +313,10 @@ spec:
 
 ## Configuring Access Logging Providers
 
-### Envoy stdout (default)
+### Envoy stdout (built-in)
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: logging-config
@@ -306,7 +330,7 @@ spec:
 ### OpenTelemetry for logging
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: otel-logging
@@ -324,7 +348,7 @@ You can override telemetry configuration at the namespace or workload level:
 ```yaml
 # Namespace-level: increase tracing for staging namespace
 
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: staging-telemetry
@@ -336,7 +360,7 @@ spec:
     randomSamplingPercentage: 50.0
 ---
 # Workload-level: disable access logging for noisy service
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: noisy-service-telemetry
@@ -346,9 +370,9 @@ spec:
     matchLabels:
       app: noisy-service
   accessLogging:
-  - providers:
+  - disabled: true
+    providers:
     - name: envoy
-    disabled: true
 ```
 
 The hierarchy is: workload-level > namespace-level > mesh-level (istio-system).
@@ -376,7 +400,7 @@ kubectl exec deploy/my-app -c istio-proxy -- curl -s localhost:15000/stats | gre
 You can send telemetry to multiple providers simultaneously:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: multi-provider
