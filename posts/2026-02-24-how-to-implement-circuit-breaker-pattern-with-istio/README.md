@@ -19,7 +19,7 @@ Without circuit breakers, a failing service causes a cascade effect. Service A c
 The first type of circuit breaking in Istio limits the number of connections and requests to a service. When the limits are reached, additional requests are immediately rejected with a 503 instead of being queued:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: service-b-circuit-breaker
@@ -38,9 +38,9 @@ spec:
 
 Here is what each setting does:
 
-- **maxConnections: 50** - No more than 50 TCP connections to service-b. The 51st connection attempt triggers the circuit breaker.
-- **http1MaxPendingRequests: 25** - For HTTP/1.1, if all 50 connections are busy, up to 25 requests can wait in the queue. The 26th pending request gets a 503.
-- **http2MaxRequests: 100** - For HTTP/2, no more than 100 concurrent requests (multiplexed across connections).
+- **maxConnections: 50** - No more than 50 HTTP/1.1 or TCP connections to each destination host. The next connection attempt for that host triggers the circuit breaker.
+- **http1MaxPendingRequests: 25** - Up to 25 requests can wait for a ready connection pool connection. The 26th pending request gets a 503.
+- **http2MaxRequests: 100** - No more than 100 active requests to the destination.
 - **maxRequestsPerConnection: 10** - After 10 requests on a connection, close it and open a new one.
 
 When the circuit breaker trips, Envoy returns a 503 with the response flag `UO` (upstream overflow). You can see these in access logs:
@@ -54,7 +54,7 @@ kubectl logs deploy/my-app -c istio-proxy | grep "UO"
 Outlier detection is the more sophisticated form of circuit breaking. Instead of limiting resource usage, it monitors the health of individual endpoints and removes unhealthy ones from the load balancing pool:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: service-b-outlier
@@ -71,7 +71,7 @@ spec:
 
 **consecutive5xxErrors: 5** - If an endpoint returns 5 consecutive 5xx responses, it is ejected from the pool.
 
-**interval: 10s** - Envoy checks for outliers every 10 seconds.
+**interval: 10s** - Envoy runs periodic outlier analysis and health checks every 10 seconds. Consecutive 5xx ejection can happen inline when the threshold is reached.
 
 **baseEjectionTime: 30s** - The minimum time an ejected endpoint stays out of the pool. On subsequent ejections, this time increases (30s, 60s, 90s, etc.).
 
@@ -82,7 +82,7 @@ spec:
 In practice, you want both types of circuit breaking working together:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: service-b-full-cb
@@ -112,12 +112,13 @@ You can test circuit breaking with a simple load test. First, deploy the Istio s
 
 ```bash
 kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/httpbin/httpbin.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/httpbin/sample-client/fortio-deploy.yaml
 ```
 
 Apply a restrictive circuit breaker:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: httpbin-cb
@@ -140,7 +141,7 @@ spec:
 Then send traffic from a test pod:
 
 ```bash
-kubectl exec deploy/fortio -- fortio load -c 3 -qps 0 -n 30 -loglevel Warning http://httpbin:8000/get
+kubectl exec deploy/fortio -c fortio -- /usr/bin/fortio load -c 3 -qps 0 -n 30 -loglevel Warning http://httpbin:8000/get
 ```
 
 With `maxConnections: 1` and `http1MaxPendingRequests: 1`, sending 3 concurrent requests should trigger the circuit breaker. You will see some requests succeed (200) and some fail (503).
@@ -157,6 +158,8 @@ Look for `upstream_rq_pending_overflow` to see how many requests were rejected b
 
 Set up monitoring to know when circuit breakers are tripping:
 
+By default, Istio only records a minimal set of Envoy stats. If these metrics are not present, configure `proxyStatsMatcher` to include circuit breaker and outlier detection stats before relying on these queries.
+
 ```promql
 # Connection pool overflow (circuit breaker trips)
 
@@ -166,7 +169,7 @@ rate(envoy_cluster_upstream_rq_pending_overflow{cluster_name=~"outbound.*service
 envoy_cluster_outlier_detection_ejections_active{cluster_name=~"outbound.*service-b.*"}
 
 # Total ejection events
-rate(envoy_cluster_outlier_detection_ejections_total{cluster_name=~"outbound.*service-b.*"}[5m])
+rate(envoy_cluster_outlier_detection_ejections_enforced_total{cluster_name=~"outbound.*service-b.*"}[5m])
 ```
 
 Create alerts for circuit breaker activity:
@@ -197,7 +200,7 @@ groups:
 You can configure different circuit breaker settings for different service versions:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: service-b-versioned-cb
