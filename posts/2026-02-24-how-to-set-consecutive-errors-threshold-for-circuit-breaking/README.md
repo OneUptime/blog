@@ -46,10 +46,10 @@ Istio gives you two separate error threshold fields:
 
 ### consecutive5xxErrors
 
-Counts all HTTP 5xx errors (500, 501, 502, 503, 504, etc.):
+Counts HTTP 5xx errors (500, 501, 502, 503, 504, etc.). For opaque TCP traffic, connection failures and timeouts also qualify as 5xx errors for outlier detection:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service
@@ -65,10 +65,10 @@ spec:
 
 ### consecutiveGatewayErrors
 
-Only counts gateway errors (502, 503, 504):
+Counts gateway errors. For HTTP traffic, that means 502, 503, and 504 responses. For opaque TCP traffic, connection failures and timeouts qualify as gateway errors:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service
@@ -85,7 +85,7 @@ spec:
 You can use both together. They maintain separate counters:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service
@@ -101,7 +101,7 @@ spec:
       maxEjectionPercent: 50
 ```
 
-In this setup, a pod gets ejected if it returns 5 consecutive 5xx errors of any kind OR 3 consecutive gateway errors. The gateway error threshold is lower because gateway errors usually indicate infrastructure problems that are less likely to resolve on their own.
+In this setup, a pod gets ejected if it returns 5 consecutive 5xx errors of any kind OR 3 consecutive gateway errors. The gateway error threshold is lower because gateway errors usually indicate infrastructure problems that are less likely to resolve on their own. Because gateway errors are also counted as 5xx errors, `consecutiveGatewayErrors` only changes behavior when it is lower than `consecutive5xxErrors`.
 
 ## Choosing the Right Threshold
 
@@ -158,7 +158,7 @@ Here is how you might set different thresholds for different services in the sam
 ```yaml
 # Frontend API - strict threshold
 
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: frontend-api
@@ -174,7 +174,7 @@ spec:
       maxEjectionPercent: 30
 ---
 # Backend Processing - moderate threshold
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: order-processor
@@ -189,7 +189,7 @@ spec:
       maxEjectionPercent: 50
 ---
 # Analytics Service - lenient threshold
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: analytics-service
@@ -209,9 +209,9 @@ spec:
 Track whether your thresholds are actually triggering ejections:
 
 ```bash
-# Check ejection events
-kubectl exec deploy/frontend-api -n production -c istio-proxy -- \
-  curl -s localhost:15000/stats | grep "ejections"
+# Check ejection events from the proxy that sends traffic to frontend-api
+kubectl exec deploy/client -n production -c istio-proxy -- \
+  pilot-agent request GET stats | grep "ejections"
 
 # Specifically look for:
 # ejections_detected_consecutive_5xx - threshold was hit
@@ -219,7 +219,7 @@ kubectl exec deploy/frontend-api -n production -c istio-proxy -- \
 # ejections_active - currently ejected pods
 ```
 
-The difference between "detected" and "enforced" matters. An ejection is detected when the threshold is hit but might not be enforced if `maxEjectionPercent` would be exceeded. If detected is much higher than enforced, you are hitting the ejection percentage cap and might need more replicas.
+The difference between "detected" and "enforced" matters. An ejection is detected when the threshold is hit but might not be enforced if `maxEjectionPercent` would be exceeded. If detected is much higher than enforced, you are hitting the ejection percentage cap and might need more replicas. These stats are per Envoy proxy, so check the client-side sidecar or gateway that is load balancing to the service you are testing.
 
 ## Interaction with Load Balancing
 
@@ -259,9 +259,9 @@ kubectl exec deploy/fortio -- fortio load \
   -t 60s \
   http://my-service:8080/error-endpoint
 
-# Watch ejection metrics in real-time
-watch -n 1 "kubectl exec deploy/my-service -c istio-proxy -- \
-  curl -s localhost:15000/stats | grep ejections"
+# Watch ejection metrics in real-time from the load-generating proxy
+watch -n 1 "kubectl exec deploy/fortio -c istio-proxy -- \
+  pilot-agent request GET stats | grep ejections"
 ```
 
 The right consecutive error threshold is specific to each service. Start with 3-5 for most services, monitor the ejection metrics for a week, and adjust based on whether you see too many false ejections or too few real ones.
