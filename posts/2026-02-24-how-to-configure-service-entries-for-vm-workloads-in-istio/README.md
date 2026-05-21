@@ -34,7 +34,7 @@ Each VM gets a WorkloadEntry. You can create them manually or use autoregistrati
 ### Manual WorkloadEntry
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: WorkloadEntry
 metadata:
   name: legacy-db-vm1
@@ -52,7 +52,7 @@ spec:
 Create one for each VM:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: WorkloadEntry
 metadata:
   name: legacy-db-vm2
@@ -66,7 +66,7 @@ spec:
   serviceAccount: legacy-db-sa
   network: vm-network
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: WorkloadEntry
 metadata:
   name: legacy-db-vm3
@@ -83,19 +83,29 @@ spec:
 
 ### Autoregistration
 
-If you used the `--autoregister` flag when generating VM bootstrap files, WorkloadEntries are created automatically when the VM's sidecar connects to Istiod. This is the easier approach for dynamic environments:
+If you used the `--autoregister` flag when generating VM bootstrap files and autoregistration is enabled in Istiod, WorkloadEntries are created automatically when the VM's sidecar connects to Istiod. This is the easier approach for dynamic environments. First, create and apply a WorkloadGroup:
+
+```bash
+istioctl x workload group create \
+  --name legacy-db \
+  --namespace vm-apps \
+  --labels app=legacy-db,version=v1 \
+  --serviceAccount legacy-db-sa \
+  --network vm-network | kubectl apply -f -
+```
+
+Then generate the VM bootstrap files:
 
 ```bash
 istioctl x workload entry configure \
   --name legacy-db \
   --namespace vm-apps \
-  --serviceAccount legacy-db-sa \
   --clusterID cluster1 \
   --output /tmp/vm-config \
   --autoregister
 ```
 
-When the VM starts its sidecar, Istiod creates the WorkloadEntry automatically. When the sidecar disconnects (VM shuts down), the WorkloadEntry gets a health status update.
+When the VM starts its sidecar, Istiod creates the WorkloadEntry automatically. When the sidecar disconnects (VM shuts down), the autoregistered WorkloadEntry is removed.
 
 Check autoregistered entries:
 
@@ -108,7 +118,7 @@ kubectl get workloadentries -n vm-apps
 A ServiceEntry groups your WorkloadEntries into a discoverable service:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: legacy-db
@@ -136,7 +146,7 @@ Key fields:
 
 ## Using a Kubernetes Service Instead
 
-Alternatively, you can skip ServiceEntry and use a regular Kubernetes Service with no selector. The WorkloadEntries still serve as the endpoints:
+Alternatively, you can skip ServiceEntry and use a regular Kubernetes Service with a selector. The WorkloadEntries still serve as the endpoints:
 
 ```yaml
 apiVersion: v1
@@ -149,16 +159,18 @@ spec:
   - port: 5432
     name: tcp-postgres
     targetPort: 5432
+  selector:
+    app: legacy-db
 ```
 
-With a selector-less Service, Istio uses the WorkloadEntries in the same namespace that match the service's labels. This approach is simpler and works well for services that you want to look exactly like Kubernetes services.
+With a selector-based Service, Istio uses the WorkloadEntries in the same namespace that match the service's selector labels. This approach is simpler and works well for services that you want to look exactly like Kubernetes services.
 
 ## ServiceEntry for External VMs (Not in Mesh)
 
 If you have VMs that are NOT part of the mesh (no sidecar installed), use a ServiceEntry with explicit endpoints:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-legacy-api
@@ -182,7 +194,7 @@ spec:
 ```
 
 Note the differences:
-- **location: MESH_EXTERNAL** - the service is outside the mesh, so no mTLS
+- **location: MESH_EXTERNAL** - the service is outside the mesh, so it is not treated as a mesh-internal workload with Istio mTLS
 - **endpoints** instead of **workloadSelector** - explicit IP addresses since there are no WorkloadEntries
 
 ## Combining VM and Kubernetes Endpoints
@@ -214,7 +226,7 @@ spec:
         - containerPort: 8080
 ---
 # VM WorkloadEntry
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: WorkloadEntry
 metadata:
   name: payment-vm
@@ -244,7 +256,7 @@ spec:
 Istio will load balance across both Kubernetes pods and the VM. You can use VirtualService routing to gradually shift traffic from the VM (v1) to Kubernetes (v2):
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: payment-migration
@@ -263,7 +275,7 @@ spec:
         subset: vm
       weight: 20
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: payment-service
@@ -284,7 +296,7 @@ spec:
 You can configure health probes in the WorkloadGroup:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: WorkloadGroup
 metadata:
   name: legacy-db
@@ -323,4 +335,4 @@ istioctl proxy-status | grep legacy-db
 
 ## Summary
 
-ServiceEntry and WorkloadEntry are the resources that bring VM workloads into the Istio service mesh. WorkloadEntries represent individual VM instances, and ServiceEntries (or selector-less Kubernetes Services) group them into logical services. With autoregistration, WorkloadEntries are created automatically when the VM sidecar connects. The combination of these resources lets you mix VM and Kubernetes backends, do weighted traffic shifting for migrations, and apply the same traffic management policies to VMs as you do to Kubernetes workloads.
+ServiceEntry and WorkloadEntry are the resources that bring VM workloads into the Istio service mesh. WorkloadEntries represent individual VM instances, and ServiceEntries (or selector-based Kubernetes Services) group them into logical services. With autoregistration, WorkloadEntries are created automatically when the VM sidecar connects. The combination of these resources lets you mix VM and Kubernetes backends, do weighted traffic shifting for migrations, and apply the same traffic management policies to VMs as you do to Kubernetes workloads.
