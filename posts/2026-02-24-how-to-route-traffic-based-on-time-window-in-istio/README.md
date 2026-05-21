@@ -63,6 +63,8 @@ spec:
             subset: lightweight
 ```
 
+These examples assume you already have a `DestinationRule` for `my-app` that defines the referenced subsets, such as `full-featured`, `lightweight`, `v1`, and `v2`.
+
 Store these as ConfigMaps:
 
 ```bash
@@ -80,6 +82,7 @@ metadata:
   namespace: default
 spec:
   schedule: "0 8 * * 1-5"  # 8 AM, Monday-Friday
+  timeZone: "Etc/UTC"
   jobTemplate:
     spec:
       template:
@@ -108,6 +111,7 @@ metadata:
   namespace: default
 spec:
   schedule: "0 18 * * 1-5"  # 6 PM, Monday-Friday
+  timeZone: "Etc/UTC"
   jobTemplate:
     spec:
       template:
@@ -166,7 +170,7 @@ roleRef:
 
 ## Approach 2: EnvoyFilter with Lua Time Check
 
-For routing decisions within a single VirtualService based on time, you can use an EnvoyFilter with a Lua script that checks the current time and adds a header:
+For routing decisions within a single VirtualService based on time, you can use an EnvoyFilter with a Lua script that checks the current time and adds a header before route matching. For ingress traffic, apply the filter to the ingress gateway:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -177,11 +181,11 @@ metadata:
 spec:
   workloadSelector:
     labels:
-      app: my-app
+      istio: ingressgateway
   configPatches:
     - applyTo: HTTP_FILTER
       match:
-        context: SIDECAR_INBOUND
+        context: GATEWAY
         listener:
           filterChain:
             filter:
@@ -194,15 +198,16 @@ spec:
           name: envoy.filters.http.lua
           typed_config:
             "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-            inline_code: |
-              function envoy_on_request(request_handle)
-                local hour = tonumber(os.date("%H"))
-                if hour >= 8 and hour < 18 then
-                  request_handle:headers():add("x-time-window", "business")
-                else
-                  request_handle:headers():add("x-time-window", "offhours")
+            default_source_code:
+              inline_string: |
+                function envoy_on_request(request_handle)
+                  local hour = tonumber(os.date("%H"))
+                  if hour >= 8 and hour < 18 then
+                    request_handle:headers():add("x-time-window", "business")
+                  else
+                    request_handle:headers():add("x-time-window", "offhours")
+                  end
                 end
-              end
 ```
 
 Then route based on the injected header:
@@ -231,7 +236,9 @@ spec:
             subset: lightweight
 ```
 
-Be aware that the Lua `os.date` uses the container's timezone, which is typically UTC in Kubernetes. Adjust your hour ranges accordingly or set the TZ environment variable.
+For mesh-internal service-to-service traffic, apply the same filter on the client sidecars with `context: SIDECAR_OUTBOUND` instead. An inbound filter on `my-app` would add the header after the route to a subset has already been selected.
+
+Be aware that the Lua `os.date` uses the Envoy proxy process timezone, which is typically UTC in Kubernetes. Adjust your hour ranges accordingly or configure the proxy environment timezone.
 
 ## Approach 3: Maintenance Window Routing
 
@@ -372,7 +379,7 @@ kubectl get virtualservice my-app-vs -o jsonpath='{.spec.http[0].route[0].destin
 
 ## Considerations
 
-**Time zones.** Be explicit about time zones. Kubernetes CronJobs use the cluster's configured timezone (usually UTC). Document your scheduled changes clearly so your team knows what time zone to expect.
+**Time zones.** Be explicit about time zones. In Kubernetes v1.27 and later, set `.spec.timeZone` to a valid time zone name such as `Etc/UTC`. If you omit it, the kube-controller-manager interprets the schedule using its local timezone. Document your scheduled changes clearly so your team knows what time zone to expect.
 
 **Transition gaps.** There can be a brief delay between when the CronJob triggers and when the VirtualService update propagates to all sidecars. This is typically under a second but can be a few seconds in large clusters.
 
