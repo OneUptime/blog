@@ -8,7 +8,7 @@ Description: Learn how to inspect Envoy endpoint configuration in Istio to debug
 
 ---
 
-Endpoints are the final piece of the Envoy routing puzzle. After a request matches a listener, gets routed through a virtual host, and selects a cluster, Envoy needs to pick an actual backend IP and port to send the request to. Those IPs and ports are the endpoints. If a service has three pods, the cluster for that service will have three endpoints.
+Endpoints are the final piece of the Envoy routing puzzle. After a request matches a listener, gets routed through a virtual host, and selects a cluster, Envoy needs to pick an actual backend IP and port to send the request to. Those IPs and ports are the endpoints. If a service has three ready pods for a port, the cluster for that service will usually have three endpoints.
 
 When requests fail with 503 errors or traffic isn't distributed as expected, checking endpoints tells you which backends Envoy sees and whether they're healthy.
 
@@ -54,24 +54,24 @@ The IP address and port of the backend pod. These should match the pod IPs you s
 kubectl get pods -n default -l app=reviews -o wide
 ```
 
-If the endpoint IPs don't match the pod IPs, there might be a service discovery issue. This can happen if the Kubernetes endpoints object is stale or if there's a network overlay problem.
+If the endpoint IPs don't match the pod IPs, there might be a service discovery issue. This can happen if the Kubernetes EndpointSlice data is stale or if there's a network overlay problem.
 
 ### STATUS
 
 Possible values:
 
 - **HEALTHY** - The endpoint is ready to receive traffic. This is the normal state.
-- **UNHEALTHY** - Active health checks are failing for this endpoint. Envoy won't send traffic to it.
+- **UNHEALTHY** - The endpoint is marked unhealthy, either by health checking or by health information delivered through EDS. Envoy won't send traffic to it.
 - **DRAINING** - The endpoint is being gracefully removed. Envoy will finish existing requests but won't send new ones.
 - **TIMEOUT** - Health check timed out. Similar to UNHEALTHY.
-- **DEGRADED** - The endpoint is partially healthy (supports fewer priority levels).
+- **DEGRADED** - The endpoint is degraded. Envoy can use degraded hosts when there are not enough healthy hosts, depending on the load balancing configuration.
 
 ### OUTLIER CHECK
 
 This reflects the outlier detection status:
 
 - **OK** - No issues detected.
-- **FAILED** - The endpoint has been ejected by the outlier detector. This happens when the endpoint returns too many errors within the configured interval.
+- **FAILED** - The endpoint has been ejected by the outlier detector. This can happen when the endpoint returns too many errors within the configured interval.
 
 An endpoint can be HEALTHY but have a FAILED outlier check. In that case, Envoy temporarily removes it from the load balancing pool. After the ejection time passes, Envoy tries the endpoint again.
 
@@ -121,7 +121,7 @@ The JSON output includes per-endpoint stats (connection counts, request counts, 
 
 ## Debugging 503 Errors: No Healthy Endpoints
 
-The most common cause of 503 errors in Istio is having no healthy endpoints for a cluster. Check:
+A common cause of 503 errors in Istio is having no healthy endpoints for a cluster. Check:
 
 ```bash
 istioctl pc endpoints my-pod.default \
@@ -134,23 +134,24 @@ If the output is empty, there are no endpoints at all. This means either:
 2. The pods aren't ready (readiness probe failing)
 3. The endpoint discovery hasn't propagated yet
 
-Check the Kubernetes endpoints:
+Check the Kubernetes EndpointSlices:
 
 ```bash
-kubectl get endpoints target-service -n default
+kubectl get endpointslice -n default \
+  -l kubernetes.io/service-name=target-service
 ```
 
-If Kubernetes has endpoints but Envoy doesn't, there's a sync issue with Istiod. Check `istioctl proxy-status` for STALE indicators.
+If Kubernetes has ready endpoints but Envoy doesn't, there's a sync issue with Istiod. Check `istioctl proxy-status` for STALE indicators.
 
-If all endpoints show UNHEALTHY:
+If endpoints are being ejected by outlier detection:
 
 ```bash
 ENDPOINT             STATUS       OUTLIER CHECK   CLUSTER
-10.244.0.15:8080     UNHEALTHY    FAILED          outbound|8080||target.default.svc.cluster.local
-10.244.0.16:8080     UNHEALTHY    FAILED          outbound|8080||target.default.svc.cluster.local
+10.244.0.15:8080     HEALTHY      FAILED          outbound|8080||target.default.svc.cluster.local
+10.244.0.16:8080     HEALTHY      FAILED          outbound|8080||target.default.svc.cluster.local
 ```
 
-The backend pods are either actually down or the outlier detection is being too aggressive. Check the pods:
+The backend pods may be returning too many errors, or the outlier detection policy may be too aggressive. Check the pods:
 
 ```bash
 kubectl get pods -n default -l app=target-service
@@ -221,7 +222,7 @@ for cluster in data:
 
 ## Endpoint Weights
 
-By default, all endpoints have equal weight. DestinationRules can assign different weights. Check the weight field in the JSON:
+By default, all endpoints have equal weight. Envoy EDS can assign different per-endpoint weights, although Istio subset traffic weights are usually configured in a VirtualService and applied at the route level. Check the weight field in the JSON:
 
 ```json
 "weight": 1
@@ -236,8 +237,8 @@ A useful sanity check is comparing what Envoy sees with what Kubernetes has:
 ```bash
 # What Kubernetes knows
 
-kubectl get endpoints reviews -n default -o json | \
-  python3 -c "import sys,json; d=json.load(sys.stdin); [print(f\"{a['ip']}:{p['port']}\") for s in d.get('subsets',[]) for a in s.get('addresses',[]) for p in s.get('ports',[])]"
+kubectl get endpointslice -n default -l kubernetes.io/service-name=reviews -o json | \
+  python3 -c "import sys,json; d=json.load(sys.stdin); [print(f\"{addr}:{p['port']}\") for item in d.get('items',[]) for e in item.get('endpoints',[]) if e.get('conditions',{}).get('ready', True) for addr in e.get('addresses',[]) for p in item.get('ports',[])]"
 
 # What Envoy knows
 istioctl pc endpoints my-pod.default \
@@ -256,13 +257,14 @@ istioctl pc endpoints my-pod.default \
   --cluster "outbound|9080||reviews.default.svc.cluster.local"
 ```
 
-If you see IPs of pods that no longer exist, check if the Kubernetes endpoints updated:
+If you see IPs of pods that no longer exist, check if the Kubernetes EndpointSlices updated:
 
 ```bash
-kubectl get endpoints reviews -n default
+kubectl get endpointslice -n default \
+  -l kubernetes.io/service-name=reviews
 ```
 
-If Kubernetes endpoints are correct but Envoy still has stale entries, it's an Istiod sync issue. Check proxy-status and Istiod logs.
+If Kubernetes EndpointSlices are correct but Envoy still has stale entries, it's an Istiod sync issue. Check proxy-status and Istiod logs.
 
 ## Summary
 
