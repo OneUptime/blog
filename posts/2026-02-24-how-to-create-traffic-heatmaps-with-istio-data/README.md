@@ -37,8 +37,8 @@ sum(increase(istio_request_duration_milliseconds_bucket{
 
 Configure the panel with these settings:
 
-- **Format**: Heatmap
-- **Data format**: Time series buckets
+- **Visualization**: Heatmap
+- **Prometheus query format**: Heatmap, so Grafana converts cumulative histogram buckets to regular buckets and sorts them by the `le` label
 - **Y-Axis**: Use `le` label (the histogram bucket boundary)
 - **Color scheme**: Spectral or YlOrRd (yellow to red)
 
@@ -56,18 +56,18 @@ sum(rate(istio_requests_total{
 }[5m])) by (source_workload, destination_service_name)
 ```
 
-In Grafana, create a panel using the "Status History" or "Table" visualization, or better yet, use the Heatmap panel with:
+In Grafana, create a panel using the "Table" visualization and transform the query result into a matrix:
 
-- X axis: `destination_service_name`
-- Y axis: `source_workload`
+- Column: `destination_service_name`
+- Row: `source_workload`
 - Cell value: Request rate
 
-For a proper grid heatmap, you can use Grafana's "Table" panel with color-coded cells:
+For a proper grid heatmap, keep the request-rate values and use Grafana's "Grouping to matrix" transformation:
 
 ```promql
 sum(rate(istio_requests_total{
   reporter="source"
-}[5m])) by (source_workload, destination_service_name) > 0
+}[5m])) by (source_workload, destination_service_name)
 ```
 
 Configure cell display mode to "Color background" with a gradient color scheme. Each cell represents a source-destination pair, and the color intensity shows traffic volume.
@@ -98,7 +98,7 @@ This gives you a timeline view where each row is a service and the color shows i
 
 ## Building a Comprehensive Dashboard
 
-Here is a complete Grafana dashboard JSON model for an Istio traffic heatmap dashboard:
+Here is a simplified Grafana dashboard JSON excerpt for an Istio traffic heatmap dashboard:
 
 ```json
 {
@@ -142,11 +142,30 @@ Here is a complete Grafana dashboard JSON model for an Istio traffic heatmap das
       },
       {
         "title": "Request Volume by Source-Destination",
-        "type": "heatmap",
+        "type": "table",
         "gridPos": { "h": 10, "w": 24, "x": 0, "y": 16 },
         "targets": [{
           "expr": "sum(rate(istio_requests_total{reporter=\"source\"}[5m])) by (source_workload, destination_service_name)",
+          "format": "table",
           "legendFormat": "{{source_workload}} -> {{destination_service_name}}"
+        }],
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "cellOptions": {
+                "type": "color-background",
+                "mode": "gradient"
+              }
+            }
+          }
+        },
+        "transformations": [{
+          "id": "groupingToMatrix",
+          "options": {
+            "columnField": "destination_service_name",
+            "rowField": "source_workload",
+            "valueField": "Value"
+          }
         }]
       }
     ]
@@ -156,7 +175,7 @@ Here is a complete Grafana dashboard JSON model for an Istio traffic heatmap das
 
 ## Time-of-Day Traffic Patterns
 
-One particularly interesting heatmap shows traffic patterns by hour of day and day of week. This requires a recording rule to bucket your data by time:
+One particularly interesting heatmap shows traffic patterns by hour of day and day of week. You can start with an hourly rate query:
 
 ```promql
 sum(rate(istio_requests_total{
@@ -164,22 +183,22 @@ sum(rate(istio_requests_total{
 }[1h])) by (destination_service_name)
 ```
 
-While Prometheus does not natively support day-of-week grouping, you can use Grafana transformations to reshape the data. Create a table panel and apply a "Group by" transformation on the hour extracted from the timestamp.
+PromQL also has time functions such as `hour()` and `day_of_week()`, which return UTC values. In Grafana, use transformations to add hour and day fields from the timestamp, then reshape the result into a table or matrix.
 
 This type of heatmap reveals usage patterns. Maybe your payment service gets hammered at lunch time. Maybe your batch processing service spikes at midnight. Knowing these patterns helps with capacity planning and identifying abnormal traffic.
 
 ## Adding Request Path Dimension
 
-You can make heatmaps even more useful by including the request path. Istio captures this in the `request_url_path` label when you have the right telemetry configuration:
+You can make heatmaps even more useful by including the request path. Istio does not expose request path as a standard metric label, but you can add a bounded custom dimension with the Telemetry API when you have the right telemetry configuration:
 
 ```promql
 sum(rate(istio_requests_total{
   destination_service_name="api-gateway",
   reporter="destination"
-}[5m])) by (request_url_path)
+}[5m])) by (request_operation)
 ```
 
-This creates a heatmap where each row is an API endpoint, showing you which endpoints carry the most traffic and which ones are experiencing problems.
+This creates a heatmap where each row is an API operation, showing you which operations carry the most traffic and which ones are experiencing problems. Avoid adding raw URL paths directly unless you normalize them first, because path labels can create very high cardinality.
 
 ## Performance Considerations
 
