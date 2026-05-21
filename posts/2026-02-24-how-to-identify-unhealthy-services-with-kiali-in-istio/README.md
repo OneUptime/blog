@@ -10,29 +10,29 @@ Description: How to use Kiali's health indicators and diagnostic features to qui
 
 When something goes wrong in a microservices environment, the hardest part is figuring out which service is actually broken versus which one is just suffering from a bad dependency. Kiali's health monitoring features help you cut through that noise by giving you a clear picture of each service's health based on actual traffic data.
 
-Kiali calculates health from Prometheus metrics that Istio collects automatically. It looks at error rates, request rates, and pod readiness to determine whether a service is healthy, degraded, or in failure. This post covers how to use these features to find problems fast.
+Kiali calculates health from Prometheus metrics that Istio collects automatically and from Kubernetes pod status. It looks at error rates, request rates, and pod readiness to determine whether a service is healthy, degraded, in failure, or has no health information. This post covers how to use these features to find problems fast.
 
 ## How Kiali Calculates Health
 
-Kiali uses three sources of data to determine service health:
+Kiali uses two main sources of data to determine service health:
 
 **Traffic health** is based on the ratio of successful responses to total responses. If a service returns 5xx errors for 10% of its requests, that's unhealthy. If it returns 4xx errors for 20% of requests, that might also be unhealthy depending on your thresholds.
 
 **Pod health** is based on Kubernetes pod status. If pods are in CrashLoopBackOff, pending, or not ready, the service is marked as unhealthy regardless of traffic metrics.
 
-**Configuration health** is based on Kiali's validation engine. If the Istio configuration for a service has errors, the service's config health shows a warning or error.
+**Configuration validation** is shown alongside health. If the Istio configuration for a service has errors, Kiali's validation engine shows a warning or error, but that validation status is separate from traffic and pod health.
 
-These three dimensions combine into an overall health score for each service.
+Traffic and pod health combine into an overall health status for each service, while validation results give you extra context about possible configuration problems.
 
 ## The Overview Page
 
-The fastest way to spot unhealthy services is the Overview page. It shows each namespace as a card with color-coded health indicators:
+The fastest way to spot unhealthy services is the Overview page. The current Overview Dashboard highlights components with issues, groups applications by health, and shows Service Insights such as top error rates and p95 latencies. Kiali uses color-coded health indicators:
 
-- Green means all services in the namespace are healthy
-- Yellow means at least one service is degraded
-- Red means at least one service is in failure
+- Green means the resource is healthy
+- Orange means the resource is degraded
+- Red means the resource is in failure
 
-Click on a namespace to drill into its services.
+Use the namespace selector or click into the affected resource to drill into its services.
 
 ## Service List View
 
@@ -40,7 +40,7 @@ Navigate to the Services page and select your namespace. You'll see a table with
 
 Each row shows:
 - Service name
-- Health icon (green/yellow/red)
+- Health icon (green/orange/red)
 - Configuration validation status
 - Labels
 
@@ -63,12 +63,12 @@ A workload can be unhealthy even if its service looks healthy overall (if only s
 The traffic graph provides the most intuitive view of service health. Nodes in the graph are colored by health:
 
 - Green nodes: healthy services
-- Yellow nodes: degraded services (some errors or warnings)
+- Orange nodes: degraded services (some errors or warnings)
 - Red nodes: failing services
 
 Enable the following display options for maximum visibility:
 
-1. Toggle "Healthy Nodes" to dim healthy services and make unhealthy ones stand out
+1. Hide or dim healthy nodes to make unhealthy ones stand out
 2. Enable "Response Time" edge labels to spot slow services
 3. Turn on "Traffic Animation" to see error traffic (red dots) flowing through the mesh
 
@@ -163,7 +163,7 @@ In this cascade, the database is the root cause. Everything else is just failing
 
 ### Pattern 5: No Traffic
 
-A service shows as degraded because it's receiving zero traffic. This might mean:
+A service shows no health information because it's receiving zero traffic. This might mean:
 - A routing change accidentally stopped sending traffic to it
 - A VirtualService misconfiguration is sending traffic elsewhere
 - The service's Kubernetes service selector doesn't match any pods
@@ -190,7 +190,7 @@ spec:
           - code: "^5\\d\\d$"
             direction: "inbound"
             protocol: "http"
-            degraded: 0.5
+            degraded: 1
             failure: 5
           - code: "^4\\d\\d$"
             direction: "inbound"
@@ -199,7 +199,7 @@ spec:
             failure: 30
 ```
 
-This says: for services in the bookinfo namespace, mark as degraded at 0.5% 5xx errors and failed at 5%. For 4xx errors, degraded at 10% and failed at 30%.
+This says: for services in the bookinfo namespace, mark as degraded at 1% 5xx errors and failed at 5%. For 4xx errors, degraded at 10% and failed at 30%.
 
 Adjust these based on what's normal for your application. Some services naturally have higher 4xx rates (like APIs that get invalid input regularly).
 
