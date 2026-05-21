@@ -24,6 +24,8 @@ Istio exposes a rich set of metrics through Envoy proxies. For load balancing sp
 
 The most basic indicator of load balancing effectiveness is whether requests are distributed evenly. Use this Prometheus query:
 
+These queries assume your Prometheus scrape configuration preserves the Kubernetes pod name as a `pod` label, as Istio's sample Prometheus configuration does. If your setup uses a different label, replace `pod` with that label.
+
 ```promql
 # Request rate per pod for a specific service
 
@@ -96,7 +98,7 @@ envoy_cluster_outlier_detection_ejections_active{
 }
 
 # Rate of ejection events
-rate(envoy_cluster_outlier_detection_ejections_total{
+rate(envoy_cluster_outlier_detection_ejections_enforced_total{
   cluster_name="outbound|80||my-service.default.svc.cluster.local"
 }[5m])
 
@@ -181,11 +183,13 @@ groups:
     rules:
       - alert: UnevenLoadDistribution
         expr: |
-          (
-            max(sum(rate(istio_requests_total{reporter="destination"}[5m])) by (destination_service, pod))
-            /
-            avg(sum(rate(istio_requests_total{reporter="destination"}[5m])) by (destination_service, pod))
-          ) by (destination_service) > 2
+          max by (destination_service) (
+            sum by (destination_service, pod) (rate(istio_requests_total{reporter="destination"}[5m]))
+          )
+          /
+          avg by (destination_service) (
+            sum by (destination_service, pod) (rate(istio_requests_total{reporter="destination"}[5m]))
+          ) > 2
         for: 10m
         labels:
           severity: warning
@@ -194,7 +198,7 @@ groups:
 
       - alert: HighOutlierEjections
         expr: |
-          sum(rate(envoy_cluster_outlier_detection_ejections_total[5m])) by (cluster_name) > 0.5
+          sum(rate(envoy_cluster_outlier_detection_ejections_enforced_total[5m])) by (cluster_name) > 0.5
         for: 5m
         labels:
           severity: warning
@@ -216,7 +220,7 @@ groups:
 Kiali provides a visual representation of traffic flow in your mesh. Install it if you haven't:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/kiali.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/kiali.yaml
 ```
 
 Access the Kiali dashboard:
