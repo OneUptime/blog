@@ -8,7 +8,7 @@ Description: Troubleshooting guide for diagnosing why an Istio DestinationRule i
 
 ---
 
-DestinationRules define traffic policies like load balancing, connection pooling, and outlier detection for a service. When they're not being applied, you might see round-robin load balancing instead of your configured strategy, missing circuit breaking, or mTLS that isn't being enforced. Here's how to track down the problem.
+DestinationRules define traffic policies like load balancing, connection pooling, and outlier detection for a service. When they're not being applied, you might see the default load balancing behavior instead of your configured strategy, missing circuit breaking, or mTLS not being used for upstream connections. Here's how to track down the problem.
 
 ## Understanding When DestinationRules Apply
 
@@ -21,14 +21,14 @@ kubectl get destinationrule -n production
 kubectl get destinationrule my-dr -n production -o yaml
 ```
 
-Make sure it's in the correct namespace. DestinationRules follow Istio's configuration scoping rules. A DestinationRule in namespace `production` applies to traffic from proxies in `production` that are accessing the specified host.
+Make sure it's in the correct namespace. DestinationRules follow Istio's configuration scoping rules. Istio looks for a DestinationRule in the client namespace, then the service namespace, then the mesh root namespace (`istio-system` by default).
 
 ## Step 2: Check the Host Field
 
 The `host` field in a DestinationRule must match a service in the mesh. This is where many issues start:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-dr
@@ -50,7 +50,7 @@ kubectl get svc my-service -n production
 
 ## Step 3: Check for Conflicting DestinationRules
 
-Multiple DestinationRules for the same host can cause unpredictable behavior:
+Multiple DestinationRules for the same host can cause confusing behavior depending on Istio's lookup path:
 
 ```bash
 kubectl get destinationrule --all-namespaces -o json | \
@@ -72,7 +72,7 @@ for host, drs in hosts.items():
 "
 ```
 
-If you find duplicates, consolidate them into a single DestinationRule.
+If you find duplicates in the same lookup path, consolidate them into a single DestinationRule.
 
 ## Step 4: Inspect the Proxy Cluster Configuration
 
@@ -139,22 +139,23 @@ If no pods match the subset labels, you'll get no healthy upstream errors.
 
 ## Step 6: Check Namespace Scope
 
-DestinationRules have namespace-specific behavior. A DestinationRule in namespace A applies to proxies in namespace A when they call the target host. It does not apply to proxies in namespace B calling the same host (unless it's in the root namespace or a mesh-wide rule).
+DestinationRules have namespace-specific behavior. For a request, Istio looks for a matching DestinationRule in the client namespace, the destination service namespace, and then the configured mesh root namespace. A DestinationRule in some unrelated namespace won't be used just because it is exported.
 
 If your client is in a different namespace than the DestinationRule:
 
 ```bash
-# Client in namespace 'frontend', DestinationRule in namespace 'production'
-# This won't work for the frontend proxy
+# Client in namespace 'frontend', service in namespace 'production'
+# A DestinationRule in 'production' is on the lookup path
 
 # The DestinationRule needs to be in the client's namespace
+# OR in the service namespace
 # OR in the root namespace (istio-system by default)
 ```
 
 To make a DestinationRule apply mesh-wide, put it in `istio-system`:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-dr
@@ -166,10 +167,10 @@ spec:
       simple: LEAST_REQUEST
 ```
 
-Or export it from the source namespace:
+Or keep it in the service namespace and make sure it is exported:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-dr
@@ -196,7 +197,7 @@ spec:
       mode: ISTIO_MUTUAL
 
 # But PeerAuthentication says PERMISSIVE
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -235,16 +236,16 @@ istioctl analyze -n production
 
 Common warnings:
 
-- `IST0101: Referenced subset not found` - A VirtualService references a subset that doesn't exist
-- `IST0104: Destination rule for non-existent service` - The host doesn't match any service
-- `IST0128: Multiple DestinationRules for the same host` - Conflicting rules
+- `IST0101: Referenced resource not found` - A VirtualService references a resource that doesn't exist
+- `IST0173: DestinationRule subset does not select pods` - A subset has no matching pods
+- `IST0174: Unknown DestinationRule host` - The host doesn't match any service in the mesh
 
 ## Step 9: Test with a Known Good Configuration
 
 If you're stuck, strip the DestinationRule down to the minimum and add complexity back gradually:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: test-dr
@@ -274,7 +275,7 @@ If RANDOM load balancing works, start adding your other settings back (subsets, 
 |---------|-------|-----|
 | Settings ignored | Wrong host FQDN | Use fully qualified name |
 | 503 errors | Subset has no matching pods | Check pod labels |
-| Only affects some clients | Namespace scoping | Move DR to client namespace or use exportTo |
+| Only affects some clients | Namespace scoping | Put the DR in the client namespace, service namespace, or root namespace |
 | mTLS failures | Conflicting TLS settings | Align DestinationRule TLS with PeerAuthentication |
 | Intermittent behavior | Multiple DRs for same host | Consolidate to single DR |
 
