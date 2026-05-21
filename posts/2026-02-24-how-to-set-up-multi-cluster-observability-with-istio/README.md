@@ -29,7 +29,7 @@ If each cluster has its own isolated observability stack, you see three separate
 
 ## Distributed Tracing Across Clusters
 
-Istio sidecars automatically generate trace spans and propagate trace headers (B3, W3C Trace Context). For cross-cluster tracing, you just need to make sure all clusters send spans to the same tracing backend.
+Istio sidecars automatically generate trace spans and forward trace headers (B3, W3C Trace Context) to the proxied application. Applications still need to propagate those headers from inbound requests to outbound requests so spans can be stitched into a complete trace. For cross-cluster tracing, you also need to make sure all clusters send spans to the same tracing backend.
 
 ### Deploy a Central Jaeger Instance
 
@@ -55,7 +55,7 @@ spec:
     spec:
       containers:
       - name: jaeger
-        image: jaegertracing/all-in-one:1.53
+        image: jaegertracing/all-in-one:1.76
         env:
         - name: SPAN_STORAGE_TYPE
           value: elasticsearch
@@ -101,7 +101,7 @@ spec:
 If you are using the Telemetry API:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: mesh-default
@@ -125,10 +125,10 @@ kubectl apply -f telemetry.yaml --context="${CTX_CLUSTER2}"
 Send some traffic that spans clusters, then check Jaeger:
 
 ```bash
-kubectl port-forward svc/jaeger-query 16686:16686 -n observability
+kubectl port-forward deployment/jaeger 16686:16686 -n observability
 ```
 
-Open http://localhost:16686 and search for traces. You should see complete traces that show spans from both clusters. The `cluster` tag on each span tells you which cluster it came from.
+Open http://localhost:16686 and search for traces. You should see complete traces that show spans from both clusters. Add a cluster tag, such as `cluster_id`, to each span if you want to filter traces by cluster in Jaeger.
 
 ## Centralized Logging
 
@@ -165,46 +165,52 @@ data:
           period: 24h
 ```
 
-In each cluster, deploy Promtail or Grafana Alloy to ship logs:
+In each cluster, deploy Grafana Alloy to ship logs:
 
 ```yaml
-# promtail-config.yaml
+# alloy-config.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: promtail-config
+  name: alloy-config
   namespace: observability
 data:
-  promtail.yaml: |
-    server:
-      http_listen_port: 9080
-    positions:
-      filename: /tmp/positions.yaml
-    clients:
-    - url: https://loki.observability.example.com/loki/api/v1/push
-      tenant_id: cluster1
-    scrape_configs:
-    - job_name: kubernetes-pods
-      kubernetes_sd_configs:
-      - role: pod
-      relabel_configs:
-      - source_labels: [__meta_kubernetes_pod_container_name]
-        target_label: container
-      - source_labels: [__meta_kubernetes_namespace]
-        target_label: namespace
-      pipeline_stages:
-      - static_labels:
-          cluster: cluster1
+  config.alloy: |
+    discovery.kubernetes "pods" {
+      role = "pod"
+    }
+
+    loki.source.kubernetes "pods" {
+      targets    = discovery.kubernetes.pods.targets
+      forward_to = [loki.process.cluster_labels.receiver]
+    }
+
+    loki.process "cluster_labels" {
+      stage.static_labels {
+        values = {
+          cluster = "cluster1"
+        }
+      }
+
+      forward_to = [loki.write.central.receiver]
+    }
+
+    loki.write "central" {
+      endpoint {
+        url       = "https://loki.observability.example.com/loki/api/v1/push"
+        tenant_id = "cluster1"
+      }
+    }
 ```
 
 The `cluster` label on logs lets you filter by cluster in Grafana.
 
 ## Multi-Cluster Access Logging
 
-Enable Istio access logging with cluster identification:
+Enable Istio access logging, then add cluster identification in your log pipeline:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: mesh-default
@@ -217,7 +223,7 @@ spec:
       expression: "response.code >= 400"
 ```
 
-The access logs automatically include source and destination cluster information.
+The access logs include request metadata from Envoy. Add cluster labels in your log shipper or a custom access log format if you need to filter access logs by cluster.
 
 ## Multi-Cluster Kiali
 
@@ -236,8 +242,6 @@ metadata:
 spec:
   clustering:
     clusters:
-    - name: cluster1
-      secret_name: ""
     - name: cluster2
       secret_name: kiali-remote-cluster2
   external_services:
@@ -245,7 +249,10 @@ spec:
       url: http://prometheus.observability.example.com:9090
     tracing:
       enabled: true
-      url: http://jaeger-query.observability.example.com:16686
+      provider: jaeger
+      use_grpc: false
+      internal_url: http://jaeger-query.observability.example.com:16686
+      external_url: http://jaeger-query.observability.example.com:16686
     grafana:
       enabled: true
       url: http://grafana.observability.example.com:3000
@@ -260,11 +267,39 @@ kubectl create clusterrolebinding kiali-remote --clusterrole=kiali --serviceacco
 
 # Get the token
 TOKEN=$(kubectl create token kiali-remote -n istio-system --context="${CTX_CLUSTER2}" --duration=8760h)
+SERVER=$(kubectl config view --raw --context="${CTX_CLUSTER2}" -o jsonpath='{.clusters[0].cluster.server}')
+CA_DATA=$(kubectl config view --raw --context="${CTX_CLUSTER2}" -o jsonpath='{.clusters[0].cluster.certificate-authority-data}')
 
-# Create the remote secret in cluster1
-kubectl create secret generic kiali-remote-cluster2 -n istio-system --context="${CTX_CLUSTER1}" \
-  --from-literal=token="${TOKEN}" \
-  --from-literal=server="$(kubectl config view --context=${CTX_CLUSTER2} -o jsonpath='{.clusters[0].cluster.server}')"
+# Create the remote secret in cluster1. Kiali expects a kubeconfig in the secret.
+cat <<EOF | kubectl apply --context="${CTX_CLUSTER1}" -f -
+apiVersion: v1
+kind: Secret
+metadata:
+  name: kiali-remote-cluster2
+  namespace: istio-system
+  labels:
+    kiali.io/multiCluster: "true"
+stringData:
+  cluster2: |
+    apiVersion: v1
+    kind: Config
+    preferences: {}
+    current-context: cluster2
+    contexts:
+    - name: cluster2
+      context:
+        cluster: cluster2
+        user: cluster2
+    users:
+    - name: cluster2
+      user:
+        token: ${TOKEN}
+    clusters:
+    - name: cluster2
+      cluster:
+        server: ${SERVER}
+        certificate-authority-data: ${CA_DATA}
+EOF
 ```
 
 ### Kiali Multi-Cluster Service Graph
