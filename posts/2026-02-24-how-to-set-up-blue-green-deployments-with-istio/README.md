@@ -88,7 +88,8 @@ spec:
   selector:
     app: myapp
   ports:
-  - port: 8080
+  - name: http
+    port: 8080
     targetPort: 8080
 ```
 
@@ -99,7 +100,7 @@ Notice the service selector only matches on `app: myapp`, so it covers pods from
 Tell Istio about the two versions using a DestinationRule:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: myapp-dr
@@ -120,7 +121,7 @@ spec:
 Initially, all traffic goes to the blue subset:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: myapp-vs
@@ -147,7 +148,7 @@ At this point, 100% of traffic hits the blue deployment. Green is deployed but r
 Before flipping traffic, you want to test green. Istio lets you route specific requests to green based on headers:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: myapp-vs
@@ -170,7 +171,7 @@ spec:
         subset: blue
 ```
 
-Now your QA team can test green by adding the `x-test-routing: green` header to their requests:
+Now your QA team can test green from inside the mesh by adding the `x-test-routing: green` header to their requests:
 
 ```bash
 curl -H "x-test-routing: green" http://myapp:8080/api/health
@@ -183,7 +184,7 @@ Regular traffic continues going to blue.
 Once you're confident green is working correctly, flip all traffic:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: myapp-vs
@@ -209,7 +210,7 @@ Apply the change:
 kubectl apply -f myapp-vs-green.yaml
 ```
 
-The traffic switch is nearly instant. Istio pushes the new routing config to all Envoy sidecars within seconds. No pods restart, no connections drop.
+The traffic switch is nearly instant. Istio pushes the new routing config to Envoy sidecars within seconds. No pods restart, and new HTTP requests follow the updated route as the config reaches the proxies.
 
 ## Instant Rollback
 
@@ -244,7 +245,7 @@ else
 fi
 
 kubectl apply -f - <<EOF
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: myapp-vs
@@ -283,15 +284,13 @@ Don't just flip the switch blindly. Verify green is healthy first:
 
 # Check green pods are ready
 
-READY=$(kubectl get pods -l app=myapp,version=green -n default \
-  -o jsonpath='{.items[*].status.conditions[?(@.type=="Ready")].status}')
-
-if echo "$READY" | grep -q "False"; then
+if ! kubectl wait -n default --for=condition=Ready pod \
+  -l app=myapp,version=green --timeout=60s; then
   echo "Green pods are not ready. Aborting switch."
   exit 1
 fi
 
-# Run smoke tests against green through test header
+# Run smoke tests against green through test header from inside the mesh
 RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" \
   -H "x-test-routing: green" http://myapp:8080/api/health)
 
@@ -317,7 +316,7 @@ The trickiest part of blue-green deployments is database changes. Both blue and 
 If this service is exposed externally, configure a Gateway:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: myapp-gateway
