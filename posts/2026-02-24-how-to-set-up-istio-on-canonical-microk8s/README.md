@@ -4,25 +4,25 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, MicroK8s, Kubernetes, Service Mesh, Canonical, Ubuntu
 
-Description: A complete guide to enabling and configuring Istio service mesh on Canonical MicroK8s with built-in add-on support and custom configurations.
+Description: A complete guide to enabling and configuring Istio service mesh on Canonical MicroK8s with community add-on support and custom configurations.
 
 ---
 
-MicroK8s from Canonical is one of those Kubernetes distributions that keeps things simple. It installs as a snap package, and it comes with a bunch of add-ons you can toggle on and off, including Istio. The interesting thing about MicroK8s is that you can either use the built-in Istio add-on for a quick setup or do a manual installation with `istioctl` for more control. This guide covers both approaches.
+MicroK8s from Canonical is one of those Kubernetes distributions that keeps things simple. It installs as a snap package, and it comes with a bunch of add-ons you can toggle on and off, including a community add-on for Istio. The interesting thing about MicroK8s is that you can either use the community Istio add-on for a quick setup or do a manual installation with `istioctl` for more control. This guide covers both approaches.
 
 ## Prerequisites
 
 - Ubuntu 20.04+ (or any Linux with snap support)
 - At least 4GB RAM and 2 CPUs
-- MicroK8s installed (version 1.26+)
-- For manual installation: `istioctl` (version 1.20+)
+- MicroK8s installed (version 1.32+)
+- For manual installation: a supported `istioctl` release such as 1.30.x
 
 ## Installing MicroK8s
 
 If you do not have MicroK8s yet:
 
 ```bash
-sudo snap install microk8s --classic --channel=1.28/stable
+sudo snap install microk8s --classic --channel=1.35/stable
 sudo usermod -a -G microk8s $USER
 newgrp microk8s
 ```
@@ -33,7 +33,7 @@ Wait for it to be ready:
 microk8s status --wait-ready
 ```
 
-## Option 1: Using the Built-In Istio Add-on
+## Option 1: Using the Community Istio Add-on
 
 MicroK8s has a community add-on for Istio. Enable the required prerequisites first:
 
@@ -45,14 +45,14 @@ microk8s enable metallb:192.168.1.200-192.168.1.220
 
 The MetalLB range should match available IPs on your network.
 
-Now enable the Istio add-ons:
+Now enable the Istio add-on:
 
 ```bash
 microk8s enable community
 microk8s enable istio
 ```
 
-This installs Istio with the default profile. Check the status:
+This installs Istio using the version and profile packaged by the community add-on. Check the status:
 
 ```bash
 microk8s kubectl get pods -n istio-system
@@ -65,6 +65,7 @@ The add-on approach is convenient but gives you limited control over the configu
 This is the recommended approach if you want full control. First, set up an alias or export your kubeconfig so `istioctl` can talk to MicroK8s:
 
 ```bash
+mkdir -p ~/.kube
 microk8s config > ~/.kube/config
 ```
 
@@ -120,23 +121,19 @@ If you have not enabled MetalLB, change the service type to NodePort:
 Install:
 
 ```bash
-istioctl install -f istio-microk8s.yaml -y
+istioctl install -f istio-microk8s.yaml -y --verify
 ```
 
 Verify:
 
 ```bash
 kubectl get pods -n istio-system
-istioctl verify-install
+istioctl analyze
 ```
 
 ## Handling MicroK8s-Specific CNI Configuration
 
-MicroK8s uses Calico as its CNI when you enable it, or it falls back to a basic CNI. For Istio, the default CNI works fine, but if you enable the Calico add-on, you get network policy support:
-
-```bash
-microk8s enable calico
-```
+MicroK8s uses Calico as its default CNI in current releases. For Istio, the default CNI works fine, and Calico gives you network policy support.
 
 Istio also has its own CNI plugin that can replace the init container approach for setting up traffic redirection. To use it with MicroK8s:
 
@@ -167,7 +164,7 @@ kubectl label namespace default istio-injection=enabled
 Deploy a test workload:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/bookinfo/platform/kube/bookinfo.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/bookinfo/platform/kube/bookinfo.yaml
 ```
 
 Check injection worked:
@@ -212,6 +209,10 @@ spec:
         - uri:
             exact: /productpage
         - uri:
+            exact: /login
+        - uri:
+            exact: /logout
+        - uri:
             prefix: /static
         - uri:
             prefix: /api/v1/products
@@ -246,10 +247,10 @@ curl http://$INGRESS_HOST/productpage
 Install the Istio observability add-ons:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/prometheus.yaml
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/grafana.yaml
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/kiali.yaml
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/jaeger.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/prometheus.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/grafana.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/kiali.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/jaeger.yaml
 ```
 
 Alternatively, MicroK8s has its own observability add-on that can work alongside Istio:
@@ -294,7 +295,7 @@ These commands open a browser to the respective dashboards.
 
 To upgrade Istio on MicroK8s:
 
-If you used the add-on, upgrading MicroK8s may update the Istio version. Check:
+If you used the add-on, upgrading MicroK8s does not automatically upgrade add-on workloads. Check:
 
 ```bash
 microk8s status
@@ -322,4 +323,4 @@ kubectl rollout restart deployment --all -n default
 
 **DNS resolution problems**: The `dns` add-on needs to be enabled before installing Istio. Without it, istiod cannot resolve Kubernetes service names.
 
-MicroK8s makes getting started with Istio about as easy as it gets, especially with the built-in add-on. For more control, the manual `istioctl` approach works perfectly once you account for the snap-specific file paths.
+MicroK8s makes getting started with Istio about as easy as it gets, especially with the community add-on. For more control, the manual `istioctl` approach works perfectly once you account for the snap-specific file paths.
