@@ -88,12 +88,17 @@ openssl genrsa -out ca-key.pem 4096
 cat > intermediate-ca.conf <<EOF
 [req]
 distinguished_name = req_dn
-req_extensions = v3_intermediate
+req_extensions = v3_intermediate_req
 prompt = no
 
 [req_dn]
 O = MyCompany Inc.
 CN = Istio CA - Production Cluster
+
+[v3_intermediate_req]
+basicConstraints = critical, CA:true, pathlen:0
+keyUsage = critical, keyCertSign, cRLSign
+subjectKeyIdentifier = hash
 
 [v3_intermediate]
 basicConstraints = critical, CA:true, pathlen:0
@@ -129,8 +134,9 @@ Verify the chain:
 openssl verify -CAfile root-cert.pem ca-cert.pem
 # Should output: ca-cert.pem: OK
 
-# Verify the full chain
-openssl verify -CAfile root-cert.pem cert-chain.pem
+# Inspect the chain file order and issuers
+openssl crl2pkcs7 -nocrl -certfile cert-chain.pem | \
+  openssl pkcs7 -print_certs -noout
 ```
 
 ## Installing in Istio
@@ -226,7 +232,7 @@ openssl x509 -req -in staging-ca-csr.pem -CA root-cert.pem -CAkey root-key.pem \
 cat staging-ca-cert.pem root-cert.pem > staging-cert-chain.pem
 ```
 
-Install each in the respective cluster. Because they share the same root, cross-cluster mTLS works.
+Install each in the respective cluster. Because they share the same root, cross-cluster mTLS can work when the clusters are otherwise configured as part of the same multi-cluster mesh.
 
 ## Rotating the Intermediate CA
 
@@ -271,7 +277,7 @@ Set up a Prometheus alert:
 ```yaml
 - alert: IntermediateCAExpiringSoon
   expr: |
-    (citadel_server_root_cert_expiry_timestamp - time()) < 7776000
+    (citadel_server_cert_chain_expiry_timestamp - time()) < 7776000
   for: 1h
   labels:
     severity: warning
