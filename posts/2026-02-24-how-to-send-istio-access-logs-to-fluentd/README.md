@@ -65,6 +65,16 @@ spec:
               user_agent: "%REQ(USER-AGENT)%"
               bytes_received: "%BYTES_RECEIVED%"
               bytes_sent: "%BYTES_SENT%"
+---
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
+metadata:
+  name: mesh-default
+  namespace: istio-system
+spec:
+  accessLogging:
+    - providers:
+        - name: json-stdout
 ```
 
 ## Step 2: Fluentd Configuration
@@ -84,10 +94,11 @@ data:
       @type tail
       path /var/log/containers/*istio-proxy*.log
       pos_file /var/log/fluentd-istio-proxy.pos
-      tag istio.access
+      tag kubernetes.*
       read_from_head false
       <parse>
-        @type json
+        @type regexp
+        expression /^(?<time>[^ ]+) (?<stream>stdout|stderr) (?<logtag>[FP]) (?<log>.*)$/
         time_key time
         time_format %Y-%m-%dT%H:%M:%S.%NZ
         keep_time_key true
@@ -95,7 +106,7 @@ data:
     </source>
 
     # Filter: parse the nested JSON log field
-    <filter istio.access>
+    <filter kubernetes.**>
       @type parser
       key_name log
       reserve_data true
@@ -106,7 +117,7 @@ data:
     </filter>
 
     # Filter: add Kubernetes metadata
-    <filter istio.access>
+    <filter kubernetes.**>
       @type kubernetes_metadata
       skip_labels false
       skip_container_metadata false
@@ -114,7 +125,7 @@ data:
     </filter>
 
     # Filter: add computed fields
-    <filter istio.access>
+    <filter kubernetes.**>
       @type record_transformer
       enable_ruby true
       <record>
@@ -125,7 +136,7 @@ data:
     </filter>
 
     # Route errors to a separate stream
-    <match istio.access>
+    <match kubernetes.**>
       @type copy
 
       # Send everything to Elasticsearch
@@ -133,7 +144,6 @@ data:
         @type elasticsearch
         host elasticsearch.logging.svc.cluster.local
         port 9200
-        index_name istio-access-logs
         logstash_format true
         logstash_prefix istio-access
         type_name _doc
@@ -153,10 +163,24 @@ data:
 
       # Send errors to a dedicated index with longer retention
       <store>
+        @type relabel
+        @label @ISTIO_ERRORS
+      </store>
+    </match>
+
+    <label @ISTIO_ERRORS>
+      <filter kubernetes.**>
+        @type grep
+        <regexp>
+          key is_error
+          pattern true
+        </regexp>
+      </filter>
+
+      <match kubernetes.**>
         @type elasticsearch
         host elasticsearch.logging.svc.cluster.local
         port 9200
-        index_name istio-errors
         logstash_format true
         logstash_prefix istio-errors
         type_name _doc
@@ -168,15 +192,8 @@ data:
           chunk_limit_size 4MB
           total_limit_size 1GB
         </buffer>
-        <filter>
-          @type grep
-          <regexp>
-            key is_error
-            pattern true
-          </regexp>
-        </filter>
-      </store>
-    </match>
+      </match>
+    </label>
 ```
 
 ## Step 3: Deploy Fluentd DaemonSet
@@ -272,22 +289,23 @@ If you cannot switch to JSON access logs, you need a custom parser for Istio's d
   @type tail
   path /var/log/containers/*istio-proxy*.log
   pos_file /var/log/fluentd-istio-text.pos
-  tag istio.access
+  tag kubernetes.*
   <parse>
-    @type json
+    @type regexp
+    expression /^(?<time>[^ ]+) (?<stream>stdout|stderr) (?<logtag>[FP]) (?<log>.*)$/
     time_key time
     time_format %Y-%m-%dT%H:%M:%S.%NZ
   </parse>
 </source>
 
-<filter istio.access>
+<filter kubernetes.**>
   @type parser
   key_name log
   reserve_data true
   remove_key_name_field true
   <parse>
     @type regexp
-    expression /^\[(?<timestamp>[^\]]+)\] "(?<method>\S+) (?<path>\S+) (?<protocol>\S+)" (?<response_code>\d+) (?<response_flags>\S+) (?<response_code_details>\S+) (?<connection_termination>\S+) "(?<upstream_failure_reason>[^"]*)" (?<bytes_received>\d+) (?<bytes_sent>\d+) (?<duration>\d+) (?<upstream_service_time>\S+) "(?<x_forwarded_for>[^"]*)" "(?<user_agent>[^"]*)" "(?<request_id>[^"]*)" "(?<authority>[^"]*)" "(?<upstream_host>[^"]*)" (?<upstream_cluster>\S+)/
+    expression /^\[(?<timestamp>[^\]]+)\] "(?<method>\S+) (?<path>\S+) (?<protocol>\S+)" (?<response_code>\d+) (?<response_flags>\S+) (?<response_code_details>\S+) (?<connection_termination>\S+) "(?<upstream_failure_reason>[^"]*)" (?<bytes_received>\d+) (?<bytes_sent>\d+) (?<duration>\d+) (?<upstream_service_time>\S+) "(?<x_forwarded_for>[^"]*)" "(?<user_agent>[^"]*)" "(?<request_id>[^"]*)" "(?<authority>[^"]*)" "(?<upstream_host>[^"]*)" (?<upstream_cluster>\S+) (?<upstream_local_address>\S+) (?<downstream_local_address>\S+) (?<downstream_remote_address>\S+) (?<requested_server_name>\S+) (?<route_name>\S+)$/
   </parse>
 </filter>
 ```
@@ -299,7 +317,7 @@ This regex parser extracts the main fields from the default Istio text format. I
 Fluentd excels at routing logs to multiple destinations. Here is an example that sends to Elasticsearch, S3, and a Kafka topic:
 
 ```yaml
-<match istio.access>
+<match kubernetes.**>
   @type copy
 
   <store>
@@ -349,7 +367,7 @@ Fluentd excels at routing logs to multiple destinations. Here is an example that
 ### Drop Health Check Logs
 
 ```yaml
-<filter istio.access>
+<filter kubernetes.**>
   @type grep
   <exclude>
     key path
@@ -361,7 +379,7 @@ Fluentd excels at routing logs to multiple destinations. Here is an example that
 ### Keep Only Errors
 
 ```yaml
-<filter istio.access>
+<filter kubernetes.**>
   @type grep
   <regexp>
     key response_code
@@ -372,18 +390,37 @@ Fluentd excels at routing logs to multiple destinations. Here is an example that
 
 ### Sample Successful Requests
 
+If you install the `fluent-plugin-sampling-filter` plugin, you can sample successful requests after filtering them into a separate label:
+
 ```yaml
-<filter istio.access>
-  @type sampling
-  sample_rate 100  # Keep 1 out of every 100 successful requests
-  <filter>
+<match kubernetes.**>
+  @type relabel
+  @label @ISTIO_SUCCESS_SAMPLE
+</match>
+
+<label @ISTIO_SUCCESS_SAMPLE>
+  <filter kubernetes.**>
     @type grep
     <regexp>
       key response_code
       pattern /^2\d{2}$/
     </regexp>
   </filter>
-</filter>
+
+  <filter kubernetes.**>
+    @type sampling
+    interval 100  # Keep 1 out of every 100 successful requests
+    sample_unit tag
+  </filter>
+
+  <match kubernetes.**>
+    @type elasticsearch
+    host elasticsearch.logging.svc.cluster.local
+    port 9200
+    logstash_format true
+    logstash_prefix istio-success-sampled
+  </match>
+</label>
 ```
 
 ## Performance Tuning
