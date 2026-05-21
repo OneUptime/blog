@@ -23,7 +23,7 @@ xDS pushes are triggered by changes to:
 Check your current push rate:
 
 ```bash
-# Total pushes over the last 5 minutes
+# Current push counters
 
 kubectl exec deploy/istiod -n istio-system -- curl -s localhost:15014/metrics | grep "pilot_xds_pushes"
 
@@ -45,14 +45,14 @@ spec:
     pilot:
       env:
         PILOT_DEBOUNCE_AFTER: "500ms"
-        PILOT_DEBOUNCE_MAX: "5s"
+        PILOT_DEBOUNCE_MAX: "10s"
 ```
 
 `PILOT_DEBOUNCE_AFTER` controls how long istiod waits after the last change before pushing. If another change comes within this window, the timer resets.
 
 `PILOT_DEBOUNCE_MAX` sets the maximum wait time. Even if changes keep coming, istiod pushes after this much time.
 
-For very busy clusters, increasing `PILOT_DEBOUNCE_MAX` to 10s can reduce push frequency significantly:
+For very busy clusters, increasing `PILOT_DEBOUNCE_AFTER` while keeping `PILOT_DEBOUNCE_MAX` at 10s can reduce push frequency significantly:
 
 ```yaml
 PILOT_DEBOUNCE_AFTER: "1s"
@@ -61,9 +61,9 @@ PILOT_DEBOUNCE_MAX: "10s"
 
 The tradeoff is that new pods take up to 10 seconds to become routable through the mesh.
 
-## Enable EDS Debouncing
+## Keep EDS Debouncing Enabled
 
-Endpoint changes are the most frequent push trigger. Istiod has a specific debounce setting for EDS:
+Endpoint changes are the most frequent push trigger. Istiod has a specific debounce setting for EDS. In current Istio releases this is enabled by default, but it is worth checking that it has not been disabled:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -75,7 +75,7 @@ spec:
         PILOT_ENABLE_EDS_DEBOUNCE: "true"
 ```
 
-With EDS debouncing enabled, multiple endpoint changes are batched into a single EDS push. This is especially effective during rolling deployments where many pods change simultaneously.
+With EDS debouncing enabled, EDS pushes are included in the debounce window configured by `PILOT_DEBOUNCE_AFTER` and `PILOT_DEBOUNCE_MAX`. This is especially effective during rolling deployments where many pods change simultaneously.
 
 ## Throttle Concurrent Pushes
 
@@ -98,7 +98,7 @@ This limits istiod to pushing to 50 proxies concurrently. For clusters with thou
 Not every proxy needs to know about every change. Sidecar resources limit which proxies are affected by which changes:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -110,9 +110,9 @@ spec:
     - "istio-system/*"
 ```
 
-When a service in `namespace-b` changes, proxies in `namespace-a` do not receive a push because they are not watching `namespace-b`. Without the Sidecar resource, every proxy in the mesh gets pushed for every change.
+When a service in `namespace-b` changes, proxies in `namespace-a` do not receive configuration for `namespace-b` because they are not importing that namespace. Without the Sidecar resource, every proxy in the mesh receives configuration for every namespace.
 
-This is probably the most impactful optimization for push frequency reduction. If you have 10 namespaces with Sidecar resources scoped to their own namespace, a change in one namespace only triggers pushes to proxies in that namespace - not all 10.
+This is probably the most impactful optimization for reducing the scope of each push. If you have 10 namespaces with Sidecar resources scoped to their own namespace, a change in one namespace only affects the configuration imported by proxies in that namespace - not all 10.
 
 ## Use Discovery Selectors
 
