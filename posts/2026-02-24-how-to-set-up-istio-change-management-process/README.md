@@ -68,8 +68,8 @@ jobs:
 
       - name: Install istioctl
         run: |
-          curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.21.0 sh -
-          sudo mv istio-1.21.0/bin/istioctl /usr/local/bin/
+          curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.30.0 sh -
+          sudo mv istio-1.30.0/bin/istioctl /usr/local/bin/
 
       - name: Validate YAML syntax
         run: |
@@ -281,7 +281,7 @@ spec:
     spec:
       containers:
         - name: verify
-          image: istio/istioctl:1.21.0
+          image: istio/istioctl:1.30.0
           command: ["istioctl", "analyze", "-A"]
       restartPolicy: Never
 ```
