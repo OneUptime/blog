@@ -105,16 +105,16 @@ When the first service in a trace chain makes a sampling decision, it encodes th
 
 1. Request arrives at Service A
 2. The Envoy proxy rolls a random number against the sampling rate
-3. If sampled, the proxy sets the `sampled` flag in the `traceparent` header
+3. If sampled, the proxy sets the sampled bit in the `traceparent` trace flags (and the equivalent sampling decision in other tracing headers)
 4. Service A calls Service B, passing the headers
-5. Service B's proxy sees the `sampled` flag and traces its span too
+5. Service B's proxy sees the propagated sampling decision and traces its span too
 6. This continues through the entire call chain
 
 This means the sampling rate of the first service in the chain determines whether the entire trace is captured. If Service A is sampled at 1% but Service B is sampled at 100%, only 1% of traces through both services will be captured (because the decision is made at Service A).
 
 ## Setting Up Tail-Based Sampling
 
-Tail-based sampling requires the OpenTelemetry Collector with the `tail_sampling` processor:
+Tail-based sampling requires the OpenTelemetry Collector with the `tail_sampling` processor. All spans for a given trace need to reach the same collector instance so it can make an effective sampling decision:
 
 ```yaml
 apiVersion: v1
@@ -336,7 +336,7 @@ echo "Set sampling to $SAMPLING% (RPS: $CURRENT_RPS)"
 
 1. **Setting sampling too high in production** - 100% sampling at 10k RPS generates massive amounts of data
 2. **Not sampling errors** - using only random sampling means you miss error traces
-3. **Decision wait too short for tail sampling** - if traces aren't complete within the wait period, they get dropped
+3. **Decision wait too short for tail sampling** - if traces aren't complete within the wait period, decisions can be made with incomplete trace data
 4. **Forgetting that head sampling is propagated** - the first service's rate determines the trace
 5. **Not monitoring the pipeline** - without metrics on the collector, you won't know if data is being lost
 
