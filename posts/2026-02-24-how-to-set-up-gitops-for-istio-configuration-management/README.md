@@ -32,7 +32,7 @@ Organize your Istio configuration in a git repository. Here is a recommended str
 istio-config/
   base/
     mesh-config/
-      istio-operator.yaml
+      mesh-default-telemetry.yaml
       peer-authentication.yaml
       telemetry.yaml
     gateways/
@@ -143,80 +143,40 @@ spec:
   sourceRef:
     kind: GitRepository
     name: istio-config
-  healthChecks:
-    - apiVersion: networking.istio.io/v1
-      kind: VirtualService
-      name: api-service
-      namespace: production
-    - apiVersion: security.istio.io/v1
-      kind: AuthorizationPolicy
-      name: default-deny
-      namespace: production
 ```
 
 ## Handling Istio Installation with GitOps
 
-You can also manage the Istio installation itself through GitOps. Use the IstioOperator resource:
+You can also manage the Istio installation itself through GitOps. For current Istio releases, use the official Helm charts rather than applying an in-cluster `IstioOperator` resource. The in-cluster Istio operator was deprecated in Istio 1.23 and removed from the supported install path in Istio 1.24.
 
 ```yaml
-# base/mesh-config/istio-operator.yaml
-
-apiVersion: install.istio.io/v1alpha1
-kind: IstioOperator
+# argocd/istio-base.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
 metadata:
-  name: istio
-  namespace: istio-system
-spec:
-  profile: default
-  meshConfig:
-    defaultConfig:
-      tracing:
-        sampling: 1.0
-    extensionProviders:
-      - name: otel-tracing
-        opentelemetry:
-          service: otel-collector.observability.svc.cluster.local
-          port: 4317
-  components:
-    pilot:
-      k8s:
-        replicaCount: 2
-  values:
-    global:
-      proxy:
-        resources:
-          requests:
-            cpu: 100m
-            memory: 128Mi
-```
-
-For ArgoCD, you might need a custom health check for the IstioOperator resource:
-
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: argocd-cm
+  name: istio-base
   namespace: argocd
-data:
-  resource.customizations.health.install.istio.io_IstioOperator: |
-    hs = {}
-    if obj.status ~= nil then
-      if obj.status.status == "HEALTHY" then
-        hs.status = "Healthy"
-        hs.message = "Istio is healthy"
-      elseif obj.status.status == "RECONCILING" then
-        hs.status = "Progressing"
-        hs.message = "Istio is reconciling"
-      else
-        hs.status = "Degraded"
-        hs.message = obj.status.status
-      end
-    else
-      hs.status = "Progressing"
-      hs.message = "Waiting for status"
-    end
-    return hs
+spec:
+  project: default
+  source:
+    chart: base
+    repoURL: https://istio-release.storage.googleapis.com/charts
+    targetRevision: 1.30.0
+    helm:
+      valuesObject:
+        defaultRevision: default
+        base:
+          validationFailurePolicy: Fail
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: istio-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
 ```
 
 ## Kustomize Overlays for Environment Differences
@@ -233,42 +193,32 @@ resources:
 patches:
   - path: patches/mesh-config-patch.yaml
     target:
-      kind: IstioOperator
-      name: istio
+      kind: Telemetry
+      name: mesh-default
 ```
 
 ```yaml
 # overlays/production/patches/mesh-config-patch.yaml
-apiVersion: install.istio.io/v1alpha1
-kind: IstioOperator
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
 metadata:
-  name: istio
+  name: mesh-default
+  namespace: istio-system
 spec:
-  components:
-    pilot:
-      k8s:
-        replicaCount: 3
-  meshConfig:
-    defaultConfig:
-      tracing:
-        sampling: 1.0
+  tracing:
+    - randomSamplingPercentage: 1.0
 ```
 
 ```yaml
 # overlays/staging/patches/mesh-config-patch.yaml
-apiVersion: install.istio.io/v1alpha1
-kind: IstioOperator
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
 metadata:
-  name: istio
+  name: mesh-default
+  namespace: istio-system
 spec:
-  components:
-    pilot:
-      k8s:
-        replicaCount: 1
-  meshConfig:
-    defaultConfig:
-      tracing:
-        sampling: 100.0
+  tracing:
+    - randomSamplingPercentage: 100.0
 ```
 
 ## Branch Strategy
@@ -305,15 +255,18 @@ jobs:
 
       - name: Validate configuration
         run: |
-          istioctl analyze --all-namespaces -R overlays/production/
+          istioctl analyze --use-kube=false overlays/production/
 
       - name: Validate YAML syntax
         run: |
-          find . -name '*.yaml' -exec kubectl apply --dry-run=client -f {} \;
+          kubectl kustomize overlays/production > /tmp/istio-production.yaml
+          kubectl apply --dry-run=client --validate=false -f /tmp/istio-production.yaml
 
       - name: Check for deprecated APIs
         run: |
-          istioctl analyze --all-namespaces -R overlays/production/ 2>&1 | grep -i "deprecat"
+          if istioctl analyze --use-kube=false overlays/production/ 2>&1 | grep -i "deprecat"; then
+            exit 1
+          fi
 ```
 
 ## Handling Secrets
