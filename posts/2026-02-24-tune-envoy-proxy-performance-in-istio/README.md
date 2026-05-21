@@ -19,20 +19,20 @@ Before tuning anything, measure your current overhead. Deploy a simple test appl
 
 kubectl exec <client-pod> -- curl -w "@/dev/stdin" -o /dev/null -s http://server:8080/api <<'EOF'
     time_connect:  %{time_connect}s\n
-   time_starttlt:  %{time_starttransfer}s\n
+time_starttransfer:  %{time_starttransfer}s\n
        time_total:  %{time_total}s\n
 EOF
 ```
 
-Look at the p50, p95, and p99 latency from Istio metrics:
+Look at the p50, p95, and p99 latency from Envoy histogram stats:
 
 ```bash
-kubectl exec <pod-name> -c istio-proxy -- curl -s localhost:15000/stats | grep "upstream_rq_time"
+kubectl exec <pod-name> -c istio-proxy -- curl -s 'localhost:15000/stats?histogram_buckets=detailed' | grep "upstream_rq_time"
 ```
 
 ## Concurrency (Worker Threads)
 
-The number of worker threads directly affects how many connections Envoy can handle concurrently. By default, Istio sets concurrency to 2.
+The number of worker threads directly affects how many connections Envoy can handle concurrently. By default, Istio automatically determines concurrency from the proxy's CPU limit.
 
 For CPU-intensive workloads or high connection counts, increase it:
 
@@ -42,10 +42,10 @@ kind: IstioOperator
 spec:
   meshConfig:
     defaultConfig:
-      concurrency: 0  # Use all available CPUs
+      concurrency: 0  # Use all machine cores
 ```
 
-Setting concurrency to 0 tells Envoy to use the number of CPUs available to the container. Make sure your resource limits reflect this:
+Setting concurrency to 0 tells Envoy to use all cores on the machine. For Kubernetes workloads, it is usually better to set an explicit value that matches the sidecar CPU limit:
 
 ```yaml
 apiVersion: apps/v1
@@ -56,16 +56,14 @@ spec:
       annotations:
         proxy.istio.io/config: |
           concurrency: 4
+        sidecar.istio.io/proxyCPU: "2"
+        sidecar.istio.io/proxyMemory: "256Mi"
+        sidecar.istio.io/proxyCPULimit: "4"
+        sidecar.istio.io/proxyMemoryLimit: "512Mi"
     spec:
       containers:
-      - name: istio-proxy
-        resources:
-          requests:
-            cpu: "2"
-            memory: 256Mi
-          limits:
-            cpu: "4"
-            memory: 512Mi
+      - name: app
+        image: example/app:latest
 ```
 
 More worker threads means more CPU usage, so balance between performance and resource consumption.
@@ -100,7 +98,7 @@ annotations:
   sidecar.istio.io/proxyMemoryLimit: "1Gi"
 ```
 
-Check if Envoy is being throttled:
+Check current proxy CPU and memory usage:
 
 ```bash
 kubectl top pod <pod-name> --containers
@@ -137,7 +135,7 @@ Setting `maxRequestsPerConnection: 0` means connections are reused indefinitely,
 
 ## HTTP/2 Tuning
 
-Envoy uses HTTP/2 between sidecars for mTLS connections. Tune the HTTP/2 settings for better throughput:
+Envoy can use HTTP/2 for upstream connections when Istio detects or is configured for HTTP/2 or gRPC traffic. Tune the HTTP/2 settings for better throughput:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -224,16 +222,23 @@ spec:
 Disable protocol sniffing if all your services use known protocols:
 
 ```yaml
-apiVersion: install.istio.io/v1alpha1
-kind: IstioOperator
+apiVersion: v1
+kind: Service
+metadata:
+  name: api
 spec:
-  meshConfig:
-    protocolDetectionTimeout: 0s
+  ports:
+  - name: http-api
+    port: 8080
+    appProtocol: http
+  - name: grpc-api
+    port: 9090
+    appProtocol: grpc
 ```
 
 ## Stats Reduction
 
-Envoy generates thousands of metrics by default. Reducing the stats that get tracked saves CPU and memory:
+Envoy can generate thousands of metrics, and Istio proxies expose a subset by default. If you need extra Envoy stats, include only the prefixes you actually use so you do not add unnecessary CPU, memory, and Prometheus cardinality:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -249,7 +254,7 @@ spec:
         - "http"
 ```
 
-Only include the stats prefixes you actually use for dashboards and alerts.
+Add only the stats prefixes you actually use for dashboards and alerts.
 
 ## DNS Proxy
 
@@ -263,7 +268,6 @@ spec:
     defaultConfig:
       proxyMetadata:
         ISTIO_META_DNS_CAPTURE: "true"
-        ISTIO_META_DNS_AUTO_ALLOCATE: "true"
 ```
 
 This is particularly helpful when your applications make frequent DNS lookups.
@@ -277,13 +281,13 @@ Track these Envoy stats to understand performance:
 kubectl exec <pod> -c istio-proxy -- curl -s localhost:15000/stats | grep "cx_active\|cx_connect_fail\|rq_total"
 
 # Request latency
-kubectl exec <pod> -c istio-proxy -- curl -s localhost:15000/stats | grep "upstream_rq_time"
+kubectl exec <pod> -c istio-proxy -- curl -s 'localhost:15000/stats?histogram_buckets=detailed' | grep "upstream_rq_time"
 
 # Memory usage
 kubectl exec <pod> -c istio-proxy -- curl -s localhost:15000/memory
 
-# Check for overloaded workers
-kubectl exec <pod> -c istio-proxy -- curl -s localhost:15000/stats | grep "server.total_connections\|server.days_until_first_cert_expiring"
+# Check overload manager state, if overload actions are configured
+kubectl exec <pod> -c istio-proxy -- curl -s localhost:15000/stats | grep "^overload\."
 ```
 
 Performance tuning is iterative. Start with resource allocation and concurrency, then move to connection pool tuning and configuration size reduction. Measure after each change to confirm it actually helps. The Sidecar resource for limiting configuration scope is often the single biggest improvement for large meshes.
