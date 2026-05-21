@@ -18,10 +18,10 @@ In a multi-network Istio mesh, pods in cluster1 cannot reach pods in cluster2 by
 2. Istio knows those endpoints are on a different network (because of the `topology.istio.io/network` label)
 3. Instead of the actual pod IP, the sidecar gets the east-west gateway IP of cluster2
 4. The sidecar sends the request to cluster2's east-west gateway on port 15443 using mTLS with SNI
-5. The east-west gateway reads the SNI header to determine the destination service
+5. The east-west gateway reads the TLS SNI value to determine the destination service
 6. It forwards the request to the actual pod inside cluster2
 
-The SNI header format is `outbound_.<port>_.<subset>_.<hostname>`, which gives the gateway all the information it needs to route correctly.
+The SNI value format is `outbound_.<port>_.<subset>_.<hostname>`, which gives the gateway all the information it needs to route correctly.
 
 ## Deploying the East-West Gateway
 
@@ -90,7 +90,7 @@ spec:
 Key things to note:
 
 - It uses the `empty` profile, so it only deploys the gateway without touching the existing Istiod
-- The `ISTIO_META_REQUESTED_NETWORK_VIEW` environment variable tells the gateway which network it serves
+- The `ISTIO_META_REQUESTED_NETWORK_VIEW` environment variable tells the gateway which network's endpoints it should receive from Istiod
 - Port 15443 is the main data plane port for cross-cluster mTLS traffic
 - Ports 15012 and 15017 are for control plane traffic (used in primary-remote setups)
 
@@ -115,7 +115,7 @@ kubectl apply -n istio-system -f samples/multicluster/expose-services.yaml --con
 This creates a Gateway resource:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: cross-network-gateway
@@ -134,14 +134,14 @@ spec:
     - "*.local"
 ```
 
-The `AUTO_PASSTHROUGH` TLS mode is critical. It means the gateway does not terminate TLS. Instead, it inspects the SNI header and forwards the connection as-is to the destination. This preserves the end-to-end mTLS between sidecars.
+The `AUTO_PASSTHROUGH` TLS mode is critical. It means the gateway does not terminate TLS. Instead, it inspects the SNI value and forwards the connection as-is to the destination. This preserves the end-to-end mTLS between sidecars.
 
 ## Exposing Istiod (Primary-Remote Setups)
 
-If you are running a primary-remote configuration, the remote cluster's sidecars need to reach the primary's Istiod through the east-west gateway:
+If you are running a primary-remote configuration, the remote cluster's sidecars need to reach the primary's Istiod through the east-west gateway. This requires a Gateway and a VirtualService:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: istiod-gateway
@@ -153,7 +153,7 @@ spec:
   - port:
       number: 15012
       name: tls-istiod
-      protocol: TLS
+      protocol: tls
     tls:
       mode: PASSTHROUGH
     hosts:
@@ -161,11 +161,41 @@ spec:
   - port:
       number: 15017
       name: tls-istiodwebhook
-      protocol: TLS
+      protocol: tls
     tls:
       mode: PASSTHROUGH
     hosts:
     - "*"
+---
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: istiod-vs
+  namespace: istio-system
+spec:
+  hosts:
+  - "*"
+  gateways:
+  - istiod-gateway
+  tls:
+  - match:
+    - port: 15012
+      sniHosts:
+      - "*"
+    route:
+    - destination:
+        host: istiod.istio-system.svc.cluster.local
+        port:
+          number: 15012
+  - match:
+    - port: 15017
+      sniHosts:
+      - "*"
+    route:
+    - destination:
+        host: istiod.istio-system.svc.cluster.local
+        port:
+          number: 443
 ```
 
 Apply this to the primary cluster:
@@ -241,15 +271,15 @@ kubectl get pods -n istio-system -l app=istio-eastwestgateway --context="${CTX_C
 # Gateway listeners
 istioctl proxy-config listeners deployment/istio-eastwestgateway -n istio-system --context="${CTX_CLUSTER1}"
 
-# Active connections
+# Gateway clusters
 istioctl proxy-config clusters deployment/istio-eastwestgateway -n istio-system --context="${CTX_CLUSTER1}"
 ```
 
 Monitor gateway metrics in Prometheus:
 
 ```text
-# Throughput through the east-west gateway
-sum(rate(istio_requests_total{destination_workload="istio-eastwestgateway"}[5m]))
+# TCP throughput through the east-west gateway
+sum(rate(istio_tcp_received_bytes_total{destination_workload="istio-eastwestgateway"}[5m]))
 
 # Connection errors
 sum(rate(envoy_cluster_upstream_cx_connect_fail{pod=~"istio-eastwestgateway.*"}[5m]))
@@ -259,9 +289,9 @@ sum(rate(envoy_cluster_upstream_cx_connect_fail{pod=~"istio-eastwestgateway.*"}[
 
 **Gateway has no external IP**: Check if your cluster supports LoadBalancer services. On bare metal, you need MetalLB or similar.
 
-**Traffic not flowing through gateway**: Verify the `cross-network-gateway` Gateway resource exists and the `AUTO_PASSTHROUGH` mode is set. Also check that the network labels on `istio-system` namespace match the gateway's network configuration.
+**Traffic not flowing through gateway**: Verify the `cross-network-gateway` Gateway resource exists and the `AUTO_PASSTHROUGH` mode is set. Also check that the network labels on the `istio-system` namespace and the gateway Service match the gateway's network configuration.
 
-**SNI routing failures**: The east-west gateway relies on the SNI header. If clients connect without SNI (plaintext), the gateway cannot route. Make sure mTLS is enabled between sidecars.
+**SNI routing failures**: The east-west gateway relies on the TLS SNI value. If clients connect without SNI (plaintext), the gateway cannot route. Make sure mTLS is enabled between sidecars.
 
 ```bash
 # Check gateway access logs
