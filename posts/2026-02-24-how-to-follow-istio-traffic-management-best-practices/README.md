@@ -202,10 +202,10 @@ Start with a small percentage (1-5%) and increase gradually while monitoring err
 
 ## Avoid Overlapping VirtualService Rules
 
-When multiple VirtualService resources match the same host, Istio merges them. This can lead to unexpected behavior:
+When multiple VirtualService resources are bound to the same gateway host, Istio merges them. This can lead to unexpected behavior:
 
 ```yaml
-# Bad - two VirtualServices for the same host in the same namespace
+# Bad - two VirtualServices for the same gateway host
 
 # The merge order is undefined
 ---
@@ -241,7 +241,7 @@ spec:
 
 ## Use Locality-Aware Load Balancing
 
-For multi-zone clusters, enable locality load balancing to keep traffic local when possible:
+For multi-region clusters, enable locality load balancing to keep traffic local when possible:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -256,17 +256,17 @@ spec:
       localityLbSetting:
         enabled: true
         failover:
-          - from: us-east-1a
-            to: us-east-1b
-          - from: us-east-1b
-            to: us-east-1a
+          - from: us-east
+            to: us-west
+          - from: us-west
+            to: us-east
     outlierDetection:
       consecutive5xxErrors: 3
       interval: 10s
       baseEjectionTime: 30s
 ```
 
-You must have `outlierDetection` enabled for locality load balancing to work. Without it, Istio cannot detect when a local zone is unhealthy and fail over.
+You must have `outlierDetection` enabled for locality failover to work. Without it, Istio cannot detect when a local region is unhealthy and fail over.
 
 ## Test with Fault Injection
 
