@@ -62,7 +62,7 @@ Open `http://localhost:9090/targets` and look for the istiod target. It should s
 
 ## Scraping Envoy Sidecar Metrics
 
-Every pod with an Istio sidecar exposes merged metrics on port 15020 at `/stats/prometheus`. Istio merges the application's Prometheus metrics with the Envoy proxy metrics on this port (when `enablePrometheusMerge` is true, which is the default).
+Every pod with an Istio sidecar exposes Envoy Prometheus metrics on the `http-envoy-prom` container port, which maps to port 15090, at `/stats/prometheus`. Istio can also merge the application's Prometheus metrics with the sidecar metrics on port 15020 when `enablePrometheusMerge` is true, which is the default.
 
 Use a PodMonitor to scrape all sidecar proxies:
 
@@ -95,11 +95,11 @@ The selector uses `security.istio.io/tlsMode` which Istio adds to every injected
 
 ## Scraping the Ingress Gateway
 
-The ingress gateway also exposes metrics. Create a ServiceMonitor for it:
+The ingress gateway also exposes metrics on the `http-envoy-prom` container port. Create a PodMonitor for it:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
+kind: PodMonitor
 metadata:
   name: istio-ingressgateway
   namespace: monitoring
@@ -112,7 +112,7 @@ spec:
   selector:
     matchLabels:
       istio: ingressgateway
-  endpoints:
+  podMetricsEndpoints:
     - port: http-envoy-prom
       path: /stats/prometheus
       interval: 30s
@@ -144,14 +144,12 @@ scrape_configs:
     kubernetes_sd_configs:
       - role: pod
     relabel_configs:
-      - source_labels: [__meta_kubernetes_pod_container_name]
+      - source_labels: [__meta_kubernetes_pod_label_security_istio_io_tlsMode]
         action: keep
-        regex: istio-proxy
-      - source_labels: [__address__]
-        action: replace
-        regex: ([^:]+)(?::\d+)?
-        replacement: ${1}:15020
-        target_label: __address__
+        regex: .+
+      - source_labels: [__meta_kubernetes_pod_container_port_name]
+        action: keep
+        regex: '.*-envoy-prom'
       - source_labels: [__meta_kubernetes_pod_name]
         target_label: pod
       - source_labels: [__meta_kubernetes_namespace]
@@ -170,11 +168,9 @@ scrape_configs:
       - source_labels: [__meta_kubernetes_pod_label_istio]
         action: keep
         regex: ingressgateway
-      - source_labels: [__address__]
-        action: replace
-        regex: ([^:]+)(?::\d+)?
-        replacement: ${1}:15020
-        target_label: __address__
+      - source_labels: [__meta_kubernetes_pod_container_port_name]
+        action: keep
+        regex: '.*-envoy-prom'
 ```
 
 ## Configuring Scrape Intervals
@@ -222,7 +218,7 @@ podMetricsEndpoints:
         regex: (source_principal|destination_principal)
       # Keep only Istio standard metrics + a few envoy ones
       - sourceLabels: [__name__]
-        regex: (istio_requests_total|istio_request_duration_milliseconds_bucket|istio_request_bytes_bucket|istio_response_bytes_bucket|istio_tcp_.*|envoy_server_live|envoy_server_memory_allocated|envoy_server_memory_heap_size)
+        regex: (istio_requests_total|istio_request_duration_milliseconds_(bucket|sum|count)|istio_request_bytes_(bucket|sum|count)|istio_response_bytes_(bucket|sum|count)|istio_tcp_.*|envoy_server_live|envoy_server_memory_allocated|envoy_server_memory_heap_size)
         action: keep
 ```
 
@@ -321,14 +317,15 @@ If metrics aren't showing up:
 
 1. Check that the sidecar is actually exposing metrics:
 ```bash
-kubectl exec <pod> -c istio-proxy -- curl -s localhost:15020/stats/prometheus | head
+kubectl exec <pod> -c istio-proxy -- curl -s localhost:15090/stats/prometheus | head
 ```
 
 2. Verify Prometheus can reach the targets - look at the Targets page for errors
 
 3. Check for RBAC issues - Prometheus needs permission to discover pods across namespaces:
 ```bash
-kubectl auth can-i list pods --as=system:serviceaccount:monitoring:prometheus-operator-prometheus --all-namespaces
+PROMETHEUS_SA=$(kubectl get prometheus -n monitoring -o jsonpath='{.items[0].spec.serviceAccountName}')
+kubectl auth can-i list pods --as="system:serviceaccount:monitoring:${PROMETHEUS_SA}" --all-namespaces
 ```
 
 4. Make sure the PodMonitor/ServiceMonitor labels match what your Prometheus Operator is looking for
