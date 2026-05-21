@@ -25,7 +25,7 @@ Error from server: error when creating "broken-vs.yaml": admission webhook "vali
 
 ```bash
 $ istioctl analyze
-Error [IST0134] (DestinationRule default/my-dr) This host has no endpoints
+Warning [IST0174] (DestinationRule default/my-dr) The host my-service defined in the DestinationRule does not match any services in the mesh.
 Error [IST0106] (VirtualService default/my-vs) Schema validation error
 ```
 
@@ -118,26 +118,26 @@ spec:
 
 ## Reference Errors
 
-### IST0134: Host Has No Endpoints
+### IST0174: DestinationRule Host Not Found
 
 ```text
-Error [IST0134] (DestinationRule default/my-dr) This host has no endpoints
+Warning [IST0174] (DestinationRule default/my-dr) The host my-service defined in the DestinationRule does not match any services in the mesh.
 ```
 
-Your DestinationRule references a service that either doesn't exist or has no running pods:
+Your DestinationRule references a host that Istio cannot find in the service registry:
 
 ```bash
 # Check if the service exists
 kubectl get svc my-service
 
-# Check if pods are running and ready
+# If the service exists but traffic still fails, check if pods are running and ready
 kubectl get pods -l app=my-service
 ```
 
 Fix options:
 1. Deploy the service first, then apply the DestinationRule
 2. Fix the host name if it's a typo
-3. Check that pod labels match the service selector
+3. If the service exists but has no endpoints, check that pod labels match the service selector
 
 ### Subset Not Found
 
@@ -172,10 +172,10 @@ spec:
 ### Duplicate VirtualService Hosts
 
 ```text
-Error: Multiple VirtualServices for the same host in the same namespace
+Error [IST0109] Multiple VirtualServices for the same host are attached to the mesh gateway
 ```
 
-Two VirtualServices targeting the same host:
+Multiple VirtualServices with overlapping hosts can conflict when they are attached to the mesh gateway. Istio can merge VirtualServices attached to ingress gateways, but host merging is not supported for sidecars:
 
 ```bash
 # Find conflicting VirtualServices
@@ -187,23 +187,26 @@ hosts = defaultdict(list)
 for vs in vss['items']:
     ns = vs['metadata']['namespace']
     name = vs['metadata']['name']
+    gateways = vs['spec'].get('gateways', ['mesh'])
+    if 'mesh' not in gateways:
+        continue
     for h in vs['spec'].get('hosts', []):
-        hosts[(ns, h)].append(name)
-for (ns, host), names in hosts.items():
+        hosts[h].append(f'{ns}/{name}')
+for host, names in hosts.items():
     if len(names) > 1:
-        print(f'Conflict in {ns}: {host} -> {names}')
+        print(f'Possible mesh conflict: {host} -> {names}')
 "
 ```
 
-Fix: Merge the VirtualServices into one, or use different hosts.
+Fix: Merge the conflicting mesh VirtualServices into one, use different hosts, or scope each resource to its own namespace with `exportTo`.
 
 ### Conflicting DestinationRules
 
 ```text
-Error: Multiple DestinationRules for the same host
+Warning: Multiple DestinationRules for the same host can have merge-order effects
 ```
 
-Having multiple DestinationRules for the same host in the same namespace causes unpredictable behavior:
+Having multiple DestinationRules for the same host can cause surprising behavior if they define duplicate subsets or more than one top-level traffic policy:
 
 ```bash
 # Find duplicate DestinationRules
@@ -223,31 +226,37 @@ for (ns, host), names in hosts.items():
 "
 ```
 
-Fix: Merge the DestinationRules into a single resource.
+Fix: Merge the DestinationRules into a single resource, or make sure fragmented rules do not define duplicate subsets or multiple top-level traffic policies for the same host.
 
 ## Gateway Errors
 
 ### Port Conflict
 
 ```text
-Error: Gateway port 443 is already in use by another gateway
+Error [IST0145] Gateway should not have the same selector, port and matched hosts of server
 ```
 
-Two Gateways listening on the same port with overlapping hosts:
+Two Gateways selecting the same gateway workload, listening on the same port, and using overlapping hosts:
 
 ```yaml
 # Gateway A
+selector:
+  istio: ingressgateway
 servers:
   - port:
       number: 443
+      name: https
       protocol: HTTPS
     hosts:
       - "*.example.com"
 
 # Gateway B
+selector:
+  istio: ingressgateway
 servers:
   - port:
       number: 443
+      name: https
       protocol: HTTPS
     hosts:
       - "api.example.com"    # Conflicts with *.example.com
@@ -265,25 +274,25 @@ The TLS certificate secret is missing:
 
 ```bash
 # Check if the secret exists
-kubectl get secret my-tls-cert -n istio-system
+kubectl get secret my-tls-cert -n <gateway-workload-namespace>
 
 # Create it if missing
 kubectl create secret tls my-tls-cert \
-  -n istio-system \
+  -n <gateway-workload-namespace> \
   --cert=path/to/cert.pem \
   --key=path/to/key.pem
 ```
 
 ## Weight Errors
 
-### Weights Don't Sum to 100
+### Unexpected Weight Split
 
 ```text
-Error: Total weight of routes does not equal 100
+Weights are relative: each destination receives weight / sum(all weights)
 ```
 
 ```yaml
-# Wrong - weights sum to 110
+# Valid, but the split is 60/110 and 50/110, not 60% and 50%
 route:
   - destination:
       host: service-a
@@ -292,7 +301,7 @@ route:
       host: service-b
     weight: 50
 
-# Right - weights sum to 100
+# Clear percentage-style split
 route:
   - destination:
       host: service-a
@@ -331,14 +340,14 @@ The best way to handle errors is to prevent them:
 istioctl validate -f my-config.yaml && kubectl apply -f my-config.yaml
 
 # Always analyze before deploying to production
-istioctl analyze -f my-config.yaml --use-kube
+istioctl analyze my-config.yaml
 ```
 
 Set up a simple alias for this:
 
 ```bash
 # Add to your .bashrc or .zshrc
-alias iapply='f() { istioctl validate -f "$1" && istioctl analyze -f "$1" && kubectl apply -f "$1"; }; f'
+alias iapply='f() { istioctl validate -f "$1" && istioctl analyze "$1" && kubectl apply -f "$1"; }; f'
 
 # Usage
 iapply virtual-service.yaml
