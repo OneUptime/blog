@@ -12,9 +12,9 @@ You pushed a VirtualService change to production and now requests are timing out
 
 There are several rollback strategies for Istio configuration, ranging from quick manual fixes to fully automated GitOps rollbacks. The right approach depends on how you deploy your configuration and how fast you need to recover.
 
-## Strategy 1: kubectl Rollback (Fastest)
+## Strategy 1: kubectl Restore (Fastest)
 
-If you just applied a change with `kubectl apply` and need to undo it immediately, you can use the resource version history that Kubernetes maintains.
+If you just applied a change with `kubectl apply` and need to undo it immediately, Kubernetes will not give you a full rollback history for arbitrary Istio resources. You need a previous manifest, a last-applied annotation, git history, or a snapshot.
 
 For a single resource, you can apply the previous YAML:
 
@@ -27,7 +27,10 @@ kubectl apply -f previous-virtual-service.yaml
 But realistically, you probably do not have the previous YAML handy. Check what changed with:
 
 ```bash
-# See the last applied configuration
+# See the last applied configuration, if kubectl apply recorded it
+kubectl apply view-last-applied virtualservice order-service -n production -o yaml
+
+# See the current live configuration
 kubectl get virtualservice order-service -n production -o yaml
 ```
 
@@ -59,8 +62,8 @@ kubectl apply -f istio-config/production/ -R
 If you need to revert multiple commits:
 
 ```bash
-# Revert to a specific known-good commit
-git revert --no-commit a1b2c3d..HEAD
+# Revert everything after a specific known-good commit
+git revert --no-commit d4e5f6g..HEAD
 git commit -m "Revert Istio config to known-good state before timeout change"
 kubectl apply -f istio-config/production/ -R
 ```
@@ -220,7 +223,7 @@ The best rollback is the one you never have to do. Here are practices that reduc
 kubectl apply --dry-run=server -f istio-config/production/ -R
 
 # Run istioctl analysis
-istioctl analyze -f istio-config/production/ --recursive
+istioctl analyze --use-kube=false istio-config/production/
 ```
 
 ### Gradual Rollout
