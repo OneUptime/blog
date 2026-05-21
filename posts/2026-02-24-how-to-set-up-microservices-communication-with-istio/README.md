@@ -45,6 +45,12 @@ You should see `2/2` in the READY column.
 Here's a simple setup with three services that talk to each other:
 
 ```yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: frontend
+  namespace: default
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -61,6 +67,7 @@ spec:
         app: frontend
         version: v1
     spec:
+      serviceAccountName: frontend
       containers:
       - name: frontend
         image: myregistry/frontend:latest
@@ -89,10 +96,10 @@ Deploy similar configurations for `order-service` and `product-service`. The key
 
 ## Configuring Load Balancing
 
-By default, Istio uses round-robin load balancing. You can change this per service using DestinationRule:
+By default, Istio uses least-request load balancing. You can change this per service using DestinationRule:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: order-service-lb
@@ -101,20 +108,20 @@ spec:
   host: order-service
   trafficPolicy:
     loadBalancer:
-      simple: LEAST_REQUEST
+      simple: ROUND_ROBIN
 ```
 
 Available load balancing algorithms include:
 
-- `ROUND_ROBIN` - distributes requests evenly (default)
-- `LEAST_REQUEST` - sends to the instance with fewest active requests
+- `LEAST_REQUEST` - sends to the instance with fewest active requests (default)
+- `ROUND_ROBIN` - sends requests to each instance in sequence
 - `RANDOM` - picks a random instance
 - `PASSTHROUGH` - forwards to the address requested by the caller
 
 For services where session affinity matters, use consistent hashing:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: order-service-lb
@@ -134,7 +141,7 @@ This ensures that requests with the same `x-user-id` header always go to the sam
 Network calls fail. With Istio, you configure retries declaratively instead of writing retry logic in every service:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: order-service-vs
@@ -159,7 +166,7 @@ The `retryOn` field specifies which conditions trigger a retry. Common values ar
 Timeouts prevent one slow service from bringing down the whole system:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: product-service-vs
@@ -181,7 +188,7 @@ Set timeouts at each hop in your call chain. If the frontend calls the order ser
 Circuit breaking stops sending traffic to a service that's clearly failing. This prevents cascade failures where one broken service takes down everything upstream:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: product-service-cb
@@ -203,14 +210,14 @@ spec:
       maxEjectionPercent: 30
 ```
 
-With this config, if a product-service instance returns 3 consecutive 5xx errors within a 10-second window, it gets ejected from the load balancing pool for 30 seconds. After that, Istio will slowly let traffic back to it.
+With this config, if a product-service instance returns 3 consecutive 5xx errors, Istio checks for outliers every 10 seconds and can eject that instance from the load balancing pool for at least 30 seconds. After that, the instance is eligible for load balancing again, and repeated ejections can increase the ejection period.
 
 ## Mutual TLS Between Services
 
 Istio can automatically encrypt all service-to-service communication with mutual TLS. In strict mode, only services with valid Istio certificates can communicate:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -223,7 +230,7 @@ spec:
 You can also set mTLS per service if you need to gradually roll it out:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: order-service-mtls
@@ -241,7 +248,7 @@ spec:
 Authorization policies let you restrict communication between services. For example, only the frontend should be able to call the order service:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: order-service-authz
