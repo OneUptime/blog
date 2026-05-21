@@ -12,10 +12,10 @@ When you have dozens of subdomains or multi-tenant applications where each tenan
 
 ## Wildcard Host Syntax
 
-Istio uses a specific syntax for wildcard hosts. The wildcard character `*` can only appear as the first segment of a hostname, followed by a dot:
+Istio uses a specific syntax for wildcard hosts. For domain suffix wildcards, the wildcard character `*` appears as the first segment of a hostname, followed by a dot:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: wildcard-example
@@ -31,7 +31,7 @@ spec:
               number: 80
 ```
 
-This matches `api.example.com`, `www.example.com`, `tenant1.example.com`, and any other subdomain of `example.com`. It does not match `example.com` itself (no subdomain) or `sub.api.example.com` (two levels deep).
+This matches `api.example.com`, `www.example.com`, `tenant1.example.com`, and any other hostname with the `.example.com` suffix. It does not match `example.com` itself (no subdomain) or `newexample.com` (not under the `.example.com` suffix).
 
 ## Wildcard Rules
 
@@ -55,7 +55,7 @@ hosts:
 A common use case is routing different tenants to different backends. Here is how you might set that up:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: tenant-router
@@ -67,9 +67,8 @@ spec:
     - my-gateway
   http:
     - match:
-        - headers:
-            ":authority":
-              regex: "premium-.*[.]myplatform[.]com"
+        - authority:
+            regex: "^premium-[^.]+[.]myplatform[.]com$"
       route:
         - destination:
             host: premium-backend
@@ -82,14 +81,14 @@ spec:
               number: 80
 ```
 
-This sends requests to any subdomain starting with `premium-` to the premium backend, and everything else to the standard backend. The `:authority` pseudo-header contains the Host value, which you can match against with regex to make routing decisions within the wildcard scope.
+This sends requests to any one-label subdomain starting with `premium-` to the premium backend, and everything else to the standard backend. The HTTP `authority` match corresponds to the Host/Authority value, which you can match against with regex to make routing decisions within the wildcard scope.
 
 ## Gateway Configuration for Wildcards
 
 To receive traffic for wildcard hosts from outside the mesh, you need a Gateway that also uses a wildcard:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: my-gateway
@@ -105,7 +104,7 @@ spec:
       hosts:
         - "*.myplatform.com"
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: wildcard-vs
@@ -128,7 +127,7 @@ spec:
 For HTTPS traffic with wildcard certificates:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: secure-gateway
@@ -155,7 +154,7 @@ The `credentialName` references a Kubernetes Secret that contains your wildcard 
 You can have both wildcard and specific host VirtualServices. Istio uses the most specific match:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-specific
@@ -172,7 +171,7 @@ spec:
             port:
               number: 80
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: wildcard-catch-all
@@ -202,7 +201,7 @@ The specificity order is:
 For service-to-service traffic within the mesh, wildcards work on Kubernetes service names:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: internal-routing
@@ -218,12 +217,12 @@ spec:
           fixedDelay: 2s
       route:
         - destination:
-            host: "*.default.svc.cluster.local"
+            host: default-backend.default.svc.cluster.local
 ```
 
-This would inject a 2-second delay into 5% of requests to any service in the default namespace. This is useful for chaos testing.
+This would inject a 2-second delay into 5% of matching requests and then route them to `default-backend.default.svc.cluster.local`. The route destination still needs to be a concrete service from the service registry; a wildcard host is not a valid catch-all destination.
 
-However, be careful with mesh-internal wildcards. They can have unexpected effects because they match all services in the specified namespace.
+However, be careful with mesh-internal wildcards. They can have unexpected effects because they can match many services in the specified namespace.
 
 ## Debugging Wildcard Routes
 
