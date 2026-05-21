@@ -18,16 +18,16 @@ If you have Istio installed with the default configuration, you already have som
 
 1. Every pod with an Istio sidecar gets a certificate automatically
 2. Auto mTLS is enabled by default
-3. PeerAuthentication is set to PERMISSIVE by default
+3. If no PeerAuthentication policy is set, the inherited mTLS mode is effectively PERMISSIVE
 
 This means sidecar-to-sidecar traffic is already encrypted. The sidecars detect each other and use mTLS automatically. But the mesh also accepts plain text from non-sidecar sources.
 
 Verify this:
 
 ```bash
-# Check if auto mTLS is on
-
-kubectl get configmap istio -n istio-system -o jsonpath='{.data.mesh}' | grep enableAutoMtls
+# Check whether auto mTLS has been explicitly configured.
+# If this is not set, Istio's default is true.
+kubectl get configmap istio -n istio-system -o jsonpath='{.data.mesh}' | grep enableAutoMtls || echo "enableAutoMtls not set; default is true"
 
 # Check current PeerAuthentication policies
 kubectl get peerauthentication --all-namespaces
@@ -67,7 +67,7 @@ With sidecars injected, auto mTLS should already be encrypting traffic. Verify b
 # Check what TLS mode is used for connections to service-b
 istioctl proxy-config cluster deploy/service-a -n production \
   --fqdn service-b.production.svc.cluster.local -o json | \
-  jq '.[].transportSocket.name'
+  jq -r '.[] | (.transportSocket.name // .transportSocketMatches[]?.transportSocket.name) | select(. != null)'
 ```
 
 If this returns `envoy.transport_sockets.tls`, mTLS is active.
@@ -97,7 +97,7 @@ spec:
     mode: STRICT
 ```
 
-This declares that all services in the production namespace MUST use mTLS. Without this, a compromised sidecar could theoretically be configured to downgrade to plain text.
+This declares that all services in the production namespace MUST use mTLS. Without this, workloads can still accept plain text traffic from clients that are not using mTLS.
 
 Apply for each namespace:
 
@@ -255,7 +255,7 @@ Track mTLS adoption with Prometheus:
 
 ```text
 # All mTLS traffic by service pair
-sum(rate(istio_requests_total{connection_security_policy="mutual_tls", reporter="source"}[5m])) by (source_workload, destination_service)
+sum(rate(istio_requests_total{connection_security_policy="mutual_tls", reporter="destination"}[5m])) by (source_workload, destination_service)
 ```
 
 Create alerts for any non-mTLS traffic in strict namespaces:
