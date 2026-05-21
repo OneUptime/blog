@@ -39,11 +39,11 @@ spec:
       targetPort: 50051
 ```
 
-The `grpc` port name is critical. Without it, Istio treats the traffic as opaque TCP and you lose L7 features.
+The `grpc` port name is critical for explicit protocol selection. Without a port name or `appProtocol` value that identifies the protocol, Istio may treat the traffic as opaque TCP and you lose L7 features.
 
 ## Timeout Configuration for Streams
 
-The biggest issue with gRPC streaming through Istio is timeouts. The default route timeout can kill long-lived streams. You need to disable the route timeout for streaming RPCs:
+The biggest issue with gRPC streaming through Istio is timeouts. Istio disables HTTP route timeouts by default, but a timeout you configure for ordinary RPCs can kill long-lived streams. Keep the route timeout disabled for streaming RPCs:
 
 ```yaml
 apiVersion: networking.istio.io/v1beta1
@@ -56,17 +56,15 @@ spec:
     - streaming-service.default.svc.cluster.local
   http:
     - match:
-        - headers:
-            ":path":
-              prefix: "/mypackage.StreamService/ServerStream"
+        - uri:
+            prefix: "/mypackage.StreamService/ServerStream"
       route:
         - destination:
             host: streaming-service.default.svc.cluster.local
       timeout: 0s
     - match:
-        - headers:
-            ":path":
-              prefix: "/mypackage.StreamService/BidiStream"
+        - uri:
+            prefix: "/mypackage.StreamService/BidiStream"
       route:
         - destination:
             host: streaming-service.default.svc.cluster.local
@@ -81,7 +79,7 @@ Setting `timeout: 0s` disables the route timeout for the streaming methods while
 
 ## Idle Timeout Settings
 
-Even with route timeouts disabled, you need to think about idle timeouts. If no data flows on a stream for a while, Envoy might close it. Configure idle timeouts through the DestinationRule:
+Even with route timeouts disabled, you need to think about idle timeouts. DestinationRule connection pool settings control idle upstream connections, and Envoy's stream idle timeout controls how long an individual HTTP/2 stream can have no upstream or downstream activity. Configure connection pool idle timeouts through the DestinationRule:
 
 ```yaml
 apiVersion: networking.istio.io/v1beta1
@@ -100,13 +98,13 @@ spec:
         connectTimeout: 10s
 ```
 
-Setting `idleTimeout: 3600s` keeps idle connections open for an hour. Adjust this based on your streaming patterns. If your streams can have long gaps between messages, set this high enough to avoid premature closure.
+Setting `idleTimeout: 3600s` keeps idle upstream connections open for an hour. Adjust this based on your connection reuse patterns. If your streams can have long gaps between messages, also review Envoy's stream idle timeout for the sidecars or gateways that carry the stream.
 
 ## Keepalive Configuration
 
-HTTP/2 keepalive pings prevent intermediate proxies and load balancers from closing idle connections. Your gRPC client and server should send keepalive pings, and Envoy needs to be configured to allow them.
+HTTP/2 keepalive pings help detect unhealthy connections and can prevent some intermediate proxies and load balancers from closing idle connections. Your gRPC client and server should use keepalive settings that match your environment.
 
-If your gRPC client sends keepalive pings, Envoy might reject them if they are too frequent. You can adjust this through an EnvoyFilter:
+You can also configure Envoy to send HTTP/2 keepalive pings to upstream services through an EnvoyFilter:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -135,7 +133,7 @@ spec:
                     timeout: 5s
 ```
 
-This tells Envoy to send keepalive pings every 30 seconds with a 5-second timeout.
+This tells Envoy to send upstream HTTP/2 keepalive pings every 30 seconds with a 5-second timeout.
 
 ## Load Balancing Considerations
 
@@ -179,9 +177,8 @@ spec:
     - streaming-service.default.svc.cluster.local
   http:
     - match:
-        - headers:
-            ":path":
-              prefix: "/mypackage.StreamService/ServerStream"
+        - uri:
+            prefix: "/mypackage.StreamService/ServerStream"
       route:
         - destination:
             host: streaming-service.default.svc.cluster.local
@@ -199,9 +196,9 @@ spec:
 
 ## Flow Control and Backpressure
 
-gRPC uses HTTP/2 flow control for backpressure. If the receiver is slow, the sender gets backpressured through HTTP/2 window updates. Envoy respects this mechanism, but there are buffer limits to be aware of.
+gRPC uses HTTP/2 flow control for backpressure. If the receiver is slow, the sender gets backpressured through HTTP/2 window updates. Envoy respects this mechanism, but there are connection buffer limits to be aware of.
 
-The default Envoy per-stream buffer limit is 1MB. For high-throughput streams, you might need to increase this:
+Envoy listener configuration includes `per_connection_buffer_limit_bytes`, which defaults to 1MB if it is not set. For high-throughput streams, you might need to increase this:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -225,7 +222,7 @@ spec:
 
 ## Monitoring Streaming RPCs
 
-Streaming RPCs show up differently in metrics. A server-streaming RPC counts as one request in `istio_requests_total`, even if it sends thousands of messages. To get per-message metrics, you need application-level instrumentation.
+Streaming RPCs show up differently in metrics. A server-streaming RPC counts as one request in `istio_requests_total`, even if it sends thousands of messages. Istio also provides gRPC message counters such as `istio_request_messages_total` and `istio_response_messages_total`. For business-level per-message metrics, use application-level instrumentation.
 
 However, you can monitor stream duration and connection counts:
 
@@ -255,8 +252,8 @@ kubectl exec -it <pod-name> -c istio-proxy -- \
 
 Common issues include:
 - Route timeout killing the stream (fix: set `timeout: 0s`)
-- Idle timeout closing inactive streams (fix: increase `idleTimeout`)
-- Keepalive pings being rejected (fix: adjust keepalive settings)
+- Idle timeout closing inactive streams (fix: review connection pool `idleTimeout` and Envoy stream idle timeout)
+- Keepalive pings not matching the client, server, proxy, or load balancer policy (fix: align keepalive settings)
 - Max concurrent streams limit being hit (default is 2147483647, which is effectively unlimited)
 
 Streaming with gRPC through Istio works well once you get the timeouts right. The key is to treat streaming methods differently from unary methods in your Istio configuration and make sure idle connections are not being prematurely closed.
