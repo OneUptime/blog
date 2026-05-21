@@ -36,6 +36,13 @@ kubectl label namespace application istio-injection=enabled
 kubectl label namespace data istio-injection=enabled
 kubectl label namespace admin istio-injection=enabled
 kubectl label namespace sensitive istio-injection=enabled
+
+# Labels used later by Kubernetes NetworkPolicies
+kubectl label namespace public zone=public
+kubectl label namespace application zone=application
+kubectl label namespace data zone=data
+kubectl label namespace admin zone=admin
+kubectl label namespace sensitive zone=sensitive
 ```
 
 ## Step 1: Default Deny Everywhere
@@ -99,18 +106,18 @@ The public zone can receive traffic from the ingress gateway and can talk to the
 apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
-  name: allow-from-gateway
+  name: allow-from-gateway-and-public
   namespace: public
 spec:
   action: ALLOW
   rules:
     - from:
         - source:
-            namespaces: ["istio-system"]
+            namespaces: ["istio-system", "public"]
 ```
 
 ```yaml
-# Allow public services to talk to each other and to the application zone
+# Allow public services and application services to talk to the application zone
 apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
@@ -170,7 +177,7 @@ spec:
 
 ### Admin Zone Rules
 
-The admin zone can read from other zones for monitoring, but nothing can write to it except the admin gateway:
+The admin zone should only receive traffic from the admin gateway and other admin workloads:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -193,7 +200,7 @@ spec:
 
 Authorization policies block unauthorized traffic, but by default every Envoy sidecar still knows about every service in the mesh. This increases memory usage and provides unnecessary information to a compromised workload.
 
-Use the Sidecar resource to limit what each namespace can see:
+Use the Sidecar resource to limit what service configuration each namespace receives:
 
 ```yaml
 # Public namespace can only see application services and its own services
@@ -236,7 +243,7 @@ spec:
         - "istio-system/*"
 ```
 
-This reduces the attack surface and improves performance by reducing the configuration size sent to each proxy.
+This reduces unnecessary service discovery information and improves performance by reducing the configuration size sent to each proxy. Keep using AuthorizationPolicy and NetworkPolicy for enforcement.
 
 ## Step 4: Enforce mTLS
 
@@ -253,14 +260,14 @@ spec:
     mode: STRICT
 ```
 
-With STRICT mTLS, even if network policies are misconfigured, an attacker can't eavesdrop on cross-segment traffic.
+With STRICT mTLS, workloads in the mesh only accept mutual TLS connections, which prevents plaintext traffic between sidecars. Put this policy in your Istio root namespace; in many installations, that namespace is `istio-system`.
 
 ## Step 5: Add Layer 7 Segmentation
 
 Istio's advantage over traditional network segmentation is Layer 7 awareness. You can segment based on HTTP attributes:
 
 ```yaml
-# Only allow GET requests to the data zone (no writes from certain services)
+# Only allow GET requests to a data API (no writes from certain services)
 apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
@@ -269,7 +276,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app: primary-database
+      app: data-api
   action: ALLOW
   rules:
     - from:
@@ -299,10 +306,12 @@ For defense in depth, combine Istio authorization with Kubernetes NetworkPolicie
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: data-zone-network-policy
+  name: data-api-network-policy
   namespace: data
 spec:
-  podSelector: {}
+  podSelector:
+    matchLabels:
+      app: data-api
   policyTypes:
     - Ingress
   ingress:
@@ -325,11 +334,11 @@ After setting up segmentation, verify it works:
 
 ```bash
 # Test that blocked traffic is actually blocked
-kubectl exec -n public deploy/frontend -- curl -s -o /dev/null -w "%{http_code}" http://primary-database.data:5432
+kubectl exec -n public deploy/frontend -- curl -s -o /dev/null -w "%{http_code}" http://data-api.data:8080/health
 # Should return 403 or connection refused
 
 # Test that allowed traffic works
-kubectl exec -n application deploy/backend-api -- curl -s -o /dev/null -w "%{http_code}" http://primary-database.data:5432/health
+kubectl exec -n application deploy/backend-api -- curl -s -o /dev/null -w "%{http_code}" http://data-api.data:8080/health
 # Should return 200
 
 # Check for any overly permissive policies
