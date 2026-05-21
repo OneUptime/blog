@@ -12,7 +12,7 @@ Envoy is the data plane of Istio. Every feature Istio provides - traffic routing
 
 ## The Big Picture
 
-When Istio injects a sidecar into your pod, it adds two things: the Envoy proxy container (called istio-proxy) and an init container (istio-init) that sets up iptables rules. These iptables rules redirect all inbound and outbound traffic through Envoy. Your application never talks directly to the network - every connection passes through Envoy.
+When Istio injects a sidecar into your pod, it adds the Envoy proxy container (called istio-proxy). By default, when Istio CNI is not handling traffic redirection, it also adds an init container (istio-init) that sets up iptables rules. These iptables rules redirect inbound and outbound mesh traffic through Envoy. Your application never talks directly to other mesh workloads - those connections pass through Envoy.
 
 ```text
 [App Container] <-> [Envoy Proxy] <-> [Network] <-> [Envoy Proxy] <-> [App Container]
@@ -55,13 +55,13 @@ istioctl proxy-config secret <pod-name>
 
 ## Listeners and Filter Chains
 
-Envoy uses listeners to accept incoming connections. In an Istio sidecar, there are two main types of listeners:
+Envoy uses listeners to accept and route connections. In an Istio sidecar, the listener summary commonly includes these listener types:
 
-**Virtual listeners** - One for each port that services in the mesh listen on. For example, if a service listens on port 8080, there will be a listener on `0.0.0.0:8080` that handles outbound traffic to that port.
+**Outbound virtual listeners** - Istio creates virtual listeners for outbound service traffic, including `0.0.0.0:<port>` listeners for outbound HTTP ports and service-IP listeners for outbound TCP or HTTPS traffic.
 
-**The virtualInbound listener** - A single listener on port 15006 that handles all inbound traffic to the pod.
+**The virtualInbound listener** - A listener on port 15006 that receives inbound traffic to the pod and hands it to virtual listeners for the workload ports.
 
-Each listener has a filter chain. The filter chain is a series of network filters that process each connection. For HTTP traffic, it typically looks like:
+Each listener has one or more filter chains. Listener filters can inspect the connection before a filter chain is selected, and network filters then process the connection. For HTTP traffic, it typically looks like:
 
 ```text
 Connection -> TLS Inspector -> HTTP Connection Manager -> HTTP Filters -> Router
@@ -109,7 +109,7 @@ Envoy uses a multi-threaded architecture with a main thread and worker threads:
 - **Main thread** - Handles configuration updates, stats flushing, and admin interface
 - **Worker threads** - Handle actual request processing
 
-Each worker thread runs its own event loop and processes connections independently. By default, Istio configures Envoy with 2 worker threads. You can adjust this:
+Each worker thread runs its own event loop and processes connections independently. If concurrency is unset, Istio determines the worker thread count automatically based on CPU limits. You can adjust this:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -128,7 +128,7 @@ annotations:
     concurrency: 4
 ```
 
-Setting concurrency to 0 means Envoy uses as many threads as there are CPU cores available to the container.
+Setting concurrency to 0 means Envoy uses all cores on the machine.
 
 ## Connection Handling
 
