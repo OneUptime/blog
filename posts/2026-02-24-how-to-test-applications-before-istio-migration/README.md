@@ -21,8 +21,8 @@ Your test environment should mirror production as closely as possible. Install I
 
 istioctl install --set profile=default -y
 
-# Verify the installation
-istioctl verify-install
+# Verify that istioctl can reach the control plane
+istioctl version
 
 # Check all components are running
 kubectl get pods -n istio-system
@@ -110,7 +110,7 @@ kubectl get svc -n istio-test -o json | \
   jq '.items[] | {name: .metadata.name, ports: [.spec.ports[] | {name: .name, port: .port}]}'
 ```
 
-Any ports without proper naming prefixes (http-, grpc-, tcp-, etc.) should be fixed before migration.
+Any ports without explicit protocol selection should be fixed before migration. Use Istio's `name: <protocol>[-<suffix>]` convention, such as `http-api`, `grpc-orders`, or `tcp-db`, or use the Kubernetes `appProtocol` field.
 
 ## Step 4: Test External Service Access
 
@@ -154,19 +154,19 @@ Latency testing matters because the sidecar adds overhead. You want to know exac
 
 ```bash
 # Install a load testing tool
-kubectl apply -f https://raw.githubusercontent.com/fortio/fortio/master/docs/fortio-deployment.yaml -n istio-test
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/httpbin/sample-client/fortio-deploy.yaml -n istio-test
 
 # Run a load test against your service
-kubectl exec deploy/fortio -n istio-test -- fortio load \
+kubectl exec deploy/fortio-deploy -n istio-test -c fortio -- fortio load \
   -c 50 -qps 1000 -t 60s \
   http://my-service:8080/api/endpoint
 ```
 
 Compare these results against the same test without Istio. You should expect:
 
-- P50 latency increase of 1-3ms per hop
-- P99 latency increase of 5-10ms per hop
-- Slight increase in CPU and memory usage
+- Some latency increase from the client and server sidecars
+- Tail latency that varies with traffic patterns, hardware, proxy workers, telemetry, and mTLS settings
+- Additional CPU and memory usage for each sidecar proxy
 
 If latencies are significantly higher, check the sidecar resource limits and Envoy concurrency settings.
 
@@ -185,7 +185,7 @@ kubectl describe pod my-app-pod -n istio-test | grep -A 5 "Liveness\|Readiness"
 kubectl get events -n istio-test --field-selector reason=Unhealthy --watch
 ```
 
-If probes fail, make sure the `sidecar.istio.io/rewriteAppHTTPProbers` annotation is set to `true`, or configure the probes to work with Istio.
+Istio enables probe rewriting by default in its built-in profiles. If probes fail, make sure it has not been disabled with `sidecar.istio.io/rewriteAppHTTPProbers: "false"` or `values.sidecarInjectorWebhook.rewriteAppHTTPProbe=false`, or configure the probes to work with Istio.
 
 ## Step 7: Test Graceful Shutdown
 
