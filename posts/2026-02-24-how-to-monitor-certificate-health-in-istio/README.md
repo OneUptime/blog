@@ -67,7 +67,7 @@ groups:
       severity: critical
     annotations:
       summary: "Istio root CA certificate expires in less than 30 days"
-      description: "The root CA certificate will expire at {{ $value | humanizeTimestamp }}. Rotate the CA immediately."
+      description: "The root CA certificate expires in {{ $value | humanizeDuration }}. Rotate the CA immediately."
 
   # Root CA expiring in less than 90 days
   - alert: IstioRootCAExpiryWarning
@@ -147,8 +147,11 @@ Each Envoy sidecar exposes certificate-related metrics:
 # Days until the first certificate in the chain expires
 envoy_server_days_until_first_cert_expiring
 
-# Total TLS handshake failures
+# Total successful TLS handshakes
 envoy_listener_ssl_handshake
+
+# Total TLS connection errors
+envoy_listener_ssl_connection_error
 
 # Connection failures
 envoy_cluster_upstream_cx_connect_fail
@@ -157,7 +160,7 @@ envoy_cluster_upstream_cx_connect_fail
 Check a specific pod's certificate metrics:
 
 ```bash
-kubectl exec <pod-name> -c istio-proxy -- curl -s localhost:15000/stats | grep -i cert
+kubectl exec <pod-name> -c istio-proxy -- pilot-agent request GET stats | grep -i cert
 ```
 
 ## Building a Grafana Dashboard
@@ -213,9 +216,9 @@ For quick ad-hoc checks without Prometheus:
 ### Check Root CA Expiry
 
 ```bash
-kubectl get secret cacerts -n istio-system -o jsonpath='{.data.ca-cert\.pem}' 2>/dev/null | \
+kubectl get secret cacerts -n istio-system -o jsonpath='{.data.root-cert\.pem}' 2>/dev/null | \
   base64 -d | openssl x509 -noout -enddate || \
-kubectl get secret istio-ca-secret -n istio-system -o jsonpath='{.data.ca-cert\.pem}' | \
+kubectl get secret istio-ca-secret -n istio-system -o jsonpath='{.data.root-cert\.pem}' | \
   base64 -d | openssl x509 -noout -enddate
 ```
 
@@ -225,7 +228,7 @@ kubectl get secret istio-ca-secret -n istio-system -o jsonpath='{.data.ca-cert\.
 for pod in $(kubectl get pods -n default -o jsonpath='{.items[*].metadata.name}'); do
   echo -n "$pod: "
   cert_data=$(istioctl proxy-config secret $pod -n default -o json 2>/dev/null | \
-    jq -r '.dynamicActiveSecrets[] | select(.name=="default") | .secret.tlsCertificate.certificateChain.inlineBytes' 2>/dev/null)
+    jq -r '[.dynamicActiveSecrets[] | select(.name=="default")][0].secret.tlsCertificate.certificateChain.inlineBytes // empty' 2>/dev/null)
   if [ -n "$cert_data" ]; then
     echo "$cert_data" | base64 -d | openssl x509 -noout -enddate 2>/dev/null
   else
@@ -259,11 +262,25 @@ echo ""
 
 # Check CA certificate
 echo "--- CA Certificate ---"
-ca_expiry=$(kubectl get secret cacerts -n istio-system -o jsonpath='{.data.ca-cert\.pem}' 2>/dev/null | \
+ca_expiry=$(kubectl get secret cacerts -n istio-system -o jsonpath='{.data.root-cert\.pem}' 2>/dev/null | \
   base64 -d | openssl x509 -noout -enddate 2>/dev/null | cut -d= -f2)
+
+if [ -z "$ca_expiry" ]; then
+  ca_expiry=$(kubectl get secret istio-ca-secret -n istio-system -o jsonpath='{.data.root-cert\.pem}' 2>/dev/null | \
+    base64 -d | openssl x509 -noout -enddate 2>/dev/null | cut -d= -f2)
+fi
+
+if [ -z "$ca_expiry" ]; then
+  ca_expiry=$(kubectl get secret istio-ca-secret -n istio-system -o jsonpath='{.data.ca-cert\.pem}' 2>/dev/null | \
+    base64 -d | openssl x509 -noout -enddate 2>/dev/null | cut -d= -f2)
+fi
 
 if [ -n "$ca_expiry" ]; then
   ca_epoch=$(date -d "$ca_expiry" +%s 2>/dev/null || date -j -f "%b %d %H:%M:%S %Y %Z" "$ca_expiry" +%s 2>/dev/null)
+  if [ -z "$ca_epoch" ]; then
+    echo "Unable to parse CA expiry: $ca_expiry"
+    exit 1
+  fi
   now=$(date +%s)
   days_left=$(( (ca_epoch - now) / 86400 ))
   echo "CA Expires: $ca_expiry ($days_left days remaining)"
@@ -275,7 +292,7 @@ if [ -n "$ca_expiry" ]; then
     echo "STATUS: OK"
   fi
 else
-  echo "Using self-signed CA"
+  echo "CA certificate secret not found"
 fi
 
 echo ""
@@ -298,17 +315,17 @@ Route your Prometheus alerts to your incident management system:
 route:
   receiver: default
   routes:
-  - match:
-      alertname: IstioRootCAExpiringSoon
+  - matchers:
+    - alertname="IstioRootCAExpiringSoon"
     receiver: pagerduty-critical
-  - match:
-      alertname: IstioCertSigningFailures
+  - matchers:
+    - alertname="IstioCertSigningFailures"
     receiver: slack-ops
 
 receivers:
 - name: pagerduty-critical
   pagerduty_configs:
-  - service_key: <your-key>
+  - routing_key: <your-key>
 - name: slack-ops
   slack_configs:
   - channel: '#ops-alerts'
