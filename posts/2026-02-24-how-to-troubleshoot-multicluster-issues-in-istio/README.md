@@ -12,19 +12,19 @@ Multicluster Istio is powerful but has a lot of moving parts. Two or more Kubern
 
 ## Multicluster Architecture Quick Review
 
-Istio supports two main multicluster models:
+Istio supports two main multicluster control plane models:
 
 **Primary-Remote** - One cluster runs Istiod (primary), and remote clusters connect their proxies to it. Simpler but creates a single point of failure.
 
 **Multi-Primary** - Each cluster runs its own Istiod, and they share configuration. More resilient but more complex.
 
-In both models, cross-cluster traffic flows through east-west gateways. Each cluster exposes a gateway that other clusters can route traffic through.
+When clusters are on the same network, service workloads can communicate directly across cluster boundaries. When clusters are on different networks, cross-cluster traffic flows through east-west gateways. Each network exposes a gateway that other networks can route traffic through.
 
 ## Step 1: Verify Cluster Connectivity
 
 The most basic check - can the clusters talk to each other?
 
-Check east-west gateways in each cluster:
+For multi-network deployments, check east-west gateways in each cluster:
 
 ```bash
 # Cluster 1
@@ -53,7 +53,7 @@ kubectl exec sleep-pod --context cluster1 -- curl -v https://34.123.45.68:15443 
 
 ## Step 2: Check Remote Secrets
 
-In multi-primary and primary-remote setups, clusters authenticate to each other using Kubernetes secrets. Verify they exist:
+In multi-primary and primary-remote setups, primary control planes use remote secrets to access the Kubernetes API servers for remote clusters. Verify they exist:
 
 ```bash
 kubectl get secrets -n istio-system --context cluster1 | grep istio-remote-secret
@@ -106,41 +106,44 @@ Cross-cluster mTLS requires a shared root of trust. Both clusters must use the s
 
 ```bash
 # Cluster 1
-kubectl get secret cacerts -n istio-system --context cluster1 -o jsonpath='{.data.root-cert\.pem}' | base64 -d | openssl x509 -text -noout | grep Issuer
+kubectl get secret cacerts -n istio-system --context cluster1 -o jsonpath='{.data.root-cert\.pem}' | base64 -d | openssl x509 -noout -fingerprint -sha256
 
 # Cluster 2
-kubectl get secret cacerts -n istio-system --context cluster2 -o jsonpath='{.data.root-cert\.pem}' | base64 -d | openssl x509 -text -noout | grep Issuer
+kubectl get secret cacerts -n istio-system --context cluster2 -o jsonpath='{.data.root-cert\.pem}' | base64 -d | openssl x509 -noout -fingerprint -sha256
 ```
 
-The Issuer should be the same. If they're different, mTLS between clusters will fail because the proxies won't trust each other's certificates.
+The fingerprints should match. If they're different, mTLS between clusters will fail because the proxies won't trust each other's certificates.
 
 To set up a shared CA, create the `cacerts` secret in both clusters with the same root CA:
 
 ```bash
-# Generate root CA (do this once)
+# From the top-level directory of the Istio release package, generate the root CA once
 mkdir -p certs
-openssl req -newkey rsa:4096 -nodes -keyout certs/root-key.pem \
-  -x509 -days 3650 -out certs/root-cert.pem \
-  -subj "/O=Istio/CN=Root CA"
+pushd certs
+make -f ../tools/certs/Makefile.selfsigned.mk root-ca
 
 # Generate intermediate CA for each cluster
 # Cluster 1
-openssl req -newkey rsa:4096 -nodes -keyout certs/cluster1-ca-key.pem \
-  -out certs/cluster1-ca-cert.csr \
-  -subj "/O=Istio/CN=Intermediate CA cluster1"
-openssl x509 -req -in certs/cluster1-ca-cert.csr \
-  -CA certs/root-cert.pem -CAkey certs/root-key.pem \
-  -CAcreateserial -out certs/cluster1-ca-cert.pem -days 730
+make -f ../tools/certs/Makefile.selfsigned.mk cluster1-cacerts
 
 # Create secret in cluster 1
 kubectl create secret generic cacerts -n istio-system --context cluster1 \
-  --from-file=ca-cert.pem=certs/cluster1-ca-cert.pem \
-  --from-file=ca-key.pem=certs/cluster1-ca-key.pem \
-  --from-file=root-cert.pem=certs/root-cert.pem \
-  --from-file=cert-chain.pem=certs/cluster1-ca-cert.pem
-```
+  --from-file=cluster1/ca-cert.pem \
+  --from-file=cluster1/ca-key.pem \
+  --from-file=cluster1/root-cert.pem \
+  --from-file=cluster1/cert-chain.pem
 
-Repeat with cluster2's intermediate CA.
+# Cluster 2
+make -f ../tools/certs/Makefile.selfsigned.mk cluster2-cacerts
+
+kubectl create secret generic cacerts -n istio-system --context cluster2 \
+  --from-file=cluster2/ca-cert.pem \
+  --from-file=cluster2/ca-key.pem \
+  --from-file=cluster2/root-cert.pem \
+  --from-file=cluster2/cert-chain.pem
+
+popd
+```
 
 ## Step 5: Network Configuration
 
@@ -178,11 +181,10 @@ kubectl get namespace istio-system --context cluster1 -o yaml | grep topology.is
 
 ## Step 6: Debug Cross-Cluster Traffic Flow
 
-When a service in cluster1 tries to reach a service in cluster2, the traffic flow is:
+In a multi-network deployment, when a service in cluster1 tries to reach a service in cluster2, the traffic flow is:
 
-1. Source pod's sidecar - routes to the local east-west gateway
-2. Local east-west gateway - forwards to remote east-west gateway on port 15443 (mTLS tunnel)
-3. Remote east-west gateway - decrypts and routes to the target pod
+1. Source pod's sidecar - routes to the remote network's east-west gateway endpoint on port 15443
+2. Remote east-west gateway - accepts the mTLS connection and routes to the target pod
 
 If traffic fails, debug each hop.
 
@@ -200,7 +202,7 @@ kubectl logs -n istio-system deployment/istio-eastwestgateway --context cluster1
 kubectl logs -n istio-system deployment/istio-eastwestgateway --context cluster2 --tail=50
 ```
 
-Enable access logging on the gateways if not already enabled:
+Increase proxy logging on the gateways if you need more detail:
 
 ```bash
 istioctl proxy-config log istio-eastwestgateway-pod.istio-system --context cluster1 --level http:debug,router:debug
@@ -225,7 +227,7 @@ kubectl get services --context cluster2 -n default
 
 **mTLS handshake failures between clusters.** Root CA mismatch. Verify both clusters share the same root certificate.
 
-**Uneven traffic distribution.** If one cluster has 3 pods and another has 1, Istio distributes evenly across all 4 endpoints by default. Use locality load balancing to prefer local endpoints:
+**Uneven traffic distribution.** If one cluster has 3 pods and another has 1, Istio distributes evenly across all 4 endpoints by default. Use locality load balancing to prefer healthy local endpoints and fail over when needed:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -246,4 +248,4 @@ spec:
 
 ## Summary
 
-Multicluster debugging is methodical. Start with connectivity (can clusters reach each other's gateways?), then check configuration (are remote secrets valid?), then verify discovery (does Istiod see remote endpoints?), and finally check certificates (is the trust domain shared?). Work through each layer and you'll narrow down the problem quickly.
+Multicluster debugging is methodical. Start with connectivity (can clusters reach each other's pods or gateways, depending on the network model?), then check configuration (are remote secrets valid?), then verify discovery (does Istiod see remote endpoints?), and finally check certificates (is the root of trust shared?). Work through each layer and you'll narrow down the problem quickly.
