@@ -78,12 +78,12 @@ spec:
 
 This configuration creates three separate egress listeners:
 - Port 80 for HTTP traffic to services in the current namespace
-- Port 443 for HTTPS traffic to the current namespace and Stripe
+- Port 443 for HTTPS traffic to the current namespace and a registered Stripe `ServiceEntry`
 - Port 5432 for TCP traffic to services in the database namespace
 
-## Protocol Override
+## Protocol Selection
 
-The port's protocol field in the Sidecar can override the protocol detection for that port. This is useful when Istio's automatic protocol detection gets it wrong:
+The port's protocol field in the Sidecar tells Istio which protocol the listener should expect on that port. This is useful when you want the listener protocol to be explicit:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -101,7 +101,7 @@ spec:
         - "./*"
 ```
 
-This forces port 9090 to be treated as HTTP regardless of how the destination service defines it. Use this when you know the protocol but the service definition does not specify it correctly.
+This configures the sidecar egress listener on port 9090 as HTTP. Use this when you know the protocol for traffic handled by that listener.
 
 ## Catch-All Egress Listener
 
@@ -147,11 +147,11 @@ spec:
         - "istio-system/*"
 ```
 
-Port 443 gets special treatment (allowing external services), while all other ports use the catch-all configuration.
+Port 443 gets special treatment for the listed services, while all other ports use the catch-all configuration.
 
 ## Bind Address Configuration
 
-By default, Envoy binds outbound listeners to `0.0.0.0`. You can change this using the `bind` field:
+When `bind` is omitted, Istio chooses the outbound listener bind address based on the imported services, the selected workloads, and the capture mode. You can set it explicitly using the `bind` field:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -170,7 +170,7 @@ spec:
         - "./*"
 ```
 
-Binding to `127.0.0.1` means the listener only accepts connections from within the pod. This is the normal case for sidecar proxies.
+Binding to `127.0.0.1` means the listener only accepts connections from within the pod. If you use an explicit localhost listener for egress, the application needs to connect to that listener address and port.
 
 ## Capture Mode
 
@@ -219,7 +219,7 @@ spec:
         - "istio-system/*"
 ```
 
-Even if the mesh uses `ALLOW_ANY`, this namespace uses `REGISTRY_ONLY`. Only services listed in the egress hosts are reachable.
+Even if the mesh uses `ALLOW_ANY`, this namespace uses `REGISTRY_ONLY`. Unknown outbound destinations are dropped, and declared services must still be imported by the egress hosts to be configured for the sidecar.
 
 Conversely, for a namespace that needs broader access in a REGISTRY_ONLY mesh:
 
@@ -297,6 +297,8 @@ spec:
         - "istio-system/*"
 ```
 
+The external hosts in this example assume matching `ServiceEntry` resources exist and are exported to the sidecar's namespace.
+
 ## Debugging Egress Listener Issues
 
 Check what egress listeners Envoy has configured:
@@ -305,8 +307,8 @@ Check what egress listeners Envoy has configured:
 # List all listeners
 istioctl proxy-config listener deploy/my-app -n backend
 
-# Filter for outbound listeners
-istioctl proxy-config listener deploy/my-app -n backend | grep "0.0.0.0"
+# Filter listeners by address
+istioctl proxy-config listener deploy/my-app -n backend --address 0.0.0.0
 
 # Detailed listener configuration
 istioctl proxy-config listener deploy/my-app -n backend \
