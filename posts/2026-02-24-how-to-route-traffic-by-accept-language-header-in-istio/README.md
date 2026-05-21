@@ -118,7 +118,7 @@ The Accept-Language header often contains multiple languages. The prefix match o
 
 This matches any request where French appears anywhere in the Accept-Language header. Be careful with this approach though, as it is less precise. A header like `en-US,en;q=0.9,fr;q=0.1` would match even though the user barely wants French content.
 
-A better approach for handling quality values is to match only when French is the primary language:
+A better approach for avoiding low-priority matches is to match only when French is listed first:
 
 ```yaml
 - match:
