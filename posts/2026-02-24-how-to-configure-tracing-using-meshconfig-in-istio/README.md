@@ -63,9 +63,9 @@ spec:
           service: zipkin.observability.svc.cluster.local
           port: 9411
       - name: jaeger
-        zipkin:
+        opentelemetry:
           service: jaeger-collector.observability.svc.cluster.local
-          port: 9411
+          port: 4317
       - name: otel
         opentelemetry:
           service: otel-collector.observability.svc.cluster.local
@@ -76,7 +76,7 @@ spec:
           port: 11800
 ```
 
-You can define multiple providers and reference them from Telemetry resources. The provider type determines the protocol used:
+You can define multiple providers and reference them from Telemetry resources. The provider type determines the export protocol used, while applications still need to propagate the tracing headers used by the backend:
 
 | Provider Type | Protocol | Header Format |
 |--------------|----------|---------------|
@@ -97,7 +97,7 @@ spec:
     defaultConfig:
       tracing:
         sampling: 10.0
-        customTags:
+        custom_tags:
           environment:
             literal:
               value: production
@@ -126,7 +126,7 @@ spec:
         opentelemetry:
           service: otel-collector.observability.svc.cluster.local
           port: 4317
-          resourceDetectors:
+          resource_detectors:
             environment: {}
       - name: backup-zipkin
         zipkin:
@@ -137,7 +137,7 @@ spec:
     defaultConfig:
       tracing:
         sampling: 5.0
-        customTags:
+        custom_tags:
           mesh.name:
             literal:
               value: production-mesh
@@ -287,7 +287,6 @@ meshConfig:
 ```
 
 ```bash
-helm upgrade istio-base istio/base -n istio-system -f values.yaml
 helm upgrade istiod istio/istiod -n istio-system -f values.yaml
 ```
 
@@ -299,8 +298,8 @@ Before applying changes, validate the configuration:
 # Check for syntax errors
 istioctl analyze
 
-# Verify the mesh config is valid
-kubectl get configmap istio -n istio-system -o jsonpath='{.data.mesh}' | istioctl validate -f -
+# Render an IstioOperator file without applying it
+istioctl install --dry-run -f tracing.yaml
 ```
 
 If there's a syntax error in the mesh config, istiod might reject it silently and continue using the previous configuration. Always check istiod logs after making changes:
