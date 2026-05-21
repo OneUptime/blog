@@ -12,10 +12,10 @@ Talos Linux is a different kind of operating system for Kubernetes. It is immuta
 
 ## Prerequisites
 
-- Talos Linux cluster (version 1.6+) with at least one control plane and one worker node
+- Supported Talos Linux cluster with at least one control plane and one worker node
 - `talosctl` configured to communicate with your cluster
 - `kubectl` configured with the kubeconfig from Talos
-- `istioctl` installed (version 1.20+)
+- `istioctl` installed for a currently supported Istio release
 - At least 4GB RAM per worker node
 
 ## Getting Your Talos Cluster Ready
@@ -78,12 +78,32 @@ machine:
           - bind
           - rshared
           - rw
+      - destination: /etc/cni/net.d
+        type: bind
+        source: /etc/cni/net.d
+        options:
+          - bind
+          - rshared
+          - rw
 ```
 
 Apply the patch:
 
 ```bash
 talosctl patch machineconfig --nodes 10.0.0.3 --patch-file cni-mount-patch.yaml
+```
+
+Then enable the Istio CNI component under `spec` in your IstioOperator configuration:
+
+```yaml
+spec:
+  components:
+    cni:
+      enabled: true
+  values:
+    pilot:
+      cni:
+        enabled: true
 ```
 
 However, for most setups, skipping the CNI plugin and using the default init container approach is simpler and works fine.
@@ -174,7 +194,7 @@ Access services via `<node-ip>:30080`.
 Install MetalLB for proper LoadBalancer support:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.5/config/manifests/metallb-native.yaml
+kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.15.3/config/manifests/metallb-native.yaml
 ```
 
 Configure an IP pool:
@@ -208,7 +228,7 @@ Label the namespace and deploy a test app:
 
 ```bash
 kubectl label namespace default istio-injection=enabled
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/bookinfo/platform/kube/bookinfo.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.29/samples/bookinfo/platform/kube/bookinfo.yaml
 ```
 
 Create the gateway:
@@ -315,8 +335,12 @@ helm repo add cilium https://helm.cilium.io/
 helm install cilium cilium/cilium --namespace kube-system \
   --set ipam.mode=kubernetes \
   --set kubeProxyReplacement=true \
-  --set k8sServiceHost=10.0.0.2 \
-  --set k8sServicePort=6443
+  --set securityContext.capabilities.ciliumAgent="{CHOWN,KILL,NET_ADMIN,NET_RAW,IPC_LOCK,SYS_ADMIN,SYS_RESOURCE,DAC_OVERRIDE,FOWNER,SETGID,SETUID}" \
+  --set securityContext.capabilities.cleanCiliumState="{NET_ADMIN,SYS_ADMIN,SYS_RESOURCE}" \
+  --set cgroup.autoMount.enabled=false \
+  --set cgroup.hostRoot=/sys/fs/cgroup \
+  --set k8sServiceHost=localhost \
+  --set k8sServicePort=7445
 ```
 
 Cilium and Istio work well together. Cilium handles L3/L4 networking while Istio handles L7 traffic management.
@@ -333,10 +357,10 @@ kubectl rollout restart deployment --all -n default
 Upgrading Talos itself requires care because it replaces the entire OS image:
 
 ```bash
-talosctl upgrade --image ghcr.io/siderolabs/installer:v1.7.0 --nodes 10.0.0.3
+talosctl upgrade --image ghcr.io/siderolabs/installer:<target-talos-version> --nodes 10.0.0.3
 ```
 
-Talos upgrades are rolling by design. The kubelet restarts, and Istio sidecars in pods continue working during the upgrade. However, if the node is drained, pods will be rescheduled to other nodes.
+Upgrade nodes one at a time. The kubelet restarts during the node upgrade, and workloads on that node are interrupted while it reboots. If the node is drained, pods will be rescheduled to other nodes.
 
 ## Production Considerations
 
