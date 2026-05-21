@@ -53,7 +53,7 @@ spec:
     timeout: 0s
 ```
 
-Setting `timeout: 0s` is important for WebSocket connections because the default timeout would kill long-lived connections.
+Setting `timeout: 0s` is useful when a mesh or route-level default timeout has been configured, because it explicitly disables the HTTP route timeout for this WebSocket route. Istio's HTTP route timeout is disabled by default when it is not set.
 
 ## Connection-Level Rate Limiting
 
@@ -173,7 +173,7 @@ spec:
       context: GATEWAY
       routeConfiguration:
         vhost:
-          name: ""
+          name: "ws.example.com:80"
           route:
             action: ANY
     patch:
@@ -184,15 +184,15 @@ spec:
           - remote_address: {}
 ```
 
-## Connection Duration Limits
+## Idle Connection Limits
 
-Long-lived WebSocket connections can hold resources indefinitely. Set maximum connection durations using Envoy's connection management:
+Long-lived WebSocket connections can hold resources indefinitely. Set idle connection timeouts using Envoy's connection management:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
 kind: EnvoyFilter
 metadata:
-  name: ws-connection-duration
+  name: ws-idle-timeout
   namespace: default
 spec:
   workloadSelector:
@@ -219,9 +219,9 @@ The `stream_idle_timeout: 3600s` closes WebSocket connections that have been idl
 
 ## Bandwidth Throttling
 
-While Envoy does not have per-connection bandwidth throttling built into the HTTP filter chain for WebSocket frames specifically, you can use connection-level rate limiting to control overall throughput.
+While Envoy does not have WebSocket-frame-specific throttling, WebSocket upgrade payloads pass through Envoy's HTTP filter chain by default, so you can use Envoy's HTTP bandwidth limit filter to control data flow through the route.
 
-For bandwidth control, use the network-level rate limit filter:
+For bandwidth control, use the HTTP bandwidth limit filter:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -234,27 +234,28 @@ spec:
     labels:
       app: websocket-service
   configPatches:
-  - applyTo: NETWORK_FILTER
+  - applyTo: HTTP_FILTER
     match:
       context: SIDECAR_INBOUND
       listener:
         filterChain:
           filter:
             name: envoy.filters.network.http_connection_manager
+            subFilter:
+              name: envoy.filters.http.router
     patch:
       operation: INSERT_BEFORE
       value:
-        name: envoy.filters.network.local_ratelimit
+        name: envoy.filters.http.bandwidth_limit
         typed_config:
-          "@type": type.googleapis.com/envoy.extensions.filters.network.local_ratelimit.v3.LocalRateLimit
-          stat_prefix: ws_network_rate_limit
-          token_bucket:
-            max_tokens: 1048576
-            tokens_per_fill: 524288
-            fill_interval: 1s
+          "@type": type.googleapis.com/envoy.extensions.filters.http.bandwidth_limit.v3.BandwidthLimit
+          stat_prefix: ws_bandwidth_limit
+          enable_mode: REQUEST_AND_RESPONSE
+          limit_kbps: 512
+          fill_interval: 0.1s
 ```
 
-This limits the network-level throughput at the byte level. The token bucket is configured in bytes, giving you approximately 512KB per second per connection.
+This limits request and response data flow through the filter to approximately 512 KiB per second for traffic handled by that Envoy process. The limit is not a per-client quota; the filter's token bucket is shared across Envoy workers.
 
 ## Monitoring WebSocket Rate Limiting
 
