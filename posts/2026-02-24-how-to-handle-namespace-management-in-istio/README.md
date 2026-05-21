@@ -26,7 +26,7 @@ If you are using revision-based installations (for canary upgrades), the label i
 kubectl label namespace my-namespace istio.io/rev=1-20
 ```
 
-You cannot use both labels on the same namespace. If you switch from `istio-injection=enabled` to a revision label, remove the old label first:
+You should not use both labels on the same namespace. Istio will warn about multiple injection labels, and the `istio-injection` label takes precedence over `istio.io/rev` for backward compatibility. If you switch from `istio-injection=enabled` to a revision label, remove the old label first:
 
 ```bash
 kubectl label namespace my-namespace istio-injection-
@@ -52,7 +52,7 @@ One of the most important and often overlooked features is the Sidecar resource.
 Use the Sidecar resource at the namespace level to limit what each namespace can see:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -65,14 +65,14 @@ spec:
         - "shared-services/*"
 ```
 
-This configuration tells sidecars in the `team-a` namespace to only know about services in their own namespace (`./*`), the `istio-system` namespace, and a `shared-services` namespace. Everything else is invisible to them.
+This configuration tells sidecars in the `team-a` namespace to import configuration for services in their own namespace (`./*`), the `istio-system` namespace, and a `shared-services` namespace. Other services are outside the imported configuration and are treated as unmatched traffic if applications try to call them.
 
 The benefits are significant:
 
 - Faster proxy configuration updates (less data to push)
 - Lower memory usage on each sidecar
-- Reduced blast radius if a service misbehaves
-- Better security through reduced attack surface
+- Reduced blast radius for configuration churn
+- A smaller configured surface area, while still relying on AuthorizationPolicy, PeerAuthentication, or Kubernetes NetworkPolicy for enforcement
 
 ## Namespace Isolation with Authorization Policies
 
@@ -109,7 +109,7 @@ spec:
               - POST
 ```
 
-This allows traffic from the `frontend` namespace to reach services in `production`, but only for GET and POST methods.
+This allows traffic from the `frontend` namespace to reach services in `production`, but only for GET and POST methods. Namespace source matching is derived from the peer certificate, so enable mTLS, ideally with STRICT mode, before relying on namespace-based authorization rules.
 
 ## PeerAuthentication by Namespace
 
@@ -152,7 +152,7 @@ For example:
 - `payments-staging-api`
 - `platform-prod-monitoring`
 
-This makes it easy to write policies using namespace prefixes:
+This makes it easy to write policies for related namespaces:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -190,7 +190,7 @@ Or if you intentionally want namespace sharing for load balancing across cluster
 
 ## Discovery Selectors for Namespace Filtering
 
-Istio 1.10+ supports discovery selectors, which tell Istiod to only watch specific namespaces. This reduces the control plane's resource consumption:
+Istio 1.10+ supports discovery selectors, which tell Istiod to only process selected namespaces. Istiod still opens Kubernetes watches, but it ignores unselected objects early in processing, which reduces the control plane's resource consumption:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -208,7 +208,7 @@ Then label only the namespaces you want Istio to manage:
 kubectl label namespace my-namespace istio-discovery=enabled
 ```
 
-Namespaces without this label are invisible to Istiod. This is different from sidecar injection - even if a namespace has sidecars, if it is not matched by a discovery selector, Istiod will not process its services.
+Namespaces without this label are ignored by Istiod's discovery processing. This is different from sidecar injection - even if a namespace has sidecars, if it is not matched by a discovery selector, Istiod will not process its services.
 
 ## Practical Namespace Strategy
 
