@@ -94,7 +94,7 @@ spec:
 First, define subsets so Istio knows which pods belong to which version:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service
@@ -114,7 +114,7 @@ spec:
 Here is where the actual shadowing happens. The VirtualService routes all real traffic to v1 and mirrors it to v2:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service
@@ -203,7 +203,7 @@ def handle_request(request):
 Once you are done testing, remove the mirror configuration. Just update the VirtualService to drop the mirror fields:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service
