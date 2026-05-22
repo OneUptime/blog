@@ -8,11 +8,11 @@ Description: Learn how to use the encode_tfvars provider function in Terraform t
 
 ---
 
-Terraform variable files (`.tfvars`) have their own specific syntax for defining variable values. While you can easily write them by hand, there are situations where you need to generate them programmatically - perhaps from a module output, a CI/CD pipeline, or a dynamic configuration system. The `encode_tfvars` provider function from the `terraform` provider lets you convert Terraform data structures into properly formatted `.tfvars` content.
+Terraform variable files (`.tfvars`) have their own specific syntax for defining variable values. While you can easily write them by hand, there are situations where you need to generate them programmatically - perhaps from a module output, a CI/CD pipeline, or a dynamic configuration system. The `encode_tfvars` provider function from the `terraform` provider lets you convert an object value into properly formatted `.tfvars` content.
 
 ## What Does encode_tfvars Do?
 
-The `encode_tfvars` function takes a Terraform map or object and returns a string containing the values formatted in the `.tfvars` syntax. This is the inverse of reading a `.tfvars` file - instead of parsing tfvars content, it generates it.
+The `encode_tfvars` function takes a Terraform object value and returns a string containing the values formatted in the `.tfvars` syntax. This is the inverse of parsing a `.tfvars` file - instead of reading tfvars content, it generates it.
 
 ```hcl
 output "tfvars_content" {
@@ -34,11 +34,17 @@ output "tfvars_content" {
 
 ## Prerequisites
 
-The `encode_tfvars` function is part of the built-in `terraform` provider (sometimes called the `terraform` pseudo-provider). You need Terraform 1.8 or later to use provider functions:
+The `encode_tfvars` function is part of the built-in `terraform` provider. You need Terraform 1.8 or later to use provider functions, and each module that calls the function must declare the built-in provider:
 
 ```hcl
 terraform {
   required_version = ">= 1.8.0"
+
+  required_providers {
+    terraform = {
+      source = "terraform.io/builtin/terraform"
+    }
+  }
 }
 ```
 
@@ -48,7 +54,7 @@ terraform {
 provider::terraform::encode_tfvars(value)
 ```
 
-The `value` argument should be a map or object. The function returns a string in `.tfvars` format.
+The `value` argument should be an object whose attributes are valid Terraform variable names. The function returns a string in `.tfvars` format.
 
 ## Why Generate tfvars Programmatically?
 
@@ -276,7 +282,7 @@ locals {
 }
 
 # This will write the sensitive value to a file - be careful with file permissions
-resource "local_file" "sensitive_tfvars" {
+resource "local_sensitive_file" "sensitive_tfvars" {
   filename        = "${path.module}/generated/secrets.tfvars"
   content         = provider::terraform::encode_tfvars(local.config_with_secrets)
   file_permission = "0600"  # Restrict permissions
@@ -302,7 +308,7 @@ output "parsed_region" {
 }
 ```
 
-Together, `encode_tfvars` and `decode_tfvars` give you complete programmatic control over `.tfvars` file content.
+Together, `encode_tfvars` and `decode_tfvars` give you programmatic control over `.tfvars` file content, though `decode_tfvars` returns the most general object and tuple types because it does not have access to a module's variable type constraints.
 
 ## Comparison with Other Serialization Functions
 
@@ -312,8 +318,8 @@ Together, `encode_tfvars` and `decode_tfvars` give you complete programmatic con
 | `jsonencode` | JSON | APIs, configuration files |
 | `yamlencode` | YAML | Kubernetes, Ansible, Helm |
 
-Choose the format that matches your consumption target. If the consumer is another Terraform run, `encode_tfvars` produces the most natural format.
+Choose the format that matches your consumption target. If the consumer is another Terraform run, `encode_tfvars` produces the most natural format, but the exact generated syntax can change between Terraform versions to follow idiomatic style.
 
 ## Summary
 
-The `encode_tfvars` provider function bridges the gap between Terraform's internal data structures and the `.tfvars` file format. It is particularly useful in multi-stage deployment pipelines, configuration management workflows, and any scenario where you need to programmatically generate Terraform variable files. Combined with `decode_tfvars`, it gives you full round-trip capability for the `.tfvars` format. As provider functions continue to evolve, expect more utilities like this to simplify common Terraform workflows. For a broader look at provider functions, see our [guide to provider functions in Terraform](https://oneuptime.com/blog/post/2026-02-23-how-to-use-the-provider-functions-in-terraform/view).
+The `encode_tfvars` provider function bridges the gap between Terraform's internal data structures and the `.tfvars` file format. It is particularly useful in multi-stage deployment pipelines, configuration management workflows, and any scenario where you need to programmatically generate Terraform variable files. Combined with `decode_tfvars`, it gives you a practical way to generate and parse `.tfvars` content when Terraform-specific variable syntax is required. As provider functions continue to evolve, expect more utilities like this to simplify common Terraform workflows. For a broader look at provider functions, see our [guide to provider functions in Terraform](https://oneuptime.com/blog/post/2026-02-23-how-to-use-the-provider-functions-in-terraform/view).
