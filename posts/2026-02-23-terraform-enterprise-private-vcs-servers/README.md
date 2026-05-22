@@ -25,7 +25,7 @@ TFE needs to reach:
 
 VCS needs to reach:
   - TFE webhook endpoint (port 443)
-  - URL: https://tfe.example.com/webhooks/vcs
+  - URL: https://tfe.example.com/webhooks/vcs/<webhook-id>
 ```
 
 ```bash
@@ -35,13 +35,17 @@ curl -s -o /dev/null -w "%{http_code}" https://gitlab.internal.example.com/api/v
 # Should return 200
 
 # Test connectivity from VCS to TFE (run on VCS server)
-curl -s -o /dev/null -w "%{http_code}" https://tfe.example.com/_health_check
+curl -s -o /dev/null -w "%{http_code}" https://tfe.example.com/api/v1/health/readiness
 # Should return 200
 ```
 
 ## GitHub Enterprise Server
 
-### Step 1: Create an OAuth Application
+### Step 1: Begin Adding the VCS Provider in TFE
+
+Start adding a GitHub Enterprise VCS provider in TFE and copy the generated `callback-url`. Use that value when registering the OAuth application in GitHub Enterprise.
+
+### Step 2: Create an OAuth Application
 
 On your GitHub Enterprise Server:
 
@@ -51,12 +55,12 @@ On your GitHub Enterprise Server:
 ```text
 Application name:       Terraform Enterprise
 Homepage URL:           https://tfe.example.com
-Authorization callback URL: https://tfe.example.com/auth/github_enterprise/callback
+Authorization callback URL: [callback-url from TFE]
 ```
 
 Note the **Client ID** and generate a **Client Secret**.
 
-### Step 2: Configure TFE
+### Step 3: Configure TFE
 
 ```bash
 # Add the GitHub Enterprise VCS provider via API
@@ -73,7 +77,6 @@ curl -s \
         "name": "GitHub Enterprise",
         "http-url": "https://github.internal.example.com",
         "api-url": "https://github.internal.example.com/api/v3",
-        "oauth-token-string": "",
         "key": "your-oauth-client-id",
         "secret": "your-oauth-client-secret"
       }
@@ -81,7 +84,7 @@ curl -s \
   }'
 ```
 
-### Step 3: Authorize the Connection
+### Step 4: Authorize the Connection
 
 After creating the OAuth client, you need to complete the OAuth flow:
 
@@ -95,28 +98,16 @@ After creating the OAuth client, you need to complete the OAuth flow:
 
 ### Step 1: Create an OAuth Application in GitLab
 
-1. Log in to GitLab as an admin
-2. Go to **Admin Area** > **Applications** > **New application**
+Start adding a GitLab Enterprise Edition or GitLab Community Edition VCS provider in TFE and copy the generated redirect URI.
+
+1. Log in to GitLab as the service user TFE should use
+2. Go to **User Settings** > **Applications** > **Add new application**
 
 ```text
 Name:         Terraform Enterprise
-Redirect URI: https://tfe.example.com/auth/gitlab_self_managed/callback
-Trusted:      Yes
+Redirect URI: [redirect URI from TFE]
 Confidential: Yes
-Scopes:       api, read_user, read_repository
-```
-
-```bash
-# Alternatively, create the application via GitLab API
-curl -s \
-  --header "PRIVATE-TOKEN: ${GITLAB_ADMIN_TOKEN}" \
-  --request POST \
-  "https://gitlab.internal.example.com/api/v4/applications" \
-  --data-urlencode "name=Terraform Enterprise" \
-  --data-urlencode "redirect_uri=https://tfe.example.com/auth/gitlab_self_managed/callback" \
-  --data-urlencode "scopes=api read_user read_repository" \
-  --data "trusted=true" \
-  --data "confidential=true"
+Scopes:       api
 ```
 
 ### Step 2: Configure TFE
@@ -132,7 +123,7 @@ curl -s \
     "data": {
       "type": "oauth-clients",
       "attributes": {
-        "service-provider": "gitlab_self_managed",
+        "service-provider": "gitlab_enterprise_edition",
         "name": "GitLab Internal",
         "http-url": "https://gitlab.internal.example.com",
         "api-url": "https://gitlab.internal.example.com/api/v4",
@@ -143,11 +134,13 @@ curl -s \
   }'
 ```
 
-## Bitbucket Data Center (Server)
+Use `gitlab_community_edition` instead of `gitlab_enterprise_edition` for GitLab Community Edition.
+
+## Bitbucket Data Center
 
 ### Step 1: Create an Application Link in Bitbucket
 
-1. Go to Bitbucket Server **Administration** > **Application Links**
+1. Go to Bitbucket Data Center **Administration** > **Application Links**
 2. Enter the TFE URL: `https://tfe.example.com`
 3. Configure the incoming link:
 
@@ -155,13 +148,12 @@ curl -s \
 Consumer Key:     terraform-enterprise
 Consumer Name:    Terraform Enterprise
 Public Key:       [paste your RSA public key]
-Consumer Callback URL: https://tfe.example.com/auth/bitbucket_server/callback
 ```
 
 Generate the RSA key pair:
 
 ```bash
-# Generate an RSA key pair for Bitbucket Server OAuth
+# Generate an RSA key pair for Bitbucket Data Center OAuth
 openssl genrsa -out tfe-bitbucket.pem 2048
 openssl rsa -in tfe-bitbucket.pem -pubout -out tfe-bitbucket-public.pem
 
@@ -172,7 +164,7 @@ cat tfe-bitbucket-public.pem
 ### Step 2: Configure TFE
 
 ```bash
-# Add Bitbucket Server as a VCS provider
+# Add Bitbucket Data Center as a VCS provider
 curl -s \
   --header "Authorization: Bearer ${TFE_ORG_TOKEN}" \
   --header "Content-Type: application/vnd.api+json" \
@@ -182,7 +174,7 @@ curl -s \
     "data": {
       "type": "oauth-clients",
       "attributes": {
-        "service-provider": "bitbucket_server",
+        "service-provider": "bitbucket_data_center",
         "name": "Bitbucket Data Center",
         "http-url": "https://bitbucket.internal.example.com",
         "api-url": "https://bitbucket.internal.example.com",
@@ -203,8 +195,14 @@ curl -s \
 # Create a PAT in Azure DevOps:
 # 1. Go to User Settings > Personal Access Tokens
 # 2. Create a new token with these scopes:
-#    - Code: Read & Write
-#    - Project and Team: Read
+#    - Code: Read
+#    - Code: Status
+# The account must have Project Collection Administrator access for
+# projects containing Terraform repositories so TFE can create webhooks.
+
+# Create an SSH key pair with an empty passphrase for cloning repositories.
+ssh-keygen -t rsa -m PEM -f ./tfe-ado -C "service_terraform_enterprise"
+# Add ./tfe-ado.pub to the Azure DevOps Server service user's SSH keys.
 
 # Configure in TFE
 curl -s \
@@ -220,7 +218,8 @@ curl -s \
         "name": "Azure DevOps Server",
         "http-url": "https://azuredevops.internal.example.com",
         "api-url": "https://azuredevops.internal.example.com",
-        "oauth-token-string": "your-personal-access-token"
+        "oauth-token-string": "your-personal-access-token",
+        "private-key": "-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----"
       }
     }
   }'
@@ -275,9 +274,9 @@ curl -s \
 # Check TFE logs for webhook events
 docker logs tfe 2>&1 | grep -i webhook
 
-# Manually test a webhook
+# Manually test the specific webhook URL registered for a workspace
 curl -X POST \
-  "https://tfe.example.com/webhooks/vcs" \
+  "https://tfe.example.com/webhooks/vcs/<webhook-id>" \
   -H "Content-Type: application/json" \
   -d '{"test": true}'
 ```
