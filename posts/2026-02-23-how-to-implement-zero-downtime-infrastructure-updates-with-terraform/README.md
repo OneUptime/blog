@@ -96,6 +96,12 @@ resource "aws_lb_listener_rule" "app" {
       }
     }
   }
+
+  condition {
+    path_pattern {
+      values = ["/*"]
+    }
+  }
 }
 ```
 
@@ -123,7 +129,7 @@ resource "aws_launch_template" "app" {
 }
 
 resource "aws_autoscaling_group" "app" {
-  name                = "app-${aws_launch_template.app.latest_version}"
+  name                = "app"
   min_size            = var.min_size
   max_size            = var.max_size
   desired_capacity    = var.desired_capacity
@@ -133,7 +139,7 @@ resource "aws_autoscaling_group" "app" {
 
   launch_template {
     id      = aws_launch_template.app.id
-    version = "$Latest"
+    version = aws_launch_template.app.latest_version
   }
 
   # Rolling update configuration
@@ -254,14 +260,22 @@ Database changes are the trickiest to do without downtime:
 # Zero-downtime RDS updates
 
 resource "aws_db_instance" "main" {
-  identifier     = "app-production"
-  engine         = "postgres"
-  engine_version = var.postgres_version
-  instance_class = var.db_instance_class
+  identifier        = "app-production"
+  allocated_storage = 100
+  db_name           = "app"
+  username          = var.db_username
+  password          = var.db_password
+  engine            = "postgres"
+  engine_version    = var.postgres_version
+  instance_class    = var.db_instance_class
 
   # Apply changes during next maintenance window
   # to avoid immediate disruption
   apply_immediately = false
+
+  # Required for low-downtime updates and
+  # RDS Blue/Green deployments
+  backup_retention_period = 7
 
   # Enable Multi-AZ for automatic failover
   multi_az = true
