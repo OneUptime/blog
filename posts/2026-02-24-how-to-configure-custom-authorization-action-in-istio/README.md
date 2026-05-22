@@ -57,6 +57,7 @@ spec:
           includeRequestHeadersInCheck:
             - "authorization"
             - "cookie"
+            - "x-api-key"
           pathPrefix: "/check"
       - name: "my-ext-authz-grpc"
         envoyExtAuthzGrpc:
@@ -85,6 +86,7 @@ data:
         includeRequestHeadersInCheck:
           - "authorization"
           - "cookie"
+          - "x-api-key"
 ```
 
 ## Creating a CUSTOM AuthorizationPolicy
@@ -122,7 +124,6 @@ package main
 import (
     "fmt"
     "net/http"
-    "strings"
 )
 
 var validAPIKeys = map[string]string{
@@ -148,6 +149,7 @@ func checkHandler(w http.ResponseWriter, r *http.Request) {
 
 func main() {
     http.HandleFunc("/check", checkHandler)
+    http.HandleFunc("/check/", checkHandler)
     http.ListenAndServe(":8080", nil)
 }
 ```
@@ -228,6 +230,18 @@ spec:
         - name: policy
           configMap:
             name: opa-policy
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: opa-ext-authz
+  namespace: auth-system
+spec:
+  selector:
+    app: opa-ext-authz
+  ports:
+    - port: 9191
+      targetPort: 9191
 ```
 
 Write an OPA policy in Rego:
@@ -242,23 +256,24 @@ data:
   policy.rego: |
     package envoy.authz
 
+    import rego.v1
     import input.attributes.request.http as http_request
 
     default allow := false
 
     # Allow GET requests to public paths
-    allow {
+    allow if {
         http_request.method == "GET"
         startswith(http_request.path, "/public/")
     }
 
     # Allow requests with valid admin header
-    allow {
+    allow if {
         http_request.headers["x-user-role"] == "admin"
     }
 
     # Allow specific service accounts
-    allow {
+    allow if {
         input.attributes.source.principal == "spiffe://cluster.local/ns/my-app/sa/trusted-service"
     }
 ```
@@ -315,10 +330,10 @@ extensionProviders:
     envoyExtAuthzHttp:
       service: "ext-authz.auth-system.svc.cluster.local"
       port: 8080
-      statusOnError: "200"
+      failOpen: true
 ```
 
-Setting `statusOnError` to 200 means requests are allowed when the authorizer is unreachable. This is a fail-open strategy. Use it carefully - in most security-sensitive scenarios, fail-closed (the default) is better.
+Setting `failOpen` to `true` means requests are allowed when the authorizer is unreachable or returns an HTTP 5xx response. This is a fail-open strategy. Use it carefully - in most security-sensitive scenarios, fail-closed (the default) is better.
 
 ## Performance Considerations
 
