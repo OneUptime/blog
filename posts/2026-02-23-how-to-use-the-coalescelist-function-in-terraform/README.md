@@ -125,7 +125,7 @@ resource "aws_lb" "app" {
 }
 ```
 
-This pattern ensures the load balancer always has subnets to work with, even if the user does not explicitly provide any.
+This pattern gives the load balancer subnets to work with even if the user does not explicitly provide any, as long as the VPC has matching subnets.
 
 ## Module Interface Design
 
@@ -168,28 +168,36 @@ You can achieve similar results with conditional expressions, but `coalescelist`
 
 ```hcl
 # Using a conditional - works but verbose
-local.subnets = length(var.custom_subnets) > 0 ? var.custom_subnets : var.default_subnets
+locals {
+  subnets = length(var.custom_subnets) > 0 ? var.custom_subnets : var.default_subnets
+}
 
 # Using coalescelist - cleaner
-local.subnets = coalescelist(var.custom_subnets, var.default_subnets)
+locals {
+  subnets = coalescelist(var.custom_subnets, var.default_subnets)
+}
 ```
 
 The advantage becomes more obvious with multiple fallback levels.
 
 ```hcl
 # Multiple fallbacks with conditionals - gets messy fast
-local.subnets = (
-  length(var.primary_subnets) > 0 ? var.primary_subnets :
-  length(var.secondary_subnets) > 0 ? var.secondary_subnets :
-  var.default_subnets
-)
+locals {
+  subnets = (
+    length(var.primary_subnets) > 0 ? var.primary_subnets :
+    length(var.secondary_subnets) > 0 ? var.secondary_subnets :
+    var.default_subnets
+  )
+}
 
 # Multiple fallbacks with coalescelist - clean and readable
-local.subnets = coalescelist(
-  var.primary_subnets,
-  var.secondary_subnets,
-  var.default_subnets
-)
+locals {
+  subnets = coalescelist(
+    var.primary_subnets,
+    var.secondary_subnets,
+    var.default_subnets
+  )
+}
 ```
 
 ## Difference Between coalesce and coalescelist
@@ -211,9 +219,9 @@ These two functions serve similar purposes but for different types:
 
 For more on `coalesce`, see [How to Use the coalesce Function in Terraform](https://oneuptime.com/blog/post/2026-02-23-how-to-use-the-coalesce-function-in-terraform/view).
 
-## Handling Tag Lists
+## Handling Alarm Action Lists
 
-Here is a practical example of using `coalescelist` for managing tag-based configurations.
+Here is a practical example of using `coalescelist` for managing CloudWatch alarm action lists.
 
 ```hcl
 variable "custom_alarm_actions" {
@@ -256,7 +264,7 @@ If all lists are empty, `coalescelist` throws an error. Always make sure your fi
 ```hcl
 # This will cause an error
 > coalescelist([], [])
-# Error: all arguments to coalescelist are empty
+# Terraform returns an error because no argument is a non-empty list
 
 # Always ensure the last argument is non-empty
 > coalescelist([], [], ["safe-fallback"])
