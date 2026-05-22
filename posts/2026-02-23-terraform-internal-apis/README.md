@@ -10,11 +10,11 @@ Description: Learn how to use Terraform to interact with internal APIs using the
 
 Not every service your organization uses has an official Terraform provider. Internal platforms, legacy systems, and custom-built tools often expose REST APIs but have no Terraform support. Rather than managing these resources manually, you can use several Terraform techniques to integrate with any API, bringing internal services under the same infrastructure-as-code workflow as your cloud resources.
 
-In this guide, we will explore multiple approaches for using Terraform with internal APIs: the HTTP data source for reading data, the restapi provider for full CRUD operations, shell provisioners for custom API calls, and when it makes sense to build a custom provider.
+In this guide, we will explore multiple approaches for using Terraform with internal APIs: the HTTP provider data source for reading data, the restapi provider for full CRUD operations, shell provisioners for custom API calls, and when it makes sense to build a custom provider.
 
 ## Using the HTTP Data Source
 
-The simplest way to read data from an internal API is the built-in HTTP data source. It makes GET requests and returns the response body, which you can parse in Terraform.
+The simplest way to read data from an internal API is the HashiCorp HTTP provider data source. It makes HTTP requests and returns the response body, which you can parse in Terraform.
 
 ```hcl
 # Read configuration from an internal API
@@ -47,7 +47,7 @@ resource "aws_instance" "web" {
 }
 ```
 
-The limitation of the HTTP data source is that it only supports GET requests. It reads data but cannot create, update, or delete resources.
+The limitation of the HTTP data source is that it is read-only. It supports GET, HEAD, and POST requests, but POST support is intended for read-only endpoints such as searches. It reads data but cannot create, update, or delete managed resources.
 
 ## Using the restapi Provider for Full CRUD
 
@@ -59,7 +59,7 @@ terraform {
   required_providers {
     restapi = {
       source  = "Mastercard/restapi"
-      version = "~> 1.18"
+      version = "~> 3.0"
     }
   }
 }
@@ -195,6 +195,7 @@ The corresponding Python script queries the internal API and returns a JSON obje
 
 import json
 import sys
+import os
 import requests
 
 def main():
@@ -231,25 +232,29 @@ if __name__ == "__main__":
     main()
 ```
 
-## Managing Internal Resources with null_resource and Provisioners
+## Managing Internal Resources with terraform_data and Provisioners
 
-For one-off API calls that do not fit neatly into the CRUD model, null_resource with provisioners gives you full control.
+For one-off API calls that do not fit neatly into the CRUD model, terraform_data with provisioners gives you full control. This example expects the release tracker token to be available as a `RELEASE_API_TOKEN` environment variable.
 
 ```hcl
 # Register a deployment with the internal release tracker
-resource "null_resource" "deployment_registration" {
-  triggers = {
+resource "terraform_data" "deployment_registration" {
+  input = {
+    app_version = var.app_version
+    release_api = "https://releases.company.com/api/v1/deployments"
+  }
+
+  triggers_replace = {
     # Re-run when the application version changes
     app_version = var.app_version
-    deploy_time = timestamp()
   }
 
   provisioner "local-exec" {
     command = <<-EOT
       curl -s -X POST \
-        "https://releases.company.com/api/v1/deployments" \
+        "${self.output.release_api}" \
         -H "Content-Type: application/json" \
-        -H "Authorization: Bearer ${var.release_api_token}" \
+        -H "Authorization: Bearer $RELEASE_API_TOKEN" \
         -d '{
           "service": "${var.service_name}",
           "version": "${var.app_version}",
@@ -266,8 +271,8 @@ resource "null_resource" "deployment_registration" {
     when    = destroy
     command = <<-EOT
       curl -s -X DELETE \
-        "https://releases.company.com/api/v1/deployments/${self.triggers.app_version}" \
-        -H "Authorization: Bearer ${var.release_api_token}"
+        "${self.output.release_api}/${self.output.app_version}" \
+        -H "Authorization: Bearer $RELEASE_API_TOKEN"
     EOT
   }
 }
@@ -280,7 +285,8 @@ A common pattern is using internal APIs to make decisions about external cloud r
 ```hcl
 # Query internal cost optimization service
 data "http" "cost_recommendation" {
-  url = "https://finops.company.com/api/v1/recommend"
+  url    = "https://finops.company.com/api/v1/recommend"
+  method = "POST"
 
   request_headers = {
     Accept        = "application/json"
