@@ -109,11 +109,11 @@ export class ApplicationStack extends cdk.Stack {
     const cluster = new ecs.Cluster(this, 'AppCluster', {
       vpc: vpc,
       clusterName: 'application-cluster',
-      containerInsights: true,
+      containerInsightsV2: ecs.ContainerInsights.ENABLED,
     });
 
     // Deploy a Fargate service
-    const fargateService = new ecs.FargateService(this, 'AppService', {
+    new ecs.FargateService(this, 'AppService', {
       cluster: cluster,
       taskDefinition: this.createTaskDefinition(),
       desiredCount: 3,
@@ -242,7 +242,7 @@ SSM Parameter Store is the most reliable bridge between Terraform and CDK becaus
 resource "aws_rds_cluster" "main" {
   cluster_identifier = "main-database"
   engine             = "aurora-postgresql"
-  engine_version     = "15.4"
+  engine_version     = "15.10"
   master_username    = "admin"
   master_password    = var.db_password
   database_name      = "application"
@@ -273,7 +273,6 @@ resource "aws_ssm_parameter" "db_password" {
 // CDK reads database configuration from SSM (written by Terraform)
 import * as cdk from 'aws-cdk-lib';
 import * as ecs from 'aws-cdk-lib/aws-ecs';
-import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
 
@@ -328,11 +327,19 @@ on:
   push:
     branches: [main]
 
+permissions:
+  id-token: write
+  contents: read
+
 jobs:
   terraform:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v6.1.0
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-1
       - uses: hashicorp/setup-terraform@v3
 
       - name: Deploy Networking
@@ -352,6 +359,10 @@ jobs:
     needs: terraform
     steps:
       - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v6.1.0
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-1
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
