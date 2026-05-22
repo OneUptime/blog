@@ -8,7 +8,7 @@ Description: Learn how to integrate Terraform with infrastructure orchestration 
 
 ---
 
-Infrastructure orchestration platforms sit on top of Terraform and add capabilities that the CLI alone cannot provide: policy enforcement, drift detection, cost estimation, approval workflows, and multi-workspace coordination. Platforms like Spacelift, env0, Scalr, and Terraform Cloud Enterprise transform Terraform from a single-user tool into an organization-wide infrastructure management system.
+Infrastructure orchestration platforms sit on top of Terraform and add capabilities that the CLI alone cannot provide: policy enforcement, drift detection, cost estimation, approval workflows, and multi-workspace coordination. Platforms like Spacelift, env0, Scalr, HCP Terraform, and Terraform Enterprise transform Terraform from a single-user tool into an organization-wide infrastructure management system.
 
 In this guide, we will explore how to use Terraform with these orchestration platforms, how to structure your configurations for orchestration, and how to set up workflows that coordinate changes across multiple Terraform workspaces.
 
@@ -29,7 +29,7 @@ terraform {
   required_providers {
     spacelift = {
       source  = "spacelift-io/spacelift"
-      version = "~> 1.8"
+      version = "~> 1.48"
     }
   }
 }
@@ -45,9 +45,9 @@ resource "spacelift_stack" "networking" {
   branch      = "main"
   project_root = "terraform/networking"
 
-  terraform_version = "1.7.0"
+  terraform_version = "1.15.2"
 
-  # Enable drift detection
+  # Disable automatic deployment so changes require confirmation
   autodeploy = false
 
   labels = ["production", "networking", "layer-1"]
@@ -61,7 +61,7 @@ resource "spacelift_stack" "compute" {
   branch      = "main"
   project_root = "terraform/compute"
 
-  terraform_version = "1.7.0"
+  terraform_version = "1.15.2"
   autodeploy        = false
 
   labels = ["production", "compute", "layer-2"]
@@ -169,7 +169,7 @@ terraform {
   required_providers {
     env0 = {
       source  = "env0/env0"
-      version = "~> 0.3"
+      version = "~> 1.31"
     }
   }
 }
@@ -191,12 +191,15 @@ resource "env0_template" "web_service" {
   description = "Deploy a containerized web service"
   type        = "terraform"
 
-  repository      = "https://github.com/company/infrastructure-modules"
-  path            = "modules/web-service"
-  revision        = "main"
-  terraform_version = "1.7.0"
+  repository        = "https://github.com/company/infrastructure-modules"
+  path              = "modules/web-service"
+  revision          = "main"
+  terraform_version = "1.15.2"
+}
 
-  project_ids = [env0_project.platform.id]
+resource "env0_template_project_assignment" "web_service_platform" {
+  template_id = env0_template.web_service.id
+  project_id  = env0_project.platform.id
 }
 
 # Define configurable variables for the template
@@ -221,7 +224,7 @@ resource "env0_configuration_variable" "size" {
 resource "env0_project_budget" "platform" {
   project_id = env0_project.platform.id
   amount     = 50000  # Monthly budget in dollars
-  timeframe  = "monthly"
+  timeframe  = "MONTHLY"
 }
 ```
 
@@ -308,7 +311,7 @@ resource "spacelift_drift_detection" "compute" {
 
 # For non-critical resources, enable auto-reconciliation
 resource "spacelift_drift_detection" "monitoring" {
-  stack_id  = spacelift_stack.monitoring.id
+  stack_id  = spacelift_stack.application.id
   reconcile = true  # Automatically fix drift
   schedule  = ["0 * * * *"]  # Check every hour
 }
@@ -329,13 +332,14 @@ resource "spacelift_policy" "require_approval" {
     # Require 2 approvals for production stacks
     approve {
       input.run.state == "UNCONFIRMED"
-      count(input.reviews.approvals) >= 2
+      count(input.reviews.current.approvals) >= 2
+      count(input.reviews.current.rejections) == 0
     }
 
     # Reject if any reviewer rejects
     reject {
       input.run.state == "UNCONFIRMED"
-      count(input.reviews.rejections) > 0
+      count(input.reviews.current.rejections) > 0
     }
   EOT
 
