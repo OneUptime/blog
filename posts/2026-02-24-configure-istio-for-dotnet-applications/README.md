@@ -295,13 +295,13 @@ lifetime.ApplicationStopped.Register(() =>
 Add a preStop hook for sidecar coordination:
 
 ```yaml
-containers:
-- name: catalog-service
-  lifecycle:
-    preStop:
-      exec:
-        command: ["/bin/sh", "-c", "sleep 5"]
 spec:
+  containers:
+  - name: catalog-service
+    lifecycle:
+      preStop:
+        exec:
+          command: ["/bin/sh", "-c", "sleep 5"]
   terminationGracePeriodSeconds: 35
 ```
 
@@ -319,7 +319,7 @@ builder.WebHost.ConfigureKestrel(options =>
 });
 ```
 
-Enabling both HTTP/1.1 and HTTP/2 (without TLS) is important. Istio can then use HTTP/2 for better performance when communicating between sidecars, while also supporting HTTP/1.1 clients.
+Enabling both HTTP/1.1 and HTTP/2 (without TLS) lets Kestrel accept HTTP/1.1 clients and HTTP/2 clients that use h2c prior knowledge. If you need gRPC, use an HTTP/2-only port as shown below.
 
 ## Traffic Management
 
@@ -381,14 +381,16 @@ builder.WebHost.ConfigureKestrel(options =>
 builder.Services.AddGrpc();
 ```
 
-Name the gRPC port properly:
+Name the gRPC Service port properly so Istio detects the protocol:
 
 ```yaml
 ports:
 - name: http-web
-  containerPort: 8080
+  port: 8080
+  targetPort: http-web
 - name: grpc-api
-  containerPort: 9090
+  port: 9090
+  targetPort: grpc-api
 ```
 
 ## Common .NET + Istio Issues
@@ -397,10 +399,12 @@ ports:
 
 **Startup time**: .NET apps with lots of dependency injection can take 5-15 seconds to start. Use startup probes with enough timeout to prevent premature pod kills.
 
-**HTTP/2 without TLS**: Some .NET libraries expect HTTP/2 to always use TLS. Since Istio handles TLS at the sidecar level, you need to explicitly configure Kestrel and HttpClient to allow unencrypted HTTP/2. For HttpClient calling gRPC services within the mesh:
+**HTTP/2 without TLS**: Some .NET libraries expect HTTP/2 to always use TLS. Since Istio handles TLS at the sidecar level, configure Kestrel for unencrypted HTTP/2 where needed. For .NET Core 3.x gRPC clients calling services within the mesh, set this switch before creating the gRPC channel or HttpClient:
 
 ```csharp
 AppContext.SetSwitch("System.Net.Http.SocketsHttpHandler.Http2UnencryptedSupport", true);
 ```
+
+For .NET 5 or later, use `Grpc.Net.Client` 2.32.0 or later and an `http://` address instead; the switch is not required.
 
 .NET applications integrate well with Istio once the basic configuration is in place. The key points are configuring Kestrel for plain HTTP (since Istio handles TLS), setting up health checks with the built-in middleware, and using IHttpClientFactory with a delegating handler for automatic trace header propagation.
