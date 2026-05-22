@@ -14,7 +14,7 @@ This guide covers the full range of request routing options available in Virtual
 
 ## The Routing Model
 
-Every HTTP request that enters the mesh passes through a sidecar proxy. The proxy evaluates the VirtualService rules for the destination service and picks the matching route. The evaluation is top-down - the first matching rule wins.
+In a sidecar-based mesh, HTTP requests pass through an Envoy sidecar proxy. The proxy evaluates the VirtualService rules for the destination service and picks the matching route. The evaluation is top-down - the first matching rule wins.
 
 ```mermaid
 graph TD
@@ -27,7 +27,7 @@ graph TD
     F -->|No| H[Default Route]
 ```
 
-If no rule matches and there is no default route, Istio uses standard Kubernetes service routing.
+If no VirtualService applies, Istio uses its default service routing based on the service registry. If a VirtualService applies but none of its HTTP routes match, define a catch-all route without a `match` block to avoid leaving the request without a matching route.
 
 ## Basic Route Configuration
 
@@ -78,7 +78,7 @@ spec:
       weight: 20
 ```
 
-80% of traffic goes to v1, 20% to v2. Weights must add up to 100.
+80% of traffic goes to v1, 20% to v2. Istio treats weights as relative proportions, so using values that add up to 100 makes the percentages explicit.
 
 ## Match Conditions
 
@@ -180,7 +180,7 @@ Requests with `?version=2` in the query string match this rule.
 
 ### Source Label Matching
 
-Route based on which service is making the request:
+Route based on labels on the source workload making the request:
 
 ```yaml
 http:
@@ -198,7 +198,7 @@ http:
       subset: v1
 ```
 
-When the frontend v2 calls the backend, it gets backend v2. All other callers get backend v1. This is useful for pinning traffic in end-to-end testing scenarios.
+When a frontend workload with those labels calls the backend, it gets backend v2. All other callers get backend v1. This is useful for pinning traffic in end-to-end testing scenarios.
 
 ## Combining Match Conditions
 
@@ -316,9 +316,9 @@ spec:
   hosts:
   - api.external.com
   ports:
-  - number: 443
-    name: https
-    protocol: HTTPS
+  - number: 80
+    name: http
+    protocol: HTTP
   resolution: DNS
   location: MESH_EXTERNAL
 ---
@@ -339,10 +339,10 @@ spec:
     - destination:
         host: api.external.com
         port:
-          number: 443
+          number: 80
 ```
 
-This applies Istio routing features (timeouts, retries) to traffic going to an external API.
+This applies Istio HTTP routing features (timeouts, retries) to traffic going to an external API.
 
 ## Multiple Hosts
 
