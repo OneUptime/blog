@@ -138,15 +138,14 @@ locals {
   # (2 ports x 2 CIDRs) + (1 port x 1 CIDR) = 5
 }
 
-resource "aws_security_group_rule" "ingress" {
+resource "aws_vpc_security_group_ingress_rule" "ingress" {
   for_each = { for rule in local.sg_rules : rule.key => rule }
 
-  type              = "ingress"
+  security_group_id = aws_security_group.main.id
+  cidr_ipv4         = each.value.cidr
   from_port         = each.value.port
   to_port           = each.value.port
-  protocol          = "tcp"
-  cidr_blocks       = [each.value.cidr]
-  security_group_id = aws_security_group.main.id
+  ip_protocol       = "tcp"
   description       = each.value.description
 }
 ```
@@ -160,14 +159,14 @@ variable "role_policies" {
   type = map(list(string))
   default = {
     admin = [
-      "arn:aws:iam::policy/AdministratorAccess"
+      "arn:aws:iam::aws:policy/AdministratorAccess"
     ]
     developer = [
-      "arn:aws:iam::policy/PowerUserAccess",
-      "arn:aws:iam::policy/IAMReadOnlyAccess"
+      "arn:aws:iam::aws:policy/PowerUserAccess",
+      "arn:aws:iam::aws:policy/IAMReadOnlyAccess"
     ]
     viewer = [
-      "arn:aws:iam::policy/ReadOnlyAccess"
+      "arn:aws:iam::aws:policy/ReadOnlyAccess"
     ]
   }
 }
