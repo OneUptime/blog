@@ -56,7 +56,7 @@ resource "azurerm_virtual_machine" "web" {  # azurerm_ prefix = Azure provider
 
 ## The Provider Ecosystem
 
-The Terraform Registry at registry.terraform.io hosts thousands of providers. They fall into three categories:
+The Terraform Registry at registry.terraform.io hosts thousands of providers. They are grouped into several tiers:
 
 **Official providers** are maintained by HashiCorp. These include the major cloud providers and core infrastructure tools:
 
@@ -66,7 +66,9 @@ The Terraform Registry at registry.terraform.io hosts thousands of providers. Th
 - Kubernetes (`hashicorp/kubernetes`)
 - Vault (`hashicorp/vault`)
 
-**Partner providers** are maintained by third-party companies and reviewed by HashiCorp:
+**Partner Premier providers** are maintained by third-party companies that meet additional HashiCorp partner requirements.
+
+**Partner providers** are maintained by third-party companies and validated through the HashiCorp Technology Partner Program:
 
 - Datadog (`DataDog/datadog`)
 - MongoDB Atlas (`mongodb/mongodbatlas`)
@@ -77,6 +79,8 @@ The Terraform Registry at registry.terraform.io hosts thousands of providers. Th
 
 - These cover niche services, internal tools, and experimental integrations.
 - Quality and maintenance vary widely.
+
+**Archived providers** are official or partner providers that are no longer maintained.
 
 ## How Terraform Finds Providers
 
@@ -195,7 +199,7 @@ data "aws_availability_zones" "available" {
 
 ## Provider Dependencies Between Resources
 
-Providers handle dependencies between resources. When resource B depends on resource A, Terraform tells the provider to create A first:
+Terraform handles dependencies between resources before calling providers. When resource B depends on resource A, Terraform uses its dependency graph to call the provider for A before it calls the provider for B:
 
 ```hcl
 # Terraform knows to create the VPC before the subnet
