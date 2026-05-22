@@ -12,7 +12,7 @@ Some Terraform resources have nested blocks inside other nested blocks. When bot
 
 ## When You Need Nested Dynamic Blocks
 
-The most common scenario is with AWS resources that have a hierarchical structure. Take an AWS Network ACL, where each rule can have multiple CIDR block entries, or a WAF rule with nested match conditions. Another classic example is the `aws_lb_listener` resource with multiple `action` blocks, each containing their own sub-blocks.
+The most common scenario is with AWS resources that have a hierarchical structure. Take an AWS Network ACL, where similar rule definitions often need to be generated once per CIDR entry, or a WAF rule with nested match conditions. Another classic example is the `aws_lb_listener_rule` resource with multiple `action` blocks, each containing their own sub-blocks.
 
 Let us start with a concrete example.
 
@@ -61,6 +61,20 @@ variable "waf_rules" {
       values     = list(string)
     }))
   }))
+
+  validation {
+    condition = alltrue([
+      for rule in var.waf_rules :
+      contains(["allow", "block"], rule.action) &&
+      length(rule.conditions) > 1 &&
+      alltrue([
+        for condition in rule.conditions :
+        length(condition.values) > 0 &&
+        contains(["header", "query_argument", "method", "query_string"], condition.match_type)
+      ])
+    ])
+    error_message = "Each rule must use action allow or block and have at least two conditions. Each condition must have at least one value and use match_type header, query_argument, method, or query_string."
+  }
 }
 
 resource "aws_wafv2_rule_group" "example" {
@@ -100,8 +114,22 @@ resource "aws_wafv2_rule_group" "example" {
                   dynamic "single_header" {
                     for_each = statement.value.match_type == "header" ? [1] : []
                     content {
+                      name = lower(statement.value.field)
+                    }
+                  }
+                  dynamic "single_query_argument" {
+                    for_each = statement.value.match_type == "query_argument" ? [1] : []
+                    content {
                       name = statement.value.field
                     }
+                  }
+                  dynamic "method" {
+                    for_each = statement.value.match_type == "method" ? [1] : []
+                    content {}
+                  }
+                  dynamic "query_string" {
+                    for_each = statement.value.match_type == "query_string" ? [1] : []
+                    content {}
                   }
                 }
                 text_transformation {
@@ -168,46 +196,45 @@ In this case, you would flatten the structure before using it, since security gr
 When you nest dynamic blocks, the default iterator name matches the block label. This can get confusing when block names are similar. Use the `iterator` argument to give each level a clear name:
 
 ```hcl
-variable "listener_rules" {
-  type = list(object({
-    priority = number
+variable "listener_rule" {
+  type = object({
+    priority     = number
     host_headers = list(string)
-    actions = list(object({
-      type             = string
-      target_group_arn = string
-      weight           = number
+    target_groups = list(object({
+      arn    = string
+      weight = number
     }))
-  }))
+  })
 }
 
 resource "aws_lb_listener_rule" "weighted" {
   listener_arn = aws_lb_listener.front_end.arn
+  priority     = var.listener_rule.priority
 
   dynamic "condition" {
     # Use a named iterator for clarity
     iterator = rule_condition
-    for_each = var.listener_rules
+    for_each = length(var.listener_rule.host_headers) > 0 ? [var.listener_rule.host_headers] : []
     content {
       host_header {
-        values = rule_condition.value.host_headers
+        values = rule_condition.value
       }
     }
   }
 
-  dynamic "action" {
-    # Outer iterator named "act" to avoid confusion
-    iterator = act
-    for_each = var.listener_rules[0].actions
-    content {
-      type             = act.value.type
-      target_group_arn = act.value.target_group_arn
+  action {
+    type = "forward"
 
-      # No nested dynamic needed here, but if there were sub-blocks:
-      # dynamic "forward" {
-      #   iterator = fwd
-      #   for_each = act.value.type == "forward" ? [1] : []
-      #   content { ... }
-      # }
+    forward {
+      dynamic "target_group" {
+        # Inner iterator named "tg" to avoid confusion
+        iterator = tg
+        for_each = var.listener_rule.target_groups
+        content {
+          arn    = tg.value.arn
+          weight = tg.value.weight
+        }
+      }
     }
   }
 }
