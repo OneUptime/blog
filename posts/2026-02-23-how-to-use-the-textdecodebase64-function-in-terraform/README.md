@@ -90,7 +90,7 @@ data "external" "windows_info" {
   program = ["powershell", "-Command", <<-PS
     $info = @{
       hostname = $env:COMPUTERNAME
-      os       = (Get-WmiObject Win32_OperatingSystem).Caption
+      os       = (Get-CimInstance Win32_OperatingSystem).Caption
     }
     $json = $info | ConvertTo-Json
     $bytes = [System.Text.Encoding]::UTF8.GetBytes($json)
@@ -225,11 +225,11 @@ When working with text that contains characters from different languages:
 
 ```hcl
 locals {
-  # Japanese text encoded in UTF-16LE base64
-  japanese_base64 = textencodebase64("Terraform is great", "UTF-16LE")
+  # International text encoded in UTF-16LE base64
+  international_base64 = textencodebase64("Terraform is great", "UTF-16LE")
 
   # Decode it back
-  japanese_text = textdecodebase64(local.japanese_base64, "UTF-16LE")
+  international_text = textdecodebase64(local.international_base64, "UTF-16LE")
 }
 ```
 
@@ -257,7 +257,7 @@ The function supports the same encodings as `textencodebase64`:
 - ISO-8859-1
 - Windows-1252
 
-And others supported by Go's `encoding` package.
+Terraform supports a subset of the IANA-registered encoding names and aliases, and the exact supported set can vary between Terraform versions.
 
 ## When to Use textdecodebase64 vs base64decode
 
