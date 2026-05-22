@@ -8,7 +8,7 @@ Description: Understand the difference between terraform.tfvars and variables.tf
 
 ---
 
-Every Terraform project has at least two files that deal with variables: `variables.tf` and `terraform.tfvars`. New users often confuse them, put things in the wrong file, or skip one entirely. The distinction is simple once you understand it, but getting it wrong leads to configurations that are hard to share, hard to review, and hard to maintain.
+Many Terraform projects have at least two files that deal with variables: `variables.tf` and `terraform.tfvars`. New users often confuse them, put things in the wrong file, or skip one entirely. The distinction is simple once you understand it, but getting it wrong leads to configurations that are hard to share, hard to review, and hard to maintain.
 
 This post explains exactly what each file does, when to use each one, and how to organize them in real projects.
 
@@ -53,9 +53,9 @@ instance_count = 3
 
 ## What Goes in variables.tf
 
-Everything about the variable's definition:
+The variable's definition usually includes:
 
-- `type` - The data type (string, number, bool, list, map, object)
+- `type` - The type constraint (string, number, bool, list, set, map, object, tuple, or any)
 - `description` - What the variable is for
 - `default` - The fallback value if none is provided
 - `validation` - Rules the value must satisfy
@@ -133,11 +133,11 @@ Notice that `database_password` is not in the tfvars file. Sensitive values shou
 Terraform loads variable values from multiple sources, in this order of precedence (later sources override earlier ones):
 
 1. **Default values** in `variables.tf`
-2. **`terraform.tfvars`** or `terraform.tfvars.json` (automatically loaded)
-3. **`*.auto.tfvars`** or `*.auto.tfvars.json` files (automatically loaded, alphabetical order)
-4. **`-var-file` flag** on the command line
-5. **`-var` flag** on the command line
-6. **`TF_VAR_` environment variables**
+2. **`TF_VAR_` environment variables**
+3. **`terraform.tfvars`** (automatically loaded)
+4. **`terraform.tfvars.json`** (automatically loaded)
+5. **`*.auto.tfvars`** or `*.auto.tfvars.json` files (automatically loaded, alphabetical order)
+6. **`-var` and `-var-file` flags** on the command line, in the order provided
 
 ```bash
 # Using -var-file to load a specific file
@@ -284,28 +284,23 @@ Auto-loaded files are processed in alphabetical order. Use them for values that 
 
 ## Variable Precedence Example
 
-```hcl
-# variables.tf
-variable "instance_type" {
-  default = "t3.micro"  # Precedence: 1 (lowest)
-}
-
-# terraform.tfvars
-instance_type = "t3.small"  # Precedence: 2
-
-# prod.auto.tfvars
-instance_type = "t3.medium"  # Precedence: 3
+```text
+variables.tf default:            instance_type = "t3.micro"   # Precedence: 1 (lowest)
+TF_VAR_instance_type:            "m5.xlarge"                  # Precedence: 2
+terraform.tfvars:                instance_type = "t3.small"   # Precedence: 3
+terraform.tfvars.json:           "instance_type": "t3.large"  # Precedence: 4
+prod.auto.tfvars:                instance_type = "t3.medium"  # Precedence: 5
 ```
 
 ```bash
-# -var-file overrides auto.tfvars
-terraform plan -var-file="override.tfvars"  # Precedence: 4
+# Environment variable is used only if no higher-precedence source sets it
+TF_VAR_instance_type="m5.xlarge" terraform plan  # Precedence: 2
 
-# -var overrides everything except env vars
-terraform plan -var="instance_type=m5.large"  # Precedence: 5
+# -var-file overrides automatically loaded tfvars files
+terraform plan -var-file="override.tfvars"  # Precedence: 6
 
-# Environment variable has highest precedence
-TF_VAR_instance_type="m5.xlarge" terraform plan  # Precedence: 6
+# -var and -var-file are processed in the order provided
+terraform plan -var-file="override.tfvars" -var="instance_type=m5.large"  # Precedence: 6
 ```
 
 ## When to Use Defaults vs. tfvars
