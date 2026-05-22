@@ -10,11 +10,11 @@ Description: Learn how to use the Terraform random provider to generate unique r
 
 Resource naming conflicts are one of the most common problems when deploying infrastructure with Terraform. Cloud resources often require globally unique names, and when multiple environments or teams deploy the same configuration, name collisions are inevitable. The Terraform random provider solves this problem by generating unique identifiers that you can incorporate into resource names.
 
-In this guide, we will explore the random provider in depth. We will cover all of its resource types, show practical examples for generating unique names, and explain best practices for using random values in your Terraform configurations.
+In this guide, we will explore the random provider in depth. We will cover several of its resource types, show practical examples for generating unique names, and explain best practices for using random values in your Terraform configurations.
 
 ## What is the Random Provider
 
-The random provider is a utility provider maintained by HashiCorp that generates random values within Terraform. Unlike most providers that interact with external APIs, the random provider operates entirely within Terraform itself. It generates values during the plan phase and stores them in state, ensuring the same random values are used consistently across applies.
+The random provider is a utility provider maintained by HashiCorp that generates random values within Terraform. Unlike most providers that interact with external APIs, the random provider operates entirely within Terraform itself. It generates values when the random resource is created and stores them in state, ensuring the same random values are used consistently across applies.
 
 ## Installing the Random Provider
 
@@ -58,7 +58,7 @@ variable "project" {
 
 ## Generating Unique S3 Bucket Names
 
-S3 bucket names must be globally unique across all AWS accounts. The random provider makes this easy:
+S3 bucket names must be unique across AWS accounts within the bucket's AWS partition. The random provider makes this easy:
 
 ```hcl
 # s3-unique-names.tf - Generate unique bucket names
@@ -206,9 +206,9 @@ output "log_group_names" {
 }
 ```
 
-## Using random_uuid for Unique Identifiers
+## Using random_uuid for UUID-Formatted Identifiers
 
-When you need RFC 4122 compliant UUIDs:
+When you need UUID-formatted identifiers:
 
 ```hcl
 # uuid.tf - Generate UUIDs for tracking
@@ -228,11 +228,11 @@ output "deployment_id" {
 
 ## Best Practices for the Random Provider
 
-Here are key best practices to follow when using the random provider. Always use `keepers` to tie random values to meaningful lifecycle events. Without keepers, random values persist forever in state, even if the resources they name have been destroyed and recreated.
+Here are key best practices to follow when using the random provider. Use `keepers` when a random value should be replaced after a meaningful lifecycle event. Without keepers, random values persist in state as long as the random resource remains, even if other resources that reference the value are replaced.
 
 Never use random values for security-sensitive purposes like passwords directly in resource names. Use `random_password` instead of `random_string` for secrets.
 
-Keep random suffixes short enough to be practical but long enough to avoid collisions. A 4-byte random ID gives you over 4 billion possible values, which is more than enough for most use cases.
+Keep random suffixes short enough to be practical but long enough to avoid collisions. A 4-byte random ID gives you over 4 billion possible values, which is enough for many small-scale use cases. Increase the length for resources that need a lower collision risk.
 
 ```hcl
 # best-practices.tf - Recommended patterns
@@ -273,4 +273,4 @@ output "random_suffix" {
 
 ## Conclusion
 
-The random provider is a simple but powerful tool for avoiding naming conflicts in Terraform. By generating unique suffixes for resource names, you can deploy the same configuration multiple times without worrying about collisions. The key is to use `keepers` to control when values regenerate and to combine random values with descriptive prefixes for readability. For more specific use cases, check out our guides on [generating random passwords](https://oneuptime.com/blog/post/2026-02-23-how-to-generate-random-passwords-with-terraform/view) and [random IDs](https://oneuptime.com/blog/post/2026-02-23-how-to-generate-random-ids-with-terraform/view).
+The random provider is a simple but powerful tool for avoiding naming conflicts in Terraform. By generating unique suffixes for resource names, you can deploy the same configuration multiple times with a much lower risk of collisions. Use `keepers` when you need to control when values regenerate and combine random values with descriptive prefixes for readability. For more specific use cases, check out our guides on [generating random passwords](https://oneuptime.com/blog/post/2026-02-23-how-to-generate-random-passwords-with-terraform/view) and [random IDs](https://oneuptime.com/blog/post/2026-02-23-how-to-generate-random-ids-with-terraform/view).
