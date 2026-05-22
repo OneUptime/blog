@@ -23,7 +23,7 @@ If any DENY policy matches, the request is denied. If there are ALLOW policies a
 ## Top-Level Structure
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: my-policy
@@ -32,11 +32,7 @@ spec:
   selector:
     matchLabels:
       app: my-service
-  targetRef:
-    kind: Service
-    group: ""
-    name: my-service
-  action: ALLOW
+  action: CUSTOM
   provider:
     name: my-ext-authz
   rules:
@@ -45,11 +41,11 @@ spec:
       to:
         - operation: {}
       when:
-        - key: ""
-          values: []
+        - key: request.headers[x-custom-header]
+          values: ["allowed-value"]
 ```
 
-## Selector and Target Ref
+## Selector and Target Refs
 
 ```yaml
 spec:
@@ -58,17 +54,17 @@ spec:
       app: my-service
 ```
 
-The `selector` matches pods by labels. If omitted, the policy applies to all workloads in the namespace. A policy in `istio-system` without a selector applies mesh-wide.
+The `selector` matches pods by labels. If omitted, the policy applies to all workloads in the namespace. A policy in the mesh root namespace, which defaults to `istio-system`, without a selector applies mesh-wide.
 
 ```yaml
 spec:
-  targetRef:
-    kind: Gateway
-    group: gateway.networking.k8s.io
-    name: my-gateway
+  targetRefs:
+    - kind: Gateway
+      group: gateway.networking.k8s.io
+      name: my-gateway
 ```
 
-The `targetRef` is for Kubernetes Gateway API integration. It targets a specific Gateway or Service resource. `selector` and `targetRef` are mutually exclusive.
+The `targetRefs` field attaches the policy to specific resources such as Gateway, GatewayClass, Service, or ServiceEntry resources. `selector` and `targetRefs` are mutually exclusive.
 
 ## Action
 
@@ -91,7 +87,7 @@ The most common action. When a request matches the rules, it is allowed. If ALLO
 ### DENY
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: deny-admin-from-outside
@@ -123,7 +119,7 @@ spec:
             paths: ["/api/sensitive/*"]
 ```
 
-AUDIT logs the request but does not block it. Useful for monitoring access patterns before enforcing restrictions.
+AUDIT marks the request for auditing but does not block it. A supporting audit plugin must be configured and enabled to emit audit logs.
 
 ### CUSTOM
 
@@ -163,17 +159,23 @@ extensionProviders:
 
 ## Rules
 
-Rules have three sections: `from`, `to`, and `when`. All sections within a single rule are ANDed together. Multiple rules are ORed.
+Rules have three sections: `from`, `to`, and `when`. A rule matches when at least one source, at least one operation, and all conditions match. Multiple rules are ORed.
 
 ### Empty Rules
 
 A few special cases:
 
 ```yaml
-# No rules at all - action applies to everything
+# No rules at all - no rule can match
 spec:
   action: ALLOW
   # no rules field
+
+# Empty rule - action applies to everything
+spec:
+  action: ALLOW
+  rules:
+    - {}
 
 # Empty rules array - deny all (for ALLOW action)
 spec:
@@ -181,7 +183,7 @@ spec:
   rules: []
 ```
 
-A policy with `action: ALLOW` and no `rules` field allows all traffic to matching workloads. A policy with `action: ALLOW` and an empty `rules: []` effectively denies everything because no rule can match.
+A policy with `action: ALLOW` and no `rules` field allows nothing because no rule can match. A policy with `action: ALLOW` and an empty rule (`rules: - {}`) allows all traffic to matching workloads. A policy with `action: ALLOW` and an empty `rules: []` also effectively denies everything because no rule can match.
 
 ### From (Source)
 
@@ -211,6 +213,15 @@ rules:
             - "203.0.113.0/24"
           notRemoteIpBlocks:
             - "203.0.113.50/32"
+          trustDomains:
+            - "cluster.local"
+          notTrustDomains:
+            - "external.local"
+      - source:
+          serviceAccounts:
+            - "bookinfo/productpage"
+          notServiceAccounts:
+            - "default/untrusted"
 ```
 
 Source fields:
@@ -221,10 +232,14 @@ Source fields:
 - `notRequestPrincipals` - negation of request principals
 - `namespaces` - source namespace (derived from peer certificate)
 - `notNamespaces` - negation of namespaces
+- `serviceAccounts` - source Kubernetes service accounts in `<namespace>/<service-account>` format, or just `<service-account>` in the policy namespace. This cannot be set with `principals` or `namespaces`.
+- `notServiceAccounts` - negation of service accounts
 - `ipBlocks` - source IP address in CIDR format (as seen by the sidecar, usually the pod IP)
 - `notIpBlocks` - negation of ipBlocks
-- `remoteIpBlocks` - original client IP (when using X-Forwarded-For)
+- `remoteIpBlocks` - original client IP from X-Forwarded-For or proxy protocol. This requires trusted proxy configuration such as `gatewayTopology.numTrustedProxies`.
 - `notRemoteIpBlocks` - negation of remoteIpBlocks
+- `trustDomains` - source trust domains derived from the peer certificate
+- `notTrustDomains` - negation of trust domains
 
 ### To (Operation)
 
@@ -300,7 +315,7 @@ The `when` section provides additional conditions. Each condition has a `key` an
 ### Allow only specific namespaces
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: allow-bookinfo-only
@@ -316,7 +331,7 @@ spec:
 ### Deny specific paths from external IPs
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: deny-admin-external
@@ -332,13 +347,15 @@ spec:
             paths: ["/admin/*"]
       from:
         - source:
-            notIpBlocks: ["10.0.0.0/8"]
+            notRemoteIpBlocks: ["10.0.0.0/8"]
 ```
+
+For `remoteIpBlocks`, make sure Istio is configured to trust the proxy that sets X-Forwarded-For or proxy protocol.
 
 ### JWT-based authorization
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: require-jwt-admin
