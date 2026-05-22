@@ -193,8 +193,7 @@ spec:
   - when:
     - key: request.headers[content-type]
       notValues:
-      - "application/json"
-      - "application/json; charset=utf-8"
+      - "application/json*"
     to:
     - operation:
         methods:
@@ -300,7 +299,7 @@ Enable debug logging:
 istioctl proxy-config log <pod-name> --level rbac:debug
 ```
 
-Also verify the header name is lowercase in your policy. HTTP/2 (which Envoy uses internally) normalizes header names to lowercase, so `X-User-Role` becomes `x-user-role`.
+Istio compares header names case-insensitively, but keeping header names lowercase in your policy is a good convention because HTTP/2 (which Envoy uses internally) normalizes header names to lowercase, so `X-User-Role` becomes `x-user-role`.
 
 ## Key Takeaways
 
