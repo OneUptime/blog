@@ -8,11 +8,11 @@ Description: Learn how to use Terraformer to automatically generate Terraform co
 
 ---
 
-Managing cloud infrastructure manually is tedious and error-prone. If you already have resources running in the cloud but lack Terraform configurations for them, rewriting everything by hand can take days or weeks. Terraformer solves this problem by reverse-engineering your existing cloud infrastructure into Terraform code. In this guide, you will learn how to install, configure, and use Terraformer to auto-generate Terraform configurations from AWS, GCP, Azure, and other cloud providers.
+Managing cloud infrastructure manually is tedious and error-prone. If you already have resources running in the cloud but lack Terraform configurations for them, rewriting everything by hand can take days or weeks. Terraformer solves this problem by reverse-engineering your existing cloud infrastructure into Terraform code. As of March 16, 2026, Terraformer is deprecated and its GitHub repository is archived, so treat it as a migration aid rather than a maintained long-term dependency. In this guide, you will learn how to install, configure, and use Terraformer to auto-generate Terraform configurations from AWS, GCP, Azure, and other cloud providers.
 
 ## What Is Terraformer?
 
-Terraformer is an open-source CLI tool created by Google that generates Terraform files from existing infrastructure. It connects to your cloud provider APIs, reads the current state of your resources, and outputs both `.tf` configuration files and `.tfstate` state files. This means you can bring existing infrastructure under Terraform management without writing a single line of HCL from scratch.
+Terraformer is an open-source CLI tool in the GoogleCloudPlatform GitHub organization that generates Terraform files from existing infrastructure. It was created by Waze SRE and is not an official Google product. It connects to your cloud provider APIs, reads the current state of your resources, and outputs both `.tf` configuration files and `.tfstate` state files. This means you can bring existing infrastructure under Terraform management without writing a single line of HCL from scratch.
 
 Terraformer supports a wide range of providers including AWS, GCP, Azure, Kubernetes, GitHub, Datadog, and many more. It is especially useful when teams have been provisioning resources manually through the console and need to adopt Infrastructure as Code practices.
 
@@ -32,7 +32,7 @@ On Linux, download the binary directly:
 
 ```bash
 # Download the Terraformer binary for Linux
-export PROVIDER=aws
+export PROVIDER=all
 curl -LO "https://github.com/GoogleCloudPlatform/terraformer/releases/download/$(curl -s https://api.github.com/repos/GoogleCloudPlatform/terraformer/releases/latest | grep tag_name | cut -d '"' -f 4)/terraformer-${PROVIDER}-linux-amd64"
 
 # Make the binary executable
@@ -82,7 +82,7 @@ export AWS_DEFAULT_REGION="us-east-1"
 terraformer import aws --resources=ec2_instance --regions=us-east-1
 
 # Import multiple resource types
-terraformer import aws --resources=ec2_instance,vpc,subnet,security_group --regions=us-east-1
+terraformer import aws --resources=ec2_instance,vpc,subnet,sg --regions=us-east-1
 
 # Import all supported resources
 terraformer import aws --resources=* --regions=us-east-1
@@ -103,7 +103,7 @@ export GOOGLE_PROJECT="my-gcp-project"
 terraformer import google --resources=instances --projects=my-gcp-project --regions=us-central1
 
 # Import networking resources
-terraformer import google --resources=networks,subnetworks,firewalls --projects=my-gcp-project --regions=us-central1
+terraformer import google --resources=networks,subnetworks,firewall --projects=my-gcp-project --regions=us-central1
 ```
 
 ## Generating Terraform from Azure
@@ -113,6 +113,7 @@ For Azure, ensure you have the Azure CLI installed and authenticated:
 ```bash
 # Login to Azure
 az login
+export ARM_SUBSCRIPTION_ID="your-subscription-id"
 
 # Import Azure resources
 terraformer import azure --resources=resource_group,virtual_machine --resource-group=my-rg
