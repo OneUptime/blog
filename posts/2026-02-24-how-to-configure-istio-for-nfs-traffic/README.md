@@ -18,7 +18,7 @@ NFS in Kubernetes can be set up in several ways:
 2. **NFS CSI driver** - a CSI driver handles the NFS mounting
 3. **NFS subdir external provisioner** - automatically creates subdirectories on an NFS share
 
-In all cases, the actual NFS traffic (RPC calls over port 2049) flows from the Kubernetes node to the NFS server. This traffic is at the kernel level and goes through the node's network interface, NOT through the pod's network namespace. The Istio sidecar proxy does not intercept this traffic.
+For standard Kubernetes volume mounts, the actual NFS traffic (RPC calls over port 2049) flows from the Kubernetes node to the NFS server. This traffic is at the kernel level and goes through the node's network interface, NOT through the application's network namespace. The application pod's Istio sidecar proxy does not intercept this traffic.
 
 ## Kernel-Level NFS: No Istio Impact
 
@@ -129,13 +129,13 @@ spec:
       storage: 10Gi
 ```
 
-The CSI driver controller runs as a pod. If Istio sidecar injection is enabled for its namespace, you should exclude it:
+The CSI driver controller and node plugin run as pods. If Istio sidecar injection is enabled for their namespace, you should exclude them:
 
 ```yaml
-# In the CSI driver deployment
+# In the CSI driver pod templates
 
 metadata:
-  annotations:
+  labels:
     sidecar.istio.io/inject: "false"
 ```
 
@@ -173,7 +173,7 @@ rpcinfo -p <nfs-server-ip>
 
 ## NFS Server Running in Kubernetes
 
-If you run an NFS server as a pod in your cluster (common for development), Istio handles the traffic between clients and the NFS server pod:
+If you run an NFS server as a pod in your cluster (common for development), the NFS server pod's sidecar can intercept inbound traffic to the NFS Service:
 
 ```yaml
 apiVersion: v1
@@ -205,9 +205,13 @@ metadata:
   name: nfs-server
   namespace: default
 spec:
+  selector:
+    matchLabels:
+      app: nfs-server
   template:
     metadata:
-      annotations:
+      labels:
+        app: nfs-server
         sidecar.istio.io/inject: "false"
     spec:
       containers:
