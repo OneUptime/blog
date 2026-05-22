@@ -57,7 +57,7 @@ You do not need to write the resource block yet. That is the whole point.
 terraform plan -generate-config-out=generated.tf
 ```
 
-Terraform reads the import block, fetches the resource from AWS, and writes a complete resource block to `generated.tf`.
+Terraform reads the import block, fetches the resource from AWS, and writes a starter resource block to `generated.tf`.
 
 ### Step 3: Review the Generated Code
 
@@ -80,7 +80,6 @@ resource "aws_instance" "web" {
   instance_type                        = "t3.micro"
   key_name                             = "my-key"
   monitoring                           = false
-  placement_partition_number            = 0
   source_dest_check                    = true
   subnet_id                            = "subnet-0abc123"
   tenancy                              = "default"
@@ -127,16 +126,12 @@ resource "aws_instance" "web" {
   tags = {
     Name = "web-server"
   }
-
-  tags_all = {
-    Name = "web-server"
-  }
 }
 ```
 
 ### Step 4: Clean Up the Generated Code
 
-The generated configuration includes every attribute, even defaults. You should clean it up:
+The generated configuration includes every configurable argument Terraform can infer, including many defaults. You should clean it up:
 
 ```hcl
 # cleaned up version of generated.tf
@@ -313,9 +308,9 @@ There are a few things to be aware of:
 
 2. Not all providers support configuration generation equally. AWS provider support is solid, but some community providers may produce incomplete configurations.
 
-3. Sensitive values are included in the generated output. Review the file for any secrets before committing to version control.
+3. Sensitive values may be included in the generated output, depending on what the provider returns. Review the file for any secrets before committing to version control.
 
-4. Read-only computed attributes might appear in the generated config. Terraform will warn you about these, and you should remove them.
+4. Some generated arguments can be invalid together for complex resources. Terraform will report these conflicts, and you should remove or adjust the conflicting arguments before running the plan again.
 
 5. The generated code does not include variable definitions, provider configuration, or backend configuration. You still need to write those yourself.
 
