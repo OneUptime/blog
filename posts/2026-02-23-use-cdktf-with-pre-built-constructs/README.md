@@ -8,7 +8,7 @@ Description: Learn how to leverage pre-built constructs in CDKTF to speed up inf
 
 ---
 
-One of the biggest advantages of CDKTF over plain Terraform HCL is the ability to use pre-built constructs. Constructs are reusable infrastructure components written in general-purpose programming languages. Instead of copying and pasting Terraform modules across projects, you install a package and call a function. This guide shows you how to find, install, and use pre-built constructs effectively.
+One of the biggest advantages of CDKTF over plain Terraform HCL is the ability to use pre-built constructs. Constructs are reusable infrastructure components written in general-purpose programming languages. Instead of copying and pasting Terraform modules across projects, you install a package and call a function. CDKTF was deprecated by HashiCorp on December 10, 2025, so treat this guide as useful for existing CDKTF projects rather than for new greenfield infrastructure. This guide shows you how to find, install, and use pre-built constructs effectively.
 
 ## What Are CDKTF Constructs?
 
@@ -33,7 +33,7 @@ npm install -g cdktf-cli
 
 # Create a new TypeScript project
 mkdir infra && cd infra
-cdktf init --template=typescript --providers=aws
+cdktf init --template=typescript --providers=aws --local
 
 # The project structure looks like this:
 # main.ts        - Your infrastructure code
@@ -63,11 +63,11 @@ Some well-known construct libraries include:
 
 ## Installing and Using a Pre-Built Construct
 
-Let's walk through a practical example. Say you want to deploy a static website on AWS using S3 and CloudFront. Instead of wiring up five or six resources manually, you can use a construct.
+Let's walk through a practical example. Say you want to deploy a static website on AWS using S3 and CloudFront. Instead of wiring up five or six resources manually, you can use a construct published by your organization or a trusted community maintainer. The package name and properties below are illustrative; replace them with the actual construct package you choose.
 
 ```bash
-# Install the construct
-npm install @myconstructs/cdktf-aws-static-site
+# Install your organization's construct package
+npm install @your-org/cdktf-aws-static-site
 ```
 
 Then use it in your main stack:
@@ -77,9 +77,9 @@ Then use it in your main stack:
 import { Construct } from "constructs";
 import { App, TerraformStack } from "cdktf";
 import { AwsProvider } from "@cdktf/provider-aws/lib/provider";
-import { StaticSite } from "@myconstructs/cdktf-aws-static-site";
+import { StaticSite } from "@your-org/cdktf-aws-static-site";
 
-class MyStack extends TerraformStack {
+export class MyStack extends TerraformStack {
   constructor(scope: Construct, id: string) {
     super(scope, id);
 
@@ -108,7 +108,7 @@ Compare this to writing the same infrastructure in HCL. You would need to define
 
 ## Using Provider-Generated Constructs
 
-The CDKTF team maintains auto-generated construct libraries for all major Terraform providers. These are not high-level abstractions; they are type-safe wrappers around individual Terraform resources.
+CDKTF provides generated construct libraries for Terraform providers. These are not high-level abstractions; they are type-safe wrappers around individual Terraform resources. HashiCorp has deprecated CDKTF and the pre-built provider packages, so for long-lived projects you should also evaluate generating provider bindings locally with `cdktf get`.
 
 ```bash
 # Install the pre-built AWS provider
@@ -120,7 +120,15 @@ These generated bindings give you full type safety and auto-completion:
 ```typescript
 import { Instance } from "@cdktf/provider-aws/lib/instance";
 import { SecurityGroup } from "@cdktf/provider-aws/lib/security-group";
+import { Subnet } from "@cdktf/provider-aws/lib/subnet";
 import { Vpc } from "@cdktf/provider-aws/lib/vpc";
+import { AwsProvider } from "@cdktf/provider-aws/lib/provider";
+import { DataAwsAmi } from "@cdktf/provider-aws/lib/data-aws-ami";
+import { InternetGateway } from "@cdktf/provider-aws/lib/internet-gateway";
+import { RouteTable } from "@cdktf/provider-aws/lib/route-table";
+import { RouteTableAssociation } from "@cdktf/provider-aws/lib/route-table-association";
+import { Construct } from "constructs";
+import { TerraformStack } from "cdktf";
 
 class WebServerStack extends TerraformStack {
   constructor(scope: Construct, id: string) {
@@ -132,6 +140,35 @@ class WebServerStack extends TerraformStack {
       cidrBlock: "10.0.0.0/16",
       enableDnsHostnames: true,
       tags: { Name: "web-vpc" },
+    });
+
+    const subnet = new Subnet(this, "public-subnet", {
+      vpcId: vpc.id,
+      cidrBlock: "10.0.1.0/24",
+      availabilityZone: "us-west-2a",
+      mapPublicIpOnLaunch: true,
+      tags: { Name: "web-public-subnet" },
+    });
+
+    const gateway = new InternetGateway(this, "internet-gateway", {
+      vpcId: vpc.id,
+      tags: { Name: "web-igw" },
+    });
+
+    const routeTable = new RouteTable(this, "public-route-table", {
+      vpcId: vpc.id,
+      route: [
+        {
+          cidrBlock: "0.0.0.0/0",
+          gatewayId: gateway.id,
+        },
+      ],
+      tags: { Name: "web-public-rt" },
+    });
+
+    new RouteTableAssociation(this, "public-route-table-association", {
+      subnetId: subnet.id,
+      routeTableId: routeTable.id,
     });
 
     const sg = new SecurityGroup(this, "web-sg", {
@@ -160,10 +197,25 @@ class WebServerStack extends TerraformStack {
       ],
     });
 
+    const ami = new DataAwsAmi(this, "amazon-linux-2023", {
+      mostRecent: true,
+      owners: ["amazon"],
+      filter: [
+        {
+          name: "name",
+          values: ["al2023-ami-2023.*-x86_64"],
+        },
+        {
+          name: "virtualization-type",
+          values: ["hvm"],
+        },
+      ],
+    });
+
     new Instance(this, "web-server", {
-      ami: "ami-0c55b159cbfafe1f0",
+      ami: ami.id,
       instanceType: "t3.medium",
-      subnetId: vpc.publicSubnetsOutput,
+      subnetId: subnet.id,
       vpcSecurityGroupIds: [sg.id],
       tags: { Name: "web-server" },
     });
@@ -176,9 +228,9 @@ class WebServerStack extends TerraformStack {
 The real power comes from composing constructs together. You can combine provider-level constructs with high-level constructs to build complex architectures:
 
 ```typescript
-import { RdsCluster } from "@myconstructs/cdktf-aws-rds";
-import { EksCluster } from "@myconstructs/cdktf-aws-eks";
-import { VpcConstruct } from "@myconstructs/cdktf-aws-vpc";
+import { RdsCluster } from "@your-org/cdktf-aws-rds";
+import { EksCluster } from "@your-org/cdktf-aws-eks";
+import { VpcConstruct } from "@your-org/cdktf-aws-vpc";
 
 class ProductionStack extends TerraformStack {
   constructor(scope: Construct, id: string) {
@@ -262,6 +314,8 @@ Because constructs are just code, you can write unit tests against them:
 ```typescript
 // main.test.ts
 import { Testing } from "cdktf";
+import { S3Bucket } from "@cdktf/provider-aws/lib/s3-bucket";
+import { S3BucketVersioning } from "@cdktf/provider-aws/lib/s3-bucket-versioning";
 import { MyStack } from "./main";
 
 describe("MyStack", () => {
@@ -270,9 +324,9 @@ describe("MyStack", () => {
     const stack = new MyStack(app, "test-stack");
     const synth = Testing.synth(stack);
 
-    expect(synth).toHaveResource("aws_s3_bucket");
+    expect(synth).toHaveResource(S3Bucket);
     expect(synth).toHaveResourceWithProperties(
-      "aws_s3_bucket_versioning",
+      S3BucketVersioning,
       {
         versioning_configuration: {
           status: "Enabled",
@@ -296,7 +350,7 @@ npx jest
 
 **Check maintenance status** of community constructs. Look for recent commits, issue response times, and download numbers.
 
-**Prefer official provider constructs** for critical infrastructure. The auto-generated `@cdktf/provider-*` packages are well-maintained and always up to date with the Terraform provider.
+**Prefer generated provider constructs** for critical infrastructure. The generated provider bindings map directly to Terraform provider resources, but CDKTF and the pre-built `@cdktf/provider-*` packages are deprecated, so pin versions and consider generating bindings locally for the provider versions you use.
 
 Pre-built constructs make CDKTF development faster and more consistent. They let you focus on what makes your infrastructure unique rather than rebuilding common patterns from scratch. Start with the official provider constructs, then gradually adopt higher-level community constructs as you gain confidence in the ecosystem.
 
