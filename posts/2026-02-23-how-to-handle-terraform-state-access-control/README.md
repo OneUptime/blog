@@ -26,7 +26,7 @@ Anyone with read access to the state can extract this information. Anyone with w
 
 ## S3 Backend with Full Security
 
-The most common backend for AWS teams is S3 with DynamoDB locking. Here is how to set it up securely:
+The most common backend for AWS teams is S3 with native lockfile locking. Here is how to set it up securely:
 
 ```hcl
 # State bucket with all security controls
@@ -84,31 +84,7 @@ resource "aws_s3_bucket_logging" "terraform_state" {
   target_prefix = "terraform-state/"
 }
 
-# DynamoDB table for state locking
-resource "aws_dynamodb_table" "terraform_locks" {
-  name         = "terraform-state-locks"
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "LockID"
-
-  attribute {
-    name = "LockID"
-    type = "S"
-  }
-
-  server_side_encryption {
-    enabled     = true
-    kms_key_arn = aws_kms_key.terraform_state.arn
-  }
-
-  point_in_time_recovery {
-    enabled = true
-  }
-
-  tags = {
-    Name    = "Terraform State Locks"
-    Purpose = "terraform-state-locking"
-  }
-}
+# Native S3 lockfiles do not require a DynamoDB table.
 ```
 
 ## KMS Key for State Encryption
@@ -170,7 +146,7 @@ resource "aws_kms_alias" "terraform_state" {
 Define separate policies for different levels of access:
 
 ```hcl
-# Read-only access (for terraform plan)
+# Read-only access (for state inspection and terraform_remote_state reads)
 resource "aws_iam_policy" "terraform_state_read" {
   name        = "terraform-state-read"
   description = "Read-only access to Terraform state"
@@ -217,8 +193,7 @@ resource "aws_iam_policy" "terraform_state_write" {
         Action = [
           "s3:GetObject",
           "s3:PutObject",
-          "s3:ListBucket",
-          "s3:DeleteObject"
+          "s3:ListBucket"
         ]
         Resource = [
           aws_s3_bucket.terraform_state.arn,
@@ -226,14 +201,17 @@ resource "aws_iam_policy" "terraform_state_write" {
         ]
       },
       {
-        Sid    = "AllowStateLocking"
+        Sid    = "AllowStateLockfiles"
         Effect = "Allow"
         Action = [
-          "dynamodb:GetItem",
-          "dynamodb:PutItem",
-          "dynamodb:DeleteItem"
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:DeleteObject"
         ]
-        Resource = aws_dynamodb_table.terraform_locks.arn
+        Resource = [
+          "${aws_s3_bucket.terraform_state.arn}/*.tflock",
+          "${aws_s3_bucket.terraform_state.arn}/*/*.tflock"
+        ]
       },
       {
         Sid    = "AllowKMSEncryptDecrypt"
@@ -266,7 +244,7 @@ terraform {
     region         = "us-east-1"
     encrypt        = true
     kms_key_id     = "alias/terraform-state"
-    dynamodb_table = "terraform-state-locks"
+    use_lockfile   = true
   }
 }
 
@@ -278,7 +256,7 @@ terraform {
     region         = "us-east-1"
     encrypt        = true
     kms_key_id     = "alias/terraform-state"
-    dynamodb_table = "terraform-state-locks"
+    use_lockfile   = true
   }
 }
 ```
@@ -295,8 +273,23 @@ resource "aws_iam_policy" "production_state" {
     Statement = [
       {
         Effect = "Allow"
+        Action = "s3:ListBucket"
+        Resource = aws_s3_bucket.terraform_state.arn
+        Condition = {
+          StringLike = {
+            "s3:prefix" = "production/*"
+          }
+        }
+      },
+      {
+        Effect = "Allow"
         Action = ["s3:GetObject", "s3:PutObject"]
         Resource = "${aws_s3_bucket.terraform_state.arn}/production/*"
+      },
+      {
+        Effect = "Allow"
+        Action = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
+        Resource = "${aws_s3_bucket.terraform_state.arn}/production/*.tflock"
       }
     ]
   })
@@ -311,8 +304,23 @@ resource "aws_iam_policy" "staging_state" {
     Statement = [
       {
         Effect = "Allow"
+        Action = "s3:ListBucket"
+        Resource = aws_s3_bucket.terraform_state.arn
+        Condition = {
+          StringLike = {
+            "s3:prefix" = "staging/*"
+          }
+        }
+      },
+      {
+        Effect = "Allow"
         Action = ["s3:GetObject", "s3:PutObject"]
         Resource = "${aws_s3_bucket.terraform_state.arn}/staging/*"
+      },
+      {
+        Effect = "Allow"
+        Action = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
+        Resource = "${aws_s3_bucket.terraform_state.arn}/staging/*.tflock"
       }
     ]
   })
@@ -387,9 +395,11 @@ Monitor every read and write to the state bucket:
 
 ```hcl
 resource "aws_cloudtrail" "state_audit" {
-  name           = "terraform-state-audit"
-  s3_bucket_name = aws_s3_bucket.audit_logs.id
-  enable_logging = true
+  name                       = "terraform-state-audit"
+  s3_bucket_name             = aws_s3_bucket.audit_logs.id
+  enable_logging             = true
+  cloud_watch_logs_group_arn = "${aws_cloudwatch_log_group.cloudtrail.arn}:*"
+  cloud_watch_logs_role_arn  = aws_iam_role.cloudtrail_logs.arn
 
   event_selector {
     read_write_type           = "All"
@@ -416,9 +426,9 @@ resource "aws_cloudwatch_log_metric_filter" "state_access" {
 }
 ```
 
-## Terraform Cloud and Enterprise
+## HCP Terraform and Terraform Enterprise
 
-If you use Terraform Cloud, state access is managed through workspace permissions:
+If you use HCP Terraform or Terraform Enterprise, state access is managed through workspace permissions:
 
 ```hcl
 resource "tfe_workspace" "production" {
