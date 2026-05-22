@@ -73,20 +73,19 @@ Check: CKV_AWS_19: "Ensure the S3 bucket has server-side encryption"
     Guide: https://docs.bridgecrew.io/docs/s3_14-data-encrypted-at-rest
 ```
 
-## Scanning Against Specific Compliance Frameworks
+## Scoping Scans for Compliance Work
 
-One of Checkov's best features is the ability to scan against a specific framework:
+One of Checkov's best features is the ability to scope scans to specific IaC frameworks and check IDs:
 
 ```bash
-# Scan against CIS AWS Foundations Benchmark
+# Scan Terraform files and run AWS checks
 checkov -d . --framework terraform --check CKV_AWS*
 
-# Scan against specific compliance framework
-checkov -d . --compliance-framework cis_aws
+# Run a curated set of checks for a specific audit scope
+checkov -d . --framework terraform --check CKV_AWS_18,CKV_AWS_19,CKV2_AWS_6
 
-# Available frameworks include:
-# cis_aws, cis_azure, cis_gcp, cis_kubernetes
-# hipaa, pci_dss, soc2, nist_800_53
+# Use --list or the policy index to find check IDs mapped to your framework
+checkov --list --framework terraform
 ```
 
 This is extremely useful when preparing for an audit. You can show your auditors exactly which checks pass and which are being remediated.
@@ -162,7 +161,7 @@ metadata:
   id: "CKV2_CUSTOM_1"
   name: "Ensure all resources have a Team tag"
   category: "GENERAL_SECURITY"
-  guidelines: "All resources must have a Team tag for ownership tracking"
+  guideline: "All resources must have a Team tag for ownership tracking"
 definition:
   cond_type: "attribute"
   resource_types:
@@ -302,9 +301,9 @@ checkov -d . --output json --output-file-path checkov-report.json
 # JUnit XML for CI systems
 checkov -d . --output junitxml --output-file-path checkov-report.xml
 
-# Generate a CIS compliance report
-checkov -d . --compliance-framework cis_aws --output json \
-  --output-file-path cis-compliance-report.json
+# Generate a scoped JSON report for selected audit checks
+checkov -d . --framework terraform --check CKV_AWS_18,CKV_AWS_19,CKV2_AWS_6 \
+  --output json --output-file-path audit-scope-report.json
 
 # Multiple output formats at once
 checkov -d . \
