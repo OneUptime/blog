@@ -19,8 +19,8 @@ You need a few tools installed:
 
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
-# Add the wasm32 target
-rustup target add wasm32-wasi
+# Add the WASI preview 1 target
+rustup target add wasm32-wasip1
 
 # Verify the target is installed
 rustup target list --installed | grep wasm32
@@ -49,6 +49,8 @@ crate-type = ["cdylib"]
 [dependencies]
 proxy-wasm = "0.2"
 log = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 ```
 
 ## Writing the Plugin
@@ -59,6 +61,7 @@ Open `src/lib.rs` and replace its contents. This example plugin adds a custom re
 use proxy_wasm::traits::*;
 use proxy_wasm::types::*;
 use log::info;
+use serde::Deserialize;
 
 proxy_wasm::main! {{
     proxy_wasm::set_log_level(LogLevel::Info);
@@ -75,21 +78,23 @@ struct MyPluginRoot {
     header_value: String,
 }
 
+#[derive(Default, Deserialize)]
+struct PluginConfig {
+    header_name: Option<String>,
+    header_value: Option<String>,
+}
+
 impl Context for MyPluginRoot {}
 
 impl RootContext for MyPluginRoot {
     fn on_configure(&mut self, _plugin_configuration_size: usize) -> bool {
         if let Some(config_bytes) = self.get_plugin_configuration() {
-            let config_str = String::from_utf8(config_bytes).unwrap_or_default();
-            // Parse simple key=value config
-            for line in config_str.lines() {
-                if let Some((key, value)) = line.split_once('=') {
-                    match key.trim() {
-                        "header_name" => self.header_name = value.trim().to_string(),
-                        "header_value" => self.header_value = value.trim().to_string(),
-                        _ => {}
-                    }
-                }
+            let config: PluginConfig = serde_json::from_slice(&config_bytes).unwrap_or_default();
+            if let Some(header_name) = config.header_name {
+                self.header_name = header_name;
+            }
+            if let Some(header_value) = config.header_value {
+                self.header_value = header_value;
             }
         }
         if self.header_name.is_empty() {
@@ -139,19 +144,19 @@ This plugin does the following:
 Build the Wasm module:
 
 ```bash
-cargo build --target wasm32-wasi --release
+cargo build --target wasm32-wasip1 --release
 ```
 
 The compiled Wasm file will be at:
 
 ```text
-target/wasm32-wasi/release/my_first_plugin.wasm
+target/wasm32-wasip1/release/my_first_plugin.wasm
 ```
 
 Check the file size:
 
 ```bash
-ls -lh target/wasm32-wasi/release/my_first_plugin.wasm
+ls -lh target/wasm32-wasip1/release/my_first_plugin.wasm
 ```
 
 Typical Wasm plugins are between 100KB and 2MB, depending on complexity and dependencies.
@@ -166,10 +171,10 @@ brew install binaryen  # on macOS
 # or: apt-get install binaryen  # on Ubuntu
 
 # Optimize the binary
-wasm-opt -O3 target/wasm32-wasi/release/my_first_plugin.wasm -o my_first_plugin_optimized.wasm
+wasm-opt -O3 target/wasm32-wasip1/release/my_first_plugin.wasm -o my_first_plugin_optimized.wasm
 
 # Compare sizes
-ls -lh target/wasm32-wasi/release/my_first_plugin.wasm
+ls -lh target/wasm32-wasip1/release/my_first_plugin.wasm
 ls -lh my_first_plugin_optimized.wasm
 ```
 
@@ -177,16 +182,16 @@ ls -lh my_first_plugin_optimized.wasm
 
 There are several ways to get the Wasm binary into your cluster. The simplest for testing is to use a ConfigMap or HTTP server. For production, use an OCI registry (covered in a separate post).
 
-For quick testing, you can serve the Wasm file from an HTTP server:
+For quick testing, you can serve the Wasm file from an HTTP server that is reachable from the Istio sidecars:
 
 ```bash
 # Start a simple HTTP server
 python3 -m http.server 8080 &
 
-# The file is available at http://localhost:8080/my_first_plugin_optimized.wasm
+# The file is available at http://<reachable-host>:8080/my_first_plugin_optimized.wasm
 ```
 
-Or, to make it available in the cluster, create a simple web server deployment:
+Or, to make it available in the cluster for a file-based deployment, create a ConfigMap and mount it into the selected workloads:
 
 ```bash
 # Create a ConfigMap with the Wasm binary (for small files only)
@@ -277,4 +282,4 @@ The proxy-wasm SDK provides all the building blocks through the `HttpContext`, `
 
 ## Summary
 
-Creating your first Wasm plugin for Istio involves setting up a Rust project with the proxy-wasm SDK, implementing the RootContext and HttpContext traits, compiling to wasm32-wasi, and deploying with an Istio WasmPlugin resource. The example here adds a custom response header, but the same pattern applies to any kind of traffic processing logic you want to add to your mesh.
+Creating your first Wasm plugin for Istio involves setting up a Rust project with the proxy-wasm SDK, implementing the RootContext and HttpContext traits, compiling to wasm32-wasip1, and deploying with an Istio WasmPlugin resource. The example here adds a custom response header, but the same pattern applies to any kind of traffic processing logic you want to add to your mesh.
