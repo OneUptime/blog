@@ -4,11 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Waypoint, Application Deployment, HashiCorp, DevOps, CI/CD
 
-Description: Learn how to use Terraform with HashiCorp Waypoint for streamlined application deployment, including building, deploying, and releasing apps across platforms.
+Description: Learn how to use Terraform with HashiCorp Waypoint Community Edition for application deployment, including building, deploying, and releasing apps across platforms.
 
 ---
 
-HashiCorp Waypoint provides a consistent workflow for building, deploying, and releasing applications across any platform. While Terraform manages the underlying infrastructure, Waypoint focuses on the application lifecycle, handling the build, deploy, and release phases. Together, they create a clean separation between infrastructure provisioning and application deployment that simplifies both operations.
+HashiCorp Waypoint Community Edition provides a consistent workflow for building, deploying, and releasing applications across platforms. While Terraform manages the underlying infrastructure, Waypoint focuses on the application lifecycle, handling the build, deploy, and release phases. Together, they create a clean separation between infrastructure provisioning and application deployment that simplifies both operations.
+
+Waypoint Community Edition is no longer actively maintained by HashiCorp. Current HCP Waypoint uses a different model based on templates, add-ons, actions, and HCP Terraform, so the examples below apply to the archived Community Edition workflow.
 
 This guide covers how to integrate Terraform and Waypoint for a complete infrastructure-to-application deployment workflow.
 
@@ -18,7 +20,7 @@ Terraform provisions the platform infrastructure: Kubernetes clusters, ECS clust
 
 ## Deploying Waypoint Server with Terraform
 
-Start by deploying the Waypoint server on your existing infrastructure.
+Start by deploying the Waypoint server on your existing infrastructure. The following excerpt assumes the IAM roles, load balancers, target groups, EFS mount targets, and security group rules are defined elsewhere in the Terraform module.
 
 ```hcl
 # ECS cluster for Waypoint server
@@ -49,7 +51,7 @@ resource "aws_ecs_task_definition" "waypoint" {
 
   container_definitions = jsonencode([{
     name  = "waypoint-server"
-    image = "hashicorp/waypoint:latest"
+    image = "hashicorp/waypoint:0.11.4"
     portMappings = [
       {
         containerPort = 9701
@@ -152,29 +154,27 @@ app "api" {
     }
   }
 
-  # Deploy phase - deploy to ECS
+  # Deploy phase - deploy to ECS and attach the service to an ALB
   deploy {
     use "aws-ecs" {
-      region = "us-east-1"
-      memory = 512
-      cpu    = 256
+      region  = "us-east-1"
+      cluster = "web-app-cluster"
+      memory  = 512
+      cpu     = 256
 
       count = 2
 
-      subnets          = ["subnet-abc123", "subnet-def456"]
+      subnets            = ["subnet-abc123", "subnet-def456"]
       security_group_ids = ["sg-abc123"]
+      assign_public_ip   = false
+
+      alb {
+        listener_arn = "arn:aws:elasticloadbalancing:us-east-1:123456789012:listener/app/web-alb/abc123/def456"
+      }
 
       logging {
         create_group = true
-        region       = "us-east-1"
       }
-    }
-  }
-
-  # Release phase - configure the load balancer
-  release {
-    use "aws-alb" {
-      listener_arn = "arn:aws:elasticloadbalancing:us-east-1:123456789:listener/app/web-alb/abc123/def456"
     }
   }
 }
@@ -226,7 +226,7 @@ If your Terraform provisions a Kubernetes cluster, Waypoint can deploy applicati
 resource "aws_eks_cluster" "main" {
   name     = "app-cluster-${var.environment}"
   role_arn = aws_iam_role.cluster.arn
-  version  = "1.28"
+  version  = "1.35"
 
   vpc_config {
     subnet_ids = var.private_subnet_ids
@@ -269,15 +269,14 @@ app "api" {
       probe_path = "/health"
       replicas   = 3
 
-      resources {
-        requests = {
-          cpu    = "100m"
-          memory = "128Mi"
-        }
-        limits = {
-          cpu    = "500m"
-          memory = "512Mi"
-        }
+      cpu {
+        request = "100m"
+        limit   = "500m"
+      }
+
+      memory {
+        request = "128Mi"
+        limit   = "512Mi"
       }
     }
   }
