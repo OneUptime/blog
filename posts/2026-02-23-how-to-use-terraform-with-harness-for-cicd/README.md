@@ -30,7 +30,7 @@ terraform {
   required_providers {
     harness = {
       source  = "harness/harness"
-      version = "~> 0.30"
+      version = "~> 0.42"
     }
   }
 }
@@ -205,11 +205,20 @@ resource "harness_platform_pipeline" "infra_deploy" {
                               spec:
                                 gitFetchType: Branch
                                 connectorRef: account.terraform_repo
+                                repoName: infrastructure
                                 branch: main
                                 folderPath: terraform/production
-                          secretManagerRef: account.harnessSecretManager
+                            moduleSource:
+                              useConnectorCredentials: true
+                          secretManagerRef: harnessSecretManager
+                          providerCredential:
+                            type: Aws
+                            spec:
+                              connectorRef: account.terraform_aws
+                              region: us-east-1
                           varFiles:
                             - varFile:
+                                identifier: production_tfvars
                                 type: Remote
                                 spec:
                                   store:
@@ -217,6 +226,7 @@ resource "harness_platform_pipeline" "infra_deploy" {
                                     spec:
                                       gitFetchType: Branch
                                       connectorRef: account.terraform_repo
+                                      repoName: infrastructure
                                       branch: main
                                       paths:
                                         - terraform/production/terraform.tfvars
@@ -267,6 +277,12 @@ resource "harness_platform_pipeline" "infra_deploy" {
             type: Deployment
             spec:
               deploymentType: Kubernetes
+              service:
+                serviceRef: sample_service
+                serviceInputs:
+                  serviceDefinition:
+                    type: Kubernetes
+                    spec: {}
               environment:
                 environmentRef: production
                 infrastructureDefinitions:
@@ -301,33 +317,35 @@ resource "harness_platform_workspace" "production" {
   org_id               = var.harness_org_id
   project_id           = var.harness_project_id
   provisioner_type     = "terraform"
-  provider_connector   = "account.terraform_aws"
-  repository           = "org/infrastructure"
+  provisioner_version  = "1.5.7"
+  repository           = "https://github.com/org/infrastructure"
   repository_connector = "account.terraform_repo"
   repository_path      = "terraform/production"
   repository_branch    = "main"
-  terraform_version    = "1.6.0"
+  cost_estimation_enabled = true
 
-  environment_variables = [
-    {
-      key        = "AWS_REGION"
-      value      = "us-east-1"
-      value_type = "string"
-    }
-  ]
+  connector {
+    type          = "aws"
+    connector_ref = "account.terraform_aws"
+  }
 
-  terraform_variables = [
-    {
-      key        = "environment"
-      value      = "production"
-      value_type = "string"
-    },
-    {
-      key        = "instance_type"
-      value      = "t3.large"
-      value_type = "string"
-    }
-  ]
+  environment_variable {
+    key        = "AWS_REGION"
+    value      = "us-east-1"
+    value_type = "string"
+  }
+
+  terraform_variable {
+    key        = "environment"
+    value      = "production"
+    value_type = "string"
+  }
+
+  terraform_variable {
+    key        = "instance_type"
+    value      = "t3.large"
+    value_type = "string"
+  }
 }
 ```
 
@@ -345,21 +363,20 @@ resource "harness_platform_policy" "terraform_governance" {
   project_id = var.harness_project_id
 
   rego = <<-REGO
-    package terraform
+    package terraform_plan
 
-    # Deny if trying to destroy production resources without approval
+    # Deny if trying to delete production resources
     deny[msg] {
-      input.action == "destroy"
-      input.environment == "production"
-      not input.approved
-      msg := "Production destroy operations require explicit approval"
+      resource := input.plan.resource_changes[_]
+      resource.change.actions[_] == "delete"
+      msg := sprintf("Resource %s is marked for deletion", [resource.address])
     }
 
     # Deny if instance types are too large
     deny[msg] {
-      some resource
-      input.plan.resource_changes[resource].type == "aws_instance"
-      instance_type := input.plan.resource_changes[resource].change.after.instance_type
+      resource := input.plan.resource_changes[_]
+      resource.type == "aws_instance"
+      instance_type := resource.change.after.instance_type
       not allowed_instance_types[instance_type]
       msg := sprintf("Instance type %s is not allowed", [instance_type])
     }
@@ -377,10 +394,10 @@ resource "harness_platform_policyset" "terraform_rules" {
   org_id     = var.harness_org_id
   project_id = var.harness_project_id
   action     = "onrun"
-  type       = "custom"
+  type       = "terraform_plan"
   enabled    = true
 
-  policies {
+  policy_references {
     identifier = harness_platform_policy.terraform_governance.identifier
     severity   = "error"
   }
@@ -397,13 +414,15 @@ Harness can automatically verify infrastructure changes by monitoring key metric
 # This monitors infrastructure health after changes
 resource "harness_platform_monitored_service" "infra" {
   identifier = "infrastructure_health"
-  name       = "Infrastructure Health"
   org_id     = var.harness_org_id
   project_id = var.harness_project_id
 
-  service_ref     = "infrastructure"
-  environment_ref = "production"
-  type            = "Infrastructure"
+  request {
+    name            = "Infrastructure Health"
+    service_ref     = "sample_service"
+    environment_ref = "production"
+    type            = "Application"
+  }
 }
 ```
 
