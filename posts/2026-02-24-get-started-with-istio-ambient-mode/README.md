@@ -37,15 +37,22 @@ This split means most workloads only need the lightweight ztunnel for basic secu
 
 Before getting started, make sure you have:
 
-- A Kubernetes cluster (version 1.27 or later)
+- A Kubernetes cluster (version 1.28 or later for Istio 1.24)
 - kubectl configured to access the cluster
-- istioctl installed (version 1.22 or later for ambient support)
+- istioctl installed (version 1.24 or later for ambient GA support)
 
 You can install istioctl with:
 
 ```bash
 curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.24.0 sh -
 export PATH=$PWD/istio-1.24.0/bin:$PATH
+```
+
+If you plan to use waypoint proxies, also install the Kubernetes Gateway API CRDs:
+
+```bash
+kubectl get crd gateways.gateway.networking.k8s.io &> /dev/null || \
+  kubectl apply --server-side -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.4.0/experimental-install.yaml
 ```
 
 ## Installing Istio in Ambient Mode
@@ -107,13 +114,13 @@ You should see the `istio.io/dataplane-mode=ambient` label.
 
 ## Verifying mTLS
 
-Once a namespace is enrolled, all traffic between pods in that namespace is automatically encrypted with mTLS. Verify this by checking ztunnel logs:
+Once a namespace is enrolled, traffic between ambient mesh workloads in that namespace is automatically encrypted with mTLS. Verify this by checking ztunnel logs:
 
 ```bash
 kubectl logs -l app=ztunnel -n istio-system --tail=20
 ```
 
-You should see log entries about connection establishment between workload identities. You can also use istioctl to check:
+You should see log entries about connection establishment between workload identities. Having HBONE configured does not by itself make a workload reject plaintext from outside the mesh; use a `PeerAuthentication` policy in `STRICT` mode if you need that enforcement. You can also use istioctl to check:
 
 ```bash
 istioctl ztunnel-config workloads
