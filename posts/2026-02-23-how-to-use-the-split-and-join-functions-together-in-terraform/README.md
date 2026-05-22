@@ -171,22 +171,22 @@ AWS ARNs are colon-delimited strings with a well-known structure. Split and join
 ```hcl
 locals {
   # Original ARN
-  source_arn = "arn:aws:s3:::my-source-bucket/path/to/object"
+  source_arn = "arn:aws:lambda:us-east-1:111222333444:function:my-function"
 
   # Parse the ARN
   arn_parts = split(":", local.source_arn)
-  # ["arn", "aws", "s3", "", "", "my-source-bucket/path/to/object"]
+  # ["arn", "aws", "lambda", "us-east-1", "111222333444", "function", "my-function"]
 
   # Extract the service
   service = local.arn_parts[2]
-  # "s3"
+  # "lambda"
 
   # Change the resource part while keeping everything else
   new_arn = join(":", concat(
-    slice(local.arn_parts, 0, 5),
-    ["my-destination-bucket/*"]
+    slice(local.arn_parts, 0, 6),
+    ["my-other-function"]
   ))
-  # Result: "arn:aws:s3:::my-destination-bucket/*"
+  # Result: "arn:aws:lambda:us-east-1:111222333444:function:my-other-function"
 
   # Build an ARN for a different account
   cross_account_arn = join(":", [
@@ -196,13 +196,15 @@ locals {
     local.arn_parts[3],  # region
     "999888777666",      # different account ID
     local.arn_parts[5],  # resource
+    local.arn_parts[6],  # resource name
   ])
+  # Result: "arn:aws:lambda:us-east-1:999888777666:function:my-function"
 }
 ```
 
 ## Converting Between List and String Formats
 
-Many Terraform resources accept either a list or a comma-separated string. Split and join help you convert between them:
+Many Terraform configurations involve values that start as either a list or a comma-separated string. Split and join help you convert between them:
 
 ```hcl
 variable "allowed_cidrs" {
@@ -220,14 +222,13 @@ locals {
   # Result: ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
 }
 
-resource "aws_security_group_rule" "allow_cidrs" {
+resource "aws_vpc_security_group_ingress_rule" "allow_cidrs" {
   count             = length(local.cidr_list)
-  type              = "ingress"
-  from_port         = 443
-  to_port           = 443
-  protocol          = "tcp"
-  cidr_blocks       = [local.cidr_list[count.index]]
   security_group_id = aws_security_group.main.id
+  cidr_ipv4         = local.cidr_list[count.index]
+  from_port         = 443
+  ip_protocol       = "tcp"
+  to_port           = 443
 }
 ```
 
