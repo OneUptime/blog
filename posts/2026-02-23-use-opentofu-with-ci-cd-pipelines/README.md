@@ -37,12 +37,19 @@ Regardless of your CI/CD platform, these principles apply:
 curl --proto '=https' --tlsv1.2 -fsSL https://get.opentofu.org/install-opentofu.sh | sh -s -- --install-method standalone
 
 # Method 2: Direct binary download
-OPENTOFU_VERSION="1.8.0"
+OPENTOFU_VERSION="1.12.0"
 curl -LO "https://github.com/opentofu/opentofu/releases/download/v${OPENTOFU_VERSION}/tofu_${OPENTOFU_VERSION}_linux_amd64.zip"
 unzip "tofu_${OPENTOFU_VERSION}_linux_amd64.zip" -d /usr/local/bin/
 
-# Method 3: Docker image
-docker pull ghcr.io/opentofu/opentofu:1.8.0
+# Method 3: Build a CI image with OpenTofu
+cat > Dockerfile <<'EOF'
+FROM ghcr.io/opentofu/opentofu:1.12.0-minimal AS tofu
+FROM alpine:3.20
+COPY --from=tofu /usr/local/bin/tofu /usr/local/bin/tofu
+RUN apk add --no-cache git curl
+WORKDIR /workspace
+EOF
+docker build -t my-opentofu-image .
 ```
 
 ### Caching Dependencies
@@ -183,8 +190,8 @@ tofu workspace select "$ENVIRONMENT" || tofu workspace new "$ENVIRONMENT"
 cd "environments/${ENVIRONMENT}"
 
 # Use environment-specific variables
-tofu init -backend-config="environments/${ENVIRONMENT}/backend.hcl"
-tofu plan -var-file="environments/${ENVIRONMENT}/terraform.tfvars" -out=plan.bin
+tofu init -backend-config="backend.hcl"
+tofu plan -var-file="terraform.tfvars" -out=plan.bin
 ```
 
 ```yaml
@@ -207,8 +214,9 @@ MAX_RETRIES=3
 RETRY_DELAY=30
 
 for i in $(seq 1 $MAX_RETRIES); do
-  tofu apply -auto-approve plan.bin 2>&1
+  APPLY_OUTPUT=$(tofu apply -auto-approve plan.bin 2>&1)
   EXIT_CODE=$?
+  echo "$APPLY_OUTPUT"
 
   if [ $EXIT_CODE -eq 0 ]; then
     echo "Apply succeeded"
@@ -216,7 +224,7 @@ for i in $(seq 1 $MAX_RETRIES); do
   fi
 
   # Check if the failure was due to a lock
-  if tofu apply -auto-approve plan.bin 2>&1 | grep -q "Error acquiring the state lock"; then
+  if echo "$APPLY_OUTPUT" | grep -q "Error acquiring the state lock"; then
     echo "State locked, retrying in ${RETRY_DELAY}s (attempt $i/$MAX_RETRIES)"
     sleep $RETRY_DELAY
   else
@@ -264,8 +272,9 @@ fi
 ```yaml
 # Schedule drift detection
 # Runs daily at 6 AM UTC
-schedule:
-  - cron: '0 6 * * *'
+on:
+  schedule:
+    - cron: '0 6 * * *'
 ```
 
 ## Security Considerations
@@ -282,7 +291,7 @@ permissions:
 
 steps:
   - name: Configure AWS credentials
-    uses: aws-actions/configure-aws-credentials@v4
+    uses: aws-actions/configure-aws-credentials@v6.1.0
     with:
       role-to-assume: arn:aws:iam::123456789012:role/GitHubActionsRole
       aws-region: us-east-1
@@ -293,7 +302,7 @@ steps:
 Plan files can contain sensitive data. Handle them carefully:
 
 ```bash
-# Encrypt plan files with OpenTofu state encryption
+# Encrypt plan files with OpenTofu state and plan encryption
 # (covers plan files too when configured)
 
 # Or delete plan files after use
