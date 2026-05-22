@@ -20,10 +20,10 @@ The end user never sees Terraform code. They interact with a simple form that as
 
 No-code provisioning requires:
 
-- HCP Terraform Plus tier (or Terraform Enterprise)
+- HCP Terraform Standard or Premium edition (or Terraform Enterprise)
 - A module published to your private registry
 - The module must be marked as no-code ready
-- Users need at least workspace-level permissions
+- Users need permission to create workspaces, write variables, and apply runs in the target project
 
 ## Step 1: Create the Module
 
@@ -34,11 +34,11 @@ Build a module that is self-contained and well-documented. Good no-code modules 
 
 variable "app_name" {
   type        = string
-  description = "Name of the application (lowercase, alphanumeric, hyphens only)"
+  description = "Name of the application (starts with a letter, lowercase, alphanumeric, single hyphens only)"
 
   validation {
-    condition     = can(regex("^[a-z0-9-]+$", var.app_name))
-    error_message = "App name must be lowercase alphanumeric with hyphens only."
+    condition     = can(regex("^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$", var.app_name))
+    error_message = "App name must start with a letter and contain only lowercase letters, numbers, and single hyphens."
   }
 }
 
@@ -109,14 +109,15 @@ data "aws_ami" "ubuntu" {
 resource "aws_db_instance" "app" {
   count = var.enable_database ? 1 : 0
 
-  identifier     = "${var.app_name}-db"
-  engine         = "postgres"
-  engine_version = "15"
-  instance_class = "db.t3.micro"
-  allocated_storage = 20
-  db_name        = replace(var.app_name, "-", "")
-  username       = "appuser"
-  password       = random_password.db[0].result
+  identifier                = "${var.app_name}-db"
+  engine                    = "postgres"
+  engine_version            = "15"
+  instance_class            = "db.t3.micro"
+  allocated_storage         = 20
+  db_name                   = replace(var.app_name, "-", "")
+  username                  = "appuser"
+  password                  = random_password.db[0].result
+  final_snapshot_identifier = "${var.app_name}-db-final-snapshot"
 
   skip_final_snapshot = var.environment != "production"
 
@@ -127,9 +128,10 @@ resource "aws_db_instance" "app" {
 }
 
 resource "random_password" "db" {
-  count   = var.enable_database ? 1 : 0
-  length  = 24
-  special = true
+  count            = var.enable_database ? 1 : 0
+  length           = 24
+  special          = true
+  override_special = "!#$%&*()-_=+[]{}<>:?"
 }
 ```
 
@@ -188,7 +190,7 @@ curl -s \
       }
     }
   }' \
-  "https://app.terraform.io/api/v2/organizations/my-company/registry-modules"
+  "https://app.terraform.io/api/v2/organizations/my-company/registry-modules/vcs"
 ```
 
 ## Step 3: Enable No-Code Provisioning
@@ -196,9 +198,9 @@ curl -s \
 After publishing, enable the module for no-code use:
 
 1. In the Registry, find your module
-2. Click **Configure no-code provisioning**
-3. Set the default variable values and which variables users can override
-4. Configure the workspace settings (auto-apply, execution mode)
+2. Click **Configure Settings**
+3. Click **Edit versions and variable options**
+4. Select the module version and define any variable options
 5. Set up variable sets for credentials (AWS keys, etc.)
 
 The key configuration decisions here are:
@@ -223,7 +225,7 @@ curl -s \
       "relationships": {
         "registry-module": {
           "data": {
-            "type": "registry-modules",
+            "type": "registry-module",
             "id": "mod-abc123"
           }
         }
@@ -246,24 +248,35 @@ curl -s \
   --data '{
     "data": {
       "type": "no-code-modules",
-      "attributes": {
-        "variable-options": [
-          {
-            "variable-name": "region",
-            "variable-type": "string",
-            "options": ["us-east-1", "us-west-2", "eu-west-1"]
-          },
-          {
-            "variable-name": "instance_type",
-            "variable-type": "string",
-            "options": ["t3.micro", "t3.small", "t3.medium"]
-          },
-          {
-            "variable-name": "environment",
-            "variable-type": "string",
-            "options": ["development", "staging"]
-          }
-        ]
+      "relationships": {
+        "variable-options": {
+          "data": [
+            {
+              "type": "variable-options",
+              "attributes": {
+                "variable-name": "region",
+                "variable-type": "string",
+                "options": ["us-east-1", "us-west-2", "eu-west-1"]
+              }
+            },
+            {
+              "type": "variable-options",
+              "attributes": {
+                "variable-name": "instance_type",
+                "variable-type": "string",
+                "options": ["t3.micro", "t3.small", "t3.medium"]
+              }
+            },
+            {
+              "type": "variable-options",
+              "attributes": {
+                "variable-name": "environment",
+                "variable-type": "string",
+                "options": ["development", "staging"]
+              }
+            }
+          ]
+        }
       }
     }
   }' \
@@ -275,11 +288,12 @@ curl -s \
 Once everything is configured, end users see a streamlined workflow:
 
 1. Log into HCP Terraform
-2. Click **New** > **No-code workspace**
-3. Select the module (e.g., "Web Application")
-4. Fill in the form (app name, environment, instance size)
-5. Click **Create workspace**
-6. The workspace is created and the run starts automatically
+2. Go to **Registry** > **Modules**
+3. Select a no-code ready module (e.g., "Web Application")
+4. Click **Provision workspace**
+5. Fill in the form (app name, environment, instance size)
+6. Configure the workspace settings and click **Create workspace**
+7. The workspace is created and the run starts automatically
 
 The user sees the run progress and eventually gets the outputs (like the public IP address) without touching any code.
 
