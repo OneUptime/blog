@@ -34,6 +34,7 @@ variable "dr_config" {
   description = "Configuration per DR tier"
   type = map(object({
     region           = string
+    vpc_cidr         = string
     instance_type    = string
     instance_count   = number
     db_instance_class = string
@@ -44,6 +45,7 @@ variable "dr_config" {
   default = {
     "primary-us-east-1" = {
       region           = "us-east-1"
+      vpc_cidr         = "10.0.0.0/16"
       instance_type    = "t3.large"
       instance_count   = 3
       db_instance_class = "db.r5.large"
@@ -53,6 +55,7 @@ variable "dr_config" {
     }
     "dr-us-west-2" = {
       region           = "us-west-2"
+      vpc_cidr         = "10.1.0.0/16"
       instance_type    = "t3.medium"
       instance_count   = 1
       db_instance_class = "db.r5.large"
@@ -63,8 +66,31 @@ variable "dr_config" {
   }
 }
 
+variable "instance_count" {
+  description = "Optional override for failover and DR drills"
+  type        = number
+  default     = null
+}
+
+variable "db_instance_class" {
+  description = "Optional DB instance class override for failover"
+  type        = string
+  default     = null
+}
+
+variable "is_standby" {
+  description = "Optional standby mode override for failover and DR drills"
+  type        = bool
+  default     = null
+}
+
 locals {
-  config     = var.dr_config[terraform.workspace]
+  workspace_config = var.dr_config[terraform.workspace]
+  config = merge(local.workspace_config, {
+    instance_count    = coalesce(var.instance_count, local.workspace_config.instance_count)
+    db_instance_class = coalesce(var.db_instance_class, local.workspace_config.db_instance_class)
+    is_standby        = var.is_standby != null ? var.is_standby : local.workspace_config.is_standby
+  })
   is_standby = local.config.is_standby
   name_prefix = "myapp-${terraform.workspace}"
 
@@ -92,8 +118,12 @@ Both primary and DR need networking, but DR might use a simpler setup in standby
 
 ```hcl
 # networking.tf
+data "aws_availability_zones" "available" {
+  state = "available"
+}
+
 resource "aws_vpc" "main" {
-  cidr_block           = "10.0.0.0/16"
+  cidr_block           = local.config.vpc_cidr
   enable_dns_hostnames = true
   enable_dns_support   = true
 
@@ -105,7 +135,7 @@ resource "aws_vpc" "main" {
 resource "aws_subnet" "private" {
   count             = local.is_standby ? 2 : 3
   vpc_id            = aws_vpc.main.id
-  cidr_block        = cidrsubnet("10.0.0.0/16", 8, count.index)
+  cidr_block        = cidrsubnet(local.config.vpc_cidr, 8, count.index)
   availability_zone = data.aws_availability_zones.available.names[count.index]
 
   tags = {
@@ -117,7 +147,7 @@ resource "aws_subnet" "private" {
 resource "aws_subnet" "public" {
   count                   = 2
   vpc_id                  = aws_vpc.main.id
-  cidr_block              = cidrsubnet("10.0.0.0/16", 8, count.index + 100)
+  cidr_block              = cidrsubnet(local.config.vpc_cidr, 8, count.index + 100)
   availability_zone       = data.aws_availability_zones.available.names[count.index]
   map_public_ip_on_launch = true
 
@@ -140,6 +170,9 @@ resource "aws_vpc_peering_connection" "primary_to_dr" {
     Name = "${local.name_prefix}-peering-to-dr"
   }
 }
+
+# For inter-region peering, accept the request in the peer region with
+# aws_vpc_peering_connection_accepter or an equivalent workflow.
 ```
 
 ## Database Replication
@@ -164,7 +197,7 @@ resource "aws_db_instance" "primary" {
   storage_encrypted     = true
   deletion_protection   = true
 
-  # Enable automated backups to the DR region
+  # Keep automated backups in the instance's AWS Region
   backup_target = "region"
 
   db_subnet_group_name   = aws_db_subnet_group.main.name
