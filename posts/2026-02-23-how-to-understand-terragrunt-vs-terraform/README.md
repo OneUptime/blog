@@ -14,7 +14,7 @@ This post breaks down what each tool does, where they overlap, and when you shou
 
 ## What Is Terraform?
 
-Terraform is an open-source IaC tool built by HashiCorp. It lets you define cloud resources - servers, databases, networking, DNS records, and so on - in declarative configuration files written in HCL (HashiCorp Configuration Language). When you run `terraform apply`, it compares the desired state you described with the actual state of your cloud infrastructure and makes whatever changes are needed.
+Terraform is an IaC tool built by HashiCorp. It lets you define cloud resources - servers, databases, networking, DNS records, and so on - in declarative configuration files written in HCL (HashiCorp Configuration Language). When you run `terraform apply`, it compares the desired state you described with the actual state of your cloud infrastructure and makes whatever changes are needed.
 
 Here is a simple Terraform configuration that creates an AWS S3 bucket:
 
@@ -43,7 +43,7 @@ Terraform handles:
 
 ## What Is Terragrunt?
 
-Terragrunt is a thin wrapper around Terraform, built by Gruntwork. It does not replace Terraform. Instead, it adds features on top of Terraform that make it easier to manage large, multi-environment, multi-account infrastructure setups.
+Terragrunt is a thin wrapper around Terraform or OpenTofu, built by Gruntwork. It does not replace Terraform. Instead, it adds features on top of Terraform that make it easier to manage large, multi-environment, multi-account infrastructure setups.
 
 Think of it this way: Terraform defines your infrastructure. Terragrunt defines how you organize and run Terraform across many environments and modules.
 
@@ -106,10 +106,10 @@ terraform {
 }
 ```
 
-With Terragrunt, you define the remote state pattern once in a root configuration and it gets inherited by all child modules:
+With Terragrunt, you define the remote state pattern once in a root configuration and it gets inherited by child modules that include it:
 
 ```hcl
-# root terragrunt.hcl - defined once
+# root.hcl - defined once
 remote_state {
   backend = "s3"
   config = {
@@ -124,7 +124,7 @@ Every child module automatically gets the correct state key based on its directo
 
 ### 3. Multi-Module Orchestration
 
-Terraform can only operate on one module at a time. If your VPC module needs to be applied before your EKS module, you have to handle that ordering yourself - usually with scripts or CI/CD pipeline stages.
+Terraform can manage many child modules inside one root module, but the CLI normally operates on one root module, working directory, and state at a time. If your VPC module needs to be applied before your EKS module and they are separate root modules, you have to handle that ordering yourself - usually with scripts or CI/CD pipeline stages.
 
 Terragrunt can orchestrate across modules with dependency declarations:
 
@@ -140,7 +140,7 @@ inputs = {
 }
 ```
 
-Then you can run `terragrunt run-all apply` and it figures out the correct order.
+Then you can run `terragrunt run --all apply` and it figures out the correct order.
 
 ### 4. Code Reuse
 
@@ -151,7 +151,7 @@ Terragrunt reduces this duplication by letting child configurations inherit from
 ```hcl
 # dev/app/terragrunt.hcl
 include "root" {
-  path = find_in_parent_folders()
+  path = find_in_parent_folders("root.hcl")
 }
 
 terraform {
@@ -166,7 +166,7 @@ inputs = {
 ```hcl
 # prod/app/terragrunt.hcl
 include "root" {
-  path = find_in_parent_folders()
+  path = find_in_parent_folders("root.hcl")
 }
 
 terraform {
@@ -178,7 +178,7 @@ inputs = {
 }
 ```
 
-The root `terragrunt.hcl` handles the shared state configuration, provider setup, and any common inputs.
+The root `root.hcl` handles the shared state configuration, provider setup, and any common inputs.
 
 ## When to Use Plain Terraform
 
@@ -249,7 +249,7 @@ With Terragrunt:
 
 ```text
 infrastructure/
-  terragrunt.hcl       # root config with remote state + provider
+  root.hcl             # root config with remote state + provider
   dev/
     env.hcl            # environment-specific variables
     vpc/
@@ -280,7 +280,7 @@ Each `terragrunt.hcl` in a module directory is typically 10-15 lines. The root c
 
 ## Common Misconceptions
 
-**"Terragrunt replaces Terraform."** No. Terragrunt calls Terraform under the hood. You still write Terraform modules. Terragrunt just organizes how you call them.
+**"Terragrunt replaces Terraform."** No. Terragrunt calls Terraform or OpenTofu under the hood. You still write Terraform modules. Terragrunt just organizes how you call them.
 
 **"You need Terragrunt from day one."** Not at all. Start with plain Terraform. Add Terragrunt when the pain of managing multiple environments becomes real.
 
