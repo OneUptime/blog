@@ -18,15 +18,15 @@ Benefits include centralized visibility into infrastructure changes, faster inci
 
 ## Prerequisites
 
-You will need a Microsoft Teams workspace with permission to create incoming webhooks, Terraform installed (version 1.0 or later), and access to the Teams channel where you want to send notifications.
+You will need a Microsoft Teams workspace with permission to create incoming webhooks or Teams Workflows, Terraform installed (version 1.11 or later for all examples), and access to the Teams channel where you want to send notifications.
 
 ## Setting Up Microsoft Teams Incoming Webhook
 
-The first step is creating an incoming webhook connector in your Teams channel. Navigate to the channel where you want notifications, click the three dots menu, select "Connectors" or "Workflows," and add an incoming webhook. Name it "Terraform Bot" and copy the webhook URL.
+The first step is creating a webhook endpoint in your Teams channel. Microsoft 365 Connectors, including classic Incoming Webhook connectors, are nearing deprecation, so use the Teams Workflows app and the "When a Teams webhook request is received" trigger for new setups. If you already use a classic Incoming Webhook connector, navigate to the channel where you want notifications, open the channel options, select the connector configuration, name it "Terraform Bot," and copy the webhook URL.
 
 ## Method 1: Simple Webhook Notifications
 
-The most straightforward approach uses Terraform's `null_resource` with a `local-exec` provisioner to send messages to the Teams webhook.
+The most straightforward approach uses Terraform's built-in `terraform_data` resource with a `local-exec` provisioner to send messages to the Teams webhook.
 
 ```hcl
 # variables.tf
@@ -48,11 +48,9 @@ variable "environment" {
 ```hcl
 # teams-notification.tf
 # Send a notification to Microsoft Teams after apply
-resource "null_resource" "teams_notification" {
+resource "terraform_data" "teams_notification" {
   # Trigger notification on every apply
-  triggers = {
-    always_run = timestamp()
-  }
+  triggers_replace = [timestamp()]
 
   provisioner "local-exec" {
     command = <<-EOT
@@ -91,10 +89,8 @@ Microsoft Teams supports Adaptive Cards, which provide richer formatting and int
 ```hcl
 # adaptive-card-notification.tf
 # Send a rich Adaptive Card notification to Teams
-resource "null_resource" "teams_adaptive_card" {
-  triggers = {
-    always_run = timestamp()
-  }
+resource "terraform_data" "teams_adaptive_card" {
+  triggers_replace = [timestamp()]
 
   provisioner "local-exec" {
     command = <<-EOT
@@ -107,7 +103,7 @@ resource "null_resource" "teams_adaptive_card" {
             "content": {
               "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
               "type": "AdaptiveCard",
-              "version": "1.4",
+              "version": "1.2",
               "body": [
                 {
                   "type": "TextBlock",
@@ -142,20 +138,20 @@ resource "null_resource" "teams_adaptive_card" {
 }
 ```
 
-## Method 3: Terraform Cloud with Teams Integration
+## Method 3: HCP Terraform with Teams Integration
 
-Terraform Cloud and Terraform Enterprise support Microsoft Teams as a notification destination natively.
+HCP Terraform and Terraform Enterprise support Microsoft Teams as a notification destination natively.
 
 ```hcl
 # tfc-teams-notification.tf
-# Configure Terraform Cloud to send notifications to Teams
+# Configure HCP Terraform to send notifications to Teams
 resource "tfe_notification_configuration" "teams" {
   name             = "teams-infrastructure-notifications"
   enabled          = true
   destination_type = "microsoft-teams"
 
   # Set the Teams webhook URL
-  url = var.teams_webhook_url
+  url_wo = var.teams_webhook_url
 
   # Define which events trigger notifications
   triggers = [
@@ -221,14 +217,6 @@ PAYLOAD=$(cat <<EOF
       {"name": "Time", "value": "$(date -u +"%Y-%m-%d %H:%M:%S UTC")"}
     ],
     "markdown": true
-  }],
-  "potentialAction": [{
-    "@type": "OpenUri",
-    "name": "View in Terraform Cloud",
-    "targets": [{
-      "os": "default",
-      "uri": "https://app.terraform.io"
-    }]
   }]
 }
 EOF
@@ -243,10 +231,8 @@ curl -s -H "Content-Type: application/json" \
 ```hcl
 # use-notification-script.tf
 # Use the custom notification script in Terraform
-resource "null_resource" "detailed_teams_notification" {
-  triggers = {
-    always_run = timestamp()
-  }
+resource "terraform_data" "detailed_teams_notification" {
+  triggers_replace = [timestamp()]
 
   provisioner "local-exec" {
     command = <<-EOT
@@ -274,10 +260,8 @@ variable "power_automate_url" {
   sensitive   = true
 }
 
-resource "null_resource" "power_automate_trigger" {
-  triggers = {
-    always_run = timestamp()
-  }
+resource "terraform_data" "power_automate_trigger" {
+  triggers_replace = [timestamp()]
 
   # Send data to Power Automate which can then route to Teams
   provisioner "local-exec" {
@@ -300,7 +284,7 @@ Power Automate can then format the message, add approval steps, route to differe
 
 ## CI/CD Pipeline Integration
 
-Here is an example of integrating Teams notifications into an Azure DevOps pipeline running Terraform.
+Here is an example of integrating Teams notifications into an Azure DevOps pipeline running Terraform. This example uses built-in script steps and assumes Terraform is installed on the build agent before these steps run.
 
 ```yaml
 # azure-pipelines.yml
@@ -314,33 +298,21 @@ pool:
 
 steps:
   # Initialize Terraform
-  - task: TerraformCLI@0
+  - script: terraform init
     displayName: 'Terraform Init'
-    inputs:
-      command: 'init'
 
   # Run Terraform Plan
-  - task: TerraformCLI@0
+  - script: terraform plan -out=tfplan
     displayName: 'Terraform Plan'
-    inputs:
-      command: 'plan'
-      commandOptions: '-out=tfplan'
 
   # Run Terraform Apply
-  - task: TerraformCLI@0
+  - script: terraform apply -auto-approve tfplan
     displayName: 'Terraform Apply'
-    inputs:
-      command: 'apply'
-      commandOptions: 'tfplan'
 
   # Send Teams notification on success
-  - task: IncomingWebhook@1
-    displayName: 'Notify Teams - Success'
-    condition: succeeded()
-    inputs:
-      url: $(TEAMS_WEBHOOK_URL)
-      body: |
-        {
+  - script: |
+      curl -H "Content-Type: application/json" \
+        -d '{
           "@type": "MessageCard",
           "summary": "Terraform Apply Succeeded",
           "themeColor": "00FF00",
@@ -351,16 +323,15 @@ steps:
               {"name": "Branch", "value": "$(Build.SourceBranchName)"}
             ]
           }]
-        }
+        }' \
+        "$(TEAMS_WEBHOOK_URL)"
+    displayName: 'Notify Teams - Success'
+    condition: succeeded()
 
   # Send Teams notification on failure
-  - task: IncomingWebhook@1
-    displayName: 'Notify Teams - Failure'
-    condition: failed()
-    inputs:
-      url: $(TEAMS_WEBHOOK_URL)
-      body: |
-        {
+  - script: |
+      curl -H "Content-Type: application/json" \
+        -d '{
           "@type": "MessageCard",
           "summary": "Terraform Apply Failed",
           "themeColor": "FF0000",
@@ -371,12 +342,15 @@ steps:
               {"name": "Branch", "value": "$(Build.SourceBranchName)"}
             ]
           }]
-        }
+        }' \
+        "$(TEAMS_WEBHOOK_URL)"
+    displayName: 'Notify Teams - Failure'
+    condition: failed()
 ```
 
 ## Best Practices
 
-Store webhook URLs securely using Terraform variables marked as sensitive or your CI/CD platform's secret management. Create separate channels for different environments to reduce noise. Include actionable information in notifications such as links to the Terraform Cloud run or the CI/CD pipeline. Test your webhook configuration with a simple curl command before embedding it in Terraform. Consider implementing rate limiting to prevent notification fatigue during large infrastructure changes.
+Store webhook URLs securely using Terraform variables marked as sensitive or your CI/CD platform's secret management. Create separate channels for different environments to reduce noise. Include actionable information in notifications such as links to the HCP Terraform run or the CI/CD pipeline. Test your webhook configuration with a simple curl command before embedding it in Terraform. Consider implementing rate limiting to prevent notification fatigue during large infrastructure changes.
 
 ## Monitoring Your Notification Pipeline
 
@@ -384,4 +358,4 @@ It is important to monitor your notification pipeline to ensure messages are bei
 
 ## Conclusion
 
-Integrating Terraform with Microsoft Teams keeps your enterprise teams informed about infrastructure changes in their primary communication tool. Whether you use simple webhooks, Adaptive Cards, Terraform Cloud native integration, or Power Automate workflows, the goal is to provide timely and actionable notifications. Start with the approach that fits your current setup and evolve as your needs grow.
+Integrating Terraform with Microsoft Teams keeps your enterprise teams informed about infrastructure changes in their primary communication tool. Whether you use simple webhooks, Adaptive Cards, HCP Terraform native integration, or Power Automate workflows, the goal is to provide timely and actionable notifications. Start with the approach that fits your current setup and evolve as your needs grow.
