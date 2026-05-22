@@ -37,7 +37,7 @@ spec:
     targetPort: 9090
 ```
 
-Valid HTTP/1.1 port names include: `http`, `http-*`, `http2` (for HTTP/2). Without a proper port name, Istio falls back to protocol sniffing, which adds latency to the first request on each connection.
+Valid HTTP port names include: `http`, `http-*` for HTTP/1.1, and `http2` for HTTP/2. Without a proper port name, Istio falls back to protocol sniffing, which must inspect the start of each new connection before it can classify the traffic.
 
 You can also use the `appProtocol` field:
 
@@ -56,24 +56,14 @@ spec:
 
 ## Understanding Protocol Detection
 
-When a port is not named with a recognized prefix, Istio uses automatic protocol detection. For HTTP/1.1, this works by inspecting the first few bytes of each new connection. The downside is that this adds a small delay (typically 100-200ms) and does not work for server-first protocols.
+When a port is not named with a recognized prefix, Istio uses automatic protocol detection. For HTTP/1.1, this works by inspecting the first few bytes of each new connection. The downside is that the proxy has to wait for client bytes before classifying the connection, and this does not work for server-first protocols.
 
 To avoid protocol detection overhead, always name your ports:
 
 ```bash
-# Check if protocol detection is being used
+# Check for service ports that do not follow Istio's naming convention
 
-istioctl proxy-config clusters deploy/my-service -n default -o json | \
-  python3 -c "
-import json, sys
-clusters = json.load(sys.stdin)
-for c in clusters:
-    name = c.get('name', '')
-    if 'my-service' in name:
-        metadata = c.get('metadata', {}).get('filterMetadata', {})
-        istio_meta = metadata.get('istio', {})
-        print(f\"{name}: protocol={istio_meta.get('default_original_port', 'unknown')}\")
-"
+istioctl analyze -n default | grep IST0118
 ```
 
 ## Connection Pool Configuration
@@ -101,7 +91,7 @@ spec:
 
 Key settings for HTTP/1.1:
 
-- `maxConnections`: Maximum number of TCP connections to the upstream. Since HTTP/1.1 uses one request per connection, this effectively limits concurrency.
+- `maxConnections`: Maximum number of HTTP/1.1 or TCP connections to each upstream host. Since HTTP/1.1 does not multiplex requests, this is a key limit for upstream concurrency.
 - `http1MaxPendingRequests`: Maximum number of requests waiting for a connection from the pool.
 - `maxRequestsPerConnection`: How many requests to send on a single connection before closing it. Set to 0 for unlimited. Setting a finite value helps with load distribution.
 - `h2UpgradePolicy`: Controls whether HTTP/1.1 connections can be upgraded to HTTP/2. Set to `DO_NOT_UPGRADE` to force HTTP/1.1.
@@ -124,11 +114,11 @@ spec:
         h2UpgradePolicy: DO_NOT_UPGRADE
 ```
 
-This is important for services that advertise HTTP/2 support (e.g., through ALPN) but do not actually handle it correctly.
+This is important for services that must not receive upgraded HTTP/2 traffic from the sidecar or gateway.
 
 ## Keep-Alive Configuration
 
-HTTP/1.1 keep-alive allows multiple requests on a single TCP connection. Istio's Envoy proxy manages keep-alive through TCP keep-alive settings:
+HTTP/1.1 keep-alive allows multiple requests on a single TCP connection. Envoy reuses HTTP/1.1 upstream connections by default; the `maxRequestsPerConnection` and HTTP `idleTimeout` settings control that reuse. TCP keep-alive is separate: it enables socket-level probes for detecting dead peers.
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -173,7 +163,7 @@ spec:
         host: my-service
 ```
 
-For the connection idle timeout (how long a keep-alive connection stays open without any requests):
+For the connection idle timeout (how long an HTTP keep-alive connection stays open without any active requests):
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -184,14 +174,13 @@ spec:
   host: my-service
   trafficPolicy:
     connectionPool:
-      tcp:
-        maxConnections: 100
-        connectTimeout: 5s
+      http:
+        idleTimeout: 30m
 ```
 
 ## Handling Chunked Transfer Encoding
 
-HTTP/1.1 supports chunked transfer encoding for streaming responses. Istio handles this transparently, but be aware of buffering behavior. By default, Envoy may buffer the response before forwarding it.
+HTTP/1.1 supports chunked transfer encoding for streaming responses. Istio handles this transparently, and Envoy generally streams HTTP bodies through the filter chain. Buffering can occur when you configure filters that require it, such as the Envoy buffer filter or some custom filters.
 
 If you need streaming without buffering, consider using a route-level configuration:
 
@@ -209,7 +198,7 @@ spec:
         host: streaming-service
 ```
 
-For large file uploads or downloads, you may need to increase the maximum request body size through an EnvoyFilter if the defaults are not sufficient.
+For large file uploads or downloads, you may need to review any configured buffering filters and their limits. If a configured Envoy filter must buffer the body, its buffer limits may need to be adjusted through an EnvoyFilter.
 
 ## Retry Configuration for HTTP/1.1
 
