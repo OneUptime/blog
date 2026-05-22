@@ -61,6 +61,11 @@ spec:
               cpu: "2"
 ```
 
+```bash
+kubectl apply -f echo-server.yaml -n bench-plain
+kubectl apply -f load-generator.yaml -n bench-plain
+```
+
 Generate traffic and measure:
 
 ```bash
@@ -140,7 +145,7 @@ Larger payloads require more encryption/decryption CPU:
 for size in 100 1024 10240 102400 1048576; do
   echo "=== Payload: $size bytes ==="
   kubectl exec -n bench-istio deploy/load-generator -c fortio -- \
-    fortio load -c 8 -qps 100 -t 60s -payload-size $size \
+    fortio load -c 8 -qps 100 -t 60s -maxpayloadsizekb 2048 -payload-size $size \
     http://echo-server.bench-istio:8080/echo &
 
   sleep 10
@@ -156,7 +161,7 @@ Measure the specific CPU cost of mTLS by comparing encrypted vs unencrypted traf
 
 ```yaml
 # Disable mTLS for benchmarking
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: no-mtls
@@ -165,7 +170,7 @@ spec:
   mtls:
     mode: DISABLE
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: no-mtls
@@ -197,7 +202,7 @@ Test each telemetry feature individually to understand its CPU cost.
 Disable access logging:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: no-logging
@@ -214,7 +219,7 @@ Run benchmark and compare CPU to the baseline with logging enabled.
 Disable tracing:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: no-tracing
@@ -229,7 +234,7 @@ spec:
 You can't fully disable metrics without losing visibility, but you can reduce the cardinality:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: reduced-metrics
