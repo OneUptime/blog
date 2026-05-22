@@ -22,7 +22,7 @@ The module should create and configure:
 - Optional VPC configuration
 - Optional environment variables
 - Optional Lambda layers
-- Event source mappings for SQS, DynamoDB Streams, and Kinesis
+- Event source mappings for SQS
 
 ## Module Structure
 
@@ -52,7 +52,7 @@ variable "description" {
 }
 
 variable "runtime" {
-  description = "Lambda runtime (e.g., python3.12, nodejs20.x)"
+  description = "Lambda runtime (e.g., python3.12, nodejs22.x)"
   type        = string
 }
 
@@ -363,7 +363,7 @@ module "order_processor" {
 
   function_name = "order-processor"
   description   = "Processes orders from the queue"
-  runtime       = "nodejs20.x"
+  runtime       = "nodejs22.x"
   handler       = "index.handler"
   source_path   = "${path.module}/dist/order-processor.zip"
 
@@ -387,6 +387,11 @@ module "order_processor" {
   environment_variables = {
     DB_CONNECTION_STRING = "postgresql://${module.rds.endpoint}:5432/orders"
   }
+
+  # Allow Lambda to poll and delete messages from SQS
+  additional_policy_arns = [
+    "arn:aws:iam::aws:policy/service-role/AWSLambdaSQSQueueExecutionRole"
+  ]
 
   # Limit concurrency to avoid overwhelming the database
   reserved_concurrent_executions = 10
