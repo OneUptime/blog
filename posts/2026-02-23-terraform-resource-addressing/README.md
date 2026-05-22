@@ -71,8 +71,8 @@ The addresses are:
 terraform state show 'aws_instance.web[0]'
 terraform apply -replace='aws_instance.web[1]'
 
-# The whole resource (all instances)
-terraform state show aws_instance.web
+# List all instances of the resource
+terraform state list aws_instance.web
 ```
 
 Note the quoting: square brackets need to be protected from shell interpretation.
@@ -371,8 +371,11 @@ terraform state show 'aws_instance.web["prod"]'
 # Or escape the brackets
 terraform state show aws_instance.web\[0\]
 
-# In PowerShell, use backtick escaping
+# In PowerShell, escape the brackets for count indexes
 terraform state show aws_instance.web`[0`]
+
+# For for_each keys in PowerShell, escape the inner quotes
+terraform state show 'aws_instance.web[\"prod\"]'
 ```
 
 ## Conclusion
