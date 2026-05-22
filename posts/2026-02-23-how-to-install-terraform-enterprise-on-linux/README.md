@@ -14,12 +14,14 @@ Terraform Enterprise is the self-hosted version of HCP Terraform. You run it on 
 
 Before starting, make sure your Linux server meets these requirements:
 
-- **OS:** Ubuntu 20.04/22.04, RHEL 7/8/9, CentOS 7, Amazon Linux 2, or Debian 10/11
+- **OS:** A Linux distribution supported by your Terraform Enterprise release and container runtime
 - **CPU:** Minimum 4 cores, recommended 8 cores
 - **RAM:** Minimum 8 GB, recommended 16 GB
 - **Disk:** Minimum 50 GB for the OS and application, plus additional storage for data
-- **Docker:** Docker Engine 20.10+ or Podman 4.0+
-- **Network:** Ports 443 (HTTPS) and 8800 (admin console) open
+- **Runtime:** Docker Engine or Podman supported by your Terraform Enterprise version
+- **Network:** Ports 80 (HTTP) and 443 (HTTPS) open
+
+HashiCorp's supported operating systems, runtimes, and resource requirements vary by Terraform Enterprise release. Check the software product compatibility report for your target version before provisioning the server.
 
 ```bash
 # Check system resources
@@ -46,9 +48,9 @@ sudo apt-get install -y \
   gnupg \
   lsb-release
 
-# RHEL/CentOS
-sudo yum update -y
-sudo yum install -y \
+# RHEL
+sudo dnf update -y
+sudo dnf install -y \
   curl \
   unzip \
   jq \
@@ -61,20 +63,27 @@ Terraform Enterprise runs as Docker containers. Install Docker Engine:
 
 ```bash
 # Ubuntu - Install Docker from official repository
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | \
-  sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
+  -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
 
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] \
-  https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | \
-  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+sudo tee /etc/apt/sources.list.d/docker.sources > /dev/null <<EOF
+Types: deb
+URIs: https://download.docker.com/linux/ubuntu
+Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")
+Components: stable
+Architectures: $(dpkg --print-architecture)
+Signed-By: /etc/apt/keyrings/docker.asc
+EOF
 
 sudo apt-get update
-sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 
-# RHEL/CentOS - Install Docker
-sudo yum install -y yum-utils
-sudo yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
-sudo yum install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+# RHEL - Install Docker
+sudo dnf install -y dnf-plugins-core
+sudo dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo
+sudo dnf install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 ```
 
 ```bash
@@ -93,18 +102,22 @@ Terraform Enterprise requires TLS. You can use a self-signed certificate, a cert
 ```bash
 # Option 1: Generate a self-signed certificate (for testing only)
 sudo mkdir -p /etc/terraform-enterprise/certs
+sudo mkdir -p /var/lib/terraform-enterprise
 
 sudo openssl req -x509 -nodes -days 365 -newkey rsa:4096 \
-  -keyout /etc/terraform-enterprise/certs/tfe.key \
-  -out /etc/terraform-enterprise/certs/tfe.crt \
+  -keyout /etc/terraform-enterprise/certs/key.pem \
+  -out /etc/terraform-enterprise/certs/cert.pem \
   -subj "/CN=tfe.example.com" \
   -addext "subjectAltName=DNS:tfe.example.com"
 
+sudo cp /etc/terraform-enterprise/certs/cert.pem \
+  /etc/terraform-enterprise/certs/bundle.pem
+
 # Option 2: Use certificates from your CA
 # Copy your cert and key to:
-# /etc/terraform-enterprise/certs/tfe.crt
-# /etc/terraform-enterprise/certs/tfe.key
-# /etc/terraform-enterprise/certs/ca-bundle.crt  (if using internal CA)
+# /etc/terraform-enterprise/certs/cert.pem
+# /etc/terraform-enterprise/certs/key.pem
+# /etc/terraform-enterprise/certs/bundle.pem
 ```
 
 ## Step 4: Pull the Terraform Enterprise Image
@@ -119,7 +132,8 @@ echo "$TFE_LICENSE" | sudo docker login images.releases.hashicorp.com \
   --password-stdin
 
 # Pull the Terraform Enterprise image
-sudo docker pull images.releases.hashicorp.com/hashicorp/terraform-enterprise:latest
+export TFE_VERSION=vYYYYMM-N
+sudo docker pull images.releases.hashicorp.com/hashicorp/terraform-enterprise:${TFE_VERSION}
 ```
 
 ## Step 5: Create the Configuration
@@ -127,33 +141,25 @@ sudo docker pull images.releases.hashicorp.com/hashicorp/terraform-enterprise:la
 Create a Docker Compose file for Terraform Enterprise:
 
 ```yaml
-# /etc/terraform-enterprise/docker-compose.yml
-version: "3.9"
+# /etc/terraform-enterprise/compose.yaml
+name: terraform-enterprise
 
 services:
-  terraform-enterprise:
-    image: images.releases.hashicorp.com/hashicorp/terraform-enterprise:latest
+  tfe:
+    image: images.releases.hashicorp.com/hashicorp/terraform-enterprise:${TFE_VERSION}
     restart: always
-    ports:
-      - "443:443"
-      - "8800:8800"
-    volumes:
-      # TLS certificates
-      - /etc/terraform-enterprise/certs:/etc/ssl/private/terraform-enterprise
-      # Persistent data storage
-      - tfe-data:/var/lib/terraform-enterprise
     environment:
       # Required settings
       TFE_LICENSE: "${TFE_LICENSE}"
-      TFE_HOSTNAME: "tfe.example.com"
+      TFE_HOSTNAME: "${TFE_HOSTNAME}"
       TFE_ENCRYPTION_PASSWORD: "${TFE_ENCRYPTION_PASSWORD}"
+      TFE_OPERATIONAL_MODE: "disk"
+      TFE_DISK_CACHE_VOLUME_NAME: "${COMPOSE_PROJECT_NAME}_terraform-enterprise-cache"
 
       # TLS configuration
-      TFE_TLS_CERT_FILE: "/etc/ssl/private/terraform-enterprise/tfe.crt"
-      TFE_TLS_KEY_FILE: "/etc/ssl/private/terraform-enterprise/tfe.key"
-
-      # Database - use embedded for simple installs
-      TFE_OPERATIONAL_MODE: "disk"
+      TFE_TLS_CERT_FILE: "/etc/ssl/private/terraform-enterprise/cert.pem"
+      TFE_TLS_KEY_FILE: "/etc/ssl/private/terraform-enterprise/key.pem"
+      TFE_TLS_CA_BUNDLE_FILE: "/etc/ssl/private/terraform-enterprise/bundle.pem"
 
       # Or use external PostgreSQL for production
       # TFE_OPERATIONAL_MODE: "external"
@@ -169,13 +175,34 @@ services:
 
     cap_add:
       - IPC_LOCK
-    ulimits:
-      memlock:
-        soft: -1
-        hard: -1
+    read_only: true
+    tmpfs:
+      - /tmp:mode=01777
+      - /run
+      - /var/log/terraform-enterprise
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      # Docker socket for the default Docker run pipeline driver
+      - type: bind
+        source: /var/run/docker.sock
+        target: /run/docker.sock
+      # TLS certificates
+      - type: bind
+        source: ./certs
+        target: /etc/ssl/private/terraform-enterprise
+      # Persistent data storage
+      - type: bind
+        source: /var/lib/terraform-enterprise
+        target: /var/lib/terraform-enterprise
+      # Terraform binary cache for runs
+      - type: volume
+        source: terraform-enterprise-cache
+        target: /var/cache/tfe-task-worker/terraform
 
 volumes:
-  tfe-data:
+  terraform-enterprise-cache:
 ```
 
 ## Step 6: Create an Environment File
@@ -186,7 +213,8 @@ Store sensitive values in an environment file:
 # /etc/terraform-enterprise/.env
 # This file contains sensitive values - secure it properly
 
-TFE_LICENSE=your-base64-encoded-license
+TFE_VERSION=vYYYYMM-N
+TFE_LICENSE=your-raw-hashicorp-license
 TFE_ENCRYPTION_PASSWORD=a-strong-random-password
 TFE_HOSTNAME=tfe.example.com
 ```
@@ -210,7 +238,7 @@ sudo docker compose --env-file .env up -d
 sudo docker compose ps
 
 # Follow the logs to monitor startup
-sudo docker compose logs -f terraform-enterprise
+sudo docker compose logs -f tfe
 ```
 
 Startup takes a few minutes. Watch the logs for the message indicating the application is ready.
@@ -225,11 +253,8 @@ Once the container is running, open your browser and navigate to `https://tfe.ex
 4. Verify the installation health
 
 ```bash
-# Check the health endpoint
-curl -k https://tfe.example.com/_health_check
-
-# Expected response:
-# {"postgres":"UP","redis":"UP","vault":"UP"}
+# Check readiness from inside the container
+sudo docker compose exec tfe tfectl app health readiness
 ```
 
 ## Step 9: Configure DNS
@@ -256,12 +281,11 @@ Requires=docker.service
 After=docker.service
 
 [Service]
-Type=simple
+Type=oneshot
+RemainAfterExit=yes
 WorkingDirectory=/etc/terraform-enterprise
-ExecStart=/usr/bin/docker compose --env-file .env up
+ExecStart=/usr/bin/docker compose --env-file .env up -d
 ExecStop=/usr/bin/docker compose down
-Restart=always
-RestartSec=10
 
 [Install]
 WantedBy=multi-user.target
@@ -295,12 +319,16 @@ mkdir -p "$BACKUP_DIR"
 cd /etc/terraform-enterprise
 sudo docker compose stop
 
-# Backup the Docker volume
+# Backup the data directory
+sudo tar czf "$BACKUP_DIR/tfe-data-$DATE.tar.gz" \
+  /var/lib/terraform-enterprise/
+
+# Backup the Terraform cache volume
 sudo docker run --rm \
-  -v tfe-data:/data \
+  -v terraform-enterprise_terraform-enterprise-cache:/cache \
   -v "$BACKUP_DIR:/backup" \
   alpine \
-  tar czf "/backup/tfe-data-$DATE.tar.gz" -C /data .
+  tar czf "/backup/tfe-cache-$DATE.tar.gz" -C /cache .
 
 # Backup the configuration
 sudo tar czf "$BACKUP_DIR/tfe-config-$DATE.tar.gz" \
@@ -317,19 +345,18 @@ echo "Backup completed: $BACKUP_DIR/tfe-data-$DATE.tar.gz"
 To upgrade, pull the new image and restart:
 
 ```bash
-# Pull the latest version
-sudo docker pull images.releases.hashicorp.com/hashicorp/terraform-enterprise:latest
-
-# Or pull a specific version
-sudo docker pull images.releases.hashicorp.com/hashicorp/terraform-enterprise:v202402-1
+# Set and pull the target version
+export TFE_VERSION=vYYYYMM-N
+sudo docker pull images.releases.hashicorp.com/hashicorp/terraform-enterprise:${TFE_VERSION}
 
 # Restart with the new image
 cd /etc/terraform-enterprise
+sudo sed -i "s/^TFE_VERSION=.*/TFE_VERSION=${TFE_VERSION}/" .env
 sudo docker compose --env-file .env down
 sudo docker compose --env-file .env up -d
 
 # Monitor the upgrade
-sudo docker compose logs -f terraform-enterprise
+sudo docker compose logs -f tfe
 ```
 
 Always backup before upgrading, and test upgrades in a non-production environment first.
@@ -341,18 +368,21 @@ Always backup before upgrading, and test upgrades in a non-production environmen
 sudo docker compose ps
 
 # View application logs
-sudo docker compose logs terraform-enterprise
+sudo docker compose logs tfe
 
 # Check health
 curl -k https://tfe.example.com/_health_check
+
+# Check readiness
+sudo docker compose exec tfe tfectl app health readiness
 
 # Check disk space (common issue)
 df -h
 
 # Check Docker resource usage
-sudo docker stats terraform-enterprise
+sudo docker stats terraform-enterprise-tfe-1
 ```
 
 ## Summary
 
-Installing Terraform Enterprise on Linux involves preparing the server with Docker, configuring TLS certificates, setting up the application with Docker Compose, and completing the initial web-based setup. For production deployments, use external PostgreSQL and S3-compatible object storage instead of the embedded database. Set up automated backups, monitor the health endpoint, and keep the application updated with regular upgrades.
+Installing Terraform Enterprise on Linux involves preparing the server with Docker, configuring TLS certificates, setting up the application with Docker Compose, and completing the initial web-based setup. For production deployments, use external PostgreSQL and S3-compatible object storage instead of disk mode. Set up automated backups, monitor application readiness, and keep the application updated with regular upgrades.
