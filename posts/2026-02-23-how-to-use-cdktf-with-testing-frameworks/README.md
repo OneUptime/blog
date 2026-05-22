@@ -10,6 +10,8 @@ Description: Learn how to integrate CDKTF with popular testing frameworks like J
 
 CDKTF code is regular programming language code, which means you can use the same testing frameworks your application developers already know. Jest for TypeScript, pytest for Python, JUnit for Java - they all work. This guide focuses on practical testing patterns with Jest (the most common choice for TypeScript CDKTF projects), covering unit tests, property tests, snapshot tests, and integration tests.
 
+Note: HashiCorp deprecated CDKTF on December 10, 2025 and no longer supports or maintains it. The testing patterns below apply to existing CDKTF projects that still need validation.
+
 ## Setting Up Jest for CDKTF
 
 Start with a properly configured testing environment:
@@ -66,15 +68,17 @@ const app = Testing.app();
 // Testing.synth() - Synthesizes a stack and returns JSON string
 const synthesized = Testing.synth(stack);
 
-// Testing.fullSynth() - Full synthesis including terraform init
-const fullOutput = Testing.fullSynth(stack);
+// Testing.fullSynth() - Full synthesis to a temporary output directory
+const fullOutputDirectory = Testing.fullSynth(stack);
 
-// Testing matchers for Jest
-expect(synthesized).toHaveResource("aws_s3_bucket");
-expect(synthesized).toHaveResourceWithProperties("aws_vpc", {
-  cidr_block: "10.0.0.0/16",
-});
-expect(synthesized).toHaveDataSource("aws_ami");
+// Testing assertion helpers
+expect(Testing.toHaveResource(synthesized, "aws_s3_bucket")).toBe(true);
+expect(
+  Testing.toHaveResourceWithProperties(synthesized, "aws_vpc", {
+    cidr_block: "10.0.0.0/16",
+  })
+).toBe(true);
+expect(Testing.toHaveDataSource(synthesized, "aws_ami")).toBe(true);
 ```
 
 ## Writing Unit Tests
@@ -96,15 +100,17 @@ describe("NetworkStack", () => {
   });
 
   it("should create a VPC", () => {
-    expect(synthesized).toHaveResource("aws_vpc");
+    expect(Testing.toHaveResource(synthesized, "aws_vpc")).toBe(true);
   });
 
   it("should create the VPC with the correct CIDR block", () => {
-    expect(synthesized).toHaveResourceWithProperties("aws_vpc", {
-      cidr_block: "10.0.0.0/16",
-      enable_dns_hostnames: true,
-      enable_dns_support: true,
-    });
+    expect(
+      Testing.toHaveResourceWithProperties(synthesized, "aws_vpc", {
+        cidr_block: "10.0.0.0/16",
+        enable_dns_hostnames: true,
+        enable_dns_support: true,
+      })
+    ).toBe(true);
   });
 
   it("should create three public subnets", () => {
@@ -117,11 +123,13 @@ describe("NetworkStack", () => {
   });
 
   it("should create an internet gateway", () => {
-    expect(synthesized).toHaveResource("aws_internet_gateway");
+    expect(Testing.toHaveResource(synthesized, "aws_internet_gateway")).toBe(
+      true
+    );
   });
 
   it("should create NAT gateway for private subnets", () => {
-    expect(synthesized).toHaveResource("aws_nat_gateway");
+    expect(Testing.toHaveResource(synthesized, "aws_nat_gateway")).toBe(true);
   });
 
   it("should output the VPC ID", () => {
@@ -158,46 +166,56 @@ describe("SecureBucket", () => {
 
   it("should create an S3 bucket", () => {
     const output = createStack();
-    expect(output).toHaveResource("aws_s3_bucket");
+    expect(Testing.toHaveResource(output, "aws_s3_bucket")).toBe(true);
   });
 
   it("should enable versioning", () => {
     const output = createStack();
-    expect(output).toHaveResourceWithProperties("aws_s3_bucket_versioning", {
-      versioning_configuration: {
-        status: "Enabled",
-      },
-    });
+    expect(
+      Testing.toHaveResourceWithProperties(output, "aws_s3_bucket_versioning", {
+        versioning_configuration: {
+          status: "Enabled",
+        },
+      })
+    ).toBe(true);
   });
 
   it("should enable server-side encryption", () => {
     const output = createStack();
-    expect(output).toHaveResource(
-      "aws_s3_bucket_server_side_encryption_configuration"
-    );
+    expect(
+      Testing.toHaveResource(
+        output,
+        "aws_s3_bucket_server_side_encryption_configuration"
+      )
+    ).toBe(true);
   });
 
   it("should block public access", () => {
     const output = createStack();
-    expect(output).toHaveResourceWithProperties(
-      "aws_s3_bucket_public_access_block",
-      {
-        block_public_acls: true,
-        block_public_policy: true,
-        ignore_public_acls: true,
-        restrict_public_buckets: true,
-      }
-    );
+    expect(
+      Testing.toHaveResourceWithProperties(
+        output,
+        "aws_s3_bucket_public_access_block",
+        {
+          block_public_acls: true,
+          block_public_policy: true,
+          ignore_public_acls: true,
+          restrict_public_buckets: true,
+        }
+      )
+    ).toBe(true);
   });
 
   it("should apply the correct tags", () => {
     const output = createStack();
-    expect(output).toHaveResourceWithProperties("aws_s3_bucket", {
-      tags: {
-        Environment: "test",
-        ManagedBy: "cdktf",
-      },
-    });
+    expect(
+      Testing.toHaveResourceWithProperties(output, "aws_s3_bucket", {
+        tags: {
+          Environment: "test",
+          ManagedBy: "cdktf",
+        },
+      })
+    ).toBe(true);
   });
 });
 ```
@@ -209,7 +227,8 @@ Snapshot tests capture the entire synthesized output and flag any changes:
 ```typescript
 // __tests__/snapshot.test.ts
 import { Testing } from "cdktf";
-import { MyStack } from "../main";
+import { NetworkStack } from "../stacks/network-stack";
+import { ApplicationStack } from "../stacks/application-stack";
 
 describe("Infrastructure Snapshots", () => {
   it("NetworkStack should match snapshot", () => {
@@ -293,23 +312,35 @@ describe("ApplicationStack environments", () => {
       });
 
       it(`should use ${assertions.instanceType} instances`, () => {
-        expect(synthesized).toHaveResourceWithProperties("aws_instance", {
-          instance_type: assertions.instanceType,
-        });
+        expect(
+          Testing.toHaveResourceWithProperties(synthesized, "aws_instance", {
+            instance_type: assertions.instanceType,
+          })
+        ).toBe(true);
       });
 
       it(`should ${assertions.multiAz ? "enable" : "disable"} multi-AZ`, () => {
         if (assertions.multiAz) {
-          expect(synthesized).toHaveResourceWithProperties("aws_db_instance", {
-            multi_az: true,
-          });
+          expect(
+            Testing.toHaveResourceWithProperties(synthesized, "aws_db_instance", {
+              multi_az: true,
+            })
+          ).toBe(true);
+        } else {
+          const config = JSON.parse(synthesized);
+          const dbInstances = Object.values(
+            config.resource?.aws_db_instance || {}
+          ) as any[];
+          expect(dbInstances.some((db) => db.multi_az === true)).toBe(false);
         }
       });
 
       it("should always enable encryption", () => {
-        expect(synthesized).toHaveResourceWithProperties("aws_db_instance", {
-          storage_encrypted: true,
-        });
+        expect(
+          Testing.toHaveResourceWithProperties(synthesized, "aws_db_instance", {
+            storage_encrypted: true,
+          })
+        ).toBe(true);
       });
     });
   });
@@ -347,12 +378,14 @@ describe("TaggingAspect", () => {
 
     const synthesized = Testing.synth(stack);
 
-    expect(synthesized).toHaveResourceWithProperties("aws_s3_bucket", {
-      tags: {
-        Environment: "test",
-        Team: "platform",
-      },
-    });
+    expect(
+      Testing.toHaveResourceWithProperties(synthesized, "aws_s3_bucket", {
+        tags: {
+          Environment: "test",
+          Team: "platform",
+        },
+      })
+    ).toBe(true);
   });
 });
 ```
@@ -444,7 +477,7 @@ jobs:
       - run: npm ci
       - run: npm test -- --ci --coverage
       - name: Upload coverage
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v5
         with:
           directory: ./coverage
 ```
@@ -465,4 +498,4 @@ jobs:
 
 7. **Maintain test coverage**. Aim for high coverage on custom constructs and business logic.
 
-Testing frameworks are what make CDKTF a production-grade tool. Without tests, infrastructure changes are a gamble. With tests, they are a calculated, verified operation. For more on CDKTF testing, see our guide on [testing CDKTF configurations](https://oneuptime.com/blog/post/2026-02-23-how-to-test-cdktf-configurations/view).
+Testing frameworks are what make CDKTF infrastructure changes easier to review. Without tests, infrastructure changes are a gamble. With tests, they are a calculated, verified operation. For more on CDKTF testing, see our guide on [testing CDKTF configurations](https://oneuptime.com/blog/post/2026-02-23-how-to-test-cdktf-configurations/view).
