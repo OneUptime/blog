@@ -197,8 +197,8 @@ terraform apply -var='project_name=my web app'
 # PowerShell uses different escaping rules
 terraform apply -var="environment=production"
 
-# For complex types, use single quotes outside and double inside
-terraform apply -var='availability_zones=["us-east-1a", "us-east-1b"]'
+# For complex types on Windows, HashiCorp recommends using cmd.exe instead of PowerShell
+# when you need to pass literal quotes through to Terraform.
 ```
 
 ### Windows Command Prompt
@@ -213,7 +213,7 @@ terraform apply -var "tags={Name=\"app\"}"
 
 ## Using -var with Different Commands
 
-The `-var` flag works with all the major Terraform commands:
+The `-var` flag works with the main planning and apply commands, and with `terraform import`:
 
 ```bash
 # With plan
@@ -227,14 +227,11 @@ terraform destroy -var="environment=staging"
 
 # With import
 terraform import -var="environment=staging" aws_instance.app i-1234567890abcdef0
-
-# With console (useful for debugging)
-terraform console -var="environment=staging"
 ```
 
 ## Combining -var with -var-file
 
-You can use both `-var` and `-var-file` in the same command. The `-var` flag takes precedence over values in the file.
+You can use both `-var` and `-var-file` in the same command. Terraform processes `-var` and `-var-file` options in the order you provide them, so a later option for the same variable overrides an earlier one.
 
 ```bash
 # Load base values from file, override one specific variable
@@ -333,7 +330,7 @@ export TF_VAR_db_password="super-secret-123"
 terraform apply
 ```
 
-In CI/CD systems, command lines often get logged. If you need to pass secrets, use environment variables (`TF_VAR_*` prefix) or encrypted variable files instead.
+In CI/CD systems, command lines often get logged. If you need to pass secrets, use your CI/CD platform's secret store to inject environment variables (`TF_VAR_*` prefix), or use HCP Terraform sensitive variables.
 
 ## Common Mistakes
 
@@ -378,6 +375,6 @@ terraform apply -var="foo=bar"
 
 ## Wrapping Up
 
-The `-var` flag is straightforward for passing simple values to Terraform, and it is the highest-priority method after environment variables in Terraform's precedence order. Use it for quick overrides, CI/CD parameters, and scripted deployments. For complex types, secrets, or large numbers of variables, consider using variable files or environment variables instead.
+The `-var` flag is straightforward for passing simple values to Terraform, and command-line variable options have the highest priority in Terraform's precedence order, processed in the order they are provided. Use it for quick overrides, CI/CD parameters, and scripted deployments. For complex types, secrets, or large numbers of variables, consider using variable files or environment variables instead.
 
 For a deeper look at all the ways to set variable values, see our post on [variable precedence in Terraform](https://oneuptime.com/blog/post/2026-02-23-how-to-understand-variable-precedence-in-terraform/view).
