@@ -23,7 +23,10 @@ There are two distinct things to back up:
 Export all Istio CRD definitions:
 
 ```bash
-kubectl get crds -o yaml | grep -A1000 "istio.io" > istio-crds-definitions.yaml
+kubectl get crds -o name | grep '\.istio\.io$' | while read -r crd; do
+  echo "---"
+  kubectl get "$crd" -o yaml
+done > istio-crds-definitions.yaml
 ```
 
 A cleaner approach is to export each CRD individually:
@@ -31,9 +34,9 @@ A cleaner approach is to export each CRD individually:
 ```bash
 mkdir -p istio-backup/crds
 
-for crd in $(kubectl get crds -o name | grep istio); do
-  name=$(echo $crd | sed 's|customresourcedefinition.apiextensions.k8s.io/||')
-  kubectl get crd $name -o yaml > istio-backup/crds/$name.yaml
+for crd in $(kubectl get crds -o name | grep '\.istio\.io$'); do
+  name=$(echo "$crd" | sed 's|customresourcedefinition.apiextensions.k8s.io/||')
+  kubectl get "$crd" -o yaml > "istio-backup/crds/$name.yaml"
 done
 ```
 
@@ -81,9 +84,9 @@ BACKUP_DIR="istio-backup-$TIMESTAMP"
 mkdir -p $BACKUP_DIR/crds $BACKUP_DIR/resources $BACKUP_DIR/configmaps $BACKUP_DIR/secrets
 
 echo "Backing up Istio CRD definitions..."
-for crd in $(kubectl get crds -o name | grep istio); do
-  name=$(echo $crd | sed 's|customresourcedefinition.apiextensions.k8s.io/||')
-  kubectl get crd $name -o yaml > $BACKUP_DIR/crds/$name.yaml
+for crd in $(kubectl get crds -o name | grep '\.istio\.io$'); do
+  name=$(echo "$crd" | sed 's|customresourcedefinition.apiextensions.k8s.io/||')
+  kubectl get "$crd" -o yaml > "$BACKUP_DIR/crds/$name.yaml"
 done
 
 echo "Backing up Istio resource instances..."
@@ -100,7 +103,7 @@ done
 echo "Backing up Istio ConfigMaps..."
 kubectl get configmaps -n istio-system -o yaml > $BACKUP_DIR/configmaps/istio-system-configmaps.yaml
 
-echo "Backing up Istio secrets (non-sensitive metadata only)..."
+echo "Backing up Istio secrets..."
 kubectl get secrets -n istio-system -o yaml > $BACKUP_DIR/secrets/istio-system-secrets.yaml
 
 echo "Backup complete: $BACKUP_DIR"
@@ -175,16 +178,12 @@ Apply the backed-up resources:
 ./clean-backup.sh istio-backup/resources/
 
 # Apply in order - some resources depend on others
-kubectl apply -f istio-backup/resources/gateways.yaml
-kubectl apply -f istio-backup/resources/serviceentries.yaml
-kubectl apply -f istio-backup/resources/destinationrules.yaml
-kubectl apply -f istio-backup/resources/virtualservices.yaml
-kubectl apply -f istio-backup/resources/sidecars.yaml
-kubectl apply -f istio-backup/resources/peerauthentications.yaml
-kubectl apply -f istio-backup/resources/authorizationpolicies.yaml
-kubectl apply -f istio-backup/resources/requestauthentications.yaml
-kubectl apply -f istio-backup/resources/telemetries.yaml
-kubectl apply -f istio-backup/resources/envoyfilters.yaml
+for resource in gateways serviceentries workloadentries workloadgroups destinationrules virtualservices sidecars peerauthentications requestauthentications authorizationpolicies telemetries envoyfilters wasmplugins; do
+  file="istio-backup/resources/$resource.yaml"
+  if [ -f "$file" ]; then
+    kubectl apply -f "$file"
+  fi
+done
 ```
 
 ### Step 3: Verify
@@ -196,7 +195,7 @@ istioctl analyze -A
 Check that all resources are present:
 
 ```bash
-for resource in vs dr gw se sc pa ap ra telemetry ef; do
+for resource in virtualservices destinationrules gateways serviceentries sidecars envoyfilters workloadentries workloadgroups peerauthentications authorizationpolicies requestauthentications telemetries wasmplugins; do
   echo "$resource:"
   kubectl get $resource -A --no-headers 2>/dev/null | wc -l
 done
@@ -208,7 +207,13 @@ Velero is a popular Kubernetes backup tool that can handle Istio resources along
 
 ```bash
 # Install Velero
-velero install --provider aws --bucket my-backup-bucket --secret-file ./credentials
+velero install \
+  --provider aws \
+  --plugins velero/velero-plugin-for-aws:v1.13.0 \
+  --bucket my-backup-bucket \
+  --backup-location-config region=us-east-1 \
+  --snapshot-location-config region=us-east-1 \
+  --secret-file ./credentials
 
 # Create a backup schedule for Istio resources
 velero schedule create istio-daily \
