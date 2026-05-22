@@ -113,10 +113,10 @@ istioctl analyze --all-namespaces
 
 ### Canary Deployments
 
-During canary rollouts, people often set up percentage-based routing and forget the default:
+During canary rollouts, people often set up header-based routing and forget the default:
 
 ```yaml
-# BAD: What happens to the other 90%?
+# BAD: What happens to non-canary requests?
 
 apiVersion: networking.istio.io/v1
 kind: VirtualService
@@ -167,7 +167,7 @@ spec:
 When you have multiple match conditions for A/B tests:
 
 ```yaml
-# BAD: Users not in any test group get 404
+# GOOD: Users not in any test group go to control
 apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
@@ -229,14 +229,10 @@ spec:
 Add a default that either routes to a specific version or returns a useful error:
 
 ```yaml
-    - route:
-        - destination:
-            host: api-v1
-      fault:
-        abort:
-          httpStatus: 404
-          percentage:
-            value: 0
+    - directResponse:
+        status: 404
+        body:
+          string: "API version not found"
 ```
 
 Actually, a better approach is to just have the default route point to your latest stable version:
@@ -343,6 +339,9 @@ spec:
     spec:
       names:
         kind: IstioMissingDefaultRoute
+      validation:
+        openAPIV3Schema:
+          type: object
   targets:
     - target: admission.k8s.gatekeeper.sh
       rego: |
@@ -356,6 +355,16 @@ spec:
           last_route.match
           msg := "VirtualService must have a default route (last route without match conditions)"
         }
+---
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: IstioMissingDefaultRoute
+metadata:
+  name: virtualservices-must-have-default-route
+spec:
+  match:
+    kinds:
+      - apiGroups: ["networking.istio.io"]
+        kinds: ["VirtualService"]
 ```
 
 Missing default routes are preventable. Make it a rule that every VirtualService review explicitly checks for a default route. Add automated validation to your pipeline. And when you do find a missing default route in production, fix it immediately because every second it is missing, some percentage of your users are getting unexplained 404 errors.
