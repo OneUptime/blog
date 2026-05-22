@@ -40,21 +40,17 @@ Notification Sent (Slack, PagerDuty)
 AWS EventBridge is an excellent event router for Terraform automation. You can capture events from AWS services, SaaS applications, and custom sources, then route them to trigger Terraform runs.
 
 ```hcl
-# Create an EventBridge event bus for infrastructure events
-
-resource "aws_cloudwatch_event_bus" "infrastructure" {
-  name = "infrastructure-events"
-}
+# Use rules on the default event bus for AWS service events.
+# Custom application events can be sent to a custom event bus with PutEvents.
 
 # Rule: Trigger Terraform when a security finding is detected
 resource "aws_cloudwatch_event_rule" "security_finding" {
-  name           = "security-finding-remediation"
-  description    = "Trigger auto-remediation when Security Hub findings are detected"
-  event_bus_name = aws_cloudwatch_event_bus.infrastructure.name
+  name        = "security-finding-remediation"
+  description = "Trigger auto-remediation when Security Hub findings are detected"
 
   event_pattern = jsonencode({
-    source      = ["aws.securityhub"]
-    detail-type = ["Security Hub Findings - Imported"]
+    source        = ["aws.securityhub"]
+    "detail-type" = ["Security Hub Findings - Imported"]
     detail = {
       findings = {
         Severity = {
@@ -70,9 +66,22 @@ resource "aws_cloudwatch_event_rule" "security_finding" {
 
 # Route the event to a Lambda function that triggers Terraform
 resource "aws_cloudwatch_event_target" "remediation_lambda" {
-  rule           = aws_cloudwatch_event_rule.security_finding.name
-  event_bus_name = aws_cloudwatch_event_bus.infrastructure.name
-  arn            = aws_lambda_function.terraform_trigger.arn
+  rule = aws_cloudwatch_event_rule.security_finding.name
+  arn  = aws_lambda_function.terraform_trigger.arn
+
+  input = jsonencode({
+    action    = "security-remediation"
+    workspace = "security-remediation"
+    message   = "Security Hub finding triggered Terraform remediation"
+  })
+}
+
+resource "aws_lambda_permission" "allow_security_eventbridge" {
+  statement_id  = "AllowExecutionFromSecurityEventBridge"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.terraform_trigger.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.security_finding.arn
 }
 
 # Rule: Trigger Terraform when EC2 instances are terminated unexpectedly
@@ -81,8 +90,8 @@ resource "aws_cloudwatch_event_rule" "instance_terminated" {
   description = "Detect when instances are terminated outside of Terraform"
 
   event_pattern = jsonencode({
-    source      = ["aws.ec2"]
-    detail-type = ["EC2 Instance State-change Notification"]
+    source        = ["aws.ec2"]
+    "detail-type" = ["EC2 Instance State-change Notification"]
     detail = {
       state = ["terminated"]
     }
@@ -109,6 +118,14 @@ resource "aws_cloudwatch_event_target" "instance_recovery" {
       }
     EOT
   }
+}
+
+resource "aws_lambda_permission" "allow_instance_eventbridge" {
+  statement_id  = "AllowExecutionFromInstanceEventBridge"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.terraform_trigger.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.instance_terminated.arn
 }
 ```
 
@@ -167,13 +184,9 @@ def handler(event, context):
     # Get workspace ID
     workspace_id = get_workspace_id(workspace_name)
 
-    # Set workspace variables from the event
-    for key, value in variables.items():
-        set_workspace_variable(workspace_id, key, value)
-
-    # Trigger the run
+    # Trigger the run with run-specific variables from the event
     auto_apply = config.get("auto_apply", False)
-    run_id = create_run(workspace_id, message, auto_apply)
+    run_id = create_run(workspace_id, message, auto_apply, variables)
 
     return {
         "statusCode": 200,
@@ -194,44 +207,17 @@ def get_workspace_id(name):
     resp = urllib.request.urlopen(req)
     return json.loads(resp.read())["data"]["id"]
 
-def set_workspace_variable(workspace_id, key, value):
-    """Create or update a workspace variable."""
-    data = {
-        "data": {
-            "type": "vars",
-            "attributes": {
-                "key": key,
-                "value": str(value),
-                "category": "terraform",
-                "hcl": False,
-                "sensitive": False
-            },
-            "relationships": {
-                "workspace": {
-                    "data": {"type": "workspaces", "id": workspace_id}
-                }
-            }
-        }
-    }
-    url = f"{TFC_API}/workspaces/{workspace_id}/vars"
-    req = urllib.request.Request(
-        url,
-        data=json.dumps(data).encode(),
-        method="POST",
-        headers={
-            "Authorization": f"Bearer {TFC_TOKEN}",
-            "Content-Type": "application/vnd.api+json"
-        }
-    )
-    urllib.request.urlopen(req)
-
-def create_run(workspace_id, message, auto_apply):
+def create_run(workspace_id, message, auto_apply, variables):
     """Create a new Terraform run."""
     data = {
         "data": {
             "attributes": {
                 "message": message,
-                "auto-apply": auto_apply
+                "auto-apply": auto_apply,
+                "variables": [
+                    {"key": key, "value": json.dumps(value)}
+                    for key, value in variables.items()
+                ]
             },
             "relationships": {
                 "workspace": {
@@ -275,6 +261,11 @@ variable "scaling_reason" {
   default     = "manual"
 }
 
+variable "subnet_ids" {
+  description = "Subnets for the Auto Scaling group"
+  type        = list(string)
+}
+
 resource "aws_autoscaling_group" "app" {
   name                = "app-cluster"
   min_size            = 2
@@ -300,7 +291,7 @@ resource "aws_autoscaling_group" "app" {
   }
 }
 
-# CloudWatch alarm that triggers scaling via EventBridge
+# CloudWatch alarm that emits state changes to EventBridge
 resource "aws_cloudwatch_metric_alarm" "high_cpu" {
   alarm_name          = "app-cluster-high-cpu"
   comparison_operator = "GreaterThanThreshold"
@@ -315,12 +306,44 @@ resource "aws_cloudwatch_metric_alarm" "high_cpu" {
   dimensions = {
     AutoScalingGroupName = aws_autoscaling_group.app.name
   }
-
-  alarm_actions = [aws_sns_topic.scaling_events.arn]
 }
 
-resource "aws_sns_topic" "scaling_events" {
-  name = "scaling-events"
+resource "aws_cloudwatch_event_rule" "high_cpu_alarm" {
+  name        = "app-cluster-high-cpu-alarm"
+  description = "Trigger Terraform scaling when the high CPU alarm enters ALARM"
+
+  event_pattern = jsonencode({
+    source        = ["aws.cloudwatch"]
+    "detail-type" = ["CloudWatch Alarm State Change"]
+    resources     = [aws_cloudwatch_metric_alarm.high_cpu.arn]
+    detail = {
+      state = {
+        value = ["ALARM"]
+      }
+    }
+  })
+}
+
+resource "aws_cloudwatch_event_target" "high_cpu_scaling" {
+  rule = aws_cloudwatch_event_rule.high_cpu_alarm.name
+  arn  = aws_lambda_function.terraform_trigger.arn
+
+  input = jsonencode({
+    action  = "auto-scaler"
+    message = "High CPU alarm triggered Terraform scaling"
+    variables = {
+      desired_capacity = 6
+      scaling_reason   = "high_cpu_alarm"
+    }
+  })
+}
+
+resource "aws_lambda_permission" "allow_high_cpu_eventbridge" {
+  statement_id  = "AllowExecutionFromHighCpuEventBridge"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.terraform_trigger.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.high_cpu_alarm.arn
 }
 ```
 
