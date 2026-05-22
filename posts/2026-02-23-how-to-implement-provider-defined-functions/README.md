@@ -8,7 +8,7 @@ Description: Learn how to implement provider-defined functions in custom Terrafo
 
 ---
 
-Provider-defined functions are a relatively new feature in Terraform that allows providers to expose custom functions that users can call directly in their HCL configurations. Unlike data sources, which manage state and make API calls, provider-defined functions are pure computational functions that transform inputs into outputs without side effects.
+Provider-defined functions are supported in Terraform 1.8 and later and allow providers to expose custom functions that users can call directly in their HCL configurations. Unlike data sources, which participate in Terraform state and commonly make API calls, provider-defined functions are pure computational functions that transform inputs into outputs without side effects.
 
 In this guide, we will cover how to implement provider-defined functions in your custom Terraform provider using the Plugin Framework, including function signatures, parameter handling, and testing.
 
@@ -61,7 +61,9 @@ import (
     "fmt"
     "strings"
 
+    "github.com/hashicorp/terraform-plugin-framework/attr"
     "github.com/hashicorp/terraform-plugin-framework/function"
+    "github.com/hashicorp/terraform-plugin-framework/types"
 )
 
 // Ensure the implementation satisfies the expected interface
@@ -233,6 +235,10 @@ Functions can accept a variable number of arguments:
 // JoinPathFunction joins multiple path segments
 type JoinPathFunction struct{}
 
+func (f *JoinPathFunction) Metadata(ctx context.Context, req function.MetadataRequest, resp *function.MetadataResponse) {
+    resp.Name = "join_path"
+}
+
 func (f *JoinPathFunction) Definition(ctx context.Context, req function.DefinitionRequest, resp *function.DefinitionResponse) {
     resp.Definition = function.Definition{
         Summary:     "Joins path segments into a single path",
@@ -277,6 +283,9 @@ Test functions using the `terraform-plugin-testing` framework:
 ```go
 func TestParseServerIDFunction(t *testing.T) {
     resource.UnitTest(t, resource.TestCase{
+        TerraformVersionChecks: []tfversion.TerraformVersionCheck{
+            tfversion.SkipBelow(tfversion.Version1_8_0),
+        },
         ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
         Steps: []resource.TestStep{
             {
@@ -285,11 +294,11 @@ func TestParseServerIDFunction(t *testing.T) {
                         value = provider::example::parse_server_id("srv-abc123-us-east-1")
                     }
                 `,
-                Check: resource.ComposeAggregateTestCheckFunc(
-                    resource.TestCheckOutput("test.prefix", "srv"),
-                    resource.TestCheckOutput("test.id", "abc123"),
-                    resource.TestCheckOutput("test.region", "us-east-1"),
-                ),
+                ConfigStateChecks: []statecheck.StateCheck{
+                    statecheck.ExpectKnownOutputValueAtPath("test", tfjsonpath.New("prefix"), knownvalue.StringExact("srv")),
+                    statecheck.ExpectKnownOutputValueAtPath("test", tfjsonpath.New("id"), knownvalue.StringExact("abc123")),
+                    statecheck.ExpectKnownOutputValueAtPath("test", tfjsonpath.New("region"), knownvalue.StringExact("us-east-1")),
+                },
             },
         },
     })
@@ -297,6 +306,9 @@ func TestParseServerIDFunction(t *testing.T) {
 
 func TestParseServerIDFunction_invalidInput(t *testing.T) {
     resource.UnitTest(t, resource.TestCase{
+        TerraformVersionChecks: []tfversion.TerraformVersionCheck{
+            tfversion.SkipBelow(tfversion.Version1_8_0),
+        },
         ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
         Steps: []resource.TestStep{
             {
