@@ -14,7 +14,7 @@ This post maps key PCI DSS requirements to Sentinel policies that enforce them a
 
 ## PCI DSS Requirements That Map to Infrastructure
 
-PCI DSS v4.0 has twelve requirement families. Several map directly to infrastructure controls that Terraform manages:
+PCI DSS v4.0 and v4.0.1 have twelve requirement families. Several map directly to infrastructure controls that Terraform manages:
 
 - **Requirement 1**: Install and maintain network security controls
 - **Requirement 2**: Apply secure configurations to all system components
@@ -27,7 +27,7 @@ PCI DSS v4.0 has twelve requirement families. Several map directly to infrastruc
 
 PCI DSS requires network segmentation to isolate the cardholder data environment (CDE) from other networks. In AWS, this means proper VPC configuration and security group rules.
 
-```python
+```sentinel
 # pci-req1-network-segmentation.sentinel
 
 # PCI DSS Requirement 1.3: Network access to and from the CDE is restricted
@@ -51,12 +51,15 @@ for security_group_rules as address, rule {
         cidr_blocks = rule.change.after.cidr_blocks else []
         from_port = rule.change.after.from_port else 0
         to_port = rule.change.after.to_port else 0
+        protocol = rule.change.after.protocol else ""
 
         for cidr_blocks as cidr {
-            # Block any rule that opens all ports to any IP range
-            if cidr is "0.0.0.0/0" and from_port is 0 and to_port is 65535 {
+            # Block any rule that opens all ports or all protocols to any IP range
+            if cidr is "0.0.0.0/0" and
+               ((from_port is 0 and to_port is 65535) or
+                protocol is "-1" or protocol is "all") {
                 append(violations, address +
-                    " opens all ports to 0.0.0.0/0 [PCI Req 1.3]")
+                    " opens all ports or protocols to 0.0.0.0/0 [PCI Req 1.3]")
             }
 
             # Block SSH/RDP from the internet
@@ -85,7 +88,7 @@ main = rule {
 
 Requirement 1 also requires that public-facing applications are protected. Enforce that load balancers use HTTPS:
 
-```python
+```sentinel
 # pci-req1-https-enforcement.sentinel
 # PCI DSS Requirement 1.4: Network connections between trusted and untrusted networks are controlled
 # Enforce HTTPS on all public-facing load balancer listeners
@@ -110,9 +113,9 @@ for lb_listeners as address, listener {
         default_action = listener.change.after.default_action else []
         has_redirect = false
         for default_action as action {
-            if action.type else "" is "redirect" {
+            if (action.type else "") is "redirect" {
                 redirect = action.redirect else {}
-                if redirect.protocol else "" is "HTTPS" {
+                if (redirect.protocol else "") is "HTTPS" {
                     has_redirect = true
                 }
             }
@@ -140,7 +143,7 @@ main = rule {
 
 PCI DSS requires encryption of stored cardholder data. In cloud infrastructure, this means encryption at rest for all storage services:
 
-```python
+```sentinel
 # pci-req3-encryption-at-rest.sentinel
 # PCI DSS Requirement 3.5: Stored account data is protected
 # Require encryption at rest for all storage resources
@@ -226,13 +229,14 @@ main = rule {
 
 PCI DSS requires access to cardholder data to be limited to business need-to-know. This maps to IAM controls:
 
-```python
+```sentinel
 # pci-req7-access-restriction.sentinel
 # PCI DSS Requirement 7.2: Access to system components and data is defined and assigned
 # Block IAM policies with overly broad permissions
 
 import "tfplan/v2" as tfplan
 import "json"
+import "types"
 
 iam_policies = filter tfplan.resource_changes as _, rc {
     rc.type in ["aws_iam_policy", "aws_iam_role_policy"] and
@@ -255,6 +259,9 @@ for iam_policies as address, resource {
     if policy_doc is not "" {
         doc = json.unmarshal(policy_doc)
         statements = doc["Statement"] else []
+        if types.type_of(statements) is "map" {
+            statements = [statements]
+        }
 
         for statements as stmt {
             effect = stmt["Effect"] else "Deny"
@@ -274,6 +281,15 @@ for iam_policies as address, resource {
                         append(violations, address +
                             " uses wildcard Action - must follow least privilege [PCI Req 7.2]")
                         break
+                    }
+
+                    for sensitive_actions as sensitive_action {
+                        if action is sensitive_action and resources contains "*" {
+                            append(violations, address +
+                                " allows " + action +
+                                " on wildcard Resource - must scope access [PCI Req 7.2]")
+                            break
+                        }
                     }
                 }
             }
@@ -297,7 +313,7 @@ main = rule {
 
 PCI DSS requires comprehensive logging of all access to cardholder data environments:
 
-```python
+```sentinel
 # pci-req10-logging.sentinel
 # PCI DSS Requirement 10.2: Audit logs are implemented to support detection of anomalies
 # Ensure CloudTrail and access logging are configured properly
@@ -318,7 +334,8 @@ for cloudtrails as address, trail {
             " - CloudTrail must not be deleted [PCI Req 10.2]")
     }
 
-    if trail.change.actions contains "update" {
+    if trail.change.actions contains "create" or
+       trail.change.actions contains "update" {
         enabled = trail.change.after.enable_logging else true
         if enabled is false {
             append(violations, address +
@@ -338,10 +355,8 @@ for cloudtrails as address, trail {
             append(violations, address +
                 " - CloudTrail logs must be encrypted with KMS [PCI Req 10.2]")
         }
-    }
 
-    if trail.change.actions contains "create" {
-        # New CloudTrail must have multi-region enabled
+        # CloudTrail must have multi-region enabled
         is_multi_region = trail.change.after.is_multi_region_trail else false
         if is_multi_region is not true {
             append(violations, address +
@@ -378,7 +393,7 @@ main = rule {
 
 PCI DSS requires that default passwords and settings are changed. For infrastructure, this means enforcing secure defaults:
 
-```python
+```sentinel
 # pci-req2-secure-config.sentinel
 # PCI DSS Requirement 2.2: System components are configured and managed securely
 # Enforce secure configuration baselines
