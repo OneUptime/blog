@@ -34,7 +34,7 @@ resource "aws_dms_replication_instance" "migration" {
   vpc_security_group_ids      = [aws_security_group.dms.id]
   replication_subnet_group_id = aws_dms_replication_subnet_group.migration.id
 
-  # Enable CloudWatch logging
+  # Apply replication instance changes immediately
   apply_immediately = true
 
   tags = {
@@ -141,9 +141,6 @@ resource "aws_db_instance" "read_replica" {
   identifier          = "app-${var.environment}-validation"
   replicate_source_db = aws_db_instance.primary.identifier
   instance_class      = var.db_instance_class
-
-  # Use the new engine version for validation
-  engine_version = var.target_db_version
 }
 ```
 
@@ -185,7 +182,9 @@ resource "aws_cloudwatch_dashboard" "migration" {
           metrics = [
             ["AWS/DMS", "CDCLatencyTarget",
              "ReplicationInstanceIdentifier",
-             aws_dms_replication_instance.migration.replication_instance_id]
+             aws_dms_replication_instance.migration.replication_instance_id,
+             "ReplicationTaskIdentifier",
+             aws_dms_replication_task.migration.replication_task_id]
           ]
           title  = "Replication Lag"
           period = 60
@@ -228,13 +227,21 @@ resource "aws_cloudwatch_event_rule" "validation_schedule" {
   name                = "migration-validation-${var.environment}"
   description         = "Run data validation every 30 minutes during migration"
   schedule_expression = "rate(30 minutes)"
-  is_enabled          = var.migration_active
+  state               = var.migration_active ? "ENABLED" : "DISABLED"
 }
 
 resource "aws_cloudwatch_event_target" "validation" {
   rule      = aws_cloudwatch_event_rule.validation_schedule.name
   target_id = "data-validation"
   arn       = aws_lambda_function.data_validator.arn
+}
+
+resource "aws_lambda_permission" "allow_validation_schedule" {
+  statement_id  = "AllowExecutionFromEventBridge"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.data_validator.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.validation_schedule.arn
 }
 ```
 
@@ -277,6 +284,24 @@ resource "aws_ssm_document" "cutover" {
         inputs = {
           Service = "route53"
           Api     = "ChangeResourceRecordSets"
+          HostedZoneId = var.hosted_zone_id
+          ChangeBatch = {
+            Changes = [
+              {
+                Action = "UPSERT"
+                ResourceRecordSet = {
+                  Name = var.database_dns_name
+                  Type = "CNAME"
+                  TTL  = 60
+                  ResourceRecords = [
+                    {
+                      Value = aws_db_instance.target.address
+                    }
+                  ]
+                }
+              }
+            ]
+          }
         }
       }
     ]
