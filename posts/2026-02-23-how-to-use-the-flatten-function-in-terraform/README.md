@@ -8,13 +8,13 @@ Description: Learn how to use the flatten function in Terraform to convert neste
 
 ---
 
-Nested lists are a common byproduct of `for` expressions and module outputs in Terraform. When you need to iterate over these nested structures with `for_each` or `count`, you first need to flatten them into a single list. That is exactly what the `flatten` function does - it takes a list of lists (arbitrarily nested) and produces a single flat list.
+Nested lists are a common byproduct of `for` expressions and module outputs in Terraform. When you need to iterate over these nested structures with `for_each` or `count`, you first need to flatten them into a single list. That is exactly what the `flatten` function does - it takes a list of directly nested lists and produces a single flat list.
 
 This guide covers the `flatten` function, its recursive behavior, and real-world patterns where it becomes indispensable.
 
 ## What is the flatten Function?
 
-The `flatten` function takes a list that may contain other lists and returns a single flat list with all nested elements brought to the top level.
+The `flatten` function takes a list that may contain other lists and returns a single flat list with all directly nested list elements brought to the top level.
 
 ```hcl
 # Recursively flattens nested lists into a single list
@@ -299,6 +299,7 @@ A few things to keep in mind:
 
 - **Non-list elements**: Elements that are not lists are left as-is in the output. `flatten(["a", ["b"]])` gives `["a", "b"]`.
 - **Deep nesting**: The flattening is fully recursive. There is no way to flatten only one level.
+- **Indirect nesting**: Lists nested inside maps or objects are not flattened.
 - **Type consistency**: All leaf elements must be of compatible types.
 
 ```hcl
