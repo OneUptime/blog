@@ -12,14 +12,14 @@ Google Cloud Storage (GCS) is Google Cloud's object storage service, and it work
 
 ## Creating the GCS Bucket
 
-Before configuring the backend, create a bucket to hold your state files. You can do this with the `gcloud` CLI:
+Before configuring the backend, create a bucket to hold your state files. You can do this with the Google Cloud SDK:
 
 ```bash
 # Set your project ID
 
 PROJECT_ID="my-gcp-project"
 
-# Create a bucket with versioning enabled
+# Create a bucket
 # The bucket name must be globally unique
 gsutil mb -p "$PROJECT_ID" -l us-central1 gs://my-terraform-state-bucket/
 
@@ -97,10 +97,7 @@ You can also set the credentials via environment variable:
 
 ```bash
 # Point to the service account key file
-export GOOGLE_CREDENTIALS="/path/to/service-account-key.json"
-
-# Or set the content directly
-export GOOGLE_CREDENTIALS=$(cat /path/to/service-account-key.json)
+export GOOGLE_BACKEND_CREDENTIALS="/path/to/service-account-key.json"
 
 terraform init
 ```
@@ -241,7 +238,7 @@ gsutil iam ch \
   gs://my-terraform-state-bucket
 ```
 
-The required roles are:
+The required permissions are:
 - `storage.objects.create` - To write state
 - `storage.objects.get` - To read state
 - `storage.objects.delete` - To delete lock files
