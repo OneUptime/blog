@@ -57,7 +57,7 @@ resource "tfe_workspace" "production" {
   # Pin Terraform version
   terraform_version = "1.7.0"
 
-  # Queue all runs (do not skip intermediate commits)
+  # Do not queue the initial run automatically after workspace creation
   queue_all_runs = false
 
   # File triggers - only run when relevant files change
@@ -72,9 +72,9 @@ resource "tfe_workspace" "production" {
 
 **auto_apply**: When `true`, successful plans are applied without manual confirmation. Set this to `true` for dev/staging and `false` for production.
 
-**queue_all_runs**: When `false`, HCP Terraform skips intermediate runs and only processes the latest commit. This prevents a queue buildup when you push multiple commits quickly.
+**queue_all_runs**: When `false`, the workspace does not start automatically performing VCS-driven runs immediately after creation. Queue the first run manually to confirm the workspace is ready for future webhook-triggered runs.
 
-**trigger_patterns**: Specifies which file paths trigger a run. Without this, every commit to the branch triggers a run, even if the changes are in unrelated directories.
+**trigger_patterns**: Specifies which file paths trigger a run. In VCS-backed workspaces with a working directory, HCP Terraform filters automatic runs to that directory by default. Add trigger patterns when changes outside the working directory, such as shared modules, should also trigger runs.
 
 ## Repository Structure
 
@@ -275,7 +275,7 @@ resource "tfe_variable" "aws_key" {
 
 2. **Never auto-apply in production**. The manual confirmation step is your last line of defense.
 
-3. **Use trigger patterns** in monorepos. Without them, every commit triggers every workspace.
+3. **Use trigger patterns** in monorepos. They help include shared module paths and avoid unnecessary runs for unrelated changes.
 
 4. **Pin Terraform versions** on workspaces. Avoid surprises from automatic version upgrades.
 
