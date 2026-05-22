@@ -72,6 +72,8 @@ when:
     values: ["engineering"]
 ```
 
+JWT claim conditions require a `RequestAuthentication` policy, and raw claim matching supports claims that are strings or lists of strings.
+
 ### Source Attributes
 
 ```yaml
@@ -108,10 +110,10 @@ when:
 ### Connection Attributes
 
 ```yaml
-# Whether the connection uses mTLS
+# Server Name Indication (SNI) on a TLS connection
 when:
   - key: connection.sni
-    values: ["outbound_.8080_._.my-service.my-app.svc.cluster.local"]
+    values: ["my-service.my-app.svc.cluster.local"]
 ```
 
 ## Header-Based Conditions
@@ -138,7 +140,7 @@ spec:
           values: ["key-abc-123", "key-def-456", "key-ghi-789"]
 ```
 
-Only requests with a valid API key header are allowed. This is a simple way to implement API key authentication at the mesh level.
+Only requests with a valid API key header are allowed. This is a simple way to gate access on an API key-like header at the mesh level.
 
 ## Combining Header and JWT Conditions
 
@@ -192,11 +194,11 @@ spec:
           values: ["true"]
 ```
 
-A middleware or gateway plugin sets the `x-business-hours` header based on the current time before the request reaches the service.
+A trusted middleware or gateway plugin strips any incoming `x-business-hours` value and sets the header based on the current time before the request reaches the service.
 
 ## Conditions with notValues
 
-Use `notValues` to match everything except specific values:
+Use `DENY` with `values` to reject specific values:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -215,7 +217,7 @@ spec:
           values: ["bot-*", "crawler-*", "spider-*"]
 ```
 
-Or allow everyone except specific claim values:
+Or use `notValues` to allow everyone except specific claim values:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -412,8 +414,8 @@ kubectl logs -n my-app deploy/api-service -c istio-proxy | grep "rbac"
 ```
 
 Common mistakes:
-- **String matching is exact.** `request.headers[x-role]` with value `admin` won't match `Admin` or `ADMIN`.
-- **Header names are lowercase.** HTTP/2 converts headers to lowercase. Use `request.headers[x-custom-header]`, not `request.headers[X-Custom-Header]`.
-- **Missing requestPrincipals.** If you use `request.auth.claims` in `when` but don't include `requestPrincipals: ["*"]` in `from`, the JWT might not be processed for policy evaluation.
+- **String matching is case-sensitive.** `request.headers[x-role]` with value `admin` won't match `Admin` or `ADMIN`. Exact, prefix, suffix, and presence matches are supported.
+- **Header values are case-sensitive.** Header names are matched case-insensitively, but values are matched as strings.
+- **Missing RequestAuthentication.** If you use `request.auth.claims` in `when`, make sure a matching `RequestAuthentication` policy is configured. Include `requestPrincipals: ["*"]` when you want to require an authenticated JWT.
 
 Custom conditions give you the flexibility to implement complex access control patterns directly in your mesh configuration, keeping your application code focused on business logic instead of security plumbing.
