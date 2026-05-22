@@ -17,11 +17,11 @@ This guide covers the architectural decisions and practical configurations you n
 Before throwing more resources at the problem, figure out where the bottleneck actually is:
 
 ```bash
-# Check run queue depth - high numbers mean concurrency is the bottleneck
+# Check capacity queue depth - high numbers mean run execution capacity is the bottleneck
 
 curl -s \
   --header "Authorization: Bearer $TFE_ADMIN_TOKEN" \
-  "https://tfe.example.com/api/v2/admin/runs?filter[status]=pending" | \
+  "https://tfe.example.com/api/v2/admin/runs?filter[status]=plan_queued,apply_queued" | \
   jq '.meta.pagination["total-count"]'
 
 # Check plan/apply times - slow runs might indicate resource constraints
@@ -35,7 +35,7 @@ PGPASSWORD="${DB_PASSWORD}" psql -h "${DB_HOST}" -U tfe_admin -d tfe -c \
   "SELECT count(*) as active_queries FROM pg_stat_activity WHERE state = 'active';"
 
 # Check TFE host resource usage
-docker stats tfe --no-stream
+docker stats "$(docker compose ps -q tfe)" --no-stream
 ```
 
 ## Horizontal Scaling - Multiple TFE Nodes
@@ -85,8 +85,8 @@ resource "aws_lb_target_group" "tfe" {
   }
 
   health_check {
-    path                = "/_health_check"
-    port                = 443
+    path                = "/api/v1/health/readiness"
+    port                = "traffic-port"
     protocol            = "HTTPS"
     healthy_threshold   = 2
     unhealthy_threshold = 5
@@ -123,22 +123,28 @@ Each TFE node runs the same configuration, pointing to the shared external servi
 
 ```yaml
 # docker-compose.yml - Same on every TFE node
-version: "3.9"
+name: terraform-enterprise
 services:
   tfe:
-    image: images.releases.hashicorp.com/hashicorp/terraform-enterprise:v202402-1
+    image: images.releases.hashicorp.com/hashicorp/terraform-enterprise:<vYYYYMM-#>
     environment:
+      TFE_LICENSE: "${TFE_LICENSE}"
       TFE_HOSTNAME: tfe.example.com
+      TFE_ENCRYPTION_PASSWORD: "${TFE_ENCRYPTION_PASSWORD}"
+      TFE_OPERATIONAL_MODE: "active-active"
+      TFE_DISK_CACHE_VOLUME_NAME: "${COMPOSE_PROJECT_NAME}_terraform-enterprise-cache"
+      TFE_TLS_CERT_FILE: "/etc/ssl/private/terraform-enterprise/cert.pem"
+      TFE_TLS_KEY_FILE: "/etc/ssl/private/terraform-enterprise/key.pem"
 
       # External PostgreSQL (shared)
-      TFE_DATABASE_HOST: tfe-postgres.cluster-abc123.us-east-1.rds.amazonaws.com
+      TFE_DATABASE_HOST: tfe-postgres.cluster-abc123.us-east-1.rds.amazonaws.com:5432
       TFE_DATABASE_USER: tfe
       TFE_DATABASE_PASSWORD: "${DB_PASSWORD}"
       TFE_DATABASE_NAME: tfe
 
       # External Redis (shared)
-      TFE_REDIS_HOST: tfe-redis.abc123.ng.0001.use1.cache.amazonaws.com
-      TFE_REDIS_PORT: "6379"
+      TFE_REDIS_HOST: tfe-redis.abc123.ng.0001.use1.cache.amazonaws.com:6379
+      TFE_REDIS_USE_AUTH: "true"
       TFE_REDIS_PASSWORD: "${REDIS_PASSWORD}"
       TFE_REDIS_USE_TLS: "true"
 
@@ -152,11 +158,21 @@ services:
       TFE_CAPACITY_CONCURRENCY: "20"
 
     ports:
+      - "80:80"
       - "443:443"
+    cap_add:
+      - IPC_LOCK
+    read_only: true
+    tmpfs:
+      - /tmp:mode=01777
+      - /run
+      - /var/log/terraform-enterprise
     volumes:
-      - tfe-data:/var/lib/terraform-enterprise
+      - /var/run/docker.sock:/run/docker.sock
+      - ./certs:/etc/ssl/private/terraform-enterprise
+      - terraform-enterprise-cache:/var/cache/tfe-task-worker/terraform
 volumes:
-  tfe-data:
+  terraform-enterprise-cache:
 ```
 
 ## Vertical Scaling - Right-Sizing Instances
@@ -183,7 +199,7 @@ Sometimes you need bigger nodes rather than more nodes.
 TFE_CAPACITY_CONCURRENCY=20
 
 # Monitor memory usage to find the right number
-docker stats tfe --no-stream --format "{{.MemUsage}}"
+docker stats "$(docker compose ps -q tfe)" --no-stream --format "{{.MemUsage}}"
 ```
 
 ## Database Scaling
@@ -215,7 +231,7 @@ ALTER SYSTEM SET autovacuum_naptime = '30s';
 
 ### Read Replicas
 
-For read-heavy workloads (many users browsing workspaces, viewing state):
+Terraform Enterprise should connect to the primary database endpoint or a high-availability writer endpoint. Use read replicas only for external reporting or analytics queries that do not serve Terraform Enterprise application traffic:
 
 ```bash
 # Create a read replica for TFE reporting queries
