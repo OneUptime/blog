@@ -49,7 +49,7 @@ terraform -version
 You should see output like:
 
 ```text
-Terraform v1.7.5
+Terraform v1.15.4
 on darwin_arm64
 ```
 
@@ -61,7 +61,7 @@ If you prefer to download the binary directly:
 
 ```bash
 # Download the ARM64 build for macOS
-TERRAFORM_VERSION="1.7.5"
+TERRAFORM_VERSION="1.15.4"
 curl -LO "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_darwin_arm64.zip"
 
 # Extract and install
@@ -82,8 +82,8 @@ Make sure you download the `darwin_arm64` variant, not `darwin_amd64`.
 brew install tfenv
 
 # Install Terraform (automatically detects ARM64)
-tfenv install 1.7.5
-tfenv use 1.7.5
+tfenv install 1.15.4
+tfenv use 1.15.4
 
 # Verify
 terraform -version
@@ -125,11 +125,11 @@ softwareupdate --install-rosetta --agree-to-license
 If you absolutely need to run an x86_64 binary (rare, but possible with very old Terraform versions):
 
 ```bash
-# Run a command under Rosetta translation
+# Run an x86_64 Terraform binary under Rosetta translation
 arch -x86_64 terraform plan
 ```
 
-Or set up an entire terminal session in x86_64 mode by duplicating your Terminal app, checking "Open using Rosetta" in its Get Info panel, and running Terraform from there.
+This requires an x86_64 or universal Terraform binary in your `PATH`. If you installed the native ARM64 binary, install the AMD64 build separately before using this command. You can also set up an entire terminal session in x86_64 mode by duplicating your Terminal app, checking "Open using Rosetta" in its Get Info panel, and running the AMD64 Terraform binary from there.
 
 ## Provider Compatibility
 
@@ -154,7 +154,7 @@ file .terraform/providers/registry.terraform.io/hashicorp/aws/*/darwin_arm64/ter
 
 ### Dealing with Providers That Lack ARM64 Builds
 
-Occasionally, you might encounter a community provider that only has AMD64 builds. Terraform handles this by falling back to Rosetta translation, but you need Rosetta 2 installed.
+Occasionally, you might encounter an older or community provider that only has AMD64 builds. Terraform does not automatically install a `darwin_amd64` provider during a native `darwin_arm64` run, even if Rosetta 2 is installed. Use a provider version that publishes `darwin_arm64`, replace the provider if possible, or run an AMD64 Terraform CLI and AMD64 provider together under Rosetta.
 
 If a provider init fails with an architecture error:
 
@@ -162,14 +162,13 @@ If a provider init fails with an architecture error:
 # Check if the provider has an ARM64 build
 terraform providers lock -platform=darwin_arm64
 
-# If it fails, try adding the AMD64 platform as a fallback
+# If you plan to run the AMD64 CLI under Rosetta, verify and lock that platform too
 terraform providers lock -platform=darwin_arm64 -platform=darwin_amd64
 ```
 
-To force a specific platform in your lock file:
+The `required_providers` block selects the provider source and version, while `terraform providers lock` records checksums for the platforms you specify:
 
 ```hcl
-# In your terraform block, specify both platforms
 terraform {
   required_providers {
     someoldprovider = {
@@ -204,17 +203,17 @@ If you use Docker to run Terraform (see [How to Run Terraform in a Docker Contai
 
 ```bash
 # Run the native ARM64 Terraform image (fastest)
-docker run --rm --platform linux/arm64 hashicorp/terraform:1.7.5 version
+docker run --rm --platform linux/arm64 hashicorp/terraform:1.15.4 version
 
 # If no ARM64 image exists, run AMD64 via QEMU emulation (slower)
-docker run --rm --platform linux/amd64 hashicorp/terraform:1.7.5 version
+docker run --rm --platform linux/amd64 hashicorp/terraform:1.15.4 version
 ```
 
 The official `hashicorp/terraform` Docker image supports multi-architecture, so it will automatically pull the ARM64 variant on your Apple Silicon Mac:
 
 ```bash
 # This automatically uses the ARM64 image
-docker run --rm hashicorp/terraform:1.7.5 version
+docker run --rm hashicorp/terraform:1.15.4 version
 ```
 
 ## VS Code on Apple Silicon
@@ -234,7 +233,7 @@ brew install --cask visual-studio-code
 
 ### "Bad CPU type in executable"
 
-This error means you downloaded the AMD64 binary instead of ARM64:
+This error can mean you downloaded an AMD64-only binary and Rosetta is not available, or that you are forcing the wrong architecture for the binary you installed:
 
 ```bash
 # Check the binary architecture
