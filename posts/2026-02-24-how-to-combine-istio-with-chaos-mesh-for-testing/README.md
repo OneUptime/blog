@@ -62,10 +62,10 @@ helm install chaos-mesh chaos-mesh/chaos-mesh \
 Verify the installation:
 
 ```bash
-kubectl get pods -n chaos-mesh
+kubectl get pods -n chaos-mesh -l app.kubernetes.io/instance=chaos-mesh
 ```
 
-You should see the chaos-controller-manager, chaos-daemon (one per node), and chaos-dashboard pods.
+You should see the chaos-controller-manager, chaos-daemon (one per node), chaos-dashboard, and chaos-dns-server pods.
 
 ## Setting Up the Test Environment
 
@@ -75,8 +75,8 @@ Deploy an application with Istio sidecars:
 kubectl create namespace chaos-combined
 kubectl label namespace chaos-combined istio-injection=enabled
 
-kubectl apply -n chaos-combined -f https://raw.githubusercontent.com/istio/istio/release-1.22/samples/bookinfo/platform/kube/bookinfo.yaml
-kubectl apply -n chaos-combined -f https://raw.githubusercontent.com/istio/istio/release-1.22/samples/bookinfo/networking/destination-rule-all.yaml
+kubectl apply -n chaos-combined -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/bookinfo/platform/kube/bookinfo.yaml
+kubectl apply -n chaos-combined -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/bookinfo/networking/destination-rule-all.yaml
 
 kubectl wait --for=condition=ready pod --all -n chaos-combined --timeout=120s
 ```
@@ -111,20 +111,21 @@ Then add Chaos Mesh pod kill:
 
 ```yaml
 apiVersion: chaos-mesh.org/v1alpha1
-kind: PodChaos
+kind: Schedule
 metadata:
   name: reviews-pod-kill
   namespace: chaos-combined
 spec:
-  action: pod-kill
-  mode: one
-  selector:
-    namespaces:
-    - chaos-combined
-    labelSelectors:
-      app: reviews
-  scheduler:
-    cron: "*/2 * * * *"
+  schedule: "*/2 * * * *"
+  type: PodChaos
+  podChaos:
+    action: pod-kill
+    mode: one
+    selector:
+      namespaces:
+      - chaos-combined
+      labelSelectors:
+        app: reviews
 ```
 
 ```bash
@@ -177,8 +178,15 @@ spec:
     namespaces:
     - chaos-combined
     labelSelectors:
-      app: ratings
+      app: reviews
   direction: both
+  target:
+    mode: all
+    selector:
+      namespaces:
+      - chaos-combined
+      labelSelectors:
+        app: ratings
   duration: "60s"
 ```
 
@@ -264,11 +272,12 @@ spec:
     labelSelectors:
       app: reviews
   patterns:
+  - "ratings"
   - "ratings.chaos-combined.svc.cluster.local"
   duration: "60s"
 ```
 
-This makes DNS resolution fail for the ratings service from the reviews pods. Istio's service discovery should help here since Envoy resolves services through the Istio control plane, not through DNS directly for mesh traffic. But it is still worth testing to confirm.
+This makes DNS resolution fail for matching ratings service names from the reviews pods. For mesh traffic where Envoy already has cluster information from Istiod, service-to-service routing does not rely on application DNS in the same way. But it is still worth testing to confirm how your application behaves when DNS lookups fail.
 
 ## Scheduling Combined Experiments
 
