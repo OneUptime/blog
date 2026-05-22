@@ -27,14 +27,14 @@ The template has access to:
 Start by looking at the existing template:
 
 ```bash
-kubectl get configmap istio-sidecar-injector -n istio-system -o jsonpath='{.data.templates}'
+kubectl get configmap istio-sidecar-injector -n istio-system -o jsonpath='{.data.config}'
 ```
 
 This is long and complex. The key section is the `sidecar` template which defines the istio-proxy container, init container, and volumes.
 
 ## Using Custom Templates via IstioOperator
 
-The recommended way to customize injection is through the IstioOperator's `sidecarInjectorWebhook` configuration. You can define custom templates that extend or override the default:
+For custom injection templates, define them at installation time through the IstioOperator's `sidecarInjectorWebhook` configuration. Istio currently marks custom templates as experimental, so review them carefully during Istio upgrades. You can define custom templates that extend or override the default:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -254,7 +254,7 @@ spec:
 EOF
 
 # Test injection
-istioctl kube-inject -f test-pod.yaml -o yaml | kubectl diff -f -
+istioctl kube-inject -f test-pod.yaml | kubectl diff -f -
 ```
 
 This shows you exactly what the injection will produce without actually creating the pod.
@@ -264,7 +264,7 @@ This shows you exactly what the injection will produce without actually creating
 If your custom template isn't producing the expected result, enable debug logging on istiod:
 
 ```bash
-istioctl admin log --level injection:debug
+istioctl admin log --level all:debug
 ```
 
 Then create a test pod and check istiod logs:
