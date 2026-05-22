@@ -16,11 +16,11 @@ The choice between `tfconfig` and `tfplan` depends on what you are trying to val
 
 Use `tfconfig` when you need to check the configuration structure itself, like whether a resource block includes a specific argument, whether modules come from approved sources, or whether variables have descriptions. Use `tfplan` when you need to check the actual values that will be applied.
 
-For example, if you want to ensure every S3 bucket configuration includes a `server_side_encryption_configuration` block, use `tfconfig`. If you want to check that the encryption algorithm is specifically "aws:kms", use `tfplan` because the actual value might come from a variable or data source.
+For example, if you want to ensure every EC2 instance configuration includes a `tags` argument, use `tfconfig`. If you want to check that the resolved `instance_type` is specifically allowed, use `tfplan` because the actual value might come from a variable or data source.
 
 ## Importing tfconfig
 
-```python
+```sentinel
 # Standard import with alias
 
 import "tfconfig/v2" as tfconfig
@@ -30,7 +30,7 @@ Resources in tfconfig
 
 The `tfconfig.resources` collection contains every resource defined in the Terraform configuration. Each resource has a different structure than what you see in `tfplan`.
 
-```python
+```sentinel
 import "tfconfig/v2" as tfconfig
 
 # Browse all resources
@@ -52,7 +52,9 @@ Each resource in `tfconfig.resources` has these key properties:
 - **type** - Resource type (e.g., `aws_instance`)
 - **name** - Resource name (e.g., `web`)
 - **module_address** - Module path, empty for root module
+- **mode** - Resource mode, either `managed` for resources or `data` for data sources
 - **provider_config_key** - Provider configuration reference
+- **provisioners** - Ordered list of provisioners attached to the resource
 - **config** - Map of configured attributes
 - **count** - Count expression if present
 - **for_each** - For_each expression if present
@@ -62,18 +64,18 @@ Each resource in `tfconfig.resources` has these key properties:
 
 The `config` property is where things get interesting and slightly tricky. It contains the raw configuration expressions, not resolved values. Each config value has a `constant_value` or `references` property depending on whether it is a literal or an expression.
 
-```python
+```sentinel
 import "tfconfig/v2" as tfconfig
 
-# Get S3 bucket configurations
-s3_buckets = filter tfconfig.resources as _, r {
-    r.type is "aws_s3_bucket"
+# Get EC2 instance configurations
+ec2_instances = filter tfconfig.resources as _, r {
+    r.type is "aws_instance"
 }
 
-# Check that ACL is configured (not necessarily its value)
+# Check that tags are configured (not necessarily their values)
 main = rule {
-    all s3_buckets as _, bucket {
-        "acl" in bucket.config
+    all ec2_instances as _, instance {
+        "tags" in instance.config
     }
 }
 ```
@@ -82,29 +84,29 @@ main = rule {
 
 When a configuration attribute is set to a literal value, you can access it with `constant_value`. When it references a variable or another resource, it has `references` instead:
 
-```python
+```sentinel
 import "tfconfig/v2" as tfconfig
 
-s3_buckets = filter tfconfig.resources as _, r {
-    r.type is "aws_s3_bucket"
+ec2_instances = filter tfconfig.resources as _, r {
+    r.type is "aws_instance"
 }
 
-# Check for a literal (constant) ACL value
-check_acl = func(bucket) {
-    if "acl" not in bucket.config {
+# Check for a literal (constant) AMI value
+check_ami = func(instance) {
+    if "ami" not in instance.config {
         return false
     }
 
-    acl_config = bucket.config.acl
+    ami_config = instance.config.ami
 
     # If it is a constant value, we can check it directly
-    if "constant_value" in acl_config {
-        return acl_config.constant_value is "private"
+    if "constant_value" in ami_config {
+        return ami_config.constant_value is "ami-abcdefgh012345"
     }
 
     # If it is a reference, we can check what it references
-    if "references" in acl_config {
-        print("ACL is set via reference:", acl_config.references)
+    if "references" in ami_config {
+        print("AMI is set via reference:", ami_config.references)
         # We cannot validate the actual value here - use tfplan for that
         return true
     }
@@ -113,8 +115,8 @@ check_acl = func(bucket) {
 }
 
 main = rule {
-    all s3_buckets as _, bucket {
-        check_acl(bucket)
+    all ec2_instances as _, instance {
+        check_ami(instance)
     }
 }
 ```
@@ -123,7 +125,7 @@ main = rule {
 
 The `tfconfig.module_calls` collection lets you inspect how modules are used in the configuration. This is particularly useful for enforcing module source standards.
 
-```python
+```sentinel
 import "tfconfig/v2" as tfconfig
 
 # Get all module calls
@@ -133,7 +135,7 @@ modules = tfconfig.module_calls
 main = rule {
     all modules as _, mod {
         mod.source matches "^app.terraform.io/myorg/.*" or
-        mod.source matches "^./modules/.*"
+        mod.source matches "^\\./modules/.*"
     }
 }
 ```
@@ -150,7 +152,7 @@ Each module call has:
 
 ### Enforcing Module Version Constraints
 
-```python
+```sentinel
 import "tfconfig/v2" as tfconfig
 
 modules = tfconfig.module_calls
@@ -159,7 +161,7 @@ modules = tfconfig.module_calls
 main = rule {
     all modules as _, mod {
         # Local modules do not need version constraints
-        if mod.source matches "^\\./.*" {
+        if mod.source matches "^(\\./|\\.\\./).*" {
             true
         } else {
             # Registry modules must have a version constraint
@@ -173,7 +175,7 @@ main = rule {
 
 The `tfconfig.variables` collection gives you access to all variable definitions:
 
-```python
+```sentinel
 import "tfconfig/v2" as tfconfig
 
 variables = tfconfig.variables
@@ -196,24 +198,23 @@ main = rule {
 - **name** - Variable name
 - **description** - Variable description
 - **default** - Default value (null if no default)
-- **sensitive** - Whether the variable is marked as sensitive
 - **module_address** - Module containing the variable
 
-### Enforcing Sensitive Variables
+### Enforcing Defaults for Optional Variables
 
-```python
+```sentinel
 import "tfconfig/v2" as tfconfig
 
 variables = tfconfig.variables
 
-# Variables with "password", "secret", or "key" in the name must be sensitive
-sensitive_patterns = ["password", "secret", "key", "token"]
+# Variables with "optional" in the name must declare a default
+optional_patterns = ["optional"]
 
-check_sensitivity = func(name, variable) {
-    for sensitive_patterns as pattern {
+check_default = func(name, variable) {
+    for optional_patterns as pattern {
         if name matches ".*" + pattern + ".*" {
-            if variable.sensitive is not true {
-                print("Variable", name, "should be marked as sensitive")
+            if variable.default is null {
+                print("Variable", name, "should declare a default")
                 return false
             }
         }
@@ -223,7 +224,7 @@ check_sensitivity = func(name, variable) {
 
 main = rule {
     all variables as name, v {
-        check_sensitivity(name, v)
+        check_default(name, v)
     }
 }
 ```
@@ -232,7 +233,7 @@ main = rule {
 
 The `tfconfig.outputs` collection lets you check output definitions:
 
-```python
+```sentinel
 import "tfconfig/v2" as tfconfig
 
 outputs = tfconfig.outputs
@@ -264,7 +265,7 @@ main = rule {
 
 You can inspect provider configurations as well:
 
-```python
+```sentinel
 import "tfconfig/v2" as tfconfig
 
 providers = tfconfig.providers
@@ -272,7 +273,7 @@ providers = tfconfig.providers
 # Check that all AWS providers use a specific region
 main = rule {
     all providers as _, provider {
-        if provider.provider_config_key matches "^aws.*" {
+        if provider.name is "aws" {
             "region" in provider.config and
             provider.config.region.constant_value in ["us-east-1", "us-west-2"]
         } else {
@@ -284,13 +285,15 @@ main = rule {
 
 ## Data Sources
 
-Data sources in the configuration are available through `tfconfig.datasources`:
+Data sources in the configuration are included in `tfconfig.resources` with `mode` set to `"data"`:
 
-```python
+```sentinel
 import "tfconfig/v2" as tfconfig
 
 # Get all data sources
-data_sources = tfconfig.datasources
+data_sources = filter tfconfig.resources as _, r {
+    r.mode is "data"
+}
 
 # Ensure data sources follow naming conventions
 main = rule {
@@ -302,18 +305,15 @@ main = rule {
 
 ## Practical Examples
 
-### Enforcing Backend Configuration
+### Blocking Provisioners
 
-```python
+```sentinel
 import "tfconfig/v2" as tfconfig
 
-# Ensure Terraform block has required version
-provisioners = filter tfconfig.resources as _, r {
-    # Check for provisioners (they appear in the config)
-    "provisioner" in r.config
-}
+# Get all provisioners from the configuration
+provisioners = tfconfig.provisioners
 
-# Block use of local-exec and remote-exec provisioners
+# Block use of provisioners
 main = rule {
     length(provisioners) is 0
 }
@@ -321,7 +321,7 @@ main = rule {
 
 ### Preventing Use of Hardcoded Credentials
 
-```python
+```sentinel
 import "tfconfig/v2" as tfconfig
 
 # Check all resources for hardcoded credential patterns
@@ -351,7 +351,7 @@ main = rule {
 
 ### Enforcing Resource Naming Conventions
 
-```python
+```sentinel
 import "tfconfig/v2" as tfconfig
 
 all_resources = tfconfig.resources
