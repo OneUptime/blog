@@ -74,7 +74,7 @@ spec:
             notRequestPrincipals: ["*"]
 ```
 
-This denies requests that do not have a valid request principal. A request principal is set when a valid JWT token is present and validated. So requests without a token or with an invalid token get a 403 response.
+This denies requests that do not have a valid request principal. A request principal is set when a valid JWT token is present and validated. So requests without a token get a 403 response. Requests with invalid tokens are rejected by RequestAuthentication before authorization and typically get a 401 response.
 
 ```bash
 kubectl apply -f authorization-policy.yaml
@@ -261,7 +261,7 @@ Common issues include:
 
 ## JWKS Caching
 
-Istio caches the JWKS keys to avoid fetching them on every request. The cache TTL defaults to 20 minutes. If you rotate signing keys, there can be a window where new tokens signed with the new key are rejected. Plan key rotations accordingly.
+Istio caches the JWKS keys to avoid fetching them on every request. When Istiod fetches JWKS keys, the default refresh interval is 20 minutes. If you rotate signing keys, there can be a window where new tokens signed with the new key are rejected. Plan key rotations accordingly.
 
 ## Summary
 
