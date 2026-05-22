@@ -33,7 +33,7 @@ Terraform reads all files, builds a graph of dependencies, and evaluates things 
 
 ## The Dependency Graph
 
-Terraform builds a directed acyclic graph (DAG) of all resources, data sources, variables, locals, and outputs. The edges in this graph come from references.
+Terraform builds a dependency graph of resources, data sources, provider configurations, and other configuration objects. The edges in this graph come from references.
 
 ```hcl
 variable "cidr" {
@@ -54,7 +54,7 @@ resource "aws_subnet" "public" {
 }
 ```
 
-The evaluation order here is: variable -> local -> VPC resource -> subnet resource. Terraform figures this out automatically from the references.
+The dependency order here is: variable -> local -> VPC resource -> subnet resource. Terraform figures this out automatically from the references.
 
 You can visualize the graph:
 
@@ -73,12 +73,12 @@ Terraform reads all `.tf` files in the directory and parses them. At this point,
 
 ### Phase 2: Variable Resolution
 
-Input variables are resolved first. Their values come from:
-1. Default values in the `variable` block
-2. `.tfvars` files
+Input variables must be assigned before Terraform can build a plan. Their values can come from:
+1. Command-line flags (`-var name=value`) and `-var-file` options
+2. Automatically loaded `.tfvars` files
 3. Environment variables (`TF_VAR_name`)
-4. Command-line flags (`-var name=value`)
-5. Interactive prompts
+4. Default values in the `variable` block
+5. Interactive prompts for variables that still have no value
 
 ```hcl
 # Variables are available before anything else
@@ -90,7 +90,7 @@ variable "environment" {
 
 ### Phase 3: Local Value Evaluation
 
-Local values are evaluated next. They can reference variables and other locals (as long as there are no circular references):
+Local values are expressions, not stored variables. Terraform evaluates them when something depends on them, and they can reference variables, resources, data sources, functions, and other locals (as long as there are no circular references):
 
 ```hcl
 locals {
@@ -104,7 +104,7 @@ locals {
 
 ### Phase 4: Data Source and Resource Evaluation
 
-Data sources and resources are evaluated based on their dependency relationships. Independent resources can be evaluated in parallel:
+Data sources and resources are evaluated based on their dependency relationships. Data sources are usually read during planning when their arguments are known, but Terraform can defer reading them until apply if their arguments depend on apply-time values. Independent resources can be evaluated in parallel:
 
 ```hcl
 # These two have no dependency - they can be evaluated in parallel
@@ -125,7 +125,7 @@ resource "aws_s3_bucket_policy" "data" {
 
 ### Phase 5: Output Evaluation
 
-Outputs are evaluated last, after all resources and data sources:
+Root module outputs are finalized after Terraform has evaluated the values they reference. If an output depends on a value that is not known until apply, the output is also unknown during planning:
 
 ```hcl
 output "bucket_arn" {
@@ -159,15 +159,22 @@ This distinction matters when you try to use a computed value in a context that 
 
 ```hcl
 # This WILL NOT work - for_each keys must be known at plan time
-resource "aws_eip" "web" {
-  for_each = toset(aws_instance.web[*].id)  # IDs unknown at plan time
+resource "aws_eip" "web_bad" {
+  for_each = toset([aws_instance.web.id])  # ID unknown at plan time
   instance = each.key
 }
 
 # This works because the keys come from a variable
+resource "aws_instance" "web_by_name" {
+  for_each = toset(var.instance_names)
+
+  ami           = "ami-0c55b159cbfafe1f0"
+  instance_type = "t3.micro"
+}
+
 resource "aws_eip" "web" {
   for_each = toset(var.instance_names)  # known at plan time
-  instance = aws_instance.web[each.key].id
+  instance = aws_instance.web_by_name[each.key].id
 }
 ```
 
@@ -193,7 +200,7 @@ resource "aws_instance" "replica" {
 
 ## Provider Configuration Evaluation
 
-Provider blocks are evaluated before resources, but they have restrictions. They cannot reference resources or data sources:
+Provider blocks are evaluated before Terraform can manage resources with that provider, so their arguments must be known before apply. They can reference input variables and static values, but they cannot reference computed resource attributes:
 
 ```hcl
 # This works - variables are available for provider config
@@ -201,12 +208,12 @@ provider "aws" {
   region = var.aws_region
 }
 
-# This does NOT work - providers can't reference resources
+# This does NOT work - the endpoint is computed by a resource
 provider "kubernetes" {
   host = aws_eks_cluster.main.endpoint  # ERROR
 }
 
-# Instead, use data sources or pass values from outside
+# Instead, pass values from outside or use a separate Terraform configuration
 ```
 
 ## Circular Dependency Detection
@@ -294,6 +301,6 @@ Resources that do not depend on each other are created simultaneously, which spe
 
 ## Wrapping Up
 
-Terraform expression evaluation is driven by the dependency graph, not by file order or block order. Variables are resolved first, then locals, then data sources and resources (in dependency order), and finally outputs. Understanding the difference between plan-time and apply-time evaluation helps you avoid errors with `count`, `for_each`, and other constructs that need values known during planning. When in doubt, run `terraform graph` to visualize the dependency chain.
+Terraform expression evaluation is driven by the dependency graph, not by file order or block order. Input variables must be assigned before planning, locals are evaluated when referenced, data sources and resources are handled in dependency order, and outputs are finalized from the values they reference. Understanding the difference between plan-time and apply-time evaluation helps you avoid errors with `count`, `for_each`, and other constructs that need values known during planning. When in doubt, run `terraform graph` to visualize the dependency chain.
 
 For more on Terraform expressions, see [How to Reference Resource Attributes in Terraform](https://oneuptime.com/blog/post/2026-02-23-terraform-reference-resource-attributes/view) and [How to Reference Local Values in Terraform](https://oneuptime.com/blog/post/2026-02-23-terraform-reference-local-values/view).
