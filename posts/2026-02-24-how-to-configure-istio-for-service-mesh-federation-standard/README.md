@@ -8,13 +8,13 @@ Description: Learn how to federate multiple Istio service meshes for cross-organ
 
 ---
 
-Service mesh federation is about connecting multiple independent service meshes so that services in one mesh can communicate with services in another. This is different from multi-cluster Istio where all clusters share a single control plane or trust domain. Federation is for scenarios where each mesh is independently operated, possibly by different teams or organizations, and you want controlled, secure communication between them.
+Service mesh federation is about connecting multiple independent service meshes so that services in one mesh can communicate with services in another. This is different from multi-cluster Istio, where multiple clusters participate in one mesh and share service discovery and trust configuration, even when they run more than one control plane. Federation is for scenarios where each mesh is independently operated, possibly by different teams or organizations, and you want controlled, secure communication between them.
 
 This is particularly useful when you have separate meshes for different environments (staging and production), different business units, or when working with partner organizations.
 
 ## Federation vs. Multi-Cluster
 
-It is worth clarifying the distinction. Multi-cluster Istio typically means one mesh spanning multiple clusters with a shared control plane (or shared configuration) and a common trust domain. Federation means separate meshes, each with their own control plane and trust domain, connected through explicitly configured gateways.
+It is worth clarifying the distinction. Multi-cluster Istio typically means one mesh spanning multiple clusters with shared service discovery and a common trust configuration. Federation means separate meshes, each with their own control plane and trust domain, connected through explicitly configured gateways.
 
 Federation gives you stronger isolation boundaries. Each mesh operates independently and only exposes specific services through a well-defined interface.
 
@@ -27,7 +27,7 @@ Istio federation relies on a few building blocks:
 3. **Separate trust domains** with cross-domain certificate verification
 4. **DNS or hostname-based routing** to direct traffic to the remote mesh
 
-The basic flow is: Service A in Mesh 1 calls a service that resolves to a ServiceEntry. That ServiceEntry points to the east-west gateway of Mesh 2. The gateway terminates mTLS from Mesh 1, re-establishes mTLS within Mesh 2, and forwards the request to the target service.
+The basic flow is: Service A in Mesh 1 calls a service that resolves to a ServiceEntry. That ServiceEntry points to the east-west gateway of Mesh 2, and a DestinationRule originates Istio mTLS from the Mesh 1 sidecar. The Mesh 2 gateway passes the encrypted connection through based on SNI and forwards it to the target service's sidecar.
 
 ## Setting Up the East-West Gateway
 
@@ -76,7 +76,7 @@ Repeat for Mesh 2 with appropriate network labels.
 
 For federation, each mesh has its own root CA and trust domain. To allow mTLS between meshes, you need to configure each mesh to trust the other mesh's CA.
 
-Export the root certificate from each mesh:
+If you use Istio plug-in CA certificates, export the root certificate from each mesh:
 
 ```bash
 # From Mesh 1
@@ -125,12 +125,33 @@ spec:
         name: tls
         protocol: TLS
       tls:
-        mode: AUTO_PASSTHROUGH
+        mode: PASSTHROUGH
       hosts:
         - "*.mesh2.example.com"
+---
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: federation-payment-route
+  namespace: payments
+spec:
+  hosts:
+    - payment-service.payments.mesh2.example.com
+  gateways:
+    - istio-system/federation-gateway
+  tls:
+    - match:
+        - port: 15443
+          sniHosts:
+            - payment-service.payments.mesh2.example.com
+      route:
+        - destination:
+            host: payment-service.payments.svc.cluster.local
+            port:
+              number: 8080
 ```
 
-The `AUTO_PASSTHROUGH` mode is important here. It allows the gateway to route traffic based on the SNI header without terminating TLS, which preserves the end-to-end mTLS chain.
+The `PASSTHROUGH` mode is important here. It allows the gateway to route traffic based on the SNI header without terminating TLS, which preserves the end-to-end mTLS chain.
 
 ## Creating ServiceEntry for Remote Services
 
@@ -145,7 +166,7 @@ metadata:
 spec:
   hosts:
     - payment-service.payments.mesh2.example.com
-  location: MESH_EXTERNAL
+  location: MESH_INTERNAL
   ports:
     - number: 8080
       name: http
@@ -155,9 +176,23 @@ spec:
     - address: eastwestgateway.mesh2.example.com
       ports:
         http: 15443
+  subjectAltNames:
+    - "spiffe://mesh2.example.com/ns/payments/sa/payment-service"
+---
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: remote-payment-mtls
+  namespace: default
+spec:
+  host: payment-service.payments.mesh2.example.com
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+      sni: payment-service.payments.mesh2.example.com
 ```
 
-Now services in Mesh 1 can call `payment-service.payments.mesh2.example.com:8080` and the traffic will be routed through the east-west gateway to the actual service in Mesh 2.
+Now services in Mesh 1 can call `payment-service.payments.mesh2.example.com:8080` and the traffic will be sent as Istio mTLS through the east-west gateway to the actual service in Mesh 2.
 
 ## Adding Routing Rules for Federated Services
 
@@ -203,7 +238,7 @@ spec:
     - from:
         - source:
             principals:
-              - "spiffe://mesh1.example.com/ns/default/sa/order-service"
+              - "mesh1.example.com/ns/default/sa/order-service"
       to:
         - operation:
             methods: ["GET", "POST"]
