@@ -309,7 +309,7 @@ locals {
   region           = "us-east-1"
 
   # Sanitize the project name
-  safe_name = lower(replace(replace(local.raw_project_name, "/[^a-zA-Z0-9]/", ""), "/\\s+/", "-"))
+  safe_name = lower(replace(replace(local.raw_project_name, "/\\s+/", "-"), "/[^a-zA-Z0-9-]/", ""))
 
   # Build resource names with consistent formatting
   resource_prefix = format("%s-%s-%s", local.safe_name, local.environment, local.region)
