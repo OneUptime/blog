@@ -23,11 +23,15 @@ terraform {
   required_providers {
     time = {
       source  = "hashicorp/time"
-      version = "~> 0.11"
+      version = "~> 0.14"
     }
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 5.0"
+      version = "~> 6.0"
+    }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.9"
     }
   }
 }
@@ -116,7 +120,7 @@ resource "time_offset" "cert_expiry" {
 
 ## time_rotating - Triggering Periodic Changes
 
-The time_rotating resource creates a timestamp that updates on a schedule:
+The time_rotating resource creates a timestamp that updates on a schedule when Terraform is executed:
 
 ```hcl
 # time-rotating.tf - Schedule periodic rotations
@@ -183,7 +187,7 @@ resource "aws_lambda_function" "app" {
 
   function_name = "app-${var.environment}"
   role          = aws_iam_role.app.arn
-  runtime       = "python3.11"
+  runtime       = "python3.12"
   handler       = "handler.handler"
   filename      = "${path.module}/lambda.zip"
 }
