@@ -188,20 +188,46 @@ data "aws_ecs_cluster" "platform" {
   cluster_name = "${var.environment}-platform"
 }
 
+data "aws_acm_certificate" "platform" {
+  domain      = "*.${var.environment}.example.com"
+  statuses    = ["ISSUED"]
+  most_recent = true
+}
+
+data "aws_sns_topic" "platform_alerts" {
+  name = "${var.environment}-platform-alerts"
+}
+
+resource "aws_security_group" "app" {
+  name_prefix = "${var.name}-${var.environment}-"
+  description = "Security group for ${var.name} ${var.environment}"
+  vpc_id      = data.aws_vpc.platform.id
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = local.tags
+}
+
 # The ECS service - using a Level 2 module internally
 module "service" {
   source = "../../components/ecs-service"
 
-  name            = "${var.name}-${var.environment}"
-  cluster_id      = data.aws_ecs_cluster.platform.id
-  cluster_name    = data.aws_ecs_cluster.platform.cluster_name
-  container_image = var.container_image
-  container_port  = var.container_port
-  cpu             = local.config.cpu
-  memory          = local.config.memory
-  desired_count   = local.is_production ? local.config.desired_count * 2 : local.config.desired_count
-  vpc_id          = data.aws_vpc.platform.id
-  subnet_ids      = data.aws_subnets.private.ids
+  name               = "${var.name}-${var.environment}"
+  cluster_id         = data.aws_ecs_cluster.platform.arn
+  cluster_name       = data.aws_ecs_cluster.platform.cluster_name
+  container_image    = var.container_image
+  container_port     = var.container_port
+  cpu                = local.config.cpu
+  memory             = local.config.memory
+  desired_count      = local.is_production ? local.config.desired_count * 2 : local.config.desired_count
+  vpc_id              = data.aws_vpc.platform.id
+  subnet_ids          = data.aws_subnets.private.ids
+  security_group_ids = [aws_security_group.app.id]
 
   environment_variables = merge(
     {
@@ -256,7 +282,7 @@ module "database" {
   subnet_ids     = data.aws_subnets.private.ids
   multi_az       = local.is_production
 
-  allowed_security_group_ids = [module.service.security_group_id]
+  allowed_security_group_ids = [aws_security_group.app.id]
 
   tags = local.tags
 }
@@ -273,7 +299,7 @@ module "cache" {
   subnet_ids     = data.aws_subnets.private.ids
   num_cache_nodes = local.is_production ? 2 : 1
 
-  allowed_security_group_ids = [module.service.security_group_id]
+  allowed_security_group_ids = [aws_security_group.app.id]
 
   tags = local.tags
 }
@@ -342,7 +368,7 @@ From a development team's perspective, deploying a new service is simple:
 # A developer only needs to write this to get a production-ready web app
 
 module "api" {
-  source = "app.terraform.io/myorg/web-app/platform"
+  source = "app.terraform.io/myorg/web-app/aws"
   version = "3.0.0"
 
   name            = "user-api"
