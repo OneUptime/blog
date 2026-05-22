@@ -303,20 +303,25 @@ resource "aws_iam_role_policy" "tfe_s3" {
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Effect = "Allow"
-      Action = [
-        "s3:GetObject",
-        "s3:PutObject",
-        "s3:DeleteObject",
-        "s3:ListBucket",
-        "s3:GetBucketLocation"
-      ]
-      Resource = [
-        aws_s3_bucket.tfe.arn,
-        "${aws_s3_bucket.tfe.arn}/*"
-      ]
-    }]
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:ListBucket",
+          "s3:GetBucketLocation"
+        ]
+        Resource = aws_s3_bucket.tfe.arn
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:DeleteObject"
+        ]
+        Resource = "${aws_s3_bucket.tfe.arn}/*"
+      }
+    ]
   })
 }
 
@@ -341,9 +346,12 @@ resource "aws_instance" "tfe" {
   }
 
   user_data = templatefile("${path.module}/templates/user-data.sh", {
+    tfe_image_tag          = var.tfe_image_tag
     tfe_license            = var.tfe_license
     tfe_hostname           = var.tfe_hostname
     tfe_encryption_password = var.tfe_encryption_password
+    tfe_tls_cert_pem       = var.tfe_tls_cert_pem
+    tfe_tls_key_pem        = var.tfe_tls_key_pem
     db_host                = aws_db_instance.tfe.address
     db_username            = aws_db_instance.tfe.username
     db_password            = var.db_password
@@ -392,23 +400,35 @@ systemctl start docker
 echo "${tfe_license}" | docker login images.releases.hashicorp.com \
   --username terraform --password-stdin
 
-# Pull the TFE image
-docker pull images.releases.hashicorp.com/hashicorp/terraform-enterprise:latest
+# Pull the TFE image. Replace the tag with the TFE release you want to run.
+docker pull "images.releases.hashicorp.com/hashicorp/terraform-enterprise:${tfe_image_tag}"
 
-# Create configuration directory
-mkdir -p /etc/terraform-enterprise
+# Create configuration directory and write the TLS materials TFE serves to the ALB
+mkdir -p /etc/terraform-enterprise/certs
+cat > /etc/terraform-enterprise/certs/cert.pem <<'EOF'
+${tfe_tls_cert_pem}
+EOF
+cat > /etc/terraform-enterprise/certs/key.pem <<'EOF'
+${tfe_tls_key_pem}
+EOF
+chmod 600 /etc/terraform-enterprise/certs/key.pem
 
 # Run Terraform Enterprise
 docker run -d \
   --name terraform-enterprise \
   --restart always \
   -p 443:443 \
-  -p 8800:8800 \
-  -v tfe-data:/var/lib/terraform-enterprise \
+  -p 8443:8443 \
+  -v /var/run/docker.sock:/run/docker.sock \
+  -v /etc/terraform-enterprise/certs:/etc/ssl/private/terraform-enterprise:ro \
+  -v tfe-task-worker-cache:/var/cache/tfe-task-worker/terraform \
   -e TFE_LICENSE="${tfe_license}" \
   -e TFE_HOSTNAME="${tfe_hostname}" \
   -e TFE_ENCRYPTION_PASSWORD="${tfe_encryption_password}" \
   -e TFE_OPERATIONAL_MODE="external" \
+  -e TFE_DISK_CACHE_VOLUME_NAME="tfe-task-worker-cache" \
+  -e TFE_TLS_CERT_FILE="/etc/ssl/private/terraform-enterprise/cert.pem" \
+  -e TFE_TLS_KEY_FILE="/etc/ssl/private/terraform-enterprise/key.pem" \
   -e TFE_DATABASE_HOST="${db_host}" \
   -e TFE_DATABASE_USER="${db_username}" \
   -e TFE_DATABASE_PASSWORD="${db_password}" \
@@ -419,7 +439,11 @@ docker run -d \
   -e TFE_OBJECT_STORAGE_S3_REGION="${s3_region}" \
   -e TFE_OBJECT_STORAGE_S3_USE_INSTANCE_PROFILE="true" \
   --cap-add IPC_LOCK \
-  images.releases.hashicorp.com/hashicorp/terraform-enterprise:latest
+  --read-only \
+  --tmpfs /tmp:mode=01777 \
+  --tmpfs /run \
+  --tmpfs /var/log/terraform-enterprise \
+  "images.releases.hashicorp.com/hashicorp/terraform-enterprise:${tfe_image_tag}"
 ```
 
 ## Step 6: Create the Application Load Balancer
@@ -469,7 +493,7 @@ resource "aws_lb_target_group" "tfe" {
   vpc_id   = aws_vpc.tfe.id
 
   health_check {
-    path                = "/_health_check"
+    path                = "/api/v1/health/readiness"
     port                = 443
     protocol            = "HTTPS"
     healthy_threshold   = 3
@@ -538,10 +562,27 @@ variable "tfe_license" {
   description = "Terraform Enterprise license"
 }
 
+variable "tfe_image_tag" {
+  type        = string
+  description = "Terraform Enterprise image tag, for example 2.0.1"
+}
+
 variable "tfe_encryption_password" {
   type        = string
   sensitive   = true
   description = "Encryption password for TFE data"
+}
+
+variable "tfe_tls_cert_pem" {
+  type        = string
+  sensitive   = true
+  description = "PEM-encoded TLS certificate served by the TFE instance"
+}
+
+variable "tfe_tls_key_pem" {
+  type        = string
+  sensitive   = true
+  description = "PEM-encoded TLS private key served by the TFE instance"
 }
 
 variable "db_password" {
@@ -573,17 +614,21 @@ variable "route53_zone_id" {
 terraform init
 
 terraform plan \
+  -out=tfplan \
   -var="tfe_hostname=tfe.example.com" \
+  -var="tfe_image_tag=2.0.1" \
   -var="tfe_license=$(cat license.rli)" \
   -var="tfe_encryption_password=$(openssl rand -hex 32)" \
+  -var="tfe_tls_cert_pem=$(cat cert.pem)" \
+  -var="tfe_tls_key_pem=$(cat key.pem)" \
   -var="db_password=$(openssl rand -base64 24)" \
   -var="ssh_key_name=my-key" \
   -var="acm_certificate_arn=arn:aws:acm:..." \
   -var="route53_zone_id=Z..."
 
-terraform apply
+terraform apply tfplan
 ```
 
 ## Summary
 
-Deploying Terraform Enterprise on AWS involves setting up networking, a managed PostgreSQL database, S3 storage, and an EC2 instance running the TFE container. Using Terraform to deploy Terraform Enterprise (yes, it is recursive) gives you reproducible, version-controlled infrastructure. For production, add an Auto Scaling Group for high availability, enable RDS Multi-AZ, and configure CloudWatch alarms for monitoring.
+Deploying Terraform Enterprise on AWS involves setting up networking, a managed PostgreSQL database, S3 storage, and an EC2 instance running the TFE container. Using Terraform to deploy Terraform Enterprise (yes, it is recursive) gives you reproducible, version-controlled infrastructure. For production, add an Auto Scaling Group for high availability, keep RDS Multi-AZ enabled, and configure CloudWatch alarms for monitoring.
