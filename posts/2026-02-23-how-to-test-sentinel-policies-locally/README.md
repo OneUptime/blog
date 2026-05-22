@@ -17,13 +17,13 @@ The Sentinel CLI is a standalone binary that you can download from the HashiCorp
 ```bash
 # Download for Linux
 
-wget https://releases.hashicorp.com/sentinel/0.24.0/sentinel_0.24.0_linux_amd64.zip
-unzip sentinel_0.24.0_linux_amd64.zip
+wget https://releases.hashicorp.com/sentinel/0.40.0/sentinel_0.40.0_linux_amd64.zip
+unzip sentinel_0.40.0_linux_amd64.zip
 sudo mv sentinel /usr/local/bin/
 
-# Download for macOS
-wget https://releases.hashicorp.com/sentinel/0.24.0/sentinel_0.24.0_darwin_amd64.zip
-unzip sentinel_0.24.0_darwin_amd64.zip
+# Download for macOS (Intel)
+wget https://releases.hashicorp.com/sentinel/0.40.0/sentinel_0.40.0_darwin_amd64.zip
+unzip sentinel_0.40.0_darwin_amd64.zip
 sudo mv sentinel /usr/local/bin/
 
 # Verify installation
@@ -367,10 +367,9 @@ organization = {
     "name": "my-org",
 }
 
-source = "tfe-vcs"
 is_destroy = false
 
-cost_estimation = {
+cost_estimate = {
     "prior_monthly_cost": "1500.00",
     "proposed_monthly_cost": "1800.00",
     "delta_monthly_cost": "300.00",
@@ -446,8 +445,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install Sentinel
         run: |
-          wget https://releases.hashicorp.com/sentinel/0.24.0/sentinel_0.24.0_linux_amd64.zip
-          unzip sentinel_0.24.0_linux_amd64.zip
+          wget https://releases.hashicorp.com/sentinel/0.40.0/sentinel_0.40.0_linux_amd64.zip
+          unzip sentinel_0.40.0_linux_amd64.zip
           sudo mv sentinel /usr/local/bin/
       - name: Run tests
         run: sentinel test -verbose
