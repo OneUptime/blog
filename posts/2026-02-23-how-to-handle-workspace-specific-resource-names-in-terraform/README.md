@@ -69,8 +69,8 @@ resource "aws_lambda_function" "handler" {
 ```hcl
 # Storage accounts: lowercase letters and numbers only. 3-24 chars. Globally unique.
 resource "azurerm_storage_account" "main" {
-  # Remove hyphens and truncate for storage account constraints
-  name = substr(replace(lower("myapp${terraform.workspace}"), "-", ""), 0, 24)
+  # Remove non-alphanumeric characters and truncate for storage account constraints
+  name = substr(replace(lower("myapp${terraform.workspace}"), "/[^a-z0-9]/", ""), 0, 24)
 }
 
 # Resource groups: alphanumeric, hyphens, underscores, parens, periods. 1-90 chars.
@@ -148,8 +148,8 @@ output "with_hash" {
 }
 
 output "no_hyphens" {
-  description = "Name without hyphens (for storage accounts, etc.)"
-  value       = replace(local.standard, "-", "")
+  description = "Name without non-alphanumeric characters (for storage accounts, etc.)"
+  value       = replace(local.standard, "/[^a-z0-9]/", "")
 }
 ```
 
@@ -196,9 +196,9 @@ locals {
   db_prefix     = "myapp-db"
   db_identifier = "${local.db_prefix}-${local.safe_workspace}"
 
-  # Azure storage account: 24 char max, no hyphens
-  # "myapp" = 5 chars, leaves 19 for workspace (minus hyphens)
-  storage_name = substr(replace(lower("myapp${local.safe_workspace}"), "-", ""), 0, 24)
+  # Azure storage account: 24 char max, lowercase letters and numbers only
+  # "myapp" = 5 chars, leaves 19 for workspace after removing invalid characters
+  storage_name = substr(replace(lower("myapp${local.safe_workspace}"), "/[^a-z0-9]/", ""), 0, 24)
 }
 ```
 
@@ -210,13 +210,14 @@ locals {
   # This handles the case where two long workspace names
   # would truncate to the same string
   workspace_hash = substr(md5(terraform.workspace), 0, 4)
+  storage_prefix = substr(
+    replace(lower("myapp${terraform.workspace}"), "/[^a-z0-9]/", ""),
+    0,
+    20
+  )
 
   # Azure storage account with hash for uniqueness
-  storage_name = substr(
-    replace(lower("myapp${terraform.workspace}${local.workspace_hash}"), "-", ""),
-    0,
-    24
-  )
+  storage_name = "${local.storage_prefix}${local.workspace_hash}"
 }
 ```
 
@@ -298,12 +299,14 @@ Tags let you find resources by environment even when names are not immediately o
 ```hcl
 # Check that the workspace name will produce valid resource names
 locals {
-  # Test the generated name against S3 naming rules
+  # Test the generated name against common S3 naming rules
   test_bucket_name = "myapp-data-${terraform.workspace}"
   bucket_name_valid = (
     length(local.test_bucket_name) >= 3 &&
     length(local.test_bucket_name) <= 63 &&
-    can(regex("^[a-z0-9][a-z0-9.-]*[a-z0-9]$", local.test_bucket_name))
+    can(regex("^[a-z0-9][a-z0-9.-]*[a-z0-9]$", local.test_bucket_name)) &&
+    !can(regex("\\.\\.", local.test_bucket_name)) &&
+    !can(regex("^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+$", local.test_bucket_name))
   )
 }
 
