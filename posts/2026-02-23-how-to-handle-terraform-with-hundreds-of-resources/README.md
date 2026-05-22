@@ -33,7 +33,7 @@ echo "State file size:"
 terraform state pull | wc -c
 
 echo "Unique resource types:"
-terraform state list | sed 's/\[.*$//' | sort -u | wc -l
+terraform state list | sed -E 's/\[[^]]*\]//g' | awk -F. '{print $(NF-1)}' | sort -u | wc -l
 ```
 
 ## Immediate Relief: Faster Plans
@@ -56,6 +56,8 @@ For 500 resources, this alone can save 5+ minutes. Use it for development iterat
 terraform plan -target=module.api_gateway
 ```
 
+Use targeting sparingly. Terraform recommends `-target` for exceptional situations because it can hide changes outside the targeted dependency graph.
+
 ### Increase Parallelism (Carefully)
 
 ```bash
@@ -71,7 +73,7 @@ Quick fixes help, but the real solution is splitting your project. Here is a sys
 
 ```bash
 # Group resources by type
-terraform state list | sed 's/\[.*$//' | sort | uniq -c | sort -rn | head -20
+terraform state list | sed -E 's/\[[^]]*\]//g' | awk -F. '{print $(NF-1)}' | sort | uniq -c | sort -rn | head -20
 ```
 
 This shows you which resource types dominate your state. A typical output might look like:
@@ -125,14 +127,23 @@ terraform {
 #!/bin/bash
 # move-to-networking.sh
 
-# List networking resources to move
-RESOURCES=$(terraform state list | grep -E "^(aws_vpc|aws_subnet|aws_route|aws_nat|aws_internet_gateway|aws_eip\.nat)")
+# Pull both remote states to local files first. The -state-out option works
+# with local state files, not directly between two remote backends.
+terraform state pull > original.tfstate
+(cd terraform/networking && terraform init -input=false && terraform state pull > ../../networking.tfstate)
+
+# List networking resources to move.
+RESOURCES=$(terraform state list | grep -E "(^|\.)aws_(vpc|subnet|route|route_table|route_table_association|nat_gateway|internet_gateway)\.")
 
 for resource in $RESOURCES; do
   echo "Moving $resource..."
-  terraform state mv -state-out=terraform/networking/terraform.tfstate \
+  terraform state mv -state=original.tfstate -state-out=networking.tfstate \
     "$resource" "$resource"
 done
+
+# Push the edited states back to their configured backends after reviewing them.
+terraform state push original.tfstate
+(cd terraform/networking && terraform state push ../../networking.tfstate)
 ```
 
 ### Step 5: Add Cross-References
@@ -241,7 +252,7 @@ resource "aws_route53_record" "records" {
 }
 ```
 
-This is cleaner and faster than having 200 separate resource blocks. Terraform processes `for_each` resources in parallel.
+This is cleaner and easier to review than having 200 separate resource blocks. Terraform can process `for_each` instances in parallel when the dependency graph allows it.
 
 ## Working with Plan Output
 
