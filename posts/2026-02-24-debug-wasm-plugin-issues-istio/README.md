@@ -51,7 +51,7 @@ Common error messages and their causes:
 "Failed to initialize Wasm VM" -> The file is not a valid Wasm module
 
 # Wrong compilation target
-"Failed to load Wasm module" -> Recompile with wasm32-wasi target
+"Failed to load Wasm module" -> Recompile with the target your SDK expects, such as wasm32-wasip1 for current proxy-wasm Rust SDK examples
 ```
 
 Verify the WasmPlugin resource:
@@ -60,7 +60,7 @@ Verify the WasmPlugin resource:
 # Check the resource exists and has the right config
 kubectl get wasmplugin -n my-app -o yaml
 
-# Check for status conditions
+# Check the resource details and events
 kubectl describe wasmplugin my-plugin -n my-app
 ```
 
@@ -233,8 +233,8 @@ Wasm plugins can cause latency if they:
 kubectl exec -n my-app $POD -c istio-proxy -- curl -s localhost:15000/stats | grep wasm
 
 # Look for these stats:
-# wasm.envoy_wasm_runtime.wasm_vm_active - number of active VMs
-# wasm.envoy_wasm_runtime.wasm_vm_created - total VMs created
+# wasm.<runtime>.active - number of active execution instances
+# wasm.<runtime>.created - total execution instances created
 ```
 
 **Comparing latency with and without the plugin:**
