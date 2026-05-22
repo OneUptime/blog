@@ -199,19 +199,22 @@ Instead of downloading providers in every pipeline run, build a Docker image wit
 
 ```dockerfile
 # Dockerfile.terraform
-FROM hashicorp/terraform:1.7
+FROM hashicorp/terraform:1.14
 
-# Copy lock file to determine required providers
+ENV TF_PLUGIN_CACHE_DIR=/opt/terraform/plugin-cache
+
+RUN mkdir -p $TF_PLUGIN_CACHE_DIR
+
+# Copy lock file and provider declarations to determine required providers
 COPY .terraform.lock.hcl /workspace/.terraform.lock.hcl
-COPY main.tf /workspace/main.tf
+COPY *.tf /workspace/
 
 WORKDIR /workspace
 
-# Pre-download providers
+# Pre-download providers into the shared plugin cache
 RUN terraform init -backend=false
 
-# The .terraform directory now has all providers
-# Any init in the pipeline will find them already present
+# Any init in the pipeline can reuse providers from TF_PLUGIN_CACHE_DIR
 ```
 
 ```yaml
