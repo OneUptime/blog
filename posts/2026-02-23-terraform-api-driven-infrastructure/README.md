@@ -10,7 +10,7 @@ Description: Learn how to use Terraform Cloud and Enterprise APIs to build API-d
 
 API-driven infrastructure takes Terraform beyond the command line. Instead of running `terraform plan` and `terraform apply` manually, external systems interact with Terraform through APIs to provision, modify, and destroy infrastructure programmatically. This approach powers self-service portals, CI/CD pipelines, and automated workflows that treat Terraform as a backend service rather than a CLI tool.
 
-In this guide, we will explore how to use the Terraform Cloud API, the Terraform CLI in API mode, and custom API layers to build fully API-driven infrastructure workflows.
+In this guide, we will explore how to use the Terraform Cloud API and custom API layers around the Terraform CLI to build fully API-driven infrastructure workflows.
 
 ## Understanding the API-Driven Workflow
 
@@ -419,6 +419,23 @@ def create_apply(workspace):
     ).start()
 
     return jsonify({"job_id": job_id, "status": "running"})
+
+def run_apply(job_id, workspace):
+    """Apply the saved Terraform plan in a workspace directory."""
+    workspace_dir = f"/opt/terraform/workspaces/{workspace}"
+
+    result = subprocess.run(
+        ["terraform", "apply", "tfplan"],
+        capture_output=True, text=True,
+        cwd=workspace_dir
+    )
+
+    jobs[job_id] = {
+        "status": "completed" if result.returncode == 0 else "failed",
+        "workspace": workspace,
+        "output": result.stdout,
+        "errors": result.stderr
+    }
 
 @app.route("/api/v1/jobs/<job_id>", methods=["GET"])
 def get_job(job_id):
