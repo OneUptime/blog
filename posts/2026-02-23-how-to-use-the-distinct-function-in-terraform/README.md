@@ -73,7 +73,7 @@ locals {
   # Result: ["us-east-1", "us-west-2", "eu-west-1", "ap-southeast-1"]
 }
 
-# Create a VPC in each unique region
+# Create a VPC entry for each unique region value
 resource "aws_vpc" "regional" {
   for_each = toset(local.all_regions)
 
@@ -269,13 +269,13 @@ resource "aws_route53_record" "endpoints" {
 }
 ```
 
-Without `distinct`, the duplicate `api.example.com` would cause a Terraform error when using `for_each` with `toset`.
+In this example, `toset` would also coalesce duplicate endpoints for `for_each`, but using `distinct` keeps the deduplicated list available in its original first-seen order before converting it to a set.
 
 ## Edge Cases
 
 A few things to note about `distinct`:
 
-- **Type matching**: All elements must be of the same type. Mixing strings and numbers will cause an error.
+- **Type matching**: Lists have a single element type. Terraform may convert mixed primitive values to a common type, such as converting numbers to strings, but incompatible mixed values will cause a type error.
 - **Comparison semantics**: Comparison is exact. `"Hello"` and `"hello"` are considered different values.
 - **Complex types**: `distinct` works with simple types (strings, numbers, booleans). For lists of objects, it compares the entire object structure.
 
