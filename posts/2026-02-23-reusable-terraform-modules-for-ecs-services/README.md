@@ -53,6 +53,11 @@ variable "cluster_id" {
   type        = string
 }
 
+variable "cluster_name" {
+  description = "ECS cluster name"
+  type        = string
+}
+
 variable "container_image" {
   description = "Docker image for the container"
   type        = string
@@ -155,6 +160,12 @@ variable "additional_task_role_policies" {
   default     = []
 }
 
+variable "additional_execution_role_policies" {
+  description = "Additional IAM policy ARNs to attach to the execution role, such as SSM or Secrets Manager access for container secrets"
+  type        = list(string)
+  default     = []
+}
+
 variable "tags" {
   description = "Additional tags"
   type        = map(string)
@@ -187,6 +198,13 @@ resource "aws_iam_role" "execution" {
 resource "aws_iam_role_policy_attachment" "execution" {
   role       = aws_iam_role.execution.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+}
+
+resource "aws_iam_role_policy_attachment" "execution_additional" {
+  for_each = toset(var.additional_execution_role_policies)
+
+  role       = aws_iam_role.execution.name
+  policy_arn = each.value
 }
 
 # Task role - used by the application running in the container
@@ -288,7 +306,7 @@ resource "aws_ecs_service" "this" {
   deployment_maximum_percent         = 200
   deployment_minimum_healthy_percent = 100
 
-  # Allow external changes to desired_count when autoscaling is enabled
+  # Allow external changes to desired_count, such as Application Auto Scaling
   lifecycle {
     ignore_changes = [desired_count]
   }
@@ -307,7 +325,7 @@ resource "aws_appautoscaling_target" "this" {
 
   max_capacity       = var.autoscaling_max
   min_capacity       = var.autoscaling_min
-  resource_id        = "service/${split("/", var.cluster_id)[1]}/${aws_ecs_service.this.name}"
+  resource_id        = "service/${var.cluster_name}/${aws_ecs_service.this.name}"
   scalable_dimension = "ecs:service:DesiredCount"
   service_namespace  = "ecs"
 }
@@ -367,6 +385,7 @@ module "user_service" {
 
   name            = "user-service"
   cluster_id      = aws_ecs_cluster.main.id
+  cluster_name    = aws_ecs_cluster.main.name
   container_image = "123456789012.dkr.ecr.us-east-1.amazonaws.com/user-service:v1.2.3"
   container_port  = 8080
 
@@ -385,6 +404,10 @@ module "user_service" {
 
   secrets = [
     { name = "DB_PASSWORD", valueFrom = "arn:aws:ssm:us-east-1:123456789012:parameter/prod/db-password" },
+  ]
+
+  additional_execution_role_policies = [
+    aws_iam_policy.user_service_secrets.arn
   ]
 
   enable_autoscaling     = true
