@@ -8,7 +8,7 @@ Description: Learn how to implement workspace-aware tagging strategies in Terraf
 
 ---
 
-Tags are one of the most practical tools for managing cloud infrastructure at scale. When combined with Terraform workspaces, tags become even more powerful because you can automatically apply environment-specific metadata to every resource. This post covers the patterns and techniques for implementing workspace-aware tagging.
+Tags are one of the most practical tools for managing cloud infrastructure at scale. When combined with Terraform workspaces, tags become even more powerful because you can automatically apply environment-specific metadata to taggable resources. This post covers the patterns and techniques for implementing workspace-aware tagging.
 
 ## Why Workspace-Based Tags Matter
 
@@ -98,7 +98,7 @@ provider "aws" {
   }
 }
 
-# Now every AWS resource automatically gets the common tags
+# Most taggable AWS resources automatically get the common tags
 # You only need to add resource-specific tags
 resource "aws_instance" "app" {
   ami           = data.aws_ami.app.id
@@ -161,9 +161,9 @@ GCP uses labels instead of tags:
 
 ```hcl
 # GCP labels have stricter naming rules:
-# - lowercase only
-# - no special characters except hyphens and underscores
-# - max 63 characters for keys and values
+# - lowercase letters, numeric characters, underscores, and hyphens
+# - keys must start with a lowercase letter or international character
+# - max 63 characters for keys and values; values can be empty
 
 locals {
   gcp_labels = {
@@ -249,7 +249,7 @@ locals {
   # Expiry tags only for temporary workspaces
   expiry_tags = local.is_temporary ? {
     Temporary = "true"
-    ExpiresOn = timeadd(timestamp(), "48h")
+    ExpiresOn = var.expires_on
     CreatedBy = var.creator_email
   } : {}
 
@@ -265,12 +265,12 @@ locals {
 
 ## Enforcing Tag Compliance
 
-Use Terraform validation and AWS Config rules to enforce that all resources have required tags:
+Use shared required tag definitions and AWS Config rules to check that resources have required tags:
 
 ```hcl
 # tag_enforcement.tf
 
-# Validate that required tags are present
+# Define the required tags for your enforcement rules
 variable "required_tag_keys" {
   description = "Tags that must be present on all resources"
   type        = list(string)
@@ -402,4 +402,4 @@ resource "aws_autoscaling_group" "app" {
 
 ## Summary
 
-Workspace-specific tags transform how you manage infrastructure across environments. By building a consistent tagging strategy tied to `terraform.workspace`, you get automatic cost allocation, compliance enforcement, and operational visibility without manual effort. Use provider-level default tags where available, merge workspace-specific tags at the resource level, and enforce compliance through AWS Config or similar tools. For more workspace patterns, check out our guide on [workspace naming conventions](https://oneuptime.com/blog/post/2026-02-23-how-to-handle-workspace-naming-in-terraform-workspace/view).
+Workspace-specific tags transform how you manage infrastructure across environments. By building a consistent tagging strategy tied to `terraform.workspace`, you get automatic cost allocation, compliance checks, and operational visibility without manual effort. Use provider-level default tags where available, merge workspace-specific tags at the resource level, and check compliance through AWS Config or similar tools. For more workspace patterns, check out our guide on [workspace naming conventions](https://oneuptime.com/blog/post/2026-02-23-how-to-handle-workspace-naming-in-terraform-workspace/view).
