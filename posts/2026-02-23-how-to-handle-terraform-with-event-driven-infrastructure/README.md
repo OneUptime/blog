@@ -77,6 +77,26 @@ resource "aws_cloudwatch_event_target" "send_notification" {
   target_id      = "send-notification"
   arn            = aws_sqs_queue.notifications.arn
 }
+
+resource "aws_sqs_queue_policy" "notifications_eventbridge" {
+  queue_url = aws_sqs_queue.notifications.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid       = "AllowEventBridgeSendMessage"
+      Effect    = "Allow"
+      Principal = { Service = "events.amazonaws.com" }
+      Action    = "sqs:SendMessage"
+      Resource  = aws_sqs_queue.notifications.arn
+      Condition = {
+        ArnEquals = {
+          "aws:SourceArn" = aws_cloudwatch_event_rule.payment_completed.arn
+        }
+      }
+    }]
+  })
+}
 ```
 
 ## Lambda Functions for Event Processing
@@ -120,6 +140,14 @@ resource "aws_lambda_permission" "eventbridge" {
   function_name = aws_lambda_function.process_order.function_name
   principal     = "events.amazonaws.com"
   source_arn    = aws_cloudwatch_event_rule.order_created.arn
+}
+
+resource "aws_lambda_permission" "eventbridge_update_inventory" {
+  statement_id  = "AllowEventBridgeInvokeUpdateInventory"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.update_inventory.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.payment_completed.arn
 }
 ```
 
@@ -212,13 +240,52 @@ resource "aws_sns_topic_subscription" "order_processor" {
   })
 }
 
+resource "aws_sqs_queue_policy" "orders_from_sns" {
+  queue_url = aws_sqs_queue.orders.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid       = "AllowSnsSendMessage"
+      Effect    = "Allow"
+      Principal = { Service = "sns.amazonaws.com" }
+      Action    = "sqs:SendMessage"
+      Resource  = aws_sqs_queue.orders.arn
+      Condition = {
+        ArnEquals = {
+          "aws:SourceArn" = aws_sns_topic.order_events.arn
+        }
+      }
+    }]
+  })
+}
+
 resource "aws_sns_topic_subscription" "analytics" {
   topic_arn = aws_sns_topic.order_events.arn
   protocol  = "sqs"
   endpoint  = aws_sqs_queue.analytics.arn
 
   # Analytics receives all events
-  filter_policy = jsonencode({})
+}
+
+resource "aws_sqs_queue_policy" "analytics_from_sns" {
+  queue_url = aws_sqs_queue.analytics.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid       = "AllowSnsSendMessage"
+      Effect    = "Allow"
+      Principal = { Service = "sns.amazonaws.com" }
+      Action    = "sqs:SendMessage"
+      Resource  = aws_sqs_queue.analytics.arn
+      Condition = {
+        ArnEquals = {
+          "aws:SourceArn" = aws_sns_topic.order_events.arn
+        }
+      }
+    }]
+  })
 }
 
 resource "aws_sns_topic_subscription" "notification_service" {
@@ -229,6 +296,14 @@ resource "aws_sns_topic_subscription" "notification_service" {
   filter_policy = jsonencode({
     event_type = ["order.completed", "order.failed"]
   })
+}
+
+resource "aws_lambda_permission" "sns_send_notification" {
+  statement_id  = "AllowSnsInvokeSendNotification"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.send_notification.function_name
+  principal     = "sns.amazonaws.com"
+  source_arn    = aws_sns_topic.order_events.arn
 }
 ```
 
