@@ -132,7 +132,7 @@ locals {
   db_subnet = cidrsubnet(var.vpc_cidr, 8, 16)  # 10.0.16.0/24
 
   # Small /28 subnets for load balancers (16 IPs each)
-  lb_subnet = cidrsubnet(var.vpc_cidr, 12, 256)  # 10.0.16.0/28
+  lb_subnet = cidrsubnet(var.vpc_cidr, 12, 272)  # 10.0.17.0/28
   # Note: be careful about overlaps when mixing sizes!
 }
 ```
