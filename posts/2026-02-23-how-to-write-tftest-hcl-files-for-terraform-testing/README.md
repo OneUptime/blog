@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Testing, HCL, Infrastructure as Code, DevOps
 
-Description: A detailed guide to the .tftest.hcl file format for Terraform testing, covering every block type, attribute, and pattern you need to write effective tests.
+Description: A detailed guide to the .tftest.hcl file format for Terraform testing, covering the core blocks, attributes, and patterns you need to write effective tests.
 
 ---
 
-The `.tftest.hcl` file format is the foundation of Terraform's native test framework. Understanding every element of this format lets you write tests that are expressive, maintainable, and thorough. This guide breaks down the complete syntax and shows practical patterns for each feature.
+The `.tftest.hcl` file format is the foundation of Terraform's native test framework. Understanding the core elements of this format lets you write tests that are expressive, maintainable, and thorough. This guide breaks down the main syntax and shows practical patterns for each feature.
 
 ## File Structure Overview
 
-A `.tftest.hcl` file can contain these top-level blocks:
+A `.tftest.hcl` file commonly contains these top-level blocks:
 
 ```hcl
 # Provider configurations for tests
@@ -32,7 +32,7 @@ run "test_name" {
 }
 ```
 
-All three block types are optional. You can have a file with just `run` blocks, and it will inherit provider and variable configurations from the module being tested.
+Provider and variables blocks are optional, but a useful test file contains one or more `run` blocks. You can have a file with just `run` blocks, and Terraform will use provider defaults or provider configurations from the configuration being tested. Terraform also supports additional test-file features such as the optional `test` block and, in Terraform 1.7 and later, mock and override blocks.
 
 ## The run Block
 
@@ -187,8 +187,11 @@ run "rejects_invalid_check" {
 The `expect_failures` list can reference:
 - Variables (`var.name`) - expects validation to fail
 - Resources (`aws_instance.main`) - expects a precondition or postcondition to fail
+- Data sources (`data.aws_ami.ubuntu`) - expects a precondition or postcondition to fail
 - Outputs (`output.url`) - expects a precondition to fail
 - Check blocks (`check.health`) - expects the check to fail
+
+Expected failures apply to user-defined custom conditions. Other failures, such as type mismatches, still fail the test. Except for check blocks, use a single checkable object in `expect_failures` because most validation failures stop execution before Terraform can evaluate later checks.
 
 ### The module Block
 
@@ -218,6 +221,8 @@ This is useful for:
 - Testing submodules in isolation
 - Using helper modules that generate test data
 - Testing examples that consume your module
+
+The test `module` block supports `source` and `version`; its `source` can point to a local or registry module.
 
 ### The providers Block
 
@@ -278,7 +283,7 @@ run "overrides_environment" {
 
 ## Provider Blocks in Test Files
 
-Test files can define their own provider configurations. These override the module's provider configuration during testing:
+Test files can define their own provider configurations. These can set or override the required providers used during testing:
 
 ```hcl
 # Override the AWS provider for testing
@@ -300,7 +305,7 @@ provider "aws" {
 
 ## Referencing Values Between Run Blocks
 
-Run blocks within the same file execute sequentially, and later blocks can reference values from earlier ones:
+By default, run blocks within the same file execute sequentially, and later blocks can reference values from earlier ones:
 
 ```hcl
 run "create_vpc" {
