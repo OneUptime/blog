@@ -28,31 +28,21 @@ A CLI wizard is the simplest starting point. Use a scripting language with a goo
 #!/usr/bin/env python3
 import questionary
 import yaml
-import sys
 
 def main():
     print("Istio Configuration Wizard")
     print("=" * 40)
 
-    # Step 1: What do you want to configure?
+    # This example implements the traffic routing path.
     config_type = questionary.select(
         "What would you like to configure?",
         choices=[
             "Traffic routing (canary, blue-green, weighted)",
-            "Service access control (authorization)",
-            "Resiliency (timeouts, retries, circuit breaking)",
-            "External ingress (expose service outside cluster)",
         ]
     ).ask()
 
     if "Traffic routing" in config_type:
         generate_traffic_config()
-    elif "access control" in config_type:
-        generate_auth_config()
-    elif "Resiliency" in config_type:
-        generate_resiliency_config()
-    elif "ingress" in config_type:
-        generate_ingress_config()
 
 
 def generate_traffic_config():
@@ -126,7 +116,7 @@ def generate_traffic_config():
 
     # Generate the YAML
     vs = {
-        "apiVersion": "networking.istio.io/v1beta1",
+        "apiVersion": "networking.istio.io/v1",
         "kind": "VirtualService",
         "metadata": {
             "name": service_name,
@@ -151,7 +141,7 @@ def generate_traffic_config():
     }
 
     dr = {
-        "apiVersion": "networking.istio.io/v1beta1",
+        "apiVersion": "networking.istio.io/v1",
         "kind": "DestinationRule",
         "metadata": {
             "name": service_name,
@@ -175,12 +165,13 @@ def generate_traffic_config():
     print("=" * 40)
     print(output)
 
+    filename = questionary.text(
+        "Filename:",
+        default=f"{service_name}-istio.yaml"
+    ).ask()
+
     save = questionary.confirm("Save to file?", default=True).ask()
     if save:
-        filename = questionary.text(
-            "Filename:",
-            default=f"{service_name}-istio.yaml"
-        ).ask()
         with open(filename, 'w') as f:
             f.write(output)
         print(f"Saved to {filename}")
@@ -188,7 +179,10 @@ def generate_traffic_config():
     apply_now = questionary.confirm("Apply to cluster now?", default=False).ask()
     if apply_now:
         import subprocess
-        subprocess.run(["kubectl", "apply", "-f", filename])
+        if not save:
+            with open(filename, 'w') as f:
+                f.write(output)
+        subprocess.run(["kubectl", "apply", "-f", filename], check=True)
 
 
 if __name__ == "__main__":
@@ -209,7 +203,7 @@ function IstioWizard() {
     serviceName: '',
     namespace: '',
     port: 8080,
-    strategy: '',
+    strategy: 'canary',
     canaryWeight: 10,
     timeout: '10s',
     retries: 3,
@@ -240,7 +234,7 @@ function IstioWizard() {
     // Step 1: Routing strategy
     <div key="routing">
       <h2>Routing Strategy</h2>
-      {['canary', 'blue-green', 'weighted'].map(s => (
+      {['canary'].map(s => (
         <button
           key={s}
           onClick={() => setConfig({...config, strategy: s})}
@@ -286,7 +280,7 @@ function IstioWizard() {
 
 function generateYaml(config) {
   const vs = {
-    apiVersion: 'networking.istio.io/v1beta1',
+    apiVersion: 'networking.istio.io/v1',
     kind: 'VirtualService',
     metadata: {
       name: config.serviceName,
@@ -318,7 +312,27 @@ function generateYaml(config) {
     }
   };
 
-  return yaml.dump(vs);
+  const dr = {
+    apiVersion: 'networking.istio.io/v1',
+    kind: 'DestinationRule',
+    metadata: {
+      name: config.serviceName,
+      namespace: config.namespace,
+    },
+    spec: {
+      host: config.serviceName,
+      subsets: [
+        { name: 'stable', labels: { version: 'v1' } },
+        { name: 'canary', labels: { version: 'v2' } },
+      ],
+    },
+  };
+
+  return `${yaml.dump(vs)}---\n${yaml.dump(dr)}`;
+}
+
+function copyToClipboard(text) {
+  return navigator.clipboard.writeText(text);
 }
 ```
 
@@ -328,12 +342,14 @@ The wizard should validate configurations before presenting them to the user:
 
 ```python
 def validate_config(config):
+    from kubernetes import client, config as kube_config
+    import re
+
     errors = []
 
-    # Check service name is valid DNS
-    import re
-    if not re.match(r'^[a-z][a-z0-9-]*$', config['service_name']):
-        errors.append("Service name must be lowercase alphanumeric with hyphens")
+    # Check service name is a valid Kubernetes DNS label
+    if not re.match(r'^[a-z]([-a-z0-9]*[a-z0-9])?$', config['service_name']) or len(config['service_name']) > 63:
+        errors.append("Service name must be a DNS label: lowercase alphanumeric with hyphens, up to 63 characters")
 
     # Check weights sum to 100
     total = sum(v['weight'] for v in config['versions'])
@@ -347,10 +363,16 @@ def validate_config(config):
 
     # Check namespace exists
     try:
+        try:
+            kube_config.load_incluster_config()
+        except kube_config.ConfigException:
+            kube_config.load_kube_config()
         v1 = client.CoreV1Api()
         v1.read_namespace(config['namespace'])
     except client.exceptions.ApiException:
         errors.append(f"Namespace '{config['namespace']}' does not exist")
+    except kube_config.ConfigException:
+        errors.append("Could not load Kubernetes configuration")
 
     return errors
 ```
@@ -371,7 +393,7 @@ def generate_traffic_mirror_config():
     ).ask()
 
     vs = {
-        "apiVersion": "networking.istio.io/v1beta1",
+        "apiVersion": "networking.istio.io/v1",
         "kind": "VirtualService",
         "metadata": {"name": service},
         "spec": {
