@@ -94,7 +94,7 @@ resource "google_compute_firewall" "tfe_https" {
 
   allow {
     protocol = "tcp"
-    ports    = ["443"]
+    ports    = ["80", "443"]
   }
 
   # Allow from the load balancer health check ranges and internal
@@ -116,8 +116,8 @@ resource "google_compute_firewall" "tfe_ssh" {
     ports    = ["22"]
   }
 
-  # Restrict to your admin IP
-  source_ranges = [var.admin_cidr]
+  # Allow SSH through Identity-Aware Proxy because the VM has no external IP
+  source_ranges = ["35.235.240.0/20"]
   target_tags   = ["tfe-server"]
 }
 ```
@@ -216,14 +216,7 @@ resource "google_storage_bucket" "tfe" {
     default_kms_key_name = google_kms_crypto_key.tfe.id
   }
 
-  lifecycle_rule {
-    action {
-      type = "Delete"
-    }
-    condition {
-      num_newer_versions = 10
-    }
-  }
+  depends_on = [google_kms_crypto_key_iam_member.gcs]
 }
 
 # KMS for encryption
@@ -239,6 +232,15 @@ resource "google_kms_crypto_key" "tfe" {
   lifecycle {
     prevent_destroy = true
   }
+}
+
+data "google_storage_project_service_account" "gcs_account" {
+}
+
+resource "google_kms_crypto_key_iam_member" "gcs" {
+  crypto_key_id = google_kms_crypto_key.tfe.id
+  role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
+  member        = "serviceAccount:${data.google_storage_project_service_account.gcs_account.email_address}"
 }
 ```
 
@@ -307,6 +309,7 @@ resource "google_compute_instance" "tfe" {
 
   metadata_startup_script = templatefile("${path.module}/templates/startup.sh", {
     tfe_license             = var.tfe_license
+    tfe_image_tag           = var.tfe_image_tag
     tfe_hostname            = var.tfe_hostname
     tfe_encryption_password = var.tfe_encryption_password
     db_host                 = google_sql_database_instance.tfe.private_ip_address
@@ -336,6 +339,10 @@ resource "google_compute_instance" "tfe" {
 
 set -euo pipefail
 
+# Install prerequisites
+apt-get update
+apt-get install -y ca-certificates curl openssl
+
 # Install Docker
 curl -fsSL https://get.docker.com | sh
 systemctl enable docker
@@ -346,29 +353,47 @@ echo "${tfe_license}" | docker login images.releases.hashicorp.com \
   --username terraform --password-stdin
 
 # Pull the TFE image
-docker pull images.releases.hashicorp.com/hashicorp/terraform-enterprise:latest
+docker pull images.releases.hashicorp.com/hashicorp/terraform-enterprise:${tfe_image_tag}
+
+# Create a backend certificate for the TFE container.
+mkdir -p /etc/terraform-enterprise/certs
+openssl req -x509 -nodes -newkey rsa:2048 \
+  -keyout /etc/terraform-enterprise/certs/key.pem \
+  -out /etc/terraform-enterprise/certs/cert.pem \
+  -subj "/CN=${tfe_hostname}" \
+  -days 365
 
 # Run Terraform Enterprise
 docker run -d \
   --name terraform-enterprise \
   --restart always \
+  --read-only \
+  --tmpfs /tmp:mode=01777 \
+  --tmpfs /run \
+  --tmpfs /var/log/terraform-enterprise \
+  -p 80:80 \
   -p 443:443 \
-  -p 8800:8800 \
-  -v tfe-data:/var/lib/terraform-enterprise \
+  -v /var/run/docker.sock:/run/docker.sock \
+  -v /etc/terraform-enterprise/certs:/etc/ssl/private/terraform-enterprise:ro \
+  -v tfe-cache:/var/cache/tfe-task-worker/terraform \
   -e TFE_LICENSE="${tfe_license}" \
   -e TFE_HOSTNAME="${tfe_hostname}" \
   -e TFE_ENCRYPTION_PASSWORD="${tfe_encryption_password}" \
   -e TFE_OPERATIONAL_MODE="external" \
+  -e TFE_RUN_PIPELINE_DRIVER="docker" \
+  -e TFE_DISK_CACHE_VOLUME_NAME="tfe-cache" \
+  -e TFE_TLS_CERT_FILE="/etc/ssl/private/terraform-enterprise/cert.pem" \
+  -e TFE_TLS_KEY_FILE="/etc/ssl/private/terraform-enterprise/key.pem" \
   -e TFE_DATABASE_HOST="${db_host}" \
   -e TFE_DATABASE_USER="${db_username}" \
   -e TFE_DATABASE_PASSWORD="${db_password}" \
   -e TFE_DATABASE_NAME="${db_name}" \
-  -e TFE_DATABASE_PARAMETERS="sslmode=disable" \
+  -e TFE_DATABASE_PARAMETERS="sslmode=require" \
   -e TFE_OBJECT_STORAGE_TYPE="google" \
   -e TFE_OBJECT_STORAGE_GOOGLE_BUCKET="${gcs_bucket}" \
   -e TFE_OBJECT_STORAGE_GOOGLE_PROJECT="${gcp_project}" \
   --cap-add IPC_LOCK \
-  images.releases.hashicorp.com/hashicorp/terraform-enterprise:latest
+  images.releases.hashicorp.com/hashicorp/terraform-enterprise:${tfe_image_tag}
 ```
 
 ## Step 8: Create the HTTPS Load Balancer
@@ -380,9 +405,9 @@ docker run -d \
 resource "google_compute_health_check" "tfe" {
   name = "tfe-health-check"
 
-  https_health_check {
-    port         = 443
-    request_path = "/_health_check"
+  http_health_check {
+    port         = 80
+    request_path = "/api/v1/health/readiness"
   }
 
   check_interval_sec  = 30
@@ -398,16 +423,16 @@ resource "google_compute_instance_group" "tfe" {
   instances = [google_compute_instance.tfe.id]
 
   named_port {
-    name = "https"
-    port = 443
+    name = "http"
+    port = 80
   }
 }
 
 # Backend service
 resource "google_compute_backend_service" "tfe" {
   name          = "tfe-backend"
-  protocol      = "HTTPS"
-  port_name     = "https"
+  protocol      = "HTTP"
+  port_name     = "http"
   health_checks = [google_compute_health_check.tfe.id]
 
   backend {
@@ -486,6 +511,11 @@ variable "tfe_license" {
   description = "Terraform Enterprise license"
 }
 
+variable "tfe_image_tag" {
+  type        = string
+  description = "Explicit Terraform Enterprise image tag, for example v202507-1"
+}
+
 variable "tfe_encryption_password" {
   type        = string
   sensitive   = true
@@ -496,11 +526,6 @@ variable "db_password" {
   type        = string
   sensitive   = true
   description = "PostgreSQL database password"
-}
-
-variable "admin_cidr" {
-  type        = string
-  description = "CIDR block for SSH access"
 }
 
 variable "dns_zone_name" {
@@ -530,12 +555,12 @@ gcloud compute instances describe tfe-server \
   --format='get(status)'
 
 # SSH into the instance
-gcloud compute ssh tfe-server --zone=us-central1-a
+gcloud compute ssh tfe-server --zone=us-central1-a --tunnel-through-iap
 
 # On the VM, check TFE status
 sudo docker ps
 sudo docker logs terraform-enterprise
-curl -k https://localhost/_health_check
+sudo docker exec terraform-enterprise tfectl app health readiness
 ```
 
 ## Summary
