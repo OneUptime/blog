@@ -80,9 +80,10 @@ Here is what the payment ambassador looks like:
 ```python
 import hmac
 import hashlib
+import os
 import time
 import requests
-from flask import Flask, request, jsonify
+from flask import Flask, request
 
 app = Flask(__name__)
 
@@ -159,8 +160,6 @@ metadata:
 spec:
   host: api.paymentprovider.com
   trafficPolicy:
-    tls:
-      mode: SIMPLE
     connectionPool:
       tcp:
         maxConnections: 20
@@ -171,15 +170,16 @@ spec:
 
 ## Excluding Ambassador Ports from Envoy
 
-Traffic between the app and the ambassador on localhost should not go through Envoy. Exclude the ambassador port:
+Traffic between the app and the ambassador on localhost should not go through Envoy. Exclude the ambassador port from both inbound and outbound capture:
 
 ```yaml
     metadata:
       annotations:
         traffic.sidecar.istio.io/excludeInboundPorts: "9090"
+        traffic.sidecar.istio.io/excludeOutboundPorts: "9090"
 ```
 
-Without this annotation, Envoy intercepts the localhost traffic to port 9090 and tries to route it, which can cause issues.
+Without these annotations, Envoy can intercept traffic to port 9090 and try to route it, which can cause issues.
 
 ## Ambassador for Protocol Translation
 
@@ -192,7 +192,13 @@ metadata:
   name: reporting-service
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: reporting-service
   template:
+    metadata:
+      labels:
+        app: reporting-service
     spec:
       containers:
       - name: reporting-service
@@ -226,7 +232,13 @@ metadata:
   name: data-enrichment
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: data-enrichment
   template:
+    metadata:
+      labels:
+        app: data-enrichment
     spec:
       containers:
       - name: enrichment-app
@@ -296,6 +308,19 @@ The ambassador limits concurrent connections to 5, queuing additional requests. 
 Track ambassador health and performance alongside the application:
 
 ```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: order-service
+  namespace: production
+spec:
+  selector:
+    app: order-service
+  ports:
+  - name: ambassador-metrics
+    port: 9090
+    targetPort: 9090
+---
 apiVersion: networking.istio.io/v1beta1
 kind: VirtualService
 metadata:
