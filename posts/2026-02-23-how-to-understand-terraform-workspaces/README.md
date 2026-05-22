@@ -34,7 +34,7 @@ Every Terraform configuration starts with a workspace called `default`. You have
 
 ## How Workspaces Work Under the Hood
 
-When you create a new workspace, Terraform does not copy your configuration files or create a new directory of `.tf` files. It only creates a new, empty state file. All workspaces share the exact same Terraform code.
+When you create a new workspace, Terraform does not copy your configuration files or create a new directory of `.tf` files. It creates a new, empty workspace with its own state. All workspaces share the exact same Terraform code.
 
 Here is the key mental model:
 
@@ -114,7 +114,7 @@ This is the primary mechanism for making the same code behave differently across
 
 Workspaces work well in specific scenarios:
 
-**Identical infrastructure with minor variations.** If dev, staging, and prod are truly the same architecture with only size differences, workspaces keep things DRY. You write the code once and vary behavior through `terraform.workspace` checks and workspace-specific variable files.
+**Identical infrastructure with minor variations.** If dev, staging, and prod are truly the same architecture with only size differences, workspaces keep things DRY. You write the code once and vary behavior through `terraform.workspace` checks and manually selected workspace-specific variable files.
 
 **Testing infrastructure changes.** You can create a temporary workspace to test a change without touching any existing environment. When done, destroy the resources and delete the workspace.
 
@@ -193,7 +193,7 @@ terraform workspace select staging
 # Show the current workspace
 terraform workspace show
 
-# Delete a workspace (must switch away first)
+# Delete a workspace (must switch away first; it must not be tracking resources unless you use -force)
 terraform workspace select default
 terraform workspace delete dev
 ```
@@ -216,6 +216,21 @@ terraform {
 
 provider "aws" {
   region = "us-east-1"
+}
+
+data "aws_ami" "amazon_linux" {
+  most_recent = true
+  owners      = ["amazon"]
+
+  filter {
+    name   = "name"
+    values = ["al2023-ami-*-x86_64"]
+  }
+
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
 }
 
 # Map workspace names to configurations
@@ -241,7 +256,7 @@ locals {
 
 resource "aws_instance" "web" {
   count         = local.current.instance_count
-  ami           = "ami-0c55b159cbfafe1f0"
+  ami           = data.aws_ami.amazon_linux.id
   instance_type = local.current.instance_type
 
   tags = {
