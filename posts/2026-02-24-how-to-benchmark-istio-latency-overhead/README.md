@@ -14,7 +14,7 @@ This post shows you how to set up proper latency benchmarks for Istio so you get
 
 ## Why Latency Matters
 
-Istio's sidecar proxy (Envoy) sits in the request path for every service-to-service call. Each request goes through two Envoy proxies: one on the client side and one on the server side. Each proxy does TLS handshake (for mTLS), header parsing, policy checks, telemetry collection, and routing decisions. All of this takes time.
+Istio's sidecar proxy (Envoy) sits in the request path for every service-to-service call. Each request goes through two Envoy proxies: one on the client side and one on the server side. The proxies do header parsing, policy checks, telemetry collection, and routing decisions on requests, while mTLS adds connection setup and encryption/decryption work. All of this takes time.
 
 For most services, the overhead is small (sub-millisecond to a few milliseconds). But if you have deep call chains where one request triggers 10 downstream calls, those milliseconds add up. And for latency-sensitive workloads like real-time bidding or gaming backends, even a small overhead matters.
 
@@ -27,7 +27,7 @@ kubectl create namespace bench
 kubectl label namespace bench istio-injection=enabled
 ```
 
-Deploy a simple echo server that returns immediately, so you're measuring only the proxy overhead and not application processing time:
+Deploy a simple echo server that returns immediately, so you're minimizing application processing time and focusing on the proxy overhead:
 
 ```yaml
 apiVersion: apps/v1
@@ -181,7 +181,7 @@ The overhead changes depending on the scenario. Test each one separately.
 Test with mTLS disabled to isolate the encryption overhead:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: disable-mtls
@@ -265,7 +265,7 @@ Typical results you might see (these vary widely by hardware and configuration):
 | P99 latency | 1.2 ms | 3.5 ms | +2.3 ms |
 | P99.9 latency | 5.0 ms | 12.0 ms | +7.0 ms |
 
-The P99 and P99.9 overhead is always larger than the P50 overhead. This is because occasional proxy garbage collection pauses, TLS session renegotiation, and configuration pushes from istiod cause tail latency spikes.
+The P99 and P99.9 overhead is usually larger than the P50 overhead. This is because occasional proxy CPU contention, new connection handshakes, and configuration updates from istiod can contribute to tail latency spikes.
 
 ## Reducing Latency Overhead
 
@@ -295,7 +295,7 @@ spec:
 Disable features you don't need (like access logging or tracing) for latency-sensitive services:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: disable-logging
