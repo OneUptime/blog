@@ -58,11 +58,12 @@ In GitLab CI, the job token provides automatic authentication. Here is a complet
 # Terraform pipeline using GitLab managed state
 
 variables:
-  TF_ROOT: ${CI_PROJECT_DIR}/terraform
+  TF_ROOT: terraform
   # State name - change per environment
   TF_STATE_NAME: default
   # Construct the state URLs from GitLab CI variables
   TF_ADDRESS: "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/${TF_STATE_NAME}"
+  PLAN_JSON: plan.json
 
 image:
   name: hashicorp/terraform:1.7.5
@@ -81,15 +82,16 @@ cache:
 
 before_script:
   - cd ${TF_ROOT}
+  - apk --no-cache add jq
+  - export TF_HTTP_ADDRESS="${TF_ADDRESS}"
+  - export TF_HTTP_LOCK_ADDRESS="${TF_ADDRESS}/lock"
+  - export TF_HTTP_UNLOCK_ADDRESS="${TF_ADDRESS}/lock"
+  - export TF_HTTP_USERNAME="gitlab-ci-token"
+  - export TF_HTTP_PASSWORD="${CI_JOB_TOKEN}"
+  - export TF_HTTP_LOCK_METHOD="POST"
+  - export TF_HTTP_UNLOCK_METHOD="DELETE"
+  - export TF_HTTP_RETRY_WAIT_MIN="5"
   - terraform init
-    -backend-config="address=${TF_ADDRESS}"
-    -backend-config="lock_address=${TF_ADDRESS}/lock"
-    -backend-config="unlock_address=${TF_ADDRESS}/lock"
-    -backend-config="username=gitlab-ci-token"
-    -backend-config="password=${CI_JOB_TOKEN}"
-    -backend-config="lock_method=POST"
-    -backend-config="unlock_method=DELETE"
-    -backend-config="retry_wait_min=5"
 
 validate:
   stage: validate
@@ -104,13 +106,14 @@ plan:
   stage: plan
   script:
     - terraform plan -out=plan.cache
-    - terraform show -json plan.cache > plan.json
+    - |
+      terraform show -json plan.cache | jq -r '([.resource_changes[]?.change.actions?] | flatten) | {"create": (map(select(. == "create")) | length), "update": (map(select(. == "update")) | length), "delete": (map(select(. == "delete")) | length)}' > ${PLAN_JSON}
   artifacts:
     paths:
       - ${TF_ROOT}/plan.cache
     reports:
       # This enables the plan visualization in merge requests
-      terraform: ${TF_ROOT}/plan.json
+      terraform: ${TF_ROOT}/${PLAN_JSON}
     expire_in: 7 days
   rules:
     - if: $CI_MERGE_REQUEST_IID
@@ -129,7 +132,7 @@ apply:
     name: production
 ```
 
-The key detail is `CI_JOB_TOKEN` - GitLab automatically provides this token to every CI job, and it has the right permissions to read and write state for the project.
+The key detail is `CI_JOB_TOKEN` - GitLab automatically provides this token to every CI job. The user who triggers the job still needs the required project permissions: Developer or higher to read state, and Maintainer or Owner to lock, unlock, and write state.
 
 ## Multiple State Files for Multiple Environments
 
@@ -137,7 +140,7 @@ Use different state names for each environment:
 
 ```yaml
 variables:
-  TF_ROOT: ${CI_PROJECT_DIR}/terraform
+  TF_ROOT: terraform
 
 # Plan and apply for dev
 plan:dev:
@@ -147,14 +150,14 @@ plan:dev:
     TF_ADDRESS: "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/dev"
   script:
     - cd ${TF_ROOT}
+    - export TF_HTTP_ADDRESS="${TF_ADDRESS}"
+    - export TF_HTTP_LOCK_ADDRESS="${TF_ADDRESS}/lock"
+    - export TF_HTTP_UNLOCK_ADDRESS="${TF_ADDRESS}/lock"
+    - export TF_HTTP_USERNAME="gitlab-ci-token"
+    - export TF_HTTP_PASSWORD="${CI_JOB_TOKEN}"
+    - export TF_HTTP_LOCK_METHOD="POST"
+    - export TF_HTTP_UNLOCK_METHOD="DELETE"
     - terraform init
-      -backend-config="address=${TF_ADDRESS}"
-      -backend-config="lock_address=${TF_ADDRESS}/lock"
-      -backend-config="unlock_address=${TF_ADDRESS}/lock"
-      -backend-config="username=gitlab-ci-token"
-      -backend-config="password=${CI_JOB_TOKEN}"
-      -backend-config="lock_method=POST"
-      -backend-config="unlock_method=DELETE"
     - terraform plan -var-file="environments/dev.tfvars" -out=plan-dev.cache
   artifacts:
     paths:
@@ -167,14 +170,14 @@ apply:dev:
     TF_ADDRESS: "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/dev"
   script:
     - cd ${TF_ROOT}
+    - export TF_HTTP_ADDRESS="${TF_ADDRESS}"
+    - export TF_HTTP_LOCK_ADDRESS="${TF_ADDRESS}/lock"
+    - export TF_HTTP_UNLOCK_ADDRESS="${TF_ADDRESS}/lock"
+    - export TF_HTTP_USERNAME="gitlab-ci-token"
+    - export TF_HTTP_PASSWORD="${CI_JOB_TOKEN}"
+    - export TF_HTTP_LOCK_METHOD="POST"
+    - export TF_HTTP_UNLOCK_METHOD="DELETE"
     - terraform init
-      -backend-config="address=${TF_ADDRESS}"
-      -backend-config="lock_address=${TF_ADDRESS}/lock"
-      -backend-config="unlock_address=${TF_ADDRESS}/lock"
-      -backend-config="username=gitlab-ci-token"
-      -backend-config="password=${CI_JOB_TOKEN}"
-      -backend-config="lock_method=POST"
-      -backend-config="unlock_method=DELETE"
     - terraform apply -input=false plan-dev.cache
   dependencies:
     - plan:dev
@@ -192,8 +195,9 @@ The setup is in the plan job:
 plan:
   script:
     - terraform plan -out=plan.cache
-    # Generate JSON format for MR visualization
-    - terraform show -json plan.cache > plan.json
+    # Generate the report JSON format for MR visualization
+    - |
+      terraform show -json plan.cache | jq -r '([.resource_changes[]?.change.actions?] | flatten) | {"create": (map(select(. == "create")) | length), "update": (map(select(. == "update")) | length), "delete": (map(select(. == "delete")) | length)}' > plan.json
   artifacts:
     reports:
       # GitLab reads this to show plan in MR
@@ -204,7 +208,7 @@ After the pipeline runs, the merge request widget shows a summary like "2 to add
 
 ## Viewing and Managing State
 
-You can view your state files in the GitLab UI. Go to your project, then Infrastructure, then Terraform states. This page shows:
+You can view your state files in the GitLab UI. Go to your project, then Operate, then Terraform states. This page shows:
 
 - All named states for the project
 - The last updated timestamp
@@ -305,7 +309,7 @@ terraform plan
 
 GitLab managed state has some limitations compared to dedicated backends:
 
-- **Size limits**: State files larger than about 5 MB may see performance issues
+- **Size limits**: On self-managed GitLab, administrators can configure a maximum Terraform state file size. GitLab.com and GitLab Dedicated also enforce platform API limits.
 - **No native state file encryption key management**: Encryption uses GitLab's internal keys, not customer-managed keys
 - **Cross-project state access**: Accessing state from another project requires additional token configuration
 - **Self-managed GitLab**: State storage depends on your GitLab instance's storage configuration
