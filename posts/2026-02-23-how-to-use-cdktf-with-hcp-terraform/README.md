@@ -8,7 +8,7 @@ Description: Learn how to integrate CDKTF with HCP Terraform for managed state, 
 
 ---
 
-HCP Terraform (formerly Terraform Cloud) is HashiCorp's managed platform for Terraform. It handles state management, provides remote execution, offers policy enforcement with Sentinel, and gives your team a web-based UI for managing infrastructure. CDKTF integrates directly with HCP Terraform, and using the two together gives you a solid workflow for team-based infrastructure management. This guide covers the setup and key integration points.
+HCP Terraform (formerly Terraform Cloud) is HashiCorp's managed platform for Terraform. It handles state management, provides remote execution, offers policy enforcement with Sentinel, and gives your team a web-based UI for managing infrastructure. CDKTF integrates directly with HCP Terraform, but HashiCorp deprecated CDKTF on December 10, 2025 and no longer supports or maintains it. For existing CDKTF projects, using the two together gives you a solid workflow for team-based infrastructure management. This guide covers the setup and key integration points.
 
 ## What HCP Terraform Adds to CDKTF
 
@@ -27,15 +27,15 @@ On its own, CDKTF generates Terraform configurations and can apply them locally.
 First, create an HCP Terraform account and organization:
 
 ```bash
-# Install the Terraform CLI if you do not have it
+# Install the Terraform CLI and CDKTF CLI if you do not have them
 
 brew install terraform
+npm install -g cdktf-cli
 
-# Login to HCP Terraform
-terraform login
+# Login to HCP Terraform for CDKTF
+cdktf login
 
 # This opens a browser to generate an API token
-# The token is stored in ~/.terraform.d/credentials.tfrc.json
 ```
 
 Create an organization and workspace through the web UI at app.terraform.io, or use the API.
@@ -76,7 +76,8 @@ app.synth();
 For projects with multiple stacks, you can use tag-based workspace selection:
 
 ```typescript
-import { TaggedCloudWorkspaces } from "cdktf";
+import { Construct } from "constructs";
+import { CloudBackend, TaggedCloudWorkspaces, TerraformStack } from "cdktf";
 
 class MyStack extends TerraformStack {
   constructor(scope: Construct, id: string, environment: string) {
@@ -97,10 +98,7 @@ class MyStack extends TerraformStack {
 HCP Terraform manages variables for you, which is especially useful for secrets:
 
 ```bash
-# Set a variable using the Terraform CLI
-# First, make sure you have the TFE provider or use the API
-
-# Or set variables through the API
+# Set variables through the API, or manage them with the TFE provider
 curl \
   --header "Authorization: Bearer $TF_API_TOKEN" \
   --header "Content-Type: application/vnd.api+json" \
@@ -122,7 +120,10 @@ curl \
 In your CDKTF code, reference these as Terraform variables:
 
 ```typescript
-import { TerraformVariable } from "cdktf";
+import { Construct } from "constructs";
+import { CloudBackend, NamedCloudWorkspace, TerraformStack, TerraformVariable } from "cdktf";
+import { AwsProvider } from "@cdktf/provider-aws/lib/provider";
+import { DbInstance } from "@cdktf/provider-aws/lib/db-instance";
 
 class ProductionStack extends TerraformStack {
   constructor(scope: Construct, id: string) {
@@ -150,9 +151,14 @@ class ProductionStack extends TerraformStack {
 
     // Use the variables in resource configuration
     new DbInstance(this, "database", {
+      allocatedStorage: 20,
+      dbName: "app",
       engine: "postgres",
+      engineVersion: "16",
       instanceClass: "db.t3.medium",
+      username: "appuser",
       password: dbPassword.value,
+      skipFinalSnapshot: true,
       tags: {
         Environment: environment.value,
       },
@@ -183,6 +189,8 @@ With remote execution, `cdktf deploy` sends the configuration to HCP Terraform, 
 ### Local Execution
 
 Plans and applies run on your machine, but state is stored in HCP Terraform:
+
+In local execution mode, HCP Terraform does not evaluate workspace variables or variable sets. Any environment variables or Terraform variable values needed by the run must be available in your local shell or local Terraform variable files.
 
 Set the execution mode in the workspace settings through the UI, or use the API:
 
@@ -254,9 +262,12 @@ environments.forEach((env) => {
 app.synth();
 ```
 
-Wait - there is a subtlety here. The `CloudBackend` must be created inside the stack constructor, not outside it. Let us fix that:
+This works as long as the `CloudBackend` is configured before `app.synth()` runs. If you prefer to keep the backend configuration encapsulated with the rest of the stack, put it inside the stack constructor:
 
 ```typescript
+import { DataAwsAmi } from "@cdktf/provider-aws/lib/data-aws-ami";
+import { Instance } from "@cdktf/provider-aws/lib/instance";
+
 class ApplicationStack extends TerraformStack {
   constructor(scope: Construct, id: string, env: EnvironmentConfig) {
     super(scope, id);
@@ -270,9 +281,20 @@ class ApplicationStack extends TerraformStack {
 
     new AwsProvider(this, "aws", { region: "us-east-1" });
 
+    const amazonLinux = new DataAwsAmi(this, "amazon-linux", {
+      mostRecent: true,
+      owners: ["amazon"],
+      filter: [
+        {
+          name: "name",
+          values: ["al2023-ami-2023.*-x86_64"],
+        },
+      ],
+    });
+
     // Resources configured based on environment
     new Instance(this, "server", {
-      ami: "ami-0c55b159cbfafe1f0",
+      ami: amazonLinux.id,
       instanceType: env.instanceType,
     });
   }
