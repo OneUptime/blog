@@ -8,7 +8,7 @@ Description: Learn how to import existing Kubernetes resources into Terraform st
 
 ---
 
-Kubernetes clusters often have resources created through kubectl, Helm, or other tools that you want to manage with Terraform. The Kubernetes provider for Terraform supports importing these resources so you can bring your cluster configuration under infrastructure-as-code management. Kubernetes resources are identified by their API path for import operations.
+Kubernetes clusters often have resources created through kubectl, Helm, or other tools that you want to manage with Terraform. The Kubernetes provider for Terraform supports importing these resources so you can bring your cluster configuration under infrastructure-as-code management. Kubernetes resources are identified by provider-specific import IDs, usually their namespace and name for namespaced resources.
 
 In this guide, we will walk through importing common Kubernetes resources into Terraform including namespaces, deployments, services, configmaps, secrets, and RBAC resources.
 
@@ -26,8 +26,8 @@ terraform {
 }
 
 provider "kubernetes" {
-  config_path = "~/.kube/config"
-  context     = var.k8s_context
+  config_path    = "~/.kube/config"
+  config_context = var.k8s_context
 }
 
 variable "k8s_context" {
@@ -178,8 +178,8 @@ resource "kubernetes_secret" "db_credentials" {
   }
 
   data = {
-    username = base64encode("admin")
-    password = base64encode("secret")
+    username = "admin"
+    password = "secret"
   }
 
   type = "Opaque"
