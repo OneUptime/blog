@@ -24,13 +24,7 @@ Terraform downloads provider plugins from registry.terraform.io during `terrafor
 
 ## How Terraform Resolves Providers
 
-By default, Terraform uses this resolution order:
-
-1. Check the local filesystem cache in `.terraform/providers`.
-2. Download from the configured mirror (if any).
-3. Download from the public registry.
-
-You can override this behavior with the Terraform CLI configuration to use only a mirror.
+By default, Terraform installs providers from their origin registry, such as `registry.terraform.io`. Terraform can also use implied local mirror directories if they exist, and you can override the default behavior with the Terraform CLI configuration to use only a mirror.
 
 ## Setting Up a Filesystem Mirror
 
@@ -76,13 +70,14 @@ Copy the mirror directory to your air-gapped environment:
 
 ```bash
 # Create a tarball for transfer
-tar -czf terraform-providers.tar.gz -C /path/to mirror/
+tar -czf terraform-providers.tar.gz -C /path/to/mirror .
 
 # Transfer via approved method (USB, secure file transfer, etc.)
 scp terraform-providers.tar.gz airgapped-host:/opt/terraform/
 
 # Extract on the air-gapped host
 ssh airgapped-host
+mkdir -p /opt/terraform/providers
 tar -xzf /opt/terraform/terraform-providers.tar.gz -C /opt/terraform/providers/
 ```
 
@@ -208,20 +203,43 @@ resource "aws_s3_bucket_policy" "terraform_mirror" {
         }
         Action   = "s3:GetObject"
         Resource = "${aws_s3_bucket.terraform_mirror.arn}/*"
+      },
+      {
+        Sid    = "AllowCloudFrontAccess"
+        Effect = "Allow"
+        Principal = {
+          Service = "cloudfront.amazonaws.com"
+        }
+        Action   = "s3:GetObject"
+        Resource = "${aws_s3_bucket.terraform_mirror.arn}/*"
+        Condition = {
+          StringEquals = {
+            "AWS:SourceArn" = aws_cloudfront_distribution.terraform_mirror.arn
+          }
+        }
       }
     ]
   })
 }
 
 # Optional: CloudFront for better performance
+resource "aws_cloudfront_origin_access_control" "mirror" {
+  name                              = "terraform-mirror"
+  origin_access_control_origin_type = "s3"
+  signing_behavior                  = "always"
+  signing_protocol                  = "sigv4"
+}
+
+data "aws_cloudfront_cache_policy" "caching_optimized" {
+  name = "Managed-CachingOptimized"
+}
+
 resource "aws_cloudfront_distribution" "terraform_mirror" {
   origin {
     domain_name = aws_s3_bucket.terraform_mirror.bucket_regional_domain_name
     origin_id   = "S3Mirror"
 
-    s3_origin_config {
-      origin_access_identity = aws_cloudfront_origin_access_identity.mirror.cloudfront_access_identity_path
-    }
+    origin_access_control_id = aws_cloudfront_origin_access_control.mirror.id
   }
 
   enabled = true
@@ -231,15 +249,8 @@ resource "aws_cloudfront_distribution" "terraform_mirror" {
     cached_methods   = ["GET", "HEAD"]
     target_origin_id = "S3Mirror"
 
-    forwarded_values {
-      query_string = false
-      cookies {
-        forward = "none"
-      }
-    }
-
+    cache_policy_id        = data.aws_cloudfront_cache_policy.caching_optimized.id
     viewer_protocol_policy = "https-only"
-    min_ttl                = 86400
   }
 
   restrictions {
@@ -257,11 +268,11 @@ resource "aws_cloudfront_distribution" "terraform_mirror" {
 
 ## Automating Mirror Updates
 
-Create a script that periodically updates the mirror with new provider versions:
+Create a script that periodically updates the mirror with the provider versions required by your Terraform projects:
 
 ```bash
 #!/bin/bash
-# update-mirror.sh - Update the provider mirror with latest versions
+# update-mirror.sh - Update the provider mirror with required provider versions
 
 set -euo pipefail
 
