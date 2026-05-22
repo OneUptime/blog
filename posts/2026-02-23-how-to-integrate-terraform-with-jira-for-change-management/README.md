@@ -18,7 +18,7 @@ The primary goals of a Terraform-Jira integration are traceability, approval, an
 
 ## Creating Jira Tickets for Infrastructure Changes
 
-Use Terraform to automatically create Jira tickets when infrastructure changes are planned.
+Use Terraform to automatically create Jira tickets as part of an apply workflow.
 
 ```hcl
 # Variables for Jira integration
@@ -47,6 +47,11 @@ variable "jira_project_key" {
 
 variable "change_summary" {
   description = "Summary of the infrastructure change"
+  type        = string
+}
+
+variable "environment" {
+  description = "Deployment environment"
   type        = string
 }
 
@@ -204,7 +209,7 @@ resource "null_resource" "attach_plan" {
   depends_on = [null_resource.create_ticket]
 }
 
-# Update ticket after successful apply
+# Transition the ticket when this Terraform-managed step completes
 resource "null_resource" "update_ticket" {
   triggers = {
     ticket_id = null_resource.create_ticket.id
@@ -234,6 +239,16 @@ Integrate the Jira workflow into your CI/CD pipeline for fully automated change 
 # GitHub Actions or similar CI/CD pipeline configuration
 # managed through Terraform
 
+variable "jira_api_token_secret_id" {
+  description = "AWS Secrets Manager secret ID or ARN containing the Jira API token"
+  type        = string
+}
+
+variable "codebuild_image" {
+  description = "CodeBuild image with Terraform, Python 3, curl, and jq installed"
+  type        = string
+}
+
 # CodeBuild project for Terraform with Jira integration
 resource "aws_codebuild_project" "terraform_with_jira" {
   name         = "terraform-deploy-${var.environment}"
@@ -246,7 +261,7 @@ resource "aws_codebuild_project" "terraform_with_jira" {
 
   environment {
     compute_type    = "BUILD_GENERAL1_SMALL"
-    image           = "hashicorp/terraform:latest"
+    image           = var.codebuild_image
     type            = "LINUX_CONTAINER"
     privileged_mode = false
 
@@ -262,7 +277,7 @@ resource "aws_codebuild_project" "terraform_with_jira" {
 
     environment_variable {
       name  = "JIRA_API_TOKEN"
-      value = var.jira_api_token
+      value = var.jira_api_token_secret_id
       type  = "SECRETS_MANAGER"
     }
 
@@ -344,7 +359,7 @@ output "change_tracking" {
 
 ## Querying Jira for Change History
 
-Use Terraform data sources to query Jira for historical change information.
+Use a Terraform-managed helper command to query Jira for historical change information.
 
 ```hcl
 # Query recent infrastructure changes from Jira
@@ -357,7 +372,7 @@ resource "null_resource" "change_history" {
     command = <<-EOT
       # Search for recent infrastructure change tickets
       curl -s -X POST \
-        "${var.jira_base_url}/rest/api/3/search" \
+        "${var.jira_base_url}/rest/api/3/search/jql" \
         -H "Content-Type: application/json" \
         -H "Authorization: Basic $(echo -n '${var.jira_email}:${var.jira_api_token}' | base64)" \
         -d '{
