@@ -112,7 +112,7 @@ variable "instances" {
 locals {
   # Extracting zones gives duplicates
   all_zones = [for k, v in var.instances : v.zone]
-  # Result: ["us-east-1a", "us-east-1b", "us-east-1a", "us-east-1a"]
+  # Result: ["us-east-1a", "us-east-1a", "us-east-1a", "us-east-1b"]
 
   unique_zones = distinct(local.all_zones)
   # Result: ["us-east-1a", "us-east-1b"]
@@ -121,7 +121,7 @@ locals {
 
 ## Practical Example - Unique Availability Zones
 
-Here is a real-world scenario where `distinct` prevents creating duplicate subnets:
+Here is a real-world scenario where `distinct` prevents creating duplicate per-AZ resources:
 
 ```hcl
 variable "services" {
@@ -195,7 +195,7 @@ resource "aws_security_group_rule" "ingress" {
 }
 ```
 
-Without `distinct`, duplicate CIDR blocks would cause `for_each` to fail because `toset` does not allow duplicates when converting from a list with the same values.
+In this example, `toset` would also coalesce duplicate CIDRs for `for_each`, but keeping `distinct` in the local makes the deduplication explicit and preserves list order for any other consumers of `local.all_access_cidrs`.
 
 ## Case-Insensitive Deduplication
 
@@ -234,12 +234,12 @@ locals {
   all_ports = distinct(flatten([
     for team, config in var.team_configs : config.allowed_ports
   ]))
-  # Result: [80, 443, 8080, 5432, 22, 9090]
+  # Result: [443, 8080, 5432, 80, 22, 9090]
 }
 
 output "unique_ports" {
-  value = sort(local.all_ports)
-  # Result: [22, 80, 443, 5432, 8080, 9090]
+  value = local.all_ports
+  # Result: [443, 8080, 5432, 80, 22, 9090]
 }
 ```
 
@@ -255,9 +255,9 @@ locals {
   via_distinct = distinct(local.my_list)
   # Result: ["charlie", "alpha", "bravo"]
 
-  # toset sorts the elements (sets are unordered, but Terraform sorts them)
+  # toset removes duplicates and discards ordering
   via_toset = tolist(toset(local.my_list))
-  # Result: ["alpha", "bravo", "charlie"]
+  # Result order is undefined and should not be relied on
 }
 ```
 
@@ -276,14 +276,22 @@ data "aws_instances" "app" {
   }
 }
 
+data "aws_instance" "details" {
+  for_each    = toset(data.aws_instances.app.ids)
+  instance_id = each.value
+}
+
 locals {
   # Get unique instance types in use
-  instance_types = distinct(data.aws_instances.app.instance_type_ids)
+  instance_types = distinct([
+    for instance in data.aws_instance.details :
+    instance.instance_type
+  ])
 
   # Get unique subnets where our app instances are running
   app_subnets = distinct([
-    for id in data.aws_instances.app.ids :
-    data.aws_instance.details[id].subnet_id
+    for instance in data.aws_instance.details :
+    instance.subnet_id
   ])
 }
 ```
