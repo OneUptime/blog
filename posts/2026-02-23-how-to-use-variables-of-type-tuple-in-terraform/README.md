@@ -154,11 +154,11 @@ Tuples are most useful in these scenarios:
 
 ### Scenario 1: Return Values from Functions
 
-Some Terraform functions return tuples. Understanding the type helps you work with them.
+Some Terraform functions return positional sequences. Understanding the type helps you work with them.
 
 ```hcl
 locals {
-  # regex returns a tuple of capture groups
+  # regex returns a list of unnamed capture groups
   parts = regex("^([a-z]+)-([0-9]+)$", "app-42")
   # parts[0] = "app", parts[1] = "42"
 
@@ -183,11 +183,10 @@ variable "port_mappings" {
 }
 
 resource "aws_ecs_task_definition" "app" {
-  family                   = "app"
-  requires_compatibilities = ["FARGATE"]
-  network_mode             = "awsvpc"
-  cpu                      = 256
-  memory                   = 512
+  family       = "app"
+  network_mode = "bridge"
+  cpu          = 256
+  memory       = 512
 
   container_definitions = jsonencode([
     {
@@ -254,7 +253,7 @@ variable "subnet_config_better" {
 
 ## Working with setproduct and Tuples
 
-The `setproduct` function returns a list of tuples:
+The `setproduct` function returns a list when all of its arguments are lists, and each result element is a list of values corresponding to the input arguments:
 
 ```hcl
 variable "environments" {
@@ -268,7 +267,7 @@ variable "services" {
 }
 
 locals {
-  # setproduct returns list of tuples
+  # setproduct returns a list of lists when all inputs are lists
   env_service_pairs = setproduct(var.environments, var.services)
   # Result: [["dev","api"], ["dev","web"], ["staging","api"], ...]
 
@@ -305,7 +304,7 @@ variable "instance_spec" {
 
 1. **Prefer objects over tuples for public module interfaces.** Named attributes are self-documenting. `var.config.instance_type` is clearer than `var.config[0]`.
 
-2. **Use tuples for internal data transformations.** When processing data within locals, tuples from functions like `setproduct` or `regex` are natural and fine.
+2. **Use tuples for internal data transformations.** When processing data within locals, positional sequences from functions like `setproduct` or `regex` are natural and fine.
 
 3. **Document tuple position meanings.** If you use a tuple variable, make the description very clear about what each position represents.
 
