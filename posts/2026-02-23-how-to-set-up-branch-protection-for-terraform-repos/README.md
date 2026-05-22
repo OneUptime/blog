@@ -10,7 +10,7 @@ Description: Configure branch protection rules for Terraform repositories to pre
 
 Branch protection rules are your last line of defense against accidental or unauthorized infrastructure changes. In a Terraform repository, where every merged commit can alter production infrastructure, branch protection is not optional. It is essential. Without these rules, a single force push or an unreviewed merge could destroy databases, expose private networks, or break critical services.
 
-This guide covers how to configure branch protection for Terraform repositories on GitHub, GitLab, and Bitbucket, with specific recommendations for infrastructure-as-code workflows.
+This guide covers how to configure branch protection for Terraform repositories on GitHub and GitLab, with specific recommendations for infrastructure-as-code workflows.
 
 ## Why Branch Protection Matters for Terraform
 
@@ -59,10 +59,6 @@ name: Terraform Checks
 on:
   pull_request:
     branches: [main]
-    paths:
-      - '**/*.tf'
-      - '**/*.tfvars'
-      - '.terraform.lock.hcl'
 
 jobs:
   # This job name must match the required status check
@@ -91,8 +87,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Run tfsec
-        uses: aquasecurity/tfsec-action@v1.0.3
+      - name: Run Trivy
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: config
+          scan-ref: .
+          exit-code: '1'
+          severity: CRITICAL,HIGH
 ```
 
 Each job name corresponds to a required status check in the branch protection settings. If any of these checks fail, the PR cannot be merged.
@@ -110,7 +111,9 @@ stages:
 
 terraform-validate:
   stage: validate
-  image: hashicorp/terraform:1.7
+  image:
+    name: hashicorp/terraform:1.15
+    entrypoint: [""]
   script:
     - terraform init -backend=false
     - terraform fmt -check -recursive
@@ -120,7 +123,9 @@ terraform-validate:
 
 terraform-plan:
   stage: plan
-  image: hashicorp/terraform:1.7
+  image:
+    name: hashicorp/terraform:1.15
+    entrypoint: [""]
   script:
     - terraform init
     - terraform plan -no-color
@@ -129,21 +134,23 @@ terraform-plan:
 
 terraform-security:
   stage: security
-  image: aquasec/tfsec:latest
+  image:
+    name: aquasec/trivy:latest
+    entrypoint: [""]
   script:
-    - tfsec .
+    - trivy config --exit-code 1 --severity HIGH,CRITICAL .
   rules:
     - if: $CI_MERGE_REQUEST_ID
 ```
 
-In GitLab, configure protected branches under Settings > Repository > Protected Branches:
+In GitLab, configure a protected branch rule under Settings > Repository > Branch rules:
 
 ```text
 Branch: main
 Allowed to merge: Maintainers
-Allowed to push: No one
+Allowed to push and merge: No one
 Allowed to force push: No
-Code owner approval required: Yes
+Require approval from code owners: Yes
 ```
 
 Set up merge request approval rules under Settings > General > Merge request approvals:
@@ -210,12 +217,16 @@ If someone force pushes over a commit that was already applied, the Terraform st
 If you use tags for versioning your Terraform modules, protect them as well:
 
 ```text
-# GitHub tag protection rule
+# GitHub tag ruleset
 Tag name pattern: v*
-Restrict who can create matching tags: @platform-team
+Rules:
+- Restrict creations
+- Restrict updates
+- Restrict deletions
+Bypass list: @platform-team
 ```
 
-This prevents anyone outside the platform team from creating version tags that might be referenced by other modules or environments.
+GitHub tag protection rules are deprecated, so use a tag ruleset instead. This prevents anyone outside the platform team from creating, updating, or deleting version tags that might be referenced by other modules or environments.
 
 ## Handling Emergency Situations
 
@@ -249,7 +260,7 @@ jobs:
           # Send notification to incident channel
       - uses: hashicorp/setup-terraform@v3
       - run: terraform init
-      - run: terraform apply -target=${{ inputs.target_resource }} -auto-approve
+      - run: terraform apply -target="${{ inputs.target_resource }}" -auto-approve
 ```
 
 This workflow requires a separate environment approval and logs the reason for the emergency change. You can learn more about emergency procedures in our guide on [handling emergency Terraform changes](https://oneuptime.com/blog/post/2026-02-23-how-to-handle-emergency-terraform-changes/view).
