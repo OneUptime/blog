@@ -209,7 +209,7 @@ curl -I https://prometheus.example.com
 curl -I https://jaeger.example.com
 ```
 
-You should see HTTP 200 responses with valid TLS. Check the certificate details:
+You should see successful responses or redirects with valid TLS. Check the certificate details:
 
 ```bash
 openssl s_client -connect grafana.example.com:443 -servername grafana.example.com < /dev/null 2>/dev/null | openssl x509 -noout -dates -subject
@@ -234,8 +234,6 @@ spec:
     - match:
         - uri:
             prefix: /grafana
-      rewrite:
-        uri: /
       route:
         - destination:
             host: grafana.istio-system.svc.cluster.local
@@ -244,8 +242,6 @@ spec:
     - match:
         - uri:
             prefix: /kiali
-      rewrite:
-        uri: /
       route:
         - destination:
             host: kiali.istio-system.svc.cluster.local
@@ -254,16 +250,22 @@ spec:
     - match:
         - uri:
             prefix: /prometheus
-      rewrite:
-        uri: /
       route:
         - destination:
             host: prometheus.istio-system.svc.cluster.local
             port:
               number: 9090
+    - match:
+        - uri:
+            prefix: /jaeger
+      route:
+        - destination:
+            host: tracing.istio-system.svc.cluster.local
+            port:
+              number: 80
 ```
 
-Note that path-based routing can be tricky with some dashboards because they have hardcoded asset paths. Grafana supports a `root_url` configuration option to handle this. Kiali has a `web_root` setting. You may need to configure those to match your chosen path prefix.
+Note that path-based routing can be tricky with some dashboards because they need to know their public URL prefix. Grafana supports `root_url` and `serve_from_sub_path` configuration options to handle this. Kiali has a `web_root` setting. Prometheus has `--web.external-url` and `--web.route-prefix` flags, and Jaeger supports a query base path. You may need to configure those to match your chosen path prefix.
 
 ## Adding HSTS Headers
 
@@ -297,7 +299,7 @@ spec:
 If you get a 503 error, check that the backend pods are running:
 
 ```bash
-kubectl get pods -n istio-system -l app=grafana
+kubectl get pods -n istio-system -l app.kubernetes.io/name=grafana
 ```
 
 If TLS handshake fails, verify the secret exists and has the right data:
