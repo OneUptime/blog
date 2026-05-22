@@ -158,7 +158,7 @@ resource "aws_cloudwatch_metric_alarm" "canary_latency" {
   metric_name         = "TargetResponseTime"
   namespace           = "AWS/ApplicationELB"
   period              = 60
-  statistic           = "p99"
+  extended_statistic  = "p99"
   threshold           = 2.0  # 2 second p99
 
   dimensions = {
@@ -167,6 +167,22 @@ resource "aws_cloudwatch_metric_alarm" "canary_latency" {
   }
 
   alarm_actions = [aws_lambda_function.canary_rollback.arn]
+}
+
+resource "aws_lambda_permission" "allow_cloudwatch_canary_errors" {
+  statement_id  = "AllowExecutionFromCloudWatchCanaryErrors"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.canary_rollback.function_name
+  principal     = "lambda.alarms.cloudwatch.amazonaws.com"
+  source_arn    = aws_cloudwatch_metric_alarm.canary_errors.arn
+}
+
+resource "aws_lambda_permission" "allow_cloudwatch_canary_latency" {
+  statement_id  = "AllowExecutionFromCloudWatchCanaryLatency"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.canary_rollback.function_name
+  principal     = "lambda.alarms.cloudwatch.amazonaws.com"
+  source_arn    = aws_cloudwatch_metric_alarm.canary_latency.arn
 }
 ```
 
@@ -182,6 +198,7 @@ on:
       image_tag:
         description: 'Container image tag to deploy'
         required: true
+        type: string
 
 jobs:
   deploy-canary:
