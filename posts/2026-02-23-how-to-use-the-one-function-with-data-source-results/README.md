@@ -12,10 +12,10 @@ When you query a data source in Terraform, you often expect exactly one result b
 
 ## What Is the one Function?
 
-The `one` function takes a list or set and returns its element if the collection contains exactly one item. If the collection is empty, it returns `null`. If the collection contains more than one element, Terraform throws an error. Here is the basic signature:
+The `one` function takes a list, set, or tuple and returns its element if the collection contains exactly one item. If the collection is empty, it returns `null`. If the collection contains more than one element, Terraform throws an error. Here is the basic signature:
 
 ```hcl
-# one(list)
+# one(collection)
 
 # Returns the single element, null for empty, or errors for 2+ elements
 one(["hello"])  # Returns "hello"
@@ -58,7 +58,7 @@ null
 
 ## The Problem one Solves
 
-Before `one` existed, extracting a single result from a data source often looked like this:
+Some data sources, such as `aws_vpc`, are designed to return a single result directly:
 
 ```hcl
 data "aws_vpc" "main" {
@@ -68,13 +68,12 @@ data "aws_vpc" "main" {
   }
 }
 
-# Old approach - index into the list and hope for the best
 output "vpc_id" {
   value = data.aws_vpc.main.id
 }
 ```
 
-This works when the data source itself guarantees a single result, but many data sources return lists. Consider `aws_ami_ids` or custom queries that could return multiple matches:
+This works when the data source itself enforces a single result, but many data sources return lists. Consider `aws_ami_ids` or custom queries that could return multiple matches:
 
 ```hcl
 data "aws_ami_ids" "ubuntu" {
@@ -107,7 +106,8 @@ data "aws_vpcs" "tagged" {
 
 locals {
   # Clear intent: we expect exactly one production VPC
-  # If there are zero or multiple, Terraform will let us know
+  # If there are multiple, one() will return an error.
+  # If there are zero, one() returns null.
   prod_vpc_id = one(data.aws_vpcs.tagged.ids)
 }
 
@@ -122,7 +122,7 @@ resource "aws_subnet" "app" {
 }
 ```
 
-If someone accidentally creates a second production VPC, or if the tag filter matches nothing, Terraform will flag the issue at plan time rather than silently deploying into the wrong VPC.
+If someone accidentally creates a second production VPC, Terraform will flag the issue at plan time rather than silently deploying into the wrong VPC. If the tag filter matches nothing, `one` returns `null`, which you should either handle explicitly or allow a required downstream argument to reject.
 
 ## Combining one with for Expressions
 
@@ -320,6 +320,6 @@ output "nat_public_ip" {
 
 ## Summary
 
-The `one` function is a small but important part of writing defensive Terraform configurations. It makes your assumptions about data explicit - when you expect a single result, `one` enforces that expectation at plan time. Use it with data source results, conditional resource outputs (via splat expressions), and filtered lists. It is especially valuable in team environments where infrastructure can drift in unexpected ways, and catching duplicates or missing resources early saves everyone time.
+The `one` function is a small but important part of writing defensive Terraform configurations. It makes your assumptions about data explicit - when you expect zero or one result, `one` enforces that expectation at plan time. Use it with data source results, conditional resource outputs (via splat expressions), and filtered lists. It is especially valuable in team environments where infrastructure can drift in unexpected ways, and catching duplicates or missing resources early saves everyone time.
 
 For related topics, check out our guides on the [try function](https://oneuptime.com/blog/post/2026-02-23-how-to-use-the-try-function-to-handle-optional-attributes/view) and the [distinct function](https://oneuptime.com/blog/post/2026-02-23-how-to-use-the-distinct-function-to-deduplicate-lists/view) for more ways to work with collections in Terraform.
