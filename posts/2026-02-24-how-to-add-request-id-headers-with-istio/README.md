@@ -12,7 +12,7 @@ When you are debugging an issue across a dozen microservices, the first question
 
 ## How Istio Handles Request IDs by Default
 
-Envoy, the proxy that powers Istio's data plane, automatically generates a `x-request-id` header for every request that does not already have one. This happens at the ingress gateway and is propagated through the mesh as long as your services forward the header.
+Envoy, the proxy that powers Istio's data plane, automatically generates a `x-request-id` header for every request that does not already have one. In Istio, this applies to inbound, outbound, and gateway traffic, and the header is propagated through the mesh as long as your services forward it.
 
 By default, Envoy generates a UUID v4 for each request. You can see this in action without any configuration:
 
@@ -25,7 +25,7 @@ The output will include something like:
 ```json
 {
   "headers": {
-    "X-Request-Id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+    "X-Request-Id": "a1b2c3d4-e5f6-4a90-8bcd-ef1234567890"
   }
 }
 ```
@@ -34,7 +34,7 @@ This happens automatically for every request passing through an Envoy sidecar.
 
 ## Configuring Request ID Generation
 
-You can control how request IDs are generated through the mesh configuration:
+You can explicitly enable or disable request ID generation through the mesh configuration. Request ID generation is enabled by default, so this is usually only needed when you want to make the setting explicit:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -42,8 +42,8 @@ kind: IstioOperator
 spec:
   meshConfig:
     defaultConfig:
-      tracing:
-        sampling: 100.0
+      proxyHeaders:
+        requestId: {}
 ```
 
 The request ID is generated regardless of tracing sampling. Even with sampling at 1%, every request gets a `x-request-id` header. The sampling rate only controls whether trace data is sent to the tracing backend.
@@ -126,7 +126,7 @@ spec:
 
 ## Returning Request ID in Responses
 
-By default, Envoy includes the `x-request-id` in the response headers. This is useful for clients to correlate their requests with server-side logs. You can verify this:
+Envoy does not normally echo `x-request-id` in response headers unless your application or proxy configuration adds it, or a trace-forcing header such as `x-envoy-force-trace` causes Envoy to return it. If you want clients to correlate their requests with server-side logs, add it to the response explicitly and then verify it:
 
 ```bash
 curl -sI http://api.example.com/health | grep -i request-id
@@ -152,8 +152,8 @@ spec:
               number: 8080
           headers:
             response:
-              add:
-                x-trace-reference: "Check logs with this request ID"
+              set:
+                x-request-id: "%REQ(x-request-id)%"
 ```
 
 ## Propagating Request IDs Across Services
@@ -164,6 +164,8 @@ The headers your application needs to propagate:
 
 ```text
 x-request-id
+traceparent
+tracestate
 x-b3-traceid
 x-b3-spanid
 x-b3-parentspanid
@@ -182,6 +184,8 @@ app = Flask(__name__)
 
 PROPAGATION_HEADERS = [
     'x-request-id',
+    'traceparent',
+    'tracestate',
     'x-b3-traceid',
     'x-b3-spanid',
     'x-b3-parentspanid',
@@ -213,6 +217,8 @@ const app = express();
 
 const PROPAGATION_HEADERS = [
   'x-request-id',
+  'traceparent',
+  'tracestate',
   'x-b3-traceid',
   'x-b3-spanid',
   'x-b3-parentspanid',
@@ -261,9 +267,9 @@ Each log line will include the request ID, making it easy to trace a request acr
 When a user reports an issue, ask them for the `x-request-id` from the response headers. Then search your logs:
 
 ```bash
-kubectl logs deploy/api-service -c istio-proxy | grep "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
-kubectl logs deploy/user-service -c istio-proxy | grep "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
-kubectl logs deploy/order-service -c istio-proxy | grep "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+kubectl logs deploy/api-service -c istio-proxy | grep "a1b2c3d4-e5f6-4a90-8bcd-ef1234567890"
+kubectl logs deploy/user-service -c istio-proxy | grep "a1b2c3d4-e5f6-4a90-8bcd-ef1234567890"
+kubectl logs deploy/order-service -c istio-proxy | grep "a1b2c3d4-e5f6-4a90-8bcd-ef1234567890"
 ```
 
 If your application logs also include the request ID, you can correlate proxy logs with application logs.
