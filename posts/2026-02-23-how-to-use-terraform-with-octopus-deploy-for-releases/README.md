@@ -12,11 +12,11 @@ Octopus Deploy is a deployment automation tool focused on release management, mu
 
 ## Why Use Terraform with Octopus Deploy?
 
-Octopus Deploy brings structured release management to Terraform workflows. Instead of running Terraform from the command line or a basic CI pipeline, Octopus provides environment promotion with approval gates, release versioning and auditing, variable management across environments, runbooks for operational tasks like Terraform destroy, tenant-based deployments for multi-customer infrastructure, and built-in Terraform steps that handle state management.
+Octopus Deploy brings structured release management to Terraform workflows. Instead of running Terraform from the command line or a basic CI pipeline, Octopus provides environment promotion with approval gates, release versioning and auditing, variable management across environments, runbooks for operational tasks like Terraform destroy, tenant-based deployments for multi-customer infrastructure, and built-in Terraform steps that work with your configured remote state backend.
 
 ## Prerequisites
 
-You need Octopus Deploy installed (self-hosted or cloud), Terraform configurations packaged or accessible from a Git repository, cloud provider credentials, and Octopus Deploy workers with Terraform installed.
+You need Octopus Deploy installed (self-hosted or cloud), Terraform configurations packaged or accessible from a Git repository, cloud provider credentials, and Octopus Deploy workers with Terraform available through Octopus or a custom Terraform executable.
 
 ## Step 1: Configure Terraform in Octopus Deploy
 
@@ -29,8 +29,8 @@ First, set up the necessary accounts and variable sets.
 terraform {
   required_providers {
     octopusdeploy = {
-      source  = "OctopusDeployLabs/octopusdeploy"
-      version = "~> 0.21"
+      source  = "OctopusDeploy/octopusdeploy"
+      version = "~> 1.0"
     }
   }
 }
@@ -124,6 +124,13 @@ resource "octopusdeploy_variable" "aws_region" {
   }
 }
 
+resource "octopusdeploy_variable" "aws_account" {
+  owner_id = octopusdeploy_project.infrastructure.id
+  name     = "TerraformAWSAccount"
+  type     = "AmazonWebServicesAccount"
+  value    = octopusdeploy_aws_account.terraform.id
+}
+
 resource "octopusdeploy_variable" "aws_region_prod" {
   owner_id = octopusdeploy_project.infrastructure.id
   name     = "TerraformVars.aws_region"
@@ -170,21 +177,30 @@ resource "octopusdeploy_deployment_process" "infrastructure" {
     name               = "Terraform Plan"
     condition          = "Success"
     start_trigger      = "StartAfterPrevious"
-    target_roles       = ["terraform-worker"]
 
-    apply_terraform_template_action {
-      name                       = "Plan Infrastructure"
-      template_directory         = "terraform"
-      managed_account            = octopusdeploy_aws_account.terraform.id
-      terraform_additional_init_params = "-backend-config=key=#{Octopus.Environment.Name}/terraform.tfstate"
+    action {
+      name          = "Plan Infrastructure"
+      action_type   = "Octopus.TerraformPlan"
+      run_on_server = true
 
-      # Use inline Terraform or reference packaged files
-      template = {
-        additional_variable_files = "environments/#{Octopus.Environment.Name | ToLower}.tfvars"
+      primary_package {
+        package_id = "Infrastructure.Terraform"
+        feed_id    = "feeds-builtin"
       }
 
-      # Run plan only, do not apply
-      plan_only = true
+      properties = {
+        "Octopus.Action.Script.ScriptSource"              = "Package"
+        "Octopus.Action.Terraform.TemplateDirectory"      = "terraform"
+        "Octopus.Action.Terraform.ManagedAccount"         = "AWS"
+        "Octopus.Action.AwsAccount.Variable"              = "TerraformAWSAccount"
+        "Octopus.Action.Terraform.AdditionalInitParams"   = "-backend-config=key=#{Octopus.Environment.Name}/terraform.tfstate"
+        "Octopus.Action.Terraform.VarFiles"               = "environments/#{Octopus.Environment.Name | ToLower}.tfvars"
+        "Octopus.Action.Terraform.TemplateParameters"     = jsonencode({
+          aws_region    = "#{TerraformVars.aws_region}"
+          environment   = "#{Octopus.Environment.Name}"
+          instance_type = "#{TerraformVars.instance_type}"
+        })
+      }
     }
   }
 
@@ -195,11 +211,10 @@ resource "octopusdeploy_deployment_process" "infrastructure" {
     start_trigger      = "StartAfterPrevious"
 
     manual_intervention_action {
-      name                 = "Review Terraform Plan"
-      instructions         = "Review the Terraform plan output and approve the changes."
-      responsible_team_ids = [var.platform_team_id]
-
-      environments = [octopusdeploy_environment.production.id]
+      name              = "Review Terraform Plan"
+      instructions      = "Review the Terraform plan output and approve the changes."
+      responsible_teams = var.platform_team_id
+      environments      = [octopusdeploy_environment.production.id]
     }
   }
 
@@ -208,16 +223,33 @@ resource "octopusdeploy_deployment_process" "infrastructure" {
     name               = "Terraform Apply"
     condition          = "Success"
     start_trigger      = "StartAfterPrevious"
-    target_roles       = ["terraform-worker"]
 
     apply_terraform_template_action {
-      name                       = "Apply Infrastructure"
-      template_directory         = "terraform"
-      managed_account            = octopusdeploy_aws_account.terraform.id
-      terraform_additional_init_params = "-backend-config=key=#{Octopus.Environment.Name}/terraform.tfstate"
+      name          = "Apply Infrastructure"
+      run_on_server = true
 
-      template = {
+      primary_package {
+        package_id = "Infrastructure.Terraform"
+        feed_id    = "feeds-builtin"
+      }
+
+      aws_account {
+        variable = "TerraformAWSAccount"
+      }
+
+      template {
+        directory                 = "terraform"
         additional_variable_files = "environments/#{Octopus.Environment.Name | ToLower}.tfvars"
+      }
+
+      template_parameters = jsonencode({
+        aws_region    = "#{TerraformVars.aws_region}"
+        environment   = "#{Octopus.Environment.Name}"
+        instance_type = "#{TerraformVars.instance_type}"
+      })
+
+      advanced_options {
+        init_parameters = "-backend-config=key=#{Octopus.Environment.Name}/terraform.tfstate"
       }
     }
   }
@@ -236,8 +268,10 @@ resource "octopusdeploy_runbook" "terraform_destroy" {
   name        = "Destroy Infrastructure"
   description = "Destroy Terraform-managed infrastructure in a specific environment"
 
-  retention_policy {
+  retention_policy_with_strategy {
+    strategy         = "Count"
     quantity_to_keep = 10
+    unit             = "Items"
   }
 }
 
@@ -247,8 +281,10 @@ resource "octopusdeploy_runbook" "terraform_state" {
   name        = "Terraform State Operations"
   description = "Import, remove, or move resources in Terraform state"
 
-  retention_policy {
+  retention_policy_with_strategy {
+    strategy         = "Count"
     quantity_to_keep = 20
+    unit             = "Items"
   }
 }
 
@@ -258,8 +294,10 @@ resource "octopusdeploy_runbook" "drift_detection" {
   name        = "Infrastructure Drift Detection"
   description = "Run Terraform plan to detect configuration drift"
 
-  retention_policy {
+  retention_policy_with_strategy {
+    strategy         = "Count"
     quantity_to_keep = 30
+    unit             = "Items"
   }
 }
 ```
@@ -274,12 +312,12 @@ The Terraform configurations used within Octopus should follow this structure.
 terraform {
   required_version = ">= 1.0"
 
-  # State is managed by Octopus Deploy's Terraform steps
+  # State is stored in S3, with the per-environment key supplied by Octopus Deploy
   backend "s3" {
     bucket         = "my-terraform-state"
     region         = "us-east-1"
-    dynamodb_table = "terraform-locks"
     encrypt        = true
+    use_lockfile   = true
     # Key is set by Octopus Deploy per environment
   }
 
@@ -356,7 +394,7 @@ output "cluster_name" {
 }
 ```
 
-In Octopus Deploy, these outputs become available as output variables that subsequent steps can reference using the `#{Octopus.Action[Apply Infrastructure].Output.TerraformValueOutputs[load_balancer_dns]}` syntax.
+In Octopus Deploy, these outputs become available as output variables that subsequent steps can reference using the `#{Octopus.Action[Apply Infrastructure].Output.TerraformJsonOutputs[load_balancer_dns].value}` syntax.
 
 ## Best Practices
 
