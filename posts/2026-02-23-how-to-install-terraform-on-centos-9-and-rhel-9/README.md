@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, CentOS, RHEL, Linux, Installation, DevOps, Infrastructure as Code
 
-Description: Step-by-step instructions for installing Terraform on CentOS 9 Stream and RHEL using the official HashiCorp repository and manual binary installation.
+Description: Step-by-step instructions for installing Terraform on CentOS 9 Stream and RHEL 9 using the official HashiCorp repository and manual binary installation.
 
 ---
 
 CentOS 9 Stream and Red Hat Enterprise Linux 9 are popular choices for enterprise servers and workstations. If you are running either of these distributions and need to get Terraform up and running, this guide covers two reliable methods: using the official HashiCorp YUM repository and installing the binary manually.
 
-Both methods work identically on CentOS 9 Stream and RHEL since they share the same package management system (DNF/YUM) and the same base packages.
+Both methods use the same package management tooling (DNF/YUM) on CentOS 9 Stream and RHEL 9, and the official HashiCorp RHEL repository is the documented repository for CentOS/RHEL systems.
 
 ## Prerequisites
 
@@ -18,7 +18,7 @@ Before starting, make sure you have:
 
 - A CentOS 9 Stream or RHEL system with root or sudo access
 - An active internet connection
-- `curl` or `wget` installed (usually available by default)
+- `curl` installed (usually available by default)
 
 Check your OS version:
 
@@ -48,7 +48,7 @@ sudo dnf install -y yum-utils
 sudo yum-config-manager --add-repo https://rpm.releases.hashicorp.com/RHEL/hashicorp.repo
 ```
 
-This adds the HashiCorp RPM repository to your system. The repository URL uses `RHEL` which works for both RHEL and CentOS since CentOS 9 Stream is binary compatible with RHEL.
+This adds the HashiCorp RPM repository to your system. The repository URL uses `RHEL`, which is the repository path HashiCorp documents for CentOS/RHEL systems.
 
 ### Step 3 - Install Terraform
 
@@ -69,25 +69,25 @@ terraform -version
 Expected output:
 
 ```text
-Terraform v1.7.x
+Terraform v1.15.x
 on linux_amd64
 ```
 
 ## Method 2 - Manual Binary Installation
 
-If you prefer not to add external repositories, or if you are in an air-gapped environment, you can download and install the binary directly.
+If you prefer not to add external repositories, or if you are preparing an installation for an air-gapped environment, you can download the binary and install it directly.
 
 ### Step 1 - Download Terraform
 
 ```bash
 # Set the Terraform version you want to install
-TERRAFORM_VERSION="1.7.5"
+TERRAFORM_VERSION="1.15.4"
 
 # Download the Terraform zip file for Linux AMD64
 curl -LO "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip"
 ```
 
-For ARM-based systems (like AWS Graviton instances), replace `amd64` with `arm64`:
+For ARM-based systems (like AWS Graviton instances), replace `amd64` with `arm64` in the download, unzip, and cleanup commands:
 
 ```bash
 # For ARM64 systems
@@ -152,8 +152,8 @@ sudo dnf check-update terraform
 For manual installations, you need to repeat the download process with the new version number, then replace the binary:
 
 ```bash
-# Download and install a newer version
-TERRAFORM_VERSION="1.8.0"
+# Download and install the target version
+TERRAFORM_VERSION="1.15.4"
 curl -LO "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip"
 unzip "terraform_${TERRAFORM_VERSION}_linux_amd64.zip"
 sudo mv terraform /usr/local/bin/terraform
@@ -208,13 +208,13 @@ cd ~ && rm -rf ~/terraform-test
 
 ## Configuring Firewall Rules for Terraform
 
-If your CentOS or RHEL system has firewalld enabled and you need Terraform to communicate with cloud APIs, make sure outbound HTTPS traffic is allowed:
+If your CentOS or RHEL system has firewalld enabled and you need Terraform to communicate with cloud APIs, check whether any local firewall policy restricts outbound HTTPS traffic:
 
 ```bash
 # Check firewalld status
 sudo systemctl status firewalld
 
-# Ensure HTTPS traffic is allowed (usually allowed by default for outbound)
+# Review the active zone configuration
 sudo firewall-cmd --list-all
 ```
 
