@@ -54,12 +54,8 @@ locals {
 One key behavior of `tomap` is that it unifies the value types. All values in a map must be the same type, so `tomap` will attempt to convert them:
 
 ```hcl
-# Mixed types get unified - numbers become strings
+# Mixed primitive types get unified - numbers become strings
 > tomap({ "name" = "web", "port" = 8080 })
-# Error: all map elements must have the same type
-
-# Solution: ensure consistent types
-> tomap({ "name" = "web", "port" = "8080" })
 {
   "name" = "web"
   "port" = "8080"
@@ -225,10 +221,10 @@ locals {
   }
 }
 
-# tomap would fail here because name is string and count is number
-# tomap(local.obj_example)  # Error!
+# tomap converts count to a string so all map elements share one type
+# tomap(local.obj_example)  # { "name" = "web", "count" = "3" }
 
-# To make it work, all values must be the same type
+# To avoid implicit conversion, make the values the same type yourself
 locals {
   map_example = tomap({
     name  = "web"
