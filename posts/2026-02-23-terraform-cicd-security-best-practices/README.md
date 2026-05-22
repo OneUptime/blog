@@ -36,12 +36,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
       # Use OIDC instead of static credentials
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::123456789012:role/terraform-ci
           aws-region: us-east-1
+
+      - name: Terraform Plan
+        run: |
+          terraform init
+          terraform plan -out=tfplan
 
       - name: Terraform Apply
         run: terraform apply -auto-approve tfplan
@@ -55,9 +63,8 @@ For AWS, set up the OIDC provider:
 # oidc-provider.tf
 # Create the GitHub OIDC provider in AWS
 resource "aws_iam_openid_connect_provider" "github" {
-  url             = "https://token.actions.githubusercontent.com"
-  client_id_list  = ["sts.amazonaws.com"]
-  thumbprint_list = ["6938fd4d98bab03faadb97b34396831e3780aea1"]
+  url            = "https://token.actions.githubusercontent.com"
+  client_id_list = ["sts.amazonaws.com"]
 }
 
 # IAM role that GitHub Actions will assume
@@ -74,8 +81,8 @@ resource "aws_iam_role" "terraform_ci" {
       Action = "sts:AssumeRoleWithWebIdentity"
       Condition = {
         StringEquals = {
-          # Lock down to specific repo and branch
-          "token.actions.githubusercontent.com:sub" = "repo:myorg/infra:ref:refs/heads/main"
+          # Lock down to the production environment in a specific repo
+          "token.actions.githubusercontent.com:sub" = "repo:myorg/infra:environment:production"
           "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
         }
       }
@@ -99,24 +106,46 @@ resource "aws_iam_role_policy" "terraform_ci" {
     Version = "2012-10-17"
     Statement = [
       {
-        # State file access - read/write to specific bucket
+        # State file access - list the state prefix
+        Effect = "Allow"
+        Action = [
+          "s3:ListBucket"
+        ]
+        Resource = "arn:aws:s3:::my-terraform-state"
+        Condition = {
+          StringEquals = {
+            "s3:prefix" = "prod/terraform.tfstate"
+          }
+        }
+      },
+      {
+        # State file access - read/write state and lock files
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:PutObject"
+        ]
+        Resource = "arn:aws:s3:::my-terraform-state/prod/terraform.tfstate"
+      },
+      {
+        # S3 state locking
         Effect = "Allow"
         Action = [
           "s3:GetObject",
           "s3:PutObject",
           "s3:DeleteObject"
         ]
-        Resource = "arn:aws:s3:::my-terraform-state/*"
+        Resource = "arn:aws:s3:::my-terraform-state/prod/terraform.tfstate.tflock"
       },
       {
-        # State locking via DynamoDB
+        # KMS permissions for the customer-managed state key
         Effect = "Allow"
         Action = [
-          "dynamodb:GetItem",
-          "dynamodb:PutItem",
-          "dynamodb:DeleteItem"
+          "kms:Encrypt",
+          "kms:Decrypt",
+          "kms:GenerateDataKey"
         ]
-        Resource = "arn:aws:dynamodb:us-east-1:123456789012:table/terraform-locks"
+        Resource = "arn:aws:kms:us-east-1:123456789012:key/1234abcd-12ab-34cd-56ef-1234567890ab"
       },
       {
         # Only allow managing specific resource types
@@ -151,8 +180,8 @@ terraform {
     key            = "prod/terraform.tfstate"
     region         = "us-east-1"
     encrypt        = true                    # Enable server-side encryption
-    kms_key_id     = "alias/terraform-state" # Use customer-managed KMS key
-    dynamodb_table = "terraform-locks"       # State locking
+    kms_key_id     = "arn:aws:kms:us-east-1:123456789012:key/1234abcd-12ab-34cd-56ef-1234567890ab"
+    use_lockfile   = true                    # State locking
   }
 }
 ```
@@ -167,6 +196,10 @@ resource "aws_s3_bucket" "terraform_state" {
   lifecycle {
     prevent_destroy = true
   }
+}
+
+resource "aws_s3_bucket" "access_logs" {
+  bucket = "my-terraform-state-access-logs"
 }
 
 # Enable versioning for state recovery
@@ -213,11 +246,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # tfsec finds security issues in Terraform code
-      - name: Run tfsec
-        uses: aquasecurity/tfsec-action@v1.0.0
+      # Trivy finds security issues in Terraform code
+      - name: Run Trivy
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
-          soft_fail: false  # Fail the pipeline on findings
+          scan-type: config
+          scan-ref: .
+          exit-code: '1'  # Fail the pipeline on findings
+          severity: CRITICAL,HIGH
 
       # checkov does broader policy-as-code scanning
       - name: Run Checkov
@@ -313,7 +349,7 @@ A secure Terraform CI/CD pipeline should check these boxes:
 1. No static credentials - use OIDC or short-lived tokens
 2. Least privilege IAM - only permissions you actually need
 3. Encrypted state - with versioning and access logging
-4. Security scanning - tfsec, checkov, and secret detection on every PR
+4. Security scanning - Trivy, checkov, and secret detection on every PR
 5. Pinned versions - providers, modules, and CI actions
 6. Environment separation - different credentials per environment
 7. Audit logging - track every apply with actor and commit info
