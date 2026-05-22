@@ -61,13 +61,13 @@ The optimal parallelism depends on several factors:
 Each cloud provider has API rate limits. Higher parallelism means more concurrent API calls:
 
 ```bash
-# AWS: Generally handles 15-25 concurrent operations well
+# Example: test whether your AWS account and resource mix can handle this
 terraform apply -parallelism=20
 
-# Azure: Resource Manager limits vary by subscription
+# Example: reduce concurrency if Azure Resource Manager throttles requests
 terraform apply -parallelism=15
 
-# GCP: Generally more lenient, can handle higher parallelism
+# Example: test higher concurrency only after checking GCP quotas
 terraform apply -parallelism=30
 ```
 
@@ -154,7 +154,7 @@ resource "aws_instance" "workers" {
 
 ### Flatten Module Dependencies
 
-When one module depends on another, all resources in the consuming module wait for all resources in the dependency:
+When one module uses `depends_on` to depend on another module, all resources in the consuming module wait for all resources in the dependency:
 
 ```hcl
 # Module B waits for ALL of module A to complete
@@ -164,11 +164,12 @@ module "a" {
 
 module "b" {
   source = "./modules/b"
-  input  = module.a.output_value  # Creates full module dependency
+  input  = var.input_value
+  depends_on = [module.a]  # Creates full module dependency
 }
 ```
 
-If module B only needs one output from module A, consider restructuring so that specific resource's output is passed directly:
+If module B only needs one value, prefer passing that value as an input so Terraform can infer the dependency from the specific reference:
 
 ```hcl
 # More granular dependency
@@ -257,7 +258,7 @@ Track how many operations are actually running in parallel:
 terraform apply -parallelism=20 2>&1 | grep -E "Creating|Modifying|Destroying"
 ```
 
-The output shows timestamps, so you can see how many operations overlap:
+The output shows when operations start and finish, so you can see how many operations overlap:
 
 ```text
 aws_instance.worker["worker-1"]: Creating...
