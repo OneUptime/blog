@@ -31,6 +31,12 @@ kubectl label namespace workers istio-injection=enabled
 ```
 
 ```yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: order-processor-sa
+  namespace: workers
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -51,6 +57,7 @@ spec:
         proxy.istio.io/config: |
           holdApplicationUntilProxyStarts: true
     spec:
+      serviceAccountName: order-processor-sa
       containers:
       - name: worker
         image: myregistry/order-processor:1.0
@@ -98,14 +105,14 @@ Even if your worker does not serve HTTP traffic, having a health check endpoint 
 If RabbitMQ is running outside the mesh, create a ServiceEntry:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: rabbitmq
   namespace: workers
 spec:
   hosts:
-  - "rabbitmq.messaging.svc.cluster.local"
+  - "rabbitmq.example.com"
   ports:
   - number: 5672
     name: tcp-amqp
@@ -116,6 +123,8 @@ spec:
   resolution: DNS
   location: MESH_EXTERNAL
 ```
+
+Replace `rabbitmq.example.com` with the DNS name your workers use to connect to the external broker.
 
 If RabbitMQ is inside the mesh, just make sure the port naming is correct. AMQP is a binary protocol, so it needs the `tcp-` prefix:
 
@@ -142,7 +151,7 @@ spec:
 AMQP connections are long-lived and multiplexed. Configure Istio to keep them alive:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: rabbitmq-dr
@@ -162,14 +171,14 @@ spec:
       mode: DISABLE
 ```
 
-Disable Istio mTLS to the broker since RabbitMQ uses its own authentication mechanism. If your broker supports TLS, configure it at the client level rather than through Istio.
+Use `DISABLE` only when the broker endpoint expects plaintext from the sidecar, or when your application already originates TLS to the broker. If RabbitMQ is in the mesh with a sidecar and strict mTLS, omit this TLS setting or use `ISTIO_MUTUAL`.
 
 ## Restricting Sidecar Scope
 
 Workers usually communicate with a small set of services. Narrow the sidecar scope to reduce memory usage:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: order-processor-sidecar
@@ -180,6 +189,7 @@ spec:
       app: order-processor
   egress:
   - hosts:
+    - "./*"
     - "messaging/*"
     - "api-services/*"
     - "istio-system/*"
@@ -187,14 +197,14 @@ spec:
     mode: REGISTRY_ONLY
 ```
 
-The `REGISTRY_ONLY` policy ensures the worker can only communicate with services that are explicitly registered. This is a good security practice for worker pods.
+The `REGISTRY_ONLY` policy makes the sidecar drop unknown outbound traffic, so destinations need Kubernetes services or ServiceEntry resources. Istio documents this as a way to detect missing service registry entries, not as a complete outbound firewall; use Kubernetes NetworkPolicy or an egress gateway when you need a security boundary.
 
 ## Configuring Outbound Traffic from Workers
 
 When your worker processes a message and calls another service, that outbound call goes through Istio. Set appropriate timeouts for those downstream calls:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: notification-service-vs
@@ -218,7 +228,7 @@ spec:
 Protect downstream services from being overwhelmed by worker bursts:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: payment-api-dr
@@ -246,7 +256,7 @@ When the circuit breaks, your worker will get an immediate error instead of wait
 Workers often need to call external APIs (payment gateways, email services, etc.):
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-payment-gateway
@@ -257,20 +267,9 @@ spec:
   ports:
   - number: 443
     name: https
-    protocol: TLS
+    protocol: HTTPS
   resolution: DNS
   location: MESH_EXTERNAL
----
-apiVersion: networking.istio.io/v1beta1
-kind: DestinationRule
-metadata:
-  name: stripe-dr
-  namespace: workers
-spec:
-  host: "api.stripe.com"
-  trafficPolicy:
-    tls:
-      mode: SIMPLE
 ```
 
 ## Authorization Policies
@@ -278,7 +277,7 @@ spec:
 Control which workers can access which services:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: payment-api-worker-access
@@ -326,11 +325,11 @@ Even though workers do not receive inbound HTTP traffic, Istio tracks their outb
 # See which services workers are calling
 
 kubectl exec -n istio-system deploy/prometheus -- \
-  promtool query instant 'sum(rate(istio_requests_total{source_workload_namespace="workers"}[5m])) by (source_workload, destination_service)'
+  promtool query instant http://localhost:9090 'sum(rate(istio_requests_total{source_workload_namespace="workers"}[5m])) by (source_workload, destination_service)'
 
 # Error rates for downstream calls
 kubectl exec -n istio-system deploy/prometheus -- \
-  promtool query instant 'sum(rate(istio_requests_total{source_workload_namespace="workers", response_code!="200"}[5m])) by (source_workload, destination_service, response_code)'
+  promtool query instant http://localhost:9090 'sum(rate(istio_requests_total{source_workload_namespace="workers", response_code!="200"}[5m])) by (source_workload, destination_service, response_code)'
 ```
 
 ## Summary
