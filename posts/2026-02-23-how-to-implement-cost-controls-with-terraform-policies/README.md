@@ -90,38 +90,40 @@ Open Policy Agent works with any Terraform setup:
 # cost-controls.rego
 package terraform.cost
 
+import rego.v1
+
 # Deny expensive instance types in non-production
-deny[msg] {
+deny contains msg if {
     resource := input.resource_changes[_]
     resource.type == "aws_instance"
-    resource.change.actions[_] == "create"
+    "create" in resource.change.actions
 
     expensive_types := {"m5.4xlarge", "m5.8xlarge", "m5.12xlarge", "m5.16xlarge", "m5.24xlarge", "r5.4xlarge", "r5.8xlarge", "c5.9xlarge", "c5.18xlarge"}
-    resource.change.after.instance_type == expensive_types[_]
+    resource.change.after.instance_type in expensive_types
 
-    # Check if the workspace indicates non-production
-    not contains(input.configuration.root_module.variables.environment.default, "production")
+    # Check if the environment variable indicates non-production
+    not contains(input.variables.environment.value, "production")
 
     msg := sprintf("Instance type %s is too expensive for non-production. Resource: %s", [resource.change.after.instance_type, resource.address])
 }
 
 # Deny RDS instances larger than allowed
-deny[msg] {
+deny contains msg if {
     resource := input.resource_changes[_]
     resource.type == "aws_db_instance"
-    resource.change.actions[_] == "create"
+    "create" in resource.change.actions
 
     blocked_classes := {"db.r5.4xlarge", "db.r5.8xlarge", "db.r5.12xlarge", "db.r5.16xlarge", "db.m5.4xlarge", "db.m5.8xlarge"}
-    resource.change.after.instance_class == blocked_classes[_]
+    resource.change.after.instance_class in blocked_classes
 
     msg := sprintf("RDS instance class %s requires approval. Resource: %s", [resource.change.after.instance_class, resource.address])
 }
 
 # Require encryption on all storage
-deny[msg] {
+deny contains msg if {
     resource := input.resource_changes[_]
     resource.type == "aws_ebs_volume"
-    resource.change.actions[_] == "create"
+    "create" in resource.change.actions
     not resource.change.after.encrypted
 
     msg := sprintf("EBS volume must be encrypted: %s", [resource.address])
@@ -196,11 +198,11 @@ Combine Infracost with policy enforcement:
 # cost-gate.sh
 # Enforce cost policies using Infracost output
 
-# Generate cost estimate
-infracost breakdown --path . --format json > costs.json
+# Generate cost estimate and diff against a baseline from the base branch
+infracost diff --path . --compare-to infracost-base.json --format json > costs.json
 
 # Extract monthly cost
-MONTHLY_COST=$(jq -r '.totalMonthlyCost' costs.json)
+MONTHLY_COST=$(jq -r '(.totalMonthlyCost // ([.projects[]?.breakdown.totalMonthlyCost?] | map(select(. != null) | tonumber) | add) // 0)' costs.json)
 DIFF_COST=$(jq -r '.diffTotalMonthlyCost // 0' costs.json)
 
 echo "Current monthly cost: $MONTHLY_COST"
@@ -242,6 +244,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+      - uses: open-policy-agent/setup-opa@v2
+        with:
+          version: latest
 
       - name: Generate plan
         run: |
@@ -250,18 +257,23 @@ jobs:
           terraform show -json plan.binary > plan.json
 
       - name: Run OPA policies
-        uses: open-policy-agent/opa-action@v2
-        with:
-          tests: policies/
-          input: plan.json
+        run: opa eval --fail-defined --data policies/cost-controls.rego --input plan.json "data.terraform.cost.deny[msg]"
 
       - name: Check Infracost
         uses: infracost/actions/setup@v3
         with:
           api-key: ${{ secrets.INFRACOST_API_KEY }}
 
+      - name: Generate Infracost baseline
+        run: |
+          git fetch origin ${{ github.event.pull_request.base.ref }}
+          git checkout FETCH_HEAD
+          infracost breakdown --path . --format json --out-file infracost-base.json
+
+      - name: Restore pull request branch
+        run: git checkout -
+
       - run: |
-          infracost breakdown --path . --format json > costs.json
           ./scripts/cost-gate.sh
 ```
 
