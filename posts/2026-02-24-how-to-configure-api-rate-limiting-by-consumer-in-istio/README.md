@@ -147,56 +147,20 @@ data:
         rate_limit:
           unit: minute
           requests_per_unit: 10
-      # Default for unknown consumers
+      # Default for unknown tier values
       - key: api_consumer
         rate_limit:
           unit: minute
           requests_per_unit: 5
 ```
 
-This configuration defines four tiers: premium (1000/min), standard (100/min), free (10/min), and a default catch-all (5/min) for unidentified consumers.
+This configuration defines four tiers: premium (1000/min), standard (100/min), free (10/min), and a default catch-all (5/min) for unrecognized tier values.
 
 ## Step 3: Configure Envoy to Use the Rate Limit Service
 
 Now you need to tell Envoy about the rate limit service and how to extract consumer information from requests. There are two EnvoyFilters needed.
 
-First, register the rate limit service as a cluster:
-
-```yaml
-apiVersion: networking.istio.io/v1alpha3
-kind: EnvoyFilter
-metadata:
-  name: ratelimit-cluster
-  namespace: istio-system
-spec:
-  workloadSelector:
-    labels:
-      istio: ingressgateway
-  configPatches:
-    - applyTo: CLUSTER
-      match:
-        cluster:
-          service: ratelimit.istio-system.svc.cluster.local
-      patch:
-        operation: ADD
-        value:
-          name: rate_limit_cluster
-          type: STRICT_DNS
-          connect_timeout: 10s
-          lb_policy: ROUND_ROBIN
-          http2_protocol_options: {}
-          load_assignment:
-            cluster_name: rate_limit_cluster
-            endpoints:
-              - lb_endpoints:
-                  - endpoint:
-                      address:
-                        socket_address:
-                          address: ratelimit.istio-system.svc.cluster.local
-                          port_value: 8081
-```
-
-Second, add the rate limit filter and configure how to extract consumer information:
+First, add the rate limit filter and point it at the Istio-generated outbound cluster for the rate limit service:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -227,10 +191,11 @@ spec:
             domain: api-ratelimit
             failure_mode_deny: false
             timeout: 5s
+            enable_x_ratelimit_headers: DRAFT_VERSION_03
             rate_limit_service:
               grpc_service:
                 envoy_grpc:
-                  cluster_name: rate_limit_cluster
+                  cluster_name: outbound|8081||ratelimit.istio-system.svc.cluster.local
               transport_api_version: V3
 ```
 
@@ -266,6 +231,7 @@ spec:
 ```
 
 This tells Envoy to take the value from the `X-API-Tier` header and use it as the `api_consumer` descriptor key when making rate limit checks.
+If the header is missing, Envoy does not generate this descriptor, so make sure your authentication layer always sets it when you want every request to be rate limited.
 
 ## Using JWT Claims for Consumer Identity
 
@@ -360,7 +326,7 @@ kubectl logs -l app=ratelimit -n istio-system --tail=20
 
 ## Rate Limit Response Headers
 
-By default, Envoy adds rate limit headers to the response. Clients can see their current limits:
+With `enable_x_ratelimit_headers: DRAFT_VERSION_03` set on the rate limit filter, Envoy can add standard rate limit headers to the response. Clients can see their current limits:
 
 ```text
 X-RateLimit-Limit: 100
@@ -370,7 +336,7 @@ X-RateLimit-Reset: 60
 
 ## Handling Rate Limit Service Failures
 
-The `failure_mode_deny` flag in the rate limit filter configuration controls what happens when the rate limit service is unreachable. Setting it to `false` (the default) means requests are allowed through if the rate limit service is down. Setting it to `true` means all requests are denied, which is safer but can cause outages if the rate limit service has issues.
+The `failure_mode_deny` flag in the rate limit filter configuration controls what happens when the rate limit service is unreachable. Setting it to `false` (the default) means requests are allowed through if the rate limit service is down. Setting it to `true` means requests fail closed with the filter's error status, which defaults to 500 unless you configure `status_on_error`.
 
 For most production setups, `false` is the right choice. You do not want a rate limiting infrastructure failure to take down your entire API.
 
