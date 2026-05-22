@@ -14,7 +14,7 @@ This post explains how `setproduct` works, its output format, and real-world pat
 
 ## What is the setproduct Function?
 
-The `setproduct` function takes two or more lists (or sets) and returns a list of all possible combinations, taking one element from each input.
+The `setproduct` function takes two or more lists (or sets) and returns all possible combinations, taking one element from each input.
 
 ```hcl
 # Returns all combinations of elements from the input sets
@@ -22,7 +22,7 @@ The `setproduct` function takes two or more lists (or sets) and returns a list o
 setproduct(set1, set2, ...)
 ```
 
-Each element in the result is a list containing one element from each input set.
+If all inputs are lists, the result is a list that preserves the input ordering. If any input is a set, the result is a set. Each element in the result is a list containing one element from each input.
 
 ## Basic Usage in Terraform Console
 
@@ -179,17 +179,16 @@ locals {
   ]
 }
 
-resource "aws_security_group_rule" "ingress" {
+resource "aws_vpc_security_group_ingress_rule" "ingress" {
   for_each = {
     for rule in local.sg_rules : rule.key => rule
   }
 
-  type              = "ingress"
+  security_group_id = aws_security_group.app.id
   from_port         = each.value.port
   to_port           = each.value.port
-  protocol          = "tcp"
-  cidr_blocks       = [each.value.cidr]
-  security_group_id = aws_security_group.app.id
+  ip_protocol       = "tcp"
+  cidr_ipv4         = each.value.cidr
 }
 ```
 
@@ -334,7 +333,7 @@ locals {
 - **Empty input**: If any input set is empty, the result is empty (no combinations possible).
 - **Single-element inputs**: A single-element set contributes that one element to every combination.
 - **Result size**: Be careful with large inputs. `setproduct` of lists with 10, 10, and 10 elements produces 1000 combinations.
-- **Type consistency**: All elements within each input must be the same type, but different inputs can have different types.
+- **Type consistency**: All elements within each input must have a consistent type. Terraform may convert compatible mixed types to a common type, but incompatible mixes cause an error.
 
 ```hcl
 # Empty set produces no combinations
