@@ -179,11 +179,11 @@ subnets = [
 
 ## Auto-Loading Behavior
 
-Terraform automatically loads these files (in this order):
+Terraform automatically loads these files, with the following value precedence from highest to lowest:
 
-1. `terraform.tfvars` - if it exists in the working directory
+1. Any files ending in `.auto.tfvars` or `.auto.tfvars.json` (in alphabetical order)
 2. `terraform.tfvars.json` - if it exists (JSON format variant)
-3. Any files ending in `.auto.tfvars` or `.auto.tfvars.json` (in alphabetical order)
+3. `terraform.tfvars` - if it exists in the working directory
 
 You do not need to pass any flags for these files. Terraform just picks them up.
 
@@ -331,7 +331,7 @@ enable_backups    = true
 
 ## Validating Your tfvars File
 
-If there is a typo or a type mismatch in your tfvars file, Terraform catches it during the plan or validate phase.
+If there is a typo or a type mismatch in your tfvars file, Terraform catches it when the file is used by `terraform plan`, `terraform apply`, or `terraform validate`.
 
 ```hcl
 # terraform.tfvars
@@ -347,6 +347,8 @@ You can catch these early with:
 
 ```bash
 terraform validate
+# For a named file that is not auto-loaded:
+terraform validate -var-file="production.tfvars"
 ```
 
 ## A Complete Working Example
@@ -471,6 +473,6 @@ resource "aws_vpc" "main" {
 
 ## Wrapping Up
 
-The `terraform.tfvars` file is the most common and convenient way to set variable values in Terraform. It is automatically loaded, supports the full HCL syntax including comments, and works with all variable types. For most projects, a well-organized `terraform.tfvars` file combined with named tfvars files for environment-specific overrides will cover all your needs.
+The `terraform.tfvars` file is the most common and convenient way to set variable values in Terraform. It is automatically loaded, supports HCL expression syntax including comments, and works with all variable types. For most projects, a well-organized `terraform.tfvars` file combined with named tfvars files for environment-specific overrides will cover all your needs.
 
 For other ways to pass variables and how they interact, see our guide on [variable precedence in Terraform](https://oneuptime.com/blog/post/2026-02-23-how-to-understand-variable-precedence-in-terraform/view).
