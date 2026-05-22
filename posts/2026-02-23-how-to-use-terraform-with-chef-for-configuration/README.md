@@ -18,9 +18,9 @@ The typical workflow starts with Terraform creating infrastructure resources suc
 
 You need Terraform version 1.0 or later, a Chef Infra Server or Chef Automate instance, Chef Workstation installed on your development machine, the Chef client available for your target operating systems, and a cloud provider account.
 
-## Method 1: Using Terraform's Chef Provisioner
+## Method 1: Using Terraform's remote-exec Provisioner
 
-Terraform includes a built-in Chef provisioner that bootstraps nodes with the Chef client.
+Terraform 1.x includes the built-in `remote-exec` provisioner, which can bootstrap nodes with the Chef client over SSH.
 
 ```hcl
 # providers.tf
@@ -54,14 +54,15 @@ variable "chef_server_url" {
   type        = string
 }
 
-variable "chef_user_name" {
-  description = "Chef user name for node registration"
+variable "chef_validation_client_name" {
+  description = "Chef validator client name for legacy validator-based registration"
   type        = string
 }
 
-variable "chef_user_key_path" {
-  description = "Path to the Chef user's private key"
+variable "chef_validation_key" {
+  description = "Chef validator private key for legacy validator-based registration"
   type        = string
+  sensitive   = true
 }
 
 variable "chef_environment" {
@@ -89,33 +90,17 @@ resource "aws_instance" "web_server" {
   }
 
   # Bootstrap the instance with Chef
-  provisioner "chef" {
-    server_url      = var.chef_server_url
-    user_name       = var.chef_user_name
-    user_key        = file(var.chef_user_key_path)
-    node_name       = "web-server-${count.index}"
-    environment     = var.chef_environment
-
-    # Run list defines which recipes to apply
-    run_list = [
-      "recipe[base::default]",
-      "recipe[nginx::default]",
-      "recipe[app-deploy::default]"
+  provisioner "remote-exec" {
+    inline = [
+      "curl -L https://omnitruck.chef.io/install.sh | sudo bash -s -- -P chef -v 18",
+      "sudo mkdir -p /etc/chef /var/log/chef",
+      "sudo tee /etc/chef/client.rb > /dev/null <<'EOF'\nchef_server_url  \"${var.chef_server_url}\"\nnode_name        \"web-server-${count.index}\"\nenvironment      \"${var.chef_environment}\"\nvalidation_client_name \"${var.chef_validation_client_name}\"\nvalidation_key   \"/etc/chef/validation.pem\"\nlog_level        :info\nlog_location     \"/var/log/chef/client.log\"\nEOF",
+      "sudo tee /etc/chef/validation.pem > /dev/null <<'EOF'\n${var.chef_validation_key}\nEOF",
+      "sudo chmod 600 /etc/chef/validation.pem",
+      "sudo tee /etc/chef/first-boot.json > /dev/null <<'EOF'\n${jsonencode({ run_list = ["recipe[base::default]", "recipe[nginx::default]", "recipe[app-deploy::default]"], nginx = { worker_processes = 4, worker_connections = 1024 }, application = { version = var.app_version, port = 8080 } })}\nEOF",
+      "sudo chef-client -j /etc/chef/first-boot.json"
     ]
 
-    # Pass attributes to Chef
-    attributes_json = jsonencode({
-      nginx = {
-        worker_processes = 4
-        worker_connections = 1024
-      }
-      application = {
-        version = var.app_version
-        port    = 8080
-      }
-    })
-
-    # Connection details for SSH
     connection {
       type        = "ssh"
       user        = "ubuntu"
@@ -145,11 +130,12 @@ resource "aws_instance" "app_server" {
 
   # Use user data to bootstrap Chef
   user_data = templatefile("${path.module}/templates/chef-bootstrap.sh.tpl", {
-    chef_server_url  = var.chef_server_url
-    chef_environment = var.chef_environment
-    chef_run_list    = join(",", var.chef_run_list)
-    node_name        = "app-server-${count.index}"
-    validation_key   = var.chef_validation_key
+    chef_server_url       = var.chef_server_url
+    chef_environment      = var.chef_environment
+    chef_run_list         = jsonencode(var.chef_run_list)
+    node_name             = "app-server-${count.index}"
+    validation_client_name = var.chef_validation_client_name
+    validation_key        = var.chef_validation_key
   })
 
   tags = {
@@ -178,6 +164,8 @@ cat > /etc/chef/client.rb <<EOF
 chef_server_url  "${chef_server_url}"
 node_name        "${node_name}"
 environment      "${chef_environment}"
+validation_client_name "${validation_client_name}"
+validation_key   "/etc/chef/validation.pem"
 log_level        :info
 log_location     "/var/log/chef/client.log"
 EOF
@@ -186,11 +174,12 @@ EOF
 cat > /etc/chef/validation.pem <<EOF
 ${validation_key}
 EOF
+chmod 600 /etc/chef/validation.pem
 
 # Create the first-boot configuration
 cat > /etc/chef/first-boot.json <<EOF
 {
-  "run_list": [${chef_run_list}]
+  "run_list": ${chef_run_list}
 }
 EOF
 
@@ -219,11 +208,12 @@ resource "aws_instance" "managed_server" {
   subnet_id     = var.subnet_id
 
   user_data = templatefile("${path.module}/templates/chef-policyfile-bootstrap.sh.tpl", {
-    chef_server_url = var.chef_server_url
-    node_name       = "managed-${count.index}"
-    policy_name     = "web-server"
-    policy_group    = var.chef_environment
-    validation_key  = var.chef_validation_key
+    chef_server_url       = var.chef_server_url
+    node_name             = "managed-${count.index}"
+    policy_name           = "web-server"
+    policy_group          = var.chef_environment
+    validation_client_name = var.chef_validation_client_name
+    validation_key        = var.chef_validation_key
   })
 
   tags = {
@@ -254,7 +244,8 @@ chef_server_url  "${chef_server_url}"
 node_name        "${node_name}"
 policy_name      "${policy_name}"
 policy_group     "${policy_group}"
-use_policyfile   true
+validation_client_name "${validation_client_name}"
+validation_key   "/etc/chef/validation.pem"
 log_level        :info
 log_location     "/var/log/chef/client.log"
 EOF
@@ -263,6 +254,7 @@ EOF
 cat > /etc/chef/validation.pem <<EOF
 ${validation_key}
 EOF
+chmod 600 /etc/chef/validation.pem
 
 # Create log directory
 mkdir -p /var/log/chef
@@ -271,8 +263,9 @@ mkdir -p /var/log/chef
 chef-client --once
 
 # Configure periodic runs
-systemctl enable chef-client
-systemctl start chef-client
+cat > /etc/cron.d/chef-client <<EOF
+*/30 * * * * root /usr/bin/chef-client -l warn 2>&1 | /usr/bin/logger -t chef-client
+EOF
 ```
 
 ## Method 4: Managing Chef Server with Terraform
@@ -355,6 +348,23 @@ variable "node_name_prefix" {
   type        = string
 }
 
+variable "subnet_id" {
+  description = "Subnet ID for instances"
+  type        = string
+}
+
+variable "validation_key" {
+  description = "Chef validator private key for legacy validator-based registration"
+  type        = string
+  sensitive   = true
+}
+
+variable "tags" {
+  description = "Additional tags for instances"
+  type        = map(string)
+  default     = {}
+}
+
 variable "instance_count" {
   description = "Number of instances to create"
   type        = number
@@ -408,8 +418,10 @@ module "web_servers" {
   node_name_prefix = "web"
   instance_count   = 3
   instance_type    = "t3.medium"
+  subnet_id        = var.web_subnet_id
   chef_server_url  = var.chef_server_url
   chef_environment = "production"
+  validation_key   = var.chef_validation_key
 
   chef_run_list = [
     "recipe[base]",
@@ -430,8 +442,10 @@ module "database_servers" {
   node_name_prefix = "db"
   instance_count   = 2
   instance_type    = "r5.large"
+  subnet_id        = var.database_subnet_id
   chef_server_url  = var.chef_server_url
   chef_environment = "production"
+  validation_key   = var.chef_validation_key
 
   chef_run_list = [
     "recipe[base]",
