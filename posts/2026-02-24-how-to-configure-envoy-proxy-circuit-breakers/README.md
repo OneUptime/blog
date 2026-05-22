@@ -46,13 +46,13 @@ spec:
 
 Here's what each field does:
 
-**tcp.maxConnections** - The maximum number of TCP connections to the destination. Once this limit is hit, new connections are queued or rejected.
+**tcp.maxConnections** - The maximum number of HTTP/1.1 or TCP connections to each destination host. Once this limit is hit, additional requests may wait for an available connection or be rejected.
 
 **tcp.connectTimeout** - How long to wait for a TCP connection to be established before giving up.
 
-**http.http1MaxPendingRequests** - For HTTP/1.1, this is the max number of requests that can be queued waiting for a connection. If you have 100 max connections and all are busy, up to 100 more requests can wait in the queue. Beyond that, requests get a 503.
+**http.http1MaxPendingRequests** - The max number of requests that can be queued waiting for a ready connection pool connection. If you have 100 max connections and all are busy, up to 100 more requests can wait in the queue. Beyond that, requests get a 503.
 
-**http.http2MaxRequests** - For HTTP/2, the max number of concurrent requests. Since HTTP/2 multiplexes requests over fewer connections, this is the main knob to turn.
+**http.http2MaxRequests** - The max number of active requests to a destination. Since HTTP/2 multiplexes requests over fewer connections, this is usually the main knob to turn for HTTP/2 traffic.
 
 **http.maxRequestsPerConnection** - After this many requests on a single connection, Envoy closes it and opens a new one. Setting this to 1 disables keep-alive.
 
@@ -192,7 +192,7 @@ Key Prometheus metrics to watch:
 - `envoy_cluster_upstream_rq_pending_overflow` - Requests rejected because the pending queue was full
 - `envoy_cluster_upstream_rq_retry_overflow` - Retries rejected because maxRetries was hit
 - `envoy_cluster_outlier_detection_ejections_active` - Number of currently ejected endpoints
-- `envoy_cluster_outlier_detection_ejections_total` - Total number of ejections
+- `envoy_cluster_outlier_detection_ejections_enforced_total` - Total number of enforced ejections
 
 If you're seeing a lot of overflow events, your limits might be too tight. If you're not seeing any, they might be so loose that they'll never actually protect you.
 
@@ -204,11 +204,11 @@ You can test your circuit breakers using a tool like Fortio:
 # Deploy Fortio
 kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.24/samples/httpbin/sample-client/fortio-deploy.yaml
 
-# Send 100 concurrent requests
-kubectl exec -it deploy/fortio -c fortio -- fortio load -c 100 -qps 0 -n 200 http://payment-service.production:80/
+# Send 200 concurrent requests
+kubectl exec -it deploy/fortio -c fortio -- fortio load -c 200 -qps 0 -n 400 http://payment-service.production:80/
 ```
 
-With `maxConnections: 100` and `http1MaxPendingRequests: 50`, sending 100 concurrent requests should start hitting the limits. Check the Fortio output for the percentage of 503 responses.
+With `maxConnections: 100` and `http1MaxPendingRequests: 50`, sending 200 concurrent requests is more likely to exceed the configured capacity and hit the limits. Check the Fortio output for the percentage of 503 responses.
 
 ## Practical Tips
 
