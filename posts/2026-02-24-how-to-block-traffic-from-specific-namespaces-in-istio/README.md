@@ -114,12 +114,13 @@ With this, only traffic from `production`, `monitoring`, and `istio-system` name
 
 ## Combining ALLOW and DENY
 
-Istio evaluates policies in a specific order:
+Istio evaluates CUSTOM, DENY, and ALLOW policies in a specific order:
 
-1. If any DENY policy matches, the request is denied
-2. If there are no ALLOW policies, the request is allowed
-3. If any ALLOW policy matches, the request is allowed
-4. The request is denied
+1. If any CUSTOM policy matches, its extension provider is evaluated and can deny the request
+2. If any DENY policy matches, the request is denied
+3. If there are no ALLOW policies, the request is allowed
+4. If any ALLOW policy matches, the request is allowed
+5. The request is denied
 
 You can use this to create nuanced rules. For example, allow production namespaces but explicitly deny a specific compromised namespace:
 
@@ -195,7 +196,7 @@ Check the Envoy access logs for the denied request:
 kubectl logs deploy/payment-service -n production -c istio-proxy --tail=20 | grep "403"
 ```
 
-You should see entries with `response_code=403` and `response_flags` containing `UAEX` (upstream authorization denied).
+You should see entries with a `403` response code and `response_code_details` containing `rbac_access_denied_matched_policy[...]`.
 
 ## Debugging Authorization Issues
 
