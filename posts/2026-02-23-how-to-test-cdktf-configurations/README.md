@@ -8,7 +8,7 @@ Description: Learn how to write unit tests and snapshot tests for your CDKTF con
 
 ---
 
-Testing infrastructure code has always been tricky. With traditional Terraform, you either test by deploying (slow and expensive) or use tools like Terratest that spin up real resources. CDKTF changes the game because your infrastructure is defined in a real programming language, which means you can use real testing frameworks. You can write unit tests that verify your configuration without deploying anything, snapshot tests that catch unexpected changes, and integration tests that validate real infrastructure. This guide covers all three approaches.
+Testing infrastructure code has always been tricky. With traditional Terraform, you either test by deploying (slow and expensive) or use tools like Terratest that spin up real resources. CDKTF changes the game because your infrastructure is defined in a real programming language, which means you can use real testing frameworks. You can write unit tests that verify your configuration without deploying anything, snapshot tests that catch unexpected changes, and integration tests that validate real infrastructure. As of December 10, 2025, HashiCorp has deprecated CDKTF and no longer maintains it, but these testing utilities remain available in the latest CDKTF release. This guide focuses on unit and snapshot testing, with integration tests kept for a separate pipeline.
 
 ## Why Test Infrastructure Code?
 
@@ -17,7 +17,7 @@ Infrastructure bugs are expensive. A misconfigured security group can expose you
 CDKTF makes testing practical because:
 - You can instantiate stacks in a test environment without deploying
 - The synthesized output can be inspected as JSON
-- Standard testing frameworks (Jest, Mocha, pytest) work out of the box
+- Standard testing frameworks can assert against synthesized output
 - CDKTF provides built-in testing utilities
 
 ## Setting Up Testing
@@ -29,8 +29,9 @@ For TypeScript projects, Jest is the standard choice:
 
 npm install --save-dev jest @types/jest ts-jest
 
-# Install CDKTF testing utilities
-npm install --save-dev cdktf
+# CDKTF should already be installed in a CDKTF project.
+# If you are adding tests outside an existing project, install it too:
+npm install cdktf
 ```
 
 Configure Jest in your `package.json`:
@@ -96,7 +97,7 @@ describe("MyStack", () => {
     const synthesized = Testing.synth(stack);
 
     // Check that the synthesized output contains an S3 bucket
-    expect(synthesized).toHaveResource("aws_s3_bucket");
+    expect(Testing.toHaveResource(synthesized, "aws_s3_bucket")).toBe(true);
   });
 
   it("should create a VPC", () => {
@@ -104,7 +105,7 @@ describe("MyStack", () => {
     const stack = new MyStack(app, "test-stack");
     const synthesized = Testing.synth(stack);
 
-    expect(synthesized).toHaveResource("aws_vpc");
+    expect(Testing.toHaveResource(synthesized, "aws_vpc")).toBe(true);
   });
 });
 ```
@@ -124,11 +125,13 @@ describe("MyStack", () => {
     const synthesized = Testing.synth(stack);
 
     // Check that the VPC has the expected CIDR block
-    expect(synthesized).toHaveResourceWithProperties("aws_vpc", {
-      cidr_block: "10.0.0.0/16",
-      enable_dns_hostnames: true,
-      enable_dns_support: true,
-    });
+    expect(
+      Testing.toHaveResourceWithProperties(synthesized, "aws_vpc", {
+        cidr_block: "10.0.0.0/16",
+        enable_dns_hostnames: true,
+        enable_dns_support: true,
+      })
+    ).toBe(true);
   });
 
   it("should create an encrypted S3 bucket", () => {
@@ -136,18 +139,21 @@ describe("MyStack", () => {
     const stack = new MyStack(app, "test-stack");
     const synthesized = Testing.synth(stack);
 
-    expect(synthesized).toHaveResourceWithProperties(
-      "aws_s3_bucket_server_side_encryption_configuration",
-      {
-        rule: [
-          {
-            apply_server_side_encryption_by_default: {
-              sse_algorithm: "aws:kms",
+    expect(
+      Testing.toHaveResourceWithProperties(
+        synthesized,
+        "aws_s3_bucket_server_side_encryption_configuration",
+        {
+          rule: [
+            {
+              apply_server_side_encryption_by_default: {
+                sse_algorithm: "aws:kms",
+              },
             },
-          },
-        ],
-      }
-    );
+          ],
+        }
+      )
+    ).toBe(true);
   });
 
   it("should block public access on S3 buckets", () => {
@@ -155,15 +161,18 @@ describe("MyStack", () => {
     const stack = new MyStack(app, "test-stack");
     const synthesized = Testing.synth(stack);
 
-    expect(synthesized).toHaveResourceWithProperties(
-      "aws_s3_bucket_public_access_block",
-      {
-        block_public_acls: true,
-        block_public_policy: true,
-        ignore_public_acls: true,
-        restrict_public_buckets: true,
-      }
-    );
+    expect(
+      Testing.toHaveResourceWithProperties(
+        synthesized,
+        "aws_s3_bucket_public_access_block",
+        {
+          block_public_acls: true,
+          block_public_policy: true,
+          ignore_public_acls: true,
+          restrict_public_buckets: true,
+        }
+      )
+    ).toBe(true);
   });
 });
 ```
@@ -178,17 +187,19 @@ it("should look up the latest Amazon Linux AMI", () => {
   const stack = new MyStack(app, "test-stack");
   const synthesized = Testing.synth(stack);
 
-  expect(synthesized).toHaveDataSource("aws_ami");
-  expect(synthesized).toHaveDataSourceWithProperties("aws_ami", {
-    most_recent: true,
-    owners: ["amazon"],
-  });
+  expect(Testing.toHaveDataSource(synthesized, "aws_ami")).toBe(true);
+  expect(
+    Testing.toHaveDataSourceWithProperties(synthesized, "aws_ami", {
+      most_recent: true,
+      owners: ["amazon"],
+    })
+  ).toBe(true);
 });
 ```
 
 ## Testing Custom Constructs
 
-When testing custom constructs, you can test them in isolation without a full stack:
+When testing custom constructs, you can test them in isolation without instantiating your full application stack:
 
 ```typescript
 import { Testing } from "cdktf";
@@ -212,12 +223,19 @@ describe("SecureBucket construct", () => {
     const synthesized = Testing.synth(stack);
 
     // Verify the construct creates all expected resources
-    expect(synthesized).toHaveResource("aws_s3_bucket");
-    expect(synthesized).toHaveResource("aws_s3_bucket_versioning");
-    expect(synthesized).toHaveResource(
-      "aws_s3_bucket_server_side_encryption_configuration"
+    expect(Testing.toHaveResource(synthesized, "aws_s3_bucket")).toBe(true);
+    expect(Testing.toHaveResource(synthesized, "aws_s3_bucket_versioning")).toBe(
+      true
     );
-    expect(synthesized).toHaveResource("aws_s3_bucket_public_access_block");
+    expect(
+      Testing.toHaveResource(
+        synthesized,
+        "aws_s3_bucket_server_side_encryption_configuration"
+      )
+    ).toBe(true);
+    expect(
+      Testing.toHaveResource(synthesized, "aws_s3_bucket_public_access_block")
+    ).toBe(true);
   });
 
   it("should apply the correct tags", () => {
@@ -232,12 +250,14 @@ describe("SecureBucket construct", () => {
 
     const synthesized = Testing.synth(stack);
 
-    expect(synthesized).toHaveResourceWithProperties("aws_s3_bucket", {
-      tags: {
-        Environment: "production",
-        ManagedBy: "cdktf",
-      },
-    });
+    expect(
+      Testing.toHaveResourceWithProperties(synthesized, "aws_s3_bucket", {
+        tags: {
+          Environment: "production",
+          ManagedBy: "cdktf",
+        },
+      })
+    ).toBe(true);
   });
 });
 ```
@@ -276,14 +296,18 @@ describe("ApplicationStack", () => {
       });
       const synthesized = Testing.synth(stack);
 
-      expect(synthesized).toHaveResourceWithProperties("aws_instance", {
-        instance_type: testCase.instanceType,
-      });
+      expect(
+        Testing.toHaveResourceWithProperties(synthesized, "aws_instance", {
+          instance_type: testCase.instanceType,
+        })
+      ).toBe(true);
 
       if (testCase.multiAz) {
-        expect(synthesized).toHaveResourceWithProperties("aws_db_instance", {
-          multi_az: true,
-        });
+        expect(
+          Testing.toHaveResourceWithProperties(synthesized, "aws_db_instance", {
+            multi_az: true,
+          })
+        ).toBe(true);
       }
     });
   });
