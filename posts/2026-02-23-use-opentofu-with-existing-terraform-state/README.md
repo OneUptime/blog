@@ -12,7 +12,7 @@ One of the most common concerns when switching to OpenTofu is what happens to ex
 
 ## State File Compatibility Basics
 
-OpenTofu and Terraform use the same state file format. The state file is a JSON document that tracks the mapping between your configuration and real infrastructure resources. OpenTofu can read, modify, and write state files that were created by Terraform.
+OpenTofu and Terraform use the same state file format for compatible versions. The state file is a JSON document that tracks the mapping between your configuration and real infrastructure resources. OpenTofu can read, modify, and write state files that were created by supported Terraform versions.
 
 ```bash
 # Examine your current state file format
@@ -179,7 +179,7 @@ tofu plan  # Should show no changes
 
 ## Handling Version Mismatches
 
-If your state was written by a newer version of Terraform than OpenTofu supports, you may see errors:
+If your state was written by a newer version of Terraform than your OpenTofu version supports, you may see errors:
 
 ```bash
 # Error example
@@ -197,19 +197,20 @@ print(f'Terraform version: {state[\"terraform_version\"]}')
 
 If you encounter a version mismatch:
 
-1. Check if a newer OpenTofu version supports the state format
-2. If not, use the original Terraform version to downgrade: run a plan/apply cycle with an older Terraform version that OpenTofu supports
-3. Then initialize with OpenTofu
+1. Check the OpenTofu migration guide for your Terraform version
+2. Install the OpenTofu version recommended for that Terraform version
+3. Initialize with OpenTofu, run `tofu plan`, and only apply after you confirm the plan is safe
 
 ```bash
-# Downgrade approach (if needed)
+# Version-aligned migration approach
 # Use tfenv or tofuenv to install specific versions
-tfenv use 1.5.7
-terraform init -reconfigure
-terraform apply  # This rewrites the state with v1.5.7
 
-# Now OpenTofu can read it
-tofuenv use 1.8.0
+# Example: migrate Terraform 1.9.x state with OpenTofu 1.9.0 first
+tfenv use 1.9.8
+terraform init
+terraform plan  # Confirm there are no pending changes
+
+tofuenv use 1.9.0
 tofu init
 tofu plan
 ```
@@ -220,8 +221,8 @@ During the transition period when both tools might be used, state locking is cri
 
 ```bash
 # OpenTofu respects the same locking mechanisms
-# S3 + DynamoDB locking works identically
-tofu plan -lock=true  # Default behavior
+# S3 + DynamoDB locking works identically when that backend is configured
+tofu plan  # State locking is enabled by default
 
 # Force unlock if needed (same as Terraform)
 tofu force-unlock LOCK_ID
