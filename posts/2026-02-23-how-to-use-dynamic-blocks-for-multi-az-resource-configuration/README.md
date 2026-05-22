@@ -59,6 +59,14 @@ resource "aws_vpc" "main" {
   }
 }
 
+resource "aws_internet_gateway" "main" {
+  vpc_id = aws_vpc.main.id
+
+  tags = {
+    Name = "multi-az-igw"
+  }
+}
+
 # Public subnets - one per AZ
 
 resource "aws_subnet" "public" {
@@ -87,6 +95,26 @@ resource "aws_subnet" "private" {
     Name = each.value.name
     Type = "private"
   }
+}
+
+resource "aws_route_table" "public" {
+  vpc_id = aws_vpc.main.id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.main.id
+  }
+
+  tags = {
+    Name = "public"
+  }
+}
+
+resource "aws_route_table_association" "public" {
+  for_each = aws_subnet.public
+
+  subnet_id      = each.value.id
+  route_table_id = aws_route_table.public.id
 }
 ```
 
@@ -133,6 +161,8 @@ resource "aws_nat_gateway" "main" {
   tags = {
     Name = "nat-${each.key}"
   }
+
+  depends_on = [aws_internet_gateway.main]
 }
 
 # Route tables for private subnets - each points to the appropriate NAT
@@ -150,6 +180,13 @@ resource "aws_route_table" "private" {
   tags = {
     Name = "private-${each.key}"
   }
+}
+
+resource "aws_route_table_association" "private" {
+  for_each = aws_subnet.private
+
+  subnet_id      = each.value.id
+  route_table_id = aws_route_table.private[each.key].id
 }
 ```
 
@@ -191,7 +228,7 @@ resource "aws_autoscaling_group" "app" {
 
 ## RDS Multi-AZ with Dynamic Subnet Groups
 
-RDS requires a DB subnet group with subnets in multiple AZs:
+RDS requires a DB subnet group with subnets in multiple AZs. For Aurora, the DB subnet group must cover at least two AZs:
 
 ```hcl
 resource "aws_db_subnet_group" "main" {
@@ -217,7 +254,7 @@ resource "aws_rds_cluster" "main" {
   db_subnet_group_name   = aws_db_subnet_group.main.name
   vpc_security_group_ids = [aws_security_group.db.id]
 
-  # Multi-AZ is automatic with Aurora - it places replicas in different AZs
+  # Aurora storage is replicated across AZs; DB instances are created separately.
   availability_zones = var.availability_zones
 
   tags = {
@@ -225,12 +262,22 @@ resource "aws_rds_cluster" "main" {
   }
 }
 
+resource "aws_rds_cluster_instance" "writer" {
+  identifier           = "main-writer"
+  cluster_identifier   = aws_rds_cluster.main.id
+  instance_class       = var.db_writer_instance_class
+  engine               = aws_rds_cluster.main.engine
+  engine_version       = aws_rds_cluster.main.engine_version
+  availability_zone    = var.availability_zones[0]
+  db_subnet_group_name = aws_db_subnet_group.main.name
+}
+
 # Create one reader instance per AZ for read scaling
 resource "aws_rds_cluster_instance" "readers" {
   for_each = { for idx, az in var.availability_zones : az => {
     identifier = "main-reader-${idx}"
     az         = az
-  } if idx > 0 }  # Skip the first AZ (writer is there)
+  } if idx > 0 }  # Skip the first AZ used by the writer.
 
   cluster_identifier   = aws_rds_cluster.main.id
   identifier           = each.value.identifier
@@ -272,7 +319,7 @@ resource "aws_elasticache_replication_group" "main" {
 
 ## ECS Service with Multi-AZ Placement
 
-ECS services can be configured to spread tasks across AZs:
+ECS services spread service tasks across AZs by default. For Fargate, provide subnets in each AZ you want the service to use:
 
 ```hcl
 resource "aws_ecs_service" "app" {
@@ -286,15 +333,6 @@ resource "aws_ecs_service" "app" {
   network_configuration {
     subnets         = [for az in var.availability_zones : aws_subnet.private[az].id]
     security_groups = [aws_security_group.app.id]
-  }
-
-  # Spread tasks across AZs
-  dynamic "ordered_placement_strategy" {
-    for_each = length(var.availability_zones) > 1 ? [1] : []
-    content {
-      type  = "spread"
-      field = "attribute:ecs.availability-zone"
-    }
   }
 
   load_balancer {
