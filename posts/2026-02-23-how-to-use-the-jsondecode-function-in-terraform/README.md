@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Jsondecode, JSON Parsing, Data Processing, Infrastructure as Code
 
-Description: Learn how to use Terraform's jsondecode function to parse JSON strings from files, APIs, and data sources into native Terraform maps, lists, and values.
+Description: Learn how to use Terraform's jsondecode function to parse JSON strings from files, APIs, and data sources into native Terraform objects, tuples, and primitive values.
 
 ---
 
-The `jsondecode` function in Terraform takes a JSON string and converts it into a native Terraform value - a map, list, string, number, or boolean depending on the JSON structure. This is one of the most frequently used functions in real-world Terraform because JSON data is everywhere: API responses, configuration files, secrets manager values, state outputs, and external data sources all commonly use JSON format.
+The `jsondecode` function in Terraform takes a JSON string and converts it into a native Terraform value - an object, tuple, string, number, boolean, or null depending on the JSON structure. This is one of the most frequently used functions in real-world Terraform because JSON data is everywhere: API responses, configuration files, secrets manager values, state outputs, and external data sources all commonly use JSON format.
 
 ## Function Syntax
 
@@ -70,7 +70,7 @@ Where `config.json` contains:
 
 ## Parsing Secrets Manager Values
 
-AWS Secrets Manager stores secrets as JSON strings:
+AWS Secrets Manager often stores secrets as JSON strings:
 
 ```hcl
 data "aws_secretsmanager_secret_version" "db_creds" {
@@ -83,12 +83,13 @@ locals {
 }
 
 resource "aws_db_instance" "main" {
-  engine         = "postgres"
-  instance_class = "db.t3.medium"
-  db_name        = local.db_creds.database
-  username       = local.db_creds.username
-  password       = local.db_creds.password
-  port           = local.db_creds.port
+  allocated_storage = 20
+  engine            = "postgres"
+  instance_class    = "db.t3.medium"
+  db_name           = local.db_creds.database
+  username          = local.db_creds.username
+  password          = local.db_creds.password
+  port              = local.db_creds.port
 }
 ```
 
@@ -272,7 +273,7 @@ locals {
 resource "aws_lambda_function" "api" {
   function_name = "api-handler"
   handler       = "index.handler"
-  runtime       = "nodejs18.x"
+  runtime       = "nodejs22.x"
   role          = aws_iam_role.lambda.arn
   filename      = "lambda.zip"
 
@@ -398,4 +399,4 @@ locals {
 
 ## Summary
 
-The `jsondecode` function converts JSON strings into native Terraform values, making it the bridge between external data and your infrastructure configuration. Use it with `file()` to read JSON config files, with data sources to process API responses, with secrets managers to parse credentials, and with remote state to consume outputs. Remember that all JSON types map to Terraform types: objects become maps, arrays become lists, and primitives become their Terraform equivalents. Use `try()` for safe access to potentially missing keys, and `can(jsondecode(...))` for validation.
+The `jsondecode` function converts JSON strings into native Terraform values, making it the bridge between external data and your infrastructure configuration. Use it with `file()` to read JSON config files, with data sources to process API responses, with secrets managers to parse credentials, and with remote state to consume outputs. Remember that all JSON types map to Terraform types: JSON objects become Terraform objects, arrays become tuples, and primitives become their Terraform equivalents. Use `try()` for safe access to potentially missing keys, and `can(jsondecode(...))` for validation.
