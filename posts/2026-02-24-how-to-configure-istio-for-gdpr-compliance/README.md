@@ -84,7 +84,7 @@ spec:
       to:
         - operation:
             methods: ["GET"]
-            paths: ["/users/*/profile"]
+            paths: ["/users/{*}/profile"]
     - from:
         - source:
             principals:
@@ -139,10 +139,9 @@ spec:
     accessLogFormat: |
       {
         "timestamp": "%START_TIME%",
-        "source_workload": "%DOWNSTREAM_PEER_URI_SAN%",
-        "source_namespace": "%DOWNSTREAM_PEER_NAMESPACE%",
-        "destination_workload": "%UPSTREAM_PEER_URI_SAN%",
-        "destination_service": "%UPSTREAM_CLUSTER%",
+        "source_principal": "%DOWNSTREAM_PEER_URI_SAN%",
+        "destination_principal": "%UPSTREAM_PEER_URI_SAN%",
+        "destination_service": "%UPSTREAM_CLUSTER_RAW%",
         "method": "%REQ(:METHOD)%",
         "path": "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%",
         "response_code": "%RESPONSE_CODE%",
@@ -154,29 +153,27 @@ spec:
 
 ### Be Careful About Logging PII
 
-While you need audit logs, those logs must not contain personal data themselves. Configure Envoy to avoid logging request bodies and sensitive headers:
+While you need audit logs, those logs must not contain personal data themselves. Access logs do not include request bodies unless you explicitly add custom logging for them. Keep the access log format limited to operational metadata and avoid sensitive headers:
 
 ```yaml
-apiVersion: networking.istio.io/v1alpha3
-kind: EnvoyFilter
-metadata:
-  name: sanitize-logs
-  namespace: pii-services
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
 spec:
-  configPatches:
-    - applyTo: NETWORK_FILTER
-      match:
-        context: SIDECAR_INBOUND
-        listener:
-          filterChain:
-            filter:
-              name: envoy.filters.network.http_connection_manager
-      patch:
-        operation: MERGE
-        value:
-          typedConfig:
-            "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
-            requestHeadersTimeout: 10s
+  meshConfig:
+    accessLogFile: /dev/stdout
+    accessLogEncoding: JSON
+    accessLogFormat: |
+      {
+        "timestamp": "%START_TIME%",
+        "source_principal": "%DOWNSTREAM_PEER_URI_SAN%",
+        "destination_principal": "%UPSTREAM_PEER_URI_SAN%",
+        "destination_service": "%UPSTREAM_CLUSTER_RAW%",
+        "method": "%REQ(:METHOD)%",
+        "path": "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%",
+        "response_code": "%RESPONSE_CODE%",
+        "request_id": "%REQ(X-REQUEST-ID)%",
+        "duration_ms": "%DURATION%"
+      }
 ```
 
 Make sure your access log format doesn't include headers that might contain PII (like Authorization tokens, cookies with user IDs, or custom headers with personal data).
@@ -227,6 +224,10 @@ spec:
           - from: "eu-central-1/*"
             to:
               "eu-central-1/*": 100
+    outlierDetection:
+      consecutive5xxErrors: 100
+      interval: 1s
+      baseEjectionTime: 1m
 ```
 
 This keeps traffic to the user data service within EU regions. Combined with a VirtualService:
@@ -247,7 +248,6 @@ spec:
       route:
         - destination:
             host: user-data-service
-            subset: eu-only
 ```
 
 ## Breach Detection (Articles 33, 34)
@@ -273,7 +273,7 @@ groups:
 
       - alert: HighVolumeDataExport
         expr: |
-          sum(rate(istio_response_bytes_total{
+          sum(rate(istio_response_bytes_sum{
             destination_service=~".*pii.*"
           }[5m])) > 10000000
         for: 5m
@@ -285,7 +285,7 @@ groups:
 
 ## Consent Enforcement
 
-While Istio doesn't handle consent management directly, you can use it to enforce consent at the API level. Route requests through a consent-checking service:
+While Istio doesn't handle consent management directly, you can use it to enforce consent at the API level. Route requests that have already been checked by a trusted gateway or authorization layer, and send other requests to a consent-checking service:
 
 ```yaml
 apiVersion: networking.istio.io/v1
