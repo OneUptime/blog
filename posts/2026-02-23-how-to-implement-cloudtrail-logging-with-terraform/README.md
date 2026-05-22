@@ -8,9 +8,9 @@ Description: Set up comprehensive AWS CloudTrail logging with Terraform includin
 
 ---
 
-CloudTrail is the audit log for your AWS account. Every API call, every console login, every resource change gets recorded. Without CloudTrail, you are flying blind when it comes to security investigations, compliance audits, and understanding who did what in your environment. Setting it up properly with Terraform ensures consistent logging across all your accounts and regions.
+CloudTrail is the audit log for your AWS account. It records AWS account activity such as supported API calls, console sign-ins, and resource changes. Without CloudTrail, you are flying blind when it comes to security investigations, compliance audits, and understanding who did what in your environment. Setting it up properly with Terraform ensures consistent logging across your accounts and regions.
 
-This guide walks through a complete CloudTrail implementation with Terraform, from the basic trail to advanced configurations like organization-wide logging and real-time alerting.
+This guide walks through a complete CloudTrail implementation with Terraform, from the basic trail to advanced configurations like multi-region logging and real-time alerting.
 
 ## Create the S3 Bucket for Logs
 
@@ -172,16 +172,62 @@ resource "aws_kms_key" "cloudtrail" {
         Principal = {
           Service = "cloudtrail.amazonaws.com"
         }
-        Action = [
-          "kms:GenerateDataKey*",
-          "kms:DescribeKey"
-        ]
+        Action   = "kms:GenerateDataKey*"
+        Resource = "*"
+        Condition = {
+          StringEquals = {
+            "aws:SourceArn" = "arn:aws:cloudtrail:${var.region}:${data.aws_caller_identity.current.account_id}:trail/${var.project}-trail"
+          }
+          StringLike = {
+            "kms:EncryptionContext:aws:cloudtrail:arn" = "arn:aws:cloudtrail:*:${data.aws_caller_identity.current.account_id}:trail/*"
+          }
+        }
+      },
+      {
+        Sid    = "AllowCloudTrailDescribeKey"
+        Effect = "Allow"
+        Principal = {
+          Service = "cloudtrail.amazonaws.com"
+        }
+        Action   = "kms:DescribeKey"
         Resource = "*"
         Condition = {
           StringEquals = {
             "aws:SourceArn" = "arn:aws:cloudtrail:${var.region}:${data.aws_caller_identity.current.account_id}:trail/${var.project}-trail"
           }
         }
+      },
+      {
+        Sid    = "AllowCloudWatchLogsEncrypt"
+        Effect = "Allow"
+        Principal = {
+          Service = "logs.${var.region}.amazonaws.com"
+        }
+        Action = [
+          "kms:Encrypt",
+          "kms:Decrypt",
+          "kms:ReEncrypt*",
+          "kms:GenerateDataKey*",
+          "kms:DescribeKey"
+        ]
+        Resource = "*"
+        Condition = {
+          ArnEquals = {
+            "kms:EncryptionContext:aws:logs:arn" = "arn:aws:logs:${var.region}:${data.aws_caller_identity.current.account_id}:log-group:/aws/cloudtrail/${var.project}"
+          }
+        }
+      },
+      {
+        Sid    = "AllowCloudWatchAlarmsForSns"
+        Effect = "Allow"
+        Principal = {
+          Service = "cloudwatch.amazonaws.com"
+        }
+        Action = [
+          "kms:Decrypt",
+          "kms:GenerateDataKey*"
+        ]
+        Resource = "*"
       },
       {
         Sid    = "AllowLogDecrypt"
@@ -338,7 +384,7 @@ resource "aws_cloudwatch_metric_alarm" "root_usage" {
 resource "aws_cloudwatch_log_metric_filter" "unauthorized_api" {
   name           = "unauthorized-api-calls"
   log_group_name = aws_cloudwatch_log_group.cloudtrail.name
-  pattern        = "{ ($.errorCode = \"*UnauthorizedAccess*\") || ($.errorCode = \"AccessDenied*\") }"
+  pattern        = "{ ($.errorCode = \"*UnauthorizedOperation\") || ($.errorCode = \"AccessDenied*\") }"
 
   metric_transformation {
     name      = "UnauthorizedAPICalls"
