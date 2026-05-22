@@ -23,7 +23,7 @@ A module marketplace addresses all of these concerns by creating a single source
 You have several options for hosting your module marketplace:
 
 ```hcl
-# Option 1: Terraform Cloud/Enterprise Private Registry
+# Option 1: HCP Terraform/Terraform Enterprise Private Registry
 
 # Modules are sourced directly from your private registry
 module "vpc" {
@@ -53,7 +53,7 @@ module "vpc" {
 }
 ```
 
-For most organizations, Terraform Cloud or Enterprise with a private registry is the simplest path. If you need more control, building on top of GitHub or GitLab gives you flexibility while leveraging existing tooling.
+For most organizations, HCP Terraform or Terraform Enterprise with a private registry is the simplest path. If you need more control, building on top of GitHub or GitLab gives you flexibility while leveraging existing tooling.
 
 ## Defining Module Standards
 
@@ -107,7 +107,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
 
       # Validate the module syntax
       - name: Terraform Format Check
@@ -139,7 +139,7 @@ jobs:
       - name: Publish Module
         run: |
           # Tag triggers automatic publication to
-          # Terraform Cloud private registry
+          # HCP Terraform private registry
           echo "Module published successfully"
 ```
 
@@ -219,7 +219,7 @@ module "vpc" {
 
 Every module published to the marketplace should go through a review process:
 
-```yaml
+```text
 # .github/CODEOWNERS
 # Require platform team review for all module changes
 * @myorg/platform-team
@@ -230,7 +230,7 @@ Every module published to the marketplace should go through a review process:
 /modules/database/   @myorg/database-team
 ```
 
-```yaml
+```markdown
 # .github/pull_request_template.md
 # Module Change Review Checklist
 #
@@ -321,7 +321,7 @@ variable "deprecated_warning" {
   default = "WARNING: This module is deprecated. Migrate to terraform-aws-vpc v3.x"
 
   validation {
-    condition     = false
+    condition     = length(var.deprecated_warning) < 0
     error_message = "This module is deprecated. Please use app.terraform.io/myorg/vpc/aws version 3.x instead."
   }
 }
