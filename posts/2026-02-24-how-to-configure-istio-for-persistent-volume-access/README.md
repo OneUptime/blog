@@ -14,13 +14,13 @@ Understanding how PV access interacts with Istio helps you avoid subtle issues w
 
 ## How Persistent Volumes Work at the Network Level
 
-Most Persistent Volume types have a network component:
+Many Persistent Volume types have a network component:
 
-- **Cloud block storage** (EBS, Azure Disk, GCE PD) - the kubelet communicates with the cloud API to attach the volume. This happens outside the pod entirely.
+- **Cloud block storage** (EBS, Azure Disk, GCE PD) - Kubernetes storage components or CSI drivers communicate with the cloud API to provision and attach the volume. This happens outside the application pod entirely.
 - **NFS** - the node mounts the NFS share using kernel-level NFS. Traffic flows from the node to the NFS server, not through the pod network.
 - **iSCSI** - similar to NFS, the node establishes iSCSI sessions to the storage target.
 - **CSI drivers** - a CSI controller running as a pod may communicate with external storage APIs. CSI node plugins run as DaemonSets.
-- **Network file systems (CephFS, GlusterFS)** - the node or a CSI driver handles the network communication.
+- **Network file systems (for example, CephFS through a CSI driver)** - the node or a CSI driver handles the network communication.
 
 For most of these, the Istio sidecar is not involved at all because the storage traffic goes through the node, not through the pod's network namespace.
 
@@ -54,7 +54,7 @@ spec:
 
 The init container tries to reach `config-service` but the sidecar is not running, so the request fails. The PV itself mounts fine (that is handled by the node), but the network call inside the init container is the problem.
 
-Fix: Exclude the init container's outbound traffic or move the network call to the main container:
+Fix: Exclude the destination CIDR or port from Istio redirection, or move the network call to the main container:
 
 ```yaml
 metadata:
@@ -72,7 +72,7 @@ metadata:
 
 ### 2. CSI Driver Pods in the Mesh
 
-If your CSI driver controller runs as a Deployment and is part of the Istio mesh, its communication with external storage APIs goes through the sidecar. This can cause issues if mTLS is expected but the storage API does not support it.
+If your CSI driver controller runs as a Deployment and is part of the Istio mesh, its communication with external storage APIs goes through the sidecar. This can cause issues if the driver expects direct egress, if mesh egress policy blocks unknown external services, or if TLS origination is configured incorrectly.
 
 The fix is to exclude CSI driver pods from the mesh:
 
@@ -85,7 +85,7 @@ metadata:
 spec:
   template:
     metadata:
-      annotations:
+      labels:
         sidecar.istio.io/inject: "false"
 ```
 
@@ -99,7 +99,7 @@ If your application accesses storage through a network API (like S3, GCS, or a c
 # App -> Envoy sidecar -> Storage Service
 ```
 
-This is actually fine and desired, because you get mTLS, observability, and traffic management. But you need to make sure the external storage endpoint is properly configured.
+This is often fine and desired, because you can get observability and traffic management for the outbound request. Istio mTLS only applies when the peer also participates in the mesh; for external storage endpoints, make sure egress policy, `ServiceEntry` resources, and TLS origination settings are configured as needed.
 
 ## PersistentVolumeClaim Setup
 
@@ -170,7 +170,7 @@ Multiple pods, even across different nodes, can mount this PVC. Istio has no eff
 
 ## Volume Permissions with Istio
 
-The Istio init container (istio-init) runs as root to set up iptables rules. This can interact with volume permissions if your volume uses `fsGroup`:
+When Istio is installed without the Istio CNI node agent, the Istio init container (`istio-init`) runs with elevated privileges to set up traffic redirection rules. This can raise questions about volume permissions if your volume uses `fsGroup`:
 
 ```yaml
 spec:
@@ -186,7 +186,7 @@ spec:
           mountPath: /data
 ```
 
-The `fsGroup` ensures files written to the PV are owned by group 1000. The Istio init container runs as root and does not write to your volumes, so there is no conflict. However, if you use a volume type that changes permissions at mount time, make sure it runs after the Istio init container.
+The `fsGroup` ensures supported volume types are made readable and writable by group 1000. The Istio init container does not write to your application volumes, so there is no conflict. However, permission changes can happen during volume setup and can slow pod startup for large volumes.
 
 ## StatefulSet Volumes with Istio
 
