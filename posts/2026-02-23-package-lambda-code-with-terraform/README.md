@@ -107,7 +107,7 @@ resource "aws_lambda_function" "main" {
   role          = aws_iam_role.lambda_exec.arn
 
   filename         = "${path.module}/build/lambda.zip"
-  source_code_hash = null_resource.build_lambda.triggers.source_hash
+  source_code_hash = base64sha256(join("", values(null_resource.build_lambda.triggers)))
 
   depends_on = [null_resource.build_lambda]
 
@@ -131,7 +131,7 @@ resource "null_resource" "build_lambda" {
   provisioner "local-exec" {
     command = <<-EOT
       cd ${path.module}/src
-      npm ci --production
+      npm ci --omit=dev
       zip -r ../build/lambda.zip . -x "*.test.js" "jest.config.*"
     EOT
   }
@@ -206,28 +206,34 @@ resource "aws_ecr_repository" "lambda" {
   }
 }
 
+locals {
+  lambda_image_tag = sha256(join("", concat(
+    [filesha256("${path.module}/Dockerfile")],
+    [
+      for f in fileset("${path.module}/src", "**") :
+      filesha256("${path.module}/src/${f}")
+    ]
+  )))
+}
+
 # Build and push the Docker image
 resource "null_resource" "docker_build" {
   triggers = {
-    dockerfile = filesha256("${path.module}/Dockerfile")
-    source     = sha256(join("", [
-      for f in fileset("${path.module}/src", "**") :
-      filesha256("${path.module}/src/${f}")
-    ]))
+    image_tag = local.lambda_image_tag
   }
 
   provisioner "local-exec" {
     command = <<-EOT
       # Log in to ECR
       aws ecr get-login-password --region ${var.aws_region} | \
-        docker login --username AWS --password-stdin ${aws_ecr_repository.lambda.repository_url}
+        docker login --username AWS --password-stdin ${split("/", aws_ecr_repository.lambda.repository_url)[0]}
 
       # Build the image
-      docker build -t ${aws_ecr_repository.lambda.repository_url}:latest \
+      docker build -t ${aws_ecr_repository.lambda.repository_url}:${self.triggers.image_tag} \
         -f ${path.module}/Dockerfile ${path.module}
 
       # Push to ECR
-      docker push ${aws_ecr_repository.lambda.repository_url}:latest
+      docker push ${aws_ecr_repository.lambda.repository_url}:${self.triggers.image_tag}
     EOT
   }
 }
@@ -240,7 +246,7 @@ resource "aws_lambda_function" "main" {
   memory_size   = 512
 
   package_type = "Image"
-  image_uri    = "${aws_ecr_repository.lambda.repository_url}:latest"
+  image_uri    = "${aws_ecr_repository.lambda.repository_url}:${null_resource.docker_build.triggers.image_tag}"
 
   depends_on = [null_resource.docker_build]
 
@@ -328,7 +334,7 @@ output "filename" {
 
 output "source_code_hash" {
   value = local.has_requirements ? (
-    null_resource.build[0].triggers.hash
+    base64sha256(null_resource.build[0].triggers.hash)
   ) : (
     data.archive_file.simple[0].output_base64sha256
   )
@@ -359,7 +365,7 @@ resource "aws_lambda_function" "api" {
 Know the limits:
 
 - **ZIP upload (direct)**: 50MB
-- **ZIP upload (from S3)**: 50MB compressed, 250MB unzipped
+- **ZIP upload (from S3)**: larger than 50MB compressed is supported, but the unzipped package must be 250MB or less
 - **Container image**: 10GB
 
 If your ZIP package is approaching 50MB, consider:
