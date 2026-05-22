@@ -12,14 +12,14 @@ Istio automatically rotates workload certificates before they expire. This is on
 
 ## Default Rotation Behavior
 
-By default, Istio issues workload certificates with a 24-hour TTL. The sidecar proxy requests a new certificate when the current one reaches 80% of its lifetime. So with a 24-hour certificate, rotation happens roughly every 19.2 hours.
+By default, Istio issues workload certificates with a 24-hour TTL. The sidecar proxy requests a new certificate when the remaining lifetime reaches the configured grace period. The current default `SECRET_GRACE_PERIOD_RATIO` is `0.5`, with a small jitter, so with a 24-hour certificate rotation happens roughly every 12 hours, plus or minus about 15 minutes.
 
 Here is the timeline:
 
 ```text
 T+0h    : Certificate issued, valid for 24 hours
-T+19.2h : Rotation triggered (80% of 24h)
-T+19.2h : New certificate issued, valid for 24 hours
+T+12h   : Rotation triggered (50% of 24h, plus or minus jitter)
+T+12h   : New certificate issued, valid for 24 hours
 T+24h   : Old certificate expires (but we already have the new one)
 ```
 
@@ -67,7 +67,7 @@ The `SECRET_TTL` annotation overrides the default for that specific workload.
 
 ## Rotation Grace Period
 
-The grace period determines when the sidecar starts requesting a new certificate. It is expressed as a percentage of the certificate's lifetime:
+The grace period determines when the sidecar starts requesting a new certificate. It is expressed as the percentage of the certificate's lifetime that should remain when rotation starts:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -79,9 +79,9 @@ spec:
         SECRET_GRACE_PERIOD_RATIO: "0.5"
 ```
 
-With `SECRET_GRACE_PERIOD_RATIO: "0.5"` and a 24-hour TTL, rotation starts at 12 hours (50% of lifetime). The default is `0.8` (80% of lifetime).
+With `SECRET_GRACE_PERIOD_RATIO: "0.5"` and a 24-hour TTL, rotation starts when about 12 hours remain. The default is `0.5`, and Istio also applies `SECRET_GRACE_PERIOD_RATIO_JITTER` with a default of `0.01` to avoid having many proxies renew at the exact same moment.
 
-Lowering this ratio gives you more buffer time. If a rotation fails at the 50% mark, you still have 50% of the certificate's lifetime to retry. With the default 80%, you only have 20% buffer.
+Increasing this ratio gives you more buffer time before expiration. If rotation starts when 50% of the certificate lifetime remains, you still have about half of the lifetime to retry.
 
 ## Why Short-Lived Certificates Matter
 
@@ -202,7 +202,7 @@ kubectl rollout restart deployment/istiod -n istio-system
 
 For large clusters (1000+ pods), certificate rotation can create significant load spikes on istiod. Here are some strategies:
 
-1. **Stagger TTLs**: Use slightly different TTLs for different workloads so rotations do not all happen at the same time
+1. **Stagger TTLs**: Use slightly different TTLs for different workloads so rotations do not all happen at the same time. Current Istio releases also add a small default jitter to the grace period.
 
 2. **Scale istiod**: Run multiple istiod replicas for HA and load distribution
 
