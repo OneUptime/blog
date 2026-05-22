@@ -8,7 +8,7 @@ Description: Reduce terraform plan execution time using targeted planning with t
 
 ---
 
-As your Terraform configuration grows, `terraform plan` gets slower. A plan that took 30 seconds with 50 resources can take 10 minutes with 500 resources. Every plan refreshes the state of every resource by making API calls to your cloud provider, and that adds up fast. Targeted planning lets you focus on just the resources you are changing, cutting plan time dramatically.
+As your Terraform configuration grows, `terraform plan` gets slower. A plan that took 30 seconds with 50 resources can take 10 minutes with 500 resources. By default, every plan refreshes the state of every resource by making API calls to your cloud provider, and that adds up fast. Targeted planning lets you focus on just the resources you are changing and their dependencies, cutting plan time dramatically.
 
 This guide covers when and how to use targeted planning effectively, along with other strategies for keeping plan times manageable.
 
@@ -25,7 +25,7 @@ Step 2 is the bottleneck. Each API call takes time, and cloud provider rate limi
 
 ## Using the -target Flag
 
-The `-target` flag tells Terraform to only plan changes for specific resources:
+The `-target` flag tells Terraform to focus planning on specific resource instances and any objects they depend on:
 
 ```bash
 # Target a specific resource
@@ -52,13 +52,14 @@ Good use cases:
 - **Iterating on a specific resource**: You are working on a security group and want fast feedback
 - **Emergency changes**: You need to update one resource quickly during an incident
 - **Debugging**: You want to see the plan for a specific resource in isolation
-- **Large configurations**: You know which resources you changed and want to skip the rest
+- **Temporary large-configuration workarounds**: You know which resources you changed and need a faster feedback loop while you split the state
 
 Bad use cases:
 
 - **Production applies**: Always run a full plan before applying to production
 - **CI/CD pipelines**: Automated pipelines should run full plans for safety
 - **When you are unsure what changed**: A full plan catches unexpected drift
+- **Routine workflow**: HashiCorp recommends using `-target` only in exceptional circumstances, such as recovering from mistakes or working around Terraform limitations
 
 ### Performance Impact
 
@@ -122,6 +123,11 @@ data "terraform_remote_state" "networking" {
 }
 
 resource "aws_ecs_service" "app" {
+  name            = "app"
+  cluster         = aws_ecs_cluster.main.id
+  task_definition = aws_ecs_task_definition.app.arn
+  desired_count   = 2
+
   # Use outputs from the networking state
   network_configuration {
     subnets         = data.terraform_remote_state.networking.outputs.private_subnet_ids
@@ -195,9 +201,9 @@ terraform plan -target=module.application -out=application.plan
 terraform apply application.plan
 ```
 
-## Terragrunt for Automatic State Splitting
+## Terragrunt for State Splitting
 
-If you use Terragrunt, it naturally splits state by directory:
+If you use Terragrunt with separate units and backend configuration per directory, you can split state by directory:
 
 ```text
 live/
@@ -237,9 +243,9 @@ Plan and apply just what you need:
 cd live/production/application
 terragrunt plan
 
-# Or plan everything but only apply changes
+# Or plan everything in the current stack
 cd live/production
-terragrunt run-all plan
+terragrunt run --all plan
 ```
 
 ## Workspace-Based Splitting
@@ -261,12 +267,12 @@ terraform plan
 Here are some rules of thumb for keeping plan times reasonable:
 
 - **Under 100 resources**: A single state file is fine. Plans should take under 2 minutes.
-- **100-300 resources**: Consider using `-target` during development. Full plans for CI/CD.
+- **100-300 resources**: Use `-target` only for exceptional development/debugging cases. Full plans for CI/CD.
 - **300+ resources**: Split into multiple state files. Each state should have under 200 resources.
 - **1000+ resources**: Mandatory state splitting. Consider Terragrunt or a similar orchestration tool.
 
 ## Summary
 
-Targeted planning with `-target` is a powerful tool for speeding up development cycles with Terraform. Use it for iteration and debugging, but always run full plans before production applies. For permanent performance improvements, split large configurations into smaller state files organized by domain or lifecycle. The goal is to keep each `terraform plan` under 2 minutes, which typically means keeping each state file under 200 resources.
+Targeted planning with `-target` is a powerful tool for speeding up exceptional development and recovery workflows with Terraform. Use it for focused iteration and debugging, but always run full plans before production applies. For permanent performance improvements, split large configurations into smaller state files organized by domain or lifecycle. The goal is to keep each `terraform plan` under 2 minutes, which typically means keeping each state file under 200 resources.
 
 For more performance optimization, see [how to speed up terraform init with provider caching](https://oneuptime.com/blog/post/2026-02-23-how-to-speed-up-terraform-init-with-provider-caching/view) and [how to use the parallelism flag for faster applies](https://oneuptime.com/blog/post/2026-02-23-how-to-use-parallelism-flag-for-faster-applies/view).
