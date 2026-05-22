@@ -47,7 +47,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup OpenTofu
         uses: opentofu/setup-opentofu@v1
@@ -55,7 +55,7 @@ jobs:
           tofu_version: ${{ env.TOFU_VERSION }}
 
       - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: us-east-1
@@ -67,13 +67,14 @@ jobs:
       - name: Plan
         id: plan
         working-directory: ${{ env.WORKING_DIR }}
+        shell: bash
         run: |
           tofu plan -no-color -out=plan.bin 2>&1 | tee plan-output.txt
           tofu show -no-color plan.bin > plan-readable.txt
 
       - name: Comment Plan on PR
         if: github.event_name == 'pull_request'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const fs = require('fs');
@@ -118,7 +119,7 @@ jobs:
             }
 
       - name: Upload Plan
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: plan
           path: ${{ env.WORKING_DIR }}/plan.bin
@@ -132,7 +133,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup OpenTofu
         uses: opentofu/setup-opentofu@v1
@@ -140,13 +141,13 @@ jobs:
           tofu_version: ${{ env.TOFU_VERSION }}
 
       - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: us-east-1
 
       - name: Download Plan
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: plan
           path: ${{ env.WORKING_DIR }}
@@ -173,9 +174,8 @@ OIDC eliminates the need for long-lived AWS credentials. Here is how to set it u
 data "aws_caller_identity" "current" {}
 
 resource "aws_iam_openid_connect_provider" "github" {
-  url             = "https://token.actions.githubusercontent.com"
-  client_id_list  = ["sts.amazonaws.com"]
-  thumbprint_list = ["6938fd4d98bab03faadb97b34396831e3780aea1"]
+  url            = "https://token.actions.githubusercontent.com"
+  client_id_list = ["sts.amazonaws.com"]
 }
 
 resource "aws_iam_role" "github_actions" {
@@ -243,6 +243,10 @@ on:
           - staging
           - production
 
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
   plan:
     name: Plan (${{ matrix.environment }})
@@ -252,13 +256,13 @@ jobs:
         environment: ${{ github.event_name == 'workflow_dispatch' && fromJson(format('["{0}"]', github.event.inputs.environment)) || fromJson('["staging"]') }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: opentofu/setup-opentofu@v1
         with:
           tofu_version: "1.8.0"
 
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ secrets[format('AWS_ROLE_ARN_{0}', matrix.environment)] }}
           aws-region: us-east-1
@@ -272,7 +276,7 @@ jobs:
             -var-file="environments/${{ matrix.environment }}/terraform.tfvars" \
             -out=plan.bin
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: plan-${{ matrix.environment }}
           path: plan.bin
@@ -284,15 +288,15 @@ jobs:
     runs-on: ubuntu-latest
     environment: staging
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: opentofu/setup-opentofu@v1
         with:
           tofu_version: "1.8.0"
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN_staging }}
           aws-region: us-east-1
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: plan-staging
       - run: tofu init -backend-config="environments/staging/backend.hcl"
@@ -304,11 +308,11 @@ jobs:
     runs-on: ubuntu-latest
     environment: production  # Requires manual approval
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: opentofu/setup-opentofu@v1
         with:
           tofu_version: "1.8.0"
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN_production }}
           aws-region: us-east-1
@@ -329,18 +333,18 @@ Cache OpenTofu plugins between workflow runs:
 - name: Cache OpenTofu Plugins
   uses: actions/cache@v4
   with:
-    path: |
-      ~/.terraform.d/plugin-cache
-      ${{ env.WORKING_DIR }}/.terraform
+    path: ${{ runner.temp }}/tofu-plugin-cache
     key: tofu-${{ runner.os }}-${{ hashFiles('**/.terraform.lock.hcl') }}
     restore-keys: |
       tofu-${{ runner.os }}-
 
 - name: Init
   working-directory: ${{ env.WORKING_DIR }}
-  run: tofu init
+  run: |
+    mkdir -p "$TF_PLUGIN_CACHE_DIR"
+    tofu init
   env:
-    TF_PLUGIN_CACHE_DIR: ~/.terraform.d/plugin-cache
+    TF_PLUGIN_CACHE_DIR: ${{ runner.temp }}/tofu-plugin-cache
 ```
 
 ## Drift Detection Schedule
@@ -355,13 +359,20 @@ on:
   schedule:
     - cron: '0 8 * * 1-5'  # Weekdays at 8 AM UTC
 
+permissions:
+  contents: read
+  issues: write
+  id-token: write
+
 jobs:
   detect-drift:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: opentofu/setup-opentofu@v1
-      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          tofu_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: us-east-1
@@ -371,14 +382,21 @@ jobs:
 
       - name: Check for Drift
         id: drift
+        shell: bash
         run: |
-          tofu plan -detailed-exitcode -no-color > drift.txt 2>&1 || true
-          EXIT_CODE=${PIPESTATUS[0]}
+          set +e
+          tofu plan -detailed-exitcode -no-color > drift.txt 2>&1
+          EXIT_CODE=$?
+          set -e
           echo "exit_code=$EXIT_CODE" >> $GITHUB_OUTPUT
+          if [ "$EXIT_CODE" -eq 1 ]; then
+            cat drift.txt
+            exit 1
+          fi
 
       - name: Create Issue on Drift
         if: steps.drift.outputs.exit_code == '2'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const fs = require('fs');
@@ -401,8 +419,20 @@ Configure environments for approval workflows:
 # Production environment with required reviewers
 gh api repos/myorg/myrepo/environments/production \
   --method PUT \
-  --field 'reviewers=[{"type":"User","id":12345}]' \
-  --field 'deployment_branch_policy={"protected_branches":true,"custom_branch_policies":false}'
+  --input - <<'JSON'
+{
+  "reviewers": [
+    {
+      "type": "User",
+      "id": 12345
+    }
+  ],
+  "deployment_branch_policy": {
+    "protected_branches": true,
+    "custom_branch_policies": false
+  }
+}
+JSON
 ```
 
 GitHub Actions is a natural fit for OpenTofu pipelines. The combination of OIDC authentication, environment approvals, and artifact passing between jobs gives you a secure, auditable deployment pipeline with minimal setup.
