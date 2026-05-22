@@ -8,14 +8,14 @@ Description: Control outbound traffic from your Kubernetes cluster using Istio e
 
 ---
 
-Controlling outbound traffic is just as important as controlling inbound traffic, but it often gets overlooked. By default, Istio allows all outbound traffic from the mesh to external services. This means a compromised pod can call any external endpoint, exfiltrate data to any server, or communicate with a command-and-control server. Configuring egress policies with Istio closes this gap.
+Controlling outbound traffic is just as important as controlling inbound traffic, but it often gets overlooked. By default, Istio allows all outbound traffic from the mesh to external services. This means a compromised pod can call any external endpoint, exfiltrate data to any server, or communicate with a command-and-control server. Configuring egress policies with Istio helps close this gap, especially when you route traffic through an egress gateway and enforce network controls outside the sidecar.
 
 ## Understanding Istio's Outbound Traffic Mode
 
 Istio has a mesh-wide configuration option called `outboundTrafficPolicy` that controls how the mesh handles traffic to unknown external services. It has two modes:
 
 - `ALLOW_ANY` (default): Lets Envoy proxies pass through traffic to external services even if there's no ServiceEntry defined for them.
-- `REGISTRY_ONLY`: Blocks all external traffic unless there's a ServiceEntry registered for the destination.
+- `REGISTRY_ONLY`: Drops traffic to destinations that aren't in Istio's service registry. Istio treats this as a way to detect and control missing ServiceEntry configuration, not as a complete outbound firewall by itself.
 
 To switch to `REGISTRY_ONLY` mode:
 
@@ -34,7 +34,7 @@ spec:
       mode: REGISTRY_ONLY
 ```
 
-Once this is set, any outbound request to a host that isn't registered in the mesh will fail with a 502 Bad Gateway error.
+Once this is set, outbound requests to hosts that aren't registered in the mesh will fail. HTTP requests commonly return a 502 Bad Gateway response, while raw TCP or TLS connections may simply be closed.
 
 ## Registering External Services with ServiceEntry
 
@@ -45,13 +45,13 @@ apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: stripe-api
-  namespace: backend
+  namespace: external-services
 spec:
   hosts:
   - "api.stripe.com"
   ports:
   - number: 443
-    name: https
+    name: tls
     protocol: TLS
   resolution: DNS
   location: MESH_EXTERNAL
@@ -62,46 +62,42 @@ apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: sendgrid-api
-  namespace: backend
+  namespace: external-services
 spec:
   hosts:
   - "api.sendgrid.com"
   ports:
   - number: 443
-    name: https
+    name: tls
     protocol: TLS
   resolution: DNS
   location: MESH_EXTERNAL
 ```
 
-Each ServiceEntry tells Istio "this external host is a known destination." Only hosts with a corresponding ServiceEntry will be reachable.
+Each ServiceEntry tells Istio "this external host is a known destination." In `REGISTRY_ONLY` mode, mesh-routed external traffic needs a corresponding ServiceEntry to be reachable.
 
 ## Restricting Which Services Can Reach External Endpoints
 
-Registering an external service makes it reachable from the entire mesh. That's usually too broad. You don't want every service in your cluster to be able to call the Stripe API. Use AuthorizationPolicy to restrict access:
+Registering an external service makes it visible to the entire mesh by default. That's usually too broad. You don't want every service in your cluster to be configured to call the Stripe API. For direct sidecar egress, use the Sidecar resource to limit which services each workload can see:
 
 ```yaml
-apiVersion: security.istio.io/v1
-kind: AuthorizationPolicy
+apiVersion: networking.istio.io/v1
+kind: Sidecar
 metadata:
-  name: restrict-stripe-access
+  name: payment-service-sidecar
   namespace: backend
 spec:
-  selector:
-    matchLabels:
+  workloadSelector:
+    labels:
       app: payment-service
-  action: ALLOW
-  rules:
-  - to:
-    - operation:
-        hosts: ["api.stripe.com"]
-        ports: ["443"]
-  - from:
-    - source:
-        namespaces: ["backend"]
+  egress:
+  - hosts:
+    - "./*"
+    - "external-services/api.stripe.com"
+    - "istio-system/*"
 ```
 
-To block other services from reaching Stripe, add a deny policy or rely on the Sidecar resource to limit what each service can see:
+Because the Stripe ServiceEntry is in the separate `external-services` namespace, you can omit that namespace from other workloads' Sidecar configuration:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -119,7 +115,7 @@ spec:
     - "istio-system/*"
 ```
 
-By not including `api.stripe.com` in the order service's Sidecar egress configuration, that service won't even have a route to Stripe in its Envoy configuration.
+By not including `external-services/*` in the order service's Sidecar egress configuration, that service won't receive routes for those external services in its Envoy configuration. This scopes proxy configuration; for security enforcement against bypasses, route traffic through an egress gateway and combine Istio policy with Kubernetes NetworkPolicy or infrastructure firewall rules.
 
 ## Using an Egress Gateway
 
@@ -163,6 +159,16 @@ Create a VirtualService to route traffic through the egress gateway:
 
 ```yaml
 apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: stripe-egressgateway
+  namespace: backend
+spec:
+  host: istio-egressgateway.istio-system.svc.cluster.local
+  subsets:
+  - name: stripe
+---
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: stripe-via-egress
@@ -177,16 +183,19 @@ spec:
   - match:
     - gateways:
       - mesh
+      port: 443
       sniHosts:
       - "api.stripe.com"
     route:
     - destination:
         host: istio-egressgateway.istio-system.svc.cluster.local
+        subset: stripe
         port:
           number: 443
   - match:
     - gateways:
       - istio-system/stripe-egress-gateway
+      port: 443
       sniHosts:
       - "api.stripe.com"
     route:
@@ -196,11 +205,11 @@ spec:
           number: 443
 ```
 
-Now all traffic to `api.stripe.com` goes through the egress gateway. You can monitor it, apply additional policies, and even add mTLS between the workload and the egress gateway.
+Now all mesh-routed traffic to `api.stripe.com` goes through the egress gateway. You can monitor it, apply additional policies on the gateway, and even add mTLS between the workload and the egress gateway.
 
 ## Blocking Specific External Destinations
 
-Sometimes you want to allow most external traffic but block specific destinations. You can use ServiceEntry combined with a VirtualService that returns a direct error:
+Sometimes you want to allow most external traffic but block specific HTTP destinations. You can use ServiceEntry combined with a VirtualService that returns a direct error:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -215,9 +224,6 @@ spec:
   - number: 80
     name: http
     protocol: HTTP
-  - number: 443
-    name: https
-    protocol: TLS
   resolution: DNS
   location: MESH_EXTERNAL
 ---
@@ -230,14 +236,8 @@ spec:
   hosts:
   - "malicious-site.example.com"
   http:
-  - fault:
-      abort:
-        httpStatus: 403
-        percentage:
-          value: 100
-    route:
-    - destination:
-        host: "malicious-site.example.com"
+  - directResponse:
+      status: 403
 ```
 
 ## Monitoring Egress Traffic
@@ -248,7 +248,7 @@ With egress policies in place, monitor what's actually going out. Use Prometheus
 sum(rate(istio_requests_total{destination_service_namespace="unknown",reporter="source"}[5m])) by (destination_service, source_workload)
 ```
 
-This shows you which workloads are making external calls and to where. If you see traffic to destinations you haven't registered, something is either misconfigured or a service is trying to reach an unauthorized endpoint.
+This shows you which workloads are making passthrough external calls and to where. For registered ServiceEntry traffic, query the registered `destination_service` or the namespace where you created the ServiceEntry. If you see passthrough or blocked destinations you didn't expect, something is either misconfigured or a service is trying to reach an unauthorized endpoint.
 
 Enable access logging to capture detailed egress information:
 
@@ -289,10 +289,10 @@ spec:
   - "cdn.example.com"
   ports:
   - number: 443
-    name: https
+    name: tls
     protocol: TLS
   resolution: DNS
   location: MESH_EXTERNAL
 ```
 
-Egress policies are a critical part of securing your mesh. Without them, you're only controlling half the traffic. Start with `REGISTRY_ONLY` mode, register the external services you actually need, and use egress gateways for sensitive destinations. Your security posture will be much stronger for it.
+Egress policies are a critical part of securing your mesh. Without them, you're only controlling half the traffic. Start with `REGISTRY_ONLY` mode to find and control registered destinations, register the external services you actually need, and use egress gateways plus network-level enforcement for sensitive destinations. Your security posture will be much stronger for it.
