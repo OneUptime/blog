@@ -64,11 +64,11 @@ Define different parameter sets per environment:
 db_parameters = [
   {
     name  = "shared_buffers"
-    value = "{DBInstanceClassMemory/4}"  # 25% of instance memory
+    value = "{DBInstanceClassMemory/32768}"  # 25% of instance memory, in 8KB pages
   },
   {
     name  = "effective_cache_size"
-    value = "{DBInstanceClassMemory*3/4}"  # 75% of instance memory
+    value = "{DBInstanceClassMemory*3/32768}"  # 75% of instance memory, in 8KB pages
   },
   {
     name  = "work_mem"
@@ -91,9 +91,8 @@ db_parameters = [
     value = "ddl"  # Log DDL statements
   },
   {
-    name         = "max_wal_size"
-    value        = "4096"  # 4GB
-    apply_method = "pending-reboot"  # Requires reboot
+    name  = "max_wal_size"
+    value = "4096"  # 4GB
   },
   {
     name  = "random_page_cost"
@@ -146,15 +145,15 @@ locals {
   # Environment-specific overrides
   env_parameters = {
     production = {
-      "shared_buffers"           = "{DBInstanceClassMemory/4}"
-      "effective_cache_size"     = "{DBInstanceClassMemory*3/4}"
+      "shared_buffers"           = "{DBInstanceClassMemory/32768}"
+      "effective_cache_size"     = "{DBInstanceClassMemory*3/32768}"
       "max_connections"          = "500"
       "work_mem"                 = "65536"
       "maintenance_work_mem"     = "524288"
       "log_min_duration_statement" = "2000"  # Only slow queries in prod
     }
     staging = {
-      "shared_buffers"           = "{DBInstanceClassMemory/4}"
+      "shared_buffers"           = "{DBInstanceClassMemory/32768}"
       "max_connections"          = "200"
       "work_mem"                 = "32768"
       "log_min_duration_statement" = "1000"
@@ -177,7 +176,7 @@ locals {
     for name, value in local.merged_parameters : {
       name         = name
       value        = value
-      apply_method = contains(["shared_buffers", "max_connections", "max_wal_size"], name) ? "pending-reboot" : "immediate"
+      apply_method = contains(["shared_buffers", "max_connections"], name) ? "pending-reboot" : "immediate"
     }
   ]
 }
@@ -349,7 +348,7 @@ locals {
     {
       name         = "rds.force_ssl"
       value        = "1"  # Always enforce SSL
-      apply_method = "pending-reboot"
+      apply_method = "immediate"
     },
     {
       name         = "log_connections"
@@ -373,7 +372,6 @@ locals {
   reboot_required_params = toset([
     "shared_buffers",
     "max_connections",
-    "max_wal_size",
     "wal_buffers",
     "huge_pages",
     "shared_preload_libraries",
