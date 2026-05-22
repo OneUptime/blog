@@ -8,7 +8,7 @@ Description: Deep dive into terraform init covering provider downloads, backend 
 
 ---
 
-`terraform init` is the first command you run in any Terraform project. It sets up everything Terraform needs to manage your infrastructure: downloading providers, configuring backends, installing modules, and creating the working directory structure. Without init, no other Terraform command works.
+`terraform init` is the first command you run in any Terraform project before planning or applying changes. It sets up everything Terraform needs to manage your infrastructure: downloading providers, configuring backends, installing modules, and creating the working directory structure.
 
 Despite being a command you run all the time, there is more to `terraform init` than most people realize. This guide covers everything it does, when to re-run it, and all the useful flags.
 
@@ -17,9 +17,9 @@ Despite being a command you run all the time, there is more to `terraform init` 
 When you run `terraform init`, Terraform performs several operations in sequence:
 
 1. **Backend initialization** - Sets up where the state file is stored
-2. **Provider installation** - Downloads the provider plugins your configuration needs
-3. **Module installation** - Downloads modules referenced in your configuration
-4. **Lock file creation** - Creates or updates `.terraform.lock.hcl`
+2. **Module installation** - Downloads modules referenced in your configuration
+3. **Provider installation** - Downloads the provider plugins your configuration needs
+4. **Lock file creation** - Creates or updates `.terraform.lock.hcl` for provider selections
 
 ```bash
 # Run terraform init in your project directory
@@ -71,7 +71,7 @@ terraform {
     bucket         = "my-terraform-state"
     key            = "prod/terraform.tfstate"
     region         = "us-east-1"
-    dynamodb_table = "terraform-locks"
+    use_lockfile   = true
     encrypt        = true
   }
 }
@@ -85,15 +85,14 @@ When you run `terraform init` with a backend configured, Terraform:
 
 ### Changing Backends
 
-If you change the backend configuration (e.g., from local to S3), re-run `terraform init`. Terraform detects the change and asks if you want to migrate the state:
+If you change the backend configuration (e.g., from local to S3), re-run `terraform init`. Terraform detects the change and asks you to choose whether to migrate the state or reconfigure without migration:
 
 ```bash
 # After changing the backend configuration
 terraform init
 
-# Terraform will ask:
-# Do you want to copy existing state to the new backend?
-# Enter "yes" to migrate
+# Terraform will report that the backend configuration changed
+# and ask you to use -migrate-state or -reconfigure
 ```
 
 You can force reconfiguration with:
@@ -133,7 +132,7 @@ Providers are downloaded to `.terraform/providers/` in your project directory.
 
 ### Upgrading Providers
 
-By default, `terraform init` respects the version constraints in `.terraform.lock.hcl`. To upgrade to newer versions (within your constraints):
+By default, `terraform init` respects the provider selections recorded in `.terraform.lock.hcl`. To upgrade to newer versions (within your configured constraints):
 
 ```bash
 # Upgrade providers to the latest versions within constraints
@@ -144,7 +143,7 @@ This is important when you change version constraints in your configuration and 
 
 ### Provider Plugin Cache
 
-If you have a plugin cache configured (see [How to Configure Terraform CLI Settings with .terraformrc](https://oneuptime.com/blog/post/2026-02-23-how-to-configure-terraform-cli-settings-with-terraformrc/view)), `terraform init` uses cached providers instead of re-downloading them:
+If you have a plugin cache configured (see [How to Configure Terraform CLI Settings with .terraformrc](https://oneuptime.com/blog/post/2026-02-23-how-to-configure-terraform-cli-settings-with-terraformrc/view)), `terraform init` can use cached providers instead of re-downloading them:
 
 ```bash
 # Set the plugin cache directory
@@ -204,7 +203,7 @@ provider "registry.terraform.io/hashicorp/aws" {
 }
 ```
 
-This file should be committed to version control. It ensures every team member and CI/CD pipeline uses exactly the same provider versions.
+This file should be committed to version control. It ensures every team member and CI/CD pipeline uses exactly the same provider versions by default.
 
 ### Adding Platform Support to the Lock File
 
@@ -222,7 +221,7 @@ terraform providers lock \
 
 ### -backend=false
 
-Skip backend initialization. Useful for validating configuration syntax without connecting to the backend:
+Skip backend initialization. This is useful when the working directory was already initialized for a backend and you need to re-run init without connecting to it:
 
 ```bash
 # Initialize without backend configuration
@@ -245,10 +244,10 @@ Or use a file:
 
 ```bash
 # backend.hcl
-bucket         = "my-terraform-state"
-key            = "prod/terraform.tfstate"
-region         = "us-east-1"
-dynamodb_table = "terraform-locks"
+bucket       = "my-terraform-state"
+key          = "prod/terraform.tfstate"
+region       = "us-east-1"
+use_lockfile = true
 ```
 
 ```bash
