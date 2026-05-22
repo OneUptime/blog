@@ -34,7 +34,7 @@ The recommended approach is incremental migration:
 3. Gradually migrate existing resources one at a time
 4. Remove SDK v2 dependency when all resources are migrated
 
-This approach lets you ship migrations with regular releases without needing a major version bump.
+This approach lets you ship migrations with regular releases without needing a major version bump, as long as the provider's behavior and supported Terraform CLI versions do not change. If you use a protocol version 6 mux server and previously supported older Terraform CLI versions, treat that compatibility change as a breaking change.
 
 ## Setting Up the Mux Server
 
@@ -50,11 +50,12 @@ import (
     "log"
 
     "github.com/hashicorp/terraform-plugin-framework/providerserver"
+    "github.com/hashicorp/terraform-plugin-go/tfprotov5"
     "github.com/hashicorp/terraform-plugin-go/tfprotov6"
     "github.com/hashicorp/terraform-plugin-go/tfprotov6/tf6server"
+    "github.com/hashicorp/terraform-plugin-mux/tf5to6server"
     "github.com/hashicorp/terraform-plugin-mux/tf6muxserver"
     "github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-    "github.com/hashicorp/terraform-plugin-sdk/v2/plugin"
 
     frameworkProvider "github.com/example/terraform-provider-example/internal/provider"
     sdkProvider "github.com/example/terraform-provider-example/internal/sdkprovider"
@@ -71,12 +72,15 @@ func main() {
 
     // Create the SDK v2 provider server (upgraded to protocol v6)
     sdkv2Provider := sdkProvider.New(version)()
-    upgradedSdkServer, err := tf6server.UpgradeServer(
+    upgradedSdkServer, err := tf5to6server.UpgradeServer(
         ctx,
         func() tfprotov5.ProviderServer {
             return schema.NewGRPCProviderServer(sdkv2Provider)
         },
     )
+    if err != nil {
+        log.Fatal(err)
+    }
 
     // Create the Plugin Framework provider server
     frameworkServer := providerserver.NewProtocol6(frameworkProvider.New(version)())
@@ -126,15 +130,13 @@ func New(version string) func() *schema.Provider {
         return &schema.Provider{
             Schema: map[string]*schema.Schema{
                 "api_url": {
-                    Type:        schema.TypeString,
-                    Optional:    true,
-                    DefaultFunc: schema.EnvDefaultFunc("EXAMPLE_API_URL", "https://api.example.com"),
+                    Type:     schema.TypeString,
+                    Optional: true,
                 },
                 "api_key": {
-                    Type:        schema.TypeString,
-                    Optional:    true,
-                    Sensitive:   true,
-                    DefaultFunc: schema.EnvDefaultFunc("EXAMPLE_API_KEY", nil),
+                    Type:      schema.TypeString,
+                    Optional:  true,
+                    Sensitive: true,
                 },
             },
             ResourcesMap: map[string]*schema.Resource{
@@ -149,6 +151,8 @@ func New(version string) func() *schema.Provider {
     }
 }
 ```
+
+When using `terraform-plugin-mux`, move environment variable defaults out of the SDK v2 schema and into `ConfigureContextFunc` so the SDK v2 and Plugin Framework provider schemas and prepared configuration responses match.
 
 ### Plugin Framework Provider (After)
 
@@ -167,6 +171,8 @@ import (
     "github.com/hashicorp/terraform-plugin-framework/types"
 )
 
+var _ provider.Provider = &ExampleProvider{}
+
 type ExampleProvider struct {
     version string
 }
@@ -182,12 +188,17 @@ func New(version string) func() provider.Provider {
     }
 }
 
+func (p *ExampleProvider) Metadata(ctx context.Context, req provider.MetadataRequest, resp *provider.MetadataResponse) {
+    resp.TypeName = "example"
+    resp.Version = p.version
+}
+
 func (p *ExampleProvider) Schema(ctx context.Context, req provider.SchemaRequest, resp *provider.SchemaResponse) {
     resp.Schema = schema.Schema{
         Attributes: map[string]schema.Attribute{
             "api_url": schema.StringAttribute{
                 Optional:    true,
-                Description: "API URL. Defaults to EXAMPLE_API_URL env var.",
+                Description: "API URL. Can be set via EXAMPLE_API_URL and defaults to https://api.example.com.",
             },
             "api_key": schema.StringAttribute{
                 Optional:  true,
@@ -196,6 +207,31 @@ func (p *ExampleProvider) Schema(ctx context.Context, req provider.SchemaRequest
             },
         },
     }
+}
+
+func (p *ExampleProvider) Configure(ctx context.Context, req provider.ConfigureRequest, resp *provider.ConfigureResponse) {
+    var config ExampleProviderModel
+    resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
+    if resp.Diagnostics.HasError() {
+        return
+    }
+
+    apiURL := os.Getenv("EXAMPLE_API_URL")
+    if !config.APIURL.IsNull() {
+        apiURL = config.APIURL.ValueString()
+    }
+    if apiURL == "" {
+        apiURL = "https://api.example.com"
+    }
+
+    apiKey := os.Getenv("EXAMPLE_API_KEY")
+    if !config.APIKey.IsNull() {
+        apiKey = config.APIKey.ValueString()
+    }
+
+    client := NewAPIClient(apiURL, apiKey)
+    resp.DataSourceData = client
+    resp.ResourceData = client
 }
 
 // Resources lists only the resources that have been migrated to the framework
