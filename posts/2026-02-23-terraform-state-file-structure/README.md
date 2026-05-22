@@ -27,25 +27,12 @@ Let's look at the top-level keys in a state file. Here is a minimal example:
 
 ```json
 {
-  // Version of the state file format itself
   "version": 4,
-
-  // Incrementing serial number, bumped on every state change
   "serial": 15,
-
-  // Unique identifier for this state lineage
   "lineage": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-
-  // Hash of the Terraform outputs
   "terraform_version": "1.7.0",
-
-  // The actual resource data
   "resources": [],
-
-  // Output values defined in your configuration
   "outputs": {},
-
-  // Checks results (added in newer versions)
   "check_results": null
 }
 ```
@@ -58,7 +45,7 @@ The `version` field indicates the state file format version. As of Terraform 1.x
 
 ### serial
 
-The `serial` is an incrementing integer. Every time Terraform writes a new version of the state file, it bumps this number. This is critical for state locking - if two processes try to write state simultaneously, the serial number helps detect conflicts.
+The `serial` is an incrementing integer. Every time Terraform writes a new version of the state file, it bumps this number. Terraform and remote state services can use it to detect stale or conflicting state snapshots.
 
 ### lineage
 
@@ -76,25 +63,13 @@ This is where the real data lives. Each entry in the `resources` array represent
 {
   "resources": [
     {
-      // The mode: "managed" for resources, "data" for data sources
       "mode": "managed",
-
-      // The resource type
       "type": "aws_instance",
-
-      // The name you gave it in your config
       "name": "web_server",
-
-      // The provider that manages this resource
       "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
-
-      // Array of instances (usually one, more for count/for_each)
       "instances": [
         {
-          // Tracks dependencies between resources
           "schema_version": 1,
-
-          // The actual attributes of the resource
           "attributes": {
             "id": "i-0abc123def456789",
             "ami": "ami-0c55b159cbfafe1f0",
@@ -107,11 +82,7 @@ This is where the real data lives. Each entry in the `resources` array represent
             "private_ip": "10.0.1.50",
             "public_ip": "54.123.45.67"
           },
-
-          // Sensitive attributes are tracked separately
           "sensitive_attributes": [],
-
-          // Resources this one depends on
           "dependencies": [
             "aws_subnet.main",
             "aws_security_group.web"
@@ -141,7 +112,6 @@ The `instances` array usually contains a single object. However, when you use `c
   "name": "worker",
   "instances": [
     {
-      // index_key for count-based resources
       "index_key": 0,
       "attributes": {
         "id": "i-0abc123000000001",
@@ -167,7 +137,6 @@ For `for_each` resources:
   "name": "data",
   "instances": [
     {
-      // String key for for_each resources
       "index_key": "logs",
       "attributes": {
         "bucket": "my-logs-bucket"
@@ -188,11 +157,13 @@ For `for_each` resources:
 Each instance tracks its `dependencies` array. This is how Terraform knows the correct order to create, update, or destroy resources. These dependencies come from both explicit `depends_on` declarations and implicit references in your configuration.
 
 ```json
-"dependencies": [
-  "aws_vpc.main",
-  "aws_subnet.main",
-  "aws_security_group.web"
-]
+{
+  "dependencies": [
+    "aws_vpc.main",
+    "aws_subnet.main",
+    "aws_security_group.web"
+  ]
+}
 ```
 
 ## Outputs Section
@@ -264,7 +235,7 @@ terraform show
 
 ## The Backup File
 
-When Terraform writes a new state file, it first saves the previous version as `terraform.tfstate.backup`. This gives you a recovery option if something goes wrong during an apply. When using remote backends, the backend itself typically handles versioning and backups.
+When Terraform writes a new local state file, it first saves the previous version as `terraform.tfstate.backup`. This gives you a recovery option if something goes wrong during an apply. When using remote backends, the backend itself typically handles versioning and backups.
 
 ## Summary
 
