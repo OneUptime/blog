@@ -44,7 +44,7 @@ Each metric comes with a rich set of labels that let you slice and dice the data
 
 ## Setting Up Prometheus to Scrape Istio
 
-Prometheus is the standard way to collect Istio metrics. Each Envoy sidecar exposes metrics on port 15020 at the `/stats/prometheus` endpoint. istiod exposes its metrics on port 15014.
+Prometheus is the standard way to collect Istio metrics. With Prometheus metrics merging enabled, each data plane pod exposes merged Istio and application metrics on port 15020 at the `/stats/prometheus` endpoint. Envoy-only metrics are also exposed on the `http-envoy-prom` port, and istiod exposes its metrics on port 15014.
 
 If you're using the Prometheus Operator, create ServiceMonitor resources:
 
@@ -81,10 +81,7 @@ metadata:
   name: envoy-stats-monitor
   namespace: istio-system
 spec:
-  selector:
-    matchExpressions:
-      - key: security.istio.io/tlsMode
-        operator: Exists
+  selector: {}
   namespaceSelector:
     any: true
   jobLabel: envoy-stats
@@ -93,11 +90,9 @@ spec:
       port: http-envoy-prom
       interval: 15s
       relabelings:
-        - action: keep
-          sourceLabels: [__meta_kubernetes_pod_container_name]
-          regex: "istio-proxy"
-        - action: keep
-          sourceLabels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+        - sourceLabels: [__meta_kubernetes_pod_container_port_name]
+          action: keep
+          regex: ".*-envoy-prom"
 ```
 
 If you're running plain Prometheus (not the Operator), add scrape configs to your `prometheus.yml`:
@@ -120,14 +115,9 @@ scrape_configs:
     kubernetes_sd_configs:
       - role: pod
     relabel_configs:
-      - source_labels: [__meta_kubernetes_pod_container_name]
+      - source_labels: [__meta_kubernetes_pod_container_port_name]
         action: keep
-        regex: "istio-proxy"
-      - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
-        action: replace
-        regex: ([^:]+)(?::\d+)?;(\d+)
-        replacement: $1:15020
-        target_label: __address__
+        regex: ".*-envoy-prom"
 ```
 
 ## Verifying Metrics Collection
@@ -188,19 +178,7 @@ sum(rate(istio_requests_total{reporter="destination"}[5m])) by (destination_work
 
 ## Reducing Metric Volume
 
-All these labels create high cardinality, which means lots of time series in Prometheus. For large meshes, this can be a problem. You can reduce the labels Istio generates:
-
-```yaml
-apiVersion: install.istio.io/v1alpha1
-kind: IstioOperator
-spec:
-  meshConfig:
-    defaultConfig:
-      proxyStatsMatcher: {}
-    enablePrometheusMerge: true
-```
-
-You can also use Telemetry API to control what gets collected:
+All these labels create high cardinality, which means lots of time series in Prometheus. For large meshes, this can be a problem. You can use the Telemetry API to control what gets collected:
 
 ```yaml
 apiVersion: telemetry.istio.io/v1
@@ -238,7 +216,7 @@ curl localhost:15014/metrics | head -50
 
 Key control plane metrics to track:
 
-- `pilot_xds_pushes` - configuration pushes to sidecars
+- `pilot_xds_pushes` - XDS push results for LDS, RDS, CDS, and EDS
 - `pilot_proxy_convergence_time` - time for config to reach all proxies
 - `citadel_server_csr_count` - certificate signing requests
 - `pilot_xds` - number of connected proxies
