@@ -17,13 +17,9 @@ This guide provides a repeatable, safe upgrade process that minimizes risk and g
 HashiCorp releases new versions of Terraform Enterprise regularly. Each release includes a changelog that describes new features, bug fixes, and breaking changes. Before upgrading, always read the release notes for every version between your current version and your target version.
 
 ```bash
-# Check your current TFE version
-
-curl -s https://tfe.example.com/api/v2/admin/general-settings \
-  --header "Authorization: Bearer $TFE_ADMIN_TOKEN" | jq '.data.attributes."app-version"'
-
-# Or check via the container image tag
-docker inspect hashicorp/terraform-enterprise:latest --format '{{.Config.Labels}}' | grep version
+# Check the running TFE image tag
+docker inspect "$(docker compose ps -q tfe)" \
+  --format '{{ index .Config.Image }}'
 ```
 
 ## Pre-Upgrade Checklist
@@ -63,6 +59,10 @@ free -h
 ### 3. Create Backups
 
 ```bash
+# Stop TFE before taking final backups so the database and object storage are consistent.
+cd /opt/tfe
+docker compose down
+
 # Full database backup
 PGPASSWORD="${DB_PASSWORD}" pg_dump \
   -h "${DB_HOST}" \
@@ -76,6 +76,10 @@ PGPASSWORD="${DB_PASSWORD}" pg_dump \
 aws rds create-db-snapshot \
   --db-instance-identifier tfe-postgres \
   --db-snapshot-identifier "tfe-pre-upgrade-$(date +%Y%m%d)"
+
+# Back up object storage if TFE uses external object storage
+aws s3 sync s3://tfe-object-storage/ \
+  "s3://tfe-backups/pre-upgrade-$(date +%Y%m%d)/object-storage/"
 
 # Back up the TFE configuration
 cp -r /opt/tfe /opt/tfe-backup-$(date +%Y%m%d)
@@ -91,20 +95,8 @@ cp /opt/tfe/.env /opt/tfe-backups/
 # Use the TFE API to check active users in the last 24 hours
 # Then send a notification through your team's communication channel
 
-# Create a maintenance window banner (if your version supports it)
-curl -s \
-  --header "Authorization: Bearer $TFE_ADMIN_TOKEN" \
-  --header "Content-Type: application/vnd.api+json" \
-  --request PATCH \
-  https://tfe.example.com/api/v2/admin/general-settings \
-  --data '{
-    "data": {
-      "type": "general-settings",
-      "attributes": {
-        "maintenance-mode": true
-      }
-    }
-  }'
+# Pause external automation, scheduled pipelines, and VCS webhooks that could queue new runs.
+# Terraform Enterprise does not expose a general-settings maintenance-mode API flag.
 ```
 
 ## Performing the Upgrade
@@ -115,14 +107,14 @@ curl -s \
 # Step 1: Pull the new image
 docker pull images.releases.hashicorp.com/hashicorp/terraform-enterprise:v202402-1
 
-# Step 2: Stop the current instance gracefully
-# Wait for any active runs to complete first
+# Step 2: Confirm the current instance is stopped
+# Wait for any active runs to complete first, then stop TFE before taking final backups
 cd /opt/tfe
-docker compose down
+docker compose ps
 
 # Step 3: Update the image tag in docker-compose.yml
 # Change the image line to the new version
-sed -i 's|terraform-enterprise:.*|terraform-enterprise:v202402-1|' docker-compose.yml
+sed -i 's|images.releases.hashicorp.com/hashicorp/terraform-enterprise:.*|images.releases.hashicorp.com/hashicorp/terraform-enterprise:v202402-1|' docker-compose.yml
 
 # Step 4: Start TFE with the new version
 docker compose up -d
@@ -159,9 +151,9 @@ kubectl -n tfe logs -f deployment/tfe --tail=100
 # 1. Check the health endpoint
 curl -s https://tfe.example.com/_health_check | jq .
 
-# 2. Verify the version
-curl -s https://tfe.example.com/api/v2/admin/general-settings \
-  --header "Authorization: Bearer $TFE_ADMIN_TOKEN" | jq '.data.attributes."app-version"'
+# 2. Verify the running TFE image tag
+docker inspect "$(docker compose ps -q tfe)" \
+  --format '{{ index .Config.Image }}'
 
 # 3. Test login (both SSO and local admin)
 # Open browser and log in
