@@ -61,7 +61,7 @@ Here is how you define containers using this variable:
 
 containers = {
   app = {
-    image     = "123456789.dkr.ecr.us-east-1.amazonaws.com/myapp:latest"
+    image     = "123456789012.dkr.ecr.us-east-1.amazonaws.com/myapp:latest"
     cpu       = 512
     memory    = 1024
     essential = true
@@ -74,8 +74,8 @@ containers = {
       LOG_LEVEL    = "info"
     }
     secrets = {
-      DATABASE_URL = "arn:aws:secretsmanager:us-east-1:123456789:secret:db-url"
-      API_KEY      = "arn:aws:secretsmanager:us-east-1:123456789:secret:api-key"
+      DATABASE_URL = "arn:aws:secretsmanager:us-east-1:123456789012:secret:db-url"
+      API_KEY      = "arn:aws:secretsmanager:us-east-1:123456789012:secret:api-key"
     }
     health_check = {
       command     = ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
@@ -93,7 +93,7 @@ containers = {
   }
 
   sidecar_logger = {
-    image     = "123456789.dkr.ecr.us-east-1.amazonaws.com/log-agent:latest"
+    image     = "123456789012.dkr.ecr.us-east-1.amazonaws.com/log-agent:latest"
     cpu       = 128
     memory    = 256
     essential = false
@@ -206,8 +206,8 @@ resource "aws_ecs_task_definition" "app" {
   family                   = "${terraform.workspace}-app"
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
-  cpu                      = sum([for c in var.containers : c.cpu])
-  memory                   = sum([for c in var.containers : c.memory])
+  cpu                      = "1024"
+  memory                   = "2048"
   execution_role_arn       = aws_iam_role.ecs_execution.arn
   task_role_arn            = aws_iam_role.ecs_task.arn
 
@@ -275,18 +275,19 @@ variable "volumes" {
     },
     {
       name = "tmp"
-      # No EFS - this is a local docker volume
+      # No EFS or Docker configuration - ECS creates a nonpersistent empty volume
     }
   ]
 }
 
 resource "aws_ecs_task_definition" "with_volumes" {
   family                   = "${terraform.workspace}-app"
-  network_mode             = "awsvpc"
-  requires_compatibilities = ["FARGATE"]
+  network_mode             = "bridge"
+  requires_compatibilities = ["EC2"]
   cpu                      = "1024"
   memory                   = "2048"
   execution_role_arn       = aws_iam_role.ecs_execution.arn
+  task_role_arn            = aws_iam_role.ecs_task.arn
 
   container_definitions = jsonencode(local.container_definitions)
 
