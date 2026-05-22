@@ -76,7 +76,7 @@ resource "aws_ecs_service" "this" {
 
   load_balancer {
     target_group_arn = aws_lb_target_group.this.arn
-    container_name   = var.container_name
+    container_name   = local.container_name
     container_port   = var.container_port
   }
 
@@ -160,6 +160,18 @@ variable "container_port" {
   default     = 8080
 }
 
+variable "container_name" {
+  description = "Name of the container to attach to the load balancer"
+  type        = string
+  default     = null
+}
+
+variable "health_check_path" {
+  description = "Path used by the load balancer target group health check"
+  type        = string
+  default     = "/"
+}
+
 variable "assign_public_ip" {
   description = "Whether to assign a public IP to the task"
   type        = bool
@@ -221,7 +233,7 @@ Good outputs expose the identifiers and attributes that downstream resources are
 
 ## versions.tf - Version Constraints
 
-This file pins the required Terraform version and provider versions:
+This file declares the required Terraform version and provider version constraints:
 
 ```hcl
 # versions.tf
@@ -233,7 +245,7 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = ">= 5.0.0, < 6.0.0"
+      version = ">= 5.0.0"
     }
   }
 }
@@ -263,7 +275,7 @@ locals {
   container_name = coalesce(var.container_name, var.service_name)
 
   # Build the log group name following naming convention
-  log_group_name = "/ecs/${var.cluster_name}/${var.service_name}"
+  log_group_name = "/ecs/${var.service_name}"
 }
 ```
 
@@ -368,7 +380,7 @@ A few things that should stay out of module code:
 - **Provider configuration blocks** - The caller configures providers, not the module.
 - **Backend configuration** - Only the root module configures state backends.
 - **Hardcoded account IDs or regions** - These should be variables or data sources.
-- **`terraform` blocks with backend settings** - Modules should only have `required_providers` in their terraform block.
+- **`terraform` blocks with backend settings** - Modules should declare requirements such as `required_version` and `required_providers`, not backend settings.
 
 ## The Naming Convention for Resources
 
