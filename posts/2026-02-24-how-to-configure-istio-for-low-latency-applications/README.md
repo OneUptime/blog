@@ -8,7 +8,7 @@ Description: Configuration techniques to minimize the latency overhead of Istio 
 
 ---
 
-For most services, the 1-3ms overhead that Istio adds per hop is barely noticeable. But if you are running a real-time trading platform, a gaming server, or a latency-sensitive API gateway, those milliseconds matter. The good news is that most of the Istio latency overhead comes from features you can tune or disable selectively. Here is how to configure Istio for minimal latency impact.
+For most services, the sub-millisecond to few-millisecond overhead that Istio can add per request is barely noticeable. But if you are running a real-time trading platform, a gaming server, or a latency-sensitive API gateway, those milliseconds matter. The good news is that much of the Istio latency overhead comes from features you can tune or disable selectively. Here is how to configure Istio for minimal latency impact.
 
 ## Understand Where Latency Comes From
 
@@ -27,7 +27,7 @@ The TLS handshake is the biggest single contributor, but it only happens on new 
 The single most effective optimization for latency is reusing connections. A TLS handshake adds milliseconds; sending data on an existing connection adds microseconds.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: low-latency-dr
@@ -53,10 +53,10 @@ The `idleTimeout: 3600s` keeps connections open for an hour even without traffic
 
 ## Use HTTP/2
 
-HTTP/2 eliminates head-of-line blocking and multiplexes requests over a single connection:
+HTTP/2 reduces HTTP/1.1 application-level head-of-line blocking and multiplexes requests over a single connection:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: h2-low-latency
@@ -76,7 +76,7 @@ With HTTP/2, you get request multiplexing and header compression, both of which 
 Route matching time increases with the number of routes. For a latency-sensitive service, keep the route table as small as possible:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: low-latency-sidecar
@@ -98,7 +98,7 @@ A proxy with 5 routes in its table resolves them faster than one with 500 routes
 Telemetry adds measurable latency to every request. For latency-critical paths, strip it down:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: minimal-telemetry
@@ -126,7 +126,7 @@ This disables access logging, distributed tracing, and client-side metrics for t
 If you need some metrics but not all of them:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: lean-metrics
@@ -177,7 +177,7 @@ Complex VirtualService rules with regex matches, header manipulations, and mirro
 ```yaml
 # Good for latency - simple, direct routing
 
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: simple-route
@@ -225,7 +225,7 @@ The Istio DNS proxy caches resolutions locally, eliminating the round trip to th
 If your latency-critical services run in a trusted network and the security benefit of mTLS does not justify the overhead, you can disable it for specific paths:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: disable-mtls-internal
@@ -237,7 +237,7 @@ spec:
   mtls:
     mode: PERMISSIVE
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: no-mtls
