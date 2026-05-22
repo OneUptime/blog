@@ -32,26 +32,28 @@ sentinel-policies/
             deny-public-databases.sentinel
             require-encryption.sentinel
             restrict-security-groups.sentinel
+            test/
+                deny-public-databases/
+                    pass.hcl
+                    fail.hcl
+                    testdata/
+                        private-rds.sentinel
+                        public-rds.sentinel
         compliance/
             require-tags.sentinel
             restrict-regions.sentinel
             enforce-naming.sentinel
+            test/
+                require-tags/
+                    pass.hcl
+                    fail.hcl
         cost/
             cost-limits.sentinel
             restrict-instance-types.sentinel
-    test/
-        deny-public-databases/
-            pass.hcl
-            fail.hcl
-            testdata/
-                private-rds.sentinel
-                public-rds.sentinel
-        require-encryption/
-            pass.hcl
-            fail.hcl
-            testdata/
-                encrypted-resources.sentinel
-                unencrypted-resources.sentinel
+            test/
+                cost-limits/
+                    pass.hcl
+                    fail.hcl
     .github/
         workflows/
             test.yml
@@ -70,11 +72,11 @@ Your `sentinel.hcl` file maps policies to their source files and enforcement lev
 # Central configuration for all Sentinel policies
 
 # Shared modules
-module "tfplan-functions" {
+import "module" "tfplan-functions" {
     source = "./modules/tfplan-functions/tfplan-functions.sentinel"
 }
 
-module "aws-functions" {
+import "module" "aws-functions" {
     source = "./modules/aws-functions/aws-functions.sentinel"
 }
 
@@ -158,12 +160,12 @@ jobs:
       - name: Run Sentinel tests
         run: |
           # Run all tests with verbose output
-          sentinel test -verbose
+          sentinel test -verbose $(find policies -name '*.sentinel' -print)
 
-      - name: Validate sentinel.hcl syntax
+      - name: Check Sentinel formatting
         run: |
-          # Check that sentinel.hcl is valid
-          sentinel fmt -check sentinel.hcl
+          # Check that policy and module files are formatted
+          sentinel fmt -check $(find policies modules -name '*.sentinel' -print)
 ```
 
 For GitLab CI:
@@ -178,18 +180,28 @@ stages:
 
 sentinel-test:
   stage: test
-  image: hashicorp/sentinel:latest
+  image: ubuntu:latest
+  before_script:
+    - apt-get update && apt-get install -y wget unzip
+    - wget -q "https://releases.hashicorp.com/sentinel/0.24.1/sentinel_0.24.1_linux_amd64.zip"
+    - unzip sentinel_0.24.1_linux_amd64.zip
+    - mv sentinel /usr/local/bin/
   script:
-    - sentinel test -verbose
+    - sentinel test -verbose $(find policies -name '*.sentinel' -print)
   rules:
     - if: $CI_MERGE_REQUEST_ID
     - if: $CI_COMMIT_BRANCH == "main"
 
 sentinel-fmt:
   stage: validate
-  image: hashicorp/sentinel:latest
+  image: ubuntu:latest
+  before_script:
+    - apt-get update && apt-get install -y wget unzip
+    - wget -q "https://releases.hashicorp.com/sentinel/0.24.1/sentinel_0.24.1_linux_amd64.zip"
+    - unzip sentinel_0.24.1_linux_amd64.zip
+    - mv sentinel /usr/local/bin/
   script:
-    - sentinel fmt -check .
+    - sentinel fmt -check $(find policies modules -name '*.sentinel' -print)
   rules:
     - if: $CI_MERGE_REQUEST_ID
 ```
@@ -287,19 +299,15 @@ sentinel-policies/
         sentinel.hcl
         policies/
         modules/
-        test/
     production/
         sentinel.hcl
         policies/
-        test/
     team-platform/
         sentinel.hcl
         policies/
-        test/
     team-data/
         sentinel.hcl
         policies/
-        test/
 ```
 
 Each subdirectory is a separate policy set in Terraform Cloud or Enterprise. The CI pipeline runs tests for all of them:
@@ -321,7 +329,7 @@ jobs:
           sudo mv sentinel /usr/local/bin/
       - name: Test ${{ matrix.policy-set }}
         working-directory: ${{ matrix.policy-set }}
-        run: sentinel test -verbose
+        run: sentinel test -verbose $(find policies -name '*.sentinel' -print)
 ```
 
 ## Handling Breaking Changes
