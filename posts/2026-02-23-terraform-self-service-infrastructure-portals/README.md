@@ -80,8 +80,8 @@ variable "database_engine" {
   default     = "postgres"
 
   validation {
-    condition     = contains(["postgres", "mysql", "redis"], var.database_engine)
-    error_message = "Database engine must be postgres, mysql, or redis."
+    condition     = contains(["postgres", "mysql"], var.database_engine)
+    error_message = "Database engine must be postgres or mysql."
   }
 }
 
@@ -193,15 +193,17 @@ resource "aws_rds_instance" "database" {
   username = "admin"
   password = random_password.db_password[0].result
 
-  skip_final_snapshot = var.environment != "production"
+  skip_final_snapshot       = var.environment != "production"
+  final_snapshot_identifier = var.environment == "production" ? "${var.service_name}-final-snapshot" : null
 
   tags = local.standard_tags
 }
 
 resource "random_password" "db_password" {
-  count   = var.enable_database ? 1 : 0
-  length  = 32
-  special = true
+  count            = var.enable_database ? 1 : 0
+  length           = 32
+  special          = true
+  override_special = "!#$%&*()-_=+[]{}<>:?"
 }
 ```
 
@@ -242,11 +244,13 @@ from flask import Flask, request, jsonify, render_template
 from flask_login import login_required, current_user
 import requests
 import json
+import os
 
 app = Flask(__name__)
 
 TFC_TOKEN = os.environ["TFC_TOKEN"]
 TFC_ORG = os.environ["TFC_ORGANIZATION"]
+TFC_OAUTH_TOKEN_ID = os.environ["TFC_OAUTH_TOKEN_ID"]
 TFC_API = "https://app.terraform.io/api/v2"
 
 # Service catalog defining what developers can provision
@@ -255,13 +259,14 @@ SERVICE_CATALOG = {
         "name": "Web Service",
         "description": "Containerized web service with load balancer",
         "module": "web-service",
+        "name_field": "service_name",
         "fields": [
             {"name": "service_name", "type": "text", "required": True},
             {"name": "team", "type": "select", "options": ["platform", "backend", "frontend", "data", "ml"]},
             {"name": "environment", "type": "select", "options": ["development", "staging", "production"]},
             {"name": "size", "type": "select", "options": ["small", "medium", "large", "xlarge"]},
             {"name": "enable_database", "type": "boolean", "default": False},
-            {"name": "database_engine", "type": "select", "options": ["postgres", "mysql", "redis"]},
+            {"name": "database_engine", "type": "select", "options": ["postgres", "mysql"]},
             {"name": "enable_cdn", "type": "boolean", "default": False}
         ]
     },
@@ -269,6 +274,7 @@ SERVICE_CATALOG = {
         "name": "Static Website",
         "description": "S3-hosted static site with CloudFront CDN",
         "module": "static-site",
+        "name_field": "site_name",
         "fields": [
             {"name": "site_name", "type": "text", "required": True},
             {"name": "team", "type": "select", "options": ["platform", "backend", "frontend"]},
@@ -295,6 +301,7 @@ def provision_service():
         return jsonify({"error": "Unknown service type"}), 400
 
     catalog_entry = SERVICE_CATALOG[service_type]
+    name_field = catalog_entry["name_field"]
 
     # Validate required fields
     for field in catalog_entry["fields"]:
@@ -302,7 +309,8 @@ def provision_service():
             return jsonify({"error": f"Missing required field: {field['name']}"}), 400
 
     # Create a Terraform Cloud workspace for this service
-    workspace_name = f"{variables['service_name']}-{variables.get('environment', 'dev')}"
+    resource_name = variables[name_field]
+    workspace_name = f"{resource_name}-{variables.get('environment', 'dev')}"
     workspace_id = create_workspace(workspace_name, catalog_entry["module"])
 
     # Set variables on the workspace
@@ -320,7 +328,7 @@ def provision_service():
         "workspace": workspace_name,
         "run_id": run_id,
         "status": "provisioning",
-        "message": f"Service {variables['service_name']} is being provisioned"
+        "message": f"Service {resource_name} is being provisioned"
     })
 
 def create_workspace(name, module_name):
@@ -334,6 +342,7 @@ def create_workspace(name, module_name):
                 "working-directory": f"modules/{module_name}",
                 "vcs-repo": {
                     "identifier": "company/infrastructure-modules",
+                    "oauth-token-id": TFC_OAUTH_TOKEN_ID,
                     "branch": "main"
                 }
             }
@@ -348,14 +357,17 @@ def create_workspace(name, module_name):
 
 def create_variable(workspace_id, key, value):
     """Set a variable on a workspace."""
+    is_hcl = isinstance(value, (list, dict))
+    variable_value = json.dumps(value) if is_hcl else str(value).lower() if isinstance(value, bool) else str(value)
+
     data = {
         "data": {
             "type": "vars",
             "attributes": {
                 "key": key,
-                "value": str(value) if not isinstance(value, bool) else str(value).lower(),
+                "value": variable_value,
                 "category": "terraform",
-                "hcl": isinstance(value, (list, dict))
+                "hcl": is_hcl
             }
         }
     }
@@ -370,7 +382,7 @@ def trigger_run(workspace_id, message):
     data = {
         "data": {
             "type": "runs",
-            "attributes": {"message": message, "auto-apply": True},
+            "attributes": {"message": message},
             "relationships": {
                 "workspace": {"data": {"type": "workspaces", "id": workspace_id}}
             }
@@ -387,6 +399,8 @@ def trigger_run(workspace_id, message):
 ## Adding Approval Workflows for Production
 
 Production provisioning should require approval from a team lead or platform engineer.
+
+After moving the non-production provisioning logic into a helper such as `do_provision`, the route can add an approval gate:
 
 ```python
 @app.route("/api/provision", methods=["POST"])
