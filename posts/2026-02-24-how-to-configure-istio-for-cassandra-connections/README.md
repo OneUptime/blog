@@ -102,10 +102,15 @@ spec:
               value: "dc1"
             - name: CASSANDRA_RACK
               value: "rack1"
+            - name: CASSANDRA_ENDPOINT_SNITCH
+              value: "GossipingPropertyFileSnitch"
             - name: POD_IP
               valueFrom:
                 fieldRef:
                   fieldPath: status.podIP
+          volumeMounts:
+            - name: cassandra-data
+              mountPath: /var/lib/cassandra
           resources:
             requests:
               memory: 4Gi
@@ -245,24 +250,13 @@ spec:
     - "*.apps.astra.datastax.com"
   ports:
     - number: 29042
-      name: tcp-cql
-      protocol: TCP
+      name: tls-cql
+      protocol: TLS
   location: MESH_EXTERNAL
   resolution: NONE
----
-apiVersion: networking.istio.io/v1
-kind: DestinationRule
-metadata:
-  name: astra-cassandra
-  namespace: database
-spec:
-  host: "*.apps.astra.datastax.com"
-  trafficPolicy:
-    tls:
-      mode: SIMPLE
 ```
 
-DataStax Astra uses a secure connect bundle and port 29042 for CQL connections.
+DataStax Astra uses a secure connect bundle and port 29042 for CQL connections. The bundle configures TLS for the driver, so do not add Istio TLS origination for these connections.
 
 ## Monitoring
 
