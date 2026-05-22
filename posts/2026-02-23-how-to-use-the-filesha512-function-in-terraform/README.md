@@ -8,7 +8,7 @@ Description: Learn how to use the filesha512 function in Terraform to compute SH
 
 ---
 
-The `filesha512` function computes the SHA-512 hash of a file's contents and returns it as a hexadecimal string. SHA-512 is the strongest hash function available in Terraform's built-in file hashing toolkit, producing a 128-character hex string (512 bits). When your security or compliance requirements demand the highest level of hash strength, `filesha512` is the function to reach for.
+The `filesha512` function computes the SHA-512 hash of a file's contents and returns it as a hexadecimal string. SHA-512 is the strongest algorithm available in Terraform's built-in file hashing toolkit, producing a 128-character hex string (512 bits). When your security or compliance requirements demand the highest level of hash strength, `filesha512` is the function to reach for.
 
 ## What Is the filesha512 Function?
 
@@ -26,7 +26,7 @@ The SHA-512 hash is 512 bits long, rendered as 128 hexadecimal characters. This 
 
 ## The Hash Function Lineup
 
-Here is a quick comparison of all file hashing functions in Terraform:
+Here is a quick comparison of common file hashing functions in Terraform:
 
 ```hcl
 locals {
@@ -46,6 +46,9 @@ locals {
 
   # Base64-encoded SHA-256 - 44 chars - use for Lambda
   b64sha256 = filebase64sha256(local.path)
+
+  # Base64-encoded SHA-512 - 88 chars
+  b64sha512 = filebase64sha512(local.path)
 }
 ```
 
@@ -83,7 +86,6 @@ locals {
   compliance_manifest = jsonencode({
     hashes     = local.compliance_hashes
     algorithm  = "sha512"
-    timestamp  = timestamp()
   })
 }
 
@@ -148,7 +150,7 @@ output "binary_verification" {
 
 ## Generating High-Entropy Identifiers
 
-SHA-512's longer output provides more unique identifier space:
+SHA-512's longer output provides more identifier space:
 
 ```hcl
 locals {
@@ -159,8 +161,8 @@ locals {
     infra   = filesha512("${path.module}/main.tf")
   })
 
-  # Use the first 16 chars for a very unique but manageable ID
-  deployment_id = substr(sha512(local.deployment_manifest), 0, 16)
+  # Use the first 32 chars for a compact 128-bit ID
+  deployment_id = substr(sha512(local.deployment_manifest), 0, 32)
 }
 
 resource "aws_ssm_parameter" "deployment_id" {
@@ -220,12 +222,14 @@ locals {
     file_count = length(local.tf_files)
     algorithm  = "SHA-512"
   }
+
+  audit_record_hash = substr(sha512(jsonencode(local.audit_record)), 0, 16)
 }
 
 # Store the audit record for later verification
 resource "aws_s3_object" "audit_record" {
   bucket  = aws_s3_bucket.audit.id
-  key     = "terraform/audit/${formatdate("YYYY-MM-DD-hhmm", timestamp())}.json"
+  key     = "terraform/audit/${local.audit_record_hash}.json"
   content = jsonencode(local.audit_record)
 
   tags = {
@@ -350,12 +354,12 @@ output "consistency_check" {
 # filesha512 handles binary files correctly
 # No encoding issues to worry about
 
-# filesha512 reads the file at plan time
-# The file must exist when terraform plan runs
+# filesha512 reads files from disk during the Terraform run
+# The file must already exist before Terraform takes actions
 ```
 
 ## Summary
 
-The `filesha512` function computes the strongest hash available in Terraform's built-in function set. Its 512-bit output provides the highest collision resistance, making it the right choice for compliance-driven auditing, security-critical binary verification, certificate pinning, and supply chain security. For most day-to-day Terraform work, `filesha256` or `filemd5` are sufficient, but when your security requirements demand maximum hash strength, `filesha512` delivers. Use `substr` to create manageable short identifiers from the 128-character output.
+The `filesha512` function computes the strongest file hash algorithm available in Terraform's built-in function set. Its 512-bit output provides the highest collision resistance, making it the right choice for compliance-driven auditing, security-critical binary verification, certificate pinning, and supply chain security. For most day-to-day Terraform work, `filesha256` or `filemd5` are sufficient, but when your security requirements demand maximum hash strength, `filesha512` delivers. Use `substr` to create manageable short identifiers from the 128-character output.
 
 For related functions, see our posts on the [filesha256 function](https://oneuptime.com/blog/post/2026-02-23-how-to-use-the-filesha256-function-in-terraform/view) and the [filemd5 function](https://oneuptime.com/blog/post/2026-02-23-how-to-use-the-filemd5-function-in-terraform/view).
