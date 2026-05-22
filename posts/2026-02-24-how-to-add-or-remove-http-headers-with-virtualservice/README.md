@@ -24,7 +24,7 @@ You can set (add/overwrite), add (append), or remove headers in both directions.
 To add headers to requests before they hit your backend:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -52,7 +52,7 @@ The `set` operation creates the header if it does not exist or overwrites it if 
 To add headers to responses before they go back to the client:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -82,7 +82,7 @@ This is great for adding security headers consistently across all services witho
 To strip headers from requests or responses:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -114,7 +114,7 @@ Removing the `server` and `x-powered-by` response headers is a common security p
 You can do all three operations in the same rule:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -153,7 +153,7 @@ The difference between `set` and `add`:
 Headers can be set at the route destination level. This means different destinations can have different headers:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -188,7 +188,7 @@ Each destination gets its own header value. The v1 backend receives `x-version: 
 Istio supports Envoy header variables that get replaced at runtime:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -216,7 +216,7 @@ spec:
 Here is a practical pattern for adding security headers to all responses:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: secure-app
@@ -253,7 +253,7 @@ This applies a standard set of security headers to every response, regardless of
 You can combine header manipulation with match conditions to apply headers only to specific requests:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -316,6 +316,6 @@ A few things to know:
 
 3. **You cannot modify the body** - Header manipulation only affects headers, not request or response bodies.
 
-4. **Order of operations** - Envoy processes request header modifications before routing, and response header modifications after receiving the response from the upstream.
+4. **Order of operations** - Envoy applies request header modifications before forwarding the request to the destination service, and response header modifications before returning the response to the caller.
 
 Header manipulation in Istio VirtualService is a clean way to standardize security headers, add tracking information, and strip sensitive data without touching your application code. It keeps these cross-cutting concerns at the infrastructure level where they belong.
