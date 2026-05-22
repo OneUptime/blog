@@ -13,7 +13,7 @@ DestinationRules define policies that get applied to traffic after routing has h
 ## Top-Level Structure
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service
@@ -54,7 +54,7 @@ spec:
 
 The `simple` load balancer supports these algorithms:
 
-- `ROUND_ROBIN` - rotates through endpoints sequentially (the default)
+- `ROUND_ROBIN` - rotates through endpoints sequentially
 - `LEAST_REQUEST` - picks the endpoint with the fewest active requests
 - `RANDOM` - picks a random endpoint
 - `PASSTHROUGH` - connects directly to the caller-requested address
@@ -68,32 +68,33 @@ spec:
     loadBalancer:
       consistentHash:
         httpHeaderName: x-user-id
-        minimumRingSize: 1024
+        ringHash:
+          minimumRingSize: 1024
 ```
 
-Consistent hashing supports several key sources:
+Consistent hashing supports several key sources and hash algorithms:
 
 ```yaml
 loadBalancer:
   consistentHash:
     httpHeaderName: x-session-id
     # OR
-    httpCookie:
-      name: JSESSIONID
-      ttl: 0s
-      path: /
+    # httpCookie:
+    #   name: JSESSIONID
+    #   ttl: 0s
+    #   path: /
     # OR
-    useSourceIp: true
+    # useSourceIp: true
     # OR
-    httpQueryParameterName: user_id
-    # OR
-    maglev: {}
-    # OR
+    # httpQueryParameterName: user_id
+
     ringHash:
       minimumRingSize: 1024
+    # OR
+    # maglev: {}
 ```
 
-You pick one hash key source (header, cookie, source IP, or query parameter) and one hash algorithm (`maglev` or `ringHash`). The cookie option with a TTL greater than zero will set the cookie on the first request if it does not already exist.
+You pick one hash key source (header, cookie, source IP, or query parameter) and one hash algorithm (`maglev` or `ringHash`). The cookie option will generate a cookie if `ttl` is specified and the cookie is not already present. A `ttl` of `0s` generates a session cookie.
 
 There is also a `localityLbSetting` for controlling locality-aware load balancing:
 
@@ -106,22 +107,17 @@ loadBalancer:
         to:
           "us-west/zone1/*": 80
           "us-west/zone2/*": 20
-    failover:
-      - from: us-west
-        to: us-east
-    failoverPriority:
-      - "topology.kubernetes.io/zone"
-    enabled: true
 ```
 
-The `distribute` field explicitly maps source localities to weighted destination localities. The `failover` field specifies which region to fail over to. The `failoverPriority` field allows prioritizing failover based on custom labels.
+The `distribute` field explicitly maps source localities to weighted destination localities. The `failover` field specifies which region to fail over to. The `failoverPriority` field allows prioritizing failover based on custom labels. Only one of `distribute`, `failover`, or `failoverPriority` can be set in the same `localityLbSetting`.
 
-The `warmupDurationSecs` field on the load balancer tells Istio to gradually ramp up traffic to newly added endpoints:
+The `warmup` field on the load balancer tells Istio to gradually ramp up traffic to newly added endpoints:
 
 ```yaml
 loadBalancer:
   simple: ROUND_ROBIN
-  warmupDurationSecs: 60s
+  warmup:
+    duration: 60s
 ```
 
 ### Connection Pool Settings
@@ -150,7 +146,7 @@ spec:
         useClientProtocol: false
 ```
 
-The TCP connection pool settings control connection-level behavior. `maxConnections` caps the total connections to the upstream host. The `tcpKeepalive` block configures TCP keep-alive probes. `maxConnectionDuration` limits how long a connection stays open. `idleTimeout` closes connections that have been idle too long.
+The TCP connection pool settings control connection-level behavior. `maxConnections` caps the HTTP/1 or TCP connections to a destination host. The `tcpKeepalive` block configures TCP keep-alive probes. `maxConnectionDuration` limits how long a connection stays open. `idleTimeout` closes connections that have been idle too long.
 
 The HTTP connection pool settings are layered on top. `h2UpgradePolicy` controls whether HTTP/1.1 connections should upgrade to HTTP/2 (options: `DEFAULT`, `DO_NOT_UPGRADE`, `UPGRADE`). The `useClientProtocol` flag, when true, tells Envoy to use whatever protocol the client sent. `http1MaxPendingRequests` is the max number of pending requests when there is no connection available. `http2MaxRequests` is the max concurrent requests to a host. `maxRetries` limits the number of concurrent retries across all hosts in the cluster.
 
@@ -186,7 +182,6 @@ spec:
       clientCertificate: /etc/certs/client.pem
       privateKey: /etc/certs/client-key.pem
       caCertificates: /etc/certs/ca.pem
-      credentialName: my-tls-secret
       subjectAltNames:
         - my-service.default.svc.cluster.local
       sni: my-service.example.com
@@ -200,7 +195,7 @@ TLS modes include:
 - `MUTUAL` - mutual TLS with client certificates
 - `ISTIO_MUTUAL` - mutual TLS using Istio's auto-generated certs
 
-For `MUTUAL` mode, you provide `clientCertificate`, `privateKey`, and `caCertificates`. The `credentialName` field references a Kubernetes secret instead. The `subjectAltNames` field validates the server certificate SAN. The `sni` field overrides the SNI string.
+For `MUTUAL` mode, you provide `clientCertificate`, `privateKey`, and `caCertificates`, or use `credentialName` to reference a Kubernetes secret instead. The `subjectAltNames` field validates the server certificate SAN. The `sni` field overrides the SNI string.
 
 ### Port-Level Settings
 
@@ -279,7 +274,7 @@ Subsets partition a service into groups based on pod labels. Each subset can ove
 ## Full Working Example
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: reviews
@@ -289,7 +284,8 @@ spec:
   trafficPolicy:
     loadBalancer:
       simple: LEAST_REQUEST
-      warmupDurationSecs: 30s
+      warmup:
+        duration: 30s
     connectionPool:
       tcp:
         maxConnections: 100
