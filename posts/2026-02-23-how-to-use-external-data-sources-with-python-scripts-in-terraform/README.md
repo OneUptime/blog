@@ -159,7 +159,7 @@ data "external" "api_data" {
 
   query = {
     api_url = "https://api.github.com/repos/hashicorp/terraform"
-    headers = jsonencode({"Accept": "application/vnd.github.v3+json"})
+    headers = jsonencode({"Accept": "application/vnd.github+json"})
   }
 }
 
@@ -210,10 +210,10 @@ if __name__ == "__main__":
     main()
 ```
 
-## Password Policy Validation Script
+## Password Policy Summary Script
 
 ```hcl
-# password-check.tf - Validate password against policy
+# password-check.tf - Summarize password policy settings
 data "external" "password_check" {
   program = ["python3", "${path.module}/scripts/password_policy.py"]
 
@@ -234,42 +234,10 @@ output "password_policy" {
 
 ```python
 #!/usr/bin/env python3
-"""scripts/password_policy.py - Generate and validate password policy."""
+"""scripts/password_policy.py - Summarize password policy settings."""
 
 import json
 import sys
-import string
-import secrets
-
-def generate_compliant_password(min_length, require_upper, require_lower,
-                                 require_digits, require_special):
-    """Generate a password that meets the policy requirements."""
-    chars = ""
-    required = []
-
-    if require_lower:
-        chars += string.ascii_lowercase
-        required.append(secrets.choice(string.ascii_lowercase))
-    if require_upper:
-        chars += string.ascii_uppercase
-        required.append(secrets.choice(string.ascii_uppercase))
-    if require_digits:
-        chars += string.digits
-        required.append(secrets.choice(string.digits))
-    if require_special:
-        special = "!@#$%^&*()-_=+"
-        chars += special
-        required.append(secrets.choice(special))
-
-    # Fill remaining length with random characters
-    remaining = min_length - len(required)
-    password_chars = required + [secrets.choice(chars) for _ in range(remaining)]
-
-    # Shuffle the characters
-    password_list = list(password_chars)
-    secrets.SystemRandom().shuffle(password_list)
-
-    return "".join(password_list)
 
 def main():
     input_data = json.load(sys.stdin)
@@ -279,12 +247,14 @@ def main():
     require_lower = input_data.get("require_lower", "true") == "true"
     require_digits = input_data.get("require_digits", "true") == "true"
     require_special = input_data.get("require_special", "true") == "true"
+    forbidden_words = input_data.get("forbidden_words", "")
 
     result = {
         "policy_description": f"Min {min_length} chars, upper={require_upper}, "
                              f"lower={require_lower}, digits={require_digits}, "
                              f"special={require_special}",
         "min_length": str(min_length),
+        "forbidden_words": forbidden_words,
         "charset_size": str(
             (26 if require_lower else 0) +
             (26 if require_upper else 0) +
