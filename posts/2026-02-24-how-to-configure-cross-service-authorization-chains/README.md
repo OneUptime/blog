@@ -14,9 +14,9 @@ Cross-service authorization chains enforce this kind of path-based security. Ist
 
 ## Why Chain Authorization Matters
 
-Without chain authorization, a compromised service can call any other service directly. If the inventory service is compromised, it could call the warehouse service directly, bypassing the orders service and any business logic validation that happens there.
+Without per-hop authorization, a compromised service can call any other service directly. If the inventory service is compromised, it could call the warehouse service directly, bypassing the orders service and any business logic validation that happens there.
 
-With chain authorization, the warehouse service verifies not just who is calling (inventory service) but also who called the caller (orders service, called by the API gateway). This defense-in-depth approach limits the blast radius of a compromise.
+With chain authorization, the warehouse service verifies who is calling (inventory service) and can also check chain context that says who called the caller (orders service, called by the API gateway). This defense-in-depth approach limits the blast radius of a compromise.
 
 ## Setting Up Service Identities
 
@@ -162,13 +162,14 @@ spec:
         name: envoy.filters.http.lua
         typed_config:
           "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-          inlineCode: |
-            function envoy_on_request(request_handle)
-              request_handle:headers():replace("x-call-chain", "api-gateway")
-            end
+          defaultSourceCode:
+            inlineString: |
+              function envoy_on_request(request_handle)
+                request_handle:headers():replace("x-call-chain", "api-gateway")
+              end
 ```
 
-Each downstream service appends its identity:
+Each downstream service appends its identity. For example, the order service appends `order-service`:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -196,12 +197,15 @@ spec:
         name: envoy.filters.http.lua
         typed_config:
           "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-          inlineCode: |
-            function envoy_on_request(request_handle)
-              local chain = request_handle:headers():get("x-call-chain") or ""
-              request_handle:headers():replace("x-call-chain", chain .. ">order-service")
-            end
+          defaultSourceCode:
+            inlineString: |
+              function envoy_on_request(request_handle)
+                local chain = request_handle:headers():get("x-call-chain") or ""
+                request_handle:headers():replace("x-call-chain", chain .. ">order-service")
+              end
 ```
+
+Create the same EnvoyFilter for `inventory-service`, changing the `workloadSelector` label to `app: inventory-service` and appending `>inventory-service`.
 
 Now verify the full chain at the destination:
 
@@ -257,10 +261,11 @@ spec:
         name: envoy.filters.http.lua
         typed_config:
           "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-          inlineCode: |
-            function envoy_on_request(request_handle)
-              request_handle:headers():remove("x-call-chain")
-            end
+          defaultSourceCode:
+            inlineString: |
+              function envoy_on_request(request_handle)
+                request_handle:headers():remove("x-call-chain")
+              end
 ```
 
 2. Combine chain verification with service identity at every hop. Even if the header is forged, the mTLS identity can't be:
@@ -285,7 +290,7 @@ spec:
       values: ["api-gateway>order-service"]
 ```
 
-This way, even if someone spoofs the header, they also need the correct mTLS identity, which they can't forge.
+This way, a service also needs the correct mTLS identity for that hop. Header checks are still not cryptographic proof of the full path if an allowed upstream service is compromised, so use them as defense in depth rather than as the only control.
 
 ## Using JWT Token Propagation for Chain Verification
 
