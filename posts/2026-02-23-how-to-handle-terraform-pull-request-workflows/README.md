@@ -70,9 +70,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v4
         with:
-          terraform_version: 1.7.0
+          terraform_version: 1.15.4
 
       # Initialize without backend to validate syntax
       - name: Terraform Init
@@ -82,7 +82,7 @@ jobs:
       # Check formatting
       - name: Terraform Format Check
         run: terraform fmt -check -recursive
-        working-directory: environments/${{ matrix.environment }}
+        working-directory: .
 
       # Validate configuration
       - name: Terraform Validate
@@ -90,7 +90,7 @@ jobs:
         working-directory: environments/${{ matrix.environment }}
 ```
 
-This pipeline runs format checks and validation for each environment affected by the pull request. The `-backend=false` flag allows validation without needing cloud credentials during the initial check.
+This pipeline runs format checks for the repository and validation for each environment listed in the matrix when matching paths are changed. The `-backend=false` flag allows validation without needing cloud credentials during the initial check.
 
 ## Adding Terraform Plan to Pull Requests
 
@@ -107,9 +107,9 @@ The most valuable automated check is running `terraform plan` and posting the ou
     steps:
       - uses: actions/checkout@v4
 
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v4
         with:
-          terraform_version: 1.7.0
+          terraform_version: 1.15.4
 
       - name: Terraform Init
         run: terraform init
@@ -129,12 +129,14 @@ The most valuable automated check is running `terraform plan` and posting the ou
 
       # Post plan output as PR comment
       - name: Comment Plan Output
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
+        env:
+          PLAN_OUTPUT: ${{ steps.plan.outputs.stdout }}
         with:
           script: |
             const output = `#### Terraform Plan - ${{ matrix.environment }}
             ```
-            ${{ steps.plan.outputs.stdout }}
+            ${process.env.PLAN_OUTPUT}
             ```
             `;
             github.rest.issues.createComment({
@@ -158,11 +160,14 @@ Add security scanning tools to catch potential vulnerabilities before they reach
     steps:
       - uses: actions/checkout@v4
 
-      # Run tfsec for security analysis
-      - name: tfsec Security Scan
-        uses: aquasecurity/tfsec-action@v1.0.3
+      # Run Trivy for Terraform misconfiguration analysis
+      - name: Trivy Terraform Scan
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
-          soft_fail: false
+          scan-type: 'config'
+          scan-ref: '.'
+          exit-code: '1'
+          severity: 'CRITICAL,HIGH'
 
       # Run checkov for compliance checks
       - name: Checkov Compliance Scan
@@ -184,14 +189,14 @@ Define clear review requirements:
 ```yaml
 # .github/CODEOWNERS
 # Require platform team review for all infrastructure changes
-/environments/production/ @platform-team
-/environments/staging/ @platform-team @dev-leads
+/environments/production/ @your-org/platform-team
+/environments/staging/ @your-org/platform-team @your-org/dev-leads
 
 # Module changes need architecture review
-/modules/ @architecture-team @platform-team
+/modules/ @your-org/architecture-team @your-org/platform-team
 ```
 
-Set up branch protection rules to enforce these requirements. Require at least two approvals for production changes and one for staging. This ensures that no single person can push infrastructure changes without oversight.
+Set up branch protection rules to enforce these requirements. Require code owner review and choose the number of required approving reviews for the protected branch. If you need different approval counts for production and staging paths, enforce that with separate protected branches or a custom required check. This ensures that no single person can push infrastructure changes without oversight.
 
 ## Handling the Apply Step
 
@@ -217,7 +222,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v4
 
       - name: Terraform Init
         run: terraform init
@@ -243,12 +248,11 @@ Implement a queuing system for applies:
 # Use remote state with locking
 terraform {
   backend "s3" {
-    bucket         = "my-terraform-state"
-    key            = "production/terraform.tfstate"
-    region         = "us-east-1"
-    # DynamoDB table for state locking
-    dynamodb_table = "terraform-locks"
-    encrypt        = true
+    bucket       = "my-terraform-state"
+    key          = "production/terraform.tfstate"
+    region       = "us-east-1"
+    use_lockfile = true
+    encrypt      = true
   }
 }
 ```
