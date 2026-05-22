@@ -99,7 +99,7 @@ The `terminationDrainDuration` in the Istio proxy config tells Envoy how long to
 The most critical configuration for long-running workers is timeouts. If the worker calls other services during its processing, those calls need generous timeouts:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: storage-api-vs
@@ -125,7 +125,7 @@ A two-hour timeout might seem extreme, but for video transcoding or data migrati
 Long-lived connections are vulnerable to being dropped by intermediate network devices (load balancers, firewalls, NAT gateways). TCP keepalive prevents this:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: storage-api-dr
@@ -153,23 +153,34 @@ The `idleTimeout` of 7200 seconds prevents Envoy from closing idle connections. 
 Long-running workers often download or upload large files. Streaming transfers need special attention:
 
 ```yaml
-apiVersion: networking.istio.io/v1alpha3
-kind: EnvoyFilter
+apiVersion: networking.istio.io/v1
+kind: VirtualService
 metadata:
-  name: stream-timeout
+  name: storage-api-vs
   namespace: long-workers
 spec:
-  workloadSelector:
-    labels:
-      app: video-transcoder
-  configPatches:
-  - applyTo: ROUTE_CONFIGURATION
-    match:
-      context: SIDECAR_OUTBOUND
-    patch:
-      operation: MERGE
-      value:
-        max_direct_response_body_size_bytes: 0
+  hosts:
+  - "storage-api.data-services.svc.cluster.local"
+  http:
+  - match:
+    - uri:
+        prefix: /downloads/
+    - uri:
+        prefix: /uploads/
+    route:
+    - destination:
+        host: storage-api.data-services.svc.cluster.local
+    timeout: 0s
+    retries:
+      attempts: 0
+  - route:
+    - destination:
+        host: storage-api.data-services.svc.cluster.local
+    timeout: 7200s
+    retries:
+      attempts: 3
+      perTryTimeout: 3600s
+      retryOn: connect-failure,reset
 ```
 
 ## Preventing Disruption During Mesh Updates
@@ -189,7 +200,7 @@ spec:
       app: video-transcoder
 ```
 
-This ensures at most one worker pod is disrupted at a time during rolling updates or node drains.
+This ensures at most one worker pod is disrupted at a time during voluntary evictions such as node drains. Deployment rolling updates are controlled by the Deployment's rolling update strategy.
 
 ## Sidecar Resource Configuration
 
@@ -218,7 +229,7 @@ For workers that transfer large amounts of data, the sidecar needs more memory t
 Workers often need to reach external services. Configure service entries:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: cloud-storage
@@ -229,11 +240,11 @@ spec:
   ports:
   - number: 443
     name: https
-    protocol: TLS
+    protocol: HTTPS
   resolution: DNS
   location: MESH_EXTERNAL
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: cloud-storage-dr
@@ -248,8 +259,6 @@ spec:
           time: 60s
           interval: 20s
           probes: 5
-    tls:
-      mode: SIMPLE
 ```
 
 ## Limiting Sidecar Scope
@@ -257,7 +266,7 @@ spec:
 Workers that only talk to a few services benefit from a restricted sidecar:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: video-transcoder-sidecar
@@ -271,7 +280,7 @@ spec:
     - "data-services/*"
     - "istio-system/*"
   - hosts:
-    - "~/*.googleapis.com"
+    - "./*.googleapis.com"
 ```
 
 ## Graceful Shutdown Handling
@@ -313,9 +322,9 @@ spec:
 
 The sequence during shutdown is:
 
-1. Kubernetes sends SIGTERM
+1. Kubernetes starts the pod termination grace period
 2. The preStop hook runs and waits for the current task
-3. After the task finishes, the container exits
+3. After the hook completes, Kubernetes sends SIGTERM to the container
 4. Istio's terminationDrainDuration gives the proxy time to close connections gracefully
 5. The pod terminates
 
@@ -327,13 +336,13 @@ Track long-running worker behavior:
 # Check active connections from workers
 
 kubectl exec -n istio-system deploy/prometheus -- \
-  promtool query instant 'sum(istio_tcp_connections_opened_total{source_workload_namespace="long-workers"} - istio_tcp_connections_closed_total{source_workload_namespace="long-workers"}) by (source_workload)'
+  promtool query instant http://localhost:9090 'sum(istio_tcp_connections_opened_total{source_workload_namespace="long-workers"} - istio_tcp_connections_closed_total{source_workload_namespace="long-workers"}) by (source_workload)'
 
 # Data transfer rates
 kubectl exec -n istio-system deploy/prometheus -- \
-  promtool query instant 'sum(rate(istio_tcp_sent_bytes_total{source_workload_namespace="long-workers"}[5m])) by (source_workload)'
+  promtool query instant http://localhost:9090 'sum(rate(istio_tcp_sent_bytes_total{source_workload_namespace="long-workers"}[5m])) by (source_workload)'
 ```
 
 ## Summary
 
-Long-running workers need three things from Istio: extended timeouts that match the actual duration of tasks, TCP keepalive settings that prevent connection drops, and graceful shutdown configuration that allows in-progress work to complete. Set the `terminationDrainDuration` and `terminationGracePeriodSeconds` high enough to accommodate your longest tasks, and use PodDisruptionBudgets to prevent mesh updates from killing active workers. Get these right and Istio adds significant value through observability and security without interfering with your processing.
+Long-running workers need three things from Istio: extended timeouts that match the actual duration of tasks, TCP keepalive settings that prevent connection drops, and graceful shutdown configuration that allows in-progress work to complete. Set the `terminationDrainDuration` and `terminationGracePeriodSeconds` high enough to accommodate your longest tasks, and use PodDisruptionBudgets to limit voluntary evictions during maintenance. Get these right and Istio adds significant value through observability and security without interfering with your processing.
