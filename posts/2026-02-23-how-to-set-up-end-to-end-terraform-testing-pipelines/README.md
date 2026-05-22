@@ -50,7 +50,7 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.7.0
+          terraform_version: 1.15.0
 
       # Check formatting
       - name: Format Check
@@ -111,7 +111,7 @@ Unit tests use `terraform plan` and the native test framework. They verify logic
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.7.0
+          terraform_version: 1.15.0
 
       - name: Run Module Tests
         working-directory: modules/${{ matrix.module }}
@@ -150,7 +150,7 @@ run "creates_expected_resources" {
   command = plan
 
   assert {
-    condition     = length([for rc in plan.resource_changes : rc if rc.type == "aws_subnet"]) == 4
+    condition     = length(aws_subnet.public) == 2 && length(aws_subnet.private) == 2
     error_message = "Should create 4 subnets (2 public + 2 private)"
   }
 }
@@ -160,8 +160,8 @@ run "outputs_are_correct_type" {
   command = plan
 
   assert {
-    condition     = output.vpc_id != null
-    error_message = "vpc_id output should not be null"
+    condition     = can(tostring(output.vpc_id))
+    error_message = "vpc_id output should be a string"
   }
 }
 ```
@@ -180,6 +180,8 @@ Contract tests verify module interfaces without full integration.
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.15.0
 
       - name: Run Contract Tests
         run: |
@@ -189,7 +191,9 @@ Contract tests verify module interfaces without full integration.
               echo "Running contract tests for $dir..."
               cd "$dir"
               terraform init -backend=false
-              terraform test -filter="tests/contract*.tftest.hcl"
+              for test_file in tests/contract*.tftest.hcl; do
+                terraform test -filter="$test_file"
+              done
               cd -
             fi
           done
@@ -204,6 +208,9 @@ Integration tests create real infrastructure. These need cloud credentials and c
     name: Integration Tests
     needs: contract-tests
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     # Only run on specific conditions to save costs
     if: |
       github.event.pull_request.draft == false &&
@@ -215,16 +222,18 @@ Integration tests create real infrastructure. These need cloud credentials and c
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.15.0
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
-          go-version: '1.21'
+          go-version: '1.26'
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-arn: ${{ secrets.AWS_TEST_ROLE_ARN }}
+          role-to-assume: ${{ secrets.AWS_TEST_ROLE_ARN }}
           aws-region: us-east-1
 
       - name: Run Integration Tests
@@ -318,13 +327,16 @@ Always ensure test resources are cleaned up, even if tests fail.
     needs: integration-tests
     if: always()
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-arn: ${{ secrets.AWS_TEST_ROLE_ARN }}
+          role-to-assume: ${{ secrets.AWS_TEST_ROLE_ARN }}
           aws-region: us-east-1
 
       - name: Cleanup orphaned resources
