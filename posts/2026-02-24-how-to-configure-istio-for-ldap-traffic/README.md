@@ -157,7 +157,7 @@ spec:
           probes: 9
 ```
 
-The `maxConnections` value should be high enough to accommodate all your application connection pools. If you have 10 application pods each maintaining a pool of 10 LDAP connections, you need at least 100 max connections.
+The `maxConnections` value should be high enough to accommodate the connection pools that each client proxy may open to each upstream LDAP host. If a single application pod maintains a pool of 10 LDAP connections to the same LDAP backend, set this comfortably above 10. If many client pods connect through their own sidecars, remember that the limit is enforced by each client proxy for each upstream host, not as one mesh-wide total.
 
 TCP keepalives are critical for LDAP. Many LDAP servers have their own idle timeout (OpenLDAP defaults to `idletimeout 0`, which means no timeout, but Active Directory closes idle connections after about 15 minutes). The keepalive probes prevent intermediate network devices from dropping idle connections before the LDAP server's own timeout kicks in.
 
@@ -224,13 +224,14 @@ Within the mesh, Istio's automatic mTLS encrypts traffic between sidecars. This 
 
 If you have LDAP servers without sidecars (maybe running outside the cluster), you should use LDAPS (port 636) or STARTTLS to encrypt the traffic, since mTLS is not available without the sidecar.
 
-Check the mTLS status:
+Check the generated cluster configuration from the client sidecar:
 
 ```bash
-istioctl authn tls-check deploy/auth-service -n default
+istioctl proxy-config clusters deploy/auth-service -n default \
+  --fqdn openldap.directory.svc.cluster.local --port 389 -o json
 ```
 
-Look for your LDAP service in the output to confirm mTLS is active.
+Look for a transport socket with Istio mutual TLS settings for your LDAP service. You can also use `istioctl proxy-config secret deploy/auth-service -n default` to confirm that the sidecar has Istio workload certificates.
 
 ## Monitoring LDAP Traffic
 
@@ -267,11 +268,11 @@ kubectl exec -it deploy/auth-service -c istio-proxy -- \
   pilot-agent request GET stats | grep -i ldap
 ```
 
-3. Verify the LDAP server is reachable from the sidecar:
+3. Verify the LDAP server is reachable from the application pod:
 
 ```bash
-kubectl exec -it deploy/auth-service -c istio-proxy -- \
-  curl -v telnet://openldap.directory:389
+kubectl exec -it deploy/auth-service -- \
+  ldapsearch -x -H ldap://openldap.directory:389 -s base -b ""
 ```
 
 4. Check for connection timeout issues:
