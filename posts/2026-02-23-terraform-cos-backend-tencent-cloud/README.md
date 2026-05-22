@@ -15,7 +15,7 @@ Tencent Cloud Object Storage (COS) is Tencent Cloud's equivalent of AWS S3 or Az
 Before getting started, you need:
 
 - A Tencent Cloud account
-- Tencent Cloud CLI or console access
+- COSCLI or console access
 - A SecretId and SecretKey (API credentials)
 - Terraform installed
 
@@ -24,12 +24,11 @@ Before getting started, you need:
 First, create a bucket for your state files. You can do this through the Tencent Cloud console or with the CLI:
 
 ```bash
-# Using Tencent Cloud CLI (tccli)
+# Using COSCLI
 
 # Create a bucket in the ap-guangzhou region
-tccli cos CreateBucket \
-  --Bucket "terraform-state-1234567890" \
-  --Region "ap-guangzhou"
+coscli mb cos://terraform-state-1234567890 \
+  -e cos.ap-guangzhou.myqcloud.com
 ```
 
 Or create it through the console. The bucket name in COS follows the format `<bucket-name>-<appid>`. Note down your APPID and the full bucket name.
@@ -158,9 +157,9 @@ terraform {
 
 ## State Locking
 
-The COS backend does not have built-in state locking like some other backends. However, you can achieve locking by combining COS with a Tencent Cloud database or by using a tag-based mechanism.
+The COS backend supports state locking by using the Tencent Cloud tag key `tencentcloud-terraform-lock`. The credentials used by Terraform need `CreateTag`, `DeleteTag`, and `DescribeTags` permissions on that tag key, in addition to object permissions for the state prefix.
 
-For environments where concurrent access is a concern, consider implementing an external locking mechanism or structuring your workflow to prevent concurrent operations through your CI/CD pipeline.
+For environments where concurrent access is a concern, keep locking enabled and also structure your workflow to prevent unnecessary concurrent operations through your CI/CD pipeline.
 
 ## Server-Side Encryption
 
@@ -185,19 +184,15 @@ terraform {
 
 ### SSE-KMS
 
-Use Tencent Cloud KMS for customer-managed encryption:
+The COS backend's `encrypt` argument uses SSE-COS with AES256. It does not support a `kms_key_id` backend argument. If you want Tencent Cloud KMS for customer-managed encryption, configure default bucket encryption instead:
 
 ```hcl
-terraform {
-  backend "cos" {
-    region = "ap-guangzhou"
-    bucket = "terraform-state-1234567890"
-    prefix = "terraform/state"
-
-    # Enable KMS encryption
-    encrypt    = true
-    kms_key_id = "your-kms-key-id"
-  }
+resource "tencentcloud_cos_bucket" "terraform_state" {
+  bucket               = "terraform-state-${var.appid}"
+  acl                  = "private"
+  versioning_enable    = true
+  encryption_algorithm = "KMS"
+  kms_id               = "your-kms-key-id"
 }
 ```
 
@@ -208,22 +203,22 @@ Create a fine-grained bucket policy:
 ```json
 {
   "version": "2.0",
-  "Statement": [
+  "statement": [
     {
-      "Effect": "Allow",
-      "Principal": {
+      "effect": "allow",
+      "principal": {
         "qcs": [
           "qcs::cam::uin/100000000001:uin/100000000002"
         ]
       },
-      "Action": [
+      "action": [
         "name/cos:GetObject",
         "name/cos:PutObject",
         "name/cos:DeleteObject",
         "name/cos:GetBucket",
         "name/cos:HeadObject"
       ],
-      "Resource": [
+      "resource": [
         "qcs::cos:ap-guangzhou:uid/1234567890:terraform-state-1234567890/terraform/*"
       ]
     }
@@ -231,7 +226,7 @@ Create a fine-grained bucket policy:
 }
 ```
 
-Apply it via the console or CLI.
+Apply it via the console or COSCLI. Also grant the Terraform identity `CreateTag`, `DeleteTag`, and `DescribeTags` permissions for the `tencentcloud-terraform-lock` tag key so state locking works.
 
 ## Organizing Multiple Environments
 
@@ -276,28 +271,27 @@ Enable versioning on your bucket to keep historical state versions:
 
 ```bash
 # Enable versioning (if not already enabled)
-tccli cos PutBucketVersioning \
-  --Bucket "terraform-state-1234567890" \
-  --Region "ap-guangzhou" \
-  --Status "Enabled"
+coscli bucket-versioning --method put \
+  cos://terraform-state-1234567890 \
+  Enabled \
+  -e cos.ap-guangzhou.myqcloud.com
 ```
 
 To recover a previous state version:
 
 ```bash
 # List object versions
-tccli cos ListObjectVersions \
-  --Bucket "terraform-state-1234567890" \
-  --Region "ap-guangzhou" \
-  --Prefix "terraform/state/terraform.tfstate"
+coscli ls \
+  cos://terraform-state-1234567890/terraform/state/terraform.tfstate \
+  --all-versions \
+  -e cos.ap-guangzhou.myqcloud.com
 
 # Download a specific version
-tccli cos GetObject \
-  --Bucket "terraform-state-1234567890" \
-  --Region "ap-guangzhou" \
-  --Key "terraform/state/terraform.tfstate" \
-  --VersionId "version-id-here" \
-  --OutputFile "recovered-state.tfstate"
+coscli cp \
+  cos://terraform-state-1234567890/terraform/state/terraform.tfstate \
+  ./recovered-state.tfstate \
+  --version-id "version-id-here" \
+  -e cos.ap-guangzhou.myqcloud.com
 ```
 
 ## Partial Configuration
@@ -315,20 +309,16 @@ terraform {
 ```
 
 ```bash
-# Pass sensitive values at init time
+# Pass only non-sensitive backend values at init time
 terraform init \
-  -backend-config="bucket=terraform-state-1234567890" \
-  -backend-config="secret_id=${TENCENTCLOUD_SECRET_ID}" \
-  -backend-config="secret_key=${TENCENTCLOUD_SECRET_KEY}"
+  -backend-config="bucket=terraform-state-1234567890"
 ```
 
 Or use a backend config file:
 
 ```hcl
 # backend.hcl
-bucket     = "terraform-state-1234567890"
-secret_id  = "your-secret-id"
-secret_key = "your-secret-key"
+bucket = "terraform-state-1234567890"
 ```
 
 ```bash
@@ -362,13 +352,16 @@ This deletes non-current versions after 90 days while keeping the latest version
 
 Enable COS logging to track access to your state files:
 
-```bash
-# Enable access logging for the state bucket
-tccli cos PutBucketLogging \
-  --Bucket "terraform-state-1234567890" \
-  --Region "ap-guangzhou" \
-  --TargetBucket "logs-bucket-1234567890" \
-  --TargetPrefix "cos-logs/terraform-state/"
+```hcl
+resource "tencentcloud_cos_bucket" "terraform_state" {
+  bucket            = "terraform-state-${var.appid}"
+  acl               = "private"
+  versioning_enable = true
+
+  log_enable        = true
+  log_target_bucket = "logs-bucket-${var.appid}"
+  log_prefix        = "cos-logs/terraform-state/"
+}
 ```
 
 You can also set up Cloud Monitor alerts for unusual access patterns.
@@ -377,18 +370,21 @@ You can also set up Cloud Monitor alerts for unusual access patterns.
 
 For disaster recovery, enable cross-region replication:
 
-```bash
-# Configure cross-region replication to a backup region
-# This ensures state survival even if an entire region goes down
-tccli cos PutBucketReplication \
-  --Bucket "terraform-state-1234567890" \
-  --Region "ap-guangzhou" \
-  --Role "qcs::cam::uin/100000000001:uin/100000000001" \
-  --DestBucket "terraform-state-backup-1234567890" \
-  --DestRegion "ap-beijing" \
-  --Status "Enabled"
+```hcl
+resource "tencentcloud_cos_bucket" "terraform_state" {
+  bucket            = "terraform-state-${var.appid}"
+  acl               = "private"
+  versioning_enable = true
+  replica_role      = "qcs::cam::uin/100000000001:uin/100000000001"
+
+  replica_rules {
+    id                 = "replicate-state"
+    status             = "Enabled"
+    destination_bucket = "qcs::cos:ap-beijing::terraform-state-backup-${var.appid}"
+  }
+}
 ```
 
 ## Summary
 
-Tencent Cloud COS is the go-to backend for Terraform state when working with Tencent Cloud infrastructure. It provides object versioning for state recovery, server-side encryption for security, and integrates with Tencent Cloud's IAM system for access control. The setup follows the same patterns as other cloud storage backends - create a bucket, configure the backend block, and initialize. While it lacks built-in state locking, proper CI/CD pipeline design can mitigate concurrent access risks. For a comparison with other backend options, check out our posts on the [GCS backend](https://oneuptime.com/blog/post/2026-02-23-terraform-gcs-backend/view) or [Azure Blob Storage backend](https://oneuptime.com/blog/post/2026-02-23-terraform-azure-blob-storage-backend/view).
+Tencent Cloud COS is the go-to backend for Terraform state when working with Tencent Cloud infrastructure. It provides object versioning for state recovery, server-side encryption for security, state locking through Tencent Cloud tags, and integrates with Tencent Cloud's IAM system for access control. The setup follows the same patterns as other cloud storage backends - create a bucket, configure the backend block, and initialize. For a comparison with other backend options, check out our posts on the [GCS backend](https://oneuptime.com/blog/post/2026-02-23-terraform-gcs-backend/view) or [Azure Blob Storage backend](https://oneuptime.com/blog/post/2026-02-23-terraform-azure-blob-storage-backend/view).
