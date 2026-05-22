@@ -8,7 +8,7 @@ Description: Learn how to use Terragrunt before_hook and after_hook to run custo
 
 ---
 
-Terragrunt hooks let you run arbitrary commands before or after Terraform executes. This is useful for things like running linters before a plan, sending Slack notifications after an apply, generating files that Terraform needs, or cleaning up temporary resources. Hooks are configured directly in your `terragrunt.hcl` and run in the context of the Terraform working directory.
+Terragrunt hooks let you run arbitrary commands before or after Terraform executes. This is useful for things like running linters before a plan, sending Slack notifications after an apply, generating files that Terraform needs, or cleaning up temporary resources. Hooks are configured directly in your `terragrunt.hcl` and normally run in the same working directory where Terraform runs.
 
 ## Basic Hook Syntax
 
@@ -147,7 +147,7 @@ terraform {
 
 ## Using Working Directory
 
-By default, hooks run in the Terragrunt working directory (where the downloaded Terraform source lives). You can change this:
+By default, normal hooks run in the Terraform working directory. If you use the `source` attribute, this is usually the downloaded module copy under `.terragrunt-cache`. You can change this:
 
 ```hcl
 terraform {
@@ -163,15 +163,15 @@ terraform {
 
 ## Running Hooks on All Commands
 
-Use the special `terragrunt-read-config` command to run hooks whenever Terragrunt reads the configuration, regardless of which Terraform command runs:
+Use the special `read-config` command with an `after_hook` to run a hook whenever Terragrunt finishes reading the configuration, regardless of which Terraform command runs:
 
 ```hcl
 terraform {
   source = "../../modules/vpc"
 
-  # This runs before ANY Terraform command
-  before_hook "always_run" {
-    commands = ["terragrunt-read-config"]
+  # This runs after Terragrunt reads the config on every invocation
+  after_hook "always_run" {
+    commands = ["read-config"]
     execute  = ["echo", "Terragrunt is processing this module"]
   }
 }
@@ -217,7 +217,7 @@ terraform {
 
 ## Handling Hook Failures
 
-By default, a failing before_hook prevents Terraform from running. You can change this behavior:
+By default, a failing before_hook prevents Terraform from running. Terragrunt does not provide a built-in "continue on failure" flag for before_hooks, so non-blocking checks need to exit successfully:
 
 ```hcl
 terraform {
@@ -229,7 +229,7 @@ terraform {
     execute  = ["bash", "scripts/mandatory-check.sh"]
   }
 
-  # This is informational - don't block on failure
+  # This is informational if the script exits 0
   before_hook "optional_check" {
     commands = ["plan"]
     execute  = ["bash", "scripts/optional-lint.sh"]
@@ -237,7 +237,7 @@ terraform {
 }
 ```
 
-Currently, Terragrunt doesn't have a built-in "continue on failure" flag for before_hooks. If you need a hook that shouldn't block execution, wrap it in a script that always exits 0:
+If you need a hook that shouldn't block execution, wrap it in a script that always exits 0:
 
 ```bash
 #!/bin/bash
@@ -330,10 +330,7 @@ terraform {
 
   before_hook "cost_estimate" {
     commands = ["apply"]
-    execute  = [
-      "bash", "-c",
-      "terraform show -json tfplan | infracost diff --path /dev/stdin"
-    ]
+    execute  = ["infracost", "breakdown", "--path", "."]
   }
 }
 ```
@@ -344,12 +341,10 @@ If a hook isn't running or isn't doing what you expect:
 
 ```bash
 # Enable debug logging to see hook execution
-terragrunt plan --terragrunt-log-level debug
+terragrunt plan --log-level debug
 
-# The output will show lines like:
-# DEBUG: Running hook: before_plan
-# DEBUG: Hook command: [echo Starting plan]
-# DEBUG: Hook working_dir: /path/to/working/dir
+# The output will include hook execution details, including the hook name,
+# command, and working directory.
 ```
 
 ## Summary
