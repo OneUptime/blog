@@ -195,9 +195,9 @@ variable "services" {
   # Validate CPU is a Fargate-compatible value
   validation {
     condition = alltrue([
-      for name, svc in var.services : contains([256, 512, 1024, 2048, 4096], svc.cpu)
+      for name, svc in var.services : contains([256, 512, 1024, 2048, 4096, 8192, 16384], svc.cpu)
     ])
-    error_message = "CPU must be a valid Fargate value: 256, 512, 1024, 2048, or 4096."
+    error_message = "CPU must be a valid Fargate value: 256, 512, 1024, 2048, 4096, 8192, or 16384."
   }
 
   # Validate no duplicate ports
@@ -212,9 +212,9 @@ variable "services" {
   # Validate service names are DNS-compatible
   validation {
     condition = alltrue([
-      for name, svc in var.services : can(regex("^[a-z][a-z0-9-]*$", name))
+      for name, svc in var.services : can(regex("^[a-z]([a-z0-9-]*[a-z0-9])?$", name)) && length(name) <= 63
     ])
-    error_message = "Service names must be lowercase, start with a letter, and contain only letters, numbers, and hyphens."
+    error_message = "Service names must be lowercase, start with a letter, end with a letter or number, contain only letters, numbers, and hyphens, and be 63 characters or fewer."
   }
 }
 ```
@@ -228,6 +228,8 @@ variable "services" {
   type = map(object({
     image    = string
     port     = number
+    cpu      = number
+    memory   = number
     replicas = number
     public   = bool
   }))
@@ -404,7 +406,7 @@ output "service_endpoints" {
 output "service_arns" {
   description = "Map of service names to their ECS service ARNs"
   value = {
-    for name, svc in aws_ecs_service.this : name => svc.id
+    for name, svc in aws_ecs_service.this : name => svc.arn
   }
 }
 ```
