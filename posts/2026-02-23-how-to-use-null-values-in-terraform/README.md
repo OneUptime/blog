@@ -92,7 +92,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "data" {
   bucket = aws_s3_bucket.data.id
 
   rule {
-    apply_server_side_encryption_configuration {
+    apply_server_side_encryption_by_default {
       sse_algorithm     = var.kms_key_arn != null ? "aws:kms" : "AES256"
       # Only set kms_master_key_id when using KMS
       kms_master_key_id = var.kms_key_arn
@@ -116,6 +116,11 @@ variable "enable_logging" {
 variable "log_bucket" {
   type    = string
   default = null
+
+  validation {
+    condition     = !var.enable_logging || var.log_bucket != null
+    error_message = "log_bucket must be set when enable_logging is true."
+  }
 }
 
 resource "aws_s3_bucket" "data" {
