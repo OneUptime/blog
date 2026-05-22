@@ -59,7 +59,7 @@ mkdir -p "$APPROVED_DIR"
 cd "$MODULE_DIR"
 
 # Generate the current plan in human-readable format
-terraform init -backend=false -input=false > /dev/null 2>&1
+terraform init -input=false > /dev/null 2>&1
 terraform plan -input=false -no-color > /tmp/current-plan.txt 2>&1
 
 # Normalize the plan output
@@ -103,22 +103,19 @@ fi
 
 ## Approval Testing with Go and Terratest
 
-For a more structured approach, use Go with an approval testing library.
+For a more structured approach, use Go with Terratest.
 
 ```go
 // test/approval_test.go
 package test
 
 import (
-    "encoding/json"
-    "fmt"
     "os"
     "path/filepath"
     "regexp"
     "testing"
 
     "github.com/gruntwork-io/terratest/modules/terraform"
-    "github.com/stretchr/testify/assert"
     "github.com/stretchr/testify/require"
 )
 
@@ -190,12 +187,12 @@ func verifyApproval(t *testing.T, approvedFile string, current string) {
     t.Helper()
 
     // Create approved directory if it doesn't exist
-    os.MkdirAll(filepath.Dir(approvedFile), 0755)
+    require.NoError(t, os.MkdirAll(filepath.Dir(approvedFile), 0755))
 
     if _, err := os.Stat(approvedFile); os.IsNotExist(err) {
         // No approved plan exists - write current as received plan
         receivedFile := approvedFile + ".received"
-        os.WriteFile(receivedFile, []byte(current), 0644)
+        require.NoError(t, os.WriteFile(receivedFile, []byte(current), 0644))
 
         t.Fatalf("No approved plan exists at %s.\n"+
             "Review the received plan at %s\n"+
@@ -213,7 +210,7 @@ func verifyApproval(t *testing.T, approvedFile string, current string) {
     if string(approved) != current {
         // Write the received plan for easy diffing
         receivedFile := approvedFile + ".received"
-        os.WriteFile(receivedFile, []byte(current), 0644)
+        require.NoError(t, os.WriteFile(receivedFile, []byte(current), 0644))
 
         t.Errorf("Plan differs from approved baseline.\n"+
             "Approved: %s\n"+
@@ -237,7 +234,7 @@ package test
 
 import (
     "encoding/json"
-    "os"
+    "sort"
     "testing"
 
     "github.com/gruntwork-io/terratest/modules/terraform"
@@ -301,6 +298,7 @@ func extractApprovalPlan(plan map[string]interface{}) ApprovedPlan {
         for name := range outputs {
             approved.OutputNames = append(approved.OutputNames, name)
         }
+        sort.Strings(approved.OutputNames)
     }
 
     return approved
