@@ -53,10 +53,10 @@ jobs:
     outputs:
       image-tag: ${{ steps.meta.outputs.tags }}
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
 
     - name: Log in to Container Registry
-      uses: docker/login-action@v3
+      uses: docker/login-action@v4
       with:
         registry: ${{ env.REGISTRY }}
         username: ${{ github.actor }}
@@ -64,14 +64,14 @@ jobs:
 
     - name: Extract metadata
       id: meta
-      uses: docker/metadata-action@v5
+      uses: docker/metadata-action@v6
       with:
         images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
         tags: |
           type=sha,prefix=
 
     - name: Build and push
-      uses: docker/build-push-action@v5
+      uses: docker/build-push-action@v7
       with:
         context: .
         push: true
@@ -81,10 +81,10 @@ jobs:
     needs: build-and-push
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
 
     - name: Set up kubectl
-      uses: azure/setup-kubectl@v3
+      uses: azure/setup-kubectl@v4
 
     - name: Configure kubeconfig
       run: |
@@ -95,6 +95,7 @@ jobs:
       run: |
         export IMAGE_TAG="${{ needs.build-and-push.outputs.image-tag }}"
         envsubst < k8s/deployment.yaml | kubectl apply -f -
+        kubectl apply -f k8s/service.yaml
         kubectl apply -f k8s/istio/
 ```
 
@@ -143,7 +144,7 @@ spec:
 
 ## Canary Deployment Workflow
 
-The real power of combining Istio with GitHub Actions is canary deployments. Here is a workflow that deploys a canary version, shifts traffic gradually, and rolls back if health checks fail:
+The real power of combining Istio with GitHub Actions is canary deployments. Here is a workflow that deploys a canary version, shifts traffic gradually, and rolls back if health checks fail. This assumes your `DestinationRule` defines `stable` and `canary` subsets that match labels on the stable and canary pods, such as `version: stable` and `version: canary`.
 
 ```yaml
 name: Canary Deploy
@@ -156,10 +157,10 @@ jobs:
   canary:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
 
     - name: Set up kubectl
-      uses: azure/setup-kubectl@v3
+      uses: azure/setup-kubectl@v4
 
     - name: Configure kubeconfig
       run: |
@@ -174,7 +175,7 @@ jobs:
     - name: Shift 10% traffic to canary
       run: |
         cat <<YAMLEOF | kubectl apply -f -
-        apiVersion: networking.istio.io/v1beta1
+        apiVersion: networking.istio.io/v1
         kind: VirtualService
         metadata:
           name: my-app
@@ -209,7 +210,7 @@ jobs:
     - name: Promote canary to 50%
       run: |
         cat <<YAMLEOF | kubectl apply -f -
-        apiVersion: networking.istio.io/v1beta1
+        apiVersion: networking.istio.io/v1
         kind: VirtualService
         metadata:
           name: my-app
@@ -231,7 +232,7 @@ jobs:
     - name: Full promotion
       run: |
         cat <<YAMLEOF | kubectl apply -f -
-        apiVersion: networking.istio.io/v1beta1
+        apiVersion: networking.istio.io/v1
         kind: VirtualService
         metadata:
           name: my-app
@@ -250,7 +251,7 @@ jobs:
       if: failure()
       run: |
         cat <<YAMLEOF | kubectl apply -f -
-        apiVersion: networking.istio.io/v1beta1
+        apiVersion: networking.istio.io/v1
         kind: VirtualService
         metadata:
           name: my-app
@@ -283,12 +284,12 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
 
     - name: Install istioctl
       run: |
-        curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.20.0 sh -
-        echo "$PWD/istio-1.20.0/bin" >> $GITHUB_PATH
+        curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.29.2 sh -
+        echo "$PWD/istio-1.29.2/bin" >> $GITHUB_PATH
 
     - name: Validate Istio manifests
       run: |
@@ -338,9 +339,9 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     - name: Set up kubectl
-      uses: azure/setup-kubectl@v3
+      uses: azure/setup-kubectl@v4
     - name: Configure kubeconfig
       run: |
         mkdir -p $HOME/.kube
@@ -372,6 +373,11 @@ jobs:
 Add a final step that checks the Istio proxy status of your deployed pods:
 
 ```yaml
+    - name: Install istioctl
+      run: |
+        curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.29.2 sh -
+        echo "$PWD/istio-1.29.2/bin" >> $GITHUB_PATH
+
     - name: Verify Istio sidecar
       run: |
         kubectl get pods -l app=my-app -n default -o json | \
