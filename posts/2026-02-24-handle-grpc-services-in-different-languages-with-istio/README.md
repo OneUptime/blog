@@ -12,7 +12,7 @@ gRPC is a natural choice for inter-service communication in a microservices arch
 
 ## Port Naming for gRPC
 
-The most important thing to get right is port naming. Istio needs to know that a port is serving gRPC traffic so it can use HTTP/2 and apply gRPC-specific routing rules.
+The most important thing to get right is protocol selection. Istio can automatically detect HTTP/2 in sidecar traffic, but explicit port naming is the most reliable way to tell Istio that a port is serving gRPC traffic so it can use HTTP/2 and apply gRPC-specific routing rules.
 
 Name your service ports with the `grpc-` prefix:
 
@@ -30,7 +30,7 @@ spec:
     targetPort: 9090
 ```
 
-If you use just `grpc` as the full name, that works too. What does not work is naming it something like `api` or `rpc` - Istio will not detect the protocol correctly.
+If you use just `grpc` as the full name, that works too. What does not work reliably is naming it something like `api` or `rpc`; if automatic protocol detection cannot identify the traffic, Istio treats the port as TCP, and gateways need explicit `grpc`, `http2`, or `appProtocol` configuration to forward gRPC as HTTP/2.
 
 For services that expose both HTTP and gRPC:
 
@@ -51,12 +51,14 @@ spec:
 
 ## gRPC Health Checking
 
-Kubernetes 1.24+ supports native gRPC health probes. This is the recommended approach for gRPC services in Istio:
+Kubernetes introduced native gRPC health probes in 1.24 as a beta feature, and they are stable in Kubernetes 1.27+. This is the recommended approach for gRPC services in Istio:
 
 ### Go
 
 ```go
 import (
+    "net"
+
     "google.golang.org/grpc"
     "google.golang.org/grpc/health"
     healthpb "google.golang.org/grpc/health/grpc_health_v1"
@@ -87,6 +89,7 @@ func main() {
 ```java
 import io.grpc.Server;
 import io.grpc.ServerBuilder;
+import io.grpc.health.v1.HealthCheckResponse.ServingStatus;
 import io.grpc.protobuf.services.HealthStatusManager;
 
 public class PaymentServer {
@@ -114,7 +117,8 @@ public class PaymentServer {
 
 ```python
 import grpc
-from grpc_health.v1 import health, health_pb2_grpc
+from concurrent import futures
+from grpc_health.v1 import health, health_pb2, health_pb2_grpc
 
 def serve():
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
@@ -143,18 +147,25 @@ def serve():
 ```javascript
 const grpc = require('@grpc/grpc-js');
 const protoLoader = require('@grpc/proto-loader');
-const { HealthImplementation } = require('grpc-health-check');
+const {
+  Implementation: HealthImplementation,
+  service: healthService,
+  servingStatus,
+} = require('grpc-js-health-check');
 
 const healthImpl = new HealthImplementation({
-  '': 'SERVING',
-  'payment.PaymentService': 'SERVING',
+  '': servingStatus.SERVING,
+  'payment.PaymentService': servingStatus.SERVING,
 });
 
 const server = new grpc.Server();
 server.addService(paymentProto.PaymentService.service, paymentServiceImpl);
-healthImpl.addToServer(server);
+server.addService(healthService, healthImpl);
 
-server.bindAsync('0.0.0.0:9090', grpc.ServerCredentials.createInsecure(), () => {
+server.bindAsync('0.0.0.0:9090', grpc.ServerCredentials.createInsecure(), (err) => {
+  if (err) {
+    throw err;
+  }
   console.log('gRPC server running on port 9090');
 });
 ```
@@ -371,24 +382,26 @@ public class TraceClientInterceptor implements ClientInterceptor {
 
 ## Handling gRPC Errors with Istio
 
-Istio maps gRPC status codes to HTTP status codes for metrics. Understanding this mapping helps when reading Istio metrics:
+Istio exposes gRPC status separately in metrics with the `grpc_response_status` label. The HTTP `response_code` label represents the HTTP/2 transport status, so a completed gRPC call with an application-level error can still have an HTTP status like 200 while the gRPC status carries the real application result.
 
-| gRPC Status | HTTP Status |
+Understanding the gRPC status helps when reading Istio metrics and configuring retry behavior:
+
+| gRPC Status | Numeric Code |
 |---|---|
-| OK | 200 |
-| CANCELLED | 499 |
-| UNKNOWN | 500 |
-| INVALID_ARGUMENT | 400 |
-| DEADLINE_EXCEEDED | 504 |
-| NOT_FOUND | 404 |
-| PERMISSION_DENIED | 403 |
-| RESOURCE_EXHAUSTED | 429 |
-| UNIMPLEMENTED | 501 |
-| INTERNAL | 500 |
-| UNAVAILABLE | 503 |
-| UNAUTHENTICATED | 401 |
+| OK | 0 |
+| CANCELLED | 1 |
+| UNKNOWN | 2 |
+| INVALID_ARGUMENT | 3 |
+| DEADLINE_EXCEEDED | 4 |
+| NOT_FOUND | 5 |
+| PERMISSION_DENIED | 7 |
+| RESOURCE_EXHAUSTED | 8 |
+| UNIMPLEMENTED | 12 |
+| INTERNAL | 13 |
+| UNAVAILABLE | 14 |
+| UNAUTHENTICATED | 16 |
 
-This mapping affects how Istio's circuit breaker and retry logic interprets gRPC errors.
+This affects how you interpret Istio telemetry and how you choose gRPC-aware retry conditions.
 
 ## gRPC Reflection
 
