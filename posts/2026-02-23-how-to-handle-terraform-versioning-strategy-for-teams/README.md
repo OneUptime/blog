@@ -8,7 +8,7 @@ Description: Develop a Terraform versioning strategy that keeps teams aligned on
 
 ---
 
-Version management in Terraform spans three dimensions: the Terraform CLI itself, the providers that interact with cloud APIs, and the modules that package reusable configurations. When teams manage these versions independently, drift accumulates. One team runs Terraform 1.5 while another uses 1.7. One team pins an AWS provider at version 4.x while another uses 5.x. These inconsistencies lead to incompatible state files, different plan outputs, and hours of debugging.
+Version management in Terraform spans three dimensions: the Terraform CLI itself, the providers that interact with cloud APIs, and the modules that package reusable configurations. When teams manage these versions independently, drift accumulates. One team runs Terraform 1.5 while another uses 1.7. One team pins an AWS provider at version 4.x while another uses 5.x. These inconsistencies can lead to unsupported language features, provider schema differences, different plan outputs, and hours of debugging.
 
 A versioning strategy aligns your teams on which versions to use, when to upgrade, and how to manage the transition.
 
@@ -101,7 +101,7 @@ terraform {
 }
 ```
 
-The `~>` operator allows the rightmost version component to increment. This lets you receive bug fixes and security patches automatically while preventing breaking changes.
+The `~>` operator allows the rightmost version component to increment. This lets you receive bug fixes and security patches during planned updates while preventing breaking changes outside the allowed version range.
 
 ### Range Constraints
 
@@ -159,13 +159,15 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Check Terraform Version
+        id: terraform-version
         run: |
           REQUIRED_VERSION=$(cat .terraform-version)
           echo "Required version: $REQUIRED_VERSION"
+          echo "version=$REQUIRED_VERSION" >> "$GITHUB_OUTPUT"
 
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v4
         with:
-          terraform_version_file: .terraform-version
+          terraform_version: ${{ steps.terraform-version.outputs.version }}
 ```
 
 ### Step 2: Create a Provider Version Matrix
@@ -252,6 +254,7 @@ updates:
     # Only allow patch updates automatically
     allow:
       - dependency-type: all
+        update-types: ["version-update:semver-patch"]
     ignore:
       # Ignore major version updates
       - dependency-name: "*"
@@ -262,7 +265,7 @@ updates:
 
 ```json
 {
-  "extends": ["config:base"],
+  "extends": ["config:recommended"],
   "terraform": {
     "enabled": true
   },
@@ -270,8 +273,7 @@ updates:
     {
       "matchDatasources": ["terraform-provider"],
       "matchUpdateTypes": ["patch"],
-      "automerge": true,
-      "requiredStatusChecks": ["terraform-validate", "terraform-plan"]
+      "automerge": true
     },
     {
       "matchDatasources": ["terraform-provider"],
@@ -288,7 +290,7 @@ updates:
 }
 ```
 
-This configuration auto-merges patch updates after CI passes, requires review for minor updates, and blocks major updates from being automated.
+With branch protection configured to require the Terraform validation and plan checks, this configuration auto-merges patch updates after CI passes, requires review for minor updates, and blocks major updates from being automated.
 
 ## Handling Version Conflicts Between Teams
 
