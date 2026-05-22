@@ -356,7 +356,7 @@ resource "aws_security_group" "app" {
 
 ## Flattening Nested Data for Dynamic Blocks
 
-Sometimes your data is nested deeper than the dynamic block expects. Use `flatten` to restructure it:
+Sometimes your data is nested deeper than a single `for_each` expects. Use `flatten` to restructure it:
 
 ```hcl
 variable "route_tables" {
