@@ -14,26 +14,26 @@ Connection draining is the process of gracefully closing existing connections be
 
 When Kubernetes decides to terminate a pod (during a rolling update, scale-down, or node drain), the following happens:
 
-1. The pod is removed from the Service endpoints
-2. The pod receives a SIGTERM signal
-3. The preStop hook runs (if configured)
+1. The pod is marked as terminating
+2. The preStop hook runs (if configured)
+3. The container runtime sends a SIGTERM signal
 4. The pod has `terminationGracePeriodSeconds` to shut down before SIGKILL
 
-The problem is that step 1 and step 2 happen concurrently. The pod starts shutting down before all load balancers and sidecars have been updated to stop sending traffic to it. During this window, new requests can still arrive at the terminating pod.
+At the same time as the kubelet starts graceful shutdown, the control plane updates EndpointSlices for the terminating pod. Terminating endpoints are marked not ready for normal traffic, but there can still be a propagation window before every client, load balancer, and sidecar stops sending traffic to it.
 
 ## How Envoy Handles Draining
 
-When the Istio sidecar receives SIGTERM, the pilot-agent process tells Envoy to start draining. During the drain period:
+When the Istio agent receives SIGTERM, it tells Envoy to start draining. During the drain period:
 
-1. Envoy stops accepting new connections on its listeners
+1. Envoy discourages new requests and begins draining listeners
 2. Existing connections continue to be served
 3. For HTTP/1.1, Envoy adds `Connection: close` headers to responses
 4. For HTTP/2, Envoy sends GOAWAY frames
-5. After the drain duration, remaining connections are closed
+5. After the drain duration, remaining Envoy processes are terminated
 
 ## Configuring Drain Duration
 
-The drain duration controls how long Envoy waits for existing connections to complete before closing them:
+The termination drain duration controls how long `istio-agent` allows Envoy to drain existing connections before shutting the proxy down:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -41,26 +41,20 @@ kind: IstioOperator
 spec:
   meshConfig:
     defaultConfig:
-      drainDuration: 45s
-      parentShutdownDuration: 50s
       terminationDrainDuration: 30s
 ```
 
 Here is what each setting does:
 
-- `drainDuration` - How long Envoy drains listeners after receiving SIGTERM (default 45s)
-- `parentShutdownDuration` - How long pilot-agent waits before shutting down Envoy (default 60s)
-- `terminationDrainDuration` - How long to drain connections when the pod's endpoint is removed (default 5s)
+- `terminationDrainDuration` - How long `istio-agent` allows Envoy to drain connections on proxy shutdown before killing any remaining Envoy processes (default 5s)
 
-The `terminationDrainDuration` is particularly important. It controls the drain period that happens when the pod is removed from the service endpoints but before SIGTERM is received.
+The `terminationDrainDuration` is particularly important for pod shutdown. The related `drainDuration` setting exists, but Istio documents it as the Envoy hot restart drain duration, not the normal pod termination drain window.
 
 Per-pod configuration:
 
 ```yaml
 annotations:
   proxy.istio.io/config: |
-    drainDuration: 45s
-    parentShutdownDuration: 50s
     terminationDrainDuration: 30s
 ```
 
@@ -87,13 +81,13 @@ The timeline should be:
 
 ```text
 SIGTERM received (t=0)
-  -> preStop hook runs (t=0 to t=5)
-  -> Envoy starts draining (t=0 to t=45)
-  -> Envoy shuts down (t=50)
+  -> preStop hook has already completed for the container receiving SIGTERM
+  -> Envoy starts draining (t=0 to t=30)
+  -> istio-agent kills any remaining Envoy processes (t=30)
   -> SIGKILL if not stopped (t=60)
 ```
 
-Make sure `terminationGracePeriodSeconds > parentShutdownDuration`.
+Make sure `terminationGracePeriodSeconds` is greater than your preStop delay plus `terminationDrainDuration`, with some buffer.
 
 ## Handling the Race Condition
 
@@ -113,10 +107,11 @@ containers:
 ```
 
 This gives the Kubernetes control plane and all Envoy sidecars time to remove the pod from their routing tables before the pod actually starts shutting down.
+For non-native sidecars, remember that Kubernetes does not guarantee an order for TERM signals across containers, so the hook should be part of the workload's overall shutdown timing rather than the only drain mechanism.
 
 **Strategy 2: EXIT_ON_ZERO_ACTIVE_CONNECTIONS**
 
-Istio supports an environment variable that makes Envoy wait until all active connections are done before exiting:
+Istio supports an environment variable that lets the proxy exit once active connections are done instead of waiting for the full drain period:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -128,7 +123,7 @@ spec:
         EXIT_ON_ZERO_ACTIVE_CONNECTIONS: "true"
 ```
 
-With this enabled, Envoy will not exit during the drain period until all active connections have completed, up to the `terminationGracePeriodSeconds` limit.
+With this enabled, Istio can exit the proxy early once active connections drop to zero instead of always waiting for the full drain duration. It still cannot extend the pod beyond `terminationGracePeriodSeconds`.
 
 ## Configuring for Long-Running Connections
 
@@ -142,8 +137,7 @@ spec:
     metadata:
       annotations:
         proxy.istio.io/config: |
-          drainDuration: 300s
-          parentShutdownDuration: 310s
+          terminationDrainDuration: 300s
     spec:
       terminationGracePeriodSeconds: 330
 ```
@@ -177,10 +171,10 @@ Check active connections during a drain:
 kubectl exec <terminating-pod> -c istio-proxy -- curl -s localhost:15000/stats | grep "cx_active\|downstream_cx_active"
 ```
 
-Watch the drain state:
+Trigger a graceful listener drain for manual testing:
 
 ```bash
-kubectl exec <pod> -c istio-proxy -- curl -s localhost:15000/drain_listeners
+kubectl exec <pod> -c istio-proxy -- curl -s -X POST localhost:15000/drain_listeners?graceful
 ```
 
 Check pilot-agent drain logs:
@@ -205,7 +199,7 @@ spec:
       app: my-service
 ```
 
-This ensures that Kubernetes never terminates more than a certain number of pods simultaneously, giving the drain process time to complete on each pod.
+This limits the number of pods that can be down at once during voluntary disruptions that use the Eviction API, such as node drains, giving the drain process time to complete on each pod. Rolling updates are controlled by the Deployment strategy instead of the PDB.
 
 ## Rolling Update Configuration
 
