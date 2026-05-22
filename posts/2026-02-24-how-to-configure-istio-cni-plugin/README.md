@@ -8,7 +8,7 @@ Description: Complete guide to configuring the Istio CNI plugin to eliminate the
 
 ---
 
-By default, Istio uses an init container called `istio-init` that requires NET_ADMIN and NET_RAW capabilities to set up iptables rules for traffic interception. The Istio CNI plugin replaces this init container, which means your application pods no longer need elevated privileges. This is a big win for security, especially in environments with strict PodSecurityPolicies or PodSecurity Standards.
+By default, Istio uses an init container called `istio-init` that requires NET_ADMIN and NET_RAW capabilities to set up iptables rules for traffic interception. The Istio CNI plugin replaces this privileged init container, which means your application pods no longer need those elevated privileges. This is a big win for security, especially in environments with legacy PodSecurityPolicies or current Pod Security Standards.
 
 ## Why Use the Istio CNI Plugin?
 
@@ -96,14 +96,15 @@ values:
       - istio-system
 ```
 
-Pods in these namespaces won't have iptables rules configured by the CNI plugin. Always exclude `kube-system` and `istio-system` to avoid breaking system components.
+Pods in these namespaces won't have iptables rules configured by the CNI plugin. Always exclude `kube-system`, and exclude `istio-system` if that is where your Istio control plane runs.
 
-### logLevel
+### logging.level
 
 ```yaml
 values:
   cni:
-    logLevel: info
+    logging:
+      level: info
 ```
 
 Set to `debug` when troubleshooting:
@@ -111,7 +112,8 @@ Set to `debug` when troubleshooting:
 ```yaml
 values:
   cni:
-    logLevel: debug
+    logging:
+      level: debug
 ```
 
 ## Advanced Configuration
@@ -122,8 +124,6 @@ You can control which ports get redirected and which are excluded:
 
 ```yaml
 values:
-  cni:
-    psp_cluster_role: ""
   sidecarInjectorWebhook:
     injectedAnnotations:
       traffic.sidecar.istio.io/excludeInboundPorts: "22"
@@ -172,7 +172,7 @@ spec:
             memory: 200Mi
 ```
 
-The CNI plugin itself is lightweight. It only runs when pods are created or deleted, not continuously.
+The CNI plugin path is lightweight and is invoked when pods are created or deleted. The `istio-cni-node` DaemonSet also runs a node agent continuously for installation, readiness, and repair behavior.
 
 ### Running on OpenShift
 
@@ -188,29 +188,20 @@ spec:
       enabled: true
       namespace: kube-system
   values:
-    cni:
-      cniBinDir: /var/lib/cni/bin
-      cniConfDir: /etc/cni/multus/net.d
-      chained: false
-      cniConfFileName: "istio-cni.conf"
+    global:
+      platform: openshift
 ```
 
-On OpenShift, you also need a NetworkAttachmentDefinition:
+If you install through Red Hat OpenShift Service Mesh 3, CNI is configured with an `IstioCNI` resource instead of the upstream `IstioOperator` profile:
 
 ```yaml
-apiVersion: k8s.cni.cncf.io/v1
-kind: NetworkAttachmentDefinition
+apiVersion: sailoperator.io/v1
+kind: IstioCNI
 metadata:
-  name: istio-cni
-  namespace: default
-```
-
-And annotate your pods to use it:
-
-```yaml
-metadata:
-  annotations:
-    k8s.v1.cni.cncf.io/networks: istio-cni
+  name: default
+spec:
+  namespace: istio-cni
+  version: v1.26.0
 ```
 
 ## Verifying the CNI Plugin Installation
@@ -232,9 +223,9 @@ kubectl exec -n istio-system $(kubectl get pods -n istio-system -l k8s-app=istio
 kubectl exec -n istio-system $(kubectl get pods -n istio-system -l k8s-app=istio-cni-node -o jsonpath='{.items[0].metadata.name}') -c install-cni -- cat /host/etc/cni/net.d/10-calico.conflist | python3 -m json.tool
 ```
 
-## Testing That Init Containers Are No Longer Needed
+## Testing That the Privileged Init Container Is No Longer Needed
 
-Deploy a test pod and verify that no init container is injected:
+Deploy a test pod and verify that `istio-init` is not injected:
 
 ```bash
 kubectl create namespace cni-test
@@ -260,24 +251,28 @@ Check the pod spec:
 kubectl get pod -n cni-test test-pod -o jsonpath='{.spec.initContainers[*].name}'
 ```
 
-With the CNI plugin enabled, you should not see `istio-init` in the init containers. The sidecar proxy container (istio-proxy) will still be present as a regular container.
+With the CNI plugin enabled, you should not see `istio-init` in the init containers. You may still see Istio's non-privileged `istio-validation` init container, and the sidecar proxy container (`istio-proxy`) will still be present as a regular container.
 
 ## Upgrading the CNI Plugin
 
-During Istio upgrades, upgrade the CNI plugin first:
+During in-place Istio upgrades, upgrade the control plane and CNI together with the same IstioOperator configuration:
 
 ```bash
-# Step 1: Upgrade CNI
-istioctl install -f istio-cni-config.yaml --set tag=1.21.0 -y
-
-# Step 2: Wait for rollout
-kubectl rollout status daemonset/istio-cni-node -n istio-system
-
-# Step 3: Then upgrade the rest of Istio
+# Step 1: Upgrade Istio with CNI enabled
 istioctl upgrade -f istio-cni-config.yaml -y
+
+# Step 2: Wait for the CNI rollout
+kubectl rollout status daemonset/istio-cni-node -n istio-system
 ```
 
-This order matters because the CNI binary on the node needs to be compatible with the iptables rules that new sidecars expect.
+For a canary control plane upgrade, operate the CNI component separately from the revisioned control plane, using a CNI-only IstioOperator:
+
+```bash
+istioctl install -f istio-cni-only.yaml -y
+kubectl rollout status daemonset/istio-cni-node -n istio-system
+```
+
+This matters because the CNI binary on the node needs to be compatible with the sidecar revision used by new or restarted workloads.
 
 ## Cleanup
 
