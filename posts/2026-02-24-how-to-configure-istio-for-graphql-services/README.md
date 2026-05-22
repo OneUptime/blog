@@ -84,7 +84,7 @@ spec:
 Since all GraphQL traffic hits a single endpoint, set timeouts that accommodate your slowest expected queries:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: graphql-api-vs
@@ -119,10 +119,10 @@ spec:
 
 ## Handling GraphQL Subscriptions (WebSockets)
 
-GraphQL subscriptions use WebSocket connections. Istio supports WebSockets, but you need to make sure the upgrade is allowed:
+GraphQL subscriptions use WebSocket connections. Istio supports WebSockets, but you should route subscription connections separately so they can use a timeout suitable for long-lived connections:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: graphql-api-ws
@@ -136,7 +136,7 @@ spec:
         exact: /graphql
       headers:
         upgrade:
-          exact: websocket
+          regex: "(?i)^websocket$"
     route:
     - destination:
         host: graphql-api
@@ -159,7 +159,7 @@ Setting `timeout: 0s` for WebSocket connections disables the timeout, which is n
 ## Exposing GraphQL Through Istio Gateway
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: graphql-gateway
@@ -178,7 +178,7 @@ spec:
     hosts:
     - "api.example.com"
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: graphql-api-external
@@ -218,7 +218,7 @@ The CORS policy is important for GraphQL because browser-based clients like Apol
 GraphQL servers often fan out to multiple backend services. A single GraphQL query might trigger requests to several microservices. Protect the GraphQL service with circuit breaking:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: graphql-api-dr
@@ -245,7 +245,7 @@ spec:
 If you are testing a new version of your GraphQL schema, you can use header-based routing:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: graphql-api-versions
@@ -260,7 +260,7 @@ spec:
     labels:
       version: v2
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: graphql-api-canary
@@ -288,7 +288,7 @@ spec:
 You can restrict which services are allowed to call your GraphQL API:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: graphql-api-auth
@@ -319,7 +319,7 @@ spec:
 
 ## Rate Limiting GraphQL Requests
 
-Since all GraphQL requests go to the same endpoint, you cannot use path-based rate limiting. Instead, use Istio's local rate limiting based on client IP or headers:
+Since all GraphQL requests go to the same endpoint, you cannot use path-based rate limiting. Instead, use Istio's local rate limiting to enforce a per-proxy request limit:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -372,11 +372,11 @@ Istio metrics will show you overall traffic patterns for the GraphQL endpoint. S
 # P99 latency for GraphQL endpoint
 
 kubectl exec -n istio-system deploy/prometheus -- \
-  promtool query instant 'histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{destination_service="graphql-api.graphql-services.svc.cluster.local"}[5m])) by (le))'
+  promtool query instant http://localhost:9090 'histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{destination_service="graphql-api.graphql-services.svc.cluster.local"}[5m])) by (le))'
 ```
 
 For deeper GraphQL-specific observability, you will still need application-level tracing that tracks individual queries and resolvers. Istio gives you the service-to-service view, while tools like Apollo Studio or GraphQL-specific middleware give you the query-level view.
 
 ## Summary
 
-Running GraphQL services behind Istio requires thinking about single-endpoint routing, WebSocket support for subscriptions, and per-pod rate limiting instead of path-based approaches. The key configurations are setting appropriate timeouts for varying query complexity, enabling WebSocket upgrades for subscriptions, and using header-based routing for schema versioning. With these in place, you get all the security, observability, and traffic management benefits of Istio while keeping your GraphQL API performant.
+Running GraphQL services behind Istio requires thinking about single-endpoint routing, WebSocket support for subscriptions, and per-pod rate limiting instead of path-based approaches. The key configurations are setting appropriate timeouts for varying query complexity, routing WebSocket upgrades for subscriptions, and using header-based routing for schema versioning. With these in place, you get all the security, observability, and traffic management benefits of Istio while keeping your GraphQL API performant.
