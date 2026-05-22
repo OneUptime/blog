@@ -61,7 +61,7 @@ terraform {
     key            = "dev/terraform.tfstate"
     region         = "us-east-1"
     encrypt        = true
-    dynamodb_table = "terraform-locks"
+    use_lockfile   = true
   }
 }
 ```
@@ -86,7 +86,7 @@ terraform {
     key            = "prod/terraform.tfstate"
     region         = "us-east-1"
     encrypt        = true
-    dynamodb_table = "terraform-locks"
+    use_lockfile   = true
   }
 }
 ```
@@ -118,7 +118,7 @@ terraform {
     key            = "app/terraform.tfstate"
     region         = "us-east-1"
     encrypt        = true
-    dynamodb_table = "terraform-locks"
+    use_lockfile   = true
   }
 }
 ```
@@ -220,7 +220,7 @@ bucket         = "myorg-terraform-state"
 key            = "dev/app/terraform.tfstate"
 region         = "us-east-1"
 encrypt        = true
-dynamodb_table = "terraform-locks"
+use_lockfile   = true
 ```
 
 ```hcl
@@ -252,9 +252,11 @@ ACTION=$1
 shift
 
 # Re-initialize if the environment changed
-if [ ! -f ".terraform/environment" ] || [ "$(cat .terraform/environment 2>/dev/null)" != "$ENV" ]; then
+ENV_MARKER=".terraform/backend-environment"
+
+if [ ! -f "$ENV_MARKER" ] || [ "$(cat "$ENV_MARKER" 2>/dev/null)" != "$ENV" ]; then
   terraform init -reconfigure -backend-config="config/${ENV}.backend.hcl"
-  echo "$ENV" > .terraform/environment
+  echo "$ENV" > "$ENV_MARKER"
 fi
 
 # Run Terraform with the environment's variables
@@ -284,13 +286,21 @@ resource "aws_iam_policy" "dev_terraform" {
     Statement = [
       {
         Effect = "Allow"
+        Action = ["s3:ListBucket"]
+        Resource = "arn:aws:s3:::myorg-terraform-state"
+        Condition = {
+          StringLike = { "s3:prefix" = "dev/*" }
+        }
+      },
+      {
+        Effect = "Allow"
         Action = ["s3:GetObject", "s3:PutObject"]
         Resource = "arn:aws:s3:::myorg-terraform-state/dev/*"
       },
       {
         Effect = "Allow"
-        Action = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:DeleteItem"]
-        Resource = "arn:aws:dynamodb:us-east-1:*:table/terraform-locks"
+        Action = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
+        Resource = "arn:aws:s3:::myorg-terraform-state/dev/*.tflock"
       }
     ]
   })
@@ -303,14 +313,26 @@ resource "aws_iam_policy" "prod_terraform" {
     Statement = [
       {
         Effect = "Allow"
-        Action = ["s3:GetObject", "s3:PutObject"]
-        Resource = "arn:aws:s3:::myorg-terraform-state/prod/*"
+        Action = ["s3:ListBucket"]
+        Resource = "arn:aws:s3:::myorg-terraform-state"
+        Condition = {
+          StringLike = { "s3:prefix" = "prod/*" }
+          Bool = { "aws:MultiFactorAuthPresent" = "true" }
+        }
       },
       {
         Effect = "Allow"
-        Action = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:DeleteItem"]
-        Resource = "arn:aws:dynamodb:us-east-1:*:table/terraform-locks"
+        Action = ["s3:GetObject", "s3:PutObject"]
+        Resource = "arn:aws:s3:::myorg-terraform-state/prod/*"
         # Additional condition for prod: require MFA
+        Condition = {
+          Bool = { "aws:MultiFactorAuthPresent" = "true" }
+        }
+      },
+      {
+        Effect = "Allow"
+        Action = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
+        Resource = "arn:aws:s3:::myorg-terraform-state/prod/*.tflock"
         Condition = {
           Bool = { "aws:MultiFactorAuthPresent" = "true" }
         }
