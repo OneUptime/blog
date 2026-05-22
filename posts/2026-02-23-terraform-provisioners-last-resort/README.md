@@ -32,19 +32,26 @@ Terraform is declarative. You describe the desired state, and Terraform figures 
 resource "aws_instance" "web" {
   ami           = var.ami_id
   instance_type = "t3.medium"
-}
 
-# Imperative: describe what to do
-provisioner "remote-exec" {
-  inline = [
-    "sudo apt-get update",
-    "sudo apt-get install -y nginx",
-    "sudo systemctl start nginx",
-  ]
+  # Imperative: describe what to do
+  provisioner "remote-exec" {
+    inline = [
+      "sudo apt-get update",
+      "sudo apt-get install -y nginx",
+      "sudo systemctl start nginx",
+    ]
+
+    connection {
+      type        = "ssh"
+      user        = var.ssh_user
+      private_key = var.ssh_private_key
+      host        = self.public_ip
+    }
+  }
 }
 ```
 
-The resource definition is declarative - Terraform ensures the instance exists with those properties. The provisioner is imperative - Terraform runs these commands, but it has no idea what the resulting state should be. If nginx fails to start, Terraform does not know. If someone manually stops nginx later, Terraform does not fix it.
+The resource definition is declarative - Terraform ensures the instance exists with those properties. The provisioner is imperative - Terraform runs these commands, but it has no idea what the resulting state should be. If the command exits successfully but nginx is not configured as intended, Terraform has no separate model of that service state. If someone manually stops nginx later, Terraform does not fix it.
 
 ### 2. They Are Not in the Plan
 
@@ -63,16 +70,28 @@ Nowhere in the plan does it mention that nginx will be installed, a configuratio
 
 ### 3. They Are Not Idempotent
 
-If Terraform recreates a resource, the provisioners run again. The commands you write must handle being run on a fresh machine. But many provisioner scripts are written for first-time setup and fail or produce unexpected results when run a second time.
+Terraform does not make your provisioner scripts idempotent. The commands you write must handle partial execution and retries. But many provisioner scripts are written for first-time setup and fail or produce unexpected results when run again against a machine that is already partly configured.
 
 ```hcl
-# This works the first time but fails the second
-provisioner "remote-exec" {
-  inline = [
-    "sudo useradd appuser",      # Fails if user already exists
-    "sudo mkdir /opt/app",        # Fails if directory already exists
-    "sudo git clone ${var.repo} /opt/app/code",  # Fails if directory not empty
-  ]
+resource "aws_instance" "app" {
+  ami           = var.ami_id
+  instance_type = "t3.medium"
+
+  # This works the first time but fails if rerun after partial setup
+  provisioner "remote-exec" {
+    inline = [
+      "sudo useradd appuser",      # Fails if user already exists
+      "sudo mkdir /opt/app",        # Fails if directory already exists
+      "sudo git clone ${var.repo} /opt/app/code",  # Fails if directory not empty
+    ]
+
+    connection {
+      type        = "ssh"
+      user        = var.ssh_user
+      private_key = var.ssh_private_key
+      host        = self.public_ip
+    }
+  }
 }
 ```
 
@@ -106,7 +125,13 @@ resource "aws_instance" "app" {
     inline = [
       "echo APP_PORT=${var.app_port} > /etc/app/config",
     ]
-    connection { ... }
+
+    connection {
+      type        = "ssh"
+      user        = var.ssh_user
+      private_key = var.ssh_private_key
+      host        = self.public_ip
+    }
   }
 }
 ```
@@ -264,9 +289,11 @@ Despite all the warnings, there are legitimate use cases:
 
 ```hcl
 # Legitimate: notify about deployment
-provisioner "local-exec" {
-  command    = "curl -X POST ${var.slack_webhook} -d '{\"text\":\"Deployed ${self.id}\"}'"
-  on_failure = continue  # Notification failure should not block deployment
+resource "terraform_data" "deployment_notification" {
+  provisioner "local-exec" {
+    command    = "curl -X POST ${var.slack_webhook} -d '{\"text\":\"Deployment completed\"}'"
+    on_failure = continue  # Notification failure should not block deployment
+  }
 }
 ```
 
