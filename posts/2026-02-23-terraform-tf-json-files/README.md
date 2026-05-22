@@ -230,6 +230,12 @@ services = [
 config = {
     "resource": {
         "aws_instance": {},
+        "aws_security_group": {
+            "main": {
+                "name": "generated-services",
+                "description": "Security group for generated services",
+            }
+        },
         "aws_security_group_rule": {},
     }
 }
@@ -350,19 +356,19 @@ Override files work in JSON too. Name them `override.tf.json` or `*_override.tf.
 ## Limitations of JSON Format
 
 JSON has some downsides compared to HCL:
-- No comments (JSON does not support them)
+- No native JSON comments, though Terraform ignores special `"//"` properties in some places
 - More verbose - lots of braces and quotes
 - Harder for humans to read and edit
-- Expression syntax requires string interpolation for everything
+- References and more complex expressions must be written as string templates
 
 That is why JSON is recommended for machine-generated config, not hand-written config.
 
 ## Converting Between Formats
 
-You can convert HCL to JSON (and back) using the `terraform` CLI or third-party tools:
+Terraform can show state or plan data as JSON, but it does not convert `.tf` configuration files into `.tf.json` files. For configuration file conversion, use third-party tools:
 
 ```bash
-# Use terraform show to output JSON
+# Use terraform show to output state or plan data as JSON
 terraform show -json
 
 # Use hcl2json tool for file conversion
