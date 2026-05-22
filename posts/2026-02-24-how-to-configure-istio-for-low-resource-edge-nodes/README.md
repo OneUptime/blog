@@ -45,9 +45,7 @@ spec:
           minReplicas: 1
           maxReplicas: 1
         env:
-          - name: PILOT_ENABLE_STATUS
-            value: "false"
-          - name: PILOT_ENABLE_CONFIG_DISTRIBUTION_TRACKING
+          - name: PILOT_ENABLE_ANALYSIS
             value: "false"
           - name: PILOT_PUSH_THROTTLE
             value: "5"
@@ -57,7 +55,7 @@ spec:
             value: "5s"
 ```
 
-The environment variables are important here. `PILOT_ENABLE_STATUS` disables writing status back to Istio resources, which saves API server calls. `PILOT_ENABLE_CONFIG_DISTRIBUTION_TRACKING` turns off tracking whether proxies have received their configuration. The debounce settings reduce how often istiod pushes configuration updates when things change rapidly.
+The environment variables are important here. `PILOT_ENABLE_ANALYSIS` disables Istio analyzers that write analysis errors back to Istio resource status fields. `PILOT_PUSH_THROTTLE` limits concurrent xDS pushes, and the debounce settings reduce how often istiod pushes configuration updates when things change rapidly.
 
 ## Slimming Down the Sidecar Proxy
 
@@ -161,8 +159,13 @@ metadata:
   name: heavy-traffic-app
   namespace: edge-app
 spec:
+  selector:
+    matchLabels:
+      app: heavy-traffic-app
   template:
     metadata:
+      labels:
+        app: heavy-traffic-app
       annotations:
         sidecar.istio.io/proxyCPU: "50m"
         sidecar.istio.io/proxyCPULimit: "200m"
@@ -184,12 +187,13 @@ If your edge nodes are running Istio 1.22 or later, ambient mode can significant
 
 ```bash
 istioctl install --set profile=ambient -y
+kubectl label namespace edge-app istio.io/dataplane-mode=ambient
 ```
 
 With ambient mode, you get mTLS and L4 authorization without any per-pod proxy overhead. The ztunnel is lightweight and shared across all pods on the node. For L7 features like request routing and retries, you deploy waypoint proxies only for the namespaces that need them:
 
 ```bash
-istioctl waypoint apply --namespace edge-app
+istioctl waypoint apply --namespace edge-app --enroll-namespace
 ```
 
 This can cut your total proxy memory usage by 50-80% depending on how many pods you run per node.
