@@ -359,9 +359,8 @@ This means node drains will hang indefinitely, cluster upgrades will stall, and 
 PDBs on single-replica deployments are tricky. `minAvailable = 1` means the pod can never be evicted, blocking drains. Consider whether you actually need the PDB:
 
 ```hcl
-# For single-replica deployments, use maxUnavailable = 0
-# only if you truly need zero downtime during disruptions
-# Otherwise, just accept the disruption
+# For single-replica deployments, maxUnavailable = 1
+# accepts a brief disruption instead of blocking drains
 resource "kubernetes_pod_disruption_budget_v1" "singleton" {
   metadata {
     name      = "singleton"

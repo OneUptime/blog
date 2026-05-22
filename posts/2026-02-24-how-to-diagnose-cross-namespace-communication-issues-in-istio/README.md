@@ -20,7 +20,7 @@ Before looking at Istio-specific issues, confirm that basic Kubernetes networkin
 kubectl exec deploy/frontend -n frontend-ns -c frontend -- \
   nslookup backend.backend-ns.svc.cluster.local
 
-# Can you reach the destination service (bypassing Istio)?
+# Can you reach the destination service?
 kubectl exec deploy/frontend -n frontend-ns -c frontend -- \
   curl -s -o /dev/null -w "%{http_code}" http://backend.backend-ns.svc.cluster.local:8080/health
 ```
@@ -147,10 +147,11 @@ kubectl get peerauthentication -n istio-system -o yaml
 
 Make sure both namespaces are consistent. If one is STRICT and the other has pods without sidecars, that is a problem.
 
-Verify the actual mTLS status of the specific communication path:
+Inspect the generated outbound cluster for the specific communication path:
 
 ```bash
-istioctl authn tls-check <frontend-pod>.frontend-ns backend.backend-ns.svc.cluster.local
+istioctl proxy-config cluster deploy/frontend -n frontend-ns \
+  --fqdn backend.backend-ns.svc.cluster.local -o json
 ```
 
 ## Check DestinationRule TLS Settings
@@ -289,16 +290,16 @@ kubectl get sidecar -n frontend-ns -o yaml
 kubectl get authorizationpolicy -n backend-ns -o yaml
 
 # 4. Check PeerAuthentication
-kubectl get peerauthentication -n frontend-ns -n backend-ns
+kubectl get peerauthentication --all-namespaces | grep -E 'frontend-ns|backend-ns|istio-system'
 
 # 5. Check NetworkPolicy
-kubectl get networkpolicy -n frontend-ns -n backend-ns
+kubectl get networkpolicy --all-namespaces | grep -E 'frontend-ns|backend-ns'
 
 # 6. Check proxy config
 istioctl proxy-config endpoint deploy/frontend -n frontend-ns | grep backend
 
 # 7. Run analysis
-istioctl analyze -n frontend-ns -n backend-ns
+istioctl analyze --all-namespaces
 ```
 
 Cross-namespace communication in Istio has more moving parts than same-namespace communication. The three biggest culprits are Sidecar resources limiting visibility, AuthorizationPolicies blocking traffic, and mTLS mismatches. Check those first and you will resolve most issues quickly.

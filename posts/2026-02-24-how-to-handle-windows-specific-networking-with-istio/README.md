@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Window, Networking, HNS, Kubernetes, Service Mesh
+Tags: Istio, Windows, Networking, HNS, Kubernetes, Service Mesh
 
 Description: Guide to handling Windows-specific networking challenges when integrating Windows container workloads with Istio service mesh.
 
@@ -19,9 +19,9 @@ Windows supports several network modes for containers:
 - **NAT mode**: Default mode where containers get a private IP and use NAT for external access
 - **Transparent mode**: Containers get an IP from the same subnet as the host
 - **Overlay mode**: Uses VXLAN encapsulation for multi-host networking
-- **L2Bridge/L2Tunnel**: Layer 2 bridging modes for specific scenarios
+- **L2bridge/L2tunnel**: Layer 2 bridging modes for specific scenarios
 
-Most Kubernetes CNI plugins for Windows use overlay or transparent mode. The choice affects how traffic flows and what Istio can see.
+Common Kubernetes CNI implementations for Windows use different modes: Flannel VXLAN uses `win-overlay`, Flannel host-gateway uses `win-bridge`/L2bridge, Azure-CNI uses L2tunnel, and Antrea uses Transparent mode with OVS. The choice affects how traffic flows and what Istio can see.
 
 Check your current Windows networking mode:
 
@@ -31,17 +31,17 @@ Check your current Windows networking mode:
 Get-HNSNetwork | Format-Table Name, Type, SubnetPrefix
 ```
 
-Or from a Kubernetes perspective:
+Or identify the Windows CNI implementation from a Kubernetes perspective:
 
 ```bash
-kubectl get nodes -l kubernetes.io/os=windows -o yaml | grep -A 10 "providerID"
+kubectl get pods -n kube-system -o wide | grep -Ei "antrea|calico|flannel|azure|ovn|windows"
 ```
 
 ## Service Connectivity Between Linux and Windows Pods
 
 The most common issue is service connectivity between Linux pods (with Istio sidecars) and Windows pods (without sidecars). The traffic flow is asymmetric:
 
-**Linux to Windows**: The calling pod's sidecar intercepts the request, applies policies, and forwards to the Windows pod. The Windows pod receives plain HTTP/TCP.
+**Linux to Windows**: The calling pod's sidecar intercepts the request, applies the outbound Istio routing, telemetry, and traffic policies available on the caller side, and forwards to the Windows pod. The Windows pod receives plain HTTP/TCP.
 
 **Windows to Linux**: The Windows pod sends plain HTTP/TCP. The Linux pod's sidecar receives it as incoming traffic without mTLS.
 
@@ -66,17 +66,19 @@ spec:
 Windows containers use a different DNS client stack. Some behaviors you might notice:
 
 - DNS resolution is slower on Windows containers compared to Linux
-- DNS suffix search lists behave differently
+- DNS suffix search lists behave differently; Windows pods can resolve FQDNs and service names using their single namespace suffix, but not partially qualified names such as `kubernetes.default` or `kubernetes.default.svc`
 - Some Windows container images do not include DNS debug tools
 
 When Windows pods cannot resolve Kubernetes services:
 
 ```bash
 # Test DNS from a Windows pod
-kubectl exec -n windows-apps deploy/windows-app -- nslookup kubernetes.default.svc.cluster.local
+kubectl exec -n windows-apps deploy/windows-app -- \
+  powershell -c "Resolve-DnsName kubernetes.default.svc.cluster.local"
 
 # If that fails, try the full FQDN
-kubectl exec -n windows-apps deploy/windows-app -- nslookup linux-service.linux-apps.svc.cluster.local
+kubectl exec -n windows-apps deploy/windows-app -- \
+  powershell -c "Resolve-DnsName linux-service.linux-apps.svc.cluster.local"
 ```
 
 If DNS resolution fails from Windows pods, check the CoreDNS configuration:
@@ -120,7 +122,7 @@ data:
 
 Windows containers handle port mapping differently from Linux. Some important differences:
 
-**No localhost access to container ports from the host**: On Linux, you can curl localhost:port to reach a container. On Windows, this does not work the same way.
+**No local NodePort access from the node itself**: On Windows nodes, local NodePort access from the node itself is not supported, although it works from other nodes or external clients.
 
 **Port conflicts**: Windows containers share the host's port space in some network modes, which can cause conflicts.
 
@@ -228,7 +230,7 @@ spec:
     connectionPool:
       tcp:
         maxConnections: 100
-        connectTimeout: 10s
+        connectTimeout: 30s
         tcpKeepalive:
           time: 300s
           interval: 30s
@@ -238,7 +240,7 @@ spec:
         idleTimeout: 300s
 ```
 
-The longer `connectTimeout` (10s vs the typical 5s) accounts for Windows containers sometimes being slower to accept connections, especially on cold starts.
+The longer `connectTimeout` (30s instead of Istio's default 10s) gives slower Windows workloads more time during connection establishment. For cold starts, readiness and startup probes should still be the primary mechanism for keeping pods out of load balancing until they can accept traffic.
 
 ## Load Balancing Across Windows Pods
 
@@ -318,7 +320,7 @@ spec:
               number: 8080
 ```
 
-The gateway runs on Linux and handles TLS termination. Traffic to Windows services goes as plaintext after the gateway, while traffic to Linux services gets mTLS through the mesh.
+The gateway runs on Linux and handles TLS termination. Traffic to Windows services with no sidecar goes as plaintext after the gateway, while traffic to Linux services gets mTLS through the mesh when the destination workload has an Istio sidecar and mTLS is enabled for that path.
 
 ## Debugging Network Issues
 
@@ -334,7 +336,7 @@ kubectl exec -n linux-apps deploy/linux-client -- \
 
 # Test basic connectivity from Windows to Linux
 kubectl exec -n windows-apps deploy/windows-app -- \
-  powershell -c "Invoke-WebRequest -Uri http://linux-service.linux-apps:8080/health -TimeoutSec 5"
+  powershell -c "Invoke-WebRequest -Uri http://linux-service.linux-apps.svc.cluster.local:8080/health -TimeoutSec 5"
 
 # Check for SNAT issues
 kubectl exec -n linux-apps deploy/linux-client -c istio-proxy -- \
@@ -351,26 +353,17 @@ kubectl exec -n windows-apps deploy/windows-app -- \
   powershell -c "Get-NetAdapter | Format-Table Name, MTU"
 ```
 
-If there is an MTU mismatch, configure the Istio ingress gateway to handle it:
+If there is an MTU mismatch, fix it at the CNI or node networking layer rather than in Istio. For example, Antrea sets pod interface MTU with the `defaultMTU` agent configuration, and Calico recommends setting the workload endpoint MTU and tunnel MTUs to the smallest MTU required by the network path and encapsulation type.
 
 ```yaml
-apiVersion: networking.istio.io/v1alpha3
-kind: EnvoyFilter
+apiVersion: v1
+kind: ConfigMap
 metadata:
-  name: adjust-max-request-bytes
-  namespace: istio-system
-spec:
-  workloadSelector:
-    labels:
-      istio: ingressgateway
-  configPatches:
-    - applyTo: LISTENER
-      match:
-        context: GATEWAY
-      patch:
-        operation: MERGE
-        value:
-          per_connection_buffer_limit_bytes: 32768
+  name: antrea-config
+  namespace: kube-system
+data:
+  antrea-agent.conf: |
+    defaultMTU: 1450
 ```
 
 Windows networking with Istio requires patience and understanding of the platform differences. The key is to use the Istio features that work from the Linux side (gateways, caller-side sidecar enforcement) and compensate for the lack of Windows sidecar support through network policies, proper timeout configuration, and connection management.

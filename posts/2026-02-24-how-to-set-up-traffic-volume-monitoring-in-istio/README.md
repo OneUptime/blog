@@ -51,7 +51,7 @@ sum(rate(istio_requests_total{reporter="destination", destination_service_name="
 If you do not have Prometheus yet:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/prometheus.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.29/samples/addons/prometheus.yaml
 ```
 
 Verify it is scraping Istio metrics:
@@ -83,13 +83,13 @@ sum(rate(istio_response_bytes_sum{reporter="destination"}[5m])) by (destination_
 
 ## Traffic Volume by HTTP Method
 
-Break down traffic by HTTP method to understand the read/write ratio:
+Istio's default request metric includes protocol and response code labels:
 
 ```promql
 sum(rate(istio_requests_total{reporter="destination", destination_service_name="my-api"}[5m])) by (request_protocol, response_code)
 ```
 
-For method-level breakdown, you might need to enable the request method as a metric label if it is not enabled by default in your version:
+For method-level breakdown, you might need to enable the request method as a metric label:
 
 ```yaml
 apiVersion: telemetry.istio.io/v1

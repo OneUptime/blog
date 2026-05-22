@@ -38,10 +38,15 @@ RESOURCES=$(grep -r 'resource "' "$MODULE_DIR"/*.tf | \
   sed 's/.*resource "\([^"]*\)" "\([^"]*\)".*/\1.\2/' | \
   sort -u)
 
-TOTAL=$(echo "$RESOURCES" | wc -l | tr -d ' ')
+TOTAL=$(printf '%s\n' "$RESOURCES" | grep -c .)
 echo "$RESOURCES"
 echo ""
 echo "Total resources: $TOTAL"
+
+if [ "$TOTAL" -eq 0 ]; then
+  echo "Resource Coverage: 0/0 (0%)"
+  exit 0
+fi
 
 # Check which resources are referenced in tests
 echo ""
@@ -84,10 +89,10 @@ For a more rigorous approach, parse Terraform configurations and cross-reference
 package coverage
 
 import (
-    "encoding/json"
     "fmt"
     "os"
     "path/filepath"
+    "regexp"
     "strings"
 )
 
@@ -120,6 +125,20 @@ type OutputCoverage struct {
     Asserted bool   `json:"asserted"`
 }
 
+type resourceRef struct {
+    Type string
+    Name string
+}
+
+type variableRef struct {
+    Name       string
+    HasDefault bool
+}
+
+type outputRef struct {
+    Name string
+}
+
 // AnalyzeCoverage checks test coverage for a module
 func AnalyzeCoverage(modulePath string) (*CoverageReport, error) {
     report := &CoverageReport{
@@ -128,6 +147,16 @@ func AnalyzeCoverage(modulePath string) (*CoverageReport, error) {
 
     // Parse resources from .tf files
     resources, err := parseResources(modulePath)
+    if err != nil {
+        return nil, err
+    }
+
+    variables, err := parseVariables(modulePath)
+    if err != nil {
+        return nil, err
+    }
+
+    outputs, err := parseOutputs(modulePath)
     if err != nil {
         return nil, err
     }
@@ -157,7 +186,130 @@ func AnalyzeCoverage(modulePath string) (*CoverageReport, error) {
         report.ResourcePercent = float64(testedCount) / float64(len(resources)) * 100
     }
 
+    testedCount = 0
+    for _, v := range variables {
+        tested := strings.Contains(testContent, "var."+v.Name) ||
+                  regexp.MustCompile(`(?m)\b`+regexp.QuoteMeta(v.Name)+`\s*=`).MatchString(testContent)
+        validationTested := strings.Contains(testContent, "expect_failures") &&
+                            strings.Contains(testContent, "var."+v.Name)
+        report.Variables = append(report.Variables, VariableCoverage{
+            Name:             v.Name,
+            HasDefault:       v.HasDefault,
+            ValidationTested: validationTested,
+            Tested:           tested,
+        })
+        if tested {
+            testedCount++
+        }
+    }
+
+    if len(variables) > 0 {
+        report.VariablePercent = float64(testedCount) / float64(len(variables)) * 100
+    }
+
+    testedCount = 0
+    for _, o := range outputs {
+        asserted := strings.Contains(testContent, "output."+o.Name)
+        report.Outputs = append(report.Outputs, OutputCoverage{
+            Name:     o.Name,
+            Asserted: asserted,
+        })
+        if asserted {
+            testedCount++
+        }
+    }
+
+    if len(outputs) > 0 {
+        report.OutputPercent = float64(testedCount) / float64(len(outputs)) * 100
+    }
+
     return report, nil
+}
+
+func parseResources(modulePath string) ([]resourceRef, error) {
+    var resources []resourceRef
+    resourceRE := regexp.MustCompile(`(?m)^\s*resource\s+"([^"]+)"\s+"([^"]+)"`)
+
+    err := walkTerraformFiles(modulePath, func(content string) {
+        for _, match := range resourceRE.FindAllStringSubmatch(content, -1) {
+            resources = append(resources, resourceRef{Type: match[1], Name: match[2]})
+        }
+    })
+    return resources, err
+}
+
+func parseVariables(modulePath string) ([]variableRef, error) {
+    var variables []variableRef
+    variableRE := regexp.MustCompile(`(?ms)^\s*variable\s+"([^"]+)"\s*\{(.*?)^\s*\}`)
+
+    err := walkTerraformFiles(modulePath, func(content string) {
+        for _, match := range variableRE.FindAllStringSubmatch(content, -1) {
+            variables = append(variables, variableRef{
+                Name:       match[1],
+                HasDefault: regexp.MustCompile(`(?m)^\s*default\s*=`).MatchString(match[2]),
+            })
+        }
+    })
+    return variables, err
+}
+
+func parseOutputs(modulePath string) ([]outputRef, error) {
+    var outputs []outputRef
+    outputRE := regexp.MustCompile(`(?m)^\s*output\s+"([^"]+)"`)
+
+    err := walkTerraformFiles(modulePath, func(content string) {
+        for _, match := range outputRE.FindAllStringSubmatch(content, -1) {
+            outputs = append(outputs, outputRef{Name: match[1]})
+        }
+    })
+    return outputs, err
+}
+
+func walkTerraformFiles(modulePath string, visit func(string)) error {
+    return filepath.WalkDir(modulePath, func(path string, d os.DirEntry, err error) error {
+        if err != nil {
+            return err
+        }
+        if d.IsDir() || filepath.Ext(path) != ".tf" {
+            return nil
+        }
+
+        data, err := os.ReadFile(path)
+        if err != nil {
+            return err
+        }
+        visit(string(data))
+        return nil
+    })
+}
+
+func readTestFiles(modulePath string) (string, error) {
+    var builder strings.Builder
+    testDir := filepath.Join(modulePath, "tests")
+
+    err := filepath.WalkDir(testDir, func(path string, d os.DirEntry, err error) error {
+        if err != nil {
+            if os.IsNotExist(err) {
+                return nil
+            }
+            return err
+        }
+        if d.IsDir() || !strings.HasSuffix(path, ".tftest.hcl") {
+            return nil
+        }
+
+        data, err := os.ReadFile(path)
+        if err != nil {
+            return err
+        }
+        builder.Write(data)
+        builder.WriteByte('\n')
+        return nil
+    })
+    if os.IsNotExist(err) {
+        return "", nil
+    }
+    return builder.String(), err
 }
 
 // PrintReport outputs a formatted coverage report
@@ -225,13 +377,13 @@ grep -h 'variable "' "$MODULE_DIR"/*.tf | \
   echo "Variable: $var"
 
   # Count how many test runs reference this variable
-  REFERENCES=$(grep -c "var\.$var\|variables.*$var" \
-    "$MODULE_DIR"/tests/*.tftest.hcl 2>/dev/null || echo 0)
+  REFERENCES=$(grep -h -E "var\\.$var|$var[[:space:]]*=" \
+    "$MODULE_DIR"/tests/*.tftest.hcl 2>/dev/null | wc -l | tr -d ' ')
 
   # Check for expect_failures (validation testing)
-  VALIDATION_TESTS=$(grep -c "var\.$var" \
+  VALIDATION_TESTS=$(grep -l "expect_failures" \
     "$MODULE_DIR"/tests/*.tftest.hcl 2>/dev/null | \
-    grep "expect_failures" || echo 0)
+    xargs grep -h "var\\.$var" 2>/dev/null | wc -l | tr -d ' ')
 
   echo "  Test references: $REFERENCES"
   echo "  Validation tests: $VALIDATION_TESTS"
@@ -253,10 +405,10 @@ Track which outputs have explicit assertions in tests.
 ```hcl
 # Outputs that should be tested
 # outputs.tf
-output "vpc_id" { ... }          # Should have assertion
-output "private_subnet_ids" { ... } # Should have assertion
-output "public_subnet_ids" { ... }  # Should have assertion
-output "nat_gateway_ids" { ... }    # Should have assertion
+output "vpc_id" { value = "vpc-123" }                  # Should have assertion
+output "private_subnet_ids" { value = ["subnet-123"] } # Should have assertion
+output "public_subnet_ids" { value = ["subnet-456"] }  # Should have assertion
+output "nat_gateway_ids" { value = ["nat-123"] }       # Should have assertion
 ```
 
 Check coverage:
@@ -273,8 +425,7 @@ echo "========================"
 TOTAL=0
 TESTED=0
 
-grep -h 'output "' "$MODULE_DIR"/outputs.tf | \
-  sed 's/.*output "\([^"]*\)".*/\1/' | while read output; do
+while read -r output; do
 
   TOTAL=$((TOTAL + 1))
 
@@ -285,7 +436,16 @@ grep -h 'output "' "$MODULE_DIR"/outputs.tf | \
   else
     echo "  MISSING: $output"
   fi
-done
+done < <(grep -h 'output "' "$MODULE_DIR"/*.tf 2>/dev/null | \
+  sed 's/.*output "\([^"]*\)".*/\1/')
+
+if [ "$TOTAL" -eq 0 ]; then
+  echo "Output Coverage: 0/0 (0%)"
+else
+  COVERAGE=$((TESTED * 100 / TOTAL))
+  echo ""
+  echo "Output Coverage: $TESTED/$TOTAL ($COVERAGE%)"
+fi
 ```
 
 ## Generating a Coverage Badge
@@ -339,7 +499,7 @@ THRESHOLD=${1:-80}
 MODULE_DIR=${2:-.}
 
 COVERAGE=$(./scripts/resource-coverage.sh "$MODULE_DIR" | \
-  grep "Resource Coverage:" | grep -o '[0-9]*' | head -1)
+  grep "Resource Coverage:" | grep -o '([0-9]*%)' | tr -d '()%')
 
 echo "Current coverage: ${COVERAGE}%"
 echo "Required threshold: ${THRESHOLD}%"

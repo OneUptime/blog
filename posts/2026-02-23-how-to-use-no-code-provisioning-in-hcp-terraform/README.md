@@ -30,7 +30,7 @@ No-code provisioning requires:
 Build a module that is self-contained and well-documented. Good no-code modules have clear variable descriptions, sensible defaults, and validation rules:
 
 ```hcl
-# modules/web-app/variables.tf
+# variables.tf
 
 variable "app_name" {
   type        = string
@@ -78,11 +78,24 @@ variable "region" {
 ```
 
 ```hcl
-# modules/web-app/main.tf
+# main.tf
+
+terraform {
+  required_providers {
+    aws = {
+      source = "hashicorp/aws"
+    }
+    random = {
+      source = "hashicorp/random"
+    }
+  }
+}
 
 provider "aws" {
   region = var.region
 }
+
+provider "random" {}
 
 resource "aws_instance" "app" {
   ami           = data.aws_ami.ubuntu.id
@@ -136,7 +149,7 @@ resource "random_password" "db" {
 ```
 
 ```hcl
-# modules/web-app/outputs.tf
+# outputs.tf
 
 output "app_public_ip" {
   value       = aws_instance.app.public_ip
@@ -164,7 +177,7 @@ Push the module to a VCS repository following the naming convention `terraform-<
 #   README.md
 ```
 
-Then publish it through the HCP Terraform UI:
+Create a semantically versioned release tag such as `1.0.0`, then publish it through the HCP Terraform UI:
 
 1. Go to **Registry** > **Modules** > **Publish**
 2. Select your VCS provider and repository
@@ -345,8 +358,8 @@ import "tfplan/v2" as tfplan
 
 main = rule {
     all tfplan.resource_changes as _, rc {
-        rc.change.after.tags contains "Environment" and
-        rc.change.after.tags contains "ManagedBy"
+        (rc.change.after.tags else {}) contains "Environment" and
+        (rc.change.after.tags else {}) contains "ManagedBy"
     }
 }
 ```

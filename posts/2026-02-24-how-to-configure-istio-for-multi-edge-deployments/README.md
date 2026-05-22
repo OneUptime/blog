@@ -86,8 +86,10 @@ spec:
     defaultConfig:
       proxyMetadata:
         ISTIO_META_DNS_CAPTURE: "true"
-        ISTIO_META_DNS_AUTO_ALLOCATE: "true"
   values:
+    pilot:
+      env:
+        PILOT_ENABLE_IP_AUTOALLOCATE: "true"
     global:
       meshID: edge-mesh
       multiCluster:
@@ -285,7 +287,7 @@ This keeps traffic local while the local site's instances are healthy. If they b
 
 ## Monitoring Multi-Edge Health
 
-When you have many edge sites, you need centralized monitoring. Configure each site to export metrics to a central Prometheus or a metrics aggregation service:
+When you have many edge sites, you need centralized monitoring. Configure each site's Prometheus endpoint to be scraped by a central Prometheus or a metrics aggregation service, and keep the cluster name set in every Istio install:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -303,8 +305,8 @@ The source and destination cluster labels on Istio standard metrics make it poss
 Check connectivity between sites:
 
 ```bash
-# From edge-site-1, verify you can reach services on edge-site-2
-istioctl proxy-status --context=edge-site-1
+# From edge-site-1, verify Istiod is synced with remote clusters
+istioctl remote-clusters --context=edge-site-1
 
 # Check cross-cluster service discovery
 istioctl proxy-config endpoints deploy/my-app -n edge-app --context=edge-site-1 | grep edge-site-2

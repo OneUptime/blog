@@ -74,7 +74,7 @@ resource "kubernetes_deployment" "app" {
 
 ## Database Migration Init Container
 
-Running migrations before the app starts ensures the database schema is up to date.
+Running migrations before the app starts ensures the database schema is up to date. In a Deployment, the init container runs once for each Pod, so make migrations idempotent or run one-time migrations as a separate Kubernetes Job.
 
 ```hcl
 resource "kubernetes_deployment" "app" {

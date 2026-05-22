@@ -4,36 +4,37 @@
 validated
 
 ## Post Type
-Technical tutorial / configuration guide
+Tutorial / configuration guide
 
 ## Technologies Covered
-- Istio sidecar mode
+- Istio
 - Istio multicluster and multi-network deployments
 - IstioOperator configuration
 - Istio east-west gateways
 - Istio remote secrets
-- Istio CA certificate plug-in support
-- Kubernetes, kubectl, and Kustomize
+- Istio CA certificate configuration
+- Kubernetes and kubectl
+- Kustomize
 - OpenSSL certificate generation
-- Prometheus/Istio standard metrics
+- Prometheus and Istio standard metrics
 
 ## Sources Consulted
 - Istio multicluster installation overview: https://istio.io/latest/docs/setup/install/multicluster/
+- Istio multicluster prerequisites and trust setup: https://istio.io/latest/docs/setup/install/multicluster/before-you-begin/
 - Istio multi-primary on different networks guide: https://istio.io/latest/docs/setup/install/multicluster/multi-primary_multi-network/
-- Istio primary-remote guide: https://istio.io/latest/docs/setup/install/multicluster/primary-remote/
-- Istio plug-in CA certificates task: https://istio.io/latest/docs/tasks/security/cert-management/plugin-ca-cert/
-- Istio `istioctl create-remote-secret` command reference: https://istio.io/latest/docs/reference/commands/istioctl/#istioctl-create-remote-secret
+- Istio primary-remote on different networks guide: https://istio.io/latest/docs/setup/install/multicluster/primary-remote_multi-network/
+- Istio multicluster verification guide: https://istio.io/latest/docs/setup/install/multicluster/verify/
+- Istio installation customization guide: https://istio.io/latest/docs/setup/additional-setup/customize-installation/
+- Istio DNS proxying guide: https://istio.io/latest/docs/ops/configuration/traffic-management/dns-proxy/
+- Istio 1.25 change notes: https://istio.io/latest/news/releases/1.25.x/announcing-1.25/change-notes/
+- Istio istioctl command reference: https://istio.io/latest/docs/reference/commands/istioctl/
 - Istio DestinationRule reference: https://istio.io/latest/docs/reference/config/networking/destination-rule/
-- Istio standard metrics reference: https://istio.io/latest/docs/reference/config/metrics/
-- Kustomize API types reference for deprecated `patchesStrategicMerge`: https://pkg.go.dev/sigs.k8s.io/kustomize/api/types
+- Istio locality failover task: https://istio.io/latest/docs/tasks/traffic-management/locality-load-balancing/failover/
 
 ## Issues Found
-- The OpenSSL intermediate certificate commands did not set CA extensions or build the Istio `cert-chain.pem` as a chain. Updated the root and intermediate commands to include CA constraints/key usages and to generate a per-site certificate chain containing the intermediate and root certificates.
-- The Istio installation flow created `istio-system` before installation but did not label it with `topology.istio.io/network`. Added the namespace label command, matching Istio multi-network setup requirements.
-- The remote secret examples did not specify the source kubeconfig context. Added `--context` to each `istioctl create-remote-secret` command so the secret is generated from the intended cluster.
-- The Kustomize example used deprecated `patchesStrategicMerge`. Replaced it with the current `patches` field.
-- The locality load balancing example configured both `distribute` and `failover`, but Istio allows only one of `distribute`, `failover`, or `failoverPriority`. Removed `distribute`, clarified the locality label assumption, and updated the explanation to describe failover behavior.
-- The monitoring example implied that setting `ISTIO_META_CLUSTER_ID` in proxy metadata is what creates cluster labels on standard metrics. Updated the example to use `values.global.multiCluster.clusterName`, which Istio documents as the source for standard metric cluster labels.
+- The IstioOperator template used the deprecated `ISTIO_META_DNS_AUTO_ALLOCATE` proxy metadata setting. Replaced it with `values.pilot.env.PILOT_ENABLE_IP_AUTOALLOCATE`, which is the current DNS auto-allocation mechanism documented by Istio.
+- The monitoring section said the install snippet configured metric export, but the snippet only set the Istio cluster name used in telemetry labels. Updated the wording to distinguish central scraping or aggregation from keeping `global.multiCluster.clusterName` set.
+- The connectivity check used `istioctl proxy-status`, which reports proxy xDS sync rather than remote Kubernetes API discovery status. Replaced it with `istioctl remote-clusters --context=edge-site-1`, matching Istio's multicluster verification guidance.
 
 ## Review Notes
-The post now aligns with Istio 1.30 documentation. `istioctl` was not installed locally, so CLI behavior was verified against the official Istio command reference rather than local help output. YAML snippets were parsed successfully with PyYAML, and the revised OpenSSL CA flow was smoke-tested locally.
+The reviewed examples align with Istio 1.30 documentation as of 2026-05-22. `istioctl` was not installed locally, so CLI flags and behavior were verified against the official Istio command reference. YAML snippets were parsed successfully with PyYAML.

@@ -218,7 +218,7 @@ kubectl rollout restart deployment istiod -n istio-system
 
 ## Monitoring Certificate Expiry
 
-Set up alerts for certificate expiry:
+Set up alerts for certificate expiry and webhook patching failures:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
@@ -238,13 +238,13 @@ spec:
       annotations:
         summary: "Istio root CA certificate expires in less than 30 days"
 
-    - alert: IstioWebhookCertExpiringSoon
+    - alert: IstioWebhookPatchFailures
       expr: |
-        (pilot_webhook_cert_expiry_timestamp - time()) / 86400 < 7
+        increase(webhook_patch_failures_total[10m]) > 0
       labels:
         severity: critical
       annotations:
-        summary: "Istio webhook certificate expires in less than 7 days"
+        summary: "Istio failed to patch a webhook CA bundle"
 ```
 
 You can also check expiry manually:
@@ -297,7 +297,8 @@ If the certificate has already expired:
 # Quick fix: restart istiod to regenerate certificates
 kubectl rollout restart deployment istiod -n istio-system
 
-# If that does not work, delete and recreate the cert secret
+# If you use Istio's self-signed CA and intentionally want to generate a new root,
+# delete the CA secret only during a planned root rotation.
 kubectl delete secret istio-ca-secret -n istio-system
 kubectl rollout restart deployment istiod -n istio-system
 ```
@@ -307,9 +308,8 @@ kubectl rollout restart deployment istiod -n istio-system
 This usually means the sidecar workload certificates are out of sync:
 
 ```bash
-# Check sidecar certificate
-kubectl exec -n my-namespace deploy/my-service -c istio-proxy -- \
-  cat /var/run/secrets/istio/cert-chain.pem | openssl x509 -noout -dates
+# Check sidecar certificates from Envoy's active secret configuration
+istioctl proxy-config secret deployment/my-service -n my-namespace
 
 # Restart the pod to get a fresh certificate
 kubectl rollout restart deployment my-service -n my-namespace

@@ -12,26 +12,26 @@ Server-Sent Events (SSE) is a straightforward way to push real-time updates from
 
 ## How SSE Works at the Protocol Level
 
-An SSE connection starts as a regular HTTP GET request. The client sends a request with `Accept: text/event-stream`, and the server responds with `Content-Type: text/event-stream` and a `Transfer-Encoding: chunked` header. The connection stays open, and the server sends events as they happen, each formatted as a `data:` line followed by two newlines.
+An SSE connection starts as a regular HTTP GET request. The client may send a request with `Accept: text/event-stream`, and the server responds with `Content-Type: text/event-stream`. With HTTP/1.1 this is commonly sent as a chunked response; with HTTP/2 there is no `Transfer-Encoding: chunked` header because HTTP/2 has its own framing. The connection stays open, and the server sends events as they happen, each formatted as a `data:` line followed by a blank line.
 
-From Envoy's perspective, this is a long-lived HTTP response with chunked transfer encoding. There is no protocol upgrade like with WebSockets. The connection stays at the HTTP layer the entire time, which means HTTP-level features like headers, routing, and (unfortunately) timeouts all remain active.
+From Envoy's perspective, this is a long-lived HTTP response stream. There is no protocol upgrade like with WebSockets. The connection stays at the HTTP layer the entire time, which means HTTP-level features like headers, routing, and (unfortunately) timeouts all remain active.
 
 ## The Timeout Problem
 
 The number one issue with SSE in Istio is timeouts. Envoy has several timeout settings that can kill your SSE connection:
 
-- **Route timeout**: By default, Envoy expects a complete response within a certain time window. For SSE, the response never "completes" because the server keeps sending events.
-- **Idle timeout**: If there is a gap between events, Envoy may consider the connection idle and close it.
-- **Stream idle timeout**: Similar to idle timeout but specifically for HTTP streams.
+- **Route timeout**: Envoy's native route timeout expects a complete response within a certain time window. Istio disables HTTP route timeouts by default, but if you configure one explicitly or inherit one from mesh policy, it is not compatible with SSE because the response never "completes" while the server keeps sending events.
+- **Connection idle timeout**: If there are no active requests or streams on a pooled connection, Envoy may close that connection.
+- **Stream idle timeout**: If there is a gap between events on an active SSE response stream, Envoy may consider the stream idle and reset it.
 
-You need to address all of these. The route timeout is the most critical one.
+You need to address all of these. The route timeout is the most critical one when it has been configured.
 
 ## VirtualService Configuration
 
 Here is how to configure a VirtualService for an SSE endpoint with proper timeout handling:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: sse-app
@@ -51,14 +51,14 @@ spec:
               number: 8080
 ```
 
-Setting `timeout: 0s` disables the route timeout entirely. This tells Envoy not to enforce any deadline on the response, which is exactly what you want for an SSE stream that could run for hours or days.
+Setting `timeout: 0s` keeps the route timeout disabled. This tells Envoy not to enforce any deadline on the response, which is exactly what you want for an SSE stream that could run for hours or days.
 
-## DestinationRule for Idle Timeout
+## DestinationRule for Connection Pool Idle Timeout
 
-The route timeout handles one part of the problem, but you also need to deal with idle timeouts. If your SSE endpoint might have long periods between events, configure the DestinationRule:
+The route timeout handles one part of the problem, but you may also need to deal with connection pool idle timeouts. A DestinationRule can configure the upstream HTTP connection pool idle timeout:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: sse-app
@@ -73,7 +73,7 @@ spec:
         idleTimeout: 0s
 ```
 
-Setting `idleTimeout: 0s` disables the idle timeout. If you prefer not to disable it entirely, set it to something generous like `3600s`. Just make sure your application sends heartbeat events more frequently than this timeout. A common pattern is to send a comment line (starting with `:`) every 30 seconds as a keepalive:
+This setting controls idle pooled upstream HTTP connections, not the per-stream gap between SSE events while a request is active. For quiet SSE streams, make sure your application sends heartbeat events more frequently than any HTTP stream idle timeout in your Envoy configuration. A common pattern is to send a comment line (starting with `:`) every 30 seconds as a keepalive:
 
 ```text
 : keepalive
@@ -111,7 +111,7 @@ The `http` prefix in the port name tells Istio to use the HTTP filter chain. If 
 Exposing SSE through an Istio ingress gateway requires the same timeout considerations:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: sse-gateway
@@ -130,7 +130,7 @@ spec:
       hosts:
         - sse.example.com
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: sse-app-external
@@ -178,12 +178,12 @@ If you are using gzip compression in your Envoy config, that can also introduce 
 
 ## HTTP/2 and SSE
 
-Istio uses HTTP/2 between sidecars by default. SSE works fine over HTTP/2 since each SSE stream maps to a single HTTP/2 stream. However, be aware that HTTP/2 has its own flow control mechanisms that can affect delivery of small events.
+Istio can use HTTP/2 between proxies when the service protocol or the mesh `h2UpgradePolicy` enables it. SSE works fine over HTTP/2 since each SSE stream maps to a single HTTP/2 stream. However, be aware that HTTP/2 has its own flow control mechanisms that can affect delivery of small events.
 
-If you are running into issues with HTTP/2, you can force HTTP/1.1 between the sidecar and your application using a DestinationRule:
+If HTTP/1.1 traffic is being upgraded and you are running into issues, you can opt out of the upgrade for the sidecar-to-application hop using a DestinationRule:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: sse-app-h1
@@ -196,7 +196,7 @@ spec:
         h2UpgradePolicy: DO_NOT_UPGRADE
 ```
 
-This keeps the connection on HTTP/1.1, which can sometimes be more predictable for SSE workloads.
+This keeps HTTP/1.1 traffic from being upgraded to HTTP/2, which can sometimes be more predictable for SSE workloads.
 
 ## Retries and SSE
 
@@ -205,7 +205,7 @@ Do not configure retries on SSE routes. The initial request that establishes the
 If you have a VirtualService that mixes SSE and regular API routes, keep them in separate route rules:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: app
@@ -252,8 +252,8 @@ kubectl exec -it deploy/sse-app -c istio-proxy -- \
   pilot-agent request GET stats | grep -E "(cx_destroy|timeout)"
 ```
 
-If you see a lot of `cx_destroy_remote_with_active_rq`, that means connections are being closed while there are still active requests (your SSE streams). This usually points to a timeout configuration issue.
+If you see a lot of `cx_destroy_remote_with_active_rq`, that means the remote peer closed connections while there were still active requests (your SSE streams). This can point to a timeout or idle-close behavior somewhere on the path, such as a client, load balancer, or upstream service.
 
 ## Summary
 
-SSE in Istio works well once you handle the timeout configuration. The key settings are `timeout: 0s` on your VirtualService routes, generous or disabled idle timeouts in your DestinationRule, and proper port naming on your Service. Make sure your application sends keepalive comments during quiet periods, and avoid configuring retries on SSE routes. With these settings in place, your SSE streams should stay connected reliably through the mesh.
+SSE in Istio works well once you handle the timeout configuration. The key settings are `timeout: 0s` on any VirtualService routes where a timeout might otherwise apply, appropriate connection pool idle timeout settings, and proper port naming on your Service. Make sure your application sends keepalive comments during quiet periods, and avoid configuring retries on SSE routes. With these settings in place, your SSE streams should stay connected reliably through the mesh.

@@ -162,7 +162,7 @@ spec:
   resolution: DNS
 ```
 
-Without a ServiceEntry, traffic to external services may be blocked (depending on your outbound traffic policy) or will not have Istio telemetry applied.
+Without a ServiceEntry, traffic to external services may be blocked (depending on your outbound traffic policy), and Istio cannot apply host-specific routing policies or produce service-specific telemetry for that external host.
 
 ## Security CRDs
 
@@ -247,7 +247,7 @@ apiVersion: networking.istio.io/v1alpha3
 
 ## Validating CRD Resources
 
-Kubernetes performs schema validation on CRD resources. If you provide an invalid field, the API server rejects it:
+Kubernetes validates CRD resources using the CRD's OpenAPI schema, and Istio can add deeper validation through its admission webhook and analyzers. If you provide an invalid value or a field that fails validation, the request may be rejected:
 
 ```bash
 kubectl apply -f bad-virtualservice.yaml
@@ -317,9 +317,9 @@ kubectl apply -f authorization-policies/
 
 If you apply a VirtualService before its DestinationRule, routing will not work correctly because the subsets are not defined yet.
 
-## Watching CRD Status
+## Inspecting CRD Resources
 
-Check the status of your Istio resources:
+List your Istio resources:
 
 ```bash
 kubectl get virtualservice -A
@@ -332,6 +332,8 @@ For more detail:
 ```bash
 kubectl describe virtualservice my-service -n default
 ```
+
+Some Istio resources can also expose a `status` field, but Istio configuration status is an alpha feature and is disabled by default.
 
 ## Cleaning Up CRDs
 
@@ -348,7 +350,7 @@ kubectl delete gateway --all --all-namespaces
 istioctl uninstall --purge -y
 ```
 
-If you remove the CRDs before removing the resources, the resources become orphaned and can cause issues.
+If you remove the CRDs first, Kubernetes removes the API endpoints and deletes the custom resources stored under them. Deleting the resources intentionally before uninstalling makes cleanup explicit and easier to audit.
 
 ## Wrapping Up
 

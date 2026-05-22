@@ -155,11 +155,11 @@ data "terraform_remote_state" "networking" {
 }
 ```
 
-In the Terraform Cloud UI, go to the networking workspace settings, then "General", and under "Remote state sharing", select which workspaces can access this state. This provides a clean, centrally managed access model.
+In the Terraform Cloud UI, go to the networking workspace settings, then "General", and under "Remote state sharing", select which workspaces can access this state. This provides a clean, centrally managed access model. For HCP Terraform or Terraform Enterprise, HashiCorp recommends the `tfe_outputs` data source when you only need outputs, because it does not require full state access.
 
-## Using Outputs Instead of Full State Access
+## Using Outputs with State Access
 
-A best practice is to only expose specific values through outputs rather than granting access to the entire state file. State files can contain sensitive information like database passwords, API keys, and private IPs.
+A best practice is to only expose specific values through outputs and keep sensitive values out of any state file that consumers can read. The `terraform_remote_state` data source only exposes output values to Terraform configuration, but consumers with backend read permissions can still access the entire state snapshot directly. State files can contain sensitive information like database passwords, API keys, and private IPs.
 
 ```hcl
 # outputs.tf - Only expose what consumers need
@@ -181,7 +181,7 @@ output "database_endpoint" {
 }
 ```
 
-When an output is marked as `sensitive`, consumers using `terraform_remote_state` can still access it, but it will not be displayed in plan output. For true secrets, consider using a secrets manager instead of Terraform outputs.
+When an output is marked as `sensitive`, consumers using `terraform_remote_state` can still access it, but Terraform will not display it in normal CLI output. Sensitive output values are still stored in state, so for true secrets, consider using a secrets manager instead of Terraform outputs.
 
 ## Building a State Access Layer
 
@@ -289,7 +289,7 @@ resource "aws_cloudtrail" "state_access" {
 
 1. **Use `terraform_remote_state` for cross-project references.** It is inherently read-only at the Terraform level.
 2. **Enforce read-only at the IAM level.** Do not rely solely on Terraform's behavior - add backend-level permissions.
-3. **Only expose what consumers need** through explicit outputs. Never grant access to the full state.
+3. **Only expose what consumers need** through explicit outputs, and remember that backend-level state readers can still access the full state snapshot.
 4. **Mark sensitive outputs.** Use the `sensitive` flag on outputs that contain credentials or private information.
 5. **Audit state access** with logging to track who is reading your state and when.
 6. **Use Terraform Cloud's workspace sharing** if available - it provides the cleanest access model.

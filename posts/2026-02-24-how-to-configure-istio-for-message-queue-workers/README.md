@@ -102,7 +102,7 @@ Even if your worker does not serve HTTP traffic, having a health check endpoint 
 
 ## Connecting to the Message Broker
 
-If RabbitMQ is running outside the mesh, create a ServiceEntry:
+If RabbitMQ is running outside the mesh and is not already in the Kubernetes service registry, create a ServiceEntry:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -157,7 +157,7 @@ metadata:
   name: rabbitmq-dr
   namespace: workers
 spec:
-  host: "rabbitmq.messaging.svc.cluster.local"
+  host: "rabbitmq.example.com"
   trafficPolicy:
     connectionPool:
       tcp:
@@ -171,7 +171,7 @@ spec:
       mode: DISABLE
 ```
 
-Use `DISABLE` only when the broker endpoint expects plaintext from the sidecar, or when your application already originates TLS to the broker. If RabbitMQ is in the mesh with a sidecar and strict mTLS, omit this TLS setting or use `ISTIO_MUTUAL`.
+Use `DISABLE` only when the broker endpoint expects plaintext from the sidecar, or when your application already originates TLS to the broker. If RabbitMQ is in the mesh with a sidecar and strict mTLS, use the Kubernetes service host and omit this TLS setting or use `ISTIO_MUTUAL`.
 
 ## Restricting Sidecar Scope
 

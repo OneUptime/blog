@@ -93,7 +93,7 @@ The CNI agent installs the istio-cni binary into the node's CNI bin directory. I
 ```bash
 # Verify the binary exists
 kubectl debug node/problem-node -it --image=nicolaka/netshoot -- \
-  ls -la /opt/cni/bin/istio-cni
+  ls -la /host/opt/cni/bin/istio-cni
 ```
 
 If the binary is missing, the CNI agent might not have permission to write to the directory. Check the agent's volume mounts:
@@ -108,25 +108,29 @@ The CNI agent also writes its configuration file. Verify:
 
 ```bash
 kubectl debug node/problem-node -it --image=nicolaka/netshoot -- \
-  ls -la /etc/cni/net.d/
+  ls -la /host/etc/cni/net.d/
 ```
 
 The Istio CNI config should be present as part of a conflist file or as a separate config file.
 
-## Kernel Version Compatibility
+## Kernel Module Compatibility
 
-Ambient mode uses kernel features (iptables, eBPF, or both) that may not be available on older kernels:
+Ambient mode uses Linux traffic interception and routing features that may not be available on custom, minimal, or older node kernels:
 
 ```bash
 # Check kernel version
 kubectl debug node/problem-node -it --image=nicolaka/netshoot -- uname -r
+
+# Check for common modules used by the default iptables backend
+kubectl debug node/problem-node -it --image=nicolaka/netshoot -- \
+  grep -E 'xt_connmark|xt_mark|ip_set|iptable_nat' /host/proc/modules
 ```
 
-Istio ambient mode generally requires Linux kernel 4.19 or later. Some features need 5.7 or later. If you are running an older kernel, you might see errors in the CNI agent or ztunnel logs about missing kernel capabilities.
+Istio's default traffic redirection backend is `iptables`, which requires kernel support for modules such as `xt_connmark`, `xt_mark`, and `ip_set` in ambient mode. Istio also supports an `nftables` backend, which requires the `nft` CLI and Linux kernel 5.13 or later. If required modules are unavailable or cannot be loaded, you might see errors in the CNI agent or ztunnel logs about missing kernel capabilities.
 
 ## iptables Version Conflicts
 
-Some nodes might use iptables-legacy while others use iptables-nft. This can cause issues if the Istio CNI agent uses a different iptables backend than the node:
+Some nodes might use iptables-legacy while others use iptables-nft. This can cause issues if the Istio CNI agent uses a different userspace backend than the node:
 
 ```bash
 # Check which iptables backend is in use
@@ -138,17 +142,18 @@ kubectl debug node/problem-node -it --image=nicolaka/netshoot -- \
   nft list ruleset 2>/dev/null | head -20
 ```
 
-If there is a mismatch, configure the Istio CNI to use the correct backend:
+If you want Istio to use native nftables instead of the default iptables backend, enable the native nftables setting and make sure the node meets the nftables requirements:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
   values:
-    cni:
-      ambient:
-        redirectMode: iptables
+    global:
+      nativeNftables: true
 ```
+
+In current Istio releases, the default backend is `iptables`; `nftables` is also supported when the node meets the nftables requirements.
 
 ## Node Memory Pressure
 
@@ -159,23 +164,21 @@ When a node is under memory pressure, ztunnel or the CNI agent might get OOMKill
 kubectl describe node problem-node | grep -A 5 Conditions
 
 # Check for OOMKilled ztunnel pods
-kubectl describe pod -n istio-system -l app=ztunnel --field-selector spec.nodeName=problem-node | grep -A 5 "Last State"
+ZTUNNEL_POD=$(kubectl get pods -n istio-system -l app=ztunnel \
+  --field-selector spec.nodeName=problem-node -o jsonpath='{.items[0].metadata.name}')
+kubectl describe pod -n istio-system "$ZTUNNEL_POD" | grep -A 5 "Last State"
 ```
 
-Set the priority class to prevent ztunnel from being evicted:
+Confirm that ztunnel and the CNI agent are running with the critical priority class:
 
-```yaml
-apiVersion: install.istio.io/v1alpha1
-kind: IstioOperator
-spec:
-  values:
-    ztunnel:
-      priorityClassName: system-node-critical
-    cni:
-      priorityClassName: system-node-critical
+```bash
+CNI_POD=$(kubectl get pods -n istio-system -l k8s-app=istio-cni-node \
+  --field-selector spec.nodeName=problem-node -o jsonpath='{.items[0].metadata.name}')
+kubectl get pod -n istio-system "$ZTUNNEL_POD" -o jsonpath='{.spec.priorityClassName}{"\n"}'
+kubectl get pod -n istio-system "$CNI_POD" -o jsonpath='{.spec.priorityClassName}{"\n"}'
 ```
 
-`system-node-critical` is the highest priority class and prevents eviction except in extreme cases.
+Current Istio charts set `system-node-critical` for ztunnel and the CNI DaemonSet. It is the highest built-in priority class. It helps critical DaemonSet pods schedule and makes them less likely to be evicted, but it does not prevent all evictions.
 
 ## Disk Pressure Issues
 
@@ -188,14 +191,13 @@ kubectl describe node problem-node | grep DiskPressure
 Check disk usage:
 
 ```bash
-kubectl debug node/problem-node -it --image=nicolaka/netshoot -- df -h
+kubectl debug node/problem-node -it --image=nicolaka/netshoot -- df -h /host
 ```
 
 Clean up disk space or rotate logs. You can also reduce ztunnel's log volume:
 
 ```bash
-kubectl exec -n istio-system ztunnel-xxxxx -- \
-  curl -X POST "localhost:15000/logging?level=warn"
+istioctl ztunnel-config log ztunnel-xxxxx.istio-system --level warn
 ```
 
 ## Clock Skew
@@ -257,10 +259,14 @@ kubectl top node problem-node
 kubectl get events --field-selector involvedObject.name=problem-node --sort-by='.lastTimestamp'
 
 # 6. ztunnel logs (if running)
-kubectl logs -n istio-system -l app=ztunnel --field-selector spec.nodeName=problem-node --tail=50
+ZTUNNEL_POD=$(kubectl get pods -n istio-system -l app=ztunnel \
+  --field-selector spec.nodeName=problem-node -o jsonpath='{.items[0].metadata.name}')
+kubectl logs -n istio-system "$ZTUNNEL_POD" --tail=50
 
 # 7. CNI agent logs (if running)
-kubectl logs -n istio-system -l k8s-app=istio-cni-node --field-selector spec.nodeName=problem-node --tail=50
+CNI_POD=$(kubectl get pods -n istio-system -l k8s-app=istio-cni-node \
+  --field-selector spec.nodeName=problem-node -o jsonpath='{.items[0].metadata.name}')
+kubectl logs -n istio-system "$CNI_POD" --tail=50
 ```
 
 Node-level issues in ambient mode are usually caused by resource constraints, CNI conflicts, or kernel compatibility problems. The good news is that they are isolated to a single node, so your mesh continues working on other nodes while you troubleshoot.

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Multi-Cluster, Kubernetes, High Availability, Service Mesh
 
-Description: Configure a complete multi-cluster Istio service mesh with shared control plane, cross-cluster service discovery, and unified traffic management.
+Description: Configure a complete multi-cluster Istio service mesh with separate control planes, cross-cluster service discovery, and unified traffic management.
 
 ---
 
@@ -56,9 +56,12 @@ mkdir -p certs
 cd certs
 
 # Generate root CA
-openssl req -new -x509 -nodes -days 3650 \
+openssl req -newkey rsa:4096 -sha256 -nodes -days 3650 -x509 \
   -keyout root-key.pem -out root-cert.pem \
-  -subj "/O=example Inc./CN=Root CA"
+  -subj "/O=example Inc./CN=Root CA" \
+  -addext "basicConstraints=critical,CA:TRUE,pathlen:1" \
+  -addext "keyUsage=critical,keyCertSign,cRLSign" \
+  -addext "subjectKeyIdentifier=hash"
 
 # Generate intermediate CA for cluster1
 mkdir -p cluster1
@@ -69,6 +72,7 @@ openssl req -new -key cluster1/ca-key.pem \
 openssl x509 -req -in cluster1/ca-csr.pem \
   -CA root-cert.pem -CAkey root-key.pem \
   -CAcreateserial -days 1825 \
+  -extfile <(printf "basicConstraints=critical,CA:TRUE,pathlen:0\nkeyUsage=critical,keyCertSign,cRLSign\nsubjectKeyIdentifier=hash\nauthorityKeyIdentifier=keyid,issuer") \
   -out cluster1/ca-cert.pem
 cat cluster1/ca-cert.pem root-cert.pem > cluster1/cert-chain.pem
 cp root-cert.pem cluster1/root-cert.pem
@@ -82,6 +86,7 @@ openssl req -new -key cluster2/ca-key.pem \
 openssl x509 -req -in cluster2/ca-csr.pem \
   -CA root-cert.pem -CAkey root-key.pem \
   -CAcreateserial -days 1825 \
+  -extfile <(printf "basicConstraints=critical,CA:TRUE,pathlen:0\nkeyUsage=critical,keyCertSign,cRLSign\nsubjectKeyIdentifier=hash\nauthorityKeyIdentifier=keyid,issuer") \
   -out cluster2/ca-cert.pem
 cat cluster2/ca-cert.pem root-cert.pem > cluster2/cert-chain.pem
 cp root-cert.pem cluster2/root-cert.pem
@@ -95,6 +100,12 @@ kubectl create ns istio-system --context ctx-cluster1 --dry-run=client -o yaml |
   kubectl apply --context ctx-cluster1 -f -
 kubectl create ns istio-system --context ctx-cluster2 --dry-run=client -o yaml | \
   kubectl apply --context ctx-cluster2 -f -
+
+# Label the namespace with each cluster's network before installing Istio
+kubectl label namespace istio-system topology.istio.io/network=network1 \
+  --context ctx-cluster1 --overwrite
+kubectl label namespace istio-system topology.istio.io/network=network2 \
+  --context ctx-cluster2 --overwrite
 
 # Install CA certificates
 kubectl create secret generic cacerts -n istio-system --context ctx-cluster1 \
@@ -153,7 +164,7 @@ Since the clusters are on different networks, they need east-west gateways for c
 ```bash
 # Generate and install east-west gateway for cluster1
 samples/multicluster/gen-eastwest-gateway.sh \
-  --mesh my-mesh --cluster cluster1 --network network1 | \
+  --network network1 | \
   istioctl install --context ctx-cluster1 -y -f -
 
 # Wait for the gateway to get an external IP
@@ -161,7 +172,7 @@ kubectl get svc istio-eastwestgateway -n istio-system --context ctx-cluster1 -w
 
 # Generate and install east-west gateway for cluster2
 samples/multicluster/gen-eastwest-gateway.sh \
-  --mesh my-mesh --cluster cluster2 --network network2 | \
+  --network network2 | \
   istioctl install --context ctx-cluster2 -y -f -
 
 kubectl get svc istio-eastwestgateway -n istio-system --context ctx-cluster2 -w
@@ -314,7 +325,7 @@ for i in $(seq 1 10); do
     curl -s http://helloworld.sample:5000/hello
 done
 
-# Expected output alternates between:
+# Expected output should include responses from both versions:
 # Hello version: v1, instance: helloworld-v1-xxxxx
 # Hello version: v2, instance: helloworld-v2-xxxxx
 ```
@@ -334,7 +345,7 @@ kubectl get svc istio-eastwestgateway -n istio-system --context ctx-cluster2
 
 ## Step 7: Configure Locality Load Balancing
 
-Control how traffic is distributed across clusters:
+Control how traffic is distributed across clusters. The `from` and `to` values must match the Kubernetes region labels on the nodes that host your workloads, such as `topology.kubernetes.io/region=us-east-1` and `topology.kubernetes.io/region=us-west-1`:
 
 ```yaml
 apiVersion: networking.istio.io/v1

@@ -21,7 +21,7 @@ The `try` function evaluates one or more expressions and returns the result of t
 try(expression, fallback)
 ```
 
-This is fundamentally different from using `lookup` or conditional expressions. The `try` function catches any error that occurs during expression evaluation, not just missing map keys.
+This is fundamentally different from using `lookup` or conditional expressions. The `try` function catches dynamic errors that occur during expression evaluation, not just missing map keys. It cannot catch errors Terraform can prove are invalid before evaluation, such as malformed or undeclared references.
 
 ## Basic Usage
 
@@ -42,7 +42,7 @@ variable "config" {
 # Without try, accessing config.tags.environment would fail
 # if tags is null or if the "environment" key is missing
 output "environment_tag" {
-  # try will return "unknown" if anything goes wrong
+  # try will return "unknown" if this dynamic lookup fails
   value = try(var.config.tags["environment"], "unknown")
 }
 ```
@@ -186,7 +186,7 @@ locals {
   # Using conditional with contains - verbose and only works for maps
   env_conditional = contains(keys(var.tags), "environment") ? var.tags["environment"] : "dev"
 
-  # Using try - works for ANY expression that might fail
+  # Using try - works for dynamic expressions that might fail
   env_try = try(var.tags["environment"], "dev")
 }
 ```
@@ -205,12 +205,12 @@ variable "input" {
 
 locals {
   # Try multiple paths to find a value
-  # First: check if input is a string directly
+  # First: check if input is a primitive value directly
   # Second: check if input is an object with a "value" key
   # Third: fall back to a default
-  resolved = try(
-    tostring(var.input),
-    var.input.value,
+  resolved = coalesce(
+    try(tostring(var.input), null),
+    try(tostring(var.input.value), null),
     "default-value"
   )
 }
@@ -250,8 +250,8 @@ Note the use of `can()` in the validation block. The `can` function is closely r
 There are a few things to watch out for when using `try`:
 
 ```hcl
-# Pitfall 1: try does NOT catch errors in resource configuration
-# It only works during expression evaluation
+# Pitfall 1: try does NOT catch provider errors or statically invalid references
+# It only catches dynamic errors during expression evaluation
 resource "aws_instance" "example" {
   ami           = "ami-12345"
   instance_type = try(var.instance_type, "t3.micro")
@@ -313,6 +313,6 @@ output "resolved_config" {
 
 ## Summary
 
-The `try` function is one of the most useful tools in the Terraform toolbox for building flexible, resilient configurations. It lets you gracefully handle missing or optional attributes without writing verbose conditional logic. Use it when dealing with optional nested objects, inconsistent data structures, or when building modules that need to accept varied input shapes. Pair it with `can()` for validation rules, and remember that it only catches expression evaluation errors, not provider-level failures.
+The `try` function is one of the most useful tools in the Terraform toolbox for building flexible, resilient configurations. It lets you gracefully handle missing or optional attributes without writing verbose conditional logic. Use it when dealing with optional nested objects, inconsistent data structures, or when building modules that need to accept varied input shapes. Pair it with `can()` for validation rules, and remember that it only catches dynamic expression evaluation errors, not statically invalid expressions or provider-level failures.
 
 For more Terraform tips, check out our other posts on [Terraform functions](https://oneuptime.com/blog/post/2026-02-23-how-to-use-the-compact-function-to-remove-empty-strings/view) and [infrastructure best practices](https://oneuptime.com/blog/post/2026-02-23-how-to-use-the-distinct-function-to-deduplicate-lists/view).

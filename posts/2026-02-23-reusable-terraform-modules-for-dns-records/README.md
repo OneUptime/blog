@@ -48,13 +48,13 @@ variable "name" {
 }
 
 variable "type" {
-  description = "DNS record type (A, AAAA, CNAME, MX, TXT)"
+  description = "DNS record type"
   type        = string
   default     = "A"
 
   validation {
-    condition     = contains(["A", "AAAA", "CNAME", "MX", "TXT", "NS", "SOA", "SRV"], var.type)
-    error_message = "type must be one of: A, AAAA, CNAME, MX, TXT, NS, SOA, SRV"
+    condition     = contains(["A", "AAAA", "CAA", "CNAME", "DS", "HTTPS", "MX", "NAPTR", "NS", "PTR", "SOA", "SPF", "SRV", "SSHFP", "SVCB", "TLSA", "TXT"], var.type)
+    error_message = "type must be one of: A, AAAA, CAA, CNAME, DS, HTTPS, MX, NAPTR, NS, PTR, SOA, SPF, SRV, SSHFP, SVCB, TLSA, TXT"
   }
 }
 
@@ -77,7 +77,7 @@ variable "alias" {
   type = object({
     name                   = string
     zone_id                = string
-    evaluate_target_health = optional(bool, true)
+    evaluate_target_health = optional(bool, false)
   })
   default = null
 }
@@ -344,5 +344,7 @@ module "dns_records" {
 A common mistake is setting TTLs too high. For records that might change during deployments or failovers, keep TTLs low (60-300 seconds). For stable records like MX records or CNAME records pointing to external services, higher TTLs (3600+) reduce DNS query costs.
 
 Alias records do not have a TTL because they inherit the TTL from the target resource. This is one reason to prefer alias records over CNAME records for AWS resources.
+
+For load balancer aliases that use weighted, failover, geolocation, or latency routing, set `evaluate_target_health = true` if you want Route53 to consider the target's health. For CloudFront aliases, keep `evaluate_target_health = false` because Route53 does not allow target health evaluation for CloudFront distributions.
 
 For more on building modules that work together, check out [how to handle module dependencies in Terraform](https://oneuptime.com/blog/post/2026-02-23-handle-module-dependencies-in-terraform/view).

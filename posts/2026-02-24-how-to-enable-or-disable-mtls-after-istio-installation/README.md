@@ -8,7 +8,7 @@ Description: How to configure mTLS in Istio after installation including enablin
 
 ---
 
-Mutual TLS (mTLS) is one of the core security features of Istio. When enabled, every service-to-service call within the mesh is encrypted and both sides verify each other's identity through certificates. After installing Istio, mTLS defaults to PERMISSIVE mode, which accepts both encrypted and plaintext traffic. Changing this setting is something most teams need to do, and getting it right matters.
+Mutual TLS (mTLS) is one of the core security features of Istio. When enabled, every service-to-service call within the mesh is encrypted and both sides verify each other's identity through certificates. After installing Istio, peer authentication defaults to PERMISSIVE mode, which accepts both encrypted and plaintext traffic. Istio also uses Auto mTLS by default, so sidecars automatically send mTLS to workloads that have sidecars and plaintext to workloads that do not. Changing the server-side policy is something most teams need to do, and getting it right matters.
 
 ## Understanding mTLS Modes
 
@@ -16,7 +16,7 @@ Istio has three mTLS modes:
 
 - **PERMISSIVE**: Accepts both plaintext and mTLS traffic. This is the default after installation.
 - **STRICT**: Only accepts mTLS traffic. Plaintext connections are rejected.
-- **DISABLE**: Turns off mTLS entirely. Traffic is plaintext.
+- **DISABLE**: Does not accept mTLS on the selected workload or port. Traffic must be plaintext, or TLS must be handled by the application itself.
 
 ```bash
 # Check current mTLS configuration
@@ -24,11 +24,11 @@ Istio has three mTLS modes:
 kubectl get peerauthentication --all-namespaces
 ```
 
-If no PeerAuthentication resources exist, the mesh is using the default PERMISSIVE mode.
+If no PeerAuthentication resources exist, workloads inherit the default PERMISSIVE mode.
 
 ## Enabling STRICT mTLS Mesh-Wide
 
-To enable STRICT mTLS for the entire mesh, create a PeerAuthentication resource in the istio-system namespace:
+To enable STRICT mTLS for the entire mesh, create a PeerAuthentication resource in Istio's root namespace. For the default installation, this is usually the istio-system namespace:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -45,7 +45,7 @@ spec:
 kubectl apply -f strict-mtls.yaml
 ```
 
-Before doing this, make sure every service in the mesh has a sidecar. Services without sidecars cannot send mTLS traffic and will be blocked.
+Before doing this, make sure every caller to STRICT workloads has a sidecar. Workloads without sidecars cannot send Istio mTLS traffic and will be blocked when they call services that require STRICT mTLS.
 
 Verify all pods have sidecars:
 
@@ -73,11 +73,11 @@ spec:
     mode: STRICT
 ```
 
-The precedence order for mTLS configuration is: workload-specific > namespace-specific > mesh-wide. This means you can have STRICT at the mesh level and PERMISSIVE or DISABLE for specific services.
+The precedence order for mTLS configuration is: workload-specific > namespace-specific > mesh-wide. This means you can have STRICT at the mesh level and PERMISSIVE or DISABLE for specific workloads.
 
 ## Disabling mTLS for Specific Services
 
-Sometimes you need to disable mTLS for a specific workload. Common reasons include: the workload communicates with services outside the mesh, it runs a legacy protocol that does not work through the sidecar, or it is a database that handles its own TLS.
+Sometimes you need to disable mTLS for a specific workload. Common reasons include: the workload receives traffic from clients outside the mesh, it runs a legacy server-first protocol that does not work through the sidecar's protocol detection, or it is a database that handles its own TLS.
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -93,7 +93,7 @@ spec:
     mode: DISABLE
 ```
 
-You can also disable mTLS for specific ports while keeping it enabled for others:
+You can also disable mTLS for specific workload ports while keeping it enabled for others. The port number is the workload or container port, not the Kubernetes Service port:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -126,7 +126,7 @@ spec:
   host: external-database.other-namespace.svc.cluster.local
   trafficPolicy:
     tls:
-      mode: DISABLE  # Don't attempt mTLS when calling this service
+      mode: DISABLE  # Send plaintext when calling this service
 ```
 
 Available TLS modes in DestinationRule:
@@ -134,19 +134,23 @@ Available TLS modes in DestinationRule:
 - `DISABLE`: No TLS
 - `SIMPLE`: One-way TLS (client verifies server)
 - `MUTUAL`: Mutual TLS with custom certificates
-- `ISTIO_MUTUAL`: Mutual TLS using Istio-managed certificates (default)
+- `ISTIO_MUTUAL`: Mutual TLS using Istio-managed certificates
+
+If TLS settings are not explicitly configured in a DestinationRule, Istio's Auto mTLS decides whether to send Istio mutual TLS based on whether the destination has a sidecar.
 
 ## Verifying mTLS is Working
 
 After making changes, verify that mTLS is actually in effect:
 
 ```bash
-# Check mTLS status between two pods
+# Check whether the listener requires a TLS transport socket
 istioctl proxy-config listeners my-pod -n production --port 8080 -o json | \
   jq '.[].filterChains[].transportSocket'
 
-# Use istioctl authn to check authentication policies
-istioctl authn tls-check my-pod.production my-service.production.svc.cluster.local
+# Check outbound TLS settings for a destination cluster
+istioctl proxy-config clusters my-pod -n production \
+  --fqdn my-service.production.svc.cluster.local --port 8080 -o json | \
+  jq '.[].transportSocketMatches, .[].transportSocket'
 ```
 
 You can also check through Envoy stats:
@@ -163,11 +167,12 @@ Check with actual traffic:
 
 ```bash
 # Send a request and check if it uses mTLS
-kubectl exec deploy/test-client -c istio-proxy -- \
-  curl -v http://my-service:8080/health 2>&1 | grep "X-Forwarded-Client-Cert"
+kubectl exec deploy/test-client -c curl -- \
+  curl -s http://httpbin.production:8000/headers | \
+  jq '.headers["X-Forwarded-Client-Cert"]'
 ```
 
-If you see the `X-Forwarded-Client-Cert` header in the response, mTLS is working. This header contains the client certificate information and is only present when mTLS is active.
+When using HTTP, Istio injects the `X-Forwarded-Client-Cert` header into the upstream request when mutual TLS is used. A service such as httpbin can echo that request header back so you can inspect it.
 
 ## Common mTLS Issues and Fixes
 
@@ -185,22 +190,26 @@ kubectl get pod -l app=upstream-service -o jsonpath='{.items[0].spec.containers[
 
 Fix: Either add a sidecar to the calling service or create a PeerAuthentication exception.
 
-### Issue: External Clients Cannot Reach Services
+### Issue: External Clients Cannot Reach Sidecar-Protected Services
 
-External clients (outside the mesh) cannot send mTLS traffic. The ingress gateway handles this transition.
+External clients (outside the mesh) usually cannot send Istio mTLS traffic directly to application sidecars. In a regular Istio deployment, configure ingress through an Istio gateway so the gateway handles the downstream connection and then sends the upstream request into the mesh.
 
 ```yaml
-apiVersion: security.istio.io/v1
-kind: PeerAuthentication
+apiVersion: networking.istio.io/v1
+kind: Gateway
 metadata:
-  name: ingress-permissive
+  name: app-gateway
   namespace: istio-system
 spec:
   selector:
-    matchLabels:
-      app: istio-ingressgateway
-  mtls:
-    mode: PERMISSIVE  # Allow non-mTLS from external clients
+    istio: ingressgateway
+  servers:
+  - port:
+      number: 80
+      name: http
+      protocol: HTTP
+    hosts:
+    - "example.com"
 ```
 
 ### Issue: Health Check Probes Failing

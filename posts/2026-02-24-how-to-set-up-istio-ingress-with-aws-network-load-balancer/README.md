@@ -8,16 +8,16 @@ Description: Complete guide to deploying Istio Ingress Gateway behind an AWS Net
 
 ---
 
-When you deploy Istio on AWS EKS, the default ingress gateway gets a Classic Load Balancer. That works fine for testing, but production workloads benefit from an AWS Network Load Balancer (NLB) instead. NLBs operate at Layer 4, offer lower latency, handle millions of requests per second, and preserve the original client IP address.
+When you deploy Istio on AWS EKS without the AWS Load Balancer Controller, the default ingress gateway can get a Classic Load Balancer. That works fine for testing, but production workloads benefit from an AWS Network Load Balancer (NLB) instead. NLBs operate at Layer 4, offer lower latency, handle millions of requests per second, and can preserve the original client IP address.
 
 This guide covers how to configure Istio's ingress gateway to use an NLB, including proper annotations, health checks, and TLS setup.
 
 ## Why Use an NLB Over a Classic Load Balancer
 
-AWS Classic Load Balancers are being phased out in favor of NLBs and ALBs. For Istio, an NLB is typically the best choice because:
+AWS Classic Load Balancers are the previous generation of Elastic Load Balancing, and AWS recommends ALBs and NLBs for most new workloads. For Istio, an NLB is typically the best choice because:
 
 - Istio already handles Layer 7 routing, so you don't need the ALB to do it
-- NLBs preserve source IP addresses without extra configuration
+- NLBs can preserve source IP addresses
 - NLBs support static IP addresses and Elastic IPs
 - NLBs have much higher throughput limits
 - NLBs have lower latency since they operate at Layer 4
@@ -40,7 +40,7 @@ spec:
         serviceAnnotations:
           service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
           service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
-          service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
+          service.beta.kubernetes.io/aws-load-balancer-attributes: "load_balancing.cross_zone.enabled=true"
 ```
 
 Apply this with:
@@ -49,15 +49,14 @@ Apply this with:
 istioctl install -f istio-nlb-config.yaml
 ```
 
-If you are using Helm to install Istio, set the annotations in your values file:
+If you are using the current Istio gateway Helm chart, set the annotations in your values file:
 
 ```yaml
-gateways:
-  istio-ingressgateway:
-    serviceAnnotations:
-      service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
-      service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
-      service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
+service:
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
+    service.beta.kubernetes.io/aws-load-balancer-attributes: "load_balancing.cross_zone.enabled=true"
 ```
 
 ## Using the AWS Load Balancer Controller
@@ -79,13 +78,14 @@ spec:
           service.beta.kubernetes.io/aws-load-balancer-type: "external"
           service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: "ip"
           service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
-          service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
+          service.beta.kubernetes.io/aws-load-balancer-attributes: "load_balancing.cross_zone.enabled=true"
+          service.beta.kubernetes.io/aws-load-balancer-target-group-attributes: "preserve_client_ip.enabled=true"
           service.beta.kubernetes.io/aws-load-balancer-healthcheck-healthy-threshold: "2"
           service.beta.kubernetes.io/aws-load-balancer-healthcheck-unhealthy-threshold: "2"
           service.beta.kubernetes.io/aws-load-balancer-healthcheck-interval: "10"
 ```
 
-The `nlb-target-type: ip` annotation registers pod IPs directly with the NLB target group, bypassing kube-proxy. This gives you better performance and preserves client source IPs more reliably.
+The `nlb-target-type: ip` annotation registers pod IPs directly with the NLB target group, bypassing kube-proxy. This removes one hop from the traffic path. For TCP and TLS target groups in IP target mode, set `preserve_client_ip.enabled=true` if you need the pod to see the original client source IP.
 
 ## Preserving Client Source IP
 
@@ -109,9 +109,14 @@ spec:
           service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
 ```
 
-With `externalTrafficPolicy: Local`, Kubernetes won't SNAT the traffic, so the original client IP reaches the Envoy proxy. If you are using the AWS Load Balancer Controller with IP target mode, the source IP is preserved automatically.
+With `externalTrafficPolicy: Local`, Kubernetes won't SNAT the traffic, so the original client IP reaches the Envoy proxy when the NLB uses instance targets. If you are using the AWS Load Balancer Controller with IP target mode for TCP or TLS, enable the target group attribute instead:
 
-To verify it is working, check the access logs in the ingress gateway:
+```yaml
+serviceAnnotations:
+  service.beta.kubernetes.io/aws-load-balancer-target-group-attributes: "preserve_client_ip.enabled=true"
+```
+
+To verify it is working, check the access logs in the ingress gateway if Envoy access logging is enabled:
 
 ```bash
 kubectl logs -n istio-system deploy/istio-ingressgateway | head -20
@@ -121,7 +126,7 @@ You should see real client IP addresses instead of internal node IPs.
 
 ## Health Check Configuration
 
-NLBs perform health checks against the target pods. The Istio ingress gateway exposes a health check endpoint on port 15021 at `/healthz/ready`. Configure the NLB to use it:
+NLBs perform health checks against the registered targets. The Istio ingress gateway exposes a health check endpoint on port 15021 at `/healthz/ready`. In IP target mode, configure the NLB to use it:
 
 ```yaml
 serviceAnnotations:
@@ -215,9 +220,9 @@ kubectl describe svc istio-ingressgateway -n istio-system
 
 **Targets showing unhealthy.** Verify the health check port (15021) is open in your security groups and the pod is actually healthy.
 
-**Timeout connecting.** Check security group rules. NLBs don't have their own security groups - they use the security groups of the target instances or pods.
+**Timeout connecting.** Check security group rules. Modern NLBs can have their own security groups, and the target instances or pod ENIs must also allow traffic and health checks from the NLB.
 
-**Client IP not preserved.** Make sure `externalTrafficPolicy` is set to Local, or use IP target mode with the AWS Load Balancer Controller.
+**Client IP not preserved.** Make sure `externalTrafficPolicy` is set to Local for instance targets, or enable `preserve_client_ip.enabled=true` in the target group attributes when using IP target mode for TCP or TLS with the AWS Load Balancer Controller.
 
 ## Summary
 

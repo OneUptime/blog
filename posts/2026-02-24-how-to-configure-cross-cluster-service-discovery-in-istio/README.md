@@ -84,11 +84,11 @@ istioctl create-remote-secret --context="${CTX_CLUSTER2}" --name=cluster2 | \
 After applying remote secrets, verify that Istiod has connected to the remote cluster:
 
 ```bash
-# Check Istiod logs for cluster connection events
-kubectl logs -n istio-system -l app=istiod --context="${CTX_CLUSTER1}" | grep "cluster"
+# Check the sync status for remote clusters
+istioctl remote-clusters --context="${CTX_CLUSTER1}"
 ```
 
-You should see messages about adding the remote cluster controller.
+All clusters should show a `synced` status. If a remote cluster shows `timeout`, Istiod cannot communicate with that cluster's Kubernetes API server.
 
 To verify that endpoints from the remote cluster appear in proxies:
 
@@ -107,7 +107,7 @@ Istio merges services from different clusters based on hostname. The hostname is
 This means:
 
 - Services in both clusters **must** use the same name and namespace to be treated as the same logical service
-- Services that only exist in one cluster are still discoverable from the other cluster
+- Services that only have workloads in one cluster can still receive traffic from the other cluster, but Kubernetes DNS must resolve the service name in the calling cluster. In practice, deploy the Kubernetes Service in each cluster or provide an equivalent DNS or `ServiceEntry` entry.
 - If a service has different ports in different clusters, the port definitions from the cluster where the service is defined locally take precedence for that cluster's configuration
 
 You can verify merged services using:
@@ -118,7 +118,7 @@ istioctl proxy-config clusters deployment/sleep -n sample --context="${CTX_CLUST
 
 ## Controlling Service Visibility
 
-By default, all services in a cluster are visible to the entire mesh. You can restrict this using Istio's `exportTo` configuration on Services or VirtualServices:
+By default, all services in a cluster are visible to the entire mesh. You can restrict this using Istio's `networking.istio.io/exportTo` annotation on Kubernetes Services, or the `spec.exportTo` field on Istio resources such as VirtualServices:
 
 ```yaml
 apiVersion: v1
@@ -140,6 +140,7 @@ The `exportTo: "."` annotation means this service is only visible within its own
 - `"*"` - visible to all namespaces across all clusters (default)
 - `"."` - only visible within the same namespace
 - `"istio-system"` - visible to the istio-system namespace
+- `"~"` - not exported to any namespace
 
 You can also control this at the mesh level using the `defaultServiceExportTo` setting in the mesh configuration:
 
@@ -156,16 +157,16 @@ This makes services namespace-local by default, and you explicitly export the on
 
 ## Service Account Permissions for Remote Secrets
 
-The kubeconfig in the remote secret needs appropriate RBAC permissions. By default, `istioctl create-remote-secret` creates a service account with the necessary permissions, but if you need to create the remote secret manually, the service account needs:
+The kubeconfig in the remote secret needs appropriate RBAC permissions. By default, `istioctl create-remote-secret` uses the `istio-reader-service-account` service account and creates it if it does not already exist. If you manage the reader RBAC manually, use the reader ClusterRole installed by Istio as the reference. It includes read access to Kubernetes services, endpoints, pods, nodes, EndpointSlices, Istio configuration resources, Gateway API resources, and related discovery resources:
 
 ```yaml
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: istiod-remote-reader
+  name: istio-reader-clusterrole-istio-system
 rules:
 - apiGroups: [""]
-  resources: ["services", "endpoints", "pods", "nodes"]
+  resources: ["services", "endpoints", "pods", "nodes", "namespaces", "secrets", "configmaps"]
   verbs: ["get", "list", "watch"]
 - apiGroups: ["networking.istio.io"]
   resources: ["*"]
@@ -175,6 +176,9 @@ rules:
   verbs: ["get", "list", "watch"]
 - apiGroups: ["discovery.k8s.io"]
   resources: ["endpointslices"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["gateway.networking.k8s.io"]
+  resources: ["gateways"]
   verbs: ["get", "list", "watch"]
 ```
 

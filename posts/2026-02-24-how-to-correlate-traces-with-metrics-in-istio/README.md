@@ -39,10 +39,13 @@ Istio doesn't natively produce exemplars in its standard metrics, but you can ac
 
 ### Application-Level Exemplars
 
-If your application uses the OpenTelemetry SDK, you can attach trace IDs to Prometheus metrics:
+If your application uses OpenTelemetry for tracing and the Prometheus Go client for metrics, you can attach trace IDs to Prometheus metrics:
 
 ```go
 import (
+    "net/http"
+    "time"
+
     "go.opentelemetry.io/otel/trace"
     "github.com/prometheus/client_golang/prometheus"
 )
@@ -84,7 +87,7 @@ Even without exemplars, you can correlate metrics and traces using shared dimens
 - `response_code`
 - `request_protocol`
 
-These same values appear as attributes in trace spans. When you see a metric anomaly for a specific source/destination pair, you can search for traces with matching attributes.
+Equivalent service, status, and workload values often appear as trace attributes or can be added with Istio tracing tags and backend enrichment. When you see a metric anomaly for a specific source/destination pair, you can search for traces with matching attributes.
 
 For example, if Prometheus shows elevated errors for:
 
@@ -96,7 +99,7 @@ istio_requests_total{
 }
 ```
 
-You can search your tracing backend for:
+You can search your tracing backend for matching OpenTelemetry attributes, adjusted for the attribute names your backend stores:
 
 ```text
 service.name = "order-service"
@@ -117,6 +120,7 @@ apiVersion: 1
 datasources:
   - name: Tempo
     type: tempo
+    uid: tempo
     url: http://tempo.observability:3200
     jsonData:
       tracesToMetrics:
@@ -138,6 +142,7 @@ apiVersion: 1
 datasources:
   - name: Prometheus
     type: prometheus
+    uid: prometheus
     url: http://prometheus.observability:9090
     jsonData:
       exemplarTraceIdDestinations:
@@ -168,7 +173,7 @@ metrics_generator:
   storage:
     path: /tmp/tempo/generator/wal
     remote_write:
-      - url: http://prometheus.observability:9090/api/v1/write
+      - url: http://prometheus.observability:9090/api/v1/write # Requires Prometheus remote write receiver or a compatible backend.
   traces_storage:
     path: /tmp/tempo/generator/traces
   processor:
@@ -181,6 +186,13 @@ metrics_generator:
         - service.namespace
         - http.method
         - http.status_code
+
+overrides:
+  defaults:
+    metrics_generator:
+      processors:
+        - service-graphs
+        - span-metrics
 ```
 
 This generates Prometheus metrics from trace data, creating a feedback loop where you can see metrics derived from traces alongside Istio's native metrics.
@@ -224,7 +236,7 @@ histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{des
 **Panel 3: Error Traces (Tempo)**
 Use TraceQL to find relevant traces:
 ```text
-{span.http.status_code >= 500 && resource.service.name = "$service"} | duration > 1s
+{span.http.status_code >= 500 && resource.service.name = "$service" && duration > 1s}
 ```
 
 **Panel 4: Service Dependencies (Prometheus)**
@@ -234,7 +246,7 @@ sum(rate(istio_requests_total{source_workload="$service"}[5m])) by (destination_
 
 ## Using the OTel Collector for Cross-Signal Correlation
 
-The OpenTelemetry Collector can process both metrics and traces, adding correlation metadata:
+The OpenTelemetry Collector can process both metrics and traces, using the span metrics connector to generate metrics from spans:
 
 ```yaml
 receivers:
@@ -243,13 +255,13 @@ receivers:
       grpc:
         endpoint: 0.0.0.0:4317
 
-processors:
-  spanmetrics:
-    metrics_exporter: prometheus
+connectors:
+  span_metrics:
     dimensions:
       - name: http.method
       - name: http.status_code
-      - name: service.name
+    exemplars:
+      enabled: true
 
 exporters:
   prometheus:
@@ -263,18 +275,17 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [spanmetrics]
-      exporters: [otlp]
+      exporters: [otlp, span_metrics]
     metrics:
-      receivers: [otlp]
+      receivers: [otlp, span_metrics]
       exporters: [prometheus]
 ```
 
-The `spanmetrics` processor generates Prometheus metrics directly from trace spans. These metrics automatically have the same labels as the trace attributes, making correlation seamless.
+The `span_metrics` connector generates metrics directly from trace spans. The generated metrics include default dimensions such as service name and span name, plus configured dimensions from span or resource attributes, making correlation much easier.
 
 Metrics generated include:
-- `traces_spanmetrics_duration_bucket` - Histogram of span durations
-- `traces_spanmetrics_calls_total` - Count of spans by status
+- `traces_span_metrics_duration_bucket` - Histogram of span durations when exported through Prometheus with the default connector namespace
+- `traces_span_metrics_calls_total` - Count of spans by status when exported through Prometheus with the default connector namespace
 
 ## Practical Debugging Workflow
 
@@ -291,4 +302,4 @@ Without correlation, steps 2-4 would involve manually switching between tools an
 
 ## Summary
 
-Metrics and traces complement each other - metrics show the big picture and traces show the details. Connect them through exemplars (when available), shared labels, time-based correlation, and tools like Grafana that can query both data sources. The OpenTelemetry Collector's spanmetrics processor and Grafana Tempo's metrics generator both create natural bridges between trace data and Prometheus metrics. The goal is a debugging workflow where you can move seamlessly from "something is wrong" to "here's exactly what happened."
+Metrics and traces complement each other - metrics show the big picture and traces show the details. Connect them through exemplars (when available), shared labels, time-based correlation, and tools like Grafana that can query both data sources. The OpenTelemetry Collector's span metrics connector and Grafana Tempo's metrics generator both create natural bridges between trace data and Prometheus metrics. The goal is a debugging workflow where you can move seamlessly from "something is wrong" to "here's exactly what happened."

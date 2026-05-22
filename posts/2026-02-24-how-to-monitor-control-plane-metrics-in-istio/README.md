@@ -31,7 +31,7 @@ xDS is the protocol Envoy uses to receive configuration from istiod. The "x" sta
 ```promql
 # Total xDS pushes
 
-rate(pilot_xds_pushes[5m])
+rate(pilot_push_triggers[5m])
 
 # xDS internal errors and proxy rejects
 rate(pilot_total_xds_internal_errors[5m])
@@ -51,7 +51,7 @@ The convergence time metric is critical. It measures how long it takes for a con
 ### Configuration Push Metrics
 
 ```promql
-# Push context count (how many times pilot rebuilt its push context)
+# Push trigger rate
 rate(pilot_push_triggers[5m])
 
 # What triggered the push?
@@ -229,7 +229,7 @@ spec:
 
         - alert: IstiodProxyDisconnects
           expr: |
-            pilot_xds < (pilot_xds offset 10m) * 0.9
+            sum(pilot_xds) < (sum(pilot_xds) offset 10m) * 0.9
           for: 5m
           labels:
             severity: critical
