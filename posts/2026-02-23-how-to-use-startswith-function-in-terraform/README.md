@@ -8,7 +8,7 @@ Description: Learn how to use the startswith function in Terraform to check if a
 
 ---
 
-Checking whether a string starts with a particular prefix is a common need in Terraform. Validating that ARNs belong to the right service, filtering resources by naming convention, routing configuration based on environment prefixes - the `startswith` function handles all of these cleanly. It was introduced in Terraform 1.5 alongside `endswith` and `strcontains`.
+Checking whether a string starts with a particular prefix is a common need in Terraform. Validating that ARNs belong to the right service, filtering resources by naming convention, routing configuration based on environment prefixes - the `startswith` function handles all of these cleanly. It was introduced in Terraform 1.3 alongside `endswith`; `strcontains` was added in Terraform 1.5.
 
 ## What Does startswith Do?
 
