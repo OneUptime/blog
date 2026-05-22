@@ -81,7 +81,7 @@ output "s3_bucket_arn" {
   value       = aws_s3_bucket.data.arn
 
   precondition {
-    condition     = aws_s3_bucket_server_side_encryption_configuration.data.rule[0].apply_server_side_encryption_by_default[0].sse_algorithm == "aws:kms"
+    condition     = one(aws_s3_bucket_server_side_encryption_configuration.data.rule).apply_server_side_encryption_by_default.sse_algorithm == "aws:kms"
     error_message = "S3 bucket must use KMS encryption. Current encryption is not aws:kms."
   }
 }
@@ -181,8 +181,8 @@ output "vpc_id" {
   value       = aws_vpc.main.id
 
   precondition {
-    condition     = aws_vpc.main.state == "available"
-    error_message = "VPC is not in available state."
+    condition     = aws_vpc.main.enable_dns_support == true
+    error_message = "VPC must have DNS support enabled."
   }
 }
 
@@ -274,8 +274,8 @@ output "application_url" {
   value       = "https://${aws_lb.app.dns_name}"
 
   precondition {
-    condition     = aws_lb.app.status == "active"
-    error_message = "Load balancer is not active. Status: ${aws_lb.app.status}"
+    condition     = aws_lb.app.load_balancer_type == "application"
+    error_message = "Load balancer must be an Application Load Balancer."
   }
 }
 
