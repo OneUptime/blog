@@ -18,9 +18,9 @@ A speculative plan is a Terraform plan that:
 
 - Runs automatically when you open or update a pull request
 - Cannot be applied (it is plan-only, hence "speculative")
-- Shows the results as a comment or status check on the pull request
+- Shows the results as a status check on the pull request
 - Uses the current state from the workspace to calculate the diff
-- Does not create a new run in the workspace history
+- Appears as a plan-only run in the workspace's run list
 
 Think of it as a dry run that tells you "if this PR were merged right now, here is what would change in your infrastructure."
 
@@ -98,6 +98,14 @@ git checkout -b add-redis-cluster
 
 # Makes changes to Terraform configuration
 cat >> main.tf << 'EOF'
+resource "aws_elasticache_subnet_group" "redis" {
+  name       = "app-redis-subnets"
+  subnet_ids = [
+    "subnet-0a1b2c3d4e5f6a7b8",
+    "subnet-1a2b3c4d5e6f7a8b9",
+  ]
+}
+
 resource "aws_elasticache_cluster" "redis" {
   cluster_id           = "app-redis"
   engine               = "redis"
@@ -140,8 +148,8 @@ Terraform will perform the following actions:
       + description = "Redis subnet group"
       + name        = "app-redis-subnets"
       + subnet_ids  = [
-          + "subnet-0a1b2c3d4e5f6g7h8",
-          + "subnet-1a2b3c4d5e6f7g8h9",
+          + "subnet-0a1b2c3d4e5f6a7b8",
+          + "subnet-1a2b3c4d5e6f7a8b9",
         ]
     }
 
@@ -337,7 +345,7 @@ main = rule {
 
 **Plans showing stale data**: Speculative plans use the current workspace state. If someone recently applied changes that are not yet in state, the speculative plan may not account for them.
 
-**Status check stuck as "pending"**: This usually means the plan is queued. Check if there are other runs in progress on the workspace - speculative plans wait for active runs to complete.
+**Status check stuck as "pending"**: This usually means the plan is waiting for HCP Terraform's backend services to start planning, or HCP Terraform is still fetching or processing the configuration. Plan-only runs ignore the per-workspace run queue, so an active standard run in the same workspace should not block them.
 
 **Plans failing with credential errors**: Speculative plans use the same workspace variables as regular runs. Make sure all required credentials are set.
 
