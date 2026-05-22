@@ -8,7 +8,7 @@ Description: Learn how to use provider-defined functions in Terraform 1.8 and la
 
 ---
 
-Terraform 1.8 introduced a significant new capability: provider-defined functions. Before this feature, providers could only define resources, data sources, and provisioners. Now providers can also expose custom functions that you call directly in your Terraform expressions, just like built-in functions. This opens up a whole new set of possibilities for infrastructure configuration.
+Terraform 1.8 introduced a significant new capability: provider-defined functions. Before this feature, providers primarily exposed resources and data sources. Now providers can also expose custom functions that you call directly in your Terraform expressions, just like built-in functions. This opens up a whole new set of possibilities for infrastructure configuration.
 
 ## What Are Provider Functions?
 
@@ -32,10 +32,10 @@ output "provider_func" {
 Provider functions use a namespaced syntax:
 
 ```hcl
-provider::<provider_name>::<function_name>(arguments...)
+provider::<local_provider_name>::<function_name>(arguments...)
 ```
 
-The double colon (`::`) separates the `provider` keyword, the provider name, and the function name.
+The double colon (`::`) separates the `provider` keyword, the provider's local name from `required_providers`, and the function name.
 
 ## Setting Up Provider Functions
 
@@ -90,13 +90,7 @@ This is much cleaner than using regex or string splitting to extract ARN compone
 ```hcl
 locals {
   # Build an ARN from components
-  bucket_arn = provider::aws::arn_build({
-    partition  = "aws"
-    service    = "s3"
-    region     = ""
-    account_id = ""
-    resource   = "my-bucket/*"
-  })
+  bucket_arn = provider::aws::arn_build("aws", "s3", "", "", "my-bucket/*")
   # Result: "arn:aws:s3:::my-bucket/*"
 }
 ```
@@ -151,22 +145,22 @@ data "aws_iam_policy_document" "trust_policy" {
 
 ## Other Providers with Functions
 
-### HashiCorp Cloud Platform (HCP) Provider
+### Google Cloud Provider
 
 ```hcl
 terraform {
   required_providers {
-    hcp = {
-      source  = "hashicorp/hcp"
-      version = ">= 0.80.0"
+    google = {
+      source  = "hashicorp/google"
+      version = ">= 5.23.0"
     }
   }
 }
 
-# Example: Using HCP provider functions
+# Example: Using Google Cloud provider functions
 locals {
-  # Provider-specific utility functions
-  result = provider::hcp::some_function("input")
+  zone   = "us-central1-a"
+  region = provider::google::region_from_zone(local.zone)
 }
 ```
 
@@ -227,7 +221,7 @@ locals {
 
 ## Using Provider Functions with Aliases
 
-If you have multiple provider configurations with aliases, you reference the provider alias:
+If you have multiple provider configurations with aliases, provider function calls still use the provider's local name from `required_providers`. Aliases such as `aws.west` and `aws.east` are selected by resources, data sources, and modules through the `provider` meta-argument; they are not part of the provider function namespace:
 
 ```hcl
 provider "aws" {
@@ -240,7 +234,7 @@ provider "aws" {
   alias  = "east"
 }
 
-# Provider functions use the default provider unless you specify otherwise
+# Provider functions use the provider local name, not a provider configuration alias
 locals {
   parsed = provider::aws::arn_parse(var.some_arn)
 }
@@ -285,18 +279,18 @@ locals {
 Before provider functions, similar operations required data sources:
 
 ```hcl
-# Old way: using a data source (requires an API call)
+# Old way: using a data source block
 data "aws_arn" "example" {
   arn = "arn:aws:iam::123456789012:role/MyRole"
 }
 
-# New way: using a provider function (local computation, no API call)
+# New way: using a provider function directly in an expression
 locals {
   parsed = provider::aws::arn_parse("arn:aws:iam::123456789012:role/MyRole")
 }
 ```
 
-Provider functions are faster because they execute locally without making API calls.
+Provider functions are often simpler for pure parsing and formatting tasks because they execute directly in expressions and do not require adding a data source node to the graph.
 
 ## Summary
 
