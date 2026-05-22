@@ -271,7 +271,7 @@ There are a few behaviors to be aware of:
 
 ## Real-World Scenario: Route Table Entries
 
-Cloud providers often have limits on the number of routes per route table. You can use `chunklist` to split routes across multiple tables.
+Cloud providers often have limits on the number of routes per route table. If different subnet groups use different route tables, you can use `chunklist` to organize route definitions into table-specific groups.
 
 ```hcl
 variable "vpn_routes" {
