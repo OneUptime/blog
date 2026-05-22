@@ -16,7 +16,7 @@ Managing PagerDuty configurations manually through the web interface becomes dif
 
 ## Prerequisites
 
-You will need a PagerDuty account with admin access, a PagerDuty API key (found under API Access Keys in PagerDuty settings), and Terraform version 1.0 or later installed.
+You will need a PagerDuty account with admin access, a PagerDuty API key (found under API Access Keys in PagerDuty settings), and Terraform version 1.1 or later installed.
 
 ## Setting Up the PagerDuty Provider
 
@@ -27,12 +27,16 @@ Start by configuring the official PagerDuty Terraform provider.
 
 # Configure Terraform with the PagerDuty provider
 terraform {
-  required_version = ">= 1.0"
+  required_version = ">= 1.1"
 
   required_providers {
     pagerduty = {
-      source  = "PagerDuty/pagerduty"
+      source  = "pagerduty/pagerduty"
       version = "~> 3.0"
+    }
+    null = {
+      source  = "hashicorp/null"
+      version = "~> 3.2"
     }
   }
 }
@@ -172,31 +176,41 @@ output "pagerduty_integration_key" {
 
 ## Triggering PagerDuty Alerts from Terraform
 
-You can trigger PagerDuty alerts when Terraform operations fail or when specific conditions are met.
+Terraform itself cannot run a provisioner after its own apply fails, so use your CI/CD system for apply failure alerts. You can still trigger PagerDuty alerts from Terraform when a specific condition is met.
 
 ```hcl
 # alert-trigger.tf
-# Trigger a PagerDuty alert on infrastructure apply failure
-resource "null_resource" "pagerduty_alert_on_failure" {
-  # This provisioner runs when the resource is destroyed or on error
+# Trigger a PagerDuty alert when a specific condition is enabled
+variable "send_terraform_alert" {
+  description = "Whether to send a Terraform-triggered PagerDuty event"
+  type        = bool
+  default     = false
+}
+
+resource "null_resource" "pagerduty_alert" {
+  count = var.send_terraform_alert ? 1 : 0
+
+  triggers = {
+    dedup_key = "terraform-${terraform.workspace}-infrastructure-change"
+  }
+
   provisioner "local-exec" {
-    when    = destroy
     command = <<-EOT
       curl -X POST \
         -H "Content-Type: application/json" \
-        -H "Authorization: Token token=${var.pagerduty_token}" \
         -d '{
           "routing_key": "${pagerduty_service_integration.terraform_events.integration_key}",
           "event_action": "trigger",
+          "dedup_key": "${self.triggers.dedup_key}",
           "payload": {
-            "summary": "Terraform infrastructure destruction detected",
+            "summary": "Terraform infrastructure condition triggered",
             "severity": "critical",
             "source": "terraform",
             "component": "infrastructure",
             "group": "production",
             "custom_details": {
               "workspace": "${terraform.workspace}",
-              "action": "destroy"
+              "condition": "send_terraform_alert"
             }
           }
         }' \
@@ -258,13 +272,23 @@ resource "pagerduty_maintenance_window" "terraform_apply" {
   description = "Terraform infrastructure update in progress"
 
   # Set the maintenance window duration
-  start_time = timestamp()
-  end_time   = timeadd(timestamp(), "1h")
+  start_time = var.maintenance_start_time
+  end_time   = var.maintenance_end_time
 
   # Apply to the production infrastructure service
   services = [
     pagerduty_service.production_infra.id,
   ]
+}
+
+variable "maintenance_start_time" {
+  description = "Maintenance window start time in RFC 3339 format"
+  type        = string
+}
+
+variable "maintenance_end_time" {
+  description = "Maintenance window end time in RFC 3339 format"
+  type        = string
 }
 ```
 
@@ -304,6 +328,7 @@ jobs:
             -d '{
               "routing_key": "${{ secrets.PAGERDUTY_INTEGRATION_KEY }}",
               "event_action": "trigger",
+              "dedup_key": "terraform-${{ github.repository }}",
               "payload": {
                 "summary": "Terraform apply failed in ${{ github.repository }}",
                 "severity": "critical",
@@ -325,12 +350,7 @@ jobs:
             -d '{
               "routing_key": "${{ secrets.PAGERDUTY_INTEGRATION_KEY }}",
               "event_action": "resolve",
-              "dedup_key": "terraform-${{ github.repository }}",
-              "payload": {
-                "summary": "Terraform apply succeeded",
-                "severity": "info",
-                "source": "github-actions"
-              }
+              "dedup_key": "terraform-${{ github.repository }}"
             }' \
             "https://events.pagerduty.com/v2/enqueue"
 ```
