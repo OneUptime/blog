@@ -79,13 +79,14 @@ You can reference attributes from the included configuration using the name:
 
 ```hcl
 include "root" {
-  path = find_in_parent_folders()
+  path   = find_in_parent_folders()
+  expose = true
 }
 
-# Access the locals from the included config
+# Access values from the exposed included config
 inputs = {
   # Reference the root include's inputs
-  state_bucket = include.root.inputs.state_bucket
+  project = include.root.inputs.project
 }
 ```
 
@@ -184,18 +185,19 @@ When a child configuration defines the same block as the included parent, Terrag
 
 There are three merge strategies:
 
-### no_merge (default for most blocks)
+### no_merge
 
-The child completely overrides the parent:
+The included parent is not merged into the child. This is useful when you only want to expose values from the parent without inheriting its configuration:
 
 ```hcl
 include "root" {
   path           = find_in_parent_folders()
+  expose         = true
   merge_strategy = "no_merge"
 }
 ```
 
-### shallow
+### shallow (default)
 
 Top-level keys are merged, with child values taking precedence:
 
