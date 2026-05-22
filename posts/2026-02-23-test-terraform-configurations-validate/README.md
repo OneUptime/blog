@@ -159,10 +159,10 @@ variable "ami_id" {
 ### Module Source Issues
 
 ```hcl
-# Validate catches invalid module sources
+# Initialization catches invalid module sources before validation runs
 module "vpc" {
   source = "./modules/vpc"
-  # Error if the path does not exist (after terraform init)
+  # Error during terraform init if the path does not exist
 
   cidr_block = "10.0.0.0/16"
 }
@@ -186,9 +186,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v4
         with:
-          terraform_version: 1.8.5
+          terraform_version: 1.15.4
 
       - name: Terraform Format Check
         run: terraform fmt -check -recursive terraform/
@@ -226,7 +226,7 @@ stages:
 
 terraform-validate:
   stage: validate
-  image: hashicorp/terraform:1.8.5
+  image: hashicorp/terraform:1.15.4
   script:
     - cd terraform/
     - terraform init -backend=false
@@ -247,7 +247,7 @@ pip install pre-commit
 cat > .pre-commit-config.yaml << 'EOF'
 repos:
   - repo: https://github.com/antonbabenko/pre-commit-terraform
-    rev: v1.86.0
+    rev: v1.105.0
     hooks:
       - id: terraform_fmt
       - id: terraform_validate
@@ -326,20 +326,20 @@ curl -s https://raw.githubusercontent.com/terraform-linters/tflint/master/instal
 tflint --init
 tflint
 
-# tflint catches things validate misses:
+# With provider rulesets configured, tflint catches things validate misses:
 # - Invalid instance types
 # - Deprecated resource arguments
 # - Naming convention violations
 ```
 
-### tfsec / trivy
+### trivy / tfsec
 
 ```bash
 # Security scanning
-tfsec .
-
-# Or with trivy
 trivy config .
+
+# Or with legacy tfsec installations
+tfsec .
 ```
 
 ### Complete Validation Pipeline
@@ -364,7 +364,7 @@ echo "Step 4: Lint"
 tflint --init && tflint
 
 echo "Step 5: Security scan"
-tfsec . --minimum-severity HIGH
+trivy config --severity HIGH,CRITICAL .
 
 echo "All validation checks passed!"
 ```
@@ -377,7 +377,7 @@ echo "All validation checks passed!"
 
 **Validate early and often**: Run validation on every commit, not just before deployment. The earlier you catch errors, the faster you fix them.
 
-**Combine with type constraints**: Use variable type constraints and validation rules to make `terraform validate` catch more issues:
+**Combine with type constraints**: Use variable type constraints and validation rules to catch more issues before apply:
 
 ```hcl
 variable "environment" {
@@ -401,7 +401,7 @@ variable "cidr_block" {
 }
 ```
 
-These custom validations run during `terraform validate`, catching bad inputs before they reach the plan stage.
+These custom validations run during planning, and `terraform validate` can also catch invalid values passed to child modules before they reach the plan stage.
 
 ## Summary
 
