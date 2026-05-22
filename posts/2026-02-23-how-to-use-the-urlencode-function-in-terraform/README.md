@@ -8,7 +8,7 @@ Description: Learn how to use Terraform's urlencode function to safely encode st
 
 ---
 
-The `urlencode` function in Terraform applies URL encoding (also called percent encoding) to a string, making it safe for use in URLs. Characters that have special meaning in URLs - like spaces, ampersands, equals signs, and slashes - get replaced with their percent-encoded equivalents. This is essential when building URLs that include user-provided values, query parameters, or path segments that might contain special characters.
+The `urlencode` function in Terraform applies URL encoding (also called percent encoding) to a string, making it safe for use in URL query string arguments. Characters that have special meaning in URLs - like spaces, ampersands, equals signs, and slashes - get replaced with encoded equivalents. This is essential when building URLs that include user-provided values or query parameters that might contain special characters.
 
 ## Function Syntax
 
@@ -22,7 +22,7 @@ urlencode("key=value&foo=bar")
 # Result: "key%3Dvalue%26foo%3Dbar"
 ```
 
-The function follows the standard application/x-www-form-urlencoded encoding, where spaces become `+` and special characters become percent-encoded sequences.
+The function follows query-string form encoding behavior, where spaces become `+` and special characters become percent-encoded sequences.
 
 ## Common Characters and Their Encodings
 
@@ -103,9 +103,9 @@ resource "aws_cloudwatch_metric_alarm" "high_cpu" {
 }
 ```
 
-## API Gateway Query String Parameters
+## Building Redirect URLs with Query Parameters
 
-When configuring API Gateway with default query parameters:
+When building redirect URLs with default query parameters:
 
 ```hcl
 locals {
@@ -133,17 +133,17 @@ output "redirect_url" {
 }
 ```
 
-## Encoding Values for Terraform Backend Configuration
+## Encoding Values That Reference Terraform State
 
-Some backend configurations need URL-encoded values:
+Some URLs that reference Terraform state need URL-encoded values:
 
 ```hcl
 locals {
   # If your S3 key path contains special characters
   state_key = "terraform/environments/${var.environment}/${var.project}/state"
 
-  # URL-encode for use in URLs referencing the state
-  state_url = "https://s3.amazonaws.com/${var.state_bucket}/${urlencode(local.state_key)}"
+  # URL-encode for use as query parameter values
+  state_url = "https://app.example.com/state?bucket=${urlencode(var.state_bucket)}&key=${urlencode(local.state_key)}"
 }
 ```
 
@@ -207,10 +207,13 @@ variable "db_password" {
 
 locals {
   # The password might contain @, :, /, or other URL-special characters
+  db_username_url = replace(urlencode(var.db_username), "+", "%20")
+  db_password_url = replace(urlencode(var.db_password), "+", "%20")
+
   db_connection = format(
     "postgresql://%s:%s@%s:%d/%s?sslmode=require",
-    urlencode(var.db_username),
-    urlencode(var.db_password),
+    local.db_username_url,
+    local.db_password_url,
     var.db_host,
     var.db_port,
     var.db_name
@@ -278,7 +281,7 @@ output "authorization_url" {
 }
 ```
 
-## Encoding for SNS Subscription Filters
+## Encoding for SNS HTTPS Subscription Endpoints
 
 ```hcl
 locals {
@@ -323,7 +326,7 @@ locals {
 
 There are a few things to know about `urlencode`:
 
-1. It encodes for the `application/x-www-form-urlencoded` content type, which means spaces become `+` rather than `%20`. Most systems handle both, but if you specifically need `%20`, use `replace(urlencode(value), "+", "%20")`.
+1. It encodes for query string arguments, which means spaces become `+` rather than `%20`. Many query parsers handle both, but if you specifically need `%20` for a URL path segment, fragment, or userinfo component, use `replace(urlencode(value), "+", "%20")`.
 
 2. There is no built-in `urldecode` function in Terraform. If you need to decode URL-encoded strings, you will need to use `replace` for common sequences or an external data source.
 
@@ -333,4 +336,4 @@ There are a few things to know about `urlencode`:
 
 ## Summary
 
-The `urlencode` function makes strings safe for inclusion in URLs by replacing special characters with percent-encoded equivalents. Use it for query parameter values, webhook URLs, database connection strings, and any context where user-provided or dynamic values become part of a URL. The key rule is to encode the values, not the URL structure - encode each parameter value separately, then assemble the complete URL with the proper delimiters.
+The `urlencode` function makes strings safe for inclusion in URL query string arguments by replacing special characters with encoded equivalents. Use it for query parameter values, webhook URLs, and any context where user-provided or dynamic values become part of a query string. The key rule is to encode the values, not the URL structure - encode each parameter value separately, then assemble the complete URL with the proper delimiters.
