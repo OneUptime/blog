@@ -26,11 +26,11 @@ First, create a dedicated database and user for Terraform state:
 
 ```sql
 -- Connect to PostgreSQL as a superuser or admin
--- Create a dedicated database for Terraform state
-CREATE DATABASE terraform_state;
-
 -- Create a user for Terraform
 CREATE USER terraform_user WITH PASSWORD 'strong-password-here';
+
+-- Create a dedicated database for Terraform state
+CREATE DATABASE terraform_state OWNER terraform_user;
 
 -- Grant connect privilege
 GRANT CONNECT ON DATABASE terraform_state TO terraform_user;
@@ -38,16 +38,8 @@ GRANT CONNECT ON DATABASE terraform_state TO terraform_user;
 -- Switch to the terraform_state database
 \c terraform_state
 
--- Create a schema for Terraform (optional but recommended)
-CREATE SCHEMA IF NOT EXISTS terraform;
-
--- Grant usage on the schema
-GRANT USAGE ON SCHEMA terraform TO terraform_user;
-GRANT CREATE ON SCHEMA terraform TO terraform_user;
-
--- Grant necessary permissions for table operations
-ALTER DEFAULT PRIVILEGES IN SCHEMA terraform
-  GRANT ALL ON TABLES TO terraform_user;
+-- Create a schema for Terraform (optional; Terraform uses terraform_remote_state by default)
+CREATE SCHEMA IF NOT EXISTS terraform AUTHORIZATION terraform_user;
 ```
 
 You do not need to create any tables manually. Terraform creates the required table structure automatically when you initialize the backend.
@@ -63,6 +55,9 @@ terraform {
   backend "pg" {
     # PostgreSQL connection string
     conn_str = "postgres://terraform_user:strong-password-here@localhost:5432/terraform_state?sslmode=disable"
+
+    # Use the schema created above
+    schema_name = "terraform"
   }
 }
 ```
@@ -79,8 +74,7 @@ Initialize Terraform to set up the backend:
 # Initialize the backend
 terraform init
 
-# Terraform creates a table called "states" in the public schema
-# (or in a custom schema if specified)
+# Terraform creates a table called "states" in the configured schema
 ```
 
 ## Connection String Options
@@ -130,7 +124,7 @@ terraform init -backend-config="conn_str=postgres://terraform_user:password@db.e
 
 ## Custom Schema Name
 
-By default, Terraform uses the `public` schema. You can specify a different schema:
+By default, Terraform uses the `terraform_remote_state` schema. You can specify a different schema:
 
 ```hcl
 terraform {
@@ -151,17 +145,15 @@ When Terraform initializes the PostgreSQL backend, it creates a table with this 
 
 ```sql
 -- Terraform creates this table automatically
-CREATE TABLE IF NOT EXISTS states (
-  id          SERIAL PRIMARY KEY,
+CREATE SEQUENCE IF NOT EXISTS public.global_states_id_seq AS bigint;
+
+CREATE TABLE IF NOT EXISTS terraform.states (
+  id          BIGINT NOT NULL DEFAULT nextval('public.global_states_id_seq') PRIMARY KEY,
   name        TEXT UNIQUE,  -- Workspace name
   data        TEXT          -- JSON state data
 );
 
--- And a lock table for state locking
-CREATE TABLE IF NOT EXISTS locks (
-  name        TEXT PRIMARY KEY,
-  record      TEXT
-);
+CREATE UNIQUE INDEX IF NOT EXISTS states_by_name ON terraform.states (name);
 ```
 
 You can inspect the state directly with SQL:
@@ -172,38 +164,30 @@ SELECT id, name, length(data) AS state_size
 FROM terraform.states;
 
 -- Check for active locks
-SELECT * FROM terraform.locks;
+SELECT * FROM pg_locks WHERE locktype = 'advisory';
 ```
 
 ## State Locking
 
-The PostgreSQL backend supports state locking through a combination of the `locks` table and PostgreSQL advisory locks. This is enabled by default and prevents concurrent modifications.
+The PostgreSQL backend supports state locking through PostgreSQL advisory locks. This is enabled by default and prevents concurrent modifications.
 
-You can verify locking is active by checking the locks table during a Terraform operation:
+You can verify locking is active by checking `pg_locks` during a Terraform operation:
 
 ```sql
 -- Check for active locks during a terraform apply
-SELECT * FROM terraform.locks;
+SELECT locktype, mode, granted, objid
+FROM pg_locks
+WHERE locktype = 'advisory';
 
 -- Output during an active operation:
--- name    | record
--- --------+------------------------------------------
--- default | {"ID":"abc123","Operation":"OperationTypeApply",...}
+-- locktype |      mode       | granted | objid
+-- ---------+-----------------+---------+------
+-- advisory | ExclusiveLock   | t       | 123
 ```
 
-If a lock gets stuck after a crash:
+The `pg` backend does not support `terraform force-unlock`. Database-native advisory locks are automatically released when the session ends or the connection fails.
 
-```bash
-# Force unlock using the lock ID from the error message
-terraform force-unlock LOCK_ID
-```
-
-You can also clear the lock directly in the database (as a last resort):
-
-```sql
--- Emergency lock removal (use force-unlock instead when possible)
-DELETE FROM terraform.locks WHERE name = 'default';
-```
+If you need to clear an active lock manually, identify the backend session in PostgreSQL and terminate that session as a last resort.
 
 ## SSL Configuration
 
@@ -243,7 +227,7 @@ terraform {
 terraform {
   backend "pg" {
     # Using Cloud SQL Proxy
-    conn_str = "postgres://terraform:password@localhost:5432/terraform_state?host=/cloudsql/project:region:instance"
+    conn_str = "postgres://terraform:password@/terraform_state?host=/cloudsql/project:region:instance"
   }
 }
 ```
@@ -253,7 +237,7 @@ terraform {
 ```hcl
 terraform {
   backend "pg" {
-    conn_str = "postgres://terraform@myserver:password@myserver.postgres.database.azure.com:5432/terraform_state?sslmode=require"
+    conn_str = "postgres://terraform%40myserver:password@myserver.postgres.database.azure.com:5432/terraform_state?sslmode=require"
   }
 }
 ```
