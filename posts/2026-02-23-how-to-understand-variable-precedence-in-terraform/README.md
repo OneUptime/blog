@@ -21,10 +21,9 @@ Terraform evaluates variable values from multiple sources and applies them in a 
 3. **terraform.tfvars** file
 4. **terraform.tfvars.json** file
 5. **\*.auto.tfvars** or **\*.auto.tfvars.json** files (in alphabetical order)
-6. **-var-file** flags (in the order specified on the command line)
-7. **-var** flags (in the order specified on the command line)
+6. **-var-file** and **-var** flags (in the order specified on the command line)
 
-The `-var` flag on the command line has the highest precedence. Default values have the lowest.
+Command-line variable options have the highest precedence, and when multiple command-line options set the same variable, the last one provided wins. Default values have the lowest.
 
 ## Level 1: Default Values (Lowest Priority)
 
@@ -100,9 +99,9 @@ instance_type = "t3.small"
 instance_type = "t3.xlarge"  # This wins
 ```
 
-## Level 6: -var-file Flags
+## Level 6: Command-Line Flags
 
-Explicitly specified variable files override all auto-loaded files. When multiple `-var-file` flags are used, later ones override earlier ones for the same variable.
+Explicitly specified command-line variable options override all auto-loaded files. Terraform processes `-var-file` and `-var` options together in the order they are provided, so later command-line options override earlier ones for the same variable.
 
 ```bash
 terraform apply \
@@ -122,15 +121,22 @@ environment   = "production"
 # Both values from production.tfvars take effect
 ```
 
-## Level 7: -var Flags (Highest Priority)
-
-The `-var` flag on the command line overrides everything. When multiple `-var` flags set the same variable, the last one wins.
+The `-var` flag can override a variable file when it is specified later on the command line:
 
 ```bash
 terraform apply \
   -var-file="production.tfvars" \
   -var="instance_type=t3.nano"
 # instance_type = "t3.nano" regardless of what production.tfvars says
+```
+
+But a later `-var-file` can also override an earlier `-var`:
+
+```bash
+terraform apply \
+  -var="instance_type=t3.nano" \
+  -var-file="production.tfvars"
+# If production.tfvars sets instance_type, that value wins
 ```
 
 ```bash
@@ -174,13 +180,13 @@ instance_type = "t3.xlarge"
 ```
 
 ```bash
-# Level 7: -var flag
+# Level 6: command-line flags
 terraform apply \
   -var-file="production.tfvars" \
   -var="instance_type=t3.2xlarge"
 ```
 
-Result: `instance_type = "t3.2xlarge"` because the `-var` flag has the highest precedence.
+Result: `instance_type = "t3.2xlarge"` because the `-var` flag is the last command-line value for this variable.
 
 If we remove the `-var` flag:
 
@@ -277,7 +283,7 @@ terraform apply \
   -auto-approve
 ```
 
-The `-var` flag overrides the `instance_count` from the file while keeping everything else.
+The `-var` flag overrides the `instance_count` from the file while keeping everything else because it appears later on the command line.
 
 ### Pattern 4: Secrets via Environment, Config via Files
 
@@ -356,11 +362,10 @@ terraform apply -var-file="base.tfvars" -var-file="production.tfvars"
 | terraform.tfvars | 3 | Yes |
 | terraform.tfvars.json | 4 | Yes |
 | *.auto.tfvars | 5 | Yes |
-| -var-file flag | 6 | No (explicit) |
-| -var flag | 7 (highest) | No (explicit) |
+| -var-file and -var flags | 6 (highest) | No (explicit) |
 
 ## Wrapping Up
 
-Terraform's variable precedence is designed to be predictable: defaults provide fallbacks, files provide standard configuration, and command-line flags provide overrides. Understanding this order lets you build layered configuration strategies where each environment gets the right values without duplicating your entire configuration. When in doubt, remember that more explicit methods (command-line flags) always beat less explicit ones (defaults and auto-loaded files).
+Terraform's variable precedence is designed to be predictable: defaults provide fallbacks, files provide standard configuration, and command-line flags provide overrides. Understanding this order lets you build layered configuration strategies where each environment gets the right values without duplicating your entire configuration. When in doubt, remember that command-line flags beat defaults and auto-loaded files, with later command-line variable options overriding earlier ones for the same variable.
 
 For practical examples of each variable-setting method, see our posts on [passing variables with -var](https://oneuptime.com/blog/post/2026-02-23-how-to-pass-variables-via-command-line-with-var-flag-in-terraform/view) and [using terraform.tfvars](https://oneuptime.com/blog/post/2026-02-23-how-to-pass-variables-via-terraform-tfvars-file/view).
