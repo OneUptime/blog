@@ -89,7 +89,7 @@ spec:
 REST APIs have well-defined URL structures. You can use Istio's VirtualService to route different paths to different services or versions:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: orders-api-vs
@@ -135,7 +135,7 @@ Notice the different timeout and retry settings per HTTP method. GET requests ar
 When rolling out a new API version, route a percentage of traffic to it:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: orders-api-dr
@@ -150,7 +150,7 @@ spec:
     labels:
       version: v2
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: orders-api-canary
@@ -175,7 +175,7 @@ spec:
 Protect your REST API from cascading failures:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: orders-api-circuit-breaker
@@ -204,8 +204,10 @@ The `LEAST_REQUEST` load balancer is generally better than round robin for REST 
 
 ## Exposing the API via Istio Ingress
 
+The `credentialName` below must refer to a Kubernetes TLS secret available to the ingress gateway. For the default Istio ingress gateway, create that secret in the `istio-system` namespace.
+
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: api-gateway
@@ -224,7 +226,7 @@ spec:
     hosts:
     - "api.example.com"
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: orders-api-external
@@ -264,7 +266,7 @@ spec:
 Restrict which services can access your API:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: orders-api-auth
@@ -292,14 +294,14 @@ spec:
         paths: ["/api/v1/orders", "/api/v1/orders/*"]
 ```
 
-This gives the frontend namespace read-only access while admin services get full CRUD access.
+With mTLS enabled, this gives the frontend namespace read-only access while admin services get full CRUD access.
 
 ## Request Mirroring for Testing
 
 Before fully deploying a new version, mirror production traffic to it:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: orders-api-mirror
@@ -326,7 +328,7 @@ This sends a copy of 10% of production traffic to v2. The responses from v2 are 
 Test how upstream services handle errors from your API:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: orders-api-fault
@@ -356,7 +358,7 @@ This adds a 3-second delay to 5% of requests and returns a 500 error for 1% of r
 Enforce strict mTLS for all traffic to your REST API:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: api-mtls
@@ -374,11 +376,11 @@ Istio automatically tracks key metrics for your REST API:
 # Request rate by response code
 
 kubectl exec -n istio-system deploy/prometheus -- \
-  promtool query instant 'sum(rate(istio_requests_total{destination_service="orders-api.api-services.svc.cluster.local"}[5m])) by (response_code)'
+  promtool query instant http://localhost:9090 'sum(rate(istio_requests_total{destination_service="orders-api.api-services.svc.cluster.local"}[5m])) by (response_code)'
 
 # P95 latency
 kubectl exec -n istio-system deploy/prometheus -- \
-  promtool query instant 'histogram_quantile(0.95, sum(rate(istio_request_duration_milliseconds_bucket{destination_service="orders-api.api-services.svc.cluster.local"}[5m])) by (le))'
+  promtool query instant http://localhost:9090 'histogram_quantile(0.95, sum(rate(istio_request_duration_milliseconds_bucket{destination_service="orders-api.api-services.svc.cluster.local"}[5m])) by (le))'
 ```
 
 ## Summary
