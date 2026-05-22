@@ -24,7 +24,7 @@ Before any upgrade, read the upgrade notes for your target version. This is not 
 
 ### API Field Removals
 
-Istio follows a deprecation cycle. A field gets deprecated in version N, triggers a warning in version N+1, and gets removed in version N+2. If you ignored the deprecation warnings, the removal breaks your config.
+Istio follows a deprecation process. A field or behavior may be deprecated first, generate warnings for a period of time, and then be removed in a later release. If you ignored the deprecation warnings, the removal breaks your config.
 
 Example: The `meshConfig.disablePolicyChecks` field was deprecated and later removed. If your IstioOperator still references it:
 
@@ -44,7 +44,7 @@ Fix: Remove the field from your configuration before upgrading.
 
 Sometimes Istio changes the default value of a setting. Your workloads may depend on the old default without you realizing it.
 
-Example: If the default mTLS mode changes from PERMISSIVE to STRICT, services without proper certificates will stop being able to communicate.
+Example: If a future version changed the default mTLS mode from PERMISSIVE to STRICT, services without proper certificates would stop being able to communicate.
 
 Check your current effective configuration:
 
@@ -105,7 +105,7 @@ After upgrading, the flag might not be needed anymore, or the behavior it contro
 kubectl get istiooperator -n istio-system -o yaml > current-config.yaml
 
 # Get all Istio resources
-kubectl get vs,dr,gw,se,pa,ra,ef,sidecar --all-namespaces -o yaml > all-resources.yaml
+kubectl get vs,dr,gw,se,pa,ra,envoyfilters,sidecar --all-namespaces -o yaml > all-resources.yaml
 ```
 
 ### Step 2: Run Pre-Check
@@ -136,8 +136,8 @@ Generate the manifest for the new version and check for conflicts:
 # Generate what the new version would install
 istioctl manifest generate --set profile=default > new-manifest.yaml
 
-# Compare with current installation
-istioctl manifest diff current-manifest.yaml new-manifest.yaml
+# Compare with the manifest from your current installation
+diff -u current-manifest.yaml new-manifest.yaml
 ```
 
 ### Step 4: Check Deprecation Warnings
