@@ -8,9 +8,9 @@ Description: Learn multiple strategies to exclude specific resources from terraf
 
 ---
 
-Running `terraform destroy` is one of the most dangerous operations in infrastructure management. It tears down everything in your state file. But sometimes you need to destroy most of your infrastructure while keeping specific resources alive - a production database, an S3 bucket with years of data, or a VPC shared with other teams. Terraform provides several mechanisms to protect resources from destruction.
+Running `terraform destroy` is one of the most dangerous operations in infrastructure management. It tears down all objects managed by the current Terraform configuration and state. But sometimes you need to destroy most of your infrastructure while keeping specific resources alive - a production database, an S3 bucket with years of data, or a VPC shared with other teams. Terraform provides several mechanisms to protect resources from destruction.
 
-This guide covers every approach to excluding resources from destroy operations, from lifecycle rules to state manipulation.
+This guide covers common approaches to excluding resources from destroy operations, from lifecycle rules to state manipulation.
 
 ## Using prevent_destroy Lifecycle Rule
 
@@ -18,14 +18,15 @@ The most straightforward protection is the `prevent_destroy` lifecycle rule:
 
 ```hcl
 resource "aws_db_instance" "production" {
-  identifier     = "production-database"
-  engine         = "postgres"
-  engine_version = "15.4"
-  instance_class = "db.r5.large"
-  username       = "admin"
-  password       = var.db_password
+  identifier        = "production-database"
+  engine            = "postgres"
+  engine_version    = "15.4"
+  instance_class    = "db.r5.large"
+  allocated_storage = 100
+  username          = "admin"
+  password          = var.db_password
 
-  skip_final_snapshot = false
+  skip_final_snapshot       = false
   final_snapshot_identifier = "production-final-snapshot"
 
   lifecycle {
@@ -53,7 +54,7 @@ This blocks the entire destroy operation, not just the protected resource. Nothi
 
 ### Limitations of prevent_destroy
 
-- It blocks the entire `terraform destroy`. You cannot destroy other resources while this protection is in place.
+- It blocks any destroy plan that includes the protected resource. To destroy unrelated resources while this protection is in place, reduce the plan scope with `-target` or use a separate configuration.
 - It does not prevent the resource from being destroyed if you remove the resource block from the configuration.
 - To actually destroy the resource, you must first remove the `prevent_destroy` setting.
 
@@ -69,7 +70,7 @@ terraform destroy -target=aws_instance.worker
 terraform destroy -target=module.application
 ```
 
-Everything not targeted survives. This is the inverse of protection - instead of marking what to keep, you specify what to remove.
+Terraform limits the destroy plan to the targeted addresses and their dependencies. This is the inverse of protection - instead of marking what to keep, you specify what to remove. Always review the plan because resource targeting can produce a partial plan that does not represent every change in the configuration.
 
 ```bash
 # Destroy multiple specific resources
@@ -107,7 +108,7 @@ terraform import aws_db_instance.production production-database
 terraform import aws_s3_bucket.data company-data-bucket
 ```
 
-This works but is manual and error-prone. You need to remember to re-import the resources afterward.
+This works but is manual and error-prone. You need to remember to re-import the resources afterward, or remove them from the configuration; otherwise, a later normal `terraform plan` can propose creating new objects for the forgotten resources.
 
 ## Using the removed Block
 
@@ -157,9 +158,10 @@ resource "aws_vpc" "main" {
 }
 
 resource "aws_db_instance" "production" {
-  identifier     = "production-database"
-  engine         = "postgres"
-  instance_class = "db.r5.large"
+  identifier        = "production-database"
+  engine            = "postgres"
+  instance_class    = "db.r5.large"
+  allocated_storage = 100
 }
 
 output "vpc_id" {
@@ -208,28 +210,34 @@ PROTECTED=(
 )
 
 # Build the target list (everything NOT protected)
-TARGETS=""
+TARGETS=()
 while IFS= read -r resource; do
   skip=false
   for protected in "${PROTECTED[@]}"; do
-    if [[ "$resource" == "$protected"* ]]; then
+    if [[ "$resource" == "$protected" || "$resource" == "$protected["* ]]; then
       skip=true
       break
     fi
   done
   if [ "$skip" = false ]; then
-    TARGETS="$TARGETS -target=$resource"
+    TARGETS+=("-target=$resource")
   fi
 done < <(terraform state list)
 
 # Show what will be destroyed
-echo "Will destroy: $TARGETS"
+printf 'Will destroy: %s\n' "${TARGETS[*]}"
 echo "Will keep: ${PROTECTED[*]}"
+
+if [ "${#TARGETS[@]}" -eq 0 ]; then
+  echo "No unprotected resources found."
+  exit 0
+fi
+
 read -p "Continue? (y/n) " -n 1 -r
 echo
 
 if [[ $REPLY =~ ^[Yy]$ ]]; then
-  terraform destroy $TARGETS
+  terraform destroy "${TARGETS[@]}"
 fi
 ```
 
@@ -240,9 +248,10 @@ In practice, you often combine multiple strategies:
 ```hcl
 # 1. Use prevent_destroy for critical production resources
 resource "aws_db_instance" "production" {
-  identifier     = "production-database"
-  engine         = "postgres"
-  instance_class = "db.r5.large"
+  identifier        = "production-database"
+  engine            = "postgres"
+  instance_class    = "db.r5.large"
+  allocated_storage = 100
 
   lifecycle {
     prevent_destroy = true
@@ -275,10 +284,11 @@ resource "aws_s3_bucket" "data" {
 
 resource "aws_s3_bucket_versioning" "data" {
   bucket = aws_s3_bucket.data.id
+  mfa    = var.mfa_delete_token
 
   versioning_configuration {
     status     = "Enabled"
-    mfa_delete = "Enabled"  # Requires MFA to delete
+    mfa_delete = "Enabled"  # Requires MFA for permanent version deletes
   }
 }
 ```
@@ -290,6 +300,7 @@ resource "aws_db_instance" "production" {
   identifier          = "production-database"
   engine              = "postgres"
   instance_class      = "db.r5.large"
+  allocated_storage   = 100
   deletion_protection = true  # AWS-level protection
 
   lifecycle {
