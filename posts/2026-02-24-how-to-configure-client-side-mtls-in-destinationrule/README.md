@@ -96,7 +96,7 @@ kubectl create secret generic partner-certs \
   --from-file=ca.crt=partner-ca.pem
 ```
 
-Then reference the secret using the `credentialName` field. However, `credentialName` is primarily supported in Gateway configurations. For sidecar DestinationRules, you typically need to mount the secret as a volume.
+Then reference the secret using the `credentialName` field. For sidecar DestinationRules, `credentialName` works when the DestinationRule has a `workloadSelector`; otherwise sidecars continue to use the certificate file paths. If you are not using a workload-scoped DestinationRule, mount the secret as a volume instead.
 
 ### Method 2: Volume Mounts via Pod Annotation
 
@@ -138,6 +138,10 @@ spec:
   hosts:
   - api.partner.com
   ports:
+  - number: 80
+    name: http
+    protocol: HTTP
+    targetPort: 443
   - number: 443
     name: https
     protocol: HTTPS
@@ -164,11 +168,15 @@ metadata:
 spec:
   host: api.partner.com
   trafficPolicy:
-    tls:
-      mode: MUTUAL
-      clientCertificate: /etc/partner-certs/tls.crt
-      privateKey: /etc/partner-certs/tls.key
-      caCertificates: /etc/partner-certs/ca.crt
+    portLevelSettings:
+    - port:
+        number: 80
+      tls:
+        mode: MUTUAL
+        clientCertificate: /etc/partner-certs/tls.crt
+        privateKey: /etc/partner-certs/tls.key
+        caCertificates: /etc/partner-certs/ca.crt
+        sni: api.partner.com
 ```
 
 Step 4: Deploy your application with the certificate volume mount:
@@ -219,7 +227,7 @@ Look for the `transportSocket` section showing the certificate paths and TLS mod
 You can also test the connection:
 
 ```bash
-kubectl exec <pod-name> -c app -- curl -v https://api.partner.com/health
+kubectl exec <pod-name> -c app -- curl -v http://api.partner.com/health
 ```
 
 If mTLS is configured correctly in the DestinationRule, Envoy handles the certificate exchange transparently. Your application just makes a regular HTTP call and Envoy upgrades it to mTLS.
@@ -248,10 +256,11 @@ This ensures that the frontend namespace always uses mTLS when talking to the ba
 **Connection refused**: The most common issue. Check that both sides agree on the TLS mode. If the client sends mTLS but the server expects plain text, the connection fails.
 
 ```bash
-istioctl authn tls-check <pod-name> backend-service.backend-ns.svc.cluster.local
+istioctl experimental describe pod <pod-name>
+istioctl proxy-config cluster <pod-name> --fqdn backend-service.backend-ns.svc.cluster.local -o json
 ```
 
-This command shows the actual and desired TLS status.
+These commands show the Istio configuration affecting the pod and the generated Envoy cluster TLS settings.
 
 **Certificate verification failed**: The CA certificate does not match. Make sure `caCertificates` points to the CA that signed the server's certificate, not your own CA.
 

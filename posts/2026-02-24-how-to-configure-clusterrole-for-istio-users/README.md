@@ -314,11 +314,11 @@ rules:
     resources: ["deployments", "replicasets"]
     verbs: ["get", "list", "watch"]
   - apiGroups: [""]
-    resources: ["pods/exec"]
+    resources: ["pods/portforward"]
     verbs: ["create"]
 ```
 
-The `pods/exec` permission is needed for commands like `istioctl proxy-config` that exec into sidecar containers.
+The `pods/portforward` permission is needed for commands like `istioctl proxy-config` that connect to the Envoy admin endpoint through Kubernetes port forwarding.
 
 ## Best Practices
 
