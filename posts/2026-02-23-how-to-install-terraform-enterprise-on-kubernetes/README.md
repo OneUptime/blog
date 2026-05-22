@@ -14,7 +14,7 @@ Running Terraform Enterprise on Kubernetes gives you built-in high availability,
 
 Before deploying, ensure you have:
 
-- A Kubernetes cluster (1.24+) with at least 4 CPU cores and 16 GB RAM available
+- A Kubernetes cluster (1.25+) with at least 4 CPU cores and 16 GB RAM available
 - kubectl configured to access your cluster
 - Helm 3 installed
 - A Terraform Enterprise license
@@ -22,6 +22,7 @@ Before deploying, ensure you have:
 - S3-compatible object storage (for state files and artifacts)
 - TLS certificates for your hostname
 - DNS configured to point to your cluster's ingress
+- Access to the Terraform Enterprise container registry
 
 ```bash
 # Verify your tools
@@ -50,6 +51,12 @@ kubectl -n terraform-enterprise create secret tls tfe-tls \
   --cert=/path/to/tfe.crt \
   --key=/path/to/tfe.key
 
+# Create the image pull secret
+kubectl -n terraform-enterprise create secret docker-registry terraform-enterprise \
+  --docker-server=images.releases.hashicorp.com \
+  --docker-username=terraform \
+  --docker-password="$(cat /path/to/terraform.hclic)"
+
 # Create the license secret
 kubectl -n terraform-enterprise create secret generic tfe-license \
   --from-literal=license="$TFE_LICENSE"
@@ -60,11 +67,11 @@ kubectl -n terraform-enterprise create secret generic tfe-encryption \
 
 # Create the database credentials secret
 kubectl -n terraform-enterprise create secret generic tfe-database \
-  --from-literal=host="postgres.internal.example.com" \
+  --from-literal=host="postgres.internal.example.com:5432" \
   --from-literal=username="terraform" \
   --from-literal=password="your-db-password" \
   --from-literal=name="terraform_enterprise" \
-  --from-literal=sslmode="require"
+  --from-literal=parameters="sslmode=require"
 
 # Create the object storage credentials secret
 kubectl -n terraform-enterprise create secret generic tfe-object-storage \
@@ -95,52 +102,66 @@ Create a Helm values file for your deployment:
 
 replicaCount: 1  # Start with 1, scale up after testing
 
+imagePullSecrets:
+  - name: terraform-enterprise
+
 image:
-  repository: images.releases.hashicorp.com/hashicorp/terraform-enterprise
-  tag: latest  # Pin to a specific version in production
+  repository: images.releases.hashicorp.com
+  name: hashicorp/terraform-enterprise
+  tag: v202507-1  # Pin to a supported version in production
 
 # TFE configuration
 tfe:
-  hostname: tfe.example.com
-
-  # License configuration
-  license:
-    secretName: tfe-license
-    secretKey: license
-
-  # Encryption password
-  encryption:
-    secretName: tfe-encryption
-    secretKey: password
-
-  # Operational mode - must be "external" for Kubernetes
-  operationalMode: external
-
-  # Database configuration
-  database:
-    secretName: tfe-database
-    hostKey: host
-    usernameKey: username
-    passwordKey: password
-    nameKey: name
-    sslmodeKey: sslmode
-    parameters: "sslmode=require"
-
-  # Object storage configuration
-  objectStorage:
-    type: s3
-    secretName: tfe-object-storage
-    s3:
-      bucketKey: s3-bucket
-      regionKey: s3-region
-      accessKeyIdKey: aws-access-key-id
-      secretAccessKeyKey: aws-secret-access-key
+  readinessProbePath: /api/v1/health/readiness
+  readinessProbeScheme: HTTP
+  readinessProbeInitialDelaySeconds: 60
+  readinessProbePeriodSeconds: 10
+  readinessProbeTimeoutSeconds: 5
 
 # TLS configuration
 tls:
-  secretName: tfe-tls
-  certKey: tls.crt
-  keyKey: tls.key
+  certificateSecret: tfe-tls
+
+# Terraform Enterprise environment configuration
+env:
+  variables:
+    TFE_HOSTNAME: tfe.example.com
+    TFE_OPERATIONAL_MODE: active-active
+    TFE_OBJECT_STORAGE_TYPE: s3
+  secretKeyRefs:
+    - name: TFE_LICENSE
+      secretName: tfe-license
+      key: license
+    - name: TFE_ENCRYPTION_PASSWORD
+      secretName: tfe-encryption
+      key: password
+    - name: TFE_DATABASE_HOST
+      secretName: tfe-database
+      key: host
+    - name: TFE_DATABASE_USER
+      secretName: tfe-database
+      key: username
+    - name: TFE_DATABASE_PASSWORD
+      secretName: tfe-database
+      key: password
+    - name: TFE_DATABASE_NAME
+      secretName: tfe-database
+      key: name
+    - name: TFE_DATABASE_PARAMETERS
+      secretName: tfe-database
+      key: parameters
+    - name: TFE_OBJECT_STORAGE_S3_BUCKET
+      secretName: tfe-object-storage
+      key: s3-bucket
+    - name: TFE_OBJECT_STORAGE_S3_REGION
+      secretName: tfe-object-storage
+      key: s3-region
+    - name: TFE_OBJECT_STORAGE_S3_ACCESS_KEY_ID
+      secretName: tfe-object-storage
+      key: aws-access-key-id
+    - name: TFE_OBJECT_STORAGE_S3_SECRET_ACCESS_KEY
+      secretName: tfe-object-storage
+      key: aws-secret-access-key
 
 # Ingress configuration
 ingress:
@@ -155,6 +176,8 @@ ingress:
       paths:
         - path: /
           pathType: Prefix
+          serviceName: terraform-enterprise
+          portNumber: 443
   tls:
     - secretName: tfe-tls
       hosts:
@@ -163,41 +186,22 @@ ingress:
 # Resource requests and limits
 resources:
   requests:
-    cpu: "2"
-    memory: "4Gi"
+    cpu: "4000m"
+    memory: "8192Mi"
   limits:
-    cpu: "4"
-    memory: "8Gi"
+    cpu: "4000m"
+    memory: "8192Mi"
 
 # Pod security context
 securityContext:
-  capabilities:
-    add:
-      - IPC_LOCK
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1012
 
 # Service configuration
 service:
   type: ClusterIP
   port: 443
-
-# Health checks
-livenessProbe:
-  httpGet:
-    path: /_health_check
-    port: 443
-    scheme: HTTPS
-  initialDelaySeconds: 300
-  periodSeconds: 30
-  timeoutSeconds: 10
-
-readinessProbe:
-  httpGet:
-    path: /_health_check
-    port: 443
-    scheme: HTTPS
-  initialDelaySeconds: 60
-  periodSeconds: 10
-  timeoutSeconds: 5
 ```
 
 ## Step 5: Install with Helm
@@ -227,20 +231,17 @@ kubectl -n terraform-enterprise logs -f deployment/terraform-enterprise
 ## Step 6: Verify the Installation
 
 ```bash
-# Check the health endpoint
+# Check the readiness endpoint
 kubectl -n terraform-enterprise port-forward svc/terraform-enterprise 8443:443
 
 # In another terminal
-curl -k https://localhost:8443/_health_check
+curl -k https://localhost:8443/api/v1/health/readiness
 
 # Or if your ingress is configured, check directly
-curl -k https://tfe.example.com/_health_check
+curl -k https://tfe.example.com/api/v1/health/readiness
 ```
 
-Expected healthy response:
-```json
-{"postgres":"UP","redis":"UP","vault":"UP"}
-```
+Expected healthy response: HTTP `200 OK`.
 
 ## Step 7: Initial Setup
 
@@ -260,8 +261,9 @@ Once your initial deployment is stable, scale up for high availability:
 replicaCount: 2
 
 # Add pod disruption budget
-podDisruptionBudget:
-  minAvailable: 1
+pdb:
+  enabled: true
+  replicaCount: 1
 
 # Add pod anti-affinity to spread across nodes
 affinity:
@@ -271,7 +273,7 @@ affinity:
         podAffinityTerm:
           labelSelector:
             matchExpressions:
-              - key: app.kubernetes.io/name
+              - key: app
                 operator: In
                 values:
                   - terraform-enterprise
@@ -291,10 +293,10 @@ Set up monitoring with Prometheus:
 
 ```yaml
 # Add to values.yaml
-podAnnotations:
-  prometheus.io/scrape: "true"
-  prometheus.io/port: "9090"
-  prometheus.io/path: "/metrics"
+tfe:
+  metrics:
+    enable: true
+    httpPort: 9090
 ```
 
 ```bash
@@ -318,7 +320,7 @@ helm repo update
 helm upgrade terraform-enterprise hashicorp/terraform-enterprise \
   --namespace terraform-enterprise \
   --values values.yaml \
-  --set image.tag=v202402-1
+  --set image.tag=v202507-1
 
 # Monitor the rolling update
 kubectl -n terraform-enterprise rollout status deployment/terraform-enterprise
@@ -353,7 +355,8 @@ kubectl -n terraform-enterprise describe pod <pod-name>
 kubectl -n terraform-enterprise logs <pod-name> --previous
 
 # Database connection issues
-kubectl -n terraform-enterprise exec -it <pod-name> -- \
+kubectl -n terraform-enterprise run postgres-client --rm -it --restart=Never \
+  --image=postgres:16 -- \
   psql "postgresql://terraform:password@postgres.internal.example.com/terraform_enterprise?sslmode=require" \
   -c "SELECT 1"
 
