@@ -113,7 +113,6 @@ resource "aws_ssm_parameter" "security_manifest" {
 
   tags = {
     ManifestHash = substr(local.manifest_hash, 0, 16)
-    LastUpdated  = timestamp()
   }
 }
 
@@ -173,9 +172,9 @@ Verify that IAM policies have not been accidentally modified:
 variable "approved_policy_hashes" {
   type = map(string)
   default = {
-    "admin-policy.json" = "abc123..."
-    "read-only.json"    = "def456..."
-    "deploy-policy.json" = "789abc..."
+    "admin-policy.json"  = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    "read-only.json"     = "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
+    "deploy-policy.json" = "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
   }
   description = "SHA-256 hashes of approved policy documents"
 }
