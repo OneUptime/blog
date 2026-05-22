@@ -47,8 +47,8 @@ curl -s \
       "type": "general-settings",
       "attributes": {
         "limit-user-organization-creation": true,
-        "require-two-factor-for-admin": true,
-        "default-execution-mode": "remote",
+        "api-rate-limiting-enabled": true,
+        "api-rate-limit": 50,
         "send-passing-statuses-for-untriggered-speculative-plans": true
       }
     }
@@ -60,8 +60,7 @@ curl -s \
 | Setting | Description | Recommended Value |
 |---|---|---|
 | Limit organization creation | Prevents non-admins from creating organizations | true |
-| Require 2FA for admins | Forces two-factor authentication for site admins | true |
-| Default execution mode | Sets the default for new workspaces | remote |
+| API rate limiting | Enables API request rate limits | true |
 | API rate limit | Max API requests per second | 30 (increase for heavy automation) |
 
 ## Managing Terraform Versions
@@ -102,10 +101,16 @@ curl -s \
       "type": "terraform-versions",
       "attributes": {
         "version": "1.8.5-custom",
-        "url": "https://internal-mirror.example.com/terraform/1.8.5/terraform_1.8.5_linux_amd64.zip",
-        "sha": "abc123def456...",
         "enabled": true,
-        "official": false
+        "official": false,
+        "archs": [
+          {
+            "url": "https://internal-mirror.example.com/terraform/1.8.5/terraform_1.8.5_linux_amd64.zip",
+            "sha": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+            "os": "linux",
+            "arch": "amd64"
+          }
+        ]
       }
     }
   }'
@@ -118,14 +123,14 @@ curl -s \
 curl -s \
   --header "Authorization: Bearer ${TFE_ADMIN_TOKEN}" \
   "${TFE_URL}/api/v2/admin/organizations" | \
-  jq '.data[] | {name: .attributes.name, email: .attributes.email, created: .attributes["created-at"]}'
+  jq '.data[] | {name: .attributes.name, email: .attributes["notification-email"], workspace_limit: .attributes["workspace-limit"]}'
 
 # Create a new organization
 curl -s \
   --header "Authorization: Bearer ${TFE_ADMIN_TOKEN}" \
   --header "Content-Type: application/vnd.api+json" \
   --request POST \
-  "${TFE_URL}/api/v2/admin/organizations" \
+  "${TFE_URL}/api/v2/organizations" \
   --data '{
     "data": {
       "type": "organizations",
@@ -147,7 +152,8 @@ curl -s \
       "type": "organizations",
       "attributes": {
         "workspace-limit": 500,
-        "run-limit": 50
+        "plan-timeout": "2h",
+        "apply-timeout": "24h"
       }
     }
   }'
@@ -160,7 +166,7 @@ curl -s \
 curl -s \
   --header "Authorization: Bearer ${TFE_ADMIN_TOKEN}" \
   "${TFE_URL}/api/v2/admin/users?page[size]=50" | \
-  jq '.data[] | {username: .attributes.username, email: .attributes.email, admin: .attributes["is-site-admin"], suspended: .attributes["is-suspended"]}'
+  jq '.data[] | {username: .attributes.username, email: .attributes.email, admin: .attributes["is-admin"], suspended: .attributes["is-suspended"]}'
 
 # Promote a user to site admin
 USER_ID="user-abc123"
@@ -168,7 +174,7 @@ curl -s \
   --header "Authorization: Bearer ${TFE_ADMIN_TOKEN}" \
   --header "Content-Type: application/vnd.api+json" \
   --request POST \
-  "${TFE_URL}/api/v2/admin/users/${USER_ID}/actions/grant-admin"
+  "${TFE_URL}/api/v2/admin/users/${USER_ID}/actions/grant_admin"
 
 # Suspend a user (disable their access without deleting)
 curl -s \
@@ -188,30 +194,14 @@ curl -s \
 ## Run Concurrency and Resource Limits
 
 ```bash
-# View current capacity settings
-curl -s \
-  --header "Authorization: Bearer ${TFE_ADMIN_TOKEN}" \
-  "${TFE_URL}/api/v2/admin/general-settings" | \
-  jq '{
-    concurrency: .data.attributes["capacity-concurrency"],
-    memory: .data.attributes["capacity-memory"]
-  }'
+# View current capacity settings in a Docker Compose deployment
+docker compose exec terraform-enterprise printenv \
+  TFE_CAPACITY_CONCURRENCY TFE_CAPACITY_MEMORY
 
-# Adjust concurrency based on available resources
-curl -s \
-  --header "Authorization: Bearer ${TFE_ADMIN_TOKEN}" \
-  --header "Content-Type: application/vnd.api+json" \
-  --request PATCH \
-  "${TFE_URL}/api/v2/admin/general-settings" \
-  --data '{
-    "data": {
-      "type": "general-settings",
-      "attributes": {
-        "capacity-concurrency": 20,
-        "capacity-memory": 2048
-      }
-    }
-  }'
+# Adjust concurrency based on available resources by setting:
+# TFE_CAPACITY_CONCURRENCY=20
+# TFE_CAPACITY_MEMORY=2048
+# Then restart or redeploy Terraform Enterprise using your runtime's normal process.
 ```
 
 ## Security Policies
@@ -229,7 +219,7 @@ curl -s \
     "data": {
       "type": "organizations",
       "attributes": {
-        "two-factor-conformant": true
+        "collaborator-auth-policy": "two_factor_mandatory"
       }
     }
   }'
@@ -243,10 +233,10 @@ curl -s \
   --header "Authorization: Bearer ${TFE_ADMIN_TOKEN}" \
   --header "Content-Type: application/vnd.api+json" \
   --request PATCH \
-  "${TFE_URL}/api/v2/admin/general-settings" \
+  "${TFE_URL}/api/v2/organizations/my-org" \
   --data '{
     "data": {
-      "type": "general-settings",
+      "type": "organizations",
       "attributes": {
         "session-timeout": 480,
         "session-remember": 20160
@@ -258,17 +248,17 @@ curl -s \
 ## Cost Estimation Settings
 
 ```bash
-# Enable or disable cost estimation
+# Disable cost estimation at the site level
 curl -s \
   --header "Authorization: Bearer ${TFE_ADMIN_TOKEN}" \
   --header "Content-Type: application/vnd.api+json" \
   --request PATCH \
-  "${TFE_URL}/api/v2/admin/general-settings" \
+  "${TFE_URL}/api/v2/admin/cost-estimation-settings" \
   --data '{
     "data": {
-      "type": "general-settings",
+      "type": "cost-estimation-settings",
       "attributes": {
-        "cost-estimation-enabled": true
+        "enabled": false
       }
     }
   }'
@@ -298,11 +288,9 @@ curl -s \
       "type": "general-settings",
       "attributes": {
         "limit-user-organization-creation": true,
-        "require-two-factor-for-admin": true,
-        "default-execution-mode": "remote",
-        "capacity-concurrency": 20,
-        "cost-estimation-enabled": true,
-        "session-timeout": 480
+        "api-rate-limiting-enabled": true,
+        "api-rate-limit": 50,
+        "send-passing-statuses-for-untriggered-speculative-plans": true
       }
     }
   }' > /dev/null
@@ -321,18 +309,11 @@ echo "Admin configuration complete."
 Always monitor changes to admin settings since they affect the entire TFE instance:
 
 ```bash
-# Check audit logs for admin setting changes
-curl -s \
-  --header "Authorization: Bearer ${TFE_ADMIN_TOKEN}" \
-  "${TFE_URL}/api/v2/organization/audit-trail?filter[type]=admin" | \
-  jq '.data[] | {
-    timestamp: .attributes.timestamp,
-    action: .attributes.action,
-    actor: .attributes.actor.email,
-    details: .attributes.resource
-  }'
+# Check forwarded logs for audit events. Terraform Enterprise audit logs are
+# emitted with service logs and can be filtered by the audit logger name.
+journalctl -u terraform-enterprise | grep 'terraform-enterprise.audit'
 ```
 
 ## Summary
 
-Managing TFE admin settings is about finding the right balance between security and usability. Start with restrictive defaults - limit organization creation, require 2FA for admins, and set reasonable session timeouts. Use the API to manage settings programmatically so your configuration is versioned and repeatable. Monitor admin changes through audit logs so you always know who changed what. As your organization grows, revisit concurrency limits and resource allocations to keep TFE performing well under increasing load.
+Managing TFE admin settings is about finding the right balance between security and usability. Start with restrictive defaults - limit organization creation, require 2FA for organization users, and set reasonable session timeouts. Use the API to manage settings programmatically so your configuration is versioned and repeatable. Monitor admin changes through audit logs so you always know who changed what. As your organization grows, revisit concurrency limits and resource allocations to keep TFE performing well under increasing load.
