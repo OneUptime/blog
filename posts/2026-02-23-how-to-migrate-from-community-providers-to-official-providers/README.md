@@ -12,7 +12,7 @@ Community Terraform providers have played a vital role in extending Terraform's 
 
 ## Why Migrate to Official Providers
 
-Official providers maintained by HashiCorp or the service vendor receive regular updates, security patches, and have guaranteed support. Community providers may have slower update cycles, inconsistent maintenance, or risk abandonment. Official providers also tend to have better documentation, more comprehensive resource coverage, and follow Terraform provider development best practices.
+Official providers maintained by HashiCorp or the service vendor typically receive regular updates, security patches, and clearer support channels. Community providers may have slower update cycles, inconsistent maintenance, or risk abandonment. Official providers also tend to have better documentation, more comprehensive resource coverage, and follow Terraform provider development best practices.
 
 ## Identifying Migration Candidates
 
@@ -143,10 +143,10 @@ resource "official_service_widget" "main" {
 }
 ```
 
-Use moved blocks and state operations to handle renames:
+Use moved blocks and state operations to handle renames. Because each resource type has its own schema, only use a moved block for a type change when the provider documentation says that move is supported:
 
 ```hcl
-# If resource types changed
+# If resource types changed and the provider supports this move
 moved {
   from = community_service_widget.main
   to   = official_service_widget.main
@@ -190,10 +190,11 @@ resource "official_service_record" "dns" {
 Before migrating production, test thoroughly:
 
 ```bash
-# Create a test workspace
-terraform workspace new migration-test
+# Back up the existing state and create a test workspace from it
+terraform state pull > state-backup.json
+terraform workspace new -state=state-backup.json migration-test
 
-# Or use a separate state file
+# Or use a separate backend state location, if your backend supports this key
 terraform init -backend-config="key=test/terraform.tfstate"
 
 # Run the migration steps
@@ -204,6 +205,7 @@ terraform plan
 # Verify no destructive changes
 terraform plan -detailed-exitcode
 # Exit code 0 = no changes (success)
+# Exit code 1 = error
 # Exit code 2 = changes detected (review needed)
 ```
 
@@ -220,9 +222,7 @@ OLD_SOURCE="registry.terraform.io/terraform-providers/cloudflare"
 NEW_SOURCE="registry.terraform.io/cloudflare/cloudflare"
 
 # Find all Terraform configurations
-CONFIG_DIRS=$(find . -name "*.tf" -exec dirname {} \; | sort -u)
-
-for dir in $CONFIG_DIRS; do
+find . -name "*.tf" -exec dirname {} \; | sort -u | while IFS= read -r dir; do
   echo "Processing: $dir"
   cd "$dir"
 
@@ -237,7 +237,7 @@ for dir in $CONFIG_DIRS; do
     terraform state replace-provider -auto-approve "$OLD_SOURCE" "$NEW_SOURCE"
 
     # Update configuration files
-    sed -i '' "s|terraform-providers/cloudflare|cloudflare/cloudflare|g" *.tf
+    perl -pi -e "s|terraform-providers/cloudflare|cloudflare/cloudflare|g" *.tf
 
     # Initialize with new provider
     terraform init -upgrade
