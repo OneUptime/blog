@@ -12,7 +12,7 @@ Feature flags, conditional resource creation, and configuration toggles are stap
 
 ## What is tobool?
 
-The `tobool` function converts a string value to a boolean. It accepts `"true"` and `"false"` as valid inputs.
+The `tobool` function converts a value to a boolean. It accepts booleans, `null`, and the exact strings `"true"` and `"false"` as valid inputs.
 
 ```hcl
 # Convert string to boolean
@@ -26,6 +26,10 @@ false
 # Already a boolean - returns as-is
 > tobool(true)
 true
+
+# Null remains null
+> tobool(null)
+null
 ```
 
 The syntax:
@@ -62,7 +66,7 @@ This is strict by design. Terraform does not want ambiguous boolean conversions.
 
 The most common scenario is when boolean configuration comes from string sources:
 
-1. **Environment variables** - Always strings in Terraform
+1. **Environment variables** - `TF_VAR` values arrive as strings, though Terraform can convert them based on the variable type
 2. **SSM Parameters / Secrets Manager** - Return string values
 3. **Map lookups** - `map(string)` values are all strings
 4. **Terraform Cloud workspace variables** - Can be strings
@@ -326,6 +330,10 @@ true
 > tobool(false)
 false
 
+# Null remains null
+> tobool(null)
+null
+
 # Only lowercase "true" and "false" strings work
 # tobool("TRUE")   # Error
 # tobool("True")   # Error
@@ -345,9 +353,9 @@ variable "enable_feature" {
 }
 
 # Only use tobool when you cannot control the input type
-# (environment variables, data sources, map lookups, etc.)
+# (string-typed variables, data sources, map lookups, etc.)
 ```
 
 ## Summary
 
-The `tobool` function converts string `"true"` and `"false"` values into actual boolean types. It is essential when working with configuration from string-based sources like environment variables, SSM parameters, and string maps. The function is strict - only lowercase `"true"` and `"false"` are accepted - which helps catch configuration errors early. Use it with `try` for safe conversions with fallback defaults, and combine it with `can` for input validation. For related type conversions, see the [tonumber function](https://oneuptime.com/blog/post/2026-02-23-how-to-use-the-tonumber-function-in-terraform/view) and the [tostring function](https://oneuptime.com/blog/post/2026-02-23-how-to-use-the-tostring-function-in-terraform/view).
+The `tobool` function converts string `"true"` and `"false"` values into actual boolean types, leaves booleans unchanged, and preserves `null`. It is useful when working with configuration from string-based sources like string-typed variables, SSM parameters, and string maps. The function is strict - only lowercase `"true"` and `"false"` strings are accepted - which helps catch configuration errors early. Use it with `try` for safe conversions with fallback defaults, and combine it with `can` for input validation. For related type conversions, see the [tonumber function](https://oneuptime.com/blog/post/2026-02-23-how-to-use-the-tonumber-function-in-terraform/view) and the [tostring function](https://oneuptime.com/blog/post/2026-02-23-how-to-use-the-tostring-function-in-terraform/view).
