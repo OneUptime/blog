@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, CI/CD, Drift Detection, Scheduled Job, GitHub Action, Cron, DevOps
 
-Description: Learn how to configure scheduled Terraform plan runs for continuous drift detection using GitHub Actions cron, GitLab schedules, and AWS EventBridge with Lambda.
+Description: Learn how to configure scheduled Terraform plan runs for continuous drift detection using GitHub Actions cron, GitLab schedules, and AWS EventBridge with CodeBuild.
 
 ---
 
@@ -123,12 +123,12 @@ A few things to know about GitHub Actions scheduled workflows:
 
 - Schedules use UTC time, not your local timezone
 - Scheduled workflows only run on the default branch
-- GitHub may delay scheduled runs during high-load periods by up to 15 minutes
+- GitHub may delay scheduled runs during high-load periods
 - If the repository has no activity for 60 days, scheduled workflows are disabled automatically
 
 ```yaml
-# Workaround for the 60-day inactivity issue
-# Add a workflow that runs monthly to keep the repo active
+# Example low-frequency scheduled workflow
+# Public repositories still need repository activity to avoid automatic schedule disablement
 name: Keep Alive
 on:
   schedule:
@@ -151,27 +151,38 @@ stages:
 
 drift-detection:
   stage: drift-check
-  image: hashicorp/terraform:1.7.0
+  image:
+    name: hashicorp/terraform:1.7.0
+    entrypoint: [""]
+  before_script:
+    - apk add --no-cache bash
   rules:
     # Only run on schedules, not on pushes
-    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
   script:
     - cd terraform
     - terraform init -no-color
+    - ': > ../drift.env'
 
     - |
+      bash -o pipefail <<'EOF'
       set +e
       terraform plan -detailed-exitcode -no-color 2>&1 | tee plan-output.txt
-      EXIT_CODE=$?
+      EXIT_CODE=${PIPESTATUS[0]}
       set -e
 
       if [ $EXIT_CODE -eq 2 ]; then
-        echo "DRIFT_DETECTED=true" >> drift.env
+        echo "DRIFT_DETECTED=true" >> ../drift.env
         # Send notification
         curl -X POST "$SLACK_WEBHOOK" \
           -H "Content-Type: application/json" \
           -d "{\"text\": \"Drift detected in production infrastructure. Check the pipeline: $CI_PIPELINE_URL\"}"
+      elif [ $EXIT_CODE -eq 0 ]; then
+        echo "DRIFT_DETECTED=false" >> ../drift.env
+      else
+        exit $EXIT_CODE
       fi
+      EOF
   artifacts:
     paths:
       - terraform/plan-output.txt
@@ -188,9 +199,9 @@ Set up the schedule in GitLab:
 4. Select the target branch
 5. Optionally add variables like `ENVIRONMENT=production`
 
-## AWS EventBridge with Lambda
+## AWS EventBridge with CodeBuild
 
-For a cloud-native approach, use EventBridge to trigger drift checks via Lambda and CodeBuild:
+For a cloud-native approach, use EventBridge to trigger drift checks via CodeBuild:
 
 ```hcl
 # scheduled-drift.tf - Trigger drift checks via EventBridge
@@ -234,6 +245,7 @@ resource "aws_codebuild_project" "drift_check" {
 version: 0.2
 
 env:
+  shell: bash
   variables:
     TF_VERSION: "1.7.0"
 
@@ -250,7 +262,7 @@ phases:
       - |
         set +e
         terraform plan -detailed-exitcode -no-color 2>&1 | tee plan-output.txt
-        EXIT_CODE=$?
+        EXIT_CODE=${PIPESTATUS[0]}
         set -e
 
         if [ $EXIT_CODE -eq 2 ]; then
@@ -259,6 +271,8 @@ phases:
             --topic-arn arn:aws:sns:us-east-1:123456789012:drift-alerts \
             --subject "Terraform Drift Detected" \
             --message file://plan-output.txt
+        elif [ $EXIT_CODE -ne 0 ]; then
+          exit $EXIT_CODE
         fi
 ```
 
@@ -322,7 +336,10 @@ def get_drift_stats(days=30):
     print(f"Drift Statistics (last {days} days)")
     print(f"  Total checks: {total_checks}")
     print(f"  Drift detected: {drift_checks}")
-    print(f"  Drift rate: {drift_checks/total_checks*100:.1f}%")
+    if total_checks == 0:
+        print("  Drift rate: 0.0%")
+        return
+    print(f"  Drift rate: {drift_checks / total_checks * 100:.1f}%")
 
     # Break down by component
     components = set(r['component'] for r in results)
@@ -337,14 +354,19 @@ if __name__ == "__main__":
 
 ## Reducing Noise
 
-Scheduled drift checks can generate a lot of alerts if your infrastructure has expected drift sources. Filter out known noise:
+Scheduled drift checks can generate a lot of alert output if your infrastructure has expected drift sources. Filter known noise out of the notification text while preserving Terraform's exit code:
 
 ```bash
-# Filter out expected drift from plan output
+# Filter known noisy lines from plan output
+set +e
 terraform plan -detailed-exitcode -no-color -out=driftcheck.tfplan 2>&1 | \
   grep -v "aws_autoscaling_group.*.desired_capacity" | \
   grep -v "aws_ecs_service.*.desired_count" | \
   tee filtered-plan-output.txt
+EXIT_CODE=${PIPESTATUS[0]}
+set -e
+
+exit $EXIT_CODE
 ```
 
 Or use a targeted plan that only checks specific resources:
