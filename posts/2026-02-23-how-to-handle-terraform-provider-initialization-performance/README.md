@@ -8,7 +8,7 @@ Description: Speed up Terraform provider initialization by reducing download tim
 
 ---
 
-Provider initialization is the first thing that happens when you run `terraform init`, and for many projects it is the slowest part of the setup process. Downloading the AWS provider takes around 15 seconds on a fast connection. Add Azure, Google Cloud, and a few utility providers, and init can take over a minute before you even get to planning.
+Provider installation is one of the setup steps that happens when you run `terraform init`, and for many projects it is the slowest part of the setup process. Downloading the AWS provider takes around 15 seconds on a fast connection. Add Azure, Google Cloud, and a few utility providers, and init can take over a minute before you even get to planning.
 
 This post covers the full set of techniques for making provider initialization fast.
 
@@ -18,12 +18,12 @@ When you run `terraform init`, Terraform:
 
 1. Reads the `required_providers` block to determine which providers are needed
 2. Reads `.terraform.lock.hcl` if it exists to get exact version and checksum requirements
-3. Contacts the Terraform registry to resolve version constraints
+3. Uses the configured provider installation methods to resolve version constraints
 4. Downloads provider binaries that are not already present
 5. Verifies checksums against the lock file
 6. Stores providers in `.terraform/providers/`
 
-Steps 3 and 4 are the slow ones. The registry lookup requires network calls, and the downloads can be hundreds of megabytes.
+Steps 3 and 4 are the slow ones. Direct registry lookups require network calls, and the downloads can be hundreds of megabytes.
 
 ## Measuring Init Time
 
@@ -153,10 +153,10 @@ RUN terraform init -backend=false
 
 ## Optimizing Lock File Handling
 
-The `.terraform.lock.hcl` file records checksums for each provider on each platform. If your lock file has checksums for platforms you do not use, init still validates them:
+The `.terraform.lock.hcl` file records selected provider versions and package checksums. Pre-populate checksums for the platforms your team actually uses so different developer and CI machines do not keep modifying the lock file:
 
 ```bash
-# Generate lock file for only the platforms you use
+# Generate lock file checksums for the platforms you use
 terraform providers lock \
   -platform=linux_amd64 \
   -platform=darwin_arm64
@@ -165,7 +165,7 @@ terraform providers lock \
 terraform providers lock -platform=linux_amd64
 ```
 
-A smaller lock file means fewer checksums to verify.
+This is mainly a reproducibility improvement. It prevents lock file churn when Terraform runs on multiple platforms.
 
 ## Handling Multiple Provider Versions
 
@@ -193,9 +193,9 @@ terraform {
 
 This means the cache only needs one copy of each provider.
 
-## Parallel Provider Downloads
+## Pre-warming Multiple Provider Downloads
 
-Terraform downloads providers sequentially during init. If you need multiple large providers, this adds up:
+Terraform installs the providers required by a configuration during init. If you need multiple large providers, this adds up:
 
 ```text
 AWS provider:     [====== 15s ======]
@@ -204,17 +204,16 @@ Google provider:                     [====== 10s ======]
 Total:            [=============== 37s ===============]
 ```
 
-There is no built-in way to parallelize this. However, you can work around it by pre-downloading with multiple processes:
+There is no built-in flag to parallelize provider installation, and the shared plugin cache is not safe to populate with multiple concurrent `terraform init` processes. If you want to pre-warm the cache explicitly, run the downloads sequentially or build a filesystem mirror:
 
 ```bash
 #!/bin/bash
-# parallel-download.sh
-# Pre-populate cache with parallel downloads
+# warm-cache.sh
+# Pre-populate cache with required providers
 
 CACHE_DIR="$HOME/.terraform.d/plugin-cache"
-PLATFORM="linux_amd64"
+mkdir -p "$CACHE_DIR"
 
-# Download providers in parallel
 download_provider() {
   local provider=$1
   local version=$2
@@ -237,12 +236,11 @@ EOF
   echo "Done: $provider v$version"
 }
 
-# Run downloads in parallel
-download_provider "hashicorp/aws" "5.30.0" &
-download_provider "hashicorp/azurerm" "3.85.0" &
-download_provider "hashicorp/google" "5.12.0" &
+# Run downloads one at a time because the plugin cache is shared
+download_provider "hashicorp/aws" "5.30.0"
+download_provider "hashicorp/azurerm" "3.85.0"
+download_provider "hashicorp/google" "5.12.0"
 
-wait
 echo "All providers cached."
 ```
 
@@ -255,7 +253,7 @@ During development, you can skip backend configuration to speed up init:
 terraform init -backend=false
 ```
 
-This is useful when you just want to validate syntax or check plan output during development. It skips the backend initialization step entirely.
+This is useful when you just want to validate syntax during development. It skips the backend initialization step entirely, but Terraform recommends using it only after the working directory has already been initialized for the backend because some other init steps can require backend initialization.
 
 ## Measuring Init Performance Over Time
 
