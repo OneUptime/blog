@@ -43,7 +43,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "data" {
   }
 }
 
-# Deny any unencrypted uploads via bucket policy
+# Deny any unencrypted uploads and insecure transport via bucket policy
 resource "aws_s3_bucket_policy" "enforce_encryption" {
   bucket = aws_s3_bucket.data.id
 
@@ -71,6 +71,21 @@ resource "aws_s3_bucket_policy" "enforce_encryption" {
         Condition = {
           StringNotEquals = {
             "s3:x-amz-server-side-encryption-aws-kms-key-id" = aws_kms_key.data_encryption.arn
+          }
+        }
+      },
+      {
+        Sid       = "DenyInsecureTransport"
+        Effect    = "Deny"
+        Principal = "*"
+        Action    = "s3:*"
+        Resource = [
+          aws_s3_bucket.data.arn,
+          "${aws_s3_bucket.data.arn}/*"
+        ]
+        Condition = {
+          Bool = {
+            "aws:SecureTransport" = "false"
           }
         }
       }
@@ -168,30 +183,22 @@ resource "aws_ebs_volume" "data" {
 ### Enforce TLS on S3
 
 ```hcl
-# Add to the bucket policy
-resource "aws_s3_bucket_policy" "enforce_tls" {
-  bucket = aws_s3_bucket.data.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Sid       = "DenyInsecureTransport"
-        Effect    = "Deny"
-        Principal = "*"
-        Action    = "s3:*"
-        Resource = [
-          aws_s3_bucket.data.arn,
-          "${aws_s3_bucket.data.arn}/*"
-        ]
-        Condition = {
-          Bool = {
-            "aws:SecureTransport" = "false"
-          }
-        }
-      }
-    ]
-  })
+# Add this statement to the bucket policy. Only one aws_s3_bucket_policy
+# resource should manage a bucket's policy.
+{
+  Sid       = "DenyInsecureTransport"
+  Effect    = "Deny"
+  Principal = "*"
+  Action    = "s3:*"
+  Resource = [
+    aws_s3_bucket.data.arn,
+    "${aws_s3_bucket.data.arn}/*"
+  ]
+  Condition = {
+    Bool = {
+      "aws:SecureTransport" = "false"
+    }
+  }
 }
 ```
 
@@ -308,7 +315,13 @@ resource "aws_kms_key" "data_encryption" {
         Condition = {
           StringEquals = {
             "kms:CallerAccount" = data.aws_caller_identity.current.account_id
-            "kms:ViaService"    = "s3.${var.region}.amazonaws.com"
+            "kms:ViaService" = [
+              "s3.${var.region}.amazonaws.com",
+              "rds.${var.region}.amazonaws.com",
+              "ec2.${var.region}.amazonaws.com",
+              "backup.${var.region}.amazonaws.com",
+              "es.${var.region}.amazonaws.com"
+            ]
           }
         }
       }
