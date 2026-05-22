@@ -8,7 +8,7 @@ Description: Learn how to build a complete Terraform testing pipeline in GitLab 
 
 ---
 
-GitLab CI has built-in Terraform support through its official templates, merge request integration, and environment management features. This guide shows you how to build a Terraform testing pipeline from scratch in GitLab CI, going beyond the default template to include proper unit tests, security scanning, and integration tests.
+GitLab CI has built-in infrastructure support through its Terraform/OpenTofu state backend, merge request pipelines, and environment management features. The older GitLab Terraform CI/CD templates were removed in GitLab 18.0, so this guide shows you how to build a Terraform testing pipeline from scratch in GitLab CI, including proper unit tests, security scanning, and integration tests.
 
 ## Pipeline Structure
 
@@ -28,7 +28,7 @@ stages:
 
 # Default settings for all jobs
 default:
-  image: hashicorp/terraform:1.7.0
+  image: hashicorp/terraform:1.14.6
   before_script:
     - terraform --version
 
@@ -100,7 +100,7 @@ unit-tests:
   script:
     - cd "modules/${MODULE}"
     - terraform init -backend=false
-    - terraform test -verbose
+    - terraform test -verbose -junit-xml=test-results.xml
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
   artifacts:
@@ -109,53 +109,10 @@ unit-tests:
     when: always
 ```
 
-To generate JUnit reports from Terraform tests (for GitLab's test reporting), use a wrapper script:
+Terraform can generate JUnit reports directly for GitLab's test reporting:
 
 ```bash
-#!/bin/bash
-# scripts/run-tests-junit.sh
-# Runs terraform test and converts output to JUnit XML
-
-MODULE_DIR="$1"
-OUTPUT_FILE="${MODULE_DIR}/test-results.xml"
-
-cd "$MODULE_DIR"
-terraform init -backend=false > /dev/null 2>&1
-
-# Run tests and capture output
-TEST_OUTPUT=$(terraform test -verbose 2>&1)
-EXIT_CODE=$?
-
-# Count passes and failures
-PASS_COUNT=$(echo "$TEST_OUTPUT" | grep -c "Pass")
-FAIL_COUNT=$(echo "$TEST_OUTPUT" | grep -c "Fail")
-TOTAL=$((PASS_COUNT + FAIL_COUNT))
-
-# Generate JUnit XML
-cat > "$OUTPUT_FILE" << EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<testsuites tests="$TOTAL" failures="$FAIL_COUNT">
-  <testsuite name="terraform-test" tests="$TOTAL" failures="$FAIL_COUNT">
-EOF
-
-# Parse each test result
-echo "$TEST_OUTPUT" | grep -E "(Pass|Fail)" | while read -r line; do
-  TEST_NAME=$(echo "$line" | awk '{print $2}')
-  STATUS=$(echo "$line" | awk '{print $1}')
-
-  if [ "$STATUS" = "Pass" ]; then
-    echo "    <testcase name=\"$TEST_NAME\" />" >> "$OUTPUT_FILE"
-  else
-    echo "    <testcase name=\"$TEST_NAME\">" >> "$OUTPUT_FILE"
-    echo "      <failure message=\"Test failed\">$line</failure>" >> "$OUTPUT_FILE"
-    echo "    </testcase>" >> "$OUTPUT_FILE"
-  fi
-done
-
-echo "  </testsuite>" >> "$OUTPUT_FILE"
-echo "</testsuites>" >> "$OUTPUT_FILE"
-
-exit $EXIT_CODE
+terraform test -verbose -junit-xml=test-results.xml
 ```
 
 ## Stage 3: Security Scanning
@@ -220,9 +177,7 @@ plan:
     action: prepare
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-  # Use different AWS credentials per environment
-  variables:
-    AWS_ROLE_ARN: $AWS_${ENVIRONMENT}_ROLE_ARN
+  # Use GitLab environment-scoped CI/CD variables for per-environment credentials
 ```
 
 To post the plan as a merge request comment, use the GitLab API:
@@ -263,9 +218,9 @@ integration-tests:
   image: golang:1.21
   before_script:
     # Install Terraform in the Go image
-    - apt-get update && apt-get install -y unzip
-    - wget https://releases.hashicorp.com/terraform/1.7.0/terraform_1.7.0_linux_amd64.zip
-    - unzip terraform_1.7.0_linux_amd64.zip -d /usr/local/bin/
+    - apt-get update && apt-get install -y unzip wget
+    - wget https://releases.hashicorp.com/terraform/1.14.6/terraform_1.14.6_linux_amd64.zip
+    - unzip terraform_1.14.6_linux_amd64.zip -d /usr/local/bin/
     - terraform --version
   script:
     - cd test
@@ -321,7 +276,11 @@ terraform {
 # In your CI job
 plan:
   variables:
-    TF_ADDRESS: "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/${ENVIRONMENT}"
+    TF_HTTP_ADDRESS: "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/${ENVIRONMENT}"
+    TF_HTTP_LOCK_ADDRESS: "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/${ENVIRONMENT}/lock"
+    TF_HTTP_UNLOCK_ADDRESS: "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/${ENVIRONMENT}/lock"
+    TF_HTTP_LOCK_METHOD: "POST"
+    TF_HTTP_UNLOCK_METHOD: "DELETE"
     TF_HTTP_USERNAME: "gitlab-ci-token"
     TF_HTTP_PASSWORD: "${CI_JOB_TOKEN}"
 ```
