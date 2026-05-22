@@ -145,12 +145,12 @@ Protect your state file:
 # Use encrypted S3 backend with restricted access
 terraform {
   backend "s3" {
-    bucket         = "my-terraform-state"
-    key            = "production/terraform.tfstate"
-    region         = "us-east-1"
-    encrypt        = true
-    kms_key_id     = "arn:aws:kms:us-east-1:123456789012:key/your-key-id"
-    dynamodb_table = "terraform-locks"
+    bucket       = "my-terraform-state"
+    key          = "production/terraform.tfstate"
+    region       = "us-east-1"
+    encrypt      = true
+    kms_key_id   = "arn:aws:kms:us-east-1:123456789012:key/your-key-id"
+    use_lockfile = true
   }
 }
 ```
@@ -168,7 +168,8 @@ resource "aws_iam_policy" "terraform_state_access" {
         Effect = "Allow"
         Action = [
           "s3:GetObject",
-          "s3:PutObject"
+          "s3:PutObject",
+          "s3:DeleteObject"
         ]
         Resource = "arn:aws:s3:::my-terraform-state/production/*"
         Condition = {
@@ -220,11 +221,13 @@ resource "null_resource" "setup" {
 
 Instead of passing secrets through Terraform variables and outputs, use a dedicated secrets manager:
 
+If Terraform creates or reads the secret value, that value can still be stored in state unless you use ephemeral values, write-only provider arguments, or a service-managed secret. The main goal is to output only references and have applications retrieve secrets at runtime. The write-only examples below require Terraform 1.11 or later.
+
 ### AWS Secrets Manager
 
 ```hcl
 # Generate a random password
-resource "random_password" "database" {
+ephemeral "random_password" "database" {
   length  = 32
   special = true
 }
@@ -237,19 +240,22 @@ resource "aws_secretsmanager_secret" "database_password" {
 }
 
 resource "aws_secretsmanager_secret_version" "database_password" {
-  secret_id     = aws_secretsmanager_secret.database_password.id
-  secret_string = random_password.database.result
+  secret_id                = aws_secretsmanager_secret.database_password.id
+  secret_string_wo         = ephemeral.random_password.database.result
+  secret_string_wo_version = 1
 }
 
 # Use the password in the database resource
 resource "aws_db_instance" "main" {
-  identifier     = "${var.project}-database"
-  engine         = "postgres"
-  engine_version = "15.4"
-  instance_class = "db.r6g.large"
+  identifier        = "${var.project}-database"
+  engine            = "postgres"
+  engine_version    = "15.4"
+  instance_class    = "db.r6g.large"
+  allocated_storage = 20
 
-  username = "admin"
-  password = random_password.database.result
+  username            = "admin"
+  password_wo         = ephemeral.random_password.database.result
+  password_wo_version = 1
 
   # Applications retrieve the password from Secrets Manager
   # instead of from Terraform outputs
@@ -266,14 +272,16 @@ output "database_password_secret_arn" {
 
 ```hcl
 # Read secrets from Vault instead of passing them as variables
+# Values read by Terraform data sources are still written to state.
 data "vault_generic_secret" "database" {
   path = "secret/production/database"
 }
 
 resource "aws_db_instance" "main" {
-  identifier     = "${var.project}-database"
-  engine         = "postgres"
-  instance_class = "db.r6g.large"
+  identifier        = "${var.project}-database"
+  engine            = "postgres"
+  instance_class    = "db.r6g.large"
+  allocated_storage = 20
 
   username = data.vault_generic_secret.database.data["username"]
   password = data.vault_generic_secret.database.data["password"]
@@ -283,13 +291,20 @@ resource "aws_db_instance" "main" {
 ### SSM Parameter Store
 
 ```hcl
+# Generate a random password
+ephemeral "random_password" "database" {
+  length  = 32
+  special = true
+}
+
 # Store secret in SSM Parameter Store
 resource "aws_ssm_parameter" "database_password" {
-  name        = "/${var.project}/database/password"
-  description = "Database master password"
-  type        = "SecureString"
-  value       = random_password.database.result
-  key_id      = aws_kms_key.secrets.arn
+  name             = "/${var.project}/database/password"
+  description      = "Database master password"
+  type             = "SecureString"
+  value_wo         = ephemeral.random_password.database.result
+  value_wo_version = 1
+  key_id           = aws_kms_key.secrets.arn
 }
 
 # Applications read from SSM at runtime
