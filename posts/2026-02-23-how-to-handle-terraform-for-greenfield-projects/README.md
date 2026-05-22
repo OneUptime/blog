@@ -61,7 +61,7 @@ my-project/
         versions.tf
     shared/
       backend-setup/
-        main.tf  # S3 bucket and DynamoDB for state
+        main.tf  # S3 bucket for state and S3 lock files
     tests/
       modules/
         networking_test.go
@@ -115,18 +115,6 @@ resource "aws_s3_bucket_public_access_block" "terraform_state" {
   ignore_public_acls      = true
   restrict_public_buckets = true
 }
-
-# DynamoDB table for state locking
-resource "aws_dynamodb_table" "terraform_locks" {
-  name         = "${var.project_name}-terraform-locks"
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "LockID"
-
-  attribute {
-    name = "LockID"
-    type = "S"
-  }
-}
 ```
 
 ## Configuring Each Environment
@@ -141,13 +129,13 @@ terraform {
     key            = "production/terraform.tfstate"
     region         = "us-east-1"
     encrypt        = true
-    dynamodb_table = "my-project-terraform-locks"
+    use_lockfile   = true
   }
 }
 
 # infrastructure/environments/production/versions.tf
 terraform {
-  required_version = ">= 1.6.0"
+  required_version = ">= 1.10.0"
 
   required_providers {
     aws = {
@@ -302,12 +290,42 @@ resource "aws_subnet" "database" {
   }
 }
 
+resource "aws_internet_gateway" "main" {
+  vpc_id = aws_vpc.main.id
+
+  tags = {
+    Name = "${local.name_prefix}-igw"
+  }
+}
+
+resource "aws_route_table" "public" {
+  vpc_id = aws_vpc.main.id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.main.id
+  }
+
+  tags = {
+    Name = "${local.name_prefix}-public-rt"
+  }
+}
+
+resource "aws_route_table_association" "public" {
+  count = length(var.azs)
+
+  subnet_id      = aws_subnet.public[count.index].id
+  route_table_id = aws_route_table.public.id
+}
+
 # NAT Gateway for private subnet internet access
 resource "aws_nat_gateway" "main" {
   count = var.environment == "production" ? length(var.azs) : 1
 
   allocation_id = aws_eip.nat[count.index].id
   subnet_id     = aws_subnet.public[count.index].id
+
+  depends_on = [aws_internet_gateway.main]
 
   tags = {
     Name = "${local.name_prefix}-nat-${count.index}"
@@ -319,7 +337,88 @@ resource "aws_eip" "nat" {
   domain = "vpc"
 }
 
+resource "aws_route_table" "private" {
+  count = var.environment == "production" ? length(var.azs) : 1
+
+  vpc_id = aws_vpc.main.id
+
+  route {
+    cidr_block     = "0.0.0.0/0"
+    nat_gateway_id = aws_nat_gateway.main[count.index].id
+  }
+
+  tags = {
+    Name = "${local.name_prefix}-private-rt-${count.index}"
+  }
+}
+
+resource "aws_route_table_association" "private" {
+  count = length(var.azs)
+
+  subnet_id      = aws_subnet.private[count.index].id
+  route_table_id = aws_route_table.private[var.environment == "production" ? count.index : 0].id
+}
+
+resource "aws_route_table" "database" {
+  vpc_id = aws_vpc.main.id
+
+  tags = {
+    Name = "${local.name_prefix}-database-rt"
+  }
+}
+
+resource "aws_route_table_association" "database" {
+  count = length(var.azs)
+
+  subnet_id      = aws_subnet.database[count.index].id
+  route_table_id = aws_route_table.database.id
+}
+
 # VPC Flow Logs for security auditing
+resource "aws_cloudwatch_log_group" "flow_logs" {
+  name              = "/aws/vpc-flow-logs/${local.name_prefix}"
+  retention_in_days = 30
+}
+
+data "aws_iam_policy_document" "flow_logs_assume_role" {
+  statement {
+    effect = "Allow"
+
+    principals {
+      type        = "Service"
+      identifiers = ["vpc-flow-logs.amazonaws.com"]
+    }
+
+    actions = ["sts:AssumeRole"]
+  }
+}
+
+resource "aws_iam_role" "flow_logs" {
+  name               = "${local.name_prefix}-flow-logs"
+  assume_role_policy = data.aws_iam_policy_document.flow_logs_assume_role.json
+}
+
+data "aws_iam_policy_document" "flow_logs" {
+  statement {
+    effect = "Allow"
+
+    actions = [
+      "logs:CreateLogStream",
+      "logs:PutLogEvents",
+      "logs:DescribeLogGroups",
+      "logs:DescribeLogStreams",
+    ]
+
+    resources = ["${aws_cloudwatch_log_group.flow_logs.arn}:*"]
+  }
+}
+
+resource "aws_iam_role_policy" "flow_logs" {
+  name   = "${local.name_prefix}-flow-logs"
+  role   = aws_iam_role.flow_logs.id
+  policy = data.aws_iam_policy_document.flow_logs.json
+}
+
 resource "aws_flow_log" "main" {
   vpc_id          = aws_vpc.main.id
   traffic_type    = "ALL"
@@ -353,7 +452,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
 
       - name: Terraform Plan
         working-directory: infrastructure/environments/${{ matrix.environment }}
@@ -375,6 +474,8 @@ jobs:
     environment: dev
     steps:
       - uses: actions/checkout@v4
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v4
       - name: Apply Dev
         working-directory: infrastructure/environments/dev
         run: |
@@ -387,6 +488,8 @@ jobs:
     environment: staging
     steps:
       - uses: actions/checkout@v4
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v4
       - name: Apply Staging
         working-directory: infrastructure/environments/staging
         run: |
@@ -399,6 +502,8 @@ jobs:
     environment: production  # Requires manual approval
     steps:
       - uses: actions/checkout@v4
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v4
       - name: Apply Production
         working-directory: infrastructure/environments/production
         run: |
