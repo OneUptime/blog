@@ -12,7 +12,7 @@ Retries are a basic resilience pattern. When a request fails due to a transient 
 
 ## Default Retry Behavior
 
-Out of the box, Istio retries failed requests twice (for a total of 3 attempts including the original). It retries on specific conditions like connection failures and certain 5xx responses. The default per-retry timeout is 25 seconds.
+Out of the box, Istio retries failed HTTP requests twice (for a total of 3 attempts including the original). The default retry conditions are connection failures, refused streams, gRPC `unavailable` and `cancelled` responses, and retriable status codes. Istio does not set a separate global per-try timeout by default; `perTryTimeout` defaults to the route timeout, which means there is no separate per-try timeout when the route timeout is disabled.
 
 You can verify the current retry behavior on any proxy:
 
@@ -32,7 +32,6 @@ spec:
   meshConfig:
     defaultHttpRetryPolicy:
       attempts: 3
-      perTryTimeout: 2s
       retryOn: connect-failure,refused-stream,unavailable,cancelled,retriable-status-codes
       retryRemoteLocalities: true
 ```
@@ -43,7 +42,7 @@ Apply it:
 istioctl install -f retry-config.yaml
 ```
 
-This configuration tells every sidecar in the mesh to retry failed HTTP requests up to 3 times, with a 2-second timeout for each attempt.
+This configuration tells every sidecar in the mesh to retry failed HTTP requests up to 3 times and allows retries to be sent to remote localities. A mesh-wide `defaultHttpRetryPolicy` cannot currently configure `perTryTimeout`; set per-try timeouts in a `VirtualService` retry policy when you need them.
 
 ## Understanding Retry Configuration Options
 
@@ -53,7 +52,7 @@ The maximum number of retry attempts. If set to 3, Istio makes up to 3 additiona
 
 ### perTryTimeout
 
-How long to wait for each individual retry attempt. If the upstream does not respond within this time, the attempt is considered failed and the next retry begins. Set this based on your service's expected response time. If your service normally responds in 200ms, a perTryTimeout of 2s gives plenty of headroom.
+How long to wait for each individual attempt, including the initial call and any retries. If the upstream does not respond within this time, the attempt is considered failed and the next retry begins. Set this in a `VirtualService` retry policy based on your service's expected response time. If your service normally responds in 200ms, a perTryTimeout of 2s gives plenty of headroom.
 
 ### retryOn
 
@@ -63,7 +62,7 @@ A comma-separated list of conditions that trigger a retry. Common values:
 - `refused-stream` - Upstream refused the stream (HTTP/2 RST_STREAM)
 - `unavailable` - gRPC status UNAVAILABLE
 - `cancelled` - gRPC status CANCELLED
-- `retriable-status-codes` - Retry on specific HTTP status codes (requires retryRemoteLocalities or a VirtualService to specify which codes)
+- `retriable-status-codes` - Retry on specific HTTP status codes configured in the retry policy or through `x-envoy-retriable-status-codes`
 - `5xx` - Retry on any 5xx response
 - `gateway-error` - Retry on 502, 503, 504
 - `reset` - Connection reset
@@ -79,7 +78,7 @@ When set to true, retries can be sent to endpoints in different localities (zone
 The mesh-wide default is a baseline. You can override it for specific services using VirtualService:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: payment-service-vs
@@ -104,7 +103,7 @@ This gives the payment service more retries with a longer timeout, recognizing t
 Some services should not be retried - anything that is not idempotent, for example. Disable retries through VirtualService:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: notification-service-vs
@@ -129,7 +128,7 @@ Retries can cause problems during outages. If a service is overwhelmed and every
 While Istio does not have a built-in retry budget in MeshConfig, you can mitigate retry amplification with circuit breaking:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service-dr
@@ -154,7 +153,7 @@ The `maxRetries` field in the connection pool limits the total number of concurr
 Retries interact with the overall request timeout. The total time for all retry attempts must fit within the request timeout:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service-vs
@@ -171,9 +170,9 @@ spec:
         perTryTimeout: 3s
 ```
 
-With 3 retry attempts and a 3-second per-try timeout, the retries could take up to 9 seconds (3 x 3). The overall timeout is 10 seconds, so there is just enough room. If you set the overall timeout to 5 seconds, only 1-2 retries would have time to complete.
+With 3 retry attempts and a 3-second per-try timeout, the maximum possible number of requests is 4: the original request plus 3 retries. If every try used the full 3-second timeout, the sequence would need up to 12 seconds plus retry backoff, so a 10-second overall timeout would not allow every try to consume the full per-try timeout. If you set the overall timeout to 5 seconds, only 1-2 retries would have time to complete.
 
-A good formula: `overallTimeout >= attempts * perTryTimeout`
+A good formula when you want every try to have the full per-try timeout is: `overallTimeout >= (attempts + 1) * perTryTimeout`, plus room for retry backoff.
 
 ## Monitoring Retries
 
@@ -206,7 +205,7 @@ If the retry success rate is low, it means the failures are not transient and re
 
 ## Best Practices
 
-1. Set a conservative mesh-wide default (2-3 attempts, 2s per-try timeout)
+1. Set a conservative mesh-wide default attempt count (2-3 attempts) and configure per-try timeouts per route where needed
 2. Only retry on transient errors (connect-failure, refused-stream), not on all 5xx
 3. Enable retryRemoteLocalities for better cross-zone resilience
 4. Disable retries on non-idempotent operations
