@@ -12,13 +12,13 @@ Building lists in Terraform often involves conditional logic. You might want to 
 
 ## What Is the compact Function?
 
-The `compact` function takes a list of strings and returns a new list with all empty string elements removed. Non-empty strings pass through unchanged. Here is the basic syntax:
+The `compact` function takes a list of strings and returns a new list with all empty string and null elements removed. Non-empty strings pass through unchanged. Here is the basic syntax:
 
 ```hcl
 # compact(list_of_strings)
 
-# Removes all "" elements from the list
-compact(["a", "", "b", "", "c"])
+# Removes all "" and null elements from the list
+compact(["a", "", "b", null, "c"])
 # Returns: ["a", "b", "c"]
 ```
 
@@ -59,9 +59,12 @@ Let's get a feel for how `compact` behaves:
   "only",
 ]
 
-# Note: compact only removes empty strings, not null
-# This would cause a type error if you pass null elements
-# Use coalesce or try to handle nulls first
+# compact also removes null elements
+> compact(["hello", null, "", "world"])
+[
+  "hello",
+  "world",
+]
 ```
 
 ## Building Conditional Lists
@@ -295,7 +298,7 @@ output "nginx_config" {
 It is worth noting what `compact` does not handle:
 
 ```hcl
-# compact only removes empty strings ("")
+# compact only removes empty strings ("") and null values
 # It does NOT remove:
 
 # Whitespace-only strings
@@ -354,10 +357,10 @@ locals {
 
 ## Performance Considerations
 
-The `compact` function operates in linear time - it scans the list once and removes empty strings. For typical Terraform configurations with lists of a few dozen elements, performance is never a concern. Even with lists of thousands of elements (uncommon in Terraform), `compact` performs well because it is a simple filter operation.
+The `compact` function operates in linear time - it scans the list once and removes empty string and null elements. For typical Terraform configurations with lists of a few dozen elements, performance is never a concern. Even with lists of thousands of elements (uncommon in Terraform), `compact` performs well because it is a simple filter operation.
 
 ## Summary
 
-The `compact` function is a small utility that solves a very specific problem - removing empty strings from lists - but it enables a clean pattern for building conditional lists in Terraform. Instead of wrestling with nested `concat` calls and conditional blocks, you can lay out all possible values in a flat list, use ternary expressions to conditionally include them, and let `compact` clean up the empties. It is one of those functions that, once you start using it, you will find yourself reaching for constantly.
+The `compact` function is a small utility that solves a very specific problem - removing empty string and null elements from lists - but it enables a clean pattern for building conditional lists in Terraform. Instead of wrestling with nested `concat` calls and conditional blocks, you can lay out all possible values in a flat list, use ternary expressions to conditionally include them, and let `compact` clean up the empties. It is one of those functions that, once you start using it, you will find yourself reaching for constantly.
 
 For more on list manipulation in Terraform, check out our guides on the [concat function](https://oneuptime.com/blog/post/2026-02-23-how-to-use-the-concat-function-to-merge-lists-in-terraform/view) and the [distinct function](https://oneuptime.com/blog/post/2026-02-23-how-to-use-the-distinct-function-to-deduplicate-lists/view).
