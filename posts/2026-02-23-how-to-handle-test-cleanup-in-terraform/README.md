@@ -195,10 +195,54 @@ def cleanup_vpcs():
         if created_at and created_at < cutoff:
             vpc_id = vpc['VpcId']
             print(f"Deleting test VPC {vpc_id} (created {created_at})")
-            delete_vpc_and_dependencies(ec2, vpc_id)
+            delete_vpc_and_common_dependencies(ec2, vpc_id)
 
-def delete_vpc_and_dependencies(ec2, vpc_id):
-    """Delete a VPC and all its dependencies."""
+def delete_vpc_and_common_dependencies(ec2, vpc_id):
+    """Delete a VPC and common dependencies created by tests."""
+    # Terminate instances first; subnets and security groups cannot be deleted
+    # while instances in the VPC are still present.
+    instances = ec2.describe_instances(
+        Filters=[
+            {'Name': 'vpc-id', 'Values': [vpc_id]},
+            {'Name': 'instance-state-name', 'Values': ['pending', 'running', 'stopping', 'stopped']}
+        ]
+    )
+    instance_ids = [
+        instance['InstanceId']
+        for reservation in instances['Reservations']
+        for instance in reservation['Instances']
+    ]
+    if instance_ids:
+        ec2.terminate_instances(InstanceIds=instance_ids)
+        ec2.get_waiter('instance_terminated').wait(InstanceIds=instance_ids)
+
+    # Detach and delete internet gateways
+    igws = ec2.describe_internet_gateways(
+        Filters=[{'Name': 'attachment.vpc-id', 'Values': [vpc_id]}]
+    )
+    for igw in igws['InternetGateways']:
+        ec2.detach_internet_gateway(
+            InternetGatewayId=igw['InternetGatewayId'],
+            VpcId=vpc_id
+        )
+        ec2.delete_internet_gateway(
+            InternetGatewayId=igw['InternetGatewayId']
+        )
+
+    # Delete custom route tables
+    route_tables = ec2.describe_route_tables(
+        Filters=[{'Name': 'vpc-id', 'Values': [vpc_id]}]
+    )
+    for route_table in route_tables['RouteTables']:
+        associations = route_table.get('Associations', [])
+        if any(association.get('Main') for association in associations):
+            continue
+        for association in associations:
+            ec2.disassociate_route_table(
+                AssociationId=association['RouteTableAssociationId']
+            )
+        ec2.delete_route_table(RouteTableId=route_table['RouteTableId'])
+
     # Delete subnets
     subnets = ec2.describe_subnets(
         Filters=[{'Name': 'vpc-id', 'Values': [vpc_id]}]
@@ -213,19 +257,6 @@ def delete_vpc_and_dependencies(ec2, vpc_id):
     for sg in sgs['SecurityGroups']:
         if sg['GroupName'] != 'default':
             ec2.delete_security_group(GroupId=sg['GroupId'])
-
-    # Delete internet gateways
-    igws = ec2.describe_internet_gateways(
-        Filters=[{'Name': 'attachment.vpc-id', 'Values': [vpc_id]}]
-    )
-    for igw in igws['InternetGateways']:
-        ec2.detach_internet_gateway(
-            InternetGatewayId=igw['InternetGatewayId'],
-            VpcId=vpc_id
-        )
-        ec2.delete_internet_gateway(
-            InternetGatewayId=igw['InternetGatewayId']
-        )
 
     # Finally delete the VPC
     ec2.delete_vpc(VpcId=vpc_id)
@@ -274,6 +305,10 @@ on:
     # Run every 2 hours
     - cron: '0 */2 * * *'
   workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
 
 jobs:
   cleanup:
