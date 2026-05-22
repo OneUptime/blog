@@ -24,7 +24,7 @@ Let us clear up the confusion right away:
 | Run history | None | Full audit trail |
 | Notifications | None | Slack, email, webhooks |
 
-When you use Terraform Cloud, its workspaces replace CLI workspaces entirely. You do not use `terraform workspace select` - instead, each Cloud workspace is a separate entity.
+When you use Terraform Cloud, its workspaces replace CLI workspaces for state isolation. With a single workspace name in the `cloud` block, you do not use `terraform workspace select` - instead, that working directory is tied to one Cloud workspace. With tag-based workspace selection, Terraform CLI workspace commands select among matching Cloud workspaces.
 
 ## Setting Up the Cloud Backend
 
@@ -161,6 +161,11 @@ provider "tfe" {
   organization = "acme"
 }
 
+resource "tfe_project" "application" {
+  name         = "application"
+  organization = "acme"
+}
+
 # Create workspaces for each environment
 resource "tfe_workspace" "api" {
   for_each = toset(["dev", "staging", "prod"])
@@ -237,7 +242,7 @@ resource "tfe_workspace" "production" {
 
   # Only trigger on changes to specific paths
   working_directory   = "terraform/app"
-  trigger_prefixes    = ["terraform/modules/"]
+  trigger_prefixes    = ["terraform/app/", "terraform/modules/"]
 
   # Require manual approval for production
   auto_apply = false
@@ -247,9 +252,9 @@ resource "tfe_workspace" "production" {
 }
 ```
 
-With this setup:
+With this setup, assuming automatic speculative plans are enabled:
 
-1. A developer pushes to a feature branch
+1. A developer opens or updates a pull request against the tracked branch
 2. Terraform Cloud creates a speculative plan (no apply)
 3. The plan shows as a check on the PR
 4. When merged to main, Terraform Cloud plans again
@@ -257,7 +262,7 @@ With this setup:
 
 ## Run Triggers
 
-Chain workspaces so that one workspace's apply triggers a run in another:
+Chain workspaces so that one workspace's successful apply queues a run in another:
 
 ```hcl
 # When networking workspace changes, trigger compute workspace
@@ -270,8 +275,8 @@ resource "tfe_run_trigger" "networking_to_compute" {
 This is useful when infrastructure has dependencies:
 
 ```text
-networking-prod (apply) --> triggers --> compute-prod (plan + apply)
-                       --> triggers --> database-prod (plan + apply)
+networking-prod (apply) --> triggers --> compute-prod (plan, then manual or auto-apply)
+                       --> triggers --> database-prod (plan, then manual or auto-apply)
 ```
 
 ## Access Controls
@@ -340,6 +345,7 @@ terraform plan
 # For local execution mode:
 # Set execution mode to "local" in workspace settings
 # Plans run locally but state stays in Terraform Cloud
+# Workspace variables and variable sets are not evaluated in local execution mode
 ```
 
 ### Execution Modes
