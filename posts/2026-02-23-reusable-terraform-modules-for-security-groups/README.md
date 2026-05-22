@@ -8,9 +8,9 @@ Description: Learn how to build a reusable Terraform module for AWS security gro
 
 ---
 
-Security groups are one of the most frequently created resources in AWS. Every EC2 instance, RDS database, Lambda function, and load balancer needs at least one. Without a proper module, you end up copy-pasting security group blocks across your codebase with slight variations, which makes auditing and updating rules a nightmare.
+Security groups are one of the most frequently created resources in AWS. Every EC2 instance, RDS database, VPC-connected Lambda function, and many load balancers need at least one. Without a proper module, you end up copy-pasting security group blocks across your codebase with slight variations, which makes auditing and updating rules a nightmare.
 
-A well-designed security group module gives you a single place to enforce naming conventions, tagging standards, and default deny policies. This post walks through building one from scratch.
+A well-designed security group module gives you a single place to enforce naming conventions, tagging standards, and baseline rule policies. This post walks through building one from scratch.
 
 ## The Problem with Inline Security Groups
 
@@ -84,9 +84,9 @@ variable "vpc_id" {
 variable "ingress_rules" {
   description = "List of ingress rules"
   type = list(object({
-    from_port       = number
-    to_port         = number
-    protocol        = string
+    from_port       = optional(number)
+    to_port         = optional(number)
+    ip_protocol     = string
     cidr_blocks     = optional(list(string), [])
     security_groups = optional(list(string), [])
     description     = optional(string, "")
@@ -98,17 +98,15 @@ variable "ingress_rules" {
 variable "egress_rules" {
   description = "List of egress rules"
   type = list(object({
-    from_port       = number
-    to_port         = number
-    protocol        = string
+    from_port       = optional(number)
+    to_port         = optional(number)
+    ip_protocol     = string
     cidr_blocks     = optional(list(string), [])
     security_groups = optional(list(string), [])
     description     = optional(string, "")
   }))
   default = [{
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
+    ip_protocol = "-1"
     cidr_blocks = ["0.0.0.0/0"]
     description = "Allow all outbound traffic"
   }]
@@ -125,7 +123,7 @@ Using `optional()` with defaults keeps the caller's code clean. They only need t
 
 ## Building the Main Resource
 
-The main.tf file uses `aws_security_group_rule` resources instead of inline rules. This is important because inline rules and standalone rules conflict with each other, and standalone rules are more flexible.
+The main.tf file uses `aws_vpc_security_group_ingress_rule` and `aws_vpc_security_group_egress_rule` resources instead of inline rules. This is important because inline rules and standalone rules conflict with each other, and the VPC security group rule resources are the current best practice in the AWS provider.
 
 ```hcl
 # modules/security-group/main.tf
@@ -151,37 +149,92 @@ resource "aws_security_group" "this" {
   }
 }
 
-# Create individual ingress rules from the list
-resource "aws_security_group_rule" "ingress" {
-  count = length(var.ingress_rules)
+locals {
+  ingress_cidr_rules = flatten([
+    for rule_index, rule in var.ingress_rules : [
+      for cidr_index, cidr in rule.cidr_blocks : merge(rule, {
+        key       = "${rule_index}-cidr-${cidr_index}"
+        cidr_ipv4 = cidr
+      })
+    ]
+  ])
 
-  type              = "ingress"
+  ingress_security_group_rules = flatten([
+    for rule_index, rule in var.ingress_rules : [
+      for sg_index, sg_id in rule.security_groups : merge(rule, {
+        key                          = "${rule_index}-sg-${sg_index}"
+        referenced_security_group_id = sg_id
+      })
+    ]
+  ])
+
+  egress_cidr_rules = flatten([
+    for rule_index, rule in var.egress_rules : [
+      for cidr_index, cidr in rule.cidr_blocks : merge(rule, {
+        key       = "${rule_index}-cidr-${cidr_index}"
+        cidr_ipv4 = cidr
+      })
+    ]
+  ])
+
+  egress_security_group_rules = flatten([
+    for rule_index, rule in var.egress_rules : [
+      for sg_index, sg_id in rule.security_groups : merge(rule, {
+        key                          = "${rule_index}-sg-${sg_index}"
+        referenced_security_group_id = sg_id
+      })
+    ]
+  ])
+}
+
+# Create individual ingress rules from the list
+resource "aws_vpc_security_group_ingress_rule" "cidr" {
+  for_each = { for rule in local.ingress_cidr_rules : rule.key => rule }
+
   security_group_id = aws_security_group.this.id
 
-  from_port   = var.ingress_rules[count.index].from_port
-  to_port     = var.ingress_rules[count.index].to_port
-  protocol    = var.ingress_rules[count.index].protocol
-  description = var.ingress_rules[count.index].description
+  cidr_ipv4   = each.value.cidr_ipv4
+  from_port   = each.value.from_port
+  to_port     = each.value.to_port
+  ip_protocol = each.value.ip_protocol
+  description = each.value.description
+}
 
-  # Use cidr_blocks if specified, otherwise use security_groups
-  cidr_blocks              = length(var.ingress_rules[count.index].cidr_blocks) > 0 ? var.ingress_rules[count.index].cidr_blocks : null
-  source_security_group_id = length(var.ingress_rules[count.index].security_groups) > 0 ? var.ingress_rules[count.index].security_groups[0] : null
+resource "aws_vpc_security_group_ingress_rule" "security_group" {
+  for_each = { for rule in local.ingress_security_group_rules : rule.key => rule }
+
+  security_group_id = aws_security_group.this.id
+
+  referenced_security_group_id = each.value.referenced_security_group_id
+  from_port                    = each.value.from_port
+  to_port                      = each.value.to_port
+  ip_protocol                  = each.value.ip_protocol
+  description                  = each.value.description
 }
 
 # Create individual egress rules
-resource "aws_security_group_rule" "egress" {
-  count = length(var.egress_rules)
+resource "aws_vpc_security_group_egress_rule" "cidr" {
+  for_each = { for rule in local.egress_cidr_rules : rule.key => rule }
 
-  type              = "egress"
   security_group_id = aws_security_group.this.id
 
-  from_port   = var.egress_rules[count.index].from_port
-  to_port     = var.egress_rules[count.index].to_port
-  protocol    = var.egress_rules[count.index].protocol
-  description = var.egress_rules[count.index].description
+  cidr_ipv4   = each.value.cidr_ipv4
+  from_port   = each.value.from_port
+  to_port     = each.value.to_port
+  ip_protocol = each.value.ip_protocol
+  description = each.value.description
+}
 
-  cidr_blocks              = length(var.egress_rules[count.index].cidr_blocks) > 0 ? var.egress_rules[count.index].cidr_blocks : null
-  source_security_group_id = length(var.egress_rules[count.index].security_groups) > 0 ? var.egress_rules[count.index].security_groups[0] : null
+resource "aws_vpc_security_group_egress_rule" "security_group" {
+  for_each = { for rule in local.egress_security_group_rules : rule.key => rule }
+
+  security_group_id = aws_security_group.this.id
+
+  referenced_security_group_id = each.value.referenced_security_group_id
+  from_port                    = each.value.from_port
+  to_port                      = each.value.to_port
+  ip_protocol                  = each.value.ip_protocol
+  description                  = each.value.description
 }
 ```
 
@@ -225,14 +278,14 @@ module "web_sg" {
     {
       from_port   = 443
       to_port     = 443
-      protocol    = "tcp"
+      ip_protocol = "tcp"
       cidr_blocks = ["0.0.0.0/0"]
       description = "HTTPS from anywhere"
     },
     {
       from_port   = 80
       to_port     = 80
-      protocol    = "tcp"
+      ip_protocol = "tcp"
       cidr_blocks = ["0.0.0.0/0"]
       description = "HTTP from anywhere (redirect to HTTPS)"
     }
@@ -256,7 +309,7 @@ module "db_sg" {
     {
       from_port       = 5432
       to_port         = 5432
-      protocol        = "tcp"
+      ip_protocol     = "tcp"
       security_groups = [module.web_sg.id]
       description     = "PostgreSQL from web servers"
     }
@@ -279,34 +332,34 @@ locals {
   # Predefined rule sets for common use cases
   preset_rules = {
     http = {
-      from_port = 80
-      to_port   = 80
-      protocol  = "tcp"
+      from_port   = 80
+      to_port     = 80
+      ip_protocol = "tcp"
     }
     https = {
-      from_port = 443
-      to_port   = 443
-      protocol  = "tcp"
+      from_port   = 443
+      to_port     = 443
+      ip_protocol = "tcp"
     }
     ssh = {
-      from_port = 22
-      to_port   = 22
-      protocol  = "tcp"
+      from_port   = 22
+      to_port     = 22
+      ip_protocol = "tcp"
     }
     postgresql = {
-      from_port = 5432
-      to_port   = 5432
-      protocol  = "tcp"
+      from_port   = 5432
+      to_port     = 5432
+      ip_protocol = "tcp"
     }
     mysql = {
-      from_port = 3306
-      to_port   = 3306
-      protocol  = "tcp"
+      from_port   = 3306
+      to_port     = 3306
+      ip_protocol = "tcp"
     }
     redis = {
-      from_port = 6379
-      to_port   = 6379
-      protocol  = "tcp"
+      from_port   = 6379
+      to_port     = 6379
+      ip_protocol = "tcp"
     }
   }
 }
@@ -337,22 +390,20 @@ module "service_b_sg" {
 }
 
 # Add cross-reference rules after both SGs exist
-resource "aws_security_group_rule" "a_from_b" {
-  type                     = "ingress"
-  security_group_id        = module.service_a_sg.id
-  source_security_group_id = module.service_b_sg.id
-  from_port                = 8080
-  to_port                  = 8080
-  protocol                 = "tcp"
+resource "aws_vpc_security_group_ingress_rule" "a_from_b" {
+  security_group_id            = module.service_a_sg.id
+  referenced_security_group_id = module.service_b_sg.id
+  from_port                    = 8080
+  to_port                      = 8080
+  ip_protocol                  = "tcp"
 }
 
-resource "aws_security_group_rule" "b_from_a" {
-  type                     = "ingress"
-  security_group_id        = module.service_b_sg.id
-  source_security_group_id = module.service_a_sg.id
-  from_port                = 8080
-  to_port                  = 8080
-  protocol                 = "tcp"
+resource "aws_vpc_security_group_ingress_rule" "b_from_a" {
+  security_group_id            = module.service_b_sg.id
+  referenced_security_group_id = module.service_a_sg.id
+  from_port                    = 8080
+  to_port                      = 8080
+  ip_protocol                  = "tcp"
 }
 ```
 
@@ -376,4 +427,4 @@ terraform {
 
 ## Summary
 
-A reusable security group module saves you from scattered, inconsistent firewall rules across your infrastructure. The key design decisions are: use `name_prefix` with `create_before_destroy` for zero-downtime replacements, use standalone rules instead of inline rules, and provide sensible defaults for egress. For more on structuring Terraform modules, check out our post on [developing Terraform modules with best practices](https://oneuptime.com/blog/post/2026-02-23-develop-terraform-modules-with-best-practices/view).
+A reusable security group module saves you from scattered, inconsistent firewall rules across your infrastructure. The key design decisions are: use `name_prefix` with `create_before_destroy` for smoother replacements, use VPC security group rule resources instead of inline rules, and provide sensible defaults for egress. For more on structuring Terraform modules, check out our post on [developing Terraform modules with best practices](https://oneuptime.com/blog/post/2026-02-23-develop-terraform-modules-with-best-practices/view).
