@@ -189,7 +189,7 @@ AWS ARNs follow a predictable structure, but they are long and easy to get wrong
 ```hcl
 locals {
   account_id = data.aws_caller_identity.current.account_id
-  region     = data.aws_region.current.name
+  region     = data.aws_region.current.id
 
   # Compute ARNs once and reuse
   kms_key_arn    = "arn:aws:kms:${local.region}:${local.account_id}:key/${var.kms_key_id}"
