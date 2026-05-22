@@ -16,7 +16,7 @@ This guide covers implementing data sources in Terraform providers, including si
 
 Data sources serve two primary purposes. First, they let users reference infrastructure that was created outside of Terraform or in a different Terraform configuration. Second, they enable lookups that inform resource creation, such as finding the latest AMI ID or looking up a VPC by name.
 
-The key difference from resources: data sources are read during every plan and apply. They have no lifecycle management. Terraform does not track their state for drift detection.
+The key difference from resources: Terraform attempts to read data sources during planning, but may defer the read until apply when the query depends on values that are not known during the plan. They have no lifecycle management; Terraform stores their latest read values in state, but it does not manage them for drift remediation.
 
 ## Implementing a Basic Data Source
 
@@ -29,10 +29,14 @@ package provider
 import (
     "context"
     "fmt"
+    "time"
 
+    "github.com/hashicorp/terraform-plugin-framework/attr"
     "github.com/hashicorp/terraform-plugin-framework/datasource"
     "github.com/hashicorp/terraform-plugin-framework/datasource/schema"
     "github.com/hashicorp/terraform-plugin-framework/types"
+
+    "yourservice/internal/api"
 )
 
 // Ensure interface compliance
@@ -238,6 +242,8 @@ import (
     "github.com/hashicorp/terraform-plugin-framework/datasource"
     "github.com/hashicorp/terraform-plugin-framework/datasource/schema"
     "github.com/hashicorp/terraform-plugin-framework/types"
+
+    "yourservice/internal/api"
 )
 
 type ServersDataSource struct {
@@ -350,6 +356,9 @@ func (d *ServersDataSource) Read(ctx context.Context, req datasource.ReadRequest
     if !config.Tags.IsNull() {
         tags := make(map[string]string)
         resp.Diagnostics.Append(config.Tags.ElementsAs(ctx, &tags, false)...)
+        if resp.Diagnostics.HasError() {
+            return
+        }
         filters.Tags = tags
     }
 
@@ -476,11 +485,23 @@ func dataSourceServerRead(ctx context.Context, d *schema.ResourceData, meta inte
         return diag.FromErr(err)
     }
 
+    if server == nil {
+        return diag.Errorf("no server matching the specified criteria was found")
+    }
+
     d.SetId(server.ID)
-    d.Set("name", server.Name)
-    d.Set("status", server.Status)
-    d.Set("region", server.Region)
-    d.Set("ip_address", server.IPAddress)
+    if err := d.Set("name", server.Name); err != nil {
+        return diag.FromErr(err)
+    }
+    if err := d.Set("status", server.Status); err != nil {
+        return diag.FromErr(err)
+    }
+    if err := d.Set("region", server.Region); err != nil {
+        return diag.FromErr(err)
+    }
+    if err := d.Set("ip_address", server.IPAddress); err != nil {
+        return diag.FromErr(err)
+    }
 
     return nil
 }
@@ -496,7 +517,7 @@ For list data sources, provide both a detailed list and a convenience list of ju
 
 Cache data source results within a single Terraform run when possible. If the same data source is referenced multiple times with the same parameters, avoid making redundant API calls.
 
-Set the ID on data sources too. Even though data sources do not manage lifecycle, Terraform expects an ID. For single-item lookups, use the resource's natural ID. For list queries, use a hash of the filter parameters.
+Expose an ID attribute when it is useful for callers. For single-item lookups, use the resource's natural ID. For list queries, a separate convenience list of IDs is usually more useful than inventing a synthetic ID for the data source itself.
 
 For more on the provider resource lifecycle, see our guide on [Implementing Resource CRUD Operations](https://oneuptime.com/blog/post/2026-02-23-terraform-provider-crud-operations/view).
 
