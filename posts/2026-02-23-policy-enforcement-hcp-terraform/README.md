@@ -14,16 +14,18 @@ HCP Terraform supports two policy frameworks: Sentinel (HashiCorp's own) and Ope
 
 ## How Policy Enforcement Works
 
-Policies run after the plan phase and before the apply:
+Policies run after a successful plan and before the apply. Sentinel policy checks that use cost estimation run after cost estimation, while OPA policy evaluations run before cost estimation:
 
 ```text
-Plan -> Cost Estimation -> Policy Check -> Apply
+Plan -> OPA Policy Evaluation -> Cost Estimation -> Sentinel Policy Check -> Apply
 ```
 
-Each policy has an enforcement level:
+Sentinel policies have three enforcement levels:
 - **hard-mandatory** - Cannot be overridden. If it fails, the run stops.
 - **soft-mandatory** - Can be overridden by authorized users. Useful for exceptions.
 - **advisory** - Shows warnings but does not block the run.
+
+OPA policies use **mandatory** and **advisory** enforcement levels. Mandatory OPA failures stop the run, but can be overridden when policy overrides are enabled and the user has the right permission.
 
 ## Sentinel Policies
 
@@ -124,7 +126,7 @@ policy "restrict-cidr-blocks" {
 
 ### Example: Restrict Instance Types
 
-```python
+```sentinel
 # restrict-instance-types.sentinel
 # Ensures only approved instance types are used
 
@@ -163,7 +165,7 @@ main = rule {
 
 ### Example: Require Tags
 
-```python
+```sentinel
 # require-tags.sentinel
 # Ensures all taggable resources have required tags
 
@@ -206,18 +208,11 @@ main = rule {
 
 ### Example: Enforce Encryption
 
-```python
+```sentinel
 # enforce-encryption.sentinel
-# Ensures storage resources are encrypted
+# Ensures RDS and EBS storage resources are encrypted
 
 import "tfplan/v2" as tfplan
-
-# Check S3 buckets do not have public access
-s3_buckets = filter tfplan.resource_changes as _, rc {
-  rc.type is "aws_s3_bucket" and
-  rc.mode is "managed" and
-  rc.change.actions contains "create"
-}
 
 # Check RDS instances have storage encryption
 rds_instances = filter tfplan.resource_changes as _, rc {
