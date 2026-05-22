@@ -57,6 +57,8 @@ resource "random_password" "database" {
 }
 ```
 
+The `secret_data` value is sensitive, but Terraform still stores it in state. Protect your state backend and consider write-only secret version arguments when your Terraform and provider versions support them.
+
 Store structured data as JSON:
 
 ```hcl
@@ -128,7 +130,8 @@ resource "google_project_iam_member" "secret_reader" {
   member  = "serviceAccount:${google_service_account.app.email}"
 }
 
-# Conditional access - only from specific service accounts
+# Alternative: authoritative binding for a fixed set of service accounts.
+# Use this instead of another iam_member for the same secret and role.
 resource "google_secret_manager_secret_iam_binding" "restricted" {
   secret_id = google_secret_manager_secret.database_password.id
   role      = "roles/secretmanager.secretAccessor"
@@ -213,6 +216,10 @@ resource "google_container_cluster" "main" {
   name     = "myapp-cluster"
   location = "us-east1"
 
+  workload_identity_config {
+    workload_pool = "${var.project_id}.svc.id.goog"
+  }
+
   # Enable Secret Manager add-on
   secret_manager_config {
     enabled = true
@@ -233,11 +240,15 @@ resource "google_container_cluster" "main" {
   }
 }
 
-# Grant GKE node service account access to secrets
+data "google_project" "current" {
+  project_id = var.project_id
+}
+
+# Grant the Kubernetes ServiceAccount used by the Pod access to secrets
 resource "google_secret_manager_secret_iam_member" "gke_access" {
   secret_id = google_secret_manager_secret.database_password.id
   role      = "roles/secretmanager.secretAccessor"
-  member    = "serviceAccount:${google_service_account.gke_nodes.email}"
+  member    = "principal://iam.googleapis.com/projects/${data.google_project.current.number}/locations/global/workloadIdentityPools/${var.project_id}.svc.id.goog/subject/ns/default/sa/myapp"
 }
 ```
 
@@ -377,6 +388,6 @@ Secret Manager handles your sensitive data, but you need to monitor the services
 
 ## Conclusion
 
-GCP Secret Manager provides a straightforward way to manage secrets in Terraform. Create secrets, control access with IAM, integrate with Cloud Run and GKE natively, and set up rotation for passwords that need to change regularly. The deep integration with GCP services means your applications can access secrets without Terraform ever needing to expose the values in its configuration.
+GCP Secret Manager provides a straightforward way to manage secrets in Terraform. Create secrets, control access with IAM, integrate with Cloud Run and GKE natively, and set up rotation for passwords that need to change regularly. The deep integration with GCP services means your applications can access secrets without embedding the values in application configuration, but any secret values created or read by Terraform must still be handled carefully because they can be stored in Terraform state.
 
 For secret management on other clouds, see our guides on [AWS Secrets Manager](https://oneuptime.com/blog/post/2026-02-23-how-to-use-aws-secrets-manager-with-terraform/view) and [Azure Key Vault](https://oneuptime.com/blog/post/2026-02-23-how-to-use-azure-key-vault-secrets-in-terraform/view).
