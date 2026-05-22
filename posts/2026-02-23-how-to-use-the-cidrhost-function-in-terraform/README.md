@@ -30,7 +30,7 @@ cidrhost(prefix, hostnum)
 ```
 
 - `prefix` - A string in CIDR notation (e.g., `"10.0.0.0/8"`, `"172.16.0.0/12"`, `"192.168.1.0/24"`)
-- `hostnum` - An integer representing the host number within the network. Host numbering starts at 0.
+- `hostnum` - An integer representing the host number within the network. For positive values, host numbering starts at 0. Negative values count backward from the end of the range.
 
 The function returns a string containing the IP address.
 
