@@ -121,7 +121,7 @@ resource "aws_db_instance" "main" {
   maintenance_window        = "Mon:04:00-Mon:05:00"
   copy_tags_to_snapshot     = true
   delete_automated_backups  = false
-  final_snapshot_identifier = "production-db-final-${formatdate("YYYY-MM-DD", timestamp())}"
+  final_snapshot_identifier = "production-db-final-${var.final_snapshot_suffix}" # Use a stable suffix, such as a release or change ticket ID
   skip_final_snapshot       = false
 
   # Monitoring
@@ -186,13 +186,15 @@ Applications use temporary IAM tokens instead of static passwords:
 ```bash
 # Generate a temporary authentication token
 TOKEN=$(aws rds generate-db-auth-token \
-  --hostname production-db.cluster-xyz.us-east-1.rds.amazonaws.com \
+  --hostname production-db.abc123.us-east-1.rds.amazonaws.com \
   --port 5432 \
+  --region us-east-1 \
   --username app_user)
 
 # Connect with the token
-psql "host=production-db.cluster-xyz.us-east-1.rds.amazonaws.com \
-      port=5432 dbname=myapp user=app_user password=$TOKEN sslmode=require"
+psql "host=production-db.abc123.us-east-1.rds.amazonaws.com \
+      port=5432 dbname=myapp user=app_user password=$TOKEN \
+      sslmode=verify-full sslrootcert=/path/to/rds-ca-bundle.pem"
 ```
 
 ## RDS Proxy for Connection Management
