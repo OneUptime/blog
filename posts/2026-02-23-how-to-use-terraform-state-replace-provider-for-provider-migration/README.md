@@ -8,7 +8,7 @@ Description: Learn how to use the terraform state replace-provider command to mi
 
 ---
 
-When a Terraform provider changes its registry source address, such as moving from a community namespace to the official HashiCorp namespace, or when splitting a monolithic provider into separate ones, you need to update the provider reference in your state file. The `terraform state replace-provider` command handles this transition. This guide explains when and how to use it effectively.
+When a Terraform provider changes its registry source address, such as moving from a community namespace to the official HashiCorp namespace, or when switching to a compatible fork of the same provider, you need to update the provider reference in your state file. The `terraform state replace-provider` command handles this transition. This guide explains when and how to use it effectively.
 
 ## When You Need replace-provider
 
@@ -33,7 +33,7 @@ The state file records which provider manages each resource. If you change the p
 The command syntax is:
 
 ```bash
-terraform state replace-provider [options] FROM_PROVIDER TO_PROVIDER
+terraform state replace-provider [options] FROM_PROVIDER_FQN TO_PROVIDER_FQN
 ```
 
 Example: Migrating from a legacy provider source:
@@ -46,7 +46,7 @@ terraform state replace-provider \
   "registry.terraform.io/hashicorp/aws"
 ```
 
-Terraform will show you what will change and ask for confirmation:
+Terraform will list the matching resources and ask for confirmation:
 
 ```text
 Terraform will perform the following actions:
@@ -63,8 +63,8 @@ Changing 15 resources:
   aws_subnet.private[1]
   ...
 
-Do you approve?
-  Only 'yes' will be accepted.
+Do you want to make these changes?
+  Only 'yes' will be accepted to continue.
 
   Enter a value: yes
 ```
@@ -117,7 +117,7 @@ terraform state replace-provider \
   "registry.terraform.io/-/aws" \
   "registry.terraform.io/hashicorp/aws"
 
-# For specific state files
+# For specific local state files
 terraform state replace-provider \
   -state=path/to/terraform.tfstate \
   "registry.terraform.io/-/aws" \
@@ -247,10 +247,7 @@ terraform {
 After replacing providers, update the lock file:
 
 ```bash
-# Remove the old lock file
-rm .terraform.lock.hcl
-
-# Reinitialize to generate a new lock file
+# Reinitialize to update provider selections in the lock file
 terraform init
 
 # Commit the new lock file
