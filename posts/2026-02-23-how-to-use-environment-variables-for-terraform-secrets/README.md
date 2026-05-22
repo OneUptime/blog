@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Security, Environment Variable, Secret, DevOps
 
-Description: Learn how to properly use environment variables to pass secrets to Terraform without exposing them in code, state, or logs.
+Description: Learn how to properly use environment variables to pass secrets to Terraform without hardcoding them in code or leaking them through logs.
 
 ---
 
@@ -64,7 +64,7 @@ export ARM_SUBSCRIPTION_ID="00000000-0000-0000-0000-000000000000"
 export ARM_TENANT_ID="00000000-0000-0000-0000-000000000000"
 
 # GCP
-export GOOGLE_CREDENTIALS="/path/to/service-account.json"
+export GOOGLE_APPLICATION_CREDENTIALS="/path/to/service-account.json"
 export GOOGLE_PROJECT="my-project"
 ```
 
@@ -104,8 +104,8 @@ set -o history
 
 # Better: use a .env file that is gitignored
 # .env (never commit this file)
-TF_VAR_db_password=my-secret-password
-TF_VAR_api_key=abc123
+export TF_VAR_db_password=my-secret-password
+export TF_VAR_api_key=abc123
 
 # Source it
 source .env
@@ -234,17 +234,17 @@ terraform {
     region         = "us-east-1"
     encrypt        = true
     kms_key_id     = "arn:aws:kms:us-east-1:123456789012:key/my-key-id"
-    dynamodb_table = "terraform-locks"
+    use_lockfile   = true
   }
 }
 ```
 
 ### Process Listing
 
-Environment variables are visible to anyone who can list processes on the same machine:
+Environment variables can be visible to other processes or users with sufficient permissions on the same machine:
 
 ```bash
-# Anyone on the system can see environment variables
+# On Linux, access depends on /proc and ptrace permissions
 cat /proc/<pid>/environ
 ```
 
@@ -263,7 +263,7 @@ CI/CD systems sometimes log environment variables, especially during debugging. 
 
 ## A Better Alternative: External Data Sources
 
-For production systems, consider fetching secrets at apply time from a secrets manager:
+For production systems, consider fetching secrets from a secrets manager:
 
 ```hcl
 # Fetch the password from AWS Secrets Manager
@@ -279,7 +279,7 @@ resource "aws_db_instance" "main" {
 }
 ```
 
-This approach means the secret never touches an environment variable, a `.tfvars` file, or your shell history. It does still end up in the state file, but that is an unavoidable limitation of Terraform.
+This approach means the secret never touches an environment variable, a `.tfvars` file, or your shell history. With regular resource arguments, it does still end up in the state file. In Terraform 1.11 and later, use provider-supported write-only arguments such as `aws_db_instance.password_wo` where available to avoid storing those values in state.
 
 ## Wrapping Up
 
