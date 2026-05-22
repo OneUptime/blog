@@ -64,23 +64,23 @@ terraform apply -parallelism=30
 
 ### Route53 Records
 
-DNS record creation is a common case where higher parallelism helps:
+DNS record creation is a common case where too much parallelism can hit service quotas. Route53 API requests are rate limited per account, so increase this carefully:
 
 ```bash
-# 200 Route53 records with default parallelism: ~20 minutes
+# 200 Route53 records with default parallelism
 terraform apply
 
-# Same records with higher parallelism: ~4 minutes
-terraform apply -parallelism=50
+# Same records with cautious parallelism
+terraform apply -parallelism=5
 ```
 
 ### IAM Resources
 
-IAM is a global service with high rate limits. IAM resource creation benefits from higher parallelism:
+IAM resource creation can benefit from moderate parallelism, but IAM has account quotas and eventual consistency behavior, so watch for throttling and propagation-related errors:
 
 ```bash
 # Creating many IAM roles and policies
-terraform apply -parallelism=25
+terraform apply -parallelism=15
 ```
 
 ## When to Decrease Parallelism
@@ -133,7 +133,7 @@ resource "null_resource" "db_migration" {
 
 ## Finding the Right Value
 
-Use a binary search approach to find the optimal parallelism for your workload:
+Use a stepwise benchmark approach to find the optimal parallelism for your workload:
 
 ```bash
 #!/bin/bash
@@ -159,11 +159,10 @@ done
 
 ## Setting Parallelism as Default
 
-You can set a default parallelism value through environment variables or wrapper scripts:
+You can set a default parallelism value through Terraform CLI environment variables or wrapper scripts:
 
 ```bash
-# Environment variable (not a built-in Terraform feature,
-# but useful in wrapper scripts)
+# Built-in Terraform CLI environment variables
 export TF_CLI_ARGS_apply="-parallelism=20"
 export TF_CLI_ARGS_plan="-parallelism=20"
 export TF_CLI_ARGS_destroy="-parallelism=20"
@@ -178,8 +177,10 @@ Or use a wrapper script:
 PARALLELISM=20
 
 case "$1" in
-  apply|plan|destroy|refresh)
-    terraform "$@" -parallelism=$PARALLELISM
+  apply|plan|destroy)
+    COMMAND=$1
+    shift
+    terraform "$COMMAND" -parallelism=$PARALLELISM "$@"
     ;;
   *)
     terraform "$@"
@@ -258,10 +259,11 @@ terraform apply -parallelism=15
 Watch for throttling in CloudTrail or provider logs:
 
 ```bash
-# Check for throttling in recent CloudTrail events
+# Check recent CloudTrail events for throttling errors
 aws cloudtrail lookup-events \
-  --lookup-attributes AttributeKey=EventName,AttributeValue=ThrottleEvent \
-  --max-items 20
+  --max-items 50 \
+  --output json \
+  | jq -r '.Events[].CloudTrailEvent | fromjson | select(.errorCode? | test("Throttle|Throttling|RequestLimitExceeded|RateExceeded")) | [.eventTime, .eventSource, .eventName, .errorCode] | @tsv'
 
 # Enable Terraform debug logging to see API calls
 TF_LOG=DEBUG terraform apply -parallelism=30 2>terraform-debug.log
