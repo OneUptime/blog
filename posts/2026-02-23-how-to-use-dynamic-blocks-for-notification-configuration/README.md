@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Dynamic Blocks, AWS, SNS, Notification, Infrastructure as Code
 
-Description: Learn how to configure notification channels and alerting rules dynamically in Terraform using dynamic blocks for SNS, SES, EventBridge, and S3 notifications.
+Description: Learn how to configure notification channels and alerting rules dynamically in Terraform using dynamic blocks, `for_each`, and `for` expressions for SNS, SES, EventBridge, and S3 notifications.
 
 ---
 
-Notification configurations in AWS span multiple services - SNS topics and subscriptions, S3 event notifications, CloudWatch alarm actions, EventBridge rules, and SES notification settings. When managed across environments with different notification requirements, dynamic blocks keep things organized.
+Notification configurations in AWS span multiple services - SNS topics and subscriptions, S3 event notifications, CloudWatch alarm actions, EventBridge rules, and SES notification settings. When managed across environments with different notification requirements, dynamic blocks, `for_each`, and `for` expressions keep things organized.
 
 ## SNS Topic Subscriptions
 
@@ -36,7 +36,7 @@ variable "sns_subscriptions" {
     },
     {
       protocol = "https"
-      endpoint = "https://hooks.slack.com/services/xxx/yyy/zzz"
+      endpoint = "https://alerts.example.com/sns"
     }
   ]
 }
@@ -169,14 +169,14 @@ s3_notifications = {
 
 ## EventBridge Rules with Dynamic Targets
 
-EventBridge rules can route events to multiple targets. Dynamic blocks handle the target configuration:
+EventBridge rules can route events to multiple targets. `for_each` and `for` expressions handle the target configuration:
 
 ```hcl
 variable "eventbridge_rules" {
   description = "EventBridge rules and their targets"
   type = map(object({
     description    = string
-    event_pattern  = string  # JSON event pattern
+    event_pattern  = optional(string)  # JSON event pattern
     schedule       = optional(string)
     enabled        = optional(bool, true)
     targets = list(object({
@@ -195,7 +195,7 @@ resource "aws_cloudwatch_event_rule" "rules" {
   description    = each.value.description
   event_pattern  = each.value.event_pattern != null ? each.value.event_pattern : null
   schedule_expression = each.value.schedule
-  is_enabled     = each.value.enabled
+  state          = each.value.enabled ? "ENABLED" : "DISABLED"
 }
 
 # Flatten targets for each rule
@@ -296,9 +296,9 @@ resource "aws_cloudwatch_metric_alarm" "main" {
   dimensions          = each.value.dimensions
 
   # Look up notification endpoints based on severity
-  alarm_actions             = lookup(var.alarm_notifications, each.value.severity, { alarm_actions = [] }).alarm_actions
-  ok_actions                = lookup(var.alarm_notifications, each.value.severity, { ok_actions = [] }).ok_actions
-  insufficient_data_actions = lookup(var.alarm_notifications, each.value.severity, { insufficient_data_actions = [] }).insufficient_data_actions
+  alarm_actions             = try(var.alarm_notifications[each.value.severity].alarm_actions, [])
+  ok_actions                = try(var.alarm_notifications[each.value.severity].ok_actions, [])
+  insufficient_data_actions = try(var.alarm_notifications[each.value.severity].insufficient_data_actions, [])
 }
 ```
 
@@ -329,6 +329,7 @@ locals {
     for identity_key, identity in var.ses_identities : [
       for notif_type, notif in identity.notifications : {
         key            = "${identity_key}-${notif_type}"
+        identity_key   = identity_key
         identity       = identity.email_address
         notification_type = notif_type  # "Bounce", "Complaint", "Delivery"
         topic_arn      = notif.topic_arn
@@ -341,7 +342,7 @@ locals {
 resource "aws_ses_identity_notification_topic" "main" {
   for_each = { for n in local.ses_notifications : n.key => n }
 
-  identity          = aws_ses_email_identity.main[split("-", each.key)[0]].email
+  identity          = aws_ses_email_identity.main[each.value.identity_key].email
   notification_type = each.value.notification_type
   topic_arn         = each.value.topic_arn
   include_original_headers = each.value.include_headers
@@ -356,7 +357,7 @@ Here is a module pattern that sets up a complete notification pipeline:
 variable "notification_channels" {
   description = "Notification channels to configure"
   type = map(object({
-    type     = string  # "email", "slack", "pagerduty", "opsgenie"
+    type     = string  # "email", "https"
     endpoint = string
     severities = list(string)  # Which severities this channel receives
   }))
@@ -366,14 +367,14 @@ variable "notification_channels" {
       endpoint   = "ops@example.com"
       severities = ["critical", "warning"]
     }
-    "slack-alerts" = {
-      type       = "slack"
-      endpoint   = "https://hooks.slack.com/services/xxx"
+    "webhook-alerts" = {
+      type       = "https"
+      endpoint   = "https://alerts.example.com/sns"
       severities = ["critical", "warning", "info"]
     }
-    "pagerduty" = {
-      type       = "pagerduty"
-      endpoint   = "https://events.pagerduty.com/integration/xxx"
+    "incident-webhook" = {
+      type       = "https"
+      endpoint   = "https://incident.example.com/sns"
       severities = ["critical"]
     }
   }
@@ -390,10 +391,8 @@ locals {
 
   # Map channel types to SNS protocols
   protocol_map = {
-    email     = "email"
-    slack     = "https"
-    pagerduty = "https"
-    opsgenie  = "https"
+    email = "email"
+    https = "https"
   }
 }
 
