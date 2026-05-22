@@ -36,7 +36,7 @@ The output format is consistent:
 - Each workspace appears on its own line
 - Two spaces of indentation before each name
 - An asterisk replaces the first space for the active workspace
-- The `default` workspace always exists and always appears first
+- The `default` workspace always exists and cannot be deleted
 
 ```text
   default       <-- always present
@@ -89,9 +89,9 @@ terraform workspace list
 
 With Consul, workspaces are discovered from keys stored under the configured path prefix.
 
-### Terraform Cloud
+### HCP Terraform
 
-With Terraform Cloud backend, the command lists remote workspaces associated with your configuration.
+With HCP Terraform CLI integration, the command lists the remote workspace named in your configuration, or the remote workspaces matching the tags in your configuration.
 
 ## Parsing the Output in Scripts
 
@@ -278,13 +278,13 @@ jobs:
           terraform plan -var-file="envs/${{ matrix.workspace }}.tfvars"
 ```
 
-## Using terraform workspace list with Terraform Cloud
+## Using terraform workspace list with HCP Terraform
 
-When using Terraform Cloud as a backend, the `workspace list` command queries the remote API. This means:
+When using HCP Terraform CLI integration, the `workspace list` command queries the remote API. This means:
 
-- It requires network access to Terraform Cloud
-- It only shows workspaces associated with your configuration's `cloud` block
-- The list may include workspaces you do not have local configuration for
+- It requires network access to HCP Terraform
+- It shows the workspace named in your `cloud` block, or the workspaces matching the tags in your `cloud` block
+- With tag-based workspace selection, the list can include every remote workspace matching the tag selector, so keep the tag set scoped to this configuration
 
 ```hcl
 terraform {
@@ -305,7 +305,7 @@ terraform workspace list
 
 ## Sorting and Filtering
 
-The output is typically alphabetically sorted (after "default"), but you can apply additional sorting:
+If your script needs a particular order, apply sorting explicitly:
 
 ```bash
 # Sort workspaces alphabetically, excluding default
@@ -320,7 +320,7 @@ terraform workspace list | sed 's/^[ *]*//' | grep -E '^(prod|production|prd)'
 
 ## Troubleshooting
 
-**Empty list or only "default" shows up.** Make sure you have run `terraform init` and that your backend is accessible. Workspaces are stored in the backend, so if Terraform cannot reach it, it will only show `default`.
+**Only "default" shows up, or listing fails.** Make sure you have run `terraform init` and that your backend is accessible. Workspaces are stored in the backend, so a backend access problem usually causes an error rather than a reliable fallback list.
 
 **Workspaces from a different configuration appear.** If multiple Terraform configurations share the same backend path, their workspaces can overlap. Use distinct key prefixes per configuration.
 
