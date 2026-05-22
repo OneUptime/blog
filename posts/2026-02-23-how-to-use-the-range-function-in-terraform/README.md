@@ -2,13 +2,13 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, DevOps, Infrastructure as Code, Terraform Functions, Numeric Function
+Tags: Terraform, DevOps, Infrastructure as Code, Terraform Functions, Collection Function
 
 Description: Learn how to use the range function in Terraform to generate sequences of numbers, with practical examples for resource creation, CIDR calculation, and iteration.
 
 ---
 
-Generating sequences of numbers is a common need in Terraform - for creating numbered resources, calculating CIDR blocks, or iterating a specific number of times. The `range` function generates a list of numbers based on start, end, and optional step parameters. It behaves similarly to range functions found in Python and other languages.
+Generating sequences of numbers is a common need in Terraform - for creating numbered resources, calculating CIDR blocks, or iterating a specific number of times. The `range` function generates a list of numbers based on start, limit, and optional step parameters. It behaves similarly to range functions found in Python and other languages.
 
 This post covers the `range` function's three calling conventions, its behavior, and practical patterns for Terraform configurations.
 
@@ -17,18 +17,18 @@ This post covers the `range` function's three calling conventions, its behavior,
 The `range` function generates a list of numbers. It supports three calling styles depending on how many arguments you provide.
 
 ```hcl
-# One argument: generates 0 to (n-1)
+# One argument: generates from 0 toward limit
 
-range(n)
+range(limit)
 
-# Two arguments: generates from start to (end-1)
-range(start, end)
+# Two arguments: generates from start toward limit
+range(start, limit)
 
-# Three arguments: generates from start to (end-1) with a step
-range(start, end, step)
+# Three arguments: generates from start toward limit with a step
+range(start, limit, step)
 ```
 
-The end value is exclusive - it is not included in the result.
+The limit value is exclusive - it is not included in the result.
 
 ## Basic Usage in Terraform Console
 
@@ -48,6 +48,10 @@ The end value is exclusive - it is not included in the result.
 # Descending ranges with negative step
 > range(10, 0, -2)
 [10, 8, 6, 4, 2]
+
+# Descending ranges can also use the default step
+> range(4, 1)
+[4, 3, 2]
 
 # Start equals end produces empty list
 > range(5, 5)
@@ -323,9 +327,9 @@ locals {
 A few things to keep in mind:
 
 - **Empty ranges**: `range(0)` and `range(5, 5)` both produce empty lists.
-- **Negative steps**: The step can be negative for descending sequences, but start must be greater than end.
+- **Negative steps**: The step can be negative for descending sequences when start is greater than the limit.
 - **Step of zero**: Using a step of 0 causes an error (infinite loop prevention).
-- **Floating point**: `range` works with integers. For floating-point sequences, you will need manual computation.
+- **Floating point**: `range` supports fractional step values.
 
 ```hcl
 # Empty ranges
@@ -339,6 +343,10 @@ A few things to keep in mind:
 > range(5, 0, -1)
 [5, 4, 3, 2, 1]
 
+# Fractional step values
+> range(1, 4, 0.5)
+[1, 1.5, 2, 2.5, 3, 3.5]
+
 # Step of 0 causes an error
 # range(0, 5, 0) -> Error
 ```
@@ -349,11 +357,12 @@ The `range` function is the standard tool for generating number sequences in Ter
 
 Key takeaways:
 
-- `range(n)` generates `[0, 1, ..., n-1]`
-- `range(start, end)` generates from start to end (exclusive)
-- `range(start, end, step)` generates with a custom step size
-- The end value is always exclusive
+- `range(limit)` generates from zero toward the limit
+- `range(start, limit)` generates from start toward the limit
+- `range(start, limit, step)` generates with a custom step size
+- The limit value is always exclusive
 - Supports negative steps for descending sequences
+- Supports fractional step values
 - Pairs naturally with `for` expressions and `cidrsubnet`
 - Empty range (start equals end) returns an empty list
 
