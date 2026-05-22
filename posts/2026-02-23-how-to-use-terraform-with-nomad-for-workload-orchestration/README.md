@@ -222,7 +222,7 @@ job "web-service" {
 
   # Spread across availability zones
   spread {
-    attribute = "$${node.datacenter}"
+    attribute = "$${attr.platform.aws.placement.availability-zone}"
   }
 
   group "web" {
@@ -275,7 +275,7 @@ job "web-service" {
 
       # Vault integration for secrets
       vault {
-        policies = ["web-service"]
+        role = "web-service"
       }
 
       template {
@@ -294,7 +294,7 @@ job "web-service" {
 
 ## Auto-Scaling Nomad Clients
 
-Scale Nomad client nodes based on cluster utilization.
+Scale Nomad client nodes based on EC2 CPU utilization.
 
 ```hcl
 # Auto Scaling Group for Nomad clients
