@@ -186,7 +186,10 @@ data "aws_iam_policy_document" "access" {
       local.is_developer ? ["s3:GetObject", "s3:PutObject", "s3:ListBucket"] :
       ["s3:GetObject", "s3:ListBucket"]
     )
-    resources = ["arn:aws:s3:::app-bucket/*"]
+    resources = [
+      "arn:aws:s3:::app-bucket",
+      "arn:aws:s3:::app-bucket/*",
+    ]
   }
 }
 ```
