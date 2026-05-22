@@ -8,7 +8,7 @@ Description: Learn how to manage complex resource dependencies in Terraform proj
 
 ---
 
-As Terraform projects grow, resource dependencies become increasingly complex. A database depends on a VPC, a security group depends on the database, a Lambda function depends on the security group, and an alarm depends on the Lambda function. Managing these dependency chains correctly is critical for reliable infrastructure deployments.
+As Terraform projects grow, resource dependencies become increasingly complex. A database depends on a VPC and security group, a Lambda function depends on the security group, and an alarm depends on the Lambda function. Managing these dependency chains correctly is critical for reliable infrastructure deployments.
 
 In this guide, we will cover how to handle resource dependencies in complex Terraform projects.
 
@@ -122,22 +122,20 @@ resource "aws_security_group" "b" {
 }
 
 # Rules are separate resources, no circular dependency
-resource "aws_security_group_rule" "a_from_b" {
-  type                     = "ingress"
-  from_port                = 8080
-  to_port                  = 8080
-  protocol                 = "tcp"
-  security_group_id        = aws_security_group.a.id
-  source_security_group_id = aws_security_group.b.id
+resource "aws_vpc_security_group_ingress_rule" "a_from_b" {
+  from_port                    = 8080
+  to_port                      = 8080
+  ip_protocol                  = "tcp"
+  security_group_id            = aws_security_group.a.id
+  referenced_security_group_id = aws_security_group.b.id
 }
 
-resource "aws_security_group_rule" "b_from_a" {
-  type                     = "ingress"
-  from_port                = 8080
-  to_port                  = 8080
-  protocol                 = "tcp"
-  security_group_id        = aws_security_group.b.id
-  source_security_group_id = aws_security_group.a.id
+resource "aws_vpc_security_group_ingress_rule" "b_from_a" {
+  from_port                    = 8080
+  to_port                      = 8080
+  ip_protocol                  = "tcp"
+  security_group_id            = aws_security_group.b.id
+  referenced_security_group_id = aws_security_group.a.id
 }
 ```
 
@@ -181,13 +179,13 @@ Use Terraform's built-in graph command to understand dependencies:
 # scripts/visualize-dependencies.sh
 # Generate a dependency graph visualization
 
-# Generate the graph in DOT format
+# Generate a simplified resource dependency graph in DOT format
 terraform graph > graph.dot
 
 # Convert to SVG for viewing
 dot -Tsvg graph.dot -o dependency-graph.svg
 
-# For a simplified view of just the resources
+# For the more detailed plan graph
 terraform graph -type=plan | dot -Tsvg > plan-graph.svg
 
 echo "Graph generated: dependency-graph.svg"
@@ -254,20 +252,20 @@ module "application" {
 Some dependencies only matter during destruction:
 
 ```hcl
-# The VPC endpoint policy depends on the S3 bucket
+resource "aws_s3_bucket" "data" {
+  bucket = "myorg-data"
+}
+
+# The VPC endpoint has a dependency on the S3 bucket
 # During destroy, the endpoint must be removed before the bucket
 resource "aws_vpc_endpoint" "s3" {
   vpc_id       = aws_vpc.main.id
   service_name = "com.amazonaws.${var.region}.s3"
-}
 
-# Use depends_on to ensure proper destroy ordering
-resource "aws_s3_bucket" "data" {
-  bucket = "myorg-data"
-
-  # Ensure VPC endpoint is destroyed before the bucket
+  # Ensure the bucket is created before the endpoint, so the
+  # endpoint is destroyed before the bucket
   # This prevents dangling endpoint references
-  depends_on = [aws_vpc_endpoint.s3]
+  depends_on = [aws_s3_bucket.data]
 }
 ```
 
