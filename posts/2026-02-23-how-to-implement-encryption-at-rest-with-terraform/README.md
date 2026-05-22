@@ -16,11 +16,13 @@ This guide walks through implementing encryption at rest for the most common AWS
 
 Before encrypting anything, you need encryption keys. AWS Key Management Service (KMS) is the standard choice. You have two options:
 
-- **AWS-managed keys** (`aws/s3`, `aws/ebs`, etc.): Free, automatically rotated, but you cannot control access policies independently.
+- **AWS-managed keys** (`aws/s3`, `aws/ebs`, etc.): No monthly storage charge and automatically rotated, but you cannot control access policies independently.
 - **Customer-managed keys (CMK)**: You control the key policy, rotation schedule, and who can use the key. This is what most compliance frameworks require.
 
 ```hcl
 # Create a customer-managed KMS key for general encryption
+
+data "aws_caller_identity" "current" {}
 
 resource "aws_kms_key" "main" {
   description             = "Main encryption key for ${var.environment}"
@@ -76,6 +78,24 @@ resource "aws_kms_key" "main" {
           "kms:DescribeKey"
         ]
         Resource = "*"
+      },
+      {
+        Sid    = "AllowKeyUsersGrantAccessForAWSResources"
+        Effect = "Allow"
+        Principal = {
+          AWS = var.key_user_arns
+        }
+        Action = [
+          "kms:CreateGrant",
+          "kms:ListGrants",
+          "kms:RevokeGrant"
+        ]
+        Resource = "*"
+        Condition = {
+          Bool = {
+            "kms:GrantIsForAWSResource" = true
+          }
+        }
       }
     ]
   })
@@ -176,10 +196,13 @@ resource "aws_s3_bucket_policy" "require_encryption" {
 
 ```hcl
 resource "aws_db_instance" "main" {
-  identifier     = "production-db"
-  engine         = "postgres"
-  engine_version = "15.4"
-  instance_class = "db.r6g.large"
+  identifier                  = "production-db"
+  engine                      = "postgres"
+  engine_version              = "15.4"
+  instance_class              = "db.r6g.large"
+  allocated_storage           = 100
+  username                    = "dbadmin"
+  manage_master_user_password = true
 
   # Encryption at rest
   storage_encrypted = true
@@ -190,9 +213,9 @@ resource "aws_db_instance" "main" {
   performance_insights_kms_key_id = aws_kms_key.rds.arn
 
   # Other security settings
-  publicly_accessible    = false
-  deletion_protection    = true
-  copy_tags_to_snapshot  = true
+  publicly_accessible     = false
+  deletion_protection     = true
+  copy_tags_to_snapshot   = true
   backup_retention_period = 14
 
   tags = {
@@ -202,7 +225,7 @@ resource "aws_db_instance" "main" {
 }
 ```
 
-Note: RDS encryption must be enabled at creation time. You cannot encrypt an existing unencrypted RDS instance in place - you need to create an encrypted snapshot and restore from it.
+Note: RDS encryption must be enabled at creation time. You cannot encrypt an existing unencrypted RDS instance in place - you need to create a snapshot, copy it as an encrypted snapshot, and restore from the encrypted copy.
 
 ## EBS Volume Encryption
 
