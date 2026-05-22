@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, DevOps, Infrastructure as Code, Terraform Functions, Type Conversion Functions
+Tags: Terraform, DevOps, Infrastructure as Code, Terraform Functions, Collection Functions
 
 Description: Learn how to use the coalesce function in Terraform to return the first non-null and non-empty argument, with practical examples for default values and fallback logic.
 
@@ -166,10 +166,14 @@ You might wonder when to use `coalesce` versus a standard conditional expression
 
 ```hcl
 # Using a conditional expression
-local.name = var.custom_name != "" ? var.custom_name : "default-name"
+locals {
+  name = var.custom_name != "" ? var.custom_name : "default-name"
+}
 
 # Using coalesce - cleaner for simple fallbacks
-local.name = coalesce(var.custom_name, "default-name")
+locals {
+  name = coalesce(var.custom_name, "default-name")
+}
 ```
 
 For simple fallbacks, `coalesce` is more concise. However, when you need custom logic for what counts as "empty" (like checking if a number is zero), conditional expressions give you more control.
@@ -180,7 +184,9 @@ For simple fallbacks, `coalesce` is more concise. However, when you need custom 
 0
 
 # If you want to treat 0 as empty, use a conditional instead
-local.port = var.custom_port != 0 ? var.custom_port : 8080
+locals {
+  port = var.custom_port != 0 ? var.custom_port : 8080
+}
 ```
 
 ## coalesce vs coalescelist
@@ -241,7 +247,7 @@ If all arguments are null or empty strings, `coalesce` produces an error.
 ```hcl
 # This will cause an error
 > coalesce(null, "", null)
-# Error: all arguments to coalesce must not be null or empty
+# Error: no non-null, non-empty-string arguments
 
 # Always ensure at least one argument is guaranteed to have a value
 > coalesce(null, "", "guaranteed-value")
