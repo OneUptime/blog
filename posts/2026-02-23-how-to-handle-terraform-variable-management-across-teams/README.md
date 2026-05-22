@@ -237,13 +237,13 @@ Establish a clear hierarchy for variable precedence:
 
 ```text
 Priority (highest to lowest):
-1. Environment-specific team variables (production.auto.tfvars)
-2. Team-level defaults (team.auto.tfvars)
-3. Shared organizational variables (common.tfvars)
+1. Environment-specific team variables (30-production.auto.tfvars)
+2. Team-level defaults (20-team.auto.tfvars)
+3. Shared organizational variables (10-common.auto.tfvars)
 4. Variable defaults in variables.tf
 ```
 
-Document this hierarchy so everyone knows where values come from:
+Terraform loads `.auto.tfvars` files in lexical order, with later files overriding earlier ones. Use filename prefixes, or pass files with `-var-file` in the intended order, so everyone knows where values come from:
 
 ```hcl
 # variables.tf
