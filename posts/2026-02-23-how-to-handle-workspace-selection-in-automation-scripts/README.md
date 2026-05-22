@@ -73,12 +73,10 @@ fi
 # Initialize Terraform first
 terraform init
 
-# Create the workspace if it does not exist
-if ! terraform workspace list | grep -q "^\s*${WORKSPACE}\$"; then
-  # Unset TF_WORKSPACE temporarily to create the workspace
-  unset TF_WORKSPACE
-  terraform workspace new "$WORKSPACE"
-fi
+# Select the workspace, creating it if needed
+# Unset TF_WORKSPACE temporarily so it does not override the CLI selection command
+unset TF_WORKSPACE
+terraform workspace select -or-create "$WORKSPACE"
 
 # Set the workspace for subsequent commands
 export TF_WORKSPACE="$WORKSPACE"
@@ -114,9 +112,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v4
         with:
-          terraform_version: 1.7.0
+          terraform_version: 1.14.6
 
       - name: Terraform Init
         run: terraform init
@@ -124,8 +122,7 @@ jobs:
       - name: Setup Workspace
         run: |
           # Create workspace if needed
-          terraform workspace select ${{ matrix.environment }} 2>/dev/null || \
-            terraform workspace new ${{ matrix.environment }}
+          terraform workspace select -or-create ${{ matrix.environment }}
 
       - name: Terraform Plan
         run: terraform plan -out=tfplan
@@ -138,7 +135,7 @@ jobs:
         env:
           TF_WORKSPACE: ${{ matrix.environment }}
 
-      # Production requires manual approval
+      # Production can require manual approval through GitHub environment protection rules
       - name: Terraform Apply (Production)
         if: github.ref == 'refs/heads/main' && matrix.environment == 'prod'
         run: terraform apply -auto-approve tfplan
@@ -163,7 +160,9 @@ variables:
   before_script:
     - cd ${TF_ROOT}
     - terraform init
-    - terraform workspace select ${TF_WORKSPACE} 2>/dev/null || terraform workspace new ${TF_WORKSPACE}
+    - WORKSPACE_NAME="${TF_WORKSPACE}"
+    - unset TF_WORKSPACE
+    - terraform workspace select -or-create "${WORKSPACE_NAME}"
 
 plan:dev:
   extends: .terraform_base
@@ -174,7 +173,7 @@ plan:dev:
     - terraform plan -out=dev.tfplan
   artifacts:
     paths:
-      - ${TF_ROOT}/dev.tfplan
+      - terraform/dev.tfplan
 
 apply:dev:
   extends: .terraform_base
@@ -197,7 +196,7 @@ plan:prod:
     - terraform plan -out=prod.tfplan
   artifacts:
     paths:
-      - ${TF_ROOT}/prod.tfplan
+      - terraform/prod.tfplan
 
 apply:prod:
   extends: .terraform_base
@@ -222,7 +221,7 @@ pipeline {
 
     parameters {
         choice(
-            name: 'WORKSPACE',
+            name: 'TARGET_WORKSPACE',
             choices: ['dev', 'staging', 'prod'],
             description: 'Target workspace'
         )
@@ -234,7 +233,7 @@ pipeline {
     }
 
     environment {
-        TF_WORKSPACE = "${params.WORKSPACE}"
+        TF_WORKSPACE = "${params.TARGET_WORKSPACE}"
         AWS_ACCESS_KEY_ID = credentials('aws-access-key')
         AWS_SECRET_ACCESS_KEY = credentials('aws-secret-key')
     }
@@ -244,8 +243,9 @@ pipeline {
             steps {
                 sh '''
                     terraform init
-                    terraform workspace select ${TF_WORKSPACE} 2>/dev/null || \
-                        terraform workspace new ${TF_WORKSPACE}
+                    WORKSPACE_NAME="${TF_WORKSPACE}"
+                    unset TF_WORKSPACE
+                    terraform workspace select -or-create "${WORKSPACE_NAME}"
                 '''
             }
         }
@@ -258,7 +258,7 @@ pipeline {
 
         stage('Apply') {
             when {
-                expression { params.AUTO_APPROVE || params.WORKSPACE != 'prod' }
+                expression { params.AUTO_APPROVE || params.TARGET_WORKSPACE != 'prod' }
             }
             steps {
                 sh 'terraform apply -auto-approve tfplan'
@@ -267,7 +267,7 @@ pipeline {
 
         stage('Apply (Manual Approval)') {
             when {
-                expression { !params.AUTO_APPROVE && params.WORKSPACE == 'prod' }
+                expression { !params.AUTO_APPROVE && params.TARGET_WORKSPACE == 'prod' }
             }
             steps {
                 input message: 'Apply to production?', ok: 'Apply'
@@ -313,8 +313,8 @@ if ! echo "$WORKSPACE" | grep -qE '^(dev|staging|prod|test-[a-z0-9-]+)$'; then
 fi
 
 # Select the workspace
-terraform workspace select "$WORKSPACE" 2>/dev/null || \
-  terraform workspace new "$WORKSPACE"
+unset TF_WORKSPACE
+terraform workspace select -or-create "$WORKSPACE"
 
 # Verify we are in the right workspace
 CURRENT=$(terraform workspace show)
@@ -340,6 +340,8 @@ set -e
 WORKSPACE=$1
 MAX_RETRIES=5
 RETRY_DELAY=3
+
+unset TF_WORKSPACE
 
 for i in $(seq 1 $MAX_RETRIES); do
   # Try to select the workspace
@@ -374,18 +376,18 @@ Wrap all Terraform commands with workspace validation:
 
 set -e
 
-WORKSPACE=$1
-shift
-COMMAND=$1
-shift
-
 # Validate inputs
-if [ -z "$WORKSPACE" ] || [ -z "$COMMAND" ]; then
+if [ "$#" -lt 2 ]; then
   echo "Usage: $0 <workspace> <terraform-command> [args...]"
   echo "Example: $0 dev plan"
   echo "Example: $0 prod apply -auto-approve"
   exit 1
 fi
+
+WORKSPACE=$1
+shift
+COMMAND=$1
+shift
 
 # Initialize if needed
 if [ ! -d ".terraform" ]; then
@@ -394,8 +396,8 @@ if [ ! -d ".terraform" ]; then
 fi
 
 # Select workspace
-terraform workspace select "$WORKSPACE" 2>/dev/null || \
-  terraform workspace new "$WORKSPACE"
+unset TF_WORKSPACE
+terraform workspace select -or-create "$WORKSPACE"
 
 # Verify workspace
 CURRENT=$(terraform workspace show)
