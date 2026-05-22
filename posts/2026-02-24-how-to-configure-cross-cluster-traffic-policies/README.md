@@ -83,6 +83,7 @@ spec:
   trafficPolicy:
     loadBalancer:
       localityLbSetting:
+        enabled: true
         distribute:
         - from: "us-east-1/*"
           to:
@@ -115,6 +116,7 @@ spec:
   trafficPolicy:
     loadBalancer:
       localityLbSetting:
+        enabled: true
         failover:
         - from: us-east-1
           to: us-west-2
@@ -159,7 +161,7 @@ spec:
 
 Because all clusters share the same trust domain in a multi-cluster mesh, the principal names are consistent across clusters. This means the above policy allows the `frontend` and `checkout` service accounts from any cluster.
 
-To restrict access to a specific cluster, you can use request headers or custom metadata:
+Istio AuthorizationPolicy does not provide a built-in `source.cluster` condition. To restrict access by cluster, you need a trusted signal such as a request header injected by an east-west gateway or another trusted proxy:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -177,13 +179,15 @@ spec:
     - source:
         namespaces: ["default"]
     when:
-    - key: source.cluster
+    - key: request.headers[x-source-cluster]
       values: ["cluster-a", "cluster-b"]
 ```
 
+Do not rely on a header that application clients can set directly. Only use this pattern when the header is inserted or overwritten by trusted mesh infrastructure.
+
 ## Connection Pool Policies
 
-For cross-cluster traffic, you often want different connection pool settings than for local traffic. Cross-cluster connections go through the east-west gateway and potentially over a WAN, so they need different timeout and connection limits.
+For cross-cluster traffic, you often want different connection pool settings than for local traffic. In multi-network deployments, cross-cluster connections go through the east-west gateway and potentially over a WAN, so they need different timeout and connection limits.
 
 ```yaml
 apiVersion: networking.istio.io/v1
