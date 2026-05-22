@@ -8,7 +8,7 @@ Description: Learn how to write Terratest tests that validate GCP resources like
 
 ---
 
-Terratest includes GCP-specific helper modules that let you query Google Cloud APIs to verify your Terraform infrastructure is correctly deployed. This gives you real validation beyond just checking Terraform outputs - you can confirm that Compute Engine instances are running, GCS buckets have the right settings, and Cloud SQL databases accept connections. This guide covers testing patterns for common GCP resources.
+Terratest includes GCP-specific helper modules, and you can combine them with the official Google Cloud Go clients to query Google Cloud APIs and verify your Terraform infrastructure is correctly deployed. This gives you real validation beyond just checking Terraform outputs - you can confirm that Compute Engine instances are running, GCS buckets have the right settings, and Cloud SQL databases accept connections. This guide covers testing patterns for common GCP resources.
 
 ## Setting Up GCP Authentication
 
@@ -32,6 +32,7 @@ Install the GCP helper module:
 ```bash
 cd test
 go get github.com/gruntwork-io/terratest/modules/gcp
+go get cloud.google.com/go/storage google.golang.org/api/compute/v1 google.golang.org/api/container/v1
 ```
 
 ## Testing VPC Networks
@@ -43,12 +44,13 @@ Verify VPC network creation with subnets and firewall rules:
 package test
 
 import (
-    "testing"
     "fmt"
+    "strings"
+    "testing"
 
     "github.com/gruntwork-io/terratest/modules/gcp"
-    "github.com/gruntwork-io/terratest/modules/terraform"
     "github.com/gruntwork-io/terratest/modules/random"
+    "github.com/gruntwork-io/terratest/modules/terraform"
     "github.com/stretchr/testify/assert"
     "github.com/stretchr/testify/require"
 )
@@ -67,12 +69,12 @@ func TestVPCNetwork(t *testing.T) {
             "region":       "us-central1",
             "subnets": []map[string]interface{}{
                 {
-                    "name":          "app-subnet",
+                    "name":          fmt.Sprintf("app-subnet-%s", uniqueId),
                     "ip_cidr_range": "10.0.1.0/24",
                     "region":        "us-central1",
                 },
                 {
-                    "name":          "data-subnet",
+                    "name":          fmt.Sprintf("data-subnet-%s", uniqueId),
                     "ip_cidr_range": "10.0.2.0/24",
                     "region":        "us-central1",
                 },
@@ -85,23 +87,33 @@ func TestVPCNetwork(t *testing.T) {
 
     networkName := terraform.Output(t, opts, "network_name")
 
+    computeService := gcp.NewComputeService(t)
+
     // Verify the network exists
-    network := gcp.GetNetwork(t, projectId, networkName)
-    assert.NotNil(t, network)
+    network, err := computeService.Networks.Get(projectId, networkName).Do()
+    require.NoError(t, err)
 
     // Verify auto-create subnets is disabled (custom mode)
     assert.False(t, network.AutoCreateSubnetworks,
         "VPC should use custom subnet mode")
 
     // Verify subnets were created
-    subnets := gcp.GetSubnets(t, projectId, networkName, "us-central1")
-    assert.GreaterOrEqual(t, len(subnets), 2,
+    subnets, err := computeService.Subnetworks.List(projectId, "us-central1").Do()
+    require.NoError(t, err)
+
+    subnetCount := 0
+    for _, subnet := range subnets.Items {
+        if strings.HasSuffix(subnet.Network, "/"+networkName) {
+            subnetCount++
+        }
+    }
+    assert.GreaterOrEqual(t, subnetCount, 2,
         "Should have at least 2 subnets")
 
     // Check specific subnet CIDR
-    appSubnet := gcp.GetSubnet(t, projectId, "us-central1",
-        fmt.Sprintf("app-subnet-%s", uniqueId))
-    require.NotNil(t, appSubnet)
+    appSubnet, err := computeService.Subnetworks.Get(projectId, "us-central1",
+        fmt.Sprintf("app-subnet-%s", uniqueId)).Do()
+    require.NoError(t, err)
     assert.Equal(t, "10.0.1.0/24", appSubnet.IpCidrRange)
 }
 ```
@@ -115,16 +127,16 @@ Verify that GCE instances are created with the correct machine type and configur
 package test
 
 import (
-    "testing"
     "fmt"
     "strings"
+    "testing"
     "time"
 
     "github.com/gruntwork-io/terratest/modules/gcp"
-    "github.com/gruntwork-io/terratest/modules/terraform"
     "github.com/gruntwork-io/terratest/modules/random"
     "github.com/gruntwork-io/terratest/modules/retry"
     "github.com/gruntwork-io/terratest/modules/ssh"
+    "github.com/gruntwork-io/terratest/modules/terraform"
     "github.com/stretchr/testify/assert"
 )
 
@@ -158,7 +170,7 @@ func TestComputeInstance(t *testing.T) {
     instanceName := terraform.Output(t, opts, "instance_name")
 
     // Get the instance from GCP
-    instance := gcp.FetchInstance(t, projectId, zone, instanceName)
+    instance := gcp.FetchInstance(t, projectId, instanceName)
 
     // Verify machine type
     assert.True(t, strings.HasSuffix(instance.MachineType, "e2-micro"),
@@ -169,13 +181,10 @@ func TestComputeInstance(t *testing.T) {
         "Instance should be in RUNNING state")
 
     // Verify labels (GCP equivalent of tags)
-    assert.Equal(t, "test", instance.Labels["environment"])
+    assert.Equal(t, "test", instance.GetLabels(t)["environment"])
 
-    // Verify disk encryption
-    for _, disk := range instance.Disks {
-        assert.NotEmpty(t, disk.DiskEncryptionKey,
-            "Disks should be encrypted")
-    }
+    // Verify the instance is in the expected zone
+    assert.Equal(t, zone, instance.GetZone(t))
 
     // Test SSH connectivity
     publicIp := terraform.Output(t, opts, "external_ip")
@@ -206,12 +215,14 @@ Verify GCS bucket creation with lifecycle rules and access controls:
 package test
 
 import (
-    "testing"
+    "context"
     "fmt"
+    "testing"
 
+    "cloud.google.com/go/storage"
     "github.com/gruntwork-io/terratest/modules/gcp"
-    "github.com/gruntwork-io/terratest/modules/terraform"
     "github.com/gruntwork-io/terratest/modules/random"
+    "github.com/gruntwork-io/terratest/modules/terraform"
     "github.com/stretchr/testify/assert"
     "github.com/stretchr/testify/require"
 )
@@ -240,8 +251,15 @@ func TestGCSBucket(t *testing.T) {
     terraform.InitAndApply(t, opts)
 
     // Verify the bucket exists
-    bucket := gcp.GetStorageBucket(t, projectId, bucketName)
-    require.NotNil(t, bucket)
+    gcp.AssertStorageBucketExists(t, bucketName)
+
+    ctx := context.Background()
+    client, err := storage.NewClient(ctx)
+    require.NoError(t, err)
+    defer client.Close()
+
+    bucket, err := client.Bucket(bucketName).Attrs(ctx)
+    require.NoError(t, err)
 
     // Verify storage class
     assert.Equal(t, "STANDARD", bucket.StorageClass)
@@ -250,7 +268,7 @@ func TestGCSBucket(t *testing.T) {
     assert.Equal(t, "US", bucket.Location)
 
     // Verify versioning is enabled
-    assert.True(t, bucket.Versioning.Enabled,
+    assert.True(t, bucket.VersioningEnabled,
         "Versioning should be enabled")
 
     // Verify uniform bucket-level access
@@ -258,12 +276,12 @@ func TestGCSBucket(t *testing.T) {
         "Uniform bucket-level access should be enabled")
 
     // Verify lifecycle rules exist
-    assert.Greater(t, len(bucket.Lifecycle.Rule), 0,
+    assert.Greater(t, len(bucket.Lifecycle.Rules), 0,
         "Should have at least one lifecycle rule")
 
     // Check the lifecycle rule details
     found := false
-    for _, rule := range bucket.Lifecycle.Rule {
+    for _, rule := range bucket.Lifecycle.Rules {
         if rule.Action.Type == "Delete" && rule.Condition.Age == 30 {
             found = true
         }
@@ -282,9 +300,9 @@ Verify Cloud SQL instance creation and connectivity:
 package test
 
 import (
-    "testing"
-    "fmt"
     "database/sql"
+    "fmt"
+    "testing"
     "time"
 
     _ "github.com/lib/pq"
@@ -365,15 +383,17 @@ Verify GKE cluster creation and node pool configuration:
 package test
 
 import (
-    "testing"
+    "context"
     "fmt"
+    "testing"
 
     "github.com/gruntwork-io/terratest/modules/gcp"
-    "github.com/gruntwork-io/terratest/modules/terraform"
-    "github.com/gruntwork-io/terratest/modules/random"
     "github.com/gruntwork-io/terratest/modules/k8s"
+    "github.com/gruntwork-io/terratest/modules/random"
+    "github.com/gruntwork-io/terratest/modules/terraform"
     "github.com/stretchr/testify/assert"
     "github.com/stretchr/testify/require"
+    "google.golang.org/api/container/v1"
 )
 
 func TestGKECluster(t *testing.T) {
@@ -402,9 +422,15 @@ func TestGKECluster(t *testing.T) {
     clusterName := terraform.Output(t, opts, "cluster_name")
     kubeconfigPath := terraform.Output(t, opts, "kubeconfig_path")
 
+    ctx := context.Background()
+    containerService, err := container.NewService(ctx)
+    require.NoError(t, err)
+
     // Verify the cluster exists
-    cluster := gcp.GetGKECluster(t, projectId, region, clusterName)
-    require.NotNil(t, cluster)
+    clusterPath := fmt.Sprintf("projects/%s/locations/%s/clusters/%s",
+        projectId, region, clusterName)
+    cluster, err := containerService.Projects.Locations.Clusters.Get(clusterPath).Do()
+    require.NoError(t, err)
 
     // Verify cluster is running
     assert.Equal(t, "RUNNING", cluster.Status,
@@ -439,13 +465,14 @@ Verify that GCP firewall rules are correctly configured:
 package test
 
 import (
-    "testing"
     "fmt"
+    "testing"
 
     "github.com/gruntwork-io/terratest/modules/gcp"
-    "github.com/gruntwork-io/terratest/modules/terraform"
     "github.com/gruntwork-io/terratest/modules/random"
+    "github.com/gruntwork-io/terratest/modules/terraform"
     "github.com/stretchr/testify/assert"
+    "github.com/stretchr/testify/require"
 )
 
 func TestFirewallRules(t *testing.T) {
@@ -479,15 +506,19 @@ func TestFirewallRules(t *testing.T) {
     defer terraform.Destroy(t, opts)
     terraform.InitAndApply(t, opts)
 
+    computeService := gcp.NewComputeService(t)
+
     // Verify HTTPS firewall rule
-    httpsRule := gcp.GetFirewallRule(t, projectId,
-        fmt.Sprintf("allow-https-%s", uniqueId))
+    httpsRule, err := computeService.Firewalls.Get(projectId,
+        fmt.Sprintf("allow-https-%s", uniqueId)).Do()
+    require.NoError(t, err)
     assert.Equal(t, "INGRESS", httpsRule.Direction)
     assert.Contains(t, httpsRule.SourceRanges, "0.0.0.0/0")
 
     // Verify internal rule restricts source
-    internalRule := gcp.GetFirewallRule(t, projectId,
-        fmt.Sprintf("allow-internal-%s", uniqueId))
+    internalRule, err := computeService.Firewalls.Get(projectId,
+        fmt.Sprintf("allow-internal-%s", uniqueId)).Do()
+    require.NoError(t, err)
     assert.Contains(t, internalRule.SourceRanges, "10.0.0.0/8")
     assert.NotContains(t, internalRule.SourceRanges, "0.0.0.0/0",
         "Internal rule should not be open to the internet")
