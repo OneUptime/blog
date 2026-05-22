@@ -183,6 +183,11 @@ resource "google_storage_bucket" "data" {
   location = "US"
 }
 
+resource "azurerm_resource_group" "main" {
+  name     = "cross-cloud-data-rg"
+  location = "East US"
+}
+
 resource "azurerm_storage_account" "data" {
   name                     = "crossclouddataazure"
   resource_group_name      = azurerm_resource_group.main.name
@@ -342,7 +347,7 @@ provider "aws" {
 }
 ```
 
-One important limitation: you cannot use `for_each` or `count` to dynamically create provider blocks. Each provider instance must be explicitly declared. This is a fundamental Terraform constraint because providers are resolved during the initialization phase, before any resource evaluation happens.
+One important limitation: you cannot use `for_each` or `count` to dynamically create provider blocks. Each provider instance must be explicitly declared. Terraform must know the association between resources and provider configurations while it constructs the dependency graph, before it can evaluate arbitrary resource expressions.
 
 ## Cross-Provider References
 
