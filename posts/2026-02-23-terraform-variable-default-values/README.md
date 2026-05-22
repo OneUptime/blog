@@ -173,9 +173,9 @@ This pattern is useful when an argument is truly optional and the provider has i
 
 Terraform applies variable values in this priority order (highest to lowest):
 
-1. `-var` command-line flags
-2. `-var-file` command-line flags
-3. `*.auto.tfvars` files (alphabetical order)
+1. `-var` and `-var-file` command-line flags, in the order provided
+2. `*.auto.tfvars` and `*.auto.tfvars.json` files (lexical order)
+3. `terraform.tfvars.json` file
 4. `terraform.tfvars` file
 5. `TF_VAR_*` environment variables
 6. `default` in the variable block
