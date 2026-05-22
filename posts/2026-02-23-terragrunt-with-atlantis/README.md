@@ -31,7 +31,7 @@ Atlantis doesn't ship with Terragrunt, so you need to add it to the Atlantis Doc
 FROM ghcr.io/runatlantis/atlantis:latest
 
 # Install Terragrunt
-ARG TERRAGRUNT_VERSION=0.55.0
+ARG TERRAGRUNT_VERSION=1.0.4
 USER root
 RUN curl -sL "https://github.com/gruntwork-io/terragrunt/releases/download/v${TERRAGRUNT_VERSION}/terragrunt_linux_amd64" \
     -o /usr/local/bin/terragrunt && \
@@ -48,14 +48,14 @@ docker build -t atlantis-terragrunt:latest .
 
 ## Server-Side Configuration
 
-Create an `atlantis.yaml` (also called `repos.yaml`) for server-side repo configuration:
+Create a server-side repo config file such as `repos.yaml`:
 
 ```yaml
-# atlantis.yaml (server-side)
+# repos.yaml (server-side)
 repos:
   - id: github.com/your-org/infrastructure
     workflow: terragrunt
-    allowed_overrides: [workflow]
+    allowed_overrides: [workflow, apply_requirements]
     allow_custom_workflows: true
 ```
 
@@ -64,13 +64,13 @@ repos:
 Define a custom workflow that uses Terragrunt instead of Terraform:
 
 ```yaml
-# atlantis.yaml (server-side) - continued
+# repos.yaml (server-side) - continued
 workflows:
   terragrunt:
     plan:
       steps:
         - env:
-            name: TERRAGRUNT_TFPATH
+            name: TG_TF_PATH
             command: 'which terraform'
         - run: terragrunt plan -no-color -out=$PLANFILE
     apply:
@@ -140,8 +140,8 @@ parallel_apply: false
 projects:
 HEADER
 
-# Find all terragrunt.hcl files (excluding root)
-find infrastructure -name "terragrunt.hcl" -not -path "*/terragrunt.hcl" | sort | while read -r file; do
+# Find all terragrunt.hcl files (excluding the root terragrunt.hcl)
+find infrastructure -name "terragrunt.hcl" -not -path "infrastructure/terragrunt.hcl" | sort | while read -r file; do
   dir=$(dirname "$file")
   # Create a project name from the path
   name=$(echo "$dir" | sed 's|infrastructure/||' | sed 's|/|-|g')
@@ -177,17 +177,19 @@ projects:
   - name: dev-vpc
     dir: infrastructure/dev/vpc
     workflow: terragrunt
+    execution_order_group: 1
 
   - name: dev-ecs
     dir: infrastructure/dev/ecs
     workflow: terragrunt
+    execution_order_group: 2
     depends_on:
-      - dev-vpc      # Plan this after dev-vpc
+      - dev-vpc      # Don't apply this before dev-vpc
 ```
 
-### Option 2: Use run-all in a Single Project
+### Option 2: Use run --all in a Single Project
 
-Instead of defining individual projects, use a single project that runs `run-all`:
+Instead of defining individual projects, use a single project that runs `run --all`:
 
 ```yaml
 # atlantis.yaml
@@ -200,10 +202,10 @@ workflows:
   terragrunt-run-all:
     plan:
       steps:
-        - run: terragrunt run-all plan --terragrunt-non-interactive -no-color 2>&1 | tee plan-output.txt
+        - run: terragrunt run --all --non-interactive -- plan -no-color 2>&1 | tee plan-output.txt
     apply:
       steps:
-        - run: terragrunt run-all apply --terragrunt-non-interactive -auto-approve -no-color
+        - run: terragrunt run --all --non-interactive -- apply -no-color
 ```
 
 This is simpler but gives you less granular control.
@@ -218,7 +220,7 @@ workflows:
     plan:
       steps:
         # Check formatting
-        - run: terragrunt hclfmt --terragrunt-check
+        - run: terragrunt hcl fmt --check
         # Run the plan
         - run: terragrunt plan -no-color -out=$PLANFILE
         # Run cost estimation
@@ -244,8 +246,7 @@ Pass environment variables to Atlantis for Terragrunt:
 ```yaml
 # In the Atlantis server configuration or Docker environment
 environment:
-  - TERRAGRUNT_DOWNLOAD=/tmp/terragrunt-cache
-  - TF_PLUGIN_CACHE_DIR=/tmp/terraform-plugins
+  - TG_DOWNLOAD_DIR=/tmp/terragrunt-cache
   - AWS_DEFAULT_REGION=us-east-1
 ```
 
@@ -272,7 +273,7 @@ projects:
     workflow: terragrunt
 ```
 
-When using `run-all`, the entire directory is treated as one lock unit, preventing partial applies.
+When using `run --all`, the entire directory is treated as one lock unit, preventing partial applies.
 
 ## Handling Sensitive Output
 
@@ -283,8 +284,8 @@ Terragrunt plans can contain sensitive values. Configure Atlantis to handle this
 repos:
   - id: github.com/your-org/infrastructure
     workflow: terragrunt
-    # Don't include plan output in PR comments for production
-    silence_no_projects: true
+    # Don't include plan comments for production
+    silence_pr_comments: [plan]
 ```
 
 For individual projects:
@@ -293,7 +294,8 @@ For individual projects:
 projects:
   - name: prod-rds
     dir: infrastructure/prod/rds
-    workflow: terragrunt-silent    # Custom workflow that doesn't post full output
+    workflow: terragrunt
+    silence_pr_comments: [plan]
 ```
 
 ## Multiple Atlantis Instances
@@ -318,7 +320,7 @@ Common issues when running Terragrunt with Atlantis:
 
 1. **Terragrunt cache conflicts**: Multiple projects sharing the same cache directory can cause issues. Set unique cache paths per project.
 
-2. **Timeout issues**: Large `run-all` operations may exceed Atlantis timeouts. Increase the timeout in Atlantis configuration.
+2. **Timeout issues**: Large `run --all` operations may exceed Atlantis timeouts. Increase the timeout in Atlantis configuration.
 
 3. **Missing dependencies**: If Atlantis can't find parent `terragrunt.hcl` files, make sure the `dir` path is correct relative to the repo root.
 
@@ -332,4 +334,4 @@ ls -la $(dirname $DIR)/terragrunt.hcl
 
 ## Summary
 
-Atlantis and Terragrunt work well together once you set up the custom workflow and configure project discovery correctly. The main decisions are whether to use individual projects or `run-all`, and how to handle the dependency ordering. For small to medium repos, individual projects with explicit dependencies give you the most control. For larger repos, consider `run-all` within environments or auto-generating the `atlantis.yaml`. For more CI/CD patterns, see our [Terragrunt with GitHub Actions guide](https://oneuptime.com/blog/post/2026-02-23-terragrunt-with-github-actions/view).
+Atlantis and Terragrunt work well together once you set up the custom workflow and configure project discovery correctly. The main decisions are whether to use individual projects or `run --all`, and how to handle the dependency ordering. For small to medium repos, individual projects with explicit dependencies give you the most control. For larger repos, consider `run --all` within environments or auto-generating the `atlantis.yaml`. For more CI/CD patterns, see our [Terragrunt with GitHub Actions guide](https://oneuptime.com/blog/post/2026-02-23-terragrunt-with-github-actions/view).
