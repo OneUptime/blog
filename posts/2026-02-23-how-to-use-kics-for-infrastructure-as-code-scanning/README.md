@@ -8,7 +8,7 @@ Description: A complete guide to using KICS (Keeping Infrastructure as Code Secu
 
 ---
 
-KICS, which stands for Keeping Infrastructure as Code Secure, is an open-source tool from Checkmarx that scans Terraform, CloudFormation, Kubernetes, Docker, Ansible, and other IaC formats for security vulnerabilities and misconfigurations. It ships with over 2000 built-in queries and produces detailed reports that are useful for both developers and security teams.
+KICS, which stands for Keeping Infrastructure as Code Secure, is an open-source tool from Checkmarx that scans Terraform, CloudFormation, Kubernetes, Docker, Ansible, and other IaC formats for security vulnerabilities and misconfigurations. It ships with a large built-in query library and produces detailed reports that are useful for both developers and security teams.
 
 This guide covers how to set up KICS, run scans against Terraform code, customize its behavior, and integrate it into your development pipeline.
 
@@ -16,7 +16,7 @@ This guide covers how to set up KICS, run scans against Terraform code, customiz
 
 KICS has some characteristics that distinguish it from alternatives:
 
-- Over 2000 built-in queries across 15+ IaC platforms
+- A large built-in query library across 15+ IaC platforms
 - Queries are written in Rego (OPA), making them easy to customize
 - Supports scanning multiple IaC types in a single run
 - Produces rich HTML reports alongside JSON and SARIF output
@@ -26,12 +26,16 @@ KICS has some characteristics that distinguish it from alternatives:
 ## Installation
 
 ```bash
-# Docker (recommended for CI/CD)
+# Docker (common for CI/CD; pin a trusted version or digest in production)
 
-docker pull checkmarx/kics:latest
+docker pull checkmarx/kics:v2.1.20
 
-# macOS with Homebrew
-brew install kics
+# Build from source
+git clone https://github.com/Checkmarx/kics.git
+cd kics
+go mod vendor
+make build
+sudo install -m 0755 ./bin/kics /usr/local/bin/kics
 
 # Linux binary download
 wget -q "https://github.com/Checkmarx/kics/releases/latest/download/kics_linux_amd64.tar.gz"
@@ -61,22 +65,10 @@ kics scan -p . --fail-on high,critical
 kics scan -p ./modules -p ./environments
 ```
 
-The default output is a table:
+The default output includes a results summary:
 
 ```text
-Scanning with KICS v1.7.0
-
-Files scanned: 23
-Parsed files: 23
-Queries loaded: 487
-
-Category          Severity    Query Name                               Count
-────────────────────────────────────────────────────────────────────────────
-Access Control    HIGH        S3 Bucket ACL Allows Public Access        1
-Encryption        CRITICAL    S3 Bucket Without Server-Side Encryption  2
-Logging           MEDIUM      CloudTrail Not Enabled                    1
-Networking        HIGH        Security Group With Open Ingress          3
-Best Practices    LOW         Resource Missing Tags                     5
+Scanning with Keeping Infrastructure as Code Secure v2.1.20
 
 Results Summary:
 HIGH:     4
@@ -95,14 +87,14 @@ KICS queries are organized by platform and category. Each query has:
 - A CWE (Common Weakness Enumeration) mapping where applicable
 - A description and remediation guidance
 
-You can list available queries:
+You can list supported platforms and inspect query metadata:
 
 ```bash
-# List all queries for Terraform
-kics scan -p . --type terraform --list-platforms
+# List supported platforms
+kics list-platforms
 
-# Show query details
-kics list --type terraform | head -50
+# Inspect Terraform query metadata in a source checkout or extracted release
+find assets/queries/terraform -name metadata.json | head
 ```
 
 ## Working with Results
@@ -145,8 +137,19 @@ resource "aws_s3_bucket" "public_website" {
   acl    = "public-read"
 }
 
-# Or ignore a specific query by ID
-# kics-scan ignore-block=a227ec01-f97a-4084-91a4-47b350c1db54
+# Or ignore all findings for a block
+# kics-scan ignore-block
+resource "aws_s3_bucket" "public_assets" {
+  bucket = "my-public-assets"
+  acl    = "public-read"
+}
+```
+
+To ignore a specific query for an entire file, put a `disable` command at the start of the file:
+
+```hcl
+# kics-scan disable=a227ec01-f97a-4084-91a4-47b350c1db54
+
 resource "aws_s3_bucket" "public_assets" {
   bucket = "my-public-assets"
   acl    = "public-read"
@@ -190,7 +193,7 @@ kics scan --config kics-config.yaml
 Write custom queries in Rego to enforce organization-specific policies:
 
 ```rego
-# queries/custom/require_encryption_tag.rego
+# queries/custom/terraform/aws/require_encryption_tag/query.rego
 package Cx
 
 import data.generic.terraform as tf_lib
@@ -199,14 +202,14 @@ CxPolicy[result] {
     resource := input.document[i].resource[resourceType][name]
 
     # Check if resource supports tags
-    tf_lib.allows_tags(resourceType)
+    tf_lib.check_resource_tags(resourceType)
 
     # Verify the encryption tag exists
     not resource.tags.EncryptionStatus
 
     result := {
         "documentId":       input.document[i].id,
-        "searchKey":        sprintf("%s[%s].tags", [resourceType, name]),
+        "searchKey":        sprintf("%s[{{%s}}].tags", [resourceType, name]),
         "issueType":        "MissingAttribute",
         "keyExpectedValue": "'tags' should include 'EncryptionStatus'",
         "keyActualValue":   "'tags' does not include 'EncryptionStatus'",
@@ -218,11 +221,11 @@ CxPolicy[result] {
 }
 ```
 
-Create the metadata:
+Create the metadata in `queries/custom/terraform/aws/require_encryption_tag/metadata.json`:
 
 ```json
 {
-  "id": "custom-001",
+  "id": "8d3a2db2-9ad4-4e5b-8a54-fde815ca12b7",
   "queryName": "Resource Missing Encryption Tag",
   "severity": "MEDIUM",
   "category": "Best Practices",
@@ -257,10 +260,10 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Run KICS scan
-        uses: checkmarx/kics-github-action@v2.1.0
+        uses: checkmarx/kics-github-action@v2.1.20
         with:
           path: ./infrastructure
-          type: terraform
+          platform_type: terraform
           fail_on: high,critical
           output_path: ./results
           output_formats: 'json,sarif'
@@ -280,20 +283,20 @@ jobs:
 kics-scan:
   stage: security
   image:
-    name: checkmarx/kics:latest
+    name: checkmarx/kics:v2.1.20
     entrypoint: [""]
   script:
     - kics scan
       --path ./infrastructure
       --type terraform
       --output-path ./results
-      --report-formats "json,sarif,html"
+      --report-formats "json,glsast,html"
       --fail-on high,critical
   artifacts:
     paths:
       - results/
     reports:
-      sast: results/results-sarif.sarif
+      sast: results/gl-sast-results.json
   rules:
     - changes:
         - "**/*.tf"
@@ -305,7 +308,7 @@ kics-scan:
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/Checkmarx/kics
-    rev: v1.7.0
+    rev: v2.1.20
     hooks:
       - id: kics-scan
         args:
