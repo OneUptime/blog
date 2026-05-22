@@ -8,7 +8,7 @@ Description: Step-by-step guide to configuring Azure Blob Storage as a remote ba
 
 ---
 
-If your infrastructure lives in Azure, storing your Terraform state in Azure Blob Storage is a natural fit. It keeps everything in one cloud provider, integrates with Azure Active Directory for access control, and supports state locking out of the box through blob leasing. This guide walks you through setting up the Azure backend from scratch.
+If your infrastructure lives in Azure, storing your Terraform state in Azure Blob Storage is a natural fit. It keeps everything in one cloud provider, integrates with Microsoft Entra ID for access control, and supports state locking out of the box through blob leasing. This guide walks you through setting up the Azure backend from scratch.
 
 ## Prerequisites
 
@@ -52,7 +52,8 @@ az storage account create \
 # Create the blob container
 az storage container create \
   --name "$CONTAINER" \
-  --account-name "$STORAGE_ACCOUNT"
+  --account-name "$STORAGE_ACCOUNT" \
+  --auth-mode login
 
 # Enable versioning for the storage account (for state history)
 az storage account blob-service-properties update \
@@ -71,6 +72,10 @@ With the storage infrastructure ready, configure your Terraform backend:
 # backend.tf
 terraform {
   backend "azurerm" {
+    # Use your Azure CLI session and Microsoft Entra ID for storage data-plane auth
+    use_cli          = true
+    use_azuread_auth = true
+
     # The resource group containing the storage account
     resource_group_name  = "terraform-state-rg"
 
@@ -99,13 +104,14 @@ The simplest method - the backend uses your current Azure CLI session:
 ```hcl
 terraform {
   backend "azurerm" {
+    use_cli              = true
+    use_azuread_auth     = true
     resource_group_name  = "terraform-state-rg"
     storage_account_name = "tfstatea1b2c3d4"
     container_name       = "tfstate"
     key                  = "prod/terraform.tfstate"
 
-    # Uses az login credentials automatically
-    # No additional auth config needed
+    # Uses the current az login session
   }
 }
 ```
@@ -119,6 +125,7 @@ For automated pipelines, use a service principal:
 ```hcl
 terraform {
   backend "azurerm" {
+    use_azuread_auth     = true
     resource_group_name  = "terraform-state-rg"
     storage_account_name = "tfstatea1b2c3d4"
     container_name       = "tfstate"
@@ -141,6 +148,7 @@ export ARM_SUBSCRIPTION_ID="your-subscription-id"
 export ARM_TENANT_ID="your-tenant-id"
 export ARM_CLIENT_ID="your-client-id"
 export ARM_CLIENT_SECRET="your-client-secret"
+export ARM_USE_AZUREAD=true
 
 # Initialize Terraform - it picks up the ARM_ variables automatically
 terraform init
@@ -153,6 +161,7 @@ If running Terraform from an Azure VM or App Service with a managed identity:
 ```hcl
 terraform {
   backend "azurerm" {
+    use_azuread_auth     = true
     resource_group_name  = "terraform-state-rg"
     storage_account_name = "tfstatea1b2c3d4"
     container_name       = "tfstate"
@@ -202,6 +211,7 @@ az storage blob show \
   --account-name "$STORAGE_ACCOUNT" \
   --container-name "$CONTAINER" \
   --name "prod/terraform.tfstate" \
+  --auth-mode login \
   --query "properties.lease"
 ```
 
@@ -216,7 +226,8 @@ Azure Blob Storage encrypts all data at rest by default using Microsoft-managed 
 az keyvault create \
   --name "tfstate-keyvault" \
   --resource-group "$RESOURCE_GROUP" \
-  --location "$LOCATION"
+  --location "$LOCATION" \
+  --enable-purge-protection true
 
 # Create an encryption key
 az keyvault key create \
@@ -224,13 +235,31 @@ az keyvault key create \
   --name "tfstate-key" \
   --protection software
 
+# Enable a system-assigned managed identity on the storage account
+az storage account update \
+  --name "$STORAGE_ACCOUNT" \
+  --resource-group "$RESOURCE_GROUP" \
+  --identity-type SystemAssigned
+
+STORAGE_PRINCIPAL_ID=$(az storage account show \
+  --name "$STORAGE_ACCOUNT" \
+  --resource-group "$RESOURCE_GROUP" \
+  --query "identity.principalId" -o tsv)
+
+# Allow the storage account identity to use the key
+az keyvault set-policy \
+  --name "tfstate-keyvault" \
+  --object-id "$STORAGE_PRINCIPAL_ID" \
+  --key-permissions get wrapKey unwrapKey
+
 # Configure the storage account to use customer-managed keys
 az storage account update \
   --name "$STORAGE_ACCOUNT" \
   --resource-group "$RESOURCE_GROUP" \
   --encryption-key-source Microsoft.Keyvault \
   --encryption-key-vault "https://tfstate-keyvault.vault.azure.net" \
-  --encryption-key-name "tfstate-key"
+  --encryption-key-name "tfstate-key" \
+  --encryption-key-version ""
 ```
 
 ## Network Security
@@ -245,6 +274,12 @@ az storage account update \
   --default-action Deny
 
 # Allow access from your VNet
+az network vnet subnet update \
+  --resource-group "$RESOURCE_GROUP" \
+  --vnet-name "my-vnet" \
+  --name "my-subnet" \
+  --service-endpoints Microsoft.Storage
+
 az storage account network-rule add \
   --account-name "$STORAGE_ACCOUNT" \
   --resource-group "$RESOURCE_GROUP" \
@@ -305,6 +340,8 @@ Organize state files for different environments using different keys:
 # For development
 terraform {
   backend "azurerm" {
+    use_cli              = true
+    use_azuread_auth     = true
     resource_group_name  = "terraform-state-rg"
     storage_account_name = "tfstatea1b2c3d4"
     container_name       = "tfstate"
@@ -317,9 +354,9 @@ Alternatively, use separate containers:
 
 ```bash
 # Create containers for each environment
-az storage container create --name "tfstate-dev" --account-name "$STORAGE_ACCOUNT"
-az storage container create --name "tfstate-staging" --account-name "$STORAGE_ACCOUNT"
-az storage container create --name "tfstate-prod" --account-name "$STORAGE_ACCOUNT"
+az storage container create --name "tfstate-dev" --account-name "$STORAGE_ACCOUNT" --auth-mode login
+az storage container create --name "tfstate-staging" --account-name "$STORAGE_ACCOUNT" --auth-mode login
+az storage container create --name "tfstate-prod" --account-name "$STORAGE_ACCOUNT" --auth-mode login
 ```
 
 ## Initializing and Verifying
@@ -340,6 +377,7 @@ terraform state list
 az storage blob list \
   --account-name "$STORAGE_ACCOUNT" \
   --container-name "$CONTAINER" \
+  --auth-mode login \
   --output table
 ```
 
