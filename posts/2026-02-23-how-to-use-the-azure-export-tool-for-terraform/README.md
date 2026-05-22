@@ -8,7 +8,7 @@ Description: Learn how to use the Azure Export for Terraform tool to automatical
 
 ---
 
-When you have an existing Azure environment built through the portal or ARM templates and want to bring it under Terraform management, the Azure Export for Terraform tool (formerly aztfexport) is your best option. This Microsoft-supported tool generates Terraform configurations directly from your Azure resources, making migration straightforward. In this guide, you will learn how to install, configure, and use the Azure Export tool effectively.
+When you have an existing Azure environment built through the portal or ARM templates and want to bring it under Terraform management, the Azure Export for Terraform tool (`aztfexport`) is your best option. This Microsoft-supported tool generates Terraform configurations directly from your Azure resources, making migration straightforward. In this guide, you will learn how to install, configure, and use the Azure Export tool effectively.
 
 ## What Is the Azure Export Tool for Terraform?
 
@@ -23,19 +23,19 @@ You can install the tool through several package managers:
 ```bash
 # Install on macOS using Homebrew
 
-brew install azure/aztfexport/aztfexport
+brew install aztfexport
 
-# Install on Linux using the apt repository
-curl -sSL https://packages.microsoft.com/keys/microsoft.asc | sudo apt-key add -
-sudo apt-add-repository "https://packages.microsoft.com/repos/aztfexport"
-sudo apt-get update
+# Install on Ubuntu 20.04 or 22.04 using the apt repository
+curl -sSL https://packages.microsoft.com/keys/microsoft.asc | sudo tee /etc/apt/trusted.gpg.d/microsoft.asc > /dev/null
+ver=22.04 # or 20.04
+sudo apt-add-repository "https://packages.microsoft.com/ubuntu/${ver}/prod"
 sudo apt-get install aztfexport
 
 # Install using Go
 go install github.com/Azure/aztfexport@latest
 ```
 
-You also need the Azure CLI installed and authenticated:
+You also need Terraform installed in your `PATH`, and the Azure CLI installed and authenticated:
 
 ```bash
 # Login to Azure
@@ -95,15 +95,16 @@ This mode is particularly powerful for large environments where resources span m
 
 ## Understanding the Output
 
-After running the export, the tool generates several files in your output directory:
+After running the export, the tool generates several files in your output directory, depending on the flags you use:
 
 ```text
 terraform-output/
   main.tf              # All resource configurations
   provider.tf          # Azure provider configuration
   terraform.tf         # Terraform configuration block
-  import.tf            # Import blocks (Terraform 1.5+)
   terraform.tfstate    # State file mapping resources
+  import.tf            # Import blocks when using --generate-import-block
+  aztfexportResourceMapping.json # Mapping file for generated import blocks
 ```
 
 The `main.tf` file contains all exported resources:
@@ -134,10 +135,10 @@ resource "azurerm_linux_virtual_machine" "res-0" {
 
 ## Using Import Blocks (Terraform 1.5+)
 
-Starting with Terraform 1.5, the tool can generate import blocks instead of directly manipulating state. This approach is safer and more auditable:
+Starting with Terraform 1.5, the tool can generate import blocks for Terraform's plannable import workflow. This approach is safer and more auditable:
 
 ```bash
-# Generate import blocks instead of state
+# Generate Terraform import blocks
 aztfexport resource-group my-resource-group --generate-import-block
 ```
 
@@ -204,13 +205,13 @@ resource "azurerm_linux_virtual_machine" "web_server" {
 }
 ```
 
-If certain resources fail to export, you can skip them and import them separately later:
+If certain resources fail to export, you can exclude them and import them separately later:
 
 ```bash
-# Skip problematic resources
+# Exclude problematic resources by Azure resource ID pattern
 aztfexport resource-group my-resource-group \
   --non-interactive \
-  --skip="/subscriptions/.../problematicResource"
+  --exclude-azure-resource="/subscriptions/.*/problematicResource"
 ```
 
 ## Automating the Export Process
