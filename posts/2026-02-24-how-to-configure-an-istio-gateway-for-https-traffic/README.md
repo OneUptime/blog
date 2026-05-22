@@ -38,6 +38,7 @@ Generate a self-signed certificate:
 ```bash
 openssl req -x509 -sha256 -nodes -days 365 -newkey rsa:2048 \
   -subj '/O=Example Inc./CN=example.com' \
+  -addext 'subjectAltName=DNS:example.com' \
   -keyout example.com.key \
   -out example.com.crt
 ```
@@ -47,6 +48,7 @@ For a specific subdomain:
 ```bash
 openssl req -x509 -sha256 -nodes -days 365 -newkey rsa:2048 \
   -subj '/O=Example Inc./CN=app.example.com' \
+  -addext 'subjectAltName=DNS:app.example.com' \
   -keyout app.example.com.key \
   -out app.example.com.crt
 ```
@@ -62,7 +64,7 @@ kubectl create secret tls app-credential \
   -n istio-system
 ```
 
-The secret must be a `tls` type secret with `tls.crt` and `tls.key` fields, which is what `kubectl create secret tls` creates automatically.
+The common format is a `kubernetes.io/tls` type secret with `tls.crt` and `tls.key` fields, which is what `kubectl create secret tls` creates automatically. Istio also supports other secret formats, but this is the standard Kubernetes TLS secret format.
 
 ## Configuring the HTTPS Gateway
 
@@ -215,7 +217,7 @@ Only specify cipher suites if you have specific compliance requirements. The Env
 Test your HTTPS gateway with curl:
 
 ```bash
-export GATEWAY_URL=$(kubectl -n istio-system get service istio-ingressgateway -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+export GATEWAY_URL=$(kubectl -n istio-system get service istio-ingressgateway -o jsonpath='{.status.loadBalancer.ingress[0].ip}{.status.loadBalancer.ingress[0].hostname}')
 
 # Test HTTPS (use -k for self-signed certs)
 
@@ -226,7 +228,7 @@ curl -v -k --resolve "app.example.com:443:$GATEWAY_URL" \
 curl -v -H "Host: app.example.com" "http://$GATEWAY_URL/"
 ```
 
-The `--resolve` flag maps the hostname to the gateway IP without needing DNS. The `-k` flag skips certificate verification for self-signed certs.
+The `--resolve` flag maps the hostname to the gateway IP without needing DNS. If your load balancer returns a hostname instead of an IP address, resolve that hostname first or point DNS for `app.example.com` at the gateway. The `-k` flag skips certificate verification for self-signed certs.
 
 ## Checking Certificate Details
 
