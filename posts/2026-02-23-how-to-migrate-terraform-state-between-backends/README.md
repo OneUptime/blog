@@ -26,11 +26,11 @@ terraform {
 # S3 backend (AWS)
 terraform {
   backend "s3" {
-    bucket         = "my-terraform-state"
-    key            = "prod/terraform.tfstate"
-    region         = "us-east-1"
-    dynamodb_table = "terraform-locks"
-    encrypt        = true
+    bucket       = "my-terraform-state"
+    key          = "prod/terraform.tfstate"
+    region       = "us-east-1"
+    use_lockfile = true
+    encrypt      = true
   }
 }
 
@@ -61,11 +61,11 @@ The most common migration is from local state to an S3 remote backend:
 # Step 1: Add the S3 backend configuration
 terraform {
   backend "s3" {
-    bucket         = "my-terraform-state"
-    key            = "prod/terraform.tfstate"
-    region         = "us-east-1"
-    dynamodb_table = "terraform-locks"
-    encrypt        = true
+    bucket       = "my-terraform-state"
+    key          = "prod/terraform.tfstate"
+    region       = "us-east-1"
+    use_lockfile = true
+    encrypt      = true
   }
 }
 ```
@@ -204,16 +204,14 @@ terraform force-unlock LOCK_ID
 terraform init -migrate-state
 ```
 
-For DynamoDB-based locking with S3:
+For S3-native locking:
 
 ```bash
 # Check for existing locks
-aws dynamodb scan --table-name terraform-locks
+aws s3 ls s3://my-terraform-state/prod/terraform.tfstate.tflock
 
-# Remove a stale lock
-aws dynamodb delete-item \
-  --table-name terraform-locks \
-  --key '{"LockID":{"S":"my-terraform-state/prod/terraform.tfstate"}}'
+# Remove a stale lock only if terraform force-unlock cannot release it
+aws s3 rm s3://my-terraform-state/prod/terraform.tfstate.tflock
 ```
 
 ## Migrating State for Multiple Workspaces
@@ -224,12 +222,8 @@ If you use Terraform workspaces, migrate all of them:
 # List all workspaces
 terraform workspace list
 
-# Migrate each workspace
-for workspace in $(terraform workspace list | tr -d '* '); do
-  echo "Migrating workspace: $workspace"
-  terraform workspace select "$workspace"
-  terraform init -migrate-state
-done
+# Migrate workspace states when prompted
+terraform init -migrate-state
 ```
 
 ## Setting Up the Destination Backend First
@@ -237,7 +231,7 @@ done
 Before migration, ensure the destination backend is properly configured:
 
 ```hcl
-# For S3 backend, create the bucket and DynamoDB table first
+# For S3 backend, create the bucket first
 resource "aws_s3_bucket" "terraform_state" {
   bucket = "my-terraform-state"
 
@@ -259,17 +253,6 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "terraform_state" 
     apply_server_side_encryption_by_default {
       sse_algorithm = "aws:kms"
     }
-  }
-}
-
-resource "aws_dynamodb_table" "terraform_locks" {
-  name         = "terraform-locks"
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "LockID"
-
-  attribute {
-    name = "LockID"
-    type = "S"
   }
 }
 ```
