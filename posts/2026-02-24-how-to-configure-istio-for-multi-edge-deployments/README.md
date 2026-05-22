@@ -33,7 +33,9 @@ mkdir -p certs
 openssl req -new -x509 -nodes -days 3650 \
   -keyout certs/root-key.pem \
   -out certs/root-cert.pem \
-  -subj "/O=MyEdgeOrg/CN=Root CA"
+  -subj "/O=MyEdgeOrg/CN=Root CA" \
+  -addext "basicConstraints=critical,CA:TRUE,pathlen:1" \
+  -addext "keyUsage=critical,keyCertSign,cRLSign"
 
 # Script to generate intermediate CA for each edge site
 for site in edge-site-1 edge-site-2 edge-site-3; do
@@ -47,7 +49,10 @@ for site in edge-site-1 edge-site-2 edge-site-3; do
     -CAkey certs/root-key.pem \
     -CAcreateserial \
     -in "certs/${site}-ca.csr" \
-    -out "certs/${site}-ca-cert.pem"
+    -out "certs/${site}-ca-cert.pem" \
+    -extfile <(printf "basicConstraints=critical,CA:TRUE,pathlen:0\nkeyUsage=critical,keyCertSign,cRLSign\nsubjectKeyIdentifier=hash\nauthorityKeyIdentifier=keyid,issuer")
+
+  cat "certs/${site}-ca-cert.pem" certs/root-cert.pem > "certs/${site}-cert-chain.pem"
 done
 ```
 
@@ -61,7 +66,7 @@ kubectl create secret generic cacerts -n istio-system \
   --from-file=ca-cert.pem="certs/${SITE}-ca-cert.pem" \
   --from-file=ca-key.pem="certs/${SITE}-ca-key.pem" \
   --from-file=root-cert.pem=certs/root-cert.pem \
-  --from-file=cert-chain.pem="certs/${SITE}-ca-cert.pem"
+  --from-file=cert-chain.pem="certs/${SITE}-cert-chain.pem"
 ```
 
 ## Installing Istio on Edge Sites
@@ -117,6 +122,9 @@ Apply with site-specific values:
 # For each site, substitute the placeholders
 SITE="edge-site-1"
 NETWORK="edge-network-1"
+
+kubectl label namespace istio-system \
+  topology.istio.io/network="${NETWORK}" --overwrite
 
 sed "s/CLUSTER_NAME_PLACEHOLDER/${SITE}/g; s/NETWORK_PLACEHOLDER/${NETWORK}/g" \
   edge-istio-template.yaml > "edge-istio-${SITE}.yaml"
@@ -193,6 +201,7 @@ Create remote secrets so each site can discover services on other sites:
 ```bash
 # Generate remote secret from edge-site-1
 istioctl create-remote-secret \
+  --context=edge-site-1 \
   --name=edge-site-1 \
   --server=https://edge-1-api.example.com:6443 \
   > edge-site-1-remote-secret.yaml
@@ -202,6 +211,7 @@ kubectl apply -f edge-site-1-remote-secret.yaml --context=edge-site-2
 
 # And vice versa
 istioctl create-remote-secret \
+  --context=edge-site-2 \
   --name=edge-site-2 \
   --server=https://edge-2-api.example.com:6443 \
   > edge-site-2-remote-secret.yaml
@@ -240,13 +250,13 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - ../../base
-patchesStrategicMerge:
-  - site-specific-config.yaml
+patches:
+  - path: site-specific-config.yaml
 ```
 
 ## Locality-Aware Routing Across Sites
 
-Configure Istio to prefer local services but fail over to other edge sites or the cloud:
+Configure Istio to prefer local services but fail over to other edge sites or the cloud. This example assumes your Kubernetes nodes use the site name as their `topology.kubernetes.io/region` label:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -264,11 +274,6 @@ spec:
     loadBalancer:
       localityLbSetting:
         enabled: true
-        distribute:
-          - from: "edge-site-1/*"
-            to:
-              "edge-site-1/*": 80
-              "edge-site-2/*": 20
         failover:
           - from: edge-site-1
             to: edge-site-2
@@ -276,7 +281,7 @@ spec:
             to: edge-site-1
 ```
 
-This sends 80% of traffic to local instances and 20% to the nearest other edge site. If the local site's instances are all unhealthy, it fails over completely.
+This keeps traffic local while the local site's instances are healthy. If they become unhealthy, outlier detection triggers failover to the configured backup site.
 
 ## Monitoring Multi-Edge Health
 
@@ -286,14 +291,14 @@ When you have many edge sites, you need centralized monitoring. Configure each s
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
-  meshConfig:
-    defaultConfig:
-      proxyMetadata:
-        ISTIO_META_MESH_ID: "edge-mesh"
-        ISTIO_META_CLUSTER_ID: "edge-site-1"
+  values:
+    global:
+      meshID: edge-mesh
+      multiCluster:
+        clusterName: edge-site-1
 ```
 
-The cluster ID label on all metrics makes it possible to filter and aggregate by site in your dashboards.
+The source and destination cluster labels on Istio standard metrics make it possible to filter and aggregate by site in your dashboards.
 
 Check connectivity between sites:
 
