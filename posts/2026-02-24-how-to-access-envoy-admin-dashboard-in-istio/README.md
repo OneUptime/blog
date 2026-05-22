@@ -29,7 +29,7 @@ Then open http://localhost:15000 in your browser. You will see the Envoy admin d
 Istio provides a convenience command:
 
 ```bash
-istioctl dashboard envoy productpage-v1-6b746f74dc-9rlmh.bookinfo
+istioctl dashboard proxy productpage-v1-6b746f74dc-9rlmh.bookinfo
 ```
 
 This automatically sets up the port forwarding and opens your browser.
@@ -115,7 +115,7 @@ kubectl exec productpage-v1-6b746f74dc-9rlmh -c istio-proxy -n bookinfo -- \
   pilot-agent request GET /stats/prometheus | head -50
 ```
 
-This is the endpoint that Prometheus scrapes for Istio metrics.
+This is the Envoy admin endpoint for Prometheus-formatted stats. In a default Istio sidecar, Prometheus typically scrapes merged telemetry from `:15020/stats/prometheus` (or Envoy-only telemetry from port `15090`) rather than the 15000 admin port.
 
 ### /clusters
 
@@ -169,7 +169,7 @@ View and change log levels (same as `istioctl proxy-config log`):
 ```bash
 # View current log levels
 kubectl exec productpage-v1-6b746f74dc-9rlmh -c istio-proxy -n bookinfo -- \
-  pilot-agent request GET /logging
+  pilot-agent request POST /logging
 
 # Set a specific logger to debug
 kubectl exec productpage-v1-6b746f74dc-9rlmh -c istio-proxy -n bookinfo -- \
@@ -247,7 +247,7 @@ kubectl exec productpage-v1-6b746f74dc-9rlmh -c istio-proxy -n bookinfo -- \
 
 ## Web Dashboard vs Command Line
 
-The web dashboard (via port-forward or `istioctl dashboard envoy`) is great for browsing and exploration. The command-line approach (via `pilot-agent request`) is better for:
+The web dashboard (via port-forward or `istioctl dashboard proxy`) is great for browsing and exploration. The command-line approach (via `pilot-agent request`) is better for:
 
 - Scripted health checks
 - CI/CD pipelines
