@@ -39,7 +39,6 @@ spec:
     accessLogFile: /dev/stdout
     accessLogEncoding: JSON
     accessLogFormat: ""
-    enableAccessLogForExternalTraffic: true
 ```
 
 The default access log format captures most audit-relevant fields. For a custom format that focuses on audit fields:
@@ -51,19 +50,33 @@ spec:
   meshConfig:
     accessLogFile: /dev/stdout
     accessLogEncoding: JSON
-    defaultConfig:
-      accessLog:
-        - name: audit-log
-          filter:
-            responseFlagFilter:
-              flags: []
-          provider:
-            name: envoy
+    accessLogFormat: |
+      {
+        "start_time": "%START_TIME%",
+        "method": "%REQ(:METHOD)%",
+        "path": "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%",
+        "protocol": "%PROTOCOL%",
+        "response_code": "%RESPONSE_CODE%",
+        "response_flags": "%RESPONSE_FLAGS%",
+        "response_code_details": "%RESPONSE_CODE_DETAILS%",
+        "bytes_received": "%BYTES_RECEIVED%",
+        "bytes_sent": "%BYTES_SENT%",
+        "duration": "%DURATION%",
+        "upstream_service_time": "%RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)%",
+        "request_id": "%REQ(X-REQUEST-ID)%",
+        "authority": "%REQ(:AUTHORITY)%",
+        "upstream_host": "%UPSTREAM_HOST%",
+        "upstream_cluster": "%UPSTREAM_CLUSTER_RAW%",
+        "downstream_local_address": "%DOWNSTREAM_LOCAL_ADDRESS%",
+        "downstream_remote_address": "%DOWNSTREAM_REMOTE_ADDRESS%",
+        "requested_server_name": "%REQUESTED_SERVER_NAME%",
+        "route_name": "%ROUTE_NAME%"
+      }
 ```
 
 ## Structured JSON Access Logs
 
-JSON logging is better for auditing because it is easier to parse and query. The default JSON access log includes these fields:
+JSON logging is better for auditing because it is easier to parse and query. With JSON encoding, Istio renders the default access log as structured fields like these:
 
 ```json
 {
@@ -146,7 +159,7 @@ spec:
 
 ## Authorization Policy Audit Mode
 
-Istio supports a CUSTOM action for authorization policies that can be used for audit logging without actually blocking traffic:
+Istio supports an AUDIT action for authorization policies that can mark matching requests for audit without actually blocking traffic:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -162,7 +175,7 @@ spec:
             paths: ["/api/*"]
 ```
 
-The AUDIT action logs the request matching without allowing or denying it. Combine it with ALLOW and DENY policies:
+The AUDIT action does not allow or deny traffic. It marks matching requests for audit, and you still need a supporting audit plugin or logging integration to emit the audit record. Combine it with ALLOW and DENY policies:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -254,7 +267,7 @@ spec:
   meshConfig:
     extensionProviders:
       - name: otel
-        opentelemetry:
+        envoyOtelAls:
           service: otel-collector.observability.svc.cluster.local
           port: 4317
 ```
@@ -313,8 +326,8 @@ istio_requests_total{source_workload="frontend", destination_workload="api-gatew
 # Failed requests (potential security events)
 istio_requests_total{response_code="403"}
 
-# Requests without mTLS (security concern)
-istio_requests_total{connection_security_policy="none"}
+# Requests without mTLS reported by destination proxies (security concern)
+istio_requests_total{reporter="destination", connection_security_policy="none"}
 ```
 
 Create alerts for audit-relevant events:
@@ -331,7 +344,7 @@ groups:
         annotations:
           summary: "High rate of 403 responses detected"
       - alert: PlaintextCommunication
-        expr: istio_requests_total{connection_security_policy="none"} > 0
+        expr: istio_requests_total{reporter="destination", connection_security_policy="none"} > 0
         for: 1m
         labels:
           severity: critical
@@ -343,9 +356,9 @@ groups:
 
 For compliance, define retention policies for audit data:
 
-- **SOC 2**: Typically requires 1 year of audit logs
-- **PCI DSS**: Requires at least 1 year, with 3 months immediately available
-- **HIPAA**: Requires 6 years of audit trails
+- **SOC 2**: Retention is based on your controls and auditor expectations; many teams keep 1 year of security-relevant logs
+- **PCI DSS**: Requires at least 12 months of audit log history, with the most recent 3 months immediately available
+- **HIPAA**: Requires 6 years for required Security Rule documentation; many teams align audit evidence retention to that period
 
 Configure your log storage accordingly. Use index lifecycle management in Elasticsearch or equivalent features in your log backend to automatically age out old data while keeping it accessible for the required period.
 
