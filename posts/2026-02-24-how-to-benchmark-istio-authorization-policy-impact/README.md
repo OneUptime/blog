@@ -19,7 +19,7 @@ Create a dedicated namespace and deploy a target service:
 ```bash
 kubectl create namespace authz-bench
 kubectl label namespace authz-bench istio-injection=enabled
-kubectl apply -n authz-bench -f https://raw.githubusercontent.com/istio/istio/release-1.22/samples/httpbin/httpbin.yaml
+kubectl apply -n authz-bench -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/httpbin/httpbin.yaml
 ```
 
 Deploy a Fortio load generator in the same namespace:
@@ -61,6 +61,7 @@ Run a baseline test with no authorization policies applied:
 
 ```bash
 FORTIO_POD=$(kubectl get pod -n authz-bench -l app=fortio -o jsonpath='{.items[0].metadata.name}')
+kubectl delete authorizationpolicy --all -n authz-bench --ignore-not-found
 
 kubectl exec -n authz-bench $FORTIO_POD -- fortio load \
   -c 32 \
@@ -74,7 +75,7 @@ Record the average latency, p99 latency, and throughput (QPS).
 
 ## Test 1: Simple ALLOW Policy
 
-Apply a basic authorization policy that allows traffic from the fortio service account:
+Apply a basic authorization policy that allows traffic from the default service account used by the Fortio pod:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -97,6 +98,7 @@ spec:
 ```
 
 ```bash
+kubectl delete authorizationpolicy --all -n authz-bench --ignore-not-found
 kubectl apply -n authz-bench -f allow-fortio.yaml
 sleep 5  # Give Envoy time to pick up the config
 
@@ -145,6 +147,7 @@ spec:
 ```
 
 ```bash
+kubectl delete authorizationpolicy --all -n authz-bench --ignore-not-found
 kubectl apply -n authz-bench -f complex-allow.yaml
 sleep 5
 
@@ -215,6 +218,7 @@ spec:
 ```
 
 ```bash
+kubectl delete authorizationpolicy --all -n authz-bench --ignore-not-found
 kubectl apply -n authz-bench -f stacked-policies.yaml
 sleep 5
 
@@ -242,12 +246,11 @@ spec:
       app: httpbin
   action: DENY
   rules:
-  - from:
-    - source:
-        namespaces: ["*"]
+  - {}
 ```
 
 ```bash
+kubectl delete authorizationpolicy --all -n authz-bench --ignore-not-found
 kubectl apply -n authz-bench -f deny-all.yaml
 sleep 5
 
@@ -312,9 +315,9 @@ http.inbound_0.0.0.0_8000.rbac.shadow_denied: 0
 
 ## Key Takeaways
 
-Authorization policy overhead in Istio is typically under 1ms per request even with multiple stacked policies. The evaluation happens entirely in memory within the Envoy proxy, with no network calls required. The number of rules matters less than you might think because Envoy compiles the rules into an efficient internal representation.
+Authorization policy overhead in Istio often measures well under 1ms per request in simple in-mesh cases, even with multiple stacked policies. The evaluation happens entirely in memory within the Envoy proxy, with no network calls required. The number of rules matters less than you might think because Envoy translates the policies into Envoy RBAC configuration that is evaluated locally.
 
-Where you will see more overhead is with JWT validation policies that require JWKS fetching, or with external authorization (CUSTOM action) that calls out to an external service. Those are fundamentally different and should be benchmarked separately.
+Where you will see more overhead is with JWT validation policies, which add token parsing and signature verification and may fetch or refresh JWKS keys, or with external authorization (CUSTOM action) that calls out to an external service. Those are fundamentally different and should be benchmarked separately.
 
 ## Cleanup
 
