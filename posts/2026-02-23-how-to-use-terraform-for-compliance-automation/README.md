@@ -16,29 +16,34 @@ In this guide, we will cover how to build a comprehensive compliance automation 
 
 The compliance automation stack has three layers: preventive controls that block non-compliant resources before they are created, detective controls that find existing non-compliant resources, and corrective controls that automatically fix violations.
 
-```hcl
+```rego
 # compliance/preventive/encryption.rego
 
 # Preventive control: Block unencrypted resources
 
 package terraform.compliance.preventive
 
-# Deny S3 buckets without encryption
-deny[msg] {
+import rego.v1
+
+# Deny S3 buckets without an explicit default encryption configuration
+deny contains msg if {
     resource := input.resource_changes[_]
     resource.type == "aws_s3_bucket"
     actions := resource.change.actions
     actions[_] == "create"
-    not has_encryption(resource)
+    not has_bucket_encryption_resource(resource)
     msg := sprintf("S3 bucket %s must have encryption enabled", [resource.address])
 }
 
-has_encryption(resource) {
-    resource.change.after.server_side_encryption_configuration != null
+has_bucket_encryption_resource(bucket) if {
+    encryption := input.resource_changes[_]
+    encryption.type == "aws_s3_bucket_server_side_encryption_configuration"
+    encryption.change.actions[_] == "create"
+    encryption.change.after.bucket == bucket.change.after.bucket
 }
 
 # Deny EBS volumes without encryption
-deny[msg] {
+deny contains msg if {
     resource := input.resource_changes[_]
     resource.type == "aws_ebs_volume"
     resource.change.after.encrypted != true
@@ -54,7 +59,8 @@ deny[msg] {
 
 import boto3
 import json
-from datetime import datetime
+from botocore.exceptions import ClientError
+from datetime import UTC, datetime
 
 class ComplianceScanner:
     def __init__(self, region="us-east-1"):
@@ -62,7 +68,7 @@ class ComplianceScanner:
         self.findings = []
 
     def scan_s3_encryption(self):
-        """Check all S3 buckets for encryption."""
+        """Check all S3 buckets for SSE-KMS default encryption."""
         s3 = self.session.client("s3")
         buckets = s3.list_buckets()["Buckets"]
 
@@ -71,18 +77,33 @@ class ComplianceScanner:
                 encryption = s3.get_bucket_encryption(
                     Bucket=bucket["Name"]
                 )
+                rules = encryption.get("ServerSideEncryptionConfiguration", {}).get("Rules", [])
+                uses_kms = any(
+                    rule.get("ApplyServerSideEncryptionByDefault", {}).get("SSEAlgorithm") == "aws:kms"
+                    for rule in rules
+                )
+
+                if uses_kms:
+                    self.findings.append({
+                        "resource": f"s3://{bucket['Name']}",
+                        "check": "kms-encryption",
+                        "status": "PASS",
+                        "details": "SSE-KMS default encryption enabled"
+                    })
+                else:
+                    self.findings.append({
+                        "resource": f"s3://{bucket['Name']}",
+                        "check": "kms-encryption",
+                        "status": "FAIL",
+                        "details": "Default encryption is not SSE-KMS",
+                        "severity": "HIGH"
+                    })
+            except ClientError as exc:
                 self.findings.append({
                     "resource": f"s3://{bucket['Name']}",
-                    "check": "encryption",
-                    "status": "PASS",
-                    "details": "Encryption enabled"
-                })
-            except s3.exceptions.ClientError:
-                self.findings.append({
-                    "resource": f"s3://{bucket['Name']}",
-                    "check": "encryption",
+                    "check": "kms-encryption",
                     "status": "FAIL",
-                    "details": "No encryption configuration",
+                    "details": f"Unable to read encryption configuration: {exc.response['Error']['Code']}",
                     "severity": "HIGH"
                 })
 
@@ -112,13 +133,21 @@ class ComplianceScanner:
         failed = len([f for f in self.findings if f["status"] == "FAIL"])
 
         return {
-            "scan_date": datetime.utcnow().isoformat(),
+            "scan_date": datetime.now(UTC).isoformat(),
             "total_checks": total,
             "passed": passed,
             "failed": failed,
             "compliance_rate": round(passed / total * 100, 1) if total > 0 else 100,
             "findings": self.findings
         }
+
+if __name__ == "__main__":
+    scanner = ComplianceScanner()
+    scanner.scan_s3_encryption()
+    scanner.scan_security_groups()
+
+    with open("compliance-report.json", "w", encoding="utf-8") as report_file:
+        json.dump(scanner.generate_report(), report_file, indent=2)
 ```
 
 ## Corrective Controls with Auto-Remediation
@@ -141,11 +170,18 @@ resource "aws_lambda_function" "compliance_remediation" {
 resource "aws_config_remediation_configuration" "s3_encryption" {
   config_rule_name = aws_config_config_rule.s3_encryption.name
 
-  target_id   = "AWS-EnableS3BucketEncryption"
-  target_type = "SSM_DOCUMENT"
+  resource_type  = "AWS::S3::Bucket"
+  target_id      = "AWS-EnableS3BucketEncryption"
+  target_type    = "SSM_DOCUMENT"
+  target_version = "1"
 
   parameter {
-    name         = "BucketName"
+    name         = "AutomationAssumeRole"
+    static_value = aws_iam_role.remediation.arn
+  }
+
+  parameter {
+    name           = "BucketName"
     resource_value = "RESOURCE_ID"
   }
 
@@ -187,9 +223,9 @@ jobs:
 
       - name: OPA Policy Check
         run: |
-          opa eval --data compliance/preventive/ \
+          opa eval --fail-defined --data compliance/preventive/ \
             --input plan.json \
-            "data.terraform.compliance.preventive.deny" \
+            "data.terraform.compliance.preventive.deny[_]" \
             --format pretty
 
       - name: Checkov Scan
@@ -218,21 +254,24 @@ Generate audit-ready reports automatically:
 # scripts/compliance-report.py
 # Generate compliance reports for audit purposes
 
+from datetime import UTC, datetime
+
 def generate_audit_report(scan_results):
     """Create an audit-ready compliance report."""
+    total = len(scan_results)
+    passing = len([r for r in scan_results if r["status"] == "PASS"])
+    failing = len([r for r in scan_results if r["status"] == "FAIL"])
+
     report = {
-        "report_date": datetime.utcnow().isoformat(),
+        "report_date": datetime.now(UTC).isoformat(),
         "framework": "SOC2",
-        "total_controls_checked": len(scan_results),
-        "controls_passing": len([r for r in scan_results if r["status"] == "PASS"]),
-        "controls_failing": len([r for r in scan_results if r["status"] == "FAIL"]),
-        "compliance_score": round(
-            len([r for r in scan_results if r["status"] == "PASS"]) /
-            len(scan_results) * 100, 1
-        ),
+        "total_controls_checked": total,
+        "controls_passing": passing,
+        "controls_failing": failing,
+        "compliance_score": round(passing / total * 100, 1) if total > 0 else 100,
         "critical_findings": [
             r for r in scan_results
-            if r["status"] == "FAIL" and r["severity"] == "CRITICAL"
+            if r["status"] == "FAIL" and r.get("severity") == "CRITICAL"
         ],
         "evidence": {
             "terraform_state_versioned": True,
