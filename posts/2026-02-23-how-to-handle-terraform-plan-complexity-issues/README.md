@@ -31,13 +31,13 @@ You can get a rough measure of complexity:
 terraform state list | wc -l
 
 # Count data sources
-grep -r "^data " *.tf | wc -l
+find . -name "*.tf" -print0 | xargs -0 grep -h "^data " | wc -l
 
 # Count dynamic blocks
-grep -r "dynamic" *.tf | wc -l
+find . -name "*.tf" -print0 | xargs -0 grep -h "dynamic" | wc -l
 
 # Count conditional expressions
-grep -rE "count.*\?|for_each.*\?" *.tf | wc -l
+find . -name "*.tf" -print0 | xargs -0 grep -hE "count.*\?|for_each.*\?" | wc -l
 ```
 
 ## Cascading Change Problems
@@ -61,7 +61,7 @@ locals {
 }
 ```
 
-The `timestamp()` function returns a new value on every plan, causing every resource that uses `common_tags` to show a change. Fix it:
+The `timestamp()` function changes on every Terraform run and is unknown during planning, causing every resource that uses `common_tags` to show a change. Fix it:
 
 ```hcl
 locals {
@@ -79,9 +79,11 @@ locals {
 # This data source returns a different AMI when a new one is published
 data "aws_ami" "latest" {
   most_recent = true
+  owners      = ["099720109477"] # Canonical
+
   filter {
     name   = "name"
-    values = ["ubuntu/images/hvm-ssd/ubuntu-22.04-amd64-server-*"]
+    values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"]
   }
 }
 
