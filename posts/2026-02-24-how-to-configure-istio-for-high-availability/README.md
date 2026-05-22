@@ -8,7 +8,7 @@ Description: A complete guide to configuring Istio for high availability coverin
 
 ---
 
-Running Istio in production means making sure it stays up even when things go wrong. A service mesh that is not highly available can become the single point of failure for your entire application. When istiod goes down or the ingress gateway becomes unreachable, your services lose their ability to route traffic, manage certificates, and enforce policies.
+Running Istio in production means making sure it stays up even when things go wrong. A service mesh that is not highly available can become the single point of failure for your entire application. When istiod goes down, existing sidecars keep using their last-known configuration, but new configuration updates and certificate rotation stop. When the ingress gateway becomes unreachable, external traffic cannot reach your services.
 
 This guide covers the concrete configuration needed to make every Istio component highly available.
 
@@ -97,14 +97,16 @@ spec:
                     averageUtilization: 70
           affinity:
             podAntiAffinity:
-              requiredDuringSchedulingIgnoredDuringExecution:
-                - labelSelector:
-                    matchExpressions:
-                      - key: app
-                        operator: In
-                        values:
-                          - istio-ingressgateway
-                  topologyKey: topology.kubernetes.io/zone
+              preferredDuringSchedulingIgnoredDuringExecution:
+                - weight: 100
+                  podAffinityTerm:
+                    labelSelector:
+                      matchExpressions:
+                        - key: app
+                          operator: In
+                          values:
+                            - istio-ingressgateway
+                    topologyKey: topology.kubernetes.io/zone
           strategy:
             rollingUpdate:
               maxSurge: 1
@@ -113,7 +115,7 @@ spec:
 
 Key points:
 - **minReplicas: 3** ensures there are always at least 3 gateway pods
-- **requiredDuringSchedulingIgnoredDuringExecution** with zone topology ensures pods are spread across AZs (hard requirement)
+- **preferredDuringSchedulingIgnoredDuringExecution** with zone topology asks the scheduler to spread pods across AZs without blocking rollouts if a zone is temporarily unavailable or a cluster admission policy restricts hard anti-affinity
 - **maxUnavailable: 0** during rolling updates means no downtime during upgrades
 
 The LoadBalancer service fronting the gateway should be configured for health checking:
@@ -128,7 +130,7 @@ metadata:
     service.beta.kubernetes.io/aws-load-balancer-healthcheck-healthy-threshold: "2"
     service.beta.kubernetes.io/aws-load-balancer-healthcheck-unhealthy-threshold: "3"
     service.beta.kubernetes.io/aws-load-balancer-healthcheck-interval: "10"
-    service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
+    service.beta.kubernetes.io/aws-load-balancer-attributes: "load_balancing.cross_zone.enabled=true"
 spec:
   type: LoadBalancer
   selector:
@@ -136,8 +138,10 @@ spec:
   ports:
     - port: 80
       name: http2
+      targetPort: 8080
     - port: 443
       name: https
+      targetPort: 8443
 ```
 
 ## Certificate Management HA
@@ -168,7 +172,7 @@ spec:
         EXTERNAL_CA: ISTIOD_RA_KUBERNETES_API
 ```
 
-With an external CA, certificate issuance is not dependent solely on istiod. Even if istiod has issues, the external CA infrastructure can continue issuing certificates.
+With an external CA, the signing key and signing policy are moved out of istiod. Istiod still acts as the registration authority for workload certificate requests, so you still need highly available istiod replicas for certificate issuance and rotation.
 
 ## Pod Disruption Budgets
 
@@ -198,13 +202,13 @@ spec:
       app: istio-ingressgateway
 ```
 
-With these PDBs, Kubernetes will never drain a node if it would leave fewer than 2 istiod or 2 ingress gateway pods running.
+With these PDBs, Kubernetes will not voluntarily evict pods through the Eviction API if doing so would leave fewer than 2 istiod or 2 ingress gateway pods available. PDBs do not protect against involuntary failures or direct pod deletion.
 
 ## Sidecar Resilience
 
 What happens when the sidecar proxy crashes in a pod? By default, if the Envoy sidecar crashes, the pod loses all network connectivity because iptables rules are still redirecting traffic to the now-dead proxy.
 
-Configure automatic sidecar restarts and holdApplicationUntilProxyStarts to ensure proper startup ordering:
+Kubernetes restarts the sidecar container according to the pod restart policy. Configure `holdApplicationUntilProxyStarts` to ensure proper startup ordering, and `EXIT_ON_ZERO_ACTIVE_CONNECTIONS` to let the proxy exit once active connections drain during shutdown:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -302,7 +306,7 @@ groups:
   - name: istio-ha
     rules:
       - alert: IstiodDown
-        expr: absent(up{job="istiod"} == 1)
+        expr: sum(up{job="istiod"}) < 1
         for: 2m
         labels:
           severity: critical
@@ -311,8 +315,8 @@ groups:
         for: 1m
         labels:
           severity: critical
-      - alert: SidecarDisconnected
-        expr: sum(pilot_xds_push_errors) > 0
+      - alert: PilotXdsErrors
+        expr: increase(pilot_total_xds_rejects[5m]) > 0 or increase(pilot_total_xds_internal_errors[5m]) > 0
         for: 5m
         labels:
           severity: warning
