@@ -144,6 +144,7 @@ jobs:
           BRANCH: ${{ github.head_ref }}
         run: |
           BRANCH_SLUG=$(echo "$BRANCH" | tr '/' '-' | tr '[:upper:]' '[:lower:]')
+          echo "BRANCH_SLUG=$BRANCH_SLUG" >> "$GITHUB_ENV"
           terraform init -reconfigure \
             -backend-config="key=feature-envs/${BRANCH_SLUG}/terraform.tfstate"
           terraform apply -auto-approve \
