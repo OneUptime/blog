@@ -22,7 +22,7 @@ Terragrunt solves problems that OpenTofu does not address natively:
 
 ## Configuring Terragrunt to Use OpenTofu
 
-The key configuration is the `terraform_binary` setting. By default, Terragrunt looks for `terraform` in your PATH. To use OpenTofu:
+The key configuration is the `terraform_binary` setting. Current Terragrunt releases default to `tofu`, but you can set it explicitly if you want the configuration to be clear or if you are standardizing an older Terragrunt setup:
 
 ```hcl
 # terragrunt.hcl (root configuration)
@@ -34,7 +34,7 @@ Or set it via environment variable:
 
 ```bash
 # Environment variable approach
-export TERRAGRUNT_TFPATH="tofu"
+export TG_TF_PATH="tofu"
 
 # Now all terragrunt commands use OpenTofu
 terragrunt plan
@@ -44,12 +44,13 @@ terragrunt apply
 Verify the configuration:
 
 ```bash
-# Run a command and check which binary is used
+# Check the Terragrunt and OpenTofu versions
 terragrunt --version
+tofu version
 
-# You should see both Terragrunt and OpenTofu versions
-# Terragrunt v0.55.0
-# OpenTofu v1.8.0
+# Example output:
+# terragrunt version v1.0.1
+# OpenTofu v1.12.0
 ```
 
 ## Project Structure with Terragrunt
@@ -219,7 +220,7 @@ dependency "vpc" {
 
 inputs = {
   cluster_name       = "staging-eks"
-  cluster_version    = "1.28"
+  cluster_version    = "1.33"
   vpc_id             = dependency.vpc.outputs.vpc_id
   subnet_ids         = dependency.vpc.outputs.private_subnet_ids
   node_instance_type = "t3.large"
@@ -278,13 +279,13 @@ terragrunt apply
 
 # Run plan for ALL modules in an environment
 cd infrastructure/environments/staging
-terragrunt run-all plan
+terragrunt run --all plan
 
 # Apply all modules (respecting dependency order)
-terragrunt run-all apply
+terragrunt run --all apply
 
 # Destroy all modules (in reverse dependency order)
-terragrunt run-all destroy
+terragrunt run --all destroy
 ```
 
 ## Before and After Hooks
@@ -356,22 +357,24 @@ locals {
 If you are already using Terragrunt with Terraform:
 
 ```bash
-# Step 1: Install OpenTofu alongside Terraform
+# Step 1: Back up your state and code
+
+# Step 2: Install OpenTofu alongside Terraform
 brew install opentofu
 
-# Step 2: Update the root terragrunt.hcl
+# Step 3: Update the root terragrunt.hcl
 # Add: terraform_binary = "tofu"
 
-# Step 3: Test with a non-production module
+# Step 4: Test with a non-production module
 cd infrastructure/environments/staging/vpc
 terragrunt plan
 
-# Step 4: Verify no unexpected changes
+# Step 5: Verify no unexpected changes
 # The plan should show "No changes" if state is compatible
 
-# Step 5: Roll out to all modules
+# Step 6: Roll out to all modules
 cd infrastructure/environments/staging
-terragrunt run-all plan
+terragrunt run --all plan
 ```
 
 ## CI/CD with Terragrunt and OpenTofu
@@ -385,9 +388,9 @@ on:
     branches: [main]
 
 env:
-  TERRAGRUNT_TFPATH: tofu
-  TG_VERSION: "0.55.0"
-  TOFU_VERSION: "1.8.0"
+  TG_TF_PATH: tofu
+  TG_VERSION: "1.0.1"
+  TOFU_VERSION: "1.12.0"
 
 jobs:
   deploy:
@@ -396,7 +399,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Setup OpenTofu
-        uses: opentofu/setup-opentofu@v1
+        uses: opentofu/setup-opentofu@v2
         with:
           tofu_version: ${{ env.TOFU_VERSION }}
 
@@ -414,14 +417,14 @@ jobs:
       - name: Plan
         run: |
           cd infrastructure/environments/production
-          terragrunt run-all plan --terragrunt-non-interactive
+          terragrunt run --all plan --non-interactive
 
       - name: Apply
         run: |
           cd infrastructure/environments/production
-          terragrunt run-all apply --terragrunt-non-interactive
+          terragrunt run --all apply --non-interactive
 ```
 
-Terragrunt and OpenTofu complement each other well. OpenTofu handles the infrastructure provisioning, while Terragrunt handles the orchestration and DRY configuration that OpenTofu lacks natively. The switch from Terraform to OpenTofu in a Terragrunt setup is one of the simplest migrations because it is literally a single configuration change.
+Terragrunt and OpenTofu complement each other well. OpenTofu handles the infrastructure provisioning, while Terragrunt handles the orchestration and DRY configuration that OpenTofu lacks natively. The switch from Terraform to OpenTofu in a Terragrunt setup is usually small, but you should still follow the OpenTofu migration guide for your Terraform version and verify state compatibility before applying changes.
 
 For OpenTofu-specific features, check out [How to Use OpenTofu Early Variable Evaluation](https://oneuptime.com/blog/post/2026-02-23-use-opentofu-early-variable-evaluation/view).
