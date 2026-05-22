@@ -17,7 +17,7 @@ This post covers everything you need to know about the lock file in CI/CD contex
 The lock file records two things for each provider:
 
 1. The exact version that was selected
-2. Cryptographic hashes for the provider binary on each platform
+2. Cryptographic hashes for the provider packages
 
 ```hcl
 # .terraform.lock.hcl
@@ -27,13 +27,13 @@ provider "registry.terraform.io/hashicorp/aws" {
   constraints = "~> 5.35.0"
   hashes = [
     "h1:XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX=",
-    "zh:0123456789abcdef...",  # SHA256 hash for linux_amd64
-    "zh:fedcba9876543210...",  # SHA256 hash for darwin_arm64
+    "zh:0123456789abcdef...",  # SHA256 hash for an official zip package
+    "zh:fedcba9876543210...",  # SHA256 hash for another official zip package
   ]
 }
 ```
 
-The `h1:` prefix indicates a hash of the provider's zip archive. The `zh:` prefix indicates hashes of individual files within the archive.
+The `h1:` prefix indicates Terraform's current preferred hash scheme, calculated from the contents of a provider package. The `zh:` prefix indicates a zip hash, a SHA256 checksum of an official provider `.zip` package.
 
 ## The Platform Mismatch Problem
 
@@ -55,11 +55,15 @@ The fix is to generate hashes for all platforms your team uses:
 
 ```bash
 # Generate lock file with hashes for all relevant platforms
+# CI runners (GitHub Actions, GitLab CI)
+# Intel Macs
+# Apple Silicon Macs
+# ARM-based CI runners
 terraform providers lock \
-  -platform=linux_amd64 \   # CI runners (GitHub Actions, GitLab CI)
-  -platform=darwin_amd64 \  # Intel Macs
-  -platform=darwin_arm64 \  # Apple Silicon Macs
-  -platform=linux_arm64     # ARM-based CI runners
+  -platform=linux_amd64 \
+  -platform=darwin_amd64 \
+  -platform=darwin_arm64 \
+  -platform=linux_arm64
 ```
 
 This updates the lock file with hashes for each platform:
@@ -70,11 +74,11 @@ provider "registry.terraform.io/hashicorp/aws" {
   version     = "5.35.0"
   constraints = "~> 5.35.0"
   hashes = [
-    "h1:abc...=",  # darwin_amd64
-    "h1:def...=",  # darwin_arm64
-    "h1:ghi...=",  # linux_amd64
-    "h1:jkl...=",  # linux_arm64
-    "zh:...",
+    "h1:abc...=",  # Package contents hash for one platform
+    "h1:def...=",  # Package contents hash for another platform
+    "h1:ghi...=",
+    "h1:jkl...=",
+    "zh:...",      # Official zip package hash
     "zh:...",
   ]
 }
@@ -193,6 +197,10 @@ on:
     - cron: '0 9 * * 1'  # Every Monday at 9am
   workflow_dispatch:       # Allow manual trigger
 
+permissions:
+  contents: write
+  pull-requests: write
+
 jobs:
   update:
     runs-on: ubuntu-latest
@@ -235,6 +243,8 @@ jobs:
         if: steps.changes.outputs.changed == 'true'
         run: |
           BRANCH="update-terraform-providers-$(date +%Y%m%d)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -b "$BRANCH"
           git add infrastructure/.terraform.lock.hcl
           git commit -m "Update Terraform provider versions"
