@@ -80,7 +80,7 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            github.rest.issues.createComment({
+            await github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -194,6 +194,10 @@ Show the Terraform plan directly in the pull request for human review.
     name: Plan
     needs: unit-tests
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
     strategy:
       matrix:
         environment: [dev, staging]
@@ -223,13 +227,15 @@ Show the Terraform plan directly in the pull request for human review.
 
       - name: Post Plan to PR
         uses: actions/github-script@v7
+        env:
+          PLAN: "terraform\n${{ steps.plan.outputs.stdout }}"
         with:
           script: |
             const output = `### Terraform Plan - ${{ matrix.environment }}
 
-            ```
-            ${{ steps.plan.outputs.stdout }}
-            ```
+            \`\`\`
+            ${process.env.PLAN}
+            \`\`\`
 
             *Plan status: ${{ steps.plan.outcome }}*`;
 
@@ -275,6 +281,9 @@ Integration tests are expensive. Run them only when explicitly requested.
     needs: plan
     if: contains(github.event.pull_request.labels.*.name, 'run-integration')
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     environment: testing
     steps:
       - uses: actions/checkout@v4
