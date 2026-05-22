@@ -24,7 +24,7 @@ When Terraform generates a plan, it produces a detailed description of every cha
 
 Always use the v2 version of the import:
 
-```python
+```sentinel
 # The standard way to import tfplan
 
 import "tfplan/v2" as tfplan
@@ -38,7 +38,7 @@ The `tfplan.resource_changes` collection is what you will work with most often. 
 
 Each resource change has this structure:
 
-```python
+```sentinel
 import "tfplan/v2" as tfplan
 
 # Iterate over all resource changes
@@ -72,7 +72,7 @@ Here is what each property gives you:
 
 The actions field is a list, not a single value. For most operations it contains a single action, but for some operations it may contain two. For example, a "replace" operation (where Terraform must destroy and recreate a resource) shows as `["delete", "create"]`.
 
-```python
+```sentinel
 import "tfplan/v2" as tfplan
 
 # Filter for resources being created
@@ -107,20 +107,20 @@ creates_or_updates = filter tfplan.resource_changes as _, rc {
 
 The `change.after` property contains the attribute values that the resource will have after Terraform applies the plan. This is where you check things like instance types, regions, encryption settings, tags, and so on.
 
-```python
+```sentinel
 import "tfplan/v2" as tfplan
 
-# Get all S3 buckets being created or updated
-s3_buckets = filter tfplan.resource_changes as _, rc {
-    rc.type is "aws_s3_bucket" and
+# Get all S3 bucket versioning resources being created or updated
+s3_bucket_versioning = filter tfplan.resource_changes as _, rc {
+    rc.type is "aws_s3_bucket_versioning" and
     (rc.change.actions contains "create" or rc.change.actions contains "update")
 }
 
 # Check that all S3 buckets have versioning enabled
 main = rule {
-    all s3_buckets as _, bucket {
-        bucket.change.after.versioning is not null and
-        bucket.change.after.versioning[0].enabled is true
+    all s3_bucket_versioning as _, versioning {
+        versioning.change.after.versioning_configuration is not null and
+        versioning.change.after.versioning_configuration[0].status is "Enabled"
     }
 }
 ```
@@ -129,7 +129,7 @@ main = rule {
 
 Many Terraform resources have nested attributes. You access them by chaining property lookups:
 
-```python
+```sentinel
 import "tfplan/v2" as tfplan
 
 # Get RDS instances
@@ -153,7 +153,7 @@ main = rule {
 
 Some attribute values are not known until Terraform actually applies the plan. These show up as `true` in the `change.after_unknown` map. For example, an auto-generated ID or ARN will be unknown at plan time.
 
-```python
+```sentinel
 import "tfplan/v2" as tfplan
 
 instances = filter tfplan.resource_changes as _, rc {
@@ -182,7 +182,7 @@ main = rule {
 
 The `change.before` property shows the current attribute values before the planned change. This is useful when you want to detect specific types of changes:
 
-```python
+```sentinel
 import "tfplan/v2" as tfplan
 
 # Find instances where the instance type is being changed
@@ -197,31 +197,28 @@ main = rule {
     all type_changes as address, inst {
         print("Instance type change detected:", address,
               "from", inst.change.before.instance_type,
-              "to", inst.change.after.instance_type)
+              "to", inst.change.after.instance_type) and
         # Add your validation logic here
         inst.change.after.instance_type is not "t3.micro"
     }
 }
 ```
 
-## Output Changes
+## Output Values
 
-The `tfplan` import also gives you access to planned output changes:
+The `tfplan` import also gives you access to planned output values:
 
-```python
+```sentinel
 import "tfplan/v2" as tfplan
 
-# Access output changes
-outputs = tfplan.output_changes
+# Access planned output values
+outputs = tfplan.planned_values.outputs
 
 # Ensure sensitive outputs are marked as sensitive
 main = rule {
     all outputs as name, output {
-        if name matches ".*password.*" or name matches ".*secret.*" {
-            output.sensitive is true
-        } else {
-            true
-        }
+        not (name matches ".*password.*" or name matches ".*secret.*") or
+        output.sensitive is true
     }
 }
 ```
@@ -230,7 +227,7 @@ main = rule {
 
 ### Pattern 1: Validating Tags on All Resources
 
-```python
+```sentinel
 import "tfplan/v2" as tfplan
 
 # Required tags for all resources
@@ -263,7 +260,7 @@ main = rule {
 
 ### Pattern 2: Preventing Destruction of Critical Resources
 
-```python
+```sentinel
 import "tfplan/v2" as tfplan
 
 # Resource types that should never be destroyed
@@ -287,7 +284,7 @@ main = rule {
 
 ### Pattern 3: Checking Security Group Rules
 
-```python
+```sentinel
 import "tfplan/v2" as tfplan
 
 # Find security group rules
