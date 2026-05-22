@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, HCL, Variable, Infrastructure as Code, Configuration
 
-Description: Learn how to define input variables in Terraform using the variable block, including type constraints, defaults, descriptions, and all available configuration options.
+Description: Learn how to define input variables in Terraform using the variable block, including type constraints, defaults, descriptions, and common configuration options.
 
 ---
 
 Input variables are the parameters of your Terraform configuration. They let you customize your infrastructure without changing the code. Instead of hardcoding values like instance types, CIDR blocks, and environment names, you define variables and let the caller supply the values.
 
-This post covers how to declare variables using the `variable` block and all the options available to you.
+This post covers how to declare variables using the `variable` block and the common options available to you.
 
 ## The variable Block
 
@@ -35,7 +35,7 @@ variable "instance_type" {
 
 ## Variable Block Arguments
 
-The `variable` block supports these arguments:
+The `variable` block supports these common arguments:
 
 ### type
 
@@ -47,7 +47,7 @@ variable "name" {
   type = string
 }
 
-variable "count" {
+variable "instance_count" {
   type = number
 }
 
@@ -169,7 +169,7 @@ variable "secondary_cidr" {
 }
 ```
 
-By default, variables are nullable. Setting `nullable = false` means that even if the caller passes `null`, Terraform will use the default value instead.
+By default, variables are nullable. Setting `nullable = false` means the final variable value must not be `null`. If `nullable = true` and the variable has a default, a caller can explicitly pass `null` to override that default.
 
 ### validation
 
