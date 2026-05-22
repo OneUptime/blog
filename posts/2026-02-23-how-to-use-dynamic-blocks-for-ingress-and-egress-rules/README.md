@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Dynamic Blocks, Ingresses, Egress, Networking, AWS, Infrastructure as Code
 
-Description: Learn how to use Terraform dynamic blocks to manage ingress and egress rules across security groups, NACLs, and load balancer listeners.
+Description: Learn how to use Terraform dynamic blocks to manage ingress and egress rules across security groups and NACLs.
 
 ---
 
-Ingress and egress rules show up in many Terraform resources - security groups, network ACLs, Kubernetes network policies, and load balancer configurations. Each of these has nested blocks that repeat with different values. Dynamic blocks let you generate these rules from lists or maps, keeping your networking configuration clean and variable-driven.
+Ingress and egress rules show up in many Terraform resources - security groups, network ACLs, and Kubernetes network policies. Each of these has nested blocks that repeat with different values. Dynamic blocks let you generate these rules from lists or maps, keeping your networking configuration clean and variable-driven.
 
 ## Security Group Ingress and Egress
 
-The most common use case is AWS security groups. Here is a complete pattern that handles both ingress and egress with full flexibility:
+The most common use case is AWS security groups. Here is an inline pattern that handles both ingress and egress with full flexibility:
 
 ```hcl
 # variables.tf
@@ -436,13 +436,13 @@ resource "aws_security_group" "bidirectional" {
     }
   }
 
-  # Always allow ephemeral port responses
+  # Optional outbound ephemeral port range for workloads that initiate connections
   egress {
     from_port   = 1024
     to_port     = 65535
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
-    description = "Ephemeral ports"
+    description = "Outbound ephemeral ports"
   }
 }
 ```
@@ -493,16 +493,25 @@ locals {
 
 ## Using Separate Resources Instead of Inline Rules
 
-For larger deployments, you might prefer `aws_security_group_rule` resources instead of inline rules. Dynamic blocks are not needed here - use `for_each` directly:
+For larger deployments, prefer `aws_vpc_security_group_ingress_rule` and `aws_vpc_security_group_egress_rule` resources instead of inline rules. Dynamic blocks are not needed here - use `for_each` directly:
 
 ```hcl
-variable "rules" {
+variable "ingress_rules" {
   type = map(object({
-    type        = string
     from_port   = number
     to_port     = number
-    protocol    = string
-    cidr_blocks = list(string)
+    ip_protocol = string
+    cidr_ipv4   = string
+    description = string
+  }))
+}
+
+variable "egress_rules" {
+  type = map(object({
+    from_port   = number
+    to_port     = number
+    ip_protocol = string
+    cidr_ipv4   = string
     description = string
   }))
 }
@@ -512,21 +521,31 @@ resource "aws_security_group" "main" {
   vpc_id = aws_vpc.main.id
 }
 
-resource "aws_security_group_rule" "rules" {
-  for_each = var.rules
+resource "aws_vpc_security_group_ingress_rule" "rules" {
+  for_each = var.ingress_rules
 
   security_group_id = aws_security_group.main.id
-  type              = each.value.type
   from_port         = each.value.from_port
   to_port           = each.value.to_port
-  protocol          = each.value.protocol
-  cidr_blocks       = each.value.cidr_blocks
+  ip_protocol       = each.value.ip_protocol
+  cidr_ipv4         = each.value.cidr_ipv4
+  description       = each.value.description
+}
+
+resource "aws_vpc_security_group_egress_rule" "rules" {
+  for_each = var.egress_rules
+
+  security_group_id = aws_security_group.main.id
+  from_port         = each.value.from_port
+  to_port           = each.value.to_port
+  ip_protocol       = each.value.ip_protocol
+  cidr_ipv4         = each.value.cidr_ipv4
   description       = each.value.description
 }
 ```
 
-This approach can be better for large rule sets because Terraform can add and remove individual rules without replacing the entire security group.
+This approach can be better for large rule sets because Terraform can manage individual rule resources instead of managing the inline rule set on the security group.
 
 ## Summary
 
-Dynamic blocks bring order to ingress and egress rule management in Terraform. Whether you are working with security groups, network ACLs, or load balancer configurations, the pattern is the same: define your rules as structured data, then let dynamic blocks generate the nested configuration. This makes rules auditable, environment-specific, and easy to maintain. For more dynamic block patterns, see our posts on [security group rules](https://oneuptime.com/blog/post/2026-02-23-how-to-use-dynamic-blocks-for-security-group-rules/view) and [repeating nested blocks](https://oneuptime.com/blog/post/2026-02-23-how-to-use-dynamic-blocks-for-repeating-nested-blocks/view).
+Dynamic blocks bring order to ingress and egress rule management in Terraform. Whether you are working with security groups, network ACLs, or Kubernetes network policies, the pattern is the same: define your rules as structured data, then let dynamic blocks generate the nested configuration. This makes rules auditable, environment-specific, and easy to maintain. For more dynamic block patterns, see our posts on [security group rules](https://oneuptime.com/blog/post/2026-02-23-how-to-use-dynamic-blocks-for-security-group-rules/view) and [repeating nested blocks](https://oneuptime.com/blog/post/2026-02-23-how-to-use-dynamic-blocks-for-repeating-nested-blocks/view).
