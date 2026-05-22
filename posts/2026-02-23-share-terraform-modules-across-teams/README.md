@@ -101,7 +101,7 @@ module "vpc" {
 # Pessimistic constraint - allows patch updates
 module "vpc" {
   source  = "app.terraform.io/myorg/vpc/aws"
-  version = "~> 1.3"  # Allows 1.3.x but not 1.4.0
+  version = "~> 1.3.0"  # Allows 1.3.x but not 1.4.0
 }
 
 # Range constraint - allows minor updates
@@ -111,7 +111,7 @@ module "vpc" {
 }
 ```
 
-Recommendation: Use `~>` (pessimistic constraint) for most teams. It allows bug fixes automatically while requiring deliberate upgrades for feature changes.
+Recommendation: Use `~> x.y.0` (pessimistic constraint) for most teams. It allows bug fixes automatically while requiring deliberate upgrades for feature changes.
 
 ## Contribution Workflow
 
@@ -146,7 +146,8 @@ Fork the module, make changes, and write tests:
 # Run formatting
 terraform fmt -recursive
 
-# Validate
+# Initialize without configuring a backend, then validate
+terraform init -backend=false
 terraform validate
 
 # Run tests
