@@ -29,26 +29,40 @@ sudo apt-get install -y apt-transport-https ca-certificates curl gnupg
 # Add the OpenTofu GPG key
 sudo install -m 0755 -d /etc/apt/keyrings
 curl -fsSL https://get.opentofu.org/opentofu.gpg | sudo tee /etc/apt/keyrings/opentofu.gpg >/dev/null
-sudo chmod a+r /etc/apt/keyrings/opentofu.gpg
+curl -fsSL https://packages.opentofu.org/opentofu/tofu/gpgkey | sudo gpg --no-tty --batch --dearmor -o /etc/apt/keyrings/opentofu-repo.gpg >/dev/null
+sudo chmod a+r /etc/apt/keyrings/opentofu.gpg /etc/apt/keyrings/opentofu-repo.gpg
 
 # Add the OpenTofu repository
 echo \
-  "deb [signed-by=/etc/apt/keyrings/opentofu.gpg] https://packages.opentofu.org/opentofu/tofu/any/ any main" | \
+  "deb [signed-by=/etc/apt/keyrings/opentofu.gpg,/etc/apt/keyrings/opentofu-repo.gpg] https://packages.opentofu.org/opentofu/tofu/any/ any main
+deb-src [signed-by=/etc/apt/keyrings/opentofu.gpg,/etc/apt/keyrings/opentofu-repo.gpg] https://packages.opentofu.org/opentofu/tofu/any/ any main" | \
   sudo tee /etc/apt/sources.list.d/opentofu.list > /dev/null
+sudo chmod a+r /etc/apt/sources.list.d/opentofu.list
 
 # Install OpenTofu
 sudo apt-get update
 sudo apt-get install -y tofu
 ```
 
-For RHEL/CentOS/Fedora:
+For RHEL/CentOS/AlmaLinux:
 
 ```bash
 # Add the OpenTofu repository
-cat > /etc/yum.repos.d/opentofu.repo << 'EOF'
+sudo tee /etc/yum.repos.d/opentofu.repo > /dev/null << 'EOF'
 [opentofu]
 name=opentofu
 baseurl=https://packages.opentofu.org/opentofu/tofu/rpm_any/rpm_any/$basearch
+repo_gpgcheck=0
+gpgcheck=1
+enabled=1
+gpgkey=https://get.opentofu.org/opentofu.gpg
+       https://packages.opentofu.org/opentofu/tofu/gpgkey
+sslverify=1
+sslcacert=/etc/pki/tls/certs/ca-bundle.crt
+metadata_expire=300
+[opentofu-source]
+name=opentofu-source
+baseurl=https://packages.opentofu.org/opentofu/tofu/rpm_any/rpm_any/SRPMS
 repo_gpgcheck=0
 gpgcheck=1
 enabled=1
@@ -61,6 +75,12 @@ EOF
 
 # Install OpenTofu
 sudo yum install -y tofu
+```
+
+For Fedora:
+
+```bash
+sudo dnf install -y opentofu
 ```
 
 ### Method 2: Standalone Installer Script
@@ -88,7 +108,7 @@ If you prefer to download the binary directly:
 
 ```bash
 # Set the version you want
-OPENTOFU_VERSION="1.8.0"
+OPENTOFU_VERSION="1.12.0"
 
 # Download the binary
 curl -LO "https://github.com/opentofu/opentofu/releases/download/v${OPENTOFU_VERSION}/tofu_${OPENTOFU_VERSION}_linux_amd64.zip"
@@ -133,8 +153,12 @@ Homebrew handles the tap setup automatically. It works on both Intel and Apple S
 If you use MacPorts instead of Homebrew:
 
 ```bash
-# Install via MacPorts
-sudo port install opentofu
+# Install tenv via MacPorts
+sudo port install tenv
+
+# Install OpenTofu with tenv
+tenv tofu install 1.12.0
+tenv tofu use 1.12.0
 
 # Verify
 tofu --version
@@ -155,7 +179,7 @@ rm install-opentofu.sh
 ### Method 4: Manual Download
 
 ```bash
-OPENTOFU_VERSION="1.8.0"
+OPENTOFU_VERSION="1.12.0"
 
 # For Apple Silicon (M1/M2/M3)
 curl -LO "https://github.com/opentofu/opentofu/releases/download/v${OPENTOFU_VERSION}/tofu_${OPENTOFU_VERSION}_darwin_arm64.zip"
@@ -177,7 +201,7 @@ If you use Chocolatey as your package manager:
 
 ```powershell
 # Install OpenTofu
-choco install opentofu
+choco install opentofu -y
 
 # Verify installation
 tofu --version
@@ -189,7 +213,8 @@ Scoop is another popular package manager for Windows:
 
 ```powershell
 # Install OpenTofu
-scoop install opentofu
+scoop bucket add main
+scoop install main/opentofu
 
 # Verify
 tofu --version
@@ -201,7 +226,7 @@ Using the Windows Package Manager:
 
 ```powershell
 # Install OpenTofu
-winget install OpenTofu.tofu
+winget install --exact --id=OpenTofu.Tofu
 
 # Verify
 tofu --version
@@ -211,7 +236,7 @@ tofu --version
 
 ```powershell
 # Download the zip file
-$version = "1.8.0"
+$version = "1.12.0"
 Invoke-WebRequest -Uri "https://github.com/opentofu/opentofu/releases/download/v$version/tofu_${version}_windows_amd64.zip" -OutFile "tofu.zip"
 
 # Extract
@@ -221,7 +246,8 @@ Expand-Archive -Path "tofu.zip" -DestinationPath "C:\OpenTofu"
 $env:PATH += ";C:\OpenTofu"
 
 # To make the PATH change permanent, add it to system environment variables
-[System.Environment]::SetEnvironmentVariable("Path", $env:PATH + ";C:\OpenTofu", [System.EnvironmentVariableTarget]::User)
+$userPath = [System.Environment]::GetEnvironmentVariable("Path", [System.EnvironmentVariableTarget]::User)
+[System.Environment]::SetEnvironmentVariable("Path", $userPath + ";C:\OpenTofu", [System.EnvironmentVariableTarget]::User)
 
 # Verify
 tofu --version
@@ -236,7 +262,7 @@ Regardless of your platform or installation method, verify that OpenTofu is work
 tofu --version
 
 # Expected output (version may vary):
-# OpenTofu v1.8.0
+# OpenTofu v1.12.0
 # on linux_amd64  (or darwin_arm64, windows_amd64, etc.)
 
 # Run a basic test
@@ -281,18 +307,18 @@ source ~/.bashrc
 tofuenv list-remote
 
 # Install a specific version
-tofuenv install 1.8.0
-tofuenv install 1.7.3
+tofuenv install 1.12.0
+tofuenv install 1.11.0
 
 # Switch between versions
-tofuenv use 1.8.0
-tofu --version  # Shows 1.8.0
+tofuenv use 1.12.0
+tofu --version  # Shows 1.12.0
 
-tofuenv use 1.7.3
-tofu --version  # Shows 1.7.3
+tofuenv use 1.11.0
+tofu --version  # Shows 1.11.0
 
 # Pin a version for a project
-echo "1.8.0" > .opentofu-version
+echo "1.12.0" > .opentofu-version
 ```
 
 ### Using asdf
@@ -301,35 +327,37 @@ If you already use `asdf` for managing tool versions:
 
 ```bash
 # Add the OpenTofu plugin
-asdf plugin add opentofu
+asdf plugin add opentofu https://github.com/virtualroot/asdf-opentofu.git
 
 # Install a version
-asdf install opentofu 1.8.0
+asdf install opentofu 1.12.0
 
 # Set the global version
-asdf global opentofu 1.8.0
+asdf global opentofu 1.12.0
 
 # Or set a project-local version
-asdf local opentofu 1.8.0
+asdf local opentofu 1.12.0
 ```
 
 ## Docker Installation
 
 For CI/CD environments or containerized workflows:
 
+```dockerfile
+FROM ghcr.io/opentofu/opentofu:minimal AS tofu
+
+FROM alpine:3.20
+COPY --from=tofu /usr/local/bin/tofu /usr/local/bin/tofu
+RUN apk add --no-cache git curl
+
+WORKDIR /workspace
+```
+
+Build and verify the image:
+
 ```bash
-# Pull the official OpenTofu image
-docker pull ghcr.io/opentofu/opentofu:latest
-
-# Run a command
-docker run --rm -v $(pwd):/workspace -w /workspace \
-  ghcr.io/opentofu/opentofu:latest \
-  init
-
-# Use a specific version
-docker run --rm -v $(pwd):/workspace -w /workspace \
-  ghcr.io/opentofu/opentofu:1.8.0 \
-  plan
+docker build -t my-opentofu-image .
+docker run --rm my-opentofu-image tofu --version
 ```
 
 ## Configuring Shell Completion
