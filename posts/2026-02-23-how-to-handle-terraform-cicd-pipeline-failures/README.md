@@ -188,13 +188,13 @@ terraform apply -auto-approve -target=module.compute
   run: |
     cd terraform
 
-    # Check if the failure was due to a lock
-    if terraform plan -no-color 2>&1 | grep -q "Error acquiring the state lock"; then
+    # Check if the failure was due to a lock and capture the lock info
+    PLAN_OUTPUT=$(terraform plan -no-color 2>&1 || true)
+    if echo "$PLAN_OUTPUT" | grep -q "Error acquiring the state lock"; then
       echo "State lock contention detected"
 
-      # Get lock info
-      LOCK_INFO=$(terraform force-unlock -force 2>&1 | head -5 || echo "Could not get lock info")
-      echo "Lock info: $LOCK_INFO"
+      # Show lock info from the error output (includes Lock ID, Who, Created, etc.)
+      echo "$PLAN_OUTPUT" | grep -A 10 "Error acquiring the state lock" | head -15
 
       echo "Waiting for lock to be released..."
       sleep 120
