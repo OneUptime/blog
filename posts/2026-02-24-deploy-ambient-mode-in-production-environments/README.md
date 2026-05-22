@@ -74,11 +74,12 @@ tolerations:
   - operator: Exists
 updateStrategy:
   rollingUpdate:
-    maxUnavailable: 1
+    maxSurge: 1
+    maxUnavailable: 0
   type: RollingUpdate
 ```
 
-The `maxUnavailable: 1` ensures only one node at a time loses its ztunnel during updates. For clusters with many nodes, this is conservative. You can increase it to speed up rollouts.
+The default surged rolling update strategy keeps replacement ztunnel pods coming up before old pods are removed where the cluster supports DaemonSet surge updates. In-place ztunnel upgrades can still briefly disrupt ambient traffic on the node, so use node cordoning or blue/green node pools for high-risk production rollouts.
 
 ### Waypoint Proxies
 
@@ -113,7 +114,7 @@ ztunnel resource usage depends on the number of active connections and throughpu
 resources:
   requests:
     cpu: 200m
-    memory: 128Mi
+    memory: 512Mi
   limits:
     cpu: "2"
     memory: 1Gi
@@ -196,15 +197,15 @@ groups:
           severity: critical
 
       - alert: WaypointHighLatency
-        expr: histogram_quantile(0.99, rate(istio_request_duration_milliseconds_bucket{reporter="waypoint"}[5m])) > 1000
+        expr: histogram_quantile(0.99, rate(istio_request_duration_milliseconds_bucket{reporter="source", source_workload=~".*-waypoint"}[5m])) > 1000
         for: 5m
         labels:
           severity: warning
         annotations:
           summary: "Waypoint proxy P99 latency exceeding 1 second"
 
-      - alert: HighConnectionDenials
-        expr: sum(rate(istio_tcp_connections_closed_total{connection_security_policy="unknown"}[5m])) > 10
+      - alert: HighAuthorizationDenials
+        expr: sum(rate(istio_requests_total{response_code="403", response_flags=~".*RBAC.*"}[5m])) > 10
         for: 5m
         labels:
           severity: warning
@@ -273,6 +274,21 @@ spec:
 ```
 
 Then add explicit ALLOW policies for each legitimate communication path.
+
+When using waypoints, also apply a default-deny policy to the `istio-waypoint` `GatewayClass` from the Istio root namespace:
+
+```yaml
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-nothing-istio-waypoint
+  namespace: istio-system
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: GatewayClass
+      name: istio-waypoint
+```
 
 ### Rotate Certificates
 
