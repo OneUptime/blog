@@ -8,7 +8,7 @@ Description: Learn how to dynamically configure Terraform providers based on the
 
 ---
 
-When you use Terraform workspaces to manage multiple environments, the provider configuration often needs to change with each workspace. A dev workspace might deploy to us-east-1 in a sandbox account, while prod deploys to eu-west-1 in a production account. Since Terraform does not let you use variables in provider blocks directly, you need patterns that work within the language's constraints. This post covers those patterns in detail.
+When you use Terraform workspaces to manage multiple environments, the provider configuration often needs to change with each workspace. A dev workspace might deploy to us-east-1 in a sandbox account, while prod deploys to eu-west-1 in a production account. Terraform lets you use expressions such as variables and locals in provider blocks, but those values must be known before Terraform applies the configuration. This post covers patterns that work within those constraints.
 
 ## The Constraint
 
@@ -138,7 +138,7 @@ terraform plan -var="region_override=ap-southeast-1"
 
 ## Pattern 4: Multi-Cloud Provider Selection
 
-Workspaces can determine which cloud providers get configured:
+Workspaces can determine which cloud resources are created, while keeping every provider block explicitly configured:
 
 ```hcl
 locals {
@@ -146,10 +146,12 @@ locals {
     "aws-dev" = {
       cloud  = "aws"
       region = "us-east-1"
+      project = null
     }
     "aws-prod" = {
       cloud  = "aws"
       region = "eu-west-1"
+      project = null
     }
     "gcp-dev" = {
       cloud   = "gcp"
@@ -166,6 +168,22 @@ locals {
   config   = local.cloud_config[terraform.workspace]
   is_aws   = local.config.cloud == "aws"
   is_gcp   = local.config.cloud == "gcp"
+}
+
+data "aws_ami" "ubuntu" {
+  count       = local.is_aws ? 1 : 0
+  most_recent = true
+  owners      = ["099720109477"]
+
+  filter {
+    name   = "name"
+    values = ["ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-*"]
+  }
+
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
 }
 
 provider "aws" {
@@ -185,7 +203,7 @@ provider "google" {
 # Resources conditionally created based on cloud
 resource "aws_instance" "web" {
   count         = local.is_aws ? 1 : 0
-  ami           = "ami-0c55b159cbfafe1f0"
+  ami           = data.aws_ami.ubuntu[0].id
   instance_type = "t3.micro"
 }
 
@@ -387,7 +405,7 @@ resource "google_compute_network" "main" {
 
 ## Validating Provider Configuration
 
-Add checks to catch configuration errors early:
+Add checks to warn about configuration errors early:
 
 ```hcl
 locals {
@@ -417,9 +435,9 @@ output "provider_debug" {
 ```
 
 ```bash
-# Check the provider configuration without applying
+# Check the provider configuration values without applying
 terraform workspace select prod
-terraform plan -target=null_resource.debug
+terraform plan
 # Review the outputs to confirm the right region/account
 ```
 
@@ -430,6 +448,8 @@ terraform plan -target=null_resource.debug
 **Provider configuration is evaluated once.** It does not change between resources. If you need resources in different regions within the same workspace, use provider aliases.
 
 **Credential management gets complex.** Each workspace might need different credentials. Use a secrets manager or CI/CD credential injection rather than storing credentials in variable files.
+
+**Separate credentials may need stronger separation.** Terraform CLI workspaces are not the best fit for complex deployments that require separate credentials and access controls. In those cases, separate root modules, working directories, or HCP Terraform workspaces are often a better boundary.
 
 ## Conclusion
 
