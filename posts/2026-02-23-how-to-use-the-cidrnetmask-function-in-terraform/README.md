@@ -176,8 +176,8 @@ resource "local_file" "firewall_rules" {
   filename = "${path.module}/generated/firewall.rules"
   content = join("\n", [
     for idx, cidr in var.allowed_networks :
-    # Firewall rule format: permit <network> <wildcard_mask>
-    "access-list 100 permit ip ${cidrhost(cidr, 0)} ${cidrnetmask(cidr)} any"
+    # Firewall rule format: permit source <network> netmask <subnet_mask>
+    "permit source ${cidrhost(cidr, 0)} netmask ${cidrnetmask(cidr)}"
   ])
 }
 ```
