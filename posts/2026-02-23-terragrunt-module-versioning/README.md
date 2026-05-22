@@ -28,6 +28,7 @@ terraform {
 ```
 
 Dev runs a newer version while production stays on the last known-good release. When v2.3.0 is validated in dev and staging, you update production's ref.
+Treat release tags as immutable by protecting them in your Git host so they cannot be moved after publication.
 
 ### Creating Tags
 
@@ -56,7 +57,7 @@ terraform {
   source = "git::https://github.com/org/modules.git//vpc?ref=feature/new-subnets"
 }
 
-# Good for production - immutable reference
+# Good for production - stable release tag
 terraform {
   source = "git::https://github.com/org/modules.git//vpc?ref=v2.2.1"
 }
@@ -266,7 +267,7 @@ Repeat the plan-apply-test cycle for each environment.
 Don't forget that provider versions matter alongside module versions. Lock them with the `.terraform.lock.hcl` file:
 
 ```bash
-# Regenerate lock file after changing module version
+# Refresh provider selections if the module upgrade changes provider constraints
 cd dev/vpc
 terragrunt init -upgrade
 
@@ -301,4 +302,4 @@ done
 
 ## Summary
 
-Module versioning boils down to using immutable references (git tags or commit SHAs) for anything beyond development, centralizing version definitions so updates are single-line changes, and promoting versions through environments rather than updating everything at once. The exact approach depends on your team size and risk tolerance - small teams might be fine with local paths in a monorepo, while larger organizations benefit from separate module repositories with semantic versioning. For related topics, see our guides on [Terragrunt with Terraform Modules](https://oneuptime.com/blog/post/2026-02-23-terragrunt-with-terraform-modules/view) and [Terragrunt version management](https://oneuptime.com/blog/post/2026-02-23-terragrunt-version-management/view).
+Module versioning boils down to using stable references (protected git tags or commit SHAs) for anything beyond development, centralizing version definitions so updates are single-line changes, and promoting versions through environments rather than updating everything at once. The exact approach depends on your team size and risk tolerance - small teams might be fine with local paths in a monorepo, while larger organizations benefit from separate module repositories with semantic versioning. For related topics, see our guides on [Terragrunt with Terraform Modules](https://oneuptime.com/blog/post/2026-02-23-terragrunt-with-terraform-modules/view) and [Terragrunt version management](https://oneuptime.com/blog/post/2026-02-23-terragrunt-version-management/view).
