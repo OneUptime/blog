@@ -8,7 +8,7 @@ Description: Learn how to implement Kubernetes namespace isolation with Terrafor
 
 ---
 
-In a shared Kubernetes cluster, namespaces provide the primary boundary between teams, applications, and environments. But namespaces alone are just names - without proper isolation, pods in one namespace can freely communicate with pods in another, and teams can consume unlimited resources. Real namespace isolation requires network policies, RBAC, resource quotas, and limit ranges working together.
+In a shared Kubernetes cluster, namespaces provide a logical boundary between teams, applications, and environments. But namespaces alone are just names - without proper isolation, pods in one namespace can freely communicate with pods in another, and teams can consume unlimited resources. Real namespace isolation requires network policies, RBAC, resource quotas, and limit ranges working together.
 
 Terraform is well suited for this because you can define isolation policies as reusable modules and apply them consistently across every namespace.
 
@@ -51,16 +51,16 @@ resource "kubernetes_namespace" "ns" {
       "app.kubernetes.io/managed-by" = "terraform"
       "team"                          = var.team
       "environment"                   = var.environment
-      # Used for network policy targeting
-      "kubernetes.io/metadata.name" = var.namespace_name
     }
   }
 }
 ```
 
+Kubernetes automatically adds the immutable `kubernetes.io/metadata.name` label used for network policy targeting below.
+
 ## Network Policies for Isolation
 
-By default, Kubernetes allows all pod-to-pod communication. Network policies restrict this.
+By default, Kubernetes allows all pod-to-pod communication. Network policies restrict this when your cluster uses a network plugin that supports NetworkPolicy enforcement.
 
 ```hcl
 # Default deny all ingress and egress traffic
@@ -172,7 +172,7 @@ resource "kubernetes_network_policy" "allow_external" {
   spec {
     pod_selector {}
 
-    # Allow HTTPS traffic to external services
+    # Allow HTTPS traffic to any destination
     egress {
       ports {
         protocol = "TCP"
@@ -302,18 +302,39 @@ resource "kubernetes_role" "developer" {
     namespace = kubernetes_namespace.ns.metadata[0].name
   }
 
-  # Allow managing most resources
+  # Allow managing core resources
   rule {
-    api_groups = ["", "apps", "batch"]
-    resources  = ["deployments", "services", "pods", "configmaps", "jobs", "cronjobs"]
+    api_groups = [""]
+    resources  = ["services", "pods", "configmaps"]
+    verbs      = ["get", "list", "watch", "create", "update", "patch", "delete"]
+  }
+
+  # Allow managing deployments
+  rule {
+    api_groups = ["apps"]
+    resources  = ["deployments"]
+    verbs      = ["get", "list", "watch", "create", "update", "patch", "delete"]
+  }
+
+  # Allow managing batch workloads
+  rule {
+    api_groups = ["batch"]
+    resources  = ["jobs", "cronjobs"]
     verbs      = ["get", "list", "watch", "create", "update", "patch", "delete"]
   }
 
   # Allow reading logs
   rule {
     api_groups = [""]
-    resources  = ["pods/log", "pods/exec"]
-    verbs      = ["get", "list", "create"]
+    resources  = ["pods/log"]
+    verbs      = ["get", "list"]
+  }
+
+  # Allow exec into pods
+  rule {
+    api_groups = [""]
+    resources  = ["pods/exec"]
+    verbs      = ["create"]
   }
 
   # Allow reading events
@@ -367,8 +388,26 @@ resource "kubernetes_role" "viewer" {
   }
 
   rule {
-    api_groups = ["", "apps", "batch", "networking.k8s.io"]
-    resources  = ["*"]
+    api_groups = [""]
+    resources  = ["pods", "pods/log", "services", "configmaps", "events", "persistentvolumeclaims"]
+    verbs      = ["get", "list", "watch"]
+  }
+
+  rule {
+    api_groups = ["apps"]
+    resources  = ["deployments", "replicasets", "statefulsets", "daemonsets"]
+    verbs      = ["get", "list", "watch"]
+  }
+
+  rule {
+    api_groups = ["batch"]
+    resources  = ["jobs", "cronjobs"]
+    verbs      = ["get", "list", "watch"]
+  }
+
+  rule {
+    api_groups = ["networking.k8s.io"]
+    resources  = ["ingresses", "networkpolicies"]
     verbs      = ["get", "list", "watch"]
   }
 }
@@ -427,8 +466,37 @@ module "team_beta" {
 Sometimes teams need to talk to shared services. Create explicit network policies for this.
 
 ```hcl
-# Allow team-alpha to access the shared database namespace
-resource "kubernetes_network_policy" "allow_db_access" {
+# Allow egress from team-alpha to the shared database namespace
+resource "kubernetes_network_policy" "allow_team_alpha_db_egress" {
+  metadata {
+    name      = "allow-shared-database-egress"
+    namespace = "team-alpha"
+  }
+
+  spec {
+    pod_selector {}
+
+    egress {
+      to {
+        namespace_selector {
+          match_labels = {
+            "kubernetes.io/metadata.name" = "shared-database"
+          }
+        }
+      }
+
+      ports {
+        protocol = "TCP"
+        port     = "5432"
+      }
+    }
+
+    policy_types = ["Egress"]
+  }
+}
+
+# Allow ingress from team-alpha to the shared database pods
+resource "kubernetes_network_policy" "allow_team_alpha_db_ingress" {
   metadata {
     name      = "allow-from-team-alpha"
     namespace = "shared-database"
