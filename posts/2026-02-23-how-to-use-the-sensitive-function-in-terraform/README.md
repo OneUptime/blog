@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Infrastructure as Code, DevOps, Terraform Functions, Security
 
-Description: Learn how to use the sensitive function in Terraform to mark values as sensitive and prevent them from appearing in plan output, logs, and CLI display.
+Description: Learn how to use the sensitive function in Terraform to mark values as sensitive and prevent them from appearing in normal plan, apply, and CLI display.
 
 ---
 
-When working with infrastructure, you inevitably handle secrets - database passwords, API keys, private certificates, and authentication tokens. Terraform's `sensitive` function lets you mark any value as sensitive, which prevents it from being displayed in plan output, console output, and logs.
+When working with infrastructure, you inevitably handle secrets - database passwords, API keys, private certificates, and authentication tokens. Terraform's `sensitive` function lets you mark any value as sensitive, which prevents it from being displayed in normal plan output, console output, and apply output.
 
 ## What is the sensitive Function?
 
-The `sensitive` function takes any value and returns the same value marked as sensitive. Once a value is marked sensitive, Terraform will replace it with `(sensitive value)` in all plan and apply output.
+The `sensitive` function takes any value and returns the same value marked as sensitive. Once a value is marked sensitive, Terraform will usually replace it with `(sensitive value)` in normal plan and apply output.
 
 ```hcl
 # Mark a value as sensitive
@@ -106,7 +106,8 @@ resource "random_password" "db" {
 }
 
 locals {
-  # random_password is already sensitive, but derived values might not be
+  # random_password.result is already sensitive; wrapping the object
+  # makes the sensitivity of the whole configuration explicit
   db_config = sensitive({
     host     = aws_db_instance.main.endpoint
     port     = 5432
@@ -148,7 +149,7 @@ resource "aws_secretsmanager_secret_version" "api_key" {
 
 ## Marking Data Source Results as Sensitive
 
-Some data sources return sensitive information that is not automatically marked:
+Some data sources or provider attributes can return sensitive information that is not automatically marked, or you may want to explicitly mark the decoded result:
 
 ```hcl
 data "aws_secretsmanager_secret_version" "db_creds" {
@@ -156,7 +157,7 @@ data "aws_secretsmanager_secret_version" "db_creds" {
 }
 
 locals {
-  # The data source result might not be marked sensitive
+  # Mark the decoded secret object as sensitive
   db_creds = sensitive(jsondecode(data.aws_secretsmanager_secret_version.db_creds.secret_string))
 }
 
@@ -274,7 +275,7 @@ It is important to understand the limits:
 
 1. **It does not encrypt the value** - The value is still stored in plain text in the state file
 2. **It does not prevent state file exposure** - Always encrypt your state file at rest
-3. **It only affects CLI output** - Plan, apply, and console output hide the value
+3. **It only affects display** - Normal CLI and HCP Terraform UI output hide the value, but state and plan files still contain it
 4. **It does not work retroactively** - Marking an output sensitive does not redact it from past state
 
 ```hcl
