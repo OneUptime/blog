@@ -110,13 +110,13 @@ module "networking" {
 
 ## The -update Flag
 
-By default, `terraform get` only downloads modules that are not already present. The `-update` flag forces a re-download of all modules, which is useful when you want to pick up changes.
+By default, `terraform get` only downloads modules that are not already present. The `-update` flag checks already-downloaded modules for updates and downloads those updates if they are available, which is useful when you want to pick up changes.
 
 ```bash
 # Only download missing modules (default behavior)
 terraform get
 
-# Force re-download of all modules
+# Check installed modules for updates
 terraform get -update
 ```
 
@@ -257,11 +257,11 @@ Different source types have different caching behavior:
 | Source Type       | Cached? | -update Behavior           |
 |-------------------|---------|----------------------------|
 | Local path        | No      | Always uses latest files   |
-| Git (with ref)    | Yes     | Re-clones at specified ref |
-| Git (no ref)      | Yes     | Re-clones default branch   |
-| Registry          | Yes     | Re-downloads version       |
-| S3                | Yes     | Re-downloads archive       |
-| HTTP URL          | Yes     | Re-downloads archive       |
+| Git (with ref)    | Yes     | Checks the specified ref for updates |
+| Git (no ref)      | Yes     | Checks the default branch for updates |
+| Registry          | Yes     | Checks for the newest version allowed by the version constraint |
+| S3                | Yes     | Checks the archive source for updates |
+| HTTP URL          | Yes     | Checks the archive source for updates |
 ```
 
 Local modules are never cached because Terraform reads them directly from the filesystem. This is one of the main advantages of local modules during development.
@@ -291,7 +291,7 @@ module "vpc" {
 
 3. **Use terraform init -upgrade in CI/CD** instead of `terraform get -update`. It handles modules and providers together.
 
-4. **Check modules.json into version control if you need reproducibility.** Some teams commit `.terraform/modules/modules.json` (but not the module source code) to track which versions are deployed.
+4. **Do not commit modules.json for reproducibility.** Terraform's `.terraform/` directory, including `.terraform/modules/modules.json`, is local working data. Pin module versions in your configuration instead.
 
 ## Conclusion
 
