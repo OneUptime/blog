@@ -52,6 +52,9 @@ locals {
 ```
 
 The supported units are:
+- `ns` - nanoseconds
+- `us` - microseconds (Terraform also accepts the Unicode microsecond symbol)
+- `ms` - milliseconds
 - `h` - hours
 - `m` - minutes
 - `s` - seconds
@@ -60,7 +63,7 @@ There is no direct support for days, weeks, months, or years. You have to conver
 
 ## Converting Days, Weeks, and Months to Hours
 
-Since `timeadd` only understands hours, minutes, and seconds, here are the common conversions:
+Since `timeadd` does not have day, week, month, or year units, here are the common conversions:
 
 ```hcl
 locals {
@@ -152,21 +155,24 @@ locals {
 
 resource "aws_rds_cluster" "main" {
   cluster_identifier = "mydb-cluster"
-  engine            = "aurora-postgresql"
+  engine             = "aurora-postgresql"
+  master_username    = "dbadmin"
+
+  manage_master_user_password = true
 
   preferred_maintenance_window = "sun:02:00-sun:06:00"
 
   tags = {
-    NextMaintenance = formatdate("YYYY-MM-DD HH:mm 'UTC'", local.maint_start)
-    MaintenanceEnd  = formatdate("YYYY-MM-DD HH:mm 'UTC'", local.maint_end)
+    NextMaintenance = formatdate("YYYY-MM-DD hh:mm 'UTC'", local.maint_start)
+    MaintenanceEnd  = formatdate("YYYY-MM-DD hh:mm 'UTC'", local.maint_end)
   }
 }
 
 output "maintenance_schedule" {
   value = [
     for window in local.next_windows : {
-      start = formatdate("MMMM DD, YYYY HH:mm 'UTC'", window.start)
-      end   = formatdate("MMMM DD, YYYY HH:mm 'UTC'", window.end)
+      start = formatdate("MMMM DD, YYYY hh:mm 'UTC'", window.start)
+      end   = formatdate("MMMM DD, YYYY hh:mm 'UTC'", window.end)
     }
   ]
 }
@@ -229,8 +235,8 @@ output "time_ranges" {
   value = {
     for period, start_time in local.lookback :
     period => {
-      start = formatdate("YYYY-MM-DD'T'HH:mm:ss'Z'", start_time)
-      end   = formatdate("YYYY-MM-DD'T'HH:mm:ss'Z'", local.now)
+      start = formatdate("YYYY-MM-DD'T'hh:mm:ssZ", start_time)
+      end   = formatdate("YYYY-MM-DD'T'hh:mm:ssZ", local.now)
     }
   }
 }
@@ -252,9 +258,13 @@ locals {
 }
 
 resource "aws_db_instance" "main" {
-  identifier     = "mydb"
-  engine         = "postgres"
-  instance_class = "db.t3.medium"
+  identifier        = "mydb"
+  allocated_storage = 20
+  engine            = "postgres"
+  instance_class    = "db.t3.medium"
+  username          = "dbadmin"
+
+  manage_master_user_password = true
 
   backup_retention_period = var.backup_retention_days
 
@@ -283,10 +293,10 @@ locals {
 
 output "canary_schedule" {
   value = {
-    "5_percent"   = formatdate("HH:mm 'UTC'", local.canary_5pct)
-    "25_percent"  = formatdate("HH:mm 'UTC'", local.canary_25pct)
-    "50_percent"  = formatdate("HH:mm 'UTC'", local.canary_50pct)
-    "100_percent" = formatdate("HH:mm 'UTC'", local.canary_100pct)
+    "5_percent"   = formatdate("hh:mm 'UTC'", local.canary_5pct)
+    "25_percent"  = formatdate("hh:mm 'UTC'", local.canary_25pct)
+    "50_percent"  = formatdate("hh:mm 'UTC'", local.canary_50pct)
+    "100_percent" = formatdate("hh:mm 'UTC'", local.canary_100pct)
   }
 }
 ```
@@ -325,12 +335,12 @@ There are a few things to keep in mind:
 
 1. No month or year units. You have to calculate the hours yourself. A "month" is ambiguous (28-31 days), so Terraform avoids this.
 
-2. No timezone support. All timestamps are in UTC. If you need to work with local time zones, you have to add or subtract the UTC offset manually.
+2. No named timezone or local timezone support. `timestamp()` and `plantimestamp()` return UTC RFC 3339 strings, and `timeadd` works with RFC 3339 instants rather than local timezone rules. If you need local time zones, handle that conversion outside Terraform or use explicit offsets carefully.
 
-3. `timeadd` does not account for daylight saving time. It works purely in UTC, which is usually what you want for infrastructure.
+3. `timeadd` does not account for daylight saving time rules. It adds fixed durations to timestamps, which is usually what you want for infrastructure.
 
 4. The input timestamp must be valid RFC 3339. If you pass a malformed string, Terraform will error at plan time.
 
 ## Summary
 
-The `timeadd` function is your tool for date arithmetic in Terraform. It adds or subtracts a duration from a timestamp, giving you the ability to calculate expiry dates, maintenance windows, rotation schedules, and retention periods. Remember that durations use hours, minutes, and seconds only - convert days by multiplying by 24. Combined with `formatdate` and `timestamp()` or `plantimestamp()`, `timeadd` covers most time-based logic you will need in infrastructure code.
+The `timeadd` function is your tool for date arithmetic in Terraform. It adds or subtracts a duration from a timestamp, giving you the ability to calculate expiry dates, maintenance windows, rotation schedules, and retention periods. Remember that durations use fixed units up to hours, so convert days by multiplying by 24. Combined with `formatdate` and `timestamp()` or `plantimestamp()`, `timeadd` covers most time-based logic you will need in infrastructure code.
