@@ -22,7 +22,7 @@ The `length` function returns the size of a collection or the character count of
 length(value)
 ```
 
-For lists, it returns the number of elements. For maps, it returns the number of key-value pairs. For strings, it returns the number of Unicode characters.
+For lists, it returns the number of elements. For maps, it returns the number of key-value pairs. For strings, it returns the number of characters as Unicode grapheme clusters.
 
 ## Basic Usage in Terraform Console
 
@@ -282,7 +282,7 @@ variable "port_mappings" {
 
 ## Real-World Scenario: Auto-Scaling Configuration
 
-Here is a complete example using `length` for scaling decisions.
+Here is a larger example using `length` for scaling decisions.
 
 ```hcl
 variable "service_definitions" {
@@ -338,7 +338,7 @@ A few things to note:
 
 - **Nested lists**: `length` counts only top-level elements. `length([["a", "b"], ["c"]])` is 2, not 3.
 - **Null**: `length(null)` causes an error. Always check for null before calling `length` if the input might be null.
-- **Strings with Unicode**: `length` counts Unicode characters, not bytes. `length("cafe")` is 4.
+- **Strings with Unicode**: `length` counts characters as Unicode grapheme clusters, not bytes. `length("cafe")` is 4.
 
 ```hcl
 # Nested list - counts top-level only

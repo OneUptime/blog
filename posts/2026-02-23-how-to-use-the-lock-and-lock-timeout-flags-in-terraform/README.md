@@ -8,7 +8,7 @@ Description: Learn how to use Terraform's -lock and -lock-timeout flags to contr
 
 ---
 
-Terraform acquires a lock on the state file every time it runs an operation that reads or modifies state. The `-lock` and `-lock-timeout` flags give you control over this behavior. Knowing when and how to use these flags can prevent deadlocks, speed up CI/CD pipelines, and help you handle stuck locks gracefully.
+Terraform acquires a lock on the state file for operations that could write state, as long as the backend supports locking. The `-lock` and `-lock-timeout` flags give you control over this behavior. Knowing when and how to use these flags can prevent failed runs, make CI/CD pipelines more resilient, and help you handle stuck locks gracefully.
 
 This guide covers both flags in detail, including when to use them, when to avoid them, and how they interact with different backends.
 
@@ -52,22 +52,21 @@ terraform plan -lock=false
 
 There are very few legitimate use cases for disabling locking:
 
-**Read-only operations on a backend that does not support locking:**
+**Speculative plans on a backend that does not support locking:**
 
 ```bash
-# Some backends (like HTTP or older Consul versions) may not support locking
-# If you only need to read state, disabling the lock is safe
-terraform state list -lock=false
-terraform state show aws_instance.web -lock=false
-terraform output -lock=false
+# Some backends do not support locking, and HTTP locking is optional
+# If you only need a speculative plan, disabling the lock may be acceptable
+terraform plan -lock=false
 ```
 
 **Debugging a stuck lock:**
 
 ```bash
 # If you need to inspect state while a lock is stuck,
-# a read-only operation with -lock=false is reasonable
-terraform state pull -lock=false > debug-state.json
+# read-only state inspection commands do not take the -lock flag
+terraform state pull > debug-state.json
+terraform state list
 ```
 
 ### When NOT to Use -lock=false
@@ -192,20 +191,20 @@ terraform plan
 
 Different backends handle locking differently, which affects how these flags work:
 
-### S3 with DynamoDB
+### S3
 
 ```hcl
 terraform {
   backend "s3" {
-    bucket         = "my-state"
-    key            = "terraform.tfstate"
-    region         = "us-east-1"
-    dynamodb_table = "terraform-locks"
+    bucket       = "my-state"
+    key          = "terraform.tfstate"
+    region       = "us-east-1"
+    use_lockfile = true
   }
 }
 ```
 
-DynamoDB uses conditional writes for locking. The lock is an item in the table with a TTL. If the process crashes, the lock may persist until manually removed or DynamoDB TTL cleans it up.
+The S3 backend supports state locking with an S3 lock file when `use_lockfile = true`. DynamoDB-based locking with `dynamodb_table` is still available for older configurations, but it is deprecated and will be removed in a future Terraform minor version.
 
 ### GCS
 
@@ -218,7 +217,7 @@ terraform {
 }
 ```
 
-GCS uses object-level locking. Locks are automatically released when the operation completes. Crashed processes may leave stale locks that require `force-unlock`.
+The GCS backend supports state locking. Locks are automatically released when the operation completes. Crashed processes may leave stale locks that require `force-unlock`.
 
 ### Azure Blob
 
@@ -232,7 +231,7 @@ terraform {
 }
 ```
 
-Azure uses blob leases for locking. Leases have a duration (typically 60 seconds) and are renewed automatically during operations. If a process crashes, the lease expires after the duration.
+Azure uses Blob Storage native capabilities for state locking and consistency checking. Locks are automatically released when the operation completes. Crashed processes may leave stale locks that require `force-unlock`.
 
 ## Environment Variables
 
@@ -288,6 +287,6 @@ exit $EXIT_CODE
 4. **Use environment variables** for consistent lock behavior across a team.
 5. **Investigate stuck locks** before force-unlocking. The lock might be held by a running operation.
 6. **Monitor lock duration** to identify slow operations that block the team.
-7. **Use `-lock=false` only for read-only operations** like `state list`, `output`, or `state pull`.
+7. **Use `-lock=false` only in exceptional cases** where you understand the risk and the command supports the flag.
 
 The `-lock` and `-lock-timeout` flags are small controls with big implications. Getting them right keeps your team productive and your state file safe.
