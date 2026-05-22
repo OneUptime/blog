@@ -8,7 +8,7 @@ Description: How to configure sensible default Istio policies that automatically
 
 ---
 
-When a new service joins your Istio mesh, it should get a set of sane defaults automatically. Timeouts, retries, circuit breaking, mTLS enforcement, and basic authorization should all be in place from day one. Relying on developers to manually configure these for every service means some services will inevitably ship without them. Defaults solve this by making the secure, resilient path the default path.
+When a new service joins your Istio mesh, it should get a set of sane defaults automatically. Retries, circuit breaking, mTLS enforcement, and basic authorization should all be in place from day one. Relying on developers to manually configure these for every service means some services will inevitably ship without them. Defaults solve this by making the secure, resilient path the default path.
 
 ## Namespace-Level Defaults
 
@@ -71,14 +71,14 @@ spec:
         - istio-system
 ```
 
-The empty spec on the first policy creates a default deny. The other two policies allow intra-namespace communication and traffic from the Istio system namespace (needed for health checks and ingress).
+The empty spec on the first policy creates a default deny. The other two policies allow intra-namespace communication and traffic from the Istio system namespace (for ingress gateways or other mesh infrastructure you run there).
 
 ### Default Sidecar Scope
 
 Limit the configuration that each sidecar receives:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -103,36 +103,40 @@ apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
   meshConfig:
+    # Enable access logging
+    accessLogFile: /dev/stdout
+    accessLogEncoding: JSON
+
     defaultConfig:
       # Default proxy concurrency
       concurrency: 2
-
-      # Enable access logging
-      accessLogFile: /dev/stdout
-      accessLogEncoding: JSON
 
       # Default tracing sampling
       tracing:
         sampling: 10
 
-    # Default timeout for HTTP requests
+    # Default retry policy for HTTP requests
     defaultHttpRetryPolicy:
       attempts: 2
-      perTryTimeout: 5s
       retryOn: connect-failure,refused-stream,unavailable,cancelled,retriable-status-codes
 
-    # Default destination rule settings
+    # Default destination rule export scope
     defaultDestinationRuleExportTo:
     - "."
     - "istio-system"
 
-    # Default virtual service export scope
+    # Default service export scope
     defaultServiceExportTo:
+    - "."
+    - "istio-system"
+
+    # Default virtual service export scope
+    defaultVirtualServiceExportTo:
     - "."
     - "istio-system"
 ```
 
-The `defaultServiceExportTo` and `defaultDestinationRuleExportTo` settings limit the visibility of services and rules to their own namespace and istio-system by default. Services that need to be visible to other namespaces must explicitly export.
+The `defaultServiceExportTo`, `defaultVirtualServiceExportTo`, and `defaultDestinationRuleExportTo` settings limit the visibility of services and rules to their own namespace and istio-system by default. Services that need to be visible to other namespaces must explicitly export.
 
 ## Automatic Sidecar Injection Defaults
 
@@ -162,7 +166,7 @@ The `holdApplicationUntilProxyStarts: true` setting is an important default. It 
 
 ## Namespace Initialization Controller
 
-Automate the creation of default policies when a new namespace is labeled for Istio injection. Build a controller or use a Kubernetes initializer:
+Automate the creation of default policies when a new namespace is labeled for Istio injection. Build a controller or Kubernetes operator:
 
 ```python
 import kopf
@@ -214,7 +218,7 @@ def init_istio_namespace(name, spec, **kwargs):
 
     # Create default sidecar scope
     sidecar = {
-        'apiVersion': 'networking.istio.io/v1beta1',
+        'apiVersion': 'networking.istio.io/v1',
         'kind': 'Sidecar',
         'metadata': {
             'name': 'default',
@@ -229,7 +233,7 @@ def init_istio_namespace(name, spec, **kwargs):
         (peer_auth, 'security.istio.io', 'v1', 'peerauthentications'),
         (deny_all, 'security.istio.io', 'v1', 'authorizationpolicies'),
         (allow_ns, 'security.istio.io', 'v1', 'authorizationpolicies'),
-        (sidecar, 'networking.istio.io', 'v1beta1', 'sidecars'),
+        (sidecar, 'networking.istio.io', 'v1', 'sidecars'),
     ]:
         try:
             custom_api.create_namespaced_custom_object(
@@ -245,7 +249,7 @@ def init_istio_namespace(name, spec, **kwargs):
 Set up default observability for every namespace:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: default
@@ -272,7 +276,7 @@ This configures access logging only for error responses (to reduce log volume), 
 Apply a wildcard DestinationRule that gives every service circuit breaking:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: default-circuit-breaker
@@ -321,7 +325,7 @@ The sidecar should show a limited set of clusters (only the namespaces listed in
 Defaults should be overridable. A service that needs to talk to an external namespace can create its own Sidecar resource:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: my-service
