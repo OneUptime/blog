@@ -8,13 +8,13 @@ Description: Learn how to properly separate Terraform plan and apply stages in C
 
 ---
 
-The most important pattern in Terraform CI/CD is separating plan from apply. Running `terraform plan` on every pull request lets your team review exactly what will change before anything touches production. Then, after merge, the apply step executes that same plan. Getting this right is the difference between a CI/CD pipeline you trust and one that keeps you up at night.
+The most important pattern in Terraform CI/CD is separating plan from apply. Running `terraform plan` on every pull request lets your team review exactly what will change before anything touches production. Then, after merge, the apply step either executes a saved plan from the same pipeline run or creates a fresh final plan before applying. Getting this right is the difference between a CI/CD pipeline you trust and one that keeps you up at night.
 
 ## Why Separate Plan and Apply
 
 Running `terraform apply` directly without a saved plan is dangerous in CI/CD. Between the time you review changes and the time apply runs, someone else might have merged a different change. The resources Terraform plans to create or destroy could be different from what you reviewed.
 
-By saving the plan output as an artifact and applying that exact plan file, you guarantee what was reviewed is what gets applied. No surprises.
+By saving the plan output as an artifact and applying that exact plan file, you make Terraform apply only the changes in that reviewed plan. If you run a fresh plan during apply instead, make sure that final plan is still visible and controlled by your approval workflow.
 
 ## The Basic Pattern
 
@@ -23,7 +23,7 @@ Here is the flow:
 1. Developer opens a pull request
 2. CI runs `terraform plan` and saves the output
 3. Team reviews the plan output in the PR
-4. After approval and merge, CI runs `terraform apply` with the saved plan
+4. After approval and merge, CI runs `terraform apply` with the saved plan from the same pipeline, or runs a fresh final plan and apply
 5. If the plan is stale (state changed since plan was generated), the apply fails safely
 
 ## GitHub Actions Implementation
@@ -42,6 +42,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write      # Needed for GitHub OIDC to assume the AWS role
   pull-requests: write  # Needed to post plan as PR comment
 
 jobs:
@@ -76,11 +77,10 @@ jobs:
       - name: Terraform Plan
         id: plan
         run: |
+          set -o pipefail
+
           # Save binary plan for later apply
           terraform plan -no-color -out=tfplan 2>&1 | tee plan-output.txt
-
-          # Store exit code
-          echo "exitcode=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
 
       - name: Upload Plan Artifact
         uses: actions/upload-artifact@v4
@@ -151,6 +151,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write  # Needed for GitHub OIDC to assume the AWS role
 
 jobs:
   apply:
@@ -197,19 +198,20 @@ When you apply a stale plan file, Terraform will detect the mismatch and fail. T
 
 **Option A: Fresh plan on apply** - Run a new plan and apply it directly on merge. You lose the "apply exactly what was reviewed" guarantee, but you avoid stale plan issues.
 
-**Option B: Saved plan with retry** - Try to apply the saved plan. If it fails due to staleness, run a fresh plan-and-apply. Log the difference for audit purposes.
+**Option B: Saved plan with regeneration** - Try to apply the saved plan. If it fails due to staleness, run a fresh plan and stop for review instead of applying unreviewed changes.
 
 ```yaml
 # Option B implementation
-- name: Apply with fallback
+- name: Apply saved plan
   run: |
     # Try the saved plan first
     if terraform apply -no-color tfplan 2>&1; then
       echo "Saved plan applied successfully"
     else
-      echo "Saved plan was stale, running fresh apply"
+      echo "Saved plan failed, generating a fresh plan for review"
       terraform plan -no-color -out=fresh-plan
-      terraform apply -no-color fresh-plan
+      terraform show -no-color fresh-plan
+      exit 1
     fi
 ```
 
