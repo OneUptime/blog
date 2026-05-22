@@ -32,7 +32,7 @@ Each of these criteria translates into specific Terraform-level controls that Se
 
 SOC2 CC6.1 requires that logical access to systems is restricted. In cloud infrastructure, this means controlling network access and authentication.
 
-```python
+```sentinel
 # soc2-cc6-network-access.sentinel
 
 # CC6.1: Restrict logical access to information assets
@@ -86,13 +86,14 @@ main = rule {
 
 CC6.3 requires authorization before granting access. This translates to IAM controls:
 
-```python
+```sentinel
 # soc2-cc6-iam-controls.sentinel
 # CC6.3: Authorization before granting access
 # Prevent creation of overly permissive IAM policies
 
 import "tfplan/v2" as tfplan
 import "json"
+import "types"
 
 iam_policies = filter tfplan.resource_changes as _, rc {
     rc.type in ["aws_iam_policy", "aws_iam_role_policy"] and
@@ -150,28 +151,14 @@ main = rule {
 
 ## CC7: System Operations and Monitoring
 
-SOC2 CC7.1 requires that you detect and respond to security events. In Terraform, this means ensuring logging and monitoring are always configured:
+SOC2 CC7.1 requires that you detect and respond to security events. In Terraform, this can include ensuring audit logging remains enabled:
 
-```python
+```sentinel
 # soc2-cc7-logging.sentinel
 # CC7.1: Detection and monitoring of security events
-# Require CloudTrail and VPC Flow Logs
+# Require CloudTrail logging to remain enabled
 
 import "tfplan/v2" as tfplan
-
-# Check that VPCs have flow logs enabled
-vpcs = filter tfplan.resource_changes as _, rc {
-    rc.type is "aws_vpc" and
-    rc.mode is "managed" and
-    rc.change.actions contains "create"
-}
-
-flow_logs = filter tfplan.resource_changes as _, rc {
-    rc.type is "aws_flow_log" and
-    rc.mode is "managed" and
-    (rc.change.actions contains "create" or
-     rc.change.actions contains "update")
-}
 
 # Require CloudTrail is not disabled
 cloudtrails = filter tfplan.resource_changes as _, rc {
@@ -214,7 +201,7 @@ main = rule {
 
 SOC2 CC8.1 requires controlled change management processes. Sentinel itself is part of this control - it enforces that changes are reviewed before deployment. But you can also enforce specific change management practices:
 
-```python
+```sentinel
 # soc2-cc8-change-management.sentinel
 # CC8.1: Changes are authorized and controlled
 # Enforce that all resources have ownership tags for change tracking
@@ -262,7 +249,7 @@ main = rule {
 
 SOC2 A1.2 requires environmental protections including redundancy. This maps to multi-AZ deployments and backup configurations:
 
-```python
+```sentinel
 # soc2-a1-availability.sentinel
 # A1.2: Environmental protections for availability
 # Require multi-AZ for production databases and sufficient backup retention
@@ -274,15 +261,15 @@ import "tfrun"
 workspace = tfrun.workspace.name
 is_production = workspace matches ".*prod.*"
 
-if is_production {
-    rds_instances = filter tfplan.resource_changes as _, rc {
-        rc.type is "aws_db_instance" and
-        rc.mode is "managed" and
-        (rc.change.actions contains "create" or
-         rc.change.actions contains "update")
-    }
+rds_instances = filter tfplan.resource_changes as _, rc {
+    rc.type is "aws_db_instance" and
+    rc.mode is "managed" and
+    (rc.change.actions contains "create" or
+     rc.change.actions contains "update")
+}
 
-    violations = []
+violations = []
+if is_production {
     for rds_instances as address, instance {
         # Require Multi-AZ
         multi_az = instance.change.after.multi_az else false
@@ -305,38 +292,36 @@ if is_production {
                 " must have deletion_protection enabled [SOC2 A1.2]")
         }
     }
+}
 
-    if length(violations) > 0 {
-        print("SOC2 A1.2 - Availability violations:")
-        for violations as v {
-            print("  - " + v)
-        }
+if length(violations) > 0 {
+    print("SOC2 A1.2 - Availability violations:")
+    for violations as v {
+        print("  - " + v)
     }
+}
 
-    main = rule {
-        length(violations) is 0
-    }
-} else {
-    main = rule { true }
+main = rule {
+    length(violations) is 0
 }
 ```
 
 ## C1: Confidentiality
 
-SOC2 C1.1 requires protection of confidential information. This maps directly to encryption requirements:
+SOC2 C1.1 requires protection of confidential information. This maps directly to encryption-at-rest requirements:
 
-```python
+```sentinel
 # soc2-c1-confidentiality.sentinel
 # C1.1: Protection of confidential information
-# Require encryption at rest and in transit for all data stores
+# Require encryption at rest for data stores
 
 import "tfplan/v2" as tfplan
 
 violations = []
 
 # Check S3 buckets for encryption
-s3_buckets = filter tfplan.resource_changes as _, rc {
-    rc.type is "aws_s3_bucket" and
+s3_encryption_configs = filter tfplan.resource_changes as _, rc {
+    rc.type is "aws_s3_bucket_server_side_encryption_configuration" and
     rc.mode is "managed" and
     (rc.change.actions contains "create" or
      rc.change.actions contains "update")
@@ -356,6 +341,14 @@ ebs_volumes = filter tfplan.resource_changes as _, rc {
     rc.mode is "managed" and
     (rc.change.actions contains "create" or
      rc.change.actions contains "update")
+}
+
+for s3_encryption_configs as address, config {
+    rules = config.change.after.rule else []
+    if length(rules) is 0 {
+        append(violations, address +
+            " - bucket encryption rule must be configured [SOC2 C1.1]")
+    }
 }
 
 for rds_instances as address, instance {
