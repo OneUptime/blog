@@ -29,7 +29,7 @@ When you run `terraform test`, Terraform looks for test files in two locations:
 1. The current working directory (root module)
 2. A `tests/` subdirectory
 
-Test files must have the `.tftest.hcl` extension. Any file matching this pattern in either location will be discovered and executed:
+Test files usually use the `.tftest.hcl` extension. Terraform also supports `.tftest.json`. Any matching test file in either location will be discovered and executed:
 
 ```text
 my-module/
@@ -134,23 +134,23 @@ terraform test -json
 Each test event is a JSON object on its own line:
 
 ```json
-{"@level":"info","@message":"Found 2 files and 5 run blocks","@module":"terraform.ui","test_count":5,"file_count":2,"type":"test_summary"}
-{"@level":"info","@message":"tests/unit.tftest.hcl... in progress","@module":"terraform.ui","test_file":"tests/unit.tftest.hcl","type":"test_file_status","status":"starting"}
-{"@level":"info","@message":"  run \"test_defaults\"... pass","@module":"terraform.ui","test_file":"tests/unit.tftest.hcl","test_run":"test_defaults","type":"test_run_status","status":"pass"}
+{"@level":"info","@message":"Found 2 files and 5 run blocks","@module":"terraform.ui","@timestamp":"2026-02-23T12:00:00Z","test_abstract":{"tests/unit.tftest.hcl":["test_defaults"]},"type":"test_abstract"}
+{"@level":"info","@message":"tests/unit.tftest.hcl... in progress","@module":"terraform.ui","@testfile":"tests/unit.tftest.hcl","@timestamp":"2026-02-23T12:00:01Z","test_file":{"path":"tests/unit.tftest.hcl","progress":"starting"},"type":"test_file"}
+{"@level":"info","@message":"  \"test_defaults\"... pass","@module":"terraform.ui","@testfile":"tests/unit.tftest.hcl","@testrun":"test_defaults","@timestamp":"2026-02-23T12:00:02Z","test_run":{"path":"tests/unit.tftest.hcl","run":"test_defaults","progress":"complete","status":"pass"},"type":"test_run"}
 ```
 
 This format integrates well with CI tools that can parse structured test results.
 
 ## Test Execution Order
 
-Tests are executed in a specific order:
+Tests are executed with predictable state handling:
 
-1. **Files** are executed in alphabetical order
-2. **Run blocks** within a file are executed in the order they appear
-3. Each file gets its own isolated state - resources from one file do not leak into another
-4. Within a file, run blocks share state by default
+1. **Files** each get their own isolated in-memory state
+2. **Run blocks** within a file execute sequentially by default
+3. Resources from one file do not leak into another
+4. Within a file, run blocks share state by default unless you configure separate state keys or modules
 
-This ordering matters because you can chain run blocks:
+This shared state matters because you can chain run blocks:
 
 ```hcl
 # tests/chained.tftest.hcl
@@ -235,25 +235,28 @@ terraform test
 
 ## Timeout Configuration
 
-By default, individual operations within tests use Terraform's standard timeouts. You can set an overall test timeout:
+The `terraform test` command does not have a `-timeout` flag. Individual provider operations use the same resource timeout behavior they use during normal Terraform operations. For an overall test-suite limit, set a timeout in your CI job or wrap the command with a shell-level timeout:
 
 ```bash
-# Set a 30-minute timeout for the entire test suite
-terraform test -timeout=30m
+# Set a 30-minute timeout for the entire test suite on Linux
+timeout 30m terraform test
 ```
 
 This is useful for integration tests that create slow resources like RDS instances or EKS clusters.
 
 ## Using with Terraform Cloud
 
-If you use Terraform Cloud as a backend, `terraform test` still runs locally. It does not use Terraform Cloud's remote execution. However, you still need to authenticate:
+By default, `terraform test` runs locally and maintains test state in memory, separate from any existing backend state. If you want to run tests remotely in Terraform Cloud or HCP Terraform, use the `-cloud-run` option with a private registry module. You need to authenticate first:
 
 ```bash
-# Login to Terraform Cloud
+# Login to Terraform Cloud or HCP Terraform
 terraform login
 
-# Tests run locally but can use the Cloud backend for state
+# Tests run locally by default
 terraform test
+
+# Or run tests remotely for a private registry module
+terraform test -cloud-run=app.terraform.io/example-org/example-module/aws
 ```
 
 ## Practical CI Configuration
@@ -333,6 +336,6 @@ terraform plan -var-file=test.tfvars
 
 ## Summary
 
-The `terraform test` command is straightforward once you understand its conventions. Test files go in the root or `tests/` directory, they use the `.tftest.hcl` extension, and they contain `run` blocks with assertions. Use `-filter` for selective execution, `-verbose` for debugging, and `-json` for CI integration. The command handles resource cleanup automatically, making it safe for both unit tests (plan mode) and integration tests (apply mode).
+The `terraform test` command is straightforward once you understand its conventions. Test files go in the root or `tests/` directory, they use the `.tftest.hcl` or `.tftest.json` extension, and they contain `run` blocks with assertions. Use `-filter` for selective execution, `-verbose` for debugging, and `-json` for CI integration. The command handles resource cleanup automatically, making it safe for both unit tests (plan mode) and integration tests (apply mode).
 
 For writing effective test files, see [How to Write .tftest.hcl Files for Terraform Testing](https://oneuptime.com/blog/post/2026-02-23-how-to-write-tftest-hcl-files-for-terraform-testing/view) and [How to Use Mock Providers in Terraform Tests](https://oneuptime.com/blog/post/2026-02-23-how-to-use-mock-providers-in-terraform-tests/view).
