@@ -16,9 +16,9 @@ Sentinel supports a handful of data types that you will use constantly in your p
 
 ### Strings
 
-Strings work the way you would expect. You can use double quotes or heredoc syntax for multi-line strings:
+Strings work the way you would expect. You can use double quotes or backtick-delimited syntax for multi-line strings:
 
-```python
+```sentinel
 # Simple string
 
 name = "my-resource"
@@ -28,13 +28,17 @@ full_name = "prefix-" + name
 
 # String comparison
 valid = name is "my-resource"
+
+# Multi-line string
+message = `line one
+line two`
 ```
 
 ### Numbers
 
 Sentinel supports integers and floating-point numbers:
 
-```python
+```sentinel
 # Integer
 count = 5
 
@@ -49,7 +53,7 @@ total = count * cost
 
 Boolean values are `true` and `false`, written in lowercase:
 
-```python
+```sentinel
 # Boolean values
 enabled = true
 disabled = false
@@ -62,7 +66,7 @@ result = enabled and not disabled
 
 Lists are ordered collections of values:
 
-```python
+```sentinel
 # Define a list
 allowed_regions = ["us-east-1", "us-west-2", "eu-west-1"]
 
@@ -80,7 +84,7 @@ count = length(allowed_regions)
 
 Maps are key-value pairs, similar to dictionaries or objects in other languages:
 
-```python
+```sentinel
 # Define a map
 instance_limits = {
     "t3.micro":  10,
@@ -101,7 +105,7 @@ Sentinel has a set of operators that you will use frequently in policy rules.
 
 ### Comparison Operators
 
-```python
+```sentinel
 # Equality
 x is 5        # equals
 x is not 5    # not equals
@@ -113,11 +117,11 @@ x < 5         # less than
 x <= 5        # less than or equal
 ```
 
-Note that Sentinel uses `is` and `is not` instead of `==` and `!=` for equality checks. This is one of the things that trips up newcomers. While `==` works in some contexts, `is` is the idiomatic way.
+Sentinel supports both `is` and `is not` and the `==` and `!=` operators for equality checks. The `is` and `is not` forms are common in Sentinel examples and are often more readable in policies.
 
 ### Logical Operators
 
-```python
+```sentinel
 # AND - both must be true
 result = condition_a and condition_b
 
@@ -132,7 +136,7 @@ result = not condition_a
 
 The `contains` operator checks whether a collection contains a value. It is the reverse of the `in` operator:
 
-```python
+```sentinel
 allowed = ["a", "b", "c"]
 
 # These are equivalent
@@ -144,7 +148,7 @@ allowed contains "a"
 
 The `matches` operator performs regular expression matching on strings:
 
-```python
+```sentinel
 # Check if a string matches a pattern
 name = "prod-web-server-01"
 is_prod = name matches "^prod-.*"
@@ -154,7 +158,7 @@ is_prod = name matches "^prod-.*"
 
 Rules are the heart of Sentinel. A rule is a named boolean expression that evaluates to `true` or `false`.
 
-```python
+```sentinel
 # A simple rule
 my_rule = rule {
     1 + 1 is 2
@@ -168,13 +172,13 @@ main = rule {
 
 You can compose rules together. This is useful for breaking complex policies into smaller, more readable pieces:
 
-```python
+```sentinel
 import "tfplan/v2" as tfplan
 
 # Filter resources
 instances = filter tfplan.resource_changes as _, rc {
     rc.type is "aws_instance" and
-    rc.change.actions contains "create"
+    rc.change.actions is ["create"]
 }
 
 # Rule 1: Check instance types
@@ -201,7 +205,7 @@ main = rule {
 
 You can define reusable functions in Sentinel. Functions are particularly useful when you need the same logic across multiple policies:
 
-```python
+```sentinel
 # Define a function that checks if a value is in a list
 check_allowed = func(value, allowed_list) {
     return value in allowed_list
@@ -214,7 +218,7 @@ result = check_allowed("t3.micro", allowed_types)
 
 Functions can be more complex and contain conditional logic:
 
-```python
+```sentinel
 # A function that validates resource tags
 validate_tags = func(resource, required_tags) {
     # Check if tags exist at all
@@ -241,7 +245,7 @@ validate_tags = func(resource, required_tags) {
 
 Sentinel supports standard conditional statements:
 
-```python
+```sentinel
 # If/else in a function
 get_limit = func(env) {
     if env is "production" {
@@ -258,9 +262,9 @@ get_limit = func(env) {
 
 You can iterate over collections with `for` loops, though in practice you will often use `all`, `any`, and `filter` instead:
 
-```python
+```sentinel
 # For loop to count items
-count_violations = func(instances, max_size) {
+count_violations = func(instances, allowed_types) {
     violations = 0
     for instances as _, inst {
         if inst.change.after.instance_type not in allowed_types {
@@ -275,19 +279,19 @@ count_violations = func(instances, max_size) {
 
 The `filter` expression creates a new collection containing only elements that match a condition:
 
-```python
+```sentinel
 import "tfplan/v2" as tfplan
 
 # Filter for S3 buckets being created
 s3_buckets = filter tfplan.resource_changes as _, rc {
     rc.type is "aws_s3_bucket" and
-    rc.change.actions contains "create"
+    rc.change.actions is ["create"]
 }
 
 # Filter for resources with specific tags
 production_resources = filter tfplan.resource_changes as _, rc {
-    rc.change.after.tags is not null and
-    rc.change.after.tags["environment"] is "production"
+    (rc.change.after.tags else null) is not null and
+    (rc.change.after.tags["environment"] else null) is "production"
 }
 ```
 
@@ -299,7 +303,7 @@ Quantifiers let you check conditions across collections without writing explicit
 
 Returns `true` if every item in the collection satisfies the condition:
 
-```python
+```sentinel
 # Every instance must be t3.micro
 all_micro = rule {
     all instances as _, inst {
@@ -312,7 +316,7 @@ all_micro = rule {
 
 Returns `true` if at least one item satisfies the condition:
 
-```python
+```sentinel
 # At least one instance must have monitoring enabled
 some_monitored = rule {
     any instances as _, inst {
@@ -325,7 +329,7 @@ some_monitored = rule {
 
 When debugging policies, `print` statements are invaluable. They output information during policy evaluation:
 
-```python
+```sentinel
 import "tfplan/v2" as tfplan
 
 instances = filter tfplan.resource_changes as _, rc {
@@ -345,13 +349,12 @@ The output from `print` statements shows up in the Sentinel policy check results
 
 One thing that catches many people off guard is how Sentinel handles undefined values. When you try to access a key that does not exist in a map, Sentinel returns `undefined` rather than throwing an error. You need to handle this explicitly:
 
-```python
-# This might fail if "tags" is undefined
+```sentinel
+# This might evaluate to undefined if "tags" is undefined
 tags = resource.change.after.tags
 
-# Safer approach - check for null/undefined first
-if resource.change.after.tags is not null and
-   resource.change.after.tags is not undefined {
+# Safer approach - recover from undefined first
+if (resource.change.after.tags else null) is not null {
     tags = resource.change.after.tags
 }
 ```
@@ -360,7 +363,7 @@ if resource.change.after.tags is not null and
 
 Here is a complete policy that demonstrates several language features:
 
-```python
+```sentinel
 # complete-example.sentinel
 # Enforces tagging and instance type standards for AWS EC2 instances
 
@@ -372,12 +375,13 @@ required_tags = ["Name", "Environment", "Owner"]
 
 # Helper function to validate tags
 validate_tags = func(resource) {
-    if resource.change.after.tags is null {
+    tags = resource.change.after.tags else null
+
+    if tags is null {
         print("Resource has no tags")
         return false
     }
 
-    tags = resource.change.after.tags
     valid = true
 
     for required_tags as tag {
@@ -393,7 +397,7 @@ validate_tags = func(resource) {
 # Get EC2 instances
 ec2_instances = filter tfplan.resource_changes as _, rc {
     rc.type is "aws_instance" and
-    (rc.change.actions contains "create" or rc.change.actions contains "update")
+    (rc.change.actions is ["create"] or rc.change.actions is ["update"])
 }
 
 # Rules
