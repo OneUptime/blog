@@ -15,7 +15,7 @@ Connection limits in Istio serve two purposes: they protect backend services fro
 Istio exposes connection limits through DestinationRule resources. Here are the settings that matter:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service-limits
@@ -36,9 +36,9 @@ spec:
 
 Each setting controls a different aspect:
 
-- `maxConnections`: Maximum TCP connections to the upstream. When reached, new connection attempts either queue (HTTP/1.1) or fail immediately.
-- `http1MaxPendingRequests`: Maximum requests waiting for an available HTTP/1.1 connection. When this queue is full, new requests get a 503.
-- `http2MaxRequests`: Maximum concurrent HTTP/2 requests. Since HTTP/2 multiplexes, this is about total requests, not connections.
+- `maxConnections`: Maximum HTTP/1.1 or TCP connections to the destination host. When there are not enough ready upstream connections, HTTP requests can wait in the pending request queue until that queue also reaches its limit.
+- `http1MaxPendingRequests`: Maximum requests waiting for an available connection pool connection. Despite the name, Istio applies this to both HTTP/1.1 and HTTP/2. When this queue is full, new requests get a 503.
+- `http2MaxRequests`: Maximum active requests to a destination. Despite the name, Istio applies this to both HTTP/1.1 and HTTP/2.
 - `maxRequestsPerConnection`: How many requests can be sent on a single connection before it is closed and a new one is opened.
 - `maxRetries`: Maximum concurrent retry operations. This prevents retry storms from consuming all capacity.
 
@@ -49,14 +49,16 @@ Start by measuring your current traffic patterns:
 ```bash
 # Check current active connections to a service
 
-kubectl exec deploy/caller-app -c istio-proxy -- curl -s localhost:15000/stats | grep "outbound|8080|my-namespace|my-service" | grep "upstream_cx_active"
+kubectl exec deploy/caller-app -c istio-proxy -- pilot-agent request GET stats | grep "outbound|8080|my-namespace|my-service" | grep "upstream_cx_active"
 
 # Check peak concurrent requests
-kubectl exec deploy/caller-app -c istio-proxy -- curl -s localhost:15000/stats | grep "outbound|8080|my-namespace|my-service" | grep "upstream_rq_active"
+kubectl exec deploy/caller-app -c istio-proxy -- pilot-agent request GET stats | grep "outbound|8080|my-namespace|my-service" | grep "upstream_rq_active"
 
 # Check for any existing overflows
-kubectl exec deploy/caller-app -c istio-proxy -- curl -s localhost:15000/stats | grep "outbound|8080|my-namespace|my-service" | grep "overflow"
+kubectl exec deploy/caller-app -c istio-proxy -- pilot-agent request GET stats | grep "outbound|8080|my-namespace|my-service" | grep "overflow"
 ```
+
+If these Envoy stats do not appear, enable them with Istio `proxyStatsMatcher` before relying on the commands or Prometheus queries. Istio records only a minimal set of Envoy stats by default.
 
 Use Prometheus for historical data:
 
@@ -76,7 +78,7 @@ Different callers might have different patterns. A frontend making a few request
 
 ```yaml
 # For the frontend caller
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: backend-limits-frontend
@@ -92,7 +94,7 @@ spec:
         maxRetries: 3
 ---
 # For the batch processor
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: backend-limits-batch
@@ -112,18 +114,19 @@ Note that the batch processor has fewer retries - if a batch request fails, retr
 
 ## Connection Limits as Circuit Breakers
 
-The connection limits in Istio function as circuit breakers. When limits are reached, Envoy "trips" the circuit and returns 503 errors immediately instead of queuing more requests against a struggling backend.
+The connection limits in Istio function as circuit breakers. When limits are reached, Envoy "trips" the circuit and returns 503 errors instead of admitting more work against a struggling backend.
 
 You can detect circuit breaker trips in the Envoy stats:
 
 ```bash
 # Check circuit breaker trip count
-kubectl exec deploy/caller-app -c istio-proxy -- curl -s localhost:15000/stats | grep "circuit_breakers"
+kubectl exec deploy/caller-app -c istio-proxy -- pilot-agent request GET stats | grep "circuit_breakers"
 ```
 
 Look for stats like:
 - `upstream_cx_overflow` - Connection limit reached
 - `upstream_rq_pending_overflow` - Pending request queue full
+- `upstream_rq_active_overflow` - Active request limit reached
 - `upstream_rq_retry_overflow` - Retry limit reached
 
 ## Combine with Outlier Detection
@@ -131,7 +134,7 @@ Look for stats like:
 Connection limits work best alongside outlier detection, which ejects unhealthy endpoints:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: combined-protection
@@ -187,7 +190,7 @@ When your application gets 503 errors due to connection limits, you have a few o
 
 ```yaml
 # Option 1: More generous limits
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: generous-limits
@@ -207,7 +210,7 @@ Connection limits in Istio are not the same as rate limiting. Connection limits 
 
 ```yaml
 # Connection limits (through DestinationRule)
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: limits
@@ -244,6 +247,14 @@ Set up alerts for when connection limits are being hit:
     severity: warning
   annotations:
     summary: "Pending request overflow for {{ $labels.cluster_name }}"
+
+- alert: ActiveRequestOverflow
+  expr: sum(rate(envoy_cluster_upstream_rq_active_overflow[5m])) by (cluster_name) > 0
+  for: 5m
+  labels:
+    severity: warning
+  annotations:
+    summary: "Active request overflow for {{ $labels.cluster_name }}"
 ```
 
 Treat these alerts as signals to either increase limits or investigate the backend service. A healthy mesh should have zero overflows during normal operation, with overflows only occurring during genuine overload situations.
