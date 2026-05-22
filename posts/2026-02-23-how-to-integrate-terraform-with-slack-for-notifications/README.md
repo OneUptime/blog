@@ -24,7 +24,7 @@ Before starting, you will need a Slack workspace with admin access, a Slack inco
 
 The simplest approach uses Slack incoming webhooks combined with Terraform's `null_resource` and `local-exec` provisioner.
 
-First, create an incoming webhook in Slack by going to your Slack workspace settings, selecting Apps, and searching for "Incoming Webhooks." Add the webhook to your desired channel and copy the webhook URL.
+First, create an incoming webhook in Slack by creating or opening a Slack app, enabling Incoming Webhooks, adding a new webhook to your desired channel, and copying the webhook URL.
 
 ```hcl
 # variables.tf
@@ -36,12 +36,6 @@ variable "slack_webhook_url" {
   sensitive   = true
 }
 
-# Define the Slack channel for notifications
-variable "slack_channel" {
-  description = "Slack channel to send notifications to"
-  type        = string
-  default     = "#infrastructure"
-}
 ```
 
 ```hcl
@@ -57,7 +51,7 @@ resource "null_resource" "slack_notification" {
   provisioner "local-exec" {
     command = <<-EOT
       curl -X POST -H 'Content-type: application/json' \
-        --data '{"channel": "${var.slack_channel}", "username": "Terraform Bot", "text": "Infrastructure update completed successfully in workspace: ${terraform.workspace}", "icon_emoji": ":terraform:"}' \
+        --data '{"text": "Infrastructure update completed successfully in workspace: ${terraform.workspace}"}' \
         ${var.slack_webhook_url}
     EOT
   }
@@ -132,7 +126,7 @@ resource "tfe_workspace" "production" {
 
 ## Method 4: Custom Notification Script with Detailed Output
 
-For teams that want richer notifications including plan details, you can create a wrapper script.
+For teams that want richer notifications including plan details, you can create a wrapper script. This example uses `jq` to build valid JSON safely.
 
 ```bash
 #!/bin/bash
@@ -140,10 +134,9 @@ For teams that want richer notifications including plan details, you can create 
 # Script to send detailed Terraform notifications to Slack
 
 WEBHOOK_URL="$1"
-CHANNEL="$2"
-WORKSPACE="$3"
-STATUS="$4"
-PLAN_OUTPUT="$5"
+WORKSPACE="$2"
+STATUS="$3"
+PLAN_OUTPUT="$4"
 
 # Determine the color based on the status
 if [ "$STATUS" = "success" ]; then
@@ -155,38 +148,40 @@ else
 fi
 
 # Build the Slack message payload with attachments
-PAYLOAD=$(cat <<EOF
-{
-  "channel": "${CHANNEL}",
-  "username": "Terraform Bot",
-  "attachments": [
-    {
-      "color": "${COLOR}",
-      "title": "Terraform ${STATUS} - ${WORKSPACE}",
-      "fields": [
-        {
-          "title": "Workspace",
-          "value": "${WORKSPACE}",
-          "short": true
-        },
-        {
-          "title": "Status",
-          "value": "${STATUS}",
-          "short": true
-        },
-        {
-          "title": "Plan Summary",
-          "value": "${PLAN_OUTPUT}",
-          "short": false
-        }
-      ],
-      "footer": "Terraform Automation",
-      "ts": $(date +%s)
-    }
-  ]
-}
-EOF
-)
+PAYLOAD=$(jq -n \
+  --arg color "$COLOR" \
+  --arg title "Terraform ${STATUS} - ${WORKSPACE}" \
+  --arg workspace "$WORKSPACE" \
+  --arg status "$STATUS" \
+  --arg plan_output "$PLAN_OUTPUT" \
+  --argjson ts "$(date +%s)" \
+  '{
+    attachments: [
+      {
+        color: $color,
+        title: $title,
+        fields: [
+          {
+            title: "Workspace",
+            value: $workspace,
+            short: true
+          },
+          {
+            title: "Status",
+            value: $status,
+            short: true
+          },
+          {
+            title: "Plan Summary",
+            value: $plan_output,
+            short: false
+          }
+        ],
+        footer: "Terraform Automation",
+        ts: $ts
+      }
+    ]
+  }')
 
 # Send the notification to Slack
 curl -s -X POST -H 'Content-type: application/json' \
@@ -209,7 +204,6 @@ resource "null_resource" "detailed_slack_notification" {
       # Capture the plan output and send it to Slack
       bash ${path.module}/scripts/notify-slack.sh \
         "${var.slack_webhook_url}" \
-        "${var.slack_channel}" \
         "${terraform.workspace}" \
         "success" \
         "Infrastructure apply completed"
@@ -241,14 +235,12 @@ jobs:
     steps:
       # Notify Slack that a run has started
       - name: Notify Slack - Start
-        uses: slackapi/slack-github-action@v1.24.0
+        uses: slackapi/slack-github-action@v3.0.1
         with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
           payload: |
-            {
-              "text": "Terraform apply started for ${{ github.repository }}"
-            }
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+            text: "Terraform apply started for ${{ github.repository }}"
 
       # Checkout and run Terraform
       - uses: actions/checkout@v4
@@ -264,26 +256,22 @@ jobs:
       # Notify Slack on success
       - name: Notify Slack - Success
         if: success()
-        uses: slackapi/slack-github-action@v1.24.0
+        uses: slackapi/slack-github-action@v3.0.1
         with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
           payload: |
-            {
-              "text": "Terraform apply succeeded for ${{ github.repository }}"
-            }
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+            text: "Terraform apply succeeded for ${{ github.repository }}"
 
       # Notify Slack on failure
       - name: Notify Slack - Failure
         if: failure()
-        uses: slackapi/slack-github-action@v1.24.0
+        uses: slackapi/slack-github-action@v3.0.1
         with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
           payload: |
-            {
-              "text": "Terraform apply FAILED for ${{ github.repository }}"
-            }
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+            text: "Terraform apply FAILED for ${{ github.repository }}"
 ```
 
 ## Best Practices
