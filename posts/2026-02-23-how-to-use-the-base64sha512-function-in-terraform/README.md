@@ -8,7 +8,7 @@ Description: Learn how to use Terraform's base64sha512 function for generating b
 
 ---
 
-The `base64sha512` function in Terraform computes a SHA-512 hash and returns it in base64 encoding. While `base64sha256` is more commonly used (especially for AWS Lambda), `base64sha512` provides stronger hashing for scenarios that require maximum security or when a downstream system specifically expects SHA-512 in base64 format.
+The `base64sha512` function in Terraform computes a SHA-512 hash and returns it in base64 encoding. While `base64sha256` is more commonly used (especially for AWS Lambda), `base64sha512` provides a longer SHA-2 digest for scenarios that require SHA-512 or when a downstream system specifically expects SHA-512 in base64 format.
 
 ## What Does base64sha512 Do?
 
@@ -51,15 +51,12 @@ This compactness is useful when you need to store or transmit hashes in space-co
 
 ### High-Security Content Verification
 
-When you need the strongest available hash for verifying deployment artifacts:
+When you need a SHA-512 hash for verifying deployment artifacts:
 
 ```hcl
 locals {
-  # Read the deployment package
-  deploy_package = file("${path.module}/artifacts/release.tar.gz")
-
   # Generate a base64-encoded SHA-512 hash
-  package_hash = base64sha512(local.deploy_package)
+  package_hash = filebase64sha512("${path.module}/artifacts/release.tar.gz")
 }
 
 resource "null_resource" "deploy" {
@@ -77,9 +74,9 @@ resource "null_resource" "deploy" {
 }
 ```
 
-### Generating Strong Content Signatures
+### Generating Strong Content Hashes
 
-For systems that need base64-encoded signatures for content verification:
+For systems that need base64-encoded hashes for content verification:
 
 ```hcl
 variable "documents" {
@@ -93,8 +90,8 @@ variable "documents" {
 }
 
 locals {
-  # Generate base64 SHA-512 signatures for each document
-  document_signatures = {
+  # Generate base64 SHA-512 hashes for each document
+  document_hashes = {
     for name, filename in var.documents :
     name => {
       file = filename
@@ -103,11 +100,11 @@ locals {
   }
 }
 
-# Store signatures in Parameter Store for verification
-resource "aws_ssm_parameter" "doc_signatures" {
-  for_each = local.document_signatures
+# Store hashes in Parameter Store for verification
+resource "aws_ssm_parameter" "doc_hashes" {
+  for_each = local.document_hashes
 
-  name  = "/${var.environment}/document-signatures/${each.key}"
+  name  = "/${var.environment}/document-hashes/${each.key}"
   type  = "String"
   value = each.value.hash
 
@@ -118,9 +115,9 @@ resource "aws_ssm_parameter" "doc_signatures" {
 }
 ```
 
-### API Payload Signing
+### API Payload Hashing
 
-Some APIs require request signing with base64-encoded hashes:
+Some APIs require request payloads to include base64-encoded hashes:
 
 ```hcl
 locals {
@@ -129,23 +126,22 @@ locals {
     action      = "deploy"
     environment = var.environment
     version     = var.app_version
-    timestamp   = timestamp()
   })
 
-  # Sign the payload with base64 SHA-512
-  payload_signature = base64sha512(local.api_payload)
+  # Hash the payload with base64 SHA-512
+  payload_hash = base64sha512(local.api_payload)
 }
 
-# Store the signed payload for the deployment system to pick up
+# Store the payload and hash for the deployment system to pick up
 resource "aws_s3_object" "deployment_manifest" {
   bucket  = aws_s3_bucket.deployments.id
   key     = "manifests/${var.environment}/latest.json"
   content = local.api_payload
 
   metadata = {
-    # Include the signature in the object metadata
-    signature      = local.payload_signature
-    signature_algo = "sha512-base64"
+    # Include the hash in the object metadata
+    payload_hash = local.payload_hash
+    hash_algo    = "sha512-base64"
   }
 }
 ```
@@ -200,7 +196,7 @@ locals {
   }
 
   # Create a composite hash of all components
-  deployment_signature = base64sha512(
+  deployment_hash = base64sha512(
     join("|", values(local.components))
   )
 }
@@ -209,18 +205,18 @@ output "component_hashes" {
   value = local.components
 }
 
-output "deployment_signature" {
-  value = local.deployment_signature
+output "deployment_hash" {
+  value = local.deployment_hash
 }
 ```
 
-### Webhook Signature Verification
+### Webhook Verification Hash
 
-When setting up webhooks that require SHA-512 signatures:
+When setting up webhooks that require a SHA-512 verification hash:
 
 ```hcl
 variable "webhook_secret" {
-  description = "Secret key for webhook signature verification"
+  description = "Secret key for webhook hash verification"
   type        = string
   sensitive   = true
 }
@@ -249,18 +245,18 @@ resource "aws_ssm_parameter" "webhook_config" {
 Like other hash functions, Terraform provides a file-specific variant:
 
 ```hcl
-# Preferred for file hashing - more efficient
+# Preferred for file hashing, including binary files
 output "file_hash" {
   value = filebase64sha512("${path.module}/large-artifact.zip")
 }
 
-# Equivalent but less efficient
+# Equivalent only for valid UTF-8 text files
 output "file_hash_alt" {
-  value = base64sha512(file("${path.module}/large-artifact.zip"))
+  value = base64sha512(file("${path.module}/config.json"))
 }
 ```
 
-Always prefer `filebase64sha512` when hashing files. It reads the file and computes the hash in a streaming fashion, avoiding loading the entire file content into a Terraform string.
+Always prefer `filebase64sha512` when hashing files. It hashes the file contents directly and works with binary files, while `file()` only accepts valid UTF-8 text.
 
 ## base64sha512 vs base64encode(sha512())
 
@@ -294,8 +290,8 @@ Use `base64sha512` when:
 
 - A specific API or service requires SHA-512
 - You are in a high-security environment that mandates SHA-512
-- You want the strongest available hash for audit and compliance purposes
+- You want a longer SHA-2 digest for audit and compliance purposes
 
 ## Summary
 
-The `base64sha512` function provides the strongest hash available in Terraform in a compact base64 format. While less commonly needed than `base64sha256`, it is the right tool when maximum hash strength is required or when a downstream system specifically expects SHA-512 in base64 encoding. For the more commonly used variant, see [base64sha256](https://oneuptime.com/blog/post/2026-02-23-how-to-use-the-base64sha256-function-in-terraform/view), and for the hex-encoded version, see [sha512](https://oneuptime.com/blog/post/2026-02-23-how-to-use-the-sha512-function-in-terraform/view).
+The `base64sha512` function provides a SHA-512 hash in a compact base64 format. While less commonly needed than `base64sha256`, it is the right tool when SHA-512 is required or when a downstream system specifically expects SHA-512 in base64 encoding. For the more commonly used variant, see [base64sha256](https://oneuptime.com/blog/post/2026-02-23-how-to-use-the-base64sha256-function-in-terraform/view), and for the hex-encoded version, see [sha512](https://oneuptime.com/blog/post/2026-02-23-how-to-use-the-sha512-function-in-terraform/view).
