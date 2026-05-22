@@ -41,7 +41,9 @@ spec:
         command: ["gunicorn"]
         args:
         - "--bind=0.0.0.0:8000"
+        - "--worker-class=gthread"
         - "--workers=4"
+        - "--threads=2"
         - "--timeout=120"
         - "--graceful-timeout=30"
         - "--keep-alive=5"
@@ -55,7 +57,7 @@ spec:
             memory: 2Gi
 ```
 
-The `--keep-alive=5` setting is important. It tells Gunicorn to keep connections alive for 5 seconds, which aligns well with Envoy's default idle timeout. Without keep-alive, Gunicorn closes connections immediately after each request, which defeats Envoy's connection pooling.
+The `--keep-alive=5` setting tells Gunicorn to keep idle persistent connections open for 5 seconds, which helps Envoy reuse upstream connections. This requires a threaded or async worker class; Gunicorn's default sync worker ignores the keep-alive setting and closes connections after each request.
 
 ## Deployment Setup for FastAPI with Uvicorn
 
@@ -158,6 +160,7 @@ FastAPI makes this even cleaner:
 
 ```python
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 
 ready = False
@@ -222,7 +225,7 @@ The startup probe gives the app up to 150 seconds to start, which is plenty for 
 
 ```python
 import requests
-from flask import Flask, request, g
+from flask import Flask, request, g, jsonify
 
 app = Flask(__name__)
 
@@ -312,6 +315,8 @@ Gunicorn handles SIGTERM by default with its worker management:
 # gunicorn.conf.py
 bind = '0.0.0.0:8000'
 workers = 4
+worker_class = 'gthread'
+threads = 2
 timeout = 120
 graceful_timeout = 30
 keepalive = 5
@@ -339,14 +344,14 @@ async def lifespan(app: FastAPI):
 Add a preStop hook in the deployment:
 
 ```yaml
-containers:
-- name: data-api
-  lifecycle:
-    preStop:
-      exec:
-        command: ["/bin/sh", "-c", "sleep 5"]
 spec:
   terminationGracePeriodSeconds: 60
+  containers:
+  - name: data-api
+    lifecycle:
+      preStop:
+        exec:
+          command: ["/bin/sh", "-c", "sleep 5"]
 ```
 
 ## Traffic Management
@@ -373,7 +378,7 @@ spec:
       retryOn: 5xx,reset,connect-failure
 ```
 
-Python ML services often need longer timeouts because inference can take time. Set the Istio timeout higher than Gunicorn's worker timeout.
+Python ML services often need longer timeouts because inference can take time. Set Gunicorn's worker timeout higher than the Istio route timeout, or at least higher than your longest expected request, so Gunicorn does not kill the worker before Envoy times out the request.
 
 ## Circuit Breaking
 
