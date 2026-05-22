@@ -94,14 +94,15 @@ locals {
   )
 }
 
-# Use the combined set in a security group rule
-resource "aws_security_group_rule" "allow_inbound" {
-  type              = "ingress"
+# Use the combined set in security group rules
+resource "aws_vpc_security_group_ingress_rule" "allow_https" {
+  for_each = local.all_allowed_cidrs
+
+  security_group_id = aws_security_group.main.id
+  cidr_ipv4         = each.value
   from_port         = 443
   to_port           = 443
-  protocol          = "tcp"
-  cidr_blocks       = tolist(local.all_allowed_cidrs)
-  security_group_id = aws_security_group.main.id
+  ip_protocol       = "tcp"
 }
 ```
 
@@ -205,6 +206,7 @@ resource "aws_s3_bucket" "logs" {
   for_each = setunion(var.dev_regions, var.prod_regions)
 
   bucket = "my-logs-${each.value}"
+  region = each.value
 
   tags = {
     Region = each.value
@@ -228,10 +230,10 @@ toset([
 ])
 ```
 
-**All elements must be the same type:**
+**All elements must be convertible to a common type:**
 ```hcl
-# This will cause an error because you cannot mix strings and numbers
-# setunion(["a", "b"], [1, 2])  # Error!
+# Primitive values can be converted, but incompatible values will cause an error
+# setunion(["a", "b"], [{ name = "example" }])  # Error!
 ```
 
 **Single argument is allowed:**
