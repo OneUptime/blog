@@ -55,14 +55,14 @@ case $exit_code in
 esac
 ```
 
-This skips the terminal rendering entirely. The plan still runs and takes the same time, but you save the output rendering time.
+This keeps the full plan out of the terminal and CI logs. The plan still runs and Terraform still prepares command output, but you avoid the cost of displaying, capturing, and processing the full log.
 
 ## Saving Plans to Files
 
-Using plan files avoids rendering twice (once during plan, once during apply):
+Using plan files avoids re-planning during apply:
 
 ```bash
-# Generate plan file (no rendering needed)
+# Generate plan file
 terraform plan -out=plan.tfplan
 
 # View the plan separately if needed
@@ -72,7 +72,7 @@ terraform show plan.tfplan
 terraform apply plan.tfplan
 ```
 
-When using `terraform apply plan.tfplan`, Terraform does not re-render the plan. It just applies the saved changes.
+When using `terraform apply plan.tfplan`, Terraform does not create a new plan for approval. It applies the saved changes.
 
 ## Managing Large Outputs in CI/CD
 
@@ -159,7 +159,7 @@ output "networking" {
 
 ## JSON Output for Programmatic Use
 
-JSON output skips human-readable formatting and is faster to generate:
+JSON output skips human-readable formatting and is easier to process programmatically:
 
 ```bash
 # JSON plan output
@@ -197,7 +197,7 @@ terraform show
 # Faster: Query specific resources
 terraform state show aws_instance.web
 
-# Fastest: Use JSON output and filter
+# Alternative: Use JSON output and filter
 terraform show -json | jq '.values.root_module.resources[] | select(.address == "aws_instance.web")'
 ```
 
@@ -265,6 +265,6 @@ resource "aws_iam_policy" "dynamodb_access" {
 
 ## Summary
 
-Output rendering is an often-overlooked aspect of Terraform performance. For large infrastructure, the techniques that help most are: use `-no-color` in CI/CD, save plans to files instead of rendering twice, truncate output for PR comments, use JSON output for programmatic processing, and minimize the number of output blocks. These changes make your Terraform workflows faster and your CI/CD logs more manageable.
+Output rendering is an often-overlooked aspect of Terraform performance. For large infrastructure, the techniques that help most are: use `-no-color` in CI/CD, save plans to files so apply uses exactly the reviewed plan, truncate output for PR comments, use JSON output for programmatic processing, and minimize the number of output blocks. These changes make your Terraform workflows and CI/CD logs more manageable.
 
 For monitoring the infrastructure behind your Terraform outputs, [OneUptime](https://oneuptime.com) provides comprehensive observability and alerting across your entire cloud stack.
