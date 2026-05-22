@@ -52,12 +52,32 @@ resource "aws_vpc" "main" {
   }
 }
 
+resource "aws_subnet" "private_a" {
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = "10.0.1.0/24"
+  availability_zone = "us-east-1a"
+
+  tags = {
+    Tier = "private"
+  }
+}
+
+resource "aws_subnet" "private_b" {
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = "10.0.2.0/24"
+  availability_zone = "us-east-1b"
+
+  tags = {
+    Tier = "private"
+  }
+}
+
 # This data source implicitly depends on the VPC resource
-# because it references aws_vpc.main.id
+# and the subnet resources because it references their IDs
 data "aws_subnets" "private" {
   filter {
-    name   = "vpc-id"
-    values = [aws_vpc.main.id]
+    name   = "subnet-id"
+    values = [aws_subnet.private_a.id, aws_subnet.private_b.id]
   }
 
   tags = {
@@ -74,7 +94,7 @@ resource "aws_lb" "internal" {
 }
 ```
 
-Terraform will create the VPC, then read the subnets data source, then create the load balancer. The order is determined automatically.
+Terraform will create the VPC and subnets, then read the subnets data source, then create the load balancer. The order is determined automatically.
 
 ## When Implicit Dependencies Are Not Enough
 
@@ -127,7 +147,7 @@ data "aws_security_groups" "app_sgs" {
 }
 ```
 
-Note that `depends_on` on a data source forces Terraform to defer reading it until the apply phase. During the plan, Terraform will show the data source values as "known after apply."
+Note that `depends_on` on a data source can cause Terraform to defer reading it until after the specified dependency's pending actions are complete. When that happens, Terraform will show the data source values as "known after apply" during the plan.
 
 ## Data Sources That Depend on Other Data Sources
 
@@ -303,7 +323,7 @@ locals {
 
 1. Prefer implicit dependencies over explicit ones. If you can reference an attribute from a resource in your data source filter, do that instead of using `depends_on`.
 
-2. Be aware of plan-time vs apply-time reads. Data sources without dependencies are read during plan. Data sources with `depends_on` are deferred to apply.
+2. Be aware of plan-time vs apply-time reads. Data sources without dependencies are usually read during plan. Data sources that depend on values or resources with pending changes may be deferred to apply.
 
 3. Use `count` or `for_each` to conditionally skip data source reads that would fail.
 
