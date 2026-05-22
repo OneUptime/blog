@@ -31,13 +31,13 @@ For Terraform specifically, Trivy includes all the rules from tfsec (which Aqua 
 brew install trivy
 
 # Linux (Debian/Ubuntu)
-sudo apt-get install wget apt-transport-https gnupg lsb-release
+sudo apt-get install wget gnupg
 wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
-echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee /etc/apt/sources.list.d/trivy.list
+echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" | sudo tee /etc/apt/sources.list.d/trivy.list
 sudo apt-get update && sudo apt-get install trivy
 
 # Docker
-docker run --rm -v "$(pwd):/src" aquasec/trivy config /src
+docker run --rm -v "$(pwd):/src" aquasec/trivy:0.70.0 config /src
 
 # Verify
 trivy --version
@@ -96,7 +96,7 @@ terraform plan -out=tfplan
 terraform show -json tfplan > tfplan.json
 
 # Scan the plan
-trivy config --tf-vars terraform.tfvars tfplan.json
+trivy config tfplan.json
 ```
 
 This catches issues that static file scanning might miss, like dynamically computed values that result in insecure configurations.
@@ -140,37 +140,86 @@ Trivy supports custom policies written in Rego (the Open Policy Agent language):
 
 ```rego
 # policies/require_encryption.rego
+# METADATA
+# title: Terraform encryption and tagging requirements
+# description: Require encryption and ownership tags on selected Terraform resources
+# scope: package
+# schemas:
+#   - input: schema["terraform-raw"]
+# custom:
+#   id: USR-TFRAW-0001
+#   severity: HIGH
+#   input:
+#     selector:
+#     - type: terraform-raw
 package custom.terraform.aws
 
+import rego.v1
+
 # Deny unencrypted EBS volumes
-deny[msg] {
-    resource := input.resource.aws_ebs_volume[name]
-    not resource.encrypted
-    msg := sprintf("EBS volume '%s' must have encryption enabled", [name])
+deny contains res if {
+    some module in input.modules
+    some block in module.blocks
+    block.kind == "resource"
+    block.type == "aws_ebs_volume"
+    not block.attributes.encrypted
+    res := result.new("EBS volume must have encryption enabled", block)
+}
+
+deny contains res if {
+    some module in input.modules
+    some block in module.blocks
+    block.kind == "resource"
+    block.type == "aws_ebs_volume"
+    block.attributes.encrypted.value == false
+    res := result.new("EBS volume must have encryption enabled", block.attributes.encrypted)
 }
 
 # Deny RDS instances without encryption
-deny[msg] {
-    resource := input.resource.aws_db_instance[name]
-    not resource.storage_encrypted
-    msg := sprintf("RDS instance '%s' must have storage encryption enabled", [name])
+deny contains res if {
+    some module in input.modules
+    some block in module.blocks
+    block.kind == "resource"
+    block.type == "aws_db_instance"
+    not block.attributes.storage_encrypted
+    res := result.new("RDS instance must have storage encryption enabled", block)
+}
+
+deny contains res if {
+    some module in input.modules
+    some block in module.blocks
+    block.kind == "resource"
+    block.type == "aws_db_instance"
+    block.attributes.storage_encrypted.value == false
+    res := result.new("RDS instance must have storage encryption enabled", block.attributes.storage_encrypted)
 }
 
 # Require specific tags on all resources
-deny[msg] {
-    resource := input.resource[type][name]
+deny contains res if {
+    some module in input.modules
+    some block in module.blocks
+    block.kind == "resource"
     required_tags := {"Environment", "Team", "CostCenter"}
-    provided_tags := {tag | resource.tags[tag]}
+    not block.attributes.tags
+    res := result.new(sprintf("Resource %q is missing required tags: %v", [block.type, required_tags]), block)
+}
+
+deny contains res if {
+    some module in input.modules
+    some block in module.blocks
+    block.kind == "resource"
+    required_tags := {"Environment", "Team", "CostCenter"}
+    provided_tags := object.keys(block.attributes.tags.value)
     missing := required_tags - provided_tags
     count(missing) > 0
-    msg := sprintf("Resource '%s.%s' is missing required tags: %v", [type, name, missing])
+    res := result.new(sprintf("Resource %q is missing required tags: %v", [block.type, missing]), block.attributes.tags)
 }
 ```
 
 Run with custom policies:
 
 ```bash
-trivy config --policy ./policies --namespaces custom .
+trivy config --config-check ./policies --check-namespaces custom --misconfig-scanners terraform --raw-config-scanners terraform .
 ```
 
 ## Configuration File
@@ -188,29 +237,29 @@ scan:
     - misconfig
     - secret
 
-misconfig:
+misconfiguration:
   # Terraform-specific settings
   terraform:
     vars:
       - terraform.tfvars
       - production.tfvars
 
+rego:
   # Custom policy directory
-  policy:
+  check:
     - ./policies
-
-  # Skip specific checks
-  skip-check:
-    - AVD-AWS-0088  # Handled at org level
+  namespaces:
+    - custom
 
 secret:
   # Custom secret patterns
   config: .trivy-secret.yaml
 
-output:
-  - json
+# Put check IDs such as AVD-AWS-0088 in this file to ignore them.
+ignorefile: .trivyignore
 
 format: json
+output: trivy-results.json
 ```
 
 ## CI/CD Integration
@@ -229,11 +278,14 @@ on:
 jobs:
   trivy-scan:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Run Trivy config scan
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: 'config'
           scan-ref: '.'
@@ -242,7 +294,7 @@ jobs:
           output: 'trivy-results.sarif'
 
       - name: Run Trivy secret scan
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: 'fs'
           scanners: 'secret'
@@ -250,7 +302,7 @@ jobs:
           format: 'table'
 
       - name: Upload Trivy SARIF
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: 'trivy-results.sarif'
