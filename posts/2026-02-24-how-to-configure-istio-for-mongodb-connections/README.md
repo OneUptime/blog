@@ -72,7 +72,7 @@ spec:
       targetPort: 27017
 ```
 
-The port name `tcp-mongo` tells Istio to handle this as TCP traffic. You could also use just `mongo` as the port name since Istio recognizes it, but sticking with the `tcp-` prefix is more explicit.
+The port name `tcp-mongo` tells Istio to handle this as TCP traffic. Istio also has experimental Mongo protocol support behind feature flags, but sticking with the `tcp-` prefix is more explicit and keeps the traffic opaque.
 
 ## Handling MongoDB Replica Sets
 
@@ -148,7 +148,7 @@ spec:
       mode: ISTIO_MUTUAL
 ```
 
-MongoDB drivers typically maintain connection pools, and a single application instance might hold 50-100 connections. The `maxConnections` value should account for all your application instances connecting to each MongoDB member.
+MongoDB drivers typically maintain connection pools, and a single application instance might hold 50-100 connections. The `maxConnections` value should account for the number of connections each client-side proxy is allowed to open to each MongoDB member.
 
 ## VirtualService for TCP Routing
 
@@ -188,28 +188,15 @@ spec:
     - "*.mongodb.net"
   ports:
     - number: 27017
-      name: tcp-mongo
-      protocol: TCP
+      name: tls-mongo
+      protocol: TLS
   location: MESH_EXTERNAL
   resolution: NONE
 ```
 
-The wildcard host `*.mongodb.net` covers the SRV-based connection strings that Atlas uses. MongoDB Atlas clusters have multiple hosts like `shard-00-00.abc.mongodb.net`, so the wildcard is necessary.
+The wildcard host `*.mongodb.net` covers the hostnames returned from the SRV-based connection strings that Atlas uses. MongoDB Atlas clusters have multiple hosts like `shard-00-00.abc.mongodb.net`, so the wildcard is necessary. The MongoDB driver still performs the SRV and TXT DNS lookups itself; the ServiceEntry allows the sidecar to route the resulting TLS connections.
 
-Add a DestinationRule for TLS since Atlas requires encrypted connections:
-
-```yaml
-apiVersion: networking.istio.io/v1
-kind: DestinationRule
-metadata:
-  name: mongodb-atlas-tls
-  namespace: database
-spec:
-  host: "*.mongodb.net"
-  trafficPolicy:
-    tls:
-      mode: SIMPLE
-```
+Do not add an Istio TLS-origination DestinationRule when you are using `mongodb+srv://` or enabling TLS in the MongoDB driver. Atlas connection strings already enable TLS, and setting `tls.mode: SIMPLE` in Istio would ask the sidecar to originate TLS for traffic that the driver is already encrypting.
 
 ## Authorization Policy for MongoDB
 
@@ -237,9 +224,9 @@ spec:
             ports: ["27017"]
 ```
 
-## Dealing with Server-First Protocols
+## Dealing with Protocol Sniffing
 
-Like MySQL, MongoDB uses a server-first protocol where the server sends data before the client. This has historically caused issues with Istio's protocol sniffing. The fix is simple: always explicitly name your ports with the `tcp-` prefix.
+MongoDB uses a request-response wire protocol over TCP, so the client sends the first MongoDB message after the TCP or TLS connection is established. Istio still cannot interpret MongoDB as HTTP, so the fix is simple: explicitly name your in-mesh MongoDB ports with the `tcp-` prefix.
 
 If you are running into connection issues, verify that Istio is treating the traffic as TCP:
 
@@ -247,7 +234,7 @@ If you are running into connection issues, verify that Istio is treating the tra
 istioctl proxy-config listener <pod-name> -n database --port 27017 -o json
 ```
 
-You should see a `tcpProxy` filter chain, not an `httpConnectionManager`.
+You should see an `envoy.filters.network.tcp_proxy` filter chain, not an `envoy.filters.network.http_connection_manager`.
 
 ## Sidecar Configuration to Limit Scope
 
@@ -287,7 +274,7 @@ You can set up alerts when connection counts spike or when the total connections
 A few things that trip people up when running MongoDB behind Istio:
 
 1. Replica set members must be individually addressable. Use a headless Service with a StatefulSet.
-2. MongoDB SRV records (used by `mongodb+srv://` connection strings) need DNS resolution to work through the sidecar. Make sure your ServiceEntry covers all the hostnames.
+2. MongoDB SRV records (used by `mongodb+srv://` connection strings) must be resolvable by the application. Make sure your ServiceEntry covers the hostnames returned by those DNS records.
 3. Long-lived connections are normal for MongoDB. Set the `idleTimeout` in your DestinationRule to at least 30 minutes.
 4. MongoDB uses a heartbeat between replica set members every 2 seconds. Do not set aggressive connection timeouts that would interfere with this.
 
