@@ -35,7 +35,7 @@ HIPAA requires that only authorized persons and software programs have access to
 Start by denying all traffic to PHI-containing namespaces:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: default-deny
@@ -47,7 +47,7 @@ spec:
 Then allow specific access patterns:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: patient-records-access
@@ -90,7 +90,7 @@ spec:
 For emergency access procedures (a HIPAA requirement), you can create a special authorization policy:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: emergency-access
@@ -107,7 +107,7 @@ spec:
               - "cluster.local/ns/emergency/sa/emergency-access"
       when:
         - key: request.headers[x-emergency-token]
-          notValues: [""]
+          values: ["*"]
 ```
 
 This allows emergency access when a special token is provided, while still requiring the correct service identity.
@@ -119,7 +119,7 @@ HIPAA requires audit controls that record and examine access to ePHI. Istio's ac
 Enable comprehensive access logging for PHI namespaces:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: phi-audit-logging
@@ -130,7 +130,7 @@ spec:
         - name: envoy
 ```
 
-Configure a JSON log format that captures all the audit-relevant fields:
+Configure a JSON log format that captures the audit-relevant fields:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -139,9 +139,22 @@ spec:
   meshConfig:
     accessLogFile: /dev/stdout
     accessLogEncoding: JSON
+    accessLogFormat: |
+      {
+        "timestamp": "%START_TIME%",
+        "source_identity": "%DOWNSTREAM_PEER_URI_SAN%",
+        "destination_service": "%UPSTREAM_CLUSTER_RAW%",
+        "method": "%REQ(:METHOD)%",
+        "path": "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%",
+        "response_code": "%RESPONSE_CODE%",
+        "request_id": "%REQ(X-REQUEST-ID)%",
+        "duration_ms": "%DURATION%",
+        "bytes_received": "%BYTES_RECEIVED%",
+        "bytes_sent": "%BYTES_SENT%"
+      }
 ```
 
-The default JSON format includes these HIPAA-relevant fields:
+This format includes these HIPAA-relevant fields:
 
 - Source identity (who accessed the data)
 - Destination service (which system was accessed)
@@ -150,7 +163,7 @@ The default JSON format includes these HIPAA-relevant fields:
 - Timestamp (when the access occurred)
 - Request duration and bytes transferred
 
-Ship audit logs to a tamper-proof store. HIPAA requires that audit logs be protected from modification:
+Ship audit logs to a tamper-resistant store. For example, use an S3 bucket with versioning and Object Lock configured for your required retention period, then send logs to that bucket:
 
 ```yaml
 apiVersion: v1
@@ -170,16 +183,16 @@ data:
         s3_key_format     /audit/%Y/%m/%d/%H/$TAG
 ```
 
-HIPAA requires that audit logs be retained for at least 6 years. Configure your storage accordingly.
+HIPAA requires Security Rule documentation to be retained for 6 years. Set audit log retention based on your risk analysis and organizational policy, and make sure the configuration documentation is retained for the HIPAA documentation period.
 
 ## Transmission Security (164.312(e))
 
-HIPAA requires that ePHI transmitted over electronic networks is encrypted. Istio's mTLS provides this.
+HIPAA requires technical security measures to guard against unauthorized access to ePHI transmitted over electronic networks. Istio's mTLS provides encryption and peer authentication for service-to-service traffic.
 
 Enforce strict mTLS for all PHI namespaces:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: strict-mtls
@@ -188,7 +201,7 @@ spec:
   mtls:
     mode: STRICT
 ---
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: strict-mtls
@@ -197,7 +210,7 @@ spec:
   mtls:
     mode: STRICT
 ---
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: strict-mtls
@@ -210,7 +223,7 @@ spec:
 For external-facing gateways that handle PHI, configure TLS with strong settings:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: ehr-gateway
@@ -241,7 +254,7 @@ HIPAA requires mechanisms to protect ePHI from improper alteration or destructio
 Use authorization policies to restrict write access:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: restrict-writes
@@ -259,17 +272,18 @@ spec:
               - "cluster.local/ns/admin/sa/admin-service"
       to:
         - operation:
+            ports: ["8080"]
             methods: ["POST", "PUT", "DELETE", "PATCH"]
 ```
 
-This denies write operations from any service that isn't explicitly authorized, preventing unauthorized modification of patient records.
+This denies write operations on the patient records API port from any service that isn't explicitly authorized, preventing unauthorized modification of patient records.
 
 ## Person or Entity Authentication (164.312(d))
 
 HIPAA requires verification of the identity of any person or entity seeking access to ePHI. Istio provides this through mTLS certificates (for service-to-service) and JWT validation (for user authentication).
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: RequestAuthentication
 metadata:
   name: ehr-user-auth
@@ -289,7 +303,7 @@ spec:
 Combine with an authorization policy that checks user roles from the JWT:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: role-based-phi-access
