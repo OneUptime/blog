@@ -214,14 +214,14 @@ resource "aws_security_group" "office_access" {
 }
 ```
 
-### Fetching SSL Certificate Information
+### Inspecting Response Headers
 
 ```hcl
 data "http" "cert_check" {
   url = "https://app.example.com"
 }
 
-# The response_headers can tell you about the connection
+# The response_headers can tell you about the HTTP response
 
 output "server_header" {
   value = lookup(data.http.cert_check.response_headers, "Server", "unknown")
@@ -291,7 +291,7 @@ locals {
 
 ## Error Handling
 
-By default, the `http` data source fails if the request returns a non-success status code. You can customize this:
+The `http` data source exposes the response status code, so you can validate expected statuses with `status_code`, `check` blocks, or lifecycle postconditions. You can also configure retries for client errors, such as connection failures, and most 5xx responses:
 
 ```hcl
 data "http" "maybe_exists" {
@@ -306,7 +306,7 @@ data "http" "maybe_exists" {
 }
 ```
 
-For handling potential 404s or other expected failures, consider wrapping the data source in a conditional:
+For handling optional requests or expected 404s, combine a conditional data source with a status code check before parsing the body:
 
 ```hcl
 variable "check_external_api" {
@@ -320,15 +320,19 @@ data "http" "optional_config" {
 }
 
 locals {
-  external_config = var.check_external_api ? jsondecode(data.http.optional_config[0].response_body) : {}
+  external_config = (
+    var.check_external_api && data.http.optional_config[0].status_code == 200
+    ? jsondecode(data.http.optional_config[0].response_body)
+    : {}
+  )
 }
 ```
 
 ## Limitations
 
-1. **GET requests only.** The `http` data source only supports HTTP GET. For POST, PUT, or DELETE, use `local-exec` with curl or the `restapi` provider.
+1. **Limited HTTP methods.** The `http` data source supports GET, HEAD, and POST. POST support is intended for read-only URLs, such as submitting a search. For PUT, PATCH, or DELETE, use `local-exec` with curl or a provider designed for that API.
 
-2. **No authentication beyond headers.** OAuth flows, mutual TLS, and other complex auth mechanisms are not supported. You need to pass tokens directly in headers.
+2. **Limited authentication workflows.** Headers, custom CA certificates, and client certificates are supported, but OAuth flows and other complex auth mechanisms are not handled for you. You need to pass tokens directly in headers.
 
 3. **Runs during plan.** The HTTP request happens during `terraform plan`, which means the endpoint must be reachable from wherever Terraform runs.
 
