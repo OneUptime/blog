@@ -31,6 +31,7 @@ resource "aws_vpc" "main" {
 }
 
 # Public subnets - only for load balancers and bastion hosts
+# Associate these with a route table that has a route to an internet gateway
 resource "aws_subnet" "public" {
   count             = length(var.availability_zones)
   vpc_id            = aws_vpc.main.id
@@ -103,30 +104,6 @@ resource "aws_security_group" "alb" {
   description = "Security group for Application Load Balancer"
   vpc_id      = aws_vpc.main.id
 
-  ingress {
-    description = "HTTPS from internet"
-    from_port   = 443
-    to_port     = 443
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  ingress {
-    description = "HTTP from internet (redirect to HTTPS)"
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  egress {
-    description     = "To application servers only"
-    from_port       = 8080
-    to_port         = 8080
-    protocol        = "tcp"
-    security_groups = [aws_security_group.app.id]
-  }
-
   tags = {
     Name = "alb-sg"
   }
@@ -137,30 +114,6 @@ resource "aws_security_group" "app" {
   name        = "app-sg"
   description = "Security group for application servers"
   vpc_id      = aws_vpc.main.id
-
-  ingress {
-    description     = "From ALB only"
-    from_port       = 8080
-    to_port         = 8080
-    protocol        = "tcp"
-    security_groups = [aws_security_group.alb.id]
-  }
-
-  egress {
-    description     = "To database"
-    from_port       = 5432
-    to_port         = 5432
-    protocol        = "tcp"
-    security_groups = [aws_security_group.database.id]
-  }
-
-  egress {
-    description = "HTTPS for external API calls and package updates"
-    from_port   = 443
-    to_port     = 443
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
 
   tags = {
     Name = "app-sg"
@@ -173,20 +126,75 @@ resource "aws_security_group" "database" {
   description = "Security group for databases"
   vpc_id      = aws_vpc.main.id
 
-  ingress {
-    description     = "PostgreSQL from app servers only"
-    from_port       = 5432
-    to_port         = 5432
-    protocol        = "tcp"
-    security_groups = [aws_security_group.app.id]
-  }
-
   # No egress rules needed for most databases
   # Add specific rules if the database needs outbound access
 
   tags = {
     Name = "database-sg"
   }
+}
+
+resource "aws_vpc_security_group_ingress_rule" "alb_https" {
+  security_group_id = aws_security_group.alb.id
+  description       = "HTTPS from internet"
+  from_port         = 443
+  to_port           = 443
+  ip_protocol       = "tcp"
+  cidr_ipv4         = "0.0.0.0/0"
+}
+
+resource "aws_vpc_security_group_ingress_rule" "alb_http" {
+  security_group_id = aws_security_group.alb.id
+  description       = "HTTP from internet (redirect to HTTPS)"
+  from_port         = 80
+  to_port           = 80
+  ip_protocol       = "tcp"
+  cidr_ipv4         = "0.0.0.0/0"
+}
+
+resource "aws_vpc_security_group_egress_rule" "alb_to_app" {
+  security_group_id            = aws_security_group.alb.id
+  description                  = "To application servers only"
+  from_port                    = 8080
+  to_port                      = 8080
+  ip_protocol                  = "tcp"
+  referenced_security_group_id = aws_security_group.app.id
+}
+
+resource "aws_vpc_security_group_ingress_rule" "app_from_alb" {
+  security_group_id            = aws_security_group.app.id
+  description                  = "From ALB only"
+  from_port                    = 8080
+  to_port                      = 8080
+  ip_protocol                  = "tcp"
+  referenced_security_group_id = aws_security_group.alb.id
+}
+
+resource "aws_vpc_security_group_egress_rule" "app_to_database" {
+  security_group_id            = aws_security_group.app.id
+  description                  = "To database"
+  from_port                    = 5432
+  to_port                      = 5432
+  ip_protocol                  = "tcp"
+  referenced_security_group_id = aws_security_group.database.id
+}
+
+resource "aws_vpc_security_group_egress_rule" "app_https" {
+  security_group_id = aws_security_group.app.id
+  description       = "HTTPS for external API calls and package updates"
+  from_port         = 443
+  to_port           = 443
+  ip_protocol       = "tcp"
+  cidr_ipv4         = "0.0.0.0/0"
+}
+
+resource "aws_vpc_security_group_ingress_rule" "database_from_app" {
+  security_group_id            = aws_security_group.database.id
+  description                  = "PostgreSQL from app servers only"
+  from_port                    = 5432
+  to_port                      = 5432
+  ip_protocol                  = "tcp"
+  referenced_security_group_id = aws_security_group.app.id
 }
 ```
 
@@ -347,23 +355,24 @@ resource "aws_security_group" "vpc_endpoints" {
   description = "Security group for VPC interface endpoints"
   vpc_id      = aws_vpc.main.id
 
-  ingress {
-    description = "HTTPS from VPC"
-    from_port   = 443
-    to_port     = 443
-    protocol    = "tcp"
-    cidr_blocks = [aws_vpc.main.cidr_block]
-  }
-
   tags = {
     Name = "vpc-endpoints-sg"
   }
 }
+
+resource "aws_vpc_security_group_ingress_rule" "vpc_endpoints_https" {
+  security_group_id = aws_security_group.vpc_endpoints.id
+  description       = "HTTPS from VPC"
+  from_port         = 443
+  to_port           = 443
+  ip_protocol       = "tcp"
+  cidr_ipv4         = aws_vpc.main.cidr_block
+}
 ```
 
-## Restrict NAT Gateway Access
+## Route Private Subnet Egress Through NAT Gateway
 
-Control what private subnet resources can access via the NAT gateway:
+Use security group egress rules to control what private subnet resources can access, then route outbound internet traffic through the NAT gateway:
 
 ```hcl
 resource "aws_nat_gateway" "main" {
