@@ -16,7 +16,7 @@ ARM templates use JSON, which can be verbose and difficult to read for complex d
 
 ## Understanding the Migration Process
 
-ARM template deployments track resources through Azure deployment history. Unlike CloudFormation, ARM deployments do not strictly own the resources in the same way. Deleting a deployment does not delete the resources by default (unless you use Complete mode). This makes the migration simpler because you can import resources into Terraform without needing to carefully decouple them from ARM first.
+ARM template deployments track resources through Azure deployment history. Unlike CloudFormation, ARM deployments do not strictly own the resources in the same way. Deleting a deployment history record does not delete the resources. Complete mode is different: it can delete resources during a deployment when existing resources in the target resource group are not included in the template. This makes the migration simpler because you can import resources into Terraform without needing to carefully decouple them from ARM first.
 
 ## Step 1: Inventory ARM Deployments
 
