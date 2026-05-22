@@ -67,7 +67,7 @@ For each pod without a sidecar, decide whether to:
 Enable injection for namespaces that should be in the mesh:
 
 ```bash
-kubectl label namespace production istio-injection=enabled
+kubectl label namespace production istio-injection=enabled --overwrite
 kubectl rollout restart deployment -n production
 ```
 
@@ -149,9 +149,8 @@ kubectl exec deploy/sleep -n test-namespace -- curl -s -o /dev/null -w "%{http_c
 kubectl exec deploy/sleep -n other-namespace -- curl -s -o /dev/null -w "%{http_code}" http://httpbin.test-namespace:8000/get
 
 # Test from outside the mesh (should fail with STRICT)
-kubectl run no-sidecar --image=curlimages/curl --labels="sidecar.istio.io/inject=false" --restart=Never -- curl -s -m5 http://httpbin.test-namespace:8000/get
+kubectl run no-sidecar --image=curlimages/curl --labels="sidecar.istio.io/inject=false" --restart=Never --attach --rm -- curl -s -m5 http://httpbin.test-namespace:8000/get
 echo $?  # Should be non-zero (connection failed)
-kubectl delete pod no-sidecar
 ```
 
 ## Step 5: Monitor for Connection Failures
