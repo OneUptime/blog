@@ -4,19 +4,19 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Amazon RDS, AWS, Service Mesh, Kubernetes, Database
 
-Description: How to configure Istio to connect to Amazon RDS instances from Kubernetes pods using ServiceEntries, TLS origination, and proper timeout management.
+Description: How to configure Istio to connect to Amazon RDS instances from Kubernetes pods using ServiceEntries, database client TLS, and proper timeout management.
 
 ---
 
-When your application runs in Kubernetes with Istio but your database is on Amazon RDS, you need to tell Istio about this external service. By default, Istio blocks or does not know how to route traffic to services outside the mesh. ServiceEntries, DestinationRules, and proper TLS configuration bridge this gap.
+When your application runs in Kubernetes with Istio but your database is on Amazon RDS, you need to tell Istio about this external service. Istio allows unknown external services by default, but many production meshes switch to `REGISTRY_ONLY` mode, where unknown outbound destinations are blocked. ServiceEntries, DestinationRules, and proper database TLS configuration bridge this gap.
 
 This post covers the practical setup for connecting to RDS instances - whether it is PostgreSQL, MySQL, or Aurora - through the Istio service mesh.
 
 ## Why You Need ServiceEntries for RDS
 
-When Istio is running in REGISTRY_ONLY mode (the recommended production setting), the sidecar proxy only knows about services registered in the mesh. An RDS endpoint like `mydb.abc123.us-east-1.rds.amazonaws.com` is not in the mesh, so the proxy drops the traffic.
+When Istio is running in REGISTRY_ONLY mode (a common production setting), the sidecar proxy only knows about services registered in the mesh. An RDS endpoint like `mydb.abc123.us-east-1.rds.amazonaws.com` is not in the mesh, so the proxy drops the traffic.
 
-Even in ALLOW_ANY mode (where unknown destinations are passed through), you lose visibility and control. ServiceEntries let you register RDS endpoints with the mesh so you get metrics, access control, and TLS management.
+Even in ALLOW_ANY mode (where unknown destinations are passed through), you lose visibility and control. ServiceEntries let you register RDS endpoints with the mesh so you get metrics and traffic policy for the destination.
 
 Check your current outbound policy:
 
@@ -49,9 +49,11 @@ Key fields:
 - `location: MESH_EXTERNAL`: Tells Istio this is outside the mesh
 - `resolution: DNS`: Istio should resolve the hostname using DNS
 
-## DestinationRule for TLS
+## DestinationRule and Database TLS
 
-RDS supports SSL/TLS connections, and you should always use them, especially when traffic leaves your VPC or crosses availability zones. Configure TLS origination:
+RDS supports SSL/TLS connections, and you should always use them, especially when traffic leaves your VPC or crosses availability zones. For PostgreSQL and MySQL, configure TLS in the database client or driver. Do not use Istio TLS origination for the normal RDS database port, because the proxy would start a TLS handshake at the TCP layer while PostgreSQL and MySQL negotiate TLS inside their database protocols.
+
+Use a DestinationRule for connection pool settings:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -67,29 +69,13 @@ spec:
         maxConnections: 100
         connectTimeout: 10s
         idleTimeout: 1800s
-    tls:
-      mode: SIMPLE
 ```
 
-The `SIMPLE` TLS mode means the sidecar initiates a TLS handshake with RDS. The sidecar acts as the TLS client. RDS presents its server certificate, and the sidecar validates it against the system CA store.
+The application remains the TLS client for the database connection. RDS presents its server certificate, and the database driver validates it against the CA bundle or trust store configured in the application container.
 
 If you need to pin the RDS CA certificate specifically (recommended for production):
 
-```yaml
-apiVersion: networking.istio.io/v1
-kind: DestinationRule
-metadata:
-  name: rds-postgres-tls
-  namespace: app
-spec:
-  host: mydb.abc123.us-east-1.rds.amazonaws.com
-  trafficPolicy:
-    tls:
-      mode: SIMPLE
-      caCertificates: /etc/ssl/certs/rds-ca-bundle.pem
-```
-
-You would mount the RDS CA bundle into the sidecar using a ConfigMap or Secret.
+Mount the RDS CA bundle into the application container using a ConfigMap or Secret, then configure the PostgreSQL or MySQL client to use that CA bundle and require server certificate verification.
 
 ## Aurora Cluster Endpoints
 
@@ -143,8 +129,6 @@ spec:
         maxConnections: 50
         connectTimeout: 10s
         idleTimeout: 1800s
-    tls:
-      mode: SIMPLE
 ---
 apiVersion: networking.istio.io/v1
 kind: DestinationRule
@@ -159,8 +143,6 @@ spec:
         maxConnections: 100
         connectTimeout: 10s
         idleTimeout: 1800s
-    tls:
-      mode: SIMPLE
 ```
 
 The reader endpoint gets more connections because read traffic is typically higher volume.
@@ -213,7 +195,7 @@ When using RDS Proxy with Istio, you have two layers of connection pooling. Keep
 
 RDS Multi-AZ setups have automatic failover. During a failover event, the DNS endpoint resolves to a different IP address. Istio's DNS resolution handles this, but there is a caching consideration.
 
-Envoy caches DNS results based on the TTL. RDS endpoints have a 5-second TTL, so Envoy will re-resolve quickly after a failover. But existing connections to the old primary will be broken. Make sure your application handles connection errors gracefully and retries.
+Envoy caches DNS results based on the TTL. Aurora endpoints use a short TTL, and AWS recommends keeping application DNS caches for RDS endpoints to no more than 60 seconds. Existing connections to the old primary will still be broken during failover, so make sure your application handles connection errors gracefully and retries.
 
 To verify DNS resolution is working:
 
@@ -223,30 +205,24 @@ istioctl proxy-config endpoint <app-pod> -n app --cluster "outbound|5432||mydb.a
 
 ## Access Control
 
-Even though RDS is outside the mesh, you can control which in-mesh services are allowed to connect:
+Even though RDS is outside the mesh, you can limit which workloads get sidecar configuration for the RDS endpoint:
 
 ```yaml
-apiVersion: security.istio.io/v1
-kind: AuthorizationPolicy
+apiVersion: networking.istio.io/v1
+kind: Sidecar
 metadata:
-  name: rds-egress-policy
+  name: backend-rds-egress
   namespace: app
 spec:
-  action: ALLOW
-  rules:
-    - from:
-        - source:
-            principals:
-              - cluster.local/ns/app/sa/backend-api
-              - cluster.local/ns/app/sa/migration-runner
-      to:
-        - operation:
-            hosts:
-              - mydb.abc123.us-east-1.rds.amazonaws.com
-            ports: ["5432"]
+  workloadSelector:
+    labels:
+      rds-egress: "enabled"
+  egress:
+    - hosts:
+        - "./mydb.abc123.us-east-1.rds.amazonaws.com"
 ```
 
-This is an egress-side policy that only allows specific service accounts to connect to RDS.
+Apply the `rds-egress: "enabled"` label only to workloads that should connect to RDS. For hard egress enforcement, also use Kubernetes NetworkPolicy, security groups, or route database traffic through an Istio egress gateway and apply policy there. A namespace-level AuthorizationPolicy on application workloads is not an outbound firewall, and `operation.hosts` only applies to HTTP traffic.
 
 ## Network Considerations
 
@@ -276,8 +252,8 @@ If connections to RDS fail through Istio:
 
 1. Verify the ServiceEntry is applied: `kubectl get serviceentry -n app`
 2. Check that DNS resolves from the sidecar: `istioctl proxy-config endpoint <pod> -n app | grep rds`
-3. Look at proxy logs for TLS errors: `kubectl logs <pod> -c istio-proxy --tail=50`
+3. Look at proxy logs for connection errors: `kubectl logs <pod> -c istio-proxy --tail=50`
 4. Test connectivity without the sidecar by running a pod without injection and trying to connect
 5. Ensure the RDS security group allows inbound traffic from your EKS nodes
 
-Connecting to RDS through Istio is straightforward once the ServiceEntry and DestinationRule are in place. You get connection metrics, egress access control, and TLS management without any application changes.
+Connecting to RDS through Istio is straightforward once the ServiceEntry and DestinationRule are in place. You get connection metrics and mesh traffic policy while keeping database TLS configured in the application.
