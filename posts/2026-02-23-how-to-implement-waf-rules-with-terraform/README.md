@@ -20,7 +20,7 @@ The Web ACL is the container for all your WAF rules. Start with a default action
 resource "aws_wafv2_web_acl" "main" {
   name        = "${var.project}-waf"
   description = "WAF rules for ${var.project}"
-  scope       = "REGIONAL"  # Use CLOUDFRONT for CloudFront distributions
+  scope       = "REGIONAL"  # Use CLOUDFRONT for CloudFront distributions with a us-east-1 provider
 
   default_action {
     allow {}
@@ -388,7 +388,7 @@ rule {
 
 ## Associate WAF with Resources
 
-Attach the Web ACL to your ALB or API Gateway:
+Attach the Web ACL to your ALB, API Gateway REST API stage, or CloudFront distribution:
 
 ```hcl
 # Associate with ALB
@@ -397,23 +397,31 @@ resource "aws_wafv2_web_acl_association" "alb" {
   web_acl_arn  = aws_wafv2_web_acl.main.arn
 }
 
-# Associate with API Gateway
+# Associate with API Gateway REST API
 resource "aws_wafv2_web_acl_association" "api_gateway" {
-  resource_arn = aws_apigatewayv2_stage.main.arn
+  resource_arn = aws_api_gateway_stage.main.arn
   web_acl_arn  = aws_wafv2_web_acl.main.arn
+}
+
+# In your CloudFront distribution resource, set web_acl_id to the WAFv2 Web ACL ARN.
+# The Web ACL must use scope = "CLOUDFRONT" and be created through a us-east-1 provider.
+resource "aws_cloudfront_distribution" "main" {
+  # ... existing required distribution configuration ...
+
+  web_acl_id = aws_wafv2_web_acl.main.arn
 }
 ```
 
 ## Enable WAF Logging
 
-Log all WAF decisions for security analysis:
+Configure WAF logging for security analysis:
 
 ```hcl
 resource "aws_wafv2_web_acl_logging_configuration" "main" {
   log_destination_configs = [aws_cloudwatch_log_group.waf.arn]
   resource_arn            = aws_wafv2_web_acl.main.arn
 
-  # Only log blocked requests to reduce volume
+  # Only log blocked and counted requests to reduce volume
   logging_filter {
     default_behavior = "DROP"
 
