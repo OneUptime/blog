@@ -156,7 +156,7 @@ Instead of guessing what access is needed, build policies from observed traffic.
 # Enable access logging if not already on
 kubectl get configmap istio -n istio-system -o yaml | grep accessLogFile
 
-# Check recent traffic to a service
+# Check recent traffic to a service if access logs use JSON encoding
 kubectl logs deploy/api-server -c istio-proxy --tail=100 | jq -r '[.source_workload, .method, .path] | @tsv' 2>/dev/null | sort | uniq -c | sort -rn
 ```
 
@@ -200,6 +200,7 @@ spec:
   rules:
     - to:
         - operation:
+            ports: ["8080"]
             paths: ["/admin/*", "/debug/*", "/metrics"]
       from:
         - source:
@@ -240,7 +241,7 @@ metadata:
   name: audit-mode
   namespace: production
   annotations:
-    security.istio.io/audit: "true"
+    istio.io/dry-run: "true"
 spec:
   selector:
     matchLabels:
@@ -254,7 +255,7 @@ spec:
 
 Phase 2: Monitor logs for denied requests that should be allowed. Add those callers to your allow list.
 
-Phase 3: Switch from audit to enforcement.
+Phase 3: Remove the dry-run annotation to switch to enforcement.
 
 ## Monitor Policy Denials
 
