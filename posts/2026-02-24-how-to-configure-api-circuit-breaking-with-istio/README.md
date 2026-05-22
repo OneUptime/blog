@@ -50,11 +50,11 @@ spec:
 
 Here is what each field does:
 
-- `maxConnections: 100` - maximum 100 TCP connections to the service
-- `http1MaxPendingRequests: 50` - maximum 50 requests waiting in queue
-- `http2MaxRequests: 100` - maximum 100 active HTTP/2 requests
+- `maxConnections: 100` - maximum 100 HTTP/1.1 or TCP connections to each destination host
+- `http1MaxPendingRequests: 50` - maximum 50 requests waiting for a ready connection pool connection
+- `http2MaxRequests: 100` - maximum 100 active requests to a destination
 - `maxRequestsPerConnection: 10` - close the connection after 10 requests (helps with load distribution)
-- `maxRetries: 3` - maximum 3 concurrent retries across the entire cluster
+- `maxRetries: 3` - maximum 3 concurrent retries outstanding to all hosts in this Envoy cluster
 - `consecutive5xxErrors: 5` - eject a pod after 5 consecutive 5xx errors
 - `interval: 10s` - check for errors every 10 seconds
 - `baseEjectionTime: 30s` - eject the pod for at least 30 seconds
@@ -119,7 +119,7 @@ connectionPool:
       probes: 9
 ```
 
-`maxConnections` is the absolute ceiling. When this limit is reached, new connection attempts get a 503 error. The `connectTimeout` prevents hanging when the backend is completely unresponsive.
+`maxConnections` is the ceiling for HTTP/1.1 or TCP connections to a destination host. When this limit is reached, new connection attempts can get a 503 error. The `connectTimeout` prevents hanging when the backend is completely unresponsive.
 
 ### HTTP Request Limits
 
@@ -133,11 +133,11 @@ connectionPool:
     idleTimeout: 60s
 ```
 
-`http1MaxPendingRequests` is the queue size for HTTP/1.1 requests waiting for a connection. When the queue is full, new requests get 503.
+`http1MaxPendingRequests` is the queue size for requests waiting for a ready connection pool connection. Despite the field name, Istio applies this to both HTTP/1.1 and HTTP/2. When the queue is full, new requests get 503.
 
-`http2MaxRequests` limits concurrent HTTP/2 requests. HTTP/2 multiplexes requests on a single connection, so this is separate from the connection limit.
+`http2MaxRequests` limits active requests to a destination. Despite the field name, Istio applies this to both HTTP/1.1 and HTTP/2.
 
-`maxRetries` limits the total number of concurrent retry operations across all connections to this service. This prevents retry storms.
+`maxRetries` limits the total number of concurrent retry operations outstanding to all hosts in the Envoy cluster for this destination. This prevents retry storms.
 
 ## Understanding Outlier Detection
 
@@ -159,7 +159,7 @@ outlierDetection:
 - `interval: 10s` - how often to check
 - `baseEjectionTime: 30s` - base ejection duration (multiplied by the number of times the pod has been ejected)
 - `maxEjectionPercent: 50` - never eject more than half of all pods
-- `minHealthPercent: 30` - if fewer than 30% of pods are healthy, stop ejecting and let outlier detection pass through (panic mode)
+- `minHealthPercent: 30` - if fewer than 30% of pods are healthy, disable outlier detection and load balance across all hosts
 - `consecutiveGatewayErrors: 5` - eject on gateway errors (502, 503, 504) specifically
 
 ## Circuit Breaking at the Gateway
@@ -230,14 +230,15 @@ spec:
       baseEjectionTime: 30s
 ```
 
-The VirtualService says "retry up to 3 times per request." The DestinationRule says "but never have more than 5 concurrent retries happening across all requests." This prevents retry storms.
+The VirtualService says "retry up to 3 times per request." The DestinationRule says "but never have more than 5 concurrent retries outstanding to the destination's Envoy cluster." This prevents retry storms.
 
 ## Testing Circuit Breaking
 
 Use Fortio (a load testing tool that comes with Istio samples) to test circuit breaking:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/httpbin/httpbin.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/httpbin/httpbin.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/httpbin/sample-client/fortio-deploy.yaml
 
 # Normal load - should all succeed
 
@@ -258,15 +259,15 @@ kubectl exec deploy/fortio -c istio-proxy -- pilot-agent request GET stats | gre
 Look for these metrics:
 
 ```text
-cluster.outbound|8000||httpbin.default.svc.cluster.local.upstream_rq_pending_overflow: 42
-cluster.outbound|8000||httpbin.default.svc.cluster.local.upstream_rq_pending_total: 258
+cluster.outbound|8000||httpbin.default.svc.cluster.local;.upstream_rq_pending_overflow: 42
+cluster.outbound|8000||httpbin.default.svc.cluster.local;.upstream_rq_pending_total: 258
 ```
 
 `upstream_rq_pending_overflow` shows how many requests were rejected by the circuit breaker.
 
 ## Monitoring Circuit Breaker Activity
 
-Set up Prometheus alerts for circuit breaker events:
+After enabling collection of the relevant Envoy cluster stats, set up Prometheus alerts for circuit breaker events:
 
 ```yaml
 groups:
