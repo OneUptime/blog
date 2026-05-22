@@ -14,7 +14,7 @@ Istio gives you a few different ways to do this, and the right approach depends 
 
 ## The Telemetry API Approach
 
-Starting with Istio 1.12+, the Telemetry API is the recommended way to configure access logging. It lets you target specific workloads using label selectors.
+In current Istio releases, the Telemetry API is the recommended way to configure access logging. It lets you target specific workloads using label selectors.
 
 To enable access logs for a single service:
 
@@ -123,7 +123,7 @@ Some other useful filter expressions:
 # Only log slow requests (over 1 second)
 
 filter:
-  expression: "duration > duration('1s')"
+  expression: "request.duration > duration('1s')"
 
 # Only log specific paths
 filter:
@@ -131,12 +131,12 @@ filter:
 
 # Combine conditions
 filter:
-  expression: "response.code >= 500 || duration > duration('5s')"
+  expression: "response.code >= 500 || request.duration > duration('5s')"
 ```
 
 ## Using Annotations for Per-Pod Control
 
-If you want quick per-pod access log control without creating Telemetry resources, you can use the proxy config annotation:
+The `proxy.istio.io/config` annotation is useful for per-pod proxy settings, but it does not configure access logging. For example, this annotation controls Envoy stats matching, not access logs:
 
 ```yaml
 apiVersion: apps/v1
@@ -157,7 +157,7 @@ spec:
           image: my-service:v1
 ```
 
-But for access logging specifically, the Telemetry API is the preferred way.
+For access logging specifically, use the Telemetry API instead.
 
 ## Namespace-Level Access Logging
 
@@ -222,7 +222,7 @@ A default text-format access log line looks like this:
 If you enabled JSON format, it'll be much easier to parse:
 
 ```bash
-kubectl logs my-pod -n my-namespace -c istio-proxy | python3 -m json.tool
+kubectl logs my-pod -n my-namespace -c istio-proxy | head -n 1 | python3 -m json.tool
 ```
 
 ## Disabling Access Logs for a Service
