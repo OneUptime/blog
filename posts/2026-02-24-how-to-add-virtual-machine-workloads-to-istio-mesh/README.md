@@ -18,7 +18,7 @@ When you add a VM to an Istio mesh, you install the Istio sidecar proxy (Envoy) 
 
 The flow looks like:
 
-1. You create a WorkloadEntry in Kubernetes that represents the VM
+1. You create a WorkloadGroup in Kubernetes that represents the VM template
 2. You generate bootstrap tokens and configuration for the VM
 3. You install the Istio sidecar on the VM
 4. The sidecar connects to Istiod, gets its certificate, and starts intercepting traffic
@@ -54,7 +54,7 @@ kubectl create serviceaccount "${SERVICE_ACCOUNT}" -n "${VM_NAMESPACE}" --contex
 A WorkloadGroup is like a Deployment but for VMs. It defines the template for VM workloads:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: WorkloadGroup
 metadata:
   name: legacy-app
@@ -91,7 +91,6 @@ mkdir -p "${WORK_DIR}"
 istioctl x workload entry configure \
   --name "${VM_APP}" \
   --namespace "${VM_NAMESPACE}" \
-  --serviceAccount "${SERVICE_ACCOUNT}" \
   --clusterID cluster1 \
   --output "${WORK_DIR}" \
   --autoregister \
@@ -142,7 +141,7 @@ On the VM, install the Istio sidecar. For Debian/Ubuntu:
 ```bash
 # Add the Istio apt repository
 
-curl -LO https://storage.googleapis.com/istio-release/releases/1.20.0/deb/istio-sidecar.deb
+curl -LO https://storage.googleapis.com/istio-release/releases/1.30.0/deb/istio-sidecar.deb
 
 # Install
 sudo dpkg -i istio-sidecar.deb
@@ -151,7 +150,7 @@ sudo dpkg -i istio-sidecar.deb
 For RPM-based systems:
 
 ```bash
-curl -LO https://storage.googleapis.com/istio-release/releases/1.20.0/rpm/istio-sidecar.rpm
+curl -LO https://storage.googleapis.com/istio-release/releases/1.30.0/rpm/istio-sidecar.rpm
 sudo rpm -i istio-sidecar.rpm
 ```
 
@@ -168,9 +167,11 @@ sudo cp /tmp/istio-vm/istio-token /var/run/secrets/tokens/istio-token
 
 sudo cp /tmp/istio-vm/cluster.env /var/lib/istio/envoy/cluster.env
 sudo cp /tmp/istio-vm/mesh.yaml /etc/istio/config/mesh
+sudo sh -c 'cat /tmp/istio-vm/hosts >> /etc/hosts'
 
 # Set proper ownership
-sudo chown -R istio-proxy:istio-proxy /etc/certs /var/run/secrets/tokens /var/lib/istio/envoy /etc/istio/config
+sudo mkdir -p /etc/istio/proxy
+sudo chown -R istio-proxy:istio-proxy /etc/certs /var/run/secrets/tokens /var/lib/istio/envoy /etc/istio/config /etc/istio/proxy
 ```
 
 Check the `cluster.env` file:
