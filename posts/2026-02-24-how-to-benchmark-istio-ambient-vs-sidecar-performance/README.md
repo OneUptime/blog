@@ -14,15 +14,22 @@ The only way to answer that question for your specific workloads is to benchmark
 
 ## Prerequisites
 
-You need two separate Istio installations or a cluster large enough to run both modes simultaneously. The cleanest approach is to use separate namespaces with different configurations.
+You need an Istio installation with ambient mode support and a cluster large enough to run both modes simultaneously. The cleanest approach is to use separate namespaces with different configurations.
 
 Make sure you have Istio 1.22 or newer installed with ambient mode support:
 
 ```bash
-istioctl install --set profile=ambient -y
+istioctl install --set profile=ambient --skip-confirmation
 ```
 
-If you already have a sidecar-based installation, you can install ambient alongside it. The two modes can coexist in the same cluster using different namespaces.
+Waypoint proxies use the Kubernetes Gateway API, so make sure the Gateway API CRDs are installed before testing L7 ambient traffic:
+
+```bash
+kubectl get crd gateways.gateway.networking.k8s.io &> /dev/null || \
+  kubectl apply --server-side -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.5.1/experimental-install.yaml
+```
+
+If you already have a sidecar-based installation, add the ambient components or install with the ambient profile. The two modes can coexist in the same mesh using different namespaces.
 
 ## Deploy Test Applications
 
@@ -89,7 +96,7 @@ done
 
 ## Set Up Waypoint Proxy for L7 Testing
 
-Ambient mode handles L4 (mTLS, basic network policy) through ztunnel without a waypoint proxy. For L7 features like HTTP routing and authorization, you need a waypoint proxy:
+Ambient mode handles L4 (mTLS, basic network policy) through ztunnel without a waypoint proxy. Run the benchmark script once before this step to capture Ambient (L4) results. For L7 features like HTTP routing and authorization, you need a waypoint proxy; after applying it, run the script again to capture Ambient (L7) results:
 
 ```bash
 istioctl waypoint apply -n bench-ambient --enroll-namespace
@@ -194,15 +201,15 @@ Here is a rough comparison based on typical test results:
 | Avg Latency (small) | 2.1ms | 4.8ms | 3.2ms | 5.5ms |
 | p99 Latency (small) | 5.2ms | 11.4ms | 7.8ms | 13.1ms |
 | QPS (small) | 7600 | 3330 | 5000 | 2900 |
-| Memory per pod | 0 | ~50MB | ~5MB* | ~5MB* |
+| Direct memory overhead per app pod | 0 | ~50MB | 0* | 0* |
 
-*Ambient memory is shared via ztunnel DaemonSet, so per-pod overhead is just the ztunnel share.
+*Ambient memory is consumed by the shared ztunnel DaemonSet and any waypoint proxies, not by extra containers in each application pod.
 
 These numbers are illustrative and will vary based on your hardware and configuration.
 
 ## Testing at Scale
 
-The real advantage of ambient mode shows up at scale. With 100 services, sidecar mode means 100+ Envoy instances consuming memory. Ambient mode uses one ztunnel per node (say 10 nodes = 10 ztunnel instances) plus a handful of waypoint proxies.
+The real advantage of ambient mode shows up at scale. With 100 workload pods in the mesh, sidecar mode means 100+ Envoy instances consuming memory. Ambient mode uses one ztunnel per node (say 10 nodes = 10 ztunnel instances) plus a handful of waypoint proxies.
 
 To simulate scale, deploy multiple replicas:
 
@@ -216,8 +223,8 @@ Then compare total resource consumption across the namespaces.
 ## Cleanup
 
 ```bash
-kubectl delete namespace bench-ambient bench-sidecar bench-nomesh
 istioctl waypoint delete -n bench-ambient --all
+kubectl delete namespace bench-ambient bench-sidecar bench-nomesh
 ```
 
 ## Which Mode Should You Pick?
