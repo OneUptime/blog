@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, GitLab CI, CI/CD, Template, Infrastructure as Code, DevOps
 
-Description: Use GitLab CI built-in Terraform templates and create custom reusable templates to standardize Terraform pipelines across multiple projects and teams.
+Description: Use GitLab 17.x Terraform templates and create custom reusable templates to standardize Terraform pipelines across multiple projects and teams.
 
 ---
 
-GitLab provides official Terraform CI/CD templates that give you a working pipeline out of the box. Instead of writing your `.gitlab-ci.yml` from scratch, you include a template and get plan, apply, and destroy stages with proper state management. But the real power comes from understanding how these templates work and how to customize them for your organization's needs.
+GitLab previously provided official Terraform CI/CD templates that gave you a working pipeline out of the box. These templates were deprecated in GitLab 16.9 and removed in GitLab 18.0. If you are still on GitLab 17.x, or you copied the templates into your own project before upgrading, you can include a template and get plan, apply, and destroy stages with proper state management. But the real power comes from understanding how these templates work and how to customize them for your organization's needs.
 
-This post covers both the official GitLab Terraform templates and how to build your own reusable templates that standardize Terraform workflows across teams.
+This post covers both the legacy official GitLab Terraform templates and how to build your own reusable templates that standardize Terraform workflows across teams.
 
 ## The Official GitLab Terraform Template
 
-GitLab maintains a Terraform template at `Terraform.gitlab-ci.yml`. Include it in your pipeline like this:
+On GitLab 17.x, GitLab maintained a Terraform template at `Terraform.gitlab-ci.yml`. Include it in your pipeline like this:
 
 ```yaml
 # .gitlab-ci.yml
@@ -51,15 +51,16 @@ variables:
   # Name of the state file in GitLab managed state
   TF_STATE_NAME: production
 
-  # Terraform version to use
+  # Additional flags for terraform init
   TF_INIT_FLAGS: "-backend-config=address=${TF_ADDRESS}"
 
   # Additional flags for terraform plan
-  TF_PLAN_FLAGS: "-var-file=production.tfvars"
+  TF_CLI_ARGS_plan: "-var-file=production.tfvars"
 
-  # Image to use (defaults to the official Terraform image)
-  # Override this if you need additional tools
-  TF_IMAGE: "registry.gitlab.com/gitlab-org/terraform-images/stable:latest"
+# Image to use (defaults to the official Terraform image)
+# Override this if you need additional tools
+image:
+  name: "registry.gitlab.com/gitlab-org/terraform-images/stable:latest"
 ```
 
 ## Overriding Template Jobs
@@ -96,7 +97,7 @@ deploy:
 
 ## The Terraform Latest Template
 
-GitLab also provides a "latest" template that tracks newer features:
+GitLab also provided a "latest" template that tracked newer features in GitLab 17.x:
 
 ```yaml
 include:
@@ -128,7 +129,7 @@ This template provides base job definitions that you extend, giving you more con
 
 ## Building Custom Reusable Templates
 
-For organizations with multiple Terraform projects, create your own template that standardizes the workflow. Store it in a central repository:
+For organizations with multiple Terraform projects, create your own template that standardizes the workflow. Store it in a central repository. These custom templates assume your Terraform configuration declares an HTTP backend, for example `terraform { backend "http" {} }`, so the GitLab-managed state variables can configure it during `terraform init`.
 
 ```yaml
 # templates/terraform-pipeline.yml
@@ -138,8 +139,19 @@ For organizations with multiple Terraform projects, create your own template tha
 variables:
   TF_VERSION: "1.7.5"
   TF_ROOT: ${CI_PROJECT_DIR}
+  TF_STATE_NAME: default
+  TF_ENVIRONMENT: default
   PLAN_FLAGS: ""
   APPLY_FLAGS: ""
+  TF_ADDRESS: "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/${TF_STATE_NAME}"
+  TF_HTTP_ADDRESS: "${TF_ADDRESS}"
+  TF_HTTP_LOCK_ADDRESS: "${TF_ADDRESS}/lock"
+  TF_HTTP_UNLOCK_ADDRESS: "${TF_ADDRESS}/lock"
+  TF_HTTP_USERNAME: "gitlab-ci-token"
+  TF_HTTP_PASSWORD: "${CI_JOB_TOKEN}"
+  TF_HTTP_LOCK_METHOD: "POST"
+  TF_HTTP_UNLOCK_METHOD: "DELETE"
+  TF_HTTP_RETRY_WAIT_MIN: "5"
 
 # Base image configuration
 .terraform_base:
@@ -147,17 +159,10 @@ variables:
     name: "hashicorp/terraform:${TF_VERSION}"
     entrypoint: [""]
   before_script:
+    - apk --no-cache add jq
     - cd ${TF_ROOT}
     - terraform --version
     - terraform init
-      -backend-config="address=${TF_ADDRESS}"
-      -backend-config="lock_address=${TF_ADDRESS}/lock"
-      -backend-config="unlock_address=${TF_ADDRESS}/lock"
-      -backend-config="username=gitlab-ci-token"
-      -backend-config="password=${CI_JOB_TOKEN}"
-      -backend-config="lock_method=POST"
-      -backend-config="unlock_method=DELETE"
-      -backend-config="retry_wait_min=5"
 
 stages:
   - validate
@@ -183,6 +188,10 @@ terraform:plan:
     - terraform plan -out=plan.cache ${PLAN_FLAGS}
     # Generate a human-readable plan for MR comments
     - terraform show -no-color plan.cache > plan.txt
+    - >
+      terraform show -json plan.cache |
+      jq -r '([.resource_changes[]?.change.actions?] | flatten) | {"create": (map(select(. == "create")) | length), "update": (map(select(. == "update")) | length), "delete": (map(select(. == "delete")) | length)}' >
+      plan.json
   artifacts:
     paths:
       - ${TF_ROOT}/plan.cache
@@ -206,7 +215,7 @@ terraform:apply:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
       when: manual
   environment:
-    name: ${TF_ENVIRONMENT:-default}
+    name: $TF_ENVIRONMENT
 ```
 
 ## Using Your Custom Template
@@ -224,6 +233,7 @@ include:
 variables:
   TF_ROOT: ${CI_PROJECT_DIR}/terraform
   TF_VERSION: "1.7.5"
+  TF_STATE_NAME: production
   PLAN_FLAGS: "-var-file=production.tfvars"
   TF_ENVIRONMENT: production
 ```
@@ -241,6 +251,15 @@ For projects that deploy to multiple environments, create a template with parall
 variables:
   TF_VERSION: "1.7.5"
   TF_ROOT: ${CI_PROJECT_DIR}/terraform
+  TF_STATE_NAME: default
+  TF_ADDRESS: "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/${TF_STATE_NAME}"
+  TF_HTTP_ADDRESS: "${TF_ADDRESS}"
+  TF_HTTP_LOCK_ADDRESS: "${TF_ADDRESS}/lock"
+  TF_HTTP_UNLOCK_ADDRESS: "${TF_ADDRESS}/lock"
+  TF_HTTP_USERNAME: "gitlab-ci-token"
+  TF_HTTP_PASSWORD: "${CI_JOB_TOKEN}"
+  TF_HTTP_LOCK_METHOD: "POST"
+  TF_HTTP_UNLOCK_METHOD: "DELETE"
 
 .terraform_env_base:
   image:
@@ -249,13 +268,6 @@ variables:
   before_script:
     - cd ${TF_ROOT}
     - terraform init
-      -backend-config="address=${TF_ADDRESS}"
-      -backend-config="lock_address=${TF_ADDRESS}/lock"
-      -backend-config="unlock_address=${TF_ADDRESS}/lock"
-      -backend-config="username=gitlab-ci-token"
-      -backend-config="password=${CI_JOB_TOKEN}"
-      -backend-config="lock_method=POST"
-      -backend-config="unlock_method=DELETE"
 
 stages:
   - validate
@@ -289,8 +301,9 @@ apply:dev:
     TF_STATE_NAME: dev
   script:
     - terraform apply -input=false plan-dev.cache
-  dependencies:
-    - plan:dev
+  needs:
+    - job: plan:dev
+      artifacts: true
   environment:
     name: dev
   rules:
@@ -315,10 +328,11 @@ apply:staging:
     TF_STATE_NAME: staging
   script:
     - terraform apply -input=false plan-staging.cache
-  dependencies:
-    - plan:staging
   needs:
-    - apply:dev
+    - job: plan:staging
+      artifacts: true
+    - job: apply:dev
+      artifacts: false
   environment:
     name: staging
   rules:
@@ -344,10 +358,11 @@ apply:production:
     TF_STATE_NAME: production
   script:
     - terraform apply -input=false plan-prod.cache
-  dependencies:
-    - plan:production
   needs:
-    - apply:staging
+    - job: plan:production
+      artifacts: true
+    - job: apply:staging
+      artifacts: false
   environment:
     name: production
   rules:
@@ -399,6 +414,6 @@ include:
 
 ## Conclusion
 
-GitLab CI Terraform templates eliminate the need to write pipeline configurations from scratch for every project. Start with the official template for simple setups, then build custom templates as your organization's needs grow. Store custom templates in a central repository, version them with Git tags, and standardize your Terraform workflows across every team. The upfront investment in building good templates pays off quickly when your twentieth project gets a fully functional Terraform pipeline by adding three lines to its `.gitlab-ci.yml`.
+GitLab CI Terraform templates eliminate the need to write pipeline configurations from scratch for every project. On GitLab 17.x, you can start with the official template for simple setups. On GitLab 18.0 and later, or as your organization's needs grow, build custom templates instead. Store custom templates in a central repository, version them with Git tags, and standardize your Terraform workflows across every team. The upfront investment in building good templates pays off quickly when your twentieth project gets a fully functional Terraform pipeline by adding three lines to its `.gitlab-ci.yml`.
 
 For state management with these templates, see our guide on [storing Terraform state in GitLab managed state](https://oneuptime.com/blog/post/2026-02-23-how-to-store-terraform-state-in-gitlab-managed-state/view).
