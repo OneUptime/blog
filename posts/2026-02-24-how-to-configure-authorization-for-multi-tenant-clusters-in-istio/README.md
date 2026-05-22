@@ -83,10 +83,6 @@ spec:
     - source:
         namespaces:
         - "tenant-a"
-  - from:
-    - source:
-        namespaces:
-        - "istio-system"
 ```
 
 Do the same for tenant-b:
@@ -104,13 +100,9 @@ spec:
     - source:
         namespaces:
         - "tenant-b"
-  - from:
-    - source:
-        namespaces:
-        - "istio-system"
 ```
 
-Each namespace only accepts traffic from itself and from the Istio control plane. Cross-tenant traffic is denied.
+Each namespace only accepts traffic from itself. Cross-tenant traffic is denied.
 
 ## Step 3: Allow Shared Infrastructure Access
 
@@ -129,10 +121,6 @@ spec:
     - source:
         namespaces:
         - "tenant-a"
-  - from:
-    - source:
-        namespaces:
-        - "istio-system"
   - from:
     - source:
         principals:
@@ -166,7 +154,6 @@ spec:
         - "tenant-a"
         - "tenant-b"
         - "tenant-c"
-        - "istio-system"
 ```
 
 For the shared auth service, you might want to pass the tenant context through headers:
@@ -231,6 +218,10 @@ spec:
     - source:
         principals:
         - "cluster.local/ns/istio-system/sa/istio-ingressgateway-service-account"
+    to:
+    - operation:
+        ports:
+        - "8080"
 EOF
 
 echo "Tenant $TENANT namespace created with isolation policy"
@@ -254,18 +245,16 @@ spec:
   - main-gateway
   http:
   - match:
-    - headers:
-        ":authority":
-          exact: "tenant-a.example.com"
+    - authority:
+        exact: "tenant-a.example.com"
     route:
     - destination:
         host: frontend.tenant-a.svc.cluster.local
         port:
           number: 8080
   - match:
-    - headers:
-        ":authority":
-          exact: "tenant-b.example.com"
+    - authority:
+        exact: "tenant-b.example.com"
     route:
     - destination:
         host: frontend.tenant-b.svc.cluster.local
