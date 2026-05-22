@@ -14,7 +14,7 @@ There are several types of limits you can configure: TCP connection limits, HTTP
 
 ## TCP Connection Limits
 
-The most basic limit is the total number of TCP connections the gateway accepts. You configure this through an EnvoyFilter on the gateway's listener:
+Start by reducing the amount of memory a single connection can use. You configure this through an EnvoyFilter on the gateway's listener:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -69,7 +69,7 @@ spec:
             delay: 0s
 ```
 
-This limits the gateway to 10,000 concurrent TCP connections. New connections beyond this limit are rejected immediately.
+This limits each selected gateway proxy filter chain to 10,000 concurrent TCP connections. New connections beyond this limit are closed immediately.
 
 ## HTTP Concurrent Streams Limit
 
@@ -138,15 +138,15 @@ spec:
 
 When these limits are reached, additional requests get a 503 with the `UO` (upstream overflow) response flag. This is the bulkhead pattern in action, preventing one backend from consuming all the gateway's resources.
 
-## Per-Client Rate Limiting
+## Local HTTP Rate Limiting
 
-To prevent a single client from consuming too much capacity, implement per-client rate limiting:
+To prevent a single gateway pod from forwarding too much traffic, implement local HTTP rate limiting:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
 kind: EnvoyFilter
 metadata:
-  name: per-client-rate-limit
+  name: local-http-rate-limit
   namespace: istio-system
 spec:
   workloadSelector:
@@ -160,6 +160,8 @@ spec:
           filterChain:
             filter:
               name: "envoy.filters.network.http_connection_manager"
+              subFilter:
+                name: "envoy.filters.http.router"
       patch:
         operation: INSERT_BEFORE
         value:
@@ -194,7 +196,7 @@ spec:
                     value: "0"
 ```
 
-This implements a local rate limiter on each gateway pod. The token bucket starts with 1000 tokens and refills at 100 tokens per second. When a client exceeds the limit, they get a 429 Too Many Requests response.
+This implements a local rate limiter on each gateway pod. The token bucket starts with 1000 tokens and refills at 100 tokens per second. When the bucket is empty, requests get a 429 Too Many Requests response.
 
 Note that this is a per-pod limit. If you have 3 gateway replicas, the effective global limit is 3x the configured value.
 
@@ -279,7 +281,75 @@ data:
           requests_per_unit: 10
 ```
 
-This configuration limits each IP address to 100 requests per minute and the search endpoint to 10 requests per second globally.
+Then configure the gateway to call the rate limit service and attach rate limit actions to the gateway routes:
+
+```yaml
+apiVersion: networking.istio.io/v1alpha3
+kind: EnvoyFilter
+metadata:
+  name: global-rate-limit-filter
+  namespace: istio-system
+spec:
+  workloadSelector:
+    labels:
+      istio: ingressgateway
+  configPatches:
+    - applyTo: HTTP_FILTER
+      match:
+        context: GATEWAY
+        listener:
+          filterChain:
+            filter:
+              name: "envoy.filters.network.http_connection_manager"
+              subFilter:
+                name: "envoy.filters.http.router"
+      patch:
+        operation: INSERT_BEFORE
+        value:
+          name: envoy.filters.http.ratelimit
+          typed_config:
+            "@type": type.googleapis.com/envoy.extensions.filters.http.ratelimit.v3.RateLimit
+            domain: gateway-ratelimit
+            failure_mode_deny: true
+            timeout: 1s
+            rate_limit_service:
+              grpc_service:
+                envoy_grpc:
+                  cluster_name: outbound|8081||ratelimit.default.svc.cluster.local
+                  authority: ratelimit.default.svc.cluster.local
+              transport_api_version: V3
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: EnvoyFilter
+metadata:
+  name: global-rate-limit-actions
+  namespace: istio-system
+spec:
+  workloadSelector:
+    labels:
+      istio: ingressgateway
+  configPatches:
+    - applyTo: VIRTUAL_HOST
+      match:
+        context: GATEWAY
+        routeConfiguration:
+          vhost:
+            name: "*:80"
+            route:
+              action: ANY
+      patch:
+        operation: MERGE
+        value:
+          rate_limits:
+            - actions:
+                - remote_address: {}
+            - actions:
+                - request_headers:
+                    header_name: ":path"
+                    descriptor_key: path
+```
+
+Update the virtual host name to match your Gateway host and port. With the rate limit service and these EnvoyFilters in place, this configuration limits each detected client address to 100 requests per minute and the search endpoint to 10 requests per second globally. If your gateway is behind another proxy or cloud load balancer, configure Istio gateway topology so Envoy can determine the trusted client address correctly.
 
 ## Connection Draining
 
@@ -320,10 +390,10 @@ Track connection metrics to understand your capacity:
 ```promql
 # Active connections at the gateway
 
-envoy_server_total_connections{pod=~"istio-ingressgateway.*"}
+sum(envoy_listener_downstream_cx_active{pod=~"istio-ingressgateway.*"})
 
 # Connection rate
-sum(rate(envoy_cluster_upstream_cx_total{pod=~"istio-ingressgateway.*"}[5m]))
+sum(rate(envoy_listener_downstream_cx_total{pod=~"istio-ingressgateway.*"}[5m]))
 
 # Connection overflow (limits hit)
 sum(rate(envoy_cluster_upstream_rq_pending_overflow{pod=~"istio-ingressgateway.*"}[5m]))
@@ -332,7 +402,7 @@ sum(rate(envoy_cluster_upstream_rq_pending_overflow{pod=~"istio-ingressgateway.*
 envoy_cluster_upstream_rq_active{pod=~"istio-ingressgateway.*"}
 
 # Rate limit denials
-sum(rate(envoy_http_local_rate_limit_rate_limited{pod=~"istio-ingressgateway.*"}[5m]))
+sum(rate(envoy_gateway_rate_limit_http_local_rate_limit_enforced{pod=~"istio-ingressgateway.*"}[5m]))
 ```
 
 Set up alerts for when you are approaching your limits:
@@ -348,7 +418,7 @@ spec:
       rules:
         - alert: HighConnectionCount
           expr: |
-            envoy_server_total_connections{pod=~"istio-ingressgateway.*"} > 8000
+            sum(envoy_listener_downstream_cx_active{pod=~"istio-ingressgateway.*"}) > 8000
           for: 5m
           labels:
             severity: warning
@@ -356,7 +426,7 @@ spec:
             summary: "Gateway connection count approaching limit"
         - alert: HighRateLimitDenials
           expr: |
-            sum(rate(envoy_http_local_rate_limit_rate_limited[5m])) > 10
+            sum(rate(envoy_gateway_rate_limit_http_local_rate_limit_enforced[5m])) > 10
           for: 2m
           labels:
             severity: warning
