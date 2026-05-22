@@ -8,14 +8,14 @@ Description: Complete walkthrough for setting up blue-green deployments using Is
 
 ---
 
-Blue-green deployments give you a way to release new versions with minimal risk. You run two identical environments (blue and green), switch traffic from one to the other, and roll back instantly if something goes wrong. When you combine this pattern with Istio and Argo Rollouts, you get precise traffic control and automated promotion logic that makes deployments much safer.
+Blue-green deployments give you a way to release new versions with minimal risk. You run two identical environments (blue and green), switch traffic from one to the other, and roll back quickly if something goes wrong. When you combine this pattern with Istio and Argo Rollouts, you get mesh-aware traffic routing and automated promotion logic that makes deployments much safer.
 
-Argo Rollouts has native Istio integration, meaning it can directly manipulate VirtualService weights to shift traffic between blue and green revisions. You don't have to write custom scripts or manage the traffic split manually.
+Argo Rollouts has native Istio integration for canary traffic splitting, but blue-green rollouts work differently: Argo switches Kubernetes Service selectors between the old and new ReplicaSets. Istio can then route production traffic to the active Service while Argo handles the blue-green promotion logic.
 
 ## Prerequisites
 
 You need three things installed in your cluster:
-- Istio (with sidecar injection or ambient mode enabled)
+- Istio (with the application workloads included in the mesh)
 - Argo Rollouts controller
 - The Argo Rollouts kubectl plugin (optional but very helpful)
 
@@ -26,7 +26,7 @@ kubectl create namespace argo-rollouts
 kubectl apply -n argo-rollouts -f https://github.com/argoproj/argo-rollouts/releases/latest/download/install.yaml
 ```
 
-Install the kubectl plugin:
+Verify the kubectl plugin after installing it:
 
 ```bash
 kubectl argo rollouts version
@@ -34,7 +34,7 @@ kubectl argo rollouts version
 
 ## Setting Up the Istio Resources
 
-Start by creating the VirtualService and DestinationRule that Argo Rollouts will manage:
+Start by creating the VirtualService that sends production traffic to the active Service:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -50,30 +50,10 @@ spec:
     route:
     - destination:
         host: my-app
-        subset: stable
       weight: 100
-    - destination:
-        host: my-app
-        subset: canary
-      weight: 0
----
-apiVersion: networking.istio.io/v1
-kind: DestinationRule
-metadata:
-  name: my-app-dr
-  namespace: default
-spec:
-  host: my-app
-  subsets:
-  - name: stable
-    labels:
-      app: my-app
-  - name: canary
-    labels:
-      app: my-app
 ```
 
-Note: Argo Rollouts will dynamically update the pod selector labels on these subsets to point to the correct ReplicaSet.
+Note: In a blue-green rollout, Argo Rollouts dynamically updates the Kubernetes Service selectors to point to the correct ReplicaSet. It does not manage Istio DestinationRule subsets for the blue-green strategy.
 
 ## Creating the Services
 
@@ -149,24 +129,14 @@ spec:
         args:
         - name: service-name
           value: my-app-preview
-      trafficRouting:
-        istio:
-          virtualServices:
-          - name: my-app-vsvc
-            routes:
-            - primary
-          destinationRule:
-            name: my-app-dr
-            stableSubsetName: stable
-            canarySubsetName: canary
 ```
 
 The key configuration here is the `strategy.blueGreen` section. It tells Argo Rollouts to:
 
 1. Use `my-app` as the active (stable) service
 2. Use `my-app-preview` as the preview service for the new version
-3. Wait for manual promotion (or pass analysis) before switching
-4. Use the Istio VirtualService and DestinationRule for traffic routing
+3. Run pre-promotion analysis, then wait for manual promotion before switching
+4. Switch the active Service selector to the new ReplicaSet after promotion
 
 ## Adding Analysis Templates
 
@@ -200,17 +170,17 @@ spec:
           }[2m]))
 ```
 
-This checks that the preview service maintains a 95%+ success rate before promotion. It runs 5 checks, 30 seconds apart, and tolerates up to 3 failures.
+This checks that the preview service maintains a 95%+ success rate before promotion. It runs 5 checks, 30 seconds apart, and fails the analysis after three unsuccessful measurements. Make sure your smoke tests or synthetic traffic hit `my-app-preview` during this phase so Prometheus has data to evaluate.
 
 ## Deploying and Managing Rollouts
 
 Apply all the resources:
 
 ```bash
-kubectl apply -f my-app-rollout.yaml
 kubectl apply -f my-app-services.yaml
 kubectl apply -f my-app-istio.yaml
 kubectl apply -f analysis-template.yaml
+kubectl apply -f my-app-rollout.yaml
 ```
 
 Check the rollout status:
@@ -229,7 +199,7 @@ This starts the blue-green process:
 1. New pods are created with the v2 image
 2. The preview service points to the new pods
 3. Pre-promotion analysis runs against the preview
-4. If analysis passes (or you manually promote), traffic switches
+4. If analysis passes, you manually promote and traffic switches
 
 Watch the rollout progress:
 
@@ -249,24 +219,24 @@ To abort and roll back:
 kubectl argo rollouts abort my-app -n default
 ```
 
-## How Argo Updates Istio Resources
+## How Argo Updates Traffic
 
-When a blue-green deployment is in progress, Argo Rollouts modifies the DestinationRule subsets to point to the correct ReplicaSet. It adds a rollouts-pod-template-hash label selector to each subset.
+When a blue-green deployment is in progress, Argo Rollouts modifies the active and preview Service selectors to point to the correct ReplicaSets. It adds a `rollouts-pod-template-hash` label selector to each Service.
 
 During preview phase:
-- `stable` subset points to the old ReplicaSet (blue)
-- `canary` subset points to the new ReplicaSet (green)
-- VirtualService sends 100% to stable
+- `my-app` points to the old ReplicaSet (blue)
+- `my-app-preview` points to the new ReplicaSet (green)
+- VirtualService sends production traffic to `my-app`
 
 After promotion:
-- `stable` subset gets updated to point to the new ReplicaSet
-- VirtualService stays at 100% to stable
+- `my-app` gets updated to point to the new ReplicaSet
+- VirtualService continues sending production traffic to `my-app`
 - Old ReplicaSet gets scaled down
 
-You can verify this by checking the DestinationRule during a rollout:
+You can verify this by checking the Services during a rollout:
 
 ```bash
-kubectl get destinationrule my-app-dr -n default -o yaml
+kubectl get service my-app my-app-preview -n default -o yaml
 ```
 
 ## Adding Post-Promotion Analysis
@@ -291,9 +261,9 @@ If the post-promotion analysis fails, Argo Rollouts will automatically roll back
 
 If traffic isn't switching properly:
 
-1. Check that the VirtualService route name matches what's in the Rollout spec
-2. Verify the DestinationRule subset names match
-3. Make sure Istio sidecar injection is working (or ambient mode is enabled)
+1. Check that the VirtualService destination host points to the active Service
+2. Verify the active and preview Service names match the Rollout spec
+3. Make sure the application workloads are included in the Istio mesh
 4. Look at the Rollout events for errors:
 
 ```bash
@@ -301,4 +271,4 @@ kubectl describe rollout my-app -n default
 kubectl argo rollouts status my-app -n default
 ```
 
-The combination of Argo Rollouts and Istio gives you a robust blue-green deployment pipeline. Argo handles the orchestration and analysis, Istio handles the traffic routing, and you get safe, automated releases with instant rollback capability.
+The combination of Argo Rollouts and Istio gives you a robust blue-green deployment pipeline. Argo handles the orchestration and analysis, Istio handles the traffic routing to the active service, and you get safe, automated releases with quick rollback capability.
