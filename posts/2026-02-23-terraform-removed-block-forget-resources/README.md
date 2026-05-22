@@ -22,7 +22,7 @@ resource "aws_s3_bucket" "data" {
 }
 ```
 
-If you simply delete this resource block and run `terraform apply`, Terraform will try to delete the S3 bucket and all its contents. That is almost certainly not what you want. You want Terraform to forget about the bucket while leaving it untouched in AWS.
+If you simply delete this resource block and run `terraform apply`, Terraform will plan to delete the S3 bucket. If `force_destroy = true` is set, the AWS provider can also delete the objects in the bucket so the bucket can be destroyed. That is almost certainly not what you want. You want Terraform to forget about the bucket while leaving it untouched in AWS.
 
 ## The removed Block
 
@@ -137,29 +137,7 @@ This removes all resources that were part of the module from the state.
 
 ## Using removed with count and for_each
 
-For resources that use `count` or `for_each`, you can forget specific instances:
-
-```hcl
-# Forget a specific count instance
-removed {
-  from = aws_instance.web[2]
-
-  lifecycle {
-    destroy = false
-  }
-}
-
-# Forget a specific for_each instance
-removed {
-  from = aws_instance.web["us-west-2"]
-
-  lifecycle {
-    destroy = false
-  }
-}
-```
-
-Or forget all instances of a resource:
+For resources that use `count` or `for_each`, a `removed` block references the resource as a whole, not a specific instance key. This forgets all instances of that resource:
 
 ```hcl
 # Forget all instances of a counted resource
@@ -171,6 +149,8 @@ removed {
   }
 }
 ```
+
+If you need to forget only one specific instance, use `terraform state rm` with the full instance address instead.
 
 ## removed vs terraform state rm
 
@@ -215,9 +195,9 @@ steps:
 
 With `terraform state rm`, you would need a separate pipeline step before the plan.
 
-### 3. It Handles Dependencies
+### 3. It Is Planned with the Rest of Your Configuration
 
-Terraform understands the removed block in the context of the dependency graph. If other resources depend on the removed resource, Terraform handles the ordering correctly.
+Terraform understands the removed block in the context of the rest of your configuration. If other resources still reference the removed resource, Terraform can surface those references during validation or planning so you can update them before applying the change.
 
 ### 4. It Is Idempotent
 
