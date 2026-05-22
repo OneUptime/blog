@@ -16,12 +16,13 @@ Terratest provides Go packages for interacting with AWS services. Import the one
 
 ```go
 import (
-    "testing"
+    "context"
     "fmt"
+    "testing"
 
-    "github.com/gruntwork-io/terratest/modules/terraform"
     "github.com/gruntwork-io/terratest/modules/aws"
     "github.com/gruntwork-io/terratest/modules/random"
+    "github.com/gruntwork-io/terratest/modules/terraform"
     "github.com/stretchr/testify/assert"
     "github.com/stretchr/testify/require"
 )
@@ -31,7 +32,17 @@ Install the dependencies:
 
 ```bash
 cd test
-go get github.com/gruntwork-io/terratest/modules/aws
+go get github.com/gruntwork-io/terratest/modules/aws \
+  github.com/gruntwork-io/terratest/modules/random \
+  github.com/gruntwork-io/terratest/modules/terraform \
+  github.com/gruntwork-io/terratest/modules/retry \
+  github.com/aws/aws-sdk-go-v2/aws \
+  github.com/aws/aws-sdk-go-v2/config \
+  github.com/aws/aws-sdk-go-v2/service/ec2 \
+  github.com/aws/aws-sdk-go-v2/service/iam \
+  github.com/aws/aws-sdk-go-v2/service/s3 \
+  github.com/lib/pq \
+  github.com/stretchr/testify
 ```
 
 ## Testing VPC Resources
@@ -43,17 +54,18 @@ Validate that a VPC and its subnets are created correctly:
 package test
 
 import (
+    "context"
     "testing"
 
     "github.com/gruntwork-io/terratest/modules/aws"
     "github.com/gruntwork-io/terratest/modules/terraform"
     "github.com/stretchr/testify/assert"
-    "github.com/stretchr/testify/require"
 )
 
 func TestVPC(t *testing.T) {
     t.Parallel()
 
+    ctx := context.Background()
     awsRegion := "us-east-1"
 
     opts := &terraform.Options{
@@ -77,19 +89,18 @@ func TestVPC(t *testing.T) {
     vpcId := terraform.Output(t, opts, "vpc_id")
 
     // Use the AWS API to verify the VPC exists
-    vpc := aws.GetVpcById(t, vpcId, awsRegion)
+    vpc := aws.GetVpcByIDContext(t, ctx, vpcId, awsRegion)
     assert.Equal(t, "10.0.0.0/16", *vpc.CidrBlock)
 
     // Verify subnets were created in the VPC
-    subnets := aws.GetSubnetsForVpc(t, vpcId, awsRegion)
+    subnets := aws.GetSubnetsForVpcContext(t, ctx, vpcId, awsRegion)
     assert.Equal(t, 4, len(subnets), "Should have 4 subnets (2 private + 2 public)")
 
-    // Check that public subnets have public IP mapping
+    // Check that public subnets are routed as public subnets
     publicSubnetIds := terraform.OutputList(t, opts, "public_subnet_ids")
     for _, subnetId := range publicSubnetIds {
-        subnet := aws.GetSubnetById(t, subnetId, awsRegion)
-        assert.True(t, *subnet.MapPublicIpOnLaunch,
-            "Public subnets should map public IPs on launch")
+        assert.True(t, aws.IsPublicSubnetContext(t, ctx, subnetId, awsRegion),
+            "Public subnets should have a route to an internet gateway")
     }
 }
 ```
@@ -103,19 +114,27 @@ Verify that EC2 instances are running with the correct configuration:
 package test
 
 import (
-    "testing"
+    "context"
     "fmt"
+    "testing"
     "time"
 
-    "github.com/gruntwork-io/terratest/modules/aws"
-    "github.com/gruntwork-io/terratest/modules/terraform"
+    awsv2 "github.com/aws/aws-sdk-go-v2/aws"
+    "github.com/aws/aws-sdk-go-v2/config"
+    "github.com/aws/aws-sdk-go-v2/service/ec2"
+    ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
+    terratestaws "github.com/gruntwork-io/terratest/modules/aws"
+    "github.com/gruntwork-io/terratest/modules/random"
     "github.com/gruntwork-io/terratest/modules/retry"
+    "github.com/gruntwork-io/terratest/modules/terraform"
     "github.com/stretchr/testify/assert"
+    "github.com/stretchr/testify/require"
 )
 
 func TestEC2Instance(t *testing.T) {
     t.Parallel()
 
+    ctx := context.Background()
     awsRegion := "us-east-1"
     uniqueId := random.UniqueId()
 
@@ -137,28 +156,52 @@ func TestEC2Instance(t *testing.T) {
     // Get the instance ID
     instanceId := terraform.Output(t, opts, "instance_id")
 
+    cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(awsRegion))
+    require.NoError(t, err)
+
+    ec2Client := ec2.NewFromConfig(cfg)
+    result, err := ec2Client.DescribeInstances(ctx, &ec2.DescribeInstancesInput{
+        InstanceIds: []string{instanceId},
+    })
+    require.NoError(t, err)
+    require.Len(t, result.Reservations, 1)
+    require.Len(t, result.Reservations[0].Instances, 1)
+
+    instance := result.Reservations[0].Instances[0]
+
     // Verify instance is running
-    instance := aws.GetInstanceById(t, instanceId, awsRegion)
-    assert.Equal(t, "running", instance.State)
+    assert.Equal(t, ec2types.InstanceStateNameRunning, instance.State.Name)
 
     // Verify instance type
-    assert.Equal(t, "t3.micro", instance.InstanceType)
+    assert.Equal(t, ec2types.InstanceTypeT3Micro, instance.InstanceType)
 
     // Verify tags
-    tags := aws.GetTagsForEc2Instance(t, awsRegion, instanceId)
+    tags := terratestaws.GetTagsForEc2InstanceContext(t, ctx, awsRegion, instanceId)
     assert.Equal(t, fmt.Sprintf("test-%s", uniqueId), tags["Name"])
     assert.Equal(t, "test", tags["Environment"])
 
     // Verify the instance has a public IP (if expected)
-    publicIp := terraform.Output(t, opts, "public_ip")
+    publicIp := terratestaws.GetPublicIPOfEc2InstanceContext(t, ctx, instanceId, awsRegion)
     assert.NotEmpty(t, publicIp)
 
     // Wait for the instance to pass health checks
     retry.DoWithRetry(t, "Wait for instance to be healthy", 10, 30*time.Second,
         func() (string, error) {
-            status := aws.GetInstanceStatus(t, instanceId, awsRegion)
-            if status != "ok" {
-                return "", fmt.Errorf("instance status is %s, not ok", status)
+            statusResult, err := ec2Client.DescribeInstanceStatus(ctx, &ec2.DescribeInstanceStatusInput{
+                InstanceIds:         []string{instanceId},
+                IncludeAllInstances: awsv2.Bool(true),
+            })
+            if err != nil {
+                return "", err
+            }
+            if len(statusResult.InstanceStatuses) != 1 {
+                return "", fmt.Errorf("expected one instance status, got %d", len(statusResult.InstanceStatuses))
+            }
+
+            status := statusResult.InstanceStatuses[0]
+            if status.InstanceStatus.Status != ec2types.SummaryStatusOk ||
+                status.SystemStatus.Status != ec2types.SummaryStatusOk {
+                return "", fmt.Errorf("instance or system status is not ok")
             }
             return "Instance is healthy", nil
         },
@@ -168,25 +211,28 @@ func TestEC2Instance(t *testing.T) {
 
 ## Testing S3 Buckets
 
-Verify S3 bucket creation with encryption, versioning, and lifecycle policies:
+Verify S3 bucket creation with encryption, versioning, and a bucket policy:
 
 ```go
 // test/s3_test.go
 package test
 
 import (
-    "testing"
+    "context"
     "fmt"
+    "testing"
 
+    s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
     "github.com/gruntwork-io/terratest/modules/aws"
-    "github.com/gruntwork-io/terratest/modules/terraform"
     "github.com/gruntwork-io/terratest/modules/random"
+    "github.com/gruntwork-io/terratest/modules/terraform"
     "github.com/stretchr/testify/assert"
 )
 
 func TestS3Bucket(t *testing.T) {
     t.Parallel()
 
+    ctx := context.Background()
     awsRegion := "us-east-1"
     uniqueId := random.UniqueId()
     bucketName := fmt.Sprintf("test-bucket-%s", uniqueId)
@@ -208,22 +254,21 @@ func TestS3Bucket(t *testing.T) {
     terraform.InitAndApply(t, opts)
 
     // Verify the bucket exists
-    aws.AssertS3BucketExists(t, awsRegion, bucketName)
+    aws.AssertS3BucketExistsContext(t, ctx, awsRegion, bucketName)
 
     // Verify versioning is enabled
-    versioning := aws.GetS3BucketVersioning(t, awsRegion, bucketName)
+    versioning := aws.GetS3BucketVersioningContext(t, ctx, awsRegion, bucketName)
     assert.Equal(t, "Enabled", versioning)
 
     // Verify server-side encryption is configured
-    encryption := aws.GetS3BucketEncryption(t, awsRegion, bucketName)
-    assert.Equal(t, "aws:kms", encryption)
+    aws.AssertS3BucketServerSideEncryptionContext(t, ctx, awsRegion, bucketName, s3types.ServerSideEncryptionAwsKms)
 
-    // Verify bucket policy blocks public access
-    policy := aws.GetS3BucketPolicy(t, awsRegion, bucketName)
+    // Verify bucket policy is configured
+    policy := aws.GetS3BucketPolicyContext(t, ctx, awsRegion, bucketName)
     assert.NotEmpty(t, policy, "Bucket should have a policy")
 
     // Verify tags
-    tags := aws.GetS3BucketTags(t, awsRegion, bucketName)
+    tags := aws.GetS3BucketTagsContext(t, ctx, awsRegion, bucketName)
     assert.Equal(t, "test", tags["Environment"])
 }
 ```
@@ -237,9 +282,9 @@ Verify RDS instance creation and connectivity:
 package test
 
 import (
-    "testing"
-    "fmt"
     "database/sql"
+    "fmt"
+    "testing"
     "time"
 
     _ "github.com/lib/pq"  // PostgreSQL driver
@@ -275,8 +320,8 @@ func TestRDSDatabase(t *testing.T) {
     defer terraform.Destroy(t, opts)
     terraform.InitAndApply(t, opts)
 
-    // Get the database endpoint
-    endpoint := terraform.Output(t, opts, "db_endpoint")
+    // Get the database address and port
+    endpoint := terraform.Output(t, opts, "db_address")
     port := terraform.Output(t, opts, "db_port")
 
     assert.NotEmpty(t, endpoint, "Database endpoint should not be empty")
@@ -317,27 +362,35 @@ Verify IAM roles and policies:
 package test
 
 import (
-    "testing"
-    "fmt"
+    "context"
     "encoding/json"
+    "fmt"
+    "net/url"
+    "testing"
 
-    "github.com/gruntwork-io/terratest/modules/aws"
-    "github.com/gruntwork-io/terratest/modules/terraform"
+    awsv2 "github.com/aws/aws-sdk-go-v2/aws"
+    "github.com/aws/aws-sdk-go-v2/config"
+    "github.com/aws/aws-sdk-go-v2/service/iam"
     "github.com/gruntwork-io/terratest/modules/random"
+    "github.com/gruntwork-io/terratest/modules/terraform"
     "github.com/stretchr/testify/assert"
+    "github.com/stretchr/testify/require"
 )
 
 func TestIAMRole(t *testing.T) {
     t.Parallel()
 
+    ctx := context.Background()
     awsRegion := "us-east-1"
     uniqueId := random.UniqueId()
+    expectedPrincipalService := "ec2.amazonaws.com"
 
     opts := &terraform.Options{
         TerraformDir: "../modules/iam",
         Vars: map[string]interface{}{
-            "role_name":   fmt.Sprintf("test-role-%s", uniqueId),
-            "environment": "test",
+            "role_name":       fmt.Sprintf("test-role-%s", uniqueId),
+            "trusted_service": expectedPrincipalService,
+            "environment":     "test",
         },
         EnvVars: map[string]string{
             "AWS_DEFAULT_REGION": awsRegion,
@@ -355,18 +408,31 @@ func TestIAMRole(t *testing.T) {
     assert.NotEmpty(t, roleArn)
     assert.Contains(t, roleArn, "arn:aws:iam")
 
-    // Get the role's policy document
-    role := aws.GetIamRole(t, awsRegion, roleName)
-    assert.NotNil(t, role)
+    cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(awsRegion))
+    require.NoError(t, err)
+
+    iamClient := iam.NewFromConfig(cfg)
+    roleOutput, err := iamClient.GetRole(ctx, &iam.GetRoleInput{
+        RoleName: awsv2.String(roleName),
+    })
+    require.NoError(t, err)
+    require.NotNil(t, roleOutput.Role)
 
     // Verify the assume role policy allows the expected service
+    decodedPolicy, err := url.QueryUnescape(awsv2.ToString(roleOutput.Role.AssumeRolePolicyDocument))
+    require.NoError(t, err)
+
     var assumeRolePolicy map[string]interface{}
-    err := json.Unmarshal([]byte(*role.AssumeRolePolicyDocument), &assumeRolePolicy)
+    err = json.Unmarshal([]byte(decodedPolicy), &assumeRolePolicy)
     assert.NoError(t, err)
+    assert.Contains(t, decodedPolicy, expectedPrincipalService)
 
     // Verify attached policies
-    policies := aws.GetIamPoliciesForRole(t, awsRegion, roleName)
-    assert.Greater(t, len(policies), 0, "Role should have at least one policy attached")
+    policies, err := iamClient.ListAttachedRolePolicies(ctx, &iam.ListAttachedRolePoliciesInput{
+        RoleName: awsv2.String(roleName),
+    })
+    require.NoError(t, err)
+    assert.Greater(t, len(policies.AttachedPolicies), 0, "Role should have at least one policy attached")
 }
 ```
 
@@ -379,14 +445,15 @@ Verify security group rules:
 package test
 
 import (
-    "testing"
+    "context"
     "fmt"
+    "testing"
 
-    "github.com/aws/aws-sdk-go/aws"
-    "github.com/aws/aws-sdk-go/aws/session"
-    "github.com/aws/aws-sdk-go/service/ec2"
-    "github.com/gruntwork-io/terratest/modules/terraform"
+    awsv2 "github.com/aws/aws-sdk-go-v2/aws"
+    "github.com/aws/aws-sdk-go-v2/config"
+    "github.com/aws/aws-sdk-go-v2/service/ec2"
     "github.com/gruntwork-io/terratest/modules/random"
+    "github.com/gruntwork-io/terratest/modules/terraform"
     "github.com/stretchr/testify/assert"
     "github.com/stretchr/testify/require"
 )
@@ -394,6 +461,7 @@ import (
 func TestSecurityGroup(t *testing.T) {
     t.Parallel()
 
+    ctx := context.Background()
     awsRegion := "us-east-1"
     uniqueId := random.UniqueId()
 
@@ -404,6 +472,9 @@ func TestSecurityGroup(t *testing.T) {
             "vpc_id":      "vpc-existing123",  // Use an existing VPC
             "environment": "test",
         },
+        EnvVars: map[string]string{
+            "AWS_DEFAULT_REGION": awsRegion,
+        },
     }
 
     defer terraform.Destroy(t, opts)
@@ -412,14 +483,12 @@ func TestSecurityGroup(t *testing.T) {
     sgId := terraform.Output(t, opts, "security_group_id")
 
     // Query the SG directly from AWS
-    sess, err := session.NewSession(&aws.Config{
-        Region: aws.String(awsRegion),
-    })
+    cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(awsRegion))
     require.NoError(t, err)
 
-    ec2Client := ec2.New(sess)
-    result, err := ec2Client.DescribeSecurityGroups(&ec2.DescribeSecurityGroupsInput{
-        GroupIds: []*string{aws.String(sgId)},
+    ec2Client := ec2.NewFromConfig(cfg)
+    result, err := ec2Client.DescribeSecurityGroups(ctx, &ec2.DescribeSecurityGroupsInput{
+        GroupIds: []string{sgId},
     })
     require.NoError(t, err)
     require.Len(t, result.SecurityGroups, 1)
@@ -429,7 +498,9 @@ func TestSecurityGroup(t *testing.T) {
     // Verify ingress rules allow HTTPS
     hasHttps := false
     for _, rule := range sg.IpPermissions {
-        if *rule.FromPort == 443 && *rule.ToPort == 443 {
+        if awsv2.ToString(rule.IpProtocol) == "tcp" &&
+            awsv2.ToInt32(rule.FromPort) == 443 &&
+            awsv2.ToInt32(rule.ToPort) == 443 {
             hasHttps = true
             break
         }
@@ -439,8 +510,13 @@ func TestSecurityGroup(t *testing.T) {
     // Verify no rules allow all traffic from 0.0.0.0/0
     for _, rule := range sg.IpPermissions {
         for _, cidr := range rule.IpRanges {
-            if *rule.FromPort == 0 && *rule.ToPort == 65535 {
-                assert.NotEqual(t, "0.0.0.0/0", *cidr.CidrIp,
+            allProtocols := awsv2.ToString(rule.IpProtocol) == "-1"
+            allTcpPorts := awsv2.ToString(rule.IpProtocol) == "tcp" &&
+                awsv2.ToInt32(rule.FromPort) == 0 &&
+                awsv2.ToInt32(rule.ToPort) == 65535
+
+            if allProtocols || allTcpPorts {
+                assert.NotEqual(t, "0.0.0.0/0", awsv2.ToString(cidr.CidrIp),
                     "Should not allow all traffic from 0.0.0.0/0")
             }
         }
@@ -457,18 +533,20 @@ Deploy and invoke a Lambda function to verify it works:
 package test
 
 import (
-    "testing"
+    "context"
     "fmt"
+    "testing"
 
     "github.com/gruntwork-io/terratest/modules/aws"
-    "github.com/gruntwork-io/terratest/modules/terraform"
     "github.com/gruntwork-io/terratest/modules/random"
+    "github.com/gruntwork-io/terratest/modules/terraform"
     "github.com/stretchr/testify/assert"
 )
 
 func TestLambdaFunction(t *testing.T) {
     t.Parallel()
 
+    ctx := context.Background()
     awsRegion := "us-east-1"
     uniqueId := random.UniqueId()
 
@@ -492,7 +570,7 @@ func TestLambdaFunction(t *testing.T) {
 
     // Invoke the Lambda function
     payload := []byte(`{"key": "value"}`)
-    response := aws.InvokeFunction(t, awsRegion, functionName, payload)
+    response := aws.InvokeFunctionContext(t, ctx, awsRegion, functionName, payload)
 
     // Verify the response
     assert.Contains(t, string(response), "200",
