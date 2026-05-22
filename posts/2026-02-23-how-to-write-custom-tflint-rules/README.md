@@ -47,6 +47,8 @@ tflint-ruleset-myorg/
     naming_convention_test.go
     banned_resources.go
     banned_resources_test.go
+    max_instance_size.go
+    max_instance_size_test.go
   go.mod
   go.sum
 ```
@@ -73,7 +75,6 @@ func main() {
             Rules: []tflint.Rule{
                 rules.NewResourceNamingConventionRule(),
                 rules.NewBannedResourcesRule(),
-                rules.NewRequiredTagsRule(),
                 rules.NewMaxInstanceSizeRule(),
             },
         },
@@ -83,7 +84,7 @@ func main() {
 
 ## Writing a Naming Convention Rule
 
-This rule enforces that all resources use a specific naming prefix:
+This rule enforces that Terraform resource labels use snake_case:
 
 ```go
 // rules/naming_convention.go
@@ -129,7 +130,7 @@ func (r *ResourceNamingConventionRule) Link() string {
 
 // Check runs the rule against the Terraform configuration
 func (r *ResourceNamingConventionRule) Check(runner tflint.Runner) error {
-    // Define resource types that require a "name" attribute
+    // Define resource types that should follow the naming convention
     resourceTypes := []string{
         "aws_instance",
         "aws_s3_bucket",
@@ -141,11 +142,7 @@ func (r *ResourceNamingConventionRule) Check(runner tflint.Runner) error {
     for _, resourceType := range resourceTypes {
         // Get all resources of this type
         resources, err := runner.GetResourceContent(resourceType,
-            &hclext.BodySchema{
-                Attributes: []hclext.AttributeSchema{
-                    {Name: "tags"},
-                },
-            }, nil)
+            &hclext.BodySchema{}, nil)
         if err != nil {
             return err
         }
@@ -238,8 +235,7 @@ func (r *BannedResourcesRule) Check(runner tflint.Runner) error {
         resources, err := runner.GetResourceContent(resourceType,
             &hclext.BodySchema{}, nil)
         if err != nil {
-            // Resource type might not exist - that is fine
-            continue
+            return err
         }
 
         for _, resource := range resources.Blocks {
@@ -297,8 +293,8 @@ func (r *MaxInstanceSizeRule) Link() string {
 }
 
 func (r *MaxInstanceSizeRule) Check(runner tflint.Runner) error {
-    // Allowed instance type prefixes
-    allowedPrefixes := []string{
+    // Allowed instance types
+    allowedTypes := []string{
         "t3.micro", "t3.small", "t3.medium", "t3.large",
         "t3a.micro", "t3a.small", "t3a.medium", "t3a.large",
         "m5.large", "m5.xlarge",
@@ -320,29 +316,29 @@ func (r *MaxInstanceSizeRule) Check(runner tflint.Runner) error {
             continue
         }
 
-        var instanceType string
-        diags := runner.EvaluateExpr(attr.Expr, &instanceType, nil)
-        if diags.HasErrors() {
-            // Cannot evaluate - might be a variable reference
-            continue
-        }
-
-        allowed := false
-        for _, prefix := range allowedPrefixes {
-            if instanceType == prefix {
-                allowed = true
-                break
+        err := runner.EvaluateExpr(attr.Expr, func(instanceType string) error {
+            allowed := false
+            for _, allowedType := range allowedTypes {
+                if instanceType == allowedType {
+                    allowed = true
+                    break
+                }
             }
-        }
 
-        if !allowed {
-            runner.EmitIssue(
-                r,
-                fmt.Sprintf("Instance type '%s' exceeds the maximum allowed size. "+
-                    "Allowed types: %s. Request an exception if needed.",
-                    instanceType, strings.Join(allowedPrefixes, ", ")),
-                attr.Expr.Range(),
-            )
+            if !allowed {
+                return runner.EmitIssue(
+                    r,
+                    fmt.Sprintf("Instance type '%s' exceeds the maximum allowed size. "+
+                        "Allowed types: %s. Request an exception if needed.",
+                        instanceType, strings.Join(allowedTypes, ", ")),
+                    attr.Expr.Range(),
+                )
+            }
+
+            return nil
+        }, nil)
+        if err != nil {
+            return err
         }
     }
 
@@ -361,7 +357,6 @@ package rules
 import (
     "testing"
 
-    hcl "github.com/hashicorp/hcl/v2"
     "github.com/terraform-linters/tflint-plugin-sdk/helper"
 )
 
@@ -422,7 +417,7 @@ resource "aws_instance" "web-server" {
                 t.Fatalf("Unexpected error: %s", err)
             }
 
-            helper.AssertIssues(t, tc.Expected, runner.Issues)
+            helper.AssertIssuesWithoutRange(t, tc.Expected, runner.Issues)
         })
     }
 }
@@ -469,7 +464,7 @@ plugin "myorg" {
 }
 ```
 
-For local development, use a local path:
+For local development, omit `source` and `version` so TFLint uses the manually installed binary:
 
 ```hcl
 # .tflint.hcl (development)
@@ -489,13 +484,20 @@ Publish your plugin to GitHub releases so others can install it with `tflint --i
 git tag v0.1.0
 git push origin v0.1.0
 
-# Build for multiple platforms
-GOOS=linux GOARCH=amd64 go build -o dist/tflint-ruleset-myorg_linux_amd64
-GOOS=darwin GOARCH=amd64 go build -o dist/tflint-ruleset-myorg_darwin_amd64
-GOOS=darwin GOARCH=arm64 go build -o dist/tflint-ruleset-myorg_darwin_arm64
-GOOS=windows GOARCH=amd64 go build -o dist/tflint-ruleset-myorg_windows_amd64.exe
+# Build release archives for multiple platforms
+mkdir -p dist/linux_amd64 dist/darwin_amd64 dist/darwin_arm64 dist/windows_amd64
+GOOS=linux GOARCH=amd64 go build -o dist/linux_amd64/tflint-ruleset-myorg
+GOOS=darwin GOARCH=amd64 go build -o dist/darwin_amd64/tflint-ruleset-myorg
+GOOS=darwin GOARCH=arm64 go build -o dist/darwin_arm64/tflint-ruleset-myorg
+GOOS=windows GOARCH=amd64 go build -o dist/windows_amd64/tflint-ruleset-myorg.exe
 
-# Create a GitHub release and upload the binaries
+(cd dist/linux_amd64 && zip ../tflint-ruleset-myorg_linux_amd64.zip tflint-ruleset-myorg)
+(cd dist/darwin_amd64 && zip ../tflint-ruleset-myorg_darwin_amd64.zip tflint-ruleset-myorg)
+(cd dist/darwin_arm64 && zip ../tflint-ruleset-myorg_darwin_arm64.zip tflint-ruleset-myorg)
+(cd dist/windows_amd64 && zip ../tflint-ruleset-myorg_windows_amd64.zip tflint-ruleset-myorg.exe)
+(cd dist && sha256sum *.zip > checksums.txt)
+
+# Create a GitHub release and upload the zip files and checksums.txt
 # Users can then install with: tflint --init
 ```
 
@@ -518,10 +520,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: terraform-linters/setup-tflint@v4
+      - uses: terraform-linters/setup-tflint@v6
 
       - name: Init TFLint
         run: tflint --init
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
 
       - name: Run TFLint
         run: tflint --recursive --format compact
