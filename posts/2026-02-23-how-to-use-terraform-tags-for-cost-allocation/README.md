@@ -48,7 +48,7 @@ locals {
 
 ### Using default_tags in the AWS Provider
 
-The AWS provider supports `default_tags` that apply to every resource:
+The AWS provider supports `default_tags` that apply to every resource that supports tagging:
 
 ```hcl
 provider "aws" {
@@ -78,7 +78,7 @@ resource "aws_instance" "web" {
 }
 ```
 
-### Azure Tags with default_tags
+### Azure Tags with locals
 
 ```hcl
 provider "azurerm" {
@@ -191,7 +191,6 @@ output "tags" {
     Project     = var.project
     CostCenter  = var.cost_center
     ManagedBy   = "terraform"
-    CreatedAt   = timestamp()
   }, var.extra_tags)
 }
 
@@ -223,10 +222,11 @@ required_tags = ["Environment", "Team", "Project", "CostCenter"]
 # Check all resources for required tags
 main = rule {
     all tfplan.resource_changes as _, rc {
-        rc.change.actions contains "create" implies
-            all required_tags as tag {
-                rc.change.after.tags contains tag
-            }
+        (rc.change.actions contains "create" or rc.change.actions contains "update") implies
+            (rc.change.after contains "tags" and
+                all required_tags as tag {
+                    rc.change.after.tags contains tag
+                })
     }
 }
 ```
@@ -239,12 +239,12 @@ package terraform.tags
 
 required_tags := ["Environment", "Team", "Project", "CostCenter"]
 
-deny[msg] {
+deny contains msg if {
     resource := input.resource_changes[_]
-    resource.change.actions[_] == "create"
-    tags := resource.change.after.tags
+    action := resource.change.actions[_]
+    action in {"create", "update"}
     tag := required_tags[_]
-    not tags[tag]
+    not resource.change.after.tags[tag]
     msg := sprintf("Resource %s is missing required tag: %s", [resource.address, tag])
 }
 ```
@@ -272,7 +272,7 @@ Once tags are active, use them in cost reports:
 ```bash
 # AWS: Get cost by team tag
 aws ce get-cost-and-usage \
-  --time-period Start=2026-02-01,End=2026-02-28 \
+  --time-period Start=2026-02-01,End=2026-03-01 \
   --granularity MONTHLY \
   --metrics "UnblendedCost" \
   --group-by Type=TAG,Key=Team \
@@ -286,8 +286,7 @@ Find and tag resources that slipped through:
 ```bash
 # AWS: Find untagged EC2 instances
 aws ec2 describe-instances \
-  --filters "Name=tag-key,Values=Environment" \
-  --query 'Reservations[].Instances[?!Tags[?Key==`Environment`]].[InstanceId]' \
+  --query 'Reservations[].Instances[?!(Tags[?Key==`Environment`])].[InstanceId]' \
   --output text
 ```
 
