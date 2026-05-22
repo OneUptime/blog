@@ -51,8 +51,8 @@ Terraform workspace names support letters, numbers, hyphens, and underscores. Be
 | S3 buckets | lowercase, hyphens, dots, 3-63 chars |
 | DNS records | lowercase, hyphens, max 63 chars per label |
 | EC2 tags | 256 chars max |
-| RDS identifiers | lowercase, hyphens, 1-63 chars |
-| Azure resource groups | alphanumeric, hyphens, underscores, periods, 1-90 chars |
+| RDS identifiers | letters, numbers, hyphens, 1-63 chars; must start with a letter; cannot end with a hyphen or contain consecutive hyphens |
+| Azure resource groups | letters, numbers, hyphens, underscores, periods, parentheses, 1-90 chars; cannot end with a period |
 | GCP resources | lowercase, hyphens, must start with letter |
 
 The safest convention: **lowercase letters, numbers, and hyphens only**.
@@ -208,16 +208,19 @@ locals {
 }
 
 # This will fail the plan if the workspace name is invalid
-resource "null_resource" "validate_workspace" {
-  count = local.workspace_valid ? 0 : 1
+resource "terraform_data" "validate_workspace" {
+  input = terraform.workspace
 
-  provisioner "local-exec" {
-    command = "echo 'ERROR: Invalid workspace name: ${terraform.workspace}' && exit 1"
+  lifecycle {
+    precondition {
+      condition     = local.workspace_valid
+      error_message = "Invalid workspace name: ${terraform.workspace}"
+    }
   }
 }
 ```
 
-A better approach using a validation check:
+For a non-blocking warning, you can also use a check block:
 
 ```hcl
 # Use a check block (Terraform 1.5+)
@@ -277,7 +280,8 @@ WORKSPACE=$(echo "$BRANCH" |
   sed 's/--*/-/g' |                   # collapse multiple hyphens
   sed 's/^-//' |                      # remove leading hyphen
   sed 's/-$//' |                      # remove trailing hyphen
-  cut -c1-20)                         # truncate to 20 chars
+  cut -c1-20 |                         # truncate to 20 chars
+  sed 's/-$//')                        # remove trailing hyphen after truncation
 
 # Handle edge case where result is empty
 if [ -z "$WORKSPACE" ]; then
@@ -291,7 +295,7 @@ Examples:
 
 ```text
 feature/USER-1234-new-login  ->  feature-user-1234-ne
-bugfix/Fix_Critical_Bug!!!   ->  bugfix-fix-critical-
+bugfix/Fix_Critical_Bug!!!   ->  bugfix-fix-critical
 release/v2.0.0               ->  release-v2-0-0
 dependabot/npm/lodash-4.17   ->  dependabot-npm-lodas
 ```
