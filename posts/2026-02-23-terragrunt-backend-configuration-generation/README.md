@@ -25,7 +25,7 @@ terraform {
     key            = "dev/vpc/terraform.tfstate"
     region         = "us-east-1"
     encrypt        = true
-    dynamodb_table = "terraform-locks"
+    use_lockfile   = true
   }
 }
 ```
@@ -53,7 +53,7 @@ terraform {
     key            = "${path_relative_to_include()}/terraform.tfstate"
     region         = "us-east-1"
     encrypt        = true
-    dynamodb_table = "terraform-state-locks"
+    use_lockfile   = true
   }
 }
 EOF
@@ -129,7 +129,7 @@ terraform {
     key            = "${local.aws_region}/${path_relative_to_include()}/terraform.tfstate"
     region         = "${local.aws_region}"
     encrypt        = true
-    dynamodb_table = "terraform-locks-${local.aws_region}"
+    use_lockfile   = true
   }
 }
 EOF
@@ -213,7 +213,7 @@ EOF
 
 ## Using remote_state Block Instead of generate
 
-Terragrunt also offers a `remote_state` block that goes a step further - it can actually create the backend resources (like the S3 bucket and DynamoDB table) if they don't exist:
+Terragrunt also offers a `remote_state` block that goes a step further - when run with backend bootstrapping enabled, it can create supported backend resources like the S3 bucket if they don't exist:
 
 ```hcl
 # root terragrunt.hcl
@@ -221,7 +221,7 @@ Terragrunt also offers a `remote_state` block that goes a step further - it can 
 remote_state {
   backend = "s3"
 
-  # Terragrunt will create these resources if missing
+  # Terragrunt can create supported backend resources when run with backend bootstrapping enabled
   generate = {
     path      = "backend.tf"
     if_exists = "overwrite"
@@ -232,23 +232,18 @@ remote_state {
     key            = "${path_relative_to_include()}/terraform.tfstate"
     region         = "us-east-1"
     encrypt        = true
-    dynamodb_table = "terraform-locks"
+    use_lockfile   = true
 
     # S3 bucket configuration when Terragrunt creates it
     s3_bucket_tags = {
       Name        = "Terraform State"
       Environment = "shared"
     }
-
-    # DynamoDB table tags
-    dynamodb_table_tags = {
-      Name = "Terraform Lock Table"
-    }
   }
 }
 ```
 
-This is particularly useful for bootstrapping new accounts or environments where the state bucket doesn't exist yet.
+This is particularly useful for bootstrapping new accounts or environments where the state bucket doesn't exist yet. Run Terragrunt with `--backend-bootstrap` when you want it to create supported backend resources before initialization.
 
 ## Handling Multiple Backends
 
@@ -299,15 +294,15 @@ The `overwrite_terragrunt` option is useful during migration periods when some m
 
 ## Verifying Generated Files
 
-To see what Terragrunt generates without actually running Terraform, use the `render-json` command:
+To inspect the resolved Terragrunt configuration without running Terraform, use the `render` command:
 
 ```bash
 # Show the full resolved configuration
-terragrunt render-json --terragrunt-json-out config.json
+terragrunt render --format json > config.json
 
-# Or just look at the generated files in the cache directory
+# Or look at the generated files after running Terragrunt
 terragrunt plan
-ls .terragrunt-cache/*/backend.tf
+find .terragrunt-cache -name backend.tf -print
 ```
 
 ## Common Pitfalls
@@ -318,6 +313,6 @@ Another common issue is forgetting that `path_relative_to_include()` is relative
 
 ## Wrapping Up
 
-Backend configuration generation is one of Terragrunt's most practical features. It eliminates a whole class of copy-paste errors and makes reorganizing your infrastructure much simpler - change the backend in one place, and every module picks it up. Combined with the `remote_state` block's ability to create backend resources automatically, it removes a lot of the bootstrapping friction from new environments.
+Backend configuration generation is one of Terragrunt's most practical features. It eliminates a whole class of copy-paste errors and makes reorganizing your infrastructure much simpler - change the backend in one place, and every module picks it up. Combined with the `remote_state` block and backend bootstrapping, it removes a lot of the bootstrapping friction from new environments.
 
 For more on keeping your Terraform configurations DRY with Terragrunt, check out our post on [using Terragrunt for DRY Terraform](https://oneuptime.com/blog/post/2026-01-26-terragrunt-dry-terraform/view).
