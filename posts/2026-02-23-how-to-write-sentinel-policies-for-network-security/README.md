@@ -27,7 +27,7 @@ Let us tackle each of these.
 
 Security groups are the most common source of network security issues. Here is a comprehensive security group policy:
 
-```python
+```sentinel
 # network-security.sentinel
 
 # Enforces network security standards
@@ -52,11 +52,17 @@ restricted_ports = {
     6443:  "Kubernetes API",
 }
 
-# Get security group rules
+# Get legacy standalone security group rules
 sg_rules = filter tfplan.resource_changes as _, rc {
     rc.type is "aws_security_group_rule" and
     rc.change.actions contains "create" and
     rc.change.after.type is "ingress"
+}
+
+# Get current standalone security group ingress rules
+vpc_sg_ingress_rules = filter tfplan.resource_changes as _, rc {
+    rc.type is "aws_vpc_security_group_ingress_rule" and
+    rc.change.actions contains "create"
 }
 
 # Get inline security groups
@@ -86,17 +92,52 @@ validate_rule = func(rule) {
     to = rule.change.after.to_port
 
     # Block all-traffic rules
-    if from is 0 and to is 65535 {
-        print(rule.address, "- allows all ports from the internet")
-        return false
-    }
-
-    if from is -1 and to is -1 {
+    if rule.change.after.protocol is "-1" {
         print(rule.address, "- allows all traffic from the internet")
         return false
     }
 
+    if from is null or to is null {
+        return true
+    }
+
     # Check restricted ports
+    valid = true
+    for restricted_ports as port, service {
+        if port_in_range(port, from, to) {
+            print(rule.address, "- port", port, "("+service+")",
+                  "must not be open to the internet")
+            valid = false
+        }
+    }
+
+    return valid
+}
+
+# Validate a current standalone security group ingress rule
+validate_vpc_ingress_rule = func(rule) {
+    cidr = rule.change.after.cidr_ipv4
+    ipv6_cidr = rule.change.after.cidr_ipv6
+
+    is_open_ipv4 = cidr is "0.0.0.0/0"
+    is_open_ipv6 = ipv6_cidr is "::/0"
+
+    if not (is_open_ipv4 or is_open_ipv6) {
+        return true
+    }
+
+    if rule.change.after.ip_protocol is "-1" {
+        print(rule.address, "- allows all traffic from the internet")
+        return false
+    }
+
+    from = rule.change.after.from_port
+    to = rule.change.after.to_port
+
+    if from is null or to is null {
+        return true
+    }
+
     valid = true
     for restricted_ports as port, service {
         if port_in_range(port, from, to) {
@@ -118,20 +159,26 @@ validate_inline_ingress = func(sg) {
     valid = true
     for sg.change.after.ingress as _, ingress {
         cidr = ingress.cidr_blocks
-        if cidr is not null and cidr contains "0.0.0.0/0" {
+        ipv6_cidr = ingress.ipv6_cidr_blocks
+        is_open_ipv4 = cidr is not null and cidr contains "0.0.0.0/0"
+        is_open_ipv6 = ipv6_cidr is not null and ipv6_cidr contains "::/0"
+
+        if is_open_ipv4 or is_open_ipv6 {
             from = ingress.from_port
             to = ingress.to_port
 
-            if from is 0 and to is 65535 {
-                print(sg.address, "- inline rule allows all ports from internet")
+            if ingress.protocol is "-1" {
+                print(sg.address, "- inline rule allows all traffic from internet")
                 valid = false
             }
 
-            for restricted_ports as port, service {
-                if port_in_range(port, from, to) {
-                    print(sg.address, "- inline rule exposes", service,
-                          "(port", port, ") to internet")
-                    valid = false
+            if from is not null and to is not null {
+                for restricted_ports as port, service {
+                    if port_in_range(port, from, to) {
+                        print(sg.address, "- inline rule exposes", service,
+                              "(port", port, ") to internet")
+                        valid = false
+                    }
                 }
             }
         }
@@ -145,6 +192,12 @@ standalone_valid = rule {
     }
 }
 
+vpc_ingress_valid = rule {
+    all vpc_sg_ingress_rules as _, r {
+        validate_vpc_ingress_rule(r)
+    }
+}
+
 inline_valid = rule {
     all security_groups as _, sg {
         validate_inline_ingress(sg)
@@ -152,7 +205,9 @@ inline_valid = rule {
 }
 
 main = rule {
-    standalone_valid and inline_valid
+    standalone_valid and
+    vpc_ingress_valid and
+    inline_valid
 }
 ```
 
@@ -160,40 +215,76 @@ main = rule {
 
 Most organizations focus on ingress rules, but egress restrictions are also important for preventing data exfiltration:
 
-```python
+```sentinel
 import "tfplan/v2" as tfplan
 
-# Get egress security group rules
+# Get legacy egress security group rules
 egress_rules = filter tfplan.resource_changes as _, rc {
     rc.type is "aws_security_group_rule" and
     rc.change.actions contains "create" and
     rc.change.after.type is "egress"
 }
 
+# Get current egress security group rules
+vpc_egress_rules = filter tfplan.resource_changes as _, rc {
+    rc.type is "aws_vpc_security_group_egress_rule" and
+    rc.change.actions contains "create"
+}
+
+validate_legacy_egress = func(address, r) {
+    cidr = r.change.after.cidr_blocks
+
+    if cidr is not null and cidr contains "0.0.0.0/0" {
+        from = r.change.after.from_port
+        to = r.change.after.to_port
+
+        # Allow HTTPS egress (port 443) to anywhere
+        # Allow DNS egress (port 53) to anywhere
+        if (from is 443 and to is 443) or (from is 53 and to is 53) {
+            return true
+        } else if r.change.after.protocol is "-1" {
+            print(address, "- unrestricted egress to 0.0.0.0/0 is not allowed.",
+                  "Specify allowed ports.")
+            return false
+        } else {
+            return true
+        }
+    }
+
+    return true
+}
+
+validate_vpc_egress = func(address, r) {
+    cidr = r.change.after.cidr_ipv4
+
+    if cidr is "0.0.0.0/0" {
+        from = r.change.after.from_port
+        to = r.change.after.to_port
+
+        # Allow HTTPS egress (port 443) to anywhere
+        # Allow DNS egress (port 53) to anywhere
+        if (from is 443 and to is 443) or (from is 53 and to is 53) {
+            return true
+        } else if r.change.after.ip_protocol is "-1" {
+            print(address, "- unrestricted egress to 0.0.0.0/0 is not allowed.",
+                  "Specify allowed ports.")
+            return false
+        } else {
+            return true
+        }
+    }
+
+    return true
+}
+
 # Block unrestricted egress (0.0.0.0/0 on all ports)
 # This is a strict policy - many orgs allow open egress
 main = rule {
     all egress_rules as address, r {
-        cidr = r.change.after.cidr_blocks
-
-        if cidr is not null and cidr contains "0.0.0.0/0" {
-            from = r.change.after.from_port
-            to = r.change.after.to_port
-
-            # Allow HTTPS egress (port 443) to anywhere
-            # Allow DNS egress (port 53) to anywhere
-            if (from is 443 and to is 443) or (from is 53 and to is 53) {
-                true
-            } else if from is 0 and to is 65535 {
-                print(address, "- unrestricted egress to 0.0.0.0/0 is not allowed.",
-                      "Specify allowed ports.")
-                false
-            } else {
-                true
-            }
-        } else {
-            true
-        }
+        validate_legacy_egress(address, r)
+    } and
+    all vpc_egress_rules as address, r {
+        validate_vpc_egress(address, r)
     }
 }
 ```
@@ -202,9 +293,8 @@ main = rule {
 
 Flow logs are essential for network monitoring and incident investigation:
 
-```python
+```sentinel
 import "tfplan/v2" as tfplan
-import "tfstate/v2" as tfstate
 
 # Get VPCs being created
 new_vpcs = filter tfplan.resource_changes as _, rc {
@@ -218,24 +308,15 @@ new_flow_logs = filter tfplan.resource_changes as _, rc {
     rc.change.actions contains "create"
 }
 
-# Check existing flow logs
-existing_flow_logs = filter tfstate.resources as _, r {
-    r.type is "aws_flow_log"
-}
-
 # If new VPCs are being created, flow logs should be created too
 main = rule {
-    if length(new_vpcs) > 0 {
-        length(new_flow_logs) > 0
-    } else {
-        true
-    }
+    length(new_vpcs) is 0 or length(new_flow_logs) > 0
 }
 ```
 
 ### Validating Flow Log Configuration
 
-```python
+```sentinel
 import "tfplan/v2" as tfplan
 
 flow_logs = filter tfplan.resource_changes as _, rc {
@@ -244,15 +325,19 @@ flow_logs = filter tfplan.resource_changes as _, rc {
 }
 
 # Flow logs must capture all traffic (not just ACCEPT or REJECT)
+validate_flow_log = func(address, log) {
+    traffic_type = log.change.after.traffic_type
+    if traffic_type is not "ALL" {
+        print(address, "- flow log must capture ALL traffic, not just", traffic_type)
+        return false
+    }
+
+    return true
+}
+
 main = rule {
     all flow_logs as address, log {
-        traffic_type = log.change.after.traffic_type
-        if traffic_type is not "ALL" {
-            print(address, "- flow log must capture ALL traffic, not just", traffic_type)
-            false
-        } else {
-            true
-        }
+        validate_flow_log(address, log)
     }
 }
 ```
@@ -261,7 +346,7 @@ main = rule {
 
 Network ACLs provide an additional layer of security at the subnet level:
 
-```python
+```sentinel
 import "tfplan/v2" as tfplan
 
 # Get NACL rules
@@ -305,7 +390,7 @@ main = rule {
 
 Ensure subnets are configured securely:
 
-```python
+```sentinel
 import "tfplan/v2" as tfplan
 
 # Get subnets
@@ -315,25 +400,29 @@ subnets = filter tfplan.resource_changes as _, rc {
 }
 
 # Subnets should not auto-assign public IPs by default
-no_auto_public_ip = rule {
-    all subnets as address, subnet {
-        if subnet.change.after.map_public_ip_on_launch is true {
-            # Only allow this for explicitly named public subnets
-            tags = subnet.change.after.tags
-            if tags is not null and "Name" in tags {
-                if tags["Name"] matches ".*public.*" {
-                    true  # Public subnet is expected to have public IPs
-                } else {
-                    print(address, "- non-public subnet should not auto-assign public IPs")
-                    false
-                }
+validate_subnet = func(address, subnet) {
+    if subnet.change.after.map_public_ip_on_launch is true {
+        # Only allow this for explicitly named public subnets
+        tags = subnet.change.after.tags
+        if tags is not null and "Name" in tags {
+            if tags["Name"] matches ".*public.*" {
+                return true  # Public subnet is expected to have public IPs
             } else {
-                print(address, "- subnet with auto-assign public IP must be tagged as public")
-                false
+                print(address, "- non-public subnet should not auto-assign public IPs")
+                return false
             }
         } else {
-            true
+            print(address, "- subnet with auto-assign public IP must be tagged as public")
+            return false
         }
+    }
+
+    return true
+}
+
+no_auto_public_ip = rule {
+    all subnets as address, subnet {
+        validate_subnet(address, subnet)
     }
 }
 
@@ -346,7 +435,7 @@ main = rule {
 
 Control which VPC peering connections and VPN configurations are allowed:
 
-```python
+```sentinel
 import "tfplan/v2" as tfplan
 
 # Get VPC peering connections
@@ -361,15 +450,19 @@ approved_peer_accounts = [
     "234567890123",
 ]
 
+validate_peering = func(address, peer) {
+    account = peer.change.after.peer_owner_id
+    if account is not null and account not in approved_peer_accounts {
+        print(address, "- peering with account", account, "is not approved")
+        return false
+    }
+
+    return true
+}
+
 main = rule {
     all peering_connections as address, peer {
-        account = peer.change.after.peer_owner_id
-        if account is not null and account not in approved_peer_accounts {
-            print(address, "- peering with account", account, "is not approved")
-            false
-        } else {
-            true
-        }
+        validate_peering(address, peer)
     }
 }
 ```
@@ -378,7 +471,7 @@ main = rule {
 
 Here is a policy that combines multiple network security checks:
 
-```python
+```sentinel
 # comprehensive-network-security.sentinel
 
 import "tfplan/v2" as tfplan
@@ -392,18 +485,59 @@ sg_rules = filter tfplan.resource_changes as _, rc {
     rc.change.after.type is "ingress"
 }
 
+vpc_sg_ingress_rules = filter tfplan.resource_changes as _, rc {
+    rc.type is "aws_vpc_security_group_ingress_rule" and
+    rc.change.actions contains "create"
+}
+
+validate_legacy_sg_rule = func(r) {
+    cidr = r.change.after.cidr_blocks
+    if cidr is null or cidr not contains "0.0.0.0/0" {
+        return true
+    }
+
+    if r.change.after.protocol is "-1" {
+        return false
+    }
+
+    from = r.change.after.from_port
+    to = r.change.after.to_port
+    for restricted_ports as port {
+        if from <= port and port <= to {
+            return false
+        }
+    }
+
+    return true
+}
+
+validate_vpc_sg_rule = func(r) {
+    cidr = r.change.after.cidr_ipv4
+    if cidr is not "0.0.0.0/0" {
+        return true
+    }
+
+    if r.change.after.ip_protocol is "-1" {
+        return false
+    }
+
+    from = r.change.after.from_port
+    to = r.change.after.to_port
+    for restricted_ports as port {
+        if from <= port and port <= to {
+            return false
+        }
+    }
+
+    return true
+}
+
 no_restricted_ports_open = rule {
     all sg_rules as _, r {
-        cidr = r.change.after.cidr_blocks
-        if cidr is not null and cidr contains "0.0.0.0/0" {
-            from = r.change.after.from_port
-            to = r.change.after.to_port
-            all restricted_ports as port {
-                not (from <= port and port <= to)
-            }
-        } else {
-            true
-        }
+        validate_legacy_sg_rule(r)
+    } and
+    all vpc_sg_ingress_rules as _, r {
+        validate_vpc_sg_rule(r)
     }
 }
 
