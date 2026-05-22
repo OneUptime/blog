@@ -17,7 +17,7 @@ In this guide, we will walk through the entire process of publishing a custom Te
 Before you can publish a provider, you need the following:
 
 - A GitHub account and a public GitHub repository
-- A Terraform Cloud account (for Registry access)
+- A Terraform Registry account through GitHub sign-in
 - A GPG key for signing releases
 - GoReleaser for building release binaries
 - A properly structured provider repository
@@ -90,8 +90,8 @@ gpg --armor --export YOUR_KEY_ID > public-key.asc
 ### Add GPG Key to Terraform Registry
 
 1. Sign in to the Terraform Registry at registry.terraform.io
-2. Go to your organization settings
-3. Navigate to GPG Keys
+2. Go to User Settings
+3. Navigate to Signing Keys
 4. Add the public key you exported
 
 ### Add GPG Key to GitHub
@@ -100,10 +100,10 @@ The private key needs to be available to your GitHub Actions for signing release
 
 ```bash
 # Export the private key
-gpg --armor --export-secret-keys YOUR_KEY_ID | base64 > private-key-base64.txt
+gpg --armor --export-secret-keys YOUR_KEY_ID > private-key.asc
 
-# Add this as a GitHub repository secret named GPG_PRIVATE_KEY
-# Also add the passphrase as a secret named GPG_PASSPHRASE
+# Add the exported ASCII-armored key as a GitHub repository secret named GPG_PRIVATE_KEY
+# Also add the passphrase as a secret named PASSPHRASE
 ```
 
 ## Configuring GoReleaser
@@ -146,10 +146,14 @@ builds:
     binary: '{{ .ProjectName }}_v{{ .Version }}'
 
 archives:
-  - format: zip
+  - formats:
+      - zip
     name_template: '{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
 
 checksum:
+  extra_files:
+    - glob: 'terraform-registry-manifest.json'
+      name_template: '{{ .ProjectName }}_{{ .Version }}_manifest.json'
   name_template: '{{ .ProjectName }}_{{ .Version }}_SHA256SUMS'
   algorithm: sha256
 
@@ -228,11 +232,12 @@ jobs:
         uses: crazy-max/ghaction-import-gpg@v6
         with:
           gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
-          passphrase: ${{ secrets.GPG_PASSPHRASE }}
+          passphrase: ${{ secrets.PASSPHRASE }}
 
       - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v5
+        uses: goreleaser/goreleaser-action@v7
         with:
+          version: "~> v2"
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
