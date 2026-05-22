@@ -55,7 +55,7 @@ terraform {
     bucket               = "acme-terraform-state"
     key                  = "multi-region/terraform.tfstate"
     region               = "us-east-1"
-    dynamodb_table       = "terraform-locks"
+    use_lockfile         = true
     workspace_key_prefix = "regions"
   }
 }
@@ -86,7 +86,7 @@ provider "aws" {
 
 ## Region-Specific Configuration
 
-Different regions often need different sizing, availability zones, and AMIs:
+Different regions often need different sizing, availability zones, and AMI lookup parameters:
 
 ```hcl
 locals {
@@ -96,21 +96,21 @@ locals {
       azs              = ["us-east-1a", "us-east-1b", "us-east-1c"]
       vpc_cidr         = "10.0.0.0/16"
       instance_type    = "t3.large"
-      ami              = "ami-0c55b159cbfafe1f0"
+      ami_parameter    = "/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64"
       certificate_arn  = "arn:aws:acm:us-east-1:123456789012:certificate/abc"
     }
     "us-west-2" = {
       azs              = ["us-west-2a", "us-west-2b", "us-west-2c"]
       vpc_cidr         = "10.1.0.0/16"
       instance_type    = "t3.large"
-      ami              = "ami-0d6621c01e8c2de2c"
+      ami_parameter    = "/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64"
       certificate_arn  = "arn:aws:acm:us-west-2:123456789012:certificate/def"
     }
     "eu-west-1" = {
       azs              = ["eu-west-1a", "eu-west-1b", "eu-west-1c"]
       vpc_cidr         = "10.2.0.0/16"
       instance_type    = "t3.medium"
-      ami              = "ami-0e5657f6d3c3ea350"
+      ami_parameter    = "/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64"
       certificate_arn  = "arn:aws:acm:eu-west-1:123456789012:certificate/ghi"
     }
   }
@@ -171,9 +171,13 @@ resource "aws_subnet" "private" {
 ```hcl
 # compute.tf
 
+data "aws_ssm_parameter" "app_ami" {
+  name = local.config.ami_parameter
+}
+
 resource "aws_launch_template" "app" {
   name_prefix   = "app-${terraform.workspace}-"
-  image_id      = local.config.ami
+  image_id      = data.aws_ssm_parameter.app_ami.value
   instance_type = local.config.instance_type
 
   vpc_security_group_ids = [aws_security_group.app.id]
@@ -216,6 +220,7 @@ The tricky part of multi-region workspaces is referencing resources in other reg
 data "terraform_remote_state" "primary" {
   backend   = "s3"
   workspace = "us-east-1"
+  count     = local.region != "us-east-1" ? 1 : 0
 
   config = {
     bucket               = "acme-terraform-state"
@@ -231,11 +236,30 @@ resource "aws_vpc_peering_connection" "to_primary" {
   count = local.region != "us-east-1" ? 1 : 0
 
   vpc_id        = aws_vpc.main.id
-  peer_vpc_id   = data.terraform_remote_state.primary.outputs.vpc_id
+  peer_vpc_id   = data.terraform_remote_state.primary[0].outputs.vpc_id
   peer_region   = "us-east-1"
+  auto_accept   = false
 
   tags = {
     Name = "peer-${terraform.workspace}-to-us-east-1"
+  }
+}
+
+# Accept inter-region peering from the primary region side
+provider "aws" {
+  alias  = "primary"
+  region = "us-east-1"
+}
+
+resource "aws_vpc_peering_connection_accepter" "primary" {
+  provider = aws.primary
+  count    = local.region != "us-east-1" ? 1 : 0
+
+  vpc_peering_connection_id = aws_vpc_peering_connection.to_primary[0].id
+  auto_accept               = true
+
+  tags = {
+    Name = "accept-peer-${terraform.workspace}-to-us-east-1"
   }
 }
 ```
@@ -266,24 +290,24 @@ resource "aws_route53_health_check" "app" {
 }
 
 # Route53 latency-based routing - only in primary region
+data "aws_route53_zone" "main" {
+  name = "example.com."
+}
+
 resource "aws_route53_record" "app_latency" {
   for_each = local.is_primary_region ? toset(keys(local.region_config)) : toset([])
 
   zone_id = data.aws_route53_zone.main.zone_id
   name    = "app.example.com"
-  type    = "A"
+  type    = "CNAME"
+  ttl     = 60
 
   latency_routing_policy {
     region = each.key
   }
 
   set_identifier = each.key
-
-  alias {
-    name                   = "alb-${each.key}.example.com"
-    zone_id                = "Z1234567890"
-    evaluate_target_health = true
-  }
+  records        = ["alb-${each.key}.example.com"]
 }
 ```
 
@@ -296,10 +320,13 @@ Set up a primary database in one region and replicas in others:
 resource "aws_db_instance" "primary" {
   count = local.is_primary_region ? 1 : 0
 
-  identifier     = "myapp-db-primary"
-  engine         = "postgres"
-  engine_version = "15.4"
-  instance_class = "db.r6g.large"
+  identifier                  = "myapp-db-primary"
+  allocated_storage           = 100
+  engine                      = "postgres"
+  engine_version              = "15.4"
+  instance_class              = "db.r6g.large"
+  username                    = "appadmin"
+  manage_master_user_password = true
 
   # Enable backups for replication
   backup_retention_period = 7
@@ -315,7 +342,7 @@ resource "aws_db_instance" "replica" {
   count = local.is_primary_region ? 0 : 1
 
   identifier          = "myapp-db-replica-${local.region}"
-  replicate_source_db = data.terraform_remote_state.primary.outputs.db_arn
+  replicate_source_db = data.terraform_remote_state.primary[0].outputs.db_arn
 
   instance_class = "db.r6g.large"
 
