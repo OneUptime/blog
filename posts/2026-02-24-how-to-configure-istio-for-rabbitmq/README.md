@@ -112,7 +112,7 @@ spec:
 
 ## Clustered RabbitMQ with StatefulSet
 
-For a production cluster:
+For a clustered StatefulSet:
 
 ```yaml
 apiVersion: apps/v1
@@ -144,6 +144,10 @@ spec:
             - containerPort: 4369
               name: tcp-epmd
           env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
             - name: RABBITMQ_ERLANG_COOKIE
               valueFrom:
                 secretKeyRef:
@@ -153,15 +157,9 @@ spec:
               value: "true"
             - name: RABBITMQ_NODENAME
               value: "rabbit@$(POD_NAME).rabbitmq-headless.messaging.svc.cluster.local"
-            - name: POD_NAME
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.name
-            - name: K8S_SERVICE_NAME
-              value: rabbitmq-headless
 ```
 
-Setting `RABBITMQ_USE_LONGNAME` to true is important because each node needs a fully qualified name that includes the headless service, and Istio needs to be able to route to individual pods.
+Setting `RABBITMQ_USE_LONGNAME` to true is important because each node needs a fully qualified name that includes the headless service, and Istio needs to be able to route to individual pods. A StatefulSet with stable pod names does not form a RabbitMQ cluster by itself; add RabbitMQ peer discovery, such as the Kubernetes peer discovery plugin, or use the RabbitMQ Cluster Kubernetes Operator.
 
 ## DestinationRule
 
@@ -299,20 +297,9 @@ spec:
       protocol: TCP
   location: MESH_EXTERNAL
   resolution: DNS
----
-apiVersion: networking.istio.io/v1
-kind: DestinationRule
-metadata:
-  name: external-rabbitmq
-  namespace: messaging
-spec:
-  host: my-instance.rmq.cloudamqp.com
-  trafficPolicy:
-    tls:
-      mode: SIMPLE
 ```
 
-Note the port is 5671, which is the standard AMQPS (AMQP over TLS) port.
+Note the port is 5671, which is the standard AMQPS (AMQP over TLS) port. In this setup, the RabbitMQ client speaks TLS to the broker. Do not add Istio TLS origination for this same port unless the application sends plaintext AMQP and you intentionally want the sidecar to originate TLS.
 
 ## Monitoring
 
