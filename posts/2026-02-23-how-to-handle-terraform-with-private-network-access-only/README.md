@@ -92,7 +92,7 @@ resource "aws_vpc_endpoint" "interface" {
   tags = { Name = "${var.project}-${each.value}-endpoint" }
 }
 
-# Gateway endpoints for S3 and DynamoDB (free, and needed for state)
+# Gateway endpoint for S3 (free, and needed for state)
 resource "aws_vpc_endpoint" "s3" {
   vpc_id       = aws_vpc.private.id
   service_name = "com.amazonaws.${var.region}.s3"
@@ -102,6 +102,7 @@ resource "aws_vpc_endpoint" "s3" {
   tags = { Name = "${var.project}-s3-endpoint" }
 }
 
+# Gateway endpoint for DynamoDB if your Terraform configuration uses it
 resource "aws_vpc_endpoint" "dynamodb" {
   vpc_id       = aws_vpc.private.id
   service_name = "com.amazonaws.${var.region}.dynamodb"
@@ -123,6 +124,7 @@ First, on a machine that does have internet access, mirror the providers you nee
 mkdir -p /tmp/terraform-providers
 
 # Mirror the providers you use
+cd /path/to/your/terraform/configuration
 terraform providers mirror \
   -platform=linux_amd64 \
   -platform=linux_arm64 \
@@ -135,7 +137,7 @@ aws s3 sync /tmp/terraform-providers s3://internal-terraform-providers/
 On the private network CI/CD runner, configure Terraform to use the local mirror:
 
 ```hcl
-# ~/.terraformrc on the CI/CD runner
+# /opt/terraform/terraform.tfrc on the CI/CD runner
 provider_installation {
   filesystem_mirror {
     path    = "/opt/terraform/providers"
@@ -206,7 +208,7 @@ terraform {
     region         = "us-east-1"
     encrypt        = true
     kms_key_id     = "arn:aws:kms:us-east-1:123456789012:key/your-key-id"
-    dynamodb_table = "terraform-locks"
+    use_lockfile   = true
 
     # No special config needed - S3 VPC endpoint handles routing
   }
@@ -262,7 +264,7 @@ jobs:
   terraform:
     runs-on: [self-hosted, private-vpc]
     env:
-      TF_CLI_CONFIG_FILE: /opt/terraform/terraform.rc
+      TF_CLI_CONFIG_FILE: /opt/terraform/terraform.tfrc
 
     steps:
       - uses: actions/checkout@v4
