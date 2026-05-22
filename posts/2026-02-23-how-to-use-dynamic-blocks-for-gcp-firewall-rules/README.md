@@ -258,9 +258,25 @@ variable "services" {
   }
 }
 
-# Create firewall rules per service
+locals {
+  service_ingress_rules = {
+    for rule in flatten([
+      for service_name, service in var.services : [
+        for index, port_config in service.ingress_ports : {
+          key      = "${service_name}-${index}"
+          tags     = service.tags
+          protocol = port_config.protocol
+          ports    = port_config.ports
+          sources  = port_config.sources
+        }
+      ]
+    ]) : rule.key => rule
+  }
+}
+
+# Create firewall rules per service port configuration
 resource "google_compute_firewall" "service_rules" {
-  for_each = var.services
+  for_each = local.service_ingress_rules
 
   name    = "${terraform.workspace}-${each.key}-ingress"
   network = google_compute_network.main.name
@@ -268,20 +284,13 @@ resource "google_compute_firewall" "service_rules" {
   direction     = "INGRESS"
   target_tags   = each.value.tags
 
-  # Dynamic allow blocks for each port configuration
-  dynamic "allow" {
-    for_each = each.value.ingress_ports
-
-    content {
-      protocol = allow.value.protocol
-      ports    = allow.value.ports
-    }
+  allow {
+    protocol = each.value.protocol
+    ports    = each.value.ports
   }
 
-  # Combine all source ranges from all port configurations
-  source_ranges = distinct(flatten([
-    for port_config in each.value.ingress_ports : port_config.sources
-  ]))
+  # Keep source ranges scoped to this protocol and port set
+  source_ranges = each.value.sources
 }
 
 # Health check firewall rules for services that need them
