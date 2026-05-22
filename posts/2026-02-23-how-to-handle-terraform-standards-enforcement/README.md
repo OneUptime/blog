@@ -79,9 +79,12 @@ repos:
         args:
           - '--args=--config-file __GIT_WORKING_DIR__/.checkov.yml'
 
-      # Check for sensitive data
-      - id: detect_aws_credentials
-      - id: detect_private_key
+  # Check for sensitive data
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: detect-aws-credentials
+      - id: detect-private-key
 ```
 
 ## Level 3: TFLint Configuration
@@ -93,13 +96,13 @@ Configure TFLint with your organization's specific rules:
 # TFLint configuration for organizational standards
 
 config {
-  # Enable all available plugins
-  module = true
+  # Inspect local module calls
+  call_module_type = "local"
 }
 
 plugin "aws" {
   enabled = true
-  version = "0.28.0"
+  version = "0.47.0"
   source  = "github.com/terraform-linters/tflint-ruleset-aws"
 }
 
@@ -143,7 +146,7 @@ rule "aws_instance_previous_type" {
   enabled = true
 }
 
-# Prevent use of default VPC
+# Require standard tags
 rule "aws_resource_missing_tags" {
   enabled = true
   tags    = ["Team", "Environment", "ManagedBy"]
@@ -160,11 +163,21 @@ Use Open Policy Agent for sophisticated policy checks against Terraform plans:
 
 package terraform.security.encryption
 
+import rego.v1
+
+s3_encrypted_buckets contains bucket_name if {
+    resource := input.resource_changes[_]
+    resource.type == "aws_s3_bucket_server_side_encryption_configuration"
+    bucket_name := resource.change.after.bucket
+}
+
 # S3 buckets must have encryption enabled
-deny[msg] {
+deny contains msg if {
     resource := input.resource_changes[_]
     resource.type == "aws_s3_bucket"
-    resource.change.after.server_side_encryption_configuration == null
+    resource.change.actions != ["delete"]
+    bucket_name := resource.change.after.bucket
+    not bucket_name in s3_encrypted_buckets
     msg := sprintf(
         "S3 bucket '%s' must have server-side encryption enabled",
         [resource.address]
@@ -172,7 +185,7 @@ deny[msg] {
 }
 
 # EBS volumes must be encrypted
-deny[msg] {
+deny contains msg if {
     resource := input.resource_changes[_]
     resource.type == "aws_ebs_volume"
     resource.change.after.encrypted != true
@@ -183,7 +196,7 @@ deny[msg] {
 }
 
 # RDS instances must be encrypted
-deny[msg] {
+deny contains msg if {
     resource := input.resource_changes[_]
     resource.type == "aws_db_instance"
     resource.change.after.storage_encrypted != true
@@ -200,14 +213,16 @@ deny[msg] {
 
 package terraform.networking.security_groups
 
+import rego.v1
+
 # No security group should allow 0.0.0.0/0 ingress on SSH
-deny[msg] {
+deny contains msg if {
     resource := input.resource_changes[_]
     resource.type == "aws_security_group_rule"
     resource.change.after.type == "ingress"
     resource.change.after.from_port <= 22
     resource.change.after.to_port >= 22
-    contains(resource.change.after.cidr_blocks[_], "0.0.0.0/0")
+    resource.change.after.cidr_blocks[_] == "0.0.0.0/0"
     msg := sprintf(
         "Security group rule '%s' allows SSH from 0.0.0.0/0. Use specific CIDR ranges.",
         [resource.address]
@@ -215,7 +230,7 @@ deny[msg] {
 }
 
 # No security group should allow all traffic ingress
-deny[msg] {
+deny contains msg if {
     resource := input.resource_changes[_]
     resource.type == "aws_security_group_rule"
     resource.change.after.type == "ingress"
@@ -233,7 +248,7 @@ deny[msg] {
 
 If using Terraform Cloud or Enterprise, Sentinel provides native policy enforcement:
 
-```python
+```sentinel
 # sentinel/require-tags.sentinel
 # Enforce tagging standards on all resources
 
@@ -282,6 +297,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
       - name: Terraform Format
         run: terraform fmt -check -recursive -diff
 
@@ -289,6 +305,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: terraform-linters/setup-tflint@v4
       - name: TFLint
         run: |
           tflint --init
@@ -298,6 +315,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Install Checkov
+        run: pipx install checkov
       - name: Checkov Security Scan
         run: |
           checkov -d . --output cli --output junitxml \
@@ -309,6 +328,8 @@ jobs:
     needs: [format-check, lint]
     steps:
       - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+      - uses: open-policy-agent/setup-opa@v2
 
       - name: Terraform Plan
         run: |
@@ -321,7 +342,11 @@ jobs:
           # Run all policies against the plan
           opa eval --data policies/ \
             --input plan.json \
-            "data.terraform.security" \
+            "data.terraform.security.encryption.deny[_]" \
+            --fail-defined
+          opa eval --data policies/ \
+            --input plan.json \
+            "data.terraform.networking.security_groups.deny[_]" \
             --fail-defined
 
       - name: Post Results
@@ -330,12 +355,18 @@ jobs:
         with:
           script: |
             // Post standards check results as PR comment
-            const results = require('./standards-results.json');
+            const fs = require('fs');
             let body = '## Standards Check Results\n\n';
 
-            for (const [check, result] of Object.entries(results)) {
-              const icon = result.passed ? '✅' : '❌';
-              body += `${icon} **${check}**: ${result.message}\n`;
+            if (fs.existsSync('./standards-results.json')) {
+              const results = require('./standards-results.json');
+
+              for (const [check, result] of Object.entries(results)) {
+                const icon = result.passed ? '✅' : '❌';
+                body += `${icon} **${check}**: ${result.message}\n`;
+              }
+            } else {
+              body += 'See the workflow job logs for detailed results.\n';
             }
 
             github.rest.issues.createComment({
@@ -426,9 +457,19 @@ def calculate_compliance_metrics(scan_results):
 
     # Calculate compliance rates
     for category in metrics:
-        checked = metrics[category]["files_checked"] or metrics[category].get("resources_checked", 0) or metrics[category].get("checks_run", 0) or metrics[category].get("modules_checked", 0)
+        checked = (
+            metrics[category].get("files_checked", 0)
+            or metrics[category].get("resources_checked", 0)
+            or metrics[category].get("checks_run", 0)
+            or metrics[category].get("modules_checked", 0)
+        )
         if checked > 0:
-            compliant = metrics[category].get("files_compliant", 0) or metrics[category].get("resources_compliant", 0) or metrics[category].get("checks_passed", 0) or metrics[category].get("modules_documented", 0)
+            compliant = (
+                metrics[category].get("files_compliant", 0)
+                or metrics[category].get("resources_compliant", 0)
+                or metrics[category].get("checks_passed", 0)
+                or metrics[category].get("modules_documented", 0)
+            )
             metrics[category]["rate"] = round(compliant / checked * 100, 1)
 
     return metrics
