@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Jenkins, CI/CD, Infrastructure as Code, DevOps, Pipeline
 
-Description: Build a complete Terraform CI/CD pipeline in Jenkins with Declarative and Scripted syntax, including plan approval gates, state management, and multi-environment deployments.
+Description: Build a complete Terraform CI/CD pipeline in Jenkins with Declarative syntax and Shared Libraries, including plan approval gates, state management, and multi-environment deployments.
 
 ---
 
@@ -27,7 +27,7 @@ If you manage your own agents, install Terraform:
 ```bash
 # On the Jenkins agent
 
-TERRAFORM_VERSION="1.7.5"
+TERRAFORM_VERSION="1.15.2"
 wget "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip"
 unzip "terraform_${TERRAFORM_VERSION}_linux_amd64.zip"
 sudo mv terraform /usr/local/bin/
@@ -40,7 +40,7 @@ For Docker-based agents, use the official image in your pipeline:
 pipeline {
     agent {
         docker {
-            image 'hashicorp/terraform:1.7.5'
+            image 'hashicorp/terraform:1.15.2'
             args '--entrypoint=""'
         }
     }
@@ -106,7 +106,7 @@ pipeline {
                 dir('terraform') {
                     sh '''
                         terraform init -input=false
-                        terraform workspace select ${WORKSPACE} || terraform workspace new ${WORKSPACE}
+                        terraform workspace select -or-create "${WORKSPACE}"
                     '''
                 }
             }
