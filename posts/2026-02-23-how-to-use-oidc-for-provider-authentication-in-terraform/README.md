@@ -15,11 +15,11 @@ Static credentials for Terraform - long-lived access keys stored as CI/CD secret
 The flow is straightforward:
 
 1. Your CI/CD platform (GitHub Actions, GitLab CI, etc.) issues a JWT token that identifies the running workflow
-2. This token is sent to your cloud provider's OIDC endpoint
+2. This token is sent to your cloud provider's token exchange endpoint
 3. The cloud provider validates the token against the CI/CD platform's public keys
 4. If valid, the cloud provider issues short-lived credentials
 5. Terraform uses these credentials to manage resources
-6. Credentials expire automatically after the workflow completes
+6. Credentials expire automatically after their configured short lifetime
 
 No static secrets are stored anywhere. The trust relationship is configured once between your cloud provider and CI/CD platform.
 
@@ -37,8 +37,7 @@ resource "aws_iam_openid_connect_provider" "github" {
 
   client_id_list = ["sts.amazonaws.com"]
 
-  # GitHub's OIDC thumbprint
-  thumbprint_list = ["6938fd4d98bab03faadb97b34396831e3780aea1"]
+  # No thumbprint_list is needed for GitHub's OIDC provider with current AWS provider versions.
 }
 
 # Create an IAM role that GitHub Actions can assume
@@ -298,20 +297,14 @@ terraform:
   variables:
     # AWS OIDC configuration
     AWS_ROLE_ARN: "arn:aws:iam::123456789012:role/gitlab-terraform"
+    AWS_ROLE_SESSION_NAME: "GitLabCI-${CI_PIPELINE_ID}"
   id_tokens:
     GITLAB_OIDC_TOKEN:
-      aud: https://gitlab.example.com
+      aud: sts.amazonaws.com
   script:
-    # Assume the AWS role using the OIDC token
-    - >
-      export $(printf "AWS_ACCESS_KEY_ID=%s AWS_SECRET_ACCESS_KEY=%s AWS_SESSION_TOKEN=%s"
-      $(aws sts assume-role-with-web-identity
-      --role-arn ${AWS_ROLE_ARN}
-      --role-session-name "GitLabCI-${CI_PIPELINE_ID}"
-      --web-identity-token ${GITLAB_OIDC_TOKEN}
-      --duration-seconds 3600
-      --query 'Credentials.[AccessKeyId,SecretAccessKey,SessionToken]'
-      --output text))
+    # Let the AWS provider assume the role using the OIDC token
+    - echo "${GITLAB_OIDC_TOKEN}" > "${CI_PROJECT_DIR}/web_identity_token"
+    - export AWS_WEB_IDENTITY_TOKEN_FILE="${CI_PROJECT_DIR}/web_identity_token"
     - terraform init
     - terraform apply -auto-approve
 ```
@@ -321,7 +314,7 @@ terraform:
 The subject claim in the OIDC token contains details about what triggered the workflow. Use conditions to restrict access:
 
 ```hcl
-# AWS: Restrict by repository, branch, and environment
+# AWS: Restrict by repository and branch, or by a protected environment
 resource "aws_iam_role" "github_actions" {
   name = "github-actions-terraform"
 
@@ -339,7 +332,7 @@ resource "aws_iam_role" "github_actions" {
             "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
           }
           StringLike = {
-            # Only allow from main branch of specific repo
+            # Allow either main branch or the production environment subject
             "token.actions.githubusercontent.com:sub" = [
               "repo:my-org/infrastructure:ref:refs/heads/main",
               "repo:my-org/infrastructure:environment:production"
@@ -364,12 +357,13 @@ Common issues:
 # Debug: Print the OIDC token claims
 - name: Debug OIDC Token
   run: |
-    TOKEN=$(curl -s -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+    TOKEN_JSON=$(curl -s -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
       "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sts.amazonaws.com")
-    echo "$TOKEN" | jq -R 'split(".") | .[1] | @base64d | fromjson'
+    ID_TOKEN=$(echo "$TOKEN_JSON" | jq -r '.value')
+    echo "$ID_TOKEN" | jq -R 'split(".") | .[1] | @base64d | fromjson'
 ```
 
-**Thumbprint mismatch**: For AWS, regenerate the OIDC provider thumbprint if it has changed.
+**Thumbprint mismatch**: For custom OIDC providers in AWS, regenerate the OIDC provider thumbprint if it has changed. AWS IAM ignores the configured thumbprint for GitHub Actions' OIDC provider.
 
 ## Monitoring Your Infrastructure
 
