@@ -28,29 +28,30 @@ livenessProbe:
 livenessProbe:
   httpGet:
     path: /app-health/my-container/livez
-    port: 15021
+    port: 15020
     scheme: HTTP
 ```
 
-The Istio agent (pilot-agent) listens on port 15021. When it receives a request at `/app-health/my-container/livez`, it forwards it to port 8080 at `/healthz` on localhost. Since the agent and the application are in the same pod, this communication happens over localhost and does not go through Envoy.
+The Istio agent (pilot-agent) listens for rewritten application probes on port 15020. When it receives a request at `/app-health/my-container/livez`, it forwards it to port 8080 at `/healthz` on localhost. Since the agent and the application are in the same pod, this communication happens over localhost and does not go through Envoy.
 
-The original probe information is stored in a pod annotation:
+The original probe information is stored in the sidecar container's `ISTIO_KUBE_APP_PROBERS` environment variable:
 
 ```yaml
-annotations:
-  sidecar.istio.io/status: '{"...", "containerPorts": {"my-container": 8080}}'
+env:
+  - name: ISTIO_KUBE_APP_PROBERS
+    value: '{"/app-health/my-container/livez":{"httpGet":{"path":"/healthz","port":8080,"scheme":"HTTP"},"timeoutSeconds":1}}'
 ```
 
-The agent reads this annotation at startup to know where to forward probes.
+The agent reads this value at startup to know where to forward probes.
 
 ## Enabling and Disabling Probe Rewriting
 
 ### Globally
 
-Probe rewriting is enabled by default since Istio 1.10. Check the current setting:
+Probe rewriting is enabled by default in Istio's built-in configuration profiles. Check the current setting:
 
 ```bash
-kubectl get cm istio -n istio-system -o jsonpath='{.data.mesh}' | grep -i rewrite
+kubectl get cm istio-sidecar-injector -n istio-system -o jsonpath='{.data.values}' | grep -i rewrite
 ```
 
 To enable or change it globally:
@@ -59,15 +60,15 @@ To enable or change it globally:
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
-  meshConfig:
-    defaultConfig:
-      holdApplicationUntilProxyStarts: true
+  values:
+    sidecarInjectorWebhook:
+      rewriteAppHTTPProbe: true
 ```
 
 The probe rewriting itself is controlled by the sidecar injector config. Check it:
 
 ```bash
-kubectl get cm istio-sidecar-injector -n istio-system -o jsonpath='{.data.config}' | grep -i rewrite
+kubectl get cm istio-sidecar-injector -n istio-system -o jsonpath='{.data.values}' | grep -i rewrite
 ```
 
 ### Per-Pod
@@ -106,10 +107,10 @@ livenessProbe:
 livenessProbe:
   httpGet:
     path: /app-health/my-container/livez
-    port: 15021
+    port: 15020
 ```
 
-**gRPC probes** - rewritten to HTTP on port 15021
+**gRPC probes** - rewritten to HTTP on port 15020
 
 ```yaml
 # Before
@@ -121,12 +122,26 @@ livenessProbe:
 livenessProbe:
   httpGet:
     path: /app-health/my-container/livez
-    port: 15021
+    port: 15020
+```
+
+**TCP probes** - rewritten to an HTTP check on port 15020, where the agent performs the TCP port check without Envoy's inbound redirection making every captured port look open
+
+```yaml
+# Before
+livenessProbe:
+  tcpSocket:
+    port: 8080
+
+# After
+livenessProbe:
+  httpGet:
+    path: /app-health/my-container/livez
+    port: 15020
 ```
 
 The following are NOT rewritten:
 
-- **TCP probes** - left as-is because they just check port connectivity
 - **Exec probes** - left as-is because they run inside the container
 
 ## The URL Path Convention
@@ -178,15 +193,15 @@ spec:
       livenessProbe:
         httpGet:
           path: /app-health/api/livez
-          port: 15021
+          port: 15020
     - name: worker
       livenessProbe:
         httpGet:
           path: /app-health/worker/livez
-          port: 15021
+          port: 15020
 ```
 
-Both go through the same port (15021) but with different paths. The agent knows to forward the `api` probe to port 8080 and the `worker` probe to port 9090.
+Both go through the same port (15020) but with different paths. The agent knows to forward the `api` probe to port 8080 and the `worker` probe to port 9090.
 
 ## Custom HTTP Headers in Probes
 
@@ -216,13 +231,13 @@ livenessProbe:
     scheme: HTTPS
 ```
 
-The rewritten probe still targets port 15021 with HTTP. The Istio agent handles the HTTPS connection to your application container:
+The rewritten probe still targets port 15020 with HTTP. The Istio agent uses the original `scheme: HTTPS` setting when it connects to your application container:
 
 ```yaml
 livenessProbe:
   httpGet:
     path: /app-health/my-container/livez
-    port: 15021
+    port: 15020
     scheme: HTTP
 ```
 
@@ -237,10 +252,10 @@ kubectl get pod <pod-name> -o yaml | grep -A10 "livenessProbe"
 
 # Test the rewritten endpoint
 kubectl exec -it <pod-name> -c istio-proxy -- \
-  curl -v http://localhost:15021/app-health/my-container/livez
+  curl -v http://localhost:15020/app-health/my-container/livez
 
-# Check the sidecar status annotation
-kubectl get pod <pod-name> -o jsonpath='{.metadata.annotations.sidecar\.istio\.io/status}' | python3 -m json.tool
+# Check the sidecar's stored original probe config
+kubectl get pod <pod-name> -o jsonpath="{.spec.containers[?(@.name=='istio-proxy')].env[?(@.name=='ISTIO_KUBE_APP_PROBERS')].value}" | python3 -m json.tool
 ```
 
 ## Troubleshooting Probe Rewriting
@@ -275,23 +290,23 @@ If the agent returns a different status than your application:
 kubectl exec -it <pod-name> -c my-container -- curl -v http://localhost:8080/healthz
 
 # Test through agent
-kubectl exec -it <pod-name> -c istio-proxy -- curl -v http://localhost:15021/app-health/my-container/livez
+kubectl exec -it <pod-name> -c istio-proxy -- curl -v http://localhost:15020/app-health/my-container/livez
 ```
 
-If the direct test returns 200 but the agent returns 503, there might be a port mapping issue. Check the annotations to see what port the agent thinks it should forward to.
+If the direct test returns 200 but the agent returns 503, there might be a port mapping issue. Check `ISTIO_KUBE_APP_PROBERS` to see what port the agent thinks it should forward to.
 
 ### Agent not starting
 
-If port 15021 is not open:
+If port 15020 is not open:
 
 ```bash
-kubectl exec -it <pod-name> -c istio-proxy -- ss -tlnp | grep 15021
+kubectl exec -it <pod-name> -c istio-proxy -- ss -tlnp | grep 15020
 ```
 
 If nothing is listening, the pilot-agent process might have crashed. Check the sidecar logs:
 
 ```bash
-kubectl logs <pod-name> -c istio-proxy | grep -i "health\|agent\|15021"
+kubectl logs <pod-name> -c istio-proxy | grep -i "health\|agent\|15020"
 ```
 
 ## When to Disable Probe Rewriting
@@ -300,7 +315,7 @@ There are a few cases where disabling probe rewriting makes sense:
 
 1. **Debugging** - to isolate whether the agent is causing probe failures
 2. **Custom proxy configurations** - if you have modified the sidecar injection template
-3. **Non-HTTP probes** - if your health endpoint uses a protocol that the agent does not understand (rare)
+3. **Exec-based checks** - if you prefer probes that run completely inside the application container
 
 To disable for a pod:
 
