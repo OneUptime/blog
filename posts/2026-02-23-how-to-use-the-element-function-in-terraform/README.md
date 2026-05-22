@@ -17,7 +17,7 @@ This guide covers the `element` function's syntax, its wrap-around behavior, and
 The `element` function retrieves a single element from a list by its index. If the index is greater than or equal to the list length, it wraps around using modulo arithmetic.
 
 ```hcl
-# Retrieves list[index % length(list)]
+# Retrieves list[index % length(list)] for non-negative indexes
 
 element(list, index)
 ```
@@ -52,7 +52,7 @@ The index is zero-based, meaning the first element is at index 0.
 "a"
 ```
 
-The wrap-around is equivalent to `list[index % length(list)]`. This is the key feature that distinguishes `element` from direct index access (`list[index]`), which throws an error for out-of-bounds indices.
+For non-negative indexes, the wrap-around is equivalent to `list[index % length(list)]`. This is the key feature that distinguishes `element` from direct index access (`list[index]`), which throws an error for out-of-bounds indices.
 
 ## Round-Robin Subnet Distribution
 
@@ -86,7 +86,7 @@ resource "aws_instance" "app" {
 }
 ```
 
-With 7 instances and 3 subnets, the distribution would be: subnets A and A get 3 instances each, subnet B gets 2, and subnet C gets 2. The wrap-around handles this automatically.
+With 7 instances and 3 subnets, the distribution would be: subnet A gets 3 instances, subnet B gets 2, and subnet C gets 2. The wrap-around handles this automatically.
 
 ## Cycling Through Availability Zones
 
@@ -183,7 +183,7 @@ resource "aws_ebs_volume" "data" {
   count = local.volume_count
 
   availability_zone = element(data.aws_availability_zones.available.names, count.index)
-  size              = 100
+  size              = 125
   type              = element(local.volume_types, count.index)
 
   tags = {
@@ -231,10 +231,11 @@ variable "selected_index" {
 }
 
 locals {
-  # element already wraps, but if you need the actual wrapped index:
+  # element already wraps positive out-of-range indexes,
+  # but if you need the actual wrapped index:
   effective_index = var.selected_index % length(var.targets)
 
-  # These two produce the same result
+  # For non-negative selected_index values, these two produce the same result
   via_element = element(var.targets, var.selected_index)
   via_index   = var.targets[local.effective_index]
 }
@@ -245,7 +246,7 @@ locals {
 Be aware of these behaviors:
 
 - **Empty list**: Calling `element` on an empty list causes an error, since there is no element to return.
-- **Negative indices**: Negative indices are not supported and will cause an error.
+- **Negative indices**: Negative indices are supported, so `-1` returns the last element.
 - **Single-element list**: Any index will always return the same element (since every number mod 1 is 0).
 
 ```hcl
@@ -254,6 +255,10 @@ Be aware of these behaviors:
 "only"
 > element(["only"], 99)
 "only"
+
+# Negative index - returns from the end of the list
+> element(["a", "b", "c"], -1)
+"c"
 
 # Empty list causes an error
 # element([], 0) -> Error
@@ -276,9 +281,10 @@ data "aws_availability_zones" "available" {
 resource "aws_db_instance" "primary" {
   identifier     = "app-db-primary"
   engine         = "postgres"
-  engine_version = "15.4"
+  engine_version = "15.12"
   instance_class = "db.r6g.xlarge"
   allocated_storage = 100
+  backup_retention_period = 1
   username       = "admin"
   password       = var.db_password
 }
@@ -309,10 +315,10 @@ The `element` function is Terraform's answer to round-robin distribution. Its wr
 
 Key takeaways:
 
-- `element(list, index)` returns `list[index % length(list)]`
+- For non-negative indexes, `element(list, index)` returns `list[index % length(list)]`
 - The wrap-around behavior is the key differentiator from bracket index access
 - Perfect for distributing `count`-based resources across zones, subnets, or pools
-- Errors on empty lists and negative indices
+- Errors on empty lists, while negative indices are supported
 - Single-element lists always return the same value regardless of index
 
 Any time you have more resources than placement targets, `element` is the function you need.
