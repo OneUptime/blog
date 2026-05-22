@@ -177,6 +177,25 @@ resource "aws_cloudfront_cache_policy" "dynamic" {
     }
   }
 }
+
+resource "aws_cloudfront_cache_policy" "disabled" {
+  name        = "disabled-caching-${var.environment}"
+  default_ttl = 0
+  max_ttl     = 0
+  min_ttl     = 0
+
+  parameters_in_cache_key_and_forwarded_to_origin {
+    cookies_config {
+      cookie_behavior = "none"
+    }
+    headers_config {
+      header_behavior = "none"
+    }
+    query_strings_config {
+      query_string_behavior = "none"
+    }
+  }
+}
 ```
 
 ## WAF Integration
@@ -200,8 +219,8 @@ resource "aws_wafv2_web_acl" "cdn" {
     name     = "rate-limit"
     priority = 1
 
-    override_action {
-      none {}
+    action {
+      block {}
     }
 
     statement {
@@ -254,6 +273,16 @@ resource "aws_wafv2_web_acl" "cdn" {
 ```hcl
 # cdn/monitoring.tf
 # CDN performance monitoring
+
+resource "aws_cloudfront_monitoring_subscription" "main" {
+  distribution_id = aws_cloudfront_distribution.main.id
+
+  monitoring_subscription {
+    realtime_metrics_subscription_config {
+      realtime_metrics_subscription_status = "Enabled"
+    }
+  }
+}
 
 resource "aws_cloudwatch_metric_alarm" "cache_hit_rate" {
   alarm_name          = "cdn-cache-hit-rate-low"
