@@ -8,7 +8,7 @@ Description: A deep dive into OpenTofu client-side state encryption, explaining 
 
 ---
 
-Client-side state encryption in OpenTofu means the state file is encrypted on your machine before it ever leaves for the backend. This is fundamentally different from server-side encryption (like S3 SSE), where the data travels unencrypted to the server and gets encrypted there. For organizations with strict compliance requirements or zero-trust security models, client-side encryption is the stronger option.
+Client-side state encryption in OpenTofu means the state file is encrypted on your machine before it ever leaves for the backend. This is fundamentally different from server-side encryption (like S3 SSE), where the data travels over TLS to the storage service and gets encrypted there. For organizations with strict compliance requirements or zero-trust security models, client-side encryption is the stronger option.
 
 ## Client-Side vs Server-Side Encryption
 
@@ -18,14 +18,14 @@ Let us be clear about what each approach protects against.
 - State is encrypted at rest on the storage service
 - State travels over TLS in transit
 - The storage service handles encryption and decryption
-- Anyone with read access to the bucket can read the state
-- The cloud provider can theoretically read the state
+- With transparent server-side encryption, authorized readers receive decrypted state
+- The storage service can decrypt the state on behalf of authorized callers
 
 **Client-side encryption** (OpenTofu state encryption):
 - State is encrypted on your machine before upload
 - The backend stores ciphertext it cannot decrypt
-- Only holders of the encryption key can read the state
-- Even cloud provider admins cannot read the state
+- Only holders of the passphrase or KMS decrypt permissions can read the state
+- Storage backend admins cannot read the state without the encryption key or KMS access
 - Adds protection against compromised backend credentials
 
 In practice, you should use both. Server-side encryption is a baseline requirement, and client-side encryption adds defense in depth.
@@ -83,13 +83,13 @@ Key properties:
 - Built-in authentication tag prevents ciphertext modification
 - Industry standard for data encryption
 
-The encrypted state looks like binary data. The original JSON structure is completely hidden:
+The encrypted state remains a JSON envelope so OpenTofu can store encryption metadata, but the original state JSON structure is hidden:
 
 ```bash
 # Encrypted state on S3 (not readable)
 
-aws s3 cp s3://myorg-opentofu-state/production/terraform.tfstate - | file -
-# Output: data (not JSON, not text)
+aws s3 cp s3://myorg-opentofu-state/production/terraform.tfstate - | head -5
+# Output: OpenTofu encryption metadata and ciphertext, not plaintext resources
 
 # Decrypted state through OpenTofu (readable)
 tofu state pull | head -5
@@ -113,7 +113,7 @@ key_provider "pbkdf2" "main" {
   # Higher iterations = more secure but slower
   # key_length = 32  (default, for AES-256)
   # iterations = 600000  (default)
-  # hash_function = "sha256"  (default)
+  # hash_function = "sha512"  (default)
   # salt_length = 32  (default)
 }
 ```
@@ -122,7 +122,7 @@ Best for: development environments, small teams, simple setups.
 
 ### AWS KMS Provider
 
-Uses AWS Key Management Service to wrap/unwrap the data encryption key:
+Uses AWS Key Management Service to generate and decrypt the data encryption key:
 
 ```hcl
 key_provider "aws_kms" "main" {
@@ -131,16 +131,18 @@ key_provider "aws_kms" "main" {
   region     = "us-east-1"
 
   # Optional: assume a role for KMS access
-  # role_arn = "arn:aws:iam::123456789012:role/KMSAccessRole"
+  # assume_role = {
+  #   role_arn = "arn:aws:iam::123456789012:role/KMSAccessRole"
+  # }
 }
 ```
 
 How it works:
-1. OpenTofu generates a random data encryption key (DEK)
-2. The DEK is encrypted (wrapped) using the KMS key
-3. The wrapped DEK is stored alongside the encrypted state
-4. On read, the wrapped DEK is decrypted (unwrapped) by KMS
-5. The DEK is used to decrypt the state
+1. OpenTofu asks AWS KMS to generate a data encryption key (DEK)
+2. AWS KMS returns the plaintext DEK and a KMS-encrypted copy
+3. OpenTofu uses the plaintext DEK to encrypt the state
+4. The encrypted DEK is stored alongside the encrypted state
+5. On read, AWS KMS decrypts the encrypted DEK so OpenTofu can decrypt the state
 
 Best for: AWS-based teams, production environments, compliance requirements.
 
@@ -149,7 +151,7 @@ Best for: AWS-based teams, production environments, compliance requirements.
 ```hcl
 key_provider "gcp_kms" "main" {
   kms_encryption_key = "projects/my-project/locations/global/keyRings/opentofu/cryptoKeys/state"
-  key_length         = 256
+  key_length         = 32
 }
 ```
 
@@ -205,7 +207,7 @@ tofu init
 tofu apply
 
 # Step 3: Verify the state is encrypted
-aws s3 cp s3://bucket/key - | file -  # Should not be JSON
+aws s3 cp s3://bucket/key - | head -5  # Should not show plaintext state resources
 
 # Step 4: Remove the fallback block (after all state is encrypted)
 ```
@@ -311,12 +313,13 @@ Document your encryption setup as part of your compliance controls:
 Plan for key loss scenarios:
 
 ```bash
-# Keep an offline backup of your passphrase or KMS key ID
+# Keep an offline backup of your passphrase, or document the KMS key ID
+# and the break-glass IAM path that has decrypt permission.
 # Store in a secure location (hardware security module, vault, etc.)
 
-# For KMS: ensure the key deletion protection is enabled
+# For KMS: ensure the key is not scheduled for deletion
 aws kms describe-key --key-id alias/opentofu-state-key \
-  --query 'KeyMetadata.DeletionDate'
+  --query 'KeyMetadata.[KeyState,DeletionDate]'
 
 # For passphrase: store in a secrets manager
 # with break-glass procedures for emergency access
@@ -335,7 +338,7 @@ Client-side encryption adds minimal overhead. The AES-GCM operation is fast even
 # The overhead is negligible
 ```
 
-The main performance consideration is KMS latency. Each state read/write requires a KMS API call. For frequent operations, consider caching or using a passphrase for development.
+The main performance consideration is KMS latency. State writes require a KMS data-key call, and state reads require a KMS decrypt call. For frequent operations, consider using a passphrase for development.
 
 Client-side state encryption is one of OpenTofu's most compelling features. It fills a genuine security gap and does it in a way that is straightforward to configure and maintain. If your state contains any sensitive data (and it almost certainly does), enable encryption.
 
