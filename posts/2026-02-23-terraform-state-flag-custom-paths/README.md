@@ -8,13 +8,13 @@ Description: Learn how to use the -state and -state-out flags in Terraform to wo
 
 ---
 
-By default, Terraform stores its state in a file called `terraform.tfstate` in your working directory (for local state) or at the configured path in your remote backend. But sometimes you need to point Terraform at a different file. The `-state` flag lets you do exactly that.
+By default, Terraform stores its state in a file called `terraform.tfstate` in your working directory (for local state) or at the configured path in your remote backend. But sometimes you need to point Terraform at a different local file. The legacy `-state` flag lets you do exactly that when you are using the local backend.
 
 This is useful for testing, migration work, maintaining multiple local states, and scripting advanced workflows.
 
 ## Basic Usage of -state
 
-The `-state` flag tells Terraform to use a specific file as the state:
+For configurations using the local backend, the legacy `-state` flag tells Terraform to use a specific file as the state:
 
 ```bash
 # Use a custom state file for plan
@@ -24,15 +24,15 @@ terraform plan -state=custom.tfstate
 # Use a custom state file for apply
 terraform apply -state=custom.tfstate
 
-# Use a custom state file for show
-terraform show -state=custom.tfstate
+# Show a custom state file
+terraform show custom.tfstate
 ```
 
-When you use `-state`, Terraform reads from and writes to the specified file instead of the default `terraform.tfstate`.
+When you use `-state` with the local backend, Terraform reads from the specified file instead of the default `terraform.tfstate`. For commands that write new state snapshots, Terraform writes back to the same file unless you also set `-state-out`.
 
 ## The -state-out Flag
 
-The `-state-out` flag specifies where to write the updated state after an operation, while `-state` specifies where to read the current state from. This lets you read from one file and write to another:
+For local backend workflows, the `-state-out` flag specifies where to write the updated state after an operation, while `-state` specifies where to read the current state from. This lets you read from one file and write to another:
 
 ```bash
 # Read from original.tfstate, write changes to modified.tfstate
@@ -45,11 +45,15 @@ This is particularly useful when you want to preserve the original state while t
 
 ### Testing State Changes Locally
 
-Before modifying a remote state, you can pull it locally and test changes:
+Before modifying a remote state, you can pull it locally and test changes in a scratch copy of the configuration that is initialized without the remote backend:
 
 ```bash
-# Pull remote state to a local file
-terraform state pull > local-test.tfstate
+# In your remote-initialized configuration, pull remote state to a local file
+terraform state pull > ../scratch/local-test.tfstate
+
+# In a scratch copy of the configuration, skip remote backend initialization
+cd ../scratch
+terraform init -backend=false
 
 # Test a plan against the local copy
 terraform plan -state=local-test.tfstate
@@ -96,6 +100,7 @@ cd new-config && terraform state pull > /tmp/$DEST && cd ..
 terraform state mv \
   -state=/tmp/$SOURCE \
   -state-out=/tmp/$DEST \
+  aws_instance.web \
   aws_instance.web
 
 # Push the modified states back
@@ -132,7 +137,7 @@ fi
 
 ## Using -state with State Commands
 
-The `-state` flag also works with `terraform state` subcommands:
+For local backend workflows, the `-state` flag also works with `terraform state` subcommands:
 
 ```bash
 # List resources in a specific state file
@@ -154,7 +159,7 @@ terraform state rm -state=production.tfstate aws_instance.deprecated
 
 ## Using -state with import
 
-When importing resources, you can specify which state file to import into:
+When importing resources in a local backend workflow, you can specify which state file to import into:
 
 ```bash
 # Import a resource into a custom state file
@@ -226,16 +231,16 @@ Disabling locking is sometimes necessary when working with state files on networ
 
 ## Environment Variable Alternative
 
-Instead of passing `-state` on every command, you can use the `TF_STATE` environment variable (available in some Terraform wrappers) or create shell aliases:
+Instead of passing `-state` on every command, you can use Terraform's `TF_CLI_ARGS_plan` and `TF_CLI_ARGS_apply` environment variables or create shell functions:
 
 ```bash
-# Shell alias for working with a specific state
-alias tf-dev='terraform -state=dev.tfstate'
-alias tf-staging='terraform -state=staging.tfstate'
+# Environment variables for working with a specific state
+export TF_CLI_ARGS_plan="-state=dev.tfstate"
+export TF_CLI_ARGS_apply="-state=dev.tfstate"
 
 # Usage
-tf-dev plan -var-file=dev.tfvars
-tf-staging plan -var-file=staging.tfvars
+terraform plan -var-file=dev.tfvars
+terraform apply -var-file=dev.tfvars
 ```
 
 Or create a wrapper script:
@@ -255,7 +260,10 @@ if [ ! -f "$VAR_FILE" ]; then
   exit 1
 fi
 
-terraform "$@" -state="$STATE_FILE" -var-file="$VAR_FILE"
+COMMAND="${1:?Usage: tf.sh <env> <command> [args]}"
+shift
+
+terraform "$COMMAND" -state="$STATE_FILE" -var-file="$VAR_FILE" "$@"
 ```
 
 ```bash
@@ -269,7 +277,7 @@ terraform "$@" -state="$STATE_FILE" -var-file="$VAR_FILE"
 
 **State file gets overwritten.** When using `-state`, the specified file is updated in place after apply. If you want to preserve the original, use `-state-out` to write to a different file.
 
-**No automatic backup with -state.** Terraform normally creates a `terraform.tfstate.backup` file. When using `-state`, the backup file name changes to match: `custom.tfstate.backup`.
+**Backup filename changes with -state.** Terraform normally creates a `terraform.tfstate.backup` file. When using `-state`, the backup file name changes to match: `custom.tfstate.backup`.
 
 **Backend configuration takes precedence.** If you have a remote backend configured and also pass `-state`, the behavior depends on the command. For state manipulation commands, `-state` works with local files. For plan/apply with a remote backend, the backend configuration wins.
 
