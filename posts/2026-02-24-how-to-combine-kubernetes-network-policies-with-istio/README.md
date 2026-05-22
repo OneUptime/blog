@@ -8,15 +8,15 @@ Description: How to layer Kubernetes NetworkPolicy resources with Istio authoriz
 
 ---
 
-Kubernetes NetworkPolicy and Istio AuthorizationPolicy both control traffic between services, but they work at completely different layers. NetworkPolicy operates at Layer 3/4 (IP addresses and ports), while Istio works at Layer 7 (HTTP methods, paths, headers). Using both together gives you defense in depth, where even if one layer fails, the other still protects you.
+Kubernetes NetworkPolicy and Istio AuthorizationPolicy both control traffic between services, but they work at different layers. NetworkPolicy operates at Layer 3/4 (IP addresses and ports), while Istio AuthorizationPolicy is identity-aware and can enforce Layer 7 attributes such as HTTP methods, paths, and headers, as well as TCP attributes such as ports. Using both together gives you defense in depth, where even if one layer fails, the other still protects you.
 
 ## How Each Layer Works
 
 Kubernetes NetworkPolicy is enforced by your CNI plugin (Calico, Cilium, Weave, etc.). It filters packets based on IP addresses, ports, and namespace/pod selectors. The filtering happens at the kernel level before traffic reaches the pod.
 
-Istio AuthorizationPolicy is enforced by the Envoy sidecar proxy. It inspects the actual application traffic and makes decisions based on service identity (mTLS certificates), HTTP attributes, JWT claims, and more. This happens at the proxy level inside the pod's network namespace.
+Istio AuthorizationPolicy is enforced by the Envoy sidecar proxy. For HTTP and gRPC traffic, it can inspect application attributes and make decisions based on service identity (mTLS certificates), HTTP attributes, JWT claims, and more. For TCP traffic, it can still make decisions based on identity and connection attributes such as ports. This happens at the proxy level inside the pod's network namespace.
 
-The two don't interfere with each other. NetworkPolicy runs first at the network layer. If the packet passes, it reaches the Envoy proxy, which then applies Istio's policies.
+The two don't interfere with each other. For inbound traffic, NetworkPolicy gates packets at the network layer before Envoy can authorize them. If the packet passes, it reaches the Envoy proxy, which then applies Istio's policies.
 
 ## Setting Up NetworkPolicy as Your Base Layer
 
@@ -87,7 +87,7 @@ spec:
       port: 8080
 ```
 
-Allow the Istio sidecar to communicate with the control plane:
+Allow the Istio sidecar to reach istiod for XDS and CA traffic:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -107,8 +107,6 @@ spec:
     ports:
     - protocol: TCP
       port: 15012
-    - protocol: TCP
-      port: 15014
 ```
 
 ## Adding Istio Authorization as Your Fine-Grained Layer
@@ -189,7 +187,7 @@ Use NetworkPolicy for:
 Use Istio AuthorizationPolicy for:
 - Service identity-based access control
 - HTTP method and path restrictions
-- JWT claim validation
+- JWT claim-based authorization after RequestAuthentication validates the token
 - Header-based routing restrictions
 - Rate limiting and quotas (through EnvoyFilter or WASM plugins)
 
