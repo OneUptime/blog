@@ -8,11 +8,11 @@ Description: A hands-on guide to configuring HTTP/2 settings in Envoy proxy thro
 
 ---
 
-HTTP/2 is the default protocol for service-to-service communication within an Istio mesh. Envoy handles the HTTP/2 negotiation and multiplexing transparently, but the default settings aren't always ideal for every workload. If you're running high-throughput services, streaming workloads, or gRPC services, tuning HTTP/2 parameters can make a noticeable difference.
+HTTP/2 is commonly used for service-to-service communication within an Istio mesh, especially for gRPC services or when HTTP/2 upgrade is enabled. Envoy handles the HTTP/2 negotiation and multiplexing transparently, but the default settings aren't always ideal for every workload. If you're running high-throughput services, streaming workloads, or gRPC services, tuning HTTP/2 parameters can make a noticeable difference.
 
 ## How HTTP/2 Works in Istio
 
-When two services communicate within the mesh, Envoy sidecars on both sides establish an HTTP/2 connection between them. The original request from your application (which might be HTTP/1.1) gets upgraded to HTTP/2 between the sidecars. On the receiving end, Envoy can either keep it as HTTP/2 or downgrade it back to HTTP/1.1, depending on your application's protocol support.
+When two services communicate within the mesh, Envoy sidecars on both sides can establish an HTTP/2 connection between them. The original request from your application (which might be HTTP/1.1) can be upgraded to HTTP/2 between the sidecars when HTTP/2 upgrade is enabled. On the receiving end, Envoy can either keep it as HTTP/2 or downgrade it back to HTTP/1.1, depending on your application's protocol support.
 
 This means HTTP/2 settings affect the sidecar-to-sidecar communication, even if your application only speaks HTTP/1.1.
 
@@ -24,7 +24,7 @@ istioctl proxy-config cluster <pod-name> -n <namespace> -o json | python3 -m jso
 
 ## Controlling HTTP/2 Upgrade Behavior
 
-By default, Istio uses HTTP/2 for communication between sidecars and falls back to HTTP/1.1 when talking to services outside the mesh. You can control this through a DestinationRule:
+Istio can use HTTP/2 for communication between sidecars when the protocol is detected as HTTP/2 or when HTTP/2 upgrade is enabled. You can control HTTP/1.1-to-HTTP/2 upgrade behavior through a DestinationRule:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -42,15 +42,15 @@ spec:
 
 The `h2UpgradePolicy` options are:
 
-- **DEFAULT** - Use the mesh-wide default (usually UPGRADE within the mesh)
+- **DEFAULT** - Use the mesh-wide default
 - **DO_NOT_UPGRADE** - Keep HTTP/1.1 connections as-is
 - **UPGRADE** - Upgrade HTTP/1.1 connections to HTTP/2
 
-For gRPC services, you always want UPGRADE since gRPC requires HTTP/2.
+For gRPC services, make sure the Kubernetes Service port is explicitly named `grpc` or `http2` (or uses `appProtocol: grpc`/`http2`) since gRPC requires HTTP/2. The `UPGRADE` policy is useful when an HTTP/1.1 client connection should be upgraded to HTTP/2 for the destination.
 
 ## Configuring Max Concurrent Streams
 
-HTTP/2 multiplexes multiple requests over a single connection. The max concurrent streams setting controls how many requests can be in-flight on a single connection simultaneously. The default in Envoy is 2,147,483,647 (essentially unlimited), but Istio may set this lower.
+HTTP/2 multiplexes multiple requests over a single connection. The max concurrent streams setting controls how many requests can be in-flight on a single connection simultaneously. The current Envoy default is 1,024, while Istio's DestinationRule default for this field is 2,147,483,647 unless you configure it.
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -64,11 +64,12 @@ spec:
     connectionPool:
       http:
         http2MaxRequests: 1000
+        maxConcurrentStreams: 100
 ```
 
 The `http2MaxRequests` field in the DestinationRule controls the maximum number of concurrent requests to the destination across all connections. This is different from per-connection max concurrent streams.
 
-For per-connection settings, you need an EnvoyFilter:
+The `maxConcurrentStreams` field controls the maximum number of concurrent streams allowed for a peer on one HTTP/2 connection. If you need lower-level settings that are not exposed by DestinationRule, you can use an EnvoyFilter:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -89,15 +90,15 @@ spec:
     patch:
       operation: MERGE
       value:
-        typedExtensionProtocolOptions:
+        typed_extension_protocol_options:
           envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
             '@type': type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
-            explicitHttpConfig:
-              http2ProtocolOptions:
-                maxConcurrentStreams: 100
+            explicit_http_config:
+              http2_protocol_options:
+                max_concurrent_streams: 100
 ```
 
-Setting max concurrent streams to 100 means each HTTP/2 connection can carry up to 100 concurrent requests. If more are needed, Envoy opens additional connections.
+Setting max concurrent streams to 100 means each HTTP/2 connection can carry up to 100 concurrent requests. If more are needed, Envoy may queue requests or open additional connections, depending on circuit breaker limits.
 
 ## Configuring Flow Control Window Sizes
 
@@ -125,16 +126,16 @@ spec:
     patch:
       operation: MERGE
       value:
-        typedExtensionProtocolOptions:
+        typed_extension_protocol_options:
           envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
             '@type': type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
-            explicitHttpConfig:
-              http2ProtocolOptions:
-                initialStreamWindowSize: 1048576
-                initialConnectionWindowSize: 2097152
+            explicit_http_config:
+              http2_protocol_options:
+                initial_stream_window_size: 1048576
+                initial_connection_window_size: 2097152
 ```
 
-The default stream window size is 65,535 bytes (64 KiB), which is the HTTP/2 spec minimum. For large transfers, this is a bottleneck because Envoy has to wait for window updates after every 64 KiB of data. Increasing to 1 MiB (1,048,576 bytes) allows more data to be in-flight, improving throughput.
+The HTTP/2 spec initial stream window size is 65,535 bytes (64 KiB), but current Envoy defaults are larger: 16 MiB for the stream window and 24 MiB for the connection window. If your mesh or proxy version is using smaller windows, increasing to 1 MiB (1,048,576 bytes) allows more data to be in-flight, improving throughput.
 
 The connection window size should be larger than the stream window size, typically 2-4x. This allows multiple streams to transfer data simultaneously without exhausting the connection-level window.
 
@@ -161,17 +162,17 @@ spec:
     patch:
       operation: MERGE
       value:
-        typedExtensionProtocolOptions:
+        typed_extension_protocol_options:
           envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
             '@type': type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
-            explicitHttpConfig:
-              http2ProtocolOptions:
-                connectionKeepalive:
+            explicit_http_config:
+              http2_protocol_options:
+                connection_keepalive:
                   interval: 30s
                   timeout: 5s
 ```
 
-This sends a PING frame every 30 seconds on idle connections and waits up to 5 seconds for a response. If no response comes, the connection is closed.
+This sends a PING frame every 30 seconds and waits up to 5 seconds for a response. If no response comes, the connection is closed.
 
 ## Header Table Size
 
@@ -194,12 +195,12 @@ spec:
     patch:
       operation: MERGE
       value:
-        typedExtensionProtocolOptions:
+        typed_extension_protocol_options:
           envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
             '@type': type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
-            explicitHttpConfig:
-              http2ProtocolOptions:
-                hpackTableSize: 8192
+            explicit_http_config:
+              http2_protocol_options:
+                hpack_table_size: 8192
 ```
 
 The default is 4,096 bytes. Increasing it can improve compression efficiency for services with many unique headers, but each connection uses more memory.
@@ -229,12 +230,12 @@ spec:
     patch:
       operation: MERGE
       value:
-        typedConfig:
+        typed_config:
           '@type': type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
-          http2ProtocolOptions:
-            maxConcurrentStreams: 100
-            initialStreamWindowSize: 1048576
-            initialConnectionWindowSize: 2097152
+          http2_protocol_options:
+            max_concurrent_streams: 100
+            initial_stream_window_size: 1048576
+            initial_connection_window_size: 2097152
 ```
 
 ## Verifying HTTP/2 Configuration
@@ -257,13 +258,13 @@ kubectl exec -it <pod-name> -c istio-proxy -- curl -s localhost:15000/stats | gr
 ```
 
 Key metrics:
-- `envoy_http2_streams_active` - Active HTTP/2 streams
-- `envoy_http2_pending_send_bytes` - Bytes waiting to be sent (indicates flow control pressure)
-- `envoy_http2_header_overflow` - Header table overflows
+- `http2.streams_active` or `cluster.<cluster>.http2.streams_active` - Active HTTP/2 streams
+- `http2.pending_send_bytes` or `cluster.<cluster>.http2.pending_send_bytes` - Bytes waiting to be sent (indicates flow control pressure)
+- `http2.header_overflow` or `cluster.<cluster>.http2.header_overflow` - Header overflows
 
 ## Practical Recommendations
 
-For gRPC services, increase the initial stream and connection window sizes to at least 1 MiB. gRPC messages can be large and the default 64 KiB window creates unnecessary round trips.
+For gRPC services, check the configured initial stream and connection window sizes before changing them. gRPC messages can be large, and a 64 KiB window creates unnecessary round trips, but current Envoy defaults are already larger than 1 MiB.
 
 For services with many concurrent requests, set max concurrent streams to a reasonable number (100-200) rather than leaving it unlimited. This prevents a single connection from becoming a bottleneck and encourages Envoy to open multiple connections for better load distribution.
 
