@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Terratest, Kubernetes, Testing, Go, Infrastructure as Code
 
-Description: Learn how to write Terratest tests that validate Kubernetes resources deployed by Terraform, including pods, services, deployments, and ingress configurations.
+Description: Learn how to write Terratest tests that validate Kubernetes resources deployed by Terraform, including pods, services, deployments, and NetworkPolicies.
 
 ---
 
@@ -22,7 +22,6 @@ Install the Terratest Kubernetes module:
 ```bash
 cd test
 go get github.com/gruntwork-io/terratest/modules/k8s
-go get github.com/gruntwork-io/terratest/modules/helm
 ```
 
 ## Setting Up Kubernetes Test Options
@@ -50,6 +49,7 @@ Verify that a Terraform-managed Kubernetes deployment is running correctly:
 package test
 
 import (
+    "context"
     "testing"
     "fmt"
     "time"
@@ -84,12 +84,13 @@ func TestKubernetesDeployment(t *testing.T) {
 
     kubeconfigPath := terraform.Output(t, opts, "kubeconfig_path")
     k8sOptions := k8s.NewKubectlOptions("", kubeconfigPath, namespace)
+    ctx := context.Background()
 
     // Wait for the deployment to become available
-    k8s.WaitUntilDeploymentAvailable(t, k8sOptions, "test-app", 30, 10*time.Second)
+    k8s.WaitUntilDeploymentAvailableContext(t, ctx, k8sOptions, "test-app", 30, 10*time.Second)
 
     // Get the deployment
-    deployment := k8s.GetDeployment(t, k8sOptions, "test-app")
+    deployment := k8s.GetDeploymentContext(t, ctx, k8sOptions, "test-app")
 
     // Verify replica count
     assert.Equal(t, int32(3), *deployment.Spec.Replicas,
@@ -105,7 +106,7 @@ func TestKubernetesDeployment(t *testing.T) {
     assert.Equal(t, int32(80), containers[0].Ports[0].ContainerPort)
 
     // Verify all pods are running
-    pods := k8s.ListPods(t, k8sOptions, metav1.ListOptions{
+    pods := k8s.ListPodsContext(t, ctx, k8sOptions, metav1.ListOptions{
         LabelSelector: "app=test-app",
     })
     assert.Len(t, pods, 3, "Should have 3 pods running")
@@ -126,6 +127,7 @@ Verify that Kubernetes services are created and routing traffic correctly:
 package test
 
 import (
+    "context"
     "testing"
     "fmt"
     "time"
@@ -159,12 +161,13 @@ func TestKubernetesService(t *testing.T) {
 
     kubeconfigPath := terraform.Output(t, opts, "kubeconfig_path")
     k8sOptions := k8s.NewKubectlOptions("", kubeconfigPath, namespace)
+    ctx := context.Background()
 
     // Wait for the service to get an external IP
-    k8s.WaitUntilServiceAvailable(t, k8sOptions, "web-app", 30, 10*time.Second)
+    k8s.WaitUntilServiceAvailableContext(t, ctx, k8sOptions, "web-app", 30, 10*time.Second)
 
     // Get the service
-    service := k8s.GetService(t, k8sOptions, "web-app")
+    service := k8s.GetServiceContext(t, ctx, k8sOptions, "web-app")
 
     // Verify service type
     assert.Equal(t, "LoadBalancer", string(service.Spec.Type))
@@ -174,7 +177,7 @@ func TestKubernetesService(t *testing.T) {
     assert.Equal(t, int32(80), service.Spec.Ports[0].Port)
 
     // Get the external URL and test connectivity
-    serviceUrl := fmt.Sprintf("http://%s", k8s.GetServiceEndpoint(t, k8sOptions, service, 80))
+    serviceUrl := fmt.Sprintf("http://%s", k8s.GetServiceEndpointContext(t, ctx, k8sOptions, service, 80))
 
     // Retry HTTP requests since the load balancer may take time to provision
     http_helper.HttpGetWithRetry(t, serviceUrl, nil, 200, "Welcome to nginx",
@@ -191,8 +194,10 @@ Sometimes you need to verify pod-level details like resource limits, environment
 package test
 
 import (
+    "context"
     "testing"
     "fmt"
+    "time"
 
     "github.com/gruntwork-io/terratest/modules/k8s"
     "github.com/gruntwork-io/terratest/modules/terraform"
@@ -230,9 +235,13 @@ func TestPodConfiguration(t *testing.T) {
 
     kubeconfigPath := terraform.Output(t, opts, "kubeconfig_path")
     k8sOptions := k8s.NewKubectlOptions("", kubeconfigPath, namespace)
+    ctx := context.Background()
+
+    // Wait for the deployment to become available
+    k8s.WaitUntilDeploymentAvailableContext(t, ctx, k8sOptions, "configured-app", 30, 10*time.Second)
 
     // Get pods with the app label
-    pods := k8s.ListPods(t, k8sOptions, metav1.ListOptions{
+    pods := k8s.ListPodsContext(t, ctx, k8sOptions, metav1.ListOptions{
         LabelSelector: "app=configured-app",
     })
     require.NotEmpty(t, pods)
@@ -265,13 +274,14 @@ func TestPodConfiguration(t *testing.T) {
 
 ## Testing Helm Releases
 
-If Terraform deploys Helm charts, use the Helm helper module:
+If Terraform deploys Helm charts, you can validate the Kubernetes resources created by the release:
 
 ```go
 // test/helm_test.go
 package test
 
 import (
+    "context"
     "testing"
     "fmt"
     "time"
@@ -280,7 +290,6 @@ import (
     "github.com/gruntwork-io/terratest/modules/terraform"
     "github.com/gruntwork-io/terratest/modules/random"
     "github.com/stretchr/testify/assert"
-    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestHelmRelease(t *testing.T) {
@@ -303,20 +312,21 @@ func TestHelmRelease(t *testing.T) {
 
     kubeconfigPath := terraform.Output(t, opts, "kubeconfig_path")
     k8sOptions := k8s.NewKubectlOptions("", kubeconfigPath, namespace)
+    ctx := context.Background()
 
     // Wait for Prometheus to be available
-    k8s.WaitUntilDeploymentAvailable(t, k8sOptions, "prometheus-server",
+    k8s.WaitUntilDeploymentAvailableContext(t, ctx, k8sOptions, "prometheus-server",
         60, 10*time.Second)
 
     // Wait for Grafana to be available
-    k8s.WaitUntilDeploymentAvailable(t, k8sOptions, "grafana",
+    k8s.WaitUntilDeploymentAvailableContext(t, ctx, k8sOptions, "grafana",
         60, 10*time.Second)
 
     // Verify ConfigMaps were created for dashboards
-    configMaps := k8s.ListConfigMaps(t, k8sOptions, metav1.ListOptions{
-        LabelSelector: "grafana_dashboard=1",
-    })
-    assert.Greater(t, len(configMaps), 0,
+    output, err := k8s.RunKubectlAndGetOutputContextE(t, ctx, k8sOptions,
+        "get", "configmaps", "-l", "grafana_dashboard=1", "-o", "name")
+    assert.NoError(t, err)
+    assert.NotEmpty(t, output,
         "Should have dashboard ConfigMaps")
 }
 ```
@@ -334,12 +344,13 @@ func TestInIsolatedNamespace(t *testing.T) {
 
     // Use the default kubeconfig
     k8sOptions := k8s.NewKubectlOptions("", "", namespace)
+    ctx := context.Background()
 
     // Create the namespace
-    k8s.CreateNamespace(t, k8sOptions, namespace)
+    k8s.CreateNamespaceContext(t, ctx, k8sOptions, namespace)
 
     // Clean up the namespace when done
-    defer k8s.DeleteNamespace(t, k8sOptions, namespace)
+    defer k8s.DeleteNamespaceContext(t, ctx, k8sOptions, namespace)
 
     opts := &terraform.Options{
         TerraformDir: "../modules/k8s-app",
@@ -353,7 +364,7 @@ func TestInIsolatedNamespace(t *testing.T) {
     terraform.InitAndApply(t, opts)
 
     // Run tests within the isolated namespace
-    pods := k8s.ListPods(t, k8sOptions, metav1.ListOptions{})
+    pods := k8s.ListPodsContext(t, ctx, k8sOptions, metav1.ListOptions{})
     assert.Greater(t, len(pods), 0)
 }
 ```
@@ -384,9 +395,10 @@ func TestNetworkPolicy(t *testing.T) {
     kubeconfigPath := terraform.Output(t, opts, "kubeconfig_path")
     k8sOptions := k8s.NewKubectlOptions("", kubeconfigPath, namespace)
 
+    ctx := context.Background()
+
     // Verify the NetworkPolicy was created
-    // Use kubectl to check, since Terratest does not have a dedicated NetworkPolicy helper
-    output, err := k8s.RunKubectlAndGetOutputE(t, k8sOptions,
+    output, err := k8s.RunKubectlAndGetOutputContextE(t, ctx, k8sOptions,
         "get", "networkpolicy", "secure-app-policy", "-o", "json")
     assert.NoError(t, err)
     assert.Contains(t, output, "secure-app-policy")
@@ -417,7 +429,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.21'
+          go-version: '1.26'
 
       - uses: hashicorp/setup-terraform@v3
         with:
