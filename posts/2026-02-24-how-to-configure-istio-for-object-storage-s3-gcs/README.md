@@ -8,7 +8,7 @@ Description: Configure Istio to work with cloud object storage services like AWS
 
 ---
 
-Cloud object storage services like AWS S3 and Google Cloud Storage are external to your Kubernetes cluster. When your application pods access these services through the Istio sidecar proxy, the traffic needs to be properly configured. By default, Istio might block the traffic, apply mTLS to it (which breaks things), or route it incorrectly.
+Cloud object storage services like AWS S3 and Google Cloud Storage are external to your Kubernetes cluster. When your application pods access these services through the Istio sidecar proxy, the traffic needs to be properly configured. Depending on your mesh policy, Istio might block the traffic or route it incorrectly.
 
 Here is how to configure Istio for reliable object storage access.
 
@@ -26,14 +26,14 @@ Check your current setting:
 kubectl get cm istio -n istio-system -o jsonpath='{.data.mesh}' | grep outboundTrafficPolicy
 ```
 
-If you are using `REGISTRY_ONLY` (which many production setups do for security), you need ServiceEntry resources for object storage.
+If you are using `REGISTRY_ONLY` (which many production setups use for tighter egress control and to catch missing ServiceEntry resources), you need ServiceEntry resources for object storage. Istio does not treat this setting as a full outbound firewall.
 
 ## Configuring ServiceEntry for AWS S3
 
 AWS S3 uses several endpoints depending on the style of access (path-style vs virtual-hosted-style) and the region:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: aws-s3
@@ -49,36 +49,21 @@ spec:
   ports:
     - number: 443
       name: https
-      protocol: TLS
+      protocol: HTTPS
   location: MESH_EXTERNAL
-  resolution: DNS
+  resolution: NONE
 ```
 
 The wildcard hosts (`*.s3.amazonaws.com`) handle virtual-hosted-style requests where the bucket name is in the hostname (like `my-bucket.s3.amazonaws.com`).
 
-Add a DestinationRule to ensure TLS is handled correctly:
-
-```yaml
-apiVersion: networking.istio.io/v1beta1
-kind: DestinationRule
-metadata:
-  name: aws-s3
-  namespace: default
-spec:
-  host: "*.s3.amazonaws.com"
-  trafficPolicy:
-    tls:
-      mode: SIMPLE
-```
-
-`tls.mode: SIMPLE` means Envoy originates TLS to the external endpoint. This is usually handled by the S3 SDK anyway, so this DestinationRule is mainly to make sure Istio does not try to apply mTLS (which S3 does not support).
+Use `resolution: NONE` when the ServiceEntry contains wildcard hosts. With normal S3 SDK usage, the application originates HTTPS and Envoy routes the encrypted connection by SNI. Do not add `tls.mode: SIMPLE` for this case; that mode is for Istio TLS origination, where the application sends HTTP and Envoy initiates TLS to the upstream service.
 
 ## Configuring ServiceEntry for Google Cloud Storage
 
 GCS uses a different set of endpoints:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: gcs
@@ -92,30 +77,19 @@ spec:
   ports:
     - number: 443
       name: https
-      protocol: TLS
+      protocol: HTTPS
   location: MESH_EXTERNAL
-  resolution: DNS
----
-apiVersion: networking.istio.io/v1beta1
-kind: DestinationRule
-metadata:
-  name: gcs
-  namespace: default
-spec:
-  host: "storage.googleapis.com"
-  trafficPolicy:
-    tls:
-      mode: SIMPLE
+  resolution: NONE
 ```
 
-Note that GCS also needs `oauth2.googleapis.com` for authentication. If you are using workload identity or service account keys, the SDK makes OAuth token requests to this endpoint.
+Note that GCS clients may also need authentication endpoints such as `oauth2.googleapis.com`. If you are using Workload Identity Federation for GKE, token requests usually go to the GKE metadata server instead, so allow the authentication endpoint your SDK actually uses.
 
 ## Configuring ServiceEntry for Azure Blob Storage
 
 For Azure Blob Storage:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: azure-blob
@@ -127,20 +101,9 @@ spec:
   ports:
     - number: 443
       name: https
-      protocol: TLS
+      protocol: HTTPS
   location: MESH_EXTERNAL
-  resolution: DNS
----
-apiVersion: networking.istio.io/v1beta1
-kind: DestinationRule
-metadata:
-  name: azure-blob
-  namespace: default
-spec:
-  host: "*.blob.core.windows.net"
-  trafficPolicy:
-    tls:
-      mode: SIMPLE
+  resolution: NONE
 ```
 
 The `login.microsoftonline.com` endpoint is needed for Azure AD authentication.
@@ -172,7 +135,7 @@ Name the ports with `http-` prefix so Istio recognizes the protocol. For MinIO, 
 Configure a VirtualService for timeout handling since object storage uploads can be large:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: minio
@@ -193,12 +156,12 @@ A 10-minute timeout accommodates large file uploads. Adjust based on your use ca
 
 ## Handling Large File Uploads
 
-Object storage uploads can be multi-gigabyte. The Envoy proxy buffers some data, which can cause issues with very large uploads. For multipart uploads (which S3 SDKs use for large files), each part is typically 5-100MB, which is fine for Envoy.
+Object storage uploads can be multi-gigabyte. Envoy does not normally buffer the whole request body, but connection limits, idle timeouts, or protocol upgrades can still affect large transfers. For multipart uploads (which S3 SDKs use for large files), each part is typically 5MB or larger, depending on SDK configuration.
 
-If you experience issues with large uploads, check the Envoy buffer limits:
+If you experience issues with large uploads to an in-cluster S3-compatible service, check the connection pool and protocol settings:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: minio
@@ -214,25 +177,27 @@ spec:
         maxConnections: 100
 ```
 
-For S3 API traffic, keep HTTP/1.1 (`h2UpgradePolicy: DO_NOT_UPGRADE`) because S3 and most S3-compatible stores use HTTP/1.1.
+For S3-compatible services that do not support HTTP/2 well, keep HTTP/1.1 (`h2UpgradePolicy: DO_NOT_UPGRADE`).
 
 ## Timeout Configuration for Object Storage
 
-Object storage operations vary widely in duration. A small GET might take 50ms while a large PUT takes minutes:
+Object storage operations vary widely in duration. A small GET might take 50ms while a large PUT takes minutes. HTTP-level `VirtualService` timeouts work when Istio can see HTTP traffic, such as in-cluster MinIO over HTTP or an explicit TLS-origination setup. For normal SDK HTTPS traffic to S3, Envoy passes the encrypted connection through and cannot apply per-request HTTP routes or timeouts:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
-  name: s3-timeout
+  name: minio-timeout
   namespace: default
 spec:
   hosts:
-    - "*.s3.amazonaws.com"
+    - minio.default.svc.cluster.local
   http:
     - route:
         - destination:
-            host: "*.s3.amazonaws.com"
+            host: minio.default.svc.cluster.local
+            port:
+              number: 9000
       timeout: 300s
 ```
 
@@ -244,35 +209,37 @@ metadata:
     traffic.sidecar.istio.io/excludeOutboundIPRanges: "52.216.0.0/15,54.231.0.0/16"
 ```
 
-These are AWS S3 IP ranges. Check the current ranges from AWS's published IP ranges.
+Treat those CIDRs as examples only. AWS publishes current IP ranges in `ip-ranges.json`, and the ranges for S3 vary by region and can change over time.
 
 ## Monitoring Object Storage Traffic
 
-With Istio, you get visibility into your object storage traffic:
+With Istio, you get visibility into object storage traffic. For in-cluster HTTP services or TLS-origination configurations where Envoy can see HTTP, request metrics are available:
 
 ```promql
-# Request rate to S3
+# Request rate
 
-sum(rate(istio_requests_total{destination_service_name=~".*s3.*"}[5m]))
+sum(rate(istio_requests_total{destination_service_name=~".*minio.*"}[5m]))
 
-# Bytes sent to S3 (upload volume)
-sum(rate(istio_request_bytes_sum{destination_service_name=~".*s3.*"}[5m]))
+# Bytes sent (upload volume)
+sum(rate(istio_request_bytes_sum{destination_service_name=~".*minio.*"}[5m]))
 
-# Bytes received from S3 (download volume)
-sum(rate(istio_response_bytes_sum{destination_service_name=~".*s3.*"}[5m]))
+# Bytes received (download volume)
+sum(rate(istio_response_bytes_sum{destination_service_name=~".*minio.*"}[5m]))
 
-# Error rate to S3
-sum(rate(istio_requests_total{destination_service_name=~".*s3.*", response_code!="200"}[5m]))
+# Error rate
+sum(rate(istio_requests_total{destination_service_name=~".*minio.*", response_code!~"2.."}[5m]))
 /
-sum(rate(istio_requests_total{destination_service_name=~".*s3.*"}[5m]))
+sum(rate(istio_requests_total{destination_service_name=~".*minio.*"}[5m]))
 
-# Latency to GCS
-histogram_quantile(0.95, sum(rate(istio_request_duration_milliseconds_bucket{destination_service_name=~".*storage.googleapis.*"}[5m])) by (le))
+# Latency
+histogram_quantile(0.95, sum(rate(istio_request_duration_milliseconds_bucket{destination_service_name=~".*minio.*"}[5m])) by (le))
 ```
+
+For normal external HTTPS traffic where the application originates TLS, Envoy cannot see HTTP status codes or request paths. Use TCP byte and connection metrics such as `istio_tcp_sent_bytes_total`, `istio_tcp_received_bytes_total`, and `istio_tcp_connections_opened_total` for that traffic.
 
 ## Signed URLs and Presigned URLs
 
-If your application generates presigned URLs for direct client access to S3/GCS, the presigned URL requests come from outside the cluster and do not go through Istio. Only the URL generation call (which is to the AWS SDK, not S3 itself) goes through the mesh.
+If your application generates presigned URLs for direct client access to S3/GCS, the presigned URL requests come from outside the cluster and do not go through Istio. Generating the URL is usually local signing work in the SDK; only related credential-refresh calls, such as calls to STS or OAuth endpoints, go through the mesh.
 
 However, if your backend downloads objects using presigned URLs from other services, that traffic does go through the sidecar:
 
@@ -291,7 +258,7 @@ Here is a complete setup for an application that reads from and writes to S3:
 
 ```yaml
 # ServiceEntry for S3 access
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: aws-s3
@@ -304,25 +271,9 @@ spec:
   ports:
     - number: 443
       name: https
-      protocol: TLS
+      protocol: HTTPS
   location: MESH_EXTERNAL
-  resolution: DNS
----
-# DestinationRule for S3
-apiVersion: networking.istio.io/v1beta1
-kind: DestinationRule
-metadata:
-  name: aws-s3
-  namespace: default
-spec:
-  host: "*.s3.us-east-1.amazonaws.com"
-  trafficPolicy:
-    tls:
-      mode: SIMPLE
-    connectionPool:
-      tcp:
-        maxConnections: 50
-        connectTimeout: 10s
+  resolution: NONE
 ---
 # Application deployment
 apiVersion: apps/v1
@@ -372,6 +323,6 @@ kubectl exec -it <pod-name> -c istio-proxy -- curl -v https://s3.us-east-1.amazo
 kubectl logs <pod-name> -c istio-proxy | grep "tls\|ssl\|certificate"
 ```
 
-If the cluster is not listed in `proxy-config clusters`, the ServiceEntry is not taking effect. Check the namespace and selector. If you see TLS errors, verify the DestinationRule has `tls.mode: SIMPLE`.
+If the cluster is not listed in `proxy-config clusters`, the ServiceEntry is not taking effect. Check the namespace and exported visibility. If you see TLS errors with normal SDK HTTPS traffic, verify that you have not configured Istio TLS origination for the same destination.
 
-Configuring Istio for object storage comes down to two things: making sure external endpoints are reachable (via ServiceEntry or ALLOW_ANY) and setting appropriate timeouts for large transfers. Once those are in place, you get the bonus of traffic visibility and connection management through the mesh.
+Configuring Istio for object storage comes down to two things: making sure external endpoints are reachable (via ServiceEntry or ALLOW_ANY) and setting appropriate connection, protocol, and timeout behavior for large transfers. Once those are in place, you get the bonus of traffic visibility and connection management through the mesh.
