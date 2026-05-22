@@ -196,8 +196,8 @@ spec:
 # k8s/overlays/canary/kustomization.yaml
 resources:
   - ../../base
-patchesStrategicMerge:
-  - virtual-service-patch.yaml
+patches:
+  - path: virtual-service-patch.yaml
 ```
 
 Apply:
@@ -302,7 +302,7 @@ kubectl apply --dry-run=server -f "$VS_FILE" || {
   exit 1
 }
 
-# Check weights sum to 100
+# Check weights follow this pipeline's 100-point convention
 python3 -c "
 import yaml, sys
 with open('$VS_FILE') as f:
@@ -325,7 +325,9 @@ Store the previous VirtualService state for easy rollback:
 
 ```bash
 # Before updating, save current state
-kubectl get virtualservice my-app -n app -o yaml > /tmp/vs-backup.yaml
+kubectl get virtualservice my-app -n app -o yaml \
+  | yq eval 'del(.metadata.resourceVersion, .metadata.uid, .metadata.generation, .metadata.creationTimestamp, .metadata.managedFields, .status)' - \
+  > /tmp/vs-backup.yaml
 
 # Apply new version
 kubectl apply -f k8s/istio/virtual-service.yaml
@@ -339,7 +341,9 @@ In CI:
 ```yaml
 - name: Backup current VirtualService
   run: |
-    kubectl get virtualservice my-app -n app -o yaml > vs-backup.yaml
+    kubectl get virtualservice my-app -n app -o yaml \
+      | yq eval 'del(.metadata.resourceVersion, .metadata.uid, .metadata.generation, .metadata.creationTimestamp, .metadata.managedFields, .status)' - \
+      > vs-backup.yaml
 
 - name: Update VirtualService
   run: kubectl apply -f k8s/istio/virtual-service.yaml
