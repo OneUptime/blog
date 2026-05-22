@@ -18,7 +18,7 @@ Without method-based controls, you either allow a service full access or no acce
 
 ## Basic Method Restriction
 
-Allow only GET requests to a service:
+Allow only read-style and preflight requests to a service:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -57,7 +57,7 @@ spec:
       app: catalog-service
   action: ALLOW
   rules:
-    # Anyone in the mesh can read
+    # Callers in selected namespaces can read
     - from:
         - source:
             namespaces: ["my-app", "frontend"]
@@ -80,11 +80,11 @@ spec:
             methods: ["DELETE"]
 ```
 
-This creates a clear hierarchy: everyone reads, specific services write, and only admin can delete.
+This creates a clear hierarchy: callers in the listed namespaces read, specific services write, and only admin can delete.
 
 ## Combining Methods with Paths
 
-Method restrictions become even more powerful when combined with path matching:
+Method restrictions become even more powerful when combined with path matching. The JWT-based rules below assume a RequestAuthentication policy is enabled for the workload:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -118,7 +118,7 @@ spec:
       to:
         - operation:
             methods: ["GET", "PUT", "DELETE"]
-            paths: ["/api/users/*"]
+            paths: ["/api/users", "/api/users/*"]
       when:
         - key: request.auth.claims[role]
           values: ["admin"]
@@ -143,9 +143,10 @@ spec:
     - to:
         - operation:
             methods: ["TRACE", "CONNECT"]
+            ports: ["8080"]
 ```
 
-TRACE and CONNECT can be security risks in certain configurations. Blocking them at the mesh level ensures no service accidentally handles them.
+TRACE and CONNECT can be security risks in certain configurations. Blocking them on the HTTP port at the mesh level ensures no service accidentally handles them.
 
 ## Method-Based Access with JWT Claims
 
