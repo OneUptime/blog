@@ -12,7 +12,7 @@ Terraform's dynamic blocks are one of the most useful features when you need to 
 
 ## The Problem with Optional Nested Blocks
 
-Consider an AWS security group resource. You might want to add ingress rules, but only when certain variables are set. Without dynamic blocks, you would end up writing separate resource definitions for each combination of optional blocks, which gets messy fast.
+Consider an AWS security group resource. You might want to add ingress rules, but only when certain variables are set. The current AWS provider documentation recommends standalone `aws_vpc_security_group_ingress_rule` and `aws_vpc_security_group_egress_rule` resources for production security group rules, but inline rules are still useful for demonstrating optional nested blocks. Without dynamic blocks, you would end up writing separate resource definitions for each combination of optional blocks, which gets messy fast.
 
 Here is a simple example of the problem:
 
@@ -142,19 +142,31 @@ variable "custom_error_responses" {
   default = []
 }
 
+data "aws_cloudfront_cache_policy" "caching_optimized" {
+  name = "Managed-CachingOptimized"
+}
+
 resource "aws_cloudfront_distribution" "main" {
   enabled = true
 
   origin {
     domain_name = var.origin_domain
     origin_id   = "primary"
+
+    custom_origin_config {
+      http_port              = 80
+      https_port             = 443
+      origin_protocol_policy = "https-only"
+      origin_ssl_protocols   = ["TLSv1.2"]
+    }
   }
 
   default_cache_behavior {
     allowed_methods  = ["GET", "HEAD"]
     cached_methods   = ["GET", "HEAD"]
     target_origin_id = "primary"
-    # ... other settings
+    cache_policy_id  = data.aws_cloudfront_cache_policy.caching_optimized.id
+
     viewer_protocol_policy = "redirect-to-https"
   }
 
@@ -226,7 +238,7 @@ resource "aws_security_group" "example" {
 }
 ```
 
-The `optional()` function in the type constraint lets callers omit certain fields, and you can provide sensible defaults.
+The `optional()` modifier in the type constraint lets callers omit certain fields, and you can provide sensible defaults.
 
 ## Wrapping Up
 
