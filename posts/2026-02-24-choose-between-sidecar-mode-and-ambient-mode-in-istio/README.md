@@ -28,7 +28,7 @@ Your answers to these questions will point you in the right direction.
 
 If every service in your mesh needs L7 features - HTTP-aware routing, header-based authorization, request-level metrics, fault injection - then sidecar mode puts an L7 proxy right next to each workload. Everything is processed locally in the pod.
 
-With ambient mode, L7 features require deploying waypoint proxies. Traffic flows through an extra hop: from the source pod's ztunnel to the waypoint proxy, then to the destination ztunnel and pod. For most services this extra hop adds minimal latency (sub-millisecond on the same node), but it is an additional component to manage.
+With ambient mode, L7 features require deploying waypoint proxies. Traffic flows through an extra hop: from the source pod's ztunnel to the waypoint proxy, then to the destination ztunnel and pod. Istio's benchmarks show waypoint mode can still keep latency low, but the exact impact depends on traffic patterns and infrastructure.
 
 **If you need L7 everywhere**: Sidecar mode is simpler since every pod already has a full L7 proxy.
 
@@ -42,17 +42,17 @@ Here is a rough comparison for a 10-node cluster running 300 pods:
 
 ### Sidecar Mode
 - 300 Envoy sidecars
-- Memory: ~300 x 70MB = ~21GB for proxies
+- Memory: ~300 x 60MB = ~18GB for proxies
 - CPU: Scales with traffic volume per pod
 
 ### Ambient Mode (ztunnel only)
 - 10 ztunnel instances
-- Memory: ~10 x 40MB = ~400MB for proxies
+- Memory: ~10 x 12MB = ~120MB for proxies
 - CPU: Concentrated on fewer instances
 
 ### Ambient Mode (ztunnel + waypoint proxies for 5 namespaces)
 - 10 ztunnel instances + 5 waypoint proxies
-- Memory: ~10 x 40MB + 5 x 100MB = ~900MB
+- Memory: ~10 x 12MB + 5 x 60MB = ~420MB
 - CPU: Shared across fewer, more powerful instances
 
 The resource savings with ambient mode are dramatic. If your cluster is resource-constrained or you are running in a cost-sensitive environment, ambient mode gives you the same security benefits at a fraction of the cost.
