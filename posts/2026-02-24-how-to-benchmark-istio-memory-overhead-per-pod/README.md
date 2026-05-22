@@ -8,7 +8,7 @@ Description: How to measure and analyze the memory overhead that Istio sidecar p
 
 ---
 
-Every pod in an Istio mesh gets a sidecar container running Envoy proxy. That sidecar consumes memory. When you have hundreds or thousands of pods, this memory adds up fast and can significantly affect your cluster capacity and costs.
+Every pod in an Istio sidecar mesh gets a sidecar container running Envoy proxy. That sidecar consumes memory. When you have hundreds or thousands of pods, this memory adds up fast and can significantly affect your cluster capacity and costs.
 
 Understanding exactly how much memory each sidecar uses, and what drives that usage, helps you plan your cluster sizing and set appropriate resource limits. This post walks through how to measure and analyze Istio's per-pod memory overhead.
 
@@ -25,7 +25,6 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: test-app
-  namespace: bench-no-istio
 spec:
   replicas: 10
   selector:
@@ -47,6 +46,12 @@ spec:
               memory: 64Mi
             limits:
               memory: 128Mi
+```
+
+Apply it to the baseline namespace:
+
+```bash
+kubectl apply -f test-app.yaml -n bench-no-istio
 ```
 
 Wait for pods to stabilize, then measure:
@@ -121,10 +126,10 @@ You'll see memory increase roughly linearly with the number of services.
 By default, each sidecar gets configuration for every service in the mesh. The Sidecar resource limits this:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
-  name: limit-scope
+  name: default
   namespace: bench-istio
 spec:
   egress:
@@ -149,15 +154,18 @@ sleep 30
 kubectl top pods -n bench-istio --containers | grep istio-proxy | awk '{print $3}'
 ```
 
-The difference can be dramatic in large meshes. In a mesh with 500 services, scoping sidecars to only their dependencies can reduce memory by 50-80%.
+The difference can be dramatic in large meshes. In a mesh with hundreds of services, scoping sidecars to only their dependencies can substantially reduce memory.
 
 ### Active Connections
 
 Sidecar memory also scales with the number of active connections. Each connection requires buffers:
 
 ```bash
+# Create a Fortio load generator
+kubectl create deployment load-generator -n bench-istio --image=fortio/fortio:latest -- fortio server
+
 # Generate connections and measure memory growth
-kubectl exec -n bench-istio deploy/load-generator -c fortio -- \
+kubectl exec -n bench-istio deploy/load-generator -c load-generator -- \
   fortio load -c 100 -qps 10 -t 120s http://test-app.bench-istio:8080/echo &
 
 # Monitor memory during the test
@@ -170,15 +178,15 @@ Larger requests require bigger buffers:
 
 ```bash
 # Test with small requests
-kubectl exec -n bench-istio deploy/load-generator -c fortio -- \
+kubectl exec -n bench-istio deploy/load-generator -c load-generator -- \
   fortio load -c 16 -qps 100 -t 60s -payload-size 100 http://test-app.bench-istio:8080/echo
 
 # Check memory
 kubectl top pods -n bench-istio --containers | grep istio-proxy
 
 # Test with large requests
-kubectl exec -n bench-istio deploy/load-generator -c fortio -- \
-  fortio load -c 16 -qps 100 -t 60s -payload-size 1048576 http://test-app.bench-istio:8080/echo
+kubectl exec -n bench-istio deploy/load-generator -c load-generator -- \
+  fortio load -c 16 -qps 100 -t 60s -maxpayloadsizekb 2048 -payload-size 1048576 http://test-app.bench-istio:8080/echo
 
 # Check memory again
 kubectl top pods -n bench-istio --containers | grep istio-proxy
@@ -208,7 +216,7 @@ Key stats to look at:
 
 - `server.memory_allocated`: Total bytes allocated by Envoy
 - `server.memory_heap_size`: Total heap size
-- `server.total_connections`: Active connections (correlates with memory)
+- `server.total_connections`: Total connections known to Envoy (correlates with memory)
 
 ## Long-Term Memory Monitoring
 
