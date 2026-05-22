@@ -14,7 +14,7 @@ Terraform providers are the bridge between your infrastructure code and the clou
 
 A provider in Terraform is a plugin that knows how to talk to a specific API. The AWS provider knows how to create EC2 instances and S3 buckets. The Azure provider knows how to create virtual machines and storage accounts. There are providers for Kubernetes, Datadog, GitHub, Cloudflare, and hundreds more.
 
-In CDKTF, each provider is distributed as a pre-built npm package (for TypeScript/JavaScript) or a PyPI package (for Python). You add providers to your project, import their resource classes, and configure them in your stack.
+In CDKTF, many popular providers are distributed as pre-built npm packages (for TypeScript/JavaScript) or PyPI packages (for Python). For other providers, CDKTF can generate bindings from the Terraform registry. You add providers to your project, import their resource classes, and configure them in your stack.
 
 ## Adding Providers to Your Project
 
@@ -59,9 +59,9 @@ You can also list providers in your `cdktf.json` configuration file:
   "language": "typescript",
   "app": "npx ts-node main.ts",
   "terraformProviders": [
-    "hashicorp/aws@~> 5.0",
-    "hashicorp/azurerm@~> 3.0",
-    "hashicorp/google@~> 5.0"
+    "hashicorp/aws@~> 6.0",
+    "hashicorp/azurerm@~> 4.0",
+    "hashicorp/google@~> 7.0"
   ]
 }
 ```
@@ -124,6 +124,7 @@ class MultiCloudStack extends TerraformStack {
     // Configure Azure provider
     new AzurermProvider(this, "azurerm", {
       features: [{}],
+      subscriptionId: "your-subscription-id",
     });
 
     // Create an AWS S3 bucket
@@ -261,17 +262,17 @@ You can pin provider versions in your `cdktf.json` file:
 ```json
 {
   "terraformProviders": [
-    "hashicorp/aws@~> 5.30",
-    "hashicorp/azurerm@~> 3.80",
-    "hashicorp/google@~> 5.10"
+    "hashicorp/aws@~> 6.30",
+    "hashicorp/azurerm@~> 4.60",
+    "hashicorp/google@~> 7.10"
   ]
 }
 ```
 
 The version constraint syntax follows Terraform conventions:
-- `~> 5.30` means any version `>= 5.30` and `< 6.0`
-- `>= 5.0, < 5.50` means a range between 5.0 and 5.50
-- `= 5.30.0` means exactly version 5.30.0
+- `~> 6.30` means any version `>= 6.30` and `< 7.0`
+- `>= 6.0, < 6.50` means a range between 6.0 and 6.50
+- `= 6.30.0` means exactly version 6.30.0
 
 ## Using Community Providers
 
