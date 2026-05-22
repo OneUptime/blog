@@ -8,11 +8,11 @@ Description: Learn how to leverage AWS Savings Plans alongside Terraform to redu
 
 ---
 
-AWS Savings Plans offer flexible pricing similar to Reserved Instances but with broader applicability. They apply automatically to eligible usage across instance families, sizes, and regions. This guide covers how to plan Savings Plans purchases based on your Terraform-managed infrastructure and track their utilization.
+AWS Savings Plans offer flexible pricing similar to Reserved Instances but with broader applicability. Compute Savings Plans apply automatically to eligible usage across instance families, sizes, and regions. This guide covers how to plan Savings Plans purchases based on your Terraform-managed infrastructure and track their utilization.
 
 ## Savings Plans vs Reserved Instances
 
-Savings Plans come in three types. Compute Savings Plans apply to any EC2 instance, Lambda function, or Fargate task regardless of family, size, or region, offering up to 66% savings. EC2 Instance Savings Plans apply to specific instance families in specific regions, offering up to 72% savings. SageMaker Savings Plans apply to SageMaker usage.
+Savings Plans come in four types. Compute Savings Plans apply to EC2 instance usage, Lambda functions, and Fargate tasks regardless of family, size, or region, offering up to 66% savings. EC2 Instance Savings Plans apply to specific instance families in specific regions, offering up to 72% savings. Database Savings Plans apply to supported AWS database services. SageMaker AI Savings Plans apply to SageMaker AI usage.
 
 The main advantage over Reserved Instances is flexibility. If you change instance types or regions, Compute Savings Plans still apply.
 
@@ -106,11 +106,21 @@ variable "compute_configs" {
 }
 
 resource "aws_instance" "compute" {
-  for_each = var.compute_configs
+  for_each = {
+    for instance in flatten([
+      for name, config in var.compute_configs : [
+        for index in range(config.count) : {
+          key             = "${name}-${index + 1}"
+          name            = name
+          instance_family = config.instance_family
+          size            = config.size
+        }
+      ]
+    ]) : instance.key => instance
+  }
 
   ami           = var.ami_id
   instance_type = "${each.value.instance_family}.${each.value.size}"
-  count         = each.value.count
 
   tags = {
     Name            = "${each.key}-server"
@@ -128,7 +138,7 @@ Compute Savings Plans also cover Lambda and Fargate:
 resource "aws_lambda_function" "api" {
   function_name = "api-handler"
   handler       = "index.handler"
-  runtime       = "nodejs18.x"
+  runtime       = "nodejs22.x"
   memory_size   = 256
   timeout       = 30
   role          = aws_iam_role.lambda.arn
