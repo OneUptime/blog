@@ -122,20 +122,35 @@ done
 name: Terraform Plan All Accounts
 on: [pull_request]
 
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
   plan:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        account: [dev, staging, production, shared-services]
+        include:
+          - account: dev
+            account_id_secret: DEV_ACCOUNT_ID
+          - account: staging
+            account_id_secret: STAGING_ACCOUNT_ID
+          - account: production
+            account_id_secret: PRODUCTION_ACCOUNT_ID
+          - account: shared-services
+            account_id_secret: SHARED_SERVICES_ACCOUNT_ID
       max-parallel: 4
     steps:
       - uses: actions/checkout@v4
 
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::${{ secrets[format('{0}_ACCOUNT_ID', matrix.account)] }}:role/TerraformRole
+          role-to-assume: arn:aws:iam::${{ secrets[matrix.account_id_secret] }}:role/TerraformRole
           aws-region: us-east-1
 
       - name: Terraform Init
@@ -165,6 +180,8 @@ done
 ```
 
 The first account downloads the providers. Subsequent accounts find them in the cache and finish init in seconds.
+
+Terraform's plugin cache is not guaranteed to be safe for multiple `terraform init` processes writing to it at the same time. If you use the parallel planning script above, pre-warm the cache sequentially first or use a wrapper such as Terragrunt's provider cache server for concurrent runs.
 
 ## Provider Configuration with Assume Role
 
@@ -232,10 +249,12 @@ Use `terraform_remote_state` to reference across accounts:
 data "terraform_remote_state" "networking" {
   backend = "s3"
   config = {
-    bucket   = "shared-terraform-state"
-    key      = "networking/terraform.tfstate"
-    region   = "us-east-1"
-    role_arn = "arn:aws:iam::999999999999:role/TerraformReadState"
+    bucket = "shared-terraform-state"
+    key    = "networking/terraform.tfstate"
+    region = "us-east-1"
+    assume_role = {
+      role_arn = "arn:aws:iam::999999999999:role/TerraformReadState"
+    }
   }
 }
 
@@ -260,19 +279,19 @@ remote_state {
     key            = "${path_relative_to_include()}/terraform.tfstate"
     region         = "us-east-1"
     encrypt        = true
-    dynamodb_table = "terraform-locks"
+    use_lockfile   = true
   }
 }
 
 # Run all accounts in parallel
-# terragrunt run-all plan --terragrunt-parallelism 4
+# terragrunt run --all --parallelism 4 -- plan
 ```
 
-Terragrunt's `run-all` command executes Terraform across all subdirectories, respecting dependencies and running independent accounts in parallel.
+Terragrunt's `run --all` command executes Terraform across all subdirectories, respecting dependencies and running independent accounts in parallel.
 
 ## Reducing Per-Account Configuration
 
-The less code in each account directory, the faster plans are. Keep account-specific files minimal:
+The less unique code in each account directory, the easier it is to keep plans consistent across accounts. Keep account-specific files minimal:
 
 ```hcl
 # accounts/dev/main.tf
