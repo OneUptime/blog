@@ -55,7 +55,7 @@ run "creates_versioned_bucket" {
   # command = apply is the default, so we do not need to specify it
 
   variables {
-    bucket_name       = "test-bucket-integration-${timestamp()}"
+    bucket_name       = format("test-bucket-integration-%s", formatdate("YYYYMMDDhhmmss", timestamp()))
     enable_versioning = true
     environment       = "test"
   }
@@ -209,15 +209,30 @@ run "create_database" {
 
 ## Testing with External Checks
 
-Sometimes you need to validate behavior from outside Terraform. You can use `check` blocks to run HTTP requests or other verifications:
+Sometimes you need to validate behavior from outside Terraform. Put `check` blocks in the configuration under test to run HTTP requests or other verifications after Terraform plans or applies the infrastructure:
+
+```hcl
+# main.tf
+# Configuration under test
+
+check "site_health" {
+  data "http" "site" {
+    url        = "https://${aws_cloudfront_distribution.site.domain_name}/index.html"
+    depends_on = [aws_cloudfront_distribution.site]
+  }
+
+  assert {
+    condition     = data.http.site.status_code == 200
+    error_message = "Static site should return HTTP 200"
+  }
+}
+```
+
+Then run an apply-based test that creates the infrastructure and lets the check execute:
 
 ```hcl
 # tests/external.tftest.hcl
 # Tests that verify external behavior
-
-provider "aws" {
-  region = "us-east-1"
-}
 
 run "deploy_static_site" {
   variables {
@@ -249,7 +264,7 @@ Integration tests create real resources, so you need to avoid name collisions:
 
 # Generate a unique suffix for this test run
 variables {
-  test_id = "t${substr(timestamp(), 11, 8)}"
+  test_id = format("t%s", formatdate("YYYYMMDDhhmmss", timestamp()))
 }
 
 run "isolated_resources" {
@@ -269,12 +284,17 @@ run "isolated_resources" {
 
 ## Configuring Test Timeouts
 
-Some resources take a long time to create (RDS instances, EKS clusters). You might need to increase the test timeout:
+Some resources take a long time to create (RDS instances, EKS clusters). The `terraform test` command does not have a timeout flag, so configure timeouts on resources that support them:
 
-```bash
-# Default timeout is 5 minutes per run block
-# Set a longer timeout for slow resources
-terraform test -timeout=30m
+```hcl
+resource "aws_db_instance" "example" {
+  # ...
+
+  timeouts {
+    create = "60m"
+    delete = "2h"
+  }
+}
 ```
 
 ## Test Cleanup and Failure Handling
@@ -326,7 +346,7 @@ jobs:
 
       - uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.7.0
+          terraform_version: 1.15.4
 
       # Use OIDC for AWS authentication
       - uses: aws-actions/configure-aws-credentials@v4
