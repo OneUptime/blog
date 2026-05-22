@@ -82,26 +82,14 @@ Set up the new TFE deployment with all external services but do NOT start TFE ye
 ### Step 2: Stop the Source Instance
 
 ```bash
-# Put source TFE in maintenance mode
-curl -s \
-  --header "Authorization: Bearer ${SRC_ADMIN_TOKEN}" \
-  --header "Content-Type: application/vnd.api+json" \
-  --request PATCH \
-  "${SRC_TFE_URL}/api/v2/admin/general-settings" \
-  --data '{
-    "data": {
-      "type": "general-settings",
-      "attributes": {
-        "maintenance-mode": true
-      }
-    }
-  }'
+# Prevent new work from entering the source instance.
+# For example, disable VCS webhooks or temporarily block user/API access at the load balancer.
 
 # Wait for all active runs to complete
 while true; do
   ACTIVE=$(curl -s \
     --header "Authorization: Bearer ${SRC_ADMIN_TOKEN}" \
-    "${SRC_TFE_URL}/api/v2/admin/runs?filter[status]=planning,applying" | \
+    "${SRC_TFE_URL}/api/v2/admin/runs?filter[status]=pending,plan_queued,planning,confirmed,apply_queued,applying" | \
     jq '.meta.pagination["total-count"]')
 
   if [ "${ACTIVE}" -eq 0 ]; then
@@ -170,12 +158,9 @@ fi
 ### Step 5: Start the Destination TFE
 
 ```bash
-# Update the hostname in the database if it changed
-PGPASSWORD="${DST_DB_PASSWORD}" psql \
-  -h "${DST_DB_HOST}" \
-  -U "${DST_DB_USER}" \
-  -d tfe \
-  -c "UPDATE site_configurations SET hostname = 'new-tfe.example.com' WHERE hostname = 'old-tfe.example.com';"
+# If the hostname changed, update the destination deployment configuration
+# (for example, TFE_HOSTNAME in Docker Compose) before starting TFE.
+# You will also need to reconfigure VCS connections after the restore.
 
 # Start TFE on the destination
 ssh dest-tfe "cd /opt/tfe && docker compose up -d"
@@ -285,27 +270,45 @@ for ORG in ${ORGS}; do
       jq -r '.data.attributes["hosted-state-download-url"]')
 
     if [ "${STATE_URL}" != "null" ]; then
-      curl -s -o "/tmp/state-${WS_NAME}.json" "${STATE_URL}"
+      STATE_FILE="/tmp/state-${WS_NAME}.tfstate"
+      curl -s -L \
+        --header "Authorization: Bearer ${SRC_ADMIN_TOKEN}" \
+        -o "${STATE_FILE}" \
+        "${STATE_URL}"
 
       # Upload state to destination
-      # Create a state version
+      # Create a state version. The API expects the state file content
+      # to be base64-encoded and the serial/lineage to match the state file.
+      SERIAL=$(jq '.serial' "${STATE_FILE}")
+      LINEAGE=$(jq -r '.lineage' "${STATE_FILE}")
+      MD5=$(md5sum "${STATE_FILE}" | cut -d' ' -f1)
+      STATE_B64=$(base64 -w 0 "${STATE_FILE}")
+
+      STATE_PAYLOAD=$(jq -n \
+        --arg md5 "${MD5}" \
+        --arg lineage "${LINEAGE}" \
+        --arg state "${STATE_B64}" \
+        --argjson serial "${SERIAL}" \
+        '{
+          data: {
+            type: "state-versions",
+            attributes: {
+              serial: $serial,
+              md5: $md5,
+              lineage: $lineage,
+              state: $state
+            }
+          }
+        }')
+
       curl -s \
         --header "Authorization: Bearer ${DST_ADMIN_TOKEN}" \
         --header "Content-Type: application/vnd.api+json" \
         --request POST \
         "${DST_URL}/api/v2/workspaces/${DST_WS_ID}/state-versions" \
-        --data "{
-          \"data\": {
-            \"type\": \"state-versions\",
-            \"attributes\": {
-              \"serial\": 1,
-              \"md5\": \"$(md5sum /tmp/state-${WS_NAME}.json | cut -d' ' -f1)\",
-              \"lineage\": \"migrated\"
-            }
-          }
-        }"
+        --data "${STATE_PAYLOAD}"
 
-      rm -f "/tmp/state-${WS_NAME}.json"
+      rm -f "${STATE_FILE}"
     fi
 
     # Migrate variables
@@ -326,22 +329,28 @@ for ORG in ${ORGS}; do
         continue
       fi
 
+      VAR_PAYLOAD=$(jq -n \
+        --arg key "${VAR_KEY}" \
+        --arg value "${VAR_VALUE}" \
+        --arg category "${VAR_CAT}" \
+        '{
+          data: {
+            type: "vars",
+            attributes: {
+              key: $key,
+              value: $value,
+              category: $category,
+              sensitive: false
+            }
+          }
+        }')
+
       curl -s \
         --header "Authorization: Bearer ${DST_ADMIN_TOKEN}" \
         --header "Content-Type: application/vnd.api+json" \
         --request POST \
         "${DST_URL}/api/v2/workspaces/${DST_WS_ID}/vars" \
-        --data "{
-          \"data\": {
-            \"type\": \"vars\",
-            \"attributes\": {
-              \"key\": \"${VAR_KEY}\",
-              \"value\": \"${VAR_VALUE}\",
-              \"category\": \"${VAR_CAT}\",
-              \"sensitive\": false
-            }
-          }
-        }" > /dev/null
+        --data "${VAR_PAYLOAD}" > /dev/null
     done
   done
 done
@@ -392,7 +401,7 @@ If the migration fails, have a clear rollback:
 ```bash
 # Rollback steps:
 # 1. Switch DNS back to the source TFE
-# 2. Disable maintenance mode on source
+# 2. Re-enable user/API access and VCS webhooks on source
 # 3. Start the source TFE instance
 # 4. Verify source is healthy
 # 5. Investigate what went wrong with the migration
