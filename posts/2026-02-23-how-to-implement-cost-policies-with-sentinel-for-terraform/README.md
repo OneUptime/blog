@@ -8,7 +8,7 @@ Description: Learn how to implement cost policies with Sentinel for Terraform to
 
 ---
 
-Sentinel is HashiCorp's policy-as-code framework that integrates directly with Terraform Cloud and Terraform Enterprise. It allows you to define fine-grained policies that are evaluated during the Terraform plan phase, before any infrastructure changes are applied. For cost management, this means you can prevent expensive resources from being created, enforce instance type restrictions, and require cost-related tags on every resource.
+Sentinel is HashiCorp's policy-as-code framework that integrates directly with HCP Terraform (formerly Terraform Cloud) and Terraform Enterprise. It allows you to define fine-grained policies that are evaluated during the Terraform plan phase, before any infrastructure changes are applied. For cost management, this means you can prevent expensive resources from being created, enforce instance type restrictions, and require cost-related tags on every resource.
 
 This guide covers how to write and deploy Sentinel policies that enforce cost governance across your Terraform workspaces.
 
@@ -20,13 +20,12 @@ Sentinel policies run after terraform plan but before terraform apply. This timi
 
 One of the most impactful cost policies is preventing expensive instance types in non-production environments.
 
-```python
+```sentinel
 # restrict-instance-types.sentinel
 
 # Policy: Restrict EC2 instance types based on environment
 
 import "tfplan/v2" as tfplan
-import "strings"
 
 # Define allowed instance types per environment
 allowed_types = {
@@ -78,9 +77,9 @@ main = rule {
 
 ## Enforcing Maximum Resource Costs
 
-Use Sentinel with Terraform Cloud's cost estimation feature to block changes that exceed a cost threshold.
+Use Sentinel with HCP Terraform's cost estimation feature to block changes that exceed a cost threshold.
 
-```python
+```sentinel
 # restrict-monthly-cost-increase.sentinel
 # Policy: Block changes that increase monthly costs above threshold
 
@@ -104,14 +103,14 @@ has_cost_estimate = rule {
 
 # Check monthly cost increase
 cost_increase_acceptable = rule when has_cost_estimate {
-  decimal.new(cost_estimate.delta_monthly_cost).less_than(
+  decimal.new(cost_estimate.delta_monthly_cost).less_than_or_equals(
     decimal.new(max_monthly_increase)
   )
 }
 
 # Check total monthly cost
 total_cost_acceptable = rule when has_cost_estimate {
-  decimal.new(cost_estimate.proposed_monthly_cost).less_than(
+  decimal.new(cost_estimate.proposed_monthly_cost).less_than_or_equals(
     decimal.new(max_total_monthly)
   )
 }
@@ -128,7 +127,7 @@ main = rule {
 
 Ensure every resource has the tags needed for cost allocation and tracking.
 
-```python
+```sentinel
 # require-cost-tags.sentinel
 # Policy: Require cost allocation tags on all taggable resources
 
@@ -200,9 +199,9 @@ main = rule {
 
 ## Preventing Unencrypted Storage
 
-Unencrypted storage may lead to compliance issues and often misses the opportunity to use cheaper storage tiers that require encryption.
+Unencrypted storage may lead to compliance issues and can make cost allocation harder when teams need to separate regulated and non-regulated workloads.
 
-```python
+```sentinel
 # require-encryption.sentinel
 # Policy: Require encryption on all storage resources
 
@@ -243,7 +242,7 @@ main = rule {
 
 ## Deploying Sentinel Policies
 
-Sentinel policies are configured in Terraform Cloud using policy sets.
+Sentinel policies are configured in HCP Terraform using policy sets. Policies that rely on cost estimates must run as standard Sentinel policy checks because policy evaluations do not have access to cost estimation data.
 
 ```hcl
 # Terraform configuration to manage Sentinel policy sets
@@ -252,9 +251,12 @@ resource "tfe_policy_set" "cost_governance" {
   description  = "Policies for cloud cost governance"
   organization = var.tfc_organization
   kind         = "sentinel"
-
-  # Apply to all workspaces
-  global = false
+  policy_ids = [
+    tfe_sentinel_policy.restrict_instances.id,
+    tfe_sentinel_policy.cost_limit.id,
+    tfe_sentinel_policy.require_tags.id,
+    tfe_sentinel_policy.require_encryption.id,
+  ]
 
   # Apply to specific workspaces
   workspace_ids = var.governed_workspace_ids
@@ -285,6 +287,14 @@ resource "tfe_sentinel_policy" "require_tags" {
   enforce_mode = "hard-mandatory"
 }
 
+resource "tfe_sentinel_policy" "require_encryption" {
+  name         = "require-encryption"
+  description  = "Require encryption on storage resources"
+  organization = var.tfc_organization
+  policy       = file("${path.module}/policies/require-encryption.sentinel")
+  enforce_mode = "hard-mandatory"
+}
+
 # Policy set parameters
 resource "tfe_policy_set_parameter" "environment" {
   key          = "environment"
@@ -309,4 +319,4 @@ For more on cost governance, see our guides on [cost governance with Terraform](
 
 ## Conclusion
 
-Sentinel policies for Terraform provide the enforcement layer that turns cost guidelines into automated guardrails. By checking resource types, estimated costs, required tags, and security configurations during the plan phase, you prevent expensive mistakes before they happen. Combined with Terraform Cloud's cost estimation feature, Sentinel creates a powerful feedback loop where every infrastructure change is evaluated for its financial impact before it reaches production.
+Sentinel policies for Terraform provide the enforcement layer that turns cost guidelines into automated guardrails. By checking resource types, estimated costs, required tags, and security configurations during the plan phase, you prevent expensive mistakes before they happen. Combined with HCP Terraform's cost estimation feature, Sentinel creates a powerful feedback loop where every infrastructure change is evaluated for its financial impact before it reaches production.
