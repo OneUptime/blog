@@ -8,7 +8,7 @@ Description: A practical guide to using Istio for incremental monolith-to-micros
 
 ---
 
-Breaking apart a monolith is one of the most common reasons teams adopt a service mesh. The migration rarely happens all at once. You extract one service at a time, validate it works correctly, then move on to the next. Istio is perfect for this incremental approach because it lets you control exactly which requests go to the monolith and which go to the new microservice, without changing application code or DNS.
+Breaking apart a monolith is one of the most common reasons teams adopt a service mesh. The migration rarely happens all at once. You extract one service at a time, validate it works correctly, then move on to the next. Istio is perfect for this incremental approach because it lets you control exactly which edge requests go to the monolith and which go to the new microservice, without changing client code or DNS.
 
 The core idea is to put both the monolith and the new microservices behind Istio, then use VirtualService routing rules to gradually shift traffic from the monolith to the extracted services. If something goes wrong, you route traffic back to the monolith instantly.
 
@@ -54,7 +54,7 @@ spec:
 All traffic goes to the monolith through a single VirtualService:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-routing
@@ -116,7 +116,7 @@ spec:
 Update the VirtualService to send user-related traffic to the new service while everything else stays with the monolith:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-routing
@@ -172,9 +172,9 @@ Instead of switching 100% of user traffic at once, do a canary rollout:
 
 ## Step 4: Handle Internal Service Communication
 
-The monolith might call user functionality internally. For example, the order processing code in the monolith might call `getUserById()`. During migration, these internal calls also need to route to the new user service.
+The monolith might call user functionality internally. For example, the order processing code in the monolith might call `getUserById()`. During migration, these internal calls also need to move to the new user service.
 
-If the monolith makes HTTP calls internally, configure it to call the user-service through the mesh:
+If you replace an internal function call with an HTTP API call, configure the monolith to call the user-service through the mesh:
 
 ```python
 # Before: internal function call
@@ -186,7 +186,7 @@ response = requests.get(f"http://user-service/api/users/{user_id}")
 user = response.json()
 ```
 
-Istio routing handles the rest. The monolith's sidecar proxy routes the request to the user-service.
+Kubernetes service discovery resolves the user-service name, and the monolith's sidecar proxy sends the request through the mesh.
 
 ## Step 5: Mirror Traffic for Validation
 
@@ -208,7 +208,7 @@ Before routing any real traffic to the new service, use Istio mirroring to valid
       value: 100.0
 ```
 
-All user requests still go to the monolith (and users get the monolith's response), but a copy goes to the user-service. Compare responses, check for errors in the new service logs, and validate data consistency.
+All user requests still go to the monolith (and users get the monolith's response), but a copy goes to the user-service. Mirrored responses are discarded, so compare responses through logs or offline validation tooling, check for errors in the new service logs, and validate data consistency.
 
 ## Step 6: Timeout and Retry Configuration
 
@@ -238,7 +238,7 @@ This gives the user-service 5 seconds total with 2 retry attempts. If the servic
 Add circuit breaking to protect against the new service being unstable:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: user-service
