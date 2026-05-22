@@ -8,18 +8,18 @@ Description: Learn how to identify and prevent circular dependencies in Istio co
 
 ---
 
-Circular dependencies in Istio configuration are nasty bugs. They cause requests to loop between services, eat up resources, and eventually time out or crash. The worst part is that they are not always obvious from looking at individual configuration files. You have to understand the full picture of how VirtualServices, DestinationRules, and ServiceEntries interact.
+Circular dependencies in Istio configuration are nasty bugs. They can cause requests to loop between services, eat up resources, and eventually time out or crash. The worst part is that they are not always obvious from looking at individual configuration files. You have to understand the full picture of how VirtualServices, ServiceEntries, and the services themselves interact.
 
 Here is how to spot and prevent circular dependencies in your Istio setup.
 
 ## What Circular Dependencies Look Like
 
-A circular dependency happens when Service A routes to Service B, which routes back to Service A (or through a longer chain that eventually loops back). In Istio, this can happen through VirtualService routing rules, delegation, or even through external service entries.
+A circular dependency happens when Service A depends on Service B, which depends back on Service A (or through a longer chain that eventually loops back). In Istio, this can happen through VirtualService routing rules combined with application calls, or through external service entries that route traffic back into the mesh.
 
 The simplest case:
 
 ```yaml
-# Service A sends /api requests to Service B
+# Routing for service-a sends /api requests to service-b
 
 apiVersion: networking.istio.io/v1
 kind: VirtualService
@@ -37,7 +37,7 @@ spec:
             host: service-b
 
 ---
-# Service B sends /api requests back to Service A
+# Routing for service-b sends /api requests back to service-a
 apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
@@ -54,7 +54,7 @@ spec:
             host: service-a
 ```
 
-A request to `service-a/api` goes to `service-b`, which sends it back to `service-a`, creating an infinite loop.
+These two rules create a routing dependency cycle: calls addressed to `service-a/api` are sent to `service-b`, and calls addressed to `service-b/api` are sent to `service-a`. A single request only becomes an actual loop if a service or gateway reissues the request to the other host.
 
 ## Detecting Circular Routes
 
@@ -66,7 +66,7 @@ echo "digraph istio_routes {"
 
 kubectl get virtualservice -A -o json | jq -r '
   .items[] |
-  .spec.hosts[] as $src |
+  .spec.hosts[]? as $src |
   .spec.http[]?.route[]?.destination.host as $dst |
   select($dst != null) |
   "  \"\($src)\" -> \"\($dst)\";"
@@ -86,10 +86,10 @@ For automated cycle detection, use a simple script:
 
 ```bash
 #!/bin/bash
-# Build adjacency list and detect cycles
+# Build adjacency list and detect direct cycles
 kubectl get virtualservice -A -o json | jq -r '
   .items[] |
-  .spec.hosts[] as $src |
+  .spec.hosts[]? as $src |
   .spec.http[]?.route[]?.destination.host as $dst |
   select($dst != null and $src != $dst) |
   "\($src) \($dst)"
@@ -97,7 +97,7 @@ kubectl get virtualservice -A -o json | jq -r '
   # Check if dst has a route back to src (direct cycle)
   REVERSE=$(kubectl get virtualservice -A -o json | jq -r "
     .items[] |
-    select(.spec.hosts[] == \"$dst\") |
+    select(.spec.hosts[]? == \"$dst\") |
     .spec.http[]?.route[]?.destination.host" | grep "^${src}$")
   if [ -n "$REVERSE" ]; then
     echo "CIRCULAR DEPENDENCY: $src -> $dst -> $src"
@@ -105,9 +105,9 @@ kubectl get virtualservice -A -o json | jq -r '
 done
 ```
 
-## VirtualService Delegation Loops
+## VirtualService Delegation Checks
 
-Istio supports VirtualService delegation where a parent VirtualService delegates to child VirtualServices. Circular delegation is another source of loops:
+Istio supports VirtualService delegation where a parent VirtualService delegates to child VirtualServices. Istio only supports one level of delegation, so a child VirtualService should contain the delegated routes, not delegate back to the parent:
 
 ```yaml
 # Parent delegates to child
@@ -129,7 +129,7 @@ spec:
         namespace: production
 
 ---
-# Child should NOT delegate back to parent
+# Child defines the delegated routes
 apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
@@ -148,13 +148,15 @@ spec:
             host: api-default
 ```
 
-Check for delegation loops:
+Check your delegation relationships:
 
 ```bash
 kubectl get virtualservice -A -o json | jq -r '
   .items[] |
-  select(.spec.http[]?.delegate) |
-  "\(.metadata.name) delegates to \(.spec.http[].delegate.name // "unknown")"
+  .metadata.name as $name |
+  .spec.http[]? |
+  select(.delegate) |
+  "\($name) delegates to \(.delegate.name // "unknown")"
 '
 ```
 
@@ -163,9 +165,9 @@ kubectl get virtualservice -A -o json | jq -r '
 Even without routing loops, retries can create circular amplification. If Service A retries requests to Service B, and Service B retries requests to Service C, and Service C depends on Service A, failures cascade in a loop:
 
 ```yaml
-# Each service retries 3 times
-# A -> B (3 retries) -> C (3 retries) -> A (3 retries)
-# Total requests to A: 3 * 3 * 3 = 27 for each original request
+# Each service allows up to 3 attempts
+# A -> B (3 attempts) -> C (3 attempts) -> A (3 attempts)
+# Total calls can multiply across the chain: 3 * 3 * 3 = 27 attempts
 ```
 
 Prevent this by understanding your dependency chain and setting sensible retry budgets:
@@ -189,7 +191,7 @@ spec:
       timeout: 10s
 ```
 
-The key is the `timeout` field. It puts an absolute cap on how long a request can take, including all retries. Without it, retries across multiple hops compound.
+The key is the `timeout` field. It puts an absolute cap on how long a request can take on that route, including retries. Without route timeouts, retries across multiple hops compound.
 
 ## Mirror Traffic Loops
 
@@ -215,7 +217,7 @@ spec:
         value: 100.0
 ```
 
-If `api-shadow` calls back to `api` as part of its processing, you have a mirror loop. Each request generates a mirrored copy, which generates another mirrored copy, and so on.
+If `api-shadow` calls back to `api` as part of its processing, that callback can be mirrored again. Mirrored requests are sent out of band and their responses are discarded, but repeated callbacks can still amplify traffic.
 
 Make sure mirrored traffic is handled by a completely isolated copy of the service that does not call back into the mesh.
 
