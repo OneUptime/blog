@@ -19,7 +19,7 @@ Istio has two modes for handling outbound traffic from the mesh:
 - **ALLOW_ANY** - The default. Pods can reach any external address.
 - **REGISTRY_ONLY** - Pods can only reach services registered in the Istio service registry (including ServiceEntry resources).
 
-If you are running with REGISTRY_ONLY (which you should be in production for security reasons), your pods will get 502 errors when trying to reach any external API that is not explicitly registered.
+If you are running with REGISTRY_ONLY, your pods will be blocked when trying to reach any external API that is not explicitly registered. This is useful for detecting missing ServiceEntry configuration and accidental dependencies, but it is not a replacement for a real outbound security policy.
 
 Check your current setting:
 
@@ -107,7 +107,30 @@ spec:
 
 ## Adding Traffic Management to Egress
 
-You can pair a ServiceEntry with a VirtualService and DestinationRule to add timeouts, retries, and connection limits to your external API calls. This is extremely useful for protecting your services from slow third-party responses.
+You can pair a ServiceEntry with a VirtualService and DestinationRule to add timeouts, retries, and connection limits to your external API calls. For application-initiated HTTPS calls, Istio treats the traffic as opaque TLS and cannot apply HTTP retries or HTTP timeouts. If you want HTTP-level policies while still sending encrypted traffic to the provider, configure TLS origination so the application sends HTTP to the sidecar and the sidecar opens HTTPS to the external API.
+
+For that setup, include an HTTP port that targets 443:
+
+```yaml
+apiVersion: networking.istio.io/v1
+kind: ServiceEntry
+metadata:
+  name: stripe-api
+  namespace: payments
+spec:
+  hosts:
+  - api.stripe.com
+  ports:
+  - number: 80
+    name: http
+    protocol: HTTP
+    targetPort: 443
+  - number: 443
+    name: https
+    protocol: HTTPS
+  resolution: DNS
+  location: MESH_EXTERNAL
+```
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -119,7 +142,9 @@ spec:
   hosts:
   - api.stripe.com
   http:
-  - timeout: 10s
+  - match:
+    - port: 80
+    timeout: 10s
     retries:
       attempts: 3
       perTryTimeout: 3s
@@ -128,10 +153,10 @@ spec:
     - destination:
         host: api.stripe.com
         port:
-          number: 443
+          number: 80
 ```
 
-And a DestinationRule for connection pool settings:
+And a DestinationRule for connection pool settings and TLS origination:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -148,14 +173,17 @@ spec:
       http:
         h2UpgradePolicy: DO_NOT_UPGRADE
         maxRequestsPerConnection: 10
-    tls:
-      mode: SIMPLE
-      sni: api.stripe.com
+    portLevelSettings:
+    - port:
+        number: 80
+      tls:
+        mode: SIMPLE
+        sni: api.stripe.com
 ```
 
 ## Restricting Egress Access by Namespace
 
-One thing that catches people off guard is that ServiceEntry resources are namespace-scoped by default (unless you configure them in the root namespace or use exportTo). If you want only the payments namespace to reach Stripe, set the exportTo field:
+One thing that catches people off guard is that ServiceEntry resources are exported to all namespaces by default. If you want this Stripe ServiceEntry to be visible only inside the payments namespace, set the exportTo field:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -195,11 +223,11 @@ spec:
   - number: 443
     name: https
     protocol: TLS
-  resolution: NONE
+  resolution: DYNAMIC_DNS
   location: MESH_EXTERNAL
 ```
 
-Note that when using wildcard hosts, you must set resolution to NONE since DNS resolution cannot work with wildcards at the mesh level.
+For wildcard HTTPS hosts in current Istio, `DYNAMIC_DNS` lets the proxy resolve the hostname from the SNI value. Use `resolution: NONE` only when you need traffic to be routed to the original destination IP that the application already resolved.
 
 ## Verifying Egress Configuration
 
@@ -231,14 +259,14 @@ istioctl analyze -n payments
 Once you have egress configured, you want visibility into it. Istio automatically generates metrics for all traffic, including egress. You can query Prometheus for external API call patterns:
 
 ```text
-istio_requests_total{destination_service="api.stripe.com", reporter="source"}
+istio_tcp_connections_opened_total{destination_service="api.stripe.com", reporter="source"}
 ```
 
-This gives you request counts, response codes, and latency information for all calls to the Stripe API from within your mesh.
+For opaque HTTPS traffic, TCP metrics show connection and byte counts. HTTP request counts, response codes, and latency metrics such as `istio_requests_total` are available when Istio can see HTTP, such as with plaintext HTTP services or TLS origination.
 
 ## Common Pitfalls
 
-**Forgetting the TLS mode on DestinationRule**: If your application makes HTTPS calls to external APIs, you need to set the TLS mode in the DestinationRule to SIMPLE (for standard TLS) rather than leaving it empty. Without this, the sidecar might try to initiate mTLS with the external service, which will fail.
+**Mixing opaque HTTPS with HTTP policies**: If your application makes HTTPS calls directly, the sidecar sees encrypted TLS. Use `protocol: TLS` or `protocol: HTTPS` in the ServiceEntry for allowlisting and SNI-based routing, but do not expect HTTP retries, HTTP response codes, or HTTP timeouts unless you configure TLS origination.
 
 **DNS resolution failures**: If your ServiceEntry uses `resolution: DNS`, the Istio proxy needs to be able to resolve the hostname. Make sure your cluster DNS can resolve external hostnames. Some restricted environments block external DNS queries.
 
@@ -248,6 +276,6 @@ This gives you request counts, response codes, and latency information for all c
 
 ## Putting It All Together
 
-A complete egress setup for a third-party API typically involves three resources: a ServiceEntry to register the external host, a VirtualService for traffic management policies, and a DestinationRule for connection-level settings. Start with just the ServiceEntry and add the other resources as needed based on your reliability requirements.
+A complete egress setup for a third-party API often starts with a ServiceEntry to register the external host. Add a VirtualService and DestinationRule when you need traffic management policies that match the protocol Istio can actually observe, such as HTTP policies with TLS origination or connection-level settings for opaque TLS. Start with just the ServiceEntry and add the other resources as needed based on your reliability requirements.
 
-For production environments, always use REGISTRY_ONLY mode and explicitly register every external dependency. This gives you a clear inventory of what your mesh talks to, and it prevents compromised pods from exfiltrating data to arbitrary endpoints.
+For production environments, consider REGISTRY_ONLY mode and explicitly register every external dependency. This gives you a clear inventory of what your mesh talks to and helps catch accidental outbound dependencies. If you need to enforce egress as a security control, combine an Istio egress gateway with Kubernetes NetworkPolicy so workloads cannot bypass the mesh proxy.
