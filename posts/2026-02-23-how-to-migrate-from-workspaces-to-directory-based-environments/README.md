@@ -184,11 +184,11 @@ module "compute" {
 
 terraform {
   backend "s3" {
-    bucket         = "acme-terraform-state"
-    key            = "environments/dev/terraform.tfstate"
-    region         = "us-east-1"
-    dynamodb_table = "terraform-locks"
-    encrypt        = true
+    bucket       = "acme-terraform-state"
+    key          = "environments/dev/terraform.tfstate"
+    region       = "us-east-1"
+    use_lockfile = true
+    encrypt      = true
   }
 }
 ```
@@ -213,7 +213,7 @@ This is the critical step. You need to move each workspace's state into its own 
 #!/bin/bash
 # backup-workspaces.sh - Create backups before migration
 
-BACKUP_DIR="state-backups-$(date +%Y%m%d-%H%M%S)"
+BACKUP_DIR="$(pwd)/state-backups-$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$BACKUP_DIR"
 
 cd /path/to/workspace-based/project
@@ -262,7 +262,8 @@ terraform plan
 
 echo "=== Migration of $WORKSPACE complete ==="
 echo "Review the plan output above."
-echo "It should show no changes if the migration was clean."
+echo "It should show no changes if the migration was clean and resource addresses did not change."
+echo "If addresses changed, run the state remapping step below and plan again."
 ```
 
 ### Handle State Address Changes
@@ -389,9 +390,10 @@ inputs = {
 remote_state {
   backend = "s3"
   config = {
-    bucket = "acme-terraform-state"
-    key    = "environments/dev/terraform.tfstate"
-    region = "us-east-1"
+    bucket       = "acme-terraform-state"
+    key          = "environments/dev/terraform.tfstate"
+    region       = "us-east-1"
+    use_lockfile = true
   }
 }
 ```
