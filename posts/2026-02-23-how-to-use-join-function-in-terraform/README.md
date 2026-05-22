@@ -20,7 +20,7 @@ The `join` function concatenates elements of a list into a single string, insert
 join(separator, list)
 ```
 
-It is the inverse of the `split` function. Where `split` breaks a string into a list, `join` combines a list into a string.
+It is the opposite of the `split` function. Where `split` breaks a string into a list, `join` combines a list into a string.
 
 ## Basic Examples
 
@@ -183,7 +183,7 @@ locals {
 
 ## Combining join with split (Round-Trip)
 
-The `join` and `split` functions are inverses. You can use them together for string transformations.
+The `join` and `split` functions perform opposite operations. You can use them together for delimiter-based string transformations.
 
 ```hcl
 locals {
