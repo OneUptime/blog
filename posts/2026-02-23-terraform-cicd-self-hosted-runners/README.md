@@ -20,8 +20,8 @@ Common reasons to go self-hosted for Terraform:
 - Connecting to private module registries behind a firewall
 - Meeting compliance requirements that prohibit third-party CI infrastructure
 - Reducing costs for high-volume pipelines
-- Caching Terraform providers and modules locally for speed
-- Running pipelines in air-gapped environments
+- Caching Terraform providers locally for speed
+- Running pipelines in restricted networks that can still reach GitHub or GitHub Enterprise Server
 
 ## Setting Up GitHub Actions Self-Hosted Runners
 
@@ -37,6 +37,7 @@ resource "aws_instance" "github_runner" {
   ami           = data.aws_ami.ubuntu.id
   instance_type = "t3.large"
   subnet_id     = var.private_subnet_id  # Place in private subnet
+  vpc_security_group_ids = [aws_security_group.runner.id]
 
   # IAM role for Terraform operations
   iam_instance_profile = aws_iam_instance_profile.runner.name
@@ -237,33 +238,36 @@ resource "aws_autoscaling_policy" "scale_up" {
 
 ## Ephemeral Runners with Actions Runner Controller
 
-For Kubernetes environments, Actions Runner Controller (ARC) provides ephemeral runners that spin up per job and get destroyed after:
+For Kubernetes environments, Actions Runner Controller (ARC) provides ephemeral runners that spin up per job and get destroyed after. With current ARC runner scale sets, configure the Helm chart values instead of creating the older `RunnerDeployment` resource:
 
 ```yaml
-# runner-deployment.yaml
-apiVersion: actions.summerwind.dev/v1alpha1
-kind: RunnerDeployment
-metadata:
-  name: terraform-runners
-spec:
-  replicas: 3
-  template:
-    spec:
-      repository: myorg/infrastructure
-      labels:
-        - terraform
-        - self-hosted
-      env:
-        - name: RUNNER_FEATURE_FLAG_EPHEMERAL
-          value: "true"
-      resources:
-        limits:
-          cpu: "2"
-          memory: "4Gi"
-      volumeMounts:
-        # Persistent cache for Terraform providers
-        - name: terraform-cache
-          mountPath: /home/runner/.terraform.d/plugin-cache
+# values.yaml for the gha-runner-scale-set chart
+githubConfigUrl: "https://github.com/myorg/infrastructure"
+githubConfigSecret: pre-defined-secret
+runnerScaleSetName: "terraform-runners"
+runnerScaleSetLabels:
+  - terraform
+  - private-network
+minRunners: 0
+maxRunners: 10
+
+template:
+  spec:
+    containers:
+      - name: runner
+        image: ghcr.io/actions/actions-runner:latest
+        command: ["/home/runner/run.sh"]
+        env:
+          - name: TF_PLUGIN_CACHE_DIR
+            value: /home/runner/.terraform.d/plugin-cache
+        resources:
+          limits:
+            cpu: "2"
+            memory: "4Gi"
+        volumeMounts:
+          # Persistent cache for Terraform providers
+          - name: terraform-cache
+            mountPath: /home/runner/.terraform.d/plugin-cache
     volumes:
       - name: terraform-cache
         persistentVolumeClaim:
@@ -277,12 +281,14 @@ One of the biggest benefits of self-hosted runners is persistent caching. Terraf
 ```bash
 # Set up provider cache on the runner
 mkdir -p /opt/terraform-cache/plugins
+chown -R runner:runner /opt/terraform-cache
 
 # Configure Terraform to use the cache
 cat > /home/runner/.terraformrc << 'EOF'
 plugin_cache_dir = "/opt/terraform-cache/plugins"
 disable_checkpoint = true
 EOF
+chown runner:runner /home/runner/.terraformrc
 ```
 
 In your pipeline, the cache is already warm:
@@ -302,7 +308,7 @@ Self-hosted runners require extra security attention:
 
 ```yaml
 # runner-hardening.yml
-# Use ephemeral runners that get destroyed after each job
+# Target a runner pool that was registered with --ephemeral
 jobs:
   apply:
     runs-on: [self-hosted, terraform, ephemeral]
