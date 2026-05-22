@@ -146,7 +146,7 @@ cd "$REPO_PATH" 2>/dev/null || {
 BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
 COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 TAG=$(git describe --tags --exact-match 2>/dev/null || echo "untagged")
-DIRTY=$(git diff --quiet 2>/dev/null && echo "false" || echo "true")
+DIRTY=$(git status --porcelain 2>/dev/null | grep -q . && echo "true" || echo "false")
 
 jq -n \
   --arg branch "$BRANCH" \
@@ -227,9 +227,10 @@ INPUT=$(cat)
 REPOSITORY=$(echo "$INPUT" | jq -r '.repository')
 REGISTRY=$(echo "$INPUT" | jq -r '.registry')
 
-# Get latest tag from ECR
+# Get latest tagged image from ECR
 TAG=$(aws ecr describe-images \
   --repository-name "$REPOSITORY" \
+  --filter tagStatus=TAGGED \
   --query 'sort_by(imageDetails,& imagePushedAt)[-1].imageTags[0]' \
   --output text 2>/dev/null || echo "latest")
 
@@ -257,7 +258,7 @@ set -euo pipefail
 INPUT=$(cat)
 
 # Parse inputs with defaults
-PARAM1=$(echo "$INPUT" | jq -r '.param1 // "default1"')
+PARAM1=$(echo "$INPUT" | jq -r '.param1 // empty')
 PARAM2=$(echo "$INPUT" | jq -r '.param2 // "default2"')
 
 # Validate required inputs
