@@ -122,7 +122,6 @@ import (
     "testing"
 
     "github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
-    "github.com/hashicorp/terraform-plugin-framework/tfsdk"
     "github.com/hashicorp/terraform-plugin-framework/types"
 )
 
