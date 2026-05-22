@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Error Handling, Kubernetes, Resilience, Envoy
 
-Description: A complete guide to configuring graceful error handling in Istio service mesh including retries, timeouts, circuit breakers, and custom error responses for production systems.
+Description: A complete guide to configuring graceful error handling in Istio service mesh including retries, timeouts, circuit breakers, and fault injection for production systems.
 
 ---
 
-Nothing annoys users more than a generic error page or a hanging request. When services fail in a microservices architecture, the failure should be handled gracefully so the user experience degrades instead of breaking completely. Istio provides several mechanisms to handle errors at the mesh level, which means you do not have to implement the same retry logic, timeout handling, and fallback behavior in every single service.
+Nothing annoys users more than a generic error page or a hanging request. When services fail in a microservices architecture, the failure should be handled gracefully so the user experience degrades instead of breaking completely. Istio provides several mechanisms to handle errors at the mesh level, which means you do not have to implement the same retry logic, timeout handling, and traffic policy in every single service.
 
 This guide covers the practical error handling strategies you can configure in Istio without changing your application code.
 
@@ -28,7 +28,7 @@ Each of these is configured through Istio resources like VirtualService and Dest
 The simplest form of error handling is retrying failed requests. But naive retries can make things worse if you are not careful. Istio lets you configure exactly which errors to retry, how many times, and with what timeout:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: product-service-vs
@@ -65,7 +65,7 @@ Be careful with retries on non-idempotent operations. Retrying a POST that creat
 Timeouts prevent requests from hanging indefinitely. You should always set timeouts, especially in a microservices environment where one slow service can cascade and bring down the whole system:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: order-service-vs
@@ -83,7 +83,7 @@ spec:
 When you combine timeouts with retries, be aware that the overall timeout caps the total time including all retries:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: order-service-vs
@@ -101,14 +101,14 @@ spec:
         perTryTimeout: 3s
 ```
 
-In this case, 3 attempts at 3 seconds each equals 9 seconds, which fits within the 10-second overall timeout. If the per-try timeout times the number of attempts exceeds the overall timeout, some retries will never happen.
+In this case, `attempts: 3` allows up to 3 retries after the initial request. With a 3-second per-try timeout and a 10-second overall timeout, the route timeout still caps the total request duration, so the last retry may be cut short or may not happen. If the per-try timeout times the total possible tries exceeds the overall timeout, some retries will never complete.
 
 ## Circuit Breaking with DestinationRule
 
-Circuit breakers stop your services from wasting resources calling a service that is clearly down. When a service starts returning errors consistently, the circuit breaker trips and immediately returns errors without even attempting the request:
+Circuit breaking settings stop your services from wasting resources on destinations that are overloaded or have unhealthy endpoints. Connection pool limits cap the amount of pending or active work, and outlier detection ejects individual unhealthy hosts from the load balancing pool for a period of time:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: product-service-dr
@@ -137,14 +137,14 @@ Here is what each outlier detection field does:
 - `baseEjectionTime: 30s` - Eject the host for at least 30 seconds
 - `maxEjectionPercent: 50` - Never eject more than 50% of hosts
 
-The `maxEjectionPercent` is important. If you set it to 100 and all your pods start failing, the circuit breaker would eject all of them and you would have zero capacity.
+The `maxEjectionPercent` is important. If you set it to 100 and all your pods start failing, outlier detection could eject all of them and you would have zero capacity.
 
 ## Handling Errors Per Route
 
 You can configure different error handling for different routes within the same service:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-service-vs
@@ -182,7 +182,7 @@ Read operations get retried aggressively because they are safe to repeat. Write 
 Before you can trust your error handling configuration, you need to test it. Istio's fault injection lets you simulate failures:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: product-service-fault
@@ -201,12 +201,12 @@ spec:
             host: product-service.default.svc.cluster.local
 ```
 
-This makes 25% of requests to the product service return a 500 error. You can watch your retry and circuit breaker policies kick in.
+This makes 25% of requests to the product service return a 500 error. Use it to verify that callers, dashboards, and alerts behave correctly when the dependency fails. Do not put fault injection and retry policies on the same VirtualService because Istio does not enable retries when client-side faults are configured in the same VirtualService.
 
 You can also inject delays to test timeout handling:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: product-service-delay
@@ -223,17 +223,16 @@ spec:
       route:
         - destination:
             host: product-service.default.svc.cluster.local
-      timeout: 3s
 ```
 
-50% of requests will get a 5-second delay, and since the timeout is 3 seconds, those requests should time out. This verifies that your timeout configuration is working.
+50% of requests will get a 5-second delay. Use this to test application-level timeout behavior, or configure a timeout on a different VirtualService for another upstream call in the request path. Do not put the timeout and the fault injection on the same VirtualService because Istio does not support combining fault injection with retry or timeout policies on the same VirtualService.
 
 ## Configuring Default Error Handling Mesh-Wide
 
 Instead of configuring error handling per service, you can set defaults for the entire mesh:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: mesh-default-dr
