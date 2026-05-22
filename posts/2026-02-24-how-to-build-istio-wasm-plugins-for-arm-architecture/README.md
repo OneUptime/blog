@@ -25,14 +25,14 @@ You will need a few tools installed:
 
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
-# Add the wasm32 target
-rustup target add wasm32-wasi
+# Add the WASI Preview 1 wasm32 target
+rustup target add wasm32-wasip1
 
-# Install TinyGo if you prefer Go (also has ARM support)
-# Download from https://tinygo.org/getting-started/install/
+# Install Go 1.24+ if you prefer Go (also has ARM support)
+# Download from https://go.dev/doc/install
 ```
 
-For Rust-based plugins, the `wasm32-wasi` target compiles to WebAssembly regardless of the host machine architecture. This means you can build on an ARM Mac or an ARM Linux box and produce the same wasm binary.
+For Rust-based plugins, the `wasm32-wasip1` target compiles to WebAssembly regardless of the host machine architecture. This means you can build on an ARM Mac or an ARM Linux box and produce the same wasm binary.
 
 ## Writing a Basic Wasm Plugin in Rust
 
@@ -89,32 +89,35 @@ impl HttpContext for CustomHeaders {
 Compile to WebAssembly:
 
 ```bash
-cargo build --target wasm32-wasi --release
+cargo build --target wasm32-wasip1 --release
 ```
 
-The output will be at `target/wasm32-wasi/release/istio_wasm_plugin.wasm`. This binary is architecture-neutral. You can build it on an ARM laptop and deploy it on an x86 cluster, or vice versa.
+The output will be at `target/wasm32-wasip1/release/istio_wasm_plugin.wasm`. This binary is architecture-neutral. You can build it on an ARM laptop and deploy it on an x86 cluster, or vice versa.
 
 To verify the binary:
 
 ```bash
-file target/wasm32-wasi/release/istio_wasm_plugin.wasm
+file target/wasm32-wasip1/release/istio_wasm_plugin.wasm
 ```
 
 You should see something like `WebAssembly (wasm) binary module version 0x1 (MVP)`.
 
-## Writing a Plugin in Go with TinyGo
+## Writing a Plugin in Go
 
-If Go is more your speed, TinyGo can compile Go to Wasm. Here is an equivalent plugin:
+If Go is more your speed, Go 1.24+ can compile Go to Wasm. Here is an equivalent plugin:
 
 ```go
 package main
 
 import (
-	"github.com/tetratelabs/proxy-wasm-go-sdk/proxywasm"
-	"github.com/tetratelabs/proxy-wasm-go-sdk/proxywasm/types"
+	"github.com/proxy-wasm/proxy-wasm-go-sdk/proxywasm"
+	"github.com/proxy-wasm/proxy-wasm-go-sdk/proxywasm/types"
 )
 
 func main() {
+}
+
+func init() {
 	proxywasm.SetVMContext(&vmContext{})
 }
 
@@ -144,13 +147,15 @@ func (ctx *httpHeaders) OnHttpResponseHeaders(numHeaders int, endOfStream bool) 
 }
 ```
 
-Build with TinyGo:
+Build with Go:
 
 ```bash
-tinygo build -o plugin.wasm -scheduler=none -target=wasi main.go
+go mod init istio-wasm-plugin-go
+go get github.com/proxy-wasm/proxy-wasm-go-sdk
+GOOS=wasip1 GOARCH=wasm go build -buildmode=c-shared -o plugin.wasm main.go
 ```
 
-TinyGo runs on ARM64 natively, so this works fine on Graviton instances or Apple Silicon.
+Go runs on ARM64 natively, so this works fine on Graviton instances or Apple Silicon.
 
 ## Distributing Wasm Plugins via OCI Registry
 
@@ -180,7 +185,6 @@ spec:
     matchLabels:
       app: my-service
   url: oci://myregistry.io/istio-plugins/custom-headers:v1.0
-  phase: RESPONSE
 ```
 
 Apply it:
@@ -205,20 +209,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
-    - name: Install Rust
-      uses: actions-rs/toolchain@v1
-      with:
-        toolchain: stable
-        target: wasm32-wasi
+    - name: Install Rust target
+      run: rustup target add wasm32-wasip1
     - name: Build
-      run: cargo build --target wasm32-wasi --release
+      run: cargo build --target wasm32-wasip1 --release
     - name: Push to Registry
       run: |
         oras push myregistry.io/istio-plugins/custom-headers:${{ github.sha }} \
-          target/wasm32-wasi/release/istio_wasm_plugin.wasm:application/vnd.module.wasm.content.layer.v1+wasm
+          target/wasm32-wasip1/release/istio_wasm_plugin.wasm:application/vnd.module.wasm.content.layer.v1+wasm
 ```
 
-The build step produces identical wasm output whether the runner is x86 or ARM.
+The build step produces an architecture-neutral wasm artifact whether the runner is x86 or ARM.
 
 ## Optimizing Wasm Binary Size
 
@@ -235,13 +236,13 @@ strip = true
 You can also use `wasm-opt` from the Binaryen toolkit:
 
 ```bash
-wasm-opt -Os -o optimized.wasm target/wasm32-wasi/release/istio_wasm_plugin.wasm
+wasm-opt -Os -o optimized.wasm target/wasm32-wasip1/release/istio_wasm_plugin.wasm
 ```
 
 Check the size difference:
 
 ```bash
-ls -lh target/wasm32-wasi/release/istio_wasm_plugin.wasm
+ls -lh target/wasm32-wasip1/release/istio_wasm_plugin.wasm
 ls -lh optimized.wasm
 ```
 
@@ -266,4 +267,4 @@ Look for the `x-powered-by: istio-wasm-arm` header in the response.
 
 ## Summary
 
-Building Wasm plugins for Istio on ARM is straightforward because WebAssembly is architecture-neutral by design. The compiled .wasm binary works on both x86 and ARM without modification. The key considerations are making sure your build toolchain (Rust, TinyGo) is installed on your ARM build environment, distributing plugins via OCI registries where a single artifact serves all architectures, and optimizing binary size for ARM nodes that might have tighter resource constraints. Once you get the build pipeline set up, the deploy-and-test cycle works identically across architectures.
+Building Wasm plugins for Istio on ARM is straightforward because WebAssembly is architecture-neutral by design. The compiled .wasm binary works on both x86 and ARM without modification. The key considerations are making sure your build toolchain (Rust, Go) is installed on your ARM build environment, distributing plugins via OCI registries where a single artifact serves all architectures, and optimizing binary size for ARM nodes that might have tighter resource constraints. Once you get the build pipeline set up, the deploy-and-test cycle works identically across architectures.
