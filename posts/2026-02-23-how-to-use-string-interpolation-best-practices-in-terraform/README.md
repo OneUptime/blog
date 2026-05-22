@@ -190,13 +190,14 @@ locals {
 
 ## Best Practice 7: Escape Dollar Signs When Needed
 
-In templates and scripts, you need to escape literal dollar signs so Terraform does not try to interpolate them:
+In templates and scripts, you need to escape literal `${` sequences so Terraform does not try to interpolate them:
 
 ```hcl
-# In a templatefile, use $$ to produce a literal $
+# In a templatefile, use $${ to produce a literal ${
 # templates/script.sh.tpl
-# $$HOME produces $HOME in the output
-# $$(date) produces $(date) in the output
+# $HOME produces $HOME in the output
+# $(date) produces $(date) in the output
+# $${HOME} produces ${HOME} in the output
 
 # In regular Terraform strings, $ only needs escaping before {
 locals {
@@ -235,7 +236,7 @@ locals {
 
 ## Best Practice 9: Be Mindful of Sensitive Values
 
-Interpolating sensitive values into strings can inadvertently expose them:
+Interpolating sensitive values into strings makes the whole expression sensitive. That protects CLI output, but it can still be inconvenient and the value may still be stored in state:
 
 ```hcl
 variable "db_password" {
@@ -243,13 +244,12 @@ variable "db_password" {
   sensitive = true
 }
 
-# This loses the sensitive marking and may show up in logs
+# This expression is automatically treated as sensitive
 locals {
-  # WARNING: connection_string will NOT be marked as sensitive
   connection_string = "postgresql://admin:${var.db_password}@db.example.com/mydb"
 }
 
-# Better: mark the result as sensitive too
+# If you expose it as an output, mark the output as sensitive
 output "connection_string" {
   value     = "postgresql://admin:${var.db_password}@db.example.com/mydb"
   sensitive = true
