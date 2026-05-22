@@ -97,8 +97,8 @@ package contract_test
 import (
     "testing"
     "github.com/gruntwork-io/terratest/modules/terraform"
+    tfjson "github.com/hashicorp/terraform-json"
     "github.com/stretchr/testify/assert"
-    "encoding/json"
 )
 
 func TestVPCModulePlanContract(t *testing.T) {
@@ -120,11 +120,11 @@ func TestVPCModulePlanContract(t *testing.T) {
     plan := terraform.InitAndPlanAndShowWithStruct(t, terraformOptions)
 
     // Verify the plan creates expected resources
-    assert.Equal(t, 1, len(plan.ResourceChangesMap["aws_vpc.main"]))
+    vpcChange := plan.ResourceChangesMap["aws_vpc.main"]
+    assert.NotNil(t, vpcChange)
 
     // Verify VPC configuration
-    vpcChange := plan.ResourceChangesMap["aws_vpc.main"][0]
-    assert.Equal(t, "create", vpcChange.Change.Actions[0])
+    assert.Contains(t, vpcChange.Change.Actions, tfjson.ActionCreate)
 
     // Verify tags are set correctly
     afterMap := vpcChange.Change.After.(map[string]interface{})
@@ -150,9 +150,15 @@ func TestSecurityGroupPlanContract(t *testing.T) {
     plan := terraform.InitAndPlanAndShowWithStruct(t, terraformOptions)
 
     // Verify no rules allow 0.0.0.0/0 ingress on port 22
-    for _, change := range plan.ResourceChangesMap["aws_security_group_rule"] {
+    for _, change := range plan.ResourceChangesMap {
+        if change.Type != "aws_security_group_rule" {
+            continue
+        }
+
         after := change.Change.After.(map[string]interface{})
-        if after["type"] == "ingress" {
+        fromPort := after["from_port"].(float64)
+        toPort := after["to_port"].(float64)
+        if after["type"] == "ingress" && fromPort <= 22 && toPort >= 22 {
             cidrBlocks := after["cidr_blocks"].([]interface{})
             for _, cidr := range cidrBlocks {
                 assert.NotEqual(t, "0.0.0.0/0", cidr,
@@ -173,10 +179,12 @@ Policy tests verify that plans comply with organizational policies:
 
 package terraform.policy.encryption_test
 
+import rego.v1
+
 import data.terraform.policy.encryption
 
 # Test: S3 bucket without encryption should be denied
-test_s3_without_encryption {
+test_s3_without_encryption if {
     result := encryption.deny with input as {
         "resource_changes": [{
             "type": "aws_s3_bucket",
@@ -193,7 +201,7 @@ test_s3_without_encryption {
 }
 
 # Test: S3 bucket with encryption should be allowed
-test_s3_with_encryption {
+test_s3_with_encryption if {
     result := encryption.deny with input as {
         "resource_changes": [{
             "type": "aws_s3_bucket",
@@ -227,8 +235,12 @@ Integration tests create real resources and verify they work correctly:
 package integration_test
 
 import (
+    "context"
+    "fmt"
     "testing"
     "time"
+    "github.com/aws/aws-sdk-go-v2/service/ec2"
+    "github.com/aws/aws-sdk-go-v2/service/ec2/types"
     "github.com/gruntwork-io/terratest/modules/terraform"
     "github.com/gruntwork-io/terratest/modules/aws"
     "github.com/stretchr/testify/assert"
@@ -266,15 +278,27 @@ func TestVPCModuleIntegration(t *testing.T) {
 
     // Verify the VPC exists in AWS
     vpc := aws.GetVpcById(t, vpcID, "us-east-1")
-    assert.Equal(t, "10.99.0.0/16", vpc.CidrBlock)
+    assert.Equal(t, "10.99.0.0/16", *vpc.CidrBlock)
 
     // Verify subnets were created
     subnetIDs := terraform.OutputList(t, terraformOptions, "private_subnet_ids")
     assert.Equal(t, 3, len(subnetIDs), "Expected 3 private subnets")
 
     // Verify DNS settings
-    assert.True(t, vpc.EnableDnsSupport)
-    assert.True(t, vpc.EnableDnsHostnames)
+    ec2Client := aws.NewEc2Client(t, "us-east-1")
+    dnsSupport, err := ec2Client.DescribeVpcAttribute(context.Background(), &ec2.DescribeVpcAttributeInput{
+        Attribute: types.VpcAttributeNameEnableDnsSupport,
+        VpcId:     &vpcID,
+    })
+    assert.NoError(t, err)
+    assert.True(t, *dnsSupport.EnableDnsSupport.Value)
+
+    dnsHostnames, err := ec2Client.DescribeVpcAttribute(context.Background(), &ec2.DescribeVpcAttributeInput{
+        Attribute: types.VpcAttributeNameEnableDnsHostnames,
+        VpcId:     &vpcID,
+    })
+    assert.NoError(t, err)
+    assert.True(t, *dnsHostnames.EnableDnsHostnames.Value)
 }
 ```
 
@@ -289,6 +313,7 @@ End-to-end tests validate complete infrastructure deployments:
 package e2e_test
 
 import (
+    "fmt"
     "testing"
     "time"
     "net/http"
@@ -350,8 +375,13 @@ Run different test layers at different stages:
 name: Infrastructure Testing Pyramid
 
 on:
+  push:
+    branches: [main]
+    paths: ['**/*.tf']
   pull_request:
     paths: ['**/*.tf']
+  schedule:
+    - cron: '0 0 * * 0'
 
 jobs:
   # Layer 1: Runs on every PR (seconds)
@@ -379,7 +409,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: opa test policies/ -v
+      - run: opa test policies/ tests/policy/ -v
 
   # Layer 4: Runs on merge to main (10-30 minutes)
   integration-tests:
