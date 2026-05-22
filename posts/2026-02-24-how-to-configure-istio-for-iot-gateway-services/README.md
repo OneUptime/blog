@@ -76,8 +76,11 @@ spec:
             host: mqtt-broker
             port:
               number: 1883
+  tls:
     - match:
         - port: 8883
+          sniHosts:
+            - "mqtt.iot.example.com"
       route:
         - destination:
             host: mqtt-broker
@@ -112,13 +115,9 @@ spec:
               - port: 8883
                 targetPort: 8883
                 name: mqtts
-              - port: 5683
-                targetPort: 5683
-                name: coap
-                protocol: UDP
 ```
 
-Notice the CoAP port on UDP. If your IoT devices use CoAP (Constrained Application Protocol), you can expose it through the gateway as well, though Istio has limited UDP support and you may need to handle it outside the mesh.
+If your IoT devices use CoAP (Constrained Application Protocol), expose it through a separate Kubernetes Service or load balancer outside the Istio ingress gateway path. Istio proxies TCP traffic, but non-TCP protocols such as UDP are not proxied by ingress or egress gateways.
 
 ## Handling HTTP-Based IoT APIs
 
@@ -166,9 +165,9 @@ spec:
               number: 8080
 ```
 
-## Rate Limiting IoT Devices
+## Limiting Upstream Connections
 
-IoT devices can generate a lot of traffic, especially when they malfunction and start sending data in tight loops. Use Istio to rate limit incoming connections:
+IoT devices can generate a lot of traffic, especially when they malfunction and start sending data in tight loops. Use Istio connection pools to cap the number of upstream connections and requests that proxies open to a backend service:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -189,7 +188,7 @@ spec:
         maxRetries: 2
 ```
 
-For more granular rate limiting per device, you would typically handle that in your IoT gateway application code, but Istio connection pooling prevents the overall system from being overwhelmed.
+For more granular rate limiting per device, you would typically handle that in your IoT gateway application code or with an Envoy rate limit integration. Istio connection pooling is a circuit-breaking control for upstream service connections, not a per-device rate limiter.
 
 ## Securing Device-to-Gateway Communication
 
@@ -216,7 +215,7 @@ spec:
         credentialName: iot-gateway-cert
 ```
 
-Then create a PeerAuthentication policy that enforces strict mTLS inside the mesh but allows permissive mode at the gateway:
+Then create a PeerAuthentication policy that enforces strict mTLS for workloads in the IoT namespace:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -227,19 +226,9 @@ metadata:
 spec:
   mtls:
     mode: STRICT
----
-apiVersion: security.istio.io/v1
-kind: PeerAuthentication
-metadata:
-  name: gateway-permissive
-  namespace: istio-system
-spec:
-  selector:
-    matchLabels:
-      istio: ingressgateway
-  mtls:
-    mode: PERMISSIVE
 ```
+
+The gateway TLS settings above control one-way TLS from devices to the ingress gateway. PeerAuthentication controls mTLS expectations for workloads in the mesh.
 
 ## Authorization for IoT Services
 
@@ -286,10 +275,10 @@ spec:
       tcp:
         maxConnections: 5000
         connectTimeout: 10s
-        idleTimeout: 3600s
+        idleTimeout: 7200s
 ```
 
-The `idleTimeout` of 3600 seconds (1 hour) keeps MQTT connections alive even when devices are not actively sending data. Without this, Istio would close idle connections after a few minutes, forcing constant reconnections from your devices.
+The `idleTimeout` of 7200 seconds (2 hours) keeps MQTT connections open longer than Istio's default 1-hour TCP idle timeout. If your MQTT keepalive interval is shorter than the timeout, regular MQTT ping traffic also prevents the connection from being treated as idle.
 
 ## Monitoring IoT Traffic Through the Mesh
 
@@ -299,11 +288,11 @@ Use Istio telemetry to monitor your IoT gateway traffic:
 # Check active connections to the MQTT broker
 
 kubectl exec -n iot deploy/mqtt-broker -c istio-proxy -- \
-  pilot-agent request GET /stats | grep downstream_cx_active
+  pilot-agent request GET stats | grep downstream_cx_active
 
 # Monitor request rates to the HTTP API
 kubectl exec -n iot deploy/telemetry-ingester -c istio-proxy -- \
-  pilot-agent request GET /stats | grep downstream_rq_total
+  pilot-agent request GET stats | grep downstream_rq_total
 ```
 
 These metrics give you visibility into how many devices are connected and how much traffic your IoT gateway is handling, all without modifying your application code.
