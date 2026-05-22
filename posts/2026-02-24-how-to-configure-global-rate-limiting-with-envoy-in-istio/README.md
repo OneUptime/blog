@@ -99,7 +99,8 @@ spec:
     spec:
       containers:
       - name: ratelimit
-        image: envoyproxy/ratelimit:master
+        image: envoyproxy/ratelimit:30a4ce1a
+        command: ["/bin/ratelimit"]
         ports:
         - containerPort: 8080
         - containerPort: 8081
@@ -119,6 +120,8 @@ spec:
           value: ratelimit
         - name: RUNTIME_WATCH_ROOT
           value: "false"
+        - name: RUNTIME_IGNOREDOTFILES
+          value: "true"
         volumeMounts:
         - name: config
           mountPath: /data/ratelimit/config
@@ -199,8 +202,11 @@ spec:
         type: STRICT_DNS
         connect_timeout: 1s
         lb_policy: ROUND_ROBIN
-        protocol_selection: USE_CONFIGURED_PROTOCOL
-        http2_protocol_options: {}
+        typed_extension_protocol_options:
+          envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+            "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+            explicit_http_config:
+              http2_protocol_options: {}
         load_assignment:
           cluster_name: rate_limit_cluster
           endpoints:
@@ -287,7 +293,7 @@ descriptors:
     requests_per_unit: 100
 ```
 
-The last entry is a catch-all for any path not explicitly listed. This gives you fine-grained control over which endpoints get which limits.
+The last entry is a catch-all for any path not explicitly listed, with a separate counter for each unmatched path value. This gives you fine-grained control over which endpoints get which limits.
 
 ## Failure Mode Configuration
 
@@ -304,10 +310,10 @@ kubectl logs -l app=ratelimit -n istio-system
 You can also check Envoy stats for rate limit metrics:
 
 ```bash
-kubectl exec deploy/istio-ingressgateway -n istio-system -- curl -s localhost:15000/stats | grep ratelimit
+kubectl exec deploy/istio-ingressgateway -n istio-system -c istio-proxy -- pilot-agent request GET stats | grep ratelimit
 ```
 
-Look for `ratelimit.ok`, `ratelimit.over_limit`, and `ratelimit.error` counters.
+Look for counters ending in `ratelimit.ok`, `ratelimit.over_limit`, and `ratelimit.error`.
 
 ## Summary
 
