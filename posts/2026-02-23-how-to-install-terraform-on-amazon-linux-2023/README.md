@@ -39,7 +39,7 @@ Amazon Linux 2023 uses DNF as its package manager and is compatible with RHEL-ba
 
 ```bash
 # Install yum-utils for managing repositories
-sudo dnf install -y yum-utils
+sudo dnf install -y yum-utils shadow-utils
 ```
 
 ### Step 2 - Add the HashiCorp Repository
@@ -69,7 +69,7 @@ terraform -version
 You should see output like:
 
 ```text
-Terraform v1.7.x
+Terraform v1.15.x
 on linux_amd64
 ```
 
@@ -92,7 +92,7 @@ This returns `x86_64` for Intel/AMD instances or `aarch64` for Graviton (ARM) in
 
 ```bash
 # Set the version you want
-TERRAFORM_VERSION="1.7.5"
+TERRAFORM_VERSION="1.15.4"
 
 # Determine architecture
 ARCH=$(uname -m)
@@ -170,7 +170,7 @@ You can install and run Terraform as part of an EC2 instance's user data script.
 # EC2 User Data script to install Terraform on Amazon Linux 2023
 
 # Install Terraform
-dnf install -y yum-utils
+dnf install -y yum-utils shadow-utils
 yum-config-manager --add-repo https://rpm.releases.hashicorp.com/AmazonLinux/hashicorp.repo
 dnf install -y terraform
 
@@ -197,12 +197,12 @@ region = us-east-1
 
 [profile staging]
 role_arn = arn:aws:iam::123456789012:role/TerraformRole
-source_profile = default
+credential_source = Ec2InstanceMetadata
 region = us-west-2
 
 [profile production]
 role_arn = arn:aws:iam::987654321098:role/TerraformRole
-source_profile = default
+credential_source = Ec2InstanceMetadata
 region = us-east-1
 EOF
 ```
@@ -234,7 +234,7 @@ sudo dnf update -y terraform
 Download the new version and replace the binary:
 
 ```bash
-TERRAFORM_VERSION="1.8.0"
+TERRAFORM_VERSION="1.15.4"
 TERRAFORM_ARCH="amd64"  # or arm64 for Graviton
 curl -LO "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_${TERRAFORM_ARCH}.zip"
 unzip "terraform_${TERRAFORM_VERSION}_linux_${TERRAFORM_ARCH}.zip"
@@ -255,12 +255,12 @@ sudo yum-config-manager --add-repo https://rpm.releases.hashicorp.com/RHEL/hashi
 
 ### DNS Resolution Issues in Private Subnets
 
-If your EC2 instance is in a private subnet without internet access, you will need either a NAT Gateway or VPC endpoints for S3 (to access the repository). Alternatively, use the manual method and copy the zip file to the instance via SCP or from an S3 bucket:
+If your EC2 instance is in a private subnet without internet access, you will need either a NAT Gateway, proxy, or local mirror to access the HashiCorp repository. Alternatively, use the manual method and copy the zip file to the instance via SCP or from an S3 bucket:
 
 ```bash
 # Copy Terraform binary from S3
-aws s3 cp s3://your-bucket/terraform_1.7.5_linux_amd64.zip .
-unzip terraform_1.7.5_linux_amd64.zip
+aws s3 cp s3://your-bucket/terraform_1.15.4_linux_amd64.zip .
+unzip terraform_1.15.4_linux_amd64.zip
 sudo mv terraform /usr/local/bin/
 ```
 
@@ -271,9 +271,6 @@ If another process is using DNF:
 ```bash
 # Wait for the lock to be released, or kill the blocking process
 sudo fuser -v /var/cache/dnf/metadata_lock.pid
-
-# Force release the lock if needed (use with caution)
-sudo rm -f /var/cache/dnf/metadata_lock.pid
 ```
 
 ## Automating Installation with SSM
@@ -285,7 +282,7 @@ If you manage a fleet of AL2023 instances, you can use AWS Systems Manager Run C
 aws ssm send-command \
   --document-name "AWS-RunShellScript" \
   --targets "Key=tag:Role,Values=terraform-runner" \
-  --parameters 'commands=["dnf install -y yum-utils","yum-config-manager --add-repo https://rpm.releases.hashicorp.com/AmazonLinux/hashicorp.repo","dnf install -y terraform","terraform -version"]'
+  --parameters 'commands=["dnf install -y yum-utils shadow-utils","yum-config-manager --add-repo https://rpm.releases.hashicorp.com/AmazonLinux/hashicorp.repo","dnf install -y terraform","terraform -version"]'
 ```
 
 ## Next Steps
