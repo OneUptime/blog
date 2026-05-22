@@ -8,7 +8,7 @@ Description: How to measure the impact of Istio sidecar proxies on request throu
 
 ---
 
-Throughput is about how many requests per second your services can handle, and how much data can flow between them. When you add Istio sidecars, every request passes through two extra hops (client proxy and server proxy), and every byte gets encrypted and decrypted. This has a cost, and you should know exactly what that cost is for your workloads.
+Throughput is about how many requests per second your services can handle, and how much data can flow between them. When you add Istio sidecars, every request passes through two extra hops (client proxy and server proxy), and inter-mesh traffic is normally encrypted and decrypted by Istio's automatic mutual TLS. This has a cost, and you should know exactly what that cost is for your workloads.
 
 This post covers how to benchmark Istio's throughput impact accurately, what factors affect it, and how to optimize when you need more throughput.
 
@@ -57,6 +57,7 @@ spec:
           args: ["server"]
           ports:
             - containerPort: 8080
+            - containerPort: 8079
           resources:
             requests:
               cpu: "2"
@@ -73,12 +74,47 @@ spec:
   selector:
     app: echo-server
   ports:
-    - port: 8080
+    - name: http
+      port: 8080
+    - name: grpc
+      port: 8079
+```
+
+Deploy a load generator in both namespaces:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: load-generator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: load-generator
+  template:
+    metadata:
+      labels:
+        app: load-generator
+    spec:
+      containers:
+        - name: fortio
+          image: fortio/fortio:latest
+          args: ["server"]
+          resources:
+            requests:
+              cpu: "2"
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 512Mi
 ```
 
 ```bash
 kubectl apply -f server.yaml -n bench-istio
 kubectl apply -f server.yaml -n bench-plain
+kubectl apply -f load-generator.yaml -n bench-istio
+kubectl apply -f load-generator.yaml -n bench-plain
 ```
 
 Note the explicit resource limits on the server. This prevents the application container from being CPU-starved by the sidecar, which would skew your results.
@@ -129,12 +165,17 @@ Calculate the data throughput:
 
 ```bash
 # Extract throughput from results
-for f in /tmp/plain-1mb.json /tmp/istio-1mb.json; do
-  QPS=$(jq '.ActualQPS' "$f")
-  SIZE=1048576
-  THROUGHPUT=$(echo "$QPS * $SIZE / 1048576" | bc)
-  echo "$f: ${THROUGHPUT} MB/s"
-done
+PLAIN_QPS=$(kubectl exec -n bench-plain deploy/load-generator -c fortio -- \
+  cat /tmp/plain-1mb.json | jq '.ActualQPS')
+ISTIO_QPS=$(kubectl exec -n bench-istio deploy/load-generator -c fortio -- \
+  cat /tmp/istio-1mb.json | jq '.ActualQPS')
+SIZE=1048576
+
+PLAIN_THROUGHPUT=$(echo "scale=2; $PLAIN_QPS * $SIZE / 1048576" | bc)
+ISTIO_THROUGHPUT=$(echo "scale=2; $ISTIO_QPS * $SIZE / 1048576" | bc)
+
+echo "plain: ${PLAIN_THROUGHPUT} MB/s"
+echo "istio: ${ISTIO_THROUGHPUT} MB/s"
 ```
 
 ## HTTP/1.1 vs HTTP/2 Throughput
@@ -142,9 +183,9 @@ done
 Istio supports HTTP/2 between proxies, which can significantly improve throughput through multiplexing. Test both:
 
 ```bash
-# HTTP/1.1
+# HTTP/1.1 (Fortio's default HTTP client)
 kubectl exec -n bench-istio deploy/load-generator -c fortio -- \
-  fortio load -c 16 -qps 0 -t 30s -http1.0=false -http1.1=true \
+  fortio load -c 16 -qps 0 -t 30s \
   -json /tmp/h1-istio.json \
   http://echo-server.bench-istio:8080/echo
 
@@ -160,14 +201,14 @@ kubectl exec -n bench-istio deploy/load-generator -c fortio -- \
 If your services use gRPC, test that specifically since it uses HTTP/2:
 
 ```bash
-# Start a gRPC echo server (Fortio supports gRPC)
+# Fortio server starts its gRPC ping service on port 8079 by default
 kubectl exec -n bench-istio deploy/load-generator -c fortio -- \
-  fortio load -c 16 -qps 0 -t 30s -grpc \
+  fortio load -c 16 -qps 0 -t 30s -grpc -ping \
   -json /tmp/grpc-istio.json \
   echo-server.bench-istio:8079
 
 kubectl exec -n bench-plain deploy/load-generator -c fortio -- \
-  fortio load -c 16 -qps 0 -t 30s -grpc \
+  fortio load -c 16 -qps 0 -t 30s -grpc -ping \
   -json /tmp/grpc-plain.json \
   echo-server.bench-plain:8079
 ```
@@ -225,7 +266,7 @@ Plot throughput vs sidecar CPU to find the sweet spot where adding more CPU does
 
 Telemetry features (access logging, tracing, metrics) consume CPU in the proxy. Benchmark with different telemetry configurations:
 
-### Full telemetry (default):
+### Current telemetry configuration:
 
 ```bash
 kubectl exec -n bench-istio deploy/load-generator -c fortio -- \
@@ -233,10 +274,10 @@ kubectl exec -n bench-istio deploy/load-generator -c fortio -- \
   http://echo-server.bench-istio:8080/echo
 ```
 
-### Minimal telemetry:
+### Reduced telemetry:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: minimal
@@ -281,8 +322,10 @@ echo "| Scenario | QPS (Plain) | QPS (Istio) | Overhead % |"
 echo "|----------|-------------|-------------|------------|"
 
 for c in 2 4 8 16 32 64 128 256; do
-  PLAIN=$(jq '.ActualQPS' /tmp/plain-c${c}.json 2>/dev/null)
-  ISTIO=$(jq '.ActualQPS' /tmp/istio-c${c}.json 2>/dev/null)
+  PLAIN=$(kubectl exec -n bench-plain deploy/load-generator -c fortio -- \
+    cat /tmp/plain-c${c}.json 2>/dev/null | jq '.ActualQPS')
+  ISTIO=$(kubectl exec -n bench-istio deploy/load-generator -c fortio -- \
+    cat /tmp/istio-c${c}.json 2>/dev/null | jq '.ActualQPS')
   if [ "$PLAIN" != "" ] && [ "$ISTIO" != "" ]; then
     OVERHEAD=$(echo "scale=1; (1 - $ISTIO / $PLAIN) * 100" | bc)
     echo "| c=$c | $PLAIN | $ISTIO | ${OVERHEAD}% |"
@@ -290,7 +333,7 @@ for c in 2 4 8 16 32 64 128 256; do
 done
 ```
 
-Typical throughput overhead ranges from 10-30% depending on configuration and workload. If you're seeing more than 30%, check your sidecar CPU limits first.
+Throughput overhead depends on the workload, protocol, telemetry configuration, mTLS policy, and sidecar CPU allocation. If you're seeing more overhead than expected, check your sidecar CPU limits first.
 
 ## Optimization Strategies
 
