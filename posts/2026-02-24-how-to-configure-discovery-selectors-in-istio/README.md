@@ -106,16 +106,22 @@ kubectl edit configmap istio -n istio-system
 Add the discovery selectors under the mesh configuration:
 
 ```yaml
-discoverySelectors:
-  - matchLabels:
-      istio-discovery: enabled
+data:
+  mesh: |-
+    discoverySelectors:
+      - matchLabels:
+          istio-discovery: enabled
 ```
 
 Istiod picks up the change within seconds. Namespaces that no longer match are dropped from the service registry.
 
-## Important: istio-system Is Always Included
+## Important: Include istio-system When Needed
 
-Regardless of your discovery selectors, the `istio-system` namespace is always included. You do not need to label it. This ensures that mesh-wide resources like Gateways in `istio-system` continue to work.
+Do not assume that `istio-system` is automatically included in discovery. If you keep mesh resources such as Gateways in `istio-system`, label it or include it with a selector so those resources continue to be processed:
+
+```bash
+kubectl label namespace istio-system istio-discovery=enabled
+```
 
 ## What Happens to Excluded Namespaces
 
@@ -149,7 +155,7 @@ meshConfig:
 
 ```yaml
 # Sidecar: Each namespace only sees what it needs
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -178,8 +184,8 @@ Verify that a specific service is (or is not) in the registry:
 istioctl proxy-config clusters deploy/sleep -n sample | grep my-service
 
 # Or use the debug endpoint
-kubectl exec -n istio-system deploy/istiod -- \
-  curl -s localhost:15014/debug/registryz | grep my-service
+kubectl -n istio-system port-forward deploy/istiod 15014:15014
+curl -s http://localhost:15014/debug/registryz | grep my-service
 ```
 
 ## Migration Strategy
@@ -204,6 +210,7 @@ done
 
 ```bash
 kubectl label namespace istio-ingress istio-discovery=enabled
+kubectl label namespace istio-system istio-discovery=enabled
 ```
 
 4. Apply the discovery selector configuration
@@ -215,7 +222,7 @@ The performance improvement from discovery selectors depends on how many namespa
 
 - Cluster with 200 namespaces, 50 in mesh: ~60% reduction in Istiod memory usage
 - Cluster with 500 namespaces, 100 in mesh: ~75% reduction in Istiod memory usage
-- Configuration push times improve proportionally
+- Configuration push times often improve too, depending on the number of services, endpoints, and configuration objects excluded
 
 These numbers vary based on the number of services and endpoints in each namespace, but the trend is clear: the more you exclude, the better Istiod performs.
 
