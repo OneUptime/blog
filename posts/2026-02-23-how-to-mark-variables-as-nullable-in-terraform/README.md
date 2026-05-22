@@ -14,14 +14,14 @@ This post explains what `nullable` does, when you would want to change it from i
 
 ## The Default Behavior
 
-By default, every Terraform variable has `nullable = true`. This means the caller can explicitly set the variable to `null`, and Terraform will accept it. When a variable is set to `null` and it has a default value, Terraform uses the default. When there is no default, the variable simply holds `null`.
+By default, every Terraform variable has `nullable = true`. This means the caller can explicitly set the variable to `null`, and Terraform will accept it. When a variable is explicitly set to `null`, that `null` value overrides the default value if one exists. When there is no default, the variable simply holds `null`.
 
 ```hcl
 # variables.tf
 
 # By default, nullable is true.
 
-# If someone passes null, Terraform uses the default.
+# If someone passes null, Terraform uses null instead of the default.
 variable "instance_type" {
   description = "EC2 instance type"
   type        = string
@@ -39,7 +39,7 @@ module "app" {
   instance_type = "t3.large"
 }
 
-# Explicitly passing null - Terraform falls back to default "t3.micro"
+# Explicitly passing null - Terraform uses null
 module "app" {
   source        = "./modules/app"
   instance_type = null
@@ -51,7 +51,7 @@ module "app" {
 }
 ```
 
-In both the second and third cases, `var.instance_type` evaluates to `"t3.micro"`.
+In the second case, `var.instance_type` evaluates to `null`. In the third case, `var.instance_type` evaluates to `"t3.micro"`.
 
 ## Setting nullable = false
 
@@ -85,7 +85,7 @@ The `nullable` flag becomes important in a few specific scenarios.
 
 ### Scenario 1: Conditional Resource Creation
 
-A common Terraform pattern uses `null` to indicate "do not set this attribute." But if you have a variable where `null` should trigger a default instead of being passed through, `nullable` behavior is relevant.
+A common Terraform pattern uses `null` to indicate "do not set this attribute." If you have a variable where `null` should be passed through rather than rejected, `nullable` behavior is relevant.
 
 ```hcl
 # With nullable = true (the default), null passes through
@@ -97,16 +97,8 @@ variable "custom_domain" {
 }
 
 resource "aws_cloudfront_distribution" "cdn" {
-  # When custom_domain is null, this block is skipped
-  dynamic "viewer_certificate" {
-    for_each = var.custom_domain != null ? [1] : []
-    content {
-      acm_certificate_arn = aws_acm_certificate.cert[0].arn
-      ssl_support_method  = "sni-only"
-    }
-  }
-
   # Other configuration...
+  aliases             = var.custom_domain != null ? [var.custom_domain] : []
   enabled             = true
   default_root_object = "index.html"
 
@@ -138,6 +130,9 @@ resource "aws_cloudfront_distribution" "cdn" {
 
   viewer_certificate {
     cloudfront_default_certificate = var.custom_domain == null
+    acm_certificate_arn            = var.custom_domain != null ? aws_acm_certificate.cert[0].arn : null
+    ssl_support_method             = var.custom_domain != null ? "sni-only" : null
+    minimum_protocol_version       = var.custom_domain != null ? "TLSv1.2_2021" : null
   }
 }
 ```
@@ -171,17 +166,17 @@ variable "name_prefix" {
 }
 ```
 
-Without `nullable = false`, a caller could do this:
+Without `nullable = false`, a caller could pass `null` unless your validation rules also reject it:
 
 ```hcl
 module "vpc" {
   source     = "./modules/vpc"
-  vpc_cidr   = null  # This would be accepted!
+  vpc_cidr   = null
   name_prefix = null
 }
 ```
 
-That would cause confusing downstream errors when Terraform tries to use `null` in a `cidrsubnet()` call or string interpolation. With `nullable = false`, the error message is clear and immediate.
+That could cause confusing downstream errors when Terraform tries to use `null` in a `cidrsubnet()` call or string interpolation. With `nullable = false`, the error message is clear and immediate.
 
 ### Scenario 3: Optional Feature Flags with Safe Defaults
 
@@ -202,7 +197,7 @@ The interaction between `nullable` and `default` can be subtle. Here is a breakd
 
 | nullable | default | Caller passes null | Result |
 |----------|---------|-------------------|--------|
-| true (default) | set | yes | Uses the default value |
+| true (default) | set | yes | Variable is null |
 | true (default) | not set | yes | Variable is null |
 | false | set | yes | Error |
 | false | not set | yes | Error |
@@ -214,7 +209,7 @@ variable "tags" {
   default  = {}
   nullable = true
 }
-# Passing null results in {} (the default)
+# Passing null results in null
 
 # Example: nullable = false with a default
 variable "region" {
@@ -263,7 +258,7 @@ resource "aws_sns_topic_subscription" "notifications" {
 
 ## A Practical Module Example
 
-Here is a complete module that uses `nullable` thoughtfully:
+Here is a module excerpt that uses `nullable` thoughtfully:
 
 ```hcl
 # modules/web-app/variables.tf
@@ -392,6 +387,6 @@ variable "environment" {
 
 ## Wrapping Up
 
-The `nullable` argument gives you fine-grained control over whether your Terraform variables can accept `null`. By default, all variables are nullable, which means callers can pass `null` and Terraform will fall back to the default value (if one exists). Setting `nullable = false` is a defensive practice that prevents confusing errors deeper in your configuration and makes your module's contract clearer. Use it for any variable where `null` does not make sense as an input.
+The `nullable` argument gives you fine-grained control over whether your Terraform variables can accept `null`. By default, all variables are nullable, which means callers can pass `null` and override the default value if one exists. Setting `nullable = false` is a defensive practice that prevents confusing errors deeper in your configuration and makes your module's contract clearer. Use it for any variable where `null` does not make sense as an input.
 
 For more on structuring your Terraform variables effectively, check out our post on [Terraform variables and outputs](https://oneuptime.com/blog/post/2026-01-26-terraform-variables-outputs/view).
