@@ -21,7 +21,7 @@ For gRPC, retries are configured in a VirtualService using the `retries` field i
 Here is a simple retry policy for a gRPC service:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: grpc-backend
@@ -73,7 +73,7 @@ retries:
 By default, Envoy uses an exponential backoff starting at 25ms with a maximum of 250ms. You can configure the base interval:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: grpc-backend
@@ -89,17 +89,18 @@ spec:
         attempts: 3
         perTryTimeout: 2s
         retryOn: unavailable,resource-exhausted
+        backoff: 100ms
       timeout: 10s
 ```
 
-The overall `timeout` on the route sets a ceiling for the total time including all retries. If you set `perTryTimeout: 2s` and `attempts: 3`, the total time could be up to ~6 seconds plus backoff delays. The `timeout` at the route level caps the entire operation.
+The `backoff` value sets the minimum interval between retry attempts. The overall `timeout` on the route sets a ceiling for the total time including all retries. If you set `perTryTimeout: 2s` and `attempts: 3`, Envoy can make the initial request plus up to 3 retries, so the total time could be up to ~8 seconds plus backoff delays. The `timeout` at the route level caps the entire operation.
 
 ## Per-Method Retry Policies
 
 Not all gRPC methods should be retried. Unary calls that are idempotent are great candidates. Streaming calls or non-idempotent mutations are risky to retry. You can apply different policies per method using match rules:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: grpc-backend
@@ -109,9 +110,8 @@ spec:
     - grpc-backend.default.svc.cluster.local
   http:
     - match:
-        - headers:
-            ":path":
-              prefix: "/mypackage.MyService/GetItem"
+        - uri:
+            prefix: "/mypackage.MyService/GetItem"
       route:
         - destination:
             host: grpc-backend.default.svc.cluster.local
@@ -120,9 +120,8 @@ spec:
         perTryTimeout: 2s
         retryOn: unavailable,resource-exhausted
     - match:
-        - headers:
-            ":path":
-              prefix: "/mypackage.MyService/CreateItem"
+        - uri:
+            prefix: "/mypackage.MyService/CreateItem"
       route:
         - destination:
             host: grpc-backend.default.svc.cluster.local
@@ -140,10 +139,10 @@ gRPC methods appear as HTTP/2 paths in the format `/<package>.<service>/<method>
 
 ## Disabling Retries
 
-Istio actually has a default retry policy (2 retries on connect-failure and refused-stream). If you want to disable retries entirely:
+Istio actually has a default retry policy (2 retries on `connect-failure`, `refused-stream`, `unavailable`, and `cancelled`). If you want to disable retries entirely:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: grpc-backend
@@ -166,7 +165,7 @@ Setting `attempts: 0` turns off retries for that route.
 Retries can amplify failures. If every client retries 3 times, one failing backend gets 3x the traffic. To prevent this, pair retries with circuit breaking:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: grpc-backend
@@ -183,7 +182,7 @@ spec:
       baseEjectionTime: 30s
 ```
 
-The `maxRetries` field in the connection pool limits the total number of concurrent retries to the upstream. If this limit is reached, additional retries are not attempted. This prevents retry storms.
+The `maxRetries` field in the connection pool limits the number of retries that can be outstanding to all upstream hosts in the cluster at a given time. If this limit is reached, additional retries are not attempted. This helps reduce retry storms.
 
 ## Verifying Retries Are Working
 
@@ -197,7 +196,7 @@ kubectl exec -it <client-pod> -c istio-proxy -- \
 You will see counters like:
 - `upstream_rq_retry` - total number of retries
 - `upstream_rq_retry_success` - retries that succeeded
-- `upstream_rq_retry_overflow` - retries that were not attempted because the retry budget was exhausted
+- `upstream_rq_retry_overflow` - retries that were not attempted because the retry circuit breaker limit was reached
 
 If `upstream_rq_retry` is 0 and you expect retries, check that your `retryOn` conditions match the actual errors your service is returning.
 
@@ -206,7 +205,7 @@ If `upstream_rq_retry` is 0 and you expect retries, check that your `retryOn` co
 Here is a full working configuration for a gRPC service with sensible retry settings:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: payment-service
@@ -224,7 +223,7 @@ spec:
         retryOn: connect-failure,refused-stream,unavailable,resource-exhausted
       timeout: 15s
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: payment-service
@@ -243,6 +242,6 @@ spec:
       maxEjectionPercent: 30
 ```
 
-This gives you retries with a safety net. The circuit breaker ejects unhealthy pods so retries go to healthy ones. The retry budget prevents amplification. And the overall timeout keeps the client from waiting forever.
+This gives you retries with a safety net. The circuit breaker ejects unhealthy pods so retries go to healthy ones. The concurrent retry limit helps prevent amplification. And the overall timeout keeps the client from waiting forever.
 
 The important takeaway is that retries in Istio work well for gRPC, but you should always think about idempotency and pair them with circuit breaking to avoid making outages worse.
