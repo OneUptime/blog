@@ -108,12 +108,11 @@ When you use `-chdir`, Terraform resolves all relative paths from the target dir
 # This works - production.tfvars is relative to the -chdir directory
 terraform -chdir=environments/production plan -var-file=production.tfvars
 
-# This does NOT work - common.tfvars is not in the production directory
+# This also works - relative paths are resolved from the -chdir directory
 terraform -chdir=environments/production plan -var-file=../../shared/common.tfvars
-# Actually, this DOES work - relative paths from the -chdir directory are fine
 ```
 
-Wait, let me clarify. The `-var-file` path is resolved relative to the `-chdir` directory. So if you want to reference a file outside that directory, you need to navigate up with `../`:
+The `-var-file` path is resolved relative to the `-chdir` directory. So if you want to reference a file outside that directory, you need to navigate up with `../`:
 
 ```bash
 # Reference a shared tfvars file from the -chdir directory
@@ -303,22 +302,20 @@ terraform -chdir=environments/production apply -auto-approve
 
 ## Combining with Environment Variables
 
-You can set a default `-chdir` path using the `TF_CLI_ARGS` environment variable:
+You cannot reliably set a default `-chdir` path using the `TF_CLI_ARGS` environment variable. Terraform inserts `TF_CLI_ARGS` after the subcommand, but `-chdir` is a global option that must appear before the subcommand:
 
 ```bash
-# Set a default chdir for all commands in this shell session
+# This does not work as a default chdir
 export TF_CLI_ARGS="-chdir=environments/production"
 
-# Now all terraform commands target the production directory
-terraform init    # Runs in environments/production
-terraform plan    # Runs in environments/production
-terraform apply   # Runs in environments/production
+# Terraform treats this like: terraform init -chdir=environments/production
+terraform init
 
 # Unset when done
 unset TF_CLI_ARGS
 ```
 
-However, I would not recommend this approach for anything other than quick interactive sessions. In scripts, always be explicit with `-chdir` on each command for clarity.
+In scripts, always be explicit with `-chdir` on each command for clarity.
 
 ## Summary
 
