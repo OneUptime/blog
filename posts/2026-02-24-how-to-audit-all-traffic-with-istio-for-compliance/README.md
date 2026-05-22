@@ -8,7 +8,7 @@ Description: Complete guide to auditing all network traffic in an Istio service 
 
 ---
 
-When compliance requirements say "audit all traffic," they mean you need to be able to answer questions like: Which service accessed the database at 3 AM? Was the connection encrypted? What data was transferred? How long did the operation take? Istio sits in the middle of every service-to-service connection, making it the perfect place to collect this audit data.
+When compliance requirements say "audit all traffic," they mean you need to be able to answer questions like: Which service accessed the database at 3 AM? Was the connection encrypted? How much data was transferred? How long did the operation take? Istio sits in the middle of every service-to-service connection, making it the perfect place to collect this audit data.
 
 Setting up comprehensive traffic auditing in Istio involves configuring access logs, telemetry, and log forwarding. Done right, you get a complete record of every network interaction in your mesh.
 
@@ -56,7 +56,6 @@ spec:
         "upstream_service_time": "%RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)%",
         "source_address": "%DOWNSTREAM_REMOTE_ADDRESS%",
         "source_principal": "%DOWNSTREAM_PEER_URI_SAN%",
-        "source_namespace": "%DOWNSTREAM_PEER_NAMESPACE%",
         "destination_address": "%UPSTREAM_HOST%",
         "destination_principal": "%UPSTREAM_PEER_URI_SAN%",
         "destination_service": "%UPSTREAM_CLUSTER%",
@@ -66,6 +65,8 @@ spec:
         "user_agent": "%REQ(USER-AGENT)%",
         "tls_version": "%DOWNSTREAM_TLS_VERSION%",
         "tls_cipher": "%DOWNSTREAM_TLS_CIPHER%",
+        "upstream_tls_version": "%UPSTREAM_TLS_VERSION%",
+        "upstream_tls_cipher": "%UPSTREAM_TLS_CIPHER%",
         "connection_termination_details": "%CONNECTION_TERMINATION_DETAILS%",
         "route_name": "%ROUTE_NAME%",
         "upstream_transport_failure_reason": "%UPSTREAM_TRANSPORT_FAILURE_REASON%"
@@ -76,7 +77,7 @@ This captures:
 - **Who** accessed what (source and destination principals, SPIFFE identities)
 - **What** was accessed (method, path, authority)
 - **When** it happened (start_time)
-- **How** the connection was secured (tls_version, tls_cipher)
+- **How** the connection was secured (tls_version, tls_cipher, upstream_tls_version, upstream_tls_cipher)
 - **What happened** (response_code, duration, bytes transferred)
 
 ## Enabling Telemetry API
@@ -115,7 +116,7 @@ spec:
         expression: "response.code >= 400"
 ```
 
-For compliance, you typically want to log everything, but you can use different log levels for different types of traffic:
+For compliance, you typically want to log everything, but you can apply additional Telemetry resources to sensitive workloads or namespaces:
 
 ```yaml
 # Enhanced logging for PII services
@@ -237,7 +238,7 @@ spec:
   meshConfig:
     extensionProviders:
       - name: otel
-        opentelemetry:
+        envoyOtelAls:
           service: otel-collector.observability.svc.cluster.local
           port: 4317
 ```
@@ -323,9 +324,11 @@ Once logs are in your log management system, you need to be able to query them f
 {
   "query": {
     "bool": {
-      "must_not": [
-        {"exists": {"field": "tls_version"}}
-      ]
+      "should": [
+        {"term": {"tls_version.keyword": "-"}},
+        {"term": {"upstream_tls_version.keyword": "-"}}
+      ],
+      "minimum_should_match": 1
     }
   }
 }
@@ -333,7 +336,7 @@ Once logs are in your log management system, you need to be able to query them f
 # What services did the admin-tool access?
 {
   "query": {
-    "match": {"source_principal": "*admin-tool*"}
+    "wildcard": {"source_principal.keyword": "*admin-tool*"}
   }
 }
 ```
