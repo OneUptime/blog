@@ -52,12 +52,15 @@ spec:
 For latency-critical services, configure the sidecar to use fewer features:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: game-server-sidecar
   namespace: gaming
 spec:
+  workloadSelector:
+    labels:
+      app: game-server
   egress:
   - hosts:
     - "./*"
@@ -70,10 +73,10 @@ Limiting the egress hosts reduces the configuration that Envoy needs to track, w
 
 ## Session Affinity for Game Servers
 
-Game servers are stateful. Once a player connects to a specific game server instance, they need to stay connected to that instance for the duration of the match. Configure consistent hashing:
+Game servers are stateful. Once a player connects to a specific game server instance, they need to stay connected to that instance for the duration of the match. For HTTP or gRPC game server traffic, configure consistent hashing:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: game-server-dr
@@ -90,6 +93,13 @@ spec:
       http:
         http2MaxRequests: 5000
         maxRequestsPerConnection: 0
+  subsets:
+  - name: us-east
+    labels:
+      region: us-east
+  - name: eu-west
+    labels:
+      region: eu-west
 ```
 
 The `maxRequestsPerConnection: 0` means connections are never closed based on request count, which is important for long-lived gaming connections.
@@ -99,7 +109,7 @@ The `maxRequestsPerConnection: 0` means connections are never closed based on re
 Matchmaking needs to be fast and reliable. Players hate waiting. Configure aggressive timeouts and retries:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: matchmaking-vs
@@ -163,7 +173,7 @@ spec:
 Add circuit breaking to protect backend services from being overwhelmed:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: auth-service-dr
@@ -189,7 +199,7 @@ spec:
 Set up the ingress gateway for your gaming API:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: gaming-gateway
@@ -208,7 +218,7 @@ spec:
       mode: SIMPLE
       credentialName: gaming-tls
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: gaming-routes
@@ -266,7 +276,7 @@ spec:
 The shop service handles real money transactions. Lock it down:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: shop-service-authz
@@ -354,7 +364,7 @@ spec:
 Route players to the closest backend for lower latency. If you have multi-region game servers:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: game-server-region
@@ -389,7 +399,7 @@ spec:
 
 Track the metrics that matter for gaming:
 
-```bash
+```promql
 # Authentication latency (login should be fast)
 
 histogram_quantile(0.95, rate(istio_request_duration_milliseconds_bucket{destination_workload="auth-service"}[5m]))
