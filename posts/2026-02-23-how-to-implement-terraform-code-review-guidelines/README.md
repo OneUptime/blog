@@ -47,7 +47,7 @@ This is the most important layer. Every reviewer should start by understanding w
 
 Reviewers should always check the Terraform plan output before approving:
 
-```hcl
+```text
 # Look for these warning signs in the plan:
 
 # Force replacement - could cause downtime
@@ -201,20 +201,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v4
+
       # Formatting check - do not waste reviewer time on this
       - name: Terraform Format
         run: terraform fmt -check -recursive
 
       # Static analysis catches common mistakes
       - name: TFLint
-        uses: terraform-linters/setup-tflint@v4
+        uses: terraform-linters/setup-tflint@v6
       - run: |
           tflint --init
           tflint --recursive
 
       # Security scanning catches policy violations
-      - name: tfsec
-        uses: aquasecurity/tfsec-action@v1.0.3
+      - name: Trivy
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: config
+          scan-ref: .
 
       # Cost estimation helps reviewers assess financial impact
       - name: Infracost
