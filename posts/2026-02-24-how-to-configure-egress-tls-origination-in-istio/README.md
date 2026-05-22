@@ -10,7 +10,7 @@ Description: How to configure TLS origination for egress traffic in Istio so you
 
 TLS origination is when the Istio sidecar proxy upgrades an outbound HTTP connection to HTTPS before it leaves the mesh. Your application code sends plain HTTP to an external service, and the sidecar transparently wraps it in TLS. This is useful when you want your application to be simpler (no TLS libraries or certificate management) while still encrypting traffic on the wire.
 
-This guide shows how to set up egress TLS origination for external services using ServiceEntry, VirtualService, and DestinationRule.
+This guide shows how to set up egress TLS origination for external services using ServiceEntry and DestinationRule.
 
 ## Why Use TLS Origination
 
@@ -42,41 +42,19 @@ spec:
   - number: 80
     name: http
     protocol: HTTP
+    targetPort: 443
   - number: 443
     name: https
-    protocol: TLS
+    protocol: HTTPS
   resolution: DNS
   location: MESH_EXTERNAL
 ```
 
-The HTTP port (80) is what your application connects to. The HTTPS port (443) is what the sidecar will use for the actual connection to the external service.
+The HTTP port (80) is what your application connects to. The `targetPort: 443` setting tells Istio to send that traffic to port 443 on the external service.
 
-### Step 2: Create a VirtualService
+### Step 2: Create a DestinationRule
 
-Redirect HTTP traffic to the HTTPS port:
-
-```yaml
-apiVersion: networking.istio.io/v1
-kind: VirtualService
-metadata:
-  name: external-api-tls
-  namespace: default
-spec:
-  hosts:
-  - "api.external.com"
-  http:
-  - match:
-    - port: 80
-    route:
-    - destination:
-        host: api.external.com
-        port:
-          number: 443
-```
-
-### Step 3: Create a DestinationRule
-
-Tell the sidecar to originate TLS when connecting to port 443:
+Tell the sidecar to originate TLS for traffic sent to the service's HTTP port:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -89,7 +67,7 @@ spec:
   trafficPolicy:
     portLevelSettings:
     - port:
-        number: 443
+        number: 80
       tls:
         mode: SIMPLE
         sni: api.external.com
@@ -97,7 +75,7 @@ spec:
 
 The `mode: SIMPLE` means standard TLS (not mutual TLS). The `sni` field sets the Server Name Indication, which the external server uses to present the right certificate.
 
-### Step 4: Test It
+### Step 3: Test It
 
 From your application pod, send plain HTTP:
 
@@ -105,7 +83,7 @@ From your application pod, send plain HTTP:
 kubectl exec deploy/sleep -- curl -s http://api.external.com/status
 ```
 
-The request goes to the sidecar as HTTP on port 80, the sidecar routes it to port 443 with TLS, and the external service responds. Your application never deals with TLS.
+The request goes to the sidecar as HTTP on port 80, the sidecar sends it to the external service's port 443 with TLS, and the external service responds. Your application never deals with TLS.
 
 ## How the Traffic Flow Works
 
@@ -116,7 +94,7 @@ sequenceDiagram
     participant External as api.external.com
 
     App->>Sidecar: HTTP GET http://api.external.com/status (port 80)
-    Note over Sidecar: VirtualService redirects to port 443
+    Note over Sidecar: ServiceEntry targetPort sends traffic to port 443
     Note over Sidecar: DestinationRule enables TLS origination
     Sidecar->>External: TLS handshake + HTTPS GET (port 443)
     External->>Sidecar: HTTPS response (encrypted)
@@ -137,7 +115,7 @@ spec:
   trafficPolicy:
     portLevelSettings:
     - port:
-        number: 443
+        number: 80
       tls:
         mode: SIMPLE
         caCertificates: /etc/certs/custom-ca.pem
@@ -183,7 +161,7 @@ spec:
   trafficPolicy:
     portLevelSettings:
     - port:
-        number: 443
+        number: 80
       tls:
         mode: MUTUAL
         clientCertificate: /etc/certs/client.pem
@@ -212,46 +190,28 @@ spec:
   - number: 80
     name: http
     protocol: HTTP
+    targetPort: 443
   - number: 443
     name: https
-    protocol: TLS
+    protocol: HTTPS
   resolution: DNS
   location: MESH_EXTERNAL
 ---
 apiVersion: networking.istio.io/v1
-kind: VirtualService
-metadata:
-  name: tls-origination
-spec:
-  hosts:
-  - "api.stripe.com"
-  - "api.sendgrid.com"
-  - "hooks.slack.com"
-  http:
-  - match:
-    - port: 80
-    route:
-    - destination:
-        host: api.stripe.com
-        port:
-          number: 443
-      weight: 100
----
-apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
-  name: tls-origination
+  name: stripe-tls-origination
 spec:
   host: "api.stripe.com"
   trafficPolicy:
     portLevelSettings:
     - port:
-        number: 443
+        number: 80
       tls:
         mode: SIMPLE
 ```
 
-Note: Each host in the VirtualService needs its own routing rule. The example above only routes `api.stripe.com`. You would need separate VirtualService entries for each host, or separate VirtualService resources.
+Note: Each host needs its own DestinationRule. The example above configures TLS origination for `api.stripe.com`. You would need separate DestinationRule resources for `api.sendgrid.com` and `hooks.slack.com`.
 
 ## Verifying TLS Origination
 
@@ -263,7 +223,7 @@ Check that the sidecar is originating TLS:
 istioctl proxy-config clusters deploy/sleep | grep api.external.com
 
 # Check the endpoint
-istioctl proxy-config endpoints deploy/sleep --cluster "outbound|443||api.external.com"
+istioctl proxy-config endpoints deploy/sleep --cluster "outbound|80||api.external.com"
 
 # Check the route
 istioctl proxy-config routes deploy/sleep --name "80" -o json
@@ -287,4 +247,4 @@ kubectl logs deploy/sleep -c istio-proxy | grep api.external.com
 
 ## Summary
 
-TLS origination in Istio lets your applications send plain HTTP while the sidecar proxy handles TLS encryption to external services. The setup requires three resources: a ServiceEntry with both HTTP and HTTPS ports, a VirtualService to redirect HTTP to HTTPS, and a DestinationRule to enable TLS. This gives you simpler application code, better observability (since the sidecar can inspect HTTP traffic), and centralized TLS management across your mesh.
+TLS origination in Istio lets your applications send plain HTTP while the sidecar proxy handles TLS encryption to external services. The setup requires two resources: a ServiceEntry with an HTTP port that targets the external HTTPS port, and a DestinationRule to enable TLS. This gives you simpler application code, better observability (since the sidecar can inspect HTTP traffic), and centralized TLS management across your mesh.
