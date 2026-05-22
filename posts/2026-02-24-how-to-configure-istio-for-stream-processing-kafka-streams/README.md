@@ -63,10 +63,12 @@ spec:
         env:
         - name: KAFKA_BOOTSTRAP_SERVERS
           value: "kafka-0.kafka.kafka.svc.cluster.local:9092,kafka-1.kafka.kafka.svc.cluster.local:9092,kafka-2.kafka.kafka.svc.cluster.local:9092"
-        - name: APPLICATION_SERVER
+        - name: POD_IP
           valueFrom:
             fieldRef:
               fieldPath: status.podIP
+        - name: APPLICATION_SERVER
+          value: "$(POD_IP):9095"
         resources:
           requests:
             memory: "1Gi"
@@ -100,7 +102,7 @@ Notice the port naming. Ports prefixed with `http-` are treated as HTTP. Ports p
 
 ## Configuring Access to Kafka Brokers
 
-If your Kafka cluster is outside the mesh (which is common), you need ServiceEntry resources:
+If your Kafka cluster is not already visible in Istio's service registry, you need ServiceEntry resources:
 
 ```yaml
 apiVersion: networking.istio.io/v1beta1
@@ -167,22 +169,25 @@ Apply similar DestinationRules for each Kafka broker. The TCP keepalive settings
 
 ## Handling Kafka Protocol Sniffing
 
-Istio tries to detect the protocol being used on each connection. For Kafka's binary protocol, this detection can cause issues. You can tell Istio to skip protocol detection for Kafka traffic:
+Istio can automatically detect HTTP and HTTP/2 traffic. If it cannot determine the protocol, traffic is treated as plain TCP. For Kafka's binary protocol, explicitly mark Kafka ports as TCP so Istio does not try to apply HTTP behavior:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
-kind: DestinationRule
+apiVersion: v1
+kind: Service
 metadata:
-  name: kafka-no-tls
-  namespace: stream-processing
+  name: kafka
+  namespace: kafka
 spec:
-  host: "*.kafka.kafka.svc.cluster.local"
-  trafficPolicy:
-    tls:
-      mode: DISABLE
+  selector:
+    app: kafka
+  ports:
+  - name: tcp-kafka
+    port: 9092
+    targetPort: 9092
+    appProtocol: tcp
 ```
 
-If you need mTLS between your streams application and Kafka, configure it at the Kafka level using SASL/SSL rather than relying on Istio's mTLS.
+If your Kafka brokers are not in the mesh, use Kafka's own TLS configuration, such as SSL or SASL/SSL, for end-to-end encryption between the streams application and Kafka.
 
 ## Inter-Instance Communication
 
@@ -271,11 +276,11 @@ Even though Kafka traffic is TCP, Istio still generates useful metrics:
 # Check TCP connections from stream processors
 
 kubectl exec -n istio-system deploy/prometheus -- \
-  promtool query instant 'sum(istio_tcp_connections_opened_total{source_workload_namespace="stream-processing"}) by (source_workload, destination_service)'
+  promtool query instant http://localhost:9090 'sum(istio_tcp_connections_opened_total{source_workload_namespace="stream-processing"}) by (source_workload, destination_service)'
 
 # Check bytes sent/received
 kubectl exec -n istio-system deploy/prometheus -- \
-  promtool query instant 'sum(rate(istio_tcp_sent_bytes_total{source_workload_namespace="stream-processing"}[5m])) by (source_workload)'
+  promtool query instant http://localhost:9090 'sum(rate(istio_tcp_sent_bytes_total{source_workload_namespace="stream-processing"}[5m])) by (source_workload)'
 ```
 
 ## When to Skip the Sidecar
@@ -291,7 +296,7 @@ metadata:
 spec:
   template:
     metadata:
-      annotations:
+      labels:
         sidecar.istio.io/inject: "false"
 ```
 
