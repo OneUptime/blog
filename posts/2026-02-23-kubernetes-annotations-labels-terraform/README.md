@@ -14,9 +14,9 @@ This guide covers how to manage both labels and annotations across different Kub
 
 ## Labels vs Annotations - When to Use Each
 
-Before diving into Terraform code, a quick refresher on the difference. Labels are key-value pairs used for identification and selection. Kubernetes itself uses labels for things like matching pods to services and applying network policies. Labels have strict formatting rules - keys and values must be 63 characters or less and contain only alphanumeric characters, dashes, underscores, and dots.
+Before diving into Terraform code, a quick refresher on the difference. Labels are key-value pairs used for identification and selection. Kubernetes itself uses labels for things like matching pods to services and applying network policies. Labels have strict formatting rules - the name segment of a key and the value must be 63 characters or less and contain only alphanumeric characters, dashes, underscores, and dots. Label keys can also include an optional DNS subdomain prefix, such as `app.kubernetes.io/`.
 
-Annotations are also key-value pairs, but they are for non-identifying metadata. They can contain arbitrary data - URLs, JSON strings, timestamps - and are typically consumed by controllers, tools, or humans. There is no length restriction on annotation values.
+Annotations are also key-value pairs, but they are for non-identifying metadata. They can contain arbitrary data - URLs, JSON strings, timestamps - and are typically consumed by controllers, tools, or humans. Annotation values are strings and are not limited to the 63-character label value limit.
 
 ## Basic Labels on Kubernetes Resources
 
@@ -105,11 +105,12 @@ resource "kubernetes_service" "app" {
     # Annotations configure external tools and controllers
     annotations = {
       # AWS load balancer controller annotations
-      "service.beta.kubernetes.io/aws-load-balancer-type"            = "nlb"
+      "service.beta.kubernetes.io/aws-load-balancer-type"            = "external"
+      "service.beta.kubernetes.io/aws-load-balancer-nlb-target-type" = "instance"
       "service.beta.kubernetes.io/aws-load-balancer-scheme"          = "internet-facing"
       "service.beta.kubernetes.io/aws-load-balancer-ssl-cert"        = var.acm_certificate_arn
       "service.beta.kubernetes.io/aws-load-balancer-ssl-ports"       = "443"
-      "service.beta.kubernetes.io/aws-load-balancer-backend-protocol" = "http"
+      "service.beta.kubernetes.io/aws-load-balancer-backend-protocol" = "tcp"
 
       # External DNS annotation for automatic DNS record creation
       "external-dns.alpha.kubernetes.io/hostname" = "api.example.com"
