@@ -26,13 +26,13 @@ The public Terraform registry is great for community modules, but most organizat
 
 Before you start, make sure you have:
 
-- An HCP Terraform account with at least a Team & Governance plan (or the free tier for limited use)
+- An HCP Terraform account; the private registry is available to all accounts, including free organizations
 - A VCS provider connected to your HCP Terraform organization (GitHub, GitLab, Bitbucket, or Azure DevOps)
 - A Git repository containing your Terraform module
 
 ## Structuring Your Module Repository
 
-HCP Terraform expects a specific repository naming convention for modules:
+For a single module in a repository, HCP Terraform recommends this repository naming convention:
 
 ```text
 terraform-<PROVIDER>-<NAME>
@@ -137,7 +137,7 @@ output "vpc_cidr_block" {
 
 ## Versioning with Git Tags
 
-HCP Terraform uses Git tags to determine module versions. You need to tag your releases using semantic versioning:
+For tag-based publishing, HCP Terraform uses Git tags to determine module versions. Tag your releases using semantic versioning:
 
 ```bash
 # Tag your first release
@@ -149,7 +149,7 @@ git tag v1.1.0
 git push origin v1.1.0
 ```
 
-Each tag becomes a selectable version in the private registry. Follow semantic versioning conventions:
+Each tag becomes a selectable version in the private registry. HCP Terraform accepts semantic version tags with or without a leading `v`. Follow semantic versioning conventions:
 
 - **Major** (v2.0.0): Breaking changes
 - **Minor** (v1.1.0): New features, backward compatible
@@ -172,7 +172,9 @@ If you have not already connected a VCS provider, go to your HCP Terraform organ
 2. Click **Publish** > **Module**
 3. Select your connected VCS provider
 4. Choose the repository (it should follow the `terraform-<PROVIDER>-<NAME>` naming)
-5. Click **Publish Module**
+5. Choose **Tag** as the module publishing type and leave the source directory empty if the module is at the repository root
+6. Confirm the module name and provider name
+7. Click **Publish Module**
 
 HCP Terraform will automatically detect the Git tags and list them as available versions.
 
@@ -316,9 +318,9 @@ func TestVpcModule(t *testing.T) {
 
 ## Troubleshooting Common Issues
 
-**Module not appearing in registry**: Verify the repository name follows the `terraform-<PROVIDER>-<NAME>` pattern exactly. The provider name must be lowercase.
+**Module not appearing in registry**: Verify the module name and provider name are configured correctly when publishing. The `terraform-<PROVIDER>-<NAME>` repository pattern is recommended for single-module repositories, and the provider name must be lowercase.
 
-**Version not showing up**: Make sure you pushed the Git tag to the remote. Tags must follow the `vX.Y.Z` format (the `v` prefix is required).
+**Version not showing up**: For tag-based publishing, make sure you pushed the Git tag to the remote. Tags must follow semantic versioning, such as `v1.2.3` or `1.2.3`.
 
 **Permission errors when consuming the module**: The consuming workspace needs to be in the same organization, and the user needs at least read access to the registry.
 
