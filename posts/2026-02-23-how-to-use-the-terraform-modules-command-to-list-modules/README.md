@@ -8,11 +8,45 @@ Description: Learn how to use Terraform commands to list, inspect, and understan
 
 ---
 
-As your Terraform configurations grow, keeping track of which modules are in use, what versions they are on, and where they come from becomes increasingly important. Terraform provides several ways to inspect and list the modules in your configuration. This post covers all the approaches for getting visibility into your module dependency tree.
+As your Terraform configurations grow, keeping track of which modules are in use, what versions they are on, and where they come from becomes increasingly important. Terraform provides a `terraform modules` command in Terraform v1.10.0 and later, along with several supporting ways to inspect modules in your configuration. This post covers the approaches for getting visibility into your module dependency tree.
 
-## Listing Installed Modules
+## Listing Declared Modules
 
-The most direct way to see what modules are installed is to look at the module manifest that Terraform maintains.
+The most direct way to see declared modules is to use the `terraform modules` command.
+
+```bash
+terraform modules
+
+# For machine-readable output
+terraform modules -json
+```
+
+The JSON output includes each declared module's key, source, and version:
+
+```json
+{
+  "format_version": "1.0",
+  "modules": [
+    {
+      "key": "networking",
+      "source": "git::https://github.com/myorg/terraform-aws-vpc.git?ref=v2.1.0",
+      "version": ""
+    },
+    {
+      "key": "compute",
+      "source": "git::https://github.com/myorg/terraform-aws-ecs.git?ref=v3.0.1",
+      "version": ""
+    },
+    {
+      "key": "database",
+      "source": "terraform-aws-modules/rds/aws",
+      "version": "6.10.0"
+    }
+  ]
+}
+```
+
+For installed modules, you can also look at the module manifest that Terraform maintains after initialization.
 
 ```bash
 # After running terraform init, check the modules manifest
@@ -49,7 +83,7 @@ This outputs structured information about every installed module:
 }
 ```
 
-The `Key` field shows the module hierarchy using dot notation. `networking.subnets` means the `subnets` module is called from within the `networking` module.
+The `Key` field in the module manifest shows the installed module hierarchy using dot notation. `networking.subnets` means the `subnets` module is called from within the `networking` module.
 
 ## Using terraform providers to See Module Dependencies
 
@@ -77,7 +111,7 @@ terraform providers
 
 ## Using terraform graph for Visual Dependency Maps
 
-The `terraform graph` command generates a dependency graph in DOT format that includes all modules and their relationships.
+The `terraform graph` command generates a dependency graph in DOT format for resources and data sources. Resource addresses in the graph can include module paths, which helps visualize dependencies involving resources inside modules.
 
 ```bash
 # Generate the dependency graph
@@ -86,11 +120,11 @@ terraform graph > graph.dot
 # Convert to SVG using graphviz (install with: brew install graphviz)
 terraform graph | dot -Tsvg > dependency-graph.svg
 
-# Generate a simplified graph showing only modules
-terraform graph -type=plan | grep "module\." > modules-only.dot
+# Inspect graph lines that reference module addresses
+terraform graph -type=plan | grep "module\." > module-addresses.txt
 ```
 
-You can also filter the graph to show only module-level dependencies:
+You can also filter the graph to inspect module-related lines:
 
 ```bash
 # Extract just the module relationships
@@ -144,7 +178,7 @@ for mod in data['Modules']:
 # database: git::https://github.com/myorg/terraform-aws-rds.git?ref=v1.3.0
 ```
 
-For registry modules, the version is tracked in `.terraform.lock.hcl` alongside provider versions.
+For registry modules, use the `version` argument in the module block or `terraform modules -json` to see the selected module version. The `.terraform.lock.hcl` file tracks provider selections; Terraform does not currently lock remote module version selections there.
 
 ## Using terraform output to Inspect Module Results
 
@@ -225,7 +259,7 @@ curl -s \
 # List available versions for a specific module
 curl -s \
   --header "Authorization: Bearer $TF_TOKEN" \
-  "https://app.terraform.io/api/v2/organizations/myorg/registry-modules/private/myorg/vpc/aws" | \
+  "https://app.terraform.io/api/registry/v1/modules/myorg/vpc/aws/versions" | \
   python3 -m json.tool
 ```
 
@@ -305,6 +339,6 @@ for mod in data['Modules']:
 
 ## Conclusion
 
-While Terraform does not have a single "list all modules" command, the combination of modules.json inspection, state listing, graph generation, and plan output gives you complete visibility into your module ecosystem. Build these techniques into your workflow and CI/CD pipelines to keep track of your module dependencies as your infrastructure grows.
+Terraform v1.10.0 and later includes the `terraform modules` command for listing declared modules. The combination of that command, modules.json inspection, state listing, graph generation, and plan output gives you complete visibility into your module ecosystem. Build these techniques into your workflow and CI/CD pipelines to keep track of your module dependencies as your infrastructure grows.
 
 For related reading, see our guides on [how to use the terraform get command to download modules](https://oneuptime.com/blog/post/2026-02-23-how-to-use-the-terraform-get-command-to-download-modules/view) and [how to use Terraform module best practices for large organizations](https://oneuptime.com/blog/post/2026-02-23-how-to-use-terraform-module-best-practices-for-large-organizations/view).
