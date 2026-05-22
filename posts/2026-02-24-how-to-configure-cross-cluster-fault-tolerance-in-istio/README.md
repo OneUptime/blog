@@ -63,7 +63,7 @@ The key settings here:
 - `interval: 10s` is how often Istio checks for outliers.
 - `baseEjectionTime: 30s` is how long a bad endpoint stays ejected before being reconsidered.
 - `maxEjectionPercent: 100` allows all endpoints in a cluster to be ejected. This is critical for cross-cluster failover because you want all endpoints in a failing cluster to be removed.
-- `minHealthPercent: 0` disables the panic threshold. Without this, Istio would stop ejecting endpoints when too many are unhealthy.
+- `minHealthPercent: 0` keeps outlier detection enabled even when the percentage of healthy hosts is very low. This is the default in Istio, but setting it explicitly makes the failover behavior clear.
 
 ## Configuring Locality-Based Failover
 
@@ -151,7 +151,7 @@ spec:
       retryRemoteLocalities: true
 ```
 
-The `retryRemoteLocalities: true` setting is particularly important. It tells Istio to retry the request on an endpoint in a different locality (meaning a different cluster) if the local retry fails.
+The `retryRemoteLocalities: true` setting is particularly important. It tells Istio to allow retries in other localities if the local retry fails. In a multi-cluster mesh where clusters are in different localities, that can mean retrying in another cluster.
 
 ## Circuit Breaking Across Clusters
 
@@ -181,7 +181,7 @@ spec:
       maxEjectionPercent: 100
 ```
 
-When the connection pool is exhausted or too many requests are pending, Istio starts returning 503 errors, which then triggers outlier detection and failover to the remote cluster.
+When the connection pool is exhausted or too many requests are pending, Istio starts returning 503 errors to protect the overloaded service. Outlier detection still handles endpoint ejection when upstream hosts return qualifying errors or connection failures, which is what allows locality failover to move traffic to healthy endpoints in another cluster.
 
 ## Health Checking with Active Probes
 
@@ -251,29 +251,18 @@ kubectl exec deploy/sleep --context=cluster-a -- \
 kubectl scale deploy/payment --replicas=3 --context=cluster-a
 ```
 
-3. Inject faults to simulate failures without actually killing pods:
+3. Drain the sidecars for the service pods in one cluster to simulate endpoint failures without actually killing pods:
 
-```yaml
-apiVersion: networking.istio.io/v1
-kind: VirtualService
-metadata:
-  name: payment-fault-test
-  namespace: default
-spec:
-  hosts:
-  - payment.default.svc.cluster.local
-  http:
-  - fault:
-      abort:
-        httpStatus: 503
-        percentage:
-          value: 100
-    route:
-    - destination:
-        host: payment.default.svc.cluster.local
+```bash
+for POD in $(kubectl get pod -n default -l app=payment \
+  --context=cluster-a \
+  -o jsonpath='{.items[*].metadata.name}'); do
+  kubectl exec "$POD" -n default -c istio-proxy --context=cluster-a -- \
+    curl -sS -X POST 127.0.0.1:15000/drain_listeners
+done
 ```
 
-Apply this in one cluster and verify traffic fails over to the other.
+After draining the endpoints in one cluster, verify traffic fails over to the other. A `VirtualService` fault injection rule is useful for testing client behavior, but it aborts requests at the route level and does not prove endpoint-level cross-cluster failover.
 
 ## Monitoring Failover Events
 
