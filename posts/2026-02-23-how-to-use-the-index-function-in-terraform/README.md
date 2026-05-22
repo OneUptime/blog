@@ -85,6 +85,15 @@ resource "aws_vpc" "main" {
   }
 }
 
+resource "aws_subnet" "main" {
+  vpc_id     = aws_vpc.main.id
+  cidr_block = cidrsubnet(local.vpc_cidr, 8, 0)
+
+  tags = {
+    Name = "subnet-${var.target_region}"
+  }
+}
+
 resource "aws_instance" "app" {
   ami           = local.ami_id
   instance_type = "t3.micro"
@@ -243,6 +252,14 @@ locals {
     name = var.tier
     cidr = local.tier_cidrs[local.tier_idx]
     port = local.tier_ports[local.tier_idx]
+  }
+}
+
+resource "aws_vpc" "main" {
+  cidr_block = "10.0.0.0/16"
+
+  tags = {
+    Name = "multi-tier-vpc"
   }
 }
 
