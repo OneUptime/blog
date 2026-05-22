@@ -49,6 +49,7 @@ locals {
     Branch      = var.branch_name
     Developer   = var.developer
     DestroyAt   = local.destroy_at
+    Workspace   = terraform.workspace
     ManagedBy   = "terraform"
   }
 }
@@ -69,18 +70,20 @@ resource "aws_ecs_service" "app" {
   tags = local.common_tags
 }
 
-# Lightweight database (shared RDS with separate schema)
+# Lightweight database (shared RDS with separate database)
 resource "null_resource" "database_setup" {
   triggers = {
     env_name = local.env_name
+    db_host  = data.aws_db_instance.shared.address
+    db_name  = "ephemeral_${replace(local.env_name, "-", "_")}"
   }
 
   provisioner "local-exec" {
     command = <<-EOT
       PGPASSWORD=$DB_ADMIN_PASSWORD psql \
-        -h ${data.aws_db_instance.shared.address} \
+        -h ${self.triggers.db_host} \
         -U admin \
-        -c "CREATE DATABASE ephemeral_${replace(local.env_name, "-", "_")};"
+        -c "CREATE DATABASE ${self.triggers.db_name};"
     EOT
   }
 
@@ -88,15 +91,15 @@ resource "null_resource" "database_setup" {
     when    = destroy
     command = <<-EOT
       PGPASSWORD=$DB_ADMIN_PASSWORD psql \
-        -h ${data.aws_db_instance.shared.address} \
+        -h ${self.triggers.db_host} \
         -U admin \
-        -c "DROP DATABASE IF EXISTS ephemeral_${replace(self.triggers.env_name, "-", "_")};"
+        -c "DROP DATABASE IF EXISTS ${self.triggers.db_name};"
     EOT
   }
 }
 
 output "environment_url" {
-  value = "https://${local.env_name}.preview.example.com"
+  value = "https://${terraform.workspace}.preview.example.com"
 }
 ```
 
@@ -119,20 +122,21 @@ jobs:
 
       - name: Create Ephemeral Environment
         working-directory: infrastructure/ephemeral
+        env:
+          TF_VAR_branch_name: ${{ github.head_ref }}
+          TF_VAR_developer: ${{ github.actor }}
+          TF_VAR_ttl_hours: "24"
         run: |
           terraform init
           terraform workspace select "pr-${{ github.event.pull_request.number }}" || \
             terraform workspace new "pr-${{ github.event.pull_request.number }}"
-          terraform apply -auto-approve \
-            -var="branch_name=${{ github.head_ref }}" \
-            -var="developer=${{ github.actor }}" \
-            -var="ttl_hours=24"
+          terraform apply -auto-approve
 
       - name: Post URL to PR
         uses: actions/github-script@v7
         with:
           script: |
-            github.rest.issues.createComment({
+            await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
@@ -147,6 +151,10 @@ jobs:
 
       - name: Destroy Ephemeral Environment
         working-directory: infrastructure/ephemeral
+        env:
+          TF_VAR_branch_name: ${{ github.head_ref }}
+          TF_VAR_developer: ${{ github.actor }}
+          TF_VAR_ttl_hours: "24"
         run: |
           terraform init
           terraform workspace select "pr-${{ github.event.pull_request.number }}"
@@ -188,43 +196,59 @@ from datetime import datetime, timezone
 
 def find_expired_environments():
     """Find ephemeral environments past their TTL."""
-    ec2 = boto3.client("ec2")
+    tagging = boto3.client("resourcegroupstaggingapi")
 
-    # Find resources tagged as ephemeral with expired TTL
-    response = ec2.describe_instances(Filters=[
-        {"Name": "tag:Environment", "Values": ["ephemeral"]},
-        {"Name": "instance-state-name", "Values": ["running"]}
-    ])
+    paginator = tagging.get_paginator("get_resources")
+    pages = paginator.paginate(
+        TagFilters=[{"Key": "Environment", "Values": ["ephemeral"]}]
+    )
 
     expired = []
+    seen_workspaces = set()
     now = datetime.now(timezone.utc)
 
-    for reservation in response["Reservations"]:
-        for instance in reservation["Instances"]:
-            tags = {t["Key"]: t["Value"] for t in instance.get("Tags", [])}
+    for page in pages:
+        for resource in page["ResourceTagMappingList"]:
+            tags = {t["Key"]: t["Value"] for t in resource.get("Tags", [])}
             destroy_at = tags.get("DestroyAt")
-            if destroy_at and datetime.fromisoformat(destroy_at) < now:
+            workspace = tags.get("Workspace")
+            if (
+                workspace
+                and workspace not in seen_workspaces
+                and destroy_at
+                and datetime.fromisoformat(destroy_at) < now
+            ):
+                seen_workspaces.add(workspace)
                 expired.append({
-                    "workspace": tags.get("Branch", "unknown"),
-                    "instance_id": instance["InstanceId"]
+                    "workspace": workspace,
+                    "branch_name": tags["Branch"],
+                    "developer": tags["Developer"]
                 })
 
     return expired
 
-def destroy_environment(workspace):
+def destroy_environment(workspace, branch_name, developer):
     """Destroy an ephemeral environment."""
     subprocess.run([
         "terraform", "workspace", "select", workspace
-    ], check=True)
+    ], check=True, cwd="infrastructure/ephemeral")
     subprocess.run([
-        "terraform", "destroy", "-auto-approve"
-    ], check=True)
+        "terraform", "destroy", "-auto-approve",
+        f"-var=branch_name={branch_name}",
+        f"-var=developer={developer}"
+    ], check=True, cwd="infrastructure/ephemeral")
+    subprocess.run([
+        "terraform", "workspace", "select", "default"
+    ], check=True, cwd="infrastructure/ephemeral")
+    subprocess.run([
+        "terraform", "workspace", "delete", workspace
+    ], check=True, cwd="infrastructure/ephemeral")
 
 if __name__ == "__main__":
     expired = find_expired_environments()
     for env in expired:
         print(f"Destroying expired environment: {env['workspace']}")
-        destroy_environment(env["workspace"])
+        destroy_environment(env["workspace"], env["branch_name"], env["developer"])
 ```
 
 ## Cost Optimization for Ephemeral Environments
