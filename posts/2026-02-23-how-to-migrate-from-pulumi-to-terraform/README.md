@@ -53,7 +53,7 @@ This gives you a complete list of resources to migrate.
 
 ## Step 2: Map Pulumi Resources to Terraform
 
-Pulumi and Terraform resource types have a predictable mapping since they often share the same underlying provider:
+Pulumi and Terraform resource types often have a direct equivalent since they share the same underlying cloud APIs, but the type names are not a universal string rewrite. Check the Pulumi Registry and the Terraform provider documentation for each resource:
 
 ```text
 Pulumi Resource Type                    Terraform Resource Type
@@ -61,11 +61,11 @@ Pulumi Resource Type                    Terraform Resource Type
 aws:ec2/instance:Instance           ->  aws_instance
 aws:s3/bucket:Bucket                ->  aws_s3_bucket
 aws:rds/instance:Instance           ->  aws_db_instance
-azure:compute/virtualMachine        ->  azurerm_virtual_machine
+azure-native:compute:VirtualMachine ->  azurerm_linux_virtual_machine or azurerm_windows_virtual_machine
 gcp:compute/instance:Instance       ->  google_compute_instance
 ```
 
-The pattern is usually straightforward: replace the Pulumi package path with the Terraform provider prefix and convert to snake_case.
+The mapping is usually straightforward, but some resources split differently between providers. For example, newer AzureRM configurations commonly use separate Linux and Windows virtual machine resource types.
 
 ## Step 3: Convert Pulumi Code to Terraform HCL
 
@@ -229,8 +229,8 @@ Get the cloud provider resource IDs from Pulumi state for importing:
 # Extract resource IDs from Pulumi state
 pulumi stack export --stack my-stack | \
   jq -r '.deployment.resources[] |
-    select(.type != "pulumi:pulumi:Stack" and .type != "pulumi:providers:aws") |
-    "\(.type)\t\(.id)"'
+    select((.custom // false) and (.id // "") != "") |
+    "\(.type)\t\(.id)\t\(.urn)"'
 ```
 
 Or use a more detailed extraction:
@@ -245,12 +245,12 @@ with open("pulumi-state.json") as f:
     state = json.load(f)
 
 for resource in state["deployment"]["resources"]:
-    # Skip internal Pulumi resources
-    if resource["type"].startswith("pulumi:"):
+    # Skip component and internal resources that do not have provider IDs
+    if not resource.get("custom") or not resource.get("id"):
         continue
 
     resource_type = resource["type"]
-    resource_id = resource.get("id", "N/A")
+    resource_id = resource["id"]
     resource_urn = resource["urn"]
 
     # Extract the logical name from URN
@@ -264,7 +264,7 @@ for resource in state["deployment"]["resources"]:
 
 ## Step 6: Import Resources into Terraform
 
-Create import blocks using the extracted IDs:
+Using Terraform 1.5 or later, create import blocks with the extracted IDs:
 
 ```hcl
 # imports.tf
@@ -303,12 +303,14 @@ terraform plan
 # If there are differences, adjust configuration
 ```
 
-Once verified, destroy the Pulumi stack state without destroying resources:
+Once verified, remove the resources from Pulumi state without destroying the cloud resources:
 
 ```bash
 # Remove all resources from Pulumi state without deleting them
-# This must be done resource by resource
-pulumi state delete <resource-urn> --force
+pulumi state delete <resource-urn> --yes
+
+# Or remove all resources from the stack state
+pulumi state delete --all --yes
 
 # Or export, remove resources, and reimport empty state
 pulumi stack export > backup.json
@@ -325,7 +327,7 @@ Pulumi encrypts secrets in state. Extract them before migration:
 pulumi config --show-secrets
 
 # Export secrets for Terraform
-pulumi config get dbPassword --show-secrets
+pulumi config --show-secrets --json > pulumi-config.json
 ```
 
 Store these in Terraform using appropriate secret management:
