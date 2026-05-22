@@ -210,9 +210,9 @@ output "artifact_hash" {
   value = filesha512("${path.module}/artifacts/release.tar.gz")
 }
 
-# Equivalent but less efficient for large files
+# Similar for UTF-8 text files, but not suitable for binary files
 output "artifact_hash_manual" {
-  value = sha512(file("${path.module}/artifacts/release.tar.gz"))
+  value = sha512(file("${path.module}/checksums/release.txt"))
 }
 ```
 
