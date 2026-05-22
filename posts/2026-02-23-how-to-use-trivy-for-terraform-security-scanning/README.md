@@ -32,6 +32,10 @@ Install Trivy on your system:
 brew install trivy
 
 # Linux with apt
+sudo apt-get install wget gnupg
+wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
+echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
+sudo apt-get update
 sudo apt-get install trivy
 
 # Linux with the install script
@@ -113,7 +117,7 @@ Trivy provides several options to filter scan results:
 # Show only HIGH and CRITICAL findings
 trivy config --severity HIGH,CRITICAL .
 
-# Skip specific checks by ID
+# Skip specific directories
 trivy config --skip-dirs "test,examples" .
 
 # Ignore specific checks
@@ -127,11 +131,11 @@ Create a `.trivyignore` file to suppress known false positives:
 
 ```text
 # .trivyignore
-# Skip public read access check for the static website bucket
+# Skip the S3 bucket encryption check for the static website bucket
 AVD-AWS-0088
 
-# Skip the encryption check for the development bucket
-# (encrypted at the bucket level, not the object level)
+# Skip the customer-managed key check for the development bucket
+# (AWS-managed S3 keys are accepted for this environment)
 AVD-AWS-0132
 ```
 
@@ -176,8 +180,8 @@ Trivy has built-in checks for AWS, Azure, and GCP resources:
 # AWS-specific checks
 trivy config --severity HIGH,CRITICAL ./modules/aws
 
-# Check what rules are available
-trivy config --list-all-pkgs .
+# Limit the scan to Terraform configuration checks
+trivy config --misconfig-scanners terraform ./modules/aws
 ```
 
 Common checks Trivy runs for each provider:
@@ -217,11 +221,14 @@ on:
 jobs:
   scan:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
     steps:
       - uses: actions/checkout@v4
 
       - name: Run Trivy IaC Scanner
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: 'config'
           scan-ref: '.'
@@ -232,7 +239,7 @@ jobs:
 
       # Upload results to GitHub Security tab
       - name: Upload SARIF
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: 'trivy-results.sarif'
@@ -244,20 +251,23 @@ jobs:
 # .gitlab-ci.yml
 trivy-scan:
   stage: security
-  image: aquasec/trivy:latest
+  image:
+    name: aquasec/trivy:latest
+    entrypoint: [""]
   script:
-    - trivy config
+    - |
+      trivy config
         --severity HIGH,CRITICAL
         --exit-code 1
-        --format json
-        --output trivy-report.json
+        --format template
+        --template "@/contrib/gitlab-codequality.tpl"
+        --output gl-codequality.json
         .
   artifacts:
     reports:
-      # GitLab can parse Trivy's JSON output
-      container_scanning: trivy-report.json
+      codequality: gl-codequality.json
     paths:
-      - trivy-report.json
+      - gl-codequality.json
     when: always
 ```
 
@@ -288,32 +298,35 @@ Trivy supports custom Rego policies for organization-specific rules:
 
 ```rego
 # policies/terraform/required_tags.rego
-# Deny resources without required tags
+# Deny planned AWS resources without required tags
 
+# METADATA
+# title: Required tags
+# description: AWS resources should define the required organizational tags.
+# custom:
+#   id: CUSTOM-TF-001
+#   severity: MEDIUM
+#   input:
+#     selector:
+#     - type: terraformplan
 package user.terraform.required_tags
 
 import rego.v1
 
 # Define required tags
 required_tags := ["Environment", "Team", "ManagedBy"]
+taggable_types := {"aws_instance", "aws_s3_bucket", "aws_rds_cluster", "aws_vpc"}
 
 deny contains msg if {
-    resource := input.resource[type][name]
-    type_requires_tags(type)
-    tags := object.get(resource, "tags", {})
-    missing := [tag | tag := required_tags[_]; not tags[tag]]
+    resource := input.resource_changes[_]
+    resource.mode == "managed"
+    taggable_types[resource.type]
+    after := object.get(resource.change, "after", {})
+    after != null
+    tags := object.get(after, "tags", {})
+    missing := [tag | tag := required_tags[_]; object.get(tags, tag, "") == ""]
     count(missing) > 0
-    msg := sprintf("%s.%s is missing required tags: %v", [type, name, missing])
-}
-
-type_requires_tags(type) if {
-    taggable_types := {
-        "aws_instance",
-        "aws_s3_bucket",
-        "aws_rds_cluster",
-        "aws_vpc",
-    }
-    taggable_types[type]
+    msg := sprintf("%s is missing required tags: %v", [resource.address, missing])
 }
 ```
 
@@ -321,10 +334,10 @@ Run Trivy with custom policies:
 
 ```bash
 # Include custom policies from a directory
-trivy config --policy ./policies .
+trivy config --config-check ./policies --check-namespaces user tfplan.json
 
-# Only run custom policies (skip built-in)
-trivy config --policy ./policies --skip-policy-update .
+# Run without fetching updated built-in checks
+trivy config --config-check ./policies --check-namespaces user --skip-check-update tfplan.json
 ```
 
 ## Scanning Terraform Modules
