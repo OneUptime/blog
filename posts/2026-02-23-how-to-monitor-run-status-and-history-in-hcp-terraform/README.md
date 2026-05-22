@@ -19,13 +19,24 @@ Every Terraform run in HCP Terraform moves through a series of states. Understan
 | State | Meaning |
 |---|---|
 | `pending` | Run is queued, waiting for a worker |
+| `fetching` | HCP Terraform is fetching configuration from VCS |
+| `fetching_completed` | HCP Terraform has fetched the configuration from VCS |
+| `pre_plan_running` | Pre-plan run tasks are running |
+| `pre_plan_completed` | Pre-plan run tasks have completed |
+| `queuing` | HCP Terraform is queuing the run for planning |
 | `plan_queued` | Plan phase is queued |
 | `planning` | Plan is actively running |
-| `planned` | Plan completed, waiting for approval |
-| `planned_and_finished` | Plan completed with no changes |
+| `planned` | Plan phase completed |
 | `cost_estimating` | Cost estimation is running |
+| `cost_estimated` | Cost estimation has completed |
 | `policy_checking` | Sentinel/OPA policies are being evaluated |
 | `policy_override` | Policy failed, waiting for override |
+| `policy_soft_failed` | A soft policy failed for a plan-only run |
+| `policy_checked` | Policy checks have completed |
+| `post_plan_running` | Post-plan run tasks are running |
+| `post_plan_completed` | Post-plan run tasks have completed |
+| `planned_and_finished` | Plan completed with no changes or as a plan-only run |
+| `planned_and_saved` | Saved plan run is ready to be confirmed for apply |
 | `confirmed` | Apply has been confirmed |
 | `apply_queued` | Apply is queued |
 | `applying` | Apply is actively running |
@@ -71,18 +82,20 @@ For programmatic monitoring, the API is your primary tool.
 
 WORKSPACE_ID="ws-xxxxxxxxxxxxxxxx"
 
-curl \
+CURRENT_RUN_ID=$(curl -s \
   --header "Authorization: Bearer $TFC_TOKEN" \
-  "https://app.terraform.io/api/v2/workspaces/${WORKSPACE_ID}/current-run" \
+  "https://app.terraform.io/api/v2/workspaces/${WORKSPACE_ID}" \
+  | jq -r '.data.relationships["current-run"].data.id')
+
+curl -s \
+  --header "Authorization: Bearer $TFC_TOKEN" \
+  "https://app.terraform.io/api/v2/runs/${CURRENT_RUN_ID}" \
   | jq '{
     id: .data.id,
     status: .data.attributes.status,
     message: .data.attributes.message,
     created: .data.attributes["created-at"],
-    has_changes: .data.attributes["has-changes"],
-    additions: .data.attributes["resource-additions"],
-    changes: .data.attributes["resource-changes"],
-    destructions: .data.attributes["resource-destructions"]
+    has_changes: .data.attributes["has-changes"]
   }'
 ```
 
@@ -94,16 +107,14 @@ WORKSPACE_ID="ws-xxxxxxxxxxxxxxxx"
 
 curl \
   --header "Authorization: Bearer $TFC_TOKEN" \
-  "https://app.terraform.io/api/v2/workspaces/${WORKSPACE_ID}/runs?page[size]=10" \
+  "https://app.terraform.io/api/v2/workspaces/${WORKSPACE_ID}/runs?page%5Bsize%5D=10" \
   | jq '.data[] | {
     id: .id,
     status: .attributes.status,
     message: .attributes.message,
     created: .attributes["created-at"],
     source: .attributes.source,
-    additions: .attributes["resource-additions"],
-    changes: .attributes["resource-changes"],
-    destructions: .attributes["resource-destructions"]
+    has_changes: .attributes["has-changes"]
   }'
 ```
 
@@ -120,13 +131,29 @@ PLAN_ID=$(curl -s \
   | jq -r '.data.relationships.plan.data.id')
 
 # Then get the plan log URL
-LOG_URL=$(curl -s \
+PLAN_LOG_URL=$(curl -s \
   --header "Authorization: Bearer $TFC_TOKEN" \
   "https://app.terraform.io/api/v2/plans/${PLAN_ID}" \
   | jq -r '.data.attributes["log-read-url"]')
 
-# Download the log
-curl -s "$LOG_URL"
+# Download the plan log
+curl -s "$PLAN_LOG_URL"
+
+# Get the apply log for the same run, if it has an apply
+APPLY_ID=$(curl -s \
+  --header "Authorization: Bearer $TFC_TOKEN" \
+  "https://app.terraform.io/api/v2/runs/${RUN_ID}" \
+  | jq -r '.data.relationships.apply.data.id // empty')
+
+if [ -n "$APPLY_ID" ]; then
+  APPLY_LOG_URL=$(curl -s \
+    --header "Authorization: Bearer $TFC_TOKEN" \
+    "https://app.terraform.io/api/v2/applies/${APPLY_ID}" \
+    | jq -r '.data.attributes["log-read-url"]')
+
+  # Download the apply log
+  curl -s "$APPLY_LOG_URL"
+fi
 ```
 
 ## Setting Up Notifications
@@ -150,7 +177,7 @@ resource "tfe_notification_configuration" "slack_all" {
     "run:needs_attention",  # Run needs approval or has policy override
     "run:applying",         # Apply phase started
     "run:completed",        # Run completed successfully
-    "run:errored",          # Run failed
+    "run:errored",          # Run failed or was canceled
   ]
 }
 
@@ -209,7 +236,9 @@ The webhook payload contains:
     {
       "message": "Run completed",
       "trigger": "run:completed",
-      "run_status": "applied"
+      "run_status": "applied",
+      "run_updated_at": "2026-02-23T10:05:00+00:00",
+      "run_updated_by": "user@example.com"
     }
   ]
 }
@@ -245,7 +274,6 @@ Here is a Python script that generates a monitoring report across all workspaces
 # monitor.py - HCP Terraform run monitoring dashboard
 import requests
 import os
-from datetime import datetime, timedelta, timezone
 
 TFC_TOKEN = os.environ["TFC_TOKEN"]
 TFC_ORG = os.environ["TFC_ORG"]
@@ -358,17 +386,33 @@ For long-term tracking, store run data and analyze trends:
 # Run this on a cron schedule to build historical data
 
 OUTPUT_FILE="run-metrics-$(date +%Y%m%d-%H%M%S).json"
+PAGE=1
+TMP_FILE=$(mktemp)
 
-curl -s \
-  --header "Authorization: Bearer $TFC_TOKEN" \
-  "https://app.terraform.io/api/v2/organizations/${TFC_ORG}/workspaces?page[size]=100" \
-  | jq '[.data[] | {
-    workspace: .attributes.name,
-    current_run_status: .attributes["current-run"]?.["status"] // "none",
-    resource_count: .attributes["resource-count"],
-    tags: .attributes["tag-names"],
-    updated_at: .attributes["updated-at"]
-  }]' > "$OUTPUT_FILE"
+echo "[]" > "$TMP_FILE"
+
+while true; do
+  RESPONSE=$(curl -s \
+    --header "Authorization: Bearer $TFC_TOKEN" \
+    "https://app.terraform.io/api/v2/organizations/${TFC_ORG}/workspaces?page%5Bnumber%5D=${PAGE}&page%5Bsize%5D=100&include=current_run")
+
+  jq -s '.[0] + (.[1] as $response | [$response.data[] | . as $ws | {
+    workspace: $ws.attributes.name,
+    current_run_status: (($response.included[]? | select(.type == "runs" and .id == $ws.relationships["current-run"].data.id) | .attributes.status) // "none"),
+    resource_count: $ws.attributes["resource-count"],
+    tags: $ws.attributes["tag-names"],
+    updated_at: $ws.attributes["updated-at"]
+  }])' "$TMP_FILE" <(printf '%s\n' "$RESPONSE") > "${TMP_FILE}.next"
+  mv "${TMP_FILE}.next" "$TMP_FILE"
+
+  NEXT_PAGE=$(printf '%s\n' "$RESPONSE" | jq -r '.meta.pagination["next-page"] // empty')
+  if [ -z "$NEXT_PAGE" ]; then
+    break
+  fi
+  PAGE="$NEXT_PAGE"
+done
+
+mv "$TMP_FILE" "$OUTPUT_FILE"
 
 echo "Metrics collected: $OUTPUT_FILE"
 ```
@@ -386,20 +430,35 @@ CUTOFF_DATE=$(date -v-${DAYS_THRESHOLD}d +%Y-%m-%dT%H:%M:%S 2>/dev/null || date 
 
 echo "Checking for workspaces with no successful run since ${CUTOFF_DATE}..."
 
-WORKSPACES=$(curl -s \
-  --header "Authorization: Bearer $TFC_TOKEN" \
-  "https://app.terraform.io/api/v2/organizations/${TFC_ORG}/workspaces?page[size]=100" \
-  | jq -r '.data[] | .id + "|" + .attributes.name + "|" + (.attributes["updated-at"] // "never")')
-
 echo ""
-echo "Stale workspaces (no activity in ${DAYS_THRESHOLD} days):"
+echo "Stale workspaces (no successful run in ${DAYS_THRESHOLD} days):"
 echo "---"
 
-while IFS='|' read -r WS_ID WS_NAME UPDATED_AT; do
-  if [[ "$UPDATED_AT" < "$CUTOFF_DATE" ]]; then
-    echo "  ${WS_NAME} (last updated: ${UPDATED_AT})"
+PAGE=1
+while true; do
+  RESPONSE=$(curl -s \
+    --header "Authorization: Bearer $TFC_TOKEN" \
+    "https://app.terraform.io/api/v2/organizations/${TFC_ORG}/workspaces?page%5Bnumber%5D=${PAGE}&page%5Bsize%5D=100")
+
+  WORKSPACES=$(printf '%s\n' "$RESPONSE" | jq -r '.data[] | .id + "|" + .attributes.name')
+
+  while IFS='|' read -r WS_ID WS_NAME; do
+    LAST_APPLIED=$(curl -s \
+      --header "Authorization: Bearer $TFC_TOKEN" \
+      "https://app.terraform.io/api/v2/workspaces/${WS_ID}/runs?filter%5Bstatus%5D=applied&page%5Bsize%5D=1" \
+      | jq -r '.data[0].attributes["created-at"] // empty')
+
+    if [ -z "$LAST_APPLIED" ] || [[ "$LAST_APPLIED" < "$CUTOFF_DATE" ]]; then
+      echo "  ${WS_NAME} (last successful run: ${LAST_APPLIED:-never})"
+    fi
+  done <<< "$WORKSPACES"
+
+  NEXT_PAGE=$(printf '%s\n' "$RESPONSE" | jq -r '.meta.pagination["next-page"] // empty')
+  if [ -z "$NEXT_PAGE" ]; then
+    break
   fi
-done <<< "$WORKSPACES"
+  PAGE="$NEXT_PAGE"
+done
 ```
 
 ## Integrating with External Monitoring
@@ -417,6 +476,7 @@ import time
 
 TFC_TOKEN = os.environ["TFC_TOKEN"]
 TFC_ORG = os.environ["TFC_ORG"]
+BASE_URL = "https://app.terraform.io/api/v2"
 HEADERS = {"Authorization": f"Bearer {TFC_TOKEN}"}
 
 # Define metrics
@@ -434,17 +494,36 @@ workspace_run_status = Gauge(
 
 def collect_metrics():
     """Collect metrics from all workspaces."""
-    resp = requests.get(
-        f"https://app.terraform.io/api/v2/organizations/{TFC_ORG}/workspaces",
-        headers=HEADERS,
-        params={"page[size]": 100}
-    )
-    for ws in resp.json()["data"]:
-        name = ws["attributes"]["name"]
-        resource_count = ws["attributes"].get("resource-count", 0)
-        workspace_resource_count.labels(
-            workspace=name, organization=TFC_ORG
-        ).set(resource_count)
+    page = 1
+    while True:
+        resp = requests.get(
+            f"{BASE_URL}/organizations/{TFC_ORG}/workspaces",
+            headers=HEADERS,
+            params={"page[number]": page, "page[size]": 100}
+        )
+        data = resp.json()
+        for ws in data["data"]:
+            name = ws["attributes"]["name"]
+            workspace_id = ws["id"]
+            resource_count = ws["attributes"].get("resource-count", 0)
+            workspace_resource_count.labels(
+                workspace=name, organization=TFC_ORG
+            ).set(resource_count)
+
+            runs_resp = requests.get(
+                f"{BASE_URL}/workspaces/{workspace_id}/runs",
+                headers=HEADERS,
+                params={"page[size]": 1}
+            )
+            runs = runs_resp.json()["data"]
+            latest_status = runs[0]["attributes"]["status"] if runs else None
+            workspace_run_status.labels(
+                workspace=name, organization=TFC_ORG
+            ).set(1 if latest_status == "errored" else 0)
+
+        if data["meta"]["pagination"]["next-page"] is None:
+            break
+        page += 1
 
 if __name__ == "__main__":
     start_http_server(9090)
