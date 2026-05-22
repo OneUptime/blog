@@ -12,7 +12,7 @@ The `baseEjectionTime` field in Istio's outlier detection controls how long an u
 
 ## What baseEjectionTime Actually Does
 
-When a pod gets ejected because it exceeded the error threshold, it stays out for:
+When a pod gets ejected because it exceeded the error threshold, it stays out for at least:
 
 ```text
 ejection_duration = baseEjectionTime * number_of_times_ejected
@@ -21,7 +21,7 @@ ejection_duration = baseEjectionTime * number_of_times_ejected
 The first ejection uses the base time. The second ejection doubles it. The third triples it. And so on.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: api-service
@@ -46,7 +46,7 @@ With `baseEjectionTime: 30s`:
 | 4th | 120s | Something is really wrong |
 | 5th | 150s | Pod probably needs a restart |
 
-This progressive behavior is built into Envoy and cannot be customized. You can only control the base value.
+This progressive behavior is built into Envoy. Envoy also caps the ejection duration internally with `max_ejection_time`; Istio's `DestinationRule` exposes the base value, not that Envoy cap.
 
 ## Picking the Right Base Time
 
@@ -101,15 +101,15 @@ Use this when:
 
 ## How baseEjectionTime Interacts with interval
 
-The `interval` field controls how often Envoy checks for outliers. The ejection countdown starts after the check runs, not after the last error.
+The `interval` field controls the time between Envoy's ejection analysis sweeps and the checks that can return ejected hosts to service. For consecutive 5xx or gateway-error ejections, Envoy can eject a host as errors are reported; the ejection countdown starts when the host is actually ejected, not after the last error.
 
 ```mermaid
 sequenceDiagram
     participant E as Envoy
     participant P as Unhealthy Pod
 
-    Note over E: interval check runs
-    E->>P: Detect 3 consecutive errors
+    E->>P: Send traffic
+    P-->>E: Return 3 consecutive errors
     Note over E: Eject pod
     Note over E,P: baseEjectionTime countdown starts
     Note over E: 30s later...
@@ -117,7 +117,7 @@ sequenceDiagram
     E->>P: Send traffic
 ```
 
-If your interval is 10 seconds and your baseEjectionTime is 30 seconds, the total time a pod stays out is approximately 30 seconds from the ejection decision. The interval only affects how quickly the ejection is detected, not how long it lasts.
+If your interval is 10 seconds and your baseEjectionTime is 30 seconds, the total time a pod stays out is approximately 30 seconds from the ejection decision. The interval can affect periodic outlier checks and when Envoy evaluates whether ejection multipliers should be reduced, but it does not make a 30-second ejection last for 40 seconds.
 
 ## Matching baseEjectionTime to Kubernetes Health Checks
 
@@ -147,7 +147,7 @@ If `baseEjectionTime` is shorter than the Kubernetes restart cycle, the pod gets
 ### Transient Failures (Network Issues, Brief Overload)
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: cache-service
@@ -167,7 +167,7 @@ Short ejection time with a higher error threshold. The pod needs to fail 5 times
 ### Application Crashes
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: worker-service
@@ -187,7 +187,7 @@ Longer ejection time because a crashed application needs to be restarted by Kube
 ### Memory Leaks / Gradual Degradation
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: analytics-service
@@ -215,11 +215,11 @@ kubectl exec deploy/my-service -c istio-proxy -- \
   curl -s localhost:15000/stats | grep "ejections"
 
 # Key indicators:
-# High ejections_total with low ejections_active = pods are flapping
+# High ejections_enforced_total with low ejections_active = pods are flapping
 #   (ejected, re-added, ejected again)
 #   Solution: increase baseEjectionTime
 #
-# Low ejections_total = ejections are rare and effective
+# Low ejections_enforced_total = ejections are rare and effective
 #   Settings are working well
 #
 # ejections_active consistently > 0 = persistent unhealthy instances
@@ -230,17 +230,17 @@ You can also monitor the ratio of detected to enforced ejections:
 
 ```bash
 kubectl exec deploy/my-service -c istio-proxy -- \
-  curl -s localhost:15000/stats | grep -E "ejections_detected|ejections_enforced"
+  curl -s localhost:15000/stats | grep -E "ejections_detected|ejections_enforced|ejections_overflow"
 ```
 
-If `ejections_detected` is much higher than `ejections_enforced`, pods are being detected as unhealthy but not ejected because `maxEjectionPercent` is reached. Either add more replicas or investigate why so many pods are unhealthy.
+If detected counters such as `ejections_detected_consecutive_5xx` are much higher than enforced counters such as `ejections_enforced_consecutive_5xx`, pods are being detected as unhealthy but not always ejected. If `ejections_overflow` is increasing too, Envoy is refusing ejections because `maxEjectionPercent` is reached. Either add more replicas or investigate why so many pods are unhealthy.
 
 ## Complete Example with Progressive Recovery
 
 Here is a setup that demonstrates thoughtful baseEjectionTime configuration:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: order-service
