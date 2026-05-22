@@ -62,7 +62,7 @@ The problems this creates: duplicated code across environments, backend blocks t
 brew install terragrunt
 
 # Or download directly
-curl -sL https://github.com/gruntwork-io/terragrunt/releases/download/v0.55.0/terragrunt_linux_amd64 \
+curl -sL https://github.com/gruntwork-io/terragrunt/releases/download/v1.0.5/terragrunt_linux_amd64 \
   -o /usr/local/bin/terragrunt
 chmod +x /usr/local/bin/terragrunt
 
@@ -113,7 +113,7 @@ remote_state {
     key            = "${path_relative_to_include()}/terraform.tfstate"
     region         = "us-east-1"
     encrypt        = true
-    dynamodb_table = "terraform-locks"
+    use_lockfile   = true
   }
 }
 
@@ -129,7 +129,7 @@ EOF
 }
 ```
 
-Note the use of `if_exists = "overwrite_terragrunt"` during migration. This tells Terragrunt to only overwrite files that it created, leaving your existing `backend.tf` and `provider.tf` untouched until you're ready to remove them.
+Note the use of `if_exists = "overwrite_terragrunt"` during migration. This tells Terragrunt to only overwrite files that it previously created. If a hand-written file already exists at the same path, Terragrunt exits with an error instead of overwriting it; use `if_exists = "skip"` during the transition if you need to leave an existing file in place.
 
 ## Step 4: Create Child Terragrunt Configurations
 
@@ -175,7 +175,7 @@ remote_state {
     key    = "dev/vpc/terraform.tfstate"
     region = "us-east-1"
     encrypt = true
-    dynamodb_table = "terraform-locks"
+    use_lockfile = true
   }
 }
 ```
@@ -190,7 +190,7 @@ terragrunt plan
 
 ### Approach B: Move State to New Paths
 
-If you want to reorganize your state files to match Terragrunt's `path_relative_to_include()` pattern, use `terraform state` commands:
+If you want to reorganize your state files to match Terragrunt's `path_relative_to_include()` pattern, move the backend object to the new key:
 
 ```bash
 # Copy state from old location to new location
@@ -317,7 +317,7 @@ script:
 script:
   - cd infrastructure/dev/vpc
   - terragrunt plan
-  - terragrunt apply --terragrunt-non-interactive -auto-approve
+  - terragrunt --non-interactive apply -auto-approve
 ```
 
 For bulk operations:
@@ -325,7 +325,7 @@ For bulk operations:
 ```yaml
 script:
   - cd infrastructure/dev
-  - terragrunt run-all plan --terragrunt-non-interactive
+  - terragrunt --non-interactive run --all plan
 ```
 
 ## Common Migration Pitfalls
