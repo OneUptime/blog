@@ -18,8 +18,8 @@ The traditional in-place upgrade replaces your running istiod with a new version
 
 ```mermaid
 graph LR
-    A[Namespace A] -->|istio.io/rev=stable| B[istiod-stable v1.20]
-    C[Namespace B] -->|istio.io/rev=canary| D[istiod-canary v1.21]
+    A[Namespace A] -->|istio.io/rev=stable| B[istiod-stable v1.28]
+    C[Namespace B] -->|istio.io/rev=canary| D[istiod-canary v1.29]
     E[Namespace C] -->|istio.io/rev=stable| B
 ```
 
@@ -27,7 +27,7 @@ graph LR
 
 Before starting, make sure you have:
 
-- A running Istio installation (we will assume version 1.20 as the current version)
+- A running Istio installation (we will assume version 1.28 as the current version)
 - `istioctl` binaries for both the current and target versions
 - `kubectl` access to the cluster with admin privileges
 - Familiarity with Istio revision labels
@@ -40,11 +40,11 @@ istioctl version
 
 ## Step 1: Install the New Control Plane Revision
 
-Download the target version of `istioctl`. For this example, we are upgrading from 1.20 to 1.21.
+Download the target version of `istioctl`. For this example, we are upgrading from 1.28 to 1.29.
 
 ```bash
-curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.21.0 sh -
-export PATH=$PWD/istio-1.21.0/bin:$PATH
+curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.29.2 sh -
+export PATH=$PWD/istio-1.29.2/bin:$PATH
 ```
 
 Now install the canary revision. The key flag here is `--revision`, which tells Istio to install a separate control plane instance with a specific label.
@@ -95,7 +95,7 @@ After the rollout completes, verify the sidecar version:
 istioctl proxy-status
 ```
 
-Look for the pods in `test-app`. They should show the new Istio version (1.21) and be connected to `istiod-canary`.
+Look for the pods in `test-app`. They should show the new Istio version (1.29) and be connected to `istiod-canary`.
 
 You can also check a specific pod:
 
@@ -146,16 +146,16 @@ If any pods are still connected to the old control plane, they have not been mig
 
 ## Step 6: Remove the Old Control Plane
 
-Once every workload has been migrated to the canary revision and you have verified stability, remove the old control plane:
+Once every workload has been migrated to the canary revision and you have verified stability, remove the old control plane. If your old control plane used a revision label such as `stable`, remove that revision:
 
 ```bash
-istioctl uninstall --revision=default -y
+istioctl uninstall --revision=stable -y
 ```
 
-If your old installation did not use a revision label (which is common for the initial install), you may need to use:
+If your old installation did not use a revision label (which is common for the initial install), uninstall it using the same installation options you originally used. For example, if you installed the default profile with `istioctl`, you may need to use:
 
 ```bash
-istioctl uninstall --revision=default -y
+istioctl uninstall -f manifests/profiles/default.yaml -y
 ```
 
 Or if you used Helm:
@@ -181,14 +181,14 @@ At this point your "canary" is now the production control plane, but it still ha
 
 Many teams adopt a naming convention like `stable` and `canary` that they rotate between upgrades. For example:
 
-- Current production: `stable` (v1.20)
-- New canary: `canary` (v1.21)
+- Current production: `stable` (v1.28)
+- New canary: `canary` (v1.29)
 - After migration: `canary` becomes the production revision
-- Next upgrade: install new `stable` (v1.22), migrate from `canary` to `stable`
+- Next upgrade: install new `stable` (v1.30), migrate from `canary` to `stable`
 
 ## Common Pitfalls
 
-**Forgetting to remove the old injection label.** If a namespace has both `istio-injection=enabled` and `istio.io/rev=canary`, the behavior is undefined. Always remove the old label first.
+**Forgetting to remove the old injection label.** If a namespace has both `istio-injection=enabled` and `istio.io/rev=canary`, the `istio-injection` label takes precedence for backward compatibility. Always remove the old label first.
 
 **Not restarting pods.** Label changes do not trigger automatic sidecar re-injection. You must restart pods.
 
