@@ -45,14 +45,16 @@ cat cdktf.out/stacks/my-stack/cdk.tf.json | python3 -m json.tool | head -50
 
 Terraform accepts both HCL and JSON configuration files, so technically you could just use the JSON files directly. But JSON Terraform configs are hard to read and maintain. You want proper HCL.
 
-There is no official JSON-to-HCL converter, but you have a few options. The most reliable approach is using `json2hcl` or doing a manual conversion with the JSON as reference.
+There is no official JSON-to-HCL converter, but you have a few options. One practical approach is using `json2hcl` or doing a manual conversion with the JSON as reference. Be aware that `json2hcl` is a deprecated third-party project, so treat its output as a starting point rather than a fully reliable migration tool.
 
 ```bash
-# Install json2hcl (if available)
-go install github.com/kvz/json2hcl/v2@latest
+# Download json2hcl from the project's GitHub releases
+curl -L -o json2hcl_linux_amd64.tar.gz \
+  https://github.com/kvz/json2hcl/releases/download/v0.2.0/json2hcl_0.2.0_linux_amd64.tar.gz
+tar -xzf json2hcl_linux_amd64.tar.gz
 
 # Convert JSON to HCL
-cat cdktf.out/stacks/my-stack/cdk.tf.json | json2hcl > main.tf
+./json2hcl < cdktf.out/stacks/my-stack/cdk.tf.json > main.tf
 ```
 
 The output from `json2hcl` will need cleanup. CDKTF generates resource names with hash suffixes and uses a flat structure that is harder to read than hand-written HCL. You will need to refactor.
@@ -122,6 +124,10 @@ For example, a CDKTF construct that creates a VPC with subnets would translate t
 
 ```hcl
 # Option A: Inline resources (simple cases)
+data "aws_availability_zones" "available" {
+  state = "available"
+}
+
 resource "aws_vpc" "main" {
   cidr_block = "10.0.0.0/16"
 }
