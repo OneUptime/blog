@@ -41,7 +41,7 @@ inputs = {
 }
 ```
 
-When you run `terragrunt run-all apply`, the monitoring module will not be applied until `vpc`, `ecs`, and `rds` have all completed.
+When you run `terragrunt run --all apply`, the monitoring module will not be applied until `vpc`, `ecs`, and `rds` have all completed.
 
 ## dependencies vs dependency
 
@@ -221,9 +221,9 @@ inputs = {
 
 This gives you a clear separation between modules you need outputs from (use `dependency`) and modules that just need to exist first (use `dependencies`).
 
-## How dependencies Affects run-all Commands
+## How dependencies Affects run --all Commands
 
-The `dependencies` block primarily matters when you use `run-all` commands like `terragrunt run-all plan` or `terragrunt run-all apply`. Terragrunt builds a dependency graph from all `dependency` and `dependencies` declarations, then executes modules in the correct topological order.
+The `dependencies` block primarily matters when you use `run --all` commands like `terragrunt run --all plan` or `terragrunt run --all apply`. Terragrunt builds a dependency graph from all `dependency` and `dependencies` declarations, then executes modules in the correct topological order.
 
 ```text
 # Example dependency graph for a dev environment:
@@ -236,7 +236,7 @@ The `dependencies` block primarily matters when you use `run-all` commands like 
 # ecr ----------+
 ```
 
-Running `terragrunt run-all apply` from the dev directory:
+Running `terragrunt run --all apply` from the dev directory:
 
 1. `iam-roles`, `vpc`, `rds`, and `ecr` can run in parallel (no dependencies)
 2. `ecs-service` runs after all four complete
@@ -328,8 +328,8 @@ dependencies {
 ### Destroy Order Safety
 
 ```hcl
-# Ensure load balancer is destroyed before the target groups
-# that reference it are destroyed
+# Ensure target groups are destroyed before the load balancer
+# that they reference is destroyed
 dependencies {
   paths = ["../alb"]
 }
