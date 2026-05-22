@@ -36,10 +36,10 @@ Parameters:
     Default: istio-cluster
   KubernetesVersion:
     Type: String
-    Default: "1.29"
+    Default: "1.33"
   IstioVersion:
     Type: String
-    Default: "1.22.0"
+    Default: "1.29.2"
   NodeInstanceType:
     Type: String
     Default: m5.large
@@ -54,6 +54,8 @@ Resources:
       Name: !Ref ClusterName
       Version: !Ref KubernetesVersion
       RoleArn: !GetAtt EKSClusterRole.Arn
+      AccessConfig:
+        AuthenticationMode: API_AND_CONFIG_MAP
       ResourcesVpcConfig:
         SubnetIds:
           - !Ref PrivateSubnet1
@@ -110,6 +112,18 @@ Create a Lambda function that can execute Helm commands against the EKS cluster:
                   - sts:AssumeRole
                 Resource: "*"
 
+  HelmClusterAccess:
+    Type: AWS::EKS::AccessEntry
+    DependsOn: EKSCluster
+    Properties:
+      ClusterName: !Ref ClusterName
+      PrincipalArn: !GetAtt HelmLambdaRole.Arn
+      Type: STANDARD
+      AccessPolicies:
+        - PolicyArn: arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy
+          AccessScope:
+            Type: cluster
+
   HelmLambdaFunction:
     Type: AWS::Lambda::Function
     Properties:
@@ -119,9 +133,12 @@ Create a Lambda function that can execute Helm commands against the EKS cluster:
       Timeout: 900
       MemorySize: 512
       Role: !GetAtt HelmLambdaRole.Arn
+      Layers:
+        - !Ref HelmToolsLayer
       Environment:
         Variables:
           CLUSTER_NAME: !Ref ClusterName
+          KUBECONFIG: /tmp/kubeconfig
       Code:
         ZipFile: |
           import boto3
@@ -140,7 +157,8 @@ Create a Lambda function that can execute Helm commands against the EKS cluster:
                   subprocess.run([
                       'aws', 'eks', 'update-kubeconfig',
                       '--name', cluster_name,
-                      '--region', os.environ['AWS_REGION']
+                      '--region', os.environ['AWS_REGION'],
+                      '--kubeconfig', os.environ['KUBECONFIG']
                   ], check=True)
 
                   chart = properties['Chart']
@@ -191,6 +209,8 @@ Create a Lambda function that can execute Helm commands against the EKS cluster:
                       'Error': str(e)
                   })
 ```
+
+The `HelmToolsLayer` in this example needs to provide the `aws`, `kubectl`, and `helm` executables. The Lambda role also needs Kubernetes authorization, which the `AWS::EKS::AccessEntry` resource above grants through the EKS access API.
 
 ## Installing Istio as Custom Resources
 
@@ -272,14 +292,18 @@ If writing raw CloudFormation YAML feels painful (it is), the AWS CDK provides a
 
 ```typescript
 import * as cdk from 'aws-cdk-lib';
+import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as eks from 'aws-cdk-lib/aws-eks';
+import { KubectlV33Layer } from '@aws-cdk/lambda-layer-kubectl-v33';
+import { Construct } from 'constructs';
 
 export class IstioStack extends cdk.Stack {
-  constructor(scope: cdk.App, id: string) {
+  constructor(scope: Construct, id: string) {
     super(scope, id);
 
     const cluster = new eks.Cluster(this, 'IstioCluster', {
-      version: eks.KubernetesVersion.V1_29,
+      version: eks.KubernetesVersion.V1_33,
+      kubectlLayer: new KubectlV33Layer(this, 'KubectlLayer'),
       defaultCapacity: 3,
       defaultCapacityInstance: ec2.InstanceType.of(
         ec2.InstanceClass.M5,
@@ -292,7 +316,7 @@ export class IstioStack extends cdk.Stack {
       chart: 'base',
       repository: 'https://istio-release.storage.googleapis.com/charts',
       namespace: 'istio-system',
-      version: '1.22.0',
+      version: '1.29.2',
       values: {
         defaultRevision: 'default',
       },
@@ -303,7 +327,7 @@ export class IstioStack extends cdk.Stack {
       chart: 'istiod',
       repository: 'https://istio-release.storage.googleapis.com/charts',
       namespace: 'istio-system',
-      version: '1.22.0',
+      version: '1.29.2',
       values: {
         pilot: {
           autoscaleEnabled: true,
@@ -328,7 +352,7 @@ export class IstioStack extends cdk.Stack {
       chart: 'gateway',
       repository: 'https://istio-release.storage.googleapis.com/charts',
       namespace: 'istio-ingress',
-      version: '1.22.0',
+      version: '1.29.2',
       createNamespace: true,
       values: {
         service: {
@@ -377,7 +401,7 @@ Change parameters and update:
 aws cloudformation update-stack \
   --stack-name istio-cluster \
   --template-body file://template.yaml \
-  --parameters ParameterKey=IstioVersion,ParameterValue=1.23.0 \
+  --parameters ParameterKey=IstioVersion,ParameterValue=1.29.2 \
   --capabilities CAPABILITY_IAM
 ```
 
