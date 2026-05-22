@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Module, Migration, Refactoring, Infrastructure as Code
 
-Description: Step-by-step guide to migrating existing inline Terraform resources into reusable modules using state moves, imports, and careful refactoring techniques.
+Description: Step-by-step guide to migrating existing inline Terraform resources into reusable modules using state moves, moved blocks, and careful refactoring techniques.
 
 ---
 
@@ -151,9 +151,12 @@ module "networking" {
 
 ## Step 4: Move State Entries
 
-This is the critical step. Before running `terraform plan`, move the state entries to match the new resource addresses.
+This is the critical step. After adding the module call, initialize the working directory so Terraform installs the new local module, then move the state entries to match the new resource addresses before running `terraform plan`.
 
 ```bash
+# Initialize to register the new module
+terraform init
+
 # First, back up your state
 terraform state pull > state-backup.json
 
@@ -177,9 +180,6 @@ terraform state mv 'aws_route_table.public' 'module.networking.aws_route_table.p
 After moving state, run a plan to verify nothing will be destroyed.
 
 ```bash
-# Initialize to register the new module
-terraform init
-
 # Plan should show no changes (or only tag/name updates)
 terraform plan
 ```
@@ -258,7 +258,7 @@ moved {
 }
 ```
 
-With `moved` blocks, you just run `terraform plan` and Terraform handles the state updates automatically during the next apply. This is the preferred approach because:
+With `moved` blocks, you run `terraform init` if you added a new module source, then `terraform plan`, and Terraform handles the state updates automatically during the next apply. This is the preferred approach because:
 
 - It works with remote state and team workflows
 - It is version controlled alongside the code changes
@@ -275,11 +275,18 @@ Here is the process I follow for every migration:
 5. **Add moved blocks** for every resource being relocated
 6. **Run terraform plan** - should show zero or minimal changes
 7. **Apply** - state is updated, infrastructure untouched
-8. **Remove moved blocks** after one successful apply (optional, they are idempotent)
+8. **Keep moved blocks** in shared modules; only remove them later if this is private configuration and every workspace has already applied the migration
 
 ## Handling Outputs That Changed
 
 If other resources reference the old resource addresses, update those references too.
+
+```hcl
+# modules/networking/outputs.tf
+output "vpc_id" {
+  value = aws_vpc.this.id
+}
+```
 
 ```hcl
 # Before
