@@ -64,13 +64,13 @@ for p in 5 10 15 20 30; do
 done
 ```
 
-Typical findings:
+There is no universal sweet spot. Start with the default and adjust based on real apply results, provider retries, and throttling errors:
 
-| Provider | Sweet Spot | Notes |
-|----------|-----------|-------|
-| AWS | 15-25 | IAM and CloudFront APIs have lower limits |
-| Azure | 10-20 | Resource Manager has per-subscription limits |
-| GCP | 20-30 | Generally more lenient rate limits |
+| Provider | What to watch |
+|----------|---------------|
+| AWS | Service-specific throttling, especially for global or lower-throughput APIs |
+| Azure | Resource Manager throttling and per-subscription limits |
+| GCP | API quota errors for the specific services you manage |
 
 ## Handling Race Conditions
 
@@ -78,7 +78,7 @@ Some resources have hidden dependencies that Terraform does not know about. When
 
 ### AWS Security Group Rules
 
-Creating multiple security group rules for the same security group simultaneously can cause conflicts:
+The older `aws_security_group_rule` resource can be harder to manage reliably, especially when multiple rules target the same security group:
 
 ```hcl
 resource "aws_security_group" "app" {
@@ -86,7 +86,6 @@ resource "aws_security_group" "app" {
   vpc_id      = var.vpc_id
 }
 
-# These rules might conflict when created concurrently
 resource "aws_security_group_rule" "http" {
   security_group_id = aws_security_group.app.id
   type              = "ingress"
@@ -106,51 +105,51 @@ resource "aws_security_group_rule" "https" {
 }
 ```
 
-The fix is to use inline rules instead:
+The current AWS provider best practice is to use the VPC security group rule resources with one CIDR block per rule:
 
 ```hcl
 resource "aws_security_group" "app" {
   name_prefix = "app-"
   vpc_id      = var.vpc_id
+}
 
-  ingress {
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
+resource "aws_vpc_security_group_ingress_rule" "http" {
+  security_group_id = aws_security_group.app.id
+  cidr_ipv4         = "0.0.0.0/0"
+  from_port         = 80
+  to_port           = 80
+  ip_protocol       = "tcp"
+}
 
-  ingress {
-    from_port   = 443
-    to_port     = 443
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
+resource "aws_vpc_security_group_ingress_rule" "https" {
+  security_group_id = aws_security_group.app.id
+  cidr_ipv4         = "0.0.0.0/0"
+  from_port         = 443
+  to_port           = 443
+  ip_protocol       = "tcp"
 }
 ```
 
-Or add explicit dependencies to serialize them:
+Or, if you have a provider or API issue that requires serialization, add explicit dependencies to the affected rules:
 
 ```hcl
-resource "aws_security_group_rule" "https" {
+resource "aws_vpc_security_group_ingress_rule" "https" {
   security_group_id = aws_security_group.app.id
-  type              = "ingress"
+  cidr_ipv4         = "0.0.0.0/0"
   from_port         = 443
   to_port           = 443
-  protocol          = "tcp"
-  cidr_blocks       = ["0.0.0.0/0"]
+  ip_protocol       = "tcp"
 
   # Force this rule to be created after the HTTP rule
-  depends_on = [aws_security_group_rule.http]
+  depends_on = [aws_vpc_security_group_ingress_rule.http]
 }
 ```
 
 ### IAM Policy Attachments
 
-Attaching multiple policies to the same role concurrently can fail:
+Attaching multiple policies to the same role concurrently is normally supported, but IAM API throttling or eventual consistency can still cause intermittent failures:
 
 ```hcl
-# These might fail if created concurrently
 resource "aws_iam_role_policy_attachment" "policy_a" {
   role       = aws_iam_role.app.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess"
@@ -162,7 +161,7 @@ resource "aws_iam_role_policy_attachment" "policy_b" {
 }
 ```
 
-Chain them with dependencies:
+If you see that kind of provider or API error, chain only the affected attachments with dependencies:
 
 ```hcl
 resource "aws_iam_role_policy_attachment" "policy_b" {
@@ -279,10 +278,10 @@ When running multiple Terraform configurations that share a backend, state locki
 ```hcl
 terraform {
   backend "s3" {
-    bucket         = "terraform-state"
-    key            = "production/terraform.tfstate"
-    region         = "us-east-1"
-    dynamodb_table = "terraform-locks"
+    bucket       = "terraform-state"
+    key          = "production/terraform.tfstate"
+    region       = "us-east-1"
+    use_lockfile = true
   }
 }
 ```
@@ -290,10 +289,10 @@ terraform {
 If two pipelines try to modify the same state simultaneously, one will get a lock error:
 
 ```text
-Error: Error locking state: Error acquiring the state lock: ConditionalCheckFailedException
+Error: Error acquiring the state lock
 ```
 
-This is by design. Do not disable locking. Instead, queue your applies or use separate state files for independent resources.
+This is by design. Do not disable locking. Instead, queue your applies or use separate state files for independent resources. Older S3 backend configurations may still use DynamoDB-based locking, but that mechanism is deprecated in current Terraform.
 
 ## Summary
 
