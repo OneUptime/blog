@@ -278,9 +278,9 @@ output "scaling" {
 }
 ```
 
-## ceil vs floor vs round
+## ceil vs floor vs nearest-value rounding
 
-Here is a quick comparison of the three rounding functions:
+Here is a quick comparison of `ceil`, `floor`, and a nearest-value rounding pattern:
 
 ```hcl
 locals {
@@ -292,13 +292,13 @@ locals {
   # floor - always rounds down
   floored = floor(local.value)   # 4
 
-  # round has no built-in, but you can simulate it:
+  # round has no built-in, but for non-negative numbers you can simulate it:
   # Add 0.5 then floor, or use the formula:
   rounded = floor(local.value + 0.5)  # 4
 }
 ```
 
-The general rule: use `ceil` when you need "at least this many" (capacity planning), use `floor` when you need "at most this many" (budget constraints), and use rounding when you want the nearest value.
+The general rule: use `ceil` when you need "at least this many" (capacity planning), use `floor` when you need "at most this many" (budget constraints), and use a nearest-value rounding pattern when you want the nearest value.
 
 ## Combining ceil with max
 
