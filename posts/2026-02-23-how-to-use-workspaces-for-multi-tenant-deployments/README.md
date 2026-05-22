@@ -8,7 +8,7 @@ Description: Learn how to use Terraform workspaces to manage isolated infrastruc
 
 ---
 
-When you run a SaaS product or managed service, each customer or tenant often needs their own isolated set of infrastructure resources. Terraform workspaces provide a clean way to manage this - one workspace per tenant, one configuration, and complete isolation between tenants' infrastructure. This guide walks through the practical setup, patterns, and trade-offs.
+When you run a SaaS product or managed service, each customer or tenant often needs their own isolated set of infrastructure resources. Terraform workspaces provide a clean way to manage this - one workspace per tenant, one configuration, and separate state for each tenant. This guide walks through the practical setup, patterns, and trade-offs.
 
 ## The Multi-Tenant Workspace Model
 
@@ -83,6 +83,11 @@ variable "region" {
   type        = string
 }
 
+variable "environment" {
+  description = "Environment name for this tenant"
+  type        = string
+}
+
 variable "instance_type" {
   description = "EC2 instance type"
   type        = string
@@ -121,6 +126,12 @@ variable "backup_retention" {
   default     = 7
 }
 
+variable "deletion_protection" {
+  description = "Enable deletion protection for tenant databases"
+  type        = bool
+  default     = true
+}
+
 variable "contact_email" {
   description = "Contact email for this tenant"
   type        = string
@@ -129,6 +140,14 @@ variable "contact_email" {
 
 ```hcl
 # main.tf
+provider "aws" {
+  region = var.region
+}
+
+data "aws_availability_zones" "available" {
+  state = "available"
+}
+
 locals {
   # Use workspace name for resource naming
   name_prefix = terraform.workspace
@@ -195,7 +214,7 @@ resource "aws_db_subnet_group" "tenant" {
 resource "aws_db_instance" "tenant" {
   identifier     = "${local.name_prefix}-db"
   engine         = "postgres"
-  engine_version = "15.4"
+  engine_version = "15"
 
   instance_class    = var.db_class
   allocated_storage = var.storage_gb
@@ -207,9 +226,9 @@ resource "aws_db_instance" "tenant" {
   db_subnet_group_name   = aws_db_subnet_group.tenant.name
   vpc_security_group_ids = [aws_security_group.db.id]
 
-  multi_az            = var.instance_count > 1
+  multi_az                 = var.instance_count > 1
   backup_retention_period = var.backup_retention
-  deletion_protection = true
+  deletion_protection     = var.deletion_protection
 
   # Encrypt data at rest - important for multi-tenant
   storage_encrypted = true
@@ -230,8 +249,9 @@ resource "aws_kms_key" "tenant" {
 }
 
 resource "random_password" "db_password" {
-  length  = 32
-  special = true
+  length           = 32
+  special          = true
+  override_special = "!#$%&*()-_=+[]{}<>:?"
 }
 
 # Store credentials in Secrets Manager
@@ -334,7 +354,7 @@ fi
 terraform init
 
 # Create the workspace
-if terraform workspace list | grep -q "$WORKSPACE"; then
+if terraform workspace list | sed 's/^[* ]*//' | grep -qx "$WORKSPACE"; then
   echo "Workspace $WORKSPACE already exists - selecting it"
   terraform workspace select "$WORKSPACE"
 else
@@ -383,6 +403,7 @@ fi
 terraform workspace select "$WORKSPACE"
 
 # Create a final backup of the state
+mkdir -p backups
 terraform state pull > "backups/${TENANT_NAME}-final-$(date +%Y%m%d).json"
 
 # Disable deletion protection on resources that have it
@@ -436,4 +457,4 @@ Workspaces work well when tenants need the same general architecture with differ
 
 ## Summary
 
-Terraform workspaces provide a clean abstraction for multi-tenant infrastructure. Each tenant gets isolated state, isolated resources, and can be independently scaled, updated, or decommissioned. The combination of workspace-per-tenant with per-tenant variable files gives you both consistency and customization. For more workspace patterns, check out our post on [handling workspace naming conventions](https://oneuptime.com/blog/post/2026-02-23-how-to-handle-workspace-naming-in-terraform-workspace/view).
+Terraform workspaces provide a clean abstraction for multi-tenant infrastructure when tenants can share one backend and one set of credentials. Each tenant gets isolated state, separately named resources, and can be independently scaled, updated, or decommissioned. The combination of workspace-per-tenant with per-tenant variable files gives you both consistency and customization. For more workspace patterns, check out our post on [handling workspace naming conventions](https://oneuptime.com/blog/post/2026-02-23-how-to-handle-workspace-naming-in-terraform-workspace/view).
