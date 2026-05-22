@@ -10,6 +10,8 @@ Description: Learn how to use the Terraform TLS provider to generate private key
 
 The TLS provider in Terraform enables you to generate cryptographic keys and certificates directly within your infrastructure code. This is invaluable for development environments, internal services, and bootstrapping PKI infrastructure. Instead of generating certificates externally and importing them, you can create them as part of your Terraform workflow, ensuring they are always available when the resources that need them are deployed.
 
+Because generated private keys are stored unencrypted in Terraform state, this pattern is best suited to development, staging, and controlled bootstrapping workflows. For production deployments, generate private keys outside Terraform and distribute them securely.
+
 In this guide, we will explore the TLS provider comprehensively. We will cover generating RSA and ECDSA private keys, creating self-signed certificates, generating certificate signing requests, and building a simple certificate authority chain.
 
 ## Installing the TLS Provider
@@ -43,7 +45,7 @@ variable "aws_region" {
 
 variable "environment" {
   type    = string
-  default = "production"
+  default = "development"
 }
 
 variable "domain" {
@@ -54,7 +56,7 @@ variable "domain" {
 
 ## Generating Private Keys
 
-The TLS provider supports both RSA and ECDSA key algorithms:
+The TLS provider supports RSA, ECDSA, and ED25519 key algorithms:
 
 ```hcl
 # private-keys.tf - Generate cryptographic keys
@@ -209,8 +211,8 @@ resource "tls_self_signed_cert" "simple" {
 ## Uploading Certificates to AWS
 
 ```hcl
-# aws-upload.tf - Upload certificates to ACM and IAM
-# Upload to ACM for use with ALB, CloudFront, etc.
+# aws-upload.tf - Upload certificates to ACM and Secrets Manager
+# Upload to ACM for use with ALB, CloudFront (in us-east-1), etc.
 resource "aws_acm_certificate" "server" {
   private_key       = tls_private_key.server.private_key_pem
   certificate_body  = tls_locally_signed_cert.server.cert_pem
@@ -299,4 +301,4 @@ output "acm_certificate_arn" {
 
 ## Conclusion
 
-The TLS provider is a powerful tool for managing certificates within your Terraform infrastructure. From generating private keys to building full CA chains, it handles the entire certificate lifecycle as code. This approach is especially valuable for development and staging environments where you need certificates quickly without going through a formal PKI process. For deeper dives, see our guides on [self-signed certificates](https://oneuptime.com/blog/post/2026-02-23-how-to-generate-self-signed-certificates-with-terraform/view), [private keys](https://oneuptime.com/blog/post/2026-02-23-how-to-generate-private-keys-with-terraform/view), and [certificate signing requests](https://oneuptime.com/blog/post/2026-02-23-how-to-generate-certificate-signing-requests-with-terraform/view).
+The TLS provider is a powerful tool for generating certificates within your Terraform infrastructure. From generating private keys to building full CA chains, it handles certificate generation workflows as code. This approach is especially valuable for development and staging environments where you need certificates quickly without going through a formal PKI process. For deeper dives, see our guides on [self-signed certificates](https://oneuptime.com/blog/post/2026-02-23-how-to-generate-self-signed-certificates-with-terraform/view), [private keys](https://oneuptime.com/blog/post/2026-02-23-how-to-generate-private-keys-with-terraform/view), and [certificate signing requests](https://oneuptime.com/blog/post/2026-02-23-how-to-generate-certificate-signing-requests-with-terraform/view).
