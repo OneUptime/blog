@@ -10,11 +10,13 @@ Description: Learn how to use CDKTF constructs to build reusable, composable inf
 
 If you have been working with Terraform for a while, you know that HCL gets the job done but can feel limiting when you want to build truly reusable infrastructure components. CDK for Terraform (CDKTF) changes that by letting you use general-purpose programming languages to define your infrastructure. At the heart of CDKTF sits the concept of constructs - the fundamental building blocks for everything you create.
 
+Note: HashiCorp deprecated CDKTF on December 10, 2025 and no longer supports or maintains it. The construct patterns in this post are still useful for existing CDKTF projects, but new projects should account for that maintenance status before adopting CDKTF.
+
 In this post, we will walk through what CDKTF constructs are, how they work, and how you can use them to build clean, composable infrastructure.
 
 ## What Are Constructs in CDKTF?
 
-Constructs are the basic building blocks of every CDKTF application. They come from the AWS CDK construct library and represent a single cloud resource, a group of resources, or even an entire architecture pattern. Every resource you define in CDKTF is a construct, and you can compose constructs together to build higher-level abstractions.
+Constructs are the basic building blocks of every CDKTF application. CDKTF uses the `constructs` programming model also used by the AWS CDK, and constructs can represent a single cloud resource, a group of resources, or even an entire architecture pattern. Every resource you define in CDKTF is a construct, and you can compose constructs together to build higher-level abstractions.
 
 There are three levels of constructs:
 
@@ -34,10 +36,14 @@ npm install -g cdktf-cli
 # Initialize a new CDKTF project with TypeScript
 cdktf init --template=typescript --local
 
+# Add the AWS provider and generate local TypeScript bindings
+cdktf provider add aws --force-local
+
 # This creates a project structure like:
 # main.ts       - Your main application entry point
 # cdktf.json    - CDKTF configuration file
 # package.json  - Node.js dependencies
+# .gen/        - Generated provider bindings
 ```
 
 Your `main.ts` file will look something like this after initialization:
@@ -68,8 +74,8 @@ L1 constructs are the most basic type. They wrap a single Terraform resource dir
 ```typescript
 import { Construct } from "constructs";
 import { App, TerraformStack } from "cdktf";
-import { AwsProvider } from "@cdktf/provider-aws/lib/provider";
-import { S3Bucket } from "@cdktf/provider-aws/lib/s3-bucket";
+import { AwsProvider } from "./.gen/providers/aws/provider";
+import { S3Bucket } from "./.gen/providers/aws/s3-bucket";
 
 class MyStack extends TerraformStack {
   constructor(scope: Construct, id: string) {
@@ -96,7 +102,7 @@ new MyStack(app, "my-stack");
 app.synth();
 ```
 
-Every construct takes three arguments: the scope (its parent construct), an id (unique within the scope), and a configuration object.
+Most CDKTF resource constructs take three arguments: the scope (its parent construct), an id (unique within the scope), and a configuration object.
 
 ## Building Custom L2 Constructs
 
@@ -104,10 +110,10 @@ This is where CDKTF starts to shine. You can create custom constructs that bundl
 
 ```typescript
 import { Construct } from "constructs";
-import { S3Bucket } from "@cdktf/provider-aws/lib/s3-bucket";
-import { S3BucketVersioningA } from "@cdktf/provider-aws/lib/s3-bucket-versioning";
-import { S3BucketServerSideEncryptionConfigurationA } from "@cdktf/provider-aws/lib/s3-bucket-server-side-encryption-configuration";
-import { S3BucketPublicAccessBlock } from "@cdktf/provider-aws/lib/s3-bucket-public-access-block";
+import { S3Bucket } from "./.gen/providers/aws/s3-bucket";
+import { S3BucketVersioningA } from "./.gen/providers/aws/s3-bucket-versioning";
+import { S3BucketServerSideEncryptionConfigurationA } from "./.gen/providers/aws/s3-bucket-server-side-encryption-configuration";
+import { S3BucketPublicAccessBlock } from "./.gen/providers/aws/s3-bucket-public-access-block";
 
 // Define the configuration interface for our construct
 interface SecureBucketConfig {
@@ -179,13 +185,13 @@ console.log(dataBucket.bucket.arn);
 
 ## Building L3 Constructs for Architecture Patterns
 
-L3 constructs represent entire architecture patterns. Here is an example that creates a complete static website hosting setup:
+L3 constructs represent entire architecture patterns. Here is an example that creates a basic static website hosting setup:
 
 ```typescript
 import { Construct } from "constructs";
-import { S3Bucket } from "@cdktf/provider-aws/lib/s3-bucket";
-import { S3BucketWebsiteConfiguration } from "@cdktf/provider-aws/lib/s3-bucket-website-configuration";
-import { CloudfrontDistribution } from "@cdktf/provider-aws/lib/cloudfront-distribution";
+import { S3Bucket } from "./.gen/providers/aws/s3-bucket";
+import { S3BucketWebsiteConfiguration } from "./.gen/providers/aws/s3-bucket-website-configuration";
+import { CloudfrontDistribution } from "./.gen/providers/aws/cloudfront-distribution";
 
 interface StaticWebsiteConfig {
   domainName: string;
@@ -209,20 +215,26 @@ class StaticWebsite extends Construct {
     });
 
     // Configure the bucket for static website hosting
-    new S3BucketWebsiteConfiguration(this, "website-config", {
+    const websiteConfig = new S3BucketWebsiteConfiguration(this, "website-config", {
       bucket: this.bucket.id,
       indexDocument: { suffix: "index.html" },
       errorDocument: { key: "error.html" },
     });
 
-    // Create a CloudFront distribution in front of the bucket
+    // Create a CloudFront distribution in front of the S3 website endpoint
     this.distribution = new CloudfrontDistribution(this, "cdn", {
       enabled: true,
       defaultRootObject: "index.html",
       origin: [
         {
-          domainName: this.bucket.bucketRegionalDomainName,
+          domainName: websiteConfig.websiteEndpoint,
           originId: "s3-origin",
+          customOriginConfig: {
+            httpPort: 80,
+            httpsPort: 443,
+            originProtocolPolicy: "http-only",
+            originSslProtocols: ["TLSv1.2"],
+          },
         },
       ],
       defaultCacheBehavior: {
@@ -292,6 +304,6 @@ When building constructs, keep these principles in mind:
 
 CDKTF constructs give you the ability to build infrastructure the same way you build application code - with composition, abstraction, and reuse. Start with L1 constructs for simple resources, build L2 constructs for common patterns with sensible defaults, and create L3 constructs for complete architecture patterns.
 
-The combination of Terraform's provider ecosystem with the expressiveness of a real programming language makes CDKTF constructs one of the most powerful ways to manage infrastructure at scale. If you are already familiar with Terraform, the transition is smooth, and the benefits of using constructs will become obvious as your infrastructure grows.
+For existing CDKTF projects, the combination of Terraform's provider ecosystem with the expressiveness of a real programming language makes constructs a powerful way to manage infrastructure at scale. If you are already familiar with Terraform, the transition is smooth, and the benefits of using constructs will become obvious as your infrastructure grows.
 
 For more on infrastructure as code and DevOps practices, check out our other posts on [Terraform best practices](https://oneuptime.com/blog/post/2026-02-23-how-to-define-resources-in-cdktf/view) and [CDKTF providers](https://oneuptime.com/blog/post/2026-02-23-how-to-use-cdktf-providers/view).
