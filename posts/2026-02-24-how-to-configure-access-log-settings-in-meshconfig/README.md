@@ -121,7 +121,7 @@ Common format variables:
 Istio also supports configuring access logs through the Telemetry API, which provides more granular control:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: mesh-access-log
@@ -141,7 +141,7 @@ This example only logs requests that result in 4xx or 5xx responses. The filter 
 Apply different logging configurations per namespace:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: namespace-access-log
@@ -151,7 +151,7 @@ spec:
     - providers:
         - name: envoy
       filter:
-        expression: "response.code >= 500 || response.duration > duration('1s')"
+        expression: "response.code >= 500 || request.duration > duration('1s')"
 ```
 
 This logs only errors or slow requests in the production namespace, reducing log volume while keeping important information.
@@ -159,7 +159,7 @@ This logs only errors or slow requests in the production namespace, reducing log
 ### Per-Workload Access Logs
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: payment-api-logging
@@ -193,7 +193,7 @@ spec:
 Then reference this provider in a Telemetry resource:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: otel-access-log
@@ -215,7 +215,7 @@ Access logs include response flags that tell you what happened during request pr
 - `URX` - Request was rejected because of upstream retry limit
 - `DC` - Downstream connection termination
 - `RL` - Rate limited
-- `UAEX` - Unauthorized external service (when using REGISTRY_ONLY)
+- `UAEX` - Request denied by the external authorization service
 
 Example of using response flags for debugging:
 
@@ -238,8 +238,8 @@ Access logs can generate significant volume. In a mesh handling 10,000 requests 
 4. Sample logs by only logging a percentage of requests
 
 ```yaml
-# Only log 10% of successful requests, all errors
-apiVersion: telemetry.istio.io/v1alpha1
+# Roughly sample successful requests by downstream connection ID; log all errors
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: sampled-logging
@@ -249,7 +249,7 @@ spec:
     - providers:
         - name: envoy
       filter:
-        expression: "response.code >= 400 || request.id % 10 == 0"
+        expression: "response.code >= 400 || connection.id % uint(10) == uint(0)"
 ```
 
 Access logs are your best friend when debugging production issues. Configure them early, use JSON encoding, and leverage the Telemetry API for fine-grained control over what gets logged.
