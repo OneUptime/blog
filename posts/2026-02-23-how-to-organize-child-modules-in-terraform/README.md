@@ -121,7 +121,7 @@ Every child module should follow the same file layout. Consistency makes it easy
 #   outputs.tf    - Output declarations
 #   locals.tf     - Local values and computed expressions
 #   data.tf       - Data source lookups
-#   versions.tf   - Required provider versions (optional for child modules)
+#   versions.tf   - Required Terraform and provider requirements
 #   README.md     - Module documentation
 
 # variables.tf - Declare all inputs with descriptions and types
