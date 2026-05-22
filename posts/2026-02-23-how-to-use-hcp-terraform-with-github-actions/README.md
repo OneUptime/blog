@@ -14,10 +14,11 @@ This guide covers the different integration approaches, from the simplest setup 
 
 ## Integration Approaches
 
-There are two main ways to integrate GitHub Actions with HCP Terraform:
+There are three main ways to integrate GitHub Actions with HCP Terraform:
 
 1. **VCS-driven workflow**: HCP Terraform watches your repository directly. GitHub Actions adds extra steps (testing, linting) around the Terraform runs.
-2. **API-driven workflow**: GitHub Actions triggers everything through the HCP Terraform API or CLI. You have full control over the pipeline.
+2. **CLI-driven workflow**: GitHub Actions runs the Terraform CLI, and Terraform executes remotely in HCP Terraform.
+3. **API-driven workflow**: GitHub Actions triggers everything through the HCP Terraform API. You have full control over the pipeline.
 
 ## Approach 1: CLI-Driven with GitHub Actions
 
@@ -59,10 +60,10 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
         with:
           cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
-          terraform_version: "1.7.0"
+          terraform_version: "1.14.6"
 
       - name: Terraform Format Check
         id: fmt
@@ -144,10 +145,10 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
         with:
           cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
-          terraform_version: "1.7.0"
+          terraform_version: "1.14.6"
 
       - name: Terraform Init
         run: terraform init
@@ -295,6 +296,7 @@ jobs:
           RUN_ID="${{ steps.run.outputs.run_id }}"
           TIMEOUT=600
           ELAPSED=0
+          APPLY_REQUESTED=false
 
           while [ $ELAPSED -lt $TIMEOUT ]; do
             STATUS=$(curl -s \
@@ -313,6 +315,18 @@ jobs:
                 echo "No changes needed"
                 exit 0
                 ;;
+              "planned"|"cost_estimated"|"policy_checked"|"post_plan_completed")
+                if [ "$APPLY_REQUESTED" = false ]; then
+                  echo "Confirming apply"
+                  curl -s \
+                    --header "Authorization: Bearer $TFC_TOKEN" \
+                    --header "Content-Type: application/vnd.api+json" \
+                    --request POST \
+                    --data '{"comment":"Confirmed by GitHub Actions"}' \
+                    "https://app.terraform.io/api/v2/runs/${RUN_ID}/actions/apply"
+                  APPLY_REQUESTED=true
+                fi
+                ;;
               "errored"|"canceled"|"force_canceled"|"discarded")
                 echo "Run failed with status: $STATUS"
                 exit 1
@@ -329,7 +343,7 @@ jobs:
 
 ## Multi-Environment Pipeline
 
-Here is a pattern for deploying through environments:
+Here is a pattern for deploying through environments. For this pattern, configure the `cloud` block so `workspaces.name` is supplied by `TF_WORKSPACE` instead of hardcoding a single workspace name.
 
 ```yaml
 # .github/workflows/deploy-pipeline.yml
@@ -345,21 +359,24 @@ jobs:
   plan-staging:
     name: Plan Staging
     runs-on: ubuntu-latest
+    env:
+      TF_WORKSPACE: "app-staging"
     outputs:
       has_changes: ${{ steps.plan.outputs.exitcode }}
     steps:
       - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v4
         with:
           cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
       - run: terraform init
         working-directory: infrastructure
-        env:
-          TF_WORKSPACE: "app-staging"
       - id: plan
         run: terraform plan -detailed-exitcode -no-color
         working-directory: infrastructure
         continue-on-error: true
+      - name: Plan Status
+        if: steps.plan.outputs.exitcode == '1'
+        run: exit 1
 
   apply-staging:
     name: Apply Staging
@@ -367,37 +384,41 @@ jobs:
     if: needs.plan-staging.outputs.has_changes == '2'
     runs-on: ubuntu-latest
     environment: staging
+    env:
+      TF_WORKSPACE: "app-staging"
     steps:
       - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v4
         with:
           cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
       - run: terraform init
         working-directory: infrastructure
-        env:
-          TF_WORKSPACE: "app-staging"
       - run: terraform apply -auto-approve
         working-directory: infrastructure
 
   plan-production:
     name: Plan Production
-    needs: apply-staging
+    needs: [plan-staging, apply-staging]
+    if: always() && needs.plan-staging.result == 'success' && (needs.apply-staging.result == 'success' || needs.apply-staging.result == 'skipped')
     runs-on: ubuntu-latest
+    env:
+      TF_WORKSPACE: "app-production"
     outputs:
       has_changes: ${{ steps.plan.outputs.exitcode }}
     steps:
       - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v4
         with:
           cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
       - run: terraform init
         working-directory: infrastructure
-        env:
-          TF_WORKSPACE: "app-production"
       - id: plan
         run: terraform plan -detailed-exitcode -no-color
         working-directory: infrastructure
         continue-on-error: true
+      - name: Plan Status
+        if: steps.plan.outputs.exitcode == '1'
+        run: exit 1
 
   apply-production:
     name: Apply Production
@@ -405,15 +426,15 @@ jobs:
     if: needs.plan-production.outputs.has_changes == '2'
     runs-on: ubuntu-latest
     environment: production  # Requires manual approval
+    env:
+      TF_WORKSPACE: "app-production"
     steps:
       - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v4
         with:
           cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
       - run: terraform init
         working-directory: infrastructure
-        env:
-          TF_WORKSPACE: "app-production"
       - run: terraform apply -auto-approve
         working-directory: infrastructure
 ```
@@ -425,7 +446,7 @@ HashiCorp provides an official GitHub Action for triggering runs:
 ```yaml
 # Using the official action
 - name: Upload Configuration
-  uses: hashicorp/tfc-workflows-github/actions/upload-configuration@v1.3.0
+  uses: hashicorp/tfc-workflows-github/actions/upload-configuration@v1.3.2
   id: upload
   with:
     workspace: app-production
@@ -433,7 +454,7 @@ HashiCorp provides an official GitHub Action for triggering runs:
     speculative: false
 
 - name: Create Run
-  uses: hashicorp/tfc-workflows-github/actions/create-run@v1.3.0
+  uses: hashicorp/tfc-workflows-github/actions/create-run@v1.3.2
   id: run
   with:
     workspace: app-production
@@ -441,8 +462,7 @@ HashiCorp provides an official GitHub Action for triggering runs:
     message: "Triggered by GitHub Actions run ${{ github.run_id }}"
 
 - name: Apply Run
-  uses: hashicorp/tfc-workflows-github/actions/apply-run@v1.3.0
-  if: ${{ steps.run.outputs.has_changes == 'true' }}
+  uses: hashicorp/tfc-workflows-github/actions/apply-run@v1.3.2
   with:
     run: ${{ steps.run.outputs.run_id }}
     comment: "Confirmed by GitHub Actions"
@@ -487,7 +507,9 @@ resource "tfe_team_access" "ci_production" {
     runs              = "apply"
     variables         = "read"
     state_versions    = "none"
+    sentinel_mocks    = "none"
     workspace_locking = false
+    run_tasks         = false
   }
 }
 ```
