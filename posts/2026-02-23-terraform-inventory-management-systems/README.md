@@ -41,11 +41,15 @@ resource "aws_instance" "application" {
   }
 }
 
-resource "aws_rds_instance" "database" {
-  identifier     = "app-database-${var.environment}"
-  engine         = "postgres"
-  engine_version = "15.4"
-  instance_class = "db.r6g.large"
+resource "aws_db_instance" "database" {
+  identifier                  = "app-database-${var.environment}"
+  allocated_storage           = 100
+  engine                      = "postgres"
+  engine_version              = "15"
+  instance_class              = "db.r6g.large"
+  username                    = var.db_username
+  manage_master_user_password = true
+  skip_final_snapshot         = true
 
   tags = {
     Name          = "app-database-${var.environment}"
@@ -71,15 +75,15 @@ output "inventory_records" {
       state       = instance.instance_state
     }],
     [{
-      asset_id    = aws_rds_instance.database.id
-      asset_name  = aws_rds_instance.database.identifier
+      asset_id    = aws_db_instance.database.id
+      asset_name  = aws_db_instance.database.identifier
       asset_type  = "RDS Instance"
       category    = "database"
       region      = var.aws_region
       cost_center = var.cost_center
       department  = var.department
-      endpoint    = aws_rds_instance.database.endpoint
-      state       = aws_rds_instance.database.status
+      endpoint    = aws_db_instance.database.endpoint
+      state       = aws_db_instance.database.status
     }]
   )
 }
@@ -96,7 +100,7 @@ A synchronization script reads Terraform state and pushes structured records to 
 import json
 import subprocess
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 
 class InventorySync:
     """Synchronize Terraform state with an inventory management system."""
@@ -104,7 +108,7 @@ class InventorySync:
     # Map Terraform resource types to inventory categories
     RESOURCE_CATEGORY_MAP = {
         "aws_instance": "compute",
-        "aws_rds_instance": "database",
+        "aws_db_instance": "database",
         "aws_s3_bucket": "storage",
         "aws_lambda_function": "serverless",
         "aws_ecs_service": "container",
@@ -157,7 +161,7 @@ class InventorySync:
             "department": tags.get("Department", ""),
             "criticality": tags.get("Criticality", "standard"),
             "managed_by": "terraform",
-            "last_synced": datetime.utcnow().isoformat(),
+            "last_synced": datetime.now(timezone.utc).isoformat(),
             "attributes": values
         }
 
@@ -239,7 +243,7 @@ resource "tfe_workspace_run_task" "inventory_sync" {
   workspace_id      = tfe_workspace.production.id
   task_id           = tfe_organization_run_task.inventory_sync.id
   enforcement_level = "advisory"
-  stage             = "post_apply"
+  stages            = ["post_apply"]
 }
 ```
 
@@ -250,6 +254,7 @@ The webhook endpoint on your inventory system receives the run data and processe
 from flask import Flask, request, jsonify
 import hmac
 import hashlib
+import requests
 
 app = Flask(__name__)
 
@@ -263,7 +268,7 @@ def handle_terraform_webhook():
         WEBHOOK_SECRET.encode(), payload, hashlib.sha512
     ).hexdigest()
 
-    if not hmac.compare_digest(signature, expected):
+    if not signature or not hmac.compare_digest(signature, expected):
         return jsonify({"error": "Invalid signature"}), 401
 
     data = request.json
@@ -276,16 +281,25 @@ def handle_terraform_webhook():
         # and sync to inventory
         sync_workspace_inventory(workspace, run_id)
 
-    # Return success callback
-    return jsonify({
-        "data": {
-            "type": "task-results",
-            "attributes": {
-                "status": "passed",
-                "message": "Inventory sync completed"
+    # Send the run task result to the callback URL Terraform provides.
+    requests.patch(
+        data["task_result_callback_url"],
+        headers={
+            "Authorization": f"Bearer {data['access_token']}",
+            "Content-Type": "application/vnd.api+json"
+        },
+        json={
+            "data": {
+                "type": "task-results",
+                "attributes": {
+                    "status": "passed",
+                    "message": "Inventory sync completed"
+                }
             }
         }
-    })
+    )
+
+    return jsonify({"ok": True})
 ```
 
 ## Multi-Cloud Inventory Aggregation
@@ -306,8 +320,8 @@ variable "attributes" {
 }
 
 # Write inventory record to a shared backend
-resource "null_resource" "inventory_record" {
-  triggers = {
+resource "terraform_data" "inventory_record" {
+  triggers_replace = {
     asset_name = var.asset_name
     asset_type = var.asset_type
     attributes = jsonencode(var.attributes)
@@ -369,9 +383,11 @@ aws ec2 describe-instances \
   --output json > /tmp/aws_instances.json
 
 # Get all instances from Terraform state
-terraform state list | grep "aws_instance" | while read resource; do
-  terraform state show -json "$resource" | jq '{ID: .values.id, Name: .values.tags.Name}'
-done > /tmp/terraform_instances.json
+terraform show -json | jq -c '
+  .. | objects | select(has("resources")) | .resources[]?
+  | select(.type == "aws_instance")
+  | {ID: .values.id, Name: .values.tags.Name}
+' > /tmp/terraform_instances.json
 
 # Find instances in AWS but not in Terraform state
 python3 -c "
