@@ -18,7 +18,7 @@ The `null_resource` has two main limitations:
 
 2. **No input/output tracking.** The only way to pass data through a `null_resource` is via `triggers`, which are strings only and do not participate in Terraform's type system.
 
-`terraform_data` fixes both. It is a built-in managed resource type that requires no provider declaration. It has `input` and `output` attributes that track arbitrary typed values and trigger replacement when they change.
+`terraform_data` fixes both. It is a built-in managed resource type that requires no provider declaration. It has `input` and `output` attributes that track arbitrary typed values, plus `triggers_replace` for forcing replacement when values change.
 
 ## Basic Syntax
 
@@ -62,6 +62,7 @@ resource "null_resource" "deploy" {
 ```hcl
 resource "terraform_data" "deploy" {
   input = var.image_tag
+  triggers_replace = var.image_tag
 
   provisioner "local-exec" {
     command = "kubectl set image deployment/app app=${var.ecr_repo}:${var.image_tag}"
@@ -73,7 +74,7 @@ Cleaner. No provider requirement. And the `input` can be any type, not just stri
 
 ## The input and output Attributes
 
-The `input` attribute stores a value. When the value changes, the resource is replaced (its provisioners run again). The `output` attribute provides the stored value for other resources to reference.
+The `input` attribute stores a value. When the value changes, Terraform updates the stored value in place. The `output` attribute provides the stored value for other resources to reference. If you need a change to replace the `terraform_data` resource so its provisioners run again, use `triggers_replace`.
 
 ```hcl
 resource "terraform_data" "config" {
@@ -100,11 +101,11 @@ resource "aws_instance" "app" {
 }
 ```
 
-When any of the input values change, the `terraform_data` resource is replaced. Resources that reference its output will see the new values.
+When any of the input values change, the `terraform_data` resource is updated in place. Resources that reference its output will see the new values.
 
 ## The triggers_replace Argument
 
-In addition to `input`, `terraform_data` has a `triggers_replace` argument. While `input` changes cause the resource to be replaced (and its stored values update), `triggers_replace` lets you trigger replacement based on external values without storing them.
+In addition to `input`, `terraform_data` has a `triggers_replace` argument. While `input` changes update the stored values in place, `triggers_replace` lets you trigger replacement based on external values without exposing them through `output`.
 
 ```hcl
 resource "terraform_data" "restart_service" {
@@ -122,7 +123,7 @@ resource "terraform_data" "restart_service" {
 
 The difference between `input` and `triggers_replace`:
 - `input` stores a value that can be referenced via `output`
-- `triggers_replace` only triggers replacement - the values are not stored or accessible
+- `triggers_replace` stores values in state for replacement tracking, but does not make them accessible through `output`
 
 ## Use Cases
 
@@ -145,13 +146,13 @@ resource "aws_instance" "app" {
 }
 ```
 
-When `var.config_version` changes, the `terraform_data` resource is replaced, which triggers the instance replacement.
+When `var.config_version` changes, the `terraform_data` resource plans an update, which triggers the instance replacement.
 
 ### Running Scripts on Configuration Changes
 
 ```hcl
 resource "terraform_data" "apply_config" {
-  input = md5(file("${path.module}/config/app.yaml"))
+  triggers_replace = filemd5("${path.module}/config/app.yaml")
 
   provisioner "local-exec" {
     command = <<-EOT
@@ -190,7 +191,7 @@ output "network_config" {
 
 ```hcl
 resource "terraform_data" "db_migration" {
-  input = md5(join("", [
+  triggers_replace = md5(join("", [
     for f in fileset("${path.module}/migrations", "*.sql") :
     filemd5("${path.module}/migrations/${f}")
   ]))
@@ -237,8 +238,8 @@ Notice how destruction-time provisioners can reference `self.output` instead of 
 
 ```hcl
 resource "terraform_data" "initial_setup" {
-  # This input never changes, so the provisioner runs only once
-  input = "v1"
+  # This trigger never changes, so the provisioner runs only once
+  triggers_replace = "v1"
 
   provisioner "local-exec" {
     command = <<-EOT
@@ -252,7 +253,7 @@ resource "terraform_data" "initial_setup" {
 }
 ```
 
-Since the input is a static string `"v1"`, the provisioner runs only on the first apply. To re-run it, change the input to `"v2"`.
+Since the trigger is a static string `"v1"`, the provisioner runs only on the first apply. To re-run it, change the trigger to `"v2"`.
 
 ## Migration from null_resource
 
@@ -264,6 +265,8 @@ Simply replace the `null_resource` with `terraform_data` in your code. Terraform
 
 ### Option 2: Use moved Blocks
 
+Terraform 1.9 and later support `moved` blocks from `null_resource` to `terraform_data`.
+
 ```hcl
 # Old code (remove this)
 # resource "null_resource" "deploy" {
@@ -274,17 +277,20 @@ Simply replace the `null_resource` with `terraform_data` in your code. Terraform
 # New code
 resource "terraform_data" "deploy" {
   input = var.image_tag
+  triggers_replace = var.image_tag
 
   provisioner "local-exec" {
     command = "kubectl set image deployment/app app=${var.ecr_repo}:${var.image_tag}"
   }
 }
 
-# Note: moved blocks between different resource types are not supported,
-# so you will need to use terraform state mv or accept the recreate
+moved {
+  from = null_resource.deploy
+  to   = terraform_data.deploy
+}
 ```
 
-Since `moved` blocks do not support cross-type moves, you will need to either accept the recreate or use `terraform state rm` and `terraform import` to manually migrate the state.
+On Terraform versions before 1.9, you will need to either accept the recreate or manually adjust state.
 
 ## When to Still Use null_resource
 
