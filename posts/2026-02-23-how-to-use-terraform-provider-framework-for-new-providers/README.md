@@ -106,6 +106,7 @@ import (
     "os"
 
     "github.com/hashicorp/terraform-plugin-framework/datasource"
+    "github.com/hashicorp/terraform-plugin-framework/path"
     "github.com/hashicorp/terraform-plugin-framework/provider"
     "github.com/hashicorp/terraform-plugin-framework/provider/schema"
     "github.com/hashicorp/terraform-plugin-framework/resource"
@@ -163,6 +164,28 @@ func (p *ExampleProvider) Schema(ctx context.Context, req provider.SchemaRequest
 func (p *ExampleProvider) Configure(ctx context.Context, req provider.ConfigureRequest, resp *provider.ConfigureResponse) {
     var config ExampleProviderModel
     resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
+    if resp.Diagnostics.HasError() {
+        return
+    }
+
+    if config.APIURL.IsUnknown() {
+        resp.Diagnostics.AddAttributeError(
+            path.Root("api_url"),
+            "Unknown API URL",
+            "The provider cannot create the API client because the API URL is unknown. "+
+                "Set the value directly in the configuration or use the EXAMPLE_API_URL environment variable.",
+        )
+    }
+
+    if config.APIKey.IsUnknown() {
+        resp.Diagnostics.AddAttributeError(
+            path.Root("api_key"),
+            "Unknown API Key",
+            "The provider cannot create the API client because the API key is unknown. "+
+                "Set the value directly in the configuration or use the EXAMPLE_API_KEY environment variable.",
+        )
+    }
+
     if resp.Diagnostics.HasError() {
         return
     }
@@ -225,8 +248,8 @@ package provider
 
 import (
     "context"
-    "fmt"
 
+    "github.com/hashicorp/terraform-plugin-framework/path"
     "github.com/hashicorp/terraform-plugin-framework/resource"
     "github.com/hashicorp/terraform-plugin-framework/resource/schema"
     "github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
