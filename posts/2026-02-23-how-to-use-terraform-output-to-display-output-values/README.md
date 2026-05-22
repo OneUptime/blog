@@ -70,7 +70,8 @@ The `-raw` flag is particularly useful when piping output to other commands:
 ssh ec2-user@$(terraform output -raw public_ip)
 
 # Use the database endpoint in a connection command
-psql -h $(terraform output -raw database_endpoint) -U admin -d mydb
+DB_ENDPOINT=$(terraform output -raw database_endpoint)
+psql -h ${DB_ENDPOINT%:*} -p ${DB_ENDPOINT##*:} -U admin -d mydb
 ```
 
 ## JSON Output
@@ -388,18 +389,18 @@ This validates that the output value makes sense before displaying it.
 If the underlying resource attributes have changed (e.g., an EC2 instance got a new public IP after a reboot), you need to refresh the state:
 
 ```bash
-# Refresh state to get current values
-terraform refresh
+# Refresh-only apply (updates state without changing resources)
+terraform apply -refresh-only
 
 # Then check the updated outputs
 terraform output
 ```
 
-Or use `terraform apply -refresh-only` for a safer approach:
+For older Terraform versions that do not support refresh-only mode, use `terraform refresh`:
 
 ```bash
-# Refresh-only apply (updates state without changing resources)
-terraform apply -refresh-only
+# Refresh state to get current values
+terraform refresh
 ```
 
 ## Best Practices
@@ -414,6 +415,7 @@ terraform apply -refresh-only
 ```hcl
 # Good output with all best practices
 output "api_url" {
+  type        = string
   value       = "https://${aws_lb.api.dns_name}"
   description = "The URL for the API load balancer. Use this to configure client applications."
   sensitive   = false
