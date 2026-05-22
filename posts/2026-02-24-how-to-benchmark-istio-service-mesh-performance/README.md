@@ -100,15 +100,53 @@ spec:
           limits:
             cpu: "2"
             memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bench-server
+  namespace: bench-with-mesh
+spec:
+  ports:
+  - name: http
+    port: 8080
+  selector:
+    app: bench-server
 ```
 
 ## Use Fortio for Load Testing
 
-Fortio is the load testing tool developed by the Istio team specifically for mesh benchmarking. It runs inside the cluster, which avoids measuring ingress overhead.
+Fortio started as Istio's load testing tool and is commonly used for mesh benchmarking. It runs inside the cluster, which avoids measuring ingress overhead.
 
-Deploy the Fortio client:
+Deploy the Fortio clients:
 
 ```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bench-client
+  namespace: bench-no-mesh
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bench-client
+  template:
+    metadata:
+      labels:
+        app: bench-client
+    spec:
+      containers:
+      - name: fortio
+        image: fortio/fortio:latest
+        resources:
+          requests:
+            cpu: "2"
+            memory: 512Mi
+          limits:
+            cpu: "4"
+            memory: 1Gi
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -212,7 +250,7 @@ for c in 1 2 4 8 16 32 64 128; do
   echo "=== Concurrency: $c ==="
   kubectl exec deploy/bench-client -n bench-with-mesh -- fortio load \
     -c $c -qps 0 -t 30s \
-    http://bench-server.bench-with-mesh:8080/echo 2>&1 | grep -E "target|Sockets|qps|p50|p99"
+    http://bench-server.bench-with-mesh:8080/echo 2>&1 | grep -E "target|Sockets|qps|50%|99%"
 done
 ```
 
@@ -222,7 +260,7 @@ To isolate the mTLS overhead, test with mTLS disabled and enabled:
 
 ```yaml
 # Disable mTLS for the benchmark namespace
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: disable-mtls
@@ -235,7 +273,7 @@ spec:
 Run the same benchmark with mTLS disabled and compare. Re-enable mTLS after:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: strict-mtls
@@ -250,8 +288,13 @@ spec:
 For more detailed latency analysis, use nighthawk (Envoy's own load generator):
 
 ```bash
-# Run nighthawk from inside the mesh
-kubectl exec -it deploy/bench-client -n bench-with-mesh -- nighthawk_client \
+# Run nighthawk from inside the mesh using an image that contains nighthawk_client
+kubectl run nighthawk-client -n bench-with-mesh \
+  --image=layer5/getnighthawk:v1.0.1 \
+  --restart=Never \
+  -- sleep 3600
+
+kubectl exec -it pod/nighthawk-client -n bench-with-mesh -- nighthawk_client \
   --concurrency 4 \
   --rps 1000 \
   --duration 60 \
@@ -263,7 +306,7 @@ Nighthawk provides more detailed latency histograms and can detect latency bimod
 
 ## Benchmark Tips
 
-**Warm up first**: Run a short load test before the real benchmark to warm up connection pools and JIT compilation:
+**Warm up first**: Run a short load test before the real benchmark to warm up connection pools and caches:
 
 ```bash
 kubectl exec deploy/bench-client -n bench-with-mesh -- fortio load -c 8 -qps 0 -t 10s http://bench-server:8080/echo
@@ -276,7 +319,8 @@ kubectl exec deploy/bench-client -n bench-with-mesh -- fortio load -c 8 -qps 0 -
 **Check for throttling**: Make sure neither the application container nor the sidecar is being CPU throttled during the test.
 
 ```bash
-kubectl exec deploy/bench-server -n bench-with-mesh -c istio-proxy -- cat /sys/fs/cgroup/cpu/cpu.stat
+kubectl exec deploy/bench-server -n bench-with-mesh -c istio-proxy -- \
+  sh -c 'cat /sys/fs/cgroup/cpu.stat 2>/dev/null || cat /sys/fs/cgroup/cpu,cpuacct/cpu.stat'
 ```
 
 **Record the environment**: Document the Istio version, Envoy version, Kubernetes version, node type, and any custom configuration. Benchmark results are meaningless without context.
