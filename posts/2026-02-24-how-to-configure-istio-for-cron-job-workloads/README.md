@@ -8,7 +8,7 @@ Description: A hands-on guide to configuring Istio for Kubernetes CronJob worklo
 
 ---
 
-CronJobs on Kubernetes create pods on a schedule, run a task, and then the pods should go away. That simple lifecycle gets complicated when Istio injects a sidecar into the pod. The sidecar does not know when your job is done, so it keeps running and the pod never completes. This is the same fundamental issue as regular Jobs, but CronJobs add extra wrinkles around scheduling, concurrency, and cleanup.
+CronJobs on Kubernetes create Jobs on a schedule, and those Jobs create pods that run a task and then should go away. That simple lifecycle gets complicated when Istio injects a sidecar into the pod. The sidecar does not know when your job is done, so it keeps running and the pod never completes. This is the same fundamental issue as regular Jobs, but CronJobs add extra wrinkles around scheduling, concurrency, and cleanup.
 
 This guide covers everything you need to know to run CronJobs reliably with Istio.
 
@@ -16,7 +16,7 @@ This guide covers everything you need to know to run CronJobs reliably with Isti
 
 When Istio injects the Envoy sidecar into a CronJob pod, you get this sequence:
 
-1. Cron trigger fires, Kubernetes creates a Pod
+1. Cron trigger fires, Kubernetes creates a Job, and the Job creates a Pod
 2. Istio injects the sidecar container
 3. Both the sidecar and your job container start
 4. Your job runs and exits
@@ -81,7 +81,7 @@ spec:
       backoffLimit: 2
 ```
 
-There are a few things to note here. The `holdApplicationUntilProxyStarts` annotation makes Kubernetes wait for the sidecar to be ready before starting your container. But the curl check in the script provides an extra safety net. The `activeDeadlineSeconds` on the Job spec acts as a hard timeout so pods cannot run forever even if something goes wrong.
+There are a few things to note here. The `holdApplicationUntilProxyStarts` annotation tells Istio's injection logic to hold the application container until the sidecar is ready. But the curl check in the script provides an extra safety net. The `activeDeadlineSeconds` on the Job spec acts as a hard timeout so pods cannot run forever even if something goes wrong.
 
 ## Setting Up the Namespace
 
@@ -125,7 +125,7 @@ The `concurrencyPolicy` field matters more when using Istio because stuck pods c
 - `Replace`: Kills the existing pod and starts a new one. This works better with Istio since it forces cleanup of stuck pods.
 - `Allow`: Lets multiple pods run concurrently. Pods can pile up if sidecars are not shutting down.
 
-For most use cases with Istio, `Replace` is the safest choice:
+For jobs where it is safer to abandon a stale run than skip future runs, `Replace` is a useful choice:
 
 ```yaml
 apiVersion: batch/v1
@@ -155,14 +155,16 @@ spec:
             - -c
             - |
               /app/sync-data
+              EXIT_CODE=$?
               curl -sf -XPOST http://localhost:15020/quitquitquit
+              exit $EXIT_CODE
           restartPolicy: Never
       backoffLimit: 1
 ```
 
 ## CronJob Calling Internal Services
 
-When your CronJob needs to call services inside the mesh, configure the necessary VirtualService and DestinationRule:
+When your CronJob needs specific routing behavior, such as retries or timeouts, configure a VirtualService:
 
 ```yaml
 apiVersion: networking.istio.io/v1beta1
@@ -186,7 +188,7 @@ spec:
 
 ## CronJob Calling External Services
 
-Register external services so the sidecar allows the traffic:
+If your mesh uses `REGISTRY_ONLY` outbound traffic policy, register external services so the sidecar allows the traffic:
 
 ```yaml
 apiVersion: networking.istio.io/v1beta1
@@ -207,7 +209,7 @@ spec:
 
 ## Restricting CronJob Network Access
 
-Lock down what your CronJobs can reach:
+Limit the sidecar configuration for what your CronJobs can reach:
 
 ```yaml
 apiVersion: networking.istio.io/v1beta1
@@ -259,7 +261,9 @@ spec:
             - -c
             - |
               /app/generate-report
+              EXIT_CODE=$?
               curl -sf -XPOST http://localhost:15020/quitquitquit
+              exit $EXIT_CODE
           restartPolicy: Never
       backoffLimit: 1
 ```
@@ -276,7 +280,8 @@ kubectl get pods -n scheduled-jobs --field-selector=status.phase=Running -o json
 
 # Check Istio metrics for CronJob traffic
 kubectl exec -n istio-system deploy/prometheus -- \
-  promtool query instant 'sum(rate(istio_requests_total{source_workload_namespace="scheduled-jobs"}[1h])) by (source_workload, destination_service)'
+  promtool query instant http://localhost:9090 \
+  'sum(rate(istio_requests_total{source_workload_namespace="scheduled-jobs"}[1h])) by (source_workload, destination_service)'
 ```
 
 ## Cleaning Up Stuck Pods
@@ -285,20 +290,26 @@ If you have existing stuck CronJob pods, clean them up:
 
 ```bash
 # Find and delete stuck CronJob pods where the main container has exited
-kubectl get pods -n scheduled-jobs --field-selector=status.phase=Running -o jsonpath='{.items[*].metadata.name}' | \
-  xargs -I {} kubectl delete pod {} -n scheduled-jobs --grace-period=30
+kubectl get pods -n scheduled-jobs --field-selector=status.phase=Running -o json | \
+  jq -r '.items[]
+    | select(.metadata.ownerReferences[]?.kind == "Job")
+    | select(any(.status.containerStatuses[]?; .name != "istio-proxy" and .state.terminated != null))
+    | .metadata.name' | \
+  while read -r pod; do
+    kubectl delete pod "$pod" -n scheduled-jobs --grace-period=30
+  done
 ```
 
-## Using Native Sidecar Containers (Istio 1.22+)
+## Using Native Sidecar Containers (Kubernetes 1.29+)
 
-If your cluster supports Kubernetes 1.29+ and Istio 1.22+, native sidecar containers solve the lifecycle problem automatically:
+If your cluster supports Kubernetes 1.29+ and your Istio version supports native sidecars, native sidecar containers solve the lifecycle problem automatically. In current Istio releases, `ENABLE_NATIVE_SIDECARS` defaults to `auto`; on older supported releases you may need to enable it explicitly:
 
 ```bash
 istioctl install --set values.pilot.env.ENABLE_NATIVE_SIDECARS=true
 ```
 
-With native sidecars enabled, the Envoy proxy is registered as an init container with `restartPolicy: Always`. Kubernetes handles stopping it when the main container exits, so you do not need the `quitquitquit` workaround.
+With native sidecars enabled, the Envoy proxy is registered as an init container with `restartPolicy: Always`. Kubernetes does not let that sidecar block Job completion after the main container exits, so you do not need the `quitquitquit` workaround.
 
 ## Summary
 
-Running CronJobs with Istio requires handling the sidecar shutdown properly, using `concurrencyPolicy: Replace` as a safety net, and setting `activeDeadlineSeconds` to prevent runaway pods. The `/quitquitquit` endpoint is the most portable solution, while native sidecar containers in newer Istio versions provide a cleaner fix. Always include the `holdApplicationUntilProxyStarts` annotation so your job does not try to make network calls before the proxy is ready.
+Running CronJobs with Istio requires handling the sidecar shutdown properly, choosing a `concurrencyPolicy` that matches the job's safety requirements, and setting `activeDeadlineSeconds` to prevent runaway pods. The `/quitquitquit` endpoint is the most portable solution, while native sidecar containers in newer Kubernetes and Istio versions provide a cleaner fix. Include the `holdApplicationUntilProxyStarts` annotation when your job needs mesh traffic as soon as it starts so it does not try to make network calls before the proxy is ready.
