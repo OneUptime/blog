@@ -69,7 +69,7 @@ resource "aws_lambda_function" "processor" {
 
 # You can also verify the hash independently
 output "code_sha256" {
-  value = sha256(file(data.archive_file.lambda.output_path))
+  value = data.archive_file.lambda.output_sha256
 }
 ```
 
@@ -124,7 +124,7 @@ resource "null_resource" "deploy_nginx_config" {
 }
 ```
 
-### Generating Deterministic UUIDs from Content
+### Generating Deterministic IDs from Content
 
 When you need stable, unique identifiers that are derived from content:
 
@@ -132,7 +132,7 @@ When you need stable, unique identifiers that are derived from content:
 locals {
   services = ["api", "web", "worker", "scheduler"]
 
-  # Generate a unique but deterministic ID for each service
+  # Generate a unique but deterministic hex ID for each service
   service_ids = {
     for svc in local.services :
     svc => substr(sha256("${var.project}-${var.environment}-${svc}"), 0, 16)
@@ -184,9 +184,9 @@ resource "aws_ssm_parameter" "infra_version" {
 }
 ```
 
-### Secure Token Generation
+### Deterministic Non-Critical Secret Values
 
-While Terraform is not the ideal place to generate security tokens, you can create deterministic tokens for non-critical uses:
+While Terraform is not the ideal place to generate security tokens, you can create deterministic values for non-critical uses. Remember that values managed with Terraform can be stored in state, including SSM `SecureString` values when using the `value` argument:
 
 ```hcl
 # Generate a webhook verification token from known inputs
@@ -252,18 +252,18 @@ resource "aws_ecs_task_definition" "app" {
 As with the other hash functions, Terraform provides a file-specific variant:
 
 ```hcl
-# Reading the file and hashing it in two steps
+# Reading a UTF-8 text file and hashing it in two steps
 output "two_step" {
-  value = sha256(file("${path.module}/data.bin"))
+  value = sha256(file("${path.module}/example.txt"))
 }
 
-# Hashing the file directly in one step
+# Hashing a file's raw bytes directly in one step
 output "one_step" {
   value = filesha256("${path.module}/data.bin")
 }
 ```
 
-Use `filesha256` when you only need the hash. It is more memory-efficient for large files.
+Use `filesha256` when you only need the hash, especially for binary files. The `file` function interprets file contents as UTF-8 text, so `sha256(file(...))` is only appropriate for text files.
 
 ## Comparing Hash Output Lengths
 
@@ -280,7 +280,7 @@ locals {
 }
 ```
 
-SHA-256 hits a sweet spot: long enough to be effectively collision-free, short enough to use in resource names and tags without truncation issues.
+SHA-256 hits a sweet spot: long enough to be effectively collision-resistant, compact enough for tags and for resource names when the target service's length limits allow it.
 
 ## Using sha256 in Validation
 
