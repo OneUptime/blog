@@ -342,6 +342,7 @@ Forward audit trail data to your SIEM for correlation with other security events
 # Forward Terraform audit events to SIEM
 
 import json
+import os
 import requests
 
 def forward_to_siem(audit_event):
@@ -369,7 +370,7 @@ def forward_to_siem(audit_event):
     requests.post(
         "https://siem.internal/api/events",
         json=siem_event,
-        headers={"Authorization": "Bearer ${SIEM_TOKEN}"}
+        headers={"Authorization": f"Bearer {os.environ['SIEM_TOKEN']}"}
     )
 
 def calculate_severity(event):
