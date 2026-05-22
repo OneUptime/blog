@@ -34,18 +34,18 @@ For a more precise picture, query Prometheus:
 
 ```bash
 # CPU: actual vs requested
-curl -s "http://localhost:9090/api/v1/query?query=
-  avg(rate(container_cpu_usage_seconds_total{container='istio-proxy'}[1h]))
+curl -sG "http://localhost:9090/api/v1/query" --data-urlencode 'query=
+  sum(rate(container_cpu_usage_seconds_total{container="istio-proxy"}[1h]))
   /
-  avg(kube_pod_container_resource_requests{container='istio-proxy',resource='cpu'})
-" | jq '.data.result[0].value[1]'
+  sum(kube_pod_container_resource_requests{container="istio-proxy",resource="cpu"})
+' | jq '.data.result[0].value[1]'
 
 # Memory: actual vs requested
-curl -s "http://localhost:9090/api/v1/query?query=
-  avg(container_memory_working_set_bytes{container='istio-proxy'})
+curl -sG "http://localhost:9090/api/v1/query" --data-urlencode 'query=
+  sum(container_memory_working_set_bytes{container="istio-proxy"})
   /
-  avg(kube_pod_container_resource_requests{container='istio-proxy',resource='memory'})
-" | jq '.data.result[0].value[1]'
+  sum(kube_pod_container_resource_requests{container="istio-proxy",resource="memory"})
+' | jq '.data.result[0].value[1]'
 ```
 
 If these ratios are below 0.3 (30%), you are over-allocating by at least 70%.
@@ -73,14 +73,14 @@ Gather at least one week of usage data before adjusting. Look at P95 values, not
 
 ```bash
 # P95 CPU usage per workload's sidecar
-curl -s "http://localhost:9090/api/v1/query?query=
-  quantile_over_time(0.95, rate(container_cpu_usage_seconds_total{container='istio-proxy'}[5m])[7d:5m])
-" | jq -r '.data.result[] | "\(.metric.pod): \(.value[1])"' | sort -t: -k2 -rn | head -20
+curl -sG "http://localhost:9090/api/v1/query" --data-urlencode 'query=
+  quantile_over_time(0.95, (sum by (namespace, pod) (rate(container_cpu_usage_seconds_total{container="istio-proxy"}[5m])))[7d:5m])
+' | jq -r '.data.result[] | "\(.metric.namespace)/\(.metric.pod): \(.value[1])"' | sort -t: -k2 -rn | head -20
 
 # P95 memory usage per workload's sidecar
-curl -s "http://localhost:9090/api/v1/query?query=
-  quantile_over_time(0.95, container_memory_working_set_bytes{container='istio-proxy'}[7d:5m])
-" | jq -r '.data.result[] | "\(.metric.pod): \((.value[1] | tonumber / 1048576 | round))Mi"' | sort -t: -k2 -rn | head -20
+curl -sG "http://localhost:9090/api/v1/query" --data-urlencode 'query=
+  quantile_over_time(0.95, (sum by (namespace, pod) (container_memory_working_set_bytes{container="istio-proxy"}))[7d:5m])
+' | jq -r '.data.result[] | "\(.metric.namespace)/\(.metric.pod): \((.value[1] | tonumber / 1048576 | round))Mi"' | sort -t: -k2 -rn | head -20
 ```
 
 Set requests to slightly above the P95 value and limits to 2-3x the P95:
@@ -153,7 +153,7 @@ spec:
 
 ## Reduce Configuration Size with Sidecar Resources
 
-A major contributor to sidecar memory usage is the configuration data. Every proxy gets routes for every service in the mesh by default. Use Sidecar resources to limit the scope:
+A major contributor to sidecar memory usage is the configuration data. By default, Istio programs sidecar proxies with the configuration needed to reach workloads across the mesh. Use Sidecar resources to limit the scope:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -168,18 +168,18 @@ spec:
         - "istio-system/*"
 ```
 
-This tells proxies to only load configuration for services in their own namespace and istio-system. In a mesh with 500 services, this can reduce memory usage per proxy from 100-200MB to 20-30MB.
+This tells proxies to only load configuration for services in their own namespace and istio-system. In a large mesh, this can significantly reduce per-proxy memory usage.
 
 Measure the impact:
 
 ```bash
 # Before applying Sidecar resource
-kubectl exec deploy/my-service -c istio-proxy -- curl -s localhost:15000/memory | python3 -m json.tool
+kubectl exec deploy/my-service -n production -c istio-proxy -- curl -s localhost:15000/memory | python3 -m json.tool
 
 # After applying Sidecar resource (restart pod first)
 kubectl rollout restart deployment my-service -n production
 # Wait for restart
-kubectl exec deploy/my-service -c istio-proxy -- curl -s localhost:15000/memory | python3 -m json.tool
+kubectl exec deploy/my-service -n production -c istio-proxy -- curl -s localhost:15000/memory | python3 -m json.tool
 ```
 
 ## Tune Concurrency
@@ -210,7 +210,7 @@ spec:
           concurrency: 1
 ```
 
-Reducing concurrency from 2 to 1 cuts the proxy's CPU usage roughly in half.
+Reducing concurrency from 2 to 1 can lower idle CPU and memory overhead for low-traffic proxies, but measure latency and throughput before rolling it out broadly.
 
 ## Disable Unnecessary Features
 
@@ -245,18 +245,40 @@ After right-sizing, calculate the cluster resources you freed up:
 echo "=== Sidecar Resource Summary ==="
 
 # Total CPU requested by sidecars
-CPU_REQUESTS=$(kubectl get pods -A -o json | jq '[.items[].spec.containers[] | select(.name=="istio-proxy") | .resources.requests.cpu // "0m" | gsub("m$";"") | tonumber] | add')
+CPU_REQUESTS=$(kubectl get pods -A -o json | jq '
+  def cpu_m:
+    if type == "number" then . * 1000
+    elif test("m$") then sub("m$"; "") | tonumber
+    else tonumber * 1000
+    end;
+  ([.items[].spec.containers[] | select(.name=="istio-proxy") | (.resources.requests.cpu // "0") | cpu_m] | add // 0) | floor
+')
 echo "Total CPU requests: ${CPU_REQUESTS}m"
 
 # Total memory requested by sidecars
-MEM_REQUESTS=$(kubectl get pods -A -o json | jq '[.items[].spec.containers[] | select(.name=="istio-proxy") | .resources.requests.memory // "0Mi" | gsub("Mi$";"") | tonumber] | add')
+MEM_REQUESTS=$(kubectl get pods -A -o json | jq '
+  def mem_mi:
+    if type == "number" then . / 1048576
+    elif test("Ki$") then sub("Ki$"; "") | tonumber / 1024
+    elif test("Mi$") then sub("Mi$"; "") | tonumber
+    elif test("Gi$") then sub("Gi$"; "") | tonumber * 1024
+    elif test("Ti$") then sub("Ti$"; "") | tonumber * 1048576
+    elif test("K$") then sub("K$"; "") | tonumber * 1000 / 1048576
+    elif test("M$") then sub("M$"; "") | tonumber * 1000000 / 1048576
+    elif test("G$") then sub("G$"; "") | tonumber * 1000000000 / 1048576
+    else tonumber / 1048576
+    end;
+  ([.items[].spec.containers[] | select(.name=="istio-proxy") | (.resources.requests.memory // "0") | mem_mi] | add // 0) | floor
+')
 echo "Total memory requests: ${MEM_REQUESTS}Mi"
 
 # Pod count
 POD_COUNT=$(kubectl get pods -A -o json | jq '[.items[].spec.containers[] | select(.name=="istio-proxy")] | length')
 echo "Total sidecars: $POD_COUNT"
-echo "Average CPU per sidecar: $((CPU_REQUESTS / POD_COUNT))m"
-echo "Average memory per sidecar: $((MEM_REQUESTS / POD_COUNT))Mi"
+if [ "$POD_COUNT" -gt 0 ]; then
+  echo "Average CPU per sidecar: $((CPU_REQUESTS / POD_COUNT))m"
+  echo "Average memory per sidecar: $((MEM_REQUESTS / POD_COUNT))Mi"
+fi
 ```
 
 ## Set Up Ongoing Monitoring
@@ -274,9 +296,9 @@ spec:
       rules:
         - alert: SidecarCPUOverAllocated
           expr: |
-            avg_over_time(rate(container_cpu_usage_seconds_total{container="istio-proxy"}[5m])[1d:5m])
+            avg_over_time((sum by (namespace, pod, container) (rate(container_cpu_usage_seconds_total{container="istio-proxy"}[5m])))[1d:5m])
             /
-            kube_pod_container_resource_requests{container="istio-proxy",resource="cpu"}
+            sum by (namespace, pod, container) (kube_pod_container_resource_requests{container="istio-proxy",resource="cpu"})
             < 0.1
           for: 7d
           labels:
