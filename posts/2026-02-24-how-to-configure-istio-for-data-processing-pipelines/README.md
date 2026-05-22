@@ -85,10 +85,10 @@ Deploy similar resources for the processor and loader stages.
 
 ## Configuring Timeouts for Long-Running Operations
 
-The default Istio timeout is 15 seconds, which is far too short for data processing. You need to increase this significantly:
+Istio does not set a default HTTP route timeout in a VirtualService, but long-running pipeline calls should still have explicit timeouts that match your job behavior:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: data-processor-vs
@@ -111,7 +111,7 @@ Setting the timeout to 3600 seconds (one hour) gives your processing jobs plenty
 
 ## Handling Large Payloads
 
-Data pipelines often transfer large payloads between services. You need to make sure Envoy does not buffer too much data in memory or reject requests for being too large. Configure this through an EnvoyFilter:
+Data pipelines often transfer large payloads between services. You need to make sure Envoy has enough per-connection buffer space for expected bursts without setting it so high that sidecars overconsume memory. Configure this through an EnvoyFilter:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -138,7 +138,7 @@ spec:
 Data pipelines need more generous connection pool settings than typical services:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: data-processor-dr
@@ -165,14 +165,14 @@ spec:
       baseEjectionTime: 120s
 ```
 
-Setting `maxRequestsPerConnection` to 0 means unlimited requests per connection, which is useful for keep-alive connections in pipelines. The `idleTimeout` of 3600 seconds prevents Envoy from closing idle connections too quickly.
+Setting `maxRequestsPerConnection` to 0 means unlimited requests per connection, which is useful for keep-alive connections in pipelines. The `idleTimeout` of 3600 seconds makes the one-hour idle timeout explicit; raise it or disable it with `0s` if your pipeline needs longer idle periods.
 
 ## TCP Keepalive for Long Connections
 
 Data processing stages often hold connections open for extended periods. Without proper keepalive settings, intermediate load balancers or firewalls may drop these connections:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: data-loader-dr
@@ -216,7 +216,7 @@ The port naming convention is important. Prefixing with `tcp-` tells Istio to tr
 Data pipeline components usually only need to communicate with specific other services. You can limit the sidecar scope to reduce resource consumption:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: data-ingester-sidecar
@@ -240,7 +240,7 @@ This restricts the ingester to only communicate with the processor service, redu
 Instead of building retry logic into every pipeline component, you can use Istio to handle retries consistently:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: data-loader-vs
@@ -269,19 +269,19 @@ Istio generates metrics for all service-to-service traffic. You can use these to
 # Check request volume between pipeline stages
 
 kubectl exec -n istio-system deploy/prometheus -- \
-  promtool query instant 'sum(rate(istio_requests_total{destination_service_namespace="data-pipeline"}[5m])) by (source_app, destination_app)'
+  promtool query instant http://localhost:9090 'sum(rate(istio_requests_total{destination_service_namespace="data-pipeline"}[5m])) by (source_app, destination_app)'
 
 # Check error rates between stages
 kubectl exec -n istio-system deploy/prometheus -- \
-  promtool query instant 'sum(rate(istio_requests_total{destination_service_namespace="data-pipeline", response_code!="200"}[5m])) by (source_app, destination_app)'
+  promtool query instant http://localhost:9090 'sum(rate(istio_requests_total{destination_service_namespace="data-pipeline", response_code!="200"}[5m])) by (source_app, destination_app)'
 ```
 
 ## mTLS Configuration
 
-Data pipelines often carry sensitive information. Istio provides mTLS by default, but you should verify it is enforced:
+Data pipelines often carry sensitive information. Istio automatically uses mTLS between workloads with sidecars when possible, but workloads accept plaintext by default unless you enforce strict mTLS:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: data-pipeline-mtls
@@ -291,12 +291,12 @@ spec:
     mode: STRICT
 ```
 
-## Bypassing the Sidecar for External Data Sources
+## Registering External Data Sources
 
-If your pipeline needs to pull data from external sources that are not in the mesh, you can configure Istio to bypass the sidecar for those connections:
+If your pipeline needs to pull data from external sources that are not in the mesh, register those destinations so sidecars can route the traffic consistently:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-data-source
@@ -314,4 +314,4 @@ spec:
 
 ## Summary
 
-Getting Istio working with data processing pipelines requires increasing timeouts well beyond defaults, tuning connection pools for long-lived connections, handling large payloads, and properly configuring non-HTTP protocols. The tradeoff is worth it because you get consistent observability, security through mTLS, and retry logic across all pipeline stages without embedding that logic in your application code. Start with generous timeout values and tune them down based on observed behavior in your specific pipeline.
+Getting Istio working with data processing pipelines requires setting explicit route timeouts, tuning connection pools for long-lived connections, handling large payloads, and properly configuring non-HTTP protocols. The tradeoff is worth it because you get consistent observability, security through mTLS, and retry logic across all pipeline stages without embedding that logic in your application code. Start with generous timeout values and tune them down based on observed behavior in your specific pipeline.
