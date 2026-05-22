@@ -38,7 +38,7 @@ kubectl top pods -n istio-system -l app=istiod
 kubectl logs deploy/istiod -n istio-system --tail=100 | grep -c "error"
 
 # Check proxy sync status
-istioctl proxy-status | grep -v "SYNCED"
+istioctl proxy-status
 ```
 
 **Review questions**:
@@ -66,10 +66,10 @@ kubectl get configmap istio -n istio-system -o yaml
 
 ```bash
 # Check which namespaces have injection enabled
-kubectl get namespaces -l istio-injection=enabled
+kubectl get namespaces -L istio-injection,istio.io/rev
 
 # Check for pods without sidecars in injected namespaces
-for ns in $(kubectl get namespaces -l istio-injection=enabled -o jsonpath='{.items[*].metadata.name}'); do
+for ns in $(kubectl get namespaces -o json | jq -r '.items[] | select(.metadata.labels["istio-injection"]=="enabled" or .metadata.labels["istio.io/rev"] != null) | .metadata.name'); do
   echo "=== $ns ==="
   kubectl get pods -n $ns -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{range .spec.containers[*]}{.name}{","}{end}{"\n"}{end}' | grep -v istio-proxy
 done
@@ -148,8 +148,8 @@ kubectl get serviceentries -A
 # Check mesh-wide mTLS
 kubectl get peerauthentication -A
 
-# Check actual mTLS status
-istioctl authn tls-check deploy/<sample-service> -n <namespace> | head -20
+# Check whether workload proxies have Istio mTLS certificates
+istioctl proxy-config secret deployment/<sample-service>.<namespace>
 ```
 
 **Review questions**:
@@ -164,12 +164,12 @@ istioctl authn tls-check deploy/<sample-service> -n <namespace> | head -20
 kubectl get authorizationpolicies -A
 
 # Check for overly permissive policies
-kubectl get authorizationpolicies -A -o json | jq '.items[] | select(.spec.rules == null or .spec.rules == []) | {name: .metadata.name, namespace: .metadata.namespace}'
+kubectl get authorizationpolicies -A -o json | jq '.items[] | select((.spec.action == null or .spec.action == "ALLOW") and (.spec.rules // [])[] == {}) | {name: .metadata.name, namespace: .metadata.namespace}'
 ```
 
 **Review questions**:
 - Does every service have an authorization policy?
-- Are there any ALLOW-all policies (no rules specified)?
+- Are there any ALLOW-all policies (an empty rule, `{}`, with the default `ALLOW` action)?
 - Are policies using service accounts or namespace selectors rather than IP-based matching?
 - Is the default behavior deny-all or allow-all? Which is appropriate?
 
@@ -229,7 +229,7 @@ kubectl get telemetry -A
 
 ```bash
 # Check current mesh size
-istioctl proxy-status | wc -l
+istioctl proxy-status | tail -n +2 | wc -l
 
 # Check istiod memory usage
 kubectl top pods -n istio-system -l app=istiod
