@@ -128,7 +128,7 @@ data:
       name:
         matches: "^(.*)$"
         as: "pilot_connected_proxies"
-      metricsQuery: 'sum(pilot_xds{type="ads"}) by (<<.GroupBy>>)'
+      metricsQuery: 'sum(pilot_xds{<<.LabelMatchers>>,type="ads"}) by (<<.GroupBy>>)'
     - seriesQuery: 'pilot_xds_pushes'
       resources:
         overrides:
@@ -137,7 +137,7 @@ data:
       name:
         matches: "^(.*)$"
         as: "pilot_push_rate"
-      metricsQuery: 'sum(rate(pilot_xds_pushes[5m])) by (<<.GroupBy>>)'
+      metricsQuery: 'sum(rate(pilot_xds_pushes{<<.LabelMatchers>>}[5m])) by (<<.GroupBy>>)'
 ```
 
 Then reference the custom metric in your HPA:
