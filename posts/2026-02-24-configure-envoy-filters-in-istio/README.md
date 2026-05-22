@@ -62,13 +62,14 @@ spec:
         name: envoy.filters.http.lua
         typed_config:
           "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-          inlineCode: |
-            function envoy_on_response(response_handle)
-              response_handle:headers():add("X-Frame-Options", "DENY")
-              response_handle:headers():add("X-Content-Type-Options", "nosniff")
-              response_handle:headers():add("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
-              response_handle:headers():add("X-XSS-Protection", "1; mode=block")
-            end
+          defaultSourceCode:
+            inlineString: |
+              function envoy_on_response(response_handle)
+                response_handle:headers():add("X-Frame-Options", "DENY")
+                response_handle:headers():add("X-Content-Type-Options", "nosniff")
+                response_handle:headers():add("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+                response_handle:headers():add("X-XSS-Protection", "1; mode=block")
+              end
 ```
 
 This inserts a Lua filter before the router filter on all inbound sidecar connections. The Lua script adds security headers to every response.
@@ -103,10 +104,11 @@ spec:
         name: envoy.filters.http.lua
         typed_config:
           "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-          inlineCode: |
-            function envoy_on_request(request_handle)
-              request_handle:headers():add("x-custom-source", "my-app")
-            end
+          defaultSourceCode:
+            inlineString: |
+              function envoy_on_request(request_handle)
+                request_handle:headers():add("x-custom-source", "my-app")
+              end
 ```
 
 ## Configuring Connection Timeouts
@@ -285,7 +287,7 @@ Look for your filter in the configuration. If it does not appear, the match cond
 
 **Filter ordering** - Inserting a filter in the wrong position can break the request pipeline. Use `INSERT_BEFORE envoy.filters.http.router` as a safe default.
 
-**Namespace scope** - An EnvoyFilter in `istio-system` applies to all sidecars in the mesh. In any other namespace, it only applies to sidecars in that namespace.
+**Namespace scope** - An EnvoyFilter in the mesh root namespace, often `istio-system`, applies to all sidecars in the mesh. In any other namespace, it only applies to sidecars in that namespace.
 
 **Version compatibility** - EnvoyFilter patches reference internal Envoy configuration structures that can change between Istio versions. Always test after upgrades.
 
