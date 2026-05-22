@@ -420,7 +420,7 @@ fi
 
 **Keep sensitive values out of version control.** Use `.gitignore` for files containing secrets, or better yet, use a secrets manager and reference it via data sources.
 
-**Validate var files against your variable definitions.** Terraform will error on undefined variables, but it will silently ignore extra variables. Periodically check that your var files match your variable declarations.
+**Validate var files against your variable definitions.** Terraform will warn when a variable definition file assigns a value for an undeclared variable, and it will error if you use `-var` for an undeclared variable. Periodically check that your var files match your variable declarations.
 
 **Name var files after workspaces.** The convention of `envs/<workspace>.tfvars` makes automation straightforward and prevents mismatches.
 
