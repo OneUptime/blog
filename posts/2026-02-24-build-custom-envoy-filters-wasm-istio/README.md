@@ -251,6 +251,7 @@ You can define and emit custom metrics from Wasm plugins:
 
 ```rust
 use proxy_wasm::traits::*;
+use proxy_wasm::hostcalls;
 use proxy_wasm::types::*;
 
 struct MetricsRoot {
@@ -258,13 +259,15 @@ struct MetricsRoot {
     error_counter: u32,
 }
 
+impl Context for MetricsRoot {}
+
 impl RootContext for MetricsRoot {
     fn on_configure(&mut self, _size: usize) -> bool {
-        self.request_counter = self.define_metric(
+        self.request_counter = hostcalls::define_metric(
             MetricType::Counter,
             "custom_requests_total",
         ).unwrap();
-        self.error_counter = self.define_metric(
+        self.error_counter = hostcalls::define_metric(
             MetricType::Counter,
             "custom_errors_total",
         ).unwrap();
@@ -292,14 +295,14 @@ impl Context for MetricsHttp {}
 
 impl HttpContext for MetricsHttp {
     fn on_http_request_headers(&mut self, _num_headers: usize, _end_of_stream: bool) -> Action {
-        self.increment_metric(self.request_counter, 1);
+        hostcalls::increment_metric(self.request_counter, 1).unwrap();
         Action::Continue
     }
 
     fn on_http_response_headers(&mut self, _num_headers: usize, _end_of_stream: bool) -> Action {
         if let Some(status) = self.get_http_response_header(":status") {
             if status.starts_with('5') {
-                self.increment_metric(self.error_counter, 1);
+                hostcalls::increment_metric(self.error_counter, 1).unwrap();
             }
         }
         Action::Continue
@@ -314,10 +317,11 @@ These custom metrics show up in Envoy's stats output and can be scraped by Prome
 Compile the filter to Wasm:
 
 ```bash
-cargo build --target wasm32-wasi --release
+rustup target add wasm32-wasip1
+cargo build --target wasm32-wasip1 --release
 
 # Optimize the binary
-wasm-opt -O3 target/wasm32-wasi/release/my_filter.wasm -o my_filter.wasm
+wasm-opt -O3 target/wasm32-wasip1/release/my_filter.wasm -o my_filter.wasm
 ```
 
 ## Testing the Filter Locally
@@ -339,11 +343,25 @@ static_resources:
         typed_config:
           "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
           stat_prefix: ingress_http
+          route_config:
+            name: local_route
+            virtual_hosts:
+            - name: local_service
+              domains: ["*"]
+              routes:
+              - match:
+                  prefix: "/"
+                direct_response:
+                  status: 200
+                  body:
+                    inline_string: "ok\n"
           http_filters:
           - name: envoy.filters.http.wasm
             typed_config:
               "@type": type.googleapis.com/envoy.extensions.filters.http.wasm.v3.Wasm
               config:
+                name: my_filter
+                root_id: my_filter
                 vm_config:
                   runtime: envoy.wasm.runtime.v8
                   code:
@@ -357,7 +375,7 @@ static_resources:
 Run it:
 
 ```bash
-docker run -v $(pwd):/etc/envoy envoyproxy/envoy:v1.31-latest -c /etc/envoy/envoy-test.yaml
+docker run --rm -p 8080:8080 -v $(pwd):/etc/envoy envoyproxy/envoy:v1.31-latest -c /etc/envoy/envoy-test.yaml
 ```
 
 ## Summary
