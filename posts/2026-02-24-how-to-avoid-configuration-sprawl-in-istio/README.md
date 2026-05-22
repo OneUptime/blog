@@ -44,19 +44,38 @@ Orphaned resources reference services or workloads that no longer exist:
 #!/bin/bash
 echo "=== Checking for Orphaned VirtualServices ==="
 
-for vs in $(kubectl get virtualservice -A -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}:{.spec.hosts[0]}{"\n"}{end}'); do
-  NS=$(echo "$vs" | cut -d/ -f1)
-  NAME=$(echo "$vs" | cut -d: -f1 | cut -d/ -f2)
-  HOST=$(echo "$vs" | cut -d: -f2)
+resolve_k8s_service() {
+  local host="$1"
+  local rule_ns="$2"
 
-  # Skip gateway-bound VirtualServices
-  HAS_GATEWAY=$(kubectl get virtualservice "$NAME" -n "$NS" -o jsonpath='{.spec.gateways}' 2>/dev/null)
-  if [ -n "$HAS_GATEWAY" ]; then
+  if [[ "$host" == *"*"* ]]; then
+    return 1
+  elif [[ "$host" =~ ^([^.]+)$ ]]; then
+    echo "${BASH_REMATCH[1]} $rule_ns"
+  elif [[ "$host" =~ ^([^.]+)\.([^.]+)\.svc(\.cluster\.local)?$ ]]; then
+    echo "${BASH_REMATCH[1]} ${BASH_REMATCH[2]}"
+  else
+    return 1
+  fi
+}
+
+kubectl get virtualservice -A -o json | jq -r '
+  .items[] |
+  .metadata.namespace as $ns |
+  .metadata.name as $name |
+  ((.spec.gateways // []) | join(",")) as $gateways |
+  .spec.hosts[]? |
+  "\($ns)\t\($name)\t\($gateways)\t\(.)"
+' | while IFS=$'\t' read -r NS NAME GATEWAYS HOST; do
+
+  # Skip VirtualServices that only bind to ingress/egress gateways.
+  if [ -n "$GATEWAYS" ] && ! echo ",$GATEWAYS," | grep -q ",mesh,"; then
     continue
   fi
 
-  # Check if the service exists
-  SVC=$(kubectl get service "$HOST" -n "$NS" --no-headers 2>/dev/null)
+  # Check Kubernetes service hosts. External hosts and ServiceEntry hosts are skipped.
+  read -r SVC_NAME SVC_NS < <(resolve_k8s_service "$HOST" "$NS") || continue
+  SVC=$(kubectl get service "$SVC_NAME" -n "$SVC_NS" --no-headers 2>/dev/null)
   if [ -z "$SVC" ]; then
     echo "ORPHANED: VirtualService $NS/$NAME references non-existent service $HOST"
   fi
@@ -68,6 +87,21 @@ Do the same for DestinationRules:
 ```bash
 echo "=== Checking for Orphaned DestinationRules ==="
 
+resolve_k8s_service() {
+  local host="$1"
+  local rule_ns="$2"
+
+  if [[ "$host" == *"*"* ]]; then
+    return 1
+  elif [[ "$host" =~ ^([^.]+)$ ]]; then
+    echo "${BASH_REMATCH[1]} $rule_ns"
+  elif [[ "$host" =~ ^([^.]+)\.([^.]+)\.svc(\.cluster\.local)?$ ]]; then
+    echo "${BASH_REMATCH[1]} ${BASH_REMATCH[2]}"
+  else
+    return 1
+  fi
+}
+
 kubectl get destinationrule -A -o json | jq -r '
   .items[] |
   "\(.metadata.namespace)/\(.metadata.name):\(.spec.host)"
@@ -75,7 +109,9 @@ kubectl get destinationrule -A -o json | jq -r '
   NS=$(echo "$nsname" | cut -d/ -f1)
   NAME=$(echo "$nsname" | cut -d/ -f2)
 
-  SVC=$(kubectl get service "$host" -n "$NS" --no-headers 2>/dev/null)
+  # Check Kubernetes service hosts. External hosts and ServiceEntry hosts are skipped.
+  read -r SVC_NAME SVC_NS < <(resolve_k8s_service "$host" "$NS") || continue
+  SVC=$(kubectl get service "$SVC_NAME" -n "$SVC_NS" --no-headers 2>/dev/null)
   if [ -z "$SVC" ]; then
     echo "ORPHANED: DestinationRule $nsname references non-existent service $host"
   fi
@@ -94,7 +130,11 @@ echo "=== Checking for Unused Subsets ==="
 
 VS_SUBSETS=$(kubectl get virtualservice -A -o json | jq -r '
   .items[] |
-  .spec.http[]?.route[]? |
+  (
+    .spec.http[]?.route[]?,
+    .spec.tcp[]?.route[]?,
+    .spec.tls[]?.route[]?
+  ) |
   select(.destination.subset) |
   "\(.destination.host):\(.destination.subset)"
 ' | sort -u)
@@ -248,7 +288,7 @@ spec:
         - destination: {host: api}
 ```
 
-Multiple VirtualServices for the same host can cause conflicts and undefined behavior. Consolidating them eliminates that risk.
+Multiple VirtualServices for the same host can cause conflicts, especially when they are attached to the mesh gateway. Istio can merge VirtualServices attached to ingress gateways, but consolidating related routes still makes conflicts easier to avoid.
 
 ## Automate Cleanup
 
