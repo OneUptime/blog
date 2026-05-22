@@ -38,8 +38,28 @@ nodes:
 - role: worker
 EOF
 
-# Install Istio
-istioctl install --set profile=default -y
+# Deploy an OpenTelemetry collector for traces and access logs
+kubectl create namespace observability
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/open-telemetry/otel.yaml -n observability
+
+# Install Istio with OpenTelemetry extension providers
+cat <<EOF | istioctl install -y -f -
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
+spec:
+  profile: default
+  meshConfig:
+    enableTracing: true
+    extensionProviders:
+    - name: otel-tracing
+      opentelemetry:
+        service: opentelemetry-collector.observability.svc.cluster.local
+        port: 4317
+    - name: otel
+      envoyOtelAls:
+        service: opentelemetry-collector.observability.svc.cluster.local
+        port: 4317
+EOF
 
 # Create the application namespace with sidecar injection
 kubectl create namespace ecommerce
@@ -51,6 +71,12 @@ kubectl label namespace ecommerce istio-injection=enabled
 ### Product Service
 
 ```yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: product-service
+  namespace: ecommerce
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -68,6 +94,7 @@ spec:
         app: product-service
         version: v1
     spec:
+      serviceAccountName: product-service
       containers:
       - name: product-service
         image: product-service:v1
@@ -111,6 +138,12 @@ spec:
 ### Cart Service
 
 ```yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cart-service
+  namespace: ecommerce
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -128,6 +161,7 @@ spec:
         app: cart-service
         version: v1
     spec:
+      serviceAccountName: cart-service
       containers:
       - name: cart-service
         image: cart-service:v1
@@ -159,7 +193,7 @@ spec:
     targetPort: 8080
 ```
 
-Deploy similar manifests for the other services. The pattern is the same: Deployment + Service, with proper labels and health probes.
+Deploy similar manifests for the other services. The pattern is the same: ServiceAccount + Deployment + Service, with proper labels, service account names, and health probes.
 
 ## Step 3: Configure the Ingress Gateway
 
@@ -201,9 +235,8 @@ spec:
   - match:
     - uri:
         prefix: /api/products
-      headers:
-        ":authority":
-          exact: api.example.com
+      authority:
+        exact: api.example.com
     route:
     - destination:
         host: product-service
@@ -228,9 +261,8 @@ spec:
   - match:
     - uri:
         prefix: /
-      headers:
-        ":authority":
-          exact: shop.example.com
+      authority:
+        exact: shop.example.com
     route:
     - destination:
         host: frontend
@@ -330,7 +362,7 @@ spec:
 Define which services can talk to which:
 
 ```yaml
-# Only frontend and api gateway can reach product-service
+# Only frontend, order-service, and the Istio ingress gateway can reach product-service
 apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
@@ -347,6 +379,7 @@ spec:
         principals:
         - "cluster.local/ns/ecommerce/sa/frontend"
         - "cluster.local/ns/ecommerce/sa/order-service"
+        - "cluster.local/ns/istio-system/sa/istio-ingressgateway-service-account"
     to:
     - operation:
         methods: ["GET"]
@@ -429,7 +462,7 @@ spec:
 apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
-  name: product-service-canary
+  name: product-service
   namespace: ecommerce
 spec:
   hosts:
@@ -444,14 +477,31 @@ spec:
         host: product-service
         subset: v2
       weight: 10
+    timeout: 5s
+    retries:
+      attempts: 3
+      perTryTimeout: 2s
+      retryOn: 5xx,reset,connect-failure
 ---
 apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
-  name: product-service-versions
+  name: product-service
   namespace: ecommerce
 spec:
   host: product-service
+  trafficPolicy:
+    connectionPool:
+      tcp:
+        maxConnections: 100
+      http:
+        http1MaxPendingRequests: 50
+        http2MaxRequests: 100
+    outlierDetection:
+      consecutive5xxErrors: 5
+      interval: 30s
+      baseEjectionTime: 30s
+      maxEjectionPercent: 50
   subsets:
   - name: v1
     labels:
