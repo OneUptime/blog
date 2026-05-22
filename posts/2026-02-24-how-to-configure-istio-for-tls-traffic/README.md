@@ -12,12 +12,12 @@ TLS in Istio can mean a few different things depending on where you are in the t
 
 ## Understanding TLS Modes in Istio
 
-Before getting into configuration, it helps to understand the four TLS modes that Istio supports at the Gateway level:
+Before getting into configuration, it helps to understand four common TLS modes that Istio supports at the Gateway level:
 
 - **SIMPLE**: Standard TLS termination. The gateway decrypts traffic and forwards it as plain text (or re-encrypts with mTLS) to the backend.
 - **MUTUAL**: The gateway requires the client to present a certificate. Both sides authenticate each other.
 - **PASSTHROUGH**: The gateway does not terminate TLS. It forwards the encrypted traffic as-is to the backend, which handles decryption.
-- **AUTO_PASSTHROUGH**: Similar to PASSTHROUGH but uses the SNI header to route traffic without requiring a VirtualService.
+- **AUTO_PASSTHROUGH**: Similar to PASSTHROUGH but encodes destination details in the SNI value, so it does not require a VirtualService. This mode is typically used for Istio mTLS connectivity across separate networks.
 
 ## TLS Termination at the Gateway
 
@@ -224,9 +224,13 @@ spec:
   hosts:
     - api.external.com
   ports:
+    - number: 80
+      name: http
+      protocol: HTTP
+      targetPort: 443
     - number: 443
       name: https
-      protocol: TLS
+      protocol: HTTPS
   resolution: DNS
   location: MESH_EXTERNAL
 ---
@@ -238,25 +242,11 @@ metadata:
 spec:
   host: api.external.com
   trafficPolicy:
-    tls:
-      mode: SIMPLE
----
-apiVersion: networking.istio.io/v1beta1
-kind: VirtualService
-metadata:
-  name: external-api-route
-  namespace: default
-spec:
-  hosts:
-    - api.external.com
-  http:
-    - match:
-        - port: 80
-      route:
-        - destination:
-            host: api.external.com
-            port:
-              number: 443
+    portLevelSettings:
+      - port:
+          number: 80
+        tls:
+          mode: SIMPLE
 ```
 
 With this setup, your application sends HTTP requests to `api.external.com:80`, and the sidecar transparently upgrades them to HTTPS when connecting to the external service on port 443.
@@ -266,25 +256,26 @@ With this setup, your application sends HTTP requests to `api.external.com:80`, 
 Check which TLS mode is active for a specific service:
 
 ```bash
-istioctl authn tls-check deploy/my-app -n default
+POD=$(kubectl get pod -l app=my-app -n default -o jsonpath='{.items[0].metadata.name}')
+istioctl x describe pod "$POD" -n default
 ```
 
-This shows you whether each destination is using mTLS, plain text, or permissive mode. You can also check the certificate details:
+This reports the traffic and security configuration affecting the pod, including mTLS conflicts and whether clients are expected to use mTLS. You can also check the certificate details:
 
 ```bash
-istioctl proxy-config secret deploy/my-app -n default
+istioctl proxy-config secret "$POD" -n default
 ```
 
 To see the actual TLS handshake happening, enable debug logging on the sidecar:
 
 ```bash
-istioctl proxy-config log deploy/my-app --level connection:debug,tls:debug
+istioctl proxy-config log "$POD" -n default --level connection:debug,tls:debug
 ```
 
 Then watch the logs for TLS handshake details:
 
 ```bash
-kubectl logs deploy/my-app -c istio-proxy -f | grep -i tls
+kubectl logs "$POD" -n default -c istio-proxy -f | grep -i tls
 ```
 
 ## Common TLS Pitfalls
