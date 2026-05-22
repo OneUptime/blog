@@ -162,8 +162,11 @@ dynamic "ingress" {
 Content blocks can reference other Terraform resources and data sources:
 
 ```hcl
-data "aws_subnet" "selected" {
-  for_each = toset(var.subnet_names)
+data "aws_ebs_snapshot" "selected" {
+  for_each = toset(var.snapshot_names)
+  most_recent = true
+  owners      = ["self"]
+
   filter {
     name   = "tag:Name"
     values = [each.value]
@@ -174,13 +177,12 @@ resource "aws_instance" "app" {
   ami           = var.ami_id
   instance_type = var.instance_type
 
-  dynamic "network_interface" {
-    for_each = var.subnet_names
+  dynamic "ebs_block_device" {
+    for_each = var.data_volumes
     content {
-      device_index         = network_interface.key
+      device_name = ebs_block_device.value.device_name
       # Reference a data source using the iterator value
-      subnet_id            = data.aws_subnet.selected[network_interface.value].id
-      delete_on_termination = true
+      snapshot_id = data.aws_ebs_snapshot.selected[ebs_block_device.value.snapshot_name].id
     }
   }
 }
@@ -288,7 +290,7 @@ dynamic "ingress" {
 Using `each` instead of the iterator name:
 
 ```hcl
-# WRONG - "each" is for resource-level for_each, not dynamic blocks
+# WRONG - this block should use the dynamic block iterator, not "each"
 dynamic "ingress" {
   for_each = var.rules
   content {
