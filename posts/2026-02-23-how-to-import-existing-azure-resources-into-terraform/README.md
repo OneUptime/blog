@@ -20,7 +20,7 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.0"
+      version = "~> 4.0"
     }
   }
 }
@@ -54,7 +54,14 @@ resource "azurerm_linux_virtual_machine" "app" {
   size                = "Standard_D4s_v3"
   admin_username      = "adminuser"
 
-  network_interface_ids = [azurerm_network_interface.app.id]
+  network_interface_ids = [
+    "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/production-rg/providers/Microsoft.Network/networkInterfaces/app-nic"
+  ]
+
+  admin_ssh_key {
+    username   = "adminuser"
+    public_key = file("~/.ssh/id_ed25519.pub")
+  }
 
   os_disk {
     caching              = "ReadWrite"
@@ -143,7 +150,7 @@ resource "azurerm_mssql_server" "main" {
 variable "sql_password" {
   type      = string
   sensitive = true
-  default   = "placeholder"
+  default   = "PlaceholderP@ssw0rd123!"
 }
 
 resource "azurerm_mssql_database" "app" {
@@ -169,8 +176,7 @@ You can find Azure resource IDs through the portal or CLI:
 
 ```bash
 # List all resources in a resource group
-
-az resource list --resource-group production-rg --output table
+az resource list --resource-group production-rg --query "[].{Name:name, Type:type, ResourceId:id}" --output table
 
 # Get a specific resource's ID
 az vm show --name app-server --resource-group production-rg --query id --output tsv
@@ -201,4 +207,4 @@ terraform plan
 
 ## Conclusion
 
-Importing existing Azure resources into Terraform requires knowing the full Azure resource ID path, which follows the pattern `/subscriptions/{sub}/resourceGroups/{rg}/providers/{provider}/{type}/{name}`. The import block in Terraform 1.5+ makes this process declarative and repeatable. For other clouds, see our guides on [AWS imports](https://oneuptime.com/blog/post/2026-02-23-how-to-import-existing-aws-resources-into-terraform/view) and [GCP imports](https://oneuptime.com/blog/post/2026-02-23-how-to-import-existing-gcp-resources-into-terraform/view). For advanced import features, check out [the import block](https://oneuptime.com/blog/post/2026-02-23-how-to-use-the-import-block-in-terraform-1-5-plus/view) and [generating configuration from imports](https://oneuptime.com/blog/post/2026-02-23-how-to-generate-configuration-from-imported-resources/view).
+Importing existing Azure resources into Terraform requires knowing the full Azure resource ID path, which follows the pattern `/subscriptions/{sub}/resourceGroups/{rg}/providers/{provider}/{type}/{name}` for top-level resources and appends additional `{parentType}/{parentName}/{childType}/{childName}` segments for nested resources. The import block in Terraform 1.5+ makes this process declarative and repeatable. For other clouds, see our guides on [AWS imports](https://oneuptime.com/blog/post/2026-02-23-how-to-import-existing-aws-resources-into-terraform/view) and [GCP imports](https://oneuptime.com/blog/post/2026-02-23-how-to-import-existing-gcp-resources-into-terraform/view). For advanced import features, check out [the import block](https://oneuptime.com/blog/post/2026-02-23-how-to-use-the-import-block-in-terraform-1-5-plus/view) and [generating configuration from imports](https://oneuptime.com/blog/post/2026-02-23-how-to-generate-configuration-from-imported-resources/view).
