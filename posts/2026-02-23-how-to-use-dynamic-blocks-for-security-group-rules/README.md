@@ -10,6 +10,8 @@ Description: Learn how to use Terraform dynamic blocks to manage AWS security gr
 
 Security groups are one of the first places where Terraform configurations start to get unwieldy. A typical application needs rules for HTTP, HTTPS, SSH, database access, monitoring ports, and more. Writing each rule as a separate inline block or separate resource gets repetitive fast. Dynamic blocks let you define your rules as data and generate the actual Terraform configuration from that data.
 
+One caveat: the current AWS provider documentation recommends standalone `aws_vpc_security_group_ingress_rule` and `aws_vpc_security_group_egress_rule` resources for production rule management, especially when you need one CIDR block per rule or per-rule lifecycle behavior. The inline-rule examples below are still valid for demonstrating dynamic blocks, but do not mix inline rules with standalone security group rule resources for the same security group.
+
 ## The Traditional Approach and Its Problems
 
 Here is what a security group looks like without dynamic blocks:
@@ -312,7 +314,7 @@ variable "name" {
 variable "description" {
   description = "Description of the security group"
   type        = string
-  default     = ""
+  default     = "Managed by Terraform"
 }
 
 variable "vpc_id" {
