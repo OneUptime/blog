@@ -8,17 +8,17 @@ Description: Learn how to implement Create, Read, Update, and Delete operations 
 
 ---
 
-Every Terraform resource needs four operations: Create, Read, Update, and Delete. These CRUD operations form the core of how Terraform manages infrastructure lifecycle. When a user runs `terraform apply`, Terraform calls these functions to bring real infrastructure in line with the desired configuration. Getting them right means handling errors gracefully, managing partial state, and ensuring idempotency.
+Managed Terraform resources revolve around four operations: Create, Read, Update, and Delete. These CRUD operations form the core of how Terraform manages infrastructure lifecycle. When a user runs `terraform apply`, Terraform calls the appropriate lifecycle functions to bring real infrastructure in line with the desired configuration. Getting them right means handling errors gracefully, managing partial state, and ensuring idempotency.
 
-This guide provides a deep dive into implementing CRUD operations in Terraform providers using both the Plugin Framework and SDKv2, with real-world patterns for handling the complexities that arise when interacting with APIs.
+This guide provides a deep dive into implementing CRUD operations in Terraform providers using the Plugin Framework, with real-world patterns for handling the complexities that arise when interacting with APIs. The same lifecycle concepts also apply to SDKv2 resources.
 
 ## The CRUD Lifecycle
 
 Understanding when Terraform calls each function is essential.
 
-**Create** is called when a resource exists in the configuration but not in state. This happens during the first `terraform apply` for a resource or when a ForceNew attribute changes.
+**Create** is called when a resource exists in the configuration but not in state. This happens during the first `terraform apply` for a resource or when an attribute change requires replacement.
 
-**Read** is called during `terraform plan` and `terraform refresh` to get the current state of the resource from the API. It is also called after Create and Update to verify the final state.
+**Read** is called during `terraform plan`, `terraform apply`, and `terraform refresh` to get the current state of the resource from the API. Provider implementations also commonly reuse Read logic after Create and Update to verify the final state.
 
 **Update** is called when a resource exists in both configuration and state but the attribute values differ.
 
@@ -77,11 +77,12 @@ func (r *DatabaseResource) Create(ctx context.Context, req resource.CreateReques
     plan.ID = types.StringValue(database.ID)
 
     // Step 5: Wait for the resource to become available (if creation is async)
-    database, err = r.waitForDatabaseReady(ctx, database.ID, 30*time.Minute)
+    databaseID := database.ID
+    database, err = r.waitForDatabaseReady(ctx, databaseID, 30*time.Minute)
     if err != nil {
         resp.Diagnostics.AddError(
             "Error Waiting for Database",
-            fmt.Sprintf("Database %s did not become available: %s", database.ID, err),
+            fmt.Sprintf("Database %s did not become available: %s", databaseID, err),
         )
         // Even though we got an error, save the ID so the resource can be managed
         resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
@@ -380,8 +381,8 @@ func (r *DatabaseResource) createWithRetry(ctx context.Context, req *api.CreateD
 
     for attempt := 0; attempt < 3; attempt++ {
         if attempt > 0 {
-            // Exponential backoff: 1s, 2s, 4s
-            time.Sleep(time.Duration(1<<uint(attempt)) * time.Second)
+            // Exponential backoff between retries: 1s, 2s
+            time.Sleep(time.Duration(1<<uint(attempt-1)) * time.Second)
         }
 
         database, err := r.client.CreateDatabase(ctx, req)
@@ -405,9 +406,9 @@ func (r *DatabaseResource) createWithRetry(ctx context.Context, req *api.CreateD
 
 ## Best Practices
 
-Always save state after setting the ID, even if subsequent steps fail. If Create sets the ID and then fails while waiting for the resource to become ready, saving the ID lets users run `terraform apply` again rather than creating a duplicate resource.
+Always save state after setting the ID, even if subsequent steps fail. If Create sets the ID and then fails while waiting for the resource to become ready, saving the ID lets Terraform track the object and mark it for replacement or cleanup rather than losing track of it.
 
-Call Read at the end of Create and Update. This ensures the state reflects the actual API response rather than the planned values.
+Call Read, or an equivalent API read, at the end of Create and Update. This ensures the state reflects the actual API response rather than the planned values.
 
 Make Delete idempotent. If a resource is already gone, Delete should succeed. Users should be able to run `terraform destroy` multiple times without errors.
 
