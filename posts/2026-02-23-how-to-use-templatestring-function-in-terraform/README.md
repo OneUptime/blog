@@ -8,38 +8,38 @@ Description: Learn how to use the templatestring function in Terraform to render
 
 ---
 
-The `templatestring` function was introduced in Terraform 1.7 and lets you render a template string with a set of variables, all inline - without needing an external file. If you have used `templatefile` before, think of `templatestring` as its inline cousin. Instead of reading a template from a file, you pass the template directly as a string argument.
+The `templatestring` function was introduced in Terraform 1.9 and lets you render a template string with a set of variables, without needing an external file. If you have used `templatefile` before, think of `templatestring` as its inline cousin. Instead of reading a template from a file, you pass a reference to a string value that contains the template.
 
 ## What Does templatestring Do?
 
-The `templatestring` function takes a template string and a map of variables, then renders the template with those variables substituted.
+The `templatestring` function takes a reference to a template string and a map of variables, then renders the template with those variables substituted.
 
 ```hcl
 # Basic syntax
 
-templatestring(template, vars)
+templatestring(ref, vars)
 ```
 
-The template string uses the same syntax as `templatefile`: `${var_name}` for interpolation, `%{if}...%{endif}` for conditionals, and `%{for}...%{endfor}` for loops.
+The template string uses the same syntax as `templatefile`: `${var_name}` for interpolation, `%{if}...%{endif}` for conditionals, and `%{for}...%{endfor}` for loops. The first argument must be a reference to a string value, such as a variable, local value, or data source attribute. It cannot be a literal template string written directly in the function call.
 
 ## Basic Examples
 
 ```hcl
-# Simple variable substitution
-> templatestring("Hello, ${name}!", { name = "World" })
-"Hello, World!"
+locals {
+  greeting_template = "Hello, $${name}!"
+  welcome_template  = "$${greeting}, $${name}! Welcome to $${place}."
+  count_template    = "Server count: $${count}"
 
-# Multiple variables
-> templatestring("${greeting}, ${name}! Welcome to ${place}.", {
+  greeting = templatestring(local.greeting_template, { name = "World" })
+
+  welcome = templatestring(local.welcome_template, {
     greeting = "Hi"
     name     = "Alice"
     place    = "Terraform"
   })
-"Hi, Alice! Welcome to Terraform."
 
-# Numeric values
-> templatestring("Server count: ${count}", { count = 5 })
-"Server count: 5"
+  server_count = templatestring(local.count_template, { count = 5 })
+}
 ```
 
 ## Why Use templatestring Instead of Interpolation?
@@ -50,7 +50,7 @@ You might wonder why you would use `templatestring` when Terraform already suppo
 variable "message_template" {
   description = "Template for alert messages"
   type        = string
-  default     = "Alert: ${service} is ${status} in ${region}"
+  default     = "Alert: $${service} is $${status} in $${region}"
 }
 
 locals {
@@ -71,26 +71,24 @@ The template syntax supports if/else conditionals.
 
 ```hcl
 locals {
-  config = templatestring(
-    <<-EOT
+  config_template = <<-EOT
     server {
-      listen ${port};
-      %{if ssl_enabled}
-      ssl_certificate     ${cert_path};
-      ssl_certificate_key ${key_path};
-      %{else}
+      listen $${port};
+      %%{if ssl_enabled}
+      ssl_certificate     $${cert_path};
+      ssl_certificate_key $${key_path};
+      %%{else}
       # SSL disabled
-      %{endif}
+      %%{endif}
     }
     EOT
-    ,
-    {
-      port        = 443
-      ssl_enabled = true
-      cert_path   = "/etc/ssl/server.crt"
-      key_path    = "/etc/ssl/server.key"
-    }
-  )
+
+  config = templatestring(local.config_template, {
+    port        = 443
+    ssl_enabled = true
+    cert_path   = "/etc/ssl/server.crt"
+    key_path    = "/etc/ssl/server.key"
+  })
 }
 ```
 
@@ -100,22 +98,20 @@ Iterate over lists and maps within the template.
 
 ```hcl
 locals {
-  hosts_file = templatestring(
-    <<-EOT
+  hosts_template = <<-EOT
     # Generated hosts file
-    %{for entry in entries}
-    ${entry.ip}  ${entry.hostname}
-    %{endfor}
+    %%{for entry in entries}
+    $${entry.ip}  $${entry.hostname}
+    %%{endfor}
     EOT
-    ,
-    {
-      entries = [
-        { ip = "10.0.1.10", hostname = "web-01" },
-        { ip = "10.0.1.11", hostname = "web-02" },
-        { ip = "10.0.1.12", hostname = "db-01" }
-      ]
-    }
-  )
+
+  hosts_file = templatestring(local.hosts_template, {
+    entries = [
+      { ip = "10.0.1.10", hostname = "web-01" },
+      { ip = "10.0.1.11", hostname = "web-02" },
+      { ip = "10.0.1.12", hostname = "db-01" }
+    ]
+  })
 }
 ```
 
@@ -132,15 +128,15 @@ variable "user_data_template" {
     set -e
 
     # Configure environment
-    echo "ENVIRONMENT=${environment}" >> /etc/environment
-    echo "APP_PORT=${app_port}" >> /etc/environment
-    echo "DB_HOST=${db_host}" >> /etc/environment
+    echo "ENVIRONMENT=$${environment}" >> /etc/environment
+    echo "APP_PORT=$${app_port}" >> /etc/environment
+    echo "DB_HOST=$${db_host}" >> /etc/environment
 
     # Install packages
     apt-get update
-    %{for pkg in packages}
-    apt-get install -y ${pkg}
-    %{endfor}
+    %%{for pkg in packages}
+    apt-get install -y $${pkg}
+    %%{endfor}
 
     # Start the application
     systemctl start myapp
@@ -169,7 +165,7 @@ Modules can accept template strings as inputs, giving callers control over outpu
 variable "alert_template" {
   description = "Template for alert messages"
   type        = string
-  default     = "[${severity}] ${service}: ${message}"
+  default     = "[$${severity}] $${service}: $${message}"
 }
 
 variable "alert_vars" {
@@ -186,7 +182,7 @@ locals {
 module "alert" {
   source = "./modules/alert"
 
-  alert_template = "ALERT (${severity}) - Service: ${service} | ${message} | Region: ${region}"
+  alert_template = "ALERT ($${severity}) - Service: $${service} | $${message} | Region: $${region}"
   alert_vars = {
     severity = "HIGH"
     service  = "payment-api"
@@ -198,63 +194,59 @@ module "alert" {
 
 ## Generating JSON Configuration
 
-Build JSON strings from templates when `jsonencode` feels too rigid.
+For JSON, prefer `jsonencode` so Terraform can handle quoting and escaping correctly. You can still call `jsonencode` from inside a template rendered by `templatestring`.
 
 ```hcl
 locals {
-  config_json = templatestring(
-    <<-EOT
-    {
-      "app_name": "${app_name}",
-      "version": "${version}",
-      "features": {
-        "caching": ${caching_enabled},
-        "debug": ${debug_enabled}
-      },
-      "replicas": ${replicas}
-    }
+  config_json_template = <<-EOT
+    $${jsonencode({
+      app_name = app_name
+      version  = version
+      features = {
+        caching = caching_enabled
+        debug   = debug_enabled
+      }
+      replicas = replicas
+    })}
     EOT
-    ,
-    {
-      app_name        = "myapp"
-      version         = "2.1.0"
-      caching_enabled = true
-      debug_enabled   = false
-      replicas        = 3
-    }
-  )
+
+  config_json = templatestring(local.config_json_template, {
+    app_name        = "myapp"
+    version         = "2.1.0"
+    caching_enabled = true
+    debug_enabled   = false
+    replicas        = 3
+  })
 }
 ```
 
 ## YAML Generation
 
-Generate YAML configuration dynamically.
+For YAML, prefer `yamlencode` for the same reason.
 
 ```hcl
 locals {
-  k8s_config = templatestring(
-    <<-EOT
-    apiVersion: v1
-    kind: ConfigMap
-    metadata:
-      name: ${name}
-      namespace: ${namespace}
-    data:
-    %{for key, value in config_data}
-      ${key}: "${value}"
-    %{endfor}
-    EOT
-    ,
-    {
-      name      = "app-config"
-      namespace = "production"
-      config_data = {
-        LOG_LEVEL = "info"
-        DB_HOST   = "postgres.internal"
-        CACHE_TTL = "300"
+  k8s_config_template = <<-EOT
+    $${yamlencode({
+      apiVersion = "v1"
+      kind       = "ConfigMap"
+      metadata = {
+        name      = name
+        namespace = namespace
       }
+      data = config_data
+    })}
+    EOT
+
+  k8s_config = templatestring(local.k8s_config_template, {
+    name      = "app-config"
+    namespace = "production"
+    config_data = {
+      LOG_LEVEL = "info"
+      DB_HOST   = "postgres.internal"
+      CACHE_TTL = "300"
     }
-  )
+  })
 }
 ```
 
@@ -279,7 +271,8 @@ resource "local_file" "config" {
 # - The template comes from a variable or data source
 # - You want everything in one file
 locals {
-  greeting = templatestring("Hello, ${name}!", { name = "World" })
+  greeting_template = "Hello, $${name}!"
+  greeting          = templatestring(local.greeting_template, { name = "World" })
 }
 ```
 
@@ -287,22 +280,20 @@ For more on the file-based approach, see [how to use templatefile](https://oneup
 
 ## Escaping Special Characters
 
-If you need literal `${` or `%{` in the output, use `$${` and `%%{` respectively.
+If you need literal `${` or `%{` in the output, use `$${` and `%%{` respectively inside the template value. When you write that template value as an HCL string, you may need to escape once for HCL too, as shown with `$$${HOME}` below.
 
 ```hcl
 locals {
-  script = templatestring(
-    <<-EOT
+  script_template = <<-EOT
     #!/bin/bash
     # This variable uses Terraform template syntax
-    APP_NAME="${app_name}"
+    APP_NAME="$${app_name}"
 
-    # This is a bash variable, not a Terraform variable
-    CURRENT_DATE=$${(date +%Y-%m-%d)}
+    # This keeps a shell-style variable reference in the rendered output
+    echo "Home directory: $$${HOME}"
     EOT
-    ,
-    { app_name = "myapp" }
-  )
+
+  script = templatestring(local.script_template, { app_name = "myapp" })
 }
 ```
 
