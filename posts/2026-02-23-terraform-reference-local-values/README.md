@@ -103,6 +103,13 @@ variable "base_cidr" {
 }
 
 locals {
+  name_prefix = "myapp-${var.environment}"
+
+  common_tags = {
+    Environment = var.environment
+    ManagedBy   = "terraform"
+  }
+
   # Conditional logic
   is_production = var.environment == "production"
 
@@ -301,7 +308,7 @@ The module caller just provides `service_name`, `environment`, and `container_po
 
 ## Performance Note
 
-Locals are evaluated lazily - Terraform only computes a local value if something actually references it. So there is no performance penalty for defining locals you might not use in every scenario.
+Locals are primarily a readability and reuse feature, not a performance feature. Define them when they remove repeated or complex expressions; unused or speculative locals can make configurations harder to read.
 
 ## Wrapping Up
 
