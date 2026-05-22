@@ -171,7 +171,7 @@ resource "aws_instance" "web" {
 
 ### Meta-Arguments
 
-Some arguments are available on every resource, regardless of type. These are called meta-arguments:
+Some arguments and special nested blocks are available on every resource, regardless of type. These are called meta-arguments:
 
 ```hcl
 resource "aws_instance" "web" {
@@ -182,7 +182,7 @@ resource "aws_instance" "web" {
   count      = 3                                    # Create multiple instances
   depends_on = [aws_internet_gateway.gw]            # Explicit dependency
   provider   = aws.west                             # Specific provider config
-  lifecycle {                                        # Lifecycle behavior
+  lifecycle {                                        # Meta-argument block for lifecycle behavior
     create_before_destroy = true
   }
 }
@@ -190,7 +190,7 @@ resource "aws_instance" "web" {
 
 ## Expressions
 
-Expressions are the right side of arguments. They represent or compute values. Everything from a simple string literal to a complex transformation is an expression.
+Expressions are usually the right side of arguments, and they can also appear inside other expressions. They represent or compute values. Everything from a simple string literal to a complex transformation is an expression.
 
 ### Literal Values
 
@@ -231,7 +231,7 @@ provisioner "local-exec" {
 }
 ```
 
-The reference syntax follows a consistent pattern: `<TYPE>.<NAME>.<ATTRIBUTE>`.
+Resource and data source references commonly follow the pattern `<TYPE>.<NAME>.<ATTRIBUTE>` or `data.<TYPE>.<NAME>.<ATTRIBUTE>`. Other named values use their own prefixes, such as `var.<NAME>`, `local.<NAME>`, and `module.<NAME>.<OUTPUT>`.
 
 ### String Interpolation
 
@@ -294,7 +294,7 @@ tagged_instances = {
 
 ## How They All Fit Together
 
-Here is a complete example that shows blocks, arguments, and expressions working together:
+Here is a larger example that shows blocks, arguments, and expressions working together:
 
 ```hcl
 # Variable BLOCK with arguments that use literal expressions
