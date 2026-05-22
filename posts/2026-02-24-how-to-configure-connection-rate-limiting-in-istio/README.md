@@ -42,15 +42,15 @@ The `maxConnections` field limits the total number of concurrent TCP connections
 
 The `maxRequestsPerConnection` field forces connection cycling after a certain number of requests, which helps distribute load more evenly.
 
-## Per-Source Connection Limits
+## Per-Subset Connection Limits
 
-To limit connections from specific sources, use DestinationRule with subsets:
+To limit connections for a specific destination subset, use DestinationRule with subsets. The subset policy only takes effect when a VirtualService route sends traffic to that subset:
 
 ```yaml
 apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
-  name: per-source-connection-limits
+  name: per-subset-connection-limits
   namespace: default
 spec:
   host: my-service.default.svc.cluster.local
@@ -70,7 +70,7 @@ spec:
 
 ## Using EnvoyFilter for Connection Rate Limiting
 
-For true connection rate limiting (limiting the rate of new connections, not just the total), you need EnvoyFilter. Envoy's connection limit filter provides this capability:
+For true connection rate limiting (limiting the rate of new connections, not just the total), you need EnvoyFilter. Envoy's local rate limit network filter provides this capability:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -93,19 +93,21 @@ spec:
     patch:
       operation: INSERT_BEFORE
       value:
-        name: envoy.filters.network.connection_limit
+        name: envoy.filters.network.local_ratelimit
         typed_config:
-          "@type": type.googleapis.com/envoy.extensions.filters.network.connection_limit.v3.ConnectionLimit
-          stat_prefix: connection_limiter
-          max_connections: 500
-          delay: 1s
+          "@type": type.googleapis.com/envoy.extensions.filters.network.local_ratelimit.v3.LocalRateLimit
+          stat_prefix: connection_rate_limiter
+          token_bucket:
+            max_tokens: 500
+            tokens_per_fill: 500
+            fill_interval: 1s
 ```
 
-This limits each listener to 500 concurrent connections. New connections beyond this limit are delayed by 1 second before being closed, which helps avoid thundering herd problems.
+This allows a burst of 500 new connections and refills the bucket at 500 connections per second. New connections that arrive when no tokens are available are closed immediately without further filter iteration.
 
-## Listener-Level Connection Limits
+## Listener-Level Connection Settings
 
-You can also set connection limits at the listener level, which applies before any filter chain processing:
+You can also set connection-related limits at the listener level:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -135,7 +137,7 @@ The `per_connection_buffer_limit_bytes` controls how much memory each connection
 
 ## Circuit Breakers for Connection Protection
 
-Circuit breakers in Istio provide another layer of connection protection. When too many connections fail, the circuit breaker trips and prevents new connections from being established:
+Circuit breaker settings in Istio provide another layer of connection protection. Connection pool limits cap concurrent upstream connections, and outlier detection can eject unhealthy endpoints after repeated failures:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -198,12 +200,14 @@ spec:
     patch:
       operation: INSERT_BEFORE
       value:
-        name: envoy.filters.network.connection_limit
+        name: envoy.filters.network.local_ratelimit
         typed_config:
-          "@type": type.googleapis.com/envoy.extensions.filters.network.connection_limit.v3.ConnectionLimit
-          stat_prefix: gateway_connection_limiter
-          max_connections: 10000
-          delay: 500ms
+          "@type": type.googleapis.com/envoy.extensions.filters.network.local_ratelimit.v3.LocalRateLimit
+          stat_prefix: gateway_connection_rate_limiter
+          token_bucket:
+            max_tokens: 10000
+            tokens_per_fill: 10000
+            fill_interval: 1s
 ```
 
 ## Tuning HTTP/2 Connection Settings
@@ -267,6 +271,13 @@ kubectl exec my-service-pod -c istio-proxy -- \
   curl -s localhost:15000/stats | grep "upstream_cx"
 ```
 
+For the local rate limit filter, check the filter-specific counter:
+
+```bash
+kubectl exec my-service-pod -c istio-proxy -- \
+  curl -s localhost:15000/stats | grep "local_rate_limit.connection_rate_limiter.rate_limited"
+```
+
 For Prometheus queries:
 
 ```promql
@@ -285,7 +296,7 @@ Use a tool that opens many concurrent connections:
 ```bash
 # Install hey for HTTP load testing
 # Send requests with limited connection reuse
-hey -n 1000 -c 300 http://my-service.default:8080/api/test
+hey -n 1000 -c 300 -disable-keepalive http://my-service.default:8080/api/test
 ```
 
 If you set `maxConnections: 200`, you should see connection overflow errors when trying to open more than 200 concurrent connections.
@@ -311,4 +322,4 @@ kubectl exec my-service-pod -c istio-proxy -- \
 
 ## Summary
 
-Connection rate limiting in Istio protects your services from connection floods and resource exhaustion. Start with DestinationRule's `connectionPool` settings for basic concurrency limits, and use EnvoyFilter's connection limit filter when you need more precise control. Combine connection limits with circuit breakers and outlier detection for comprehensive protection. Always monitor your connection metrics to set appropriate limits based on actual traffic patterns.
+Connection rate limiting in Istio protects your services from connection floods and resource exhaustion. Start with DestinationRule's `connectionPool` settings for basic concurrency limits, and use EnvoyFilter's local rate limit network filter when you need true rate control for new connections. Combine connection limits with circuit breakers and outlier detection for comprehensive protection. Always monitor your connection metrics to set appropriate limits based on actual traffic patterns.
