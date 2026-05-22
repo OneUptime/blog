@@ -23,18 +23,19 @@ The relationship looks like this:
 
 ## Mock Data for tfplan/v2
 
-The `tfplan/v2` mock is the one you will create most often. Here is the complete structure:
+The `tfplan/v2` mock is the one you will create most often. Here is a representative structure:
 
-```python
+```sentinel
 # mock-tfplan-v2.sentinel
 
-# Complete mock for the tfplan/v2 import
+# Representative mock for the tfplan/v2 import
 
 # Resource changes - the most important part
 resource_changes = {
     "aws_instance.web": {
         "address":        "aws_instance.web",
         "module_address": "",
+        "mode":           "managed",
         "type":           "aws_instance",
         "name":           "web",
         "provider_name":  "registry.terraform.io/hashicorp/aws",
@@ -79,8 +80,7 @@ resource_changes = {
 # Output changes
 output_changes = {
     "instance_id": {
-        "name":      "instance_id",
-        "sensitive": false,
+        "name": "instance_id",
         "change": {
             "actions": ["create"],
             "before":  null,
@@ -98,13 +98,14 @@ terraform_version = "1.7.0"
 
 You need separate mock files for different test scenarios:
 
-```python
+```sentinel
 # mock-tfplan-untagged.sentinel
 # Instance without required tags
 
 resource_changes = {
     "aws_instance.web": {
         "address": "aws_instance.web",
+        "mode":    "managed",
         "type":    "aws_instance",
         "name":    "web",
         "provider_name": "registry.terraform.io/hashicorp/aws",
@@ -121,13 +122,14 @@ resource_changes = {
 }
 ```
 
-```python
+```sentinel
 # mock-tfplan-update.sentinel
 # Instance being updated (not created)
 
 resource_changes = {
     "aws_instance.web": {
         "address": "aws_instance.web",
+        "mode":    "managed",
         "type":    "aws_instance",
         "name":    "web",
         "provider_name": "registry.terraform.io/hashicorp/aws",
@@ -154,13 +156,14 @@ resource_changes = {
 }
 ```
 
-```python
+```sentinel
 # mock-tfplan-delete.sentinel
 # Instance being deleted
 
 resource_changes = {
     "aws_instance.old": {
         "address": "aws_instance.old",
+        "mode":    "managed",
         "type":    "aws_instance",
         "name":    "old",
         "provider_name": "registry.terraform.io/hashicorp/aws",
@@ -183,7 +186,7 @@ resource_changes = {
 
 When your policy checks Terraform configuration, you need tfconfig mocks:
 
-```python
+```sentinel
 # mock-tfconfig-v2.sentinel
 # Mock for the tfconfig/v2 import
 
@@ -192,6 +195,7 @@ resources = {
     "aws_instance.web": {
         "address":             "aws_instance.web",
         "module_address":      "",
+        "mode":                "managed",
         "type":                "aws_instance",
         "name":                "web",
         "provider_config_key": "aws",
@@ -206,6 +210,7 @@ resources = {
                 "references": ["var.tags"],
             },
         },
+        "provisioners": [],
         "count":      {},
         "for_each":   {},
         "depends_on": [],
@@ -224,6 +229,9 @@ module_calls = {
                 "constant_value": "10.0.0.0/16",
             },
         },
+        "count":      {},
+        "for_each":   {},
+        "depends_on": {},
     },
 }
 
@@ -233,14 +241,12 @@ variables = {
         "name":           "ami_id",
         "description":    "The AMI ID for the instance",
         "default":        null,
-        "sensitive":      false,
         "module_address": "",
     },
     "tags": {
         "name":           "tags",
         "description":    "Tags to apply to resources",
         "default":        null,
-        "sensitive":      false,
         "module_address": "",
     },
 }
@@ -251,6 +257,9 @@ outputs = {
         "name":           "instance_id",
         "description":    "The ID of the created instance",
         "sensitive":      false,
+        "value": {
+            "references": ["aws_instance.web.id"],
+        },
         "module_address": "",
         "depends_on":     [],
     },
@@ -260,24 +269,26 @@ outputs = {
 providers = {
     "aws": {
         "provider_config_key": "aws",
+        "name":                "aws",
+        "full_name":           "registry.terraform.io/hashicorp/aws",
+        "alias":               "",
         "module_address":      "",
         "config": {
             "region": {
                 "constant_value": "us-east-1",
             },
         },
+        "version_constraint": "~> 5.0",
     },
 }
 
-# Data sources
-datasources = {}
 ```
 
 ## Mock Data for tfstate/v2
 
 State mocks represent existing infrastructure:
 
-```python
+```sentinel
 # mock-tfstate-v2.sentinel
 # Mock for the tfstate/v2 import
 
@@ -285,6 +296,7 @@ resources = {
     "aws_instance.existing": {
         "address":        "aws_instance.existing",
         "module_address": "",
+        "mode":           "managed",
         "type":           "aws_instance",
         "name":           "existing",
         "provider_name":  "registry.terraform.io/hashicorp/aws",
@@ -308,6 +320,7 @@ resources = {
     "aws_instance.another": {
         "address":        "aws_instance.another",
         "module_address": "",
+        "mode":           "managed",
         "type":           "aws_instance",
         "name":           "another",
         "provider_name":  "registry.terraform.io/hashicorp/aws",
@@ -338,7 +351,7 @@ outputs = {
 
 The tfrun mock provides workspace and run metadata:
 
-```python
+```sentinel
 # mock-tfrun-prod.sentinel
 # Mock for the tfrun import - production workspace
 
@@ -356,17 +369,16 @@ organization = {
     "name": "my-organization",
 }
 
-source     = "tfe-vcs"
 is_destroy = false
 
-cost_estimation = {
+cost_estimate = {
     "prior_monthly_cost":    "2500.00",
     "proposed_monthly_cost": "2800.00",
     "delta_monthly_cost":    "300.00",
 }
 ```
 
-```python
+```sentinel
 # mock-tfrun-dev.sentinel
 # Mock for the tfrun import - development workspace
 
@@ -381,10 +393,9 @@ organization = {
     "name": "my-organization",
 }
 
-source     = "tfe-ui"
 is_destroy = false
 
-cost_estimation = {
+cost_estimate = {
     "prior_monthly_cost":    "200.00",
     "proposed_monthly_cost": "350.00",
     "delta_monthly_cost":    "150.00",
@@ -428,18 +439,18 @@ test {
 
 ## Generating Mock Data from Real Plans
 
-Writing mock data by hand is tedious. You can generate it from real Terraform plans:
+Writing mock data by hand is tedious. You can derive Terraform plan, configuration, and state mock data from real Terraform plans:
 
 ```bash
 # Generate a plan JSON
 terraform plan -out=plan.bin
 terraform show -json plan.bin > plan.json
 
-# The plan JSON contains the same data structures
-# that Sentinel imports use
+# The plan JSON contains the source data used by
+# the tfplan/v2, tfconfig/v2, and tfstate/v2 imports
 ```
 
-You can then extract the relevant sections from the JSON and format them as Sentinel mock data. Some teams maintain scripts for this conversion.
+You can then extract the relevant sections from the JSON and format them as Sentinel mock data. The `tfrun` import comes from HCP Terraform run metadata, so local plan JSON does not include those fields. Some teams maintain scripts for this conversion.
 
 ## Best Practices for Mock Data
 
