@@ -166,51 +166,50 @@ provider "aws" {
 
 ## Strategy 4: Dynamic Batching with count and for_each
 
-You can build batching logic directly into your Terraform code. This is useful when creating many similar resources:
+You can build batching logic directly into your Terraform code. This is useful when creating many similar resources and you need one group to finish before the next starts:
 
 ```hcl
-# Create instances in batches using depends_on
-variable "instances_per_batch" {
-  default = 10
-}
-
-variable "total_instances" {
-  default = 50
-}
-
 locals {
-  # Calculate batch assignments
-  batch_count = ceil(var.total_instances / var.instances_per_batch)
-  batches = {
-    for i in range(var.total_instances) :
+  batch_1 = {
+    for i in range(0, 10) :
     "instance-${i}" => {
-      batch = floor(i / var.instances_per_batch)
+      batch = 1
+      index = i
+    }
+  }
+
+  batch_2 = {
+    for i in range(10, 20) :
+    "instance-${i}" => {
+      batch = 2
       index = i
     }
   }
 }
 
-# Create a null_resource for each batch to establish ordering
-resource "null_resource" "batch_gate" {
-  for_each = toset([for i in range(local.batch_count) : tostring(i)])
-
-  # Each batch depends on the previous one
-  depends_on = []
-
-  triggers = {
-    batch = each.key
-  }
-}
-
-resource "aws_instance" "app" {
-  for_each = local.batches
+resource "aws_instance" "app_batch_1" {
+  for_each = local.batch_1
 
   ami           = "ami-0123456789abcdef0"
   instance_type = "t3.medium"
 
   tags = {
     Name  = each.key
-    Batch = each.value.batch
+    Batch = tostring(each.value.batch)
+  }
+}
+
+resource "aws_instance" "app_batch_2" {
+  for_each = local.batch_2
+
+  depends_on = [aws_instance.app_batch_1]
+
+  ami           = "ami-0123456789abcdef0"
+  instance_type = "t3.medium"
+
+  tags = {
+    Name  = each.key
+    Batch = tostring(each.value.batch)
   }
 }
 ```
@@ -308,6 +307,13 @@ terraform apply -target=module.application
 Some cloud operations are rate-limited. When creating many resources of the same type, you might need to explicitly slow things down:
 
 ```hcl
+resource "aws_instance" "batch_1" {
+  count = 10
+
+  ami           = "ami-0123456789abcdef0"
+  instance_type = "t3.medium"
+}
+
 # Use time_sleep to add delays between batch operations
 resource "time_sleep" "wait_between_batches" {
   depends_on = [aws_instance.batch_1]
@@ -342,6 +348,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
       - run: |
           cd infrastructure/batch-01-foundation
           terraform init
@@ -352,6 +359,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
       - run: |
           cd infrastructure/batch-02-security
           terraform init
@@ -362,6 +370,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
       - run: |
           cd infrastructure/batch-03-compute
           terraform init
