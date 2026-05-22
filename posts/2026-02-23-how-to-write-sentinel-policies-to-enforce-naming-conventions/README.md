@@ -38,15 +38,15 @@ Let us write policies that enforce this pattern.
 
 Here is a policy that checks resource names in Terraform follow a specific pattern:
 
-```python
+```sentinel
 # enforce-naming.sentinel
 
 # Enforces naming conventions on Terraform resource names
 
 import "tfconfig/v2" as tfconfig
 
-# All resource names in Terraform config must follow this pattern
-# lowercase, using underscores (Terraform convention)
+# All resource names in Terraform config must follow this organization's pattern
+# lowercase, using underscores only
 name_pattern = "^[a-z][a-z0-9_]*$"
 
 all_resources = tfconfig.resources
@@ -55,7 +55,7 @@ main = rule {
     all all_resources as _, resource {
         if not (resource.name matches name_pattern) {
             print("Resource", resource.address,
-                  "- name must be lowercase with underscores only")
+                  "- name must follow the organization's lowercase_with_underscores convention")
             false
         } else {
             true
@@ -68,7 +68,7 @@ main = rule {
 
 The more important naming convention is usually the Name tag or the actual resource name in the cloud provider:
 
-```python
+```sentinel
 import "tfplan/v2" as tfplan
 import "tfrun"
 
@@ -95,8 +95,8 @@ name_pattern = "^" + env + "-[a-z]+-[a-z0-9-]+-[a-z0-9-]+$"
 # Get resources with Name tags
 tagged_resources = filter tfplan.resource_changes as _, rc {
     (rc.change.actions contains "create" or rc.change.actions contains "update") and
-    rc.change.after.tags is not null and
-    "Name" in rc.change.after.tags
+    (rc.change.after.tags else null) is not null and
+    "Name" in (rc.change.after.tags else {})
 }
 
 # Validate the Name tag
@@ -119,7 +119,7 @@ main = rule {
 
 S3 buckets have specific naming requirements and your organization probably has additional standards:
 
-```python
+```sentinel
 import "tfplan/v2" as tfplan
 
 # Get S3 buckets
@@ -135,7 +135,7 @@ bucket_pattern = "^mycompany-(prod|staging|dev|sandbox)-[a-z0-9-]+-[a-z]+-[a-z]+
 
 main = rule {
     all s3_buckets as address, bucket {
-        name = bucket.change.after.bucket
+        name = bucket.change.after.bucket else null
         if name is not null {
             if not (name matches bucket_pattern) {
                 print(address, "- bucket name", name,
@@ -153,7 +153,7 @@ main = rule {
 
 ## Security Group Naming
 
-```python
+```sentinel
 import "tfplan/v2" as tfplan
 
 # Get security groups
@@ -168,7 +168,7 @@ security_groups = filter tfplan.resource_changes as _, rc {
 sg_pattern = "^(prod|staging|dev|sandbox)-[a-z0-9]+-[a-z0-9]+-sg$"
 
 validate_sg_name = func(sg) {
-    name = sg.change.after.name
+    name = sg.change.after.name else null
     if name is null or name is "" {
         print(sg.address, "- security group must have a name")
         return false
@@ -185,7 +185,7 @@ validate_sg_name = func(sg) {
 
 # Also check the description is not empty
 validate_sg_description = func(sg) {
-    desc = sg.change.after.description
+    desc = sg.change.after.description else null
     if desc is null or desc is "" {
         print(sg.address, "- security group must have a description")
         return false
@@ -202,7 +202,7 @@ main = rule {
 
 ## IAM Role and Policy Naming
 
-```python
+```sentinel
 import "tfplan/v2" as tfplan
 
 # Get IAM roles
@@ -225,7 +225,7 @@ policy_pattern = "^(prod|staging|dev)-[a-zA-Z0-9]+-[a-zA-Z0-9-]+-policy$"
 
 roles_named = rule {
     all iam_roles as address, role {
-        name = role.change.after.name
+        name = role.change.after.name else null
         if not (name matches role_pattern) {
             print(address, "- role name", name,
                   "must match: {env}-{service}-{purpose}-role")
@@ -238,7 +238,7 @@ roles_named = rule {
 
 policies_named = rule {
     all iam_policies as address, policy {
-        name = policy.change.after.name
+        name = policy.change.after.name else null
         if not (name matches policy_pattern) {
             print(address, "- policy name", name,
                   "must match: {env}-{service}-{purpose}-policy")
@@ -258,7 +258,7 @@ main = rule {
 
 Here is a comprehensive policy that enforces naming across multiple resource types:
 
-```python
+```sentinel
 import "tfplan/v2" as tfplan
 
 # Naming patterns per resource type
@@ -308,7 +308,7 @@ validate_name = func(resource) {
 
     if rule_config["tag_key"] is not null {
         # Get name from a tag
-        if resource.change.after.tags is not null {
+        if (resource.change.after.tags else null) is not null {
             tag_key = rule_config["tag_key"]
             if tag_key in resource.change.after.tags {
                 name = resource.change.after.tags[tag_key]
@@ -317,7 +317,7 @@ validate_name = func(resource) {
     } else {
         # Get name from a direct attribute
         attr = rule_config["attr"]
-        name = resource.change.after[attr]
+        name = resource.change.after[attr] else null
     }
 
     if name is null or name is "" {
@@ -346,7 +346,7 @@ main = rule {
 
 You can also enforce naming conventions on Terraform modules:
 
-```python
+```sentinel
 import "tfconfig/v2" as tfconfig
 
 # Module names should be descriptive and follow conventions
@@ -369,7 +369,7 @@ main = rule {
 
 ## Enforcing Variable Naming
 
-```python
+```sentinel
 import "tfconfig/v2" as tfconfig
 
 # Variable naming convention: lowercase_with_underscores
@@ -392,14 +392,14 @@ main = rule {
 
 ## Preventing Common Naming Mistakes
 
-```python
+```sentinel
 import "tfplan/v2" as tfplan
 
 # Get all resources with Name tags
 named_resources = filter tfplan.resource_changes as _, rc {
     (rc.change.actions contains "create" or rc.change.actions contains "update") and
-    rc.change.after.tags is not null and
-    "Name" in rc.change.after.tags
+    (rc.change.after.tags else null) is not null and
+    "Name" in (rc.change.after.tags else {})
 }
 
 # Check for common bad patterns
