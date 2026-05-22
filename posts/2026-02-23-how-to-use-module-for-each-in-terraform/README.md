@@ -8,7 +8,7 @@ Description: Learn how to use the for_each meta-argument with Terraform modules 
 
 ---
 
-The `for_each` meta-argument on module blocks lets you create multiple instances of the same module from a map or set. Each instance gets its own set of resources, its own state entries, and its own outputs. This is the recommended way to create multiple copies of a module because it gives you stable, predictable resource addresses based on map keys rather than numeric indices.
+The `for_each` meta-argument on module blocks lets you create multiple instances of the same module from a map or set. Each instance gets its own set of resources, its own state entries, and its own outputs. This is often the best choice when each copy needs distinct configuration because it gives you stable, predictable resource addresses based on map keys or set members rather than numeric indices.
 
 This guide covers the syntax, patterns, and real-world examples for using `for_each` with modules.
 
@@ -264,13 +264,13 @@ module "monitoring" {
 Workaround: use a value that is known at plan time as the key:
 
 ```hcl
-# Use the index or a static key instead
+# Use a static name or another plan-time value instead
 module "monitoring" {
   for_each = { for idx, inst in var.server_configs : inst.name => inst }
 }
 ```
 
-**All instances share the same provider.** You cannot dynamically assign different providers to different `for_each` instances.
+**All instances share the same provider configuration mapping.** You cannot dynamically assign different provider configurations to different `for_each` instances.
 
 **All instances use the same source.** Every instance of the module uses the same source and version.
 
@@ -296,7 +296,7 @@ module "env" {
 
 ## Nested for_each
 
-You can use `for_each` at multiple levels, but the keys at each level must be independent:
+You can use `for_each` at multiple levels, but the keys at each level must still be known at plan time:
 
 ```hcl
 # Outer module: one per environment
@@ -321,6 +321,6 @@ module "service" {
 
 ## Summary
 
-Module `for_each` is the standard way to create multiple instances of a module in Terraform. Use maps for structured data (where each instance needs different configuration) and sets for simple lists (where only the name varies). The map keys become part of the resource address in state, making additions and removals safe. Access outputs from specific instances with `module.name["key"].output_name`, or iterate over all instances with a `for` expression. Remember that keys must be known at plan time, and use `moved` blocks when migrating from separate module blocks to `for_each`.
+Module `for_each` is a standard way to create multiple instances of a module in Terraform. Use maps for structured data (where each instance needs different configuration) and sets for simple lists (where only the name varies). The map keys or set members become part of the resource address in state, making additions and removals safe. Access outputs from specific instances with `module.name["key"].output_name`, or iterate over all instances with a `for` expression. Remember that keys must be known at plan time, and use `moved` blocks when migrating from separate module blocks to `for_each`.
 
 For the alternative approach, see [How to Use Module count in Terraform](https://oneuptime.com/blog/post/2026-02-23-how-to-use-module-count-in-terraform/view). For dependency management, check out [How to Use Module depends_on in Terraform](https://oneuptime.com/blog/post/2026-02-23-how-to-use-module-depends-on-in-terraform/view).
