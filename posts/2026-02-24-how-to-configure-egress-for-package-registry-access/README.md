@@ -59,10 +59,10 @@ spec:
     name: tls
     protocol: TLS
   location: MESH_EXTERNAL
-  resolution: NONE
+  resolution: DYNAMIC_DNS
 ```
 
-Note the `resolution: NONE` for wildcard hosts. Istio cannot perform DNS resolution on wildcards, so it passes through the connection based on the SNI hostname.
+Note the `resolution: DYNAMIC_DNS` for wildcard hosts. With sidecar mode, this lets Istio resolve the hostname from the SNI value instead of trying to resolve the wildcard itself.
 
 ## PyPI (Python Package Index)
 
@@ -92,7 +92,7 @@ Test from a pod:
 kubectl exec -it deploy/build-runner -- pip install --dry-run requests
 ```
 
-## Maven Central and JCenter
+## Maven Central
 
 Java builds pull dependencies from Maven Central. The primary endpoints are:
 
@@ -104,9 +104,8 @@ metadata:
   namespace: default
 spec:
   hosts:
-  - repo1.maven.org
   - repo.maven.apache.org
-  - central.maven.org
+  - repo1.maven.org
   ports:
   - number: 443
     name: tls
@@ -138,7 +137,7 @@ spec:
 
 ## Docker Hub and Container Registries
 
-Container image pulls are another common egress requirement. Docker Hub uses several domains:
+Container registry access is another common egress requirement for build tools that run inside the mesh, such as CI jobs or image builders. Kubernetes node image pulls are performed by the kubelet and container runtime, so those are controlled at the node network layer rather than by a pod sidecar. Docker Hub uses several domains:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -194,7 +193,6 @@ spec:
   hosts:
   - proxy.golang.org
   - sum.golang.org
-  - storage.googleapis.com
   ports:
   - number: 443
     name: tls
@@ -203,7 +201,7 @@ spec:
   resolution: DNS
 ```
 
-Note that `storage.googleapis.com` is included because the Go module proxy stores modules on Google Cloud Storage.
+If `GOPROXY` falls back to `direct`, the Go command may also need access to the version control hosts used by your modules, such as GitHub or GitLab.
 
 ## Routing Registry Traffic Through an Egress Gateway
 
@@ -272,7 +270,7 @@ spec:
 
 ## Handling Timeout Issues
 
-Package downloads can be large. The default Envoy timeout might cause downloads to fail for big packages. Adjust the timeout in the DestinationRule:
+Package downloads can be large. If downloads stall or connections are closed while data is idle, adjust the TCP connection settings in the DestinationRule:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -286,13 +284,12 @@ spec:
     connectionPool:
       tcp:
         connectTimeout: 30s
-      http:
         idleTimeout: 300s
 ```
 
 ## Restricting Registry Access to Build Namespaces
 
-You probably do not want every namespace to access package registries. Restrict access to your CI/CD or build namespaces:
+You probably do not want every namespace to access package registries. If you route registry traffic through the egress gateway, restrict access to your CI/CD or build namespaces:
 
 ```yaml
 apiVersion: security.istio.io/v1
