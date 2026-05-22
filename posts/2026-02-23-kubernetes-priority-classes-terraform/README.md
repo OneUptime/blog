@@ -23,12 +23,12 @@ The priority value is assigned through a PriorityClass. Pods reference the Prior
 Define a hierarchy of priority classes for different workload types.
 
 ```hcl
-# System-critical: For core platform components
+# Platform-critical: For core platform components
 
 # These should almost never be preempted
-resource "kubernetes_priority_class" "system_critical" {
+resource "kubernetes_priority_class" "platform_critical" {
   metadata {
-    name = "system-critical"
+    name = "platform-critical"
   }
 
   value          = 1000000
@@ -201,7 +201,7 @@ resource "kubernetes_deployment" "report_generator" {
 Infrastructure components should have the highest priority to keep the cluster healthy.
 
 ```hcl
-# NGINX Ingress Controller - system critical
+# NGINX Ingress Controller - platform critical
 resource "helm_release" "nginx_ingress" {
   name       = "ingress-nginx"
   repository = "https://kubernetes.github.io/ingress-nginx"
@@ -211,7 +211,7 @@ resource "helm_release" "nginx_ingress" {
   values = [
     yamlencode({
       controller = {
-        priorityClassName = kubernetes_priority_class.system_critical.metadata[0].name
+        priorityClassName = kubernetes_priority_class.platform_critical.metadata[0].name
       }
     })
   ]
@@ -231,12 +231,12 @@ resource "helm_release" "prometheus" {
     yamlencode({
       prometheus = {
         prometheusSpec = {
-          priorityClassName = kubernetes_priority_class.system_critical.metadata[0].name
+          priorityClassName = kubernetes_priority_class.platform_critical.metadata[0].name
         }
       }
       alertmanager = {
         alertmanagerSpec = {
-          priorityClassName = kubernetes_priority_class.system_critical.metadata[0].name
+          priorityClassName = kubernetes_priority_class.platform_critical.metadata[0].name
         }
       }
       grafana = {
@@ -444,7 +444,7 @@ kubectl get pods --field-selector status.phase=Pending -A
 - Set exactly one PriorityClass as `global_default` for pods without explicit priority
 - Use `preemption_policy = "Never"` for workloads that should not evict others
 - Do not set custom priority values above 1,000,000,000 to avoid conflicts with system classes
-- Assign system-critical priority to infrastructure components (ingress, DNS, monitoring)
+- Assign platform-critical priority to infrastructure components (ingress, DNS, monitoring)
 - Use low or best-effort priority for batch jobs, CI runners, and dev workloads
 - Combine priority classes with resource quotas and limit ranges for complete resource management
 - Monitor preemption events to detect resource contention issues
