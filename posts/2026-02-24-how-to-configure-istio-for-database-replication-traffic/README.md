@@ -14,7 +14,7 @@ This guide covers how to configure Istio for common database replication scenari
 
 ## Why Replication Traffic Needs Special Config
 
-Database replication protocols are proprietary binary protocols running over TCP. They are not HTTP, not gRPC, and Istio can't inspect them at L7. If Istio tries to parse replication traffic as HTTP (which it does by default for ports without explicit protocol hints), things break.
+Database replication protocols are database-specific binary protocols running over TCP. They are not HTTP, not gRPC, and Istio can't inspect them at L7. Istio can automatically detect HTTP and HTTP/2 traffic, and treats traffic it cannot identify as plain TCP, but server-first protocols such as MySQL and MongoDB are incompatible with automatic protocol detection. For database replication traffic, explicitly declaring the port as TCP avoids protocol sniffing delays and surprises.
 
 Replication traffic also has these characteristics:
 - Long-lived TCP connections (sometimes kept open for days)
@@ -58,7 +58,7 @@ spec:
     role: replica
 ```
 
-The `tcp-` prefix tells Istio to treat this as opaque TCP traffic. Without it, Istio might try to parse the traffic as HTTP and corrupt the replication stream.
+The `tcp-` prefix tells Istio to treat this as opaque TCP traffic. Without an explicit protocol hint, Istio may attempt protocol detection first, which is especially risky for server-first database protocols and long-lived replication streams.
 
 ## Configuring the StatefulSet
 
@@ -71,19 +71,21 @@ metadata:
   name: postgres
   namespace: database
 spec:
-  serviceName: postgres
+  serviceName: postgres-replicas
   replicas: 3
   selector:
     matchLabels:
       app: postgres
+      role: replica
   template:
     metadata:
       labels:
         app: postgres
+        role: replica
       annotations:
         proxy.istio.io/config: |
           holdApplicationUntilProxyStarts: true
-          drainDuration: 120s
+          terminationDrainDuration: 120s
     spec:
       terminationGracePeriodSeconds: 130
       containers:
@@ -110,7 +112,7 @@ spec:
 
 Key annotations:
 - `holdApplicationUntilProxyStarts: true` prevents the database from trying to connect to the primary before the sidecar is ready
-- `drainDuration: 120s` gives replication streams time to gracefully close during rolling updates
+- `terminationDrainDuration: 120s` gives replication streams time to gracefully close during rolling updates
 
 ## DestinationRule for Replication Connections
 
@@ -156,7 +158,7 @@ spec:
   egress:
   - hosts:
     - "./postgres-primary.database.svc.cluster.local"
-    - "./postgres.database.svc.cluster.local"
+    - "./postgres-replicas.database.svc.cluster.local"
     - "istio-system/*"
   ingress:
   - port:
@@ -225,7 +227,7 @@ Both ports need the `tcp-` prefix so Istio doesn't try to parse either as HTTP.
 
 ## MongoDB Replica Set Configuration
 
-MongoDB replica sets are particularly interesting because members discover each other through the `rs.conf()` configuration and use the `mongodb+srv://` connection string protocol:
+MongoDB replica sets are particularly interesting because members advertise each other through the hostnames in the `rs.conf()` configuration. In Kubernetes, those hostnames should resolve consistently, often through headless Service DNS names:
 
 ```yaml
 apiVersion: v1
@@ -261,7 +263,7 @@ spec:
       mode: ISTIO_MUTUAL
 ```
 
-MongoDB uses shorter keepalive intervals because replica set members need to detect primary failures quickly for election purposes.
+MongoDB replica set elections are driven by MongoDB's heartbeat and election settings, not TCP keepalive alone. Shorter TCP keepalive intervals can still help clear dead idle sockets faster, but tune MongoDB heartbeat behavior separately if you need faster primary failure detection.
 
 ## Handling mTLS for Replication
 
@@ -303,7 +305,7 @@ istio_tcp_received_bytes_total{
   destination_workload="postgres"
 }
 
-# Connection duration (long-lived connections expected)
+# Opened TCP connections (long-lived connections should not churn frequently)
 istio_tcp_connections_opened_total{
   destination_workload="postgres"
 }
