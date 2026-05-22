@@ -67,7 +67,8 @@ The `owners` argument restricts which AWS accounts' AMIs are searched. This is c
 # 125523088429 - CentOS
 # 309956199498 - Red Hat
 # "self"       - Your own account
-# "amazon"     - AWS Marketplace
+# "amazon"     - Amazon-owned AMIs
+# "aws-marketplace" - AWS Marketplace
 
 data "aws_ami" "amazon_linux" {
   most_recent = true
@@ -101,13 +102,13 @@ data "aws_ami" "app" {
 ### Latest Ubuntu LTS
 
 ```hcl
-data "aws_ami" "ubuntu_2404" {
+data "aws_ami" "ubuntu_2604" {
   most_recent = true
   owners      = ["099720109477"]
 
   filter {
     name   = "name"
-    values = ["ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-*"]
+    values = ["ubuntu/images/hvm-ssd-gp3/ubuntu-resolute-26.04-amd64-server-*"]
   }
 
   filter {
