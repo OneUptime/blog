@@ -8,7 +8,7 @@ Description: A complete guide to installing and setting up CDKTF (Cloud Developm
 
 ---
 
-CDKTF (Cloud Development Kit for Terraform) lets you define infrastructure using programming languages like TypeScript, Python, Go, Java, and C# instead of HCL. It synthesizes your code into standard Terraform JSON configuration, which means you get the full Terraform provider ecosystem while writing in a language you already know. This guide covers everything you need to get CDKTF installed and your first project running.
+CDKTF (Cloud Development Kit for Terraform) lets you define infrastructure using programming languages like TypeScript, Python, Go, Java, and C# instead of HCL. It synthesizes your code into standard Terraform JSON configuration, which means you get the full Terraform provider ecosystem while writing in a language you already know. HashiCorp deprecated CDKTF on December 10, 2025, so use it for existing projects or when you accept that it is no longer maintained by HashiCorp. This guide covers everything you need to get CDKTF installed and your first project running.
 
 ## Prerequisites
 
@@ -23,10 +23,8 @@ CDKTF requires Terraform CLI version 1.2.0 or later:
 
 brew install terraform
 
-# Or download from HashiCorp
-curl -sL https://releases.hashicorp.com/terraform/1.7.0/terraform_1.7.0_darwin_amd64.zip -o terraform.zip
-unzip terraform.zip
-sudo mv terraform /usr/local/bin/
+# Or download the current package from HashiCorp:
+# https://developer.hashicorp.com/terraform/install
 
 # Verify installation
 terraform --version
@@ -114,7 +112,7 @@ cdktf init --template=java --local
 cdktf init --template=csharp --local
 ```
 
-The `--local` flag tells CDKTF to use a local Terraform state backend instead of Terraform Cloud.
+The `--local` flag tells CDKTF to use a local Terraform state backend instead of HCP Terraform.
 
 During initialization, CDKTF will ask you:
 - Project name
@@ -155,24 +153,24 @@ This is the main configuration file:
 
 CDKTF needs provider bindings to create resources. There are two approaches:
 
-### Pre-built Providers (Recommended)
+### Provider Add Command (Recommended)
 
-Pre-built providers are npm packages that come with TypeScript types already generated:
+The `cdktf provider add` command adds Terraform providers to your project. Use `--force-local` to generate local bindings in `.gen/`:
 
 ```bash
-# Install the AWS provider
-npm install @cdktf/provider-aws
+# Add the AWS provider
+cdktf provider add aws --force-local
 
-# Install the Azure provider
-npm install @cdktf/provider-azurerm
+# Add the Azure provider
+cdktf provider add azurerm --force-local
 
-# Install the GCP provider
-npm install @cdktf/provider-google
+# Add the GCP provider
+cdktf provider add google --force-local
 ```
 
 ### Provider Generation
 
-For providers without pre-built packages, add them to `cdktf.json` and generate bindings:
+You can also add providers to `cdktf.json` and generate bindings manually:
 
 ```json
 {
@@ -199,10 +197,10 @@ Open `main.ts` and define some infrastructure:
 // main.ts
 import { Construct } from "constructs";
 import { App, TerraformStack, TerraformOutput } from "cdktf";
-import { AwsProvider } from "@cdktf/provider-aws/lib/provider";
-import { Instance } from "@cdktf/provider-aws/lib/instance";
-import { Vpc } from "@cdktf/provider-aws/lib/vpc";
-import { Subnet } from "@cdktf/provider-aws/lib/subnet";
+import { AwsProvider } from "./.gen/providers/aws/provider";
+import { Instance } from "./.gen/providers/aws/instance";
+import { Vpc } from "./.gen/providers/aws/vpc";
+import { Subnet } from "./.gen/providers/aws/subnet";
 
 // Define the infrastructure stack
 class MyInfrastructureStack extends TerraformStack {
@@ -244,7 +242,7 @@ class MyInfrastructureStack extends TerraformStack {
       },
     });
 
-    // Output the instance public IP
+    // Output the instance ID
     new TerraformOutput(this, "instance_id", {
       value: instance.id,
     });
@@ -293,7 +291,6 @@ class MyStack extends TerraformStack {
       key: "cdktf/my-infrastructure/terraform.tfstate",
       region: "us-east-1",
       encrypt: true,
-      dynamodbTable: "terraform-locks",
     });
 
     // ... rest of your infrastructure
@@ -358,11 +355,11 @@ A helpful `launch.json` for debugging:
 
 **"Cannot find module"**: Run `npm install` to install dependencies, then `cdktf get` to generate provider bindings.
 
-**"Provider not found"**: Make sure the provider is listed in `cdktf.json` or installed as an npm package, then run `cdktf get`.
+**"Provider not found"**: Make sure the provider is listed in `cdktf.json` or added with `cdktf provider add`, then run `cdktf get`.
 
 **"Terraform version mismatch"**: CDKTF requires Terraform >= 1.2.0. Update with `brew upgrade terraform` or download the latest version.
 
-**Slow synthesis**: Large providers like AWS have thousands of resource types. Pre-built providers are faster than generating bindings each time.
+**Slow synthesis**: Large providers like AWS have thousands of resource types. Generated bindings can take several minutes the first time you run `cdktf get`.
 
 ## Summary
 
