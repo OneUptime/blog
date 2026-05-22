@@ -92,7 +92,7 @@ output "first_subnet_id" {
   value = aws_subnet.private[0].id
 }
 
-# Reference all instance IDs as a list
+# Reference all subnet IDs as a list
 output "all_subnet_ids" {
   value = aws_subnet.private[*].id  # Splat expression - returns a list
 }
@@ -291,7 +291,7 @@ resource "aws_security_group" "app" {
 ### Transforming State Data with for Expressions
 
 ```hcl
-# Create a map of instance IDs to private IPs
+# Assuming aws_instance.web uses count, create a map of instance IDs to private IPs
 locals {
   instance_ips = {
     for instance in aws_instance.web :
@@ -308,12 +308,12 @@ locals {
   ]
 }
 
-# Flatten nested data from state
+# Collect subnet IDs from counted resources
 locals {
-  all_subnet_ids = flatten([
-    for az_subnets in aws_subnet.multi_az :
-    az_subnets.id
-  ])
+  all_subnet_ids = [
+    for subnet in aws_subnet.multi_az :
+    subnet.id
+  ]
 }
 ```
 
@@ -357,7 +357,7 @@ resource "terraform_data" "deployment_info" {
     deployed_at    = timestamp()
     deployed_by    = data.aws_caller_identity.current.arn
     git_commit     = var.git_commit
-    instance_count = length(aws_instance.web)
+    instance_id    = aws_instance.web.id
   }
 }
 
