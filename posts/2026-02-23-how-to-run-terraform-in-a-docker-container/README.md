@@ -217,8 +217,6 @@ For projects that use Terraform regularly, a `docker-compose.yml` simplifies the
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   terraform:
     image: hashicorp/terraform:1.7.5
@@ -275,7 +273,7 @@ docker run --rm \
 
 ## Plugin Caching with Docker
 
-Provider downloads inside Docker containers are ephemeral - they disappear when the container is removed. To avoid re-downloading providers every time, mount a cache volume:
+Provider downloads are written under `.terraform` in the mounted workspace, so they persist with your project directory. To avoid re-downloading providers across multiple projects or after cleaning `.terraform`, mount a shared cache volume:
 
 ```bash
 # Create a persistent provider cache
@@ -303,17 +301,27 @@ on: [pull_request]
 jobs:
   plan:
     runs-on: ubuntu-latest
-    container:
-      image: hashicorp/terraform:1.7.5
     steps:
       - uses: actions/checkout@v4
       - name: Terraform Init
-        run: terraform init
+        run: |
+          docker run --rm \
+            -e AWS_ACCESS_KEY_ID \
+            -e AWS_SECRET_ACCESS_KEY \
+            -v ${{ github.workspace }}:/workspace \
+            -w /workspace \
+            hashicorp/terraform:1.7.5 init
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       - name: Terraform Plan
-        run: terraform plan
+        run: |
+          docker run --rm \
+            -e AWS_ACCESS_KEY_ID \
+            -e AWS_SECRET_ACCESS_KEY \
+            -v ${{ github.workspace }}:/workspace \
+            -w /workspace \
+            hashicorp/terraform:1.7.5 plan
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -328,7 +336,9 @@ stages:
 
 terraform_plan:
   stage: plan
-  image: hashicorp/terraform:1.7.5
+  image:
+    name: hashicorp/terraform:1.7.5
+    entrypoint: [""]
   script:
     - terraform init
     - terraform plan -out=plan.tfplan
@@ -338,7 +348,9 @@ terraform_plan:
 
 terraform_apply:
   stage: apply
-  image: hashicorp/terraform:1.7.5
+  image:
+    name: hashicorp/terraform:1.7.5
+    entrypoint: [""]
   script:
     - terraform init
     - terraform apply plan.tfplan
@@ -368,7 +380,7 @@ If Terraform cannot reach provider registries from inside the container:
 
 ```bash
 # Check DNS resolution inside the container
-docker run --rm hashicorp/terraform:1.7.5 sh -c "nslookup registry.terraform.io"
+docker run --rm --entrypoint sh hashicorp/terraform:1.7.5 -c "nslookup registry.terraform.io"
 
 # Use host networking if needed
 docker run --rm \
