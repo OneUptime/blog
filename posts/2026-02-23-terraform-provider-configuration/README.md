@@ -14,7 +14,7 @@ This guide covers implementing provider configuration in depth, including handli
 
 ## The Configure Lifecycle
 
-When Terraform starts, it processes the provider block before anything else. The lifecycle is:
+During `terraform plan` and `terraform apply`, Terraform configures providers before resource and data source operations that need them. The lifecycle is:
 
 1. Terraform reads the `provider` block from HCL
 2. The Schema method defines what attributes are valid
@@ -43,6 +43,7 @@ import (
     "os"
     "strconv"
 
+    "github.com/hashicorp/terraform-plugin-framework/path"
     "github.com/hashicorp/terraform-plugin-framework/provider"
     "github.com/hashicorp/terraform-plugin-framework/provider/schema"
     "github.com/hashicorp/terraform-plugin-framework/types"
@@ -54,13 +55,14 @@ type CloudProvider struct {
 }
 
 type CloudProviderModel struct {
-    APIEndpoint types.String `tfsdk:"api_endpoint"`
-    APIKey      types.String `tfsdk:"api_key"`
-    SecretKey   types.String `tfsdk:"secret_key"`
-    Region      types.String `tfsdk:"region"`
-    Timeout     types.Int64  `tfsdk:"timeout"`
-    MaxRetries  types.Int64  `tfsdk:"max_retries"`
-    Debug       types.Bool   `tfsdk:"debug"`
+    APIEndpoint        types.String `tfsdk:"api_endpoint"`
+    APIKey             types.String `tfsdk:"api_key"`
+    SecretKey          types.String `tfsdk:"secret_key"`
+    ServiceAccountFile types.String `tfsdk:"service_account_file"`
+    Region             types.String `tfsdk:"region"`
+    Timeout            types.Int64  `tfsdk:"timeout"`
+    MaxRetries         types.Int64  `tfsdk:"max_retries"`
+    Debug              types.Bool   `tfsdk:"debug"`
 }
 
 func (p *CloudProvider) Schema(_ context.Context, _ provider.SchemaRequest, resp *provider.SchemaResponse) {
@@ -80,6 +82,10 @@ func (p *CloudProvider) Schema(_ context.Context, _ provider.SchemaRequest, resp
                 Description: "Secret key for authentication. Can be set with CLOUD_SECRET_KEY.",
                 Optional:    true,
                 Sensitive:   true,
+            },
+            "service_account_file": schema.StringAttribute{
+                Description: "Path to a service account JSON file. Can be set with CLOUD_SERVICE_ACCOUNT_FILE.",
+                Optional:    true,
             },
             "region": schema.StringAttribute{
                 Description: "Default region for resources. Can be set with CLOUD_REGION.",
