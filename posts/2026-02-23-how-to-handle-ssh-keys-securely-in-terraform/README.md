@@ -290,12 +290,11 @@ resource "aws_s3_bucket_policy" "state_bucket" {
 
 ## Key Rotation
 
-SSH keys should be rotated periodically. With Terraform-managed keys, you can use `terraform taint`:
+SSH keys should be rotated periodically. With Terraform-managed keys, you can force regeneration using the `-replace` flag:
 
 ```bash
-# Force key regeneration
-terraform taint tls_private_key.ssh
-terraform apply
+# Force key regeneration (terraform taint was deprecated in 0.15.2)
+terraform apply -replace="tls_private_key.ssh"
 ```
 
 Better yet, automate rotation with a scheduled pipeline that replaces keys and updates Secrets Manager.
