@@ -37,7 +37,7 @@ module "database" {
 
 # Private S3 bucket - needs AWS credentials
 module "monitoring" {
-  source = "s3::https://s3-us-east-1.amazonaws.com/my-terraform-modules/monitoring.zip"
+  source = "s3::https://s3.amazonaws.com/my-terraform-modules/monitoring.zip"
 }
 ```
 
@@ -57,7 +57,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v4
         with:
           cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
 
@@ -91,6 +91,8 @@ If you need more control, create the credentials file manually:
 
 When modules are in private GitHub repos, you need to configure Git authentication:
 
+Use a personal access token or GitHub App installation token with read access to the module repositories. The default `GITHUB_TOKEN` is scoped to the repository that runs the workflow, so it usually cannot read separate private module repositories.
+
 ```yaml
 # .github/workflows/terraform.yml
 jobs:
@@ -99,12 +101,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Configure Git to use the GitHub token for private repos
+      # Configure Git to use a token that can read the module repos
       - name: Configure Git Credentials
         run: |
-          git config --global url."https://oauth2:${{ secrets.GITHUB_TOKEN }}@github.com".insteadOf "https://github.com"
+          git config --global url."https://x-access-token:${{ secrets.MODULES_TOKEN }}@github.com".insteadOf "https://github.com"
 
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v4
 
       - name: Terraform Init
         run: terraform init
@@ -130,7 +132,7 @@ With module sources using SSH:
 ```hcl
 # Modules from private repos via SSH
 module "database" {
-  source = "git@github.com:myorg/terraform-aws-database.git?ref=v1.0.0"
+  source = "git::git@github.com:myorg/terraform-aws-database.git?ref=v1.0.0"
 }
 ```
 
@@ -155,7 +157,7 @@ Module source in your Terraform config:
 ```hcl
 # Module from Artifactory Terraform registry
 module "network" {
-  source  = "artifactory.mycompany.com/terraform-modules__network/aws"
+  source  = "artifactory.mycompany.com/terraform-modules__platform/network/aws"
   version = "1.2.0"
 }
 ```
@@ -179,7 +181,7 @@ The module source:
 
 ```hcl
 module "monitoring" {
-  source = "s3::https://s3-us-east-1.amazonaws.com/my-terraform-modules/monitoring/v1.0.0.zip"
+  source = "s3::https://s3.amazonaws.com/my-terraform-modules/monitoring/v1.0.0.zip"
 }
 ```
 
@@ -207,8 +209,7 @@ Configure the CI pipeline to authenticate:
     EOF
     chmod 600 ~/.terraformrc
 
-    # If using self-signed certificates
-    export TF_CLI_CONFIG_FILE=~/.terraformrc
+    # Terraform reads ~/.terraformrc by default
 ```
 
 For self-signed certificates on the registry:
@@ -217,7 +218,7 @@ For self-signed certificates on the registry:
 - name: Trust Internal CA
   run: |
     # Add your internal CA certificate
-    echo "${{ secrets.INTERNAL_CA_CERT }}" > /usr/local/share/ca-certificates/internal-ca.crt
+    echo "${{ secrets.INTERNAL_CA_CERT }}" | sudo tee /usr/local/share/ca-certificates/internal-ca.crt > /dev/null
     sudo update-ca-certificates
 ```
 
@@ -225,15 +226,11 @@ For self-signed certificates on the registry:
 
 ```yaml
 # .gitlab-ci.yml
-variables:
-  # GitLab CI provides CI_JOB_TOKEN for accessing repos in the same group
-  GIT_CONFIG_COUNT: 1
-  GIT_CONFIG_KEY_0: "url.https://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab.com.insteadOf"
-  GIT_CONFIG_VALUE_0: "https://gitlab.com"
-
 terraform_apply:
-  image: hashicorp/terraform:1.7.4
+  image: hashicorp/terraform:1.14.6
   before_script:
+    # GitLab CI_JOB_TOKEN can access allowed projects while the job runs
+    - git config --global url."https://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab.com/".insteadOf "https://gitlab.com/"
     # Configure credentials for Terraform Cloud registry
     - |
       cat > ~/.terraformrc << EOF
