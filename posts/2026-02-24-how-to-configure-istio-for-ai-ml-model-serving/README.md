@@ -14,6 +14,13 @@ Here is how to configure Istio specifically for model serving workloads.
 
 ## Deploying a Model Server with Istio
 
+Create and label the namespace before deploying the model server so new Pods get an Istio sidecar:
+
+```bash
+kubectl create namespace ml-serving
+kubectl label namespace ml-serving istio-injection=enabled
+```
+
 Start with a model serving deployment. This example uses a generic inference server, but the Istio configuration works the same regardless of the framework:
 
 ```yaml
@@ -82,16 +89,9 @@ spec:
     app: model-server
 ```
 
-Enable Istio for the namespace:
-
-```bash
-kubectl create namespace ml-serving
-kubectl label namespace ml-serving istio-injection=enabled
-```
-
 ## Configuring Timeouts for Inference
 
-Model inference can be slow, especially for large language models or batch processing. Default HTTP timeouts are often too short. Configure appropriate timeouts in a VirtualService:
+Model inference can be slow, especially for large language models or batch processing. Configure explicit timeouts in a VirtualService so inference requests have a clear upper bound:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -116,7 +116,7 @@ spec:
       retryOn: 5xx,reset,connect-failure
 ```
 
-For streaming inference responses (common with LLMs), disable response timeout and configure idle timeout instead:
+For streaming inference responses (common with LLMs), disable the per-route request timeout. If you need a different idle timeout than the default, configure `connectionPool.http.idleTimeout` in a DestinationRule:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -222,8 +222,8 @@ Monitor the v2 model's performance before increasing traffic:
 # Compare error rates between versions
 
 # In Prometheus:
-# sum(rate(istio_requests_total{destination_service="model-server", response_code=~"5.*"}[5m])) by (destination_version) /
-# sum(rate(istio_requests_total{destination_service="model-server"}[5m])) by (destination_version)
+# sum(rate(istio_requests_total{destination_service="model-server.ml-serving.svc.cluster.local", response_code=~"5.*"}[5m])) by (destination_version) /
+# sum(rate(istio_requests_total{destination_service="model-server.ml-serving.svc.cluster.local"}[5m])) by (destination_version)
 ```
 
 ## Circuit Breaking for GPU Workloads
@@ -238,6 +238,13 @@ metadata:
   namespace: ml-serving
 spec:
   host: model-server
+  subsets:
+  - name: v1
+    labels:
+      version: v1
+  - name: v2
+    labels:
+      version: v2
   trafficPolicy:
     connectionPool:
       tcp:
@@ -254,7 +261,7 @@ spec:
       maxEjectionPercent: 50
 ```
 
-The `maxRequestsPerConnection` limit is important for inference servers because a single stuck request on a GPU can block the entire server. Limiting requests per connection ensures that one slow inference does not monopolize a connection.
+The pending request and active request limits are important for inference servers because GPU-backed workloads can become overloaded when too many requests queue or run concurrently. `maxRequestsPerConnection` controls HTTP connection reuse; setting it prevents very long-lived upstream connections but does not replace queue or concurrency limits.
 
 ## Header-Based Routing for A/B Testing
 
@@ -286,7 +293,7 @@ spec:
     timeout: 300s
 ```
 
-Clients can explicitly choose a model version by setting the header:
+In-cluster clients can explicitly choose a model version by setting the header:
 
 ```bash
 # Request v2 model explicitly
@@ -401,7 +408,8 @@ Use Istio's telemetry to track model serving metrics:
 # sum(rate(istio_requests_total{destination_service="model-server.ml-serving.svc.cluster.local"}[5m])) by (destination_version)
 
 # Error rate by version
-# sum(rate(istio_requests_total{destination_service="model-server.ml-serving.svc.cluster.local", response_code=~"5.*"}[5m])) by (destination_version)
+# sum(rate(istio_requests_total{destination_service="model-server.ml-serving.svc.cluster.local", response_code=~"5.*"}[5m])) by (destination_version) /
+# sum(rate(istio_requests_total{destination_service="model-server.ml-serving.svc.cluster.local"}[5m])) by (destination_version)
 ```
 
 Set up alerts for model serving degradation:
