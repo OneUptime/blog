@@ -62,7 +62,7 @@ variable "single_nat_gateway" {
 }
 ```
 
-Terragrunt converts the `inputs` map to `TF_VAR_*` environment variables internally. So `vpc_cidr = "10.0.0.0/16"` becomes `TF_VAR_vpc_cidr=10.0.0.0/16` when Terraform runs.
+Terragrunt converts the `inputs` map to JSON-encoded `TF_VAR_*` environment variables internally. So `vpc_cidr = "10.0.0.0/16"` is passed through `TF_VAR_vpc_cidr` when Terraform runs.
 
 ## Supported Value Types
 
@@ -341,28 +341,28 @@ inputs = {
 
 ## Debugging Inputs
 
-To see the final resolved inputs, use `terragrunt render-json`:
+To see the final resolved inputs, use `terragrunt render`:
 
 ```bash
 # Show the fully rendered configuration including merged inputs
 cd live/dev/app
-terragrunt render-json
+terragrunt render --format json
 ```
 
 This outputs the complete resolved configuration, making it easy to verify that inputs are being merged correctly.
 
-You can also check what TF_VAR environment variables Terragrunt passes to Terraform:
+You can also ask Terragrunt to write the exact input values it passes to Terraform:
 
 ```bash
-# Show all TF_VAR_ environment variables
-terragrunt apply 2>&1 | grep TF_VAR
+# Write terragrunt-debug.tfvars.json for inspection
+terragrunt run --log-level debug --inputs-debug -- plan
 ```
 
 ## Things to Watch Out For
 
 **Type mismatches**: If your Terraform variable expects a `list(string)` and you pass a single string in inputs, Terraform will error. Make sure types match.
 
-**Unused inputs**: If you pass an input that does not have a corresponding Terraform variable, Terraform will warn about it. This is not fatal, but it is noisy.
+**Unused inputs**: Terragrunt passes inputs as `TF_VAR_*` environment variables. Terraform ignores environment variables that do not have a matching `variable` block, so misspelled or unused input keys can be easy to miss.
 
 **Sensitive values**: Inputs are stored as environment variables during the Terraform run. Be careful with sensitive values - they may show up in process listings. Consider using Terraform's `sensitive` variable flag.
 
