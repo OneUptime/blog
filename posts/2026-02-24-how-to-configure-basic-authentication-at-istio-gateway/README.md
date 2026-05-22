@@ -186,8 +186,8 @@ spec:
               mountPath: /etc/nginx/conf.d/default.conf
               subPath: default.conf
             - name: htpasswd
-              mountPath: /etc/nginx/.htpasswd
-              subPath: htpasswd
+              mountPath: /etc/nginx/auth
+              readOnly: true
       volumes:
         - name: config
           configMap:
@@ -207,7 +207,7 @@ data:
       listen 8080;
       location / {
         auth_basic "Restricted";
-        auth_basic_user_file /etc/nginx/.htpasswd;
+        auth_basic_user_file /etc/nginx/auth/htpasswd;
 
         # Return 200 on successful auth
         # The request headers will be forwarded back to Istio
@@ -259,7 +259,7 @@ spec:
   meshConfig:
     extensionProviders:
       - name: basic-auth
-        envoyExtAuthz:
+        envoyExtAuthzHttp:
           service: basic-auth-service.default.svc.cluster.local
           port: 8080
           includeRequestHeadersInCheck:
@@ -271,37 +271,39 @@ spec:
 Apply the AuthorizationPolicy:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: basic-auth-policy
-  namespace: default
+  namespace: istio-system
 spec:
   selector:
     matchLabels:
-      app: my-staging-app
+      istio: ingressgateway
   action: CUSTOM
   provider:
     name: basic-auth
   rules:
     - to:
         - operation:
+            hosts: ["staging.example.com", "admin.example.com"]
             paths: ["/*"]
 ```
 
 ## Approach 3: Using Kubernetes Secrets for Credentials
 
-If you do not want credentials in the EnvoyFilter YAML, you can store them in a Kubernetes Secret and reference them. However, Lua scripts in EnvoyFilter cannot directly read secrets. The workaround is to mount the secret as an environment variable and read it in the Lua script using a shared data approach.
+If you do not want credentials in the EnvoyFilter YAML, you can store them in a Kubernetes Secret. However, Lua scripts in EnvoyFilter cannot directly read Kubernetes Secrets or pod environment variables.
 
-A simpler option is to use a ConfigMap that the Lua script reads via httpCall to a local sidecar:
+A simpler option is to mount a Secret into a local sidecar and have the Lua script query that sidecar with `httpCall`:
 
 ```yaml
 apiVersion: v1
-kind: ConfigMap
+kind: Secret
 metadata:
   name: auth-credentials
   namespace: default
-data:
+type: Opaque
+stringData:
   credentials.json: |
     {
       "users": {
@@ -311,7 +313,7 @@ data:
     }
 ```
 
-Mount this into a simple HTTP server that the Lua script can query locally. This keeps credentials out of the EnvoyFilter definition.
+Mount this into a simple HTTP server that the Lua script can query locally. This keeps credentials out of the EnvoyFilter definition. The Lua `httpCall` must call a configured Envoy cluster for that sidecar.
 
 ## Excluding Paths from Basic Auth
 
@@ -370,7 +372,7 @@ curl -v https://staging.example.com/healthz
 Basic auth sends credentials in base64 encoding (not encryption), so you must use it over HTTPS only. Make sure your Gateway has TLS configured:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: staging-gateway
