@@ -8,18 +8,18 @@ Description: Understanding Istio's limitations with UDP traffic and practical wo
 
 ---
 
-If you are running services that use UDP (DNS, SNMP, game servers, VoIP, or custom protocols), you need to understand a fundamental limitation of Istio: it does not proxy UDP traffic. Envoy, the proxy that powers Istio, is a TCP and HTTP proxy. It has no support for UDP at the proxy layer. This does not mean you cannot run UDP services in an Istio-enabled cluster, but it does mean you need to plan around this limitation.
+If you are running services that use UDP (DNS, SNMP, game servers, VoIP, or custom protocols), you need to understand a fundamental limitation of Istio: it does not proxy UDP traffic. Istio's service-mesh traffic handling is built around TCP-based protocols, even though Envoy itself has UDP proxy features outside the normal Istio sidecar data path. This does not mean you cannot run UDP services in an Istio-enabled cluster, but it does mean you need to plan around this limitation.
 
 ## Why Istio Does Not Support UDP
 
-Envoy was designed from the ground up as an L4/L7 proxy for TCP-based protocols. UDP is fundamentally different from TCP in several ways that make it difficult to proxy in the same manner:
+Istio supports proxying TCP traffic, including HTTP, HTTPS, gRPC, and raw TCP. Non-TCP protocols such as UDP are not proxied by Istio. UDP is fundamentally different from TCP in several ways that make service-mesh features harder to apply in the same manner:
 
 - UDP is connectionless. There is no handshake, no connection state, and no guarantee of delivery.
 - UDP packets can arrive out of order, be duplicated, or be lost entirely.
 - Many UDP protocols are latency-sensitive (gaming, voice, video), and adding a proxy hop would introduce unacceptable delay.
 - There is no clean way to do protocol-level load balancing for arbitrary UDP traffic.
 
-Because of these characteristics, Envoy and by extension Istio simply pass UDP traffic through without interception.
+Because of these characteristics, Istio leaves UDP traffic to flow without proxy interception.
 
 ## How Istio Sidecar Injection Affects UDP
 
@@ -83,7 +83,7 @@ spec:
       protocol: TCP
 ```
 
-The UDP port works fine even with the sidecar injected. Traffic just bypasses Envoy. The TCP port (DNS over TCP) will go through the sidecar and benefit from all of Istio's features.
+The UDP port works fine even with the sidecar injected. Traffic just bypasses Envoy. The TCP port (DNS over TCP) will go through the sidecar and benefit from the Istio features that apply to TCP traffic.
 
 ## Excluding UDP Pods from Sidecar Injection
 
@@ -104,7 +104,6 @@ spec:
     metadata:
       labels:
         app: game-server
-      annotations:
         sidecar.istio.io/inject: "false"
     spec:
       containers:
@@ -115,7 +114,7 @@ spec:
               protocol: UDP
 ```
 
-The `sidecar.istio.io/inject: "false"` annotation prevents Istio from injecting the sidecar. This avoids the overhead of running an Envoy proxy that is not doing anything useful for your UDP traffic.
+The `sidecar.istio.io/inject: "false"` pod label prevents Istio from injecting the sidecar. This avoids the overhead of running an Envoy proxy that is not doing anything useful for your UDP traffic.
 
 ## Mixed TCP and UDP Services
 
@@ -221,7 +220,7 @@ spec:
       protocol: UDP
 ```
 
-This creates a cloud load balancer that forwards UDP traffic directly to your pods, completely bypassing the Istio ingress gateway.
+On cloud providers that support UDP load balancers, this creates a cloud load balancer that forwards UDP traffic directly to your pods, completely bypassing the Istio ingress gateway.
 
 ## Monitoring UDP Services
 
@@ -234,7 +233,13 @@ metadata:
   name: game-server
   namespace: default
 spec:
+  selector:
+    matchLabels:
+      app: game-server
   template:
+    metadata:
+      labels:
+        app: game-server
     spec:
       containers:
         - name: game
@@ -268,7 +273,7 @@ spec:
 
 ## Future Possibilities
 
-There has been discussion in the Envoy and Istio communities about adding UDP support, particularly for QUIC/HTTP3. Envoy does have experimental QUIC support, and Istio may eventually leverage this for HTTP/3 traffic at the gateway level. However, general-purpose UDP proxying is not on the near-term roadmap.
+There has been discussion in the Envoy and Istio communities about UDP-related features, particularly for QUIC/HTTP/3. Envoy has UDP proxy support and HTTP/3 support, but Istio's documented mesh and gateway protocol support remains focused on TCP-based protocols. General-purpose UDP proxying in Istio is not on the near-term roadmap.
 
 ## Summary
 
