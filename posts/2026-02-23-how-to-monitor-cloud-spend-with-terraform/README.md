@@ -8,7 +8,7 @@ Description: Learn how to set up comprehensive cloud spend monitoring with Terra
 
 ---
 
-Cloud spend monitoring is the starting point for any cost optimization effort. You cannot reduce what you cannot see. Terraform allows you to deploy a complete monitoring stack that gives you real-time visibility into your cloud spending, sends alerts when costs exceed thresholds, and provides dashboards for ongoing analysis.
+Cloud spend monitoring is the starting point for any cost optimization effort. You cannot reduce what you cannot see. Terraform allows you to deploy a complete monitoring stack that gives you ongoing visibility into your cloud spending, sends alerts when costs exceed thresholds, and provides dashboards for ongoing analysis.
 
 This guide covers practical Terraform configurations for building a comprehensive cloud spend monitoring system on AWS.
 
@@ -26,6 +26,7 @@ resource "aws_budgets_budget" "monthly_total" {
   limit_unit        = "USD"
   time_unit         = "MONTHLY"
   time_period_start = "2026-01-01_00:00"
+  depends_on        = [aws_sns_topic_policy.cost_alerts]
 
   # Alert at multiple thresholds
   notification {
@@ -74,6 +75,7 @@ resource "aws_budgets_budget" "service_budgets" {
   limit_unit        = "USD"
   time_unit         = "MONTHLY"
   time_period_start = "2026-01-01_00:00"
+  depends_on        = [aws_sns_topic_policy.cost_alerts]
 
   cost_filter {
     name   = "Service"
@@ -93,6 +95,57 @@ resource "aws_budgets_budget" "service_budgets" {
 # SNS topic for cost alerts
 resource "aws_sns_topic" "cost_alerts" {
   name = "cloud-cost-alerts"
+}
+
+data "aws_iam_policy_document" "cost_alerts" {
+  statement {
+    sid     = "AWSBudgetsSNSPublishingPermissions"
+    effect  = "Allow"
+    actions = ["SNS:Publish"]
+
+    principals {
+      type        = "Service"
+      identifiers = ["budgets.amazonaws.com"]
+    }
+
+    resources = [aws_sns_topic.cost_alerts.arn]
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [var.account_id]
+    }
+
+    condition {
+      test     = "ArnLike"
+      variable = "aws:SourceArn"
+      values   = ["arn:aws:budgets::${var.account_id}:*"]
+    }
+  }
+
+  statement {
+    sid     = "AWSAnomalyDetectionSNSPublishingPermissions"
+    effect  = "Allow"
+    actions = ["SNS:Publish"]
+
+    principals {
+      type        = "Service"
+      identifiers = ["costalerts.amazonaws.com"]
+    }
+
+    resources = [aws_sns_topic.cost_alerts.arn]
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [var.account_id]
+    }
+  }
+}
+
+resource "aws_sns_topic_policy" "cost_alerts" {
+  arn    = aws_sns_topic.cost_alerts.arn
+  policy = data.aws_iam_policy_document.cost_alerts.json
 }
 ```
 
@@ -193,6 +246,12 @@ resource "aws_s3_bucket_policy" "cur_reports" {
           "s3:GetBucketPolicy"
         ]
         Resource = aws_s3_bucket.cur_reports.arn
+        Condition = {
+          StringEquals = {
+            "aws:SourceArn"     = "arn:aws:cur:us-east-1:${var.account_id}:definition/*"
+            "aws:SourceAccount" = var.account_id
+          }
+        }
       },
       {
         Effect = "Allow"
@@ -201,6 +260,12 @@ resource "aws_s3_bucket_policy" "cur_reports" {
         }
         Action = "s3:PutObject"
         Resource = "${aws_s3_bucket.cur_reports.arn}/*"
+        Condition = {
+          StringEquals = {
+            "aws:SourceArn"     = "arn:aws:cur:us-east-1:${var.account_id}:definition/*"
+            "aws:SourceAccount" = var.account_id
+          }
+        }
       }
     ]
   })
@@ -354,6 +419,7 @@ resource "aws_ce_anomaly_monitor" "services" {
 resource "aws_ce_anomaly_subscription" "immediate" {
   name      = "immediate-anomaly-alert"
   frequency = "IMMEDIATE"
+  depends_on = [aws_sns_topic_policy.cost_alerts]
 
   monitor_arn_list = [aws_ce_anomaly_monitor.services.arn]
 
