@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Metric, Custom Dimensions, Telemetry API, Prometheus
 
-Description: How to add custom dimensions and labels to Istio metrics using the Telemetry API and EnvoyFilter, enabling richer metric breakdowns by request headers, paths, and custom attributes.
+Description: How to add custom dimensions and labels to Istio metrics using the Telemetry API and AttributeGen, enabling richer metric breakdowns by request headers, paths, and custom attributes.
 
 ---
 
@@ -23,7 +23,7 @@ Out of the box, Istio metrics include these labels:
 - `destination_service_namespace` - Destination namespace
 - `request_protocol` - HTTP or gRPC
 - `response_code` - HTTP response code
-- `connection_security_policy` - mTLS or none
+- `connection_security_policy` - mutual TLS or unknown
 
 ## Adding Custom Dimensions with the Telemetry API
 
@@ -46,17 +46,17 @@ spec:
       tagOverrides:
         api_version:
           operation: UPSERT
-          value: "request.headers['x-api-version'] | 'unknown'"
+          value: "'x-api-version' in request.headers ? request.headers['x-api-version'] : 'unknown'"
         customer_tier:
           operation: UPSERT
-          value: "request.headers['x-customer-tier'] | 'standard'"
+          value: "'x-customer-tier' in request.headers ? request.headers['x-customer-tier'] : 'standard'"
 ```
 
 This adds two new labels to the `istio_requests_total` metric:
 - `api_version` - Extracted from the `x-api-version` request header, defaults to "unknown"
 - `customer_tier` - Extracted from the `x-customer-tier` header, defaults to "standard"
 
-The values use Istio's attribute expression syntax, where `|` is the default operator.
+The values use CEL expressions over Istio and Envoy attributes. CEL does not support Mixer's old `|` default operator, so the examples use the `in` operator to check whether a header exists before reading it.
 
 ## Custom Dimensions on Specific Metrics
 
@@ -81,13 +81,13 @@ spec:
       tagOverrides:
         api_version:
           operation: UPSERT
-          value: "request.headers['x-api-version'] | 'unknown'"
+          value: "'x-api-version' in request.headers ? request.headers['x-api-version'] : 'unknown'"
     - match:
         metric: REQUEST_DURATION
       tagOverrides:
         api_version:
           operation: UPSERT
-          value: "request.headers['x-api-version'] | 'unknown'"
+          value: "'x-api-version' in request.headers ? request.headers['x-api-version'] : 'unknown'"
         request_size_category:
           operation: UPSERT
           value: "request.size <= 1024 ? 'small' : request.size <= 10240 ? 'medium' : 'large'"
@@ -96,7 +96,7 @@ spec:
       tagOverrides:
         content_type:
           operation: UPSERT
-          value: "request.headers['content-type'] | 'unknown'"
+          value: "'content-type' in request.headers ? request.headers['content-type'] : 'unknown'"
 ```
 
 The `request_size_category` dimension categorizes requests by size, which is useful for understanding if large requests are causing latency issues.
@@ -161,40 +161,52 @@ spec:
 
 This maps specific path prefixes to fixed label values, keeping cardinality bounded.
 
-## Using EnvoyFilter for Advanced Dimensions
+## Using AttributeGen for Advanced Dimensions
 
-For more complex dimension extraction, you can use EnvoyFilter to modify the stats configuration:
+For more complex dimension extraction, use the AttributeGen WasmPlugin to create an attribute, then add that attribute as a Telemetry dimension. Avoid combining Telemetry metrics customization with the old Prometheus EnvoyFilter path, because current Istio documentation notes that Telemetry API cannot work together with that EnvoyFilter-based approach:
 
 ```yaml
-apiVersion: networking.istio.io/v1alpha3
-kind: EnvoyFilter
+apiVersion: extensions.istio.io/v1alpha1
+kind: WasmPlugin
 metadata:
-  name: custom-stats-tags
-  namespace: istio-system
+  name: istio-attributegen-filter
+  namespace: default
 spec:
-  configPatches:
-  - applyTo: HTTP_FILTER
-    match:
-      context: ANY
-      listener:
-        filterChain:
-          filter:
-            name: envoy.filters.network.http_connection_manager
-            subFilter:
-              name: istio.stats
-    patch:
-      operation: MERGE
-      value:
-        typed_config:
-          "@type": type.googleapis.com/udpa.type.v1.TypedStruct
-          type_url: type.googleapis.com/stats.PluginConfig
-          value:
-            metrics:
-            - name: requests_total
-              dimensions:
-                api_version: "request.headers['x-api-version'] | 'unknown'"
-              tags_to_remove:
-              - request_protocol
+  selector:
+    matchLabels:
+      app: my-api
+  url: https://storage.googleapis.com/istio-build/proxy/attributegen-359dcd3a19f109c50e97517fe6b1e2676e870c4d.wasm
+  imagePullPolicy: Always
+  phase: AUTHN
+  pluginConfig:
+    attributes:
+    - output_attribute: "istio_operationId"
+      match:
+      - value: "ListUsers"
+        condition: "request.url_path == '/api/v1/users' && request.method == 'GET'"
+      - value: "GetUser"
+        condition: "request.url_path.matches('^/api/v1/users/[[:alnum:]-]+$') && request.method == 'GET'"
+---
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
+metadata:
+  name: custom-operation-tags
+  namespace: default
+spec:
+  selector:
+    matchLabels:
+      app: my-api
+  metrics:
+  - providers:
+    - name: prometheus
+    overrides:
+    - match:
+        metric: REQUEST_COUNT
+        mode: CLIENT_AND_SERVER
+      tagOverrides:
+        request_operation:
+          operation: UPSERT
+          value: "filter_state['wasm.istio_operationId']"
 ```
 
 ## Custom Metrics from Response Headers
@@ -220,10 +232,10 @@ spec:
       tagOverrides:
         cache_status:
           operation: UPSERT
-          value: "response.headers['x-cache-status'] | 'miss'"
+          value: "'x-cache-status' in response.headers ? response.headers['x-cache-status'] : 'miss'"
         backend_version:
           operation: UPSERT
-          value: "response.headers['x-backend-version'] | 'unknown'"
+          value: "'x-backend-version' in response.headers ? response.headers['x-backend-version'] : 'unknown'"
 ```
 
 This lets you track cache hit rates and backend version distribution in your metrics.
