@@ -55,6 +55,9 @@ spec:
       containers:
       - name: tf-serving
         image: tensorflow/serving:2.14.0
+        env:
+        - name: MODEL_NAME
+          value: mymodel
         ports:
         - containerPort: 8501
           name: http
@@ -98,6 +101,9 @@ spec:
       containers:
       - name: tf-serving
         image: tensorflow/serving:2.14.0
+        env:
+        - name: MODEL_NAME
+          value: mymodel
         ports:
         - containerPort: 8501
           name: http
@@ -144,7 +150,7 @@ spec:
 This is where Istio really shines for ML. You can send 90% of traffic to your stable model and 10% to the new version:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: tf-serving-destination
@@ -165,7 +171,7 @@ spec:
     labels:
       version: v2
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: tf-serving-vs
@@ -174,14 +180,20 @@ spec:
   hosts:
   - tf-serving
   http:
-  - route:
+  - match:
+    - port: 8501
+    route:
     - destination:
         host: tf-serving
         subset: v1
+        port:
+          number: 8501
       weight: 90
     - destination:
         host: tf-serving
         subset: v2
+        port:
+          number: 8501
       weight: 10
     timeout: 30s
     retries:
@@ -197,7 +209,7 @@ The timeout is set to 30 seconds here because ML inference can take longer than 
 Many ML serving frameworks use gRPC for better performance. Istio handles gRPC natively, but you should configure it explicitly:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: tf-serving-grpc
@@ -229,7 +241,7 @@ spec:
 ML models can become overloaded quickly, especially when input data is large. Circuit breaking prevents cascading failures:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: tf-serving-circuit-breaker
@@ -251,14 +263,14 @@ spec:
       maxEjectionPercent: 50
 ```
 
-The `outlierDetection` section will eject unhealthy pods from the load balancing pool if they return 3 consecutive 5xx errors within 30 seconds. For ML workloads, this is important because a pod running out of GPU memory or hitting OOM will start failing consistently.
+The `outlierDetection` section will eject unhealthy pods from the load balancing pool after 3 consecutive 5xx errors, with Istio checking for ejection every 30 seconds. For ML workloads, this is important because a pod running out of GPU memory or hitting OOM will start failing consistently.
 
 ## Header-Based Routing for A/B Testing
 
 You can route specific users or experiments to different model versions using HTTP headers:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: tf-serving-ab-test
@@ -275,10 +287,14 @@ spec:
     - destination:
         host: tf-serving
         subset: v2
+        port:
+          number: 8501
   - route:
     - destination:
         host: tf-serving
         subset: v1
+        port:
+          number: 8501
 ```
 
 Your client application can then set the `x-model-version` header to direct specific requests to the experimental model.
@@ -288,7 +304,7 @@ Your client application can then set the `x-model-version` header to direct spec
 To expose your ML serving endpoint externally:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: ml-gateway
@@ -307,7 +323,7 @@ spec:
     hosts:
     - "ml.example.com"
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: tf-serving-external
@@ -324,6 +340,7 @@ spec:
     route:
     - destination:
         host: tf-serving
+        subset: v1
         port:
           number: 8501
       weight: 90
@@ -347,13 +364,24 @@ metadata:
   name: tf-serving-v1
   namespace: ml-serving
 spec:
+  selector:
+    matchLabels:
+      app: tf-serving
+      version: v1
   template:
     metadata:
+      labels:
+        app: tf-serving
+        version: v1
       annotations:
         sidecar.istio.io/proxyCPU: "100m"
         sidecar.istio.io/proxyMemory: "128Mi"
         sidecar.istio.io/proxyCPULimit: "500m"
         sidecar.istio.io/proxyMemoryLimit: "256Mi"
+    spec:
+      containers:
+      - name: tf-serving
+        image: tensorflow/serving:2.14.0
 ```
 
 These annotations keep the Envoy sidecar from taking up too much CPU and memory that your model needs.
@@ -366,7 +394,7 @@ Istio automatically generates metrics for all traffic passing through the mesh. 
 # Check p99 latency for model serving
 
 kubectl exec -n istio-system deploy/prometheus -- \
-  promtool query instant 'histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{destination_service="tf-serving.ml-serving.svc.cluster.local"}[5m])) by (le, destination_version))'
+  promtool query instant http://localhost:9090 'histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{destination_service="tf-serving.ml-serving.svc.cluster.local"}[5m])) by (le, destination_version))'
 ```
 
 You can also create Grafana dashboards that compare latency and error rates across model versions, which is incredibly useful during canary rollouts.
