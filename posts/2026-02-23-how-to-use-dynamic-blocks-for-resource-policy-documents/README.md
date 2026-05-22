@@ -8,7 +8,7 @@ Description: Learn how to build AWS IAM and resource policy documents dynamicall
 
 ---
 
-AWS resource policies - IAM policies, S3 bucket policies, SQS queue policies, KMS key policies - are JSON documents with a specific structure. Terraform's `aws_iam_policy_document` data source lets you build these documents with HCL instead of raw JSON, and dynamic blocks make the statement generation flexible and data-driven.
+AWS policy documents - IAM policies, S3 bucket policies, SQS queue policies, KMS key policies - are JSON documents with a specific structure. Terraform's `aws_iam_policy_document` data source lets you build these documents with HCL instead of raw JSON, and dynamic blocks make the statement generation flexible and data-driven.
 
 ## The aws_iam_policy_document Data Source
 
@@ -24,7 +24,7 @@ data "aws_iam_policy_document" "example" {
 
     principals {
       type        = "AWS"
-      identifiers = ["arn:aws:iam::123456789:role/my-role"]
+      identifiers = ["arn:aws:iam::123456789012:role/my-role"]
     }
   }
 }
@@ -50,14 +50,14 @@ variable "s3_access_grants" {
       actions     = ["s3:GetObject", "s3:ListBucket"]
       bucket_name = "app-data"
       prefix      = "public/*"
-      principals  = ["arn:aws:iam::123456789:role/app-role"]
+      principals  = ["arn:aws:iam::123456789012:role/app-role"]
     },
     {
       sid         = "AllowETLWrite"
       actions     = ["s3:PutObject", "s3:DeleteObject"]
       bucket_name = "app-data"
       prefix      = "etl-output/*"
-      principals  = ["arn:aws:iam::123456789:role/etl-role"]
+      principals  = ["arn:aws:iam::123456789012:role/etl-role"]
     }
   ]
 }
@@ -145,7 +145,7 @@ role_permissions = [
   {
     sid       = "AllowDynamoDB"
     actions   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:Query"]
-    resources = ["arn:aws:dynamodb:us-east-1:123456789:table/users"]
+    resources = ["arn:aws:dynamodb:us-east-1:123456789012:table/users"]
     conditions = [
       {
         test     = "ForAllValues:StringEquals"
@@ -157,12 +157,12 @@ role_permissions = [
   {
     sid       = "AllowSQS"
     actions   = ["sqs:SendMessage", "sqs:ReceiveMessage", "sqs:DeleteMessage"]
-    resources = ["arn:aws:sqs:us-east-1:123456789:processing-queue"]
+    resources = ["arn:aws:sqs:us-east-1:123456789012:processing-queue"]
   },
   {
     sid       = "AllowSecrets"
     actions   = ["secretsmanager:GetSecretValue"]
-    resources = ["arn:aws:secretsmanager:us-east-1:123456789:secret:app/*"]
+    resources = ["arn:aws:secretsmanager:us-east-1:123456789012:secret:app/*"]
     conditions = [
       {
         test     = "StringEquals"
@@ -198,7 +198,7 @@ variable "kms_grant_principals" {
 data "aws_caller_identity" "current" {}
 
 data "aws_iam_policy_document" "kms_key_policy" {
-  # Root account always has full access
+  # Allow the owning account to use IAM policies for this key
   statement {
     sid       = "EnableRootAccess"
     effect    = "Allow"
