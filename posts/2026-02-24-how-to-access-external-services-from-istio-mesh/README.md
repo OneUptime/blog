@@ -53,8 +53,10 @@ Each field in a ServiceEntry serves a specific purpose:
 
 **resolution** - How to resolve the host to an IP address:
 - `DNS` - Use DNS to resolve the hostname at connection time
+- `DNS_ROUND_ROBIN` - Use DNS and route new connections to one returned IP address
 - `STATIC` - Use the IP addresses specified in the `endpoints` field
 - `NONE` - Let the application handle resolution
+- `DYNAMIC_DNS` - Resolve the original Host header or SNI value at request time for wildcard hosts
 
 **location** - Either `MESH_EXTERNAL` (the service is outside the mesh) or `MESH_INTERNAL` (the service is inside the mesh but not registered with Kubernetes).
 
@@ -137,7 +139,7 @@ metadata:
   name: cloud-sql-mysql
 spec:
   hosts:
-  - "my-project:us-central1:my-instance"
+  - "cloud-sql-mysql.external"
   addresses:
   - "10.0.0.100/32"
   ports:
@@ -196,25 +198,23 @@ Once an external service is registered via ServiceEntry, you can apply Istio tra
 
 ### Timeouts
 
+For HTTP external services, you can add timeouts:
+
 ```yaml
 apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
-  name: stripe-timeout
+  name: external-api-timeout
 spec:
   hosts:
-  - "api.stripe.com"
-  tls:
-  - match:
-    - port: 443
-      sniHosts:
-      - "api.stripe.com"
+  - "api.external.com"
+  http:
+  - timeout: 10s
     route:
     - destination:
-        host: api.stripe.com
+        host: api.external.com
         port:
-          number: 443
-    timeout: 10s
+          number: 80
 ```
 
 ### Retries
@@ -303,11 +303,11 @@ spec:
   - number: 443
     name: https
     protocol: TLS
-  resolution: NONE
+  resolution: DYNAMIC_DNS
   location: MESH_EXTERNAL
 ```
 
-With `resolution: NONE`, Istio does not attempt DNS resolution. It passes the traffic through and lets the application's DNS resolution handle it. This is necessary for wildcard entries because Istio cannot resolve `*.amazonaws.com` to IP addresses.
+With `resolution: DYNAMIC_DNS`, Istio resolves the original hostname from the Host header or SNI value at request time. This is useful for wildcard HTTPS entries because Istio cannot resolve `*.amazonaws.com` to a single set of IP addresses ahead of time. If you are using an older Istio version without `DYNAMIC_DNS`, or routing raw TCP traffic where the original host cannot be recovered, use `resolution: NONE` and let the application resolve DNS.
 
 ## Verifying Access
 
@@ -331,7 +331,7 @@ kubectl exec deploy/sleep -c istio-proxy -- \
 
 ## Monitoring External Service Access
 
-With ServiceEntry in place, Istio collects metrics for external service traffic. Query them in Prometheus:
+With ServiceEntry in place, Istio collects metrics for external service traffic. For HTTP, HTTP/2, and gRPC external services, query request metrics in Prometheus:
 
 ```promql
 # Requests to external services
@@ -341,6 +341,8 @@ sum(rate(istio_requests_total{destination_service_namespace="default", destinati
 histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{destination_service=~".*stripe.*"}[5m])) by (le))
 ```
 
+For opaque TLS or TCP external services, use TCP metrics such as `istio_tcp_connections_opened_total`, `istio_tcp_sent_bytes_total`, and `istio_tcp_received_bytes_total`.
+
 ## Summary
 
-Accessing external services from an Istio mesh works through ServiceEntry resources. Define the hostname, port, and protocol for each external dependency. This brings the service into Istio's registry, enabling metrics collection, traffic management features like timeouts and circuit breaking, and access control in REGISTRY_ONLY mode. Use the appropriate resolution strategy (DNS for hostnames, STATIC for IP addresses, NONE for wildcards) based on how the external service is addressed.
+Accessing external services from an Istio mesh works through ServiceEntry resources. Define the hostname, port, and protocol for each external dependency. This brings the service into Istio's registry, enabling metrics collection, traffic management features like timeouts and circuit breaking, and access control in REGISTRY_ONLY mode. Use the appropriate resolution strategy (DNS for hostnames, STATIC for IP addresses, DYNAMIC_DNS for wildcard HTTP or TLS hosts, and NONE when the original destination IP should be preserved) based on how the external service is addressed.
