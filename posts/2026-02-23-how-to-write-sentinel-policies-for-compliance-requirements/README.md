@@ -30,7 +30,7 @@ The CIS benchmark is one of the most widely adopted compliance frameworks. Here 
 
 ### Ensure CloudTrail is Enabled
 
-```python
+```sentinel
 # cis-cloudtrail.sentinel
 
 # CIS 3.1 - Ensure CloudTrail is enabled in all regions
@@ -77,33 +77,46 @@ main = rule {
 
 ### Ensure S3 Bucket Logging
 
-```python
+```sentinel
 # cis-s3-logging.sentinel
-# CIS 3.6 - Ensure S3 bucket access logging is enabled
+# CIS 3.6 - Ensure S3 bucket access logging is enabled on the CloudTrail S3 bucket
 
 import "tfplan/v2" as tfplan
 
-s3_buckets = filter tfplan.resource_changes as _, rc {
-    rc.type is "aws_s3_bucket" and
-    rc.change.actions contains "create"
+trails = filter tfplan.resource_changes as _, rc {
+    rc.type is "aws_cloudtrail" and
+    (rc.change.actions contains "create" or rc.change.actions contains "update")
 }
 
 # Check for logging configuration resources
 s3_logging = filter tfplan.resource_changes as _, rc {
     rc.type is "aws_s3_bucket_logging" and
-    rc.change.actions contains "create"
+    (rc.change.actions contains "create" or rc.change.actions contains "update")
+}
+
+bucket_has_logging = func(bucket_name) {
+    if bucket_name is null or bucket_name is "" {
+        return false
+    }
+
+    return any s3_logging as _, logging {
+        logging.change.after.bucket is bucket_name
+    }
+}
+
+validate_trail_bucket_logging = func(address, trail) {
+    bucket_name = trail.change.after.s3_bucket_name
+    if not bucket_has_logging(bucket_name) {
+        print(address, "- CloudTrail S3 bucket must have access logging enabled (CIS 3.6)")
+        return false
+    }
+
+    return true
 }
 
 main = rule {
-    if length(s3_buckets) > 0 {
-        if length(s3_logging) is 0 {
-            print("S3 buckets must have access logging enabled (CIS 3.6)")
-            false
-        } else {
-            true
-        }
-    } else {
-        true
+    all trails as address, trail {
+        validate_trail_bucket_logging(address, trail)
     }
 }
 ```
@@ -114,7 +127,7 @@ HIPAA requires strict controls around protected health information (PHI). Key in
 
 ### Encryption Requirements
 
-```python
+```sentinel
 # hipaa-encryption.sentinel
 # Enforces encryption requirements for HIPAA compliance
 
@@ -133,11 +146,16 @@ storage_resources = {
 validate_encryption = func(resource, attr) {
     value = resource.change.after[attr]
     if value is not true {
-        print(resource.address, "- HIPAA requires encryption.",
+        print(resource.address, "- HIPAA-aligned policy requires encryption.",
               attr, "must be true")
         return false
     }
     return true
+}
+
+validate_resource_encryption = func(resource) {
+    attr = storage_resources[resource.type]
+    return validate_encryption(resource, attr)
 }
 
 resources = filter tfplan.resource_changes as _, rc {
@@ -147,8 +165,7 @@ resources = filter tfplan.resource_changes as _, rc {
 
 encryption_check = rule {
     all resources as _, rc {
-        attr = storage_resources[rc.type]
-        validate_encryption(rc, attr)
+        validate_resource_encryption(rc)
     }
 }
 
@@ -160,13 +177,17 @@ rds_kms = filter tfplan.resource_changes as _, rc {
 
 kms_check = rule {
     all rds_kms as address, db {
-        if db.change.after.kms_key_id is null or db.change.after.kms_key_id is "" {
-            print(address, "- HIPAA requires customer-managed KMS keys for databases")
-            false
-        } else {
-            true
-        }
+        validate_kms_key(address, db)
     }
+}
+
+validate_kms_key = func(address, db) {
+    if db.change.after.kms_key_id is null or db.change.after.kms_key_id is "" {
+        print(address, "- policy requires customer-managed KMS keys for databases")
+        return false
+    }
+
+    return true
 }
 
 main = rule {
@@ -176,7 +197,7 @@ main = rule {
 
 ### Access Logging Requirements
 
-```python
+```sentinel
 # hipaa-logging.sentinel
 # Ensures all required logging is enabled for HIPAA
 
@@ -190,27 +211,35 @@ rds_instances = filter tfplan.resource_changes as _, rc {
 
 rds_monitoring = rule {
     all rds_instances as address, db {
-        interval = db.change.after.monitoring_interval
-        if interval is null or interval is 0 {
-            print(address, "- HIPAA requires enhanced monitoring on RDS instances")
-            false
-        } else {
-            true
-        }
+        validate_monitoring(address, db)
     }
+}
+
+validate_monitoring = func(address, db) {
+    interval = db.change.after.monitoring_interval
+    if interval is null or interval is 0 {
+        print(address, "- policy requires enhanced monitoring on RDS instances")
+        return false
+    }
+
+    return true
 }
 
 # Check that RDS has audit logging
 rds_audit = rule {
     all rds_instances as address, db {
-        params = db.change.after.enabled_cloudwatch_logs_exports
-        if params is null or length(params) is 0 {
-            print(address, "- HIPAA requires CloudWatch log exports for RDS")
-            false
-        } else {
-            true
-        }
+        validate_audit_logging(address, db)
     }
+}
+
+validate_audit_logging = func(address, db) {
+    params = db.change.after.enabled_cloudwatch_logs_exports
+    if params is null or length(params) is 0 {
+        print(address, "- policy requires CloudWatch log exports for RDS")
+        return false
+    }
+
+    return true
 }
 
 main = rule {
@@ -224,7 +253,7 @@ PCI-DSS has strict requirements around network segmentation, encryption, and acc
 
 ### Network Segmentation
 
-```python
+```sentinel
 # pci-network-segmentation.sentinel
 # PCI-DSS Requirement 1 - Network segmentation
 
@@ -243,25 +272,29 @@ cde_ports = [3306, 5432, 1433, 1521, 6379, 27017]
 # No CDE ports should be accessible from the internet
 pci_network = rule {
     all sg_rules as address, r {
-        cidr = r.change.after.cidr_blocks
-        if cidr is not null and cidr contains "0.0.0.0/0" {
-            from = r.change.after.from_port
-            to = r.change.after.to_port
-
-            # Check CDE ports
-            valid = true
-            for cde_ports as port {
-                if from <= port and port <= to {
-                    print(address, "- PCI-DSS: port", port,
-                          "must not be accessible from internet")
-                    valid = false
-                }
-            }
-            valid
-        } else {
-            true
-        }
+        validate_sg_rule(address, r)
     }
+}
+
+validate_sg_rule = func(address, r) {
+    cidr = r.change.after.cidr_blocks
+    if cidr is not null and cidr contains "0.0.0.0/0" {
+        from = r.change.after.from_port
+        to = r.change.after.to_port
+
+        # Check CDE ports
+        valid = true
+        for cde_ports as port {
+            if from <= port and port <= to {
+                print(address, "- PCI-DSS: port", port,
+                      "must not be accessible from internet")
+                valid = false
+            }
+        }
+        return valid
+    }
+
+    return true
 }
 
 # No database should be publicly accessible
@@ -272,13 +305,17 @@ rds = filter tfplan.resource_changes as _, rc {
 
 pci_rds = rule {
     all rds as address, db {
-        if db.change.after.publicly_accessible is true {
-            print(address, "- PCI-DSS: databases must not be publicly accessible")
-            false
-        } else {
-            true
-        }
+        validate_rds_access(address, db)
     }
+}
+
+validate_rds_access = func(address, db) {
+    if db.change.after.publicly_accessible is true {
+        print(address, "- PCI-DSS: databases must not be publicly accessible")
+        return false
+    }
+
+    return true
 }
 
 main = rule {
@@ -288,7 +325,7 @@ main = rule {
 
 ### Encryption in Transit
 
-```python
+```sentinel
 # pci-encryption-transit.sentinel
 # PCI-DSS Requirement 4 - Encrypt data in transit
 
@@ -312,29 +349,33 @@ min_tls_policies = [
 
 main = rule {
     all listeners as address, listener {
-        protocol = listener.change.after.protocol
-
-        if protocol is "HTTPS" {
-            policy = listener.change.after.ssl_policy
-            if policy not in min_tls_policies {
-                print(address, "- PCI-DSS: must use TLS 1.2 or higher")
-                false
-            } else {
-                true
-            }
-        } else if protocol is "HTTP" {
-            # HTTP must redirect to HTTPS
-            actions = listener.change.after.default_action
-            if actions is not null and length(actions) > 0 {
-                actions[0].type is "redirect"
-            } else {
-                print(address, "- PCI-DSS: HTTP must redirect to HTTPS")
-                false
-            }
-        } else {
-            true
-        }
+        validate_listener(address, listener)
     }
+}
+
+validate_listener = func(address, listener) {
+    protocol = listener.change.after.protocol
+
+    if protocol is "HTTPS" {
+        policy = listener.change.after.ssl_policy
+        if policy not in min_tls_policies {
+            print(address, "- PCI-DSS: must use TLS 1.2 or higher")
+            return false
+        }
+
+        return true
+    } else if protocol is "HTTP" {
+        # HTTP must redirect to HTTPS
+        actions = listener.change.after.default_action
+        if actions is not null and length(actions) > 0 {
+            return actions[0].type is "redirect"
+        }
+
+        print(address, "- PCI-DSS: HTTP must redirect to HTTPS")
+        return false
+    }
+
+    return true
 }
 ```
 
@@ -342,7 +383,7 @@ main = rule {
 
 SOC 2 focuses on security, availability, processing integrity, confidentiality, and privacy.
 
-```python
+```sentinel
 # soc2-controls.sentinel
 # SOC 2 security controls
 
@@ -356,16 +397,20 @@ ebs_volumes = filter tfplan.resource_changes as _, rc {
 
 encryption_check = rule {
     all ebs_volumes as address, vol {
-        if vol.change.after.encrypted is not true {
-            print(address, "- SOC 2 CC6.1: EBS volumes must be encrypted")
-            false
-        } else {
-            true
-        }
+        validate_ebs_encryption(address, vol)
     }
 }
 
-# --- Logging (CC7.2) ---
+validate_ebs_encryption = func(address, vol) {
+    if vol.change.after.encrypted is not true {
+        print(address, "- policy requires EBS volumes to be encrypted")
+        return false
+    }
+
+    return true
+}
+
+# --- Backup Retention ---
 rds_instances = filter tfplan.resource_changes as _, rc {
     rc.type is "aws_db_instance" and
     (rc.change.actions contains "create" or rc.change.actions contains "update")
@@ -373,14 +418,18 @@ rds_instances = filter tfplan.resource_changes as _, rc {
 
 backup_check = rule {
     all rds_instances as address, db {
-        retention = db.change.after.backup_retention_period
-        if retention is null or retention < 7 {
-            print(address, "- SOC 2 CC7.2: backup retention must be at least 7 days")
-            false
-        } else {
-            true
-        }
+        validate_backup_retention(address, db)
     }
+}
+
+validate_backup_retention = func(address, db) {
+    retention = db.change.after.backup_retention_period
+    if retention is null or retention < 7 {
+        print(address, "- policy requires backup retention to be at least 7 days")
+        return false
+    }
+
+    return true
 }
 
 # --- Network Security (CC6.6) ---
@@ -392,20 +441,22 @@ sg_rules = filter tfplan.resource_changes as _, rc {
 
 network_check = rule {
     all sg_rules as address, r {
-        cidr = r.change.after.cidr_blocks
-        if cidr is not null and cidr contains "0.0.0.0/0" {
-            from = r.change.after.from_port
-            to = r.change.after.to_port
-            if from is 0 and to is 65535 {
-                print(address, "- SOC 2 CC6.6: unrestricted ingress is not allowed")
-                false
-            } else {
-                true
-            }
-        } else {
-            true
+        validate_network_rule(address, r)
+    }
+}
+
+validate_network_rule = func(address, r) {
+    cidr = r.change.after.cidr_blocks
+    if cidr is not null and cidr contains "0.0.0.0/0" {
+        from = r.change.after.from_port
+        to = r.change.after.to_port
+        if from is 0 and to is 65535 {
+            print(address, "- policy does not allow unrestricted ingress")
+            return false
         }
     }
+
+    return true
 }
 
 main = rule {
@@ -462,7 +513,7 @@ policy "pci-network" {
 
 Use print statements to generate audit-friendly output:
 
-```python
+```sentinel
 import "tfplan/v2" as tfplan
 
 # Track all compliance checks
@@ -473,6 +524,8 @@ print("")
 # ... run checks and print results ...
 
 print("=== End Report ===")
+
+main = rule { true }
 ```
 
 Compliance policies are among the most valuable Sentinel implementations. They translate regulatory requirements into automated checks that run on every Terraform deployment. For related topics, see our posts on [enforcing encryption](https://oneuptime.com/blog/post/2026-02-23-how-to-write-sentinel-policies-to-enforce-encryption/view) and [region restrictions](https://oneuptime.com/blog/post/2026-02-23-how-to-write-sentinel-policies-for-region-restrictions/view).
