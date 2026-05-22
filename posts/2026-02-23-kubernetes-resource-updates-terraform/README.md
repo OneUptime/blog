@@ -92,7 +92,7 @@ When you run `terraform plan`, you will see something like:
   }
 ```
 
-The `~` prefix indicates an in-place update. No downtime, no recreation.
+The `~` prefix indicates an in-place update. Terraform will not recreate the Deployment, but availability still depends on your Kubernetes rollout strategy, readiness checks, and whether the new pods become healthy.
 
 ## Force Replacement (Destroy and Recreate)
 
@@ -140,7 +140,7 @@ The plan output shows `-/+` indicating replacement:
     }
 ```
 
-To avoid downtime during replacements, use `create_before_destroy`:
+For resources that can exist side by side with unique names, `create_before_destroy` can reduce downtime during replacements:
 
 ```hcl
 resource "kubernetes_deployment" "app" {
@@ -152,9 +152,11 @@ resource "kubernetes_deployment" "app" {
 }
 ```
 
+For fixed-name Kubernetes objects like a Deployment named `my-app` in the same namespace, Kubernetes will not allow Terraform to create the replacement object before deleting the old one because the name must be unique. In those cases, plan a migration with a second resource name or use an in-place rollout when possible.
+
 ## Using ignore_changes for Server-Managed Fields
 
-Kubernetes controllers and the API server modify resources after creation. Without `ignore_changes`, Terraform tries to revert these modifications on every apply.
+Kubernetes controllers and the API server modify resources after creation. Without `ignore_changes`, Terraform tries to revert these modifications on every apply. If a HorizontalPodAutoscaler manages a Deployment, Kubernetes recommends not setting `.spec.replicas`; if you keep an initial replica value in Terraform, ignore later changes so Terraform does not fight the HPA.
 
 ```hcl
 # HPA modifies replica count - tell Terraform to ignore it
@@ -371,7 +373,7 @@ Setting `wait_for_rollout = false` means Terraform does not wait for all pods to
 
 ## Handling ConfigMap and Secret Updates
 
-Changing a ConfigMap or Secret does not automatically restart pods that reference them. A common pattern is to hash the config data and include it as a pod annotation.
+Changing a ConfigMap or Secret does not automatically restart pods that reference them. Volume-mounted ConfigMaps and Secrets are eventually refreshed by kubelet, but environment variables are not updated until the pod restarts, and many applications need a restart to reload file-based configuration. A common pattern is to hash the config data and include it as a pod annotation.
 
 ```hcl
 resource "kubernetes_config_map" "app" {
@@ -460,7 +462,7 @@ Follow these guidelines to keep updates smooth:
 - Always run `terraform plan` before `terraform apply` to review what will change
 - Use `ignore_changes` for fields managed by external controllers
 - Set `prevent_destroy` on stateful resources you cannot afford to lose
-- Use `create_before_destroy` for resources where downtime is unacceptable
+- Use `create_before_destroy` only when the replacement can be created with a non-conflicting name
 - Hash configuration data to trigger pod restarts when configs change
 - Keep selector labels immutable to avoid forced replacements
 - Set appropriate timeouts for long-running rollouts
