@@ -18,30 +18,42 @@ GKE is one of the best-supported platforms for Istio ambient mode. Google is a m
 
 ### Standard GKE Clusters
 
-Install works out of the box:
+Install with the GKE platform profile:
 
 ```bash
-istioctl install --set profile=ambient -y
+kubectl create namespace istio-system
+kubectl apply -f - <<'EOF'
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: gcp-critical-pods
+  namespace: istio-system
+spec:
+  hard:
+    pods: 1000
+  scopeSelector:
+    matchExpressions:
+    - operator: In
+      scopeName: PriorityClass
+      values:
+      - system-node-critical
+EOF
+
+istioctl install --set profile=ambient \
+  --set values.global.platform=gke \
+  --skip-confirmation
 ```
 
-No special configuration needed. The istio-cni plugin works with GKE's default CNI (kubenet or VPC-native).
+The `global.platform=gke` setting is required because GKE uses non-standard CNI binary paths. If you install `ztunnel` and `istio-cni` into `istio-system`, the namespace also needs a ResourceQuota that allows `system-node-critical` pods; alternatively, install those node components into `kube-system`.
 
 ### GKE Autopilot
 
-GKE Autopilot has restrictions on privileged pods and host networking. The istio-cni DaemonSet needs special handling:
+GKE Autopilot is not a good target for ambient mode today. Ambient mode requires the Istio CNI node agent, and the Istio CNI node agent requires node-level privileges that are not available on GKE Autopilot.
 
-```bash
-istioctl install --set profile=ambient \
-  --set values.cni.ambient.configDir=/etc/cni/net.d \
-  --set values.cni.ambient.enabled=true \
-  -y
-```
-
-Autopilot enforces resource requests on all pods. Make sure your ztunnel and istio-cni have reasonable resource requests:
+If you need Istio on Autopilot, use a supported sidecar installation path or a managed Cloud Service Mesh option instead of ambient mode. For ambient mode, use GKE Standard.
 
 ```yaml
-# ztunnel values
-
+# Example resource sizing for non-Autopilot clusters
 resources:
   requests:
     cpu: 100m
@@ -57,11 +69,11 @@ GKE Dataplane V2 uses Cilium as the CNI. Istio's CNI plugin needs to coexist wit
 
 ```bash
 istioctl install --set profile=ambient \
-  --set values.cni.cniBinDir=/home/kubernetes/bin \
-  -y
+  --set values.global.platform=gke \
+  --skip-confirmation
 ```
 
-The `cniBinDir` differs from the default because GKE stores CNI binaries in a non-standard location.
+The GKE platform profile sets the CNI paths Istio needs. If you are managing Cilium yourself on another platform, make sure Cilium is configured with `cni.exclusive=false` so it does not remove chained CNI configuration.
 
 ## Amazon Elastic Kubernetes Service (EKS)
 
@@ -71,23 +83,28 @@ EKS uses the AWS VPC CNI plugin by default. Istio's CNI plugin chains with the V
 
 ```bash
 istioctl install --set profile=ambient \
-  --set values.cni.cniBinDir=/opt/cni/bin \
-  -y
+  --skip-confirmation
 ```
 
-One important consideration: EKS nodes have security groups that may block inter-node traffic on port 15008 (HBONE). Make sure the node security group allows this:
+One important consideration: EKS nodes and pods can have security groups that may block inter-node traffic on port 15008 (HBONE). Make sure the node or pod security groups that apply to your workloads allow this traffic between nodes or pods:
 
 ```bash
-# Get the node security group
-NODE_SG=$(aws eks describe-cluster --name my-cluster \
-  --query 'cluster.resourcesVpcConfig.clusterSecurityGroupId' --output text)
+# Replace sg-... with the node or pod security group that applies to your workloads
+NODE_SG=sg-0123456789abcdef0
 
-# Allow HBONE traffic between nodes
+# Allow HBONE traffic within that security group
 aws ec2 authorize-security-group-ingress \
   --group-id $NODE_SG \
   --protocol tcp \
   --port 15008 \
   --source-group $NODE_SG
+```
+
+If you use AWS VPC CNI pod ENI trunking with pod-attached security groups, set `POD_SECURITY_GROUP_ENFORCING_MODE=standard` or kubelet health probes can fail:
+
+```bash
+kubectl set env daemonset aws-node -n kube-system \
+  POD_SECURITY_GROUP_ENFORCING_MODE=standard
 ```
 
 ### EKS with Calico
@@ -97,14 +114,14 @@ If you are using Calico on EKS, the CNI configuration needs to chain correctly:
 ```bash
 istioctl install --set profile=ambient \
   --set values.cni.chained=true \
-  -y
+  --skip-confirmation
 ```
 
 Verify the CNI config was inserted correctly:
 
 ```bash
 kubectl exec -n istio-system -l k8s-app=istio-cni-node -- \
-  cat /etc/cni/net.d/10-aws.conflist | head -30
+  sh -c 'ls -1 /host/etc/cni/net.d && sed -n "1,40p" /host/etc/cni/net.d/*.conflist'
 ```
 
 You should see the Istio CNI plugin listed in the plugins array.
@@ -114,7 +131,7 @@ You should see the Istio CNI plugin listed in the plugins array.
 ### AKS with Azure CNI
 
 ```bash
-istioctl install --set profile=ambient -y
+istioctl install --set profile=ambient --skip-confirmation
 ```
 
 AKS with Azure CNI works well with ambient mode. The main thing to verify is that the network security group allows port 15008 between nodes.
@@ -126,16 +143,16 @@ AKS kubenet uses bridge networking, which works differently:
 ```bash
 istioctl install --set profile=ambient \
   --set values.cni.cniBinDir=/opt/cni/bin \
-  -y
+  --skip-confirmation
 ```
 
 ### AKS with Istio Addon
 
-AKS offers a managed Istio addon, but it may not support ambient mode yet (as of early 2026). Check the latest AKS documentation. If you need ambient mode, install Istio yourself rather than using the managed addon.
+AKS offers a managed Istio addon, but it does not support sidecar-less ambient mode yet. If you need ambient mode, install open source Istio yourself rather than using the managed addon.
 
 ## kind (Kubernetes IN Docker)
 
-kind is popular for local development. It works well with ambient mode but needs one configuration tweak.
+kind is popular for local development. It works well with ambient mode using its default CNI.
 
 Create a kind cluster:
 
@@ -158,7 +175,7 @@ kind create cluster --config kind-config.yaml
 Install Istio:
 
 ```bash
-istioctl install --set profile=ambient -y
+istioctl install --set profile=ambient --skip-confirmation
 ```
 
 kind uses kindnet as its CNI. Istio's CNI plugin chains with it automatically. The main limitation is that kind nodes share the host kernel, so eBPF features may not work correctly. Stick with iptables-based interception.
@@ -169,9 +186,17 @@ k3s uses Flannel as its default CNI and has a non-standard CNI configuration pat
 
 ```bash
 istioctl install --set profile=ambient \
+  --set values.global.platform=k3s \
+  --skip-confirmation
+```
+
+If you have overridden the bundled k3s CNI paths or use a custom CNI, set the paths explicitly:
+
+```bash
+istioctl install --set profile=ambient \
   --set values.cni.cniConfDir=/var/lib/rancher/k3s/agent/etc/cni/net.d \
-  --set values.cni.cniBinDir=/var/lib/rancher/k3s/data/current/bin \
-  -y
+  --set values.cni.cniBinDir=/var/lib/rancher/k3s/data/current/bin/ \
+  --skip-confirmation
 ```
 
 Verify the CNI plugin was installed:
@@ -183,7 +208,7 @@ kubectl logs -l k8s-app=istio-cni-node -n istio-system --tail=20
 k3s also runs with a minimal set of Kubernetes APIs. Make sure the Kubernetes Gateway API CRDs are installed for waypoint proxy support:
 
 ```bash
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.2.0/standard-install.yaml
+kubectl apply --server-side -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.4.0/experimental-install.yaml
 ```
 
 ## Minikube
@@ -193,27 +218,26 @@ Minikube works with ambient mode using the default CNI:
 ```bash
 minikube start --cpus=4 --memory=8192
 
-istioctl install --set profile=ambient -y
+istioctl install --set profile=ambient --skip-confirmation
 ```
 
-If you are using Minikube with the Docker driver, note that network policies may not work as expected. For testing ambient mode features, the Minikube VM driver (VirtualBox or Hyperkit) gives more realistic networking behavior.
+If you are using Minikube with the Docker driver, add the minikube platform profile because the Docker driver uses a non-standard bind mount path:
+
+```bash
+istioctl install --set profile=ambient \
+  --set values.global.platform=minikube \
+  --skip-confirmation
+```
 
 ## OpenShift
 
 OpenShift has stricter security contexts. ztunnel and istio-cni need special permissions:
 
 ```bash
-# Create the istio-system namespace with proper SCC
-oc adm policy add-scc-to-group privileged system:serviceaccounts:istio-system
-
-# Install with OpenShift-specific settings
-istioctl install --set profile=ambient \
-  --set values.cni.privileged=true \
-  --set values.global.platform=openshift \
-  -y
+istioctl install --set profile=openshift-ambient --skip-confirmation
 ```
 
-OpenShift's default network plugin (OVN-Kubernetes) works with Istio's CNI chaining.
+OpenShift requires the `ztunnel` and `istio-cni` components to run in `kube-system`, and the OpenShift ambient profile sets the required platform values. With OVN-Kubernetes, set `routingViaHost: true` in the `gatewayConfig` spec so kubelet probe traffic is routed through the host correctly.
 
 ## Helm Installation Across Platforms
 
@@ -221,21 +245,22 @@ If you use Helm, the platform-specific settings go in your values files:
 
 ```yaml
 # gke-values.yaml
-cni:
-  cniBinDir: /home/kubernetes/bin
+global:
+  platform: gke
 
 # eks-values.yaml
-cni:
-  cniBinDir: /opt/cni/bin
+# No platform override is required for default EKS VPC CNI.
 
 # k3s-values.yaml
-cni:
-  cniConfDir: /var/lib/rancher/k3s/agent/etc/cni/net.d
-  cniBinDir: /var/lib/rancher/k3s/data/current/bin
+global:
+  platform: k3s
 ```
 
 ```bash
-helm install istio-cni istio/cni -n istio-system -f platform-values.yaml
+helm install istio-cni istio/cni -n istio-system \
+  --set profile=ambient \
+  -f platform-values.yaml \
+  --wait
 ```
 
 ## Verifying Platform Compatibility
