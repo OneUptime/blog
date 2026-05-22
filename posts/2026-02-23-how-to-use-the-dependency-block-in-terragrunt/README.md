@@ -14,7 +14,7 @@ In plain Terraform, you handle this with `terraform_remote_state` data sources o
 
 ## What the dependency Block Does
 
-The `dependency` block lets one Terragrunt module read the outputs of another Terragrunt module. When you run `terragrunt apply`, it first ensures the dependency has been applied, reads its outputs, and makes them available as variables in your configuration.
+The `dependency` block lets one Terragrunt module read the outputs of another Terragrunt module. When you run a command such as `terragrunt plan` or `terragrunt apply`, Terragrunt reads the dependency's outputs and makes them available as variables in your configuration. During multi-module runs, Terragrunt also uses the dependency graph to order modules correctly.
 
 Here is a basic example:
 
@@ -169,7 +169,7 @@ dependency "iam" {
 }
 ```
 
-With `skip_outputs = true`, Terragrunt will still ensure the dependency is applied first during `run-all` commands, but it will not attempt to read the state file. This is faster and avoids errors when the dependency does not have any relevant outputs.
+With `skip_outputs = true`, Terragrunt will still ensure the dependency is applied first during `run --all` commands, but it will not attempt to read the outputs. This is faster and avoids errors when the dependency does not have any relevant outputs.
 
 ## Real-World Example: Three-Tier Application
 
@@ -266,7 +266,7 @@ inputs = {
 }
 ```
 
-When you run `terragrunt run-all apply` from the `live/dev` directory, Terragrunt will:
+When you run `terragrunt run --all -- apply` from the `live/dev` directory, Terragrunt will:
 
 1. Apply `vpc` first (no dependencies)
 2. Apply `rds` second (depends on `vpc`)
@@ -276,8 +276,8 @@ When you run `terragrunt run-all apply` from the `live/dev` directory, Terragrun
 
 Do not confuse the `dependency` block with the `dependencies` block. They serve different purposes:
 
-- **dependency** (singular): Reads outputs from another module and makes them available as variables. Also implies execution ordering.
-- **dependencies** (plural): Only defines execution ordering without reading outputs.
+- **dependency** (singular): Reads outputs from another module and makes them available as variables. Also affects execution ordering during multi-module runs.
+- **dependencies** (plural): Only defines execution ordering during multi-module runs, without reading outputs.
 
 ```hcl
 # dependency - reads outputs AND defines ordering
