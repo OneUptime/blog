@@ -12,7 +12,7 @@ When Istio's outlier detection ejects a pod from the load balancing pool, it doe
 
 ## How Ejection Time Works
 
-The ejection time in Istio uses progressive backoff. The first ejection lasts for the `baseEjectionTime`. Each subsequent ejection multiplies the base by the number of times that instance has been ejected.
+The ejection time in Istio uses progressive backoff. The first ejection lasts for the `baseEjectionTime`. Each subsequent ejection multiplies the base by the number of times that instance has been ejected, up to Envoy's maximum ejection time.
 
 ```text
 First ejection:  baseEjectionTime * 1 = 30s
@@ -45,7 +45,7 @@ sequenceDiagram
 ## Basic Ejection Time Configuration
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: payment-service
@@ -71,7 +71,7 @@ The right value depends on what kind of failures your services experience and ho
 Good for transient issues that resolve quickly:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: cache-service
@@ -98,7 +98,7 @@ The downside: if the problem persists, the pod bounces in and out of the pool ra
 The sweet spot for most services:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: order-service
@@ -120,7 +120,7 @@ Thirty seconds is enough for most transient issues to clear. It also aligns with
 For services where recovery takes time:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: database-proxy
@@ -152,7 +152,7 @@ The progressive backoff means you do not need to make the base ejection time too
 | 4 | 120s | 300s (5 min) |
 | 5 | 150s | 450s (7.5 min) |
 
-By the fifth ejection, the pod has been out for 7.5 minutes total. At that point, Kubernetes should have restarted it through liveness probes, or an engineer should be investigating.
+By the fifth ejection, the pod has been out for 7.5 minutes total. At that point, Kubernetes may have restarted it through liveness probes if the probes also fail, or an engineer should be investigating.
 
 ## Ejection Time and Pod Count
 
@@ -163,7 +163,7 @@ Make sure your remaining capacity can handle the load:
 ```yaml
 # 6 pods, max 33% ejection = at most 2 ejected, 4 remaining
 
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: api-service
@@ -219,7 +219,7 @@ livenessProbe:
   initialDelaySeconds: 10
   periodSeconds: 10
   failureThreshold: 3
-  # Total time to detect and restart: ~40s
+  # Time before Kubernetes treats startup liveness failures as unhealthy: roughly 40s
 ```
 
 ```yaml
@@ -228,12 +228,12 @@ outlierDetection:
   baseEjectionTime: 60s
 ```
 
-With a 60-second ejection time, Kubernetes has plenty of time to detect the failure, kill the pod, and start a new one before Istio tries sending traffic to it again.
+With a 60-second ejection time, Kubernetes has time to detect the failure and begin restarting the container before Istio tries sending traffic to it again. If your termination grace period or startup time is longer, increase the ejection time accordingly.
 
 ## Complete Production Example
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: checkout-service
