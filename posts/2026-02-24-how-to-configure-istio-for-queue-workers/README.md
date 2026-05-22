@@ -25,7 +25,7 @@ The sidecar can interfere with all of these patterns if not configured correctly
 
 ## RabbitMQ Worker Configuration
 
-RabbitMQ uses AMQP, which is a binary protocol over TCP on port 5672 (or 5671 for TLS). Configure the service and destination rules accordingly:
+RabbitMQ uses AMQP, which is a binary protocol over TCP on port 5672 (or 5671 for TLS). Configure the service port accordingly:
 
 ```yaml
 apiVersion: v1
@@ -63,7 +63,7 @@ spec:
       annotations:
         proxy.istio.io/config: |
           holdApplicationUntilProxyStarts: true
-          drainDuration: 300s
+          terminationDrainDuration: 300s
     spec:
       terminationGracePeriodSeconds: 310
       containers:
@@ -74,7 +74,7 @@ spec:
           value: "amqp://rabbitmq.messaging.svc.cluster.local:5672"
 ```
 
-The `drainDuration: 300s` is important. When a pod is being terminated (during a scaling event or deployment), the worker might be in the middle of processing a message. You need the sidecar to stay alive long enough for the worker to finish processing and acknowledge the message.
+The `terminationDrainDuration: 300s` is important. When a pod is being terminated (during a scaling event or deployment), the worker might be in the middle of processing a message. You need the sidecar to stay alive long enough for the worker to finish processing and acknowledge the message.
 
 ## Kafka Consumer Configuration
 
@@ -114,9 +114,9 @@ spec:
       mode: ISTIO_MUTUAL
 ```
 
-Kafka consumers maintain multiple connections to different brokers (one per partition leader). The `maxConnections` needs to accommodate the number of topic partitions your consumer handles.
+Kafka consumers can maintain connections to multiple brokers, including the brokers that lead the partitions being consumed. The `maxConnections` value applies per destination host, so it needs to accommodate the number of simultaneous broker connections your consumer may open.
 
-The `tcpKeepalive` settings are set aggressively because Kafka brokers expect frequent heartbeats from consumers. If a consumer's connection is silently dropped, the broker thinks the consumer is dead and triggers a rebalance, which is disruptive to the entire consumer group.
+The `tcpKeepalive` settings are set aggressively to help detect silently dropped TCP connections. Kafka consumer group heartbeats are handled by the Kafka client protocol itself; TCP keepalive does not replace those heartbeats, but it can help the connection fail faster when an idle network path disappears.
 
 ## Scoping the Worker's Sidecar
 
@@ -179,7 +179,7 @@ Alternatively, use `EXIT_ON_ZERO_ACTIVE_CONNECTIONS`:
 ```yaml
 annotations:
   proxy.istio.io/config: |
-    drainDuration: 300s
+    terminationDrainDuration: 300s
     proxyMetadata:
       EXIT_ON_ZERO_ACTIVE_CONNECTIONS: "true"
 ```
@@ -229,17 +229,6 @@ spec:
     protocol: HTTPS
   location: MESH_EXTERNAL
   resolution: DNS
----
-apiVersion: networking.istio.io/v1
-kind: DestinationRule
-metadata:
-  name: aws-sqs
-  namespace: workers
-spec:
-  host: sqs.us-east-1.amazonaws.com
-  trafficPolicy:
-    tls:
-      mode: SIMPLE
 ```
 
 If your mesh has `outboundTrafficPolicy` set to `REGISTRY_ONLY`, the worker can't reach external services without a ServiceEntry.
