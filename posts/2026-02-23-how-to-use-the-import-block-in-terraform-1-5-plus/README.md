@@ -14,7 +14,7 @@ In this guide, we will explore the import block in detail, covering basic usage,
 
 ## Understanding the Import Block
 
-The import block tells Terraform to adopt an existing resource into its state during the next apply. It takes two arguments: `to` specifies the Terraform resource address, and `id` specifies the provider-specific identifier of the existing resource. After a successful import, you can remove the import block from your configuration.
+The import block tells Terraform to adopt an existing resource into its state during the next apply. In the basic form, `to` specifies the Terraform resource address, and `id` specifies the provider-specific identifier of the existing resource. Terraform 1.5 also supports an optional `provider` argument, and newer Terraform versions support additional arguments such as `for_each` and `identity`. After a successful import, you can remove the import block from your configuration or keep it as a record of the resource's origin.
 
 ## Basic Import Block Syntax
 
@@ -154,7 +154,7 @@ Terraform 1.5+ can generate configuration for imported resources:
 terraform plan -generate-config-out=generated.tf
 ```
 
-This creates a `generated.tf` file with the resource configuration matching the imported state:
+Use this when you have an `import` block for a resource that does not already have a matching `resource` block in your configuration. Terraform writes generated HCL to a new file, using its best guess at the resource arguments based on the imported object. In Terraform 1.5, this configuration generation workflow was experimental:
 
 ```hcl
 # generated.tf - Auto-generated configuration
@@ -248,7 +248,7 @@ Follow these practices for smooth imports:
 1. Always write the resource configuration before adding the import block
 2. Run terraform plan to preview the import before applying
 3. After successful import, verify with terraform plan that there is no drift
-4. Remove import blocks after successful import (they are one-time operations)
+4. Remove import blocks after successful import, or keep them as a historical record
 5. Use for_each for importing groups of similar resources
 6. Use -generate-config-out for resources with many attributes
 7. Review generated configuration and clean up unnecessary attributes
