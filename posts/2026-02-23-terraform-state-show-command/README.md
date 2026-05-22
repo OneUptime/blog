@@ -150,13 +150,13 @@ Need the AWS resource ID for the console or CLI?
 
 ```bash
 # Get the instance ID
-terraform state show aws_instance.web | grep "id "
+terraform state show aws_instance.web | grep -E '^[[:space:]]+id[[:space:]]+='
 
 # Get the VPC ID
-terraform state show aws_vpc.main | grep "id "
+terraform state show aws_vpc.main | grep -E '^[[:space:]]+id[[:space:]]+='
 
 # Get the security group ID
-terraform state show aws_security_group.web | grep "id "
+terraform state show aws_security_group.web | grep -E '^[[:space:]]+id[[:space:]]+='
 ```
 
 ### Checking Security Group Rules
@@ -203,10 +203,10 @@ If the plan shows changes, the state show output represents the old values, and 
 
 ```bash
 # Get just the public IP of an instance
-terraform state show -no-color aws_instance.web | grep "public_ip" | awk '{print $NF}' | tr -d '"'
+terraform state show -no-color aws_instance.web | grep -E '^[[:space:]]+public_ip[[:space:]]+=' | awk '{print $NF}' | tr -d '"'
 
 # Get the ARN
-terraform state show -no-color aws_instance.web | grep "arn " | awk '{print $NF}' | tr -d '"'
+terraform state show -no-color aws_instance.web | grep -E '^[[:space:]]+arn[[:space:]]+=' | awk '{print $NF}' | tr -d '"'
 ```
 
 ### Generate an Inventory
@@ -218,22 +218,22 @@ terraform state show -no-color aws_instance.web | grep "arn " | awk '{print $NF}
 echo "Instance Inventory"
 echo "=================="
 
-for instance in $(terraform state list aws_instance); do
+while IFS= read -r instance; do
   # Extract key attributes
   name=$(terraform state show -no-color "$instance" | grep 'tags_all' -A20 | grep '"Name"' | awk -F'"' '{print $4}')
-  ip=$(terraform state show -no-color "$instance" | grep "private_ip " | head -1 | awk '{print $NF}' | tr -d '"')
-  type=$(terraform state show -no-color "$instance" | grep "instance_type " | awk '{print $NF}' | tr -d '"')
-  state=$(terraform state show -no-color "$instance" | grep "instance_state " | awk '{print $NF}' | tr -d '"')
+  ip=$(terraform state show -no-color "$instance" | grep -E '^[[:space:]]+private_ip[[:space:]]+=' | head -1 | awk '{print $NF}' | tr -d '"')
+  type=$(terraform state show -no-color "$instance" | grep -E '^[[:space:]]+instance_type[[:space:]]+=' | awk '{print $NF}' | tr -d '"')
+  state=$(terraform state show -no-color "$instance" | grep -E '^[[:space:]]+instance_state[[:space:]]+=' | awk '{print $NF}' | tr -d '"')
 
   echo "$instance: name=$name ip=$ip type=$type state=$state"
-done
+done < <(terraform state list | awk '/(^|\.)aws_instance\./ && !/(^|\.)data\./')
 ```
 
 ### Compare Resources
 
 ```bash
 # Compare two instances
-diff <(terraform state show aws_instance.web) <(terraform state show aws_instance.worker[0])
+diff <(terraform state show aws_instance.web) <(terraform state show 'aws_instance.worker[0]')
 ```
 
 ## JSON Output
