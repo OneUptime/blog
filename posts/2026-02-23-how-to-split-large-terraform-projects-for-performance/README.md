@@ -100,9 +100,12 @@ for resource in "${RESOURCES[@]}"; do
 done
 ```
 
-After moving, push the new state to your backend:
+After moving, push both the updated source state and the new state to their backends:
 
 ```bash
+# In the original project directory
+terraform state push monolith.tfstate
+
 # In the networking project directory
 terraform state push networking.tfstate
 ```
@@ -152,7 +155,7 @@ output "app_security_group_id" {
 
 ## Alternative: Using SSM Parameter Store
 
-`terraform_remote_state` has a drawback: it exposes the entire state of the source project to the consuming project. An alternative is writing outputs to a shared store like AWS SSM Parameter Store:
+`terraform_remote_state` has a drawback: it only exposes root outputs in configuration, but the consumer still needs access to the full source state snapshot. An alternative is writing outputs to a shared store like AWS SSM Parameter Store:
 
 ```hcl
 # In networking/ssm.tf
@@ -185,7 +188,7 @@ locals {
 }
 ```
 
-This approach provides better isolation between projects. Each project only sees the specific values it needs, not the full state.
+This approach provides better isolation between projects. Each project only reads the specific values it needs, not the full state snapshot.
 
 ## Establishing a Dependency Order
 
@@ -248,7 +251,7 @@ The total time to plan all projects sequentially is longer than planning the mon
 
 **Circular dependencies**: If project A needs an output from project B, and project B needs an output from project A, you have a circular dependency. Restructure so dependencies flow in one direction.
 
-**Forgetting to update the monolith**: After moving resources to new states, delete the corresponding configuration from the original project. Otherwise, the next plan on the monolith will try to destroy those resources.
+**Forgetting to update the monolith**: After moving resources to new states, delete the corresponding configuration from the original project. Otherwise, the next plan on the monolith will try to create those resources again.
 
 ## Summary
 
