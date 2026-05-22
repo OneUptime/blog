@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Security, Variable, Infrastructure as Code, DevOps
 
-Description: Learn how to use the sensitive flag on Terraform variables to prevent secrets like passwords and API keys from appearing in plan output, logs, and the terminal.
+Description: Learn how to use the sensitive flag on Terraform variables to prevent secrets like passwords and API keys from appearing in standard Terraform CLI output.
 
 ---
 
-When you work with Terraform, your configurations will almost certainly need secrets at some point - database passwords, API tokens, private keys, and other credentials. If you are not careful, these values will show up in your terminal during `terraform plan` and `terraform apply`, in CI/CD logs, and anywhere else Terraform writes its output. The `sensitive` flag on variables is your first line of defense against accidental exposure.
+When you work with Terraform, your configurations will almost certainly need secrets at some point - database passwords, API tokens, private keys, and other credentials. If you are not careful, these values can show up in your terminal during `terraform plan` and `terraform apply`, in CI/CD logs that capture Terraform output, and anywhere else Terraform writes its standard output. The `sensitive` flag on variables is your first line of defense against accidental exposure.
 
 This post walks through how to mark variables as sensitive, what that actually does behind the scenes, and where its protections fall short so you can fill in the gaps.
 
 ## What Does sensitive = true Actually Do?
 
-When you add `sensitive = true` to a variable declaration, Terraform redacts the variable's value from its standard output. That means anywhere Terraform would normally print the value - in plan diffs, apply output, or error messages - it replaces the actual content with `(sensitive value)`.
+When you add `sensitive = true` to a variable declaration, Terraform redacts the variable's value from its standard output. That means most places Terraform would normally print the value - in plan diffs, apply output, destroy output, or Terraform log messages - it replaces the actual content with `(sensitive value)`.
 
 Here is a basic example:
 
@@ -24,7 +24,7 @@ Here is a basic example:
 # This variable holds a database password.
 
 # The sensitive flag tells Terraform to hide
-# this value in all CLI output.
+# this value in standard plan and apply output.
 variable "db_password" {
   description = "Master password for the RDS instance"
   type        = string
@@ -42,7 +42,7 @@ When you run `terraform plan`, you will see something like this in the output:
   }
 ```
 
-Without the `sensitive` flag, that password would appear in plain text right there in your terminal.
+Without sensitivity from the variable or the provider schema, that password could appear in plain text right there in your terminal.
 
 ## Declaring Sensitive Variables
 
@@ -151,14 +151,14 @@ You supply values for sensitive variables the same way you do for regular ones, 
 
 ```bash
 # The TF_VAR_ prefix tells Terraform to use this value
-# for the matching variable. The value never touches disk.
+# for the matching variable without creating a tfvars file.
 export TF_VAR_db_password="my-super-secret-password"
 export TF_VAR_monitoring_api_key="ak-9f8e7d6c5b4a3210"
 
 terraform apply
 ```
 
-This is often the safest approach because the value stays in memory and does not end up in a file that could be committed to version control.
+This is often the safest approach because the value does not end up in a Terraform variable file that could be committed to version control.
 
 ### Variable Files (Use With Care)
 
@@ -222,7 +222,7 @@ terraform {
     region         = "us-east-1"
     encrypt        = true
     kms_key_id     = "alias/terraform-state"
-    dynamodb_table = "terraform-locks"
+    use_lockfile   = true
   }
 }
 ```
@@ -291,6 +291,47 @@ variable "github_token" {
 
 # main.tf
 
+data "aws_iam_policy_document" "codebuild_assume_role" {
+  statement {
+    actions = ["sts:AssumeRole"]
+
+    principals {
+      type        = "Service"
+      identifiers = ["codebuild.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role" "codebuild" {
+  name               = "app-codebuild-${var.environment}"
+  assume_role_policy = data.aws_iam_policy_document.codebuild_assume_role.json
+}
+
+resource "aws_ssm_parameter" "github_token" {
+  name  = "/app/${var.environment}/github-token"
+  type  = "SecureString"
+  value = var.github_token
+}
+
+resource "aws_iam_role_policy" "codebuild_ssm" {
+  name = "app-codebuild-ssm-${var.environment}"
+  role = aws_iam_role.codebuild.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "ssm:GetParameter",
+          "ssm:GetParameters"
+        ]
+        Resource = aws_ssm_parameter.github_token.arn
+      }
+    ]
+  })
+}
+
 resource "aws_db_instance" "app" {
   identifier     = "app-${var.environment}"
   engine         = "mysql"
@@ -319,12 +360,11 @@ resource "aws_codebuild_project" "app" {
     image        = "aws/codebuild/standard:7.0"
     type         = "LINUX_CONTAINER"
 
-    # The token value is sensitive and will be
-    # redacted in plan output
+    # CodeBuild reads the token from Parameter Store at runtime.
     environment_variable {
       name  = "GITHUB_TOKEN"
-      value = var.github_token
-      type  = "PLAINTEXT"
+      value = aws_ssm_parameter.github_token.name
+      type  = "PARAMETER_STORE"
     }
   }
 
