@@ -15,7 +15,7 @@ This guide covers deploying Karpenter on EKS using Terraform, from IAM setup to 
 ## Prerequisites
 
 Karpenter requires:
-- An EKS cluster (1.25 or later recommended)
+- An EKS cluster version supported by your Karpenter release
 - An existing node group to run Karpenter itself (it cannot provision the nodes it runs on)
 - IAM roles for both Karpenter and the nodes it creates
 - The Karpenter Helm chart
@@ -52,6 +52,7 @@ module "karpenter_irsa" {
 
   karpenter_controller_cluster_name       = var.cluster_name
   karpenter_controller_node_iam_role_arns = [aws_iam_role.karpenter_node.arn]
+  karpenter_sqs_queue_arn                 = aws_sqs_queue.karpenter.arn
 
   oidc_providers = {
     main = {
@@ -82,7 +83,7 @@ resource "aws_iam_role_policy_attachment" "karpenter_node_policies" {
   for_each = toset([
     "arn:${local.partition}:iam::aws:policy/AmazonEKSWorkerNodePolicy",
     "arn:${local.partition}:iam::aws:policy/AmazonEKS_CNI_Policy",
-    "arn:${local.partition}:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly",
+    "arn:${local.partition}:iam::aws:policy/AmazonEC2ContainerRegistryPullOnly",
     "arn:${local.partition}:iam::aws:policy/AmazonSSMManagedInstanceCore",
   ])
 
@@ -158,7 +159,7 @@ resource "helm_release" "karpenter" {
   repository = "oci://public.ecr.aws/karpenter"
   chart      = "karpenter"
   namespace  = "kube-system"
-  version    = "0.33.0"
+  version    = "1.12.1"
 
   values = [
     yamlencode({
@@ -176,19 +177,34 @@ resource "helm_release" "karpenter" {
 
       replicas = 2
 
-      resources = {
-        requests = {
-          cpu    = "200m"
-          memory = "256Mi"
-        }
-        limits = {
-          memory = "512Mi"
+      controller = {
+        resources = {
+          requests = {
+            cpu    = "200m"
+            memory = "256Mi"
+          }
+          limits = {
+            memory = "512Mi"
+          }
         }
       }
 
       # Run on the static node group, not on Karpenter-managed nodes
       nodeSelector = {
-        "karpenter.sh/nodepool" = ""
+        "kubernetes.io/os" = "linux"
+      }
+
+      affinity = {
+        nodeAffinity = {
+          requiredDuringSchedulingIgnoredDuringExecution = {
+            nodeSelectorTerms = [{
+              matchExpressions = [{
+                key      = "karpenter.sh/nodepool"
+                operator = "DoesNotExist"
+              }]
+            }]
+          }
+        }
       }
 
       tolerations = [{
@@ -218,6 +234,7 @@ resource "aws_cloudwatch_event_rule" "karpenter_interruption" {
     "detail-type" = [
       "EC2 Instance Rebalance Recommendation",
       "EC2 Instance State-change Notification",
+      "EC2 Capacity Reservation Instance Interruption Warning",
       "EC2 Spot Instance Interruption Warning",
       "AWS Health Event"
     ]
@@ -253,7 +270,7 @@ NodePools define what kinds of instances Karpenter can provision. They replaced 
 # General purpose NodePool
 resource "kubectl_manifest" "nodepool_general" {
   yaml_body = <<YAML
-apiVersion: karpenter.sh/v1beta1
+apiVersion: karpenter.sh/v1
 kind: NodePool
 metadata:
   name: general
@@ -281,12 +298,14 @@ spec:
           operator: In
           values: ["amd64"]
       nodeClassRef:
+        group: karpenter.k8s.aws
+        kind: EC2NodeClass
         name: default
   limits:
     cpu: "200"
     memory: "800Gi"
   disruption:
-    consolidationPolicy: WhenUnderutilized
+    consolidationPolicy: WhenEmptyOrUnderutilized
     consolidateAfter: 30s
   weight: 10
 YAML
@@ -297,7 +316,7 @@ YAML
 # GPU NodePool for ML workloads
 resource "kubectl_manifest" "nodepool_gpu" {
   yaml_body = <<YAML
-apiVersion: karpenter.sh/v1beta1
+apiVersion: karpenter.sh/v1
 kind: NodePool
 metadata:
   name: gpu
@@ -318,6 +337,8 @@ spec:
           operator: In
           values: ["on-demand"]
       nodeClassRef:
+        group: karpenter.k8s.aws
+        kind: EC2NodeClass
         name: default
       taints:
         - key: nvidia.com/gpu
@@ -341,13 +362,14 @@ EC2NodeClasses define the AWS-specific configuration for nodes.
 # Default EC2NodeClass
 resource "kubectl_manifest" "nodeclass_default" {
   yaml_body = <<YAML
-apiVersion: karpenter.k8s.aws/v1beta1
+apiVersion: karpenter.k8s.aws/v1
 kind: EC2NodeClass
 metadata:
   name: default
 spec:
-  # AMI family - AL2 is the default EKS AMI
-  amiFamily: AL2
+  # EKS-optimized AL2023 AMI selection
+  amiSelectorTerms:
+    - alias: al2023@latest
 
   # Instance profile for the nodes
   instanceProfile: ${aws_iam_instance_profile.karpenter.name}
@@ -395,7 +417,7 @@ Karpenter's consolidation feature automatically right-sizes your fleet.
 # NodePool with aggressive consolidation
 resource "kubectl_manifest" "nodepool_cost_optimized" {
   yaml_body = <<YAML
-apiVersion: karpenter.sh/v1beta1
+apiVersion: karpenter.sh/v1
 kind: NodePool
 metadata:
   name: cost-optimized
@@ -410,14 +432,16 @@ spec:
           operator: In
           values: ["spot"]
       nodeClassRef:
+        group: karpenter.k8s.aws
+        kind: EC2NodeClass
         name: default
+      # Expire nodes after 24 hours to pick up new AMIs
+      expireAfter: 24h
   disruption:
     # Replace nodes with cheaper ones when possible
-    consolidationPolicy: WhenUnderutilized
+    consolidationPolicy: WhenEmptyOrUnderutilized
     # Check for consolidation opportunities frequently
     consolidateAfter: 30s
-    # Expire nodes after 24 hours to pick up new AMIs
-    expireAfter: 24h
   limits:
     cpu: "500"
     memory: "2000Gi"
