@@ -43,15 +43,15 @@ rules:
   - group: "telemetry.istio.io"
     resources: ["telemetries"]
 - level: Metadata
+  namespaces: ["istio-system"]
   resources:
   - group: ""
     resources: ["secrets", "configmaps"]
-    namespaces: ["istio-system"]
 ```
 
 **1.2 - Encryption at Rest**
 
-Make sure etcd encryption is enabled for secrets, since Istio stores certificates and configuration in Kubernetes secrets:
+Make sure etcd encryption is enabled for secrets, since Istio stores certificates and other sensitive data in Kubernetes secrets:
 
 ```yaml
 apiVersion: apiserver.config.k8s.io/v1
@@ -71,7 +71,7 @@ resources:
 
 **5.1.1 - Minimize Cluster Admin Access**
 
-istiod should not use cluster-admin. Create a scoped role:
+istiod should not use cluster-admin. Create scoped roles based on the Istio features you enable:
 
 ```yaml
 apiVersion: rbac.authorization.k8s.io/v1
@@ -88,8 +88,14 @@ rules:
 - apiGroups: [""]
   resources: ["secrets"]
   verbs: ["get", "list", "watch", "create", "update", "delete"]
-- apiGroups: ["networking.istio.io", "security.istio.io", "telemetry.istio.io"]
-  resources: ["*"]
+- apiGroups: ["networking.istio.io"]
+  resources: ["destinationrules", "envoyfilters", "gateways", "proxyconfigs", "serviceentries", "sidecars", "virtualservices", "workloadentries", "workloadgroups"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["security.istio.io"]
+  resources: ["authorizationpolicies", "peerauthentications", "requestauthentications"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["telemetry.istio.io"]
+  resources: ["telemetries"]
   verbs: ["get", "list", "watch"]
 - apiGroups: ["admissionregistration.k8s.io"]
   resources: ["mutatingwebhookconfigurations", "validatingwebhookconfigurations"]
@@ -115,7 +121,7 @@ Review Istio roles for wildcard usage and replace with specific resources:
 
 ```bash
 kubectl get clusterrole -o json | \
-  jq '.items[] | select(.metadata.name | startswith("istio")) | {name: .metadata.name, wildcards: [.rules[] | select(.resources[] == "*" or .verbs[] == "*")]}'
+  jq '.items[] | select(.metadata.name | startswith("istio")) | {name: .metadata.name, wildcards: [.rules[] | select(((.resources // []) | index("*")) or ((.verbs // []) | index("*")))]}'
 ```
 
 ## Pod Security Standards (CIS 5.2)
@@ -132,6 +138,9 @@ spec:
     global:
       proxy:
         privileged: false
+    pilot:
+      cni:
+        enabled: true
   components:
     cni:
       enabled: true
@@ -150,13 +159,16 @@ The Istio CNI plugin eliminates the need for privileged init containers.
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
-  meshConfig:
-    defaultConfig:
-      proxyMetadata: {}
   values:
     global:
       proxy:
         privileged: false
+  components:
+    pilot:
+      k8s:
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1337
 ```
 
 Verify no Istio containers run as root:
@@ -193,50 +205,16 @@ spec:
 
 **5.3.1 - Ensure Network Policies Are Used**
 
-Apply network policies to the istio-system namespace:
+Enable Istio-generated network policies for control plane components:
 
 ```yaml
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: istiod-policy
-  namespace: istio-system
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
 spec:
-  podSelector:
-    matchLabels:
-      app: istiod
-  policyTypes:
-  - Ingress
-  - Egress
-  ingress:
-  - from:
-    - namespaceSelector: {}
-    ports:
-    - port: 15010
-    - port: 15012
-    - port: 15014
-    - port: 15017
-    - port: 15021
-  egress:
-  - to:
-    - namespaceSelector: {}
----
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: ingress-gateway-policy
-  namespace: istio-system
-spec:
-  podSelector:
-    matchLabels:
-      istio: ingressgateway
-  policyTypes:
-  - Ingress
-  ingress:
-  - ports:
-    - port: 80
-    - port: 443
-    - port: 15021
+  values:
+    global:
+      networkPolicy:
+        enabled: true
 ```
 
 ## Secrets Management (CIS 5.4)
@@ -246,7 +224,7 @@ spec:
 Instead of storing TLS certificates directly in Kubernetes secrets, use an external secret manager:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: istio-tls-cert
@@ -341,8 +319,8 @@ kubectl get peerauthentication --all-namespaces
 # Check all AuthorizationPolicies
 kubectl get authorizationpolicies --all-namespaces
 
-# Verify no services use plain HTTP
-kubectl get gateway --all-namespaces -o json | \
+# Verify no Istio Gateways accept plain HTTP without redirect
+kubectl get gateways.networking.istio.io --all-namespaces -o json | \
   jq '.items[].spec.servers[] | select(.port.protocol == "HTTP" and .tls.httpsRedirect != true)'
 ```
 
