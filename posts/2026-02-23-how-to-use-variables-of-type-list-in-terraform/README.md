@@ -158,7 +158,7 @@ resource "aws_subnet" "public" {
 }
 ```
 
-With `for_each`, adding or removing an AZ from the middle of the list does not cause all subsequent resources to be destroyed and recreated (which happens with `count`).
+With `for_each`, Terraform addresses resource instances by AZ name rather than by numeric index, so adding or removing an AZ from the middle of the list does not renumber the remaining resource addresses. Arguments that are still derived from list positions, such as the `cidr_block` expression above, can still change if the list order changes and may force replacement.
 
 ## List Operations
 
