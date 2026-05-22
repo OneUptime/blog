@@ -97,7 +97,19 @@ data "aws_iam_policy" "custom_security" {
 # Look up a policy with a specific path prefix
 data "aws_iam_policy" "team_policy" {
   # Custom policies often use path prefixes for organization
-  name = "DataTeamAccessPolicy"
+  name        = "DataTeamAccessPolicy"
+  path_prefix = "/teams/data/"
+}
+
+data "aws_iam_policy_document" "assume_role" {
+  statement {
+    actions = ["sts:AssumeRole"]
+
+    principals {
+      type        = "Service"
+      identifiers = ["ec2.amazonaws.com"]
+    }
+  }
 }
 
 resource "aws_iam_role" "data_engineer" {
@@ -202,9 +214,9 @@ resource "aws_iam_policy" "app_combined" {
 }
 ```
 
-## Looking Up IAM Roles with Attached Policies
+## Looking Up IAM Roles for Policy Attachments
 
-Sometimes you need to look up a role and understand what policies are attached to it:
+Sometimes you need to look up a role so you can reference its ARN in another resource:
 
 ```hcl
 # Look up an existing IAM role
@@ -217,7 +229,7 @@ resource "aws_lambda_function" "my_function" {
   function_name = "my-function"
   role          = data.aws_iam_role.existing_role.arn
   handler       = "index.handler"
-  runtime       = "nodejs18.x"
+  runtime       = "nodejs24.x"
   filename      = "function.zip"
 }
 ```
@@ -253,7 +265,7 @@ resource "aws_iam_role_policy_attachment" "managed_attachments" {
 
 ## Error Handling
 
-If a data source cannot find the specified policy, Terraform will fail during the plan phase with an error. This is actually a good thing - it catches mistakes early. However, you should be aware of common pitfalls:
+If a data source cannot find the specified policy, Terraform will usually fail during the plan phase with an error. If Terraform defers reading the data source because one of its arguments is not known until apply, the failure can happen during apply instead. Either way, this catches mistakes early. However, you should be aware of common pitfalls:
 
 - AWS managed policy names are case-sensitive. `amazons3readonlyaccess` will not find `AmazonS3ReadOnlyAccess`.
 - If a policy was recently deleted, the data source will fail.
