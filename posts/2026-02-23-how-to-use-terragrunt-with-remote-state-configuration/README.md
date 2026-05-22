@@ -23,7 +23,7 @@ terraform {
     key            = "dev/vpc/terraform.tfstate"
     region         = "us-east-1"
     encrypt        = true
-    dynamodb_table = "terraform-lock"
+    use_lockfile   = true
   }
 }
 ```
@@ -36,7 +36,7 @@ terraform {
     key            = "dev/rds/terraform.tfstate"  # only this changes
     region         = "us-east-1"
     encrypt        = true
-    dynamodb_table = "terraform-lock"
+    use_lockfile   = true
   }
 }
 ```
@@ -61,7 +61,7 @@ remote_state {
     key            = "${path_relative_to_include()}/terraform.tfstate"
     region         = "us-east-1"
     encrypt        = true
-    dynamodb_table = "terraform-lock"
+    use_lockfile   = true
   }
 }
 ```
@@ -72,7 +72,16 @@ For `dev/vpc`, the key becomes `dev/vpc/terraform.tfstate`. For `prod/rds`, it b
 
 ## Automatic Backend Resource Creation
 
-One of Terragrunt's most convenient features is automatic creation of the backend resources (S3 bucket, DynamoDB table). Just run any Terragrunt command and it creates them if they do not exist:
+One of Terragrunt's most convenient features is creation of the backend resources (S3 bucket, and a DynamoDB table if you use legacy DynamoDB locking). In current Terragrunt versions, backend bootstrapping is explicit:
+
+```bash
+terragrunt backend bootstrap
+
+# Or bootstrap immediately before a normal run
+terragrunt plan --backend-bootstrap
+```
+
+With an S3 remote state configuration like this:
 
 ```hcl
 remote_state {
@@ -86,35 +95,34 @@ remote_state {
     key            = "${path_relative_to_include()}/terraform.tfstate"
     region         = "us-east-1"
     encrypt        = true
-    dynamodb_table = "terraform-lock"
+    use_lockfile   = true
 
-    # Terragrunt will create the S3 bucket and DynamoDB table
-    # if they do not exist
+    # Terragrunt can create the S3 bucket when you bootstrap
+    # the backend resources.
   }
 }
 ```
 
-On the first run, Terragrunt:
+On the first bootstrap, Terragrunt:
 
 1. Checks if the S3 bucket exists
-2. Creates it if not, with encryption and versioning enabled
-3. Checks if the DynamoDB table exists
-4. Creates it if not, with the correct schema for state locking
-5. Proceeds with the normal Terraform workflow
+2. Creates it if not, with encryption, versioning, and TLS enforcement enabled
+3. Checks if configured backend resources already match the `remote_state` configuration
+4. Updates supported S3 bucket settings when it is safe to do so
+5. Proceeds with the normal Terraform workflow when you use `--backend-bootstrap` with a normal Terragrunt command
 
-You can disable this auto-creation if you manage these resources separately:
+You can prevent Terragrunt from bootstrapping these resources if you manage them separately:
 
 ```hcl
 remote_state {
   backend = "s3"
+  disable_init = true
   config = {
-    bucket                 = "my-terraform-state"
-    key                    = "${path_relative_to_include()}/terraform.tfstate"
-    region                 = "us-east-1"
-    encrypt                = true
-    dynamodb_table         = "terraform-lock"
-    skip_bucket_creation   = true   # do not auto-create bucket
-    skip_bucket_versioning = true   # do not try to set versioning
+    bucket       = "my-terraform-state"
+    key          = "${path_relative_to_include()}/terraform.tfstate"
+    region       = "us-east-1"
+    encrypt      = true
+    use_lockfile = true
   }
 }
 ```
@@ -151,11 +159,8 @@ remote_state {
     # Enable encryption at rest
     encrypt = true
 
-    # DynamoDB table for state locking
-    dynamodb_table = "terraform-lock"
-
-    # Enable S3 bucket versioning for state file history
-    enable_lock_table_ssencryption = true
+    # Native S3 state locking
+    use_lockfile = true
   }
 }
 ```
@@ -184,10 +189,12 @@ remote_state {
     key            = "${path_relative_to_include()}/terraform.tfstate"
     region         = local.aws_region
     encrypt        = true
-    dynamodb_table = "terraform-lock"
+    use_lockfile   = true
 
     # Assume role to access the state bucket in the target account
-    role_arn = "arn:aws:iam::${local.account_id}:role/TerraformStateAccess"
+    assume_role = {
+      role_arn = "arn:aws:iam::${local.account_id}:role/TerraformStateAccess"
+    }
   }
 }
 ```
@@ -328,7 +335,7 @@ remote_state {
 
 State locking prevents concurrent modifications. Different backends use different locking mechanisms:
 
-### S3 + DynamoDB
+### S3 Native Lockfile
 
 ```hcl
 remote_state {
@@ -337,10 +344,12 @@ remote_state {
     bucket         = "terraform-state"
     key            = "${path_relative_to_include()}/terraform.tfstate"
     region         = "us-east-1"
-    dynamodb_table = "terraform-lock"  # enables locking
+    use_lockfile   = true  # enables native S3 locking
   }
 }
 ```
+
+DynamoDB-based locking still works for older Terraform and OpenTofu versions, but it is deprecated in current Terraform releases. If you must use it, set `dynamodb_table = "terraform-lock"` and create or bootstrap a table with a string partition key named `LockID`.
 
 ### Azure - Built-in Blob Leasing
 
@@ -357,7 +366,7 @@ When you need to move state (for example, changing the bucket name), Terragrunt 
 ```bash
 # After updating the remote_state config in terragrunt.hcl
 cd live/dev/vpc
-terragrunt init -migrate-state
+terragrunt run -- init -migrate-state
 ```
 
 Terraform will prompt you to confirm the state migration from the old backend to the new one.
@@ -367,7 +376,7 @@ For bulk migration across many modules:
 ```bash
 # Migrate all modules in dev
 cd live/dev
-terragrunt run-all init -migrate-state --terragrunt-non-interactive
+terragrunt run --all --non-interactive -- init -migrate-state
 ```
 
 ## The generate Parameter
@@ -389,7 +398,7 @@ remote_state {
 }
 ```
 
-Without `generate`, Terragrunt modifies Terraform's initialization directly. With `generate`, it creates a visible file that you can inspect in `.terragrunt-cache`.
+Without `generate`, Terragrunt passes backend settings to Terraform during initialization. With `generate`, it creates a visible file that you can inspect in `.terragrunt-cache`.
 
 Using `generate` is the recommended approach because it is more transparent.
 
@@ -399,7 +408,7 @@ Using `generate` is the recommended approach because it is more transparent.
 
 ```bash
 cd live/dev/vpc
-terragrunt init
+terragrunt run init
 cat .terragrunt-cache/*/backend.tf
 ```
 
@@ -407,14 +416,14 @@ cat .terragrunt-cache/*/backend.tf
 
 ```bash
 cd live/dev/vpc
-terragrunt state pull | jq '.backend'
+jq '.backend.config' .terraform/terraform.tfstate
 ```
 
 ### Render the Full Configuration
 
 ```bash
 cd live/dev/vpc
-terragrunt render-json | jq '.remote_state'
+terragrunt render --json | jq '.remote_state'
 ```
 
 ## Best Practices
