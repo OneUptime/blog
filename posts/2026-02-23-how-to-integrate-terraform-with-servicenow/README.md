@@ -18,13 +18,13 @@ Terraform and ServiceNow typically integrate at several points. Before applying 
 
 ## Creating Change Requests Before Apply
 
-Use Terraform's HTTP provider or a custom provider to create ServiceNow change requests as part of the plan-apply workflow.
+Use a CI/CD step, a `local-exec` provisioner, or a custom provider to create ServiceNow change requests as part of the plan-apply workflow. Terraform's HTTP provider is best suited to reading HTTP endpoints during Terraform runs, not managing external records with side effects.
 
 ```hcl
 # Variables for ServiceNow integration
 
 variable "servicenow_instance" {
-  description = "ServiceNow instance URL"
+  description = "ServiceNow instance hostname, such as example.service-now.com"
   type        = string
 }
 
@@ -182,31 +182,32 @@ resource "null_resource" "cmdb_update" {
 
   provisioner "local-exec" {
     command = <<-EOT
-      # Update or create CMDB CI for this server
+      # Create a CMDB CI for this server
       curl -s -X POST \
         "https://${var.servicenow_instance}/api/now/cmdb/instance/cmdb_ci_server" \
         -H "Content-Type: application/json" \
         -H "Accept: application/json" \
         -u "${var.servicenow_username}:${var.servicenow_password}" \
         -d '{
-          "name": "${each.value.tags["Name"]}",
-          "ip_address": "${each.value.private_ip}",
-          "dns_domain": "${var.dns_domain}",
-          "os": "Linux",
-          "os_version": "Ubuntu 22.04",
-          "cpu_count": "${each.value.cpu_core_count}",
-          "ram": "${each.value.root_block_device[0].volume_size}",
-          "serial_number": "${each.value.id}",
-          "environment": "${var.environment}",
-          "operational_status": "1",
-          "install_status": "1",
-          "discovery_source": "Terraform",
           "attributes": {
+            "name": "${each.value.tags["Name"]}",
+            "ip_address": "${each.value.private_ip}",
+            "dns_domain": "${var.dns_domain}",
+            "os": "Linux",
+            "os_version": "Ubuntu 22.04",
+            "cpu_count": "${each.value.cpu_core_count}",
+            "ram": "${each.value.root_block_device[0].volume_size}",
+            "serial_number": "${each.value.id}",
+            "environment": "${var.environment}",
+            "operational_status": "1",
+            "install_status": "1",
+            "discovery_source": "Terraform",
             "instance_type": "${each.value.instance_type}",
             "availability_zone": "${each.value.availability_zone}",
-            "vpc_id": "${each.value.vpc_security_group_ids[0]}",
+            "security_group_id": "${each.value.vpc_security_group_ids[0]}",
             "terraform_workspace": "${terraform.workspace}"
-          }
+          },
+          "source": "Terraform"
         }'
     EOT
   }
@@ -215,15 +216,25 @@ resource "null_resource" "cmdb_update" {
   provisioner "local-exec" {
     when    = destroy
     command = <<-EOT
+      # Read ServiceNow credentials from the shell environment for destroy-time provisioners.
+      SYS_ID=$(curl -s -G \
+        "https://$SERVICENOW_INSTANCE/api/now/table/cmdb_ci_server" \
+        -H "Accept: application/json" \
+        -u "$SERVICENOW_USERNAME:$SERVICENOW_PASSWORD" \
+        --data-urlencode "sysparm_query=serial_number=${self.triggers.instance_id}" \
+        --data-urlencode "sysparm_fields=sys_id" \
+        --data-urlencode "sysparm_limit=1" | jq -r '.result[0].sys_id // empty')
+
+      if [ -n "$SYS_ID" ]; then
       curl -s -X PATCH \
-        "https://${var.servicenow_instance}/api/now/cmdb/instance/cmdb_ci_server" \
+        "https://$SERVICENOW_INSTANCE/api/now/table/cmdb_ci_server/$SYS_ID" \
         -H "Content-Type: application/json" \
-        -u "${var.servicenow_username}:${var.servicenow_password}" \
+        -u "$SERVICENOW_USERNAME:$SERVICENOW_PASSWORD" \
         -d '{
-          "serial_number": "${each.value.id}",
           "operational_status": "6",
           "install_status": "7"
         }'
+      fi
     EOT
   }
 }
@@ -254,14 +265,14 @@ resource "aws_lambda_function" "snow_incident" {
   }
 }
 
-# EventBridge rule to catch Terraform Cloud run failures
+# EventBridge rule to catch Terraform run failure events forwarded by CI/CD or a Terraform Cloud notification webhook
 resource "aws_cloudwatch_event_rule" "terraform_failure" {
   name        = "terraform-run-failure"
-  description = "Capture Terraform Cloud run failures"
+  description = "Capture forwarded Terraform run failures"
 
   event_pattern = jsonencode({
-    source      = ["app.terraform.io"]
-    detail-type = ["Run Errored"]
+    source      = ["custom.terraform"]
+    detail-type = ["Terraform Run Failed"]
   })
 }
 
@@ -269,6 +280,14 @@ resource "aws_cloudwatch_event_target" "snow_incident" {
   rule      = aws_cloudwatch_event_rule.terraform_failure.name
   target_id = "CreateSNOWIncident"
   arn       = aws_lambda_function.snow_incident.arn
+}
+
+resource "aws_lambda_permission" "allow_eventbridge" {
+  statement_id  = "AllowExecutionFromEventBridge"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.snow_incident.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.terraform_failure.arn
 }
 ```
 
@@ -310,7 +329,7 @@ For teams using Terraform Cloud, integrate ServiceNow via run tasks.
 # Terraform Cloud run task for ServiceNow
 resource "tfe_organization_run_task" "servicenow" {
   organization = var.tfc_organization
-  url          = "https://${var.servicenow_instance}/api/hcl/terraform/run-task"
+  url          = var.servicenow_run_task_url
   name         = "servicenow-change-management"
   enabled      = true
   hmac_key     = var.run_task_hmac_key
@@ -323,7 +342,7 @@ resource "tfe_workspace_run_task" "servicenow" {
   workspace_id      = each.value
   task_id           = tfe_organization_run_task.servicenow.id
   enforcement_level = "mandatory"
-  stage             = "pre_apply"
+  stages            = ["pre_apply"]
 }
 ```
 
