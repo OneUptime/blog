@@ -90,7 +90,7 @@ spec:
         - "*.monitoring.example.com"
 ```
 
-Then create VirtualServices for each addon:
+Then create VirtualServices and DestinationRules for each addon:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -111,6 +111,17 @@ spec:
               number: 3000
 ---
 apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: grafana
+  namespace: istio-system
+spec:
+  host: grafana
+  trafficPolicy:
+    tls:
+      mode: DISABLE
+---
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: kiali
@@ -126,6 +137,17 @@ spec:
             host: kiali
             port:
               number: 20001
+---
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: kiali
+  namespace: istio-system
+spec:
+  host: kiali
+  trafficPolicy:
+    tls:
+      mode: DISABLE
 ---
 apiVersion: networking.istio.io/v1
 kind: VirtualService
@@ -145,6 +167,17 @@ spec:
               number: 9090
 ---
 apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: prometheus
+  namespace: istio-system
+spec:
+  host: prometheus
+  trafficPolicy:
+    tls:
+      mode: DISABLE
+---
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: jaeger
@@ -160,6 +193,17 @@ spec:
             host: tracing
             port:
               number: 80
+---
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: tracing
+  namespace: istio-system
+spec:
+  host: tracing
+  trafficPolicy:
+    tls:
+      mode: DISABLE
 ```
 
 Get the external IP of the ingress gateway and set up DNS records:
@@ -237,7 +281,7 @@ This requires a bastion host that can resolve cluster DNS.
 
 ## Adding Authentication
 
-Regardless of which method you choose for external access, add authentication. The simplest approach is Istio's AuthorizationPolicy with an external auth provider:
+Regardless of which method you choose for external access, add authentication. One approach is Istio's AuthorizationPolicy with an external auth provider. The provider name must match an extension provider configured in Istio's MeshConfig:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -262,6 +306,8 @@ spec:
 
 If your team accesses from known IP ranges (like an office network), you can add IP-based restrictions:
 
+Use `remoteIpBlocks` when Istio is configured to read the original client IP from `X-Forwarded-For` or PROXY protocol. If you preserve the packet source address with `externalTrafficPolicy: Local`, use `ipBlocks` instead.
+
 ```yaml
 apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
@@ -271,7 +317,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      istio: ingressgateway
+      app: istio-ingressgateway
   action: ALLOW
   rules:
     - from:
