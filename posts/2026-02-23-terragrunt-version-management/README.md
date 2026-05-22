@@ -12,7 +12,7 @@ Version management is one of those things that seems minor until you have five e
 
 ## Pinning the Terragrunt Version
 
-Terragrunt doesn't have a built-in version constraint like Terraform's `required_version`. Instead, you handle it with tooling.
+Terragrunt can enforce allowed CLI versions with `terragrunt_version_constraint`, but you still need tooling to install and switch to the pinned version locally.
 
 ### Using tgenv
 
@@ -26,10 +26,10 @@ echo 'export PATH="$HOME/.tgenv/bin:$PATH"' >> ~/.bashrc
 source ~/.bashrc
 
 # Install a specific Terragrunt version
-tgenv install 0.55.0
+tgenv install 1.0.4
 
 # Use a specific version
-tgenv use 0.55.0
+tgenv use 1.0.4
 
 # Check current version
 terragrunt --version
@@ -39,7 +39,7 @@ Pin the version for your project with a `.terragrunt-version` file:
 
 ```bash
 # Create the version file in your repo root
-echo "0.55.0" > .terragrunt-version
+echo "1.0.4" > .terragrunt-version
 ```
 
 When any developer enters the project directory and runs `terragrunt`, `tgenv` automatically switches to the pinned version.
@@ -54,8 +54,8 @@ git clone https://github.com/tfutils/tfenv.git ~/.tfenv
 echo 'export PATH="$HOME/.tfenv/bin:$PATH"' >> ~/.bashrc
 
 # Install and pin a version
-tfenv install 1.7.0
-echo "1.7.0" > .terraform-version
+tfenv install 1.15.3
+echo "1.15.3" > .terraform-version
 ```
 
 Both `.terragrunt-version` and `.terraform-version` should be committed to your repository.
@@ -70,27 +70,30 @@ asdf plugin add terragrunt
 asdf plugin add terraform
 
 # Install specific versions
-asdf install terragrunt 0.55.0
-asdf install terraform 1.7.0
+asdf install terragrunt 1.0.4
+asdf install terraform 1.15.3
 
 # Pin versions in .tool-versions
-echo "terragrunt 0.55.0" >> .tool-versions
-echo "terraform 1.7.0" >> .tool-versions
+echo "terragrunt 1.0.4" >> .tool-versions
+echo "terraform 1.15.3" >> .tool-versions
 ```
 
-## Terraform Version Constraints in Terragrunt
+## Version Constraints in Terragrunt
 
-While Terragrunt itself doesn't enforce version constraints, you can generate a `versions.tf` file that does:
+Terragrunt can enforce both Terragrunt and Terraform/OpenTofu CLI version constraints in `terragrunt.hcl`, and you can also generate a `versions.tf` file for Terraform's own `required_version` check:
 
 ```hcl
 # root terragrunt.hcl
+
+terragrunt_version_constraint = ">= 1.0.0, < 2.0.0"
+terraform_version_constraint  = ">= 1.15.0, < 2.0.0"
 
 generate "versions" {
   path      = "versions.tf"
   if_exists = "overwrite"
   contents  = <<EOF
 terraform {
-  required_version = ">= 1.6.0, < 2.0.0"
+  required_version = ">= 1.15.0, < 2.0.0"
 
   required_providers {
     aws = {
@@ -103,7 +106,7 @@ EOF
 }
 ```
 
-This ensures that even if someone runs a different Terraform version, they'll get a clear error if it's outside the acceptable range.
+This ensures that even if someone runs a different Terragrunt or Terraform version, they'll get a clear error if it's outside the acceptable range.
 
 ## Version Management in CI/CD
 
@@ -112,26 +115,26 @@ In CI pipelines, always pin exact versions:
 ```yaml
 # GitHub Actions example
 - name: Setup Terraform
-  uses: hashicorp/setup-terraform@v3
+  uses: hashicorp/setup-terraform@v4
   with:
-    terraform_version: 1.7.0      # Exact version, not latest
+    terraform_version: 1.15.3     # Exact version, not latest
     terraform_wrapper: false
 
 - name: Setup Terragrunt
   run: |
-    TERRAGRUNT_VERSION="0.55.0"   # Exact version
+    TERRAGRUNT_VERSION="1.0.4"    # Exact version
     curl -sL "https://github.com/gruntwork-io/terragrunt/releases/download/v${TERRAGRUNT_VERSION}/terragrunt_linux_amd64" \
-      -o /usr/local/bin/terragrunt
-    chmod +x /usr/local/bin/terragrunt
+      -o /tmp/terragrunt
+    sudo install -m 0755 /tmp/terragrunt /usr/local/bin/terragrunt
 ```
 
 For Docker-based CI:
 
 ```dockerfile
 # Pin both versions in your CI image
-FROM hashicorp/terraform:1.7.0
+FROM hashicorp/terraform:1.15.3
 
-ARG TERRAGRUNT_VERSION=0.55.0
+ARG TERRAGRUNT_VERSION=1.0.4
 RUN wget -q "https://github.com/gruntwork-io/terragrunt/releases/download/v${TERRAGRUNT_VERSION}/terragrunt_linux_amd64" \
     -O /usr/local/bin/terragrunt && \
     chmod +x /usr/local/bin/terragrunt
@@ -150,8 +153,8 @@ A better approach is reading the version from the repo's version files:
 - name: Setup Terragrunt
   run: |
     curl -sL "https://github.com/gruntwork-io/terragrunt/releases/download/v${{ steps.tg_version.outputs.version }}/terragrunt_linux_amd64" \
-      -o /usr/local/bin/terragrunt
-    chmod +x /usr/local/bin/terragrunt
+      -o /tmp/terragrunt
+    sudo install -m 0755 /tmp/terragrunt /usr/local/bin/terragrunt
 ```
 
 ## Upgrade Strategy
@@ -162,14 +165,14 @@ Upgrading Terragrunt or Terraform versions should be deliberate, not accidental.
 
 ```bash
 # Install the new version alongside the current one
-tgenv install 0.56.0
+tgenv install 1.0.5
 
 # Switch to the new version
-tgenv use 0.56.0
+tgenv use 1.0.5
 
 # Run plans across your modules to check for issues
 cd infrastructure/dev
-terragrunt run-all plan
+terragrunt run --all plan
 ```
 
 ### Step 2: Check the Changelog
@@ -182,12 +185,12 @@ Before upgrading, always check:
 
 ```bash
 # Update the version file
-echo "0.56.0" > .terragrunt-version
+echo "1.0.5" > .terragrunt-version
 
 # Plan and apply to dev first
 cd infrastructure/dev
-terragrunt run-all plan
-terragrunt run-all apply
+terragrunt run --all plan
+terragrunt run --all apply
 
 # If everything works, promote to staging, then prod
 ```
@@ -198,12 +201,12 @@ Only update the CI version after local testing passes:
 
 ```bash
 # Update version files
-echo "0.56.0" > .terragrunt-version
-echo "1.8.0" > .terraform-version
+echo "1.0.5" > .terragrunt-version
+echo "1.15.4" > .terraform-version
 
 # Commit both
 git add .terragrunt-version .terraform-version
-git commit -m "Upgrade Terragrunt to 0.56.0 and Terraform to 1.8.0"
+git commit -m "Upgrade Terragrunt to 1.0.5 and Terraform to 1.15.4"
 ```
 
 ## Provider Version Locking
@@ -213,7 +216,7 @@ Don't forget about provider versions. The `.terraform.lock.hcl` file pins exact 
 ```bash
 # Update provider lock files across all modules
 cd infrastructure/dev
-terragrunt run-all init -upgrade
+terragrunt run --all -- init -upgrade
 
 # Commit the updated lock files
 git add **/.terraform.lock.hcl
