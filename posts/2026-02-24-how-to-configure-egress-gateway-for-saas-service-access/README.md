@@ -20,11 +20,11 @@ By default, Istio allows all outbound traffic from the mesh. Any pod with a side
 - A compromised pod could exfiltrate data to an arbitrary external endpoint.
 - You have no centralized place to enforce rate limits or access control on outbound traffic.
 
-Setting the mesh outbound policy to `REGISTRY_ONLY` and routing external traffic through an egress gateway solves all three problems.
+Setting the mesh outbound policy to `REGISTRY_ONLY` and routing external traffic through an egress gateway helps address these problems as part of a broader egress policy.
 
 ## Configuring the Mesh
 
-First, make sure your mesh is configured to deny external access by default:
+First, make sure your mesh is configured to fail unknown external destinations by default:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -40,11 +40,11 @@ spec:
       enabled: true
 ```
 
-With `REGISTRY_ONLY`, any external host that is not registered as a ServiceEntry will be blocked. This is the foundation of controlled egress.
+With `REGISTRY_ONLY`, any external host that is not registered as a ServiceEntry will be dropped by the sidecar. This is the foundation of controlled egress, but it is not a replacement for network-level egress controls.
 
 ## Setting Up Egress for Slack API
 
-Slack is a common integration. Your app probably calls `hooks.slack.com` or `api.slack.com`. Here is the full configuration:
+Slack is a common integration. Your app probably calls `hooks.slack.com` for incoming webhooks or `slack.com` for the Web API. Here is the full configuration:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -55,7 +55,7 @@ metadata:
 spec:
   hosts:
   - hooks.slack.com
-  - api.slack.com
+  - slack.com
   ports:
   - number: 443
     name: tls
@@ -80,7 +80,7 @@ spec:
       protocol: TLS
     hosts:
     - hooks.slack.com
-    - api.slack.com
+    - slack.com
     tls:
       mode: PASSTHROUGH
 ```
@@ -94,7 +94,7 @@ metadata:
 spec:
   hosts:
   - hooks.slack.com
-  - api.slack.com
+  - slack.com
   gateways:
   - mesh
   - slack-egress-gateway
@@ -105,7 +105,7 @@ spec:
       port: 443
       sniHosts:
       - hooks.slack.com
-      - api.slack.com
+      - slack.com
     route:
     - destination:
         host: istio-egressgateway.istio-system.svc.cluster.local
@@ -117,10 +117,21 @@ spec:
       port: 443
       sniHosts:
       - hooks.slack.com
-      - api.slack.com
     route:
     - destination:
         host: hooks.slack.com
+        port:
+          number: 443
+      weight: 100
+  - match:
+    - gateways:
+      - slack-egress-gateway
+      port: 443
+      sniHosts:
+      - slack.com
+    route:
+    - destination:
+        host: slack.com
         port:
           number: 443
       weight: 100
@@ -128,7 +139,7 @@ spec:
 
 ## Adding Datadog API Access
 
-For monitoring services like Datadog, the agents inside your cluster need to reach the Datadog intake endpoints:
+For monitoring services like Datadog, workloads that call the API or send logs over HTTPS need to reach the Datadog API and intake endpoints:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -139,8 +150,7 @@ metadata:
 spec:
   hosts:
   - api.datadoghq.com
-  - app.datadoghq.com
-  - intake.logs.datadoghq.com
+  - http-intake.logs.datadoghq.com
   ports:
   - number: 443
     name: tls
@@ -165,8 +175,7 @@ spec:
       protocol: TLS
     hosts:
     - api.datadoghq.com
-    - app.datadoghq.com
-    - intake.logs.datadoghq.com
+    - http-intake.logs.datadoghq.com
     tls:
       mode: PASSTHROUGH
 ```
@@ -180,8 +189,7 @@ metadata:
 spec:
   hosts:
   - api.datadoghq.com
-  - app.datadoghq.com
-  - intake.logs.datadoghq.com
+  - http-intake.logs.datadoghq.com
   gateways:
   - mesh
   - datadog-egress-gateway
@@ -192,8 +200,7 @@ spec:
       port: 443
       sniHosts:
       - api.datadoghq.com
-      - app.datadoghq.com
-      - intake.logs.datadoghq.com
+      - http-intake.logs.datadoghq.com
     route:
     - destination:
         host: istio-egressgateway.istio-system.svc.cluster.local
@@ -208,6 +215,18 @@ spec:
     route:
     - destination:
         host: api.datadoghq.com
+        port:
+          number: 443
+      weight: 100
+  - match:
+    - gateways:
+      - datadog-egress-gateway
+      port: 443
+      sniHosts:
+      - http-intake.logs.datadoghq.com
+    route:
+    - destination:
+        host: http-intake.logs.datadoghq.com
         port:
           number: 443
       weight: 100
@@ -233,8 +252,9 @@ spec:
       protocol: TLS
     hosts:
     - hooks.slack.com
-    - api.slack.com
+    - slack.com
     - api.datadoghq.com
+    - http-intake.logs.datadoghq.com
     - api.stripe.com
     - api.twilio.com
     tls:
@@ -273,14 +293,14 @@ spec:
         ports: ["443"]
 ```
 
-This way, only pods in the `backend` and `monitoring` namespaces can reach the outside world through the egress gateway. Everything else gets denied.
+This way, only pods in the `backend` and `monitoring` namespaces can reach the outside world through the egress gateway. Everything else gets denied. Because namespace matching is derived from the peer identity, this policy relies on mTLS between sidecars and the egress gateway.
 
 ## Verifying Traffic Flow
 
 Test from a pod in an allowed namespace:
 
 ```bash
-kubectl exec -n backend deploy/my-app -- curl -sI https://api.slack.com
+kubectl exec -n backend deploy/my-app -- curl -sI https://slack.com/api/api.test
 ```
 
 Then check the egress gateway logs:
@@ -294,7 +314,7 @@ You should see access log entries showing the connection to the Slack API flowin
 To verify that pods in non-allowed namespaces are blocked:
 
 ```bash
-kubectl exec -n frontend deploy/web-app -- curl -sI https://api.slack.com
+kubectl exec -n frontend deploy/web-app -- curl -sI https://slack.com/api/api.test
 ```
 
 This should time out or return a connection refused error if the authorization policy is working correctly.
@@ -320,7 +340,7 @@ spec:
   resolution: NONE
 ```
 
-Note that when using wildcards, you need to set `resolution: NONE` because Istio cannot resolve wildcard DNS entries. The actual DNS resolution happens at the application level.
+Note that when using wildcards for direct sidecar egress, you need to set `resolution: NONE` because Istio cannot resolve wildcard DNS entries. The actual DNS resolution happens before the traffic reaches the sidecar. If you want wildcard traffic to pass through an egress gateway, use Istio's wildcard egress gateway pattern instead of reusing this ServiceEntry by itself.
 
 ## Practical Tips
 
