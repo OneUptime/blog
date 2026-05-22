@@ -42,7 +42,7 @@ Requests with the header `x-version: beta` go to app-beta. Everything else goes 
 
 ## Exact vs Regex Header Matching
 
-The Gateway API supports two types of header matching:
+The Gateway API defines two types of header matching. Exact matching is part of core support, while regular expression matching is implementation-specific:
 
 **Exact match (default):**
 
@@ -414,7 +414,7 @@ Look for `headers` entries in the route match conditions.
 If routes aren't matching as expected, check:
 - Header names are case-insensitive in HTTP but the Gateway API match is case-sensitive on the value
 - Multiple headers in one match are ANDed together
-- The order of rules matters - first match wins
+- Gateway API applies match precedence first; if matches still tie within the same HTTPRoute, the first matching rule in list order wins
 - A rule without any match conditions is a catch-all and should come last
 
 Header-based routing is one of the most versatile tools in your traffic management toolbox. It gives you fine-grained control over where requests go without changing URLs, DNS, or client code. Combined with the standardized Gateway API, it works cleanly across different implementations and environments.
