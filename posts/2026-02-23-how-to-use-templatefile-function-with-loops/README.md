@@ -20,7 +20,7 @@ The basic loop syntax in Terraform templates is:
 %{endfor}
 ```
 
-This is distinct from HCL's `for` expression. The template `%{for}` directive works only inside template files (used with `templatefile`) or template strings (used with `templatestring`).
+This is distinct from HCL's `for` expression. The template `%{for}` directive works inside Terraform string templates, including template files used with `templatefile` and string values rendered with `templatestring`.
 
 ## Iterating Over a Simple List
 
@@ -78,12 +78,12 @@ Items:
 
 # templates/list-clean.tpl - with tilde (clean output)
 Items:
-%{~for item in items}
+%{for item in items~}
 - ${item}
-%{~endfor}
+%{endfor~}
 ```
 
-The `~` character at the beginning of a directive strips the newline and whitespace before it. At the end, it strips after it. This is critical for producing clean output.
+A `~` immediately after the opening `%{` strips whitespace before the directive. A `~` immediately before the closing `}` strips whitespace after it. This is critical for producing clean output.
 
 ```hcl
 # Clean comma-separated list
@@ -366,7 +366,7 @@ locals {
 
 Managing whitespace in template loops takes some practice. Here are key tips:
 
-1. Use `~` at the beginning of `%{for}` and `%{endfor}` to strip extra newlines
+1. Use `~` before the closing `}` in `%{for}` and `%{endfor}` to strip extra newlines after directives
 2. Place content on the same line as the `%{for}` directive when possible
 3. Test your templates with `terraform console` using `templatefile()`
 4. For JSON output, consider using `jsonencode()` instead of template loops where possible
