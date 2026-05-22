@@ -17,7 +17,7 @@ This guide covers the most common TFE installation issues and how to fix them.
 Before starting the installation, verify all prerequisites:
 
 ```bash
-# Check Docker version (minimum 20.10)
+# Check Docker version (use a Terraform Enterprise-supported Docker Engine version)
 
 docker --version
 
@@ -79,10 +79,14 @@ env | grep TFE_ | sort
 # TFE_HOSTNAME
 # TFE_LICENSE or TFE_LICENSE_PATH
 # TFE_ENCRYPTION_PASSWORD
+# TFE_OPERATIONAL_MODE
+# TFE_TLS_CERT_FILE
+# TFE_TLS_KEY_FILE
 # TFE_DATABASE_HOST (for external database)
 # TFE_DATABASE_USER
 # TFE_DATABASE_PASSWORD
 # TFE_DATABASE_NAME
+# TFE_OBJECT_STORAGE_TYPE (for external object storage)
 
 # Check for typos in variable names
 docker logs tfe 2>&1 | grep -i "required\|missing\|invalid"
@@ -136,9 +140,9 @@ PGPASSWORD="${DB_ADMIN_PASSWORD}" psql -h tfe-postgres.example.com -U postgres -
 
 # 3. Missing extensions
 PGPASSWORD="${DB_ADMIN_PASSWORD}" psql -h tfe-postgres.example.com -U postgres -d tfe -c \
-  "CREATE EXTENSION IF NOT EXISTS citext;
-   CREATE EXTENSION IF NOT EXISTS hstore;
-   CREATE EXTENSION IF NOT EXISTS uuid-ossp;"
+  "CREATE EXTENSION IF NOT EXISTS \"hstore\" WITH SCHEMA \"rails\";
+   CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\" WITH SCHEMA \"rails\";
+   CREATE EXTENSION IF NOT EXISTS \"citext\" WITH SCHEMA \"registry\";"
 
 # 4. Security group / firewall rules
 # Verify the TFE host IP can reach PostgreSQL on port 5432
@@ -200,30 +204,21 @@ dos2unix /opt/tfe/certs/tfe.crt
 ### Symptoms
 
 ```bash
-curl -v https://tfe.example.com/_health_check
+curl -v https://tfe.example.com/api/v1/health/readiness
 # Returns non-200 status or connection refused
 
 # Check from inside the container
-docker exec tfe curl -s localhost:443/_health_check
+docker compose exec tfe tfectl app health readiness
 ```
 
 ### Diagnosis
 
 ```bash
-# Get detailed health check output
-curl -s https://tfe.example.com/_health_check | jq .
+# Get readiness output
+docker compose exec tfe tfectl app health readiness --json | jq .
 
-# Check which component is failing
-# Example output:
-# {
-#   "passed": false,
-#   "checks": {
-#     "database": "ok",
-#     "redis": "failed",
-#     "vault": "ok",
-#     "object_storage": "ok"
-#   }
-# }
+# Full subsystem diagnostics
+docker compose exec tfe tfectl app diagnostics
 
 # For each failing component, test connectivity individually:
 
@@ -262,6 +257,7 @@ aws s3 rm s3://tfe-objects/test.txt
 # Common fixes:
 
 # 1. Wrong bucket name or region
+TFE_OBJECT_STORAGE_TYPE=s3
 TFE_OBJECT_STORAGE_S3_BUCKET=tfe-objects   # Check exact name
 TFE_OBJECT_STORAGE_S3_REGION=us-east-1     # Must match actual region
 
@@ -275,7 +271,6 @@ curl -v https://tfe-objects.s3.us-east-1.amazonaws.com/
 
 # 4. For MinIO or S3-compatible storage
 TFE_OBJECT_STORAGE_S3_ENDPOINT=https://minio.internal.example.com
-TFE_OBJECT_STORAGE_S3_USE_PATH_STYLE=true
 ```
 
 ## Problem: DNS Resolution Issues
@@ -306,7 +301,7 @@ docker network inspect bridge | jq '.[0].IPAM.Config'
 
 ```bash
 # Check Docker pull speed
-time docker pull images.releases.hashicorp.com/hashicorp/terraform-enterprise:latest
+time docker pull images.releases.hashicorp.com/hashicorp/terraform-enterprise:<vYYYYMM-#>
 
 # If the pull is slow or fails, check:
 # 1. Proxy configuration
@@ -356,7 +351,7 @@ ss -tlnp >> "${DIAG_DIR}/network.txt"
 env | grep TFE_ | sed 's/PASSWORD=.*/PASSWORD=REDACTED/' | sed 's/SECRET=.*/SECRET=REDACTED/' | sed 's/LICENSE=.*/LICENSE=REDACTED/' > "${DIAG_DIR}/tfe-env.txt"
 
 # Health check
-curl -s https://tfe.example.com/_health_check > "${DIAG_DIR}/health-check.json" 2>&1
+docker compose exec tfe tfectl app health readiness --json > "${DIAG_DIR}/health-check.json" 2>&1
 
 # Create archive
 tar czf "${DIAG_DIR}.tar.gz" "${DIAG_DIR}"
