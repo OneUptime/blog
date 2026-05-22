@@ -52,12 +52,12 @@ max(-5, -1, -3) # Returns: -1
 > max(1.5, 2.3, 1.9)
 2.3
 
-# Using the splat operator with a list
+# Expanding a list into function arguments
 > max([10, 20, 30]...)
 30
 ```
 
-Note that last example with the `...` operator. When you have a list of numbers, you need to expand it with `...` to pass the elements as individual arguments to `max`.
+Note that last example with the `...` expansion symbol. When you have a list of numbers, you need to expand it with `...` to pass the elements as individual arguments to `max`.
 
 ## Enforcing Minimum Values
 
@@ -115,7 +115,7 @@ locals {
 resource "aws_db_instance" "main" {
   identifier           = "main-db"
   engine               = "postgres"
-  engine_version       = "15.4"
+  engine_version       = "15"
   instance_class       = "db.t3.medium"
   allocated_storage    = local.db_storage
   storage_type         = "gp3"
