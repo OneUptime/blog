@@ -44,9 +44,9 @@ module "vpc" {
 
 ### Publishing from a VCS Repository
 
-The easiest way to publish a module is connecting it to a VCS repository. HCP Terraform watches the repository for new tags and automatically publishes new versions.
+The easiest way to publish a module is connecting it to a VCS repository. With tag-based publishing, HCP Terraform watches the repository for new tags and automatically publishes new versions.
 
-**Repository naming convention:** The repository must be named `terraform-<PROVIDER>-<NAME>`. For example:
+**Repository naming convention:** If you rely on automatic name and provider detection, use the `terraform-<PROVIDER>-<NAME>` convention. For example:
 - `terraform-aws-vpc` for an AWS VPC module
 - `terraform-azurerm-network` for an Azure network module
 - `terraform-google-gke` for a GCP GKE module
@@ -78,7 +78,8 @@ terraform-aws-vpc/
 2. Click **Publish** > **Module**
 3. Select **GitHub** (or your VCS provider)
 4. Choose the repository `terraform-aws-vpc`
-5. Click **Publish module**
+5. Choose tag-based or branch-based publishing, and enter the module name and provider
+6. Click **Publish module**
 
 HCP Terraform reads the repository and creates a module entry. It looks for Git tags following semantic versioning (e.g., `v1.0.0`, `v1.1.0`) and publishes each tag as a module version.
 
@@ -116,7 +117,7 @@ curl \
       }
     }
   }' \
-  "https://app.terraform.io/api/v2/organizations/acme-infrastructure/registry-modules"
+  "https://app.terraform.io/api/v2/organizations/acme-infrastructure/registry-modules/vcs"
 ```
 
 ### Publishing Without VCS
@@ -124,6 +125,23 @@ curl \
 You can also publish modules by uploading a tarball directly:
 
 ```bash
+# Create the module
+curl \
+  --header "Authorization: Bearer $TFC_TOKEN" \
+  --header "Content-Type: application/vnd.api+json" \
+  --request POST \
+  --data '{
+    "data": {
+      "type": "registry-modules",
+      "attributes": {
+        "name": "vpc",
+        "provider": "aws",
+        "registry-name": "private"
+      }
+    }
+  }' \
+  "https://app.terraform.io/api/v2/organizations/acme-infrastructure/registry-modules"
+
 # Create a module version
 curl \
   --header "Authorization: Bearer $TFC_TOKEN" \
@@ -305,10 +323,22 @@ curl \
 When a version has issues, you can mark it as deprecated. Consumers see a warning but can still use it:
 
 ```bash
-# Delete a specific version (use with caution)
+# Deprecate a specific version
 curl \
   --header "Authorization: Bearer $TFC_TOKEN" \
-  --request DELETE \
+  --header "Content-Type: application/vnd.api+json" \
+  --request PATCH \
+  --data '{
+    "data": {
+      "type": "module-versions",
+      "attributes": {
+        "deprecation": {
+          "deprecated-status": "Deprecated",
+          "reason": "Upgrade to a newer module version."
+        }
+      }
+    }
+  }' \
   "https://app.terraform.io/api/v2/organizations/acme-infrastructure/registry-modules/private/acme-infrastructure/vpc/aws/1.2.0"
 ```
 
