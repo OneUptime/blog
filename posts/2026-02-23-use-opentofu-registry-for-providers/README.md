@@ -12,16 +12,16 @@ The OpenTofu Registry is where you find the providers that let OpenTofu talk to 
 
 ## Understanding the OpenTofu Registry
 
-The OpenTofu Registry lives at registry.opentofu.org. It hosts providers (plugins that manage specific types of resources) and modules (reusable configurations). The registry is community-maintained and open, built on a GitHub-based workflow where provider maintainers submit their packages.
+The OpenTofu Registry lives at registry.opentofu.org, with the searchable catalogue at search.opentofu.org. It hosts providers (plugins that manage specific types of resources) and modules (reusable configurations). The registry is community-maintained and open, built on a GitHub-based workflow where provider maintainers submit their packages.
 
-When you write `source = "hashicorp/aws"` in your OpenTofu configuration, the tool resolves this against the OpenTofu Registry, not the Terraform Registry. The registry mirrors most providers available in the Terraform ecosystem.
+When you write `source = "hashicorp/aws"` in your OpenTofu configuration, the tool resolves this against the OpenTofu Registry, not the Terraform Registry. The registry includes many providers from the Terraform ecosystem.
 
 ## Browsing Available Providers
 
 You can search the registry through its web interface or by exploring the provider namespace:
 
 ```bash
-# The registry is browsable at https://registry.opentofu.org
+# The registry catalogue is browsable at https://search.opentofu.org
 
 # You can also check if a provider exists by trying to install it
 
@@ -297,13 +297,14 @@ In most cases, the short-form source (like `hashicorp/aws`) works with both tool
 
 Speed up initialization across multiple projects with a shared cache:
 
-```bash
-# Set a cache directory
-export TF_PLUGIN_CACHE_DIR="$HOME/.opentofu.d/plugin-cache"
-mkdir -p "$TF_PLUGIN_CACHE_DIR"
+```hcl
+# ~/.tofurc
+plugin_cache_dir = "$HOME/.opentofu.d/plugin-cache"
+```
 
-# Add to your shell profile
-echo 'export TF_PLUGIN_CACHE_DIR="$HOME/.opentofu.d/plugin-cache"' >> ~/.bashrc
+```bash
+# Create the cache directory before running tofu init
+mkdir -p "$HOME/.opentofu.d/plugin-cache"
 ```
 
 The cache stores downloaded provider binaries. When you run `tofu init` in a new project that uses the same provider version, it copies from the cache instead of downloading again.
