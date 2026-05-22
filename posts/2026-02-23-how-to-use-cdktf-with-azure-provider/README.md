@@ -12,7 +12,7 @@ Azure is one of the major cloud platforms, and the Terraform AzureRM provider gi
 
 ## Setting Up CDKTF for Azure
 
-Start by creating a new CDKTF project and installing the Azure provider:
+Start by creating a new CDKTF project and generating Azure provider bindings:
 
 ```bash
 # Create and initialize the project
@@ -20,8 +20,8 @@ Start by creating a new CDKTF project and installing the Azure provider:
 mkdir cdktf-azure && cd cdktf-azure
 cdktf init --template=typescript --local
 
-# Install the pre-built Azure provider
-npm install @cdktf/provider-azurerm
+# Generate local bindings for the AzureRM provider
+cdktf provider add "azurerm@~> 4.0" --force-local
 ```
 
 You need Azure credentials configured. The easiest way during development is the Azure CLI:
@@ -41,7 +41,7 @@ For CI/CD environments, use a service principal:
 
 ```bash
 # Create a service principal for automation
-az ad sp create-for-rbac --name "cdktf-deployer" --role contributor \
+az ad sp create-for-rbac --name "cdktf-deployer" --role Contributor \
   --scopes /subscriptions/your-subscription-id
 
 # Set the returned values as environment variables
@@ -58,7 +58,7 @@ The Azure provider requires a `features` block, even if it is empty:
 ```typescript
 import { Construct } from "constructs";
 import { App, TerraformStack, TerraformOutput } from "cdktf";
-import { AzurermProvider } from "@cdktf/provider-azurerm/lib/provider";
+import { AzurermProvider } from "./.gen/providers/azurerm/provider";
 
 class AzureStack extends TerraformStack {
   constructor(scope: Construct, id: string) {
@@ -80,10 +80,10 @@ app.synth();
 
 ## Creating Resource Groups
 
-Every Azure resource lives in a resource group. Start there:
+Most Azure resources live in a resource group. Start there:
 
 ```typescript
-import { ResourceGroup } from "@cdktf/provider-azurerm/lib/resource-group";
+import { ResourceGroup } from "./.gen/providers/azurerm/resource-group";
 
 // Create a resource group for the project
 const rg = new ResourceGroup(this, "rg", {
@@ -101,10 +101,10 @@ const rg = new ResourceGroup(this, "rg", {
 Here is a complete virtual network setup with subnets and network security groups:
 
 ```typescript
-import { VirtualNetwork } from "@cdktf/provider-azurerm/lib/virtual-network";
-import { Subnet } from "@cdktf/provider-azurerm/lib/subnet";
-import { NetworkSecurityGroup } from "@cdktf/provider-azurerm/lib/network-security-group";
-import { SubnetNetworkSecurityGroupAssociation } from "@cdktf/provider-azurerm/lib/subnet-network-security-group-association";
+import { VirtualNetwork } from "./.gen/providers/azurerm/virtual-network";
+import { Subnet } from "./.gen/providers/azurerm/subnet";
+import { NetworkSecurityGroup } from "./.gen/providers/azurerm/network-security-group";
+import { SubnetNetworkSecurityGroupAssociation } from "./.gen/providers/azurerm/subnet-network-security-group-association";
 
 // Create the virtual network
 const vnet = new VirtualNetwork(this, "vnet", {
@@ -183,8 +183,8 @@ new SubnetNetworkSecurityGroupAssociation(this, "web-nsg-assoc", {
 Azure App Service is a popular choice for hosting web applications:
 
 ```typescript
-import { ServicePlan } from "@cdktf/provider-azurerm/lib/service-plan";
-import { LinuxWebApp } from "@cdktf/provider-azurerm/lib/linux-web-app";
+import { ServicePlan } from "./.gen/providers/azurerm/service-plan";
+import { LinuxWebApp } from "./.gen/providers/azurerm/linux-web-app";
 
 // Create an App Service Plan
 const plan = new ServicePlan(this, "app-plan", {
@@ -205,7 +205,7 @@ const webApp = new LinuxWebApp(this, "web-app", {
   siteConfig: {
     alwaysOn: true,
     applicationStack: {
-      nodeVersion: "18-lts",
+      nodeVersion: "24-lts",
     },
     minimumTlsVersion: "1.2",
   },
@@ -227,8 +227,8 @@ new TerraformOutput(this, "webapp-url", {
 ## Setting Up Azure SQL Database
 
 ```typescript
-import { MssqlServer } from "@cdktf/provider-azurerm/lib/mssql-server";
-import { MssqlDatabase } from "@cdktf/provider-azurerm/lib/mssql-database";
+import { MssqlServer } from "./.gen/providers/azurerm/mssql-server";
+import { MssqlDatabase } from "./.gen/providers/azurerm/mssql-database";
 
 // Create the SQL Server
 const sqlServer = new MssqlServer(this, "sql-server", {
@@ -261,8 +261,8 @@ const database = new MssqlDatabase(this, "app-db", {
 ## Creating Azure Storage Accounts
 
 ```typescript
-import { StorageAccount } from "@cdktf/provider-azurerm/lib/storage-account";
-import { StorageContainer } from "@cdktf/provider-azurerm/lib/storage-container";
+import { StorageAccount } from "./.gen/providers/azurerm/storage-account";
+import { StorageContainer } from "./.gen/providers/azurerm/storage-container";
 
 // Create a storage account
 const storage = new StorageAccount(this, "storage", {
@@ -272,7 +272,7 @@ const storage = new StorageAccount(this, "storage", {
   accountTier: "Standard",
   accountReplicationType: "GRS",
   minTlsVersion: "TLS1_2",
-  enableHttpsTrafficOnly: true,
+  httpsTrafficOnlyEnabled: true,
   blobProperties: {
     versioningEnabled: true,
     deleteRetentionPolicy: {
@@ -284,7 +284,7 @@ const storage = new StorageAccount(this, "storage", {
 // Create a blob container
 new StorageContainer(this, "data-container", {
   name: "application-data",
-  storageAccountName: storage.name,
+  storageAccountId: storage.id,
   containerAccessType: "private",
 });
 ```
@@ -292,14 +292,13 @@ new StorageContainer(this, "data-container", {
 ## Setting Up Azure Kubernetes Service
 
 ```typescript
-import { KubernetesCluster } from "@cdktf/provider-azurerm/lib/kubernetes-cluster";
+import { KubernetesCluster } from "./.gen/providers/azurerm/kubernetes-cluster";
 
 const aks = new KubernetesCluster(this, "aks", {
   name: "production-aks",
   resourceGroupName: rg.name,
   location: rg.location,
   dnsPrefix: "prod-aks",
-  kubernetesVersion: "1.28",
   defaultNodePool: {
     name: "system",
     nodeCount: 3,
@@ -332,8 +331,8 @@ new TerraformOutput(this, "kube-config", {
 Azure Managed Identities eliminate the need for credentials in your applications:
 
 ```typescript
-import { UserAssignedIdentity } from "@cdktf/provider-azurerm/lib/user-assigned-identity";
-import { RoleAssignment } from "@cdktf/provider-azurerm/lib/role-assignment";
+import { UserAssignedIdentity } from "./.gen/providers/azurerm/user-assigned-identity";
+import { RoleAssignment } from "./.gen/providers/azurerm/role-assignment";
 
 // Create a user-assigned managed identity
 const identity = new UserAssignedIdentity(this, "app-identity", {
