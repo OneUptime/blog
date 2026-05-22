@@ -76,7 +76,7 @@ locals {
 
   # Switch from HTTP to HTTPS
   http_url  = "http://legacy.example.com/api"
-  https_url = replace(local.http_url, "http://", "https://")
+  https_url = replace(local.http_url, "/^http:\\/\\//", "https://")
 }
 
 output "bare_host" {
@@ -97,7 +97,7 @@ output "https_url" {
 
 ## Building URLs from Components
 
-When you need to construct URLs dynamically from multiple resource outputs, string interpolation combined with `join` works well:
+When you need to construct URLs dynamically from multiple resource outputs, string interpolation works well:
 
 ```hcl
 variable "environment" {
@@ -215,13 +215,13 @@ resource "auth0_client" "app" {
 }
 ```
 
-## URL Encoding Path Segments
+## URL Encoding Query Parameters
 
-When a URL component might contain special characters, use the `urlencode` function:
+When a query parameter value might contain special characters, use the `urlencode` function:
 
 ```hcl
 locals {
-  # Encode a value that will be used in a URL path or query string
+  # Encode a value that will be used in a query string
   search_query = "status=active&type=premium"
   encoded_query = urlencode(local.search_query)
 
