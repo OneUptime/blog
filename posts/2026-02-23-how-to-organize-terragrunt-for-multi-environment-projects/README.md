@@ -366,11 +366,11 @@ This makes it easy to find modules and to apply changes to a specific layer:
 ```bash
 # Apply all networking changes in dev
 cd live/dev/networking
-terragrunt run-all apply
+terragrunt run --all apply
 
 # Apply all data store changes in dev
 cd live/dev/data
-terragrunt run-all apply
+terragrunt run --all apply
 ```
 
 ## Environment Parity
