@@ -77,10 +77,10 @@ preload_app!
 # Persistent connections work well with Envoy
 persistent_timeout 20
 
-# Set worker timeout higher than Istio's retry timeout
+# Restart workers that stop checking in with the master process
 worker_timeout 60
 
-on_worker_boot do
+before_worker_boot do
   ActiveRecord::Base.establish_connection if defined?(ActiveRecord)
 end
 
@@ -145,7 +145,7 @@ class HealthController < ActionController::API
   end
 
   def redis_check
-    Redis.current.ping
+    Redis.new(url: ENV.fetch('REDIS_URL', 'redis://localhost:6379/0')).ping
     { status: 'ok' }
   rescue StandardError => e
     { status: 'error', message: e.message }
@@ -257,7 +257,7 @@ class HttpClient
     trace_headers = Thread.current[:trace_headers] || {}
     trace_headers.each { |key, value| request[key] = value }
 
-    response = Net::HTTP.start(uri.hostname, uri.port) do |http|
+    response = Net::HTTP.start(uri.hostname, uri.port, use_ssl: uri.scheme == 'https') do |http|
       http.request(request)
     end
 
@@ -270,13 +270,8 @@ Or if you use Faraday:
 
 ```ruby
 # config/initializers/faraday.rb
-Faraday.default_connection = Faraday.new do |conn|
-  conn.request :retry, max: 2, interval: 0.5
-  conn.use :instrumentation
-
-  conn.request :url_encoded
-  conn.adapter Faraday.default_adapter
-end
+require 'faraday'
+require 'faraday/retry'
 
 # Faraday middleware for trace headers
 class FaradayTraceHeaders < Faraday::Middleware
@@ -293,6 +288,15 @@ class FaradayTraceHeaders < Faraday::Middleware
 end
 
 Faraday::Request.register_middleware(trace_headers: FaradayTraceHeaders)
+
+Faraday.default_connection = Faraday.new do |conn|
+  conn.request :trace_headers
+  conn.request :retry, max: 2, interval: 0.5
+  conn.use :instrumentation
+
+  conn.request :url_encoded
+  conn.adapter Faraday.default_adapter
+end
 ```
 
 ## Handling Sidecar Startup
@@ -305,7 +309,7 @@ metadata:
     proxy.istio.io/config: '{"holdApplicationUntilProxyStarts": true}'
 ```
 
-You can also add connection retry logic to your database configuration:
+You can also set a connection timeout in your database configuration:
 
 ```ruby
 # config/database.yml
@@ -313,7 +317,6 @@ production:
   adapter: postgresql
   pool: <%= ENV.fetch("RAILS_MAX_THREADS", 5) %>
   timeout: 5000
-  reconnect: true
   connect_timeout: 30
 ```
 
@@ -332,7 +335,7 @@ spec:
   terminationGracePeriodSeconds: 60
 ```
 
-The sequence: Kubernetes sends SIGTERM, the preStop hook sleeps for 5 seconds (allowing the sidecar to drain), then Puma begins its graceful shutdown, finishing active requests before stopping workers.
+The sequence: Kubernetes starts pod termination, the preStop hook sleeps for 5 seconds, then Kubernetes sends SIGTERM to Puma. Puma then begins its graceful shutdown, finishing active requests before stopping workers.
 
 ## Sidekiq Workers
 
@@ -420,7 +423,7 @@ Rails apps are slower than Go or Node.js, so keep the connection limits conserva
 
 **Asset precompilation**: If your Docker build does not precompile assets, the first request might trigger compilation and time out. Always precompile in the Docker build stage.
 
-**Database migrations**: Do not run migrations in the pod startup. Use a separate Job or init container. If the migration Job has a sidecar, it will not terminate after the job completes. Use the `sidecar.istio.io/inject: "false"` annotation on migration jobs.
+**Database migrations**: Do not run migrations in the pod startup. Use a separate Job or init container. If the migration Job has a sidecar, it will not terminate after the job completes. Use the `sidecar.istio.io/inject: "false"` label on migration jobs.
 
 **Memory usage**: Rails apps use a lot of memory. A typical Rails app with 2 Puma workers uses 300-500MB. Add the sidecar overhead (50-100MB) and you need at least 512MB per pod.
 
