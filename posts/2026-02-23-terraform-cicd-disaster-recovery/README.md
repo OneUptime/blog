@@ -71,13 +71,19 @@ variable "primary_region" {
   description = "Primary region for cross-region references"
   default     = ""
 }
+
+variable "kms_key_id" {
+  type        = string
+  description = "KMS key ARN for encrypted cross-region replicas"
+  default     = null
+}
 ```
 
 ```hcl
 # modules/app-stack/main.tf
 locals {
   # Scale down in DR region for cost savings (warm standby)
-  instance_count = var.is_dr ? max(var.instance_count / 2, 1) : var.instance_count
+  instance_count = var.is_dr ? max(ceil(var.instance_count / 2), 1) : var.instance_count
   instance_type  = var.is_dr ? "t3.medium" : var.instance_type
 }
 
@@ -110,10 +116,12 @@ resource "aws_db_instance" "main" {
   engine              = "postgres"
   instance_class      = var.is_dr ? "db.t3.medium" : var.db_instance_class
   replicate_source_db = var.is_dr ? var.primary_db_arn : null
+  kms_key_id          = var.is_dr ? var.kms_key_id : null
 
-  multi_az            = !var.is_dr  # Multi-AZ in primary, single in DR
-  storage_encrypted   = true
-  skip_final_snapshot = var.is_dr
+  multi_az                  = !var.is_dr  # Multi-AZ in primary, single in DR
+  storage_encrypted         = true
+  final_snapshot_identifier = var.is_dr ? null : "${var.environment}-db-final-snapshot"
+  skip_final_snapshot       = var.is_dr
 }
 ```
 
@@ -123,6 +131,11 @@ resource "aws_db_instance" "main" {
 # regions/us-east-1/main.tf
 provider "aws" {
   region = "us-east-1"
+}
+
+provider "aws" {
+  alias  = "dr"
+  region = "us-west-2"
 }
 
 module "app_stack" {
@@ -136,7 +149,7 @@ module "app_stack" {
   vpc_cidr       = "10.0.0.0/16"
 }
 
-# Cross-region DB replica for DR
+# Cross-region automated backups for DR
 resource "aws_db_instance_automated_backups_replication" "dr" {
   source_db_instance_arn = module.app_stack.db_arn
   retention_period       = 7
@@ -158,6 +171,25 @@ provider "aws" {
   region = "us-west-2"
 }
 
+variable "is_dr" {
+  type    = bool
+  default = true
+}
+
+variable "instance_count" {
+  type    = number
+  default = 6
+}
+
+variable "instance_type" {
+  type    = string
+  default = "t3.xlarge"
+}
+
+resource "aws_kms_key" "rds" {
+  description = "KMS key for DR RDS replicas"
+}
+
 # Read primary region outputs
 data "terraform_remote_state" "primary" {
   backend = "s3"
@@ -173,11 +205,12 @@ module "app_stack" {
 
   environment    = "production"
   region         = "us-west-2"
-  is_dr          = true
+  is_dr          = var.is_dr
   primary_region = "us-east-1"
   primary_db_arn = data.terraform_remote_state.primary.outputs.db_arn
-  instance_count = 6         # Will be halved by the module for DR
-  instance_type  = "t3.xlarge"  # Will be downgraded by the module
+  kms_key_id     = aws_kms_key.rds.arn
+  instance_count = var.instance_count  # Will be halved by the module for DR
+  instance_type  = var.instance_type   # Will be downgraded by the module
   vpc_cidr       = "10.1.0.0/16"
 }
 ```
@@ -343,18 +376,6 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: us-west-2
 
-      - name: Scale Up DR Region
-        if: github.event.inputs.action == 'failover-to-dr'
-        working-directory: infrastructure/regions/us-west-2
-        run: |
-          terraform init
-
-          # Override DR scaling to full production capacity
-          terraform apply -auto-approve \
-            -var="is_dr=false" \
-            -var="instance_count=6" \
-            -no-color
-
       - name: Promote DR Database
         if: github.event.inputs.action == 'failover-to-dr'
         run: |
@@ -364,6 +385,18 @@ jobs:
             --region us-west-2
 
           echo "Database promotion initiated. Monitor progress in AWS console."
+
+      - name: Scale Up DR Region
+        if: github.event.inputs.action == 'failover-to-dr'
+        working-directory: infrastructure/regions/us-west-2
+        run: |
+          terraform init
+
+          # Override DR scaling to full production capacity and align Terraform with the promoted DB
+          terraform apply -auto-approve \
+            -var="is_dr=false" \
+            -var="instance_count=6" \
+            -no-color
 
       - name: Scale Down DR After Failback
         if: github.event.inputs.action == 'failback-to-primary'
@@ -381,8 +414,22 @@ Protect your Terraform state files as part of DR:
 
 ```hcl
 # State bucket with cross-region replication
+provider "aws" {
+  region = "us-east-1"
+}
+
+provider "aws" {
+  alias  = "dr"
+  region = "us-west-2"
+}
+
 resource "aws_s3_bucket" "terraform_state" {
   bucket = "terraform-state-primary"
+}
+
+resource "aws_s3_bucket" "state_replica" {
+  provider = aws.dr
+  bucket   = "terraform-state-replica"
 }
 
 resource "aws_s3_bucket_versioning" "state" {
@@ -392,10 +439,22 @@ resource "aws_s3_bucket_versioning" "state" {
   }
 }
 
+resource "aws_s3_bucket_versioning" "state_replica" {
+  provider = aws.dr
+  bucket   = aws_s3_bucket.state_replica.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
 # Replicate state to DR region
 resource "aws_s3_bucket_replication_configuration" "state" {
   bucket = aws_s3_bucket.terraform_state.id
   role   = aws_iam_role.replication.arn
+  depends_on = [
+    aws_s3_bucket_versioning.state,
+    aws_s3_bucket_versioning.state_replica
+  ]
 
   rule {
     id     = "replicate-state"
@@ -427,14 +486,23 @@ jobs:
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v3
 
+      - name: Configure AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: us-west-2
+
       - name: Verify DR Infrastructure
         working-directory: infrastructure/regions/us-west-2
         run: |
           terraform init
           terraform plan -detailed-exitcode -no-color 2>&1 | tee dr-plan.txt
+          exit_code=${PIPESTATUS[0]}
 
           # Verify no drift in DR region
-          if [ ${PIPESTATUS[0]} -eq 2 ]; then
+          if [ "$exit_code" -eq 1 ]; then
+            exit 1
+          elif [ "$exit_code" -eq 2 ]; then
             echo "WARNING: DR infrastructure has drifted"
           fi
 
