@@ -16,7 +16,7 @@ Istio's Telemetry API makes per-workload logging configuration straightforward. 
 
 Istio's Telemetry API uses a three-level hierarchy:
 
-1. **Mesh-wide** - Telemetry resource in the root namespace (istio-system)
+1. **Mesh-wide** - Telemetry resource in the root configuration namespace (usually istio-system)
 2. **Namespace-level** - Telemetry resource in a specific namespace without a selector
 3. **Workload-level** - Telemetry resource in a specific namespace with a selector
 
@@ -315,8 +315,11 @@ Check which Telemetry resources apply to a specific workload:
 # List all Telemetry resources across namespaces
 kubectl get telemetry -A
 
-# Check the effective configuration for a specific pod
-istioctl proxy-config log deploy/my-service -n production
+# Validate Telemetry resources and related Istio configuration
+istioctl analyze --all-namespaces
+
+# Inspect generated Envoy listener configuration for access_log entries
+istioctl proxy-config listeners deploy/my-service -n production -o json
 ```
 
 To verify that logging is actually working:
