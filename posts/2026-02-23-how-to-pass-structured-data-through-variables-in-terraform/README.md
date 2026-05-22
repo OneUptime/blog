@@ -29,7 +29,7 @@ variable "database" {
 }
 ```
 
-The caller passes this as a block:
+The caller passes this as an object value:
 
 ```hcl
 # terraform.tfvars or module call
@@ -245,6 +245,11 @@ resource "aws_ecs_service" "this" {
   task_definition = aws_ecs_task_definition.this[each.key].arn
   desired_count   = each.value.replicas
   launch_type     = "FARGATE"
+
+  network_configuration {
+    subnets         = var.subnet_ids
+    security_groups = [aws_security_group.service.id]
+  }
 }
 
 resource "aws_ecs_task_definition" "this" {
