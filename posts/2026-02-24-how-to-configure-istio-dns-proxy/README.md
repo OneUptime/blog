@@ -36,7 +36,10 @@ spec:
     defaultConfig:
       proxyMetadata:
         ISTIO_META_DNS_CAPTURE: "true"
-        ISTIO_META_DNS_AUTO_ALLOCATE: "true"
+  values:
+    pilot:
+      env:
+        PILOT_ENABLE_IP_AUTOALLOCATE: "true"
 ```
 
 Or if you are editing the istio ConfigMap directly:
@@ -51,8 +54,9 @@ Add under `defaultConfig`:
 defaultConfig:
   proxyMetadata:
     ISTIO_META_DNS_CAPTURE: "true"
-    ISTIO_META_DNS_AUTO_ALLOCATE: "true"
 ```
+
+If you need to enable ServiceEntry IP auto-allocation explicitly, set `PILOT_ENABLE_IP_AUTOALLOCATE=true` on the istiod deployment. In current Istio releases this is enabled by default.
 
 After changing the mesh config, restart your workload pods to pick up the new proxy configuration:
 
@@ -64,7 +68,7 @@ kubectl rollout restart deployment -n my-namespace
 
 **ISTIO_META_DNS_CAPTURE**: When set to `"true"`, the sidecar intercepts DNS queries on port 53 from the application container. The queries go to the local Istio agent instead of directly to CoreDNS.
 
-**ISTIO_META_DNS_AUTO_ALLOCATE**: When set to `"true"`, Istio automatically assigns virtual IPs to ServiceEntry hosts that do not already have an address. This is important for TCP services defined via ServiceEntry, because without a VIP, Envoy cannot distinguish between different TCP services on the same port.
+**PILOT_ENABLE_IP_AUTOALLOCATE**: When set to `"true"`, Istio automatically assigns virtual IPs to ServiceEntry hosts that do not already have an address. This is important for TCP services defined via ServiceEntry, because without a VIP, Envoy cannot distinguish between different TCP services on the same port.
 
 ## Enabling DNS Proxy Per Workload
 
@@ -76,13 +80,17 @@ kind: Deployment
 metadata:
   name: my-app
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   template:
     metadata:
+      labels:
+        app: my-app
       annotations:
         proxy.istio.io/config: |
           proxyMetadata:
             ISTIO_META_DNS_CAPTURE: "true"
-            ISTIO_META_DNS_AUTO_ALLOCATE: "true"
     spec:
       containers:
         - name: my-app
@@ -101,11 +109,11 @@ When the DNS proxy is active, here is the resolution order:
 4. If it matches, the agent responds immediately with the cluster IP (or the auto-allocated VIP for ServiceEntry hosts)
 5. If it does not match, the agent forwards the query to the upstream DNS server
 
-You can verify DNS proxy is active by checking the iptables rules:
+You can verify DNS proxy is active by checking resolution from the application container:
 
 ```bash
-kubectl exec -n my-namespace my-pod -c istio-proxy -- \
-  pilot-agent request GET /dns_resolve?proxyID=my-pod.my-namespace
+kubectl exec -n my-namespace my-pod -c my-app -- \
+  nslookup httpbin.default.svc.cluster.local
 ```
 
 Or check the proxy configuration:
@@ -120,7 +128,7 @@ istioctl proxy-config bootstrap my-pod -n my-namespace -o json | \
 One of the best use cases for the DNS proxy is with ServiceEntry. Consider an external API that your application calls:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-api
@@ -157,9 +165,9 @@ The Istio agent knows about remote services through the control plane's service 
 
 The DNS proxy exposes metrics that you can scrape with Prometheus:
 
-- `istio_agent_dns_requests_total`: Total number of DNS requests handled
-- `istio_agent_dns_upstream_requests_total`: Requests forwarded to upstream DNS
-- `istio_agent_dns_failures_total`: Failed DNS resolutions
+- `dns_requests_total`: Total number of DNS requests handled
+- `dns_upstream_requests_total`: Requests forwarded to upstream DNS
+- `dns_upstream_failures_total`: Failed upstream DNS resolutions
 
 These metrics help you understand how much DNS load the proxy is handling versus forwarding.
 
@@ -174,9 +182,9 @@ istioctl proxy-config bootstrap my-pod -n my-namespace | grep DNS
 # Check the istio-agent logs for DNS errors
 kubectl logs my-pod -c istio-proxy -n my-namespace | grep -i dns
 
-# Test resolution from inside the proxy
-kubectl exec my-pod -c istio-proxy -n my-namespace -- \
-  nslookup kubernetes.default.svc.cluster.local localhost
+# Test resolution from inside the application container
+kubectl exec my-pod -c my-app -n my-namespace -- \
+  nslookup kubernetes.default.svc.cluster.local
 ```
 
 A common issue is that the iptables rules are not set up correctly. This can happen if the init container did not run properly. Check the init container logs:
