@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, DevOps, Infrastructure as Code, Terraform Functions, Collection Functions
 
-Description: Learn about the list function in Terraform, its deprecation in favor of tolist and list expressions, and how to construct lists properly in modern Terraform.
+Description: Learn about the list function in Terraform, its removal in favor of tolist and list/tuple expressions, and how to construct lists properly in modern Terraform.
 
 ---
 
-If you have been working with Terraform for a while, you may have come across references to the `list` function. This function was used in older versions of Terraform (0.11 and earlier) to construct lists. However, it has been deprecated since Terraform 0.12, replaced by native list expressions using square bracket syntax and the `tolist` function.
+If you have been working with Terraform for a while, you may have come across references to the `list` function. This function was used in older versions of Terraform (0.11 and earlier) to construct lists. However, it is no longer available in Terraform 0.12 and later, replaced by native list/tuple expressions using square bracket syntax and the `tolist` function when an explicit list value is required.
 
-This post covers the history of the `list` function, why it was deprecated, what replaced it, and how to properly work with lists in modern Terraform.
+This post covers the history of the `list` function, why it was removed, what replaced it, and how to properly work with lists in modern Terraform.
 
 ## The Original list Function
 
@@ -25,9 +25,9 @@ In Terraform 0.11 and earlier, the `list` function was the way to create a list 
 
 This function took any number of arguments and returned them as a list. Each argument became an element in the resulting list.
 
-## Why Was list Deprecated?
+## Why Was list Removed?
 
-Terraform 0.12 introduced first-class support for complex types and expressions. With this change, list literals using square bracket syntax became the standard way to create lists. The `list` function became redundant.
+Terraform 0.12 introduced first-class support for complex types and expressions. With this change, list/tuple literals using square bracket syntax became the standard way to write sequential values. The `list` function became redundant.
 
 ```hcl
 # Terraform 0.12+ syntax - use this instead
@@ -38,7 +38,7 @@ The square bracket syntax is more readable, more consistent with other languages
 
 ## Modern List Construction
 
-In current versions of Terraform, you create lists using square brackets.
+In current versions of Terraform, you usually write list values using square brackets. Technically, square brackets produce a tuple value, which Terraform automatically converts to a list when a list type is expected.
 
 ```hcl
 # String list
@@ -72,7 +72,7 @@ locals {
 
 ## The tolist Function
 
-While the `list` function is deprecated, the `tolist` function is alive and well. It converts a set or other collection into a list.
+While the `list` function is no longer available, the `tolist` function is alive and well. It converts a set or tuple into a list.
 
 ```hcl
 # Convert a set to a list
@@ -84,15 +84,15 @@ While the `list` function is deprecated, the `tolist` function is alive and well
 ["a", "b", "c"]
 ```
 
-The `tolist` function is mainly used when you need to convert a `set` (which has no defined order) to a `list` (which does). This comes up when working with `for_each` results and set operations.
+The `tolist` function is mainly used when you need to convert a `set` (which has no defined order) or tuple into a list value. When converting a set, the resulting list order is not meaningful, although it is consistent within a particular Terraform run. This comes up when working with `for_each` results and set operations.
 
 ## When You Need tolist
 
 Here are the most common situations where `tolist` is necessary.
 
-### Converting for_each Keys to a List
+### Converting a Set to a List
 
-When you use `for_each` with a set, and you need the keys as an ordered list:
+When you have a set and need index-based access, convert it to a list first:
 
 ```hcl
 variable "instance_names" {
@@ -101,18 +101,19 @@ variable "instance_names" {
 }
 
 locals {
-  # Convert the set to a list for index-based access
-  ordered_names = tolist(var.instance_names)
+  # Convert the set to a list for index-based access.
+  # Do not rely on the resulting order for long-term stability.
+  instance_names_list = tolist(var.instance_names)
 }
 
 output "first_instance" {
-  value = local.ordered_names[0]
+  value = local.instance_names_list[0]
 }
 ```
 
 ### Converting Set Operation Results
 
-Set functions like `setintersection` and `setunion` return sets. Use `tolist` if you need a list.
+Set functions like `setintersection` and `setunion` return sets. Use `tolist` if you need a list-typed value or index access.
 
 ```hcl
 locals {
@@ -122,7 +123,7 @@ locals {
   # setintersection returns a set
   common_set = setintersection(local.set_a, local.set_b)
 
-  # Convert to list if you need ordering or index access
+  # Convert to list if you need a list-typed value or index access
   common_list = tolist(local.common_set)
 }
 ```
@@ -201,7 +202,7 @@ locals {
 }
 ```
 
-The migration is straightforward: replace `list(...)` with `[...]`.
+The migration is usually straightforward: replace `list(...)` with `[...]`. If you specifically need a value of Terraform's `list` type rather than a tuple, use `tolist([...])`.
 
 ## Practical Examples with List Construction
 
@@ -275,12 +276,14 @@ variable "port_mappings" {
 Terraform requires all elements in a list to be the same type or convertible to a common type.
 
 ```hcl
-# This works - numbers and strings can coexist in some contexts
+# This works - numbers, strings, and booleans can coexist in a tuple
 # but the resulting type depends on Terraform's type unification
 
-# This will cause an error - incompatible types
-# locals {
-#   mixed = [1, "two", true]
+# This will cause an error if Terraform must convert incompatible values
+# to a more specific list type
+# variable "numbers" {
+#   type    = list(number)
+#   default = [1, "two", true]
 # }
 ```
 
@@ -302,13 +305,13 @@ locals {
 
 ## Summary
 
-The `list` function is deprecated and should not be used in modern Terraform. Its replacement - square bracket list syntax - is more readable and better integrated with Terraform's type system. The `tolist` function remains useful for converting sets and other collections into lists.
+The `list` function is no longer available and should not be used in modern Terraform. Its replacement - square bracket syntax, with `tolist` when an explicit list value is required - is more readable and better integrated with Terraform's type system. The `tolist` function remains useful for converting sets and tuples into lists.
 
 Key takeaways:
 
-- The `list()` function is deprecated since Terraform 0.12
-- Use `[...]` square bracket syntax to create lists
-- Use `tolist()` to convert sets and other collections into lists
+- The `list()` function is no longer available in Terraform 0.12 and later
+- Use `[...]` square bracket syntax to write sequential values
+- Use `tolist()` to convert sets and tuples into lists
 - Build dynamic lists with `for` expressions, `range`, `concat`, and `flatten`
 - Always specify list types in variable declarations for clarity
 - Migrate old `list()` calls to `[...]` syntax when updating configurations
