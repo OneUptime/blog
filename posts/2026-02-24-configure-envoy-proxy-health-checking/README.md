@@ -12,19 +12,20 @@ Health checking in an Istio mesh involves multiple layers. There are Kubernetes 
 
 ## How Istio Handles Kubernetes Probes
 
-When Istio injects a sidecar, all traffic goes through Envoy, including health check traffic from the kubelet. This creates a problem: the kubelet sends health probes to the pod's IP, but Envoy intercepts them. If Envoy is not ready yet or the probe path is not configured correctly, the probes fail.
+When Istio injects a sidecar, inbound and outbound application traffic goes through Envoy, and kubelet HTTP, TCP, and gRPC health probes need special handling. This creates a problem: the kubelet sends health probes to the pod's IP, but Envoy can affect how those probes behave. If mutual TLS is enforced, HTTP and gRPC probes from the kubelet do not have an Istio certificate. For TCP probes, all redirected ports can appear open as long as the sidecar is running.
 
-Istio solves this by rewriting health probes. The sidecar injector modifies the pod spec to route health probes through a special health check endpoint on the pilot-agent:
+Istio solves this by rewriting health probes. The sidecar injector modifies the pod spec to route application health probes through a special health check endpoint on the pilot-agent:
 
 ```text
-kubelet -> pilot-agent (port 15021) -> application health endpoint
+kubelet -> pilot-agent (port 15020) -> application health endpoint
 ```
 
-The pilot-agent listens on port 15021 and provides several endpoints:
+For rewritten application probes, the pilot-agent listens on port 15020 and provides endpoints like:
 
-- `/healthz/ready` - Returns 200 when Envoy is ready
-- `/app-health/<app-port>/livez` - Proxies to the application's liveness endpoint
-- `/app-health/<app-port>/readyz` - Proxies to the application's readiness endpoint
+- `/app-health/<container-name>/livez` - Proxies to the application's liveness endpoint
+- `/app-health/<container-name>/readyz` - Proxies to the application's readiness endpoint
+
+The sidecar's own readiness endpoint is separate: `/healthz/ready` on port 15021 returns 200 when Envoy is ready.
 
 You can see how Istio rewrites your probes by checking the pod spec:
 
@@ -68,7 +69,7 @@ After sidecar injection, Istio changes these to point at the pilot-agent proxy e
 
 ## Disabling Probe Rewriting
 
-In some cases, you might want to disable the probe rewriting. For example, if your probes use gRPC or TCP checks that do not go through HTTP:
+In some cases, you might want to disable the probe rewriting. For example, if you need the kubelet to use the original probe configuration and handle the sidecar behavior yourself:
 
 ```yaml
 annotations:
@@ -82,8 +83,8 @@ apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
   values:
-    sidecar_injector:
-      rewriteAppHTTPProbers: false
+    sidecarInjectorWebhook:
+      rewriteAppHTTPProbe: false
 ```
 
 When probe rewriting is disabled, you need to make sure the kubelet can reach your application through the Envoy proxy, or exclude the health check port from sidecar interception.
