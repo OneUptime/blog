@@ -8,7 +8,7 @@ Description: Step-by-step guide to enabling gzip and other compression algorithm
 
 ---
 
-Compressing HTTP responses before sending them to clients can significantly reduce bandwidth usage and improve page load times. Instead of configuring compression in each individual application, you can handle it at the proxy layer with Istio. This means every service in your mesh gets compression without any code changes.
+Compressing HTTP responses before sending them to clients can significantly reduce bandwidth usage and improve page load times. Instead of configuring compression in each individual application, you can handle it at the proxy layer with Istio. This means matching gateways or services in your mesh can get compression without any code changes.
 
 ## How Compression Works in Envoy
 
@@ -18,7 +18,7 @@ Envoy supports multiple compression algorithms:
 
 - gzip - the most widely supported
 - brotli - better compression ratios, newer browser support
-- zstd - fastest compression/decompression speed
+- zstd - modern compression with strong speed and ratio characteristics for clients that support it
 
 ## Enabling gzip Compression
 
@@ -159,7 +159,7 @@ spec:
                 compression_level: BEST_SPEED
 ```
 
-Note: mesh-wide compression without a `workloadSelector` applies to all sidecars. For service-to-service communication within the mesh, compression might not be worth the CPU cost since traffic stays on the cluster network. Consider applying it only at the gateway or for specific high-bandwidth services.
+Note: mesh-wide compression without a `workloadSelector` applies to all sidecars when the `EnvoyFilter` is created in Istio's root config namespace (commonly `istio-system`). For service-to-service communication within the mesh, compression might not be worth the CPU cost since traffic stays on the cluster network. Consider applying it only at the gateway or for specific high-bandwidth services.
 
 ## Enabling Brotli Compression
 
@@ -216,7 +216,7 @@ Brotli settings:
 
 ## Enabling Both gzip and Brotli
 
-You can have both compression algorithms active. Envoy will choose based on the client's `Accept-Encoding` header:
+You can have both compression algorithms active. Envoy will choose based on the client's `Accept-Encoding` header and q-values:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -285,6 +285,7 @@ spec:
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.compression.brotli.compressor.v3.Brotli
                 quality: 4
+            choose_first: true
 ```
 
 ## Disabling Compression for Specific Routes
@@ -330,8 +331,8 @@ curl -H "Accept-Encoding: gzip" -o /dev/null -w "Size: %{size_download}\n" -s ht
 # Compare with uncompressed
 curl -o /dev/null -w "Size: %{size_download}\n" -s http://app.example.com/
 
-# Check response headers
-curl -H "Accept-Encoding: gzip" -I http://app.example.com/
+# Check response headers with a GET request
+curl -H "Accept-Encoding: gzip" -s -D - -o /dev/null http://app.example.com/
 # Should include: Content-Encoding: gzip
 
 # Check Envoy stats
