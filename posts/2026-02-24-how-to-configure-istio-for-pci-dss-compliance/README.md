@@ -18,7 +18,7 @@ PCI DSS has 12 main requirements. Istio is particularly relevant for:
 
 - **Requirement 1**: Install and maintain network security controls
 - **Requirement 2**: Apply secure configurations to all system components
-- **Requirement 3/4**: Protect stored/transmitted cardholder data
+- **Requirement 4**: Protect transmitted cardholder data
 - **Requirement 7**: Restrict access to system components by business need
 - **Requirement 8**: Identify users and authenticate access
 - **Requirement 10**: Log and monitor all access to system components
@@ -36,7 +36,7 @@ kubectl label namespace payment-processing pci-scope=cde
 Then create an authorization policy that denies all traffic to the CDE namespace by default:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: deny-all
@@ -48,7 +48,7 @@ spec:
 An empty spec with no rules means deny everything. Now explicitly allow only the services that need access:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: allow-checkout-to-payment
@@ -108,12 +108,12 @@ spec:
 
 ## Requirement 4: Encrypt Transmission of Cardholder Data
 
-PCI DSS requires strong cryptography for transmitting cardholder data across open public networks. Istio's mTLS satisfies this requirement.
+PCI DSS requires strong cryptography for transmitting cardholder data across open public networks. Istio's mTLS helps satisfy the in-transit encryption control for mesh traffic, but it needs to be part of your broader PCI DSS scope and assessment.
 
 Enforce strict mTLS for the CDE namespace:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: strict-mtls
@@ -123,10 +123,10 @@ spec:
     mode: STRICT
 ```
 
-Make sure the TLS configuration uses strong ciphers. Istio defaults are good, but you can be explicit:
+Make sure Istio mutual TLS is used for calls to services in the CDE namespace:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: payment-tls-config
@@ -138,12 +138,26 @@ spec:
       mode: ISTIO_MUTUAL
 ```
 
-Verify that the TLS version being used meets PCI requirements (TLS 1.2 or higher):
+If you want to make the minimum workload TLS version explicit, configure it in the mesh config. Istio's default minimum TLS version is TLS 1.2, and you can set a higher minimum if your environment requires it:
+
+```yaml
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
+spec:
+  meshConfig:
+    meshMTLS:
+      minProtocolVersion: TLSV1_2
+```
+
+Verify the TLS version by probing from an injected workload's `istio-proxy` container:
 
 ```bash
-istioctl proxy-config secret \
-  $(kubectl get pod -n payment-processing -l app=payment-gateway \
-  -o jsonpath='{.items[0].metadata.name}') -n payment-processing
+kubectl exec "$(kubectl get pod -n shop -l app=checkout-service \
+  -o jsonpath='{.items[0].metadata.name}')" \
+  -c istio-proxy -n shop -- \
+  openssl s_client -alpn istio -tls1_2 \
+  -connect payment-gateway.payment-processing.svc.cluster.local:8443 \
+  </dev/null 2>/dev/null | grep "TLSv1.2"
 ```
 
 ## Requirement 7: Restrict Access by Business Need
@@ -153,7 +167,7 @@ PCI DSS requires role-based access control. Istio's authorization policies let y
 Create policies that map to your business roles:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: payment-api-access
@@ -200,10 +214,10 @@ Istio's mTLS provides strong mutual authentication between services using X.509 
 spiffe://cluster.local/ns/payment-processing/sa/payment-gateway
 ```
 
-You can add JWT validation for additional authentication:
+You can add JWT validation for additional authentication. A `RequestAuthentication` rejects invalid JWTs, but requests without JWTs are still accepted unless you also require authenticated principals in an authorization policy:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: RequestAuthentication
 metadata:
   name: payment-jwt-auth
@@ -217,6 +231,21 @@ spec:
       jwksUri: "https://auth.internal.example.com/.well-known/jwks.json"
       audiences:
         - "payment-gateway"
+---
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: require-payment-jwt
+  namespace: payment-processing
+spec:
+  selector:
+    matchLabels:
+      app: payment-gateway
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            requestPrincipals: ["*"]
 ```
 
 ## Requirement 10: Audit Logging
@@ -224,7 +253,7 @@ spec:
 PCI DSS requires comprehensive logging of all access to cardholder data. Configure detailed access logging for the CDE:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: cde-access-logging
@@ -244,9 +273,20 @@ spec:
   meshConfig:
     accessLogFile: /dev/stdout
     accessLogEncoding: JSON
+    accessLogFormat: |
+      {
+        "timestamp": "%START_TIME%",
+        "source_identity": "%DOWNSTREAM_PEER_URI_SAN%",
+        "destination_identity": "%UPSTREAM_PEER_URI_SAN%",
+        "method": "%REQ(:METHOD)%",
+        "path": "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%",
+        "response_code": "%RESPONSE_CODE%",
+        "duration_ms": "%DURATION%",
+        "request_id": "%REQ(X-REQUEST-ID)%"
+      }
 ```
 
-The default JSON log format includes source identity, destination, method, path, response code, timestamp, and duration. All of these are relevant for PCI audit trails.
+This custom JSON format includes source identity, destination identity, method, path, response code, timestamp, duration, and request ID. All of these are relevant for PCI audit trails.
 
 Make sure logs are shipped to a tamper-proof log storage:
 
@@ -277,11 +317,8 @@ EOF
 After configuring everything, verify your compliance posture:
 
 ```bash
-# Verify strict mTLS is enforced
-istioctl authn tls-check \
-  $(kubectl get pod -n payment-processing -l app=payment-gateway \
-  -o jsonpath='{.items[0].metadata.name}') \
-  -n payment-processing
+# Verify strict mTLS policies exist
+kubectl get peerauthentication -n payment-processing -o yaml
 
 # Verify authorization policies are in effect
 kubectl get authorizationpolicies -n payment-processing
