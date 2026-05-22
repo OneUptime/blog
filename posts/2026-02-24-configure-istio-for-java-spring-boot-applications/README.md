@@ -56,7 +56,7 @@ spec:
           value: "8081"
 ```
 
-Notice the port names - `http-web` and `http-management` both start with `http-`, which tells Istio these are HTTP ports. This is critical for proper protocol detection.
+Notice the port names - `http-web` and `http-management` both start with `http-`, which explicitly tells Istio these are HTTP ports. This is important for routing, telemetry, and other HTTP-aware mesh features.
 
 ## Service Configuration
 
@@ -169,7 +169,7 @@ spring:
       missing-topics-fatal: false
 ```
 
-Setting `initialization-fail-timeout: -1` tells HikariCP to keep retrying the database connection instead of failing fast.
+Setting `initialization-fail-timeout: -1` tells HikariCP to skip the initial fail-fast connection check and start the pool while connection attempts happen in the background. Later calls that need a connection can still fail if the database remains unavailable.
 
 ## Configuring Istio Traffic Management
 
@@ -278,7 +278,7 @@ metadata:
     prometheus.io/path: "/actuator/prometheus"
 ```
 
-This gives you both application-level metrics (JVM stats, request counts, custom metrics) and Istio proxy metrics (connection counts, latency histograms) for the same service.
+This gives you application-level metrics (JVM stats, request counts, custom metrics). With Istio's default Prometheus metrics merging enabled, the sidecar merges application metrics with Istio metrics and exposes the combined output at `:15020/stats/prometheus`; otherwise, configure Prometheus to scrape the application endpoint and the Envoy sidecar metrics separately.
 
 ## Handling Graceful Shutdown
 
@@ -293,7 +293,7 @@ spring:
     timeout-per-shutdown-phase: 20s
 ```
 
-In your deployment, add a preStop hook to give the sidecar time to drain:
+In your deployment, add a preStop hook to give Kubernetes and the proxy time to stop sending new traffic before the application receives SIGTERM:
 
 ```yaml
 containers:
@@ -306,7 +306,7 @@ spec:
   terminationGracePeriodSeconds: 30
 ```
 
-The sequence is: Kubernetes sends SIGTERM, the preStop hook runs (5 second sleep), then Spring Boot starts its graceful shutdown (draining requests for up to 20 seconds). The total termination grace period of 30 seconds covers both phases.
+The sequence is: the pod termination grace period starts, the preStop hook runs (5 second sleep), then Kubernetes sends SIGTERM and Spring Boot starts its graceful shutdown (draining requests for up to 20 seconds). The total termination grace period of 30 seconds covers both the preStop hook and the shutdown phase.
 
 ## Common Spring Boot + Istio Issues
 
