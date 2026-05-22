@@ -65,28 +65,32 @@ Rego reads differently from most programming languages. Here are the fundamental
 # Every policy file starts with a package declaration
 package terraform
 
+import rego.v1
+
 # Import the plan input
 import input as plan
 
-# A simple rule - deny if any S3 bucket lacks encryption
-deny[msg] {
+# A simple rule - deny if an S3 bucket encryption configuration does not use KMS
+deny contains msg if {
     # Iterate over resource changes
     resource := plan.resource_changes[_]
 
-    # Filter to S3 buckets being created or updated
-    resource.type == "aws_s3_bucket"
-    resource.change.actions[_] == "create"
+    # Filter to S3 bucket encryption configurations being created or updated
+    resource.type == "aws_s3_bucket_server_side_encryption_configuration"
+    not "delete" in resource.change.actions
 
-    # Check for missing encryption config
-    not resource.change.after.server_side_encryption_configuration
+    # Check that the default encryption algorithm uses KMS
+    rule := resource.change.after.rule[_]
+    default_encryption := rule.apply_server_side_encryption_by_default[_]
+    default_encryption.sse_algorithm != "aws:kms"
 
     # Build a descriptive message
-    msg := sprintf("S3 bucket '%s' must have encryption configured", [resource.address])
+    msg := sprintf("S3 bucket encryption configuration '%s' must use aws:kms", [resource.address])
 }
 ```
 
 Key things to understand:
-- `deny[msg]` defines a set. If any rule body matches, its `msg` is added to the set.
+- `deny contains msg` defines a set. If any rule body matches, its `msg` is added to the set.
 - `resource := plan.resource_changes[_]` iterates over the array. The `_` is an anonymous variable.
 - Rules are AND-ed together. Every line in a rule body must be true for the rule to match.
 - The `not` keyword negates a condition.
@@ -95,7 +99,8 @@ Key things to understand:
 
 ```rego
 # Iterate with explicit index
-deny[msg] {
+deny contains msg if {
+    some i
     resource := plan.resource_changes[i]
     resource.type == "aws_security_group_rule"
     resource.change.after.type == "ingress"
@@ -118,29 +123,30 @@ Break complex logic into smaller, reusable rules:
 ```rego
 package terraform
 
+import rego.v1
 import input as plan
 
 # Helper: get all resources of a specific type
-resources_by_type(type) = resources {
+resources_by_type(type) = resources if {
     resources := [r |
         r := plan.resource_changes[_]
         r.type == type
-        r.change.actions[_] != "delete"
+        not "delete" in r.change.actions
     ]
 }
 
 # Helper: check if a resource has a specific tag
-has_tag(resource, key) {
+has_tag(resource, key) if {
     resource.change.after.tags[key]
 }
 
 # Helper: check if a resource is being created or updated
-is_create_or_update(resource) {
-    resource.change.actions[_] == "create"
+is_create_or_update(resource) if {
+    "create" in resource.change.actions
 }
 
-is_create_or_update(resource) {
-    resource.change.actions[_] == "update"
+is_create_or_update(resource) if {
+    "update" in resource.change.actions
 }
 ```
 
@@ -151,15 +157,16 @@ is_create_or_update(resource) {
 ```rego
 package terraform.tags
 
+import rego.v1
 import input as plan
 
 # Define required tags
 required_tags := {"Environment", "Project", "Owner", "CostCenter"}
 
 # Deny resources missing required tags
-deny[msg] {
+deny contains msg if {
     resource := plan.resource_changes[_]
-    resource.change.actions[_] != "delete"
+    not "delete" in resource.change.actions
 
     # Only check taggable resources
     taggable_types := {
@@ -172,7 +179,7 @@ deny[msg] {
     tags := object.get(resource.change.after, "tags", {})
 
     # Find missing tags
-    missing := required_tags - {key | tags[key]}
+    missing := required_tags - {key | some key; tags[key]}
     count(missing) > 0
 
     msg := sprintf(
@@ -187,6 +194,7 @@ deny[msg] {
 ```rego
 package terraform.compute
 
+import rego.v1
 import input as plan
 
 # Allowed instance types by environment
@@ -196,10 +204,10 @@ allowed_instances := {
     "production": {"m5.large", "m5.xlarge", "m5.2xlarge", "c5.large", "c5.xlarge"}
 }
 
-deny[msg] {
+deny contains msg if {
     resource := plan.resource_changes[_]
     resource.type == "aws_instance"
-    resource.change.actions[_] != "delete"
+    not "delete" in resource.change.actions
 
     instance_type := resource.change.after.instance_type
     environment := resource.change.after.tags.Environment
@@ -220,13 +228,14 @@ deny[msg] {
 ```rego
 package terraform.encryption
 
+import rego.v1
 import input as plan
 
-# All RDS instances must use encryption with a specific KMS key
-deny[msg] {
+# All RDS instances must use encryption and a KMS key ARN
+deny contains msg if {
     resource := plan.resource_changes[_]
     resource.type == "aws_db_instance"
-    resource.change.actions[_] != "delete"
+    not "delete" in resource.change.actions
 
     not resource.change.after.storage_encrypted
 
@@ -236,10 +245,10 @@ deny[msg] {
     )
 }
 
-deny[msg] {
+deny contains msg if {
     resource := plan.resource_changes[_]
     resource.type == "aws_db_instance"
-    resource.change.actions[_] != "delete"
+    not "delete" in resource.change.actions
 
     resource.change.after.storage_encrypted
     not startswith(
@@ -248,7 +257,7 @@ deny[msg] {
     )
 
     msg := sprintf(
-        "RDS instance '%s' must use a customer-managed KMS key",
+        "RDS instance '%s' must use a KMS key ARN",
         [resource.address]
     )
 }
@@ -262,18 +271,24 @@ OPA has a built-in testing framework. Test files use the `_test.rego` suffix.
 # policy/terraform_test.rego
 package terraform
 
-# Test: S3 bucket without encryption should be denied
-test_deny_unencrypted_s3 {
+import rego.v1
+
+# Test: S3 bucket encryption without KMS should be denied
+test_deny_s3_encryption_without_kms if {
     # Create a mock plan input
     plan := {
         "resource_changes": [{
-            "address": "aws_s3_bucket.test",
-            "type": "aws_s3_bucket",
+            "address": "aws_s3_bucket_server_side_encryption_configuration.test",
+            "type": "aws_s3_bucket_server_side_encryption_configuration",
             "change": {
                 "actions": ["create"],
                 "after": {
-                    "bucket": "test-bucket"
-                    # No encryption config
+                    "bucket": "test-bucket",
+                    "rule": [{
+                        "apply_server_side_encryption_by_default": [{
+                            "sse_algorithm": "AES256"
+                        }]
+                    }]
                 }
             }
         }]
@@ -286,21 +301,19 @@ test_deny_unencrypted_s3 {
     count(results) > 0
 }
 
-# Test: S3 bucket with encryption should pass
-test_allow_encrypted_s3 {
+# Test: S3 bucket encryption with KMS should pass
+test_allow_s3_encryption_with_kms if {
     plan := {
         "resource_changes": [{
-            "address": "aws_s3_bucket.test",
-            "type": "aws_s3_bucket",
+            "address": "aws_s3_bucket_server_side_encryption_configuration.test",
+            "type": "aws_s3_bucket_server_side_encryption_configuration",
             "change": {
                 "actions": ["create"],
                 "after": {
                     "bucket": "test-bucket",
-                    "server_side_encryption_configuration": [{
-                        "rule": [{
-                            "apply_server_side_encryption_by_default": [{
-                                "sse_algorithm": "aws:kms"
-                            }]
+                    "rule": [{
+                        "apply_server_side_encryption_by_default": [{
+                            "sse_algorithm": "aws:kms"
                         }]
                     }]
                 }
@@ -339,24 +352,26 @@ opa run policy/ plan.json
 > data.terraform.deny
 ```
 
-Inside a policy, you can use `print()` for debugging (OPA 0.40+):
+Inside a policy, you can use `print()` for debugging:
 
 ```rego
-deny[msg] {
+deny contains msg if {
     resource := plan.resource_changes[_]
     print("Checking resource:", resource.address, "type:", resource.type)
 
-    resource.type == "aws_s3_bucket"
-    print("Found S3 bucket, checking encryption...")
+    resource.type == "aws_s3_bucket_server_side_encryption_configuration"
+    print("Found S3 bucket encryption configuration, checking algorithm...")
 
-    not resource.change.after.server_side_encryption_configuration
-    msg := sprintf("S3 bucket '%s' missing encryption", [resource.address])
+    rule := resource.change.after.rule[_]
+    default_encryption := rule.apply_server_side_encryption_by_default[_]
+    default_encryption.sse_algorithm != "aws:kms"
+    msg := sprintf("S3 bucket encryption configuration '%s' must use aws:kms", [resource.address])
 }
 ```
 
 ## Common Rego Pitfalls
 
-1. **Null values**: Use `object.get()` instead of direct access to avoid errors on missing keys
+1. **Null values**: Use `object.get()` when a missing key should fall back to a default value instead of making the expression undefined
 2. **String vs number**: Terraform plan JSON sometimes represents numbers as strings
 3. **Nested arrays**: Terraform JSON often wraps objects in arrays (like `encryption_configuration[0]`)
 4. **Partial rules**: Multiple rule bodies with the same head are OR-ed together, not AND-ed
