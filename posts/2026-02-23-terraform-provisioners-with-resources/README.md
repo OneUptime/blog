@@ -299,7 +299,7 @@ One of the biggest drawbacks of provisioners is that `terraform plan` does not s
 
 4. **Use configuration management tools** (Ansible, Chef, Puppet) for anything more than basic setup. Provisioners are not a replacement for proper configuration management.
 
-5. **Always set timeouts on remote provisioners.** Network issues can cause provisioners to hang indefinitely.
+5. **Set explicit connection timeouts for remote provisioners when the default is not appropriate.** Network issues can otherwise make applies wait longer than you expect.
 
 ## Summary
 
