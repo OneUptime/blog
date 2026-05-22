@@ -209,7 +209,7 @@ Different cloud resources have different naming rules. The `format` function hel
 
 ### S3 Bucket Names
 
-S3 bucket names must be globally unique, lowercase, and between 3-63 characters:
+S3 bucket names in the shared global namespace must be unique across all AWS accounts in all Regions within a partition, contain only lowercase letters, numbers, periods, and hyphens, and be between 3-63 characters:
 
 ```hcl
 locals {
@@ -287,7 +287,7 @@ output "vpc" {
 }
 
 output "subnet" {
-  # Returns a function-like value using a template
+  # Returns a subnet name using the shared base
   value = format("%s-subnet", local.base)
 }
 
