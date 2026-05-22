@@ -33,7 +33,7 @@ terraform apply -auto-approve
 
 # When the demo is over, tear it all down
 terraform destroy -auto-approve
-terraform workspace select dev
+terraform workspace select default
 terraform workspace delete demo-acme-corp-2026-02-23
 ```
 
@@ -137,7 +137,7 @@ locals {
     },
     local.is_temporary ? {
       Temporary   = "true"
-      ExpireAfter = timeadd(timestamp(), "${local.ttl_hours}h")
+      ExpireAfter = var.expires_at
       CreatedBy   = var.creator_email
     } : {
       Temporary = "false"
@@ -149,6 +149,12 @@ variable "creator_email" {
   description = "Email of the person creating this environment"
   type        = string
   default     = "unknown"
+}
+
+variable "expires_at" {
+  description = "RFC3339 timestamp for when the temporary environment should expire"
+  type        = string
+  default     = ""
 }
 ```
 
@@ -221,7 +227,8 @@ Sales teams often need demo environments that showcase your product. Here is how
 
 CUSTOMER=$1
 EMAIL=$2
-DATE=$(date +%Y-%m-%d)
+DATE=$(date -u +%Y-%m-%d)
+EXPIRES_AT=$(date -u -d '+2 days' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v+2d +%Y-%m-%dT%H:%M:%SZ)
 WS_NAME="demo-${CUSTOMER}-${DATE}"
 
 # Create the workspace
@@ -230,6 +237,7 @@ terraform workspace new "$WS_NAME"
 # Apply with demo-specific variables
 terraform apply \
   -var="creator_email=${EMAIL}" \
+  -var="expires_at=${EXPIRES_AT}" \
   -var="enable_sample_data=true" \
   -auto-approve
 
@@ -238,7 +246,7 @@ echo ""
 echo "=== Demo Environment Ready ==="
 echo "Workspace: $WS_NAME"
 echo "App URL: $(terraform output -raw app_url)"
-echo "Expires: $(date -d '+2 days' +%Y-%m-%d)"
+echo "Expires: $EXPIRES_AT"
 echo ""
 echo "To clean up: ./destroy-demo.sh $WS_NAME"
 ```
@@ -298,13 +306,19 @@ resource "aws_instance" "load_test_targets" {
 }
 
 # Use spot instances for load generators to save costs
-resource "aws_spot_instance_request" "load_generators" {
+resource "aws_instance" "load_generators" {
   count = local.is_load_test ? 5 : 0
 
-  ami                  = data.aws_ami.load_generator.id
-  instance_type        = "c5.xlarge"
-  spot_price           = "0.10"
-  wait_for_fulfillment = true
+  ami           = data.aws_ami.load_generator.id
+  instance_type = "c5.xlarge"
+
+  instance_market_options {
+    market_type = "spot"
+
+    spot_options {
+      max_price = "0.10"
+    }
+  }
 
   user_data = <<-EOF
     #!/bin/bash
@@ -359,7 +373,7 @@ resource "null_resource" "slack_notification" {
 
 ## Budget Alerts for Temporary Workspaces
 
-Set up AWS Budget alerts to catch runaway costs from forgotten temporary environments:
+Set up AWS Budget alerts to catch runaway costs from forgotten temporary environments after activating `Temporary` as a user-defined cost allocation tag:
 
 ```hcl
 # budget.tf
