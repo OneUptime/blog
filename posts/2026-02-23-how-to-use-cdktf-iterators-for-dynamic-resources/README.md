@@ -4,11 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, CDKTF, Iterator, Dynamic Resources, Infrastructure as Code
 
-Description: Learn how to use CDKTF iterators to create dynamic resources from lists and maps, equivalent to Terraform's for_each and count meta-arguments.
+Description: Learn how to use CDKTF iterators to create dynamic resources from lists and maps, equivalent to Terraform's for_each meta-argument.
 
 ---
 
-In Terraform HCL, you use `count` and `for_each` to create multiple resources from a single block. In CDKTF, you typically use native language loops for this. But there are situations where you need Terraform-level iteration - specifically when the number of resources depends on a value that is only known at apply time (like the result of a data source). CDKTF provides the `TerraformIterator` class for exactly this purpose. This guide covers when and how to use iterators versus native loops.
+In Terraform HCL, you use `count` and `for_each` to create multiple resources from a single block. In CDKTF, you typically use native language loops for this. But there are situations where you need Terraform-level iteration - specifically when the set of resources depends on a value that is not known when CDKTF synthesizes the Terraform configuration, such as a Terraform variable or data source result. CDKTF provides the `TerraformIterator` class for `for_each`-style iteration. This guide covers when and how to use iterators versus native loops.
+
+Note: HashiCorp deprecated CDKTF on December 10, 2025 and no longer supports or maintains it. The examples below use the last documented CDKTF APIs.
 
 ## Native Loops vs CDKTF Iterators
 
@@ -57,7 +59,7 @@ This creates three separate subnet resources in the Terraform configuration. It 
 Use iterators when the data comes from a Terraform data source or other dynamic value:
 
 ```typescript
-import { TerraformIterator } from "cdktf";
+import { Fn, TerraformIterator } from "cdktf";
 import { DataAwsAvailabilityZones } from "@cdktf/provider-aws/lib/data-aws-availability-zones";
 
 class DynamicStack extends TerraformStack {
@@ -70,7 +72,7 @@ class DynamicStack extends TerraformStack {
       cidrBlock: "10.0.0.0/16",
     });
 
-    // The list of AZs comes from a data source - not known until apply time
+    // The list of AZs comes from a data source - not known at synthesis time
     const azs = new DataAwsAvailabilityZones(this, "azs", {
       state: "available",
     });
@@ -81,7 +83,7 @@ class DynamicStack extends TerraformStack {
     new Subnet(this, "dynamic-subnet", {
       forEach: iterator,
       vpcId: vpc.id,
-      cidrBlock: iterator.value,
+      cidrBlock: Fn.cidrsubnet(vpc.cidrBlock, 8, Fn.index(azs.names, iterator.value)),
       availabilityZone: iterator.value,
       tags: {
         Name: `subnet-${iterator.value}`,
@@ -104,7 +106,7 @@ class MyStack extends TerraformStack {
 
     new AwsProvider(this, "aws", { region: "us-east-1" });
 
-    // Variable value is not known until apply time
+    // Variable value can be provided or overridden by Terraform
     const subnetCidrs = new TerraformVariable(this, "subnet-cidrs", {
       type: "list(string)",
       default: ["10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"],
@@ -170,10 +172,10 @@ class MyStack extends TerraformStack {
 
 ## Complex Iterators with Objects
 
-For more complex data, use `fromComplexList`:
+For lists of objects, use `fromComplexList`:
 
 ```typescript
-import { TerraformIterator, TerraformVariable, TerraformLocal } from "cdktf";
+import { TerraformIterator, TerraformVariable } from "cdktf";
 
 class MyStack extends TerraformStack {
   constructor(scope: Construct, id: string) {
@@ -181,18 +183,21 @@ class MyStack extends TerraformStack {
 
     new AwsProvider(this, "aws", { region: "us-east-1" });
 
-    // Define a local with complex objects
-    const subnetsLocal = new TerraformLocal(this, "subnets", [
-      { name: "web", cidr: "10.0.1.0/24", public: true },
-      { name: "app", cidr: "10.0.2.0/24", public: false },
-      { name: "db", cidr: "10.0.3.0/24", public: false },
-    ]);
+    // Define a variable with complex objects
+    const subnets = new TerraformVariable(this, "subnets", {
+      type: "list(object({ name = string, cidr = string, public = bool }))",
+      default: [
+        { name: "web", cidr: "10.0.1.0/24", public: true },
+        { name: "app", cidr: "10.0.2.0/24", public: false },
+        { name: "db", cidr: "10.0.3.0/24", public: false },
+      ],
+    });
 
     const vpc = new Vpc(this, "vpc", { cidrBlock: "10.0.0.0/16" });
 
     // Create iterator from complex list
     const iterator = TerraformIterator.fromComplexList(
-      subnetsLocal.expression,
+      subnets.value,
       "name"  // Use the name field as the key
     );
 
@@ -211,10 +216,10 @@ class MyStack extends TerraformStack {
 
 ## Iterators with Dynamic Blocks
 
-You can use iterators for dynamic blocks within a single resource:
+You can use iterators for list attributes, which is the CDKTF equivalent of using dynamic blocks in Terraform HCL:
 
 ```typescript
-import { TerraformIterator } from "cdktf";
+import { TerraformIterator, TerraformVariable } from "cdktf";
 import { SecurityGroup } from "@cdktf/provider-aws/lib/security-group";
 
 class MyStack extends TerraformStack {
@@ -223,25 +228,28 @@ class MyStack extends TerraformStack {
 
     new AwsProvider(this, "aws", { region: "us-east-1" });
 
-    // Define ingress rules as data
-    const ingressRules = [
-      { port: 80, description: "HTTP" },
-      { port: 443, description: "HTTPS" },
-      { port: 8080, description: "Application" },
-    ];
+    const ingressRules = new TerraformVariable(this, "ingress-rules", {
+      type: "list(object({ port = number, description = string }))",
+      default: [
+        { port: 80, description: "HTTP" },
+        { port: 443, description: "HTTPS" },
+        { port: 8080, description: "Application" },
+      ],
+    });
 
     const vpc = new Vpc(this, "vpc", { cidrBlock: "10.0.0.0/16" });
 
-    // For static data, native loops work best
+    const ingressIterator = TerraformIterator.fromList(ingressRules.value);
+
     new SecurityGroup(this, "sg", {
       vpcId: vpc.id,
-      ingress: ingressRules.map((rule) => ({
-        fromPort: rule.port,
-        toPort: rule.port,
+      ingress: ingressIterator.dynamic({
+        fromPort: ingressIterator.getNumber("port"),
+        toPort: ingressIterator.getNumber("port"),
         protocol: "tcp",
         cidrBlocks: ["0.0.0.0/0"],
-        description: rule.description,
-      })),
+        description: ingressIterator.getString("description"),
+      }),
     });
   }
 }
@@ -249,7 +257,7 @@ class MyStack extends TerraformStack {
 
 ## Chaining Iterators
 
-You can chain operations on iterators:
+When one resource uses `forEach`, you can chain that result into another iterator with `TerraformIterator.fromResources`:
 
 ```typescript
 import { TerraformIterator, Fn } from "cdktf";
@@ -258,19 +266,24 @@ const azs = new DataAwsAvailabilityZones(this, "azs", {
   state: "available",
 });
 
-// Create an iterator and chain operations
 const iterator = TerraformIterator.fromList(azs.names);
 
-// Use Fn functions to transform values
-new Subnet(this, "subnet", {
+const subnets = new Subnet(this, "subnet", {
   forEach: iterator,
   vpcId: vpc.id,
   availabilityZone: iterator.value,
-  // Use Fn.cidrsubnet to calculate CIDRs dynamically
   cidrBlock: Fn.cidrsubnet(vpc.cidrBlock, 8, Fn.index(azs.names, iterator.value)),
   tags: {
     Name: Fn.join("-", ["subnet", iterator.value]),
   },
+});
+
+const subnetIterator = TerraformIterator.fromResources(subnets);
+
+new RouteTableAssociation(this, "subnet-association", {
+  forEach: subnetIterator,
+  subnetId: subnetIterator.getString("id"),
+  routeTableId: routeTable.id,
 });
 ```
 
@@ -297,11 +310,11 @@ environments.forEach((env) => {
 
 - The data comes from a Terraform data source
 - The data comes from a Terraform variable
-- The count or list of items is not known until apply time
+- The list or map of items is not known when CDKTF synthesizes the Terraform configuration
 - You need Terraform's `for_each` behavior (keyed state tracking)
 
 ```typescript
-// Good: data is not known until apply time
+// Good: data is not known when CDKTF synthesizes the Terraform configuration
 const azs = new DataAwsAvailabilityZones(this, "azs", {
   state: "available",
 });
