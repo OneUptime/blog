@@ -8,7 +8,7 @@ Description: Learn how to configure Istio for proper gRPC load balancing across 
 
 ---
 
-gRPC uses HTTP/2 under the hood, and that creates a tricky problem for load balancing. Unlike HTTP/1.1, where each request gets its own connection, HTTP/2 multiplexes multiple requests over a single long-lived connection. This means traditional connection-level load balancing (like what a basic Kubernetes Service does) will just pin all traffic to one pod. Not great.
+gRPC uses HTTP/2 under the hood, and that creates a tricky problem for load balancing. HTTP/2 multiplexes multiple requests over a single long-lived connection. This means traditional connection-level load balancing (like what a basic Kubernetes Service does) can pin all traffic on that connection to one pod. Not great.
 
 Istio solves this because the Envoy sidecar proxy understands HTTP/2 and can do request-level (L7) load balancing. But you need to set things up correctly. Here is how.
 
@@ -38,14 +38,14 @@ spec:
       protocol: TCP
 ```
 
-The port name `grpc` tells Istio this is a gRPC service. You can also use `grpc-web` or any name prefixed with `grpc-`. Without this naming convention, Istio treats the traffic as opaque TCP and you lose L7 load balancing.
+The port name `grpc` tells Istio this is a gRPC service. You can also use `grpc-web` or any name prefixed with `grpc-`. Without this naming convention, Istio may rely on protocol sniffing; if the protocol cannot be determined, or when a gateway needs explicit backend protocol selection, the traffic may be handled as plain TCP or HTTP/1.1 and you lose the expected gRPC L7 behavior.
 
 ## Configuring the Load Balancing Algorithm
 
-By default, Istio uses round-robin. You can change this with a DestinationRule:
+By default, Istio uses least-request load balancing. You can still set a specific algorithm with a DestinationRule:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: grpc-backend-lb
@@ -54,20 +54,20 @@ spec:
   host: grpc-backend.default.svc.cluster.local
   trafficPolicy:
     loadBalancer:
-      simple: ROUND_ROBIN
+      simple: LEAST_REQUEST
 ```
 
-The available options are:
+Common options are:
 
-- `ROUND_ROBIN` - distributes requests evenly across all healthy endpoints
 - `LEAST_REQUEST` - sends to the endpoint with fewest active requests (often best for gRPC)
+- `ROUND_ROBIN` - sends requests to endpoints in sequence
 - `RANDOM` - picks a random endpoint
-- `PASSTHROUGH` - sends directly to the endpoint without any balancing
+- `PASSTHROUGH` - forwards to the original IP address requested by the caller without load balancing
 
 For gRPC workloads, `LEAST_REQUEST` tends to work well because gRPC calls can vary wildly in duration. A unary call might take 5ms while a server-streaming call takes 30 seconds. Round-robin does not account for that.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: grpc-backend-lb
@@ -84,7 +84,7 @@ spec:
 Sometimes you need affinity, for example if your gRPC service maintains in-memory state. You can use consistent hashing:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: grpc-backend-sticky
@@ -104,7 +104,7 @@ This routes all requests with the same `x-user-id` header to the same backend po
 For gRPC, tuning the connection pool matters. You want to control how many HTTP/2 connections Envoy opens to each backend:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: grpc-backend-pool
@@ -122,7 +122,7 @@ spec:
       simple: LEAST_REQUEST
 ```
 
-Setting `h2UpgradePolicy: UPGRADE` ensures HTTP/2 is used. `maxRequestsPerConnection: 0` means unlimited requests per connection (which is what you want for HTTP/2). `maxConnections` limits the total number of TCP connections to each backend.
+For gRPC services, the Service protocol selection (`grpc`, `grpc-*`, or `appProtocol: grpc`) is what tells Istio to treat the traffic as HTTP/2/gRPC. `h2UpgradePolicy: UPGRADE` is useful when Istio needs to upgrade HTTP/1.1 upstream connections to HTTP/2 for an h2c backend. `maxRequestsPerConnection: 0` means unlimited requests per connection (which is what you want for HTTP/2). `maxConnections` limits the number of HTTP/1.1 or TCP connections to the destination host.
 
 ## Verifying Load Balancing Is Working
 
@@ -150,7 +150,7 @@ You should see requests spread across multiple endpoints. If all traffic is goin
 You can also split gRPC traffic across different versions using a VirtualService:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: grpc-backend-vs
@@ -173,7 +173,7 @@ spec:
 With the corresponding DestinationRule:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: grpc-backend-versions
@@ -197,7 +197,7 @@ spec:
 If your cluster spans multiple zones, Istio can prefer local endpoints:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: grpc-backend-locality
@@ -220,11 +220,11 @@ Note that locality-aware load balancing requires outlier detection to be configu
 
 A few things that trip people up with gRPC load balancing in Istio:
 
-**Client-side keepalives conflicting with Envoy.** If your gRPC client sends keepalive pings too aggressively, Envoy might reject them. Set `keepalive_time` to at least 10 seconds on the client side.
+**Client-side keepalives conflicting with Envoy.** If your gRPC client sends keepalive pings too aggressively, the peer may eventually close the connection with `too_many_pings`. Avoid enabling keepalive without active calls unless you have coordinated it, and avoid setting client keepalive intervals much below one minute.
 
-**Using headless Services.** When you use a headless Service (clusterIP: None), DNS returns all pod IPs directly. The gRPC client might do its own load balancing, which conflicts with Envoy's. Stick with regular ClusterIP Services and let Istio handle distribution.
+**Using headless Services.** When you use a headless Service (clusterIP: None), DNS returns pod IPs directly. The gRPC client might do its own load balancing, which can bypass the simple service VIP path you expected Envoy to manage. For the common case, stick with regular ClusterIP Services and let Istio handle distribution.
 
-**Missing protocol detection.** If your port is not named `grpc` or `grpc-*`, Istio falls back to TCP-level balancing. Always name your ports correctly or use the `appProtocol` field:
+**Missing protocol selection.** If your port is not named `grpc` or `grpc-*`, Istio may need to infer the protocol and can fall back to TCP-level handling when it cannot determine it. Always name your ports correctly or use the `appProtocol` field:
 
 ```yaml
 ports:
