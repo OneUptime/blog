@@ -250,14 +250,15 @@ resource "null_resource" "invalidate_cache" {
 
 ## Ordering with depends_on
 
-Since `null_resource` does not have natural dependencies (it does not reference other resources' attributes in its own attributes), you often need `depends_on` to control execution order.
+Terraform automatically infers dependencies from resource references in `triggers` and provisioner configuration. Use `depends_on` when the command relies on behavior or side effects that Terraform cannot infer from those references alone.
 
 ```hcl
 resource "aws_ecs_service" "api" {
-  name            = "api"
-  cluster         = aws_ecs_cluster.main.id
-  task_definition = aws_ecs_task_definition.api.arn
-  desired_count   = 2
+  name                  = "api"
+  cluster               = aws_ecs_cluster.main.id
+  task_definition       = aws_ecs_task_definition.api.arn
+  desired_count         = 2
+  wait_for_steady_state = true
 }
 
 resource "null_resource" "smoke_test" {
@@ -269,7 +270,7 @@ resource "null_resource" "smoke_test" {
     command = "python3 scripts/smoke-test.py --service api"
   }
 
-  # Make sure the service is fully deployed before testing
+  # Run after the service resource has reached steady state
   depends_on = [aws_ecs_service.api]
 }
 ```
@@ -299,7 +300,7 @@ resource "null_resource" "cleanup" {
 }
 ```
 
-Important: destruction-time provisioners in `null_resource` can only access `self.triggers` - not other resource attributes. Store any values you need at destroy time in the triggers map.
+Important: destruction-time provisioners in `null_resource` can only access attributes of their own resource, such as `self.triggers`, plus `count.index` or `each.key` where applicable - not other resource attributes. Store any values you need at destroy time in the triggers map.
 
 ## Limitations of null_resource
 
@@ -309,7 +310,7 @@ Important: destruction-time provisioners in `null_resource` can only access `sel
 
 3. **Not idempotent by default.** You must make your commands idempotent since triggers can cause re-execution.
 
-4. **Deprecated in favor of terraform_data.** Terraform 1.4 introduced `terraform_data` as a built-in replacement that does not require an external provider.
+4. **Prefer terraform_data for new configurations.** Terraform 1.4 introduced `terraform_data` as a built-in replacement that does not require an external provider.
 
 ## Summary
 
