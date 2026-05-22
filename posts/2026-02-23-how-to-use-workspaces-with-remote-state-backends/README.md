@@ -33,11 +33,11 @@ The S3 backend is the most popular remote backend for AWS users. Here is how it 
 ```hcl
 terraform {
   backend "s3" {
-    bucket         = "my-terraform-state"
-    key            = "networking/terraform.tfstate"
-    region         = "us-east-1"
-    dynamodb_table = "terraform-locks"
-    encrypt        = true
+    bucket       = "my-terraform-state"
+    key          = "networking/terraform.tfstate"
+    region       = "us-east-1"
+    use_lockfile = true
+    encrypt      = true
   }
 }
 ```
@@ -74,28 +74,28 @@ aws s3 ls s3://my-terraform-state/ --recursive
 # env:/prod/networking/terraform.tfstate
 ```
 
-### Locking with DynamoDB
+### Locking with S3 Lock Files
 
-Each workspace gets its own lock entry in DynamoDB. The lock key includes the full state path, so workspaces never interfere with each other's locks:
+Each workspace gets its own `.tflock` object next to its state file. The lock file path includes the full state path, so workspaces never interfere with each other's locks:
 
 ```hcl
 terraform {
   backend "s3" {
-    bucket         = "my-terraform-state"
-    key            = "app/terraform.tfstate"
-    region         = "us-east-1"
+    bucket       = "my-terraform-state"
+    key          = "app/terraform.tfstate"
+    region       = "us-east-1"
 
-    # DynamoDB table for state locking
-    dynamodb_table = "terraform-locks"
+    # S3 lock file for state locking
+    use_lockfile = true
 
-    # All workspaces share the same lock table
-    # but each has its own lock entry
+    # All workspaces share the same bucket
+    # but each has its own state and lock file
     encrypt = true
   }
 }
 ```
 
-The DynamoDB table stores locks with the LockID set to the full S3 path including the workspace prefix. So the "dev" workspace's lock is independent from the "prod" workspace's lock.
+For the "dev" workspace, Terraform stores the lock at `env:/dev/app/terraform.tfstate.tflock`. That lock is independent from the "prod" workspace lock at `env:/prod/app/terraform.tfstate.tflock`.
 
 ### IAM Policies for Workspace Isolation
 
@@ -106,7 +106,23 @@ You can restrict which workspaces users can access using S3 bucket policies:
   "Version": "2012-10-17",
   "Statement": [
     {
-      "Sid": "AllowDevWorkspace",
+      "Sid": "AllowDevWorkspaceList",
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "arn:aws:iam::111111111111:role/dev-terraform"
+      },
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::my-terraform-state",
+      "Condition": {
+        "StringLike": {
+          "s3:prefix": [
+            "env:/dev/*"
+          ]
+        }
+      }
+    },
+    {
+      "Sid": "AllowDevWorkspaceObjects",
       "Effect": "Allow",
       "Principal": {
         "AWS": "arn:aws:iam::111111111111:role/dev-terraform"
@@ -121,7 +137,23 @@ You can restrict which workspaces users can access using S3 bucket policies:
       ]
     },
     {
-      "Sid": "AllowProdWorkspace",
+      "Sid": "AllowProdWorkspaceList",
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "arn:aws:iam::111111111111:role/prod-terraform"
+      },
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::my-terraform-state",
+      "Condition": {
+        "StringLike": {
+          "s3:prefix": [
+            "env:/prod/*"
+          ]
+        }
+      }
+    },
+    {
+      "Sid": "AllowProdWorkspaceObjects",
       "Effect": "Allow",
       "Principal": {
         "AWS": "arn:aws:iam::111111111111:role/prod-terraform"
@@ -381,7 +413,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "state" {
 
 **"Error loading state" after creating a workspace.** Make sure your backend credentials have write access to the workspace state path. The `env:` prefix in S3 is a real path component that needs to be accessible.
 
-**State locking conflicts between workspaces.** This should not happen because each workspace has its own lock. If it does, check that your lock table or mechanism is configured correctly.
+**State locking conflicts between workspaces.** This should not happen because each workspace has its own lock. If it does, check that your lock file or mechanism is configured correctly.
 
 **Workspace list is empty with remote backend.** Run `terraform init` to sync with the remote backend. Workspace discovery requires a working backend connection.
 
