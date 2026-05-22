@@ -28,7 +28,7 @@ First, deploy a simple httpbin service that we can hit with load tests.
 ```bash
 kubectl create namespace bench-test
 kubectl label namespace bench-test istio-injection=enabled
-kubectl apply -n bench-test -f https://raw.githubusercontent.com/istio/istio/release-1.22/samples/httpbin/httpbin.yaml
+kubectl apply -n bench-test -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/httpbin/httpbin.yaml
 ```
 
 Wait for the pods to be ready:
@@ -125,13 +125,13 @@ spec:
       mode: DISABLE
 ```
 
-Also change PeerAuthentication to PERMISSIVE:
+Also change the same PeerAuthentication to PERMISSIVE:
 
 ```yaml
 apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
-  name: permissive-mtls
+  name: strict-mtls
   namespace: bench-test
 spec:
   mtls:
@@ -140,7 +140,7 @@ spec:
 
 ```bash
 kubectl apply -n bench-test -f disable-mtls.yaml
-kubectl apply -n bench-test -f permissive-mtls.yaml
+kubectl apply -n bench-test -f strict-mtls.yaml
 ```
 
 ### Approach 2: Deploy Outside the Mesh
@@ -149,7 +149,7 @@ A cleaner comparison is to deploy the same app in a namespace without sidecar in
 
 ```bash
 kubectl create namespace bench-test-nomesh
-kubectl apply -n bench-test-nomesh -f https://raw.githubusercontent.com/istio/istio/release-1.22/samples/httpbin/httpbin.yaml
+kubectl apply -n bench-test-nomesh -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/httpbin/httpbin.yaml
 ```
 
 Deploy a Fortio client without sidecar too:
@@ -196,7 +196,7 @@ These numbers are illustrative. Your actual results will vary based on your clus
 
 ## Testing with Different Payload Sizes
 
-mTLS overhead scales with payload size since encryption has to process more data. Test with varying payloads:
+mTLS overhead can change with payload size since encryption has to process more data. Test with varying payloads:
 
 ```bash
 # Small payload (default /get response, ~500 bytes)
@@ -218,7 +218,7 @@ kubectl exec -n bench-test fortio-client -- fortio load \
 
 ## Testing Connection Setup Overhead
 
-The TLS handshake is the most expensive part. If your services use long-lived connections with keepalive, the overhead is amortized. Test without keepalive to see worst-case connection setup cost:
+The TLS handshake is one of the most expensive parts of TLS. If your services use long-lived connections with keepalive, the overhead is amortized. Test without keepalive to add connection churn to the benchmark:
 
 ```bash
 kubectl exec -n bench-test fortio-client -- fortio load \
@@ -229,7 +229,7 @@ kubectl exec -n bench-test fortio-client -- fortio load \
   http://httpbin.bench-test.svc.cluster.local:8000/get
 ```
 
-Compare this against the keepalive version. You will likely see a much larger performance gap because every request pays the TLS handshake cost.
+Compare this against the keepalive version. You may see a larger performance gap, but remember that Envoy can still pool upstream connections, so this does not always mean every request performs a new sidecar-to-sidecar TLS handshake.
 
 ## Monitoring CPU Impact
 
@@ -246,7 +246,7 @@ kubectl exec -n bench-test deploy/httpbin -c istio-proxy -- \
   pilot-agent request GET stats | grep ssl
 ```
 
-This shows counters for TLS handshakes, session resumptions, and cipher usage.
+Depending on your Envoy stats configuration, this can show counters for TLS handshakes, session resumptions, and cipher usage.
 
 ## Tips for Accurate Benchmarking
 
@@ -283,9 +283,9 @@ spec:
 
 ## What to Expect
 
-In most real-world scenarios, mTLS adds somewhere between 1-3ms of latency per hop and uses 5-15% additional CPU on the proxy containers. For services that are not extremely latency sensitive, this is usually acceptable, especially considering the security benefits.
+The impact of mTLS depends on workload, hardware, payload size, concurrency, connection reuse, and sidecar resource limits. For services that are not extremely latency sensitive, the overhead is often acceptable, especially considering the security benefits, but use your measured latency and proxy CPU numbers rather than assuming a universal range.
 
-The overhead tends to matter most for services with very high request rates and small payloads where the TLS handshake cost is proportionally large. Connection pooling and keepalive connections significantly reduce this impact.
+The overhead tends to matter most for services with very high request rates, CPU-constrained proxies, larger encrypted payloads, or high connection churn where handshake cost is proportionally large. Connection pooling and keepalive connections significantly reduce this impact.
 
 ## Cleanup
 
