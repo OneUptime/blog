@@ -72,7 +72,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dorny/paths-filter@v3
+      - uses: dorny/paths-filter@v4
         id: filter
         with:
           filters: |
@@ -127,12 +127,12 @@ if [ -n "$MODULE_CHANGES" ]; then
     # Find all directories that use this module
     DEPENDENT_DIRS=$(grep -rl "source.*modules/$module_name" environments/ --include="*.tf" | \
       xargs -I {} dirname {} | sort -u)
-    CHANGED_DIRS="$CHANGED_DIRS\n$DEPENDENT_DIRS"
+    CHANGED_DIRS=$(printf "%s\n%s\n" "$CHANGED_DIRS" "$DEPENDENT_DIRS")
   done
 fi
 
 # Output unique directories
-echo "$CHANGED_DIRS" | sort -u | grep -v '^$'
+printf "%s\n" "$CHANGED_DIRS" | sort -u | grep -v '^$'
 ```
 
 Use it in GitHub Actions:
@@ -206,9 +206,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v4
         with:
-          terraform_version: 1.7.0
+          terraform_version: 1.15.2
           terraform_wrapper: false
 
       - name: Configure AWS credentials
@@ -218,16 +218,21 @@ jobs:
           aws-region: us-east-1
 
       - name: Terraform Plan - ${{ matrix.directory }}
+        env:
+          TF_DIR: ${{ matrix.directory }}
         run: |
-          cd ${{ matrix.directory }}
+          cd "$TF_DIR"
           terraform init -no-color
           terraform plan -no-color -out=tfplan
+          terraform show -no-color tfplan > plan-output.txt
 
       - name: Upload plan
         uses: actions/upload-artifact@v4
         with:
-          name: plan-${{ hashFiles(format('{0}/**', matrix.directory)) }}
-          path: ${{ matrix.directory }}/tfplan
+          name: plan-${{ strategy.job-index }}
+          path: |
+            ${{ matrix.directory }}/tfplan
+            ${{ matrix.directory }}/plan-output.txt
 
   apply:
     needs: [detect, plan]
@@ -241,9 +246,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v4
         with:
-          terraform_version: 1.7.0
+          terraform_version: 1.15.2
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -252,8 +257,10 @@ jobs:
           aws-region: us-east-1
 
       - name: Terraform Apply - ${{ matrix.directory }}
+        env:
+          TF_DIR: ${{ matrix.directory }}
         run: |
-          cd ${{ matrix.directory }}
+          cd "$TF_DIR"
           terraform init -no-color
           terraform apply -no-color -auto-approve
 ```
@@ -266,21 +273,22 @@ Some Terraform directories depend on others. Networking must be applied before c
 # Define execution order
 jobs:
   apply-networking:
-    if: contains(needs.detect.outputs.directories, 'environments/production/networking')
+    needs: detect
+    if: contains(fromJSON(needs.detect.outputs.directories), 'environments/production/networking')
     runs-on: ubuntu-latest
     steps:
       - run: cd environments/production/networking && terraform init && terraform apply -auto-approve
 
   apply-database:
-    needs: apply-networking  # Database depends on networking
-    if: contains(needs.detect.outputs.directories, 'environments/production/database')
+    needs: [detect, apply-networking]  # Database depends on networking
+    if: always() && needs.detect.result == 'success' && contains(fromJSON(needs.detect.outputs.directories), 'environments/production/database') && (needs.apply-networking.result == 'success' || needs.apply-networking.result == 'skipped')
     runs-on: ubuntu-latest
     steps:
       - run: cd environments/production/database && terraform init && terraform apply -auto-approve
 
   apply-compute:
-    needs: [apply-networking, apply-database]  # Compute depends on both
-    if: contains(needs.detect.outputs.directories, 'environments/production/compute')
+    needs: [detect, apply-networking, apply-database]  # Compute depends on both
+    if: always() && needs.detect.result == 'success' && contains(fromJSON(needs.detect.outputs.directories), 'environments/production/compute') && (needs.apply-networking.result == 'success' || needs.apply-networking.result == 'skipped') && (needs.apply-database.result == 'success' || needs.apply-database.result == 'skipped')
     runs-on: ubuntu-latest
     steps:
       - run: cd environments/production/compute && terraform init && terraform apply -auto-approve
@@ -329,10 +337,12 @@ Integrate this into your change detection:
 
 ```yaml
 - name: Expand module dependencies
+  env:
+    DIRECTORIES: ${{ steps.changes.outputs.directories }}
   run: |
     EXPANDED_DIRS=""
 
-    for dir in ${{ steps.changes.outputs.directories }}; do
+    while IFS= read -r dir; do
       EXPANDED_DIRS="$EXPANDED_DIRS $dir"
 
       # If this is a module directory, find all dependents
@@ -340,7 +350,7 @@ Integrate this into your change detection:
         DEPENDENTS=$(bash scripts/find-module-dependents.sh "$dir")
         EXPANDED_DIRS="$EXPANDED_DIRS $DEPENDENTS"
       fi
-    done
+    done < <(printf "%s" "$DIRECTORIES" | jq -r '.[]')
 
     echo "$EXPANDED_DIRS" | tr ' ' '\n' | sort -u
 ```
@@ -349,17 +359,24 @@ Integrate this into your change detection:
 
 Post a consolidated plan summary for all affected directories:
 
-```yaml
+````yaml
+- name: Download plan artifacts
+  uses: actions/download-artifact@v4
+  with:
+    pattern: plan-*
+    path: plans
+    merge-multiple: true
+
 - name: Post consolidated plan
-  uses: actions/github-script@v7
+  uses: actions/github-script@v8
   with:
     script: |
       const fs = require('fs');
-      const directories = JSON.parse('${{ needs.detect.outputs.directories }}');
+      const directories = ${{ needs.detect.outputs.directories }};
       let body = '## Terraform Plan Summary\n\n';
 
       for (const dir of directories) {
-        const planFile = `${dir}/plan-output.txt`;
+        const planFile = `plans/${dir}/plan-output.txt`;
         if (fs.existsSync(planFile)) {
           const plan = fs.readFileSync(planFile, 'utf8');
           body += `### ${dir}\n\n```\n${plan.substring(0, 10000)}\n```\n\n`;
@@ -372,7 +389,7 @@ Post a consolidated plan summary for all affected directories:
         issue_number: context.issue.number,
         body: body
       });
-```
+````
 
 ## Summary
 
