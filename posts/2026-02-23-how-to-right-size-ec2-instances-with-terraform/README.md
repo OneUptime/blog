@@ -27,7 +27,7 @@ Query recommendations:
 ```bash
 # Get Compute Optimizer recommendations
 aws compute-optimizer get-ec2-instance-recommendations \
-  --query 'instanceRecommendations[?finding==`OVER_PROVISIONED`].[instanceArn,currentInstanceType,recommendationOptions[0].instanceType,recommendationOptions[0].estimatedMonthlySavings.value]' \
+  --query 'instanceRecommendations[?finding==`OVER_PROVISIONED`].[instanceArn,currentInstanceType,recommendationOptions[0].instanceType,recommendationOptions[0].savingsOpportunity.estimatedMonthlySavings.value]' \
   --output table
 ```
 
@@ -42,7 +42,7 @@ resource "aws_cloudwatch_metric_alarm" "low_cpu" {
 
   alarm_name          = "low-cpu-${each.key}"
   comparison_operator = "LessThanThreshold"
-  evaluation_periods  = 14  # 14 days
+  evaluation_periods  = 7  # 7 days
   metric_name         = "CPUUtilization"
   namespace           = "AWS/EC2"
   period              = 86400  # Daily average
@@ -235,11 +235,19 @@ resource "aws_cloudwatch_event_target" "right_sizing" {
   rule = aws_cloudwatch_event_rule.monthly_review.name
   arn  = aws_lambda_function.right_sizing_report.arn
 }
+
+resource "aws_lambda_permission" "allow_monthly_review" {
+  statement_id  = "AllowExecutionFromMonthlyReview"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.right_sizing_report.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.monthly_review.arn
+}
 ```
 
 ## Best Practices
 
-Collect at least two weeks of metrics before making right-sizing decisions. Start with non-production environments to validate new instance types. Use Graviton instances where application compatibility allows. Implement Auto Scaling to dynamically adjust capacity. Schedule monthly right-sizing reviews. Track cost savings from right-sizing in a dashboard. Use the `lifecycle` block with `create_before_destroy` for zero-downtime instance type changes.
+Collect at least two weeks of metrics before making right-sizing decisions. Start with non-production environments to validate new instance types. Use Graviton instances where application compatibility allows. Implement Auto Scaling to dynamically adjust capacity. Schedule monthly right-sizing reviews. Track cost savings from right-sizing in a dashboard. For zero-downtime instance type changes, use an Auto Scaling group instance refresh or a blue/green replacement strategy.
 
 ## Conclusion
 

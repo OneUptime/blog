@@ -80,7 +80,8 @@ When you need to suppress a finding (with justification):
 resource "aws_s3_bucket" "public_website" {
   bucket = "my-public-website"
 
-  #tfsec:ignore:aws-s3-no-public-access reason:intentionally-public-website
+  # Intentionally public static website
+  #tfsec:ignore:aws-s3-no-public-buckets
 }
 ```
 
@@ -120,8 +121,9 @@ Write custom checks in Python or YAML:
 ```yaml
 # custom-checks/require-tags.yaml
 metadata:
-  id: "CUSTOM_001"
+  id: "CKV2_CUSTOM_1"
   name: "Ensure all resources have required tags"
+  category: "CONVENTION"
   severity: "MEDIUM"
 definition:
   cond_type: "attribute"
@@ -156,41 +158,73 @@ Write Rego policies:
 # policy/security.rego
 package main
 
+planned_change(resource) if {
+  some action in resource.change.actions
+  action == "create"
+}
+
+planned_change(resource) if {
+  some action in resource.change.actions
+  action == "update"
+}
+
 # Deny unencrypted S3 buckets
-deny[msg] {
-  resource := input.resource.aws_s3_bucket[name]
-  not resource.server_side_encryption_configuration
-  msg := sprintf("S3 bucket '%s' must have server-side encryption", [name])
+deny contains msg if {
+  some resource in input.resource_changes
+  planned_change(resource)
+  resource.type == "aws_s3_bucket"
+  not resource.change.after.server_side_encryption_configuration
+  msg := sprintf("S3 bucket '%s' must have server-side encryption", [resource.address])
 }
 
 # Deny security groups with open SSH
-deny[msg] {
-  resource := input.resource.aws_security_group[name]
-  ingress := resource.ingress[_]
-  ingress.from_port <= 22
-  ingress.to_port >= 22
-  ingress.cidr_blocks[_] == "0.0.0.0/0"
-  msg := sprintf("Security group '%s' allows SSH from 0.0.0.0/0", [name])
+deny contains msg if {
+  some resource in input.resource_changes
+  planned_change(resource)
+  resource.type == "aws_security_group_rule"
+  after := resource.change.after
+  after.type == "ingress"
+  after.from_port <= 22
+  after.to_port >= 22
+  after.protocol == "tcp"
+  some cidr in after.cidr_blocks
+  cidr == "0.0.0.0/0"
+  msg := sprintf("Security group rule '%s' allows SSH from 0.0.0.0/0", [resource.address])
 }
 
 # Require specific tags on all resources
-deny[msg] {
-  resource := input.resource[type][name]
+deny contains msg if {
+  some resource in input.resource_changes
+  planned_change(resource)
+  resource.type in {"aws_instance", "aws_s3_bucket", "aws_db_instance"}
   required_tags := {"Environment", "Team", "ManagedBy"}
-  provided_tags := {tag | resource.tags[tag]}
+  provided_tags := {tag | resource.change.after.tags[tag]}
   missing := required_tags - provided_tags
   count(missing) > 0
-  msg := sprintf("%s.%s is missing required tags: %v", [type, name, missing])
+  msg := sprintf("%s is missing required tags: %v", [resource.address, missing])
 }
 
 # Deny IAM policies with wildcard actions
-deny[msg] {
-  resource := input.resource.aws_iam_policy[name]
-  policy := json.unmarshal(resource.policy)
-  statement := policy.Statement[_]
+deny contains msg if {
+  some resource in input.resource_changes
+  planned_change(resource)
+  resource.type == "aws_iam_policy"
+  policy := json.unmarshal(resource.change.after.policy)
+  some statement in policy.Statement
   statement.Effect == "Allow"
-  statement.Action[_] == "*"
-  msg := sprintf("IAM policy '%s' has wildcard Action", [name])
+  wildcard_action(statement.Action)
+  msg := sprintf("IAM policy '%s' has wildcard Action", [resource.address])
+}
+
+wildcard_action(actions) if {
+  is_string(actions)
+  actions == "*"
+}
+
+wildcard_action(actions) if {
+  is_array(actions)
+  some action in actions
+  action == "*"
 }
 ```
 
@@ -203,7 +237,7 @@ terraform show -json plan.tfplan > plan.json
 # Run conftest
 conftest test plan.json
 
-# Or test HCL directly with specific parser
+# Or write HCL-oriented policies and test HCL directly with a specific parser
 conftest test --parser hcl2 *.tf
 ```
 
@@ -249,12 +283,15 @@ name: Terraform Security Scan
 on:
   pull_request:
     paths:
-      - '**.tf'
-      - '**.tfvars'
+      - '**/*.tf'
+      - '**/*.tfvars'
 
 jobs:
   security-scan:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
     steps:
       - uses: actions/checkout@v4
 
@@ -280,12 +317,12 @@ jobs:
           sarif_file: checkov-results.sarif
 
       - name: Run Trivy
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: config
           scan-ref: .
           severity: HIGH,CRITICAL
-          exit-code: 1
+          exit-code: '1'
 ```
 
 ### GitLab CI
@@ -322,8 +359,7 @@ severity_overrides:
 
 exclude:
   # Intentionally public static website bucket
-  - aws-s3-no-public-read:
-      - module.website.aws_s3_bucket.content
+  - aws-s3-no-public-access-with-acl:2026-12-31
 
 # .checkov.yaml
 skip-check:
