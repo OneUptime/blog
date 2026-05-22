@@ -30,10 +30,6 @@ spec:
         operation: MERGE
         value: {}
   priority: 0
-  targetRefs:
-    - kind: Gateway
-      group: gateway.networking.k8s.io
-      name: my-gateway
 ```
 
 ## Workload Selector
@@ -60,7 +56,7 @@ spec:
       name: my-gateway
 ```
 
-The `targetRefs` field is an alternative to `workloadSelector` for targeting Kubernetes Gateway API resources. It is mutually exclusive with `workloadSelector`.
+The `targetRefs` field is an alternative to `workloadSelector` for targeting supported resources such as Gateway API `Gateway`, Gateway API `GatewayClass`, Kubernetes `Service` for waypoints, and Istio `ServiceEntry`. It is mutually exclusive with `workloadSelector`.
 
 ## Priority
 
@@ -69,7 +65,7 @@ spec:
   priority: 10
 ```
 
-The `priority` field controls the order in which EnvoyFilters are applied when multiple filters match the same proxy. Lower numbers are applied first. The default is 0. This is important when you have multiple EnvoyFilters that modify the same part of the config.
+The `priority` field controls the order in which EnvoyFilters are applied when multiple filters match the same proxy. Lower numbers are applied first. The default is 0, and patches with the same priority are ordered by creation time and fully qualified resource name. This is important when you have multiple EnvoyFilters that modify the same part of the config.
 
 ## Config Patches
 
@@ -88,7 +84,7 @@ The `applyTo` field specifies what part of the Envoy configuration to modify:
 - `HTTP_ROUTE` - individual routes within a virtual host
 - `CLUSTER` - upstream cluster configurations
 - `EXTENSION_CONFIG` - extension configurations
-- `BOOTSTRAP` - the bootstrap configuration (rarely used)
+- `BOOTSTRAP` - the bootstrap configuration (deprecated)
 - `LISTENER_FILTER` - listener-level filters
 
 ### Match
@@ -122,9 +118,7 @@ match:
       name: "my-filter-chain"
       sni: "*.example.com"
       transportProtocol: tls
-      applicationProtocols:
-        - h2
-        - http/1.1
+      applicationProtocols: h2,http/1.1
       destinationPort: 8080
       filter:
         name: envoy.filters.network.http_connection_manager
@@ -202,10 +196,11 @@ patch:
     name: envoy.filters.http.lua
     typed_config:
       "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-      inline_code: |
-        function envoy_on_request(handle)
-          handle:logInfo("Request received")
-        end
+      default_source_code:
+        inline_string: |
+          function envoy_on_request(handle)
+            handle:logInfo("Request received")
+          end
 ```
 
 INSERT_BEFORE adds the element before the matched filter. This is important for HTTP filters where order matters.
@@ -271,10 +266,11 @@ spec:
           name: envoy.filters.http.lua
           typed_config:
             "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-            inline_code: |
-              function envoy_on_request(handle)
-                handle:headers():add("x-request-timestamp", os.clock())
-              end
+            default_source_code:
+              inline_string: |
+                function envoy_on_request(handle)
+                  handle:headers():add("x-request-timestamp", tostring(os.clock()))
+                end
 ```
 
 ### Modify Cluster Settings
@@ -329,16 +325,16 @@ spec:
             - header:
                 key: x-envoy-decorator-operation
                 value: "custom-operation"
-              append: false
+              append_action: OVERWRITE_IF_EXISTS_OR_ADD
 ```
 
-### Modify Listener Timeout
+### Modify HTTP Connection Manager Timeout
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
 kind: EnvoyFilter
 metadata:
-  name: listener-timeout
+  name: hcm-timeout
   namespace: default
 spec:
   workloadSelector:
