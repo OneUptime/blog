@@ -251,7 +251,7 @@ output "vpc_id" {
 output "database_endpoint" {
   description = "The database connection endpoint"
   value       = module.database.endpoint
-  sensitive   = true  # keep it hidden in CLI output
+  sensitive   = true  # keep it hidden in default CLI output
 }
 ```
 
@@ -284,7 +284,7 @@ terraform console
 
 One thing that trips people up is trying to reference a module output that has not been defined. If you see an error like `module.networking.something is not defined`, check the module's `outputs.tf` file to confirm the output exists.
 
-Another common issue is forgetting that module outputs create implicit dependencies. If module B references module A's output, Terraform will always create module A's resources before module B's resources. This is usually what you want, but it can slow down `apply` if the dependency chain is long.
+Another common issue is forgetting that module outputs create implicit dependencies. If module B references module A's output, Terraform uses that reference to order the resources that depend on it. This is usually what you want, but it can slow down `apply` if the dependency chain is long.
 
 ## Wrapping Up
 
