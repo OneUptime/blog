@@ -156,15 +156,20 @@ resource "aws_lb_listener" "main" {
   certificate_arn = var.ssl_certificate_arn != "" ? var.ssl_certificate_arn : null
 
   default_action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.main.arn
+    type = "forward"
 
-    # Conditional stickiness in the forward action
-    dynamic "stickiness" {
-      for_each = var.enable_stickiness ? [1] : []
-      content {
-        duration = 3600
-        enabled  = true
+    forward {
+      target_group {
+        arn = aws_lb_target_group.main.arn
+      }
+
+      # Conditional stickiness in the forward action
+      dynamic "stickiness" {
+        for_each = var.enable_stickiness ? [1] : []
+        content {
+          duration = 3600
+          enabled  = true
+        }
       }
     }
   }
@@ -394,7 +399,7 @@ resource "aws_cloudfront_distribution" "main" {
 
 3. Avoid deeply nested ternaries. If you have more than two levels, use a local map lookup instead.
 
-4. Be careful with `count` and resource ordering. If you add a resource between two counted resources, indexes shift and Terraform wants to recreate things. Prefer `for_each` for collections.
+4. Be careful with `count` and collection ordering. If a resource uses `count` to index into a list and you insert or remove an item in the middle of that list, later indexes shift and Terraform can plan updates or replacements. Prefer `for_each` for collections with stable keys.
 
 5. Test both branches of every condition. It is easy to write code that works when `enabled = true` but crashes when `enabled = false` due to a missing index reference.
 
