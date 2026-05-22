@@ -102,23 +102,28 @@ Here, the `alltrue` function verifies two conditions simultaneously for every bu
 Beyond validation, `alltrue` works well in local values for driving conditional logic elsewhere in your configuration.
 
 ```hcl
-locals {
-  # Check if all instances are in a healthy state
-  instance_health_checks = [
-    aws_instance.web[0].instance_state == "running",
-    aws_instance.web[1].instance_state == "running",
-    aws_instance.web[2].instance_state == "running",
-  ]
-
-  all_instances_healthy = alltrue(local.instance_health_checks)
+variable "target_instances" {
+  type = list(object({
+    instance_id = string
+    attach      = bool
+  }))
 }
 
-# Only create the load balancer attachment if all instances are healthy
+locals {
+  # Check if all target instances should be attached
+  target_attachment_checks = [
+    for target in var.target_instances : target.attach
+  ]
+
+  attach_all_targets = alltrue(local.target_attachment_checks)
+}
+
+# Only create the load balancer attachments if all targets are enabled
 resource "aws_lb_target_group_attachment" "web" {
-  count = local.all_instances_healthy ? 3 : 0
+  count = local.attach_all_targets ? length(var.target_instances) : 0
 
   target_group_arn = aws_lb_target_group.web.arn
-  target_id        = aws_instance.web[count.index].id
+  target_id        = var.target_instances[count.index].instance_id
   port             = 80
 }
 ```
@@ -176,7 +181,7 @@ There are a few things to keep in mind when working with `alltrue`:
 
 - **Empty lists return true**: As shown earlier, `alltrue([])` returns `true`. If this behavior is not desirable in your case, add an additional check for list length.
 - **Type coercion**: Non-boolean values will be coerced. The string `"true"` becomes `true`, and `"false"` becomes `false`. Other strings will cause an error.
-- **Null values**: Passing `null` in the list will cause the function to fail. Make sure your data is clean before passing it in.
+- **Null values**: Passing `null` in the list causes `alltrue` to return `false`. Make sure your data is clean before passing it in.
 
 ```hcl
 # Guard against empty lists if needed
