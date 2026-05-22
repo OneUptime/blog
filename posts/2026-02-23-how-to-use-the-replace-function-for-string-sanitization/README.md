@@ -57,7 +57,7 @@ Each cloud provider has different naming rules. Here are sanitization patterns f
 
 ### AWS S3 Bucket Names
 
-S3 bucket names allow lowercase letters, numbers, hyphens, and periods. They must be 3-63 characters long:
+S3 bucket names allow lowercase letters, numbers, hyphens, and periods. They must be 3-63 characters long, begin and end with a letter or number, and cannot contain adjacent periods:
 
 ```hcl
 locals {
@@ -73,8 +73,8 @@ locals {
   # Step 3: Collapse multiple consecutive hyphens
   bucket_step4 = replace(local.bucket_step3, "/-+/", "-")
 
-  # Step 4: Trim hyphens from start and end
-  s3_bucket_name = replace(replace(local.bucket_step4, "/^-+/", ""), "/-+$/", "")
+  # Step 4: Trim hyphens or periods from start and end
+  s3_bucket_name = replace(replace(local.bucket_step4, "/^[.-]+/", ""), "/[.-]+$/", "")
   # Result: "my-company.data-bucket"
 }
 ```
@@ -95,7 +95,7 @@ locals {
 
 ### GCP Resource Names
 
-GCP typically requires lowercase letters, numbers, and hyphens, with the name starting with a letter:
+GCP typically requires lowercase letters, numbers, and hyphens, with the name starting with a letter and ending with a letter or number:
 
 ```hcl
 locals {
@@ -106,8 +106,8 @@ locals {
   gcp_step2 = replace(local.gcp_step1, "/[^a-z0-9-]/", "")
   gcp_step3 = replace(local.gcp_step2, "/-+/", "-")
 
-  # Ensure it starts with a letter
-  gcp_name = replace(local.gcp_step3, "/^[^a-z]+/", "")
+  # Ensure it starts with a letter and does not end with a hyphen
+  gcp_name = replace(replace(local.gcp_step3, "/^[^a-z]+/", ""), "/-+$/", "")
   # Result: "my-resource-name"
 }
 ```
@@ -226,7 +226,7 @@ locals {
     replace(substr(local.api_key, 0, length(local.api_key) - 4), "/./", "*"),
     substr(local.api_key, length(local.api_key) - 4, 4)
   )
-  # Result: "***************i789"
+  # Result: "*****************i789"
 }
 ```
 
@@ -243,7 +243,8 @@ locals {
   dns_step2 = replace(local.dns_step1, "/[^a-z0-9-]/", "")
   dns_step3 = replace(local.dns_step2, "/-+/", "-")
   dns_step4 = replace(replace(local.dns_step3, "/^-/", ""), "/-$/", "")
-  dns_label = substr(local.dns_step4, 0, min(63, length(local.dns_step4)))
+  dns_step5 = substr(local.dns_step4, 0, min(63, length(local.dns_step4)))
+  dns_label = replace(local.dns_step5, "/-+$/", "")
   # Result: "my-app-service-v2"
 }
 ```
