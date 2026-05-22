@@ -10,7 +10,7 @@ Description: How to set up audit logging in Istio to track service-to-service co
 
 Audit logging answers the question "who did what, when, and from where." In a service mesh, this means tracking every request between services, every authorization decision, and every security-relevant event. For compliance requirements like SOC 2, HIPAA, or PCI DSS, having a comprehensive audit trail of service communication is not optional.
 
-Istio provides several mechanisms for audit logging: Envoy access logs, authorization policy logging, and the Telemetry API. Combined with external log aggregation, these tools give you a complete picture of communication patterns in your mesh.
+Istio provides several mechanisms for audit logging: Envoy access logs, authorization policy audit decisions, and the Telemetry API. Combined with external log aggregation, these tools give you a complete picture of communication patterns in your mesh.
 
 ## Envoy Access Logging
 
@@ -32,7 +32,7 @@ spec:
 
 This enables access logging for all sidecars in the mesh. Each log entry contains:
 
-- Source and destination service identity
+- Source and destination addresses or service hosts, and workload identities when you include them in the log format
 - HTTP method and path
 - Response code
 - Request duration
@@ -70,7 +70,6 @@ spec:
       "%UPSTREAM_HOST%" "%UPSTREAM_TRANSPORT_FAILURE_REASON%"
       source_identity="%DOWNSTREAM_PEER_URI_SAN%"
       destination_identity="%UPSTREAM_PEER_URI_SAN%"
-      source_namespace="%DOWNSTREAM_PEER_NAMESPACE%"
 ```
 
 The `%DOWNSTREAM_PEER_URI_SAN%` and `%UPSTREAM_PEER_URI_SAN%` fields show the SPIFFE identities of the source and destination services. These are critical for audit trails because they provide cryptographically verified identities.
@@ -162,11 +161,13 @@ This enables access logging only for the payment service pods.
 
 When an AuthorizationPolicy denies a request, you want to know about it. This is a security event that should always be logged.
 
-Authorization denials appear in the Envoy access logs with specific response flags. Look for:
+Authorization denials appear in the Envoy access logs with specific response fields. Look for:
 
 - `RBAC: access denied` in the response body
 - Response code 403
-- Response flag containing `UAEX` (upstream authorization error)
+- Response code details containing `rbac_access_denied_matched_policy[...]`
+
+The `UAEX` response flag is for requests denied by an external authorization service, such as a `CUSTOM` authorization policy provider. Native Istio `ALLOW` and `DENY` policy decisions are implemented through Envoy's RBAC filter.
 
 You can also audit authorization decisions by enabling dry-run mode on policies:
 
@@ -189,6 +190,7 @@ spec:
 The dry-run policy doesn't enforce anything but logs what would be allowed or denied. Check the shadow decisions:
 
 ```bash
+istioctl proxy-config log <pod-name>.<namespace> --level "rbac:debug"
 kubectl logs <pod-name> -c istio-proxy -n production | grep "shadow"
 ```
 
@@ -268,9 +270,9 @@ The OpenTelemetry collector can then forward logs to any supported backend: Elas
 
 For compliance, audit logs typically need to be retained for specific periods:
 
-- SOC 2: Minimum 1 year
-- HIPAA: 6 years
-- PCI DSS: 1 year
+- SOC 2: No universal raw-log retention period; align retention with your documented controls and auditor expectations
+- HIPAA: Retain required Security Rule documentation for 6 years; determine raw audit-log retention from your risk analysis and legal requirements
+- PCI DSS: At least 12 months, with at least the most recent 3 months immediately available for analysis
 
 Configure your log storage backend with appropriate retention policies. In Elasticsearch:
 
