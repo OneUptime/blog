@@ -277,7 +277,7 @@ container {
 
 ## GRPC Probes
 
-For gRPC services (requires Kubernetes 1.27+):
+For gRPC services (stable in Kubernetes 1.27+):
 
 ```hcl
 container {
@@ -521,7 +521,7 @@ liveness_probe {
 
 ## Best Practices
 
-- Always configure both liveness and readiness probes for production workloads
+- Configure readiness probes for production workloads, and use liveness probes when Kubernetes should restart containers that cannot recover on their own
 - Use startup probes for applications with long initialization (Java apps, ML models)
 - Keep liveness probe endpoints lightweight - they should not check external dependencies
 - Use readiness probes to check dependency health (database, cache, queues)
