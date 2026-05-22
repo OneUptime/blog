@@ -32,7 +32,7 @@ Root module
         -> Module D (3 resources)
 ```
 
-Terraform has to process all 4 levels to understand the dependency graph. And because modules create dependency boundaries, resources in Module A cannot start until Module D's dependencies are resolved.
+Terraform has to process all 4 levels to understand the dependency graph. Resources that consume values from deeper sub-modules cannot be planned or applied until those specific dependencies are resolved.
 
 ## Measuring Nesting Depth
 
@@ -45,22 +45,21 @@ terraform state list | grep "^module\." | \
   awk -F'module.' '{print NF-1}' | sort -rn | head -5
 
 # Count module depth levels
-terraform state list | grep "^module\." | \
-  sed 's/[^.]*\.//g' | sed 's/[^.]*$//' | \
-  awk -F'.' '{print NF}' | sort | uniq -c | sort -rn
+terraform state list | \
+  awk '/(^|\.)module\./ { depth=gsub(/(^|\.)module\./, "&"); print depth }' | \
+  sort | uniq -c | sort -rn
 ```
 
 A simpler approach is to look at your module calls:
 
 ```bash
 # Find all module source calls in your configuration
-grep -r "source.*=" --include="*.tf" | grep "module" | \
-  awk '{print FILENAME": "$0}'
+grep -R --include="*.tf" -n 'source[[:space:]]*=' .
 ```
 
 ## The Dependency Amplification Problem
 
-Nested modules create hidden dependency chains. When the root module passes an output from Module A as an input to Module B, Terraform creates a dependency between every resource in both modules:
+Nested modules can create hidden dependency chains. When the root module passes an output from Module A as an input to Module B, Terraform creates an implicit dependency from the consuming expressions in Module B to the specific output value from Module A:
 
 ```hcl
 # Root module
@@ -70,11 +69,11 @@ module "networking" {
 
 module "compute" {
   source = "./modules/compute"
-  vpc_id = module.networking.vpc_id  # All of compute depends on all of networking
+  vpc_id = module.networking.vpc_id  # Compute resources using var.vpc_id depend on this output
 }
 ```
 
-Even though only the VPC resource matters, the entire networking module (subnets, route tables, NAT gateways, everything) must complete before any compute resource starts.
+If `vpc_id` is produced only from the VPC resource, Terraform can infer that narrower dependency. But if the output combines many resources, or if you use `depends_on = [module.networking]`, the dependency becomes broader and can force compute resources to wait for unrelated networking work.
 
 ### Visualizing the Impact
 
@@ -83,12 +82,12 @@ Without nesting:
   VPC -> 5 compute resources (parallel)
   20 other networking resources (parallel with compute after VPC)
 
-With module-level dependency:
+With broad output or module-level depends_on:
   VPC + 20 networking resources (serial or parallel) -> 5 compute resources
-  Compute waits for ALL networking, not just the VPC
+  Compute can wait for ALL networking, not just the VPC
 ```
 
-The wait time is the full networking module completion, not just the VPC creation.
+The wait time can become the full networking module completion, not just the VPC creation.
 
 ## Flattening Module Nesting
 
@@ -167,7 +166,7 @@ module "a" {
 
 ## Reducing Module Output Surface
 
-Modules with many outputs create more dependency edges in the graph. Keep outputs minimal:
+Consuming many module outputs can widen the dependency surface in the graph. Keep outputs focused on what consumers actually need:
 
 ```hcl
 # Too many outputs - creates wide dependency surface
@@ -213,13 +212,24 @@ data "aws_vpc" "main" {
   }
 }
 
+data "aws_subnets" "app" {
+  filter {
+    name   = "vpc-id"
+    values = [data.aws_vpc.main.id]
+  }
+
+  tags = {
+    Tier = "app"
+  }
+}
+
 resource "aws_instance" "app" {
-  subnet_id = data.aws_vpc.main.id  # No module dependency
+  subnet_id = data.aws_subnets.app.ids[0]  # No module output dependency
   # ...
 }
 ```
 
-This breaks the module dependency chain, allowing more parallelism. The tradeoff is that the data source makes an API call each plan.
+This removes the module output dependency. The tradeoff is that the data sources make API calls during planning, and the looked-up infrastructure must already exist and be identifiable with stable filters.
 
 ## Module Composition Patterns
 
