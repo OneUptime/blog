@@ -12,7 +12,7 @@ Math in Terraform might seem unusual, but there are plenty of situations where y
 
 ## What is the sum Function?
 
-The `sum` function takes a list of numbers and returns their total. That is it - simple addition.
+The `sum` function takes a list or set of numbers and returns their total. That is it - simple addition.
 
 ```hcl
 # Add up a list of numbers
@@ -27,7 +27,7 @@ The `sum` function takes a list of numbers and returns their total. That is it -
 The syntax is:
 
 ```hcl
-sum(list_of_numbers)
+sum(list_or_set_of_numbers)
 ```
 
 It works with both integers and floating-point numbers.
@@ -47,12 +47,12 @@ It works with both integers and floating-point numbers.
 > sum([42])
 42
 
-# Sum of an empty list
+# Empty lists fail
 > sum([])
-0
+Error: Error in function call
 ```
 
-Note that `sum([])` returns `0`, which is a sensible default - the sum of nothing is zero.
+Note that `sum([])` fails, so filter expressions that might return an empty list need a fallback value before you pass them to `sum`.
 
 ## Practical Example: Calculating Total Disk Space
 
@@ -321,9 +321,9 @@ output "cluster_capacity" {
 ## Edge Cases
 
 ```hcl
-# Empty list returns 0
+# Empty lists fail
 > sum([])
-0
+Error: Error in function call
 
 # Negative numbers work as expected
 > sum([10, -3, 5, -2])
@@ -338,7 +338,7 @@ output "cluster_capacity" {
 
 The `sum` function only handles addition. For other aggregations:
 
-- **Average**: Use `sum(list) / length(list)`
+- **Average**: Use `sum(list) / length(list)` for a non-empty list
 - **Min/Max**: Use the `min` or `max` functions (they take separate arguments, not a list, so use `min(list...)`)
 - **Product**: There is no built-in product function; use a `for` expression with locals
 
