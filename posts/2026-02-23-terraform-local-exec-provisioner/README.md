@@ -10,7 +10,7 @@ Description: Learn how to use the local-exec provisioner in Terraform to execute
 
 The `local-exec` provisioner runs commands on the machine where Terraform is executing, not on the remote resource being created. This makes it fundamentally different from `remote-exec` and `file` provisioners. You do not need SSH access, network connectivity to the resource, or any special connection setup. The command runs locally, right where `terraform apply` is happening.
 
-This makes `local-exec` the most commonly used provisioner. It is also the safest, since it does not depend on remote connectivity that might fail.
+This makes `local-exec` useful for integration tasks that must run from the Terraform host. Like all Terraform provisioners, it should be used only when the action cannot be expressed as a Terraform resource or handled by the target platform directly.
 
 ## Basic Usage
 
@@ -244,20 +244,16 @@ resource "aws_instance" "workers" {
   count         = var.worker_count
   ami           = var.ami_id
   instance_type = "t3.medium"
-
-  provisioner "local-exec" {
-    command = "echo '${self.private_ip} ansible_user=ubuntu' >> ${path.module}/inventory.ini"
-  }
 }
 
-# Clean up the inventory file before recreating
-resource "null_resource" "clean_inventory" {
+# Write the inventory file after the workers are created
+resource "null_resource" "write_inventory" {
   triggers = {
-    worker_ids = join(",", aws_instance.workers[*].id)
+    worker_ips = join(",", aws_instance.workers[*].private_ip)
   }
 
   provisioner "local-exec" {
-    command = "echo '[workers]' > ${path.module}/inventory.ini"
+    command = "printf '%s\\n' '[workers]' ${join(" ", formatlist("'%s ansible_user=ubuntu'", aws_instance.workers[*].private_ip))} > ${path.module}/inventory.ini"
   }
 }
 ```
@@ -283,7 +279,7 @@ Important: destruction-time provisioners can only reference `self` attributes an
 
 ## Error Handling
 
-By default, if the command exits with a non-zero status, the provisioner fails and the resource is tainted. You can change this behavior.
+By default, if the command exits with a non-zero status, the provisioner fails. For creation-time provisioners, Terraform also marks the resource as tainted so it can be destroyed and recreated on the next apply. You can change this behavior.
 
 ```hcl
 resource "aws_instance" "web" {
@@ -298,7 +294,7 @@ resource "aws_instance" "web" {
 }
 ```
 
-With `on_failure = continue`, the provisioner failure is logged as a warning but does not taint the resource.
+With `on_failure = continue`, Terraform ignores the provisioner error and continues the operation. For creation-time provisioners, this also avoids tainting the resource.
 
 ## When to Use local-exec vs. Other Approaches
 
@@ -325,6 +321,6 @@ Do not use `local-exec` when:
 
 ## Summary
 
-The `local-exec` provisioner is the workhorse of Terraform provisioners. It runs commands on the Terraform host, making it ideal for integration tasks, notifications, inventory management, and post-deployment automation. It requires no remote connectivity and works with any tool installed on the machine running Terraform.
+The `local-exec` provisioner runs commands on the Terraform host, making it useful for integration tasks, notifications, inventory management, and post-deployment automation when there is no better Terraform-native option. It requires no remote connectivity and works with any tool installed on the machine running Terraform.
 
 For configuring remote resources, see our posts on [remote-exec](https://oneuptime.com/blog/post/2026-02-23-terraform-remote-exec-provisioner/view) and [file provisioners](https://oneuptime.com/blog/post/2026-02-23-terraform-file-provisioner/view).
