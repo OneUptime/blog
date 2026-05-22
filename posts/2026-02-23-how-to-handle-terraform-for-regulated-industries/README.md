@@ -185,7 +185,7 @@ Use policy-as-code to enforce compliance automatically:
 package terraform.compliance.hipaa
 
 # All RDS instances must be encrypted
-deny[msg] {
+deny contains msg if {
     resource := input.resource_changes[_]
     resource.type == "aws_db_instance"
     resource.change.after.storage_encrypted != true
@@ -196,7 +196,7 @@ deny[msg] {
 }
 
 # All RDS instances must have backup enabled
-deny[msg] {
+deny contains msg if {
     resource := input.resource_changes[_]
     resource.type == "aws_db_instance"
     resource.change.after.backup_retention_period < 7
@@ -207,18 +207,25 @@ deny[msg] {
 }
 
 # All S3 buckets must block public access
-deny[msg] {
+deny contains msg if {
     resource := input.resource_changes[_]
     resource.type == "aws_s3_bucket_public_access_block"
-    resource.change.after.block_public_acls != true
+    not all_public_access_blocks_enabled(resource.change.after)
     msg := sprintf(
         "HIPAA: S3 bucket '%s' must block all public access",
         [resource.address]
     )
 }
 
+all_public_access_blocks_enabled(config) if {
+    config.block_public_acls == true
+    config.block_public_policy == true
+    config.ignore_public_acls == true
+    config.restrict_public_buckets == true
+}
+
 # CloudTrail must be enabled
-deny[msg] {
+deny contains msg if {
     count([r | r := input.resource_changes[_]; r.type == "aws_cloudtrail"]) == 0
     msg := "HIPAA: CloudTrail must be enabled for audit logging"
 }
@@ -365,8 +372,14 @@ jobs:
         working-directory: ${{ matrix.workspace }}
         run: |
           terraform init
+          set +e
           terraform plan -detailed-exitcode -out=drift.tfplan 2>&1 | tee plan-output.txt
-          echo "exitcode=$?" >> $GITHUB_OUTPUT
+          exitcode=${PIPESTATUS[0]}
+          set -e
+          echo "exitcode=${exitcode}" >> $GITHUB_OUTPUT
+          if [ "${exitcode}" -eq 1 ]; then
+            exit 1
+          fi
 
       - name: Alert on Drift
         if: steps.plan.outputs.exitcode == '2'
