@@ -29,25 +29,46 @@ Common API gateway functions:
 Popular API gateways include Kong, AWS API Gateway, Apigee, Azure API Management, and Tyk.
 
 ```yaml
-# Kong API Gateway route configuration
-
+# Kong API Gateway route and plugin configuration
 apiVersion: configuration.konghq.com/v1
-kind: KongIngress
+kind: KongPlugin
+metadata:
+  name: rate-limiting
+plugin: rate-limiting
+config:
+  minute: 100
+  policy: local
+---
+apiVersion: configuration.konghq.com/v1
+kind: KongPlugin
+metadata:
+  name: key-auth
+plugin: key-auth
+config:
+  key_names:
+    - x-api-key
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
 metadata:
   name: rate-limited-api
-route:
-  strip_path: true
-  protocols:
-    - https
-plugin:
-  - name: rate-limiting
-    config:
-      minute: 100
-      policy: redis
-  - name: key-auth
-    config:
-      key_names:
-        - x-api-key
+  annotations:
+    konghq.com/plugins: rate-limiting,key-auth
+    konghq.com/protocols: https
+    konghq.com/strip-path: "true"
+spec:
+  ingressClassName: kong
+  rules:
+    - host: api.example.com
+      http:
+        paths:
+          - path: /v1
+            pathType: Prefix
+            backend:
+              service:
+                name: backend-api
+                port:
+                  number: 80
 ```
 
 ## What Istio Service Mesh Does
@@ -65,7 +86,7 @@ Common service mesh functions:
 
 ```yaml
 # Istio internal traffic management
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: reviews-routing
@@ -100,9 +121,10 @@ But the context is different. An API gateway does these things for external clie
 
 For example:
 - **Rate limiting at the API gateway**: 100 requests per minute per API key for external clients
-- **Rate limiting in the service mesh**: circuit breaking that trips if error rate exceeds 50% between two internal services
+- **Rate limiting in the service mesh**: 4 requests per minute per service instance using Envoy local rate limiting
+- **Circuit breaking in the service mesh**: connection-pool and outlier-detection policies that stop sending traffic to unhealthy service instances
 
-These are fundamentally different use cases even though they both involve controlling traffic flow.
+These are different use cases even though they all involve controlling traffic flow.
 
 ## The Architecture Together
 
@@ -164,10 +186,31 @@ Here is what a combined setup looks like:
 
 ```yaml
 # Kong API Gateway handles external API management
+apiVersion: configuration.konghq.com/v1
+kind: KongPlugin
+metadata:
+  name: rate-limiting
+  namespace: istio-system
+plugin: rate-limiting
+config:
+  minute: 100
+  policy: local
+---
+apiVersion: configuration.konghq.com/v1
+kind: KongPlugin
+metadata:
+  name: key-auth
+  namespace: istio-system
+plugin: key-auth
+config:
+  key_names:
+    - x-api-key
+---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: external-api
+  namespace: istio-system
   annotations:
     konghq.com/plugins: rate-limiting,key-auth
 spec:
@@ -185,7 +228,7 @@ spec:
                   number: 80
 ---
 # Istio handles mesh routing from the gateway onward
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-routes
@@ -193,7 +236,7 @@ spec:
   hosts:
     - api.example.com
   gateways:
-    - mesh-gateway
+    - istio-system/mesh-gateway
   http:
     - match:
         - uri:
@@ -224,7 +267,7 @@ spec:
         - source:
             principals:
               - cluster.local/ns/default/sa/product-service
-              - cluster.local/ns/default/sa/istio-ingressgateway
+              - cluster.local/ns/istio-system/sa/istio-ingressgateway-service-account
 ```
 
 ## Decision Framework
