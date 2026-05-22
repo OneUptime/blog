@@ -23,8 +23,18 @@ provider "aws" {
   region = "us-east-1"
 }
 
+data "aws_ami" "amazon_linux" {
+  most_recent = true
+  owners      = ["amazon"]
+
+  filter {
+    name   = "name"
+    values = ["al2023-ami-2023.*-x86_64"]
+  }
+}
+
 resource "aws_instance" "example" {
-  ami           = "ami-0c55b159cbfafe1f0"
+  ami           = data.aws_ami.amazon_linux.id
   instance_type = "t2.micro"
 }
 ```
@@ -135,9 +145,8 @@ First, make sure your state files are not checked into version control:
 # Terraform state directory for workspaces
 terraform.tfstate.d/
 
-# Also ignore crash logs and lock files
+# Also ignore crash logs and the Terraform working directory
 crash.log
-.terraform.lock.hcl
 .terraform/
 ```
 
