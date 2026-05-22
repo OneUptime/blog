@@ -8,7 +8,7 @@ Description: Step-by-step guide to configuring global rate limiting in Istio usi
 
 ---
 
-Global rate limiting in Istio gives you accurate, centralized control over request rates across all your service replicas. Unlike local rate limiting where each proxy tracks its own counters, global rate limiting uses a shared service that every proxy consults before allowing a request through. This means if you set a limit of 1000 requests per minute, you get exactly 1000 requests per minute regardless of how many pods are running.
+Global rate limiting in Istio gives you centralized control over request rates across all your service replicas. Unlike local rate limiting where each proxy tracks its own counters, global rate limiting uses a shared service that every proxy consults before allowing a request through. This means if you set a limit of 1000 requests per minute, the limit is shared across the configured proxies instead of being multiplied by the number of pods.
 
 ## Architecture Overview
 
@@ -151,6 +151,8 @@ spec:
           value: /data
         - name: RUNTIME_SUBDIRECTORY
           value: ratelimit
+        - name: RUNTIME_APPDIRECTORY
+          value: config
         - name: LOG_LEVEL
           value: info
         - name: REDIS_SOCKET_TYPE
@@ -299,9 +301,27 @@ spec:
           - request_headers:
               header_name: ":path"
               descriptor_key: PATH
+        - actions:
+          - header_value_match:
+              descriptor_key: header_match
+              descriptor_value: api-key-tier-free
+              headers:
+              - name: x-api-tier
+                string_match:
+                  exact: free
+        - actions:
+          - header_value_match:
+              descriptor_key: header_match
+              descriptor_value: api-key-tier-premium
+              headers:
+              - name: x-api-tier
+                string_match:
+                  exact: premium
 ```
 
 Note the `failure_mode_deny: false` setting. This means if the rate limit service is unavailable, requests will be allowed through. Set it to `true` if you want to fail closed, but be aware that this means a rate limit service outage will block all traffic.
+
+The header-based rules above assume clients send an `x-api-tier: free` or `x-api-tier: premium` header. If your tier information is represented differently, change the `header_value_match` actions and descriptor values to match your request metadata.
 
 ## Step 5: Test the Configuration
 
@@ -325,11 +345,11 @@ kubectl edit configmap ratelimit-config -n rate-limit
 kubectl rollout restart deployment ratelimit -n rate-limit
 ```
 
-The rate limit service reads its configuration on startup, so a restart is required for changes to take effect.
+The rate limit service can reload file-based configuration changes from its runtime directory, but restarting the deployment is a simple way to ensure the updated ConfigMap has been picked up by every replica.
 
 ## Monitoring Global Rate Limits
 
-The rate limit service exposes metrics on port 6070. You can also monitor from the Envoy side:
+The rate limit service exposes debug endpoints on port 6070, including `/stats` for service statistics and `/rlconfig` for the loaded configuration. You can also monitor from the Envoy side:
 
 ```bash
 kubectl exec my-api-pod -c istio-proxy -- \
