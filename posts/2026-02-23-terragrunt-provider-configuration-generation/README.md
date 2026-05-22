@@ -48,7 +48,7 @@ locals {
   aws_region  = local.region_vars.locals.aws_region
 }
 
-# Generate provider.tf in each module directory
+# Generate provider.tf in the Terraform working directory for each unit
 generate "provider" {
   path      = "provider.tf"
   if_exists = "overwrite"
@@ -300,24 +300,30 @@ This guarantees every module uses the same provider versions, avoiding subtle ve
 
 ## Conditional Provider Generation
 
-Sometimes specific modules need additional providers. You can handle this by defining the base providers in the root and adding extras at the child level:
+Sometimes specific modules need additional providers. Because Terragrunt does not deep-merge `generate` blocks from included configs, add extras by explicitly merging the root `generate` configuration with the child-specific file:
 
 ```hcl
 # modules/dns/terragrunt.hcl
 include "root" {
-  path = find_in_parent_folders()
+  path   = find_in_parent_folders()
+  expose = true
 }
 
 # Add the Cloudflare provider for this module only
-generate "cloudflare_provider" {
-  path      = "provider_cloudflare.tf"
-  if_exists = "overwrite"
-  contents  = <<EOF
+generate = merge(
+  include.root.generate,
+  {
+    cloudflare_provider = {
+      path      = "provider_cloudflare.tf"
+      if_exists = "overwrite"
+      contents  = <<EOF
 provider "cloudflare" {
   api_token = var.cloudflare_api_token
 }
 EOF
-}
+    }
+  }
+)
 
 terraform {
   source = "../../modules/dns"
@@ -336,10 +342,10 @@ cd dev/us-east-1/vpc
 terragrunt plan
 
 # Inspect the generated file in the cache
-cat .terragrunt-cache/*/provider.tf
+find .terragrunt-cache -name provider.tf -print -exec cat {} \;
 ```
 
-You can also use `terragrunt render-json` to see the fully resolved configuration before anything runs.
+You can also use `terragrunt render --format json` to see the fully resolved configuration before anything runs.
 
 ## Best Practices
 
