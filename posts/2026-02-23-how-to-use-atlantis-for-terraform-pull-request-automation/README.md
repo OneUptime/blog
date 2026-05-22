@@ -19,7 +19,7 @@ CI/CD platforms like GitHub Actions work fine for Terraform, but Atlantis has so
 - **Plan review in context** - Plan output appears directly in the PR
 - **Apply requires approval** - Built-in merge requirements before apply
 - **Multi-repo support** - One Atlantis server can manage many repositories
-- **Custom workflows** - Define pre-plan, post-plan, pre-apply, and post-apply hooks
+- **Custom workflows** - Define custom plan and apply steps, plus pre-workflow and post-workflow hooks
 
 ## Installing Atlantis
 
@@ -118,7 +118,8 @@ metadata:
 spec:
   type: ClusterIP
   ports:
-    - port: 80
+    - name: http
+      port: 80
       targetPort: 4141
   selector:
     app: atlantis
@@ -242,7 +243,7 @@ For organization-wide settings, configure Atlantis server-side:
 # repos.yaml - Server-side repository configuration
 repos:
   # Default settings for all repos
-  - id: "/.*/""
+  - id: /.*/
     branch: "/.*/"
     apply_requirements:
       - approved
@@ -283,14 +284,21 @@ This prevents conflicting changes from being applied out of order.
 Atlantis runs with cloud credentials, so security is important:
 
 ```yaml
-# Restrict who can trigger Atlantis commands
+# Restrict who can define repo-level behavior
 # repos.yaml
 repos:
-  - id: "github.com/myorg/*"
-    # Only allow apply from specific team members
+  - id: /^github\.com\/myorg\/.*$/
     allowed_overrides: []
     allow_custom_workflows: false
+```
 
+```bash
+# Restrict who can trigger Atlantis commands on GitHub
+atlantis server \
+  --gh-team-allowlist="devops-team:plan,devops-team:apply,devops-team:unlock"
+```
+
+```yaml
 # Use OIDC instead of static credentials
 # atlantis-deployment.yaml
 env:
@@ -303,8 +311,11 @@ env:
 ## Monitoring Atlantis
 
 ```yaml
-# Prometheus metrics endpoint
-# Atlantis exposes metrics at /metrics
+# Enable the Prometheus metrics endpoint in the Atlantis server config
+metrics:
+  prometheus:
+    endpoint: "/metrics"
+---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
