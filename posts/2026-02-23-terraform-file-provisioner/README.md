@@ -75,7 +75,7 @@ provisioner "file" {
 
 ### destination
 
-The `destination` argument is the path on the remote machine. For files, it must be a full path including the filename. For directories, it specifies where the directory should be placed.
+The `destination` argument is the path on the remote machine. For files, use a path including the filename unless you are intentionally relying on the remote system's directory handling. For directories, it specifies where the directory should be placed.
 
 ### content
 
@@ -111,7 +111,7 @@ You can upload entire directories by specifying a directory as the source.
 
 ```hcl
 provisioner "file" {
-  # Upload the entire scripts directory
+  # Upload the contents of the scripts directory
   source      = "${path.module}/scripts/"
   destination = "/home/ubuntu/scripts"
 
@@ -380,7 +380,7 @@ provisioner "remote-exec" {
 
 1. **No glob patterns.** You cannot use wildcards like `*.conf`. You must specify exact files or entire directories.
 
-2. **No symbolic links.** The file provisioner does not follow or create symbolic links.
+2. **No preserved symbolic links.** The file provisioner does not preserve symbolic links as links on the remote machine. If you need to preserve symlinks, package the directory with `tar` and extract it remotely.
 
 3. **Destination directory must exist.** If you upload to `/opt/app/config.yml`, the `/opt/app/` directory must already exist on the remote machine.
 
