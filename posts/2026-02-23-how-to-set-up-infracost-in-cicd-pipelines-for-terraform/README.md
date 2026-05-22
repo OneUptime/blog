@@ -12,7 +12,7 @@ Showing cost estimates on pull requests gives teams visibility into the financia
 
 ## How Infracost CI/CD Integration Works
 
-Infracost runs during your CI/CD pipeline, analyzes the Terraform plan, calculates costs, and posts a comment on the pull request showing the cost breakdown and change. This creates a natural checkpoint where reviewers can assess both the technical and financial impact of changes.
+Infracost runs during your CI/CD pipeline, analyzes the Terraform configuration or plan, calculates costs, and posts a comment on the pull request showing the cost breakdown and change. This creates a natural checkpoint where reviewers can assess both the technical and financial impact of changes.
 
 ## GitHub Actions Setup
 
@@ -65,10 +65,12 @@ jobs:
             --out-file=/tmp/infracost.json
 
       - name: Post PR comment
-        uses: infracost/actions/comment@v1
-        with:
-          path: /tmp/infracost.json
-          behavior: update
+        run: |
+          infracost comment github --path=/tmp/infracost.json \
+            --repo=$GITHUB_REPOSITORY \
+            --pull-request=${{ github.event.pull_request.number }} \
+            --github-token=${{ github.token }} \
+            --behavior=update
 ```
 
 ## GitLab CI Setup
@@ -90,13 +92,12 @@ infracost:
 
   script:
     # Generate baseline from target branch
-    - git checkout $CI_MERGE_REQUEST_TARGET_BRANCH_NAME -- $TF_ROOT
-    - infracost breakdown --path=$TF_ROOT
+    - git clone $CI_REPOSITORY_URL --branch=$CI_MERGE_REQUEST_TARGET_BRANCH_NAME --single-branch /tmp/base
+    - infracost breakdown --path=/tmp/base/$TF_ROOT
         --format=json
         --out-file=/tmp/infracost-base.json
 
     # Generate diff from source branch
-    - git checkout $CI_COMMIT_SHA -- $TF_ROOT
     - infracost diff --path=$TF_ROOT
         --format=json
         --compare-to=/tmp/infracost-base.json
@@ -135,8 +136,8 @@ steps:
 
   - bash: |
       # Checkout base branch for baseline
-      git checkout $(System.PullRequest.TargetBranch)
-      infracost breakdown --path=environments/production \
+      git -c http.extraheader="Authorization: Bearer $(System.AccessToken)" clone $(Build.Repository.Uri) --branch=$(System.PullRequest.TargetBranchName) --single-branch /tmp/base
+      infracost breakdown --path=/tmp/base/environments/production \
         --format=json \
         --out-file=/tmp/infracost-base.json
     displayName: 'Generate baseline costs'
