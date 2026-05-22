@@ -12,18 +12,18 @@ Retry storms are one of the sneakiest failure modes in microservices. A service 
 
 ## What Exactly Is a Retry Storm?
 
-Picture a service chain: Service A calls Service B, which calls Service C. Service C starts returning 503 errors because it is overloaded. Service B retries its calls to Service C three times. Service A retries its calls to Service B three times. Now each original request from Service A generates up to 9 requests to Service C (3 from B on first try, 3 on second try, 3 on third try). That is a 9x amplification factor from just two hops.
+Picture a service chain: Service A calls Service B, which calls Service C. Service C starts returning 503 errors because it is overloaded. Service B allows three total attempts to Service C. Service A allows three total attempts to Service B. Now each original request from Service A generates up to 9 requests to Service C (3 from B on first try, 3 on second try, 3 on third try). That is a 9x amplification factor from just two hops.
 
 Add more hops and more retries, and you can easily hit 100x or even 1000x amplification. That is a retry storm.
 
 ```mermaid
 flowchart LR
     A[Service A] -->|1 request| B[Service B]
-    B -->|3 retries| C[Service C]
+    B -->|3 attempts| C[Service C]
     A -->|retry 1| B2[Service B retry]
-    B2 -->|3 retries| C
+    B2 -->|3 attempts| C
     A -->|retry 2| B3[Service B retry]
-    B3 -->|3 retries| C
+    B3 -->|3 attempts| C
 
     style C fill:#ff6666
 ```
@@ -33,7 +33,7 @@ flowchart LR
 The most straightforward defense is keeping retry counts low. For most services, 2 retries (3 total attempts) is plenty. For services deep in the call chain, consider allowing no retries at all.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: backend-service
@@ -53,14 +53,14 @@ spec:
         retryOn: "gateway-error,connect-failure"
 ```
 
-A good rule of thumb: if your call chain is N services deep, the total retry budget across all hops should be reasonable. Having 3 retries at each of 5 hops gives you 3^5 = 243x amplification. Having 1 retry at each hop gives you 2^5 = 32x. Still a lot, but much more manageable.
+A good rule of thumb: if your call chain is N services deep, the total retry budget across all hops should be reasonable. Having 2 retries (3 total attempts) at each of 5 hops gives you 3^5 = 243x amplification. Having 1 retry (2 total attempts) at each hop gives you 2^5 = 32x. Still a lot, but much more manageable.
 
 ## Strategy 2: Use Retry Budgets with Circuit Breaking
 
-Circuit breaking is your best friend against retry storms. When a service starts failing, circuit breaking stops sending requests to it, which prevents retries from piling up.
+Circuit breaking is your best friend against retry storms. Retry budgets cap concurrent retries, and outlier detection stops sending requests to instances that keep failing, which prevents retries from piling up.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: backend-service
@@ -68,6 +68,9 @@ metadata:
 spec:
   host: backend-service
   trafficPolicy:
+    retryBudget:
+      percent: 20
+      minRetryConcurrency: 3
     connectionPool:
       tcp:
         maxConnections: 100
@@ -82,14 +85,14 @@ spec:
       maxEjectionPercent: 50
 ```
 
-This DestinationRule says: if a backend instance returns 3 consecutive 5xx errors, eject it from the load balancing pool for 30 seconds. This stops retries from hitting an already-failing instance.
+This DestinationRule says: keep concurrent retries to about 20% of active requests, and if a backend instance returns 3 consecutive 5xx errors, eject it from the load balancing pool for at least 30 seconds. This stops retries from hitting an already-failing instance.
 
 ## Strategy 3: Set Aggressive Per-Try Timeouts
 
 Long per-try timeouts are dangerous because they tie up resources while waiting for a response that probably is not coming. Keep per-try timeouts short so failed retries get cleared quickly.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-gateway
@@ -119,7 +122,7 @@ One effective pattern is to only configure retries at the outermost service (the
 For internal services, set attempts to 0:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: internal-processing-service
@@ -140,7 +143,7 @@ spec:
 For the edge service that faces external traffic, configure retries:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-frontend
@@ -160,7 +163,7 @@ spec:
         retryOn: "gateway-error,connect-failure,refused-stream"
 ```
 
-This eliminates the multiplicative amplification entirely. Retries only happen once at the edge, so you get at most 3x amplification regardless of how deep the call chain goes.
+This eliminates the multiplicative amplification entirely. Retries only happen once at the edge, so you get at most 4 total attempts regardless of how deep the call chain goes.
 
 ## Strategy 5: Be Selective with retryOn Conditions
 
@@ -180,9 +183,9 @@ This skips retrying on 500 and 501 errors, which are almost never transient. It 
 You cannot fix what you cannot see. Monitor your retry metrics to catch retry storms before they become outages.
 
 ```bash
-# Check retry rates across all services
+# Check retry rates for a workload's sidecar
 
-kubectl exec -it deploy/istio-proxy -c istio-proxy -- \
+kubectl exec -it deploy/my-service -c istio-proxy -- \
   curl -s localhost:15000/stats | grep "upstream_rq_retry"
 
 # Look for high retry rates
@@ -190,7 +193,7 @@ kubectl exec -it deploy/my-service -c istio-proxy -- \
   curl -s localhost:15000/stats | grep -E "retry_success|retry_limit"
 ```
 
-If you are using Prometheus and Grafana (which you should be with Istio), create alerts for retry rates:
+If you are using Prometheus and Grafana (which you should be with Istio), make sure the Envoy retry stats are included in Istio's `proxyStatsMatcher`, then create alerts for retry rates:
 
 ```yaml
 # Prometheus alert rule for high retry rate
@@ -211,16 +214,24 @@ groups:
 
 ## Strategy 7: Use Backoff Between Retries
 
-Istio uses a default 25ms base interval with exponential backoff for retries. You cannot directly configure the backoff interval in the VirtualService (Envoy handles it internally), but knowing it exists is important. The retries won't all fire at once - there is a jittered exponential backoff between them.
+Istio uses a default 25ms base interval with exponential backoff for retries. The retries won't all fire at once - there is a jittered exponential backoff between them. You can also set a larger minimum backoff interval directly in the VirtualService:
 
-That said, the default backoff is quite short. For services that need longer recovery windows, consider reducing retry attempts and using circuit breaking to handle the backoff at a higher level.
+```yaml
+retries:
+  attempts: 2
+  perTryTimeout: 2s
+  retryOn: "connect-failure,refused-stream,gateway-error"
+  backoff: 500ms
+```
+
+That said, the default backoff is quite short. For services that need longer recovery windows, consider increasing `backoff`, reducing retry attempts, and using circuit breaking to handle the backoff at a higher level.
 
 ## Putting It All Together
 
 Here is a production-ready configuration that combines several of these strategies:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: order-service
@@ -239,8 +250,9 @@ spec:
         attempts: 2
         perTryTimeout: 1500ms
         retryOn: "connect-failure,refused-stream,gateway-error"
+        backoff: 500ms
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: order-service
@@ -248,6 +260,9 @@ metadata:
 spec:
   host: order-service
   trafficPolicy:
+    retryBudget:
+      percent: 20
+      minRetryConcurrency: 3
     connectionPool:
       http:
         http1MaxPendingRequests: 100
@@ -259,6 +274,6 @@ spec:
       maxEjectionPercent: 30
 ```
 
-Low retry count, short per-try timeouts, selective retry conditions, and circuit breaking working together. This setup will handle transient failures gracefully without turning a small problem into a system-wide meltdown.
+Low retry count, short per-try timeouts, selective retry conditions, retry budgets, and circuit breaking working together. This setup will handle transient failures gracefully without turning a small problem into a system-wide meltdown.
 
 Retry storms are preventable, but it takes deliberate configuration. Do not just accept the defaults - think about your service topology, your failure modes, and how retries interact across the full call chain.
