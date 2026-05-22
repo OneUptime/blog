@@ -28,6 +28,8 @@ Terraform does not have a `terraform state mv` command that works across workspa
 1. Remove the resource from the source workspace's state (without destroying it)
 2. Import the resource into the destination workspace's state
 
+Before importing, make sure the destination workspace's configuration already contains the matching resource blocks. The `terraform import` command adds objects to state, but it does not create the resource configuration for you.
+
 ```bash
 # Step 1: Record the resource ID from the source workspace
 
@@ -133,7 +135,10 @@ echo "Starting migration from $SOURCE_WS to $DEST_WS"
 echo ""
 
 # Process each resource in the manifest
-while IFS=' -> ' read -r resource id; do
+while read -r line; do
+  resource="${line%% -> *}"
+  id="${line#* -> }"
+
   # Skip empty lines and comments
   [ -z "$resource" ] && continue
   [[ "$resource" == \#* ]] && continue
@@ -200,6 +205,9 @@ terraform plan -detailed-exitcode 2>&1 || {
     echo "  - Resource attributes differ from configuration"
     echo "  - Some resources were not imported correctly"
     echo "Review the plan output above."
+  else
+    echo "ERROR: terraform plan failed."
+    exit "$exit_code"
   fi
 }
 ```
@@ -210,7 +218,7 @@ Some resources are trickier to migrate than others.
 
 Resources With Sub-Resources
 
-Resources like `aws_security_group` may have inline rules that are also tracked as separate resources:
+Resources like `aws_security_group` may have rules managed inline or as separate rule resources. Do not mix inline rules and separate rule resources for the same security group; if your rules are separate resources, migrate them with the security group:
 
 ```bash
 # Migrate the security group and its rules together
@@ -296,12 +304,12 @@ terraform state pull > dest-state.json
 # This requires temporarily switching to local backend
 # WARNING: This is advanced - back up everything first
 
-# A safer alternative: use the moved block in Terraform 1.1+
+# For renames within a single workspace, consider using moved blocks in Terraform 1.1+.
 ```
 
 ## Using moved Blocks for Planned Migrations
 
-Terraform 1.1 introduced `moved` blocks, which handle state moves as part of `terraform apply`. While they work within a single workspace, you can use them in combination with workspace switches:
+Terraform 1.1 introduced `moved` blocks, which handle state moves as part of `terraform apply`. They are useful for renaming or moving resource addresses within a workspace, but they do not move state between workspaces:
 
 ```hcl
 # If you are renaming resources during migration
