@@ -12,7 +12,7 @@ Terraform needs access to sensitive values like database passwords, API keys, an
 
 ## The Problem: Secrets in Terraform
 
-Terraform's handling of secrets has a fundamental challenge. The tool needs actual values to create resources, and those values end up in the state file. No external secret store changes that fact. What external stores do help with is:
+Terraform's handling of secrets has a fundamental challenge. The tool needs actual values to create resources, and when you pass those values through regular data sources or resource arguments, they usually end up in the state file. Terraform 1.11 and newer can avoid this for specific provider-supported write-only arguments and ephemeral values, but external secret stores do not automatically remove secrets from state. What external stores do help with is:
 
 - Keeping secrets out of your source code
 - Centralizing secret management across teams and tools
@@ -66,8 +66,8 @@ data "azurerm_key_vault_secret" "db_password" {
   key_vault_id = data.azurerm_key_vault.main.id
 }
 
-resource "azurerm_postgresql_server" "main" {
-  administrator_login_password = data.azurerm_key_vault_secret.db_password.value
+resource "azurerm_postgresql_flexible_server" "main" {
+  administrator_password = data.azurerm_key_vault_secret.db_password.value
   # ...
 }
 ```
@@ -117,7 +117,7 @@ Vault's unique advantage is dynamic secrets - credentials that are generated on 
 
 ## Option 3: SOPS (Secrets OPerationS)
 
-SOPS by Mozilla encrypts files while keeping their structure visible. You can commit encrypted files to version control:
+SOPS, now maintained by the getsops project, encrypts files while keeping their structure visible. You can commit encrypted files to version control:
 
 ```bash
 # Install SOPS
@@ -173,7 +173,7 @@ resource "aws_db_instance" "main" {
 }
 ```
 
-## Option 4: 1Password (via CLI or Connect)
+## Option 4: 1Password (via Connect, Service Account, or Desktop App)
 
 1Password works well for teams that already use it:
 
@@ -182,18 +182,18 @@ terraform {
   required_providers {
     onepassword = {
       source  = "1Password/onepassword"
-      version = "~> 1.0"
+      version = "~> 3.0"
     }
   }
 }
 
 provider "onepassword" {
-  url   = "http://localhost:8080"  # 1Password Connect server
-  token = var.op_token
+  connect_url   = "http://localhost:8080"  # 1Password Connect server
+  connect_token = var.op_token
 }
 
 data "onepassword_item" "database" {
-  vault = "Infrastructure"
+  vault = var.op_vault_id
   title = "Production Database"
 }
 
@@ -253,15 +253,15 @@ print(json.dumps({"value": result.stdout.strip()}))
 Here is a quick comparison to help you decide:
 
 ```text
-| Feature              | Cloud-Native | Vault    | SOPS     | 1Password |
-|---------------------|-------------|----------|----------|-----------|
-| Multi-cloud         | No          | Yes      | Yes      | Yes       |
-| Dynamic secrets     | Limited     | Yes      | No       | No        |
-| Audit logging       | Yes         | Yes      | Git log  | Yes       |
-| Self-hosted option  | No          | Yes      | N/A      | Optional  |
-| Complexity          | Low         | High     | Medium   | Low       |
-| Cost                | Pay-per-use | License  | Free     | License   |
-| Rotation support    | Built-in    | Built-in | Manual   | Manual    |
+| Feature             | Cloud-Native | Vault          | SOPS                  | 1Password |
+|---------------------|--------------|----------------|-----------------------|-----------|
+| Multi-cloud         | No           | Yes            | Yes                   | Yes       |
+| Dynamic secrets     | Limited      | Yes            | No                    | No        |
+| Audit logging       | Yes          | Yes            | No (Git history only) | Yes       |
+| Self-hosted option  | No           | Yes            | N/A                   | Optional  |
+| Complexity          | Low          | High           | Medium                | Low       |
+| Cost                | Pay-per-use  | OSS/HCP/License | Free                 | License   |
+| Rotation support    | Built-in     | Built-in       | Manual                | Manual    |
 ```
 
 ## Best Practices for Any Secret Store
@@ -292,16 +292,16 @@ data "aws_secretsmanager_secret_version" "password" {
   secret_id = "my-password"
 }
 
-# AVOID: Managing secret values as resources (puts them in state)
+# AVOID: Managing secret values as resources without write-only arguments
 # resource "aws_secretsmanager_secret_version" "password" { ... }
 ```
 
-### 4. Handle Missing Secrets Gracefully
+### 4. Handle Missing Keys Gracefully
 
 ```hcl
-# Use try() for optional secrets
+# Use lookup() for optional keys in an existing secret
 locals {
-  api_key = try(data.vault_kv_secret_v2.api_key.data["key"], "")
+  api_key = lookup(data.vault_kv_secret_v2.api_key.data, "key", "")
 }
 ```
 
