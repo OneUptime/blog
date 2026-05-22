@@ -126,7 +126,7 @@ pipelines:
       - step:
           <<: *plan-template
           name: Plan (dev)
-          deployment: test
+          environment: test
 
   # Main branch pipeline - full deployment
   branches:
@@ -134,42 +134,45 @@ pipelines:
       - step: *validate
 
       # Dev
-      - step:
-          <<: *plan-template
-          name: Plan Dev
+      - stage:
+          name: Deploy Dev
           deployment: test
-
-      - step:
-          <<: *apply-template
-          name: Apply Dev
-          deployment: test
+          steps:
+            - step:
+                <<: *plan-template
+                name: Plan Dev
+            - step:
+                <<: *apply-template
+                name: Apply Dev
 
       # Staging
-      - step:
-          <<: *plan-template
-          name: Plan Staging
+      - stage:
+          name: Deploy Staging
           deployment: staging
-
-      - step:
-          <<: *apply-template
-          name: Apply Staging
           trigger: manual
-          deployment: staging
+          steps:
+            - step:
+                <<: *plan-template
+                name: Plan Staging
+            - step:
+                <<: *apply-template
+                name: Apply Staging
 
       # Production
-      - step:
-          <<: *plan-template
-          name: Plan Production
+      - stage:
+          name: Deploy Production
           deployment: production
-
-      - step:
-          <<: *apply-template
-          name: Apply Production
           trigger: manual
-          deployment: production
+          steps:
+            - step:
+                <<: *plan-template
+                name: Plan Production
+            - step:
+                <<: *apply-template
+                name: Apply Production
 ```
 
-The `deployment` keyword links the step to a Bitbucket deployment environment, which provides environment-specific variables and deployment tracking.
+The `deployment` keyword links the step or stage to a Bitbucket deployment environment, which provides environment-specific variables and deployment tracking.
 
 ## Deployment Environment Variables
 
@@ -203,7 +206,11 @@ Bitbucket Pipelines supports caching to speed up builds:
 ```yaml
 definitions:
   caches:
-    terraform: terraform/.terraform/providers
+    terraform:
+      key:
+        files:
+          - terraform/.terraform.lock.hcl
+      path: terraform/.terraform/providers
 
 image: hashicorp/terraform:1.7.5
 
@@ -222,7 +229,7 @@ pipelines:
             - terraform/tfplan
 ```
 
-The cache persists across builds, so providers are only downloaded when the lock file changes.
+The cache persists across builds, and the `key.files` setting creates a new cache version when the lock file changes.
 
 ## Using a Custom Docker Image
 
@@ -238,10 +245,10 @@ RUN apk add --no-cache \
     curl \
     jq \
     python3 \
-    py3-pip
-
-# Install AWS CLI
-RUN pip3 install awscli
+    py3-pip \
+    unzip \
+    wget \
+    aws-cli
 
 # Install tflint for linting
 RUN wget -q https://github.com/terraform-linters/tflint/releases/download/v0.50.3/tflint_linux_amd64.zip && \
@@ -353,29 +360,27 @@ pipelines:
   branches:
     main:
       - step:
-          name: Check Changes
-          script:
-            - |
-              # Check if Terraform files changed
-              if git diff --name-only HEAD~1 | grep -q '\.tf$\|\.tfvars$'; then
-                echo "Terraform files changed, proceeding"
-              else
-                echo "No Terraform changes, skipping"
-                exit 0
-              fi
-
-      - step:
           name: Plan
+          condition:
+            changesets:
+              includePaths:
+                - "terraform/**"
           # Use a smaller size for plan steps
           size: 1x  # Default size
           script:
             - cd terraform
             - terraform init -input=false
             - terraform plan -out=tfplan -input=false
+          artifacts:
+            - terraform/tfplan
 
       - step:
           name: Apply
           trigger: manual
+          condition:
+            changesets:
+              includePaths:
+                - "terraform/**"
           size: 1x
           script:
             - cd terraform
@@ -414,7 +419,7 @@ This gives your team a clear view of what is running where without needing exter
 
 ## Limitations and Workarounds
 
-**No native approval with reviewers**: Bitbucket's `trigger: manual` allows anyone with write access to trigger the step. For stricter controls, use branch permissions to restrict who can push to main, which indirectly controls who can trigger deployments.
+**No native approval with reviewers**: Bitbucket's `trigger: manual` allows users with write access to trigger the step by default. For stricter controls, use deployment permissions on Bitbucket Premium, or use branch permissions to restrict who can push to main, which indirectly controls who can trigger deployments.
 
 **Artifact size limits**: Bitbucket Pipelines limits artifacts to 1 GB per step. Large Terraform plans rarely hit this, but keep it in mind for configurations with many resources.
 
