@@ -44,7 +44,7 @@ While this is valid HCL, the Terraform community and HashiCorp both prefer `#`. 
 
 ### Multi-Line Comments with /* */
 
-For longer comments that span multiple lines, use the C-style block comment:
+For longer comments that span multiple lines, you can use the C-style block comment:
 
 ```hcl
 /*
@@ -65,6 +65,8 @@ resource "aws_vpc" "production" {
   }
 }
 ```
+
+HashiCorp's style guide still recommends repeated `#` comments for most multi-line comments, but block comments are valid when you need to temporarily comment out a larger section.
 
 Multi-line comments cannot be nested. This is invalid:
 
@@ -120,10 +122,10 @@ resource "aws_instance" "worker" {
 Every codebase has workarounds. Document them so nobody accidentally "fixes" them:
 
 ```hcl
-# WORKAROUND: The AWS provider has a bug where updating the
-# description field forces replacement of the security group.
+# WORKAROUND: The AWS provider treats security group descriptions
+# as create-time values, so updating this field forces replacement.
 # We use lifecycle ignore_changes to prevent this.
-# See: https://github.com/hashicorp/terraform-provider-aws/issues/12345
+# See: https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/security_group
 resource "aws_security_group" "api" {
   name        = "api-sg"
   description = "API security group"  # Do not change this value
@@ -174,7 +176,7 @@ variable "vpc_cidr" {
 }
 ```
 
-Note: the `description` argument in variables and outputs is Terraform's built-in way to document things. It shows up in `terraform plan` output and generated documentation. Use comments for additional context that does not fit in a short description.
+Note: the `description` argument in variables and outputs is Terraform's built-in way to document things. Variable descriptions can appear in CLI prompts, and both variable and output descriptions are useful for module documentation. Use comments for additional context that does not fit in a short description.
 
 ### Module Blocks
 
@@ -185,10 +187,10 @@ Note: the `description` argument in variables and outputs is Terraform's built-i
 # in staging first.
 module "eks" {
   source  = "terraform-aws-modules/eks/aws"
-  version = "19.21.0"  # Tested and approved 2024-01-15
+  version = "19.21.0"  # Tested and approved 2026-05-15
 
   cluster_name    = "production"
-  cluster_version = "1.28"  # AWS EKS supported version, EOL: 2024-11
+  cluster_version = "1.34"  # AWS EKS standard support until 2026-12-02
 
   # Node group configuration based on our load testing results
   # from Q4 2023. 3x m5.xlarge handles peak traffic of 10k req/s.
@@ -234,11 +236,11 @@ A common use of comments is temporarily disabling resources. This works, but be 
 # }
 ```
 
-If you are commenting out a resource that already exists in your state, remember that Terraform does not know about commented-out code. On the next apply, it will try to destroy that resource because it no longer appears in the configuration. A safer approach is to use `count = 0` or remove it from state first:
+If you are commenting out a resource that already exists in your state, remember that Terraform does not know about commented-out code. On the next apply, it will try to destroy that resource because it no longer appears in the configuration. If you want to keep the real infrastructure but stop managing it with Terraform, remove it from state first. If you want Terraform to destroy it but keep the block visible, use `count = 0`:
 
 ```hcl
-# Disabled - set count to 0 instead of commenting out
-# to make the intent clear and prevent accidental deletion
+# Disabled - set count to 0 instead of commenting out to make
+# the intent clear. Existing instances will still be destroyed.
 resource "aws_cloudwatch_metric_alarm" "high_cpu" {
   count = 0  # Temporarily disabled - investigating billing spike
 
@@ -261,7 +263,7 @@ resource "aws_instance" "web" {
 
 # After terraform fmt
 resource "aws_instance" "web" {
-  ami           = "ami-abc123"  # The AMI
+  ami           = "ami-abc123" # The AMI
   instance_type = "t3.micro"   # Instance type
 }
 ```
@@ -300,4 +302,4 @@ resource "aws_vpc" "main" {
 
 ## Summary
 
-Terraform supports three comment styles: `#` for single-line (preferred), `//` for single-line (less common), and `/* */` for multi-line blocks. The most important thing about comments is not the syntax but the content. Comment the why, not the what. Document workarounds, non-obvious values, and anything that would make a colleague pause and wonder. Use the `description` argument for official documentation on variables and outputs, and use comments for the additional context that does not fit there. And if you are going to comment out a resource, remember that Terraform will try to destroy it on the next apply.
+Terraform supports three comment styles: `#` for single-line and multi-line comments (preferred), `//` for single-line (less common), and `/* */` for multi-line blocks. The most important thing about comments is not the syntax but the content. Comment the why, not the what. Document workarounds, non-obvious values, and anything that would make a colleague pause and wonder. Use the `description` argument for official documentation on variables and outputs, and use comments for the additional context that does not fit there. And if you are going to comment out a resource, remember that Terraform will try to destroy it on the next apply.
