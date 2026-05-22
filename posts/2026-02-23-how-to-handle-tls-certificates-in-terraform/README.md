@@ -173,6 +173,7 @@ resource "acme_certificate" "main" {
   account_key_pem = acme_registration.main.account_key_pem
   common_name     = "example.com"
   subject_alternative_names = ["*.example.com"]
+  certificate_p12_password  = var.cert_password
 
   # DNS challenge using Route53
   dns_challenge {
@@ -270,7 +271,8 @@ resource "azurerm_key_vault_certificate" "main" {
   key_vault_id = azurerm_key_vault.main.id
 
   certificate {
-    contents = base64encode("${acme_certificate.main.private_key_pem}${acme_certificate.main.certificate_pem}${acme_certificate.main.issuer_pem}")
+    contents = acme_certificate.main.certificate_p12
+    password = var.cert_password
   }
 }
 ```
