@@ -10,7 +10,7 @@ Description: Learn how to set up different egress traffic rules for different na
 
 In a multi-team Kubernetes cluster, different namespaces have different needs for external access. Your payments namespace needs to reach Stripe and your bank's API. Your analytics namespace needs to reach a data warehouse. Your frontend namespace should not be reaching any external APIs at all. Istio gives you the tools to enforce these boundaries, but the configuration is not obvious at first glance.
 
-This guide covers how to control which namespaces can access which external services using Istio's Sidecar resource and ServiceEntry visibility controls.
+This guide covers how to control which namespaces can access which external services using Istio's Sidecar resource, ServiceEntry visibility controls, and Istio's `REGISTRY_ONLY` outbound traffic mode.
 
 ## The Problem with Mesh-Wide ServiceEntries
 
@@ -49,7 +49,7 @@ spec:
   - "."
 ```
 
-The `"."` value means "only this namespace." Pods in other namespaces will not be able to reach api.stripe.com through this ServiceEntry.
+The `"."` value means "only this namespace." Pods in other namespaces will not be able to see or use this ServiceEntry. To make that a blocking egress policy rather than just a visibility rule, use `REGISTRY_ONLY` outbound traffic mode or another enforcement layer such as Kubernetes NetworkPolicy.
 
 If you want to share a ServiceEntry between specific namespaces, list them explicitly:
 
@@ -78,9 +78,9 @@ This makes the Datadog API accessible from the monitoring, backend, and frontend
 
 ## Approach 2: Using the Sidecar Resource
 
-The Sidecar resource lets you define what each namespace's sidecars can see. This is a more powerful approach because it controls visibility at the proxy level rather than at the service definition level.
+The Sidecar resource lets you define what each namespace's sidecars can see. This is a more powerful visibility-scoping approach because it controls which service and routing configuration is imported by the proxy rather than only controlling visibility at the service definition level.
 
-Here is a Sidecar resource that restricts the `frontend` namespace to only see services in its own namespace and the `backend` namespace, with no external access:
+Here is a Sidecar resource that restricts the `frontend` namespace to only see services in its own namespace and the `backend` namespace. When combined with `REGISTRY_ONLY` outbound traffic mode, this also prevents access to external services that are not in the imported configuration:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -101,7 +101,7 @@ The frontend namespace can now only reach:
 - Services in the backend namespace (`"backend/*"`)
 - Istio system services (`"istio-system/*"`)
 
-External ServiceEntries will not be visible to this namespace, even if they have `exportTo: ["*"]`.
+External ServiceEntries will not be visible to this namespace unless they match one of the imported host patterns. In `ALLOW_ANY` mode, traffic to a destination that is not visible in the sidecar configuration may still be treated as unknown outbound traffic and allowed, so use `REGISTRY_ONLY` when you need the missing configuration to fail closed.
 
 For the payments namespace, you might want to allow access to specific external services:
 
@@ -125,7 +125,7 @@ spec:
       name: tls
 ```
 
-This configuration lets the payments namespace reach its own services, Istio system, and specifically the Stripe and PayPal external APIs on port 443.
+This configuration lets the payments namespace import configuration for its own services, Istio system, and specifically the Stripe and PayPal external APIs on port 443. In `REGISTRY_ONLY` mode, other unknown external destinations are dropped.
 
 ## Approach 3: Changing the Default Mesh Policy
 
@@ -147,7 +147,7 @@ spec:
 ```
 
 With these defaults:
-- All outbound traffic is blocked unless explicitly registered
+- Unknown outbound traffic is dropped unless explicitly registered
 - All ServiceEntries, VirtualServices, and DestinationRules are only visible within their own namespace
 
 Apply this with:
@@ -249,4 +249,4 @@ istioctl proxy-config cluster deploy/frontend-app -n frontend | grep stripe
 
 **Ordering matters**: If both a Sidecar resource and exportTo restrictions apply, both must allow access. If the Sidecar says a namespace can see a service but the ServiceEntry's exportTo excludes that namespace, the service will not be accessible.
 
-These tools together give you strong multi-tenant egress control without needing separate clusters or physical network segmentation.
+These tools together give you namespace-scoped egress visibility and fail-closed routing for registered destinations. For hard network enforcement, combine them with Kubernetes NetworkPolicy or route external traffic through a controlled egress gateway.
