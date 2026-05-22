@@ -15,7 +15,7 @@ In a multi-team Kubernetes cluster, different namespaces often need different ro
 By default, a VirtualService applies to all sidecars in the mesh that can see it. The namespace where you create the VirtualService does not limit its scope - it affects any pod that calls the target host.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service
@@ -37,7 +37,7 @@ Even though this VirtualService is in the `team-a` namespace, it affects calls t
 To restrict a VirtualService to specific namespaces, use the `exportTo` field:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service
@@ -77,7 +77,7 @@ Each namespace can have its own VirtualService for the same host:
 ```yaml
 # In the team-a namespace - team-a's view of the service
 
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: shared-api
@@ -99,7 +99,7 @@ spec:
               number: 80
 ---
 # In the team-b namespace - team-b's view of the same service
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: shared-api
@@ -128,7 +128,7 @@ Team A gets 10-second timeouts with 5 retries. Team B gets 5-second timeouts wit
 The Sidecar resource provides another layer of namespace scoping by controlling what each sidecar can see:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -141,7 +141,7 @@ spec:
         - "istio-system/*"                # Istio system services
 ```
 
-This limits pods in `team-a` to only see services in their own namespace, the shared namespace, and istio-system. They cannot accidentally call services in `team-b`.
+This limits the Istio service configuration generated for pods in `team-a` to services in their own namespace, the shared namespace, and istio-system. Use Istio authorization policies if you need to enforce a security boundary.
 
 ## Namespace-Specific Canary Deployments
 
@@ -149,7 +149,7 @@ Different namespaces can have different canary configurations:
 
 ```yaml
 # Production namespace - conservative 5% canary
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -171,7 +171,7 @@ spec:
           weight: 5
 ---
 # Staging namespace - aggressive 50% canary
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -198,7 +198,7 @@ spec:
 For ingress traffic, you can route to different namespaces based on the path:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: ingress-routing
@@ -237,7 +237,7 @@ Istio supports delegation where a root VirtualService delegates to child Virtual
 
 ```yaml
 # Root VirtualService in istio-system
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: root-vs
@@ -262,7 +262,7 @@ spec:
         namespace: team-b
 ---
 # Team A's delegated VirtualService
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: team-a-routes
@@ -298,7 +298,7 @@ Each team manages their own routing rules independently, while the platform team
 You can match on the source namespace directly:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: shared-service
@@ -351,7 +351,7 @@ istioctl analyze --all-namespaces
 
 2. **Conflicting VirtualServices** - If two namespaces create VirtualServices for the same host without `exportTo: ["."]`, they conflict and behavior is unpredictable.
 
-3. **Missing Sidecar resource** - Without a Sidecar resource, every pod gets configuration for every service in the mesh. This wastes memory and can cause confusion.
+3. **Missing Sidecar resource** - Without a Sidecar resource, sidecars can receive broad configuration for services visible in the mesh. This wastes memory and can cause confusion.
 
 4. **Cross-namespace destination without FQDN** - When routing to a service in another namespace, always use the FQDN: `my-service.other-namespace.svc.cluster.local`.
 
