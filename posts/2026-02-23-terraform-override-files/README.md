@@ -12,7 +12,7 @@ Terraform override files let you change parts of your configuration without modi
 
 ## How Override Files Work
 
-Any file ending in `_override.tf` or named exactly `override.tf` is treated as an override file. Terraform processes override files after all regular files and merges their contents into the existing configuration.
+Any file ending in `_override.tf` or `_override.tf.json`, or named exactly `override.tf` or `override.tf.json`, is treated as an override file. Terraform processes override files after all regular files and merges their contents into the existing configuration.
 
 ```text
 project/
@@ -78,15 +78,17 @@ The `ami` stayed the same because the override did not mention it. The `instance
 ## Override File Naming
 
 Terraform recognizes these as override files:
-- `override.tf` - processed first among overrides
-- Any file matching `*_override.tf` - processed in alphabetical order after `override.tf`
+- `override.tf` and `override.tf.json`
+- Any file matching `*_override.tf` or `*_override.tf.json`
+
+Override files are processed in lexicographical order by filename, and then by their position within each file.
 
 ```text
 project/
   main.tf
-  override.tf          # processed first
-  backend_override.tf  # processed second (alphabetical)
-  dev_override.tf      # processed third
+  backend_override.tf
+  dev_override.tf
+  override.tf
 ```
 
 If multiple override files modify the same argument, the last one processed wins.
@@ -144,7 +146,7 @@ resource "aws_security_group" "web" {
 
 ### Multiple Nested Blocks
 
-When there are multiple blocks of the same type, they are matched by position:
+When there are multiple nested blocks of the same type, an override block replaces all of the original nested blocks of that type:
 
 ```hcl
 # main.tf
@@ -166,7 +168,7 @@ resource "aws_security_group" "web" {
 
 # override.tf
 resource "aws_security_group" "web" {
-  # This replaces the first ingress block (position 0)
+  # This replaces all original ingress blocks
   ingress {
     from_port = 8443
     to_port   = 8443
@@ -174,7 +176,7 @@ resource "aws_security_group" "web" {
   }
 }
 
-# Result: first ingress is 8443, second ingress (80) is unchanged
+# Result: only the 8443 ingress block remains
 ```
 
 ## Use Case: Local Development Overrides
@@ -185,10 +187,10 @@ One of the most common uses is overriding the backend configuration for local de
 # backend.tf (committed to git)
 terraform {
   backend "s3" {
-    bucket         = "company-terraform-state"
-    key            = "production/terraform.tfstate"
-    region         = "us-east-1"
-    dynamodb_table = "terraform-locks"
+    bucket       = "company-terraform-state"
+    key          = "production/terraform.tfstate"
+    region       = "us-east-1"
+    use_lockfile = true
   }
 }
 ```
@@ -207,7 +209,9 @@ Add to `.gitignore`:
 ```text
 # .gitignore
 *_override.tf
+*_override.tf.json
 override.tf
+override.tf.json
 ```
 
 Now you can work with local state while the team uses the remote backend.
@@ -271,8 +275,7 @@ During module development, you might want to use a local copy instead of a remot
 ```hcl
 # main.tf
 module "vpc" {
-  source  = "terraform-aws-modules/vpc/aws"
-  version = "5.0.0"
+  source = "git::https://github.com/terraform-aws-modules/terraform-aws-vpc.git?ref=v5.0.0"
 
   name = "production-vpc"
   cidr = "10.0.0.0/16"
@@ -326,6 +329,6 @@ terraform console
 
 ## Wrapping Up
 
-Override files in Terraform provide a merge-based mechanism for modifying configuration without touching the original files. They are identified by the `_override.tf` suffix or the `override.tf` filename. Use them for local development backends, test environment provider configurations, and development variable defaults. Just remember to keep them out of version control when they contain personal developer preferences, and use them judiciously to avoid confusion.
+Override files in Terraform provide a merge-based mechanism for modifying configuration without touching the original files. They are identified by the `_override.tf` or `_override.tf.json` suffix, or by the `override.tf` or `override.tf.json` filename. Use them for local development backends, test environment provider configurations, and development variable defaults. Just remember to keep them out of version control when they contain personal developer preferences, and use them judiciously to avoid confusion.
 
 For more on organizing Terraform files, see [How to Split Terraform Configuration Across Multiple Files](https://oneuptime.com/blog/post/2026-02-23-terraform-split-configuration-multiple-files/view) and [How to Understand Terraform File Loading Order](https://oneuptime.com/blog/post/2026-02-23-terraform-file-loading-order/view).
