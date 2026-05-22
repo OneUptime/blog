@@ -10,7 +10,7 @@ Description: A practical guide to configuring pod anti-affinity rules for Istio 
 
 Anti-affinity rules tell Kubernetes to spread pods across different nodes or availability zones. Without them, the scheduler might place all your istiod replicas on the same node. If that node goes down, you lose the entire control plane. Same thing with the ingress gateway: all pods on one node means one node failure kills your entire external traffic path.
 
-This guide covers how to configure anti-affinity for every Istio component and the trade-offs between hard and soft anti-affinity rules.
+This guide covers how to configure anti-affinity for common Istio control plane and gateway components, plus the trade-offs between hard and soft anti-affinity rules.
 
 ## Hard vs Soft Anti-Affinity
 
@@ -18,7 +18,7 @@ Kubernetes supports two types of anti-affinity:
 
 **Hard anti-affinity** (`requiredDuringSchedulingIgnoredDuringExecution`): The scheduler will not place a pod on a node that already has a matching pod. If no valid node is available, the pod stays in Pending state.
 
-**Soft anti-affinity** (`preferredDuringSchedulingIgnoredDuringExecution`): The scheduler tries to avoid placing a pod on a node with a matching pod, but will do so if no other option is available. Pods always get scheduled.
+**Soft anti-affinity** (`preferredDuringSchedulingIgnoredDuringExecution`): The scheduler tries to avoid placing a pod on a node with a matching pod, but will do so if no other option is available. Pods can still be scheduled as long as no other scheduling constraint blocks them.
 
 The choice matters. Hard anti-affinity gives you a guarantee that pods are spread out, but it can prevent scheduling in small clusters. Soft anti-affinity is more flexible but does not guarantee separation.
 
@@ -63,7 +63,7 @@ This configuration does two things:
 
 Using `preferredDuringScheduling` instead of `requiredDuringScheduling` means istiod will still get scheduled even if you have fewer zones than replicas.
 
-For clusters with 3+ availability zones and 3 istiod replicas, you can use hard anti-affinity for zone spreading:
+For clusters with 3+ availability zones and 3 istiod replicas, you can use hard anti-affinity for zone spreading if your cluster admission configuration allows hard anti-affinity with `topology.kubernetes.io/zone`:
 
 ```yaml
 affinity:
@@ -78,7 +78,7 @@ affinity:
         topologyKey: topology.kubernetes.io/zone
 ```
 
-This guarantees each istiod replica runs in a different zone. If a zone goes down, two istiod instances remain.
+This guarantees each istiod replica runs in a different zone when the zone-level hard anti-affinity rule is accepted by the API server. If a zone goes down, two istiod instances remain.
 
 ## Anti-Affinity for Ingress Gateway
 
@@ -116,7 +116,7 @@ spec:
                     topologyKey: kubernetes.io/hostname
 ```
 
-This uses hard anti-affinity for zone spreading (each gateway pod must be in a different zone) and soft anti-affinity for node spreading (prefer different nodes within a zone).
+This uses hard anti-affinity for zone spreading (each gateway pod must be in a different zone, if your cluster admission configuration allows that topology key) and soft anti-affinity for node spreading (prefer different nodes within a zone).
 
 ## Anti-Affinity for Egress Gateway
 
@@ -166,6 +166,9 @@ metadata:
   name: payment-service
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: payment-service
   template:
     metadata:
       labels:
@@ -247,7 +250,7 @@ kubectl taint node node-2 dedicated=istio-control-plane:NoSchedule
 kubectl taint node node-3 dedicated=istio-control-plane:NoSchedule
 ```
 
-This ensures istiod only runs on dedicated nodes and those nodes only run Istio components.
+This ensures istiod only runs on dedicated nodes, and the taint keeps pods without the matching toleration off those nodes.
 
 ## Topology Spread Constraints as an Alternative
 
@@ -296,8 +299,8 @@ After configuring anti-affinity, verify that pods are actually spread out:
 
 kubectl get pods -n istio-system -l app=istiod -o wide
 
-# Check which zones they are in
-kubectl get pods -n istio-system -l app=istiod -o custom-columns="NAME:.metadata.name,NODE:.spec.nodeName,ZONE:.metadata.labels.topology\.kubernetes\.io/zone"
+# Check which zones those nodes are in
+kubectl get nodes -L topology.kubernetes.io/zone
 ```
 
 If pods are co-located despite anti-affinity rules, check:
@@ -312,7 +315,7 @@ kubectl describe pod <pending-pod-name> | grep -A 10 "Events"
 
 ## Common Issues
 
-**Anti-affinity with HPA**: When an HPA scales up, new pods must respect anti-affinity rules. If all zones already have pods and you have hard anti-affinity, new pods cannot be scheduled. Use soft anti-affinity for HPA-managed deployments or make sure you have more zones/nodes than the HPA's maxReplicas.
+**Anti-affinity with HPA**: When an HPA scales up, new pods must respect anti-affinity rules. If all topology domains already have matching pods and you have hard anti-affinity, new pods cannot be scheduled. Use soft anti-affinity for HPA-managed deployments or make sure you have more eligible topology domains than the HPA's maxReplicas.
 
 **Anti-affinity during upgrades**: During rolling updates, there are temporarily more pods than the replica count (due to maxSurge). Hard anti-affinity can prevent the surge pods from scheduling. Either use soft anti-affinity or ensure enough nodes/zones are available.
 
@@ -320,4 +323,4 @@ kubectl describe pod <pending-pod-name> | grep -A 10 "Events"
 
 ## Summary
 
-Anti-affinity rules are essential for running Istio in production. At minimum, configure zone-level anti-affinity for istiod and the ingress gateway. Use soft anti-affinity when you need flexibility (HPA scaling, small clusters) and hard anti-affinity when you need guarantees (critical components with enough nodes). Consider topology spread constraints for more even distribution. Verify your anti-affinity rules are working by checking pod placement after deployment, and test that new pods can still be scheduled during scaling events and upgrades.
+Anti-affinity rules are essential for running Istio in production. At minimum, configure zone-level spreading preferences for istiod and the ingress gateway. Use soft anti-affinity when you need flexibility (HPA scaling, small clusters) and hard anti-affinity when you need guarantees (critical components with enough nodes and an admission configuration that allows the topology key you use). Consider topology spread constraints for more even distribution. Verify your anti-affinity rules are working by checking pod placement after deployment, and test that new pods can still be scheduled during scaling events and upgrades.
