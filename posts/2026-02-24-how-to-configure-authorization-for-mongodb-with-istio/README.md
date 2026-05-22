@@ -20,7 +20,7 @@ What you can match on for TCP services:
 - Source principal (service account identity)
 - Source IP address
 - Destination port
-- Source and destination workload labels (via selector)
+- Destination workload labels (via selector)
 
 That is still plenty to build effective access control for your database.
 
@@ -98,7 +98,7 @@ You can verify this by trying to connect from another pod:
 kubectl exec -it <client-pod> -n default -- mongosh --host mongodb.mongodb.svc.cluster.local --port 27017
 ```
 
-This should time out or fail with a connection refused error.
+This should time out or fail with a connection error.
 
 ## Allowing Specific Services to Access MongoDB
 
@@ -288,7 +288,7 @@ spec:
     mode: STRICT
 ```
 
-With `STRICT` mode, MongoDB will only accept connections from services with valid mTLS certificates issued by Istio's CA. This ensures that the principal identity is always verified.
+With `STRICT` mode, the MongoDB workload's sidecar will only accept mesh connections with valid mTLS certificates issued by Istio's CA. This ensures that the principal identity is always verified for traffic that reaches MongoDB through the mesh.
 
 ## Testing the Configuration
 
