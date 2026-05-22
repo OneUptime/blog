@@ -8,7 +8,7 @@ Description: Learn how to configure Kubernetes rolling update strategies in Terr
 
 ---
 
-Rolling updates let you update your application without downtime. Kubernetes gradually replaces old pods with new ones, ensuring a minimum number of pods are always available to handle requests. Terraform manages the deployment spec that controls this behavior - the update strategy, surge settings, and readiness gates that determine how smooth (or painful) your deployments are.
+Rolling updates let you update your application without downtime. Kubernetes gradually replaces old pods with new ones, ensuring a minimum number of pods are always available to handle requests. Terraform manages the deployment spec that controls this behavior - the update strategy, surge settings, and readiness probes that determine how smooth (or painful) your deployments are.
 
 This guide covers how to configure rolling update strategies in Terraform for reliable, zero-downtime deployments.
 
@@ -144,7 +144,7 @@ strategy {
 }
 ```
 
-This creates all new pods before terminating any old ones. It requires 2x resources temporarily but provides zero-downtime updates.
+This can create up to the full desired replica count in new pods before terminating old ones. It may require 2x resources temporarily but provides zero-downtime updates.
 
 ## Recreate Strategy
 
@@ -306,7 +306,7 @@ spec {
 
 The sequence during a rolling update is:
 1. Pod is marked for termination
-2. Pod is removed from service endpoints (readiness)
+2. EndpointSlices mark the Pod's endpoint as terminating and not ready, so Services stop using it for regular traffic
 3. Pre-stop hook runs
 4. SIGTERM is sent to the process
 5. Application drains connections and shuts down
