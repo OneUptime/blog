@@ -38,8 +38,8 @@ version = ">= 5.0.0"
 # Range
 version = ">= 4.0, < 6.0"
 
-# Pessimistic constraint (allows patch updates)
-version = "~> 5.0"    # Allows 5.0.x through 5.x.x
+# Pessimistic constraint (allows updates within the next major or minor version, depending on precision)
+version = "~> 5.0"    # Allows 5.x but not 6.x
 version = "~> 5.0.0"  # Allows 5.0.x only
 ```
 
@@ -51,10 +51,10 @@ Before upgrading, always read the provider's upgrade guide:
 # Check the current provider version
 terraform providers
 
-# View available versions
+# Review lock command options
 terraform providers lock -help
 
-# Check the changelog and upgrade guide on the registry
+# Check available versions, the changelog, and the upgrade guide on the registry
 # https://registry.terraform.io/providers/hashicorp/aws/latest/docs/guides/version-5-upgrade
 ```
 
@@ -98,7 +98,7 @@ terraform version
 
 ## Step 3: Handle Deprecated Resources
 
-Major provider updates often rename or split resources. For example, the AWS provider v5 made significant changes:
+Major provider updates often rename or split resources. For example, the AWS provider v4 introduced standalone S3 bucket resources and deprecated several inline `aws_s3_bucket` arguments, so configurations upgrading through v4 or v5 should use the standalone resources:
 
 ```hcl
 # AWS Provider 4.x
@@ -119,9 +119,23 @@ resource "aws_s3_bucket" "example" {
   }
 }
 
-# AWS Provider 5.x - S3 bucket attributes moved to separate resources
+# Updated configuration - S3 bucket settings managed with standalone resources
 resource "aws_s3_bucket" "example" {
   bucket = "my-bucket"
+}
+
+resource "aws_s3_bucket_ownership_controls" "example" {
+  bucket = aws_s3_bucket.example.id
+  rule {
+    object_ownership = "BucketOwnerPreferred"
+  }
+}
+
+resource "aws_s3_bucket_acl" "example" {
+  depends_on = [aws_s3_bucket_ownership_controls.example]
+
+  bucket = aws_s3_bucket.example.id
+  acl    = "private"
 }
 
 resource "aws_s3_bucket_versioning" "example" {
@@ -148,19 +162,21 @@ Some provider upgrades require state modifications. Use `terraform state replace
 ```bash
 # Replace a provider in state
 terraform state replace-provider \
-  "registry.terraform.io/hashicorp/aws" \
+  "registry.terraform.io/-/aws" \
   "registry.terraform.io/hashicorp/aws"
 ```
 
-For resources that were renamed, use moved blocks:
+For resources that were renamed without changing the underlying resource type, use moved blocks:
 
 ```hcl
-# Handle resource type changes
+# Handle resource address changes
 moved {
-  from = aws_s3_bucket_object.file
-  to   = aws_s3_object.file
+  from = aws_instance.old_name
+  to   = aws_instance.new_name
 }
 ```
+
+For provider resource type migrations, such as moving from `aws_s3_bucket_object` to `aws_s3_object`, follow the provider upgrade guide and import or state migration instructions for that specific resource type.
 
 ## Step 5: Test with terraform plan
 
