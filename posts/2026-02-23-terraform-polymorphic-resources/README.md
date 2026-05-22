@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Design Pattern, Dynamic Blocks, Module, Infrastructure as Code
+Tags: Terraform, Design Pattern, for_each, Module, Infrastructure as Code
 
 Description: Learn how to handle polymorphic resources in Terraform where the same logical concept maps to different resource types or configurations based on input parameters.
 
@@ -145,9 +145,23 @@ module "database_redis" {
 # Single output regardless of type
 locals {
   database = (
-    var.database_type == "rds" ? module.database_rds[0] :
-    var.database_type == "dynamodb" ? module.database_dynamodb[0] :
-    module.database_redis[0]
+    var.database_type == "rds" ? {
+      endpoint          = module.database_rds[0].endpoint
+      port              = module.database_rds[0].port
+      connection_string = module.database_rds[0].connection_string
+      type              = module.database_rds[0].type
+    } :
+    var.database_type == "dynamodb" ? {
+      endpoint          = module.database_dynamodb[0].endpoint
+      port              = module.database_dynamodb[0].port
+      connection_string = module.database_dynamodb[0].connection_string
+      type              = module.database_dynamodb[0].type
+    } : {
+      endpoint          = module.database_redis[0].endpoint
+      port              = module.database_redis[0].port
+      connection_string = module.database_redis[0].connection_string
+      type              = module.database_redis[0].type
+    }
   )
 }
 
@@ -298,7 +312,7 @@ resource "aws_ssm_parameter" "db_url" {
 }
 ```
 
-## Pattern 3: Dynamic Blocks for Polymorphic Attributes
+## Pattern 3: for_each for Polymorphic Attributes
 
 Sometimes polymorphism exists within a single resource type. For example, an AWS CloudWatch alarm can monitor different metrics:
 
@@ -368,8 +382,8 @@ A practical example where polymorphism shows up frequently - notification routin
 ```hcl
 variable "notification_channels" {
   type = map(object({
-    type    = string  # "slack", "email", "pagerduty", "webhook"
-    target  = string  # channel URL, email address, service key, or webhook URL
+    type    = string  # "slack" or "email"
+    target  = string  # Slack channel ID or email address
   }))
 }
 
@@ -392,6 +406,16 @@ resource "aws_sns_topic_subscription" "email" {
   topic_arn = aws_sns_topic.email[each.key].arn
   protocol  = "email"
   endpoint  = each.value.target
+}
+
+# SNS topics for Slack notifications
+resource "aws_sns_topic" "slack" {
+  for_each = {
+    for name, channel in var.notification_channels :
+    name => channel if channel.type == "slack"
+  }
+
+  name = "notify-${each.key}"
 }
 
 # Chatbot for Slack notifications
