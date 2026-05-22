@@ -8,7 +8,7 @@ Description: Learn how to use terraform plan -refresh-only to update your state 
 
 ---
 
-The `terraform plan -refresh-only` mode was introduced in Terraform 1.1 as the replacement for the standalone `terraform refresh` command. It lets you update your state file to reflect the current state of your cloud resources without making any changes to those resources. This is essential for drift detection, state reconciliation, and understanding what has changed outside of Terraform.
+The `terraform plan -refresh-only` mode was introduced in Terraform 0.15.4 as the replacement for the standalone `terraform refresh` command. It lets you update your state file to reflect the current state of your cloud resources without making any changes to those resources. This is essential for drift detection, state reconciliation, and understanding what has changed outside of Terraform.
 
 This guide covers when to use refresh-only mode, how it differs from a regular plan, and how to build it into your operational workflows.
 
@@ -20,7 +20,7 @@ During a normal `terraform plan`, Terraform:
 2. Compares refreshed state with configuration.
 3. Generates a plan to make infrastructure match configuration.
 
-With `-refresh-only`, Terraform stops after step 1. It shows you what changed in your cloud infrastructure since the last state update, but it does not propose any changes to make infrastructure match configuration.
+With `-refresh-only`, Terraform focuses on updating state and root module outputs to match the refreshed remote objects. It shows you what changed in your cloud infrastructure since the last state update, but it does not propose any changes to make infrastructure match configuration.
 
 ```bash
 # Normal plan - shows what Terraform wants to change
@@ -33,7 +33,7 @@ terraform plan -refresh-only
 
 ## Why terraform refresh Was Deprecated
 
-The standalone `terraform refresh` command had a dangerous behavior: it automatically updated state without showing you what was changing. If a resource was accidentally deleted, `terraform refresh` would silently remove it from state, making it impossible to recreate with a simple `terraform apply`.
+The standalone `terraform refresh` command had a dangerous behavior: it automatically updated state without showing you what was changing. If a resource was accidentally deleted, `terraform refresh` would silently remove it from state, hiding that deletion until the next plan or apply showed Terraform needed to create a new object.
 
 ```bash
 # Old way (deprecated) - updates state without review
@@ -182,6 +182,9 @@ on:
 jobs:
   check-drift:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
     strategy:
       matrix:
         environment: [dev, staging, prod]
@@ -204,8 +207,11 @@ jobs:
 
           if [ $EXIT_CODE -eq 2 ]; then
             echo "drift_detected=true" >> $GITHUB_OUTPUT
-          else
+          elif [ $EXIT_CODE -eq 0 ]; then
             echo "drift_detected=false" >> $GITHUB_OUTPUT
+          else
+            cat drift-report.txt
+            exit 1
           fi
 
       - name: Report Drift
@@ -221,11 +227,11 @@ jobs:
           script: |
             const fs = require('fs');
             const report = fs.readFileSync('drift-report.txt', 'utf8');
-            github.rest.issues.create({
+            await github.rest.issues.create({
               owner: context.repo.owner,
               repo: context.repo.repo,
               title: `Infrastructure drift detected in ${{ matrix.environment }}`,
-              body: `Drift was detected during the scheduled check.\n\n```\n${report}\n````,
+              body: ['Drift was detected during the scheduled check.', '', '```', report, '```'].join('\n'),
               labels: ['terraform', 'drift', '${{ matrix.environment }}']
             });
 ```
@@ -264,7 +270,8 @@ Use different output formats for different audiences:
 terraform plan -refresh-only
 
 # JSON output for programmatic processing
-terraform plan -refresh-only -json | jq '.resource_drift'
+terraform plan -refresh-only -out=refresh-plan.tfplan
+terraform show -json refresh-plan.tfplan | jq '.resource_drift'
 
 # Save the plan for later review
 terraform plan -refresh-only -out=refresh-plan.tfplan
@@ -286,7 +293,8 @@ terraform plan -refresh-only -no-color 2>&1 | \
   grep -v "password\|secret\|key\|token" > safe-drift-report.txt
 
 # Or use the JSON output and filter specific fields
-terraform plan -refresh-only -json 2>/dev/null | \
+terraform plan -refresh-only -out=refresh-plan.tfplan
+terraform show -json refresh-plan.tfplan | \
   jq 'del(.. | .password?, .secret?, .api_key?)' > filtered-report.json
 ```
 
