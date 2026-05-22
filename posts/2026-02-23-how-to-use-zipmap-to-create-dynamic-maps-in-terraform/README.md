@@ -116,6 +116,11 @@ A very common networking pattern:
 ```hcl
 data "aws_availability_zones" "available" {
   state = "available"
+
+  filter {
+    name   = "opt-in-status"
+    values = ["opt-in-not-required"]
+  }
 }
 
 resource "aws_subnet" "private" {
