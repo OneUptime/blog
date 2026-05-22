@@ -22,7 +22,6 @@ Before writing any Terraform code, understand what you are working with:
 # Generate an inventory of existing cloud resources
 
 import boto3
-import json
 
 def inventory_aws_resources(region="us-east-1"):
     """Create an inventory of existing AWS resources."""
@@ -30,20 +29,21 @@ def inventory_aws_resources(region="us-east-1"):
 
     # EC2 Instances
     ec2 = boto3.client("ec2", region_name=region)
-    instances = ec2.describe_instances()
+    paginator = ec2.get_paginator("describe_instances")
     inventory["ec2_instances"] = []
-    for reservation in instances["Reservations"]:
-        for instance in reservation["Instances"]:
-            inventory["ec2_instances"].append({
-                "id": instance["InstanceId"],
-                "type": instance["InstanceType"],
-                "state": instance["State"]["Name"],
-                "tags": {
-                    t["Key"]: t["Value"]
-                    for t in instance.get("Tags", [])
-                },
-                "managed_by": "unknown"
-            })
+    for page in paginator.paginate():
+        for reservation in page["Reservations"]:
+            for instance in reservation["Instances"]:
+                inventory["ec2_instances"].append({
+                    "id": instance["InstanceId"],
+                    "type": instance["InstanceType"],
+                    "state": instance["State"]["Name"],
+                    "tags": {
+                        t["Key"]: t["Value"]
+                        for t in instance.get("Tags", [])
+                    },
+                    "managed_by": "unknown"
+                })
 
     # Determine how each resource is currently managed
     for instance in inventory["ec2_instances"]:
@@ -123,9 +123,9 @@ terraform plan -target="$RESOURCE_ADDRESS" 2>&1 | tee plan-output.txt
 
 # Step 4: Check for changes
 if grep -q "No changes" plan-output.txt; then
-    echo "SUCCESS: Import matches existing resource"
+    echo "SUCCESS: Terraform has no planned changes for this target"
 else
-    echo "WARNING: Configuration does not match existing resource"
+    echo "WARNING: Terraform has planned changes for this target"
     echo "Review the plan output and update your configuration"
 fi
 ```
@@ -235,7 +235,9 @@ resource "aws_instance" "legacy" {
     ignore_changes = all
   }
 }
+```
 
+```hcl
 # Phase 2: Selectively manage specific attributes
 resource "aws_instance" "legacy" {
   ami           = "ami-0123456789abcdef0"
@@ -275,6 +277,8 @@ data "aws_cloudformation_stack" "legacy_vpc" {
 
 # Use outputs from the CloudFormation stack
 resource "aws_instance" "new_service" {
+  ami           = "ami-0123456789abcdef0"
+  instance_type = "t3.micro"
   subnet_id = data.aws_cloudformation_stack.legacy_vpc.outputs["PrivateSubnetId"]
 
   tags = {
@@ -295,6 +299,7 @@ Use tools to generate initial Terraform configuration:
 
 # Option 1: Use terraform plan -generate-config-out
 # (Requires import blocks in Terraform 1.5+)
+# The output path must be a new file that does not already exist.
 terraform plan -generate-config-out=generated.tf
 
 # Option 2: Use terraformer for bulk import
@@ -343,7 +348,7 @@ Use prevent_destroy on critical resources. Until you are confident in your Terra
 
 Start with ignore_changes = all. Get resources into state first, then gradually start managing attributes.
 
-Validate with terraform plan after every import. The plan should show no changes if your configuration matches the existing resource.
+Validate with terraform plan after every import. The plan should show no changes for the attributes you are managing. If you use ignore_changes = all during the first phase, Terraform will suppress update proposals for the resource, so remove or narrow it before relying on the plan to prove that the full configuration matches the existing resource.
 
 ## Conclusion
 
