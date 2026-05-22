@@ -22,7 +22,7 @@ The flow goes like this:
 4. If the token's claims match your trust policy (correct repository, branch, environment), the cloud provider issues temporary credentials
 5. Terraform uses these temporary credentials for the duration of the run
 
-The temporary credentials typically expire after one hour and cannot be reused.
+The temporary credentials expire quickly based on the cloud provider and role configuration, and cannot be reused after they expire.
 
 ## AWS OIDC Setup
 
@@ -40,12 +40,6 @@ resource "aws_iam_openid_connect_provider" "github_actions" {
 
   # The audience that GitHub Actions tokens are issued for
   client_id_list = ["sts.amazonaws.com"]
-
-  # GitHub's OIDC provider thumbprint
-  thumbprint_list = [
-    "6938fd4d98bab03faadb97b34396831e3780aea1",
-    "1c58a3a8518e8759bf075b76b750d4f2df264fcd",
-  ]
 
   tags = {
     Name        = "github-actions-oidc"
@@ -296,12 +290,12 @@ jobs:
       - name: Terraform Init
         run: terraform init
         env:
-          ARM_USE_OIDC: true
+          ARM_USE_OIDC: "true"
 
       - name: Terraform Plan
         run: terraform plan
         env:
-          ARM_USE_OIDC: true
+          ARM_USE_OIDC: "true"
 ```
 
 ## GCP OIDC Setup
@@ -360,7 +354,7 @@ jobs:
 
       # Authenticate with GCP using OIDC
       - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: 'projects/123456/locations/global/workloadIdentityPools/github-actions/providers/github'
           service_account: 'terraform-github-actions@my-project.iam.gserviceaccount.com'
@@ -409,7 +403,9 @@ The trust policy condition does not match the token claims. Check that the `sub`
   run: |
     TOKEN=$(curl -s -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
       "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sts.amazonaws.com" | jq -r '.value')
-    echo $TOKEN | cut -d. -f2 | base64 -d 2>/dev/null | jq .
+    PAYLOAD=$(echo "$TOKEN" | cut -d. -f2 | tr '_-' '/+')
+    PADDING=$(( (4 - ${#PAYLOAD} % 4) % 4 ))
+    printf '%s' "$PAYLOAD$(printf '=%.0s' $(seq 1 "$PADDING"))" | base64 -d | jq .
 ```
 
 **Error: "Audience validation failed"**
