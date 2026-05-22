@@ -79,7 +79,7 @@ resource "aws_s3_object" "website" {
   # Determine content type from file extension
   content_type = lookup(
     local.content_types,
-    regex("\\.[^.]+$", each.value),
+    try(regex("\\.[^.]+$", each.value), ""),
     "application/octet-stream"
   )
 }
@@ -159,7 +159,7 @@ resource "aws_lambda_function" "functions" {
   function_name = each.key
   role          = aws_iam_role.lambda.arn
   handler       = "index.handler"
-  runtime       = "python3.9"
+  runtime       = "python3.12"
 
   filename         = each.value.zip_path
   source_code_hash = filebase64sha256(each.value.zip_path)
@@ -270,7 +270,7 @@ locals {
 
   # Filter out test configs in production
   active_configs = var.environment == "production" ? (
-    toset([for f in local.all_configs : f if !startswith(f, "test-")])
+    toset([for f in local.all_configs : f if !startswith(basename(f), "test-")])
   ) : local.all_configs
 }
 
@@ -315,8 +315,8 @@ resource "aws_cloudwatch_dashboard" "from_file" {
 # fileset returns a set (unordered), not a list
 # If you need ordering, convert: sort(fileset(...))
 
-# fileset does not follow symbolic links into directories
-# But it does return symbolic links that match the pattern
+# fileset enumerates regular file names, not special filesystem objects
+# Avoid relying on it for symlink traversal
 ```
 
 ## Summary
