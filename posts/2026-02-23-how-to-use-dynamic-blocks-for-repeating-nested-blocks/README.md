@@ -12,7 +12,7 @@ Terraform resources often require nested blocks - things like ingress rules in a
 
 ## The Problem Dynamic Blocks Solve
 
-Consider a security group with multiple ingress rules. Without dynamic blocks, you write each rule as a separate block:
+Consider a security group with multiple ingress rules. The AWS provider currently recommends managing production security group rules with `aws_vpc_security_group_ingress_rule` and `aws_vpc_security_group_egress_rule`, but inline `ingress` blocks are still a useful simple example of how dynamic blocks generate repeated nested blocks. Without dynamic blocks, you write each rule as a separate block:
 
 ```hcl
 # Without dynamic blocks - repetitive and hard to maintain
@@ -245,7 +245,22 @@ resource "aws_ecs_task_definition" "app" {
     }
   }
 
-  container_definitions = jsonencode([])
+  container_definitions = jsonencode([
+    {
+      name      = "app"
+      image     = "nginx:latest"
+      essential = true
+      mountPoints = [
+        for volume in flatten([
+          for config in var.storage_configs : config.volumes
+        ]) : {
+          sourceVolume  = volume.name
+          containerPath = "/mnt/${volume.name}"
+          readOnly      = false
+        }
+      ]
+    }
+  ])
 }
 ```
 
@@ -336,7 +351,7 @@ resource "aws_security_group" "app" {
 
 ## Real-World Example: AWS WAF Rules
 
-WAF rules are a perfect use case for dynamic blocks because they have deeply nested structures:
+WAF rules are a perfect use case for dynamic blocks because they have deeply nested structures. The AWS provider notes that inline WAF `rule` blocks have known limitations, so consider `aws_wafv2_web_acl_rule` for production rule management:
 
 ```hcl
 variable "waf_ip_rules" {
