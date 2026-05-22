@@ -84,7 +84,7 @@ git add .terraform.lock.hcl
 git commit -m "Add Terraform provider lock file with multi-platform hashes"
 ```
 
-If you forget to generate multi-platform hashes, team members on different operating systems will see hash verification failures when they run `terraform init`.
+If you forget to generate multi-platform hashes, team members on different operating systems may see Terraform add new platform-specific `h1:` hashes when they run `terraform init`. If you install providers from a filesystem or network mirror, or from a registry that cannot provide signed checksums for all platforms, missing platform hashes can also cause hash verification failures.
 
 ## Handling Merge Conflicts
 
@@ -138,7 +138,7 @@ git push -u origin update-providers-weekly
 
 ### Strategy 3: Git Merge Driver
 
-Set up a custom merge driver that always takes the latest version:
+Set up a custom merge driver that takes the incoming version and refreshes the lock file:
 
 ```bash
 # .gitattributes
@@ -151,7 +151,7 @@ git config merge.terraform-lock.name "Terraform lock file merge driver"
 git config merge.terraform-lock.driver "cp %B %A && terraform providers lock -platform=linux_amd64 -platform=darwin_arm64"
 ```
 
-This automatically regenerates the lock file during merges. Note that this requires Terraform to be installed on the machine performing the merge.
+This automatically refreshes the lock file during merges. It does not choose the newest provider version by itself; it starts from the other branch's lock file and then updates the recorded checksums for the configured platforms. Note that this requires Terraform to be installed on the machine performing the merge.
 
 ## Pull Request Workflow
 
@@ -281,10 +281,11 @@ git commit -m "Add linux_amd64 hashes to lock file"
 
 ### Lock file keeps changing
 
-If the lock file changes on every `terraform init` without deliberate upgrades, you may have unconstrained provider versions:
+If the lock file changes after `terraform init -upgrade`, or after `terraform init` in a workspace where the lock file is not committed, you may have unconstrained provider versions:
 
 ```hcl
-# Bad - no version constraint, picks latest every time
+# Bad - no version constraint, picks the latest matching version when
+# Terraform needs to make a new selection
 terraform {
   required_providers {
     aws = {
