@@ -8,7 +8,7 @@ Description: Learn how to use the fileexists function in Terraform to check whet
 
 ---
 
-The `fileexists` function checks whether a file exists at a given path on the local filesystem. It returns `true` if the file exists and `false` otherwise. This simple boolean check opens up a powerful pattern: conditional configuration based on what files are actually present in your project.
+The `fileexists` function checks whether a regular file exists at a given path on the local filesystem. It returns `true` if the file exists and `false` if it is missing. This simple boolean check opens up a powerful pattern: conditional configuration based on what files are actually present in your project.
 
 ## What Is the fileexists Function?
 
@@ -22,7 +22,7 @@ fileexists("/etc/hostname")            # true (on most Linux systems)
 fileexists("/nonexistent/file.txt")    # false
 ```
 
-It checks for the file at plan time, not apply time, so the file must exist on the machine running Terraform.
+Terraform evaluates this function while loading and validating the configuration, not during apply, so the file must exist on the machine running Terraform before Terraform takes any actions.
 
 ## Basic Usage
 
@@ -168,7 +168,7 @@ variable "ssh_public_key_path" {
   default = "~/.ssh/id_rsa.pub"
 
   validation {
-    condition     = fileexists(var.ssh_public_key_path)
+    condition     = fileexists(pathexpand(var.ssh_public_key_path))
     error_message = "SSH public key file not found at ${var.ssh_public_key_path}. Please generate an SSH key pair first."
   }
 }
@@ -292,20 +292,20 @@ locals {
   }
 
   # Find which path exists
-  ssh_key_path = coalesce([
+  ssh_key_path = try(coalesce([
     for platform, path in local.ssh_key_paths :
     fileexists(path) ? path : ""
-  ]...)
+  ]...), null)
 }
 ```
 
 ## Important Notes
 
 ```hcl
-# fileexists checks at plan time, not apply time
-# The file must exist when you run terraform plan
+# fileexists is evaluated while loading and validating the configuration
+# The file must exist before Terraform takes any actions
 
-# fileexists only checks regular files, not directories
+# fileexists only checks regular files; directories and special files return an error
 # To check for a directory, you would need an external data source
 
 # fileexists returns false for symbolic links pointing to non-existent targets
