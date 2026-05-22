@@ -70,6 +70,10 @@ on:
   pull_request:
     branches: [main, staging, develop]
 
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
   determine-environment:
     runs-on: ubuntu-latest
@@ -82,17 +86,19 @@ jobs:
         id: env
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "should_apply=false" >> $GITHUB_OUTPUT
-            echo "environment=plan-only" >> $GITHUB_OUTPUT
-          elif [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            echo "should_apply=true" >> $GITHUB_OUTPUT
-            echo "environment=production" >> $GITHUB_OUTPUT
-          elif [ "${{ github.ref }}" = "refs/heads/staging" ]; then
-            echo "should_apply=true" >> $GITHUB_OUTPUT
-            echo "environment=staging" >> $GITHUB_OUTPUT
-          elif [ "${{ github.ref }}" = "refs/heads/develop" ]; then
-            echo "should_apply=true" >> $GITHUB_OUTPUT
-            echo "environment=dev" >> $GITHUB_OUTPUT
+            BRANCH="${{ github.base_ref }}"
+            echo "should_apply=false" >> "$GITHUB_OUTPUT"
+          else
+            BRANCH="${GITHUB_REF_NAME}"
+            echo "should_apply=true" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [ "$BRANCH" = "main" ]; then
+            echo "environment=production" >> "$GITHUB_OUTPUT"
+          elif [ "$BRANCH" = "staging" ]; then
+            echo "environment=staging" >> "$GITHUB_OUTPUT"
+          elif [ "$BRANCH" = "develop" ]; then
+            echo "environment=dev" >> "$GITHUB_OUTPUT"
           fi
 
   plan:
@@ -103,7 +109,7 @@ jobs:
 
       - uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.7.0
+          terraform_version: 1.15.4
           terraform_wrapper: false
 
       - name: Configure AWS credentials
@@ -116,9 +122,11 @@ jobs:
         run: |
           ENV=${{ needs.determine-environment.outputs.environment }}
           cd terraform
-          terraform init -no-color
-          terraform workspace select $ENV || terraform workspace new $ENV
-          terraform plan -no-color -var-file="envs/${ENV}.tfvars" -out=tfplan
+          terraform init -no-color -input=false
+          terraform fmt -check -recursive
+          terraform validate -no-color
+          terraform workspace select -or-create "$ENV"
+          terraform plan -no-color -input=false -var-file="envs/${ENV}.tfvars" -out=tfplan
 
       - name: Upload plan
         uses: actions/upload-artifact@v4
@@ -137,7 +145,7 @@ jobs:
 
       - uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.7.0
+          terraform_version: 1.15.4
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -155,9 +163,9 @@ jobs:
         run: |
           ENV=${{ needs.determine-environment.outputs.environment }}
           cd terraform
-          terraform init -no-color
-          terraform workspace select $ENV
-          terraform apply -no-color -auto-approve tfplan
+          terraform init -no-color -input=false
+          terraform workspace select "$ENV"
+          terraform apply -no-color -input=false tfplan
 ```
 
 ## Continuous Reconciliation
@@ -173,6 +181,10 @@ on:
     # Run every 4 hours
     - cron: "0 */4 * * *"
 
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
   reconcile:
     runs-on: ubuntu-latest
@@ -186,7 +198,7 @@ jobs:
 
       - uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.7.0
+          terraform_version: 1.15.4
           terraform_wrapper: false
 
       - name: Configure AWS credentials
@@ -199,11 +211,11 @@ jobs:
         run: |
           ENV=${{ matrix.environment }}
           cd terraform
-          terraform init -no-color
-          terraform workspace select $ENV
+          terraform init -no-color -input=false
+          terraform workspace select "$ENV"
 
           set +e
-          terraform plan -detailed-exitcode -no-color \
+          terraform plan -detailed-exitcode -no-color -input=false \
             -var-file="envs/${ENV}.tfvars" -out=driftplan 2>&1 | tee plan-output.txt
           EXIT_CODE=${PIPESTATUS[0]}
           set -e
@@ -215,13 +227,14 @@ jobs:
             if [ "$ENV" = "production" ]; then
               echo "Production drift detected. Manual intervention required."
               # Send alert to team
-              curl -X POST ${{ secrets.SLACK_WEBHOOK_URL }} \
+              curl -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
+                -H "Content-Type: application/json" \
                 -d '{"text": "Production infrastructure drift detected. Review required."}'
               exit 1
             fi
 
             # Auto-reconcile dev and staging
-            terraform apply -no-color -auto-approve driftplan
+            terraform apply -no-color -input=false driftplan
             echo "Drift reconciled in $ENV"
           else
             echo "No drift detected in $ENV"
@@ -361,7 +374,7 @@ git diff HEAD@{2024-01-15} -- terraform/environments/production/
 
 Every infrastructure change has a PR that serves as documentation:
 
-```markdown
+````markdown
 ## Infrastructure Change Request
 
 ### What is changing
@@ -375,7 +388,7 @@ Every infrastructure change has a PR that serves as documentation:
 ### Terraform Plan Summary
 ```
 Plan: 0 to add, 2 to change, 0 to destroy.
-```text
+```
 
 ### Rollback Plan
 - Revert this PR to restore previous instance count and size
@@ -383,7 +396,7 @@ Plan: 0 to add, 2 to change, 0 to destroy.
 ### Testing
 - [x] Tested scaling in staging environment
 - [x] Verified no downtime during RDS modification
-```
+````
 
 ## Summary
 
