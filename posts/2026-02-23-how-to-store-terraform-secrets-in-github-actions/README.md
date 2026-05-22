@@ -31,9 +31,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v4
         with:
-          terraform_version: "1.7.5"
+          terraform_version: "1.14.6"
 
       - name: Terraform Init
         run: terraform init
@@ -62,7 +62,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v4
 
       - name: Terraform Apply
         run: terraform apply -auto-approve
@@ -75,7 +75,7 @@ jobs:
 Environment secrets have several advantages:
 - Different credentials for dev, staging, and production
 - Required reviewers can gate access to production secrets
-- Branch protection ensures only main can use production secrets
+- Deployment branch and tag rules ensure only approved refs can use production secrets
 - Separate rotation schedules per environment
 
 ## Approach 3: OIDC - No Stored Secrets
@@ -94,8 +94,6 @@ resource "aws_iam_openid_connect_provider" "github" {
   url = "https://token.actions.githubusercontent.com"
 
   client_id_list = ["sts.amazonaws.com"]
-
-  thumbprint_list = ["6938fd4d98bab03faadb97b34396831e3780aea1"]
 }
 
 # IAM role that GitHub Actions will assume
@@ -154,12 +152,12 @@ jobs:
 
       # Get temporary AWS credentials via OIDC
       - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: arn:aws:iam::123456789012:role/github-actions-terraform
           aws-region: us-east-1
 
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v4
 
       # No secrets needed - credentials are in the environment
       - name: Terraform Init
@@ -174,8 +172,13 @@ jobs:
 For Azure, configure a federated identity credential:
 
 ```yaml
+# At the workflow or job level:
+# permissions:
+#   id-token: write
+#   contents: read
+
 - name: Azure Login
-  uses: azure/login@v2
+  uses: azure/login@v3
   with:
     client-id: ${{ secrets.AZURE_CLIENT_ID }}
     tenant-id: ${{ secrets.AZURE_TENANT_ID }}
@@ -190,8 +193,13 @@ For Azure, configure a federated identity credential:
 For Google Cloud:
 
 ```yaml
+# At the workflow or job level:
+# permissions:
+#   id-token: write
+#   contents: read
+
 - name: Authenticate to Google Cloud
-  uses: google-github-actions/auth@v2
+  uses: google-github-actions/auth@v3
   with:
     workload_identity_provider: 'projects/123456/locations/global/workloadIdentityPools/github/providers/github-actions'
     service_account: 'terraform@myproject.iam.gserviceaccount.com'
@@ -208,9 +216,8 @@ For organizations that already use a secret management service, pull credentials
   uses: aws-actions/aws-secretsmanager-get-secrets@v2
   with:
     secret-ids: |
-      terraform/database-password
-      terraform/api-key
-    parse-json-secrets: true
+      TERRAFORM_DATABASE_PASSWORD, terraform/database-password
+      TERRAFORM_API_KEY, terraform/api-key
 
 - name: Terraform Apply
   run: terraform apply -auto-approve
@@ -261,12 +268,12 @@ Never put secrets in `.tfvars` files that get committed to the repository.
 If you use Terraform Cloud as a remote backend, you need an API token:
 
 ```yaml
-- uses: hashicorp/setup-terraform@v3
+- uses: hashicorp/setup-terraform@v4
   with:
     cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
 ```
 
-Store the token as a repository or environment secret. For better security, use team tokens with limited scope rather than organization tokens.
+Store the token as a repository or environment secret. Use a user or team token for Terraform CLI workflows; organization tokens cannot be used for command-line Terraform actions.
 
 ## Security Best Practices
 
