@@ -8,7 +8,7 @@ Description: A hands-on comparison of Istio Gateway and NGINX Ingress Controller
 
 ---
 
-NGINX Ingress Controller has been the default choice for Kubernetes ingress for years. It is stable, well-documented, and does the job. But if you are running Istio, you already have an ingress gateway that can handle external traffic. So the question becomes: should you keep NGINX or switch to Istio's gateway?
+NGINX Ingress Controller has been a common choice for Kubernetes ingress for years. It is well-documented and does the job, though the community ingress-nginx project is now retired and should be treated differently from commercially supported NGINX ingress offerings. But if you are running Istio, you already have an ingress gateway that can handle external traffic. So the question becomes: should you keep NGINX or switch to Istio's gateway?
 
 This comparison covers the practical differences between the two so you can make an informed decision.
 
@@ -20,6 +20,7 @@ This comparison covers the practical differences between the two so you can make
 # Install NGINX Ingress Controller
 
 helm install ingress-nginx ingress-nginx/ingress-nginx \
+  --repo https://kubernetes.github.io/ingress-nginx \
   --namespace ingress-nginx --create-namespace
 ```
 
@@ -30,7 +31,7 @@ helm install ingress-nginx ingress-nginx/ingress-nginx \
 istioctl install --set profile=default
 ```
 
-The reload vs. hot-reconfiguration difference matters. NGINX reloads can cause brief disruptions (dropped connections) under heavy traffic, especially with complex configurations. Envoy's xDS-based reconfiguration is hitless.
+The reload vs. hot-reconfiguration difference matters. Ingress-nginx avoids reloads for some dynamic updates, such as endpoint-only changes, but configuration changes that affect the generated NGINX configuration still trigger a reload and can affect latency and load-balancing state. Envoy's xDS-based reconfiguration avoids a full proxy reload.
 
 ## Configuration Style
 
@@ -45,8 +46,7 @@ metadata:
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
     nginx.ingress.kubernetes.io/proxy-body-size: "10m"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
-    nginx.ingress.kubernetes.io/rate-limit: "10"
-    nginx.ingress.kubernetes.io/rate-limit-window: "1m"
+    nginx.ingress.kubernetes.io/limit-rpm: "10"
     nginx.ingress.kubernetes.io/cors-allow-origin: "https://example.com"
     nginx.ingress.kubernetes.io/cors-allow-methods: "GET, POST"
     nginx.ingress.kubernetes.io/cors-allow-headers: "Content-Type"
@@ -71,7 +71,7 @@ Those annotations get verbose fast. Every feature needs its own annotation, and 
 Istio separates the gateway configuration from routing:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: app-gateway
@@ -89,7 +89,7 @@ spec:
       hosts:
         - app.example.com
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: app-routes
@@ -144,7 +144,7 @@ The Istio approach is more structured. Features like CORS, timeouts, and retries
 - Basic authentication through annotations
 - External authentication through auth-url annotations
 
-**Features Istio has that NGINX does not:**
+**Features Istio exposes as first-class mesh traffic management:**
 - Traffic splitting with weights (canary deployments)
 - Fault injection (delay and abort)
 - Traffic mirroring
@@ -153,10 +153,10 @@ The Istio approach is more structured. Features like CORS, timeouts, and retries
 - AuthorizationPolicy for fine-grained access control
 - Integration with the rest of the Istio mesh
 
-The traffic management features are where Istio pulls ahead. If you need canary deployments at the ingress level, Istio does it natively:
+The traffic management features are where Istio pulls ahead. If you need canary deployments at the ingress level, Istio does it natively with weighted routes, assuming the `v1` and `v2` subsets are defined in a DestinationRule:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: canary-release
@@ -186,6 +186,7 @@ kind: Ingress
 metadata:
   name: frontend-primary
 spec:
+  ingressClassName: nginx
   rules:
     - host: app.example.com
       http:
@@ -207,6 +208,7 @@ metadata:
     nginx.ingress.kubernetes.io/canary: "true"
     nginx.ingress.kubernetes.io/canary-weight: "5"
 spec:
+  ingressClassName: nginx
   rules:
     - host: app.example.com
       http:
@@ -248,7 +250,7 @@ spec:
 Istio also works with cert-manager, but the setup is slightly different. You reference the Kubernetes Secret in the Gateway resource:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: app-gateway
@@ -283,7 +285,7 @@ If you use NGINX Ingress with Istio, the traffic path is: Client -> NGINX -> NGI
 
 Pick NGINX when:
 - You are not running Istio and do not plan to
-- You need NGINX-specific features (WAF, custom configuration snippets)
+- You are using a supported NGINX ingress implementation and need NGINX-specific features (WAF, custom configuration snippets)
 - Your team knows NGINX configuration deeply
 - You need a lightweight ingress for simple routing
 - You are using NGINX Plus for commercial features
