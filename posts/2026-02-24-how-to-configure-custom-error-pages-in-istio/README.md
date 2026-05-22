@@ -22,9 +22,9 @@ Envoy generates error responses in several situations:
 
 These are returned as plain text with minimal information. Your goal is to replace them with something user-friendly.
 
-## Approach 1: External Error Service with Direct Response
+## Approach 1: External Error Page Service
 
-The simplest approach uses a dedicated error page service combined with VirtualService fault handling:
+The simplest approach starts with a dedicated error page service that can be used by an application, Lua filter, Wasm plugin, or CDN redirect:
 
 First, create a simple error page service:
 
@@ -134,52 +134,53 @@ spec:
           name: envoy.filters.http.lua
           typed_config:
             "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-            inline_code: |
-              function envoy_on_response(response_handle)
-                local status = response_handle:headers():get(":status")
-                local content_type = response_handle:headers():get("content-type") or ""
+            default_source_code:
+              inline_string: |
+                function envoy_on_response(response_handle)
+                  local status = response_handle:headers():get(":status")
+                  local content_type = response_handle:headers():get("content-type") or ""
 
-                if status == "503" and not string.find(content_type, "text/html") then
-                  response_handle:headers():replace("content-type", "text/html; charset=utf-8")
-                  response_handle:body():setBytes([[
-                    <!DOCTYPE html>
-                    <html>
-                    <head>
-                      <title>Service Unavailable</title>
-                      <style>
-                        body { font-family: sans-serif; text-align: center; padding: 50px; }
-                        h1 { color: #333; }
-                        p { color: #666; }
-                      </style>
-                    </head>
-                    <body>
-                      <h1>Service Temporarily Unavailable</h1>
-                      <p>We are working on it. Please try again in a moment.</p>
-                    </body>
-                    </html>
-                  ]])
-                end
+                  if status == "503" and not string.find(content_type, "text/html") then
+                    response_handle:headers():replace("content-type", "text/html; charset=utf-8")
+                    response_handle:body():setBytes([[
+                      <!DOCTYPE html>
+                      <html>
+                      <head>
+                        <title>Service Unavailable</title>
+                        <style>
+                          body { font-family: sans-serif; text-align: center; padding: 50px; }
+                          h1 { color: #333; }
+                          p { color: #666; }
+                        </style>
+                      </head>
+                      <body>
+                        <h1>Service Temporarily Unavailable</h1>
+                        <p>We are working on it. Please try again in a moment.</p>
+                      </body>
+                      </html>
+                    ]])
+                  end
 
-                if status == "404" and not string.find(content_type, "text/html") then
-                  response_handle:headers():replace("content-type", "text/html; charset=utf-8")
-                  response_handle:body():setBytes([[
-                    <!DOCTYPE html>
-                    <html>
-                    <head>
-                      <title>Not Found</title>
-                      <style>
-                        body { font-family: sans-serif; text-align: center; padding: 50px; }
-                        h1 { color: #333; }
-                      </style>
-                    </head>
-                    <body>
-                      <h1>Page Not Found</h1>
-                      <p>The page you requested could not be found.</p>
-                    </body>
-                    </html>
-                  ]])
+                  if status == "404" and not string.find(content_type, "text/html") then
+                    response_handle:headers():replace("content-type", "text/html; charset=utf-8")
+                    response_handle:body():setBytes([[
+                      <!DOCTYPE html>
+                      <html>
+                      <head>
+                        <title>Not Found</title>
+                        <style>
+                          body { font-family: sans-serif; text-align: center; padding: 50px; }
+                          h1 { color: #333; }
+                        </style>
+                      </head>
+                      <body>
+                        <h1>Page Not Found</h1>
+                        <p>The page you requested could not be found.</p>
+                      </body>
+                      </html>
+                    ]])
+                  end
                 end
-              end
 ```
 
 This Lua filter intercepts responses and replaces error bodies with custom HTML. The check for `content-type` prevents overwriting error responses that your application intentionally returns as HTML.
@@ -209,6 +210,7 @@ spec:
       patch:
         operation: MERGE
         value:
+          name: envoy.filters.network.http_connection_manager
           typed_config:
             "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
             local_reply_config:
@@ -224,7 +226,7 @@ spec:
                     - header:
                         key: content-type
                         value: text/html; charset=utf-8
-                      append: false
+                      append_action: OVERWRITE_IF_EXISTS_OR_ADD
                   body:
                     inline_string: |
                       <!DOCTYPE html>
@@ -246,7 +248,7 @@ spec:
                     - header:
                         key: content-type
                         value: text/html; charset=utf-8
-                      append: false
+                      append_action: OVERWRITE_IF_EXISTS_OR_ADD
                   body:
                     inline_string: |
                       <!DOCTYPE html>
@@ -261,12 +263,12 @@ spec:
 
 The `local_reply_config` only affects responses generated locally by Envoy - not responses from your upstream services. This is important because it means your application's intentional 404 or 503 responses will not be overwritten.
 
-## Approach 4: Custom Error Service with Routing Fallback
+## Approach 4: Custom Error Service with Retry Policy
 
-For a more dynamic approach, set up a dedicated error service and use VirtualService with fault injection to handle failures:
+For a more dynamic approach, set up a dedicated error service and use VirtualService retry and timeout settings to reduce transient failures before a custom error handler returns an error page:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: app-with-fallback
@@ -289,7 +291,7 @@ spec:
       timeout: 10s
 ```
 
-Then configure the error service as a fallback using an EnvoyFilter that modifies the retry policy to include a fallback cluster. This is more complex but gives you full control over the error experience.
+This retry policy does not route failed requests to the error service by itself. To return the error service content after retries are exhausted, combine it with a Lua filter, Wasm plugin, external processing filter, or application-level fallback.
 
 ## Approach 5: Wasm Plugin for Error Handling
 
@@ -313,7 +315,7 @@ spec:
       "503": "https://cdn.example.com/errors/503.html"
 ```
 
-This approach requires writing the Wasm plugin, but it gives you the most flexibility and best performance.
+This approach requires writing the Wasm plugin, but it gives you flexibility and can run in Envoy without an external service hop.
 
 ## Testing Error Pages
 
@@ -346,7 +348,7 @@ headers_to_add:
   - header:
       key: cache-control
       value: no-cache, no-store, must-revalidate
-    append: false
+    append_action: OVERWRITE_IF_EXISTS_OR_ADD
 ```
 
 Custom error pages improve the user experience significantly. The local_reply_config approach is the cleanest for Envoy-generated errors, while the Lua filter approach gives you more flexibility for handling errors from upstream services. Pick the approach that fits your requirements and complexity budget.
