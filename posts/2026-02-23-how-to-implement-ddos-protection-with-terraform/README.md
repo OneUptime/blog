@@ -14,10 +14,10 @@ This guide covers deploying a complete DDoS protection strategy on AWS using Ter
 
 ## AWS Shield Standard vs Shield Advanced
 
-Shield Standard is free and automatically enabled for all AWS accounts. It protects against common layer 3 and layer 4 DDoS attacks. Shield Advanced is a paid service ($3,000/month) that adds:
+Shield Standard is free and automatically enabled for all AWS accounts. It protects against common layer 3 and layer 4 DDoS attacks. Shield Advanced is a paid service ($3,000/month per organization, with a 1-year subscription commitment) that adds:
 
 - Protection against larger, more sophisticated attacks
-- DDoS Response Team (DRT) access
+- Shield Response Team (SRT) access
 - Cost protection (credits for DDoS-related scaling)
 - Advanced real-time metrics and reporting
 - Proactive engagement
@@ -94,7 +94,7 @@ resource "aws_shield_protection_group" "all_resources" {
 
 ## Enable Proactive Engagement
 
-Shield Advanced can proactively engage the DDoS Response Team when it detects an attack:
+Shield Advanced can proactively engage the Shield Response Team when a detected event correlates with an unhealthy Route 53 health check for a protected resource. Proactive engagement requires a Business or Enterprise Support plan:
 
 ```hcl
 resource "aws_shield_proactive_engagement" "main" {
@@ -140,7 +140,7 @@ resource "aws_cloudfront_distribution" "main" {
   price_class         = "PriceClass_All"
 
   # Associate WAF Web ACL
-  web_acl_id = aws_wafv2_web_acl.cloudfront.arn
+  web_acl_id = aws_wafv2_web_acl.ddos_protection.arn
 
   default_cache_behavior {
     allowed_methods  = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
@@ -180,12 +180,13 @@ resource "aws_cloudfront_distribution" "main" {
 
 ## WAF Rate Limiting for Layer 7 DDoS
 
-Layer 7 DDoS attacks mimic legitimate traffic. Rate limiting is your primary defense:
+Layer 7 DDoS attacks mimic legitimate traffic. Rate limiting is your primary defense. For CloudFront distributions, create the Web ACL with `CLOUDFRONT` scope in `us-east-1`:
 
 ```hcl
 resource "aws_wafv2_web_acl" "ddos_protection" {
-  name  = "${var.project}-ddos-waf"
-  scope = "REGIONAL"
+  name   = "${var.project}-ddos-waf"
+  scope  = "CLOUDFRONT"
+  region = "us-east-1"
 
   default_action {
     allow {}
