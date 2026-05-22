@@ -8,7 +8,7 @@ Description: Learn how Terragrunt builds and executes dependency graphs across m
 
 ---
 
-When you run `terragrunt run-all apply`, Terragrunt needs to figure out which modules to apply first, which can run in parallel, and which must wait for others. This ordering is determined by the dependency graph - a directed acyclic graph (DAG) built from your `dependency` and `dependencies` blocks. Understanding how this graph works is key to managing large Terragrunt projects.
+When you run `terragrunt run --all apply`, Terragrunt needs to figure out which modules to apply first, which can run in parallel, and which must wait for others. This ordering is determined by the dependency graph - a directed acyclic graph (DAG) built from your `dependency` and `dependencies` blocks. Understanding how this graph works is key to managing large Terragrunt projects.
 
 ## How the Dependency Graph Is Built
 
@@ -31,11 +31,11 @@ Both create edges in the dependency graph. The only difference is that `dependen
 
 ## Visualizing the Graph
 
-Use the `graph-dependencies` command to see your dependency graph:
+Use the `dag graph` command to see your dependency graph:
 
 ```bash
 cd live/dev
-terragrunt graph-dependencies
+terragrunt dag graph
 ```
 
 This outputs a DOT-format graph:
@@ -57,12 +57,12 @@ You can render this with Graphviz:
 
 ```bash
 # Generate a PNG visualization
-terragrunt graph-dependencies | dot -Tpng -o deps.png
+terragrunt dag graph | dot -Tpng -o deps.png
 ```
 
-## Execution Groups
+## Run Queue Order
 
-Terragrunt organizes modules into execution groups based on the graph:
+Terragrunt uses the graph to build a run queue:
 
 ```text
 Group 1 (no dependencies):      vpc, iam-roles, kms
@@ -71,7 +71,7 @@ Group 3 (depends on Group 2):   app, worker, cron
 Group 4 (depends on Group 3):   monitoring, alerts
 ```
 
-Within each group, modules run in parallel (subject to the `--terragrunt-parallelism` setting). Groups execute sequentially - Group 2 starts only after all modules in Group 1 succeed.
+Modules whose dependencies are already complete can run in parallel (subject to the `--parallelism` setting). In the grouped example above, Group 2 starts only after all modules in Group 1 succeed.
 
 For destroy operations, the groups execute in reverse order: Group 4 first, Group 1 last.
 
@@ -217,22 +217,22 @@ dependency "shared_vpc" {
 }
 ```
 
-This works with `run-all` when you run from a directory that contains both:
+This works with `run --all` when you run from a directory that contains both:
 
 ```bash
 # This will include both shared and dev modules
 cd live
-terragrunt run-all apply
+terragrunt run --all apply
 ```
 
 But if you run from just the dev directory:
 
 ```bash
 cd live/dev
-terragrunt run-all apply
+terragrunt run --all apply
 ```
 
-The shared VPC is outside the scan scope. Terragrunt will still read its outputs from state (assuming it was applied previously), but it will not apply it as part of this `run-all`.
+The shared VPC is an external dependency from the perspective of `live/dev`. By default, Terragrunt discovers external dependencies for `run --all` and prompts before including them. If you exclude external dependencies, Terragrunt can still read the shared VPC outputs from state (assuming it was applied previously), but it will not apply it as part of this `run --all`.
 
 ## Controlling Execution Order Without dependency Blocks
 
@@ -259,27 +259,27 @@ dependencies {
 
 ```bash
 # See the full graph
-terragrunt graph-dependencies
+terragrunt dag graph
 
 # Save as an image
-terragrunt graph-dependencies | dot -Tpng -o graph.png
+terragrunt dag graph | dot -Tpng -o graph.png
 ```
 
 ### Dry Run
 
 ```bash
 # See what would run and in what order
-terragrunt run-all plan --terragrunt-log-level info
+terragrunt run --all plan --log-level info
 ```
 
-The initial output shows the execution groups before any Terraform commands run.
+The output shows the units Terragrunt adds to the run queue before any Terraform commands run.
 
 ### Check a Specific Module's Dependencies
 
 ```bash
 # From a module directory, see its resolved dependencies
 cd live/dev/app
-terragrunt render-json | jq '.dependency'
+terragrunt render --json | jq '.dependency'
 ```
 
 ## Performance Optimization
@@ -298,18 +298,19 @@ vpc -> security-groups
 subnets, security-groups -> ecs-cluster -> service
 ```
 
-### Use skip_outputs for Ordering-Only Dependencies
+### Use dependencies for Ordering-Only Dependencies
 
 ```hcl
-dependency "iam" {
-  config_path  = "../iam-roles"
-  skip_outputs = true  # faster - does not read state
+dependencies {
+  paths = ["../iam-roles"]
 }
 ```
 
+If you do need a `dependency` block but want to avoid reading outputs, `skip_outputs = true` skips calling `terragrunt output`; use it carefully because the dependency's `outputs` value will be mocks if configured, or an empty map otherwise.
+
 ### Reduce the Number of Dependencies
 
-Each `dependency` block requires reading a remote state file. If a module has 10 dependencies but only needs outputs from 3, use `dependency` for those 3 and `dependencies` for the rest:
+Each `dependency` block requires Terragrunt to resolve outputs from the target module, usually by calling `terragrunt output` or using Terragrunt's dependency optimization for remote state. If a module has 10 dependencies but only needs outputs from 3, use `dependency` for those 3 and `dependencies` for the rest:
 
 ```hcl
 # Read outputs from these
@@ -328,7 +329,7 @@ dependencies {
 
 **Make dependencies explicit.** Do not rely on implicit ordering from directory structure or CI/CD pipeline stages. If module B needs module A to exist, declare it.
 
-**Use mock outputs everywhere.** Every `dependency` block should have `mock_outputs` to support `plan` commands:
+**Use mock outputs for unapplied dependencies.** Add `mock_outputs` when a module needs to plan against dependencies that may not have outputs in state yet:
 
 ```hcl
 dependency "vpc" {
@@ -343,12 +344,12 @@ dependency "vpc" {
 
 **Document complex dependency relationships.** If the dependency graph is not obvious from the directory structure, add comments explaining why certain dependencies exist.
 
-**Test destroy order.** Run `terragrunt run-all plan -destroy` to verify the reverse ordering makes sense before actually destroying anything.
+**Test destroy order.** Run `terragrunt run --all -- plan -destroy` to verify the reverse ordering makes sense before actually destroying anything.
 
 ## Conclusion
 
-Terragrunt's dependency management is what makes it possible to operate on multi-module infrastructure as a single unit. The dependency graph determines execution order, parallelism, and error propagation. Keep the graph explicit, shallow, and well-documented. Use `graph-dependencies` to visualize it when things get complex.
+Terragrunt's dependency management is what makes it possible to operate on multi-module infrastructure as a single unit. The dependency graph determines execution order, parallelism, and error propagation. Keep the graph explicit, shallow, and well-documented. Use `dag graph` to visualize it when things get complex.
 
 The combination of `dependency` (for outputs and ordering) and `dependencies` (for ordering only) gives you fine-grained control over how modules relate to each other. When in doubt, declare the dependency explicitly rather than hoping for the right order.
 
-For the commands that use this dependency graph, see [How to Use Terragrunt run-all Command](https://oneuptime.com/blog/post/2026-02-23-how-to-use-terragrunt-run-all-command/view).
+For the commands that use this dependency graph, see [How to Use Terragrunt run --all Command](https://oneuptime.com/blog/post/2026-02-23-how-to-use-terragrunt-run-all-command/view).
