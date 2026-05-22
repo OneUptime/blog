@@ -92,7 +92,7 @@ locals {
     {
       sid       = "ReadAppBucket"
       effect    = "Allow"
-      actions   = ["s3:GetObject", "s3:ListBucket", "s3:HeadObject"]
+      actions   = ["s3:GetObject", "s3:ListBucket"]
       resources = [
         "arn:aws:s3:::${local.name_prefix}-data",
         "arn:aws:s3:::${local.name_prefix}-data/*"
@@ -102,7 +102,7 @@ locals {
     {
       sid       = "WriteAppBucket"
       effect    = "Allow"
-      actions   = ["s3:PutObject", "s3:DeleteObject"]
+      actions   = ["s3:PutObject"]
       resources = ["arn:aws:s3:::${local.name_prefix}-data/uploads/*"]
       conditions = [
         {
@@ -150,7 +150,10 @@ locals {
         "logs:CreateLogStream",
         "logs:PutLogEvents"
       ]
-      resources = ["arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:/app/${local.name_prefix}*"]
+      resources = [
+        "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:/app/${local.name_prefix}*",
+        "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:/app/${local.name_prefix}*:log-stream:*"
+      ]
       conditions = []
     }
   ]
@@ -206,7 +209,7 @@ resource "aws_iam_role_policy_attachment" "app" {
 
 ## Environment-Specific Permissions
 
-Different environments need different levels of access. Use workspace-based conditions:
+Different environments need different levels of access. Use workspace-based selection:
 
 ```hcl
 locals {
@@ -216,7 +219,10 @@ locals {
       sid       = "CloudWatchLogs"
       effect    = "Allow"
       actions   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
-      resources = ["arn:aws:logs:*:*:log-group:/app/${local.name_prefix}*"]
+      resources = [
+        "arn:aws:logs:*:*:log-group:/app/${local.name_prefix}*",
+        "arn:aws:logs:*:*:log-group:/app/${local.name_prefix}*:log-stream:*"
+      ]
       conditions = []
     },
     {
@@ -238,7 +244,10 @@ locals {
       sid       = "S3FullAccess"
       effect    = "Allow"
       actions   = ["s3:*"]
-      resources = ["arn:aws:s3:::${local.name_prefix}-*"]
+      resources = [
+        "arn:aws:s3:::${local.name_prefix}-*",
+        "arn:aws:s3:::${local.name_prefix}-*/*"
+      ]
       conditions = []
     },
     {
@@ -345,7 +354,7 @@ variable "trusted_principals" {
     },
     {
       type        = "AWS"
-      identifiers = ["arn:aws:iam::123456789:role/admin"]
+      identifiers = ["arn:aws:iam::123456789012:role/admin"]
       conditions = [
         {
           test     = "StringEquals"
@@ -535,7 +544,7 @@ output "service_policies" {
 ```
 
 ```bash
-# Review the generated policy before applying
+# Review the plan before applying, then inspect the output after applying
 terraform plan
 terraform output -raw app_policy_json | jq .
 ```
