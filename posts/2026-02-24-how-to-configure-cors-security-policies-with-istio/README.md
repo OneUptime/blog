@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, CORS, Security, Kubernetes, Service Mesh
 
-Description: Learn how to configure Cross-Origin Resource Sharing (CORS) security policies using Istio VirtualService to protect your microservices from unauthorized cross-origin requests.
+Description: Learn how to configure Cross-Origin Resource Sharing (CORS) policies using Istio VirtualService to control which browser-based cross-origin responses are exposed to frontend applications.
 
 ---
 
@@ -16,7 +16,7 @@ Traditionally, each backend service handles its own CORS headers. That means eve
 
 ## Understanding CORS Basics
 
-Before jumping into configuration, a quick refresher. When a browser makes a request to a different origin (different domain, port, or protocol), it first sends a preflight OPTIONS request. The server responds with headers telling the browser what's allowed. If the response headers don't match what the browser expects, the request gets blocked.
+Before jumping into configuration, a quick refresher. When a browser makes certain requests to a different origin (different domain, port, or protocol), such as requests with non-safelisted methods or headers, it first sends a preflight OPTIONS request. The server responds with headers telling the browser what's allowed. If the response headers don't match what the browser expects, the browser blocks the frontend from reading the response or sending the follow-up request.
 
 The key headers involved are:
 
@@ -65,7 +65,7 @@ spec:
         maxAge: "24h"
 ```
 
-This configuration tells Istio to respond to preflight requests with the appropriate CORS headers. Only requests originating from `https://app.example.com` will be allowed through.
+This configuration tells Istio to respond to matching CORS requests with the appropriate CORS headers. Browsers will expose responses to frontend code only when the request originates from `https://app.example.com`; non-browser clients are not restricted by CORS.
 
 ## Using Regex for Multiple Origins
 
@@ -114,7 +114,7 @@ The `regex` field gives you flexibility to match patterns. In this case, any sub
 
 ## Allowing Credentials
 
-When your frontend needs to send cookies or authentication headers, you need `allowCredentials: true`. There's an important catch here - when credentials are allowed, you cannot use a wildcard for `allowOrigins`. You must specify exact origins or regex patterns:
+When your frontend needs to send cookies or use `fetch` with `credentials: "include"`, you need `allowCredentials: true`. There's an important catch here - when credentials are allowed, you cannot use a wildcard for `allowOrigins`. You must specify exact origins or regex patterns:
 
 ```yaml
 corsPolicy:
@@ -126,7 +126,6 @@ corsPolicy:
   allowHeaders:
     - Authorization
     - Content-Type
-    - Cookie
   allowCredentials: true
   maxAge: "1h"
 ```
@@ -166,7 +165,9 @@ spec:
           - PATCH
           - OPTIONS
         allowHeaders:
-          - "*"
+          - Authorization
+          - Content-Type
+          - X-Requested-With
         maxAge: "5m"
         allowCredentials: true
 ```
@@ -207,7 +208,7 @@ This dumps the route configuration that Envoy has received, and you can verify t
 
 ## Combining CORS with AuthorizationPolicy
 
-CORS protects against browser-based cross-origin attacks, but it doesn't replace proper authorization. You should combine CORS policies with Istio AuthorizationPolicy for defense in depth:
+CORS controls which cross-origin responses browsers expose to frontend code, but it doesn't replace proper authorization. You should combine CORS policies with Istio AuthorizationPolicy for defense in depth:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -233,7 +234,7 @@ spec:
               - /api/*
 ```
 
-This ensures that even if a CORS policy is misconfigured, only traffic from the frontend service account can reach your API. The CORS policy handles browser-level enforcement, while AuthorizationPolicy handles mesh-level enforcement.
+This ensures that only traffic from the frontend service account can reach your API. The CORS policy handles browser-level response exposure, while AuthorizationPolicy handles mesh-level enforcement.
 
 ## Handling Preflight Caching
 
@@ -255,7 +256,7 @@ During development and testing, keep `maxAge` short (like `5m`) so changes take 
 
 ## Common Mistakes to Avoid
 
-One frequent issue is forgetting to include `OPTIONS` in the `allowMethods` list. While Istio handles preflight OPTIONS requests through the CORS policy itself, some setups need OPTIONS explicitly listed.
+One frequent issue is putting the wrong methods in the `allowMethods` list. For preflight requests, list the actual methods your browser request will use, such as `GET`, `POST`, or `DELETE`; include `OPTIONS` only if your API also supports direct, non-preflight OPTIONS calls.
 
 Another common mistake is having CORS headers set both in the application and in Istio. This can result in duplicate headers, which browsers treat as an error. Pick one place to handle CORS and stick with it.
 
