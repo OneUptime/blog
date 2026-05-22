@@ -106,13 +106,13 @@ metric_alarms = {
 }
 ```
 
-## Dynamic Blocks for Composite Metric Alarms
+## Dynamic Blocks for Metric Math Alarms
 
-Where dynamic blocks really shine is with composite alarms that use metric math expressions. These alarms can reference multiple metrics:
+Where dynamic blocks really shine is with metric alarms that use metric math expressions. These alarms can reference multiple metrics:
 
 ```hcl
-variable "composite_alarms" {
-  description = "Composite alarms using metric math"
+variable "metric_math_alarms" {
+  description = "Metric alarms using metric math"
   type = map(object({
     description        = string
     evaluation_periods = number
@@ -127,20 +127,22 @@ variable "composite_alarms" {
       dimensions  = optional(map(string))
       return_data = optional(bool, false)
     }))
-    threshold           = number
+    threshold           = optional(number)
+    threshold_metric_id = optional(string)
     comparison_operator = string
     alarm_actions       = list(string)
   }))
 }
 
-resource "aws_cloudwatch_metric_alarm" "composite" {
-  for_each = var.composite_alarms
+resource "aws_cloudwatch_metric_alarm" "metric_math" {
+  for_each = var.metric_math_alarms
 
   alarm_name          = each.key
   alarm_description   = each.value.description
   evaluation_periods  = each.value.evaluation_periods
   comparison_operator = each.value.comparison_operator
   threshold           = each.value.threshold
+  threshold_metric_id = each.value.threshold_metric_id
   alarm_actions       = each.value.alarm_actions
 
   # Dynamic metric_query blocks for math expressions
@@ -172,15 +174,15 @@ Notice the nested dynamic block: the inner `metric` block only appears when `nam
 
 ## Example - Anomaly Detection Alarm
 
-Here is how to use the composite alarm structure for anomaly detection:
+Here is how to use the metric math alarm structure for anomaly detection:
 
 ```hcl
-composite_alarms = {
+metric_math_alarms = {
   "api-latency-anomaly" = {
     description        = "API latency is abnormally high"
     evaluation_periods = 3
     comparison_operator = "GreaterThanUpperThreshold"
-    threshold          = 2  # Number of standard deviations
+    threshold_metric_id = "anomaly_band"
 
     metrics = [
       {
@@ -283,9 +285,9 @@ resource "aws_cloudwatch_metric_alarm" "auto" {
 
 This creates two alarms per instance automatically. Adding a new instance to `monitored_instances` immediately creates its monitoring alarms.
 
-## Dynamic Blocks for Dashboard Widgets
+## Generating Dashboard Widgets
 
-You can also use dynamic blocks to build CloudWatch dashboards that reflect your alarm configuration:
+You can also use a `for` expression to build CloudWatch dashboards that reflect your alarm configuration:
 
 ```hcl
 resource "aws_cloudwatch_dashboard" "main" {
@@ -319,4 +321,4 @@ resource "aws_cloudwatch_dashboard" "main" {
 
 ## Summary
 
-Using dynamic blocks and `for_each` for CloudWatch alarms lets you define monitoring patterns once and apply them uniformly. The key patterns are: structured variable maps for alarm definitions, locals to generate alarms from resource lists, and nested dynamic blocks for composite metric queries. This approach scales from a handful of alarms to hundreds without adding complexity. For related notification setup, check out [how to use dynamic blocks for notification configuration](https://oneuptime.com/blog/post/2026-02-23-how-to-use-dynamic-blocks-for-notification-configuration/view).
+Using dynamic blocks and `for_each` for CloudWatch alarms lets you define monitoring patterns once and apply them uniformly. The key patterns are: structured variable maps for alarm definitions, locals to generate alarms from resource lists, and nested dynamic blocks for metric queries. This approach scales from a handful of alarms to hundreds without adding complexity. For related notification setup, check out [how to use dynamic blocks for notification configuration](https://oneuptime.com/blog/post/2026-02-23-how-to-use-dynamic-blocks-for-notification-configuration/view).
