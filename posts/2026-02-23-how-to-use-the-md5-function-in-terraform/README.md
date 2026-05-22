@@ -63,7 +63,7 @@ resource "null_resource" "deploy" {
 
 ### S3 Object ETags
 
-AWS S3 uses ETags to track object versions, and for objects uploaded directly (not multipart), the ETag is the MD5 hash of the content:
+AWS S3 uses ETags to track object versions, and for plaintext or SSE-S3 objects uploaded directly (not multipart), the ETag is the MD5 hash of the content:
 
 ```hcl
 locals {
@@ -130,7 +130,7 @@ locals {
 
   # Create a combined hash of all config files
   # If any file changes, this hash changes too
-  combined_hash = md5(join("", values(local.config_files)))
+  combined_hash = md5(jsonencode(local.config_files))
 }
 
 resource "null_resource" "apply_configs" {
@@ -173,6 +173,7 @@ resource "aws_instance" "web" {
     echo '${local.rendered_config}' > /etc/nginx/nginx.conf
     systemctl restart nginx
   EOF
+  user_data_replace_on_change = true
 
   tags = {
     ConfigHash = local.config_hash
@@ -240,7 +241,7 @@ For most non-security Terraform use cases (ETags, triggers, naming), `md5` is pe
 Terraform also provides a `filemd5` function that reads a file and computes its MD5 hash in one step:
 
 ```hcl
-# These two approaches produce the same result
+# These two approaches produce the same result for UTF-8 text files
 output "approach_1" {
   value = md5(file("${path.module}/data.txt"))
 }
@@ -250,7 +251,7 @@ output "approach_2" {
 }
 ```
 
-The `filemd5` function is more efficient because it does not need to load the entire file content into a Terraform string first.
+The `filemd5` function also works for binary files, while `file()` only accepts UTF-8 text.
 
 ## Summary
 
