@@ -169,12 +169,12 @@ count = var.enabled ? 1 : 0
 # Works - both sides are lists of the same type
 subnets = var.use_private ? var.private_subnet_ids : var.public_subnet_ids
 
-# Works - Terraform converts number to string
+# Works - Terraform converts number to string, though explicit conversion is clearer
 label = var.use_port ? tostring(var.port) : "none"
 
 # Error - incompatible types without explicit conversion
-# value = var.flag ? "hello" : 42
-# Fix:
+# value = var.flag ? "hello" : [42]
+# Fix if you intended both branches to be strings:
 value = var.flag ? "hello" : tostring(42)
 ```
 
@@ -224,7 +224,7 @@ resource "aws_instance" "web" {
   instance_type = var.instance_type
 
   # Only set key_name if an SSH key is provided
-  key_name = var.ssh_key != null ? var.ssh_key : null
+  # key_name = var.ssh_key != null ? var.ssh_key : null
 
   # Simplify: since we are checking for null, just use the variable directly
   key_name = var.ssh_key  # Same effect - null means "don't set this"
@@ -349,17 +349,16 @@ locals {
 
 ## Gotchas
 
-### Both Branches Are Evaluated
+### Both Branches Must Be Valid
 
-Terraform evaluates both branches of a ternary, even though only one is returned. This can cause issues if one branch references something that does not exist:
+Terraform selects only one result from a ternary, but both branches still need to be syntactically valid and type-compatible. When you index resources that use `count`, make sure the selected branch matches the resource that actually exists:
 
 ```hcl
-# This can fail if aws_vpc.new is not created (count = 0)
-# because Terraform still evaluates both branches
+# Works when the counts use the same condition
 vpc_id = var.use_existing ? data.aws_vpc.existing[0].id : aws_vpc.new[0].id
 
-# Safer - use try() or one()
-vpc_id = var.use_existing ? data.aws_vpc.existing[0].id : one(aws_vpc.new[*].id)
+# Alternative that avoids direct [0] indexes
+vpc_id = one(concat(data.aws_vpc.existing[*].id, aws_vpc.new[*].id))
 ```
 
 ### Ternary Is Not a Statement
@@ -376,4 +375,4 @@ log_level = var.debug ? "DEBUG" : "INFO"
 
 ## Summary
 
-The ternary conditional (`condition ? true_value : false_value`) is Terraform's primary tool for inline decision-making. Use it for environment-based configuration, conditional resource creation with `count`, and optional argument handling with `null`. Keep ternaries simple and readable - when you find yourself nesting them deeply, switch to map lookups or break the logic into named locals. Both branches must return compatible types, and both are evaluated even though only one result is used.
+The ternary conditional (`condition ? true_value : false_value`) is Terraform's primary tool for inline decision-making. Use it for environment-based configuration, conditional resource creation with `count`, and optional argument handling with `null`. Keep ternaries simple and readable - when you find yourself nesting them deeply, switch to map lookups or break the logic into named locals. Both branches must return compatible types, and Terraform returns only the branch selected by the condition.
