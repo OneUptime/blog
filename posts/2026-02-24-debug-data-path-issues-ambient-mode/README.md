@@ -38,11 +38,11 @@ kubectl get namespace dest-ns -o jsonpath='{.metadata.labels}'
 
 # Both should have: istio.io/dataplane-mode: ambient
 
-# Check if pods are recognized by ztunnel
-kubectl exec -n istio-system $(kubectl get pod -n istio-system -l app=ztunnel -o jsonpath='{.items[0].metadata.name}') -- curl -s localhost:15000/debug/workloads | python3 -m json.tool | grep "source-pod-name"
+# Check if pods are recognized by ztunnel and enrolled with HBONE
+istioctl ztunnel-config workloads | grep "source-pod-name"
 ```
 
-If the pod does not appear in ztunnel's workload list, the CNI plugin may not have configured redirection for it. Check the CNI logs:
+If the pod appears with `PROTOCOL` set to `TCP` instead of `HBONE`, it is not enrolled in ambient mode. If the pod does not appear in ztunnel's workload list at all, check for control plane or discovery issues. To check whether the CNI plugin configured redirection for it, review the CNI logs:
 
 ```bash
 kubectl logs -n istio-system -l k8s-app=istio-cni-node --tail=100 | grep "source-pod-name"
@@ -58,7 +58,8 @@ kubectl exec -n source-ns source-pod -- curl -v http://dest-service.dest-ns:8080
 
 # Simultaneously, watch ztunnel logs on the source node
 SOURCE_NODE=$(kubectl get pod source-pod -n source-ns -o jsonpath='{.spec.nodeName}')
-kubectl logs -n istio-system -l app=ztunnel --field-selector spec.nodeName=$SOURCE_NODE -f
+ZTUNNEL_POD=$(kubectl get pod -n istio-system -l app=ztunnel --field-selector spec.nodeName=$SOURCE_NODE -o jsonpath='{.items[0].metadata.name}')
+kubectl logs -n istio-system $ZTUNNEL_POD -f
 ```
 
 In the ztunnel logs, you should see a connection event for the outbound traffic. If you do not see anything, the CNI redirection is not working.
@@ -79,14 +80,11 @@ kubectl logs -n istio-system $CNI_POD --tail=200
 ztunnel needs to know about the destination service and its endpoints. Verify this:
 
 ```bash
-# Check if ztunnel has the destination service information
-ZTUNNEL_POD=$(kubectl get pod -n istio-system -l app=ztunnel --field-selector spec.nodeName=$SOURCE_NODE -o jsonpath='{.items[0].metadata.name}')
-
 # List services ztunnel knows about
-kubectl exec -n istio-system $ZTUNNEL_POD -- curl -s localhost:15000/debug/services | python3 -m json.tool | grep "dest-service"
+istioctl ztunnel-config services "$ZTUNNEL_POD".istio-system --service-namespace dest-ns | grep "dest-service"
 
 # Check endpoints
-kubectl exec -n istio-system $ZTUNNEL_POD -- curl -s localhost:15000/debug/workloads | python3 -m json.tool | grep -A 5 "dest-pod"
+istioctl ztunnel-config workloads "$ZTUNNEL_POD".istio-system --workload-namespace dest-ns | grep "dest-pod"
 ```
 
 If ztunnel does not know about the destination, there may be a control plane issue. Check istiod:
@@ -101,14 +99,11 @@ kubectl logs -n istio-system -l app=istiod --tail=200 | grep "ztunnel"
 
 ## Step 4: Check mTLS and Certificates
 
-ztunnel establishes mTLS connections between nodes. Certificate issues will cause connections to fail:
+ztunnel establishes mTLS connections on behalf of workloads. Certificate issues will cause connections to fail:
 
 ```bash
 # Check certificates in ztunnel
-istioctl proxy-config secret $ZTUNNEL_POD -n istio-system
-
-# Look for certificate expiration issues
-kubectl exec -n istio-system $ZTUNNEL_POD -- curl -s localhost:15000/debug/certs | python3 -m json.tool
+istioctl ztunnel-config certificates "$ZTUNNEL_POD".istio-system
 ```
 
 Common certificate issues:
@@ -121,9 +116,9 @@ Common certificate issues:
 ztunnel uses HBONE on port 15008 for inter-node communication. Verify connectivity:
 
 ```bash
-# From the source node's ztunnel, check if it can reach the destination ztunnel
+# From the source node's ztunnel, identify the destination pod and node
 DEST_NODE=$(kubectl get pod dest-pod -n dest-ns -o jsonpath='{.spec.nodeName}')
-DEST_NODE_IP=$(kubectl get node $DEST_NODE -o jsonpath='{.status.addresses[?(@.type=="InternalIP")].address}')
+DEST_POD_IP=$(kubectl get pod dest-pod -n dest-ns -o jsonpath='{.status.podIP}')
 
 # Check ztunnel logs for HBONE connection errors
 kubectl logs -n istio-system $ZTUNNEL_POD --tail=100 | grep "HBONE\|hbone\|15008"
@@ -136,8 +131,8 @@ If HBONE connections are failing, check:
 - Node-level security groups (in cloud environments)
 
 ```bash
-# Test basic connectivity on port 15008
-kubectl exec -n istio-system $ZTUNNEL_POD -- curl -k https://$DEST_NODE_IP:15008 -v 2>&1 | head -20
+# Test basic TCP reachability to the destination pod's HBONE listener
+kubectl debug -n source-ns source-pod -it --image=nicolaka/netshoot -- nc -vz $DEST_POD_IP 15008
 ```
 
 ## Step 6: Check Waypoint Proxy (If Applicable)
@@ -152,6 +147,7 @@ WAYPOINT_POD=$(kubectl get pod -n dest-ns -l gateway.istio.io/managed=istio.io-m
 kubectl get pod $WAYPOINT_POD -n dest-ns
 
 # Check waypoint configuration
+istioctl ztunnel-config services "$ZTUNNEL_POD".istio-system --service-namespace dest-ns | grep "dest-service"
 istioctl proxy-config listener $WAYPOINT_POD -n dest-ns
 istioctl proxy-config route $WAYPOINT_POD -n dest-ns
 istioctl proxy-config cluster $WAYPOINT_POD -n dest-ns
@@ -168,7 +164,7 @@ Common waypoint issues:
 
 ## Step 7: Check Authorization Policies
 
-Authorization policies can silently drop traffic. Check what policies are in effect:
+Authorization policies can block traffic. Check what policies are in effect:
 
 ```bash
 # List all authorization policies in the destination namespace
@@ -181,11 +177,12 @@ kubectl get authorizationpolicy -n dest-ns -o yaml
 kubectl get authorizationpolicy -n dest-ns -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.action}{"\n"}{end}'
 ```
 
-To test if an authorization policy is the problem, temporarily remove all policies and see if traffic flows:
+To test if an authorization policy is the problem in a non-production environment, temporarily remove all policies and see if traffic flows:
 
 ```bash
 # List and save policies before removing
 kubectl get authorizationpolicy -n dest-ns -o yaml > /tmp/auth-policies-backup.yaml
+kubectl delete authorizationpolicy --all -n dest-ns
 
 # Watch ztunnel logs while testing
 kubectl logs -n istio-system $ZTUNNEL_POD -f &
@@ -200,30 +197,30 @@ When the above steps do not reveal the issue, enable debug logging on ztunnel:
 
 ```bash
 # Set ztunnel log level to debug
-kubectl exec -n istio-system $ZTUNNEL_POD -- curl -s -X POST "localhost:15000/logging?level=debug"
+istioctl ztunnel-config log "$ZTUNNEL_POD".istio-system --level debug
 
 # Make a test request and collect logs
 kubectl exec -n source-ns source-pod -- curl http://dest-service.dest-ns:8080/health
 kubectl logs -n istio-system $ZTUNNEL_POD --tail=200
 
 # Reset log level when done
-kubectl exec -n istio-system $ZTUNNEL_POD -- curl -s -X POST "localhost:15000/logging?level=info"
+istioctl ztunnel-config log "$ZTUNNEL_POD".istio-system --reset
 ```
 
 For waypoint proxies:
 
 ```bash
 # Set waypoint log level
-kubectl exec -n dest-ns $WAYPOINT_POD -- curl -s -X POST "localhost:15000/logging?level=debug"
+istioctl proxy-config log $WAYPOINT_POD -n dest-ns --level debug
 ```
 
 ## Common Issues and Quick Fixes
 
-**Pod not in mesh:** Re-label the namespace and restart the pod so the CNI plugin picks it up.
+**Pod not in mesh:** Re-label the namespace. Ambient mode does not normally require restarting pods because the CNI node agent watches for namespace and pod label changes.
 
 ```bash
 kubectl label namespace my-ns istio.io/dataplane-mode=ambient --overwrite
-kubectl delete pod problematic-pod -n my-ns
+istioctl ztunnel-config workloads --workload-namespace my-ns
 ```
 
 **ztunnel OOMKilled:** Increase memory limits in the ztunnel DaemonSet.
@@ -236,4 +233,4 @@ kubectl get pods -n istio-system -l app=ztunnel -o jsonpath='{range .items[*]}{.
 
 ## Summary
 
-Debugging ambient mode data path issues follows a systematic approach: verify enrollment, check traffic interception, confirm ztunnel configuration, test mTLS connectivity, verify HBONE tunnels, inspect waypoint proxies, and review authorization policies. The key debugging tools are ztunnel's debug endpoints, istioctl proxy-config commands, and CNI plugin logs. When in doubt, enable debug logging on the relevant ztunnel or waypoint proxy to get detailed connection-level information.
+Debugging ambient mode data path issues follows a systematic approach: verify enrollment, check traffic interception, confirm ztunnel configuration, test mTLS connectivity, verify HBONE tunnels, inspect waypoint proxies, and review authorization policies. The key debugging tools are `istioctl ztunnel-config`, `istioctl proxy-config`, Kubernetes logs, and CNI plugin logs. When in doubt, enable debug logging on the relevant ztunnel or waypoint proxy to get detailed connection-level information.
