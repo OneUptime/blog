@@ -8,7 +8,7 @@ Description: Step-by-step guide to building, packaging, and publishing your own 
 
 ---
 
-After you have been using CDKTF for a while, you will notice patterns repeating across projects. Maybe you always set up VPCs the same way, or your RDS clusters follow the same security baseline. Instead of copying code between repositories, you can package those patterns as constructs and publish them. This guide covers the full lifecycle from building a construct to publishing it on npm.
+After you have been using CDKTF for a while, you will notice patterns repeating across projects. Maybe you always set up VPCs the same way, or your RDS clusters follow the same security baseline. Instead of copying code between repositories, you can package those patterns as constructs and publish them. HashiCorp deprecated CDKTF on December 10, 2025, so this approach is most useful for teams maintaining existing CDKTF projects. This guide covers the full lifecycle from building a construct to publishing it on npm.
 
 ## What Makes a Good Construct
 
@@ -32,7 +32,7 @@ mkdir cdktf-aws-secure-bucket
 cd cdktf-aws-secure-bucket
 
 # Initialize with projen (recommended for construct projects)
-npx projen new --from @cdktf/provider-project
+npx projen new cdktf-construct
 
 # Or initialize manually
 npm init -y
@@ -41,11 +41,8 @@ npm init -y
 If you are setting up manually, install the necessary dependencies:
 
 ```bash
-# Core dependencies
-npm install constructs cdktf
-
-# Provider dependencies (as peer deps)
-npm install @cdktf/provider-aws
+# Core and provider dependencies for a reusable construct library
+npm install --save-peer constructs cdktf @cdktf/provider-aws
 
 # Development dependencies
 npm install -D typescript jest ts-jest @types/jest
@@ -98,7 +95,7 @@ export interface SecureBucketConfig {
   /** KMS key ARN for encryption (uses AES256 if not provided) */
   readonly kmsKeyArn?: string;
 
-  /** Number of days before transitioning to Glacier (default: 90) */
+  /** Number of days before transitioning to Glacier (optional) */
   readonly glacierTransitionDays?: number;
 
   /** Number of days before expiring objects (default: none) */
@@ -171,6 +168,7 @@ export class SecureBucket extends Construct {
       rules.push({
         id: "glacier-transition",
         status: "Enabled",
+        filter: [{}],
         transition: [
           {
             days: config.glacierTransitionDays,
@@ -183,9 +181,12 @@ export class SecureBucket extends Construct {
       rules.push({
         id: "expiration",
         status: "Enabled",
-        expiration: {
-          days: config.expirationDays,
-        },
+        filter: [{}],
+        expiration: [
+          {
+            days: config.expirationDays,
+          },
+        ],
       });
     }
     if (rules.length > 0) {
@@ -211,8 +212,7 @@ Write tests to validate your construct generates the expected resources:
 
 ```typescript
 // src/__tests__/secure-bucket.test.ts
-import { Testing } from "cdktf";
-import { TerraformStack } from "cdktf";
+import { Testing, TerraformStack } from "cdktf";
 import { AwsProvider } from "@cdktf/provider-aws/lib/provider";
 import { SecureBucket } from "../secure-bucket";
 
@@ -231,11 +231,16 @@ describe("SecureBucket", () => {
     });
 
     const synth = Testing.synth(stack);
-    expect(synth).toHaveResource("aws_s3_bucket");
-    expect(synth).toHaveResource(
-      "aws_s3_bucket_server_side_encryption_configuration"
+    expect(Testing.toHaveResource(synth, "aws_s3_bucket")).toBe(true);
+    expect(
+      Testing.toHaveResource(
+        synth,
+        "aws_s3_bucket_server_side_encryption_configuration"
+      )
+    ).toBe(true);
+    expect(Testing.toHaveResource(synth, "aws_s3_bucket_public_access_block")).toBe(
+      true
     );
-    expect(synth).toHaveResource("aws_s3_bucket_public_access_block");
   });
 
   it("enables versioning by default", () => {
@@ -244,7 +249,7 @@ describe("SecureBucket", () => {
     });
 
     const synth = Testing.synth(stack);
-    expect(synth).toHaveResource("aws_s3_bucket_versioning");
+    expect(Testing.toHaveResource(synth, "aws_s3_bucket_versioning")).toBe(true);
   });
 
   it("disables versioning when configured", () => {
@@ -254,7 +259,7 @@ describe("SecureBucket", () => {
     });
 
     const synth = Testing.synth(stack);
-    expect(synth).not.toHaveResource("aws_s3_bucket_versioning");
+    expect(Testing.toHaveResource(synth, "aws_s3_bucket_versioning")).toBe(false);
   });
 });
 ```
@@ -268,6 +273,9 @@ Update your `package.json` with the right metadata:
   "name": "@yourorg/cdktf-aws-secure-bucket",
   "version": "1.0.0",
   "description": "A CDKTF construct for creating secure S3 buckets with encryption, versioning, and public access blocking",
+  "author": {
+    "name": "Your Organization"
+  },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": ["dist"],
@@ -279,9 +287,9 @@ Update your `package.json` with the right metadata:
   "keywords": ["cdktf", "terraform", "aws", "s3", "construct"],
   "license": "Apache-2.0",
   "peerDependencies": {
-    "cdktf": ">=0.20.0",
-    "constructs": ">=10.0.0",
-    "@cdktf/provider-aws": ">=19.0.0"
+    "cdktf": "^0.21.0",
+    "constructs": "^10.4.2",
+    "@cdktf/provider-aws": "^21.0.0"
   },
   "repository": {
     "type": "git",
@@ -324,7 +332,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           registry-url: https://registry.npmjs.org
       - run: npm ci
       - run: npm run build
@@ -347,6 +355,12 @@ Add jsii configuration to `package.json`:
 
 ```json
 {
+  "scripts": {
+    "build": "jsii",
+    "test": "jest",
+    "package": "jsii-pacmak"
+  },
+  "stability": "stable",
   "jsii": {
     "outdir": "dist",
     "targets": {
@@ -360,6 +374,10 @@ Add jsii configuration to `package.json`:
           "groupId": "com.yourorg",
           "artifactId": "cdktf-aws-secure-bucket"
         }
+      },
+      "go": {
+        "moduleName": "github.com/yourorg/cdktf-aws-secure-bucket",
+        "packageName": "securebucket"
       }
     }
   }
@@ -372,7 +390,7 @@ npx jsii-pacmak
 
 # Packages are generated in dist/
 ls dist/
-# python/  java/  js/
+# python/  java/  go/  js/
 ```
 
 ## Documentation Tips
@@ -385,6 +403,6 @@ Good documentation makes the difference between a construct people use and one t
 4. Information about what resources the construct creates
 5. Notes on IAM permissions required
 
-Publishing CDKTF constructs is the best way to share infrastructure patterns across your organization or with the community. Start with constructs that solve problems you face repeatedly, and expand from there.
+For teams already using CDKTF, publishing constructs is a practical way to share infrastructure patterns across your organization or with the community. Start with constructs that solve problems you face repeatedly, and expand from there.
 
 For related reading, check out [How to Handle CDKTF Version Upgrades](https://oneuptime.com/blog/post/2026-02-23-handle-cdktf-version-upgrades/view).
