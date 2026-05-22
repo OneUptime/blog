@@ -27,20 +27,19 @@ The first challenge is figuring out which modules need to run. You don't want to
 
 ```bash
 # Only plan modules that changed or whose dependencies changed
-
-terragrunt run-all plan \
-  --terragrunt-include-dir "$(git diff --name-only origin/main...HEAD | \
-    xargs -I {} dirname {} | sort -u | tr '\n' ',')"
+terragrunt run --all --filter-affected -- plan
 ```
 
-A more practical approach is to use Terragrunt's built-in change detection:
+A more practical approach is to combine Terragrunt's built-in change detection with an environment directory:
 
 ```bash
 # Plan all modules in a specific environment that have changes
 cd environments/dev
-terragrunt run-all plan \
-  --terragrunt-non-interactive \
-  --terragrunt-parallelism 4
+terragrunt run --all \
+  --filter-affected \
+  --non-interactive \
+  --parallelism 4 \
+  -- plan
 ```
 
 For large repos, you can write a script that maps changed files to affected Terragrunt modules:
@@ -85,15 +84,13 @@ validate:
   stage: validate
   script:
     # Validate all changed modules
-    - terragrunt run-all validate --terragrunt-non-interactive
+    - terragrunt run --all --filter '[main...HEAD]' --non-interactive -- validate
 
 plan:
   stage: plan
   script:
-    # Generate plan output
-    - terragrunt run-all plan --terragrunt-non-interactive -out=tfplan
-    # Save plan output for review
-    - terragrunt run-all show -json tfplan > plan-output.json
+    # Generate native and JSON plan files per unit
+    - terragrunt run --all --filter-affected --non-interactive --out-dir tfplans --json-out-dir plan-json -- plan
 
 apply:
   stage: apply
@@ -101,7 +98,7 @@ apply:
   rules:
     - if: '$CI_COMMIT_BRANCH == "main"'
   script:
-    - terragrunt run-all apply --terragrunt-non-interactive -auto-approve
+    - terragrunt run --all --non-interactive -- apply
 ```
 
 ## Handling Credentials
@@ -140,34 +137,35 @@ export ARM_TENANT_ID="..."
 When multiple PRs trigger plans simultaneously, state locking becomes important. Terragrunt inherits Terraform's locking behavior, but there are some CI-specific considerations:
 
 ```bash
-# For plan operations, use -lock=false if you get frequent lock conflicts
-# Plans don't modify state, so this is safe
-terragrunt run-all plan \
-  --terragrunt-non-interactive \
-  --terragrunt-parallelism 2 \
-  -- -lock=false
+# For plan operations, use -lock=false only if you get frequent lock conflicts
+# and you know no concurrent apply can target the same state
+terragrunt run --all \
+  --non-interactive \
+  --parallelism 2 \
+  -- plan -lock=false
 
 # For apply, always keep locking enabled (it's the default)
-terragrunt run-all apply \
-  --terragrunt-non-interactive \
-  --terragrunt-parallelism 1
+terragrunt run --all \
+  --non-interactive \
+  --parallelism 1 \
+  -- apply
 ```
 
 ## Caching in CI Pipelines
 
-Terragrunt downloads providers and modules on every run, which can slow down pipelines significantly. Set up caching for the plugin directory:
+Terragrunt downloads providers and modules on every run, which can slow down pipelines significantly. For `run --all`, use Terragrunt's provider cache server instead of setting Terraform's shared plugin cache directly:
 
 ```bash
-# Set the plugin cache directory
-export TF_PLUGIN_CACHE_DIR="/tmp/terraform-plugin-cache"
-mkdir -p "$TF_PLUGIN_CACHE_DIR"
+# Enable Terragrunt's provider cache server
+export TG_PROVIDER_CACHE=1
+export TG_PROVIDER_CACHE_DIR="/tmp/terragrunt-provider-cache"
 
 # In your CI config, cache this directory between runs
 # Also cache the Terragrunt download directory
-export TERRAGRUNT_DOWNLOAD="/tmp/terragrunt-cache"
+export TG_DOWNLOAD_DIR="/tmp/terragrunt-cache"
 ```
 
-Most CI platforms let you cache directories between pipeline runs. Cache `$TF_PLUGIN_CACHE_DIR` and you'll save minutes on each run.
+Most CI platforms let you cache directories between pipeline runs. Cache `$TG_PROVIDER_CACHE_DIR` and you'll save minutes on each run.
 
 ## Plan Output as PR Comments
 
@@ -177,7 +175,7 @@ Posting plan output directly on the PR is the best way to get reviews. Here's a 
 #!/bin/bash
 # post-plan-comment.sh - Format and post plan output to PR
 
-PLAN_OUTPUT=$(terragrunt run-all plan --terragrunt-non-interactive 2>&1)
+PLAN_OUTPUT=$(terragrunt run --all --filter-affected --non-interactive -- plan -no-color 2>&1)
 EXIT_CODE=$?
 
 # Truncate if too long for PR comment (GitHub has a 65536 char limit)
@@ -208,41 +206,42 @@ A common CI/CD pattern is promoting changes through environments. With Terragrun
 ```bash
 # Stage 1: Apply to dev
 cd environments/dev
-terragrunt run-all apply --terragrunt-non-interactive -auto-approve
+terragrunt run --all --non-interactive -- apply
 
 # Stage 2: Run integration tests
 ./run-integration-tests.sh dev
 
 # Stage 3: Apply to staging (manual approval gate recommended)
 cd environments/staging
-terragrunt run-all apply --terragrunt-non-interactive -auto-approve
+terragrunt run --all --non-interactive -- apply
 
 # Stage 4: Apply to production (always require manual approval)
 cd environments/prod
-terragrunt run-all apply --terragrunt-non-interactive -auto-approve
+terragrunt run --all --non-interactive -- apply
 ```
 
-## Handling run-all Failures
+## Handling run --all Failures
 
-When using `run-all`, a failure in one module stops dependent modules but doesn't stop independent ones by default. In CI, you often want to fail fast:
+When using `run --all`, a failure in one module stops dependent modules but doesn't stop independent ones by default. In CI, you often want deterministic output and no retry delays:
 
 ```bash
-# Run all modules but stop on first failure
-terragrunt run-all plan \
-  --terragrunt-non-interactive \
-  --terragrunt-parallelism 1 \
-  --terragrunt-no-auto-retry
+# Run modules one at a time and don't retry transient failures
+terragrunt run --all \
+  --non-interactive \
+  --parallelism 1 \
+  --no-auto-retry \
+  -- plan
 ```
 
-You can also use `--terragrunt-ignore-dependency-errors` if you want independent modules to keep going even when an unrelated module fails.
+You can also use `--queue-ignore-errors` if you want remaining modules to keep going even when one module fails.
 
 ## Security Considerations
 
 A few things to keep in mind when running Terragrunt in CI:
 
 - Never log the full plan output to public build logs - it may contain sensitive values
-- Use `-no-color` flag for cleaner log output
-- Set `--terragrunt-non-interactive` to prevent pipelines from hanging on prompts
+- Use `--no-color` for cleaner log output
+- Set `--non-interactive` to prevent pipelines from hanging on prompts
 - Consider running `plan` and `apply` as separate pipeline stages with an approval gate
 - Use short-lived credentials via OIDC rather than static access keys
 
@@ -251,10 +250,10 @@ A few things to keep in mind when running Terragrunt in CI:
 export TF_IN_AUTOMATION=true
 export TF_INPUT=false
 
-terragrunt run-all apply \
-  --terragrunt-non-interactive \
-  --terragrunt-no-color \
-  -auto-approve
+terragrunt run --all \
+  --non-interactive \
+  --no-color \
+  -- apply
 ```
 
 ## Timeouts and Retries
@@ -263,16 +262,20 @@ Infrastructure operations can be slow. Configure appropriate timeouts in your CI
 
 ```hcl
 # terragrunt.hcl - Configure automatic retries
-retryable_errors = [
-  "(?s).*Error creating.*timeout.*",
-  "(?s).*Error waiting.*status.*",
-  "(?s).*rate exceeded.*"
-]
+errors {
+  retry "transient_errors" {
+    retryable_errors = [
+      "(?s).*Error creating.*timeout.*",
+      "(?s).*Error waiting.*status.*",
+      "(?s).*rate exceeded.*"
+    ]
 
-retry_max_attempts       = 3
-retry_sleep_interval_sec = 30
+    max_attempts       = 3
+    sleep_interval_sec = 30
+  }
+}
 ```
 
 ## Summary
 
-Running Terragrunt in CI/CD comes down to a few key principles: detect what changed, plan on PRs, apply on merge, and use short-lived credentials. The `run-all` command handles dependency ordering automatically, and with proper caching, pipelines stay reasonably fast. In the next posts, we'll cover specific implementations for [GitHub Actions](https://oneuptime.com/blog/post/2026-02-23-terragrunt-with-github-actions/view) and [GitLab CI](https://oneuptime.com/blog/post/2026-02-23-terragrunt-with-gitlab-ci/view).
+Running Terragrunt in CI/CD comes down to a few key principles: detect what changed, plan on PRs, apply on merge, and use short-lived credentials. The `run --all` command handles dependency ordering automatically, and with proper caching, pipelines stay reasonably fast. In the next posts, we'll cover specific implementations for [GitHub Actions](https://oneuptime.com/blog/post/2026-02-23-terragrunt-with-github-actions/view) and [GitLab CI](https://oneuptime.com/blog/post/2026-02-23-terragrunt-with-gitlab-ci/view).
