@@ -47,12 +47,13 @@ This lets you:
 
 Some standards are nice to have but not critical:
 
-```python
+```sentinel
 # latest-generation.sentinel
 # Recommends using latest generation instance types
 # Advisory because older types still work fine
 
 import "tfplan/v2" as tfplan
+import "strings"
 
 latest_gen_families = ["t3", "m5", "c5", "r5", "m6i", "c6i", "r6i"]
 
@@ -61,18 +62,22 @@ instances = filter tfplan.resource_changes as _, rc {
     rc.change.actions contains "create"
 }
 
-import "strings"
+instance_family = func(inst) {
+    return strings.split(inst.change.after.instance_type, ".")[0]
+}
+
+older_generation_instances = filter instances as _, inst {
+    instance_family(inst) not in latest_gen_families
+}
+
+for older_generation_instances as address, inst {
+    print("Advisory:", address, "uses", inst.change.after.instance_type,
+          "- consider upgrading to a latest generation type")
+    print("Latest generation families:", latest_gen_families)
+}
 
 main = rule {
-    all instances as address, inst {
-        family = strings.split(inst.change.after.instance_type, ".")[0]
-        if family not in latest_gen_families {
-            print("Advisory:", address, "uses", inst.change.after.instance_type,
-                  "- consider upgrading to a latest generation type")
-            print("Latest generation families:", latest_gen_families)
-        }
-        true  # Always pass - advisory
-    }
+    true  # Always pass - advisory
 }
 ```
 
@@ -82,7 +87,7 @@ Wait, there is a subtlety here. Even though this policy is set to advisory enfor
 
 Sometimes you want to understand your current posture before enforcing:
 
-```python
+```sentinel
 # audit-encryption.sentinel
 # Audit how many resources lack encryption
 # Deploy as advisory to gather baseline data
@@ -98,7 +103,7 @@ ebs_volumes = filter tfplan.resource_changes as _, rc {
 }
 
 for ebs_volumes as address, vol {
-    if vol.change.after.encrypted is not true {
+    if (vol.change.after.encrypted else false) is not true {
         print("AUDIT:", address, "- not encrypted")
     }
 }
@@ -113,7 +118,7 @@ Hard-mandatory policies are appropriate when:
 
 ### The violation would cause a security incident
 
-```python
+```sentinel
 # no-public-databases.sentinel
 # Databases must NEVER be publicly accessible
 # Hard-mandatory - no exceptions
@@ -125,22 +130,23 @@ rds = filter tfplan.resource_changes as _, rc {
     (rc.change.actions contains "create" or rc.change.actions contains "update")
 }
 
+public_rds = filter rds as _, db {
+    (db.change.after.publicly_accessible else false) is true
+}
+
+for public_rds as address, _ {
+    print("BLOCKED:", address, "- databases must not be publicly accessible.",
+          "This is a hard requirement with no exceptions.")
+}
+
 main = rule {
-    all rds as address, db {
-        if db.change.after.publicly_accessible is true {
-            print("BLOCKED:", address, "- databases must not be publicly accessible.",
-                  "This is a hard requirement with no exceptions.")
-            false
-        } else {
-            true
-        }
-    }
+    length(public_rds) is 0
 }
 ```
 
 ### Regulatory compliance requires it
 
-```python
+```sentinel
 # gdpr-data-residency.sentinel
 # EU data must stay in EU regions
 # Hard-mandatory - regulatory requirement
@@ -154,22 +160,25 @@ instances = filter tfplan.resource_changes as _, rc {
     rc.change.actions contains "create"
 }
 
-main = rule {
-    all instances as address, inst {
-        az = inst.change.after.availability_zone
-        if az is not null {
-            region = az[0:length(az)-1]
-            if region not in eu_regions {
-                print("BLOCKED:", address, "- GDPR requires EU data residency.",
-                      "Region", region, "is not allowed.")
-                false
-            } else {
-                true
-            }
-        } else {
-            true
-        }
+instance_region = func(inst) {
+    az = inst.change.after.availability_zone else null
+    if az is null {
+        return null
     }
+    return az[0:length(az)-1]
+}
+
+non_eu_instances = filter instances as _, inst {
+    instance_region(inst) is not null and instance_region(inst) not in eu_regions
+}
+
+for non_eu_instances as address, inst {
+    print("BLOCKED:", address, "- GDPR requires EU data residency.",
+          "Region", instance_region(inst), "is not allowed.")
+}
+
+main = rule {
+    length(non_eu_instances) is 0
 }
 ```
 
@@ -177,7 +186,7 @@ main = rule {
 
 Some mistakes cannot be easily undone:
 
-```python
+```sentinel
 # prevent-production-destroy.sentinel
 # Prevent destruction of production databases
 # Hard-mandatory - data loss is irreversible
@@ -194,17 +203,16 @@ destructive_changes = filter tfplan.resource_changes as _, rc {
     rc.change.actions contains "delete"
 }
 
-main = rule {
-    if is_prod and length(destructive_changes) > 0 {
-        for destructive_changes as address, _ {
-            print("BLOCKED:", address,
-                  "- destruction of production data resources is not allowed",
-                  "through Sentinel. Use a separate approval process.")
-        }
-        false
-    } else {
-        true
+if is_prod and length(destructive_changes) > 0 {
+    for destructive_changes as address, _ {
+        print("BLOCKED:", address,
+              "- destruction of production data resources is not allowed",
+              "through Sentinel. Use a separate approval process.")
     }
+}
+
+main = rule {
+    not is_prod or length(destructive_changes) is 0
 }
 ```
 
@@ -306,9 +314,11 @@ When teams disagree about enforcement levels:
 
 Track the effectiveness of your enforcement levels:
 
-```python
+```sentinel
 # Add reporting to your policies
 import "tfrun"
+
+result = true
 
 print("=== Policy Evaluation Report ===")
 print("Policy: restrict-instance-types")
