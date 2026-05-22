@@ -48,6 +48,8 @@ resource "aws_security_group" "main" {
 
 That `for_each` expression is doing too much: filtering, flattening, transforming, and converting to a map all in one place. Let us fix that.
 
+Note: The AWS provider recommends standalone `aws_vpc_security_group_ingress_rule` and `aws_vpc_security_group_egress_rule` resources for production security group rules. This example uses inline `ingress` blocks to focus on the Terraform dynamic block pattern.
+
 ## Step 1 - Move the Logic to Locals
 
 Break the expression into named steps:
