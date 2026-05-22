@@ -27,8 +27,10 @@ For Bitbucket Cloud:
    - Go to your Bitbucket workspace settings
    - Navigate to **OAuth consumers** > **Add consumer**
    - Name: HCP Terraform
-   - Callback URL: `https://app.terraform.io/auth/bitbucket-cloud`
-   - Permissions: Account (Read), Repositories (Read, Write), Pull Requests (Read, Write), Webhooks (Read and Write)
+   - Callback URL: Copy the callback URL shown in HCP Terraform
+   - URL: `https://app.terraform.io`
+   - Check **This is a private consumer**
+   - Permissions: Account (Write), Repositories (Admin), Pull Requests (Write), Webhooks (Read and Write)
 5. Copy the Key and Secret back to HCP Terraform
 6. Click **Connect and Continue**
 
@@ -37,10 +39,14 @@ For Bitbucket Cloud:
 ```hcl
 # Create a workspace connected to Bitbucket
 
+data "tfe_oauth_client" "bitbucket" {
+  organization     = "your-org"
+  service_provider = "bitbucket_hosted"
+}
+
 resource "tfe_workspace" "app_infra" {
-  name           = "app-infrastructure"
-  organization   = "your-org"
-  execution_mode = "remote"
+  name         = "app-infrastructure"
+  organization = "your-org"
 
   vcs_repo {
     identifier     = "your-bitbucket-workspace/infrastructure-repo"
@@ -309,8 +315,8 @@ Configure deployment environments in Bitbucket:
 
 1. Go to **Repository settings** > **Deployments**
 2. Add environments: Development, Staging, Production
-3. For Production, you can enable **Required reviewers**
-4. This adds an approval gate before the production apply step runs
+3. For Production, you can configure deployment permissions to restrict who can deploy
+4. Combined with a manual pipeline step, this adds an approval gate before the production apply step runs
 
 ## Caching Terraform Providers
 
@@ -363,7 +369,7 @@ pipelines:
 
 ### Deployment Permissions
 
-Use Bitbucket deployment environments with required reviewers to add approval gates before production applies.
+Use Bitbucket deployment environments with deployment permissions and manual steps to add approval gates before production applies.
 
 ### Separate Tokens
 
