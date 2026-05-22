@@ -192,9 +192,9 @@ variable "policy_roles" {
   description = "Which roles each policy is attached to"
   type        = map(list(string))
   default = {
-    "arn:aws:iam::policy/ReadOnly"  = ["viewer", "auditor"]
-    "arn:aws:iam::policy/S3Full"    = ["deployer", "admin"]
-    "arn:aws:iam::policy/AdminFull" = ["admin"]
+    "arn:aws:iam::aws:policy/ReadOnlyAccess"      = ["viewer", "auditor"]
+    "arn:aws:iam::aws:policy/AmazonS3FullAccess"  = ["deployer", "admin"]
+    "arn:aws:iam::aws:policy/AdministratorAccess" = ["admin"]
   }
 }
 
@@ -203,10 +203,10 @@ locals {
   role_policies = transpose(var.policy_roles)
   # Result:
   # {
-  #   "admin"    = ["arn:aws:iam::policy/AdminFull", "arn:aws:iam::policy/S3Full"]
-  #   "auditor"  = ["arn:aws:iam::policy/ReadOnly"]
-  #   "deployer" = ["arn:aws:iam::policy/S3Full"]
-  #   "viewer"   = ["arn:aws:iam::policy/ReadOnly"]
+  #   "admin"    = ["arn:aws:iam::aws:policy/AdministratorAccess", "arn:aws:iam::aws:policy/AmazonS3FullAccess"]
+  #   "auditor"  = ["arn:aws:iam::aws:policy/ReadOnlyAccess"]
+  #   "deployer" = ["arn:aws:iam::aws:policy/AmazonS3FullAccess"]
+  #   "viewer"   = ["arn:aws:iam::aws:policy/ReadOnlyAccess"]
   # }
 }
 
