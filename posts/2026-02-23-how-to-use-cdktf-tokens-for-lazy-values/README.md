@@ -10,14 +10,17 @@ Description: Learn how CDKTF tokens work as lazy value placeholders that resolve
 
 When you write `vpc.id` in CDKTF and pass it to a subnet resource, you might expect it to contain an actual VPC ID string. It does not. At the time your TypeScript code runs, no VPC exists yet. Instead, CDKTF uses a system called tokens to represent values that will only be known later - either at synthesis time or at Terraform apply time. Understanding how tokens work is essential for writing correct CDKTF code, especially when you need to manipulate or conditionally use these values.
 
+Note: CDKTF was deprecated on December 10, 2025, and HashiCorp no longer maintains it. These patterns still apply to existing CDKTF projects, but new projects should account for that support status.
+
 ## What Are Tokens?
 
-Tokens are placeholder values that CDKTF uses to represent references between resources. When you access a property like `instance.publicIp`, CDKTF returns a special string that looks something like `${aws_instance.my_instance.public_ip}`. This string is not a real IP address - it is a Terraform expression that gets resolved when Terraform runs.
+Tokens are placeholder values that CDKTF uses to represent references between resources. When you access a property like `instance.publicIp`, CDKTF returns a special encoded string that looks something like `${TfToken[TOKEN.0]}`. This string is not a real IP address. During synthesis, CDKTF turns the placeholder into a Terraform expression such as `${aws_instance.my_instance.public_ip}`, and Terraform resolves the actual value when it runs.
 
-There are three types of tokens:
+Common token representations include:
 - **String tokens**: Represent string values (most common)
 - **Number tokens**: Represent numeric values
 - **List tokens**: Represent list values
+- **Map and other complex tokens**: Represent maps, booleans, or other Terraform values
 
 ## How Tokens Work in Practice
 
@@ -43,7 +46,7 @@ class MyStack extends TerraformStack {
     // server.publicIp is NOT a real IP address at this point
     // It is a token that represents a Terraform reference
     console.log(server.publicIp);
-    // Output: ${aws_instance.server.public_ip}
+    // Output: ${TfToken[TOKEN.0]}
 
     // You can check if a value is a token
     console.log(Token.isUnresolved(server.publicIp));
@@ -77,10 +80,10 @@ if (server.publicIp === "1.2.3.4") {
 
 // DO NOT do this - string methods on tokens produce garbage
 const parts = server.publicIp.split(".");
-// parts will be something like ["${aws_instance", "server", "public_ip}"]
+// parts will operate on the encoded placeholder, not on a real IP address
 
 // DO NOT try to parse tokens as numbers
-const port = parseInt(server.somePort, 10);
+const port = parseInt(server.publicIp, 10);
 // This will return NaN
 ```
 
@@ -216,7 +219,7 @@ const lazyPort = Token.asNumber(
 
 // Number tokens look like very large numbers when printed
 console.log(lazyPort);
-// Output: something like 1.8446744073709552e+19
+// Output: something like -8.109562212591385e+298
 
 // But they resolve correctly at synthesis time
 new SecurityGroup(this, "sg", {
