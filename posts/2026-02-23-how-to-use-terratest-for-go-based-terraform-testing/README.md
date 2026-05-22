@@ -193,9 +193,6 @@ opts := &terraform.Options{
 
 	// Terraform binary
 	TerraformBinary: "terraform",
-
-	// Skip destroying resources (useful for debugging)
-	// SkipDestroy: true,
 }
 ```
 
@@ -273,6 +270,7 @@ Cloud APIs are sometimes flaky. Terratest has built-in retry support:
 
 ```go
 import (
+	"context"
 	"time"
 	http_helper "github.com/gruntwork-io/terratest/modules/http-helper"
 )
@@ -295,8 +293,9 @@ func TestWithRetries(t *testing.T) {
 
 	// Retry the HTTP check for up to 5 minutes
 	// Some services take time to become healthy after deployment
-	http_helper.HttpGetWithRetry(
+	http_helper.HTTPGetWithRetryContext(
 		t,
+		context.Background(),
 		url,
 		nil,             // TLS config
 		200,             // Expected status code
@@ -364,20 +363,23 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    permissions:
+      contents: read
+      id-token: write
 
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.21'
+          go-version: '1.26'
 
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: 1.7.0
           terraform_wrapper: false
 
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ secrets.AWS_TEST_ROLE }}
           aws-region: us-east-1
