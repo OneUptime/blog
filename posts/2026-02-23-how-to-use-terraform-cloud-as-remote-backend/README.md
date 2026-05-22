@@ -124,7 +124,7 @@ Before you can use Terraform Cloud as a backend, you need to authenticate:
 ### Method 1: terraform login
 
 ```bash
-# Interactive login - opens a browser for OAuth
+# Interactive login - opens a browser to create an API token
 terraform login
 
 # For Terraform Enterprise (self-hosted)
@@ -272,11 +272,13 @@ Every `terraform apply` creates a new state version. You can view and restore pr
 
 ```bash
 # List state versions via API
-WORKSPACE_ID="ws-xxxxxxxxxxxxxxxx"
+ORGANIZATION="your-org"
+WORKSPACE_NAME="my-application-production"
 
 curl \
   --header "Authorization: Bearer $TFC_TOKEN" \
-  "https://app.terraform.io/api/v2/workspaces/${WORKSPACE_ID}/state-versions" \
+  --header "Content-Type: application/vnd.api+json" \
+  "https://app.terraform.io/api/v2/state-versions?filter%5Borganization%5D%5Bname%5D=${ORGANIZATION}&filter%5Bworkspace%5D%5Bname%5D=${WORKSPACE_NAME}" \
   | jq '.data[] | {id: .id, serial: .attributes.serial, created: .attributes["created-at"]}'
 ```
 
@@ -285,17 +287,28 @@ curl \
 If you need to roll back to a previous state version:
 
 ```bash
-# Download a previous state version
+# Roll back to a previous state version
+WORKSPACE_ID="ws-xxxxxxxxxxxxxxxx"
 STATE_VERSION_ID="sv-xxxxxxxxxxxxxxxx"
 
 curl \
   --header "Authorization: Bearer $TFC_TOKEN" \
-  "https://app.terraform.io/api/v2/state-versions/${STATE_VERSION_ID}" \
-  | jq -r '.data.attributes["hosted-state-download-url"]' \
-  | xargs curl -o previous-state.json
-
-# Push the previous state as the current version
-terraform state push previous-state.json
+  --header "Content-Type: application/vnd.api+json" \
+  --request PATCH \
+  --data "{
+    \"data\": {
+      \"type\": \"state-versions\",
+      \"relationships\": {
+        \"rollback-state-version\": {
+          \"data\": {
+            \"id\": \"${STATE_VERSION_ID}\",
+            \"type\": \"state-versions\"
+          }
+        }
+      }
+    }
+  }" \
+  "https://app.terraform.io/api/v2/workspaces/${WORKSPACE_ID}/state-versions"
 ```
 
 ## Variable Sets for Shared Configuration
