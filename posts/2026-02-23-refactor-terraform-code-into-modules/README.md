@@ -158,9 +158,10 @@ module "vpc" {
 
 ## Step 4: Verify with Plan
 
-Run `terraform plan` to verify that no resources will be destroyed or recreated:
+Run `terraform init` so Terraform installs the new local module, then run `terraform plan` to verify that no resources will be destroyed or recreated:
 
 ```bash
+terraform init
 terraform plan
 ```
 
