@@ -64,7 +64,7 @@ terraform {
     bucket         = "my-terraform-state"
     key            = "networking/terraform.tfstate"
     region         = "us-east-1"
-    dynamodb_table = "terraform-locks"
+    use_lockfile   = true
   }
 }
 ```
@@ -76,14 +76,14 @@ terraform {
     bucket         = "my-terraform-state"
     key            = "compute/terraform.tfstate"
     region         = "us-east-1"
-    dynamodb_table = "terraform-locks"
+    use_lockfile   = true
   }
 }
 ```
 
 ## Step 2: Move Resources Using terraform state mv
 
-The `terraform state mv` command can move resources from one state to another using the `-state-out` flag. First, pull your current state:
+The `terraform state mv` command can move resources from one state file to another using the `-state-out` flag. First, pull your current state:
 
 ```bash
 # Pull the current monolithic state to a local file
@@ -98,26 +98,31 @@ Now move resources to new state files:
 terraform state mv \
   -state=original.tfstate \
   -state-out=networking.tfstate \
+  aws_vpc.main \
   aws_vpc.main
 
 terraform state mv \
   -state=original.tfstate \
   -state-out=networking.tfstate \
+  aws_subnet.public \
   aws_subnet.public
 
 terraform state mv \
   -state=original.tfstate \
   -state-out=networking.tfstate \
+  aws_subnet.private \
   aws_subnet.private
 
 terraform state mv \
   -state=original.tfstate \
   -state-out=networking.tfstate \
+  aws_internet_gateway.main \
   aws_internet_gateway.main
 
 terraform state mv \
   -state=original.tfstate \
   -state-out=networking.tfstate \
+  aws_route_table.public \
   aws_route_table.public
 ```
 
@@ -126,16 +131,19 @@ terraform state mv \
 terraform state mv \
   -state=original.tfstate \
   -state-out=compute.tfstate \
+  aws_instance.web_server \
   aws_instance.web_server
 
 terraform state mv \
   -state=original.tfstate \
   -state-out=compute.tfstate \
+  aws_launch_template.app \
   aws_launch_template.app
 
 terraform state mv \
   -state=original.tfstate \
   -state-out=compute.tfstate \
+  aws_autoscaling_group.app \
   aws_autoscaling_group.app
 ```
 
@@ -143,7 +151,13 @@ Each `state mv` command removes the resource from the source state and adds it t
 
 ## Step 3: Push the New States
 
-After you've moved all the resources, push each new state to its respective backend:
+After you've moved all the resources, push the updated original state back to its backend, then push each new state to its respective backend:
+
+```bash
+# Push the original state with the moved resources removed
+cd /path/to/original/terraform
+terraform state push original.tfstate
+```
 
 ```bash
 # Initialize and push the networking state
@@ -268,6 +282,7 @@ for move in "${MOVES[@]}"; do
   terraform state mv \
     -state="$ORIGINAL_STATE" \
     -state-out="$dest" \
+    "$resource" \
     "$resource"
 done
 
@@ -276,7 +291,7 @@ echo "Split complete. Verify each state with terraform plan."
 
 ## Common Pitfalls
 
-**Forgetting dependencies**: If you move a security group to the networking state but leave the instances that reference it in the compute state, you need to set up `terraform_remote_state` for that cross-reference. Otherwise the compute plan will try to create a new security group.
+**Forgetting dependencies**: If you move a security group to the networking state but leave the instances that reference it in the compute state, you need to set up `terraform_remote_state` for that cross-reference. Otherwise the compute plan will fail because the reference no longer exists in that configuration, or it may try to create a duplicate security group if the resource block is still present.
 
 **Module resources**: If your resources are inside modules, the address includes the module path:
 
@@ -285,6 +300,7 @@ echo "Split complete. Verify each state with terraform plan."
 terraform state mv \
   -state=original.tfstate \
   -state-out=networking.tfstate \
+  module.network.aws_vpc.main \
   module.network.aws_vpc.main
 ```
 
@@ -295,11 +311,13 @@ terraform state mv \
 terraform state mv \
   -state=original.tfstate \
   -state-out=compute.tfstate \
+  'aws_instance.web[0]' \
   'aws_instance.web[0]'
 
 terraform state mv \
   -state=original.tfstate \
   -state-out=compute.tfstate \
+  'aws_instance.web[1]' \
   'aws_instance.web[1]'
 ```
 
