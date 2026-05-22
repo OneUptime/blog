@@ -181,26 +181,27 @@ Per-wave success criteria:
 ```bash
 #!/bin/bash
 # migrate-resources.sh
-# Move resources between state files
+# Move resources between local state files
 
-SOURCE_DIR=$1
-TARGET_DIR=$2
+SOURCE_STATE=$1
+TARGET_STATE=$2
 RESOURCE_LIST=$3
 
 # Read resource mappings from file
 while IFS=',' read -r source_addr target_addr; do
   echo "Moving: $source_addr -> $target_addr"
 
-  # Pull resource from source state
-  terraform -chdir="$SOURCE_DIR" state mv \
-    -state-out="$TARGET_DIR/terraform.tfstate" \
+  # Move resource from source state file to target state file
+  terraform state mv \
+    -state="$SOURCE_STATE" \
+    -state-out="$TARGET_STATE" \
     "$source_addr" "$target_addr"
 
 done < "$RESOURCE_LIST"
 
 echo "Migration complete. Verify both states:"
-echo "  Source: cd $SOURCE_DIR && terraform plan"
-echo "  Target: cd $TARGET_DIR && terraform plan"
+echo "  Source configuration: terraform plan"
+echo "  Target configuration: terraform plan"
 ```
 
 ### Verification Script
@@ -254,7 +255,7 @@ echo "Results: $FAILURES failures out of $(echo "$CONFIGS" | wc -l) configuratio
 terraform state pull > pre-wave-backup.json
 
 # 2. Execute state migrations
-./migrate-resources.sh source/ target/ wave-1-resources.csv
+./migrate-resources.sh source/terraform.tfstate target/terraform.tfstate wave-1-resources.csv
 
 # 3. Verify target
 cd target/ && terraform plan
