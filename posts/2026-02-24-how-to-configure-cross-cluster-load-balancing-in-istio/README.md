@@ -14,9 +14,9 @@ Istio gives you fine-grained control over cross-cluster load balancing through l
 
 ## Default Cross-Cluster Load Balancing Behavior
 
-By default, when Istio merges endpoints from multiple clusters, it treats them all equally. A round-robin distribution happens across all healthy endpoints regardless of which cluster they live in.
+By default, when Istio merges endpoints from multiple clusters, the endpoints become part of the same load balancing pool. If you do not specify a load balancing algorithm, Istio selects an appropriate default, and requests are distributed across healthy endpoints without automatically preferring the caller's cluster.
 
-If you have 3 replicas in cluster1 (us-east) and 3 replicas in cluster2 (us-west), traffic from a client in cluster1 splits roughly 50/50 between the two clusters. This might not be ideal because every request that goes cross-cluster adds latency.
+If you have 3 replicas in cluster1 (us-east) and 3 replicas in cluster2 (us-west), traffic from a client in cluster1 can split roughly 50/50 between the two clusters when both clusters have similar load and healthy endpoints. This might not be ideal because every request that goes cross-cluster adds latency.
 
 ## Locality-Aware Load Balancing
 
@@ -34,7 +34,7 @@ kubectl get nodes --show-labels --context="${CTX_CLUSTER1}" | grep topology
 To enable locality-aware routing, you need a DestinationRule with outlier detection. The outlier detection is required because Istio needs a way to determine if local endpoints are healthy before it falls back to remote ones:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: helloworld
@@ -62,7 +62,7 @@ With this DestinationRule in place, Istio will:
 You can explicitly configure the failover order using the `localityLbSetting` in a DestinationRule:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: helloworld
@@ -91,7 +91,7 @@ This tells Istio that if endpoints in `us-east-1` are all unhealthy, fail over t
 Sometimes you do not want strict locality preference. Instead, you want to distribute a specific percentage of traffic across regions. This is useful for canary deployments across clusters or for balancing load when one cluster has more capacity:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: helloworld
@@ -117,14 +117,14 @@ spec:
       simple: ROUND_ROBIN
 ```
 
-This sends 80% of traffic to local endpoints and 20% to the remote cluster, regardless of health status. It is a great way to keep the remote cluster warm and ready for failover.
+This sends 80% of traffic to local endpoints and 20% to the remote cluster while the endpoints are available and healthy. It is a great way to keep the remote cluster warm and ready for failover.
 
 ## Cross-Cluster Load Balancing Algorithms
 
 Istio supports several load balancing algorithms that you can configure in the DestinationRule:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: helloworld
@@ -137,7 +137,8 @@ spec:
 ```
 
 Available options:
-- `ROUND_ROBIN` - rotates through all endpoints (default)
+- `UNSPECIFIED` - lets Istio select an appropriate default
+- `ROUND_ROBIN` - rotates through all endpoints
 - `LEAST_REQUEST` - sends to the endpoint with the fewest active requests
 - `RANDOM` - randomly picks an endpoint
 - `PASSTHROUGH` - connects directly to the original destination (no load balancing)
@@ -149,7 +150,7 @@ For cross-cluster scenarios, `LEAST_REQUEST` often works well because it natural
 Outlier detection is critical for cross-cluster load balancing. Without it, Istio cannot know when to stop sending traffic to unhealthy endpoints in a remote cluster:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: reviews
@@ -203,4 +204,4 @@ sum(rate(istio_requests_total{destination_service="helloworld.sample.svc.cluster
 
 ## Summary
 
-Cross-cluster load balancing in Istio is highly configurable. The default is equal distribution, but you can enable locality-aware routing for latency optimization, set up explicit failover chains, or use weighted distribution for traffic splitting. The key requirement is outlier detection - without it, Istio has no health signal to drive load balancing decisions across clusters. Start with locality-aware routing and outlier detection, and tune from there based on your latency and availability requirements.
+Cross-cluster load balancing in Istio is highly configurable. The default load balancing pool includes healthy endpoints from every discovered cluster, but you can enable locality-aware routing for latency optimization, set up explicit failover chains, or use weighted distribution for traffic splitting. The key requirement for locality failover is outlier detection - without it, Istio has no health signal to trigger failover between localities. Start with locality-aware routing and outlier detection, and tune from there based on your latency and availability requirements.
