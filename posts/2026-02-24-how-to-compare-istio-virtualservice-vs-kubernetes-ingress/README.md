@@ -56,14 +56,14 @@ Key characteristics of Ingress:
 - Limited to host-based and path-based routing
 - Feature extensions are done through annotations (controller-specific)
 - No built-in support for traffic splitting, mirroring, or fault injection
-- Works with any Kubernetes cluster, no service mesh required
+- Works with any Kubernetes cluster that has an ingress controller, no service mesh required
 
 ## What Istio VirtualService Does
 
 Istio VirtualService is part of Istio's traffic management API. It defines routing rules for traffic flowing through the Istio mesh. Unlike Ingress, VirtualService handles both external traffic (when paired with an Istio Gateway) and internal mesh traffic (service-to-service communication).
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app-routes
@@ -131,7 +131,7 @@ That is it. Everything else is done through annotations, which are specific to y
 - Headers (exact, prefix, regex)
 - Query parameters
 - HTTP method
-- Source labels (which service is making the request)
+- Source labels (labels on the source workload making the request)
 - Port
 
 And for each match, you can:
@@ -145,8 +145,9 @@ And for each match, you can:
 
 ```yaml
 # Things you can do with VirtualService that Ingress cannot
+# Assumes corresponding DestinationRule subsets exist
 
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: advanced-routing
@@ -180,13 +181,13 @@ None of this is possible with a plain Ingress resource.
 
 For external traffic, Ingress and VirtualService (with Gateway) serve similar roles but with different levels of control.
 
-With Ingress, you define the ingress controller and the routing rules in a single resource. The ingress controller creates the load balancer and handles TLS termination.
+With Ingress, you reference the ingress class and define the routing rules in a single resource. The ingress controller typically provisions or configures the load balancer or frontend and handles TLS termination.
 
 With Istio, you separate the infrastructure (Gateway) from the routing (VirtualService):
 
 ```yaml
 # Gateway defines the listener
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: my-gateway
@@ -205,7 +206,7 @@ spec:
         - app.example.com
 ---
 # VirtualService defines the routing
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app-routes
@@ -224,12 +225,12 @@ This separation is cleaner because the Gateway is reusable across multiple Virtu
 
 ## Internal Traffic Routing
 
-This is where the two resources diverge completely. Kubernetes Ingress has nothing to say about service-to-service traffic. Once traffic enters the cluster through Ingress, internal routing is handled by Kubernetes Services (round-robin load balancing by default).
+This is where the two resources diverge completely. Kubernetes Ingress has nothing to say about service-to-service traffic. Once traffic enters the cluster through Ingress, internal routing is handled by Kubernetes Services and the cluster's service proxy or networking implementation.
 
 VirtualService can control internal mesh traffic. When you omit the `gateways` field or set it to `mesh`, the routing rules apply to traffic between services inside the cluster:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: internal-routing
@@ -250,7 +251,7 @@ spec:
             subset: v1
 ```
 
-This routes traffic from the productpage service to reviews v2, while all other services get reviews v1. No Ingress resource can do this.
+Assuming a corresponding DestinationRule defines the `v1` and `v2` subsets, this routes traffic from the productpage service to reviews v2, while all other services get reviews v1. No Ingress resource can do this.
 
 ## Can They Coexist?
 
