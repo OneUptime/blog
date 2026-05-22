@@ -111,12 +111,12 @@ When working with large configurations, use targeting to speed up operations:
 
 ## Efficient Resource Management with for_each
 
-Use for_each instead of count for better performance with resource collections:
+Use for_each instead of count when resources need stable, meaningful identities:
 
 ```hcl
 # Using for_each for efficient resource management
-# for_each is more efficient than count because
-# resources are indexed by key, not position
+# for_each gives each instance a stable key, not a
+# position-based numeric index
 
 variable "services" {
   description = "Map of services to deploy"
@@ -340,7 +340,7 @@ Use data sources instead of state references when possible. Data sources query t
 
 Monitor terraform plan duration. Set alerts when plan times exceed your threshold. Increasing plan times indicate growing state that may need splitting.
 
-Use moved blocks for state reorganization. When you need to move resources between state files or rename them, use Terraform's moved blocks to avoid unnecessary destruction and recreation.
+Use moved blocks for address changes within a configuration, such as renaming resources or moving them into modules, to avoid unnecessary destruction and recreation. When splitting resources between separate state files, use Terraform's state migration workflow, such as `removed` and `import` blocks or `terraform state mv`, depending on your Terraform version and backend.
 
 Cache provider plugins. Downloading providers for every CI/CD run wastes time. Use plugin caching to speed up terraform init.
 
