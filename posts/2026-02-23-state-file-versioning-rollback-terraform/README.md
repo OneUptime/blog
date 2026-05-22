@@ -23,7 +23,7 @@ This happens automatically - Terraform doesn't need to know about it. From Terra
 If you're using the S3 backend, enable versioning on the bucket:
 
 ```hcl
-# Create the S3 bucket with versioning enabled
+# Create the S3 bucket
 
 resource "aws_s3_bucket" "terraform_state" {
   bucket = "my-terraform-state"
@@ -43,8 +43,10 @@ resource "aws_s3_bucket_versioning" "terraform_state" {
   }
 }
 
-# Set a lifecycle rule to clean up old versions after 90 days
+# Set a lifecycle rule to transition and clean up old versions
 resource "aws_s3_bucket_lifecycle_configuration" "terraform_state" {
+  depends_on = [aws_s3_bucket_versioning.terraform_state]
+
   bucket = aws_s3_bucket.terraform_state.id
 
   rule {
@@ -55,7 +57,6 @@ resource "aws_s3_bucket_lifecycle_configuration" "terraform_state" {
       noncurrent_days = 90
     }
 
-    # Keep at least 10 versions regardless of age
     noncurrent_version_transition {
       noncurrent_days = 30
       storage_class   = "STANDARD_IA"
@@ -113,8 +114,10 @@ jq '{serial: .serial, resource_count: (.resources | length)}' /tmp/terraform.tfs
 
 # Push the old version as the new current state
 cd /path/to/terraform/config
-terraform state push /tmp/terraform.tfstate.rollback
+terraform state push -force /tmp/terraform.tfstate.rollback
 ```
+
+The `-force` flag is required when the remote state has a higher serial number than the older snapshot you're restoring. Only use it after confirming that this is the state version you want to make current.
 
 After pushing, run `terraform plan` to see what Terraform thinks needs to change. The plan will show you the difference between the rolled-back state and the actual infrastructure.
 
@@ -155,7 +158,7 @@ gsutil cp "gs://my-terraform-state/prod/terraform.tfstate#1708700000000000" \
   /tmp/terraform.tfstate.rollback
 
 # Push the old version back
-terraform state push /tmp/terraform.tfstate.rollback
+terraform state push -force /tmp/terraform.tfstate.rollback
 ```
 
 ## Enabling Versioning on Azure Blob Storage
@@ -206,7 +209,7 @@ az storage blob download \
   --file /tmp/terraform.tfstate.rollback
 
 # Push it back
-terraform state push /tmp/terraform.tfstate.rollback
+terraform state push -force /tmp/terraform.tfstate.rollback
 ```
 
 ## Building a Rollback Script
@@ -264,7 +267,7 @@ if [ "$CONFIRM" != "yes" ]; then
 fi
 
 echo "Pushing rolled-back state..."
-terraform state push "$ROLLBACK_FILE"
+terraform state push -force "$ROLLBACK_FILE"
 
 echo "Rollback complete. Run 'terraform plan' to verify."
 rm "$ROLLBACK_FILE"
