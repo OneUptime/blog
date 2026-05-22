@@ -59,15 +59,15 @@ spec:
             sni: api.external-service.com
 ```
 
-This creates a cluster called `external-api-cluster` that connects to `api.external-service.com` on port 443 with TLS enabled. The `STRICT_DNS` type means Envoy will resolve the DNS name and use all returned addresses.
+This creates a cluster called `external-api-cluster` that connects to `api.external-service.com` on port 443 with TLS enabled. The `STRICT_DNS` type means Envoy will resolve the DNS name and use all returned addresses for that hostname.
 
 ## Cluster Discovery Types
 
 The `type` field in your cluster definition controls how Envoy discovers the endpoints. Here are the options you'll use most often:
 
 - `STATIC` - endpoints are hardcoded in the configuration
-- `STRICT_DNS` - Envoy resolves DNS and uses all returned A records
-- `LOGICAL_DNS` - Envoy resolves DNS but only uses the first returned address
+- `STRICT_DNS` - Envoy resolves DNS and treats all returned addresses as upstream hosts
+- `LOGICAL_DNS` - Envoy resolves DNS but uses the first returned address when opening a new connection
 - `EDS` - endpoints come from Envoy's discovery service (this is what Istio normally uses)
 
 For external services, `STRICT_DNS` is usually what you want. For hardcoded IPs, use `STATIC`:
@@ -150,7 +150,7 @@ The `circuit_breakers` section is particularly useful. It prevents your service 
 
 ## Using Custom Clusters with Route Configuration
 
-Adding a cluster by itself doesn't do much. You also need to tell Envoy when to route traffic to it. You can do this with another EnvoyFilter patch that modifies the route configuration:
+Adding a cluster by itself doesn't do much. You also need to tell Envoy when to route traffic to it. If Istio already has an outbound virtual host for the hostname, for example through a ServiceEntry, you can do this with another EnvoyFilter patch that modifies the route configuration:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -259,7 +259,7 @@ A few things to watch out for when working with custom clusters:
 
 1. **Name collisions**: Make sure your cluster name doesn't collide with one that Istio generates automatically. Istio uses a naming convention like `outbound|PORT||HOSTNAME`, so as long as you pick something different, you should be fine.
 
-2. **DNS resolution**: If you use `STRICT_DNS`, make sure the DNS name is resolvable from the pod's network namespace. The Envoy proxy resolves DNS directly, not through kube-dns necessarily.
+2. **DNS resolution**: If you use `STRICT_DNS`, make sure the DNS name is resolvable from the pod's network namespace. Envoy uses the proxy's DNS resolver configuration by default, which is usually the pod's `/etc/resolv.conf` in Kubernetes.
 
 3. **TLS configuration**: If the upstream requires TLS, you must configure the `transport_socket` section. Without it, Envoy will try to connect with plain TCP.
 
