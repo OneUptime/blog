@@ -8,7 +8,7 @@ Description: A comparison of Istio installation methods including istioctl, Helm
 
 ---
 
-Istio gives you three main ways to install it: `istioctl`, Helm charts, and the Istio Operator. Each has trade-offs, and picking the wrong one can make upgrades, customization, and day-2 operations more painful than they need to be.
+Istio gives you two main supported ways to install it: `istioctl` and Helm charts. Older Istio releases also had an in-cluster Istio Operator, but it was deprecated in Istio 1.23 and removed in Istio 1.24. Each approach has trade-offs, and picking the wrong one can make upgrades, customization, and day-2 operations more painful than they need to be.
 
 Here is a straightforward comparison to help you decide.
 
@@ -69,19 +69,20 @@ This is the killer feature of istioctl. You can run two control plane versions s
 
 ```bash
 # Install a new revision
-istioctl install --set revision=1-24-0 --set tag=stable -y
+istioctl install --revision=1-30-0 -y
+istioctl tag set stable --revision 1-30-0
 
 # Migrate namespaces to the new revision
-kubectl label namespace production istio.io/rev=1-24-0 --overwrite
+kubectl label namespace production istio.io/rev=stable --overwrite
 
 # Restart pods to pick up new sidecar version
 kubectl rollout restart deployment -n production
 
 # Verify all pods are using the new version
-istioctl proxy-status | grep "1-24-0"
+istioctl proxy-status | grep "1-30-0"
 
 # Once all namespaces are migrated, remove the old revision
-istioctl uninstall --revision 1-23-0 -y
+istioctl uninstall --revision 1-29-1 -y
 ```
 
 ### Drawbacks
@@ -100,13 +101,14 @@ helm repo add istio https://istio-release.storage.googleapis.com/charts
 helm repo update
 
 # Install the Istio base chart (CRDs)
-helm install istio-base istio/base -n istio-system --create-namespace
+helm install istio-base istio/base -n istio-system --set defaultRevision=default --create-namespace
 
 # Install istiod (control plane)
 helm install istiod istio/istiod -n istio-system --wait
 
 # Install the ingress gateway
-helm install istio-ingress istio/gateway -n istio-system
+kubectl create namespace istio-ingress
+helm install istio-ingress istio/gateway -n istio-ingress --wait
 ```
 
 Custom configuration goes in a values file:
@@ -155,13 +157,13 @@ helm install istiod istio/istiod -n istio-system -f istiod-values.yaml --wait
 helm repo update
 
 # Upgrade the base chart first
-helm upgrade istio-base istio/base -n istio-system
+helm upgrade istio-base istio/base -n istio-system --set defaultRevision=default
 
 # Then upgrade istiod
 helm upgrade istiod istio/istiod -n istio-system -f istiod-values.yaml --wait
 
 # Finally upgrade the gateway
-helm upgrade istio-ingress istio/gateway -n istio-system
+helm upgrade istio-ingress istio/gateway -n istio-ingress
 ```
 
 ### Drawbacks
@@ -172,37 +174,25 @@ helm upgrade istio-ingress istio/gateway -n istio-system
 
 ## Option 3: Istio Operator
 
-The Istio Operator watches an IstioOperator custom resource and reconciles the Istio installation. It is the most "Kubernetes-native" approach but the Istio project has moved away from recommending it.
+The in-cluster Istio Operator watched an IstioOperator custom resource and reconciled the Istio installation. It was the most "Kubernetes-native" approach, but the Istio project deprecated it in Istio 1.23 and removed it in Istio 1.24.
 
 ```bash
-# Install the operator
-istioctl operator init
-
-# Create the IstioOperator resource
-kubectl apply -f - <<EOF
-apiVersion: install.istio.io/v1alpha1
-kind: IstioOperator
-metadata:
-  name: istio-control-plane
-  namespace: istio-system
-spec:
-  profile: default
-  meshConfig:
-    accessLogFile: /dev/stdout
-EOF
+# Check whether an existing cluster still uses the deprecated in-cluster operator
+kubectl get deployment -n istio-system istio-operator
+kubectl get IstioOperator -A
 ```
 
-The operator watches for changes to this resource and applies them automatically.
+If both commands return existing resources, plan a migration to `istioctl` or Helm before upgrading to Istio 1.24 or later.
 
 ### When to Use the Operator
 
-- You want a fully declarative, GitOps-native approach
-- You want automatic reconciliation (the operator re-applies configuration if someone modifies it manually)
-- You are comfortable with the additional complexity of running a controller
+- You are pinned to Istio 1.23 or earlier and already run the in-cluster Operator
+- You want automatic reconciliation while you plan a migration
+- You are comfortable with the additional complexity of running a deprecated controller
 
 ### Drawbacks
 
-- The Istio project has deprecated the Operator as a primary installation method
+- The Istio project deprecated the in-cluster Operator in Istio 1.23 and removed it in Istio 1.24
 - The Operator itself is another component that needs to be managed and upgraded
 - If the Operator has a bug, it could modify your Istio installation unexpectedly
 - Less community support and documentation compared to istioctl and Helm
@@ -211,11 +201,11 @@ The operator watches for changes to this resource and applies them automatically
 
 | Factor | istioctl | Helm | Operator |
 |--------|----------|------|----------|
-| Ease of installation | High | Medium | Medium |
-| GitOps compatibility | Low | High | High |
-| Canary upgrades | Built-in | Manual | Not supported |
+| Ease of installation | High | Medium | Legacy only |
+| GitOps compatibility | Low | High | Legacy only |
+| Canary upgrades | Built-in | Manual | Legacy only |
 | Community support | High | High | Low |
-| Upgrade simplicity | High | Medium | Medium |
+| Upgrade simplicity | High | Medium | Legacy only |
 | Reconciliation | None | None | Automatic |
 | Additional components | None | None | Operator pod |
 | Documentation | Excellent | Good | Limited |
@@ -226,13 +216,13 @@ For most teams, start with `istioctl`. It is the most straightforward, best docu
 
 If you are a Helm shop with existing GitOps workflows, use Helm. The overhead of maintaining separate Helm releases for each Istio component is manageable, and the GitOps integration is worth it.
 
-Avoid the Operator unless you have a very specific need for automatic reconciliation and understand the risks of running a controller that can modify your service mesh.
+Avoid the in-cluster Operator for new installs. If you already use it, treat it as legacy and migrate before upgrading to Istio 1.24 or later.
 
 Whichever method you choose, the actual Istio configuration (mesh config, sidecar settings, resource limits) works the same way. The installation method just determines how that configuration gets applied to the cluster.
 
 ```bash
 # Verify your installation regardless of method
-istioctl verify-install
+istioctl analyze
 istioctl proxy-status
 kubectl get pods -n istio-system
 ```
