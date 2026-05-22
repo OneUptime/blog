@@ -46,13 +46,13 @@ resource "null_resource" "run_script" {
 }
 ```
 
-If someone runs `terraform apply` from a different directory, the script will not be found. With `abspath`, you can make it deterministic:
+If the working directory is different from the module directory, the script will not be found. With `path.module` and `abspath`, you can make it deterministic:
 
 ```hcl
-# abspath ensures the full path is resolved regardless of where terraform runs
+# path.module makes the script module-relative, and abspath converts it to an absolute path
 resource "null_resource" "run_script" {
   provisioner "local-exec" {
-    command = "python3 ${abspath("scripts/deploy.py")}"
+    command = "python3 ${abspath(path.module)}/scripts/deploy.py"
   }
 }
 ```
@@ -61,13 +61,13 @@ resource "null_resource" "run_script" {
 
 ### Passing Paths to local-exec Provisioners
 
-When using `local-exec`, the command runs in a shell where the working directory might differ from where your Terraform files live:
+When using `local-exec`, the command runs in a shell where the working directory is not necessarily the same as the current module directory:
 
 ```hcl
 resource "null_resource" "setup" {
   provisioner "local-exec" {
-    # Convert the relative path to absolute so the script is always found
-    command = "${abspath("scripts/setup.sh")} --env production"
+    # Use path.module for a module-relative path, then convert it to absolute
+    command = "${abspath(path.module)}/scripts/setup.sh --env production"
   }
 }
 ```
@@ -100,7 +100,7 @@ resource "docker_container" "app" {
 
   volumes {
     # Docker requires absolute host paths for volume mounts
-    host_path      = abspath("./app-data")
+    host_path      = "${abspath(path.module)}/app-data"
     container_path = "/data"
   }
 }
@@ -130,6 +130,7 @@ The function resolves paths relative to the Terraform process's working director
 ```hcl
 # path.module - the directory of the current module
 # path.root - the directory of the root module
+# path.cwd - the original working directory where Terraform was started
 # abspath(".")  - the current working directory of the terraform process
 
 output "module_dir" {
@@ -143,9 +144,13 @@ output "root_dir" {
 output "working_dir" {
   value = abspath(".")
 }
+
+output "original_cli_dir" {
+  value = path.cwd
+}
 ```
 
-In many cases, `abspath(path.root)` and `abspath(".")` will be the same, but they can differ if you use the `-chdir` flag.
+In many cases, `abspath(path.root)`, `abspath(".")`, and `path.cwd` will be the same, but `path.cwd` can differ if you use the `-chdir` flag.
 
 ## Edge Cases
 
@@ -220,7 +225,7 @@ resource "null_resource" "deploy" {
 
   provisioner "local-exec" {
     # Use abspath to ensure the script path resolves correctly
-    command = "bash ${abspath("${path.module}/scripts/deploy.sh")}"
+    command = "bash ${abspath(path.module)}/scripts/deploy.sh"
   }
 
   triggers = {
@@ -250,4 +255,4 @@ output "project_root" {
 
 ## Summary
 
-The `abspath` function is a simple but valuable tool for eliminating path ambiguity in Terraform configurations. By converting relative paths to absolute ones, you can ensure that file references work correctly regardless of where Terraform is invoked. Pair it with `pathexpand` for full coverage of tilde-based and relative paths, and your configurations will be robust across different environments and working directories.
+The `abspath` function is a simple but valuable tool for eliminating path ambiguity in Terraform configurations. By converting paths to absolute ones, especially when combined with `path.module` or `path.root`, you can ensure that file references work correctly across different execution contexts. Pair it with `pathexpand` for full coverage of tilde-based and relative paths, and your configurations will be robust across different environments and working directories.
