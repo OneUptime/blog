@@ -102,13 +102,13 @@ locals {
 }
 ```
 
-## AWS Resource Properties
+## Lambda Environment Variables
 
-Some AWS resource properties expect uppercase values.
+Some application configuration values are conventionally uppercase.
 
 ```hcl
 variable "log_level" {
-  description = "CloudWatch log level"
+  description = "Application log level"
   type        = string
   default     = "info"
 }
@@ -122,7 +122,7 @@ resource "aws_lambda_function" "processor" {
 
   environment {
     variables = {
-      # Some services expect uppercase log levels
+      # Some applications expect uppercase log levels
       LOG_LEVEL = upper(var.log_level)
       # Result: "INFO"
     }
@@ -286,7 +286,7 @@ variable "api_routes" {
     { method = "get",    path = "/users",    target = "users-service" },
     { method = "post",   path = "/users",    target = "users-service" },
     { method = "get",    path = "/orders",   target = "orders-service" },
-    { method = "delete", path = "/orders/*", target = "orders-service" }
+    { method = "delete", path = "/orders/{proxy+}", target = "orders-service" }
   ]
 }
 
@@ -314,7 +314,7 @@ output "deployment_summary" {
     Environment: ${upper(var.environment)}
     Region:      ${upper(var.region)}
     Status:      ${upper("active")}
-    Instances:   ${length(aws_instance.app)}
+    Instance ID:  ${aws_instance.app.id}
   EOT
 }
 ```
