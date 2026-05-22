@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Provider Development, Go, DevOps, Infrastructure as Code
 
-Description: A step-by-step tutorial on creating a custom Terraform provider from scratch using Go, covering project setup, compilation, local testing, and publishing to the registry.
+Description: A step-by-step tutorial on creating a custom Terraform provider from scratch using Go, covering project setup, compilation, and local testing.
 
 ---
 
@@ -26,7 +26,6 @@ terraform-provider-taskmanager/
     provider/
       provider.go          # Provider definition and configuration
       resource_task.go     # Task resource CRUD implementation
-      data_source_task.go  # Task data source implementation
   main.go                  # Entry point
   go.mod                   # Go module definition
   go.sum                   # Dependency checksums
@@ -92,7 +91,7 @@ func main() {
 
 ## Step 3: Define the Provider
 
-The provider file defines the configuration schema and creates an API client that resources and data sources use.
+The provider file defines the configuration schema and creates an API client that resources use.
 
 ```go
 // internal/provider/provider.go
@@ -158,7 +157,7 @@ func (p *TaskManagerProvider) Schema(_ context.Context, _ provider.SchemaRequest
     }
 }
 
-// Configure prepares the API client for data sources and resources
+// Configure prepares the API client for resources
 func (p *TaskManagerProvider) Configure(ctx context.Context, req provider.ConfigureRequest, resp *provider.ConfigureResponse) {
     var config TaskManagerProviderModel
 
@@ -175,8 +174,7 @@ func (p *TaskManagerProvider) Configure(ctx context.Context, req provider.Config
         HTTPClient: &http.Client{},
     }
 
-    // Make the client available to resources and data sources
-    resp.DataSourceData = client
+    // Make the client available to resources
     resp.ResourceData = client
 }
 
@@ -189,12 +187,10 @@ func (p *TaskManagerProvider) Resources(_ context.Context) []func() resource.Res
 
 // DataSources defines the data sources implemented in the provider
 func (p *TaskManagerProvider) DataSources(_ context.Context) []func() datasource.DataSource {
-    return []func() datasource.DataSource{
-        NewTaskDataSource,
-    }
+    return nil
 }
 
-// TaskManagerClient is the API client used by resources and data sources
+// TaskManagerClient is the API client used by resources
 type TaskManagerClient struct {
     Endpoint   string
     ApiKey     string
@@ -218,6 +214,7 @@ import (
     "io"
     "net/http"
 
+    "github.com/hashicorp/terraform-plugin-framework/path"
     "github.com/hashicorp/terraform-plugin-framework/resource"
     "github.com/hashicorp/terraform-plugin-framework/resource/schema"
     "github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
@@ -332,16 +329,16 @@ func (r *TaskResource) Create(ctx context.Context, req resource.CreateRequest, r
     taskData := map[string]interface{}{
         "title": plan.Title.ValueString(),
     }
-    if !plan.Description.IsNull() {
+    if !plan.Description.IsNull() && !plan.Description.IsUnknown() {
         taskData["description"] = plan.Description.ValueString()
     }
-    if !plan.Status.IsNull() {
+    if !plan.Status.IsNull() && !plan.Status.IsUnknown() {
         taskData["status"] = plan.Status.ValueString()
     }
-    if !plan.Priority.IsNull() {
+    if !plan.Priority.IsNull() && !plan.Priority.IsUnknown() {
         taskData["priority"] = plan.Priority.ValueInt64()
     }
-    if !plan.Assignee.IsNull() {
+    if !plan.Assignee.IsNull() && !plan.Assignee.IsUnknown() {
         taskData["assignee"] = plan.Assignee.ValueString()
     }
 
@@ -408,9 +405,28 @@ func (r *TaskResource) Read(ctx context.Context, req resource.ReadRequest, resp 
     json.Unmarshal(body, &result)
 
     // Update state with fresh data
-    state.Title = types.StringValue(result["title"].(string))
-    state.Status = types.StringValue(result["status"].(string))
-    state.UpdatedAt = types.StringValue(result["updated_at"].(string))
+    if title, ok := result["title"].(string); ok {
+        state.Title = types.StringValue(title)
+    }
+    if description, ok := result["description"].(string); ok {
+        state.Description = types.StringValue(description)
+    }
+    if status, ok := result["status"].(string); ok {
+        state.Status = types.StringValue(status)
+    }
+    if assignee, ok := result["assignee"].(string); ok {
+        state.Assignee = types.StringValue(assignee)
+    }
+    if createdAt, ok := result["created_at"].(string); ok {
+        state.CreatedAt = types.StringValue(createdAt)
+    }
+    if updatedAt, ok := result["updated_at"].(string); ok {
+        state.UpdatedAt = types.StringValue(updatedAt)
+    }
+
+    if priority, ok := result["priority"].(float64); ok {
+        state.Priority = types.Int64Value(int64(priority))
+    }
 
     resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
@@ -426,11 +442,17 @@ func (r *TaskResource) Update(ctx context.Context, req resource.UpdateRequest, r
     taskData := map[string]interface{}{
         "title": plan.Title.ValueString(),
     }
-    if !plan.Description.IsNull() {
+    if !plan.Description.IsNull() && !plan.Description.IsUnknown() {
         taskData["description"] = plan.Description.ValueString()
     }
-    if !plan.Status.IsNull() {
+    if !plan.Status.IsNull() && !plan.Status.IsUnknown() {
         taskData["status"] = plan.Status.ValueString()
+    }
+    if !plan.Priority.IsNull() && !plan.Priority.IsUnknown() {
+        taskData["priority"] = plan.Priority.ValueInt64()
+    }
+    if !plan.Assignee.IsNull() && !plan.Assignee.IsUnknown() {
+        taskData["assignee"] = plan.Assignee.ValueString()
     }
 
     body, _ := json.Marshal(taskData)
@@ -469,11 +491,12 @@ func (r *TaskResource) Delete(ctx context.Context, req resource.DeleteRequest, r
         r.client.Endpoint+"/api/tasks/"+state.ID.ValueString(), nil)
     httpReq.Header.Set("Authorization", "Bearer "+r.client.ApiKey)
 
-    _, err := r.client.HTTPClient.Do(httpReq)
+    httpResp, err := r.client.HTTPClient.Do(httpReq)
     if err != nil {
         resp.Diagnostics.AddError("API Error", fmt.Sprintf("Unable to delete task: %s", err))
         return
     }
+    defer httpResp.Body.Close()
 }
 
 // ImportState handles terraform import
@@ -549,4 +572,4 @@ For more on Terraform provider concepts, see our guide on [Terraform Plugin Fram
 
 ## Conclusion
 
-Building a custom Terraform provider is a structured process that follows clear patterns. You define a provider with configuration, create resources with CRUD operations, and expose data sources for reading existing infrastructure. The Go-based Plugin Framework handles the gRPC communication, serialization, and state management so you can focus on implementing the business logic that interacts with your API. Start with a single resource, get it working end to end, and then expand your provider's capabilities from there.
+Building a custom Terraform provider is a structured process that follows clear patterns. You define a provider with configuration, create resources with CRUD operations, and can add data sources for reading existing infrastructure. The Go-based Plugin Framework handles the gRPC communication, serialization, and state management so you can focus on implementing the business logic that interacts with your API. Start with a single resource, get it working end to end, and then expand your provider's capabilities from there.
