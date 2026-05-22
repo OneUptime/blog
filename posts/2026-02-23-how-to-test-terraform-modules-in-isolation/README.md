@@ -216,12 +216,12 @@ A module's interface is defined by its variables and outputs. Test that the inte
 
 mock_provider "aws" {}
 
-# Test that all required variables are actually required
-run "fails_without_bucket_name" {
+# Test variable validation
+run "rejects_empty_bucket_name" {
   command = plan
 
   variables {
-    # Intentionally omit bucket_name
+    bucket_name = ""
     environment = "test"
   }
 
