@@ -8,7 +8,7 @@ Description: Learn how to implement a comprehensive infrastructure versioning st
 
 ---
 
-Infrastructure versioning is the practice of treating your Terraform code, modules, and configurations with the same versioning discipline as application code. Just as you would not deploy an unversioned application to production, you should not apply unversioned infrastructure changes. A proper versioning strategy provides traceability, rollback capability, and confidence in what is deployed.
+Infrastructure versioning is the practice of treating your Terraform code, modules, and configurations with the same versioning discipline as application code. Just as you would not deploy an unversioned application to production, you should not apply unversioned infrastructure changes. A proper versioning strategy provides traceability, recovery capability, and confidence in what is deployed.
 
 In this guide, we will cover how to implement a comprehensive versioning strategy for Terraform infrastructure.
 
@@ -127,13 +127,13 @@ git push origin "${ENVIRONMENT}-v${VERSION}"
 echo "Tagged and pushed: ${ENVIRONMENT}-v${VERSION}"
 ```
 
-## State Versioning for Rollback
+## State Versioning for Recovery
 
-Enable state versioning so you can roll back to previous states:
+Enable state versioning so you can recover previous state files if the current state is corrupted or updated incorrectly:
 
 ```hcl
 # backend-setup/state-versioning.tf
-# S3 bucket with versioning for state rollback capability
+# S3 bucket with versioning for state recovery capability
 
 resource "aws_s3_bucket" "terraform_state" {
   bucket = "myorg-terraform-state"
@@ -154,6 +154,8 @@ resource "aws_s3_bucket_lifecycle_configuration" "state" {
     id     = "state-versions"
     status = "Enabled"
 
+    filter {}
+
     noncurrent_version_expiration {
       noncurrent_days = 365
     }
@@ -164,7 +166,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "state" {
 ```bash
 #!/bin/bash
 # scripts/rollback-state.sh
-# Roll back to a previous state version
+# Restore a previous state file version
 
 BUCKET="myorg-terraform-state"
 KEY="production/terraform.tfstate"
@@ -209,8 +211,12 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     environment: production
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v4
 
       - name: Extract Version
         id: version
@@ -232,7 +238,7 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            github.rest.repos.createRelease({
+            await github.rest.repos.createRelease({
               owner: context.repo.owner,
               repo: context.repo.repo,
               tag_name: context.ref.replace('refs/tags/', ''),
@@ -286,4 +292,4 @@ Keep a changelog for every module. Consumers need to understand what changed bef
 
 ## Conclusion
 
-A comprehensive infrastructure versioning strategy with Terraform provides the traceability, stability, and rollback capability that production infrastructure demands. By versioning modules with semver, pinning providers, tagging releases, and maintaining state history, you create an environment where every infrastructure change is traceable and reversible. This discipline is what separates hobby Terraform usage from production-grade infrastructure management.
+A comprehensive infrastructure versioning strategy with Terraform provides the traceability, stability, and recovery capability that production infrastructure demands. By versioning modules with semver, pinning providers, tagging releases, and maintaining state history, you create an environment where every infrastructure change is traceable and can be reviewed or restored deliberately. This discipline is what separates hobby Terraform usage from production-grade infrastructure management.
