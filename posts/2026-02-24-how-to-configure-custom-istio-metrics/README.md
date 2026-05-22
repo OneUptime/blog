@@ -15,7 +15,7 @@ Istio's default metrics cover the basics well - request counts, latency, and siz
 There are two ways to create custom metrics in Istio:
 
 1. **Telemetry API** - add custom labels (tags) to existing metrics. This is the simpler and recommended approach for most cases.
-2. **EnvoyFilter with Wasm or Lua** - create entirely new metrics with custom names and types. More powerful but more complex.
+2. **Stats plugin configuration or Wasm extensions** - create entirely new metric streams when labels on standard metrics are not enough. More powerful but more complex.
 
 Most teams should start with the Telemetry API since it handles the majority of use cases.
 
@@ -44,7 +44,7 @@ spec:
           tagOverrides:
             api_version:
               operation: UPSERT
-              value: "request.headers['x-api-version']"
+              value: "'x-api-version' in request.headers ? request.headers['x-api-version'] : 'unknown'"
 ```
 
 Now `istio_requests_total` includes an `api_version` label. Query it like:
@@ -103,14 +103,14 @@ spec:
           tagOverrides:
             tenant_id:
               operation: UPSERT
-              value: "request.headers['x-tenant-id']"
+              value: "'x-tenant-id' in request.headers ? request.headers['x-tenant-id'] : 'unknown'"
         - match:
             metric: REQUEST_DURATION
             mode: SERVER
           tagOverrides:
             tenant_id:
               operation: UPSERT
-              value: "request.headers['x-tenant-id']"
+              value: "'x-tenant-id' in request.headers ? request.headers['x-tenant-id'] : 'unknown'"
 ```
 
 Now you can track error rates and latency per tenant:
@@ -149,14 +149,14 @@ spec:
           tagOverrides:
             cache_status:
               operation: UPSERT
-              value: "response.headers['x-cache-status']"
+              value: "'x-cache-status' in response.headers ? response.headers['x-cache-status'] : 'unknown'"
 ```
 
 This tracks cache hit/miss rates at the mesh level. Your application sets the `x-cache-status` header, and Istio extracts it into a metric label.
 
 ## Creating New Metrics with EnvoyFilter
 
-When you need entirely new metrics (not just labels on existing ones), use an EnvoyFilter with the stats filter:
+When you need entirely new metrics (not just labels on existing ones), use Istio's stats plugin configuration carefully. EnvoyFilter is a low-level API and must be tested against your Istio version:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -192,7 +192,7 @@ spec:
                   value: "request.size"
 ```
 
-This creates two new metrics: a counter that increments on every request and a histogram of request sizes. These show up as `istio_my_custom_request_count` and `istio_my_custom_request_size` in Prometheus.
+This defines two custom metric streams from request attributes. Metric type handling in the stats plugin is version-dependent, so validate the generated Prometheus output in your cluster before relying on the metric type.
 
 ## Custom Metrics with Attribute Conditions
 
@@ -237,11 +237,11 @@ spec:
 
 ## Using Wasm for Advanced Custom Metrics
 
-For the most flexibility, you can write a Wasm plugin that generates custom metrics. Here's a basic example structure using the proxy-wasm SDK:
+For the most flexibility, you can write a Wasm plugin that generates custom metrics. In Istio 1.30 and newer, `TrafficExtension` is the recommended API for new Wasm extensions, while existing `WasmPlugin` resources remain compatible. Here's a basic example structure:
 
 ```yaml
 apiVersion: extensions.istio.io/v1alpha1
-kind: WasmPlugin
+kind: TrafficExtension
 metadata:
   name: custom-metrics-plugin
   namespace: production
@@ -249,14 +249,15 @@ spec:
   selector:
     matchLabels:
       app: api-gateway
-  url: oci://my-registry/custom-metrics-wasm:v1
   phase: STATS
-  pluginConfig:
-    metrics:
-      - name: business_transactions_total
-        labels:
-          - transaction_type
-          - customer_tier
+  wasm:
+    url: oci://my-registry/custom-metrics-wasm:v1
+    pluginConfig:
+      metrics:
+        - name: business_transactions_total
+          labels:
+            - transaction_type
+            - customer_tier
 ```
 
 The Wasm binary would inspect request/response headers and increment custom counters. This is more work to build but gives you complete control over what gets measured.
@@ -265,7 +266,7 @@ The Wasm binary would inspect request/response headers and increment custom coun
 
 ### Track Slow Requests
 
-Add a label that flags requests above a latency threshold:
+Add a label that lets you break down request duration by method:
 
 ```yaml
 apiVersion: telemetry.istio.io/v1
@@ -280,6 +281,13 @@ spec:
       overrides:
         - match:
             metric: REQUEST_COUNT
+            mode: SERVER
+          tagOverrides:
+            request_method:
+              operation: UPSERT
+              value: "request.method"
+        - match:
+            metric: REQUEST_DURATION
             mode: SERVER
           tagOverrides:
             request_method:
@@ -317,7 +325,7 @@ spec:
           tagOverrides:
             has_auth:
               operation: UPSERT
-              value: "request.headers['authorization'] != '' ? 'true' : 'false'"
+              value: "'authorization' in request.headers ? 'true' : 'false'"
 ```
 
 ## Verifying Custom Metrics
@@ -331,7 +339,7 @@ kubectl exec deploy/sleep -- curl -s http://my-service:8080/api/test \
 
 # Check the metrics
 kubectl exec <my-service-pod> -c istio-proxy -- \
-  curl -s localhost:15020/stats/prometheus | grep -E "(api_version|tenant_id)"
+  curl -s localhost:15000/stats/prometheus | grep -E "(api_version|tenant_id)"
 ```
 
 You should see the new labels on the Istio metrics.
