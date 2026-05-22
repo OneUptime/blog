@@ -275,16 +275,9 @@ When a module returns a list, you can index into it or iterate over it:
 
 ```hcl
 # Access a specific element
-resource "aws_route53_record" "api" {
-  zone_id = var.zone_id
-  name    = "api"
-  type    = "A"
-
-  alias {
-    name                   = module.alb.dns_name
-    zone_id                = module.alb.zone_id
-    evaluate_target_health = true
-  }
+resource "aws_route_table_association" "first_private" {
+  subnet_id      = module.vpc.private_subnet_ids[0]
+  route_table_id = aws_route_table.private.id
 }
 
 # Iterate over a list output
