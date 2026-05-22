@@ -8,13 +8,13 @@ Description: Learn how to use the setintersection function in Terraform to find 
 
 ---
 
-When working with collections in Terraform, you sometimes need to find the common elements shared between two or more groups. The `setintersection` function computes the intersection of sets - it returns only the elements that appear in every input set. This is useful for finding shared permissions, common availability zones, overlapping CIDR blocks, and matching criteria across multiple data sources.
+When working with collections in Terraform, you sometimes need to find the common elements shared between two or more groups. The `setintersection` function computes the intersection of sets - it returns only the elements that appear in every input set. This is useful for finding shared permissions, common availability zones, duplicate CIDR blocks, and matching criteria across multiple data sources.
 
 This guide covers how `setintersection` works, its relationship with other set functions, and practical use cases.
 
 ## What is the setintersection Function?
 
-The `setintersection` function takes two or more sets and returns a new set containing only the elements that are present in all of the input sets.
+The `setintersection` function takes one or more sets and returns a new set containing only the elements that are present in all of the input sets.
 
 ```hcl
 # Returns elements common to all input sets
@@ -52,7 +52,7 @@ Note that Terraform automatically converts lists to sets when passed to set func
 
 ## Finding Common Availability Zones
 
-A practical use is finding availability zones that are available across multiple AWS accounts or regions.
+A practical use is finding availability zones that are available across multiple AWS accounts in the same region. When coordinating physical Availability Zones across accounts, compare AZ IDs rather than AZ names because AWS can map names differently for each account.
 
 ```hcl
 data "aws_availability_zones" "account_a" {
@@ -66,24 +66,24 @@ data "aws_availability_zones" "account_b" {
 }
 
 locals {
-  # Find AZs available in both accounts
-  common_azs = setintersection(
-    toset(data.aws_availability_zones.account_a.names),
-    toset(data.aws_availability_zones.account_b.names)
+  # Find AZ IDs available in both accounts
+  common_az_ids = setintersection(
+    toset(data.aws_availability_zones.account_a.zone_ids),
+    toset(data.aws_availability_zones.account_b.zone_ids)
   )
 }
 
 output "shared_availability_zones" {
-  value = local.common_azs
+  value = local.common_az_ids
 }
 
 # Use common AZs for cross-account resources
 resource "aws_subnet" "shared" {
-  for_each = local.common_azs
+  for_each = local.common_az_ids
 
-  vpc_id            = aws_vpc.main.id
-  cidr_block        = cidrsubnet(aws_vpc.main.cidr_block, 8, index(tolist(local.common_azs), each.key))
-  availability_zone = each.key
+  vpc_id               = aws_vpc.main.id
+  cidr_block           = cidrsubnet(aws_vpc.main.cidr_block, 8, index(tolist(local.common_az_ids), each.key))
+  availability_zone_id = each.key
 
   tags = {
     Name = "shared-${each.key}"
@@ -119,10 +119,7 @@ locals {
 
   # Find permissions common to all assigned roles
   # (This represents the guaranteed minimum permissions)
-  common_permissions = length(local.role_permissions) > 1 ? setintersection(
-    local.role_permissions[0],
-    local.role_permissions[1]
-  ) : (length(local.role_permissions) > 0 ? local.role_permissions[0] : toset([]))
+  common_permissions = length(local.role_permissions) > 0 ? setintersection(local.role_permissions...) : toset([])
 }
 
 output "guaranteed_permissions" {
@@ -131,9 +128,9 @@ output "guaranteed_permissions" {
 }
 ```
 
-## Validating Overlapping CIDR Ranges
+## Validating Shared CIDR Ranges
 
-Check which CIDR blocks appear in multiple security configurations.
+Check which exact CIDR blocks appear in multiple security configurations.
 
 ```hcl
 variable "firewall_rules" {
@@ -209,7 +206,7 @@ For more on `setsubtract`, see [How to Use the setsubtract Function in Terraform
 
 ## The Set Function Family
 
-Terraform provides three set operations that work together:
+Terraform provides several related set functions that work together:
 
 ```hcl
 locals {
@@ -289,7 +286,7 @@ locals {
 - **Empty sets**: If any input set is empty, the result is always empty (nothing can be common to an empty set).
 - **Single set**: Passing a single set returns that set unchanged.
 - **Duplicate handling**: Since the inputs are sets, duplicates in the input lists are automatically removed.
-- **Type consistency**: All elements must be of the same type.
+- **Type consistency**: Set elements have a single type; Terraform converts compatible mixed types to the most general type.
 
 ```hcl
 # Empty set makes result empty
@@ -311,7 +308,7 @@ Key takeaways:
 - Returns a set (unordered) - use `tolist` if you need ordering
 - Lists are automatically converted to sets
 - An empty input set always produces an empty result
-- Works with any number of input sets (two or more)
-- Part of the set function family alongside `setproduct` and `setsubtract`
+- Works with one or more input sets
+- Part of the set function family alongside `setproduct`, `setsubtract`, and `setunion`
 
 Use `setintersection` whenever you need to find what multiple groups have in common.
