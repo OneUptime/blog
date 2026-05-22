@@ -157,7 +157,7 @@ data:
         matches: "^(.*)_total$"
         as: "${1}_per_second"
       metricsQuery: 'sum(rate(<<.Series>>{<<.LabelMatchers>>}[2m])) by (<<.GroupBy>>)'
-    - seriesQuery: 'istio_request_duration_milliseconds_bucket{destination_service_namespace!=""}'
+    - seriesQuery: 'istio_request_duration_milliseconds_bucket{destination_service_namespace!="",destination_service_name!=""}'
       resources:
         overrides:
           destination_service_namespace:
@@ -194,8 +194,8 @@ spec:
         kind: Service
         name: orders-api
       target:
-        type: Value
-        value: 100
+        type: AverageValue
+        averageValue: 100
   behavior:
     scaleUp:
       stabilizationWindowSeconds: 30
@@ -263,7 +263,6 @@ spec:
   - type: prometheus
     metadata:
       serverAddress: http://prometheus.monitoring.svc.cluster.local:9090
-      metricName: istio_requests_per_second
       query: |
         sum(rate(istio_requests_total{destination_service_name="orders-api",destination_service_namespace="api-services"}[2m]))
       threshold: "300"
@@ -302,8 +301,8 @@ spec:
         kind: Service
         name: orders-api
       target:
-        type: Value
-        value: 100
+        type: AverageValue
+        averageValue: 100
 ```
 
 When multiple metrics are specified, the HPA scales to the maximum number of replicas needed by any single metric. So if CPU says you need 5 replicas but request rate says you need 10, you get 10.
