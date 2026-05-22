@@ -186,7 +186,7 @@ variable "lambda_functions" {
     "event-processor" = {
       source_dir = "lambda/processor"
       handler    = "index.handler"
-      runtime    = "nodejs20.x"
+      runtime    = "nodejs22.x"
       timeout    = 60
       memory     = 512
     }
