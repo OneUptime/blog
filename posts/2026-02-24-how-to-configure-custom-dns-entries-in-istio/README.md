@@ -17,7 +17,7 @@ The most common way to add custom DNS entries in Istio is through ServiceEntry. 
 Here's a basic example that maps a custom hostname to a specific IP:
 
 ```yaml
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: legacy-database
@@ -25,6 +25,8 @@ metadata:
 spec:
   hosts:
   - legacy-db.internal.company.com
+  addresses:
+  - 192.168.1.100
   ports:
   - number: 5432
     name: tcp-postgres
@@ -36,7 +38,7 @@ spec:
       tcp-postgres: 5432
 ```
 
-This tells Istio that `legacy-db.internal.company.com` should resolve to `192.168.1.100`. But there's a catch. This only works at the Envoy routing level. Unless you have DNS proxy enabled, the application container still needs to be able to resolve the hostname through regular DNS.
+This tells Istio that `legacy-db.internal.company.com` should resolve to the configured service address and route to `192.168.1.100`. But there's a catch. This only works at the Envoy routing level. Unless you have DNS proxy enabled, the application container still needs to be able to resolve the hostname through regular DNS.
 
 ## Making It Work with DNS Proxy
 
@@ -54,21 +56,20 @@ spec:
         proxy.istio.io/config: |
           proxyMetadata:
             ISTIO_META_DNS_CAPTURE: "true"
-            ISTIO_META_DNS_AUTO_ALLOCATE: "true"
     spec:
       containers:
       - name: my-app
         image: my-app:latest
 ```
 
-With DNS capture enabled, when your app tries to resolve `legacy-db.internal.company.com`, the sidecar intercepts the query and returns the address from the ServiceEntry configuration.
+With DNS capture enabled, when your app tries to resolve `legacy-db.internal.company.com`, the sidecar intercepts the query and returns the address from the ServiceEntry configuration. For ServiceEntries without `spec.addresses`, current Istio versions can auto-allocate a virtual IP when DNS proxying is enabled.
 
 ## Multiple Endpoints
 
 You can define multiple endpoints for load balancing:
 
 ```yaml
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: redis-cluster
@@ -76,6 +77,8 @@ metadata:
 spec:
   hosts:
   - redis.internal.company.com
+  addresses:
+  - 10.0.1.100
   ports:
   - number: 6379
     name: tcp-redis
@@ -98,7 +101,7 @@ spec:
 Instead of hardcoding IPs, you can tell Istio to resolve the actual hostname through DNS and use whatever the DNS server returns:
 
 ```yaml
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-api
@@ -118,17 +121,17 @@ With `resolution: DNS`, the sidecar performs DNS resolution when it needs to con
 
 ## Creating Aliases with ServiceEntry
 
-You can use ServiceEntry to create DNS aliases, mapping one hostname to another service. For example, if you want `database` to resolve to your RDS instance:
+You can use ServiceEntry to create DNS aliases, mapping one hostname to another service. For example, if you want `database.internal.company.com` to resolve to your RDS instance:
 
 ```yaml
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: database-alias
   namespace: default
 spec:
   hosts:
-  - database
+  - database.internal.company.com
   ports:
   - number: 3306
     name: tcp-mysql
@@ -140,14 +143,14 @@ spec:
       tcp-mysql: 3306
 ```
 
-With DNS proxy enabled, resolving `database` from within the mesh will route to your RDS instance. This is especially useful during migrations when you want to swap backends without changing application code.
+With DNS proxy enabled, resolving `database.internal.company.com` from within the mesh will route to your RDS instance. This is especially useful during migrations when you want to swap backends without changing application code.
 
 ## Wildcard DNS Entries
 
 You can create wildcard entries that match any subdomain:
 
 ```yaml
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: wildcard-partner
@@ -163,14 +166,14 @@ spec:
   location: MESH_EXTERNAL
 ```
 
-Note that `resolution: NONE` is typically used with wildcards because Istio can't pre-resolve a wildcard hostname. The sidecar will let the application's DNS resolution determine the actual IP.
+Note that `resolution: NONE` is typically used with wildcards when you want the sidecar to let the application's DNS resolution determine the actual IP. For wildcard HTTP or TLS traffic on newer Istio versions, `DYNAMIC_DNS` is also available when the original host can be recovered from the Host header or SNI.
 
 ## Scoping Custom DNS to Specific Namespaces
 
 By default, a ServiceEntry is visible to all sidecars in its namespace (or the whole mesh if it's in the root namespace). You can use the `exportTo` field to control visibility:
 
 ```yaml
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: team-database
@@ -178,6 +181,8 @@ metadata:
 spec:
   hosts:
   - team-a-db.internal.company.com
+  addresses:
+  - 10.0.5.20
   exportTo:
   - "."
   ports:
@@ -196,7 +201,7 @@ The `exportTo: ["."]` means this entry is only visible to sidecars in the `team-
 Custom DNS entries through ServiceEntry can be combined with DestinationRule for traffic policies:
 
 ```yaml
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: legacy-db-policy
@@ -216,7 +221,7 @@ spec:
 And with VirtualService for routing:
 
 ```yaml
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: legacy-db-routing
@@ -260,6 +265,6 @@ kubectl exec -it deploy/my-app -c my-app -- nslookup legacy-db.internal.company.
 
 2. **Wrong port protocol**: Make sure the protocol in your ServiceEntry matches what the application actually uses. A mismatch can cause the sidecar to mishandle the traffic.
 
-3. **Auto-allocation conflicts**: If `ISTIO_META_DNS_AUTO_ALLOCATE` is enabled, Istio assigns virtual IPs to ServiceEntry hosts. These IPs are from the `240.240.0.0/16` range and are purely internal. If your app tries to use these IPs outside the mesh, it won't work.
+3. **Auto-allocation conflicts**: If DNS auto-allocation is enabled, Istio assigns virtual IPs to ServiceEntry hosts that do not define `spec.addresses`. These IPs are from the `240.240.0.0/16` range and are purely internal. If your app tries to use these IPs outside the mesh, it won't work.
 
 Custom DNS entries in Istio give you a powerful way to control name resolution across your mesh. Combined with DNS proxy, they provide a complete solution for integrating external services, creating aliases, and managing DNS during migrations.
