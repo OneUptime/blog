@@ -300,7 +300,7 @@ data "aws_vpc" "main" {
 }
 
 # Equivalent using filter blocks
-data "aws_vpc" "main" {
+data "aws_vpc" "main_with_filters" {
   filter {
     name   = "tag:Environment"
     values = ["production"]
@@ -313,7 +313,7 @@ data "aws_vpc" "main" {
 }
 ```
 
-Both produce the same result. The `tags` argument is more concise. Use filter blocks when you need wildcard matching or OR logic in tag values.
+Both query the same VPC. The `tags` argument is more concise. Use filter blocks when you need wildcard matching or OR logic in tag values.
 
 ## Dynamic Filters
 
@@ -351,8 +351,11 @@ This lets callers of your module customize the filters without modifying the dat
 If a filter returns no results, most data sources fail with an error. Handle this carefully:
 
 ```hcl
-# This fails if no matching instances exist
-data "aws_instances" "app" {
+# This fails if no matching AMI exists
+data "aws_ami" "app" {
+  most_recent = true
+  owners      = ["self"]
+
   filter {
     name   = "tag:App"
     values = ["nonexistent"]
@@ -360,7 +363,7 @@ data "aws_instances" "app" {
 }
 ```
 
-For data sources that return lists (like `aws_instances`, `aws_subnets`), an empty result typically returns an empty list rather than an error. For singular data sources (like `aws_ami`, `aws_vpc`), no match is an error.
+For data sources that return lists (like `aws_instances`, `aws_subnets`), an empty result can return an empty list rather than an error. Check the provider documentation for the specific data source. For singular data sources (like `aws_ami`, `aws_vpc`), no match is an error.
 
 To handle potential misses:
 
@@ -404,9 +407,8 @@ data "azurerm_subnet" "app" {
 GCP data sources often use a `filter` string rather than blocks:
 
 ```hcl
-data "google_compute_instances" "app" {
-  filter = "labels.environment=${var.environment} AND labels.role=app"
-  zone   = var.zone
+data "google_compute_images" "app" {
+  filter = "name eq app-image-.*"
 }
 ```
 
