@@ -34,20 +34,11 @@ resource "aws_spot_instance_request" "worker" {
 The recommended approach is using Spot with Auto Scaling Groups for automatic replacement:
 
 ```hcl
-# Launch template with Spot configuration
+# Launch template used by the ASG
 
 resource "aws_launch_template" "spot_workers" {
   name_prefix   = "spot-worker-"
   image_id      = var.ami_id
-
-  instance_market_options {
-    market_type = "spot"
-    spot_options {
-      max_price                      = "0.10"
-      spot_instance_type             = "one-time"
-      instance_interruption_behavior = "terminate"
-    }
-  }
 
   tag_specifications {
     resource_type = "instance"
@@ -110,63 +101,68 @@ resource "aws_autoscaling_group" "workers" {
 }
 ```
 
-## Spot Fleet for Batch Workloads
+## EC2 Fleet for Batch Workloads
 
-Spot Fleets are ideal for batch processing:
+EC2 Fleet is ideal for batch processing:
 
 ```hcl
-resource "aws_spot_fleet_request" "batch" {
-  iam_fleet_role  = aws_iam_role.spot_fleet.arn
-  target_capacity = 10
-  valid_until     = timeadd(timestamp(), "24h")
+resource "aws_launch_template" "batch" {
+  name_prefix = "batch-worker-"
+  image_id    = var.ami_id
 
-  allocation_strategy                 = "capacityOptimized"
+  tag_specifications {
+    resource_type = "instance"
+    tags = {
+      Name    = "batch-ec2-fleet"
+      Purpose = "batch-processing"
+    }
+  }
+}
+
+resource "aws_ec2_fleet" "batch" {
+  type                                = "request"
+  valid_until                         = timeadd(timestamp(), "24h")
   terminate_instances_with_expiration = true
 
-  launch_specification {
-    instance_type   = "c5.2xlarge"
-    ami             = var.ami_id
-    subnet_id       = var.subnet_ids[0]
-    spot_price      = "0.20"
+  target_capacity_specification {
+    default_target_capacity_type = "spot"
+    total_target_capacity        = 10
   }
 
-  launch_specification {
-    instance_type   = "c5a.2xlarge"
-    ami             = var.ami_id
-    subnet_id       = var.subnet_ids[1]
-    spot_price      = "0.20"
+  spot_options {
+    allocation_strategy           = "price-capacity-optimized"
+    instance_interruption_behavior = "terminate"
   }
 
-  launch_specification {
-    instance_type   = "m5.2xlarge"
-    ami             = var.ami_id
-    subnet_id       = var.subnet_ids[0]
-    spot_price      = "0.22"
+  launch_template_config {
+    launch_template_specification {
+      launch_template_id = aws_launch_template.batch.id
+      version            = "$Latest"
+    }
+
+    override {
+      instance_type = "c5.2xlarge"
+      subnet_id     = var.subnet_ids[0]
+      max_price     = "0.20"
+    }
+
+    override {
+      instance_type = "c5a.2xlarge"
+      subnet_id     = var.subnet_ids[1]
+      max_price     = "0.20"
+    }
+
+    override {
+      instance_type = "m5.2xlarge"
+      subnet_id     = var.subnet_ids[0]
+      max_price     = "0.22"
+    }
   }
 
   tags = {
-    Name    = "batch-spot-fleet"
+    Name    = "batch-ec2-fleet"
     Purpose = "batch-processing"
   }
-}
-
-# IAM role for Spot Fleet
-resource "aws_iam_role" "spot_fleet" {
-  name = "spot-fleet-role"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect    = "Allow"
-      Principal = { Service = "spotfleet.amazonaws.com" }
-      Action    = "sts:AssumeRole"
-    }]
-  })
-}
-
-resource "aws_iam_role_policy_attachment" "spot_fleet" {
-  role       = aws_iam_role.spot_fleet.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEC2SpotFleetTaggingRole"
 }
 ```
 
@@ -225,8 +221,8 @@ resource "aws_cloudwatch_event_rule" "spot_interruption" {
   description = "Capture EC2 Spot Instance interruption notices"
 
   event_pattern = jsonencode({
-    source      = ["aws.ec2"]
-    detail_type = ["EC2 Spot Instance Interruption Warning"]
+    source        = ["aws.ec2"]
+    "detail-type" = ["EC2 Spot Instance Interruption Warning"]
   })
 }
 
@@ -240,8 +236,33 @@ resource "aws_cloudwatch_event_target" "spot_interruption_sns" {
   arn  = aws_sns_topic.spot_alerts.arn
 }
 
+resource "aws_lambda_permission" "allow_spot_interruption_rule" {
+  statement_id  = "AllowExecutionFromSpotInterruptionRule"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.spot_handler.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.spot_interruption.arn
+}
+
 resource "aws_sns_topic" "spot_alerts" {
   name = "spot-interruption-alerts"
+}
+
+data "aws_iam_policy_document" "spot_alerts" {
+  statement {
+    actions   = ["SNS:Publish"]
+    resources = [aws_sns_topic.spot_alerts.arn]
+
+    principals {
+      type        = "Service"
+      identifiers = ["events.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_sns_topic_policy" "spot_alerts" {
+  arn    = aws_sns_topic.spot_alerts.arn
+  policy = data.aws_iam_policy_document.spot_alerts.json
 }
 ```
 
@@ -265,10 +286,10 @@ locals {
 
 ## Best Practices
 
-Diversify across multiple instance types and availability zones. Use the capacity-optimized allocation strategy. Keep at least one on-demand instance as a baseline. Implement graceful shutdown handlers for Spot interruptions. Use Auto Scaling Groups rather than standalone Spot Instances. Monitor Spot pricing trends before committing to specific types. Design applications to be stateless and interruption-tolerant for Spot workloads.
+Diversify across multiple instance types and availability zones. Use the capacity-optimized or price-capacity-optimized allocation strategy. Keep at least one on-demand instance as a baseline. Implement graceful shutdown handlers for Spot interruptions. Use Auto Scaling Groups rather than standalone Spot Instances. Monitor Spot pricing trends before committing to specific types. Design applications to be stateless and interruption-tolerant for Spot workloads.
 
 ## Conclusion
 
-Spot Instances offer dramatic cost savings for workloads that can tolerate interruptions. Terraform's support for mixed instance policies, Spot Fleets, and EKS Spot node groups makes it straightforward to implement Spot strategies. By diversifying across instance types and implementing proper interruption handling, you can achieve reliable compute at a fraction of on-demand costs.
+Spot Instances offer dramatic cost savings for workloads that can tolerate interruptions. Terraform's support for mixed instance policies, EC2 Fleets, and EKS Spot node groups makes it straightforward to implement Spot strategies. By diversifying across instance types and implementing proper interruption handling, you can achieve reliable compute at a fraction of on-demand costs.
 
 For related guides, see [How to Right-Size EC2 Instances with Terraform](https://oneuptime.com/blog/post/2026-02-23-how-to-right-size-ec2-instances-with-terraform/view) and [How to Use Savings Plans with Terraform](https://oneuptime.com/blog/post/2026-02-23-how-to-use-savings-plans-with-terraform/view).
