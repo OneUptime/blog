@@ -180,8 +180,8 @@ spec:
           headers:
             response:
               add:
-                deprecation: "true"
-                sunset: "Sat, 01 Jul 2026 00:00:00 GMT"
+                deprecation: "@1771891200"
+                sunset: "Wed, 01 Jul 2026 00:00:00 GMT"
                 link: '</api/v2/payments>; rel="successor-version"'
                 x-api-status: "deprecated"
 ```
@@ -223,7 +223,7 @@ spec:
                 local path = request_handle:headers():get(":path")
                 if path and path:find("^/api/v1/") then
                   -- After sunset date, return 410 Gone
-                  local sunset_timestamp = 1751328000  -- July 1, 2026
+                  local sunset_timestamp = 1782864000  -- July 1, 2026
                   if os.time() > sunset_timestamp then
                     request_handle:respond(
                       {[":status"] = "410",
@@ -238,7 +238,7 @@ spec:
 
 ## Stage 5: Retirement
 
-When the API is retired, redirect all traffic:
+When the API is retired, return 410 Gone for all retired traffic:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -273,18 +273,18 @@ Now you can safely scale down and delete the v1 deployment.
 
 ## Monitoring Lifecycle Transitions
 
-Track how many requests still hit deprecated endpoints:
+Track how many requests still hit v1 workloads:
 
 ```text
-sum(rate(istio_requests_total{request_url_path=~"/api/v1/.*"}[1h]))
+sum(rate(istio_requests_total{destination_version="v1"}[1h]))
 ```
 
 Compare v1 vs v2 traffic:
 
 ```text
-sum(rate(istio_requests_total{request_url_path=~"/api/v1/.*"}[1h]))
+sum(rate(istio_requests_total{destination_version="v1"}[1h]))
 /
-(sum(rate(istio_requests_total{request_url_path=~"/api/v1/.*"}[1h])) + sum(rate(istio_requests_total{request_url_path=~"/api/v2/.*"}[1h])))
+(sum(rate(istio_requests_total{destination_version="v1"}[1h])) + sum(rate(istio_requests_total{destination_version="v2"}[1h])))
 ```
 
 When v1 traffic approaches zero, it is safe to retire.
@@ -325,7 +325,9 @@ spec:
                   # Check if sunset date has passed for any API
                   current_date=$(date +%s)
                   # Apply retirement configuration if past sunset
-                  kubectl apply -f /configs/retired-apis/
+                  if [ "$current_date" -ge 1782864000 ]; then
+                    kubectl apply -f /configs/retired-apis/
+                  fi
           restartPolicy: OnFailure
 ```
 
