@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Infrastructure as Code, String Function, HCL, DevOps
 
-Description: Learn how to use the title function in Terraform to convert strings to title case, with practical examples for display names, tags, and formatted output.
+Description: Learn how to use the title function in Terraform to capitalize words, with practical examples for display names, tags, and formatted output.
 
 ---
 
-When you need to display human-readable names in your cloud resources - dashboard titles, tag values, descriptions, or output messages - title case looks polished and professional. The `title` function in Terraform converts the first letter of each word in a string to uppercase while making the rest lowercase.
+When you need to display human-readable names in your cloud resources - dashboard titles, tag values, descriptions, or output messages - title case looks polished and professional. The `title` function in Terraform converts the first letter of each word in a string to uppercase while leaving the other letters unchanged.
 
 ## What Does title Do?
 
-The `title` function converts a string to title case. Each word's first character becomes uppercase, and all other characters become lowercase.
+The `title` function capitalizes the first letter of each word in a string. It does not change any other letters in the string.
 
 ```hcl
 # Basic syntax
@@ -20,7 +20,7 @@ The `title` function converts a string to title case. Each word's first characte
 title(string)
 ```
 
-A "word" is defined as a sequence of characters separated by spaces or other non-letter characters.
+A "word" is detected using Terraform's Unicode letter and case rules. Separators such as spaces and hyphens can create word boundaries.
 
 ## Basic Examples
 
@@ -33,13 +33,13 @@ A "word" is defined as a sequence of characters separated by spaces or other non
 > title("my terraform project")
 "My Terraform Project"
 
-# All uppercase input - converts to title case
+# All uppercase input - already-capitalized words stay unchanged
 > title("MY TERRAFORM PROJECT")
-"My Terraform Project"
+"MY TERRAFORM PROJECT"
 
-# Mixed case gets normalized
+# Mixed case only changes the first letter of each word
 > title("hELLO wORLD")
-"Hello World"
+"HELLO WORLD"
 
 # Single word
 > title("terraform")
@@ -255,7 +255,7 @@ Here is how the three casing functions compare.
 locals {
   input = "hello WORLD"
 
-  titled  = title(local.input)  # "Hello World"
+  titled  = title(local.input)  # "Hello WORLD"
   lowered = lower(local.input)  # "hello world"
   uppered = upper(local.input)  # "HELLO WORLD"
 }
