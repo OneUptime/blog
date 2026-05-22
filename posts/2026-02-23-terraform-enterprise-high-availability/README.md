@@ -29,17 +29,18 @@ TFE high availability runs multiple TFE application nodes behind a load balancer
            (RDS)   (ElastiCache)         (Route53)
 ```
 
-All TFE nodes are identical and stateless. The state lives entirely in the external services. Any node can handle any request. If one node fails, the load balancer routes traffic to the healthy nodes.
+All TFE nodes are identical and stateless from an application-data perspective. Persistent state lives in the external services. Any node can handle any request. If one node fails, the load balancer routes traffic to the healthy nodes.
 
 ## Prerequisites for HA
 
 HA mode requires all external services - there is no option for embedded databases in HA:
 
 - **External PostgreSQL**: RDS, Aurora, Azure Database for PostgreSQL, or self-managed with replication
-- **External Redis**: ElastiCache, Azure Cache for Redis, or self-managed Redis Sentinel/Cluster
+- **External Redis**: ElastiCache, Azure Cache for Redis, or self-managed Redis with Sentinel for failover. Redis Cluster is not supported by TFE active-active mode.
 - **External Object Storage**: S3, Azure Blob, or GCS
 - **Load Balancer**: ALB, NLB, Azure Load Balancer, or similar
 - **Shared TLS certificates**: All nodes use the same certificates
+- **Inter-node Vault traffic**: Port 8201 must be open between TFE nodes for the internal Vault HA cluster unless you use an external Vault
 - **DNS**: A single hostname that resolves to the load balancer
 
 ## Step 1: Set Up External PostgreSQL with HA
@@ -218,13 +219,14 @@ resource "aws_launch_template" "tfe" {
 
   # User data script that installs and starts TFE
   user_data = base64encode(templatefile("${path.module}/tfe-userdata.sh", {
-    tfe_hostname     = var.tfe_hostname
-    tfe_license      = var.tfe_license
-    db_host          = aws_rds_cluster.tfe.endpoint
-    db_password      = var.db_password
-    redis_host       = aws_elasticache_replication_group.tfe.primary_endpoint_address
-    redis_auth_token = var.redis_auth_token
-    s3_bucket        = aws_s3_bucket.tfe.id
+    tfe_hostname        = var.tfe_hostname
+    tfe_license         = var.tfe_license
+    db_host             = aws_rds_cluster.tfe.endpoint
+    db_password         = var.db_password
+    redis_host          = aws_elasticache_replication_group.tfe.primary_endpoint_address
+    redis_auth_token    = var.redis_auth_token
+    s3_bucket           = aws_s3_bucket.tfe.id
+    encryption_password = var.tfe_encryption_password
   }))
 }
 
@@ -277,20 +279,22 @@ aws secretsmanager get-secret-value --secret-id tfe/ca-bundle --query SecretStri
 
 # Create Docker Compose file
 cat > /opt/tfe/docker-compose.yml << 'COMPOSE'
-version: "3.9"
 services:
   tfe:
-    image: images.releases.hashicorp.com/hashicorp/terraform-enterprise:v202402-1
+    image: images.releases.hashicorp.com/hashicorp/terraform-enterprise:<vYYYYMM-#>
     restart: unless-stopped
     environment:
       TFE_HOSTNAME: "${tfe_hostname}"
       TFE_LICENSE: "${tfe_license}"
+      TFE_ENCRYPTION_PASSWORD: "${encryption_password}"
+      TFE_OPERATIONAL_MODE: active-active
+      TFE_DISK_CACHE_VOLUME_NAME: "$${COMPOSE_PROJECT_NAME}_terraform-enterprise-cache"
       TFE_DATABASE_HOST: "${db_host}"
       TFE_DATABASE_USER: tfe_admin
       TFE_DATABASE_PASSWORD: "${db_password}"
       TFE_DATABASE_NAME: tfe
-      TFE_REDIS_HOST: "${redis_host}"
-      TFE_REDIS_PORT: "6379"
+      TFE_REDIS_HOST: "${redis_host}:6379"
+      TFE_REDIS_USE_AUTH: "true"
       TFE_REDIS_PASSWORD: "${redis_auth_token}"
       TFE_REDIS_USE_TLS: "true"
       TFE_OBJECT_STORAGE_TYPE: s3
@@ -301,14 +305,17 @@ services:
       TFE_TLS_KEY_FILE: /etc/tfe/tls/tfe.key
       TFE_TLS_CA_BUNDLE_FILE: /etc/tfe/tls/ca-bundle.crt
       TFE_CAPACITY_CONCURRENCY: "15"
+    cap_add:
+      - IPC_LOCK
     volumes:
+      - /var/run/docker.sock:/run/docker.sock
       - /opt/tfe/certs:/etc/tfe/tls:ro
-      - tfe-data:/var/lib/terraform-enterprise
+      - terraform-enterprise-cache:/var/cache/tfe-task-worker/terraform
     ports:
       - "443:443"
       - "80:80"
 volumes:
-  tfe-data:
+  terraform-enterprise-cache:
 COMPOSE
 
 # Start TFE
@@ -367,9 +374,9 @@ Use [OneUptime](https://oneuptime.com) to monitor each TFE node individually and
 
 ## Operational Considerations
 
-- **Rolling upgrades**: Update one node at a time. The ASG instance refresh handles this automatically.
+- **Rolling upgrades**: Follow HashiCorp's upgrade procedure. For active-active version upgrades, drain traffic and scale down to a single node before upgrading, then scale back out.
 - **Scaling up**: Increase `desired_capacity` in the ASG. New nodes bootstrap automatically.
-- **Scaling down**: Decrease `desired_capacity`. The ASG drains connections before terminating nodes.
+- **Scaling down**: Decrease `desired_capacity`. The load balancer target group's deregistration delay controls connection draining as nodes leave service.
 - **Certificate rotation**: Update the certificate in Secrets Manager, then perform a rolling restart of all nodes.
 - **Configuration changes**: Update the launch template, then trigger an instance refresh.
 
