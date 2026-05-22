@@ -25,7 +25,7 @@ provider "kubernetes" {
 }
 
 provider "helm" {
-  kubernetes {
+  kubernetes = {
     config_path    = "~/.kube/config"
     config_context = "my-cluster"
   }
@@ -56,7 +56,7 @@ provider "kubernetes" {
 }
 
 provider "helm" {
-  kubernetes {
+  kubernetes = {
     host                   = data.aws_eks_cluster.cluster.endpoint
     cluster_ca_certificate = base64decode(data.aws_eks_cluster.cluster.certificate_authority[0].data)
     token                  = data.aws_eks_cluster_auth.cluster.token
@@ -109,7 +109,7 @@ provider "kubernetes" {
 }
 ```
 
-Make sure the assumed role is mapped in the EKS aws-auth ConfigMap.
+Make sure the assumed role has Kubernetes access through an EKS access entry, or through the legacy `aws-auth` ConfigMap on older clusters.
 
 ## Google GKE Authentication
 
@@ -133,7 +133,7 @@ provider "kubernetes" {
 }
 
 provider "helm" {
-  kubernetes {
+  kubernetes = {
     host                   = "https://${data.google_container_cluster.primary.endpoint}"
     token                  = data.google_client_config.current.access_token
     cluster_ca_certificate = base64decode(data.google_container_cluster.primary.master_auth[0].cluster_ca_certificate)
@@ -141,9 +141,9 @@ provider "helm" {
 }
 ```
 
-### GKE with Workload Identity
+### GKE with Workload Identity Federation
 
-For GKE clusters using Workload Identity Federation:
+For CI/CD environments that authenticate to Google Cloud with Workload Identity Federation, you can use exec-based authentication:
 
 ```hcl
 # Use gcloud to get credentials (exec-based)
@@ -178,7 +178,7 @@ provider "kubernetes" {
 }
 
 provider "helm" {
-  kubernetes {
+  kubernetes = {
     host                   = data.azurerm_kubernetes_cluster.cluster.kube_config[0].host
     client_certificate     = base64decode(data.azurerm_kubernetes_cluster.cluster.kube_config[0].client_certificate)
     client_key             = base64decode(data.azurerm_kubernetes_cluster.cluster.kube_config[0].client_key)
@@ -257,7 +257,7 @@ resource "kubernetes_cluster_role_binding" "terraform" {
   }
 }
 
-# Create a long-lived token (Kubernetes 1.24+)
+# Create an explicit long-lived token Secret (required in Kubernetes 1.24+)
 resource "kubernetes_secret" "terraform_token" {
   metadata {
     name      = "terraform-token"
@@ -269,6 +269,7 @@ resource "kubernetes_secret" "terraform_token" {
   }
 
   type = "kubernetes.io/service-account-token"
+  wait_for_service_account_token = true
 }
 ```
 
@@ -322,12 +323,12 @@ kubectl cluster-info
 # For EKS, verify the IAM identity
 aws sts get-caller-identity
 
-# Check the aws-auth ConfigMap
+# Check the legacy aws-auth ConfigMap
 kubectl get configmap aws-auth -n kube-system -o yaml
 
 # For GKE, verify credentials
 gcloud auth list
-gcloud container clusters get-credentials CLUSTER_NAME --region REGION
+gcloud container clusters get-credentials CLUSTER_NAME --location LOCATION
 
 # Test connectivity
 kubectl get nodes
