@@ -50,7 +50,7 @@ Before calculating, measure what your sidecars are actually consuming:
 
 kubectl top pods --containers --all-namespaces | grep istio-proxy | sort -k4 -rn | head -20
 
-# Get Envoy's own CPU stats
+# Get Envoy runtime and build information
 kubectl exec <pod-name> -c istio-proxy -- curl -s localhost:15000/server_info
 ```
 
@@ -101,7 +101,7 @@ Several configuration choices can significantly increase CPU consumption:
 Enabling access logs adds roughly 10-20% CPU overhead:
 
 ```yaml
-apiVersion: networking.istio.io/v1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: mesh-default
@@ -204,7 +204,7 @@ If sidecar CPU usage is too high, consider these optimizations:
 Disable metrics you do not need:
 
 ```yaml
-apiVersion: networking.istio.io/v1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: reduce-metrics
