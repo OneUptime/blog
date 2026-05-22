@@ -75,6 +75,12 @@ variable "allocated_storage" {
   default     = 50
 }
 
+variable "database_name" {
+  description = "Initial database name"
+  type        = string
+  default     = "app"
+}
+
 variable "vpc_id" {
   description = "VPC ID"
   type        = string
@@ -134,15 +140,14 @@ resource "aws_security_group" "db" {
   }
 }
 
-resource "aws_security_group_rule" "db_ingress" {
+resource "aws_vpc_security_group_ingress_rule" "db_ingress" {
   count = length(var.allowed_security_group_ids)
 
-  type                     = "ingress"
-  security_group_id        = aws_security_group.db.id
-  source_security_group_id = var.allowed_security_group_ids[count.index]
-  from_port                = 5432
-  to_port                  = 5432
-  protocol                 = "tcp"
+  security_group_id            = aws_security_group.db.id
+  referenced_security_group_id = var.allowed_security_group_ids[count.index]
+  from_port                    = 5432
+  to_port                      = 5432
+  ip_protocol                  = "tcp"
 }
 
 # Wrap the community module with our standards
@@ -154,9 +159,11 @@ module "rds" {
 
   # Hardcoded: always PostgreSQL 16
   engine               = "postgres"
-  engine_version       = "16.2"
+  engine_version       = "16"
   family               = "postgres16"
   major_engine_version = "16"
+
+  db_name = var.database_name
 
   instance_class    = var.instance_class
   allocated_storage = var.allocated_storage
@@ -174,6 +181,9 @@ module "rds" {
   backup_retention_period = local.config.backup_retention
   deletion_protection     = local.config.deletion_protection
   monitoring_interval     = local.config.monitoring_interval
+
+  create_monitoring_role = local.config.monitoring_interval > 0
+  monitoring_role_name   = "${var.name}-rds-monitoring-role"
 
   performance_insights_enabled = local.config.performance_insights
 
