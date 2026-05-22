@@ -13,7 +13,7 @@ ServiceEntry is how you bring external services into Istio's internal service re
 ## Top-Level Structure
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-api
@@ -42,7 +42,7 @@ spec:
     - "*.external.com"
 ```
 
-The `hosts` field is a list of hostnames associated with this service entry. These are the names your mesh workloads use to reach the service. Wildcards are supported for DNS-based entries. If you use `resolution: NONE`, the hosts are used only for matching, not for DNS.
+The `hosts` field is a list of hostnames associated with this service entry. These are the names your mesh workloads use to reach the service. Wildcard prefixes are supported, but wildcard hosts cannot be used as a single concrete DNS name for normal `DNS` resolution. If you use `resolution: NONE`, the hosts are used only for matching, not for DNS.
 
 For HTTP traffic, these hosts are matched against the HTTP Host header. For non-HTTP traffic with TLS, they match against the SNI.
 
@@ -70,7 +70,7 @@ spec:
 
 Two options:
 
-- `MESH_EXTERNAL` - the service is outside the mesh. mTLS is not expected on the connection, and policies are enforced on the client side.
+- `MESH_EXTERNAL` - the service is outside the mesh. Istio does not treat it as an in-mesh workload for automatic service-to-service mTLS, and policies are enforced on the client side.
 - `MESH_INTERNAL` - the service is part of the mesh but is not discovered automatically. It is expected to have sidecars and participate in mTLS.
 
 Use `MESH_INTERNAL` when you have services in another cluster that your mesh should treat as internal, or for VMs that have been enrolled in the mesh.
@@ -118,8 +118,9 @@ The `resolution` field tells Istio how to resolve the service entry's hosts to I
 
 - `NONE` - assume the incoming connection already has the correct destination IP. No resolution is done. Good for transparent proxying scenarios.
 - `STATIC` - use the IP addresses specified in the `endpoints` section. No DNS lookup.
-- `DNS` - perform an asynchronous DNS lookup for the host at connection time.
-- `DNS_ROUND_ROBIN` - similar to DNS but returns only one IP at a time from the DNS results, cycling through them.
+- `DNS` - perform asynchronous DNS lookups for the host. If no endpoints are specified, Istio resolves the host name from the `hosts` field, as long as it is not a wildcard.
+- `DNS_ROUND_ROBIN` - similar to DNS, but uses only the first IP address returned when a new connection is initiated, which avoids depending on complete DNS result sets.
+- `DYNAMIC_DNS` - resolve the host name from the HTTP Host header or TLS SNI at request handling time. This is intended for wildcard hosts, and specified endpoints are ignored.
 
 ```yaml
 # Static resolution with explicit endpoints
@@ -149,7 +150,15 @@ spec:
   resolution: DNS_ROUND_ROBIN
 ```
 
-`DNS_ROUND_ROBIN` is useful for services that return multiple A records and you want simple round-robin across them, rather than connecting to all resolved IPs.
+```yaml
+# Dynamic DNS for wildcard hosts
+spec:
+  hosts:
+    - "*.example.com"
+  resolution: DYNAMIC_DNS
+```
+
+`DNS_ROUND_ROBIN` is useful for large DNS-backed services where preserving existing connections and avoiding full DNS result churn is more important than load balancing across every resolved IP.
 
 ## Endpoints
 
@@ -182,7 +191,7 @@ spec:
 
 Each endpoint has:
 
-- `address` - the IP or hostname of the endpoint. Can be an IP for STATIC resolution, or a hostname for DNS.
+- `address` - the IP or hostname of the endpoint. Domain names can be used only when the ServiceEntry resolution is `DNS`, and must be fully qualified without wildcards.
 - `ports` - a map of port name to port number, overriding the ServiceEntry's port definitions. The keys must match the port names defined in the spec.
 - `labels` - arbitrary labels applied to this endpoint. Can be used for subset routing via DestinationRule.
 - `locality` - the locality of the endpoint in `region/zone/subzone` format. Used for locality-aware load balancing.
@@ -201,7 +210,7 @@ spec:
       app: my-vm-app
 ```
 
-The `workloadSelector` lets you associate Kubernetes-registered workload entries with this ServiceEntry. Instead of listing explicit endpoints, Istio discovers them dynamically based on WorkloadEntry resources that match the labels. This is particularly useful for VM workloads.
+The `workloadSelector` lets you associate Kubernetes pods and WorkloadEntry resources with this ServiceEntry based on matching labels. Instead of listing explicit endpoints, Istio discovers them dynamically. This is particularly useful for VM workloads and is applicable only to `MESH_INTERNAL` services.
 
 Note that `workloadSelector` and `endpoints` are mutually exclusive. You use one or the other.
 
@@ -238,7 +247,7 @@ Controls which namespaces can see this ServiceEntry:
 ### External HTTPS API
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-payment-api
@@ -259,7 +268,7 @@ spec:
 ### On-Premise Database Cluster
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: onprem-database
@@ -293,7 +302,7 @@ spec:
 ### Multi-Cluster Internal Service
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: remote-reviews
