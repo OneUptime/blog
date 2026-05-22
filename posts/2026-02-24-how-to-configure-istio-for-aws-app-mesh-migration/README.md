@@ -8,16 +8,16 @@ Description: Step-by-step migration strategy from AWS App Mesh to Istio service 
 
 ---
 
-AWS App Mesh was Amazon's managed service mesh offering. With the announcement that App Mesh is transitioning, many teams are looking at migrating to Istio as their service mesh solution. The migration is not trivial because App Mesh and Istio use completely different proxy configurations, resource types, and traffic management paradigms. But with a structured approach, you can migrate incrementally without downtime.
+AWS App Mesh is Amazon's managed service mesh offering, with AWS announcing that support will be discontinued on September 30, 2026. With that transition, many teams are looking at migrating to Istio as their service mesh solution. The migration is not trivial because App Mesh and Istio use different control planes, resource types, and traffic management paradigms. But with a structured approach, you can migrate incrementally without downtime.
 
 ## Understanding the Differences
 
 App Mesh uses Envoy proxy (just like Istio), but the control plane and configuration model are different:
 
-- App Mesh uses AWS API resources (Virtual Nodes, Virtual Services, Virtual Routers) while Istio uses Kubernetes CRDs (VirtualService, DestinationRule, Gateway)
-- App Mesh injects the Envoy sidecar through a webhook tied to the `appmesh.k8s.aws/sidecarInjectorWebhook` annotation, while Istio uses namespace labels
-- App Mesh routes traffic based on Virtual Nodes, while Istio routes based on Kubernetes services
-- App Mesh mTLS is configured through the Virtual Node spec, while Istio uses PeerAuthentication and DestinationRule
+- App Mesh uses Virtual Nodes, Virtual Services, and Virtual Routers as AWS resources that can be managed through Kubernetes CRDs, while Istio uses Kubernetes CRDs such as VirtualService, DestinationRule, and Gateway
+- App Mesh injects the Envoy sidecar through a webhook tied to the `appmesh.k8s.aws/sidecarInjectorWebhook` namespace label, with pod-level annotation overrides, while Istio uses namespace labels
+- App Mesh routes traffic through Virtual Nodes, Virtual Services, and Virtual Routers, while Istio routes to service hosts and subsets
+- App Mesh TLS and mTLS settings are configured through Virtual Node listener and client policy settings, while Istio uses PeerAuthentication and DestinationRule
 
 ## Migration Strategy Overview
 
@@ -147,7 +147,7 @@ spec:
 
 ## Step 3: Map App Mesh mTLS to Istio
 
-If you had mTLS configured in App Mesh through Virtual Node TLS settings:
+If you had TLS or mTLS configured in App Mesh through Virtual Node listener TLS settings:
 
 ```yaml
 apiVersion: appmesh.k8s.aws/v1beta2
@@ -164,9 +164,13 @@ spec:
       certificate:
         acm:
           certificateARN: arn:aws:acm:...
+      validation:
+        trust:
+          file:
+            certificateChain: /certs/ca.pem
 ```
 
-The Istio equivalent is:
+The Istio policy that enforces mTLS for the migrated workload is:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -182,7 +186,7 @@ spec:
     mode: STRICT
 ```
 
-Istio handles certificate issuance automatically through its built-in CA, so you do not need to manage ACM certificates for mTLS.
+Istio handles certificate issuance for mesh workload mTLS automatically through its built-in CA, so you do not need to manage ACM certificates for that traffic.
 
 ## Step 4: Migrate the First Namespace
 
@@ -191,8 +195,7 @@ Pick a low-risk namespace to start with. Here are the steps:
 Remove App Mesh injection from the namespace:
 
 ```bash
-kubectl label namespace orders appmesh.k8s.aws/sidecarInjectorWebhook-
-kubectl annotate namespace orders appmesh.k8s.aws/mesh-
+kubectl label namespace orders appmesh.k8s.aws/sidecarInjectorWebhook- mesh-
 ```
 
 Enable Istio injection:
@@ -217,9 +220,9 @@ Each pod will restart with the Istio sidecar instead of the App Mesh sidecar. Do
 
 ## Step 5: Handle Cross-Mesh Communication
 
-During migration, you will have some namespaces on App Mesh and some on Istio. They need to communicate. Since both use Envoy under the hood, the actual protocol is the same. The key is that Istio-managed services should be able to reach App Mesh services through standard Kubernetes DNS names.
+During migration, you will have some namespaces on App Mesh and some on Istio. They need to communicate. Both use Envoy under the hood, but their control planes and mesh identities are separate. Treat cross-mesh calls as normal Kubernetes service traffic unless you explicitly configure compatible TLS trust between the meshes.
 
-Set Istio's outbound traffic policy to ALLOW_ANY (we did this in the IstioOperator config). This means the Istio sidecar will let traffic through to non-mesh services without requiring mTLS.
+Set Istio's outbound traffic policy to ALLOW_ANY (we did this in the IstioOperator config). This lets the Istio sidecar send traffic to hosts that are not in Istio's service registry. For Kubernetes services without Istio sidecars, Istio's auto mTLS behavior sends plaintext unless a DestinationRule or other policy overrides it.
 
 For services migrated to Istio that need to call App Mesh services, create a DestinationRule that disables mTLS for those calls:
 
@@ -236,7 +239,7 @@ spec:
       mode: DISABLE
 ```
 
-Once the payments namespace is also migrated to Istio, you remove this DestinationRule and mTLS kicks in automatically.
+Once the payments namespace is also migrated to Istio, you remove this DestinationRule and Istio auto mTLS can take over as long as there is no conflicting traffic policy.
 
 ## Step 6: Migrate the Ingress
 
@@ -250,8 +253,7 @@ metadata:
   namespace: istio-system
 spec:
   selector:
-    matchLabels:
-      istio: ingressgateway
+    istio: ingressgateway
   servers:
   - port:
       number: 443
@@ -295,10 +297,10 @@ Once all namespaces are migrated and traffic is fully on Istio:
 
 ```bash
 # Delete App Mesh resources
-kubectl delete virtualservices --all -A
-kubectl delete virtualrouters --all -A
-kubectl delete virtualnodes --all -A
-kubectl delete mesh --all
+kubectl delete virtualrouters.appmesh.k8s.aws --all -A
+kubectl delete virtualnodes.appmesh.k8s.aws --all -A
+kubectl delete virtualservices.appmesh.k8s.aws --all -A
+kubectl delete meshes.appmesh.k8s.aws --all
 
 # Remove App Mesh controller
 helm uninstall appmesh-controller -n appmesh-system
@@ -313,8 +315,8 @@ After migration, validate your mesh is working correctly:
 # Check all sidecars are Istio
 istioctl proxy-status
 
-# Verify mTLS is active
-istioctl authn tls-check <pod-name> <service>
+# Verify Istio certificates are available to a sidecar
+istioctl proxy-config secret <pod-name>.<namespace>
 
 # Check for errors
 kubectl logs -n istio-system -l app=istiod | grep -i error
