@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Function, HCL, Infrastructure as Code, DevOps
 
-Description: Learn how to use the decode_tfvars provider function in Terraform to parse tfvars-formatted strings into usable map values for dynamic configuration management.
+Description: Learn how to use the decode_tfvars provider function in Terraform to parse tfvars-formatted strings into usable object values for dynamic configuration management.
 
 ---
 
-Terraform 1.8 introduced provider-defined functions, and one of the more practical additions is `decode_tfvars`. This function lets you parse strings formatted in the `.tfvars` syntax and turn them into Terraform maps that you can use directly in your configurations. If you have ever needed to read tfvars-style content from an external source - maybe a file stored in S3, a response from an API, or a dynamically generated string - this function is exactly what you need.
+Terraform 1.8 introduced provider-defined functions, and one of the more practical additions is `decode_tfvars`. This function lets you parse strings formatted in the `.tfvars` syntax and turn them into Terraform objects that you can use directly in your configurations. If you have ever needed to read tfvars-style content from an external source - maybe a file stored in S3, a response from an API, or a dynamically generated string - this function is exactly what you need.
 
 This guide walks through what `decode_tfvars` does, how to set it up, and real scenarios where it makes your Terraform code cleaner.
 
 ## What Does decode_tfvars Actually Do?
 
-The `decode_tfvars` function takes a string that follows the Terraform variable definitions format (the same format you use in `.tfvars` files) and converts it into a map. Think of it as a parser for the HCL variable assignment syntax.
+The `decode_tfvars` function takes a string that follows the Terraform variable definitions format (the same format you use in `.tfvars` files) and converts it into an object. Think of it as a parser for the HCL variable assignment syntax.
 
 For example, if you have a string like this:
 
@@ -26,11 +26,11 @@ instance_type = "t3.medium"
 enable_monitoring = true
 ```
 
-The `decode_tfvars` function can parse that string and return a map with the keys `region`, `instance_type`, and `enable_monitoring`, along with their respective values.
+The `decode_tfvars` function can parse that string and return an object with the attributes `region`, `instance_type`, and `enable_monitoring`, along with their respective values.
 
 ## Setting Up the Provider
 
-The `decode_tfvars` function is available through the `terraform` provider (also known as the built-in `terraform` provider functions introduced in Terraform 1.8+). You need to declare the provider in your `required_providers` block:
+The `decode_tfvars` function is available through the built-in `terraform` provider. You need to declare the provider in your `required_providers` block:
 
 ```hcl
 # main.tf - Declare the terraform provider for built-in functions
@@ -39,7 +39,7 @@ terraform {
 
   required_providers {
     terraform = {
-      source = "hashicorp/terraform"
+      source = "terraform.io/builtin/terraform"
     }
   }
 }
@@ -65,7 +65,7 @@ locals {
     }
   EOT
 
-  # Parse the string into a usable map
+  # Parse the string into a usable object
   parsed_config = provider::terraform::decode_tfvars(local.tfvars_content)
 }
 
@@ -87,7 +87,7 @@ output "parsed_replicas" {
 }
 ```
 
-When you run `terraform plan`, the `decode_tfvars` call converts the string into a proper Terraform map, and you can reference individual keys just like you would with any other map.
+When you run `terraform plan`, the `decode_tfvars` call converts the string into a proper Terraform object, and you can reference individual attributes just like you would with any other object.
 
 ## Reading tfvars Content from Files
 
@@ -99,7 +99,7 @@ locals {
   # Read the raw file content
   raw_config = file("${path.module}/configs/${var.environment}.tfvars")
 
-  # Parse it into a map
+  # Parse it into an object
   env_config = provider::terraform::decode_tfvars(local.raw_config)
 }
 
@@ -129,7 +129,8 @@ This approach is useful when you want to keep tfvars files organized in subdirec
 You can combine `decode_tfvars` with data sources that fetch content from remote locations:
 
 ```hcl
-# Fetch tfvars content from an S3 bucket
+# Fetch tfvars content from an S3 bucket. The object must use a human-readable
+# Content-Type such as text/plain for the body attribute to be available.
 data "aws_s3_object" "config" {
   bucket = "my-terraform-configs"
   key    = "environments/${var.environment}/terraform.tfvars"
@@ -158,15 +159,15 @@ This pattern is particularly powerful in organizations where a central team mana
 
 ## Handling Complex Types
 
-The `decode_tfvars` function supports all the types you would normally use in a `.tfvars` file, including lists, maps, and nested structures:
+The `decode_tfvars` function supports the value types you would normally use in a `.tfvars` file. Because it does not have access to your variable declarations, it returns the most general Terraform types for those values, including tuples, objects, and nested structures:
 
 ```hcl
 locals {
   complex_tfvars = <<-EOT
-    # Lists are supported
+    # List-style values are returned as tuples
     availability_zones = ["us-east-1a", "us-east-1b", "us-east-1c"]
 
-    # Nested maps work too
+    # Nested object values work too
     scaling_config = {
       min_size     = 2
       max_size     = 10
@@ -215,7 +216,7 @@ You might wonder when `decode_tfvars` is the right choice compared to alternativ
 - Use `jsondecode` when your data comes from APIs, databases, or systems that natively produce JSON.
 - Use `yamldecode` when you are working with Kubernetes manifests, Helm values, or other YAML-native tooling.
 
-The key advantage of `decode_tfvars` is that it preserves the HCL type system natively. You do not lose type information during the parse, which means numbers stay as numbers, booleans stay as booleans, and complex types maintain their structure.
+The key advantage of `decode_tfvars` is that it reads Terraform expression syntax directly. You do not lose the raw value information during the parse, which means numbers stay as numbers, booleans stay as booleans, and complex values keep their structure as objects and tuples.
 
 ## A Practical Multi-Environment Setup
 
@@ -227,7 +228,7 @@ terraform {
   required_version = ">= 1.8.0"
   required_providers {
     terraform = {
-      source = "hashicorp/terraform"
+      source = "terraform.io/builtin/terraform"
     }
     aws = {
       source  = "hashicorp/aws"
