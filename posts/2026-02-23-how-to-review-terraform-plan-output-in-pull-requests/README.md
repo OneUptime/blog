@@ -65,6 +65,10 @@ on:
       - '**/*.tf'
       - '**/*.tfvars'
 
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   plan:
     runs-on: ubuntu-latest
@@ -73,7 +77,7 @@ jobs:
 
       - uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.7.0
+          terraform_version: 1.15.4
 
       - name: Terraform Init
         run: terraform init
@@ -82,6 +86,7 @@ jobs:
       - name: Terraform Plan
         id: plan
         run: |
+          set -o pipefail
           # Save plan to file for later use
           terraform plan -no-color -out=tfplan 2>&1 | tee plan_output.txt
           # Create a summary for the PR comment
@@ -90,7 +95,7 @@ jobs:
         continue-on-error: true
 
       - name: Post Plan to PR
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const fs = require('fs');
@@ -116,13 +121,13 @@ jobs:
             **Plan Summary:** Check the bottom of the plan output above.
             `;
 
-            github.rest.issues.createComment({
+            await github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
               body: body
             });
-```
+````
 
 Using the `<details>` HTML tag keeps the PR comment collapsed by default, preventing long plans from cluttering the conversation.
 
@@ -142,7 +147,7 @@ The most dangerous operations are destroys and recreations. Look for the `-/+` s
         name              = "production-db"
       ~ engine_version    = "13.4" -> "14.1"  # Forces replacement
     }
-````
+```
 
 A database replacement means data loss unless you have taken precautions. Always verify whether the change truly requires replacement or if an in-place update is possible.
 
@@ -220,7 +225,7 @@ Add this checklist to your pull request template so reviewers see it with every 
 
 ## Handling Large Plan Outputs
 
-Large plans with hundreds of changes are difficult to review. Break them down using targeted plans:
+Large plans with hundreds of changes are difficult to review. For exceptional troubleshooting, you can inspect a subset with targeted plans:
 
 ```bash
 # Plan only specific resources
@@ -229,6 +234,8 @@ terraform plan -target=module.networking -no-color
 # Plan with a specific variable file
 terraform plan -var-file=production.tfvars -no-color
 ```
+
+Do not use `-target` as a routine substitute for splitting large configurations into smaller, independently reviewed stacks.
 
 You can also use tools that parse plan output into more readable formats:
 
