@@ -83,7 +83,7 @@ output "size_comparison" {
 
 ## User Data with Gzip Compression
 
-AWS and most cloud providers support gzip-compressed user data. The instance's cloud-init will automatically detect and decompress gzip content:
+AWS EC2 user data on cloud-init-based Linux images supports gzip-compressed content. The instance's cloud-init will automatically detect and decompress gzip content:
 
 ```hcl
 resource "aws_instance" "web" {
@@ -188,7 +188,7 @@ locals {
 resource "aws_lambda_function" "api" {
   function_name = "api-handler"
   handler       = "index.handler"
-  runtime       = "nodejs18.x"
+  runtime       = "nodejs24.x"
   role          = aws_iam_role.lambda.arn
   filename      = "lambda.zip"
 
@@ -233,18 +233,18 @@ locals {
 
 output "comparison" {
   value = {
-    original_bytes  = length(local.sample_text)
-    base64_bytes    = length(local.encoded)
-    base64gzip_bytes = length(local.compressed)
+    original_length   = length(local.sample_text)
+    base64_length     = length(local.encoded)
+    base64gzip_length = length(local.compressed)
   }
-  # base64 is always ~33% larger than the original
-  # base64gzip is typically 50-80% smaller for text content
+  # base64 expands raw bytes by ceil(n/3)*4 after UTF-8 encoding.
+  # base64gzip is often smaller for repetitive text content.
 }
 ```
 
 ## Using with Azure Custom Data
 
-Azure VMs also support compressed custom data:
+Azure Linux VMs that use cloud-init can also process compressed custom data:
 
 ```hcl
 resource "azurerm_linux_virtual_machine" "app" {
@@ -265,7 +265,7 @@ resource "azurerm_linux_virtual_machine" "app" {
     storage_account_type = "Standard_LRS"
   }
 
-  # Custom data accepts base64-encoded content (max 64 KB)
+  # Custom data accepts base64-encoded content (max 64 KB of content)
   custom_data = base64gzip(templatefile("${path.module}/templates/cloud_init.yaml.tpl", {
     environment = var.environment
     packages    = var.packages
@@ -325,8 +325,8 @@ locals {
   compressed = base64gzip("valid utf-8 string")
 }
 
-# For binary file content, use filebase64 instead
-# base64gzip only works with strings, not binary data
+# For binary file content, use filebase64 if you only need base64 encoding.
+# If you need to gzip binary data, compress it outside Terraform.
 ```
 
 ## When Not to Use base64gzip
@@ -340,4 +340,4 @@ Compression adds complexity to your workflow. Skip it when:
 
 ## Summary
 
-The `base64gzip` function is a single-call solution for compressing and encoding string data. Use it when you are approaching size limits on user data scripts, Lambda environment variables, or any configuration that is transmitted as a text string. It pairs well with `templatefile` for compressing dynamic templates, and with `jsonencode` for compressing JSON configuration. The receiving system needs to know the data is gzip-compressed, but cloud-init and most cloud services handle this automatically.
+The `base64gzip` function is a single-call solution for compressing and encoding string data. Use it when you are approaching size limits on user data scripts, Lambda environment variables, or any configuration that is transmitted as a text string. It pairs well with `templatefile` for compressing dynamic templates, and with `jsonencode` for compressing JSON configuration. The receiving system needs to know the data is gzip-compressed. Cloud-init handles this automatically when it receives gzip-compressed user data, while other services need explicit decompression in the application or startup code.
