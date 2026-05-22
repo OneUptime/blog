@@ -8,7 +8,7 @@ Description: Learn how to use Terragrunt error hooks to handle failures graceful
 
 ---
 
-When Terraform fails during a plan or apply, you usually want to do more than just see the error message. Maybe you need to send an alert, clean up partial resources, collect diagnostic data, or run a compensating action. Terragrunt's error hooks and the `run_on_error` flag on after_hooks let you automate these responses to failures.
+When Terraform fails during a plan or apply, you usually want to do more than just see the error message. Maybe you need to send an alert, clean up partial resources, collect diagnostic data, or run a compensating action. Terragrunt's error hooks, retry configuration, and the `run_on_error` flag on after_hooks let you automate these responses to failures.
 
 ## Understanding Error Handling in Terragrunt
 
@@ -16,60 +16,46 @@ Terragrunt has several mechanisms for error handling:
 
 1. **after_hook with run_on_error**: Runs after Terraform commands, optionally on failures
 2. **error_hook**: Dedicated hook that only runs when specific errors occur
-3. **retryable_errors**: Automatic retry for known transient errors
+3. **errors retry blocks**: Automatic retry for known transient errors
 4. **retry configuration**: Control retry count and interval
 
 Let's cover each one in detail.
 
 ## after_hook with run_on_error
 
-The simplest way to handle errors is the `run_on_error` flag on after_hooks:
+The simplest way to run cleanup after a failed command is the `run_on_error` flag on after_hooks:
 
 ```hcl
 terraform {
   source = "../../modules/app"
 
-  # This hook runs ONLY when terraform succeeds (default behavior)
+  # This hook runs after terraform succeeds (default behavior)
   after_hook "success_notification" {
     commands     = ["apply"]
     execute      = ["bash", "-c", "echo 'Apply succeeded' | notify-team"]
     run_on_error = false    # Default
   }
 
-  # This hook runs ONLY when terraform fails
-  after_hook "failure_notification" {
+  # This hook runs after terraform finishes, even when terraform fails
+  after_hook "cleanup" {
     commands     = ["apply"]
-    execute      = ["bash", "-c", "echo 'Apply FAILED for $(pwd)' | notify-team"]
+    execute      = ["bash", "-c", "rm -f /tmp/terragrunt-apply-lock"]
     run_on_error = true
   }
 }
 ```
 
-Wait - that's not quite right. When `run_on_error = true`, the hook runs on both success and failure. To run a hook only on failure, you need a wrapper script:
-
-```bash
-#!/bin/bash
-# scripts/on-error-only.sh
-
-# This script checks if the previous command failed
-# It's called by an after_hook with run_on_error=true
-
-# The exit code is passed as an environment variable
-if [ "${TG_CTX_TF_EXIT_CODE:-0}" != "0" ]; then
-  echo "Terraform failed with exit code $TG_CTX_TF_EXIT_CODE"
-  # Do your error handling here
-  curl -X POST "$SLACK_WEBHOOK" \
-    -H 'Content-Type: application/json' \
-    -d "{\"text\":\"Terraform apply failed in $(pwd)\"}"
-fi
-```
+When `run_on_error = true`, the hook runs whether the Terraform command succeeds or fails. To run a hook only on failure, use an `error_hook`:
 
 ```hcl
 terraform {
-  after_hook "on_error" {
-    commands     = ["apply"]
-    execute      = ["bash", "scripts/on-error-only.sh"]
-    run_on_error = true
+  error_hook "on_error" {
+    commands  = ["apply"]
+    on_errors = [".*"]
+    execute   = [
+      "bash", "-c",
+      "curl -X POST \"$SLACK_WEBHOOK\" -H 'Content-Type: application/json' -d \"{\\\"text\\\":\\\"Terraform apply failed in $(pwd)\\\"}\""
+    ]
   }
 }
 ```
@@ -111,46 +97,54 @@ Cloud provider APIs sometimes fail with transient errors - rate limiting, tempor
 ```hcl
 # root terragrunt.hcl - apply to all modules
 
-retryable_errors = [
-  # AWS rate limiting
-  "(?s).*Error:.*Throttling.*",
-  "(?s).*Error:.*Rate exceeded.*",
-  "(?s).*Error:.*RequestLimitExceeded.*",
+errors {
+  retry "transient_errors" {
+    retryable_errors = [
+      # AWS rate limiting
+      "(?s).*Error:.*Throttling.*",
+      "(?s).*Error:.*Rate exceeded.*",
+      "(?s).*Error:.*RequestLimitExceeded.*",
 
-  # Network issues
-  "(?s).*Error:.*connection reset by peer.*",
-  "(?s).*Error:.*TLS handshake timeout.*",
-  "(?s).*Error:.*timeout while waiting.*",
+      # Network issues
+      "(?s).*Error:.*connection reset by peer.*",
+      "(?s).*Error:.*TLS handshake timeout.*",
+      "(?s).*Error:.*timeout while waiting.*",
 
-  # AWS eventual consistency
-  "(?s).*Error creating.*NotFound.*",
-  "(?s).*Error:.*InvalidParameterValue.*",
-  "(?s).*Error:.*OperationNotPermitted.*try again.*",
+      # AWS eventual consistency
+      "(?s).*Error creating.*NotFound.*",
+      "(?s).*Error:.*InvalidParameterValue.*",
+      "(?s).*Error:.*OperationNotPermitted.*try again.*",
 
-  # Terraform state locking
-  "(?s).*Error acquiring the state lock.*",
-  "(?s).*Error locking state.*"
-]
+      # Terraform state locking
+      "(?s).*Error acquiring the state lock.*",
+      "(?s).*Error locking state.*"
+    ]
 
-# Retry up to 3 times
-retry_max_attempts = 3
+    # Retry up to 3 times
+    max_attempts = 3
 
-# Wait 30 seconds between retries
-retry_sleep_interval_sec = 30
+    # Wait 30 seconds between retries
+    sleep_interval_sec = 30
+  }
+}
 ```
 
 ## Combining Retries with Error Hooks
 
-Use error hooks to add context when retries happen:
+Use error hooks to add context when matching retryable errors occur:
 
 ```hcl
-retryable_errors = [
-  "(?s).*Error:.*Throttling.*",
-  "(?s).*Error:.*Rate exceeded.*"
-]
+errors {
+  retry "aws_throttling" {
+    retryable_errors = [
+      "(?s).*Error:.*Throttling.*",
+      "(?s).*Error:.*Rate exceeded.*"
+    ]
 
-retry_max_attempts       = 3
-retry_sleep_interval_sec = 60
+    max_attempts       = 3
+    sleep_interval_sec = 60
+  }
+}
 
 terraform {
   # Log when throttling occurs
@@ -159,7 +153,7 @@ terraform {
     on_errors = ["Throttling", "Rate exceeded"]
     execute   = [
       "bash", "-c",
-      "echo '[WARN] AWS throttling detected at $(date). Terragrunt will retry.' >> /tmp/terragrunt-throttle.log"
+      "echo '[WARN] AWS throttling detected at $(date). Terragrunt is configured to retry this error.' >> /tmp/terragrunt-throttle.log"
     ]
   }
 }
@@ -171,28 +165,25 @@ terraform {
 terraform {
   source = "../../modules/production-app"
 
-  after_hook "failure_alert" {
-    commands     = ["apply", "destroy"]
-    run_on_error = true
-    execute      = [
+  error_hook "failure_alert" {
+    commands  = ["apply", "destroy"]
+    on_errors = [".*"]
+    execute   = [
       "bash", "-c",
       <<-SCRIPT
-      # Only alert on actual failures
-      if [ "$?" != "0" ] 2>/dev/null; then
-        MODULE_PATH=$(basename $(pwd))
-        TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-        curl -s -X POST "${SLACK_WEBHOOK_URL}" \
-          -H 'Content-Type: application/json' \
-          -d "{
-            \"blocks\": [{
-              \"type\": \"section\",
-              \"text\": {
-                \"type\": \"mrkdwn\",
-                \"text\": \"*Terraform Apply Failed*\nModule: \`$MODULE_PATH\`\nTime: $TIMESTAMP\nCI Job: ${CI_JOB_URL:-local}\"
-              }
-            }]
-          }"
-      fi
+      MODULE_PATH=$(basename "$(pwd)")
+      TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+      curl -s -X POST "${SLACK_WEBHOOK_URL}" \
+        -H 'Content-Type: application/json' \
+        -d "{
+          \"blocks\": [{
+            \"type\": \"section\",
+            \"text\": {
+              \"type\": \"mrkdwn\",
+              \"text\": \"*Terraform Apply Failed*\nModule: \`$MODULE_PATH\`\nCommand: $TG_CTX_COMMAND\nTime: $TIMESTAMP\nCI Job: ${CI_JOB_URL:-local}\"
+            }
+          }]
+        }"
       SCRIPT
     ]
   }
@@ -205,10 +196,10 @@ When a failure occurs, collect diagnostic information:
 
 ```hcl
 terraform {
-  after_hook "collect_diagnostics" {
-    commands     = ["apply"]
-    run_on_error = true
-    execute      = [
+  error_hook "collect_diagnostics" {
+    commands  = ["apply"]
+    on_errors = [".*"]
+    execute   = [
       "bash", "-c",
       <<-SCRIPT
       DIAG_DIR="/tmp/terraform-diagnostics/$(date +%Y%m%d-%H%M%S)"
@@ -251,15 +242,16 @@ terraform {
   }
 
   # On failure, note which resources were partially created
-  after_hook "post_apply_failure_check" {
-    commands     = ["apply"]
-    run_on_error = true
-    execute      = [
+  error_hook "post_apply_failure_check" {
+    commands  = ["apply"]
+    on_errors = [".*"]
+    execute   = [
       "bash", "-c",
       <<-SCRIPT
       echo "Checking for partially applied resources..."
       CURRENT_RESOURCES=$(terraform state list 2>/dev/null | wc -l)
-      PRE_APPLY=$(cat /tmp/pre-apply-state-*.json 2>/dev/null | jq '.resources | length')
+      PRE_APPLY_FILE=$(ls -t /tmp/pre-apply-state-*.json 2>/dev/null | head -n1)
+      PRE_APPLY=$(jq '.resources | length' "$PRE_APPLY_FILE" 2>/dev/null || true)
       echo "Resources before apply: ${PRE_APPLY:-unknown}"
       echo "Resources after apply: ${CURRENT_RESOURCES}"
       SCRIPT
@@ -274,17 +266,17 @@ Integrate error hooks with your CI/CD pipeline's failure handling:
 
 ```hcl
 terraform {
-  after_hook "ci_failure_handler" {
-    commands     = ["plan", "apply"]
-    run_on_error = true
-    execute      = [
+  error_hook "ci_failure_handler" {
+    commands  = ["plan", "apply"]
+    on_errors = [".*"]
+    execute   = [
       "bash", "-c",
       <<-SCRIPT
       # Create a failure artifact for CI
       if [ -n "$CI" ]; then
         mkdir -p /tmp/failure-artifacts
         echo "Module: $(pwd)" > /tmp/failure-artifacts/failure-context.txt
-        echo "Command: $TERRAGRUNT_COMMAND" >> /tmp/failure-artifacts/failure-context.txt
+        echo "Command: $TG_CTX_COMMAND" >> /tmp/failure-artifacts/failure-context.txt
         echo "Timestamp: $(date -u)" >> /tmp/failure-artifacts/failure-context.txt
 
         # If this is a GitHub Actions runner, set an output
@@ -306,22 +298,26 @@ Define error handling once in the root `terragrunt.hcl` to apply across all modu
 ```hcl
 # root terragrunt.hcl
 
-# Retry transient errors automatically
-retryable_errors = [
-  "(?s).*Throttling.*",
-  "(?s).*Rate exceeded.*",
-  "(?s).*connection reset.*",
-  "(?s).*TLS handshake timeout.*"
-]
-retry_max_attempts       = 3
-retry_sleep_interval_sec = 30
+errors {
+  retry "transient_errors" {
+    retryable_errors = [
+      "(?s).*Throttling.*",
+      "(?s).*Rate exceeded.*",
+      "(?s).*connection reset.*",
+      "(?s).*TLS handshake timeout.*"
+    ]
+
+    max_attempts       = 3
+    sleep_interval_sec = 30
+  }
+}
 
 terraform {
   # Global error notification
-  after_hook "global_error_handler" {
-    commands     = ["apply", "destroy"]
-    run_on_error = true
-    execute      = ["bash", "${get_repo_root()}/scripts/handle-error.sh"]
+  error_hook "global_error_handler" {
+    commands  = ["apply", "destroy"]
+    on_errors = [".*"]
+    execute   = ["bash", "${get_repo_root()}/scripts/handle-error.sh"]
   }
 }
 ```
@@ -329,12 +325,13 @@ terraform {
 ```bash
 #!/bin/bash
 # scripts/handle-error.sh
-# Called by the global error handler after any apply/destroy
+# Called by the global error handler after a failed apply/destroy
 
 MODULE_NAME=$(basename "$(pwd)")
 ENVIRONMENT=$(basename "$(dirname "$(pwd)")")
+COMMAND="${TG_CTX_COMMAND:-unknown}"
 
-echo "Error handler triggered for $ENVIRONMENT/$MODULE_NAME"
+echo "Error handler triggered for $ENVIRONMENT/$MODULE_NAME during $COMMAND"
 
 # Add your error handling logic here:
 # - Send alerts
@@ -361,10 +358,10 @@ EOF
 # Create a terragrunt.hcl with error hooks
 cat > /tmp/test-error-hook/terragrunt.hcl <<EOF
 terraform {
-  after_hook "test_error" {
-    commands     = ["apply"]
-    run_on_error = true
-    execute      = ["echo", "Error hook fired successfully"]
+  error_hook "test_error" {
+    commands  = ["apply"]
+    on_errors = [".*"]
+    execute   = ["echo", "Error hook fired successfully"]
   }
 }
 EOF
@@ -377,4 +374,4 @@ terragrunt apply -auto-approve
 
 ## Summary
 
-Error hooks in Terragrunt give you automated responses to infrastructure failures. The most practical uses are notifications (Slack, PagerDuty), diagnostic collection, and automatic retries for transient cloud API errors. Define retryable errors and global error handlers in your root `terragrunt.hcl`, and add module-specific handlers where critical infrastructure needs extra attention. For more on hooks in general, see our [Terragrunt hooks guide](https://oneuptime.com/blog/post/2026-02-23-terragrunt-hooks-before-after/view).
+Error hooks in Terragrunt give you automated responses to infrastructure failures. The most practical uses are notifications (Slack, PagerDuty), diagnostic collection, and automatic retries for transient cloud API errors. Define retry rules and global error handlers in your root `terragrunt.hcl`, and add module-specific handlers where critical infrastructure needs extra attention. For more on hooks in general, see our [Terragrunt hooks guide](https://oneuptime.com/blog/post/2026-02-23-terragrunt-hooks-before-after/view).
