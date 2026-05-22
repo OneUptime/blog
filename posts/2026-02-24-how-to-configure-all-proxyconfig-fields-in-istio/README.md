@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, ProxyConfig, Envoy, Performance Tuning, Kubernetes
 
-Description: Complete guide to every ProxyConfig field in Istio for customizing sidecar proxy behavior including concurrency, image settings, environment variables, and more.
+Description: Guide to ProxyConfig fields in Istio for customizing sidecar proxy behavior including concurrency, image settings, environment variables, and more.
 
 ---
 
@@ -15,8 +15,8 @@ ProxyConfig controls the behavior of individual Envoy sidecar proxies in your me
 ProxyConfig can be set in several places, with increasing specificity:
 
 1. MeshConfig `defaultConfig` - mesh-wide defaults
-2. ProxyConfig resource (namespace or workload level)
-3. Pod annotation `proxy.istio.io/config` - per-pod override
+2. Pod annotation `proxy.istio.io/config` - per-pod override
+3. ProxyConfig resource (namespace or workload level)
 
 The ProxyConfig custom resource was introduced as a cleaner alternative to pod annotations. It follows the same selector pattern as other Istio resources.
 
@@ -50,6 +50,8 @@ spec:
 
 The `selector` targets specific workloads by label. If omitted, the config applies to all workloads in the namespace. Only one ProxyConfig per namespace can omit the selector (it becomes the namespace default).
 
+If both a ProxyConfig resource and a `proxy.istio.io/config` annotation match a workload, Istio merges them and the ProxyConfig resource takes precedence for overlapping fields.
+
 ## Concurrency
 
 ```yaml
@@ -57,13 +59,13 @@ spec:
   concurrency: 2
 ```
 
-The `concurrency` field sets the number of worker threads Envoy uses. By default (value 0), Envoy uses the number of CPU cores available to the container. Setting this explicitly is useful when:
+The `concurrency` field sets the number of worker threads Envoy uses. If unset, Istio automatically determines the value based on CPU requests and limits. If explicitly set to 0, Envoy uses all cores on the machine and ignores CPU requests and limits. Setting this explicitly is useful when:
 
 - You want to limit CPU usage regardless of available cores
 - Your service has low traffic and does not need multiple threads
 - You are running in a resource-constrained environment
 
-A value of 1 means single-threaded operation, which can simplify debugging but limits throughput. For most production workloads, the default (0, auto-detect) works well.
+A value of 1 means single-threaded operation, which can simplify debugging but limits throughput. For most production workloads, leaving the field unset works well.
 
 ## Image
 
@@ -77,7 +79,7 @@ The `image` field controls which proxy image variant is used:
 
 - `imageType` can be `default`, `debug`, or `distroless`
 
-The `distroless` variant is smaller and has a reduced attack surface (no shell, no package manager). The `debug` variant includes debugging tools like `curl`, `tcpdump`, and a shell, which is helpful during troubleshooting.
+The `distroless` variant is smaller and has a reduced attack surface (no shell, no package manager). The `debug` variant includes a shell and debugging tools, which is helpful during troubleshooting.
 
 ```yaml
 # Use debug image for a specific workload
@@ -120,7 +122,7 @@ These show up in Envoy's node metadata and can be referenced in EnvoyFilter or W
 
 ## MeshConfig ProxyConfig Fields
 
-While the ProxyConfig CRD has a focused set of fields, the full ProxyConfig specification in MeshConfig includes many more options. These can also be set via pod annotation `proxy.istio.io/config`. Here is the complete set:
+While the ProxyConfig CRD has a focused set of fields, the full ProxyConfig specification in MeshConfig includes many more options. These can also be set via pod annotation `proxy.istio.io/config`. Commonly used options include:
 
 ### Tracing
 
@@ -132,8 +134,8 @@ tracing:
   sampling: 10.0
   tlsSettings:
     mode: DISABLE
-  maxPathTagLength: 256
-  customTags:
+  max_path_tag_length: 256
+  custom_tags:
     environment:
       literal:
         value: production
@@ -144,8 +146,8 @@ The tracing section configures trace collection:
 - `zipkin.address` - the Zipkin collector endpoint
 - `sampling` - percentage of requests to sample (0-100)
 - `tlsSettings` - TLS configuration for the tracing backend connection
-- `maxPathTagLength` - maximum length of the URL path tag in spans
-- `customTags` - additional tags to add to every span
+- `max_path_tag_length` - maximum length of the URL path tag in spans
+- `custom_tags` - additional tags to add to every span
 
 ### Stats Tags and Inclusion
 
@@ -214,7 +216,7 @@ How long Envoy waits for active connections to complete during a graceful shutdo
 terminationDrainDuration: 5s
 ```
 
-The time between the SIGTERM signal and the proxy actually shutting down. This gives time for ongoing requests to complete.
+The amount of time allowed for connections to complete after the proxy receives SIGTERM or SIGINT. After this duration, istio-agent kills any remaining active Envoy processes.
 
 ### Hold Application Until Proxy Starts
 
@@ -222,7 +224,7 @@ The time between the SIGTERM signal and the proxy actually shutting down. This g
 holdApplicationUntilProxyStarts: true
 ```
 
-When true, the sidecar container starts before the application container. This prevents the application from making network calls before the proxy is ready. Very useful for apps that make external calls during startup.
+When true, Istio delays application startup until the sidecar proxy is ready to accept traffic. This prevents the application from making network calls before the proxy is ready. Very useful for apps that make external calls during startup.
 
 ### Interception Mode
 
@@ -247,8 +249,13 @@ kind: Deployment
 metadata:
   name: my-service
 spec:
+  selector:
+    matchLabels:
+      app: my-service
   template:
     metadata:
+      labels:
+        app: my-service
       annotations:
         proxy.istio.io/config: |
           concurrency: 2
@@ -292,6 +299,9 @@ metadata:
   name: high-traffic-api
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: high-traffic-api
   template:
     metadata:
       labels:
