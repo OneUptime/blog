@@ -87,11 +87,10 @@ package controllers
 
 import (
     "context"
-    networkingv1beta1 "istio.io/client-go/pkg/apis/networking/v1beta1"
-    securityv1 "istio.io/client-go/pkg/apis/security/v1"
-    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+    platformv1 "platform.company.com/api/v1"
     ctrl "sigs.k8s.io/controller-runtime"
     "sigs.k8s.io/controller-runtime/pkg/client"
+    "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
 type ServiceConfigReconciler struct {
@@ -104,18 +103,28 @@ func (r *ServiceConfigReconciler) Reconcile(ctx context.Context, req ctrl.Reques
         return ctrl.Result{}, client.IgnoreNotFound(err)
     }
 
-    // Create VirtualService for traffic management
+    // Create or update VirtualService for traffic management
     if config.Spec.Traffic.Canary.Enabled {
-        vs := buildVirtualService(config)
-        if err := r.Create(ctx, vs); err != nil {
+        desired := buildVirtualService(config)
+        vs := desired.DeepCopy()
+        _, err := controllerutil.CreateOrUpdate(ctx, r.Client, vs, func() error {
+            vs.Spec = desired.Spec
+            return nil
+        })
+        if err != nil {
             return ctrl.Result{}, err
         }
     }
 
-    // Create AuthorizationPolicy for security
+    // Create or update AuthorizationPolicy for security
     if len(config.Spec.Security.AllowFrom) > 0 {
-        policy := buildAuthPolicy(config)
-        if err := r.Create(ctx, policy); err != nil {
+        desired := buildAuthPolicy(config)
+        policy := desired.DeepCopy()
+        _, err := controllerutil.CreateOrUpdate(ctx, r.Client, policy, func() error {
+            policy.Spec = desired.Spec
+            return nil
+        })
+        if err != nil {
             return ctrl.Result{}, err
         }
     }
@@ -126,16 +135,16 @@ func (r *ServiceConfigReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 ## Providing Default Istio Policies
 
-Every new service should get sensible defaults without developers having to configure anything. Create namespace-level defaults:
+Every new service should get sensible defaults without developers having to configure anything. Create namespace-level authorization defaults and per-service traffic policy defaults:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
-  name: default-resiliency
+  name: api-default-resiliency
   namespace: team-backend
 spec:
-  host: "*.team-backend.svc.cluster.local"
+  host: api.team-backend.svc.cluster.local
   trafficPolicy:
     connectionPool:
       tcp:
@@ -171,7 +180,7 @@ spec:
         - istio-system
 ```
 
-These defaults give every service in the team-backend namespace circuit breaking, a default-deny authorization posture, and permission for intra-namespace communication.
+These defaults give services that receive a per-service DestinationRule circuit breaking, plus a default-deny authorization posture and permission for intra-namespace communication in the team-backend namespace.
 
 ## Self-Service Traffic Management
 
@@ -199,7 +208,7 @@ spec:
 The platform operator translates this into:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: checkout-service
@@ -218,7 +227,7 @@ spec:
         subset: v2
       weight: 10
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: checkout-service
