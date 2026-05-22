@@ -17,8 +17,8 @@ Understanding the difference between these three paths is essential for writing 
 Here is what each one resolves to:
 
 - **path.module** - The filesystem path of the module where the expression is defined
-- **path.root** - The filesystem path of the root module (where you run `terraform apply`)
-- **path.cwd** - The filesystem path of the current working directory (usually the same as `path.root`, but not always)
+- **path.root** - The filesystem path of the root module
+- **path.cwd** - The filesystem path of the original working directory where you invoked Terraform (usually the same as `path.root`, but not always)
 
 ```hcl
 # Print all three to see the difference
@@ -63,7 +63,7 @@ Then when you run `terraform apply` from `/home/user/infra/`:
 data "archive_file" "lambda_zip" {
   type        = "zip"
   source_file = "${path.module}/handler.py"  # file next to this .tf file
-  output_path = "${path.module}/handler.zip"
+  output_path = "${path.root}/generated/handler.zip"
 }
 
 resource "aws_lambda_function" "this" {
@@ -126,7 +126,7 @@ resource "aws_instance" "this" {
 
 ## path.root - The Root Module Path
 
-`path.root` always points to the top-level directory where you run Terraform commands. Use it when you need to reference files that live in the root module from within a child module.
+`path.root` always points to the root module directory for the current configuration. Use it when you need to reference files that live in the root module from within a child module.
 
 ```hcl
 # modules/config/main.tf
@@ -163,7 +163,7 @@ resource "aws_iam_server_certificate" "this" {
 
 ## path.cwd - The Working Directory
 
-`path.cwd` returns the directory where you invoked the Terraform CLI. Most of the time, this is the same as `path.root`. But there are cases where they differ - for example, when using Terraform with automation tools that set the working directory to something different from the configuration directory.
+`path.cwd` returns the original directory where you invoked the Terraform CLI, before Terraform applies any `-chdir` option. Most of the time, this is the same as `path.root`. But there are cases where they differ - for example, when using Terraform with automation tools that set the working directory to something different from the configuration directory.
 
 ```hcl
 # In most cases, these are identical
