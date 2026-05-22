@@ -215,9 +215,12 @@ The `lifecycle` meta-argument controls how Terraform handles resource creation, 
 
 ```hcl
 resource "aws_db_instance" "main" {
-  identifier     = "${var.project}-db"
-  engine         = "postgres"
-  instance_class = "db.r5.large"
+  identifier        = "${var.project}-db"
+  engine            = "postgres"
+  instance_class    = "db.r5.large"
+  allocated_storage = 20
+  username          = "admin"
+  password          = var.db_password
 
   lifecycle {
     # Create the replacement before destroying the old one
@@ -235,7 +238,7 @@ resource "aws_db_instance" "main" {
 }
 ```
 
-Lifecycle arguments:
+Common lifecycle arguments:
 
 - **`create_before_destroy`** - When a resource must be replaced, create the new one before destroying the old one. Useful for avoiding downtime.
 - **`prevent_destroy`** - Terraform will refuse to destroy this resource. Protects critical resources like databases.
