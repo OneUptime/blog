@@ -311,7 +311,7 @@ jobs:
             grep '^environments/' | \
             cut -d'/' -f2,3 | \
             sort -u | \
-            jq -R -s 'split("\n") | map(select(length > 0))')
+            jq -R -s -c 'split("\n") | map(select(length > 0))')
           echo "components=$changed" >> $GITHUB_OUTPUT
 
   plan:
