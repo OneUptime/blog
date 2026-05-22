@@ -438,20 +438,47 @@ resource "aws_db_subnet_group" "app" {
   subnet_ids = data.aws_subnets.database.ids
 }
 
+resource "aws_security_group" "db" {
+  name_prefix = "db-"
+  vpc_id      = data.aws_vpc.main.id
+
+  ingress {
+    description     = "PostgreSQL from app"
+    from_port       = 5432
+    to_port         = 5432
+    protocol        = "tcp"
+    security_groups = [aws_security_group.app.id]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "db-sg"
+  }
+}
+
 resource "aws_db_instance" "app" {
-  identifier           = "app-database"
-  engine               = "postgres"
-  instance_class       = "db.r6g.large"
-  allocated_storage    = 100
-  db_subnet_group_name = aws_db_subnet_group.app.name
-  vpc_security_group_ids = [aws_security_group.db.id]
-  skip_final_snapshot  = false
+  identifier                  = "app-database"
+  engine                      = "postgres"
+  instance_class              = "db.r6g.large"
+  allocated_storage           = 100
+  db_subnet_group_name        = aws_db_subnet_group.app.name
+  vpc_security_group_ids      = [aws_security_group.db.id]
+  manage_master_user_password = true
+  username                    = "app_admin"
+  skip_final_snapshot         = false
+  final_snapshot_identifier   = "app-database-final-snapshot"
 }
 ```
 
-## Validating VPC Data with Preconditions
+## Validating VPC Data with Postconditions
 
-Use preconditions to verify the VPC meets your requirements:
+Use postconditions to verify the VPC meets your requirements:
 
 ```hcl
 data "aws_vpc" "main" {
