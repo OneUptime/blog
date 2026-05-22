@@ -20,6 +20,7 @@ The simplest test is analyzing the `terraform plan` output:
 
 ```bash
 # Generate a detailed plan
+set -o pipefail
 
 terraform plan -detailed-exitcode -out=migration.tfplan 2>&1 | tee plan-output.log
 
@@ -54,12 +55,11 @@ Plan: 0 to add, 0 to change, 0 to destroy.
 Create a test workspace to run the migration without affecting the default state:
 
 ```bash
-# Create a test workspace
-terraform workspace new migration-test
+# Back up the current workspace state
+terraform state pull > production-state-backup.json
 
-# The test workspace starts with empty state
-# Copy current state to the test workspace
-terraform state push production-state-backup.json
+# Create a test workspace initialized from the current state
+terraform workspace new -state=production-state-backup.json migration-test
 
 # Run the migration steps
 terraform state mv aws_instance.old_name aws_instance.new_name
@@ -119,8 +119,10 @@ echo "Run your migration steps here, then verify with 'terraform plan'"
 For state-level migrations, test individual operations:
 
 ```bash
-# Test state mv with -dry-run (not available natively)
-# Instead, use state pull and jq to simulate
+# Test state mv with -dry-run
+terraform state mv -dry-run aws_instance.old_name aws_instance.new_name
+
+# You can also inspect state with state pull and jq before moving resources
 
 # Pull current state
 terraform state pull > test-state.json
@@ -155,6 +157,7 @@ Write Go tests that verify migration behavior:
 package test
 
 import (
+    "path/filepath"
     "testing"
 
     "github.com/gruntwork-io/terratest/modules/terraform"
@@ -163,9 +166,13 @@ import (
 
 func TestMigration(t *testing.T) {
     t.Parallel()
+    stateFile := filepath.Join(t.TempDir(), "terraform.tfstate")
 
     terraformOptions := &terraform.Options{
         TerraformDir: "../examples/migration-test",
+        BackendConfig: map[string]interface{}{
+            "path": stateFile,
+        },
         Vars: map[string]interface{}{
             "environment": "test",
         },
@@ -182,16 +189,25 @@ func TestMigration(t *testing.T) {
     // Apply migration (updated configuration)
     migratedOptions := &terraform.Options{
         TerraformDir: "../examples/migration-test-after",
+        BackendConfig: map[string]interface{}{
+            "path": stateFile,
+        },
         Vars: map[string]interface{}{
             "environment": "test",
         },
     }
 
     terraform.Init(t, migratedOptions)
-    plan := terraform.InitAndPlanAndShow(t, migratedOptions)
+    plan := terraform.InitAndPlanAndShowWithStruct(t, migratedOptions)
 
     // Verify no destructive changes
-    assert.Equal(t, 0, len(plan.ResourceChangesDestroy))
+    destroyCount := 0
+    for _, change := range plan.ResourceChangesMap {
+        if change.Change.Actions.Delete() {
+            destroyCount++
+        }
+    }
+    assert.Equal(t, 0, destroyCount)
 }
 ```
 
@@ -203,23 +219,36 @@ Use Open Policy Agent to enforce migration safety rules:
 # migration_safety.rego
 package terraform.migration
 
+has_action(actions, action) if {
+    actions[_] == action
+}
+
 # Deny any resource destruction during migration
-deny[msg] {
+deny contains msg if {
     resource := input.resource_changes[_]
-    resource.change.actions[_] == "delete"
-    not resource.change.actions[_] == "create"  # Allow replace
+    has_action(resource.change.actions, "delete")
+    not has_action(resource.change.actions, "create")
     msg := sprintf("Migration would destroy %s - this is not allowed", [resource.address])
 }
 
 # Deny any resource replacement during migration
-deny[msg] {
+deny contains msg if {
     resource := input.resource_changes[_]
-    resource.change.actions == ["delete", "create"]
+    has_action(resource.change.actions, "delete")
+    has_action(resource.change.actions, "create")
     msg := sprintf("Migration would replace %s - use moved block instead", [resource.address])
 }
 
+# Deny creates and updates during a move-only migration
+deny contains msg if {
+    resource := input.resource_changes[_]
+    not resource.change.actions == ["no-op"]
+    not has_action(resource.change.actions, "delete")
+    msg := sprintf("Migration would change %s with actions %v", [resource.address, resource.change.actions])
+}
+
 # Allow only moves and no-ops
-allow {
+allow if {
     count(deny) == 0
 }
 ```
@@ -269,7 +298,7 @@ For high-risk migrations, test with a subset of resources first:
 
 ```bash
 # Migrate one resource as a canary
-terraform state mv aws_instance.web[0] module.compute.aws_instance.web["web-1"]
+terraform state mv 'aws_instance.web[0]' 'module.compute.aws_instance.web["web-1"]'
 
 # Verify plan
 terraform plan
@@ -277,8 +306,8 @@ terraform plan
 # Monitor for issues (24 hours)
 
 # If successful, migrate remaining resources
-terraform state mv aws_instance.web[1] module.compute.aws_instance.web["web-2"]
-terraform state mv aws_instance.web[2] module.compute.aws_instance.web["web-3"]
+terraform state mv 'aws_instance.web[1]' 'module.compute.aws_instance.web["web-2"]'
+terraform state mv 'aws_instance.web[2]' 'module.compute.aws_instance.web["web-3"]'
 ```
 
 ## Building a Migration Test Pipeline
@@ -307,7 +336,14 @@ jobs:
         working-directory: terraform
 
       - name: Plan
-        run: terraform plan -detailed-exitcode -out=plan.tfplan
+        run: |
+          set +e
+          terraform plan -detailed-exitcode -out=plan.tfplan
+          exit_code=$?
+          if [ "$exit_code" -eq 1 ]; then
+            exit 1
+          fi
+          exit 0
         working-directory: terraform
 
       - name: Check for destructive changes
