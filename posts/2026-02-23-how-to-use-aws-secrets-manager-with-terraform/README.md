@@ -8,7 +8,7 @@ Description: Learn how to create, manage, and retrieve secrets from AWS Secrets 
 
 ---
 
-AWS Secrets Manager is a managed service for storing and retrieving secrets like database credentials, API keys, and tokens. When combined with Terraform, it provides a clean workflow where infrastructure code can both create secrets and reference them without exposing the actual values in plain text. This guide covers the full range of Secrets Manager operations in Terraform.
+AWS Secrets Manager is a managed service for storing and retrieving secrets like database credentials, API keys, and tokens. When combined with Terraform, it provides a clean workflow where infrastructure code can both create secrets and reference them without hardcoding the actual values in configuration files. Secret values managed with Terraform can still be stored in Terraform state, so protect your state backend carefully or use write-only attributes where available. This guide covers the full range of Secrets Manager operations in Terraform.
 
 ## Creating Secrets
 
@@ -133,10 +133,10 @@ resource "aws_secretsmanager_secret_rotation" "database" {
 }
 ```
 
-For RDS databases, AWS provides pre-built rotation Lambda functions:
+For RDS databases, AWS provides rotation Lambda function templates:
 
 ```hcl
-# Use the AWS-provided rotation Lambda for RDS
+# Reference a Lambda function you deploy from an AWS-provided RDS rotation template
 resource "aws_secretsmanager_secret_rotation" "database" {
   secret_id           = aws_secretsmanager_secret.database.id
   rotation_lambda_arn = aws_lambda_function.rds_rotation.arn
@@ -198,30 +198,7 @@ resource "aws_secretsmanager_secret_policy" "database" {
 Share secrets between AWS accounts:
 
 ```hcl
-# In the account that owns the secret
-resource "aws_secretsmanager_secret_policy" "cross_account" {
-  secret_arn = aws_secretsmanager_secret.shared.arn
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Sid    = "AllowCrossAccountRead"
-        Effect = "Allow"
-        Principal = {
-          AWS = "arn:aws:iam::222222222222:root"
-        }
-        Action = [
-          "secretsmanager:GetSecretValue",
-          "secretsmanager:DescribeSecret"
-        ]
-        Resource = "*"
-      }
-    ]
-  })
-}
-
-# The secret's KMS key also needs a cross-account policy
+# Cross-account access requires a customer managed KMS key
 resource "aws_kms_key" "secrets" {
   description = "KMS key for Secrets Manager"
 
@@ -252,9 +229,37 @@ resource "aws_kms_key" "secrets" {
     ]
   })
 }
+
+resource "aws_secretsmanager_secret" "shared" {
+  name       = "shared/api-key"
+  kms_key_id = aws_kms_key.secrets.arn
+}
+
+# In the account that owns the secret
+resource "aws_secretsmanager_secret_policy" "cross_account" {
+  secret_arn = aws_secretsmanager_secret.shared.arn
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AllowCrossAccountRead"
+        Effect = "Allow"
+        Principal = {
+          AWS = "arn:aws:iam::222222222222:root"
+        }
+        Action = [
+          "secretsmanager:GetSecretValue",
+          "secretsmanager:DescribeSecret"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
 ```
 
-## Integrating with ECS and EKS
+## Integrating with ECS
 
 Pass secrets to containers running in ECS:
 
@@ -372,6 +377,6 @@ Beyond secret access monitoring, [OneUptime](https://oneuptime.com) provides com
 
 ## Conclusion
 
-AWS Secrets Manager integrates tightly with Terraform and the broader AWS ecosystem. Create secrets with Terraform, rotate them automatically, share them across accounts, and inject them into your applications running on ECS, EKS, or Lambda. The key is to never hardcode secret values in your Terraform configurations - generate them with `random_password`, store them in Secrets Manager, and reference them through data sources.
+AWS Secrets Manager integrates tightly with Terraform and the broader AWS ecosystem. Create secrets with Terraform, rotate them automatically, share them across accounts, and inject them into your applications running on ECS. The key is to never hardcode secret values in your Terraform configurations - generate them with `random_password`, store them in Secrets Manager, and reference them through data sources while treating Terraform state as sensitive.
 
 For more on managing secrets with Terraform, see our guides on [Azure Key Vault secrets](https://oneuptime.com/blog/post/2026-02-23-how-to-use-azure-key-vault-secrets-in-terraform/view) and [GCP Secret Manager](https://oneuptime.com/blog/post/2026-02-23-how-to-use-gcp-secret-manager-with-terraform/view).
