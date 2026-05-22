@@ -14,7 +14,7 @@ If you are deciding between the two, this comparison covers the differences that
 
 ## Platform Support
 
-The biggest differentiator is where your workloads run. Istio is designed for Kubernetes and works best (really, only) on Kubernetes clusters. While there have been attempts to run Istio on VMs, it is not a first-class experience.
+The biggest differentiator is where your workloads run. Istio is designed around Kubernetes and works best on Kubernetes clusters. Istio does support VM workloads through WorkloadEntry and its virtual machine installation flow, but Kubernetes remains the primary operational model.
 
 Consul Connect was built to work across multiple platforms from the start. It runs on Kubernetes, VMs, bare metal servers, and even legacy infrastructure. If you have workloads running outside of Kubernetes, Consul Connect can mesh them together with your Kubernetes services seamlessly.
 
@@ -22,7 +22,7 @@ This is not a minor distinction. Many organizations have a mix of Kubernetes and
 
 ## Architecture
 
-Istio uses Envoy proxy as its data plane and istiod as its control plane. Every pod gets an Envoy sidecar that intercepts network traffic.
+Istio uses Envoy proxy as its data plane and istiod as its control plane. In sidecar mode, every pod gets an Envoy sidecar that intercepts network traffic. Istio also supports ambient mode, which uses node-level ztunnel proxies and optional waypoint proxies instead of injecting a sidecar into every workload.
 
 Consul Connect also uses Envoy as its data plane proxy (by default), but its control plane architecture is different. The Consul server cluster handles service discovery, configuration, and certificate management. On Kubernetes, you deploy Consul using a Helm chart that includes the Consul server agents, a connect injector for automatic sidecar injection, and various controllers.
 
@@ -41,8 +41,8 @@ Consul's service discovery also includes health checking at the Consul level (in
 
 consul catalog services
 
-# Check service health
-consul catalog nodes -service=web
+# Check service health through the HTTP API
+curl http://127.0.0.1:8500/v1/health/service/web
 ```
 
 ## Security and mTLS
@@ -66,7 +66,7 @@ Consul Connect uses its built-in CA or can integrate with Vault for certificate 
 
 ```bash
 # Consul intention - allow web to talk to api
-consul intention create web api
+consul intention create -allow web api
 
 # Deny all other traffic
 consul intention create -deny '*' '*'
@@ -127,7 +127,7 @@ It works, but the configuration model is less flexible than Istio's. If you need
 
 Both support multi-cluster and multi-datacenter deployments, but the approaches are different.
 
-Consul has native multi-datacenter support built into its core. Consul datacenters can be federated using WAN gossip, and services in one datacenter can discover and communicate with services in another. This is one of Consul's strongest features and it works regardless of whether the datacenters are running Kubernetes, VMs, or a mix.
+Consul has native multi-datacenter support built into its core. Consul datacenters can be connected using WAN federation or cluster peering, with mesh gateways commonly used for cross-datacenter service mesh traffic. Services in one datacenter can discover and communicate with services in another. This is one of Consul's strongest features and it works regardless of whether the datacenters are running Kubernetes, VMs, or a mix.
 
 Istio's multi-cluster support works through shared control planes or replicated control planes. The setup is more complex and requires careful network configuration. It works well for Kubernetes-to-Kubernetes communication but does not extend to non-Kubernetes environments.
 
