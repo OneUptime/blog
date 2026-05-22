@@ -86,8 +86,7 @@ When you inject an HTTP abort, the gRPC client sees a mapped gRPC status code:
 | 502 | UNAVAILABLE |
 | 503 | UNAVAILABLE |
 | 504 | UNAVAILABLE |
-| Other 4xx | INTERNAL |
-| Other 5xx | INTERNAL |
+| Other codes | UNKNOWN |
 
 To inject a gRPC UNAVAILABLE error, use HTTP 503:
 
@@ -275,10 +274,6 @@ spec:
           httpStatus: 503
           percentage:
             value: 40.0
-      retries:
-        attempts: 3
-        perTryTimeout: 2s
-        retryOn: cancelled,deadline-exceeded,unavailable
       route:
         - destination:
             host: user-service
@@ -286,12 +281,14 @@ spec:
               number: 50051
 ```
 
-Note the `retryOn` values for gRPC. While you can use HTTP-style values like `5xx`, Istio also supports gRPC-specific retry conditions:
+If you configure Istio retries on a route without fault injection, note the `retryOn` values for gRPC. While you can use HTTP-style values like `5xx`, Istio also supports gRPC-specific retry conditions:
 
 - `cancelled`: Retry on CANCELLED status
 - `deadline-exceeded`: Retry on DEADLINE_EXCEEDED
 - `unavailable`: Retry on UNAVAILABLE
 - `resource-exhausted`: Retry on RESOURCE_EXHAUSTED
+
+Do not rely on a single VirtualService rule to both inject the fault and exercise Istio route retries. Istio disables route timeouts and retries on the client-side route where fault injection is configured.
 
 ## Testing gRPC Deadlines with Delay Injection
 
@@ -344,22 +341,9 @@ For gRPC, a status of 0 means OK. Anything else is an error. The `grpc_response_
 
 ## Complete Example
 
-A full setup for testing gRPC resilience:
+A full setup for testing gRPC client resilience:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
-kind: DestinationRule
-metadata:
-  name: user-service
-  namespace: production
-spec:
-  host: user-service
-  trafficPolicy:
-    outlierDetection:
-      consecutive5xxErrors: 3
-      interval: 5s
-      baseEjectionTime: 15s
----
 apiVersion: networking.istio.io/v1beta1
 kind: VirtualService
 metadata:
@@ -383,10 +367,6 @@ spec:
           fixedDelay: 2s
           percentage:
             value: 15.0
-      retries:
-        attempts: 2
-        perTryTimeout: 3s
-        retryOn: unavailable
       route:
         - destination:
             host: user-service
@@ -399,4 +379,4 @@ spec:
               number: 50051
 ```
 
-This gives you a realistic scenario: some calls fail, some are slow, retries are in place, and outlier detection ejects consistently failing pods. It tests the full resilience stack for your gRPC services.
+This gives you a realistic scenario: some calls fail and some are slow. It tests client-side deadline handling, error handling, and retry behavior for your gRPC services.
