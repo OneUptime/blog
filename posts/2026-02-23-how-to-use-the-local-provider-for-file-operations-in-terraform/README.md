@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Local Provider, File Operations, Infrastructure as Code, Configuration
 
-Description: Learn how to use the Terraform local provider to create and manage local files, generate configuration files, write sensitive data securely, and read file contents.
+Description: Learn how to use the Terraform local provider to create and manage local files, generate configuration files, write sensitive files with restricted permissions, and read file contents.
 
 ---
 
-The local provider in Terraform manages local resources such as files and directories on the machine where Terraform runs. It is commonly used to generate configuration files, write output data for other tools to consume, create deployment scripts, and manage sensitive files with restricted permissions. While it does not interact with any cloud API, the local provider fills an important gap in Terraform workflows.
+The local provider in Terraform manages local files on the machine where Terraform runs, creating missing parent directories as needed. It is commonly used to generate configuration files, write output data for other tools to consume, create deployment scripts, and manage sensitive files with restricted permissions. While it does not interact with any cloud API, the local provider fills an important gap in Terraform workflows.
 
 In this guide, we will explore the local provider's resources and data sources. We will cover creating regular files, handling sensitive files with proper permissions, and reading existing files into your Terraform configuration.
 
@@ -163,7 +163,6 @@ resource "local_file" "service_index" {
       name = name
       port = config.port
     }]
-    generated_at = timestamp()
   })
 }
 ```
@@ -248,4 +247,4 @@ variable "cluster_token" {
 
 ## Conclusion
 
-The local provider is a simple but essential tool in the Terraform ecosystem. It bridges the gap between Terraform's cloud resource management and the local filesystem, enabling you to generate configuration files, scripts, and credentials as part of your infrastructure deployment. For writing sensitive data, always use local_sensitive_file with restrictive permissions. For more local file operations, see our guides on [creating local files](https://oneuptime.com/blog/post/2026-02-23-how-to-create-local-files-with-terraform/view) and [sensitive files](https://oneuptime.com/blog/post/2026-02-23-how-to-create-local-sensitive-files-with-terraform/view).
+The local provider is a simple but essential tool in the Terraform ecosystem. It bridges the gap between Terraform's cloud resource management and the local filesystem, enabling you to generate configuration files, scripts, and credentials as part of your infrastructure deployment. For writing sensitive data, use local_sensitive_file with restrictive permissions and protect your Terraform state because sensitive values can still be stored there. For more local file operations, see our guides on [creating local files](https://oneuptime.com/blog/post/2026-02-23-how-to-create-local-files-with-terraform/view) and [sensitive files](https://oneuptime.com/blog/post/2026-02-23-how-to-create-local-sensitive-files-with-terraform/view).
