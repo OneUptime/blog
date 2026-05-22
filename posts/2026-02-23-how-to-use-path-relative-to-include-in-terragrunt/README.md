@@ -70,7 +70,7 @@ remote_state {
     key            = "${path_relative_to_include()}/terraform.tfstate"
     region         = "us-east-1"
     encrypt        = true
-    dynamodb_table = "terraform-lock"
+    use_lockfile   = true
   }
 }
 ```
@@ -199,23 +199,28 @@ live/
 
 ## Behavior with Multiple Includes
 
-When you have multiple `include` blocks, `path_relative_to_include()` returns the relative path to the include where it is used. If used in the root `terragrunt.hcl`, it computes the path relative to the root.
+When you have multiple `include` blocks and call `path_relative_to_include()` from the child configuration, pass the include name so Terragrunt knows which included file to use as the base path. If the function is called inside an included parent file, it computes the path from that included file to the child being processed.
 
 ```hcl
 # live/dev/app/terragrunt.hcl
 
 include "root" {
   path = find_in_parent_folders("root.hcl")
-  # path_relative_to_include() in root.hcl = "us-east-1/dev/app"
+  # path_relative_to_include() in root.hcl = "dev/app"
 }
 
 include "env" {
   path = find_in_parent_folders("env.hcl")
   # path_relative_to_include() in env.hcl = "app"
 }
+
+terraform {
+  # In the child file, choose the include explicitly.
+  source = "../modules/${path_relative_to_include("root")}"
+}
 ```
 
-This is important to understand. The same function returns different values depending on which included file it is evaluated in. The path is always relative to the file that contains the `include` being resolved.
+This is important to understand. The same function can return different values depending on which included file is used as the base. In child configurations with multiple includes, use the include label such as `path_relative_to_include("root")` to make that base explicit.
 
 ## Combining with Other Functions
 
@@ -280,11 +285,11 @@ remote_state {
 
 ## Debugging
 
-To see what `path_relative_to_include()` resolves to, you can use `terragrunt render-json`:
+To see what `path_relative_to_include()` resolves to, you can use `terragrunt render --format json`:
 
 ```bash
 cd live/dev/vpc
-terragrunt render-json | jq '.remote_state.config.key'
+terragrunt render --format json | jq '.remote_state.config.key'
 # Output: "dev/vpc/terraform.tfstate"
 ```
 
