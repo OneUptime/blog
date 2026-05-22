@@ -183,6 +183,11 @@ variable "az_count" {
   default     = 3
 }
 
+variable "project" {
+  description = "Project name used for resource tags"
+  type        = string
+}
+
 variable "vpc_cidr" {
   description = "VPC CIDR block"
   type        = string
@@ -323,7 +328,7 @@ resource "aws_subnet" "private" {
 }
 ```
 
-With `for_each`, subnets are keyed by AZ name. If an AZ is added or removed, Terraform only affects the changed subnet rather than shifting indexes.
+With `for_each`, subnets are keyed by AZ name, so Terraform resource addresses do not shift just because the list index changes. Attributes derived from list position, such as CIDR blocks, can still change if the selected AZ set or order changes.
 
 ## Using AZ Data for RDS and EKS
 
@@ -340,12 +345,14 @@ resource "aws_db_subnet_group" "main" {
 }
 
 resource "aws_db_instance" "main" {
-  identifier          = "${var.project}-db"
-  engine              = "postgres"
-  instance_class      = "db.r6g.large"
-  allocated_storage   = 100
-  multi_az            = true  # AWS picks the AZs from the subnet group
-  db_subnet_group_name = aws_db_subnet_group.main.name
+  identifier                  = "${var.project}-db"
+  engine                      = "postgres"
+  instance_class              = "db.r6g.large"
+  allocated_storage           = 100
+  username                    = "dbadmin"
+  manage_master_user_password = true
+  multi_az                    = true  # AWS picks the AZs from the subnet group
+  db_subnet_group_name        = aws_db_subnet_group.main.name
 }
 ```
 
