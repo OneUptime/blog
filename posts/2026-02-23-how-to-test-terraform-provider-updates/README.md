@@ -34,19 +34,27 @@ echo "Checking for provider updates..."
 
 # Parse current versions from the lock file
 while IFS= read -r line; do
-    if [[ "$line" =~ provider.*\"(.*)\" ]]; then
+    if [[ "$line" =~ ^provider[[:space:]]+\"([^\"]+)\" ]]; then
         PROVIDER="${BASH_REMATCH[1]}"
     fi
-    if [[ "$line" =~ version.*=.*\"(.*)\" ]]; then
+    if [[ "$line" =~ ^[[:space:]]*version[[:space:]]*=[[:space:]]*\"([^\"]+)\" ]]; then
         VERSION="${BASH_REMATCH[1]}"
         if [ -n "$PROVIDER" ]; then
             # Get latest version from registry
-            NAMESPACE=$(echo "$PROVIDER" | cut -d/ -f1)
-            NAME=$(echo "$PROVIDER" | cut -d/ -f2)
+            if [[ "$PROVIDER" == */*/* && "$PROVIDER" != registry.terraform.io/* ]]; then
+                echo "  SKIP: $PROVIDER $VERSION (not on the public Terraform Registry)"
+                PROVIDER=""
+                continue
+            fi
+            ADDRESS="${PROVIDER#registry.terraform.io/}"
+            NAMESPACE=$(echo "$ADDRESS" | cut -d/ -f1)
+            NAME=$(echo "$ADDRESS" | cut -d/ -f2)
             LATEST=$(curl -s "https://registry.terraform.io/v1/providers/$NAMESPACE/$NAME" | \
-              jq -r '.version' 2>/dev/null)
+              jq -r '.version // empty' 2>/dev/null)
 
-            if [ "$VERSION" != "$LATEST" ] && [ -n "$LATEST" ]; then
+            if [ -z "$LATEST" ]; then
+                echo "  UNKNOWN: $PROVIDER $VERSION (latest version not found)"
+            elif [ "$VERSION" != "$LATEST" ]; then
                 echo "  UPDATE: $PROVIDER $VERSION -> $LATEST"
             else
                 echo "  CURRENT: $PROVIDER $VERSION"
@@ -327,7 +335,7 @@ terraform {
     aws = {
       source  = "hashicorp/aws"
       # Pin to minor version - allows patches automatically
-      version = "~> 5.30"
+      version = "~> 5.30.0"
     }
     azurerm = {
       source  = "hashicorp/azurerm"
