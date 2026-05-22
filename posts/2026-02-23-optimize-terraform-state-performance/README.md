@@ -92,14 +92,14 @@ terraform apply -refresh-only -auto-approve
 terraform plan -refresh=false  # Fast
 # Make changes...
 terraform plan -refresh=false  # Still fast
-# Ready to apply
+# Ready to apply, if no external drift is possible
 terraform plan -refresh=false -out=plan.tfplan
 terraform apply plan.tfplan
 ```
 
 ## Target Specific Resources
 
-When working on a specific component, use `-target` to limit the scope:
+When recovering from a problem or working around a Terraform limitation, use `-target` to limit the scope:
 
 ```bash
 # Only refresh and plan the resources you're changing
@@ -111,7 +111,7 @@ terraform plan \
   -target=aws_api_gateway_rest_api.main
 ```
 
-This reduces API calls from potentially thousands to just the resources you care about.
+Terraform also includes dependencies of the targeted resources. This can reduce API calls from potentially thousands to the resources needed for that exceptional operation, but it is not recommended for routine deployments because it can hide drift elsewhere in the configuration.
 
 ## Optimize Provider Configuration
 
@@ -121,14 +121,11 @@ This reduces API calls from potentially thousands to just the resources you care
 provider "aws" {
   region = "us-east-1"
 
-  # Skip account ID lookup - saves an API call on every run
-  skip_requesting_account_id = true
-
   # Configure retry behavior for API calls
   retry_mode  = "adaptive"
   max_retries = 5
 
-  # Use default tags to reduce per-resource API overhead
+  # Use default tags to keep tagging consistent without repeating tags per resource
   default_tags {
     tags = {
       Environment = "production"
@@ -145,7 +142,7 @@ provider "google" {
   project = "my-project"
   region  = "us-central1"
 
-  # Batch API calls where possible
+  # Batch supported request types where possible, such as project service or IAM updates
   batching {
     send_after  = "3s"
     enable_batching = true
@@ -194,7 +191,7 @@ locals {
 
 Every resource in state adds to refresh time. Look for opportunities to reduce the count:
 
-### Use for_each Instead of Multiple Separate Resources
+### Use for_each to Organize Similar Resources
 
 ```hcl
 # BAD: Three separate resources = 3 state entries with separate refresh calls
@@ -202,7 +199,7 @@ resource "aws_route53_record" "web_a" { ... }
 resource "aws_route53_record" "web_aaaa" { ... }
 resource "aws_route53_record" "web_cname" { ... }
 
-# BETTER: One resource with for_each = still 3 state entries but more organized
+# BETTER: One resource block with for_each = still 3 state entries, but more organized
 resource "aws_route53_record" "web" {
   for_each = {
     A     = { type = "A",     records = ["1.2.3.4"] }
@@ -220,8 +217,10 @@ resource "aws_route53_record" "web" {
 
 ### Consolidate Where Possible
 
+Use the current security group rule resources instead of the legacy `aws_security_group_rule` resource. Keep one CIDR block per rule and avoid mixing inline rules with separate rule resources.
+
 ```hcl
-# BAD: Separate security group rules create many state entries
+# BAD: Legacy security group rule resource
 resource "aws_security_group_rule" "http" {
   type              = "ingress"
   security_group_id = aws_security_group.web.id
@@ -231,33 +230,21 @@ resource "aws_security_group_rule" "http" {
   cidr_blocks       = ["0.0.0.0/0"]
 }
 
-resource "aws_security_group_rule" "https" {
-  type              = "ingress"
+# BETTER: Current security group rule resource
+resource "aws_vpc_security_group_ingress_rule" "http" {
+  security_group_id = aws_security_group.web.id
+  from_port         = 80
+  to_port           = 80
+  ip_protocol       = "tcp"
+  cidr_ipv4         = "0.0.0.0/0"
+}
+
+resource "aws_vpc_security_group_ingress_rule" "https" {
   security_group_id = aws_security_group.web.id
   from_port         = 443
   to_port           = 443
-  protocol          = "tcp"
-  cidr_blocks       = ["0.0.0.0/0"]
-}
-
-# BETTER: Define rules inline within the security group
-resource "aws_security_group" "web" {
-  name   = "web-sg"
-  vpc_id = aws_vpc.main.id
-
-  ingress {
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  ingress {
-    from_port   = 443
-    to_port     = 443
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
+  ip_protocol       = "tcp"
+  cidr_ipv4         = "0.0.0.0/0"
 }
 ```
 
@@ -273,16 +260,13 @@ terraform {
     bucket         = "my-terraform-state"
     key            = "production/terraform.tfstate"
     region         = "us-east-1"
-    dynamodb_table = "terraform-locks"
+    use_lockfile   = true
     encrypt        = true
-
-    # Use path-style URLs for potentially faster resolution
-    force_path_style = false
   }
 }
 ```
 
-Consider using an S3 bucket in the same region where you run Terraform to minimize latency.
+Consider using an S3 bucket in the same region where you run Terraform to minimize latency. DynamoDB-based S3 backend locking is deprecated, so prefer S3 native lock files for new configurations.
 
 ### Terraform Cloud Performance
 
@@ -290,17 +274,17 @@ If using Terraform Cloud, remote operations run on HashiCorp's infrastructure, w
 
 ## CI/CD Pipeline Optimization
 
-### Caching State Locally
+### Caching Providers and Modules Locally
 
-In CI/CD, you can cache the state between pipeline steps:
+In CI/CD, you can cache Terraform's working directory between pipeline steps to avoid repeatedly downloading providers and modules:
 
 ```yaml
 # GitHub Actions example
 jobs:
   terraform:
     steps:
-      - name: Cache Terraform state
-        uses: actions/cache@v3
+      - name: Cache Terraform providers and modules
+        uses: actions/cache@v4
         with:
           path: .terraform
           key: terraform-${{ hashFiles('**/*.tf') }}
@@ -321,7 +305,7 @@ jobs:
   plan:
     steps:
       - run: terraform plan -out=plan.tfplan
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: plan
           path: plan.tfplan
@@ -329,7 +313,7 @@ jobs:
   apply:
     needs: plan
     steps:
-      - uses: actions/download-artifact@v3
+      - uses: actions/download-artifact@v4
         with:
           name: plan
       # Apply uses the saved plan - no refresh needed
@@ -355,7 +339,7 @@ This helps you identify which services or resources are causing the most latency
 
 ## Wrapping Up
 
-Terraform state performance optimization is about reducing the number and duration of API calls during the refresh phase. Start with easy wins - increase parallelism, skip refresh during development, and target specific resources. For larger gains, split your state into smaller units and reduce your overall resource count.
+Terraform state performance optimization is about reducing the number and duration of API calls during the refresh phase. Start with easy wins - increase parallelism and skip refresh during development when it is safe. For larger gains, split your state into smaller units and reduce your overall resource count.
 
 Measure before and after each change. What works for one configuration might not work for another, depending on which cloud services you're using and how many resources you have.
 
