@@ -58,8 +58,8 @@ Unlike `flatten`, which recursively flattens nested lists, `concat` only merges 
   "b",
 ]
 
-# Single list - returns the same list
-> concat(["only-list"])
+# concat requires at least two list arguments
+> concat(["only-list"], [])
 [
   "only-list",
 ]
@@ -338,18 +338,20 @@ locals {
 
 ## Working with Mixed Types
 
-All lists passed to `concat` must contain the same type. You cannot mix strings and numbers:
+`concat` can combine lists with different element types, but you often still want a consistent element type for the result, especially when passing it to a resource argument or variable with a specific type constraint:
 
 ```hcl
-# This would fail
-# concat(["hello"], [42])
+# This works in Terraform console
+concat(["hello"], [42])
+# Result: ["hello", 42]
 
 # Convert to a common type first
 locals {
   string_list  = ["hello"]
   number_list  = [42]
 
-  # Convert numbers to strings before concatenating
+  # Convert numbers to strings before concatenating when the final value
+  # should be a list of strings
   merged = concat(
     local.string_list,
     [for n in local.number_list : tostring(n)]
@@ -360,7 +362,7 @@ locals {
 
 ## Building Resource Dependencies
 
-The `concat` function helps when you need to express complex dependency lists:
+The `concat` function helps when you need to pass lists of related resource IDs:
 
 ```hcl
 resource "aws_ecs_service" "app" {
@@ -369,8 +371,8 @@ resource "aws_ecs_service" "app" {
   task_definition = aws_ecs_task_definition.app.arn
   desired_count   = 2
 
-  # Build a comprehensive depends_on equivalent through data flow
-  # by referencing concatenated lists of IDs
+  # References to other resources in these arguments create the usual
+  # implicit Terraform dependencies.
   load_balancer {
     target_group_arn = aws_lb_target_group.app.arn
     container_name   = "app"
@@ -392,6 +394,6 @@ resource "aws_ecs_service" "app" {
 
 ## Summary
 
-The `concat` function is one of the most commonly used functions in Terraform because merging lists is a fundamental operation in infrastructure configuration. Its strength is in its simplicity - it takes multiple lists and returns one. Combined with conditional empty lists, it creates a clean pattern for dynamic configuration. Remember that `concat` merges top-level lists (it does not flatten nested structures), all input lists must contain the same type, and empty lists are valid inputs that contribute nothing to the result.
+The `concat` function is one of the most commonly used functions in Terraform because merging lists is a fundamental operation in infrastructure configuration. Its strength is in its simplicity - it takes multiple lists and returns one. Combined with conditional empty lists, it creates a clean pattern for dynamic configuration. Remember that `concat` merges top-level lists (it does not flatten nested structures), it requires at least two list arguments, and empty lists are valid inputs that contribute nothing to the result.
 
 For related reading, check out our posts on the [distinct function](https://oneuptime.com/blog/post/2026-02-23-how-to-use-the-distinct-function-to-deduplicate-lists/view) for removing duplicates and the [compact function](https://oneuptime.com/blog/post/2026-02-23-how-to-use-the-compact-function-to-remove-empty-strings/view) for removing empty strings from lists.
