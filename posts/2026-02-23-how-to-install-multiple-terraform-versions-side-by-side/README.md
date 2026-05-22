@@ -57,7 +57,7 @@ rm -f terraform_*.zip
 
 ```bash
 # Create a simple version switcher script
-cat > /usr/local/bin/tfswitch-manual <<'SCRIPT'
+sudo tee /usr/local/bin/tfswitch-manual > /dev/null <<'SCRIPT'
 #!/bin/bash
 # Simple Terraform version switcher
 # Usage: tfswitch-manual 1.7.5
@@ -150,7 +150,7 @@ tfswitch (not to be confused with the manual script above) is another tool that 
 brew install warrensbox/tap/tfswitch
 
 # Linux
-curl -L https://raw.githubusercontent.com/warrensbox/terraform-switcher/release/install.sh | bash
+curl -L https://raw.githubusercontent.com/warrensbox/terraform-switcher/master/install.sh | bash
 ```
 
 ### Use tfswitch
@@ -192,11 +192,11 @@ asdf install terraform 1.6.6
 asdf install terraform 1.7.5
 
 # Set global default
-asdf global terraform 1.7.5
+asdf set -u terraform 1.7.5
 
 # Set project-specific version
 cd ~/projects/legacy-infra
-asdf local terraform 1.5.7
+asdf set terraform 1.5.7
 # This creates a .tool-versions file
 ```
 
