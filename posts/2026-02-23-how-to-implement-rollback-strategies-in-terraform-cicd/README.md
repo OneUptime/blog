@@ -83,14 +83,14 @@ Use Terraform state versioning to recover from bad applies:
 ### S3 State Versioning
 
 ```hcl
-# backend.tf - Ensure versioning is enabled
+# backend.tf - Use an S3 bucket with versioning enabled
 terraform {
   backend "s3" {
     bucket         = "mycompany-terraform-state"
     key            = "production/terraform.tfstate"
     region         = "us-east-1"
     encrypt        = true
-    dynamodb_table = "terraform-locks"
+    use_lockfile   = true
   }
 }
 ```
@@ -138,7 +138,7 @@ jobs:
 
       - uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.7.0
+          terraform_version: 1.15.4
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -163,17 +163,18 @@ jobs:
           terraform state list | wc -l
 
           echo "=== Previous state resources ==="
-          terraform show -json previous-state.tfstate | jq '.values.root_module.resources | length'
+          terraform show -json ../previous-state.tfstate | jq '.values.root_module.resources | length'
 
       - name: Restore previous state
         run: |
-          # Upload the previous state as the current state
-          aws s3 cp previous-state.tfstate \
-            s3://mycompany-terraform-state/production/terraform.tfstate
-
-          # Verify
           cd terraform
           terraform init -no-color
+
+          # Push the previous state through Terraform so backend safety checks run.
+          # Restoring an older serial requires -force, so use this only for emergency recovery.
+          terraform state push -force ../previous-state.tfstate
+
+          # Verify
           terraform plan -no-color | head -50
 ```
 
@@ -202,11 +203,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: HEAD~1  # Checkout the previous commit
+          fetch-depth: 2
+
+      - name: Checkout previous commit
+        run: git checkout HEAD^
 
       - uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.7.0
+          terraform_version: 1.15.4
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -305,7 +309,6 @@ jobs:
     steps:
       - name: Verify infrastructure health
         id: health
-        continue-on-error: true
         run: |
           ENDPOINT="https://app.mycompany.com/health"
           MAX_ATTEMPTS=10
@@ -334,12 +337,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: HEAD~1  # Previous commit
           fetch-depth: 2
+
+      - name: Checkout previous commit
+        run: git checkout HEAD^
 
       - uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.7.0
+          terraform_version: 1.15.4
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
