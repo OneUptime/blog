@@ -41,7 +41,7 @@ resource "helm_release" "istio_base" {
   repository = "https://istio-release.storage.googleapis.com/charts"
   chart      = "base"
   namespace  = kubernetes_namespace.istio_system.metadata[0].name
-  version    = "1.20.0"
+  version    = "1.30.0"
 
   wait = true
 }
@@ -52,7 +52,7 @@ resource "helm_release" "istiod" {
   repository = "https://istio-release.storage.googleapis.com/charts"
   chart      = "istiod"
   namespace  = kubernetes_namespace.istio_system.metadata[0].name
-  version    = "1.20.0"
+  version    = "1.30.0"
 
   values = [
     yamlencode({
@@ -75,7 +75,7 @@ resource "helm_release" "istiod" {
       meshConfig = {
         # Enable access logging
         accessLogFile = "/dev/stdout"
-        # Enable mTLS by default
+        # Hold application startup until the proxy starts
         defaultConfig = {
           holdApplicationUntilProxyStarts = true
         }
@@ -110,7 +110,7 @@ resource "helm_release" "istio_gateway" {
   repository = "https://istio-release.storage.googleapis.com/charts"
   chart      = "gateway"
   namespace  = kubernetes_namespace.istio_system.metadata[0].name
-  version    = "1.20.0"
+  version    = "1.30.0"
 
   values = [
     yamlencode({
@@ -161,7 +161,7 @@ Once Istio is running, use VirtualServices and DestinationRules for traffic mana
 # Gateway for external traffic
 resource "kubectl_manifest" "gateway" {
   yaml_body = <<YAML
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: main-gateway
@@ -195,7 +195,7 @@ YAML
 # VirtualService for traffic routing
 resource "kubectl_manifest" "app_virtual_service" {
   yaml_body = <<YAML
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -231,7 +231,7 @@ YAML
 # DestinationRule for traffic policies
 resource "kubectl_manifest" "app_destination_rule" {
   yaml_body = <<YAML
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-app
@@ -334,7 +334,7 @@ resource "helm_release" "linkerd" {
   repository = "https://helm.linkerd.io/stable"
   chart      = "linkerd-control-plane"
   namespace  = "linkerd"
-  version    = "1.16.0"
+  version    = "1.16.11"
 
   values = [
     yamlencode({
@@ -380,7 +380,7 @@ Enforce mutual TLS across the mesh.
 # Enforce strict mTLS for the entire mesh
 resource "kubectl_manifest" "strict_mtls" {
   yaml_body = <<YAML
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -402,6 +402,6 @@ YAML
 - Keep trust anchor certificates with long validity (5-10 years) and rotate issuer certificates more frequently
 - Enable access logging in the mesh for troubleshooting
 - Use PeerAuthentication to enforce strict mTLS
-- Monitor mesh health with the built-in dashboards (Kiali for Istio, Linkerd Viz for Linkerd)
+- Monitor mesh health with dashboards such as Kiali for Istio and Linkerd Viz for Linkerd
 
 For more on traffic routing, see our guide on [deploying ingress controllers with Terraform](https://oneuptime.com/blog/post/2026-02-23-ingress-controllers-terraform/view).
