@@ -69,7 +69,7 @@ resource "aws_lambda_function" "app" {
   function_name = "my-function"
   role          = aws_iam_role.lambda.arn
   handler       = "index.handler"
-  runtime       = "nodejs18.x"
+  runtime       = "nodejs24.x"
   filename      = "function.zip"
 
   depends_on = [aws_iam_role_policy_attachment.lambda_basic]
@@ -78,20 +78,23 @@ resource "aws_lambda_function" "app" {
 
 ### S3 (Bucket Operations)
 
-New S3 buckets and bucket policies may not be visible immediately:
+New S3 bucket notification destinations and their permissions may not be visible immediately:
 
 ```hcl
 resource "aws_s3_bucket" "logs" {
   bucket = "my-app-logs"
 }
 
-resource "aws_s3_bucket_policy" "logs" {
-  bucket = aws_s3_bucket.logs.id
-  policy = data.aws_iam_policy_document.bucket_policy.json
+resource "aws_lambda_permission" "allow_s3" {
+  statement_id  = "AllowExecutionFromS3Bucket"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.processor.arn
+  principal     = "s3.amazonaws.com"
+  source_arn    = aws_s3_bucket.logs.arn
 }
 
 # S3 notification configuration sometimes fails because
-# the bucket policy has not propagated yet
+# the Lambda permission has not propagated yet
 resource "aws_s3_bucket_notification" "logs" {
   bucket = aws_s3_bucket.logs.id
 
@@ -100,7 +103,7 @@ resource "aws_s3_bucket_notification" "logs" {
     events              = ["s3:ObjectCreated:*"]
   }
 
-  depends_on = [aws_s3_bucket_policy.logs]
+  depends_on = [aws_lambda_permission.allow_s3]
 }
 ```
 
@@ -130,7 +133,7 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 5.0"  # Recent versions have better retry logic
+      version = "~> 6.0"  # Recent versions have better retry logic
     }
   }
 }
@@ -170,7 +173,7 @@ resource "aws_lambda_function" "app" {
   function_name = "my-function"
   role          = aws_iam_role.lambda.arn
   handler       = "index.handler"
-  runtime       = "nodejs18.x"
+  runtime       = "nodejs24.x"
   filename      = "function.zip"
 }
 ```
@@ -336,7 +339,7 @@ provider "aws" {
   region = "us-east-1"
 
   # Increase the maximum number of retries for API calls
-  max_retries = 10
+  max_retries = 40
 
   # Some resources benefit from custom retry configuration
   retry_mode = "adaptive"
