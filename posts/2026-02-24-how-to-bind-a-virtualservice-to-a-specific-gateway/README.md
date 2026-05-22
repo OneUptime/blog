@@ -15,7 +15,7 @@ When you create a VirtualService without specifying any gateways, it applies to 
 The `gateways` field in a VirtualService controls which traffic the routing rules apply to:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -45,7 +45,7 @@ There are three scenarios:
 First, you need a Gateway resource:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: web-gateway
@@ -76,7 +76,7 @@ The Gateway defines which ports and hostnames the ingress gateway should listen 
 ## Binding VirtualService to Gateway
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -101,7 +101,7 @@ This VirtualService only applies to traffic coming through `web-gateway`. Intern
 A common pattern is having different routing rules for external and internal traffic:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app-external
@@ -126,7 +126,7 @@ spec:
             port:
               number: 80
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app-internal
@@ -145,14 +145,14 @@ spec:
         perTryTimeout: 2s
 ```
 
-The first VirtualService handles external traffic with path-based routing. The second handles internal mesh traffic with retries and a timeout. They are completely independent.
+The first VirtualService handles external traffic with path-based routing. The second handles internal mesh traffic with retries and a timeout. They are completely independent. The `v2` subset must be defined in a DestinationRule for `my-app`.
 
 ## Gateway in a Different Namespace
 
 If your Gateway is in a different namespace (common when the platform team manages gateways), reference it with the namespace prefix:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -177,7 +177,7 @@ The format is `namespace/gateway-name`. This lets application teams define their
 You can bind a VirtualService to multiple gateways:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -218,14 +218,14 @@ spec:
               number: 80
 ```
 
-The `gateways` field in the match condition lets you apply different rules based on which gateway the traffic came through. Public gateway traffic only gets access to `/api/public`, while internal gateway traffic can access `/api/admin`.
+The `gateways` field in the match condition lets you apply different rules based on which gateway the traffic came through. Public gateway traffic for `/api/public` goes to `public-api`, internal gateway traffic for `/api/admin` goes to `admin-api`, and remaining traffic falls through to `my-app`.
 
 ## The mesh Gateway
 
 The special `mesh` keyword represents the internal mesh. When you include it in the gateways list, the VirtualService rules also apply to service-to-service traffic:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -249,7 +249,7 @@ spec:
           weight: 10
 ```
 
-This applies the 90/10 traffic split to both external gateway traffic AND internal mesh traffic.
+This applies the 90/10 traffic split to both external gateway traffic AND internal mesh traffic, assuming the `v1` and `v2` subsets are defined in a DestinationRule for `my-app`.
 
 ## Host Matching Between Gateway and VirtualService
 
@@ -258,7 +258,7 @@ The VirtualService hosts must be a subset of the Gateway hosts. If your Gateway 
 ```yaml
 # Gateway accepts *.example.com
 
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: wildcard-gateway
@@ -275,7 +275,7 @@ spec:
 
 ---
 # VirtualService for a specific subdomain (subset of *.example.com - OK)
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-vs
