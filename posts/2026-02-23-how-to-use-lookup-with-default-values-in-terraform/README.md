@@ -379,10 +379,10 @@ locals {
 null  # Returns null, NOT the default
 ```
 
-That last one is a common gotcha. If the key exists but its value is `null`, `lookup` returns `null`, not the default. For null handling, combine with `coalesce`:
+That last one is a common gotcha. If the key exists but its value is `null`, `lookup` returns `null`, not the default. For null handling, combine with `coalesce` when you also want empty strings to fall back to the default:
 
 ```hcl
-# Handle both missing keys AND null values
+# Handle missing keys, null values, AND empty strings
 coalesce(lookup(var.config, "key", null), "default")
 ```
 
