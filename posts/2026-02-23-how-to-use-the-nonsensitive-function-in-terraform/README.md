@@ -118,25 +118,22 @@ output "app_info" {
 
 ## Working with Resource Attributes
 
-Some resource attributes become sensitive even when the derived data is not:
+Some resource attributes are marked sensitive, but derived data from them may not be:
 
 ```hcl
-resource "aws_db_instance" "main" {
-  engine         = "postgres"
-  instance_class = "db.t3.medium"
-  username       = "admin"
-  password       = var.db_password  # sensitive
+resource "random_password" "database" {
+  length  = 24
+  special = true
 }
 
 locals {
-  # The endpoint is not secret, but Terraform might mark it sensitive
-  # because the resource has sensitive attributes
-  db_host = nonsensitive(aws_db_instance.main.endpoint)
-  db_port = nonsensitive(aws_db_instance.main.port)
+  # The generated password is sensitive, so this derived length is sensitive too
+  # unless you explicitly remove the marking
+  generated_password_length = nonsensitive(length(random_password.database.result))
 }
 
-output "database_endpoint" {
-  value = "${local.db_host}:${local.db_port}"
+output "generated_password_length" {
+  value = local.generated_password_length
 }
 ```
 
@@ -279,7 +276,7 @@ To handle this safely:
 ```hcl
 locals {
   # If you are not sure whether a value is sensitive
-  safe_value = try(nonsensitive(some_value), some_value)
+  safe_value = try(nonsensitive(var.some_value), var.some_value)
 }
 ```
 
