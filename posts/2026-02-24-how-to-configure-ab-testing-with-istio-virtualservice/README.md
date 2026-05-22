@@ -27,7 +27,7 @@ Before you start, make sure you have:
 Here is the DestinationRule you will need:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-app
@@ -50,7 +50,7 @@ This tells Istio that your `my-app` service has two subsets, `v1` and `v2`, iden
 The most common approach is to route based on a custom header. Your frontend or API gateway sets a header like `x-test-group`, and Istio routes accordingly.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -80,7 +80,7 @@ When a request comes in with `x-test-group: B`, it goes to v2. Everything else g
 If you want to keep users in the same test group across requests, cookies work well. The user gets assigned a cookie on their first visit, and subsequent requests carry that cookie automatically.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -110,7 +110,7 @@ Since cookies are sent as a single `Cookie` header, you need a regex match to fi
 If you just want a straight 50/50 split (or any ratio), you can use weight-based routing:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -130,12 +130,12 @@ spec:
           weight: 50
 ```
 
-The weights must add up to 100. You can use any ratio - 80/20, 90/10, whatever makes sense for your test.
+The weights are relative proportions. Using values that add up to 100 makes the split easy to read, but Istio calculates each destination's share as its weight divided by the sum of all weights. You can use any ratio - 80/20, 90/10, whatever makes sense for your test.
 
-One thing to watch out for: this is a per-request split. It does not guarantee that the same user always hits the same version. If session stickiness matters, combine weights with hash-based load balancing in the DestinationRule:
+One thing to watch out for: this is a per-request split. It does not guarantee that the same user always hits the same version. If session stickiness matters for the A/B group assignment, use a stable header or cookie as shown above. Consistent hashing in a DestinationRule can provide soft affinity to backend pods within the selected subset, but it does not make the weighted v1/v2 choice sticky:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-app
@@ -160,7 +160,7 @@ spec:
 You are not limited to just two variants. If you want to test three versions simultaneously, just add more subsets and routing rules:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -196,7 +196,7 @@ spec:
 You can get really specific by combining multiple match conditions. For example, only route mobile users in test group B to v2:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
