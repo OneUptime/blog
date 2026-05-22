@@ -8,21 +8,21 @@ Description: Learn how to use the merge function in Terraform to combine multipl
 
 ---
 
-Managing configuration data in Terraform often involves combining maps from multiple sources - default settings, environment overrides, user customizations, and module inputs. The `merge` function takes two or more maps and combines them into a single map. When keys overlap, later maps take precedence, making it perfect for implementing configuration layering with defaults and overrides.
+Managing configuration data in Terraform often involves combining maps from multiple sources - default settings, environment overrides, user customizations, and module inputs. The `merge` function takes maps or objects and combines them into a single map or object. When keys overlap, later maps take precedence, making it perfect for implementing configuration layering with defaults and overrides.
 
 This guide covers the `merge` function's behavior, its use in tag management, configuration layering, and other practical patterns.
 
 ## What is the merge Function?
 
-The `merge` function combines multiple maps into a single map. If the same key appears in more than one input map, the value from the last map wins.
+The `merge` function combines multiple maps or objects into a single map or object. If the same key appears in more than one input, the value from the last argument wins.
 
 ```hcl
 # Combines maps, later values override earlier ones for duplicate keys
 
-merge(map1, map2, ...)
+merge(map_or_object1, map_or_object2, ...)
 ```
 
-You can pass any number of maps to `merge`.
+You can pass any number of maps or objects to `merge`.
 
 ## Basic Usage in Terraform Console
 
@@ -263,7 +263,7 @@ locals {
 In some other tools, you might use spread operators. In Terraform, `merge` serves that purpose.
 
 ```hcl
-# There is no spread operator in Terraform
+# There is no object spread syntax in Terraform
 # merge IS the equivalent
 locals {
   base    = { a = 1, b = 2 }
@@ -350,7 +350,7 @@ Note the `...` (expansion) operator, which spreads a list of maps as individual 
 ## Edge Cases
 
 - **Empty maps are no-ops**: Merging with `{}` does nothing.
-- **All maps must have compatible value types**: If you merge `{a = "string"}` with `{a = 5}`, Terraform will attempt type unification and may error.
+- **Mixed value types are allowed**: If the argument types do not match, Terraform returns an object type matching the attributes after the merge rules are applied.
 - **Key ordering**: The result map's keys are sorted alphabetically, regardless of input order.
 - **Not recursive**: `merge` does not deep-merge nested maps. It replaces the entire value for a key.
 
