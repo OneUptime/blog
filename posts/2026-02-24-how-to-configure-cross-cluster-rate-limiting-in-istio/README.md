@@ -130,6 +130,8 @@ spec:
 
 **Step 2: Deploy the Rate Limit Service**
 
+Deploy the rate limit service in each cluster, or expose one shared rate limit service address that every cluster can resolve. In either case, all rate limit service instances must use the same Redis backend for the counters to be global.
+
 ```yaml
 apiVersion: apps/v1
 kind: Deployment
@@ -268,9 +270,30 @@ spec:
                   socket_address:
                     address: ratelimit.rate-limit
                     port_value: 8081
+  - applyTo: HTTP_ROUTE
+    match:
+      context: SIDECAR_INBOUND
+      routeConfiguration:
+        vhost:
+          name: "inbound|http|8080"
+          route:
+            action: ANY
+    patch:
+      operation: MERGE
+      value:
+        typed_per_filter_config:
+          envoy.filters.http.ratelimit:
+            "@type": type.googleapis.com/envoy.extensions.filters.http.ratelimit.v3.RateLimitPerRoute
+            domain: production
+        route:
+          rate_limits:
+          - actions:
+            - request_headers:
+                header_name: ":path"
+                descriptor_key: "PATH"
 ```
 
-Apply this to both clusters so that all proxies check the same rate limit service:
+Apply this to both clusters so that all proxies check rate limit service instances backed by the same Redis counters:
 
 ```bash
 kubectl apply -f global-ratelimit.yaml --context=cluster-a
