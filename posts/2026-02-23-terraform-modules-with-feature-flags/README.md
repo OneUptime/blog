@@ -255,8 +255,8 @@ Feature flags can also control how resources are configured, not just whether th
 ```hcl
 variable "features" {
   type = object({
-    enable_enhanced_networking = optional(bool, false)
-    enable_spot_instances      = optional(bool, false)
+    enable_efa_networking = optional(bool, false)
+    enable_spot_instances = optional(bool, false)
   })
   default = {}
 }
@@ -270,8 +270,8 @@ resource "aws_launch_template" "this" {
     associate_public_ip_address = false
     security_groups             = var.security_group_ids
 
-    # Enhanced networking uses a different interface type
-    interface_type = var.features.enable_enhanced_networking ? "efa" : null
+    # EFA networking uses a different interface type
+    interface_type = var.features.enable_efa_networking ? "efa" : null
   }
 
   # Spot configuration only when enabled
