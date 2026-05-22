@@ -88,7 +88,7 @@ remote_state {
     key            = "${local.environment}/${path_relative_to_include()}/terraform.tfstate"
     region         = "us-east-1"
     encrypt        = true
-    dynamodb_table = "terraform-locks"
+    use_lockfile   = true
   }
 }
 ```
@@ -172,6 +172,12 @@ on:
 env:
   TF_IN_AUTOMATION: true
   BRANCH_NAME: ${{ github.head_ref }}
+  ENV_CREATED_AT: ${{ github.event.pull_request.created_at }}
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
 
 jobs:
   deploy:
@@ -195,8 +201,7 @@ jobs:
         working-directory: infrastructure/environments/feature
         run: |
           export BRANCH_NAME="${{ github.head_ref }}"
-          terragrunt run-all apply \
-            --terragrunt-non-interactive \
+          terragrunt run --all --non-interactive -- apply \
             -auto-approve
 
       - name: Post Environment URL
@@ -231,8 +236,7 @@ jobs:
         working-directory: infrastructure/environments/feature
         run: |
           export BRANCH_NAME="${{ github.head_ref }}"
-          terragrunt run-all destroy \
-            --terragrunt-non-interactive \
+          terragrunt run --all --non-interactive -- destroy \
             -auto-approve
 
       - name: Clean State Files
@@ -270,7 +274,7 @@ Feature environments that aren't cleaned up waste money. Add a TTL mechanism:
 inputs = {
   tags = {
     Ephemeral    = "true"
-    CreatedAt    = timestamp()
+    CreatedAt    = get_env("ENV_CREATED_AT", "unknown")
     TTLHours     = "72"
     FeatureBranch = get_env("BRANCH_NAME", "unknown")
   }
@@ -284,23 +288,30 @@ Then run a scheduled job to find and destroy stale environments:
 # scripts/cleanup-stale-environments.sh
 
 # Find state files older than 72 hours
-STALE_ENVS=$(aws s3 ls s3://my-company-terraform-state/feat- | \
-  awk '{print $1, $2, $NF}' | \
-  while read date time prefix; do
-    created=$(date -d "$date $time" +%s)
+STALE_ENVS=$(aws s3api list-objects-v2 \
+  --bucket my-company-terraform-state \
+  --prefix feat- \
+  --query 'Contents[].[Key,LastModified]' \
+  --output text | \
+  while read -r key last_modified; do
+    case "$key" in
+      */terraform.tfstate) ;;
+      *) continue ;;
+    esac
+    created=$(date -d "$last_modified" +%s)
     now=$(date +%s)
     age_hours=$(( (now - created) / 3600 ))
     if [ $age_hours -gt 72 ]; then
-      echo "$prefix"
+      echo "${key%%/*}"
     fi
-  done)
+  done | sort -u)
 
 for env in $STALE_ENVS; do
   echo "Destroying stale environment: $env"
   BRANCH_NAME="${env#feat-}"
   export BRANCH_NAME
   cd infrastructure/environments/feature
-  terragrunt run-all destroy --terragrunt-non-interactive -auto-approve
+  terragrunt run --all --non-interactive -- destroy -auto-approve
 done
 ```
 
