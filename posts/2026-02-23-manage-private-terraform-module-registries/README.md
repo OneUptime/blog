@@ -53,7 +53,7 @@ Setting up a module in the private registry:
 4. Connect your VCS provider (GitHub, GitLab, Bitbucket)
 5. Select the repository containing your module
 
-The repository must follow the naming convention `terraform-<PROVIDER>-<NAME>`. For example, `terraform-aws-vpc`.
+Use the repository naming convention `terraform-<PROVIDER>-<NAME>` when possible. For example, `terraform-aws-vpc`. This keeps the module compatible with common registry tooling and makes the module name and provider obvious.
 
 **Auto-publishing**: When you push a new Git tag (e.g., `v1.3.0`), Terraform Cloud automatically publishes a new version.
 
@@ -114,6 +114,8 @@ on:
 jobs:
   release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -150,7 +152,7 @@ module "vpc" {
 }
 ```
 
-Set it up by pushing to a GitLab project with the correct naming convention and creating Git tags. GitLab automatically makes the module available in its registry.
+Set it up by publishing a package to GitLab's Terraform Module Registry with GitLab CI/CD or the package API. GitLab's CI/CD template can publish the module when you create a Git tag.
 
 Configure authentication:
 
@@ -163,7 +165,7 @@ credentials "gitlab.com" {
 
 **Pros**: Built into GitLab, supports version constraints, has a UI for browsing modules.
 
-**Cons**: Requires GitLab Premium or Ultimate for the full registry features.
+**Cons**: Requires configuring package publishing through GitLab CI/CD or the package API.
 
 ## Option 4: JFrog Artifactory
 
@@ -176,31 +178,22 @@ module "vpc" {
 }
 ```
 
-Configure the Terraform CLI to use Artifactory:
-
-```hcl
-# ~/.terraformrc
-provider_installation {
-  direct {
-    exclude = []
-  }
-}
-
-credentials "myartifactory.example.com" {
-  token = "your-artifactory-token"
-}
-```
-
-Publish modules using the Artifactory API:
+Configure JFrog CLI to publish Terraform modules to Artifactory:
 
 ```bash
-# Package the module
-tar -czf terraform-aws-vpc-1.2.0.tar.gz -C modules/vpc .
+jf config add my-server
+jf terraform-config \
+  --server-id-deploy=my-server \
+  --repo-deploy=terraform-modules
+```
 
-# Upload to Artifactory
-curl -H "Authorization: Bearer $ARTIFACTORY_TOKEN" \
-  -T terraform-aws-vpc-1.2.0.tar.gz \
-  "https://myartifactory.example.com/artifactory/terraform-modules/myorg/vpc/aws/1.2.0.tar.gz"
+Publish modules using JFrog CLI from the module directory:
+
+```bash
+jf tf p \
+  --namespace=myorg \
+  --provider=aws \
+  --tag=v1.2.0
 ```
 
 **Pros**: Centralized artifact management, enterprise features like replication and access control.
@@ -213,8 +206,8 @@ You can run your own Terraform registry that implements the Module Registry Prot
 
 ```text
 GET /.well-known/terraform.json
-GET /v1/modules/{namespace}/{name}/{provider}/versions
-GET /v1/modules/{namespace}/{name}/{provider}/{version}/download
+GET /v1/modules/{namespace}/{name}/{system}/versions
+GET /v1/modules/{namespace}/{name}/{system}/{version}/download
 ```
 
 There are open-source implementations available:
@@ -255,7 +248,7 @@ terraform-google-gke-cluster
 terraform-azurerm-resource-group
 ```
 
-This convention is required for Terraform Cloud's private registry and is a widely followed standard.
+This convention is required by the public Terraform Registry and is a widely followed standard for private module repositories.
 
 ## Publishing Workflow
 
