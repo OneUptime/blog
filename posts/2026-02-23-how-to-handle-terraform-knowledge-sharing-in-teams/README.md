@@ -59,9 +59,9 @@ Document the things that are not obvious from reading the code:
 ## Things That Can Go Wrong
 
 ### EKS Node Group Scaling
-When scaling EKS node groups, Terraform may try to replace
-all nodes simultaneously. Always use `create_before_destroy`
-lifecycle rules and set `max_unavailable` to 1.
+When updating EKS managed node groups, AWS replaces nodes during
+the update process. Set an `update_config` with `max_unavailable`
+to 1 to limit how many nodes are unavailable during the update.
 
 ### RDS Parameter Group Changes
 Changing certain RDS parameters requires a reboot. Terraform
@@ -78,7 +78,8 @@ must either empty the bucket first or set `force_destroy = true`
 
 ### Lambda@Edge Deletion
 Lambda@Edge functions cannot be deleted immediately after
-removing them from CloudFront. There is a 30-minute delay.
+removing them from CloudFront. Replica cleanup typically takes
+a few hours.
 Our CI pipeline retries the destroy operation with exponential
 backoff. See: modules/cdn/destroy_retry.sh
 
@@ -186,8 +187,8 @@ Our security policy requires SSH access only from the VPN CIDR
 switched to using our custom AMI pipeline that publishes AMI IDs
 to SSM Parameter Store. Using the parameter instead would ensure
 we always get our hardened base image. Example:
-data 'aws_ssm_parameter' 'ami' {
-  name = '/amis/base/latest'
+data "aws_ssm_parameter" "ami" {
+  name = "/amis/base/latest"
 }
 This was decided in ADR-015 if you want more context."
 ```
@@ -235,8 +236,8 @@ After incidents, capture lessons in a searchable format:
 
 ## What Happened
 A Terraform apply replaced the production database instead of
-modifying it in-place. The `engine_version` change from 13.4
-to 14.1 required replacement, which was not caught in review.
+modifying it in-place. The `storage_encrypted` change from
+false to true required replacement, which was not caught in review.
 
 ## Root Cause
 The reviewer did not check the plan output for force-replacement
@@ -245,7 +246,7 @@ indicators. The `-/+` symbol was present but overlooked.
 ## Lessons Learned
 1. Always search plan output for `-/+` on stateful resources
 2. Add a CI check that flags force-replacement of databases
-3. Update review checklist to specifically call out engine upgrades
+3. Update review checklist to specifically call out storage encryption changes
 
 ## Changes Made
 - Added automated plan analysis script (PR #456)
