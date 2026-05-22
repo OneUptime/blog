@@ -158,7 +158,7 @@ terraform plan -refresh=false -out=plan.tfplan
 terraform apply plan.tfplan
 ```
 
-This way you get accurate state data without paying the refresh cost twice (once during plan, once during apply).
+This way you get accurate state data without paying the refresh cost again during the planning step.
 
 ## The -refresh=false Flag with import
 
@@ -194,16 +194,16 @@ $ time terraform plan -refresh=false
 
 That's a 28x speedup. For rapid development cycles where you're running plan dozens of times, this saves a lot of time.
 
-## Using -refresh=false in Terraform Cloud
+## Using -refresh=false in HCP Terraform
 
-In Terraform Cloud, you can configure the refresh behavior per workspace:
+In HCP Terraform, skipping automatic state refresh is a per-run planning option:
 
 ```hcl
-# In Terraform Cloud, you can set auto-apply and refresh settings
-# through the API or UI, not directly in configuration
+# In HCP Terraform, you can set auto-apply at the workspace level.
+# Refresh behavior is a run option, not Terraform configuration.
 ```
 
-From the Terraform Cloud UI, go to your workspace settings and configure whether plans should auto-refresh. You can also trigger refresh-only runs through the API.
+Use `terraform plan -refresh=false` or `terraform apply -refresh=false` for CLI-driven runs. For UI or API runs, choose the corresponding planning option for that run. You can also trigger refresh-only runs through the UI or API.
 
 ## State Staleness Risks
 
