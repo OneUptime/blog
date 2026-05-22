@@ -25,13 +25,13 @@ A network policy audit should answer several questions:
 
 The foundation of policy enforcement in Istio is mutual TLS. If mTLS isn't enabled, your authorization policies based on service identity won't work correctly.
 
-Check the mesh-wide PeerAuthentication policy:
+Check the mesh-wide PeerAuthentication policy in Istio's root namespace:
 
 ```bash
 kubectl get peerauthentication -A
 ```
 
-Verify it's set to STRICT:
+Verify it's set to STRICT. In many installations the root namespace is `istio-system` and the policy is named `default`, but use the namespace and policy name from your own mesh if they differ:
 
 ```bash
 kubectl get peerauthentication default -n istio-system -o yaml
@@ -73,7 +73,7 @@ Check which namespaces don't have a default-deny policy:
 #!/bin/bash
 NAMESPACES=$(kubectl get ns -o jsonpath='{.items[*].metadata.name}')
 for ns in $NAMESPACES; do
-  DENY=$(kubectl get authorizationpolicy -n $ns -o jsonpath='{range .items[*]}{.spec}{"\n"}{end}' 2>/dev/null | grep -c '{}')
+  DENY=$(kubectl get authorizationpolicy -n "$ns" -o json 2>/dev/null | jq '[.items[] | select((.spec.selector == null) and (.spec.targetRefs == null) and (.spec.action == null or .spec.action == "ALLOW") and (.spec.rules == null or (.spec.rules | length == 0)))] | length')
   if [ "$DENY" -eq "0" ]; then
     echo "WARNING: No default-deny policy in namespace: $ns"
   fi
@@ -125,15 +125,15 @@ sum(rate(istio_requests_total{response_code="403",reporter="destination"}[24h]))
 
 ## Checking for Sidecar Injection Gaps
 
-Authorization policies only work on pods with Istio sidecars. Any pod without a sidecar bypasses your policies entirely.
+In sidecar mode, authorization policies are enforced by the Istio sidecar proxy. Any application pod that should be in the mesh but is missing the sidecar can bypass sidecar-mode policy enforcement.
 
 Find pods without sidecars:
 
 ```bash
-kubectl get pods -A -o jsonpath='{range .items[?(@.spec.containers[*].name!="istio-proxy")]}{.metadata.namespace}/{.metadata.name}{"\n"}{end}'
+kubectl get pods -A -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}{" "}{.spec.containers[*].name}{"\n"}{end}' | awk '$0 !~ /(^| )istio-proxy( |$)/'
 ```
 
-A more reliable approach is to check for pods that have fewer containers than expected:
+A tabular version of the same check is:
 
 ```bash
 kubectl get pods -A -o custom-columns=NAMESPACE:.metadata.namespace,NAME:.metadata.name,CONTAINERS:.spec.containers[*].name | grep -v istio-proxy
@@ -147,7 +147,7 @@ Check namespace labels:
 kubectl get ns -L istio-injection
 ```
 
-Namespaces without the `istio-injection=enabled` label (or the newer `istio.io/rev` label for revision-based injection) won't get automatic sidecar injection.
+Namespaces without the `istio-injection=enabled` label (or an `istio.io/rev` label for revision-based injection) generally won't get automatic sidecar injection unless injection is enabled by pod labels or by your injector's default policy.
 
 ## Generating Compliance Reports
 
@@ -195,7 +195,7 @@ Don't wait for manual audits to catch problems. Validate policies as part of you
 Use `istioctl analyze` in dry-run mode:
 
 ```bash
-istioctl analyze --use-kube=false -A my-policies/*.yaml
+istioctl analyze --use-kube=false my-policies/*.yaml
 ```
 
 This validates your policy YAML files without applying them to a live cluster.
@@ -205,17 +205,22 @@ You can also write OPA (Open Policy Agent) rules to enforce your organization's 
 ```rego
 package istio.authz
 
-deny[msg] {
+import rego.v1
+
+deny contains msg if {
   input.kind == "AuthorizationPolicy"
   input.metadata.namespace == "production"
   not has_deny_all(input.metadata.namespace)
   msg := sprintf("Namespace %s must have a default-deny policy", [input.metadata.namespace])
 }
 
-has_deny_all(ns) {
-  some policy
-  data.policies[policy].metadata.namespace == ns
-  data.policies[policy].spec == {}
+has_deny_all(ns) if {
+  some policy in data.policies
+  policy.metadata.namespace == ns
+  object.get(policy.spec, "selector", null) == null
+  object.get(policy.spec, "targetRefs", null) == null
+  object.get(policy.spec, "action", "ALLOW") == "ALLOW"
+  count(object.get(policy.spec, "rules", [])) == 0
 }
 ```
 
