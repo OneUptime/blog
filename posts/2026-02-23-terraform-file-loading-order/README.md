@@ -28,12 +28,12 @@ project/
   outputs.tf          # regular
   variables.tf        # regular
   override.tf         # override - loaded after all regular files
-  dev_override.tf     # override - loaded after override.tf
+  z_override.tf       # override - loaded after override.tf
 ```
 
 ## Regular Files: Order Does Not Matter
 
-For regular `.tf` files (anything not ending in `_override.tf` and not named `override.tf`), the alphabetical loading order is practically irrelevant. Terraform reads all of them and combines their contents. Since Terraform configurations are declarative, the order does not affect the result.
+For regular `.tf` and `.tf.json` files (anything not ending in `_override.tf` or `_override.tf.json`, and not named `override.tf` or `override.tf.json`), the alphabetical loading order is practically irrelevant. Terraform reads all of them and combines their contents. Since Terraform configurations are declarative, the order does not affect the result.
 
 ```hcl
 # File: aaa.tf
@@ -61,15 +61,15 @@ This works perfectly even though `aaa.tf` references resources defined in `zzz.t
 
 Override files are the exception. They are processed after regular files, and their order determines which override wins when multiple overrides modify the same argument.
 
-The processing order is:
+The processing order is lexicographical by filename:
 
-1. `override.tf` (if it exists) - processed first
-2. Files matching `*_override.tf` - processed in alphabetical order
+1. Files matching `*_override.tf` or `*_override.tf.json`
+2. `override.tf` or `override.tf.json` when its filename sorts into that sequence
 
 ```text
-override.tf           # processed first
-alpha_override.tf     # processed second
-beta_override.tf      # processed third
+alpha_override.tf     # processed first
+beta_override.tf      # processed second
+override.tf           # processed third
 ```
 
 If both `alpha_override.tf` and `beta_override.tf` set the same attribute, `beta_override.tf` wins because it is processed last:
@@ -102,8 +102,8 @@ Terraform loads these file types from the current directory:
 
 It does NOT automatically load:
 - Files in subdirectories (those are separate modules)
-- `.tfvars` files (except `terraform.tfvars` and `*.auto.tfvars`)
-- `.hcl` files (these are for CLI configuration, not Terraform config)
+- `.tfvars` files as configuration (though `terraform.tfvars`, `terraform.tfvars.json`, `*.auto.tfvars`, and `*.auto.tfvars.json` are auto-loaded for variable values)
+- Plain `.hcl` files as module configuration
 - Any non-.tf files
 
 ```text
@@ -112,7 +112,9 @@ project/
   variables.tf         # loaded
   config.tf.json       # loaded
   terraform.tfvars     # auto-loaded for variable values
+  terraform.tfvars.json # auto-loaded for variable values
   prod.auto.tfvars     # auto-loaded for variable values
+  prod.auto.tfvars.json # auto-loaded for variable values
   staging.tfvars       # NOT auto-loaded (use -var-file flag)
   scripts/
     bootstrap.sh       # NOT loaded as config (it's not .tf)
@@ -123,13 +125,14 @@ project/
 
 ## Variable Files Loading Order
 
-While `.tf` file order does not matter for configuration, variable value files have a specific loading priority:
+While `.tf` file order does not matter for configuration, variable values have a specific precedence, from lowest to highest:
 
-1. `terraform.tfvars` (auto-loaded if present)
-2. `*.auto.tfvars` files (auto-loaded, alphabetical order)
-3. `-var-file` flags (in the order specified on the command line)
-4. `-var` flags (in the order specified on the command line)
-5. `TF_VAR_*` environment variables
+1. Default values in `variable` blocks
+2. `TF_VAR_*` environment variables
+3. `terraform.tfvars` (auto-loaded if present)
+4. `terraform.tfvars.json` (auto-loaded if present)
+5. `*.auto.tfvars` and `*.auto.tfvars.json` files (auto-loaded, lexical order)
+6. `-var-file` and `-var` flags (in the order specified on the command line)
 
 Later values override earlier ones:
 
@@ -146,8 +149,9 @@ terraform apply \
 ```text
 project/
   terraform.tfvars       # loaded first (auto)
-  alpha.auto.tfvars      # loaded second (auto, alphabetical)
-  beta.auto.tfvars       # loaded third (auto, alphabetical)
+  terraform.tfvars.json  # loaded second (auto)
+  alpha.auto.tfvars      # loaded third (auto, lexical)
+  beta.auto.tfvars       # loaded fourth (auto, lexical)
 ```
 
 ## JSON and HCL Files Together
@@ -162,8 +166,8 @@ resource "aws_vpc" "main" {
 ```
 
 ```json
-// generated.tf.json (JSON format)
 {
+  "//": "File: generated.tf.json (JSON format)",
   "resource": {
     "aws_instance": {
       "web": {
