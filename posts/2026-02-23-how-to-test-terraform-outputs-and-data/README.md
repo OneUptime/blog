@@ -302,7 +302,7 @@ run "verify_sensitive_output" {
 }
 ```
 
-In Terratest, use the specific function for sensitive outputs:
+In Terratest, retrieve the sensitive output by name. Terraform returns the value when a specific output is requested, even if it is marked sensitive:
 
 ```go
 // Retrieve sensitive output value
@@ -357,13 +357,12 @@ run "without_nat_gateway" {
 
 ## Data Source Error Handling
 
-Data sources can fail when the resource they are looking up does not exist. Test these failure cases to make sure your module handles them gracefully.
+Some data sources fail when the resource they are looking up does not exist. Test fallback cases with data sources that return a collection so your module can choose a default when no matches are found.
 
 ```hcl
 # Module code with graceful data source handling
-data "aws_ami" "app" {
-  most_recent = true
-  owners      = ["self"]
+data "aws_ami_ids" "app" {
+  owners = ["self"]
 
   filter {
     name   = "name"
@@ -373,7 +372,7 @@ data "aws_ami" "app" {
 
 # Fallback if no AMI matches
 locals {
-  ami_id = try(data.aws_ami.app.id, var.fallback_ami_id)
+  ami_id = length(data.aws_ami_ids.app.ids) > 0 ? data.aws_ami_ids.app.ids[0] : var.fallback_ami_id
 }
 
 output "resolved_ami_id" {
