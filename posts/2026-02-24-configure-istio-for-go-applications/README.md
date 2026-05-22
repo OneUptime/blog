@@ -14,6 +14,8 @@ Go applications and Istio are a natural fit. Envoy itself is written in C++, but
 
 A Go application deployment configured for Istio:
 
+This assumes the `production` namespace has Istio sidecar injection enabled, or that you inject the sidecar manually with `istioctl kube-inject`.
+
 ```yaml
 apiVersion: apps/v1
 kind: Deployment
@@ -49,9 +51,9 @@ spec:
             memory: 256Mi
 ```
 
-Go apps are efficient with resources. A typical Go HTTP service uses very little memory compared to Java or Python equivalents. The resource requests above are conservative and work well for most services.
+Go apps are often efficient with resources. A typical small Go HTTP service can use very little memory compared to heavier runtimes, but you should tune requests and limits based on profiling and production traffic.
 
-Notice the port names: `http-api` for the HTTP port and `grpc-internal` for the gRPC port. Istio uses these prefixes to detect the protocol.
+Notice the port names: `http-api` for the HTTP port and `grpc-internal` for the gRPC port. The Service below uses the same names as `targetPort` values.
 
 ## Service Definition
 
@@ -73,6 +75,8 @@ spec:
     targetPort: grpc-internal
 ```
 
+Istio uses Service port names with prefixes such as `http-` and `grpc-` to detect the protocol. On Kubernetes 1.18 and later, you can also use the Service port `appProtocol` field.
+
 ## Health Check Implementation
 
 Go makes it easy to implement proper health check endpoints:
@@ -81,7 +85,6 @@ Go makes it easy to implement proper health check endpoints:
 package main
 
 import (
-    "context"
     "encoding/json"
     "log"
     "net/http"
@@ -156,7 +159,7 @@ containers:
     failureThreshold: 15
 ```
 
-Go apps start very fast - typically under a second. The initialDelaySeconds can be very low.
+Go apps often start quickly, but startup time depends on dependency initialization. The `initialDelaySeconds` can be low for simple services; tune it for your application.
 
 ## Graceful Shutdown
 
@@ -217,7 +220,7 @@ func main() {
 }
 ```
 
-The `time.Sleep(5 * time.Second)` before shutdown is important. It gives the Istio sidecar and Kubernetes endpoints controller time to update, so new requests stop being routed to this pod.
+The `time.Sleep(5 * time.Second)` before shutdown can help during termination. It gives the Istio sidecar and Kubernetes endpoints controller time to update, so fewer new requests are routed to this pod while the server is still able to handle any traffic that arrives during propagation.
 
 In your deployment:
 
@@ -418,7 +421,7 @@ Go apps can handle many concurrent connections efficiently, so the connection li
 
 Resource Considerations
 
-Go apps compile to a single binary with no runtime dependencies. They are very efficient:
+Go apps can compile to a single binary with minimal runtime dependencies. They are often very efficient:
 
 ```yaml
 resources:
@@ -430,14 +433,14 @@ resources:
     memory: 128Mi
 ```
 
-The sidecar proxy will actually use more resources than many Go applications. A typical Go microservice uses 10-30MB of memory, while the Envoy sidecar uses 50-100MB. Factor this into your resource planning.
+The sidecar proxy can use more resources than many small Go applications. Factor the Envoy sidecar into your resource planning instead of sizing the pod only for the application container.
 
 ## Common Go + Istio Issues
 
-**HTTP/2 and gRPC**: Go's default HTTP client uses HTTP/1.1. If your service communicates with other services over gRPC through the mesh, make sure the port name has the `grpc-` prefix so Istio knows to handle it as HTTP/2.
+**HTTP/2 and gRPC**: Go's `net/http` client uses HTTP/1.1 for plain HTTP URLs and can use HTTP/2 for HTTPS when the server supports it. gRPC uses HTTP/2, so if your service communicates with other services over gRPC through the mesh, make sure the Service port name has the `grpc-` prefix or the `appProtocol` is set to `grpc` so Istio knows to handle it as HTTP/2.
 
 **Connection reuse**: Go's `http.Client` reuses connections by default, which works well with Envoy's connection pooling. Do not create a new client for every request.
 
-**DNS caching**: Go caches DNS results differently than other languages. In Kubernetes, this usually is not an issue because DNS resolution is fast, but be aware that if a service's IP changes, Go might hold onto the old address for a while. Istio's sidecar handles this transparently since it does its own service discovery.
+**DNS and connection reuse**: Go's HTTP transport caches connections for reuse. In Kubernetes, this usually is not an issue when you call stable Service DNS names, and Istio's sidecar uses its own service discovery for mesh traffic.
 
 Go and Istio are a great combination. The lightweight nature of Go binaries means the sidecar overhead is proportionally larger, but the total resource usage is still very reasonable. Focus on proper port naming, trace header propagation, and graceful shutdown, and your Go services will integrate seamlessly into the mesh.
