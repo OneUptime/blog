@@ -8,7 +8,7 @@ Description: Learn how to implement authentication in custom Terraform providers
 
 ---
 
-Authentication is one of the most critical parts of a Terraform provider. It determines how your provider proves its identity to the underlying API and directly affects the security of your users' infrastructure. A well-designed authentication system supports multiple credential types, integrates with secrets management, and never exposes sensitive data in logs or state files.
+Authentication is one of the most critical parts of a Terraform provider. It determines how your provider proves its identity to the underlying API and directly affects the security of your users' infrastructure. A well-designed authentication system supports multiple credential types, integrates with secrets management, and avoids exposing sensitive data in logs or practitioner-facing output.
 
 This guide covers implementing authentication in custom Terraform providers, from simple API keys to complex OAuth2 flows and cloud instance-based credentials.
 
@@ -18,7 +18,7 @@ Before writing code, establish these principles for your provider's authenticati
 
 Support at least two authentication methods. Users running Terraform locally may prefer API keys, while CI/CD environments often use service accounts or environment-based credentials.
 
-Never log credentials. Use the `Sensitive: true` attribute flag and be careful with debug logging to avoid exposing secrets.
+Never log credentials. Use the `Sensitive: true` attribute flag to mask values in practitioner-facing output, and be careful with debug logging to avoid exposing secrets.
 
 Follow the principle of least privilege. Recommend that users create API credentials with only the permissions needed for the resources your provider manages.
 
@@ -52,7 +52,7 @@ func (p *MyProvider) Schema(_ context.Context, _ provider.SchemaRequest, resp *p
             "api_key": schema.StringAttribute{
                 Description: "API key for authentication. Can also be set with the MYSERVICE_API_KEY environment variable.",
                 Optional:    true,
-                Sensitive:   true,  // Masks the value in plan output and logs
+                Sensitive:   true,  // Masks the value in practitioner-facing output
             },
             "endpoint": schema.StringAttribute{
                 Description: "API endpoint URL.",
@@ -189,7 +189,7 @@ func (p *MyProvider) Configure(ctx context.Context, req provider.ConfigureReques
     }
 
     // Create OAuth2 authenticated client
-    oauthConfig := &oauth2.Config{
+    oauthConfig := &clientcredentials.Config{
         ClientID:     clientID,
         ClientSecret: clientSecret,
         TokenURL:     tokenURL,
@@ -197,10 +197,10 @@ func (p *MyProvider) Configure(ctx context.Context, req provider.ConfigureReques
     }
 
     // Use client credentials flow
-    tokenSource := oauthConfig.TokenSource(ctx, &oauth2.Token{})
+    tokenSource := oauthConfig.TokenSource(ctx)
 
-    // The oauth2 transport automatically refreshes tokens when they expire
-    httpClient := oauth2.NewClient(ctx, tokenSource)
+    // The clientcredentials client automatically refreshes tokens when they expire
+    httpClient := oauthConfig.Client(ctx)
 
     // Verify we can get a token
     _, err := tokenSource.Token()
@@ -407,7 +407,7 @@ provider "myservice" {
   # Reads from MYSERVICE_API_KEY environment variable
 }
 
-# GOOD: Use a secrets manager
+# USE WITH CAUTION: Terraform data sources can write retrieved secrets to state
 data "vault_generic_secret" "myservice" {
   path = "secret/myservice"
 }
@@ -416,10 +416,11 @@ provider "myservice" {
   api_key = data.vault_generic_secret.myservice.data["api_key"]
 }
 
-# GOOD: Use Terraform variables with sensitive flag
+# GOOD: Use Terraform variables with sensitive and ephemeral flags
 variable "myservice_api_key" {
   type      = string
   sensitive = true
+  ephemeral = true  # Terraform 1.10+; omits the value from state and plan files
 }
 
 provider "myservice" {
@@ -429,7 +430,7 @@ provider "myservice" {
 
 ## Best Practices
 
-Mark all credential attributes as `Sensitive: true`. This prevents Terraform from displaying them in plan output, CLI output, and logs.
+Mark all credential attributes as `Sensitive: true`. This tells Terraform to treat the value as sensitive and generally mask it in practitioner-facing output. It does not, by itself, prevent storage in state or plan files or protect values that provider code explicitly writes to logs.
 
 Support environment variables for all credential attributes. This is the standard pattern for CI/CD environments where you cannot put secrets in HCL files.
 
