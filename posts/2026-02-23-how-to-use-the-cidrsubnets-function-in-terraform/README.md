@@ -8,7 +8,7 @@ Description: Learn how to use Terraform's cidrsubnets function to allocate multi
 
 ---
 
-When you need to carve out multiple subnets from a single network prefix, calling `cidrsubnet` repeatedly can be tedious and error-prone, especially when the subnets are different sizes. The `cidrsubnets` function (note the plural) solves this by allocating multiple contiguous, non-overlapping subnet prefixes in a single call.
+When you need to carve out multiple subnets from a single network prefix, calling `cidrsubnet` repeatedly can be tedious and error-prone, especially when the subnets are different sizes. The `cidrsubnets` function (note the plural) solves this by allocating multiple sequential, non-overlapping subnet prefixes in a single call.
 
 ## What Does cidrsubnets Do?
 
@@ -36,7 +36,7 @@ The function returns a list of strings, each in CIDR notation.
 
 ## cidrsubnets vs cidrsubnet
 
-The key difference is that `cidrsubnets` (plural) automatically packs subnets contiguously and handles different sizes, while `cidrsubnet` (singular) picks a specific subnet by number. With `cidrsubnet`, you must manually ensure subnets do not overlap when using different sizes. With `cidrsubnets`, the function handles this for you.
+The key difference is that `cidrsubnets` (plural) automatically allocates subnets sequentially and handles different sizes, while `cidrsubnet` (singular) picks a specific subnet by number. With `cidrsubnet`, you must manually ensure subnets do not overlap when using different sizes. With `cidrsubnets`, the function handles this for you.
 
 ```hcl
 # Using cidrsubnet (singular) - you pick specific subnet numbers
@@ -54,7 +54,7 @@ locals {
 
 ## Mixed Subnet Sizes
 
-The real power of `cidrsubnets` shows when you need different-sized subnets. The function packs them efficiently without overlaps:
+The real power of `cidrsubnets` shows when you need different-sized subnets. The function allocates them sequentially without overlaps:
 
 ```hcl
 # Allocate subnets of different sizes
@@ -70,7 +70,7 @@ output "mixed_subnets" {
 }
 ```
 
-Notice how the function placed the `/24` subnets after the `/20` block ends at `10.0.15.255`. This automatic packing is what makes `cidrsubnets` so valuable.
+Notice how the function placed the `/24` subnets after the `/20` block ends at `10.0.15.255`. This automatic allocation is what makes `cidrsubnets` so valuable.
 
 ## Practical Examples
 
@@ -251,4 +251,4 @@ output "too_many" {
 
 ## Summary
 
-The `cidrsubnets` function is the recommended way to allocate multiple subnets in Terraform. It handles different subnet sizes, prevents overlaps, and packs subnets contiguously. Whenever you need to create more than a couple of subnets, reach for `cidrsubnets` instead of making multiple `cidrsubnet` calls. For more on dynamic subnet calculations, see our post on [calculating subnet addresses dynamically with cidrsubnet](https://oneuptime.com/blog/post/2026-02-23-how-to-calculate-subnet-addresses-dynamically-with-cidrsubnet/view).
+The `cidrsubnets` function is the recommended way to allocate multiple subnets in Terraform. It handles different subnet sizes, prevents overlaps, and allocates subnets sequentially. Whenever you need to create more than a couple of subnets, reach for `cidrsubnets` instead of making multiple `cidrsubnet` calls. For more on dynamic subnet calculations, see our post on [calculating subnet addresses dynamically with cidrsubnet](https://oneuptime.com/blog/post/2026-02-23-how-to-calculate-subnet-addresses-dynamically-with-cidrsubnet/view).
