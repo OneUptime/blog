@@ -104,11 +104,12 @@ resource "helm_release" "nginx_ingress_aws" {
           type = "LoadBalancer"
 
           annotations = {
-            # Use NLB instead of classic load balancer
-            "service.beta.kubernetes.io/aws-load-balancer-type"     = "nlb"
+            # Use AWS Load Balancer Controller to provision an NLB
+            "service.beta.kubernetes.io/aws-load-balancer-type"     = "external"
             "service.beta.kubernetes.io/aws-load-balancer-scheme"   = "internet-facing"
+            "service.beta.kubernetes.io/aws-load-balancer-nlb-target-type" = "instance"
             # Enable cross-zone load balancing
-            "service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled" = "true"
+            "service.beta.kubernetes.io/aws-load-balancer-attributes" = "load_balancing.cross_zone.enabled=true"
             # Preserve client IP
             "service.beta.kubernetes.io/aws-load-balancer-target-group-attributes" = "preserve_client_ip.enabled=true"
           }
@@ -171,11 +172,10 @@ resource "helm_release" "nginx_ingress_gke" {
 
         service = {
           # Request a static IP (created separately)
-          loadBalancerIP = google_compute_address.ingress.address
-
           annotations = {
-            # Use a regional external IP
-            "cloud.google.com/load-balancer-type" = "External"
+            # Use a regional external IP and the recommended backend service-based external passthrough NLB
+            "networking.gke.io/load-balancer-ip-addresses" = google_compute_address.ingress.name
+            "cloud.google.com/l4-rbs" = "enabled"
           }
         }
       }
@@ -360,6 +360,9 @@ resource "helm_release" "nginx_public" {
   values = [
     yamlencode({
       controller = {
+        electionID   = "ingress-nginx-public-leader"
+        ingressClass = "nginx-public"
+
         ingressClassResource = {
           name            = "nginx-public"
           controllerValue = "k8s.io/ingress-nginx-public"
@@ -385,6 +388,9 @@ resource "helm_release" "nginx_internal" {
   values = [
     yamlencode({
       controller = {
+        electionID   = "ingress-nginx-internal-leader"
+        ingressClass = "nginx-internal"
+
         ingressClassResource = {
           name            = "nginx-internal"
           controllerValue = "k8s.io/ingress-nginx-internal"
@@ -419,7 +425,7 @@ resource "helm_release" "nginx_ingress" {
           # Custom NGINX configuration
           "proxy-buffer-size"      = "16k"
           "proxy-buffers"          = "4 16k"
-          "client-max-body-size"   = "100m"
+          "proxy-body-size"        = "100m"
           "keep-alive"             = "75"
           "keep-alive-requests"    = "1000"
           "upstream-keepalive-connections" = "100"
