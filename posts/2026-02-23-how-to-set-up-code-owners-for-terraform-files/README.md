@@ -70,14 +70,14 @@ Separate ownership between module developers and environment operators:
 
 ## Creating the CODEOWNERS File
 
-Place the CODEOWNERS file in one of these locations (GitHub checks them in order):
+Place the CODEOWNERS file in one of these locations (GitHub checks them in this order):
 
 ```text
-# Option 1: Root of the repository
-/CODEOWNERS
-
-# Option 2: .github directory (most common)
+# Option 1: .github directory (most common)
 /.github/CODEOWNERS
+
+# Option 2: Root of the repository
+/CODEOWNERS
 
 # Option 3: docs directory
 /docs/CODEOWNERS
@@ -146,13 +146,14 @@ Makefile  @org/devops-team
 /environments/production/*.tf  @org/platform-leads
 
 # Multiple owners - all teams are requested for review
+# On GitHub, approval from any one listed owner satisfies this rule
 /modules/security/  @org/security-team @org/platform-leads
 
 # Wildcard in directory names
 /environments/*/backend.tf  @org/platform-leads
 
 # Negation is NOT supported in CODEOWNERS
-# You cannot exclude files from a broader pattern
+# You cannot use ! to exclude files from a broader pattern
 ```
 
 Rules are processed from top to bottom, and the last matching rule wins. Place more specific rules after general ones:
@@ -217,7 +218,7 @@ GitLab also supports optional code owners that are suggested but not required:
 Some changes span multiple ownership boundaries. For example, adding a new service might require changes to networking, compute, and database configurations. In this case, multiple teams will be requested for review:
 
 ```text
-# A PR that touches these files will require reviews from all three teams:
+# A PR that touches these files will request reviews from all three teams:
 # /modules/networking/service_endpoints.tf  -> @org/networking-team
 # /modules/compute/ecs_service.tf           -> @org/compute-team
 # /modules/database/rds_instance.tf         -> @org/database-team
@@ -265,15 +266,15 @@ jobs:
 
       - name: Validate CODEOWNERS
         run: |
-          # Check that all referenced teams exist
-          # Check that all file patterns match at least one file
-          # This is a simplified check - use a dedicated tool for production
+          # Check that simple file patterns match at least one file
+          # This is a simplified check - use a dedicated CODEOWNERS validator for production
           while IFS= read -r line; do
             # Skip comments and empty lines
             [[ "$line" =~ ^#.*$ ]] && continue
             [[ -z "$line" ]] && continue
             # Extract the file pattern
             pattern=$(echo "$line" | awk '{print $1}')
+            pattern="${pattern#/}"
             # Check if the pattern matches any files
             if ! ls $pattern 2>/dev/null | head -1 > /dev/null; then
               echo "WARNING: Pattern '$pattern' does not match any files"
