@@ -27,7 +27,7 @@ If you do not already have an account:
 
 1. Sign up at [app.terraform.io](https://app.terraform.io)
 2. Create an organization
-3. Generate a user API token: **User Settings** > **Tokens** > **Create an API token**
+3. Generate a user API token if you plan to use the API examples later: **User Settings** > **Tokens** > **Create an API token**
 
 Then authenticate your local CLI:
 
@@ -63,10 +63,14 @@ resource "tfe_workspace" "app_infrastructure" {
 
   # Use CLI-driven for initial migration
   # You can switch to VCS-driven later
-  execution_mode    = "remote"
   terraform_version = "1.7.0"
 
   tag_names = ["production", "app", "migrated"]
+}
+
+resource "tfe_workspace_settings" "app_infrastructure" {
+  workspace_id   = tfe_workspace.app_infrastructure.id
+  execution_mode = "remote"
 }
 ```
 
@@ -158,7 +162,7 @@ terraform state push backup.tfstate
 
 ## Step 5: Move Variables
 
-Variables that were in `terraform.tfvars` or passed via `-var` flags need to be set in the workspace.
+Variables that you want managed centrally, especially secrets and values you were passing with `-var` flags, should be set in the workspace. HCP Terraform can load `terraform.tfvars` and `*.auto.tfvars` files that are included in the uploaded configuration, but it does not persist those values as workspace variables or display them in the workspace UI.
 
 ### Terraform Variables
 
@@ -298,7 +302,9 @@ resource "tfe_workspace" "production" {
 }
 ```
 
-### Option 2: Use the Prefix Pattern
+### Option 2: Replace Remote Backend Prefixes with Tags
+
+If you were using the older `remote` backend with a `prefix` argument, replace that prefix selection with workspace tags. The `cloud` block does not support `prefix`, so after migration you need to select HCP Terraform workspaces by their full names in the Terraform CLI.
 
 ```hcl
 terraform {
@@ -306,7 +312,7 @@ terraform {
     organization = "your-org"
 
     workspaces {
-      # Matches workspaces with this prefix
+      # Matches workspaces with this tag
       tags = ["app-infrastructure"]
     }
   }
@@ -355,9 +361,9 @@ terraform force-unlock LOCK_ID
 
 When execution moves to HCP Terraform, your local environment variables are not available. Make sure all required credentials are set as workspace environment variables or use dynamic credentials.
 
-### terraform.tfvars Not Used in Remote Runs
+### terraform.tfvars Not Persisted as Workspace Variables
 
-HCP Terraform does not read `terraform.tfvars` during remote execution. You need to set all variables in the workspace settings or use variable sets.
+HCP Terraform can read `terraform.tfvars` and `*.auto.tfvars` files during remote execution when those files are included in the uploaded configuration, but it does not save them as workspace variables. For shared values and secrets, set variables in the workspace settings or use variable sets.
 
 ## Migration Checklist
 
