@@ -14,7 +14,26 @@ Istio gives you tools to rate limit egress traffic at the mesh level, so you do 
 
 ## Connection Pool Limits
 
-The simplest form of egress rate limiting is connection pool management through DestinationRules. This does not provide true request-per-second rate limiting, but it caps the number of concurrent connections and requests to an external service:
+The simplest form of egress rate limiting is connection pool management through DestinationRules. This does not provide true request-per-second rate limiting, but it caps the number of concurrent connections and requests to an external service. For external hosts, make sure the host is registered in Istio's service registry with a ServiceEntry first:
+
+```yaml
+apiVersion: networking.istio.io/v1
+kind: ServiceEntry
+metadata:
+  name: external-api
+  namespace: default
+spec:
+  hosts:
+  - api.example.com
+  ports:
+  - number: 443
+    name: https
+    protocol: HTTPS
+  location: MESH_EXTERNAL
+  resolution: DNS
+```
+
+Then apply the DestinationRule:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -67,7 +86,7 @@ spec:
       maxEjectionPercent: 100
 ```
 
-With this config, if the external API returns 5 consecutive 5xx errors within a 30-second window, the endpoint gets ejected (circuit opened) for 60 seconds. During that time, all requests to the external service will fail immediately instead of waiting for the external service to respond.
+With this config, if an endpoint returns 5 consecutive 5xx errors, outlier detection checks every 30 seconds and can eject that endpoint for at least 60 seconds. During that time, traffic is sent to other healthy endpoints if they are available. If all endpoints are ejected, requests to the external service can fail immediately instead of waiting for the external service to respond.
 
 ## Local Rate Limiting with EnvoyFilter
 
@@ -172,15 +191,50 @@ spec:
                 denominator: HUNDRED
 ```
 
-This limits the `batch-processor` workload to 10 outbound HTTP requests per minute.
+This limits each `batch-processor` sidecar proxy to 10 outbound HTTP requests per minute. If the workload has multiple pods, each pod has its own local token bucket.
 
 ## Global Rate Limiting with External Service
 
 For shared rate limits across multiple pods (where you need a global counter, not per-pod counters), you need an external rate limiting service. Istio supports integrating with a gRPC-based rate limit service:
 
-First, deploy a rate limit service (like Envoy's reference implementation):
+First, deploy Redis and a rate limit service (like Envoy's reference implementation):
 
 ```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: istio-system
+spec:
+  selector:
+    app: redis
+  ports:
+  - port: 6379
+    targetPort: 6379
+    name: redis
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: istio-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+      - name: redis
+        image: redis:alpine
+        ports:
+        - containerPort: 6379
+          name: redis
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -198,10 +252,14 @@ spec:
     spec:
       containers:
       - name: ratelimit
-        image: envoyproxy/ratelimit:master
+        image: docker.io/envoyproxy/ratelimit:30a4ce1a
         ports:
+        - containerPort: 8080
+          name: http
         - containerPort: 8081
           name: grpc
+        - containerPort: 6070
+          name: debug
         env:
         - name: RUNTIME_ROOT
           value: /data
@@ -210,7 +268,9 @@ spec:
         - name: REDIS_SOCKET_TYPE
           value: tcp
         - name: REDIS_URL
-          value: redis.istio-system:6379
+          value: redis.istio-system.svc.cluster.local:6379
+        - name: USE_STATSD
+          value: "false"
         volumeMounts:
         - name: config
           mountPath: /data/ratelimit/config
@@ -264,10 +324,10 @@ sum(rate(istio_requests_total{
 }[5m])) by (source_workload)
 ```
 
-Also monitor the Envoy rate limit statistics:
+Also monitor the Envoy rate limit statistics. These Envoy stats are disabled by default in Istio, so enable them with `proxyStatsMatcher` before relying on this metric:
 
 ```promql
-sum(rate(envoy_http_local_rate_limit_rate_limited[5m]))
+sum(rate(envoy_http_local_rate_limiter_http_local_rate_limit_rate_limited[5m]))
 ```
 
 ## Choosing the Right Approach
