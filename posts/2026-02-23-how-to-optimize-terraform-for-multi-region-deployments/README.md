@@ -16,7 +16,7 @@ This guide covers how to structure and optimize Terraform for multi-region deplo
 
 A single-region deployment with 200 resources has one provider, one state, and one set of API calls. Deploying the same infrastructure across 5 regions means 1,000 resources, 5 provider configurations, and 5x the API calls.
 
-If you put all regions in a single Terraform project, plan times scale linearly with region count. A 2-minute plan becomes a 10-minute plan.
+If you put all regions in a single Terraform project, plan times often increase as you add regions because Terraform refreshes and plans against more resources in the same state. A 2-minute plan can become much longer as the resource count grows.
 
 ## Project Structure Options
 
@@ -49,6 +49,7 @@ module "infrastructure" {
 
   region      = "us-east-1"
   vpc_cidr    = "10.1.0.0/16"
+  azs         = ["us-east-1a", "us-east-1b", "us-east-1c"]
   environment = var.environment
 }
 ```
@@ -110,7 +111,7 @@ mkdir -p "$RESULTS_DIR"
 # Run all regions in parallel
 for region in "${REGIONS[@]}"; do
   (
-    cd "infrastructure/$region"
+    cd "infrastructure/$region" || exit
     terraform init -input=false > /dev/null 2>&1
     terraform plan -no-color -input=false > "$RESULTS_DIR/$region.plan" 2>&1
     echo "$region: exit code $?" > "$RESULTS_DIR/$region.status"
@@ -155,17 +156,20 @@ jobs:
         run: terraform plan -no-color
 ```
 
-All regions plan simultaneously, so total time equals the slowest region, not the sum of all regions.
+With enough runner capacity, all regions can plan simultaneously, so total time is closer to the slowest region than the sum of all regions.
 
 ## Shared Modules for Consistency
 
-Use a single module for regional infrastructure to ensure all regions are identical:
+Use a single module for regional infrastructure to keep all regions consistent:
 
 ```hcl
 # modules/regional-infrastructure/main.tf
 variable "region" {}
 variable "vpc_cidr" {}
 variable "environment" {}
+variable "azs" {
+  type = list(string)
+}
 
 resource "aws_vpc" "main" {
   cidr_block = var.vpc_cidr
@@ -180,7 +184,7 @@ resource "aws_subnet" "private" {
   count             = 3
   vpc_id            = aws_vpc.main.id
   cidr_block        = cidrsubnet(var.vpc_cidr, 8, count.index)
-  availability_zone = "${var.region}${["a", "b", "c"][count.index]}"
+  availability_zone = var.azs[count.index]
 }
 
 # ... more regional resources
@@ -194,6 +198,7 @@ module "infrastructure" {
   source      = "../../modules/regional-infrastructure"
   region      = "us-east-1"
   vpc_cidr    = "10.1.0.0/16"
+  azs         = ["us-east-1a", "us-east-1b", "us-east-1c"]
   environment = "production"
 }
 ```
@@ -215,6 +220,16 @@ infrastructure/
 
 ```hcl
 # global/vpc-peering.tf
+provider "aws" {
+  alias  = "us_east_1"
+  region = "us-east-1"
+}
+
+provider "aws" {
+  alias  = "us_west_2"
+  region = "us-west-2"
+}
+
 data "terraform_remote_state" "us_east" {
   backend = "s3"
   config = {
@@ -238,6 +253,13 @@ resource "aws_vpc_peering_connection" "east_to_west" {
   vpc_id      = data.terraform_remote_state.us_east.outputs.vpc_id
   peer_vpc_id = data.terraform_remote_state.us_west.outputs.vpc_id
   peer_region = "us-west-2"
+  auto_accept = false
+}
+
+resource "aws_vpc_peering_connection_accepter" "east_to_west" {
+  provider                  = aws.us_west_2
+  vpc_peering_connection_id = aws_vpc_peering_connection.east_to_west.id
+  auto_accept               = true
 }
 ```
 
@@ -270,6 +292,7 @@ When applying changes across regions, do not apply everywhere at once. Use a rol
 ```bash
 #!/bin/bash
 # rolling-deploy.sh
+set -euo pipefail
 
 # Deploy to canary region first
 echo "Deploying to canary region (us-east-1)..."
@@ -316,14 +339,14 @@ Global resources are managed once, not per-region, which avoids duplication and 
 
 | Approach | 3 Regions | 5 Regions | 10 Regions |
 |----------|-----------|-----------|------------|
-| Single project | 6 min | 10 min | 20 min |
-| Per-region, sequential | 6 min | 10 min | 20 min |
-| Per-region, parallel | 2 min | 2 min | 2 min |
+| Single project | Often grows with total resource count | Often grows with total resource count | Often grows with total resource count |
+| Per-region, sequential | Sum of each region's runtime | Sum of each region's runtime | Sum of each region's runtime |
+| Per-region, parallel | Near the slowest region's runtime | Near the slowest region's runtime | Near the slowest region's runtime |
 
-Parallel per-region execution makes scaling regions nearly free from a performance perspective.
+Parallel per-region execution keeps wall-clock time closer to the slowest region's runtime, subject to runner capacity, provider API limits, and cross-region dependencies.
 
 ## Summary
 
-Multi-region Terraform deployments perform best when each region has its own project and state file. Run plans and applies in parallel across regions, share modules for consistency, and manage cross-region resources in a separate global project. This approach gives you constant-time plans regardless of how many regions you deploy to, along with better isolation and smaller blast radius per change.
+Multi-region Terraform deployments often perform best when each region has its own project and state file. Run plans and applies in parallel across regions, share modules for consistency, and manage cross-region resources in a separate global project. This approach keeps regional plans smaller and can make wall-clock time much less sensitive to the number of regions you deploy to, along with better isolation and smaller blast radius per change.
 
 For monitoring infrastructure across all your deployment regions, [OneUptime](https://oneuptime.com) provides global uptime monitoring and incident management from multiple geographic locations.
