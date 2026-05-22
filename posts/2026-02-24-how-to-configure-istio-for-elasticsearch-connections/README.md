@@ -87,7 +87,7 @@ spec:
 
 ## Multi-Node Elasticsearch with StatefulSet
 
-For production, you want multiple nodes. Use a StatefulSet with a headless service for node discovery:
+For multiple nodes, use a StatefulSet with a headless service for node discovery:
 
 ```yaml
 apiVersion: v1
@@ -138,9 +138,13 @@ spec:
               value: "elasticsearch-headless"
             - name: cluster.initial_master_nodes
               value: "elasticsearch-0,elasticsearch-1,elasticsearch-2"
+            - name: xpack.security.enabled
+              value: "false"
             - name: ES_JAVA_OPTS
               value: "-Xms2g -Xmx2g"
 ```
+
+For production, configure Elasticsearch security and persistent storage instead of disabling security. Also remove `cluster.initial_master_nodes` after the cluster forms successfully, and never set it again for the same cluster.
 
 ## DestinationRule with HTTP Settings
 
@@ -261,7 +265,7 @@ spec:
       mode: SIMPLE
 ```
 
-Elastic Cloud uses HTTPS on port 443, so you configure it as HTTPS traffic rather than the usual port 9200.
+Elastic Cloud endpoints commonly use HTTPS on port 443, so you configure it as HTTPS traffic rather than the usual self-managed port 9200.
 
 ## Access Control
 
@@ -309,13 +313,13 @@ Because port 9200 is HTTP, you get rich metrics:
 rate(istio_requests_total{destination_service="elasticsearch.search.svc.cluster.local"}[5m])
 
 # Request duration (p99)
-histogram_quantile(0.99, rate(istio_request_duration_milliseconds_bucket{destination_service="elasticsearch.search.svc.cluster.local"}[5m]))
+histogram_quantile(0.99, sum by (le) (rate(istio_request_duration_milliseconds_bucket{destination_service="elasticsearch.search.svc.cluster.local"}[5m])))
 
 # Error rate
 rate(istio_requests_total{destination_service="elasticsearch.search.svc.cluster.local", response_code=~"5.."}[5m])
 ```
 
-These HTTP-level metrics are far more useful than the TCP-level metrics you get for other databases. You can see query latency distributions, error rates by response code, and request volumes per path.
+These HTTP-level metrics are far more useful than the TCP-level metrics you get for other databases. You can see query latency distributions, error rates by response code, and request volumes by service.
 
 ## Key Takeaways
 
