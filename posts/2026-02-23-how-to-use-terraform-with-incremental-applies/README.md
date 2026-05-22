@@ -23,11 +23,11 @@ In traditional Terraform workflow, every apply processes all resources:
 4. Apply changes
 ```
 
-An incremental approach limits this to just the affected resources:
+An incremental approach, especially when you split infrastructure into smaller projects, limits this to a smaller state and set of affected resources:
 
 ```text
-1. Read relevant state (50 resources)
-2. Refresh relevant state (50 API calls)
+1. Read that project's state (50 resources)
+2. Refresh that project's resources (50 API calls)
 3. Compute plan for affected resources
 4. Apply changes
 ```
@@ -50,7 +50,7 @@ When you change something in the compute project, you only plan and apply comput
 
 ## Approach 2: Targeted Applies
 
-For projects that have not been split yet, use `-target` to limit the scope:
+For projects that have not been split yet, you can use `-target` sparingly to limit the scope:
 
 ```bash
 # Only apply changes to a specific module
@@ -63,6 +63,8 @@ terraform apply -target=aws_lambda_function.handler -target=aws_lambda_permissio
 # Apply an entire resource group
 terraform apply -target=module.services
 ```
+
+Terraform documents `-target` as an option for exceptional circumstances, not routine operations. It focuses planning on the selected addresses and the objects they depend on, so it can miss unrelated drift or changes elsewhere in the configuration. Prefer splitting large configurations into smaller projects for day-to-day incremental workflows.
 
 ### Automated Target Detection
 
@@ -145,14 +147,14 @@ inputs = {
 
 ```bash
 # Only apply projects that have changes
-terragrunt run-all apply --terragrunt-include-dir compute/
+terragrunt run --all --queue-include-dir "compute/**" -- apply
 ```
 
-Terragrunt automatically applies dependencies first if needed, giving you incremental behavior with dependency safety.
+Terragrunt orders the selected units according to the dependency graph. If dependencies also need to run, include them in the queue or run from a scope that includes them, giving you incremental behavior with dependency safety.
 
 ## Approach 4: Plan Files for Staged Applies
 
-Generate a plan file, review it, then apply only what you want:
+Generate a plan file, review it, then create smaller targeted plans when you need to stage a large change:
 
 ```bash
 # Generate full plan
@@ -163,10 +165,9 @@ terraform show full.tfplan
 
 # If the plan is too large, generate targeted plans instead
 terraform plan -target=module.api -out=api.tfplan
-terraform plan -target=module.database -out=db.tfplan
-
-# Apply them sequentially
 terraform apply api.tfplan
+
+terraform plan -target=module.database -out=db.tfplan
 terraform apply db.tfplan
 ```
 
@@ -190,11 +191,11 @@ module "new_service" {
 When you are ready to deploy the new service, flip the flag:
 
 ```bash
-# Only the new service is created, everything else is unchanged
+# If there are no other pending changes, only the new service is created
 terraform apply -var="enable_new_service=true"
 ```
 
-This is an incremental approach because only the new resources are created. Existing resources see no changes.
+This is an incremental rollout approach because the flag controls when the new resources enter the configuration. Existing resources see no changes as long as there are no other configuration changes or drift.
 
 ## Building an Incremental CI/CD Pipeline
 
@@ -304,7 +305,7 @@ If you only plan changed projects, you will not detect drift in unchanged projec
 
 ```bash
 # Weekly full plan across all projects
-*/0 9 * * 1 /opt/scripts/full-plan-all-projects.sh
+0 9 * * 1 /opt/scripts/full-plan-all-projects.sh
 ```
 
 ### Dependency Staleness
