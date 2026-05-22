@@ -10,29 +10,32 @@ Description: Learn how to set up comprehensive health monitoring for Terraform E
 
 When Terraform Enterprise goes down, every team that provisions infrastructure is blocked. Unlike many internal tools where a few hours of downtime is an inconvenience, TFE downtime can stall deployments, block CI/CD pipelines, and delay incident response. Proactive monitoring catches problems before they become outages.
 
-This guide covers everything you need to monitor TFE effectively - from the built-in health endpoint to custom metrics, alerting rules, and dashboards.
+This guide covers everything you need to monitor TFE effectively - from the built-in readiness endpoint to custom metrics, alerting rules, and dashboards.
 
 ## Built-in Health Check Endpoint
 
-TFE exposes a health check endpoint that reports the status of its internal components:
+TFE exposes readiness endpoints that report whether nodes can accept requests. For current TFE releases, use `/api/v1/health/readiness` for a single node, or the authenticated `/api/v1/nodes/readiness` endpoint on the admin console port for all active nodes:
 
 ```bash
 # Basic health check
 
-curl -s https://tfe.example.com/_health_check
+curl -s https://tfe.example.com/api/v1/health/readiness?timeout=5
 
 # Parse the response for component status
-curl -s https://tfe.example.com/_health_check | jq .
+curl -s https://tfe.example.com/api/v1/health/readiness?timeout=5 | jq .
 
 # Example healthy response:
 # {
-#   "passed": true,
-#   "checks": {
-#     "database": "ok",
-#     "redis": "ok",
-#     "vault": "ok",
-#     "object_storage": "ok"
-#   }
+#   "node": "node-id-1",
+#   "status": "OK",
+#   "checks": [
+#     { "check": "archivist", "status": "OK" },
+#     { "check": "atlas", "status": "OK" },
+#     { "check": "database", "status": "OK" },
+#     { "check": "redis", "status": "OK" },
+#     { "check": "task-worker", "status": "OK" },
+#     { "check": "vault", "status": "OK" }
+#   ]
 # }
 ```
 
@@ -40,8 +43,9 @@ This endpoint checks:
 
 - **Database connectivity**: Can TFE reach PostgreSQL?
 - **Redis connectivity**: Is the Redis connection alive?
-- **Object storage**: Can TFE read and write to S3/Azure Blob/GCS?
+- **Backend storage**: Can the Archivist service reach configured backend storage?
 - **Internal Vault**: Is the encryption service healthy?
+- **Task worker state**: Is the task worker able to accept work?
 
 Use this endpoint as your primary availability check.
 
@@ -55,7 +59,7 @@ Use this endpoint as your primary availability check.
 # Run every minute via cron
 
 TFE_URL="https://tfe.example.com"
-HEALTH_ENDPOINT="${TFE_URL}/_health_check"
+HEALTH_ENDPOINT="${TFE_URL}/api/v1/health/readiness?timeout=5"
 LOG_FILE="/var/log/tfe-health.log"
 TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
 
@@ -73,12 +77,12 @@ fi
 
 # Also check the detailed health response
 HEALTH_JSON=$(curl -s --max-time 10 "${HEALTH_ENDPOINT}")
-PASSED=$(echo "${HEALTH_JSON}" | jq -r '.passed')
+STATUS=$(echo "${HEALTH_JSON}" | jq -r '.status')
 
-if [ "${PASSED}" != "true" ]; then
+if [ "${STATUS}" != "OK" ]; then
   echo "[${TIMESTAMP}] WARNING - Health check failed: ${HEALTH_JSON}" >> "${LOG_FILE}"
   # Check individual components
-  echo "${HEALTH_JSON}" | jq -r '.checks | to_entries[] | select(.value != "ok") | "\(.key): \(.value)"'
+  echo "${HEALTH_JSON}" | jq -r '.checks[] | select(.status != "OK") | "\(.check): \(.status)"'
 fi
 ```
 
@@ -86,7 +90,7 @@ fi
 
 [OneUptime](https://oneuptime.com) provides out-of-the-box HTTP monitoring that works well with TFE:
 
-1. Create a new HTTP monitor pointing to `https://tfe.example.com/_health_check`
+1. Create a new HTTP monitor pointing to `https://tfe.example.com/api/v1/health/readiness?timeout=5`
 2. Set the expected status code to 200
 3. Configure check intervals (every 1-2 minutes)
 4. Set up alert rules for downtime notifications
@@ -173,15 +177,30 @@ If you use Prometheus, here is a setup for scraping TFE metrics:
 ```yaml
 # prometheus.yml - Scrape configuration for TFE
 scrape_configs:
-  # TFE health check
-  - job_name: 'tfe-health'
-    metrics_path: '/_health_check'
-    scheme: https
+  # TFE readiness check through Blackbox Exporter
+  - job_name: 'tfe-readiness'
+    metrics_path: /probe
+    params:
+      module: [tfe_readiness]
     scrape_interval: 30s
     static_configs:
-      - targets: ['tfe.example.com']
-    tls_config:
-      insecure_skip_verify: false
+      - targets: ['https://tfe.example.com/api/v1/health/readiness?timeout=5']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
+
+  # TFE metrics endpoint (enable metrics_endpoint_enabled first)
+  - job_name: 'tfe-metrics'
+    metrics_path: /metrics
+    params:
+      format: [prometheus]
+    scheme: http
+    static_configs:
+      - targets: ['tfe.example.com:9090']
 
   # Node exporter on the TFE host
   - job_name: 'tfe-node'
@@ -204,7 +223,7 @@ scrape_configs:
 ```yaml
 # blackbox.yml - Probe TFE endpoints
 modules:
-  tfe_health:
+  tfe_readiness:
     prober: http
     timeout: 10s
     http:
@@ -227,7 +246,7 @@ groups:
     rules:
       # TFE is down
       - alert: TFEDown
-        expr: probe_success{job="tfe-health"} == 0
+        expr: probe_success{job="tfe-readiness"} == 0
         for: 2m
         labels:
           severity: critical
@@ -237,7 +256,7 @@ groups:
 
       # TFE health check reports unhealthy components
       - alert: TFEComponentUnhealthy
-        expr: probe_http_status_code{job="tfe-health"} != 200
+        expr: probe_http_status_code{job="tfe-readiness"} != 200
         for: 5m
         labels:
           severity: warning
@@ -246,7 +265,7 @@ groups:
 
       # High response time
       - alert: TFESlowResponse
-        expr: probe_duration_seconds{job="tfe-health"} > 5
+        expr: probe_duration_seconds{job="tfe-readiness"} > 5
         for: 10m
         labels:
           severity: warning
@@ -255,7 +274,7 @@ groups:
 
       # Database connection pool exhaustion
       - alert: TFEDatabaseConnections
-        expr: pg_stat_activity_count{datname="tfe"} > 80
+        expr: sum by (datname) (pg_stat_activity_count{datname="tfe"}) > 80
         for: 5m
         labels:
           severity: warning
@@ -264,7 +283,7 @@ groups:
 
       # Redis memory usage
       - alert: TFERedisMemory
-        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.8
+        expr: redis_memory_max_bytes > 0 and redis_memory_used_bytes / redis_memory_max_bytes > 0.8
         for: 10m
         labels:
           severity: warning
@@ -297,7 +316,7 @@ TOKEN="${TFE_ADMIN_TOKEN}"
 for STATUS in pending planning applying; do
   COUNT=$(curl -s \
     --header "Authorization: Bearer ${TOKEN}" \
-    "${TFE_URL}/api/v2/admin/runs?filter[status]=${STATUS}" | \
+    "${TFE_URL}/api/v2/admin/runs?filter%5Bstatus%5D=${STATUS}" | \
     jq '.meta.pagination["total-count"]')
   echo "tfe_runs_${STATUS}: ${COUNT}"
 done
@@ -305,7 +324,7 @@ done
 # Alert if too many runs are pending
 PENDING=$(curl -s \
   --header "Authorization: Bearer ${TOKEN}" \
-  "${TFE_URL}/api/v2/admin/runs?filter[status]=pending" | \
+  "${TFE_URL}/api/v2/admin/runs?filter%5Bstatus%5D=pending" | \
   jq '.meta.pagination["total-count"]')
 
 if [ "${PENDING}" -gt 50 ]; then
@@ -315,4 +334,4 @@ fi
 
 ## Summary
 
-Effective TFE monitoring covers multiple layers: the application health endpoint, the underlying infrastructure (database, Redis, storage), host resources, and business-level metrics like run queue depth. Start with the health check endpoint for basic availability monitoring, then layer on infrastructure metrics as your deployment matures. Set meaningful alerts that tell you about problems before your users notice them. Tools like [OneUptime](https://oneuptime.com) can centralize all of these checks into a single dashboard with proper alerting and incident management.
+Effective TFE monitoring covers multiple layers: the application readiness endpoint, the underlying infrastructure (database, Redis, storage), host resources, and business-level metrics like run queue depth. Start with the readiness endpoint for basic availability monitoring, then layer on infrastructure metrics as your deployment matures. Set meaningful alerts that tell you about problems before your users notice them. Tools like [OneUptime](https://oneuptime.com) can centralize all of these checks into a single dashboard with proper alerting and incident management.
