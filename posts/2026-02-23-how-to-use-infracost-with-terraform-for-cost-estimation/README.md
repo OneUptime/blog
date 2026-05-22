@@ -12,7 +12,7 @@ Cloud infrastructure costs can spiral quickly when teams deploy resources withou
 
 ## What Is Infracost?
 
-Infracost is an open-source tool that estimates the monthly cost of Terraform configurations. It parses your Terraform plan output, maps resources to cloud provider pricing, and generates detailed cost breakdowns. It supports AWS, Azure, and GCP resources and integrates with CI/CD pipelines to show cost changes on pull requests.
+Infracost is an open-source tool that estimates the monthly cost of Terraform configurations. It scans your infrastructure-as-code, maps resources to cloud provider pricing, and generates detailed cost breakdowns. It supports AWS, Azure, and GCP resources and integrates with CI/CD pipelines to show cost changes on pull requests.
 
 ## Installing Infracost
 
@@ -22,20 +22,20 @@ Infracost is an open-source tool that estimates the monthly cost of Terraform co
 brew install infracost
 
 # Linux
-curl -fsSL https://raw.githubusercontent.com/infracost/infracost/master/scripts/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/infracost/cli/master/scripts/install.sh | sh
 
-# Docker
-docker pull infracost/infracost
+# Windows
+choco install infracost
 ```
 
-Register for a free API key:
+Log in to Infracost:
 
 ```bash
-# Register and configure the API key
+# Browser-based login
 infracost auth login
 
-# Or set it manually
-infracost configure set api_key YOUR_API_KEY
+# For CI/CD, set a service account or personal access token
+export INFRACOST_CLI_AUTHENTICATION_TOKEN=YOUR_TOKEN
 ```
 
 ## Basic Usage
@@ -44,7 +44,7 @@ Run Infracost against your Terraform configuration:
 
 ```bash
 # Generate a cost breakdown
-infracost breakdown --path .
+infracost scan
 
 # Output example:
 # Name                                     Monthly Qty  Unit   Monthly Cost
@@ -63,13 +63,13 @@ infracost breakdown --path .
 
 ## Comparing Costs Between Changes
 
-The most powerful feature is comparing costs between the current and proposed infrastructure:
+The most powerful feature is comparing costs between the current and proposed infrastructure in pull requests:
 
 ```bash
-# Generate a cost diff
-infracost diff --path .
+# Connect your repository so pull requests show cost changes
+infracost ci setup
 
-# Output shows what changes cost
+# Pull request comments show what changes cost
 # + aws_instance.api
 #   + Linux/UNIX usage (on-demand, t3.medium)    730  hours    $30.37
 #
@@ -80,19 +80,16 @@ infracost diff --path .
 # Monthly cost will increase by $91.11 (from $249.04 to $340.15)
 ```
 
-## Using Infracost with Terraform Plan
+## Using Infracost with Terraform Projects
 
-For the most accurate estimates, use a Terraform plan file:
+The current Infracost CLI scans Terraform project directories directly:
 
 ```bash
-# Generate a Terraform plan
-terraform plan -out=tfplan.binary
+# Scan the current Terraform project
+infracost scan
 
-# Convert to JSON
-terraform show -json tfplan.binary > plan.json
-
-# Run Infracost against the plan
-infracost breakdown --path plan.json
+# Scan a specific Terraform project
+infracost scan environments/production
 ```
 
 ## Configuration File
@@ -126,7 +123,8 @@ projects:
 Run against the configuration file:
 
 ```bash
-infracost breakdown --config-file infracost.yml
+# Run from the repository root; Infracost auto-discovers infracost.yml
+infracost scan
 ```
 
 ## Understanding Cost Output
@@ -134,17 +132,17 @@ infracost breakdown --config-file infracost.yml
 Infracost provides detailed breakdowns:
 
 ```bash
-# Detailed output with all components
-infracost breakdown --path . --show-skipped
+# Scan the project first
+infracost scan
+
+# Summary output
+infracost inspect --summary
 
 # JSON output for programmatic use
-infracost breakdown --path . --format json > costs.json
+infracost inspect --summary --json > costs.json
 
-# HTML report
-infracost breakdown --path . --format html > cost-report.html
-
-# Table format (default)
-infracost breakdown --path . --format table
+# Show the top 10 resources by cost
+infracost inspect --top 10
 ```
 
 ## Usage-Based Cost Estimation
@@ -175,25 +173,32 @@ resource_usage:
     monthly_data_processed_gb: 100
 ```
 
+Reference the usage file from `infracost.yml`:
+
+```yaml
+version: "0.3"
+
+usage_file: infracost-usage.yml
+
+projects:
+  - path: .
+```
+
 ```bash
 # Run with usage estimates
-infracost breakdown --path . --usage-file infracost-usage.yml
+infracost scan
 ```
 
 ## Cost Policies
 
-Set cost thresholds to catch expensive changes:
+Use budgets and guardrails to catch expensive changes:
 
 ```bash
-# Fail if monthly cost exceeds a threshold
-infracost breakdown --path . --format json | \
-  jq -e '.totalMonthlyCost | tonumber < 1000' || \
-  echo "WARNING: Monthly cost exceeds $1000"
+# List configured cost budgets
+infracost budgets
 
-# Check cost increase percentage
-infracost diff --path . --format json | \
-  jq -e '.diffTotalMonthlyCost | tonumber < 100' || \
-  echo "WARNING: Cost increase exceeds $100/month"
+# List configured cost guardrails
+infracost guardrails
 ```
 
 ## Multi-Project Cost Summary
@@ -201,12 +206,11 @@ infracost diff --path . --format json | \
 Get a consolidated view across multiple projects:
 
 ```bash
-# Generate individual breakdowns
-infracost breakdown --path environments/production --format json > prod-costs.json
-infracost breakdown --path environments/staging --format json > staging-costs.json
+# Scan from the repository root
+infracost scan
 
-# Combine into a summary
-infracost output --path "prod-costs.json" --path "staging-costs.json" --format table
+# Summarize costs by project
+infracost inspect --group-by project
 ```
 
 ## Integrating with Terraform Workflow
@@ -220,15 +224,14 @@ Add Infracost to your standard Terraform workflow:
 
 echo "=== Terraform Plan ==="
 terraform plan -out=tfplan.binary
-terraform show -json tfplan.binary > plan.json
 
 echo ""
 echo "=== Cost Estimation ==="
-infracost breakdown --path plan.json
+infracost scan
 
 echo ""
-echo "=== Cost Difference ==="
-infracost diff --path plan.json
+echo "=== Cost Summary ==="
+infracost inspect --summary
 
 echo ""
 read -p "Proceed with apply? (yes/no): " CONFIRM
