@@ -77,13 +77,15 @@ spec:
                 - x-powered-by
 ```
 
+For `strict-transport-security`, make sure clients receive it over HTTPS; browsers ignore HSTS headers sent over plain HTTP.
+
 ## Adding Headers for All Routes
 
 If you have multiple VirtualServices attached to the same gateway and you want the same headers on all of them, you have two options.
 
 **Option 1: EnvoyFilter on the gateway workload**
 
-This is the cleanest approach for gateway-wide headers:
+This is the most direct approach for gateway-wide headers, but EnvoyFilter is a low-level API and should be used carefully because it depends on Envoy configuration details:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -113,7 +115,7 @@ spec:
             "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
             inlineCode: |
               function envoy_on_request(request_handle)
-                request_handle:headers():add("x-gateway-timestamp", os.time())
+                request_handle:headers():add("x-gateway-timestamp", tostring(os.time()))
                 request_handle:headers():add("x-processed-by", "istio-gateway")
               end
               function envoy_on_response(response_handle)
@@ -335,8 +337,8 @@ Here is a summary of typical gateway-level headers:
 
 | Header | Purpose |
 |--------|---------|
-| `x-request-id` | Distributed tracing |
-| `strict-transport-security` | Force HTTPS |
+| `x-request-id` | Request correlation |
+| `strict-transport-security` | Instruct browsers to use HTTPS on future requests |
 | `x-content-type-options` | Prevent MIME sniffing |
 | `x-frame-options` | Clickjacking protection |
 | `x-gateway-name` | Identify which gateway handled the request |
