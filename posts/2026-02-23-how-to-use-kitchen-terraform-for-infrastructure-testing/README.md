@@ -8,15 +8,18 @@ Description: Learn how to use Kitchen-Terraform with InSpec to write behavior-dr
 
 ---
 
-Kitchen-Terraform is a Test Kitchen plugin that brings the familiar Kitchen workflow to Terraform testing. If you come from the Chef or Ruby world, it feels natural. You define test suites in a `.kitchen.yml` file, write verifiers using InSpec profiles, and Kitchen handles the lifecycle of creating infrastructure, running tests, and cleaning up. Even if you are new to Test Kitchen, it provides a structured approach to infrastructure testing that scales well.
+Kitchen-Terraform is a set of Test Kitchen plugins that brings the familiar Kitchen workflow to Terraform testing. If you come from the Chef or Ruby world, it feels natural. You define test suites in a `.kitchen.yml` file, write verifiers using InSpec profiles, and Kitchen handles the lifecycle of creating infrastructure, running tests, and cleaning up. Even if you are new to Test Kitchen, it provides a structured approach to infrastructure testing that scales well.
+
+Kitchen-Terraform has been deprecated in favor of Terraform's native test framework, but it remains useful for existing suites and for teams that rely on InSpec's infrastructure and operating-system resources.
 
 ## What Is Kitchen-Terraform
 
-Kitchen-Terraform has three components:
+Kitchen-Terraform has four Test Kitchen plugins:
 
-1. **Kitchen driver** - Handles `terraform init`, `apply`, and `destroy`
-2. **Kitchen provisioner** - Passes variables and configurations to Terraform
-3. **Kitchen verifier** - Runs InSpec tests against the deployed infrastructure
+1. **Kitchen driver** - Manages the Terraform state lifecycle for the root module
+2. **Kitchen provisioner** - Applies changes to the Terraform state from the root module
+3. **Kitchen transport** - Integrates Test Kitchen with the Terraform CLI and root module directory
+4. **Kitchen verifier** - Runs InSpec tests against the deployed infrastructure
 
 The workflow looks like this: Kitchen creates the infrastructure using Terraform, extracts output values, passes those values to InSpec tests, and then destroys everything when done.
 
@@ -75,13 +78,16 @@ The `.kitchen.yml` file defines your test configuration:
 # .kitchen.yml
 driver:
   name: terraform
-  # Root module directory
-  root_module_directory: .
   # Parallelism for terraform operations
   parallelism: 4
 
 provisioner:
   name: terraform
+
+transport:
+  name: terraform
+  # Root module directory
+  root_module_directory: .
 
 verifier:
   name: terraform
@@ -122,9 +128,9 @@ InSpec tests (called controls) verify the deployed infrastructure:
 # test/integration/default/controls/vpc_test.rb
 # InSpec tests for VPC infrastructure
 
-# Read Terraform outputs passed as attributes
-vpc_id = attribute("vpc_id")
-subnet_ids = attribute("subnet_ids")
+# Read Terraform outputs passed as inputs
+vpc_id = input("vpc_id")
+subnet_ids = input("subnet_ids")
 
 # Test that the VPC exists and is configured correctly
 describe aws_vpc(vpc_id) do
@@ -153,7 +159,7 @@ end
 # test/integration/default/controls/security_test.rb
 # Security-focused infrastructure tests
 
-security_group_id = attribute("security_group_id")
+security_group_id = input("security_group_id")
 
 describe aws_security_group(security_group_id) do
   it { should exist }
@@ -238,6 +244,9 @@ You can define multiple suites to test different configurations:
 ```yaml
 # .kitchen.yml
 driver:
+  name: terraform
+
+transport:
   name: terraform
   root_module_directory: .
 
@@ -343,7 +352,7 @@ describe file("/etc/nginx/nginx.conf") do
   its("content") { should match(/worker_processes auto/) }
 end
 
-app_port = attribute("app_port")
+app_port = input("app_port")
 describe port(app_port) do
   it { should be_listening }
 end
@@ -379,9 +388,12 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    permissions:
+      contents: read
+      id-token: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: ruby/setup-ruby@v1
         with:
@@ -392,7 +404,7 @@ jobs:
         with:
           terraform_version: 1.7.0
 
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v6.1.0
         with:
           role-to-assume: ${{ secrets.AWS_TEST_ROLE }}
           aws-region: us-east-1
@@ -407,7 +419,7 @@ jobs:
 
 Compared to other Terraform testing options:
 
-- **vs Terraform native tests** - Kitchen-Terraform uses InSpec, which has a huge library of resource types and can test things like running services, file contents, and network connectivity via SSH. Native tests only check Terraform state values.
+- **vs Terraform native tests** - Kitchen-Terraform uses InSpec, which has a huge library of resource types and can test things like running services, file contents, and network connectivity via SSH. Native Terraform tests run Terraform plan or apply operations and assertions, but they do not provide InSpec's operating-system resource checks over SSH.
 
 - **vs Terratest** - Kitchen-Terraform does not require Go knowledge. It uses Ruby and InSpec, which have a more declarative test syntax. Terratest is more flexible but requires writing more code.
 
