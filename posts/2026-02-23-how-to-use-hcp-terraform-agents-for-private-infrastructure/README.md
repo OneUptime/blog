@@ -46,7 +46,7 @@ HCP Terraform (Cloud)
 
 Key architectural properties:
 
-- Agents only make outbound HTTPS connections to HCP Terraform
+- Agents make outbound connections to HCP Terraform and required supporting services
 - No inbound firewall rules needed
 - Agents receive work by polling, so there is no webhook or callback configuration
 - Credentials for private resources stay within your network
@@ -59,8 +59,10 @@ Key architectural properties:
 Your agent host needs:
 
 - Outbound HTTPS (port 443) access to `app.terraform.io`
+- Outbound HTTPS (port 443) access to `registry.terraform.io`, `releases.hashicorp.com`, and `archivist.terraform.io`
 - DNS resolution for your Terraform providers and any registry endpoints
 - Network access to all resources managed by the workspaces assigned to the agent pool
+- If you enable request forwarding or hold-your-own-key features, outbound TCP access to `agents.terraform.io` on port 7146
 
 If you are behind a proxy:
 
@@ -99,7 +101,7 @@ Your agent environment needs any tools that your Terraform configurations depend
 
 ```bash
 # Install common tools the agent might need
-# Terraform itself is handled by the agent, but other tools may be needed
+# Terraform itself is downloaded by the agent, but other tools may be needed
 
 # Install cloud CLIs if your provisioners use them
 curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
@@ -176,38 +178,45 @@ Agents support lifecycle hooks that let you run scripts before and after Terrafo
 
 ```bash
 # Create the hooks directory structure
-mkdir -p /opt/tfc-agent/hooks
+mkdir -p hooks
 
-# pre-plan hook - runs before terraform plan
-cat > /opt/tfc-agent/hooks/pre-plan << 'EOF'
+# pre-plan hook - runs before terraform init during a plan operation
+cat > hooks/terraform-pre-plan << 'EOF'
 #!/bin/bash
 # Refresh cloud credentials from Vault before planning
 export VAULT_ADDR="https://vault.internal:8200"
-eval $(vault kv get -format=json secret/terraform/aws | jq -r '.data.data | to_entries[] | "export \(.key)=\(.value)"')
+vault kv get -format=json secret/terraform/aws | jq -r '.data.data | to_entries[] | "\(.key)=\(.value)"' >> "$TFC_AGENT_ENV"
 echo "Credentials refreshed from Vault"
 EOF
 
-# pre-apply hook - runs before terraform apply
-cat > /opt/tfc-agent/hooks/pre-apply << 'EOF'
+# pre-apply hook - runs before terraform init during an apply operation
+cat > hooks/terraform-pre-apply << 'EOF'
 #!/bin/bash
 # Notify Slack before applying changes
 curl -s -X POST "$SLACK_WEBHOOK_URL" \
   -d "{\"text\": \"Terraform apply starting for workspace: ${TFC_WORKSPACE_NAME}\"}"
 EOF
 
-chmod +x /opt/tfc-agent/hooks/*
+chmod +x hooks/*
 ```
 
-Run the agent with hooks enabled:
+Build and run the agent with hooks included:
+
+```dockerfile
+FROM hashicorp/tfc-agent:latest
+RUN mkdir -p /home/tfc-agent/.tfc-agent
+ADD --chown=tfc-agent:tfc-agent hooks /home/tfc-agent/.tfc-agent/hooks
+```
 
 ```bash
+docker build -t my-org/tfc-agent:hooks .
+
 docker run -d \
   --name tfc-agent \
   --restart always \
   -e TFC_AGENT_TOKEN="your-agent-token" \
   -e TFC_AGENT_NAME="agent-with-hooks" \
-  -v /opt/tfc-agent/hooks:/etc/tfc-agent/hooks:ro \
-  hashicorp/tfc-agent:latest
+  my-org/tfc-agent:hooks
 ```
 
 ## Multi-Environment Agent Deployments
@@ -233,18 +242,33 @@ resource "tfe_agent_pool" "production" {
   organization_scoped = false
 }
 
-# Production workspaces use the production agent pool
+# Workspaces per environment
 resource "tfe_workspace" "prod_database" {
-  name           = "production-database"
-  organization   = "your-org"
+  name         = "production-database"
+  organization = "your-org"
+}
+
+resource "tfe_workspace" "dev_database" {
+  name         = "development-database"
+  organization = "your-org"
+}
+
+# Grant the restricted production pool to the production workspace
+resource "tfe_agent_pool_allowed_workspaces" "production" {
+  agent_pool_id         = tfe_agent_pool.production.id
+  allowed_workspace_ids = [tfe_workspace.prod_database.id]
+}
+
+# Production workspaces use the production agent pool
+resource "tfe_workspace_settings" "prod_database" {
+  workspace_id   = tfe_workspace.prod_database.id
   execution_mode = "agent"
-  agent_pool_id  = tfe_agent_pool.production.id
+  agent_pool_id  = tfe_agent_pool_allowed_workspaces.production.agent_pool_id
 }
 
 # Development workspaces use the development agent pool
-resource "tfe_workspace" "dev_database" {
-  name           = "development-database"
-  organization   = "your-org"
+resource "tfe_workspace_settings" "dev_database" {
+  workspace_id   = tfe_workspace.dev_database.id
   execution_mode = "agent"
   agent_pool_id  = tfe_agent_pool.development.id
 }
