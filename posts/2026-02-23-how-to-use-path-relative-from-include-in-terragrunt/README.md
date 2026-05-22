@@ -26,11 +26,11 @@ live/
       terragrunt.hcl          # child
 
 # From the child's perspective:
-# path_relative_to_include()   -> "dev/vpc"     (child to parent = DOWN from parent)
-# path_relative_from_include() -> "../.."        (parent back to child = UP from child)
+# path_relative_to_include()   -> "dev/vpc"     (path from parent to child)
+# path_relative_from_include() -> "../.."        (path from child back to parent)
 ```
 
-Wait, that needs clarification. `path_relative_from_include()` is evaluated in the context of the parent configuration, and it returns the path from the parent back to itself. Actually, let me be precise:
+Let me be precise:
 
 - `path_relative_to_include()` = relative path from the **included (parent)** directory to the **child** directory
 - `path_relative_from_include()` = relative path from the **child** directory to the **included (parent)** directory
@@ -74,7 +74,7 @@ project/
         terragrunt.hcl      # child
 ```
 
-From `live/dev/vpc/`, `path_relative_from_include()` returns `../..` (going from `live/dev/vpc/` up to `live/`). Then `../../modules/vpc` resolves correctly from the child's directory to `project/modules/vpc`.
+From `live/dev/vpc/`, `path_relative_from_include()` returns `../..` (going from `live/dev/vpc/` up to `live/`). Then `../../../modules/vpc` resolves correctly from the child's directory to `project/modules/vpc`.
 
 ### Loading Variable Files Relative to Root
 
@@ -85,18 +85,18 @@ terraform {
   extra_arguments "shared_vars" {
     commands = ["plan", "apply", "destroy"]
 
-    # These paths resolve from the child's working directory
+    # Anchor the paths at the child's Terragrunt directory, then walk back to the root
     optional_var_files = [
-      "${path_relative_from_include()}/shared.tfvars",
-      "${path_relative_from_include()}/region-defaults.tfvars",
+      "${get_terragrunt_dir()}/${path_relative_from_include()}/shared.tfvars",
+      "${get_terragrunt_dir()}/${path_relative_from_include()}/region-defaults.tfvars",
     ]
   }
 }
 ```
 
 When a child at `live/dev/vpc/` includes this root, the paths become:
-- `../../shared.tfvars` (which resolves to `live/shared.tfvars`)
-- `../../region-defaults.tfvars` (which resolves to `live/region-defaults.tfvars`)
+- `/path/to/live/dev/vpc/../../shared.tfvars` (which resolves to `live/shared.tfvars`)
+- `/path/to/live/dev/vpc/../../region-defaults.tfvars` (which resolves to `live/region-defaults.tfvars`)
 
 This lets you keep shared variable files next to the root `terragrunt.hcl` and reference them from any child module.
 
@@ -112,14 +112,14 @@ If you have helper scripts next to your root configuration:
 terraform {
   before_hook "validate" {
     commands = ["plan"]
-    # The hook runs from the child's .terragrunt-cache directory
-    # We need a path from there to the scripts at the root level
-    execute = ["bash", "${path_relative_from_include()}/scripts/validate.sh"]
+    # The hook runs from the OpenTofu/Terraform module directory
+    # Anchor the script path at the child's Terragrunt directory
+    execute = ["bash", "${get_terragrunt_dir()}/${path_relative_from_include()}/scripts/validate.sh"]
   }
 
   after_hook "notify" {
     commands     = ["apply"]
-    execute      = ["python3", "${path_relative_from_include()}/scripts/notify.py"]
+    execute      = ["python3", "${get_terragrunt_dir()}/${path_relative_from_include()}/scripts/notify.py"]
     run_on_error = false
   }
 }
@@ -147,9 +147,10 @@ Some teams keep common Terraform files (like shared data sources or local values
 
 terraform {
   # Copy common .tf files from the root's common/ directory into each module
-  include_in_copy = [
-    "${path_relative_from_include()}/common/*.tf",
-  ]
+  after_hook "copy_common_files" {
+    commands = ["init-from-module"]
+    execute  = ["bash", "-c", "cp \"${get_terragrunt_dir()}/${path_relative_from_include()}/common\"/*.tf \"${get_working_dir()}/\""]
+  }
 }
 ```
 
@@ -175,9 +176,10 @@ If you want all modules to use the same `.terraform.lock.hcl`:
 
 terraform {
   # Copy the lockfile from root to each module's working directory
-  include_in_copy = [
-    "${path_relative_from_include()}/.terraform.lock.hcl",
-  ]
+  after_hook "copy_lockfile" {
+    commands = ["init-from-module"]
+    execute  = ["cp", "${get_terragrunt_dir()}/${path_relative_from_include()}/.terraform.lock.hcl", "${get_working_dir()}/"]
+  }
 }
 ```
 
@@ -200,28 +202,31 @@ Think of it like giving directions:
 
 ## With Multiple Includes
 
-When using multiple named includes, `path_relative_from_include()` computes the path relative to each specific include:
+When using multiple named includes from a child config, pass the include name so `path_relative_from_include()` knows which include path to use:
 
 ```hcl
 # live/us-east-1/dev/app/terragrunt.hcl
 
 include "root" {
   path = find_in_parent_folders("root.hcl")
-  # path_relative_from_include() in root.hcl context = "../../.."
 }
 
 include "region" {
   path = find_in_parent_folders("region.hcl")
-  # path_relative_from_include() in region.hcl context = "../.."
 }
 
 include "env" {
   path = find_in_parent_folders("env.hcl")
-  # path_relative_from_include() in env.hcl context = ".."
+}
+
+locals {
+  path_to_root   = path_relative_from_include("root")
+  path_to_region = path_relative_from_include("region")
+  path_to_env    = path_relative_from_include("env")
 }
 ```
 
-The function adjusts based on which include context it is evaluated in, so paths always resolve correctly.
+The function adjusts based on the include name, so paths always resolve against the include you intended.
 
 ## Common Mistake: Confusing the Two Functions
 
@@ -244,7 +249,7 @@ remote_state {
 # Correct: loading a file from the root directory
 terraform {
   extra_arguments "shared" {
-    optional_var_files = ["${path_relative_from_include()}/shared.tfvars"]
+    optional_var_files = ["${get_terragrunt_dir()}/${path_relative_from_include()}/shared.tfvars"]
   }
 }
 ```
@@ -253,11 +258,11 @@ If you accidentally use `path_relative_to_include()` where you need a filesystem
 
 ## Debugging
 
-You can check what the function resolves to by using `render-json`:
+You can check what the function resolves to by using `render`:
 
 ```bash
 cd live/dev/vpc
-terragrunt render-json | jq '.'
+terragrunt render --format json | jq '.'
 ```
 
 Or use a temporary local to print it:
