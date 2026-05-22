@@ -14,13 +14,13 @@ Backing up Istio certificates isn't optional for production environments. Here's
 
 ## Understanding Istio's Certificate Hierarchy
 
-Istio uses a certificate hierarchy with three levels:
+In a production plug-in CA setup, Istio commonly uses a certificate hierarchy with three levels:
 
 1. **Root CA certificate** - The trust anchor for the entire mesh
 2. **Intermediate CA certificate** - Used by Istiod to sign workload certificates
 3. **Workload certificates** - Short-lived certificates for each proxy
 
-By default, Istio generates a self-signed root CA at installation time. This is stored in a Kubernetes secret. If you're using a custom CA (which production environments should), you've already provided these certificates.
+By default, when Istio is installed without a root CA certificate, istiod generates a self-signed CA certificate. If you're using a custom CA (which production environments should), you've already provided these certificates.
 
 ## Finding Your Certificates
 
@@ -36,7 +36,7 @@ kubectl get secret istio-ca-secret -n istio-system
 kubectl logs deploy/istiod -n istio-system | grep -i "ca\|cert" | head -20
 ```
 
-If `cacerts` exists, you're using custom CA certificates (also called "plug-in CA"). If only `istio-ca-secret` exists, Istiod generated a self-signed CA at startup.
+If `cacerts` exists, you're usually using custom CA certificates (also called "plug-in CA"). Istio can also be configured to store a self-signed CA in `cacerts` with `USE_CACERTS_FOR_SELF_SIGNED_CA`, so confirm with your Istiod install settings. If only `istio-ca-secret` exists, Istiod generated a self-signed CA at startup.
 
 ## Backing Up Custom CA Certificates (cacerts)
 
@@ -63,12 +63,20 @@ If Istio generated its own CA:
 ```bash
 mkdir -p istio-cert-backup
 
-# The self-signed CA secret has different key names
+# Export the self-signed CA files from the secret
 kubectl get secret istio-ca-secret -n istio-system -o jsonpath='{.data.ca-cert\.pem}' | base64 -d > istio-cert-backup/ca-cert.pem
 kubectl get secret istio-ca-secret -n istio-system -o jsonpath='{.data.ca-key\.pem}' | base64 -d > istio-cert-backup/ca-key.pem
+kubectl get secret istio-ca-secret -n istio-system -o jsonpath='{.data.root-cert\.pem}' | base64 -d > istio-cert-backup/root-cert.pem
+kubectl get secret istio-ca-secret -n istio-system -o jsonpath='{.data.cert-chain\.pem}' | base64 -d > istio-cert-backup/cert-chain.pem
+
+# Some self-signed CA secrets store empty root-cert.pem and cert-chain.pem.
+# If you later restore into cacerts, use the self-signed CA certificate for them.
+[ -s istio-cert-backup/root-cert.pem ] || cp istio-cert-backup/ca-cert.pem istio-cert-backup/root-cert.pem
+[ -s istio-cert-backup/cert-chain.pem ] || cp istio-cert-backup/ca-cert.pem istio-cert-backup/cert-chain.pem
 
 # Verify
 openssl x509 -in istio-cert-backup/ca-cert.pem -text -noout | head -20
+openssl x509 -in istio-cert-backup/root-cert.pem -text -noout | head -20
 ```
 
 ## Exporting the Full Secret
@@ -141,15 +149,25 @@ Knowing when your certificates expire is crucial for planning rotations and back
 
 echo "=== Istio Certificate Expiration ==="
 
+CA_SECRET=cacerts
+if ! kubectl get secret "$CA_SECRET" -n istio-system > /dev/null 2>&1; then
+  CA_SECRET=istio-ca-secret
+fi
+
 # Check CA cert
 echo "CA Certificate:"
-kubectl get secret cacerts -n istio-system -o jsonpath='{.data.ca-cert\.pem}' | \
+kubectl get secret "$CA_SECRET" -n istio-system -o jsonpath='{.data.ca-cert\.pem}' | \
   base64 -d | openssl x509 -enddate -noout
 
 # Check root cert
 echo "Root Certificate:"
-kubectl get secret cacerts -n istio-system -o jsonpath='{.data.root-cert\.pem}' | \
-  base64 -d | openssl x509 -enddate -noout
+ROOT_CERT=$(kubectl get secret "$CA_SECRET" -n istio-system -o jsonpath='{.data.root-cert\.pem}' | base64 -d)
+if [ -n "$ROOT_CERT" ]; then
+  printf '%s' "$ROOT_CERT" | openssl x509 -enddate -noout
+else
+  kubectl get secret "$CA_SECRET" -n istio-system -o jsonpath='{.data.ca-cert\.pem}' | \
+    base64 -d | openssl x509 -enddate -noout
+fi
 
 # Check a workload certificate
 echo "Sample Workload Certificate:"
