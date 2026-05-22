@@ -66,7 +66,7 @@ variable "encryption_type" {
 }
 
 variable "kms_key_arn" {
-  description = "KMS key ARN for SSE-KMS encryption. Required when encryption_type is 'sse-kms'."
+  description = "KMS key ARN for SSE-KMS encryption. If null, S3 uses the AWS managed aws/s3 key."
   type        = string
   default     = null
 }
@@ -78,7 +78,7 @@ variable "enable_access_logging" {
 }
 
 variable "logging_bucket" {
-  description = "Target bucket for access logs. Required if enable_access_logging is true."
+  description = "Target bucket for access logs. Must be in the same AWS account and Region, allow S3 log delivery, and is required if enable_access_logging is true."
   type        = string
   default     = null
 }
@@ -346,7 +346,7 @@ module "log_archive" {
 }
 ```
 
-A static website hosting bucket with CORS:
+A static assets bucket with CORS:
 
 ```hcl
 module "static_assets" {
