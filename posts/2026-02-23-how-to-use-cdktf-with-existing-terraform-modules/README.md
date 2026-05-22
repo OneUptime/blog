@@ -8,7 +8,7 @@ Description: Learn how to use existing Terraform modules from the registry and l
 
 ---
 
-The Terraform module ecosystem is massive. There are thousands of well-tested, community-maintained modules for everything from VPCs to Kubernetes clusters. When you adopt CDKTF, you do not have to leave all those modules behind. CDKTF can generate typed bindings for any Terraform module, letting you use them with full autocompletion and type safety. This guide covers how to integrate modules from the Terraform Registry, Git repositories, and local paths.
+The Terraform module ecosystem is massive. There are thousands of well-tested, community-maintained modules for everything from VPCs to Kubernetes clusters. If you maintain a CDKTF project, you do not have to leave all those modules behind. CDKTF can generate typed bindings for any Terraform module, letting you use them with full autocompletion and type safety. This guide covers how to integrate modules from the Terraform Registry, Git repositories, and local paths. Note that HashiCorp deprecated CDKTF on December 10, 2025, so this guidance is most useful for existing CDKTF codebases.
 
 ## Why Use Existing Modules?
 
@@ -61,9 +61,9 @@ cdktf get
 
 # Bindings are created in .gen/modules/
 ls .gen/modules/
-# vpc/
-# security_group/
-# eks/
+# vpc.ts
+# security_group.ts
+# eks.ts
 ```
 
 ## Using Registry Modules
@@ -72,7 +72,7 @@ Here is how to use the popular VPC module from the Terraform Registry:
 
 ```typescript
 import { Construct } from "constructs";
-import { App, TerraformStack, TerraformOutput } from "cdktf";
+import { TerraformStack, TerraformOutput } from "cdktf";
 import { AwsProvider } from "@cdktf/provider-aws/lib/provider";
 import { Vpc } from "./.gen/modules/vpc";
 
@@ -123,7 +123,7 @@ class KubernetesStack extends TerraformStack {
 
     const cluster = new Eks(this, "eks", {
       clusterName: "production-cluster",
-      clusterVersion: "1.28",
+      clusterVersion: "1.35",
       vpcId: vpcId,
       subnetIds: subnetIds,
       clusterEndpointPublicAccess: true,
@@ -272,6 +272,7 @@ Modules often need to reference each other's outputs:
 import { Vpc } from "./.gen/modules/vpc";
 import { SecurityGroup } from "./.gen/modules/security_group";
 import { Eks } from "./.gen/modules/eks";
+import { Token } from "cdktf";
 
 class InfraStack extends TerraformStack {
   constructor(scope: Construct, id: string) {
@@ -290,7 +291,7 @@ class InfraStack extends TerraformStack {
     });
 
     // Create security group using VPC output
-    const sgModule = new SecurityGroup(this, "web-sg", {
+    new SecurityGroup(this, "web-sg", {
       name: "web-server",
       description: "Security group for web servers",
       vpcId: vpc.vpcIdOutput,
@@ -309,7 +310,7 @@ class InfraStack extends TerraformStack {
     new Eks(this, "eks", {
       clusterName: "production",
       vpcId: vpc.vpcIdOutput,
-      subnetIds: [vpc.privateSubnetsOutput],
+      subnetIds: Token.asList(vpc.privateSubnetsOutput),
     });
   }
 }
@@ -352,11 +353,11 @@ Use exact versions in production. Use version ranges only in development:
 If a module input is not in the generated types, the module version might not support it:
 
 ```bash
-# Regenerate bindings with the latest module version
-cdktf get
+# Regenerate existing bindings after changing versions or constraints
+cdktf get --force
 
 # Check what inputs are available
-# Look in .gen/modules/vpc/index.ts for the interface
+# Look in .gen/modules/vpc.ts for the interface
 ```
 
 ### Module Outputs Not Available
@@ -375,7 +376,7 @@ Some module inputs expect specific types. Check the generated TypeScript interfa
 
 ```bash
 # Look at the generated types
-cat .gen/modules/vpc/index.ts | grep "interface"
+cat .gen/modules/vpc.ts | grep "interface"
 ```
 
 ## Best Practices
