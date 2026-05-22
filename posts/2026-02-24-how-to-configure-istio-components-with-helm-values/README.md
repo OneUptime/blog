@@ -16,8 +16,8 @@ If you have been managing Istio installs manually or through istioctl, switching
 
 Before you start, make sure you have:
 
-- A Kubernetes cluster (1.25+)
-- Helm 3.x installed
+- A Kubernetes cluster supported by the Istio version you install
+- Helm 3.6+ installed
 - kubectl configured to talk to your cluster
 
 Add the Istio Helm repository if you have not already:
@@ -31,8 +31,8 @@ helm repo update
 
 Istio splits its installation across multiple Helm charts:
 
-- **base** - Instio CRDs and cluster-wide resources
-- **istiod** - The control plane (Pilot, Citadel, Galley combined)
+- **base** - Istio CRDs and cluster-wide resources
+- **istiod** - The control plane that provides discovery, configuration, certificate management, and sidecar injection
 - **gateway** - Ingress and egress gateways
 
 Each chart has its own `values.yaml` that you can override. You can view all available values with:
@@ -50,33 +50,33 @@ Istiod is the brain of your mesh. Here is a values file that configures the most
 ```yaml
 # istiod-values.yaml
 
-pilot:
-  resources:
-    requests:
-      cpu: 500m
-      memory: 2Gi
-    limits:
-      cpu: 1000m
-      memory: 4Gi
-  autoscaleEnabled: true
-  autoscaleMin: 2
-  autoscaleMax: 5
-  replicaCount: 2
-  traceSampling: 1.0
-  env:
-    PILOT_ENABLE_PROTOCOL_SNIFFING_FOR_OUTBOUND: "true"
-    PILOT_ENABLE_PROTOCOL_SNIFFING_FOR_INBOUND: "true"
+resources:
+  requests:
+    cpu: 500m
+    memory: 2Gi
+  limits:
+    cpu: 1000m
+    memory: 4Gi
+autoscaleEnabled: true
+autoscaleMin: 2
+autoscaleMax: 5
+replicaCount: 2
+traceSampling: 1.0
 ```
 
 Apply these values during installation:
 
 ```bash
+helm install istio-base istio/base \
+  -n istio-system \
+  --create-namespace
+
 helm install istiod istio/istiod \
   -n istio-system \
   -f istiod-values.yaml
 ```
 
-The `autoscaleEnabled` flag turns on HPA for istiod, which is essential in production. Without it, a single replica handles all your xDS pushes and that can become a bottleneck once you hit 50+ services.
+The `autoscaleEnabled` flag turns on HPA for istiod, which is essential in production. Without autoscaling, `replicaCount` controls a fixed number of istiod replicas, which can become a bottleneck as your service count grows.
 
 The `traceSampling` value controls what percentage of traces get collected. A value of `1.0` means 1% of requests get traced, which is a good starting point for production. For debugging, bump it up to `100.0` temporarily.
 
@@ -106,12 +106,18 @@ Gateway configuration through Helm values lets you control the load balancer typ
 service:
   type: LoadBalancer
   ports:
+  - name: status-port
+    port: 15021
+    protocol: TCP
+    targetPort: 15021
   - name: http2
     port: 80
-    targetPort: 8080
+    protocol: TCP
+    targetPort: 80
   - name: https
     port: 443
-    targetPort: 8443
+    protocol: TCP
+    targetPort: 443
   annotations:
     service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
     service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
@@ -140,7 +146,7 @@ helm install istio-ingress istio/gateway \
   -f gateway-values.yaml
 ```
 
-The AWS annotations tell the cloud provider to create a Network Load Balancer instead of the default Classic Load Balancer. If you are on GCP or Azure, swap in the appropriate annotations for your platform.
+The AWS annotations tell AWS integrations that support these annotations to create an internet-facing Network Load Balancer. If you are on GCP or Azure, swap in the appropriate annotations for your platform.
 
 ## Global Mesh Configuration
 
@@ -155,7 +161,6 @@ meshConfig:
     holdApplicationUntilProxyStarts: true
     proxyMetadata:
       ISTIO_META_DNS_CAPTURE: "true"
-      ISTIO_META_DNS_AUTO_ALLOCATE: "true"
   outboundTrafficPolicy:
     mode: REGISTRY_ONLY
 ```
@@ -206,13 +211,13 @@ helm upgrade istiod istio/istiod \
   -f istiod-values.yaml
 ```
 
-Helm computes the diff between the current and desired state, and only applies what changed. For istiod, most value changes take effect without restarting pods. Gateway changes might require a rolling restart depending on what you modified.
+Helm computes the diff between the current and desired state, and only applies what changed. Some mesh configuration changes are picked up dynamically, while Deployment-level changes roll the affected pods. Gateway changes might require a rolling restart depending on what you modified.
 
 ## Common Pitfalls
 
 A few things that catch people off guard:
 
-1. **Resource limits too low** - If istiod runs out of memory, xDS pushes fail silently and your services lose their configuration. Start with at least 2Gi for memory.
+1. **Resource limits too low** - If istiod runs out of memory, xDS pushes can fail or be delayed and your services can lose fresh configuration. Start with at least 2Gi for memory.
 
 2. **Forgetting the base chart** - The base chart installs CRDs. If you skip it and go straight to istiod, you will get errors about unknown resource types.
 
@@ -223,7 +228,7 @@ A few things that catch people off guard:
 ```bash
 helm install istiod istio/istiod \
   -n istio-system \
-  --version 1.22.0 \
+  --version 1.30.0 \
   -f istiod-values.yaml
 ```
 
