@@ -85,13 +85,13 @@ variable "enable_access_logs" {
 }
 
 variable "access_logs_bucket" {
-  description = "S3 bucket for access logs"
+  description = "S3 bucket for access logs. The bucket must allow ELB log delivery."
   type        = string
   default     = ""
 }
 
 variable "target_groups" {
-  description = "Target groups to create"
+  description = "Target groups to create. At least one is required because the HTTPS listener forwards to the first target group by default."
   type = list(object({
     name                 = string
     port                 = number
@@ -110,7 +110,11 @@ variable "target_groups" {
       matcher             = optional(string, "200")
     }), {})
   }))
-  default = []
+
+  validation {
+    condition     = length(var.target_groups) > 0
+    error_message = "At least one target group is required."
+  }
 }
 
 variable "tags" {
@@ -189,10 +193,6 @@ resource "aws_lb_target_group" "this" {
       Name = var.target_groups[count.index].name
     }
   )
-
-  lifecycle {
-    create_before_destroy = true
-  }
 }
 ```
 
@@ -231,7 +231,7 @@ resource "aws_lb_listener" "https" {
 
   default_action {
     type             = "forward"
-    target_group_arn = length(aws_lb_target_group.this) > 0 ? aws_lb_target_group.this[0].arn : null
+    target_group_arn = aws_lb_target_group.this[0].arn
   }
 
   tags = var.tags
@@ -312,6 +312,7 @@ module "api_alb" {
   ]
 
   # Enable access logging
+  # The S3 bucket must have a bucket policy that allows Elastic Load Balancing to write logs.
   enable_access_logs = true
   access_logs_bucket = module.alb_logs_bucket.bucket_id
 
