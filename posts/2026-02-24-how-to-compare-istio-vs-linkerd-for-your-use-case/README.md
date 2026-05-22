@@ -14,7 +14,7 @@ This comparison covers the practical differences that matter when you are actual
 
 ## Architecture Differences
 
-Istio uses Envoy as its data plane proxy. Every pod gets an Envoy sidecar that handles all inbound and outbound traffic. The control plane (istiod) manages configuration, certificate issuance, and service discovery. Istio also recently introduced ambient mode, which moves the proxy out of the sidecar and into a per-node ztunnel and optional waypoint proxies.
+Istio uses Envoy as its data plane proxy. In sidecar mode, every meshed pod gets an Envoy sidecar that handles inbound and outbound traffic. The control plane (istiod) manages configuration, certificate issuance, and service discovery. Istio also recently introduced ambient mode, which moves the proxy out of the sidecar and into a per-node ztunnel and optional waypoint proxies.
 
 Linkerd uses its own purpose-built proxy called linkerd2-proxy, written in Rust. It is a much lighter proxy than Envoy, designed specifically for the service mesh use case rather than being a general-purpose proxy. The control plane consists of a set of Kubernetes controllers that run in the linkerd namespace.
 
@@ -22,9 +22,9 @@ The key architectural difference is that Envoy is a general-purpose proxy with h
 
 Resource Consumption
 
-This is where Linkerd has a clear advantage. The Linkerd sidecar proxy typically uses around 10-20 MB of memory and very low CPU. Istio's Envoy sidecar starts at around 40-50 MB and can grow to 100+ MB depending on the number of services and configuration complexity.
+This is where Linkerd has a clear advantage. The Linkerd sidecar proxy typically uses around 10-20 MB of memory and very low CPU. Istio's Envoy sidecar is often around 60 MB in official benchmarks and can grow to 100+ MB depending on the number of services and configuration complexity.
 
-For a cluster with 100 services, the memory overhead difference is significant:
+For a cluster with a few hundred meshed pods, the memory overhead difference is significant:
 
 - Linkerd: roughly 2-4 GB total for all sidecars
 - Istio: roughly 8-20 GB total for all sidecars
@@ -37,23 +37,24 @@ If you are running on resource-constrained nodes or have thousands of pods, this
 
 Istio has a significantly larger feature set:
 
-**Traffic management**: Both support traffic splitting, retries, timeouts, and circuit breaking. Istio provides more granular control with VirtualService, DestinationRule, and Gateway resources. Linkerd uses HTTPRoute and TrafficSplit resources with fewer configuration knobs.
+**Traffic management**: Both support traffic splitting, retries, timeouts, and circuit breaking. Istio provides more granular control with VirtualService, DestinationRule, and Gateway resources. Linkerd uses HTTPRoute resources for dynamic request routing and supports TrafficSplit through the deprecated SMI extension, with fewer configuration knobs.
 
-**Security**: Both provide mTLS between services. Istio adds more advanced features like external authorization, JWT validation, and fine-grained authorization policies (AuthorizationPolicy). Linkerd has Server and ServerAuthorization resources for access control, but the policy model is simpler.
+**Security**: Both provide mTLS between services. Istio adds more advanced features like external authorization, JWT validation, and fine-grained authorization policies (AuthorizationPolicy). Linkerd has Server, AuthorizationPolicy, and related authentication resources for access control, but the policy model is simpler.
 
 **Observability**: Both generate golden metrics (request rate, error rate, latency). Linkerd comes with a built-in dashboard (Viz extension) that is surprisingly useful. Istio relies on external tools like Kiali, Grafana, and Jaeger, but gives you more raw data and integration options.
 
-**Multi-cluster**: Both support multi-cluster deployments. Istio has more mature multi-cluster options with different topology models (flat network, separate networks). Linkerd's multi-cluster support works through a gateway that mirrors services between clusters.
+**Multi-cluster**: Both support multi-cluster deployments. Istio has mature multi-cluster options with different topology models (flat network, separate networks). Linkerd's multi-cluster support mirrors services between clusters and supports gateway-based, flat-network, and federated service models.
 
 **Ingress**: Istio includes its own ingress gateway and supports the Kubernetes Gateway API. Linkerd does not include its own ingress and expects you to use an existing ingress controller.
 
-**Wasm extensibility**: Istio supports WebAssembly plugins for custom data plane logic. Linkerd does not support Wasm extensions, though you can write policy plugins.
+**Wasm extensibility**: Istio supports WebAssembly plugins for custom data plane logic. Linkerd does not support Wasm extensions; policy is configured through Kubernetes resources rather than custom data plane plugins.
 
 ## Complexity and Learning Curve
 
-Linkerd is genuinely easier to install and operate. The installation is a single CLI command:
+Linkerd is genuinely easier to install and operate. The installation is a short CLI flow:
 
 ```bash
+linkerd install --crds | kubectl apply -f -
 linkerd install | kubectl apply -f -
 ```
 
@@ -71,7 +72,7 @@ For teams new to service meshes, Linkerd is generally faster to get productive w
 
 ## Performance
 
-Linkerd's Rust-based proxy consistently shows lower tail latency (p99) compared to Envoy. In benchmarks, the difference is typically in the sub-millisecond range for p50, but can be 1-3 milliseconds at p99 under load. Whether this matters depends on your latency budget.
+Linkerd's Rust-based proxy is designed for low overhead and often shows lower tail latency (p99) in comparative benchmarks, though the exact result depends on workload, mesh configuration, hardware, and test methodology. In benchmarks, the difference is often in the sub-millisecond range for p50, but can be a few milliseconds at p99 under load. Whether this matters depends on your latency budget.
 
 For most applications, both meshes add negligible latency compared to the total request time. But if you are building a latency-sensitive system where every millisecond counts (financial trading, gaming, real-time bidding), the lower proxy overhead of Linkerd is worth considering.
 
