@@ -61,7 +61,7 @@ Not every resource supports the `timeouts` block, and not every resource that do
 For example:
 
 - `aws_db_instance` supports `create`, `update`, `delete`
-- `aws_instance` supports `create`, `update`, `delete`
+- `aws_instance` supports `create`, `read`, `update`, `delete`
 - `azurerm_virtual_machine` supports `create`, `update`, `read`, `delete`
 - `google_container_cluster` supports `create`, `update`, `read`, `delete`
 
@@ -102,8 +102,9 @@ Managed Kubernetes clusters involve provisioning control planes, node pools, and
 
 ```hcl
 resource "google_container_cluster" "primary" {
-  name     = "production-cluster"
-  location = "us-central1"
+  name                = "production-cluster"
+  location            = "us-central1"
+  deletion_protection = false
 
   initial_node_count = 3
 
@@ -124,6 +125,7 @@ resource "google_container_cluster" "primary" {
 ### CloudFront Distributions
 
 CloudFront distributions propagate to edge locations worldwide, which takes time.
+Unlike many slow resources, `aws_cloudfront_distribution` does not currently expose configurable Terraform operation timeouts in the AWS provider. You cannot add a `timeouts` block to this resource. If you need to avoid waiting for an enabled distribution to delete, use the `retain_on_delete` argument and delete it manually later.
 
 ```hcl
 resource "aws_cloudfront_distribution" "cdn" {
@@ -158,30 +160,27 @@ resource "aws_cloudfront_distribution" "cdn" {
   viewer_certificate {
     cloudfront_default_certificate = true
   }
-
-  # Global propagation takes time
-  timeouts {
-    create = "60m"
-    update = "60m"
-  }
 }
 ```
 
-### VPN Connections
+### EKS Clusters
 
-VPN tunnels involve negotiation between endpoints and can be unpredictable.
+Amazon EKS control plane operations can take a while, especially during version or VPC configuration updates.
 
 ```hcl
-resource "aws_vpn_connection" "main" {
-  vpn_gateway_id      = aws_vpn_gateway.main.id
-  customer_gateway_id = aws_customer_gateway.main.id
-  type                = "ipsec.1"
+resource "aws_eks_cluster" "main" {
+  name     = "production-cluster"
+  role_arn = aws_iam_role.eks_cluster.arn
 
-  # VPN tunnel establishment can be slow
+  vpc_config {
+    subnet_ids = var.private_subnet_ids
+  }
+
+  # EKS cluster operations can be slow
   timeouts {
-    create = "30m"
-    update = "30m"
-    delete = "20m"
+    create = "60m"
+    update = "90m"
+    delete = "30m"
   }
 }
 ```
