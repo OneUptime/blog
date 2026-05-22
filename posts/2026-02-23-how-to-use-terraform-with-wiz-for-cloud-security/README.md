@@ -27,14 +27,15 @@ Install and configure the Wiz CLI for Terraform scanning.
 ```bash
 # Download and install the Wiz CLI
 
-curl -o wizcli https://wizcli.app.wiz.io/latest/wizcli-linux-amd64
+curl -o wizcli https://wizcli.app.wiz.io/v1/wizcli-linux-amd64
 chmod +x wizcli
 sudo mv wizcli /usr/local/bin/
 
-# Authenticate with Wiz
-wizcli auth --id "$WIZ_CLIENT_ID" --secret "$WIZ_CLIENT_SECRET"
+# Authenticate with Wiz by setting WIZ_CLIENT_ID and WIZ_CLIENT_SECRET
+export WIZ_CLIENT_ID="your-service-account-client-id"
+export WIZ_CLIENT_SECRET="your-service-account-client-secret"
 
-# Verify authentication
+# Verify installation
 wizcli version
 ```
 
@@ -44,18 +45,18 @@ Use the Wiz CLI to scan Terraform files for security issues.
 
 ```bash
 # Scan Terraform directory
-wizcli iac scan --path terraform/
+wizcli scan dir terraform/ --types Terraform
 
 # Scan with specific policy set
-wizcli iac scan --path terraform/ --policy "Default IaC policy"
+wizcli scan dir terraform/ --types Terraform --policies "Default IaC policy"
 
 # Scan and output results as JSON
-wizcli iac scan --path terraform/ --format json --output results.json
+wizcli scan dir terraform/ --types Terraform --json-output-file results.json
 
 # Scan a Terraform plan
 terraform plan -out=tfplan
 terraform show -json tfplan > tfplan.json
-wizcli iac scan --path tfplan.json --type tf-plan
+wizcli scan dir tfplan.json --types Terraform
 ```
 
 Example configurations and what Wiz detects:
@@ -183,30 +184,25 @@ jobs:
       # Install Wiz CLI
       - name: Install Wiz CLI
         run: |
-          curl -o wizcli https://wizcli.app.wiz.io/latest/wizcli-linux-amd64
+          curl -o wizcli https://wizcli.app.wiz.io/v1/wizcli-linux-amd64
           chmod +x wizcli
           sudo mv wizcli /usr/local/bin/
-
-      # Authenticate
-      - name: Authenticate Wiz CLI
-        run: wizcli auth --id "$WIZ_CLIENT_ID" --secret "$WIZ_CLIENT_SECRET"
-        env:
-          WIZ_CLIENT_ID: ${{ secrets.WIZ_CLIENT_ID }}
-          WIZ_CLIENT_SECRET: ${{ secrets.WIZ_CLIENT_SECRET }}
 
       # Scan Terraform files
       - name: Scan Terraform
         run: |
-          wizcli iac scan \
-            --path terraform/ \
-            --policy "Default IaC policy" \
-            --format sarif \
-            --output wiz-results.sarif
+          wizcli scan dir terraform/ \
+            --types Terraform \
+            --policies "Default IaC policy" \
+            --sarif-output-file wiz-results.sarif
+        env:
+          WIZ_CLIENT_ID: ${{ secrets.WIZ_CLIENT_ID }}
+          WIZ_CLIENT_SECRET: ${{ secrets.WIZ_CLIENT_SECRET }}
 
       # Upload results to GitHub Security
       - name: Upload SARIF
         if: always()
-        uses: github/codeql-action/upload-sarif@v2
+        uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: wiz-results.sarif
 
@@ -227,24 +223,22 @@ jobs:
           terraform plan -out=tfplan
           terraform show -json tfplan > tfplan.json
 
-      # Install and authenticate Wiz CLI
+      # Install Wiz CLI
       - name: Setup Wiz
         run: |
-          curl -o wizcli https://wizcli.app.wiz.io/latest/wizcli-linux-amd64
+          curl -o wizcli https://wizcli.app.wiz.io/v1/wizcli-linux-amd64
           chmod +x wizcli
           sudo mv wizcli /usr/local/bin/
-          wizcli auth --id "$WIZ_CLIENT_ID" --secret "$WIZ_CLIENT_SECRET"
-        env:
-          WIZ_CLIENT_ID: ${{ secrets.WIZ_CLIENT_ID }}
-          WIZ_CLIENT_SECRET: ${{ secrets.WIZ_CLIENT_SECRET }}
 
       # Scan the plan
       - name: Scan Plan
         run: |
-          wizcli iac scan \
-            --path terraform/tfplan.json \
-            --type tf-plan \
-            --policy "Default IaC policy"
+          wizcli scan dir terraform/tfplan.json \
+            --types Terraform \
+            --policies "Default IaC policy"
+        env:
+          WIZ_CLIENT_ID: ${{ secrets.WIZ_CLIENT_ID }}
+          WIZ_CLIENT_SECRET: ${{ secrets.WIZ_CLIENT_SECRET }}
 
   deploy:
     needs: [wiz-scan, terraform-plan-scan]
@@ -263,7 +257,7 @@ jobs:
 
 ## Step 4: Wiz Guardrails for Terraform
 
-Configure Wiz admission policies that act as guardrails for Terraform deployments.
+Configure Terraform resources that align with Wiz policies that act as guardrails for deployments.
 
 ```hcl
 # wiz-guardrails.tf
@@ -358,7 +352,7 @@ resource "tfe_workspace_run_task" "wiz_production" {
   workspace_id      = tfe_workspace.production.id
   task_id           = tfe_organization_run_task.wiz.id
   enforcement_level = "mandatory"
-  stage             = "post_plan"
+  stages            = ["post_plan"]
 }
 ```
 
@@ -372,32 +366,26 @@ Use Terraform to manage Wiz policies and configurations.
 terraform {
   required_providers {
     wiz = {
-      source  = "AxtonGrams/wiz"
-      version = "~> 0.1"
+      source  = "rhizo-co/wiz"
+      version = "~> 1.1"
     }
   }
 }
 
-# Create a Wiz automation rule
-resource "wiz_automation_rule" "terraform_findings" {
-  name    = "Terraform IaC Critical Findings"
-  enabled = true
+# Create a Wiz CI/CD scan policy
+resource "wiz_cicd_scan_policy" "terraform_findings" {
+  name        = "Terraform IaC Critical Findings"
+  description = "Block Terraform scans with critical findings"
 
-  trigger_source = "IaC_SCAN"
-  trigger_type   = "CREATED"
+  iac_params {
+    count_threshold    = 1
+    severity_threshold = "CRITICAL"
+  }
 
-  filters = jsonencode({
-    severity = ["CRITICAL", "HIGH"]
-    source   = ["Terraform"]
-  })
-
-  action_type = "SEND_NOTIFICATION"
-
-  action_params = jsonencode({
-    notification_type = "SLACK"
-    channel          = "#security-alerts"
-    message          = "Critical Terraform security finding detected"
-  })
+  policy_lifecycle_enforcements {
+    deployment_lifecycle = "CLI"
+    enforcement_method   = "BLOCK"
+  }
 }
 ```
 
