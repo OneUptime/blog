@@ -18,15 +18,15 @@ Envoy has several different idle timeout settings, and they apply at different l
 
 **HTTP idle timeout** - How long an HTTP connection (keep-alive) can sit with no active requests before Envoy closes it. This is the one you'll configure most often.
 
-**Stream idle timeout** - How long an individual HTTP stream (request/response pair) can sit with no data before being closed. For HTTP/1.1, this is the same as the connection idle timeout since each connection handles one stream at a time. For HTTP/2, streams are multiplexed, so this is per-stream.
+**Stream idle timeout** - How long an individual HTTP stream (request/response pair) can sit with no data before being closed. This applies while a stream is active; HTTP connection idle timeout applies only when there are no active streams. For HTTP/2, streams are multiplexed, so this is per-stream.
 
 **Route idle timeout** - A per-route override for stream idle timeout.
 
 ## Default Values
 
-Istio sets these defaults:
+Envoy's defaults, used by Istio unless you override them, are:
 
-- HTTP idle timeout: 1 hour (controlled by the `idleTimeout` in the HTTP connection manager)
+- HTTP idle timeout: 1 hour (controlled by `idle_timeout` in HTTP protocol options)
 - Stream idle timeout: 5 minutes
 - TCP idle timeout: 1 hour
 
@@ -64,7 +64,7 @@ The `http.idleTimeout` controls how long an HTTP keep-alive connection stays ope
 
 The stream idle timeout is what usually causes problems with long-lived connections. The default 5-minute timeout means any HTTP stream (including WebSocket frames) that doesn't send data for 5 minutes gets terminated.
 
-To change this, you need a VirtualService with a route-level timeout:
+The `timeout` field in a VirtualService controls the overall HTTP request timeout, not stream idle timeout:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -85,7 +85,7 @@ spec:
     timeout: 0s
 ```
 
-Setting `timeout: 0s` disables the request timeout entirely. But to specifically control the stream idle timeout, you need an EnvoyFilter:
+Setting `timeout: 0s` disables the request timeout entirely. To specifically control the stream idle timeout, you need an EnvoyFilter:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -108,9 +108,9 @@ spec:
     patch:
       operation: MERGE
       value:
-        typedConfig:
-          '@type': type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
-          streamIdleTimeout: 3600s
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+          stream_idle_timeout: 3600s
 ```
 
 This sets the stream idle timeout to 1 hour for inbound traffic to the websocket-service.
@@ -140,12 +140,12 @@ spec:
     patch:
       operation: MERGE
       value:
-        typedConfig:
-          '@type': type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
-          streamIdleTimeout: 0s
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+          stream_idle_timeout: 0s
 ```
 
-Be careful with this. Without a stream idle timeout, abandoned connections will never be cleaned up and you'll leak resources.
+Be careful with this. Without a stream idle timeout, abandoned streams can hang around longer and waste resources.
 
 ## Configuring TCP Idle Timeout
 
@@ -172,16 +172,16 @@ spec:
     patch:
       operation: MERGE
       value:
-        typedConfig:
-          '@type': type.googleapis.com/envoy.extensions.filters.network.tcp_proxy.v3.TcpProxy
-          idleTimeout: 7200s
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.filters.network.tcp_proxy.v3.TcpProxy
+          idle_timeout: 7200s
 ```
 
 This sets a 2-hour idle timeout for outbound TCP connections, which is useful for database connections that might sit idle between queries.
 
 ## Per-Route Idle Timeout
 
-You can set different idle timeouts for different routes within the same service:
+You can set an idle timeout on a specific generated route:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -194,7 +194,7 @@ spec:
     labels:
       app: api-gateway
   configPatches:
-  - applyTo: ROUTE_CONFIGURATION
+  - applyTo: HTTP_ROUTE
     match:
       context: SIDECAR_OUTBOUND
       routeConfiguration:
@@ -205,20 +205,15 @@ spec:
     patch:
       operation: MERGE
       value:
-        virtualHosts:
-        - name: "my-service.production.svc.cluster.local:80"
-          routes:
-          - match:
-              prefix: /api/stream
-            route:
-              idleTimeout: 3600s
+        route:
+          idle_timeout: 3600s
 ```
 
 ## Coordinating with Load Balancers
 
 If you have an external load balancer (like an AWS ALB or GCP HTTPS LB) in front of your Istio ingress gateway, make sure the timeouts are coordinated. AWS ALB has a default idle timeout of 60 seconds. If your Envoy idle timeout is 5 minutes but your ALB timeout is 60 seconds, the ALB will close the connection first.
 
-Set the load balancer idle timeout higher than Envoy's, or set Envoy's timeout lower than the load balancer's:
+For AWS ALB, configure the application's idle timeout to be larger than the load balancer's idle timeout, or raise the load balancer idle timeout to match the workload:
 
 ```yaml
 # For the Istio ingress gateway
@@ -243,13 +238,13 @@ spec:
     patch:
       operation: MERGE
       value:
-        typedConfig:
-          '@type': type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
-          commonHttpProtocolOptions:
-            idleTimeout: 55s
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+          common_http_protocol_options:
+            idle_timeout: 65s
 ```
 
-Setting the gateway's idle timeout to 55 seconds (slightly less than the ALB's 60 seconds) ensures Envoy closes idle connections before the ALB does, avoiding connection reset issues.
+Setting the gateway's idle timeout to 65 seconds (slightly more than the ALB's 60 seconds) follows AWS guidance that the application idle timeout should be larger than the load balancer idle timeout.
 
 ## Verifying Timeout Configuration
 
@@ -263,7 +258,7 @@ istioctl proxy-config listener <pod-name> -n <namespace> --port 80 -o json | pyt
 istioctl proxy-config cluster <pod-name> -n <namespace> --fqdn my-service.production.svc.cluster.local -o json | python3 -m json.tool
 ```
 
-Look for `idleTimeout` and `streamIdleTimeout` fields in the output.
+Look for `idleTimeout` and `streamIdleTimeout` fields in the JSON output.
 
 ## Monitoring Idle Connections
 
@@ -273,9 +268,11 @@ Track how connections are being closed:
 kubectl exec -it <pod-name> -c istio-proxy -- curl -s localhost:15000/stats | grep idle_timeout
 ```
 
-Relevant metrics:
-- `envoy_http_downstream_cx_idle_timeout` - Connections closed due to idle timeout
-- `envoy_cluster_upstream_cx_idle_timeout` - Upstream connections closed due to idle timeout
+Relevant stats:
+- `http.<prefix>.downstream_cx_idle_timeout` - Downstream HTTP connections closed due to idle timeout
+- `cluster.<name>.upstream_cx_idle_timeout` - Upstream connections closed due to idle timeout
+
+If you scrape Envoy's Prometheus endpoint instead, these are exported with names like `envoy_http_downstream_cx_idle_timeout` and `envoy_cluster_upstream_cx_idle_timeout`.
 
 If you see a lot of idle timeouts, your timeout might be too aggressive for your traffic pattern. If you see very few, you might have connections hanging around longer than necessary.
 
