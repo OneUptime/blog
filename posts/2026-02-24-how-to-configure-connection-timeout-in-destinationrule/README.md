@@ -8,7 +8,7 @@ Description: Configure TCP connection timeouts in Istio DestinationRule to fail 
 
 ---
 
-Connection timeout is one of those settings that gets overlooked until something goes wrong. Without it, when an upstream service is down or a network path is broken, Envoy will wait the OS default timeout (typically 120 seconds) before giving up on the TCP handshake. That means your users are staring at a loading spinner for 2 minutes before getting an error.
+Connection timeout is one of those settings that gets overlooked until something goes wrong. Istio's default connect timeout is 10 seconds, but that default may not match the latency and failure behavior you want for a particular service.
 
 Setting a connection timeout in your DestinationRule tells Envoy to give up faster, returning an error to the caller quickly so they can handle it, retry on a different endpoint, or show a meaningful error to the user.
 
@@ -37,7 +37,7 @@ These are two different things that people often confuse:
 
 **Connect timeout** (DestinationRule): How long to wait for the TCP connection to be established. This is the three-way handshake (SYN, SYN-ACK, ACK). Set in the DestinationRule's `connectionPool.tcp.connectTimeout`.
 
-**Request timeout** (VirtualService): How long to wait for the complete HTTP response after the connection is established. Set in the VirtualService's `timeout` field.
+**Request timeout** (VirtualService): How long to wait for the upstream to produce the complete HTTP response for a route. Set in the VirtualService's `timeout` field.
 
 ```mermaid
 sequenceDiagram
@@ -80,7 +80,7 @@ connectTimeout: 5s
 connectTimeout: 10s
 ```
 
-**Never leave it at default**: The OS default is typically 120 seconds. That is almost never what you want. Always set an explicit connect timeout.
+**Do not rely on the default**: Istio's default is 10 seconds. That may be too long for in-cluster services or too short for some external dependencies. Set an explicit connect timeout that matches the service.
 
 ## Full Configuration with Timeouts
 
@@ -145,32 +145,39 @@ spec:
 
 With this configuration:
 - TCP connection must be established within 3 seconds
-- The complete HTTP response must arrive within 10 seconds
-- Total maximum wait time is about 13 seconds (connect + request)
+- The HTTP route timeout caps how long Envoy waits for the complete upstream response
+- Retries and per-try timeouts can affect the actual elapsed time, so size those values together
 
 ## Testing Connection Timeout
 
-You can test connection timeout behavior by configuring a DestinationRule for a service that is not running:
+You can test connection timeout behavior from a sidecar-injected namespace by routing to an endpoint IP that will not complete a TCP handshake:
 
 ```bash
 kubectl apply -f - <<EOF
-apiVersion: v1
-kind: Service
+apiVersion: networking.istio.io/v1
+kind: ServiceEntry
 metadata:
-  name: fake-service
+  name: timeout-test
 spec:
-  selector:
-    app: does-not-exist
+  hosts:
+  - timeout-test.local
+  addresses:
+  - 192.0.2.10
   ports:
-  - name: http
-    port: 8080
+  - number: 8080
+    name: http
+    protocol: HTTP
+  location: MESH_EXTERNAL
+  resolution: STATIC
+  endpoints:
+  - address: 10.255.255.1
 ---
 apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
-  name: fake-service-timeout
+  name: timeout-test-timeout
 spec:
-  host: fake-service
+  host: timeout-test.local
   trafficPolicy:
     connectionPool:
       tcp:
@@ -181,11 +188,11 @@ EOF
 Now try to connect:
 
 ```bash
-kubectl run curl-test --image=curlimages/curl -it --rm -- \
-  sh -c 'time curl -s http://fake-service:8080/'
+kubectl run curl-test --image=curlimages/curl --restart=Never -it --rm -- \
+  sh -c 'time curl -sS -H "Host: timeout-test.local" http://192.0.2.10:8080/'
 ```
 
-The request should fail after approximately 2 seconds instead of the default 120 seconds.
+The request should fail after approximately 2 seconds instead of waiting for Istio's default 10-second connect timeout.
 
 ## Connect Timeout Per Subset
 
@@ -239,7 +246,7 @@ spec:
       perTryTimeout: 5s
 ```
 
-The `connect-failure` retry condition tells Envoy to retry when a TCP connection fails (including timeouts). With `perTryTimeout: 5s`, each retry attempt gets its own 5-second window.
+The `connect-failure` retry condition tells Envoy to retry when a TCP connection fails (including timeouts). With `perTryTimeout: 5s`, each attempt, including the initial call and any retries, gets its own 5-second window.
 
 Combined with a `connectTimeout: 3s` in the DestinationRule, the first attempt fails after 3 seconds, and Envoy immediately tries another endpoint.
 
@@ -265,7 +272,10 @@ Endpoints marked as UNHEALTHY might be the ones causing timeouts.
 
 ```bash
 kubectl delete destinationrule backend-service-timeouts
+kubectl delete destinationrule api-dr
 kubectl delete virtualservice api-vs
+kubectl delete destinationrule timeout-test-timeout
+kubectl delete serviceentry timeout-test
 ```
 
-Connection timeout is a simple but critical setting. Always set it explicitly in your DestinationRules. The default OS timeout of 120 seconds is almost never appropriate for microservice communication. A few seconds is usually plenty for in-cluster services, and 5-10 seconds for external services. Combined with retries and outlier detection, you get fast failure recovery without making users wait.
+Connection timeout is a simple but critical setting. Always set it explicitly in your DestinationRules. The Istio default of 10 seconds is not always appropriate for microservice communication. A few seconds is usually plenty for in-cluster services, and 5-10 seconds for external services. Combined with retries and outlier detection, you get fast failure recovery without making users wait.
