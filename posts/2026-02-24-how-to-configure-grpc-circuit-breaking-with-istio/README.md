@@ -40,7 +40,7 @@ For gRPC (HTTP/2), the relevant settings are:
 - `http.maxRequestsPerConnection` - set to 0 for unlimited (the default for HTTP/2).
 - `http.maxRetries` - maximum number of concurrent retries across all hosts in the cluster. This prevents retry storms.
 
-When these limits are hit, Envoy returns an `UNAVAILABLE` gRPC status code to the caller immediately rather than queuing the request. This is the "tripping" of the circuit breaker.
+When these limits are hit, Envoy fails the request immediately instead of letting retry or pending-request queues grow. For gRPC calls, the caller typically sees an `UNAVAILABLE` status because Envoy's local 503 response maps to gRPC status 14. This is the "tripping" of the circuit breaker.
 
 ## Outlier Detection
 
@@ -71,15 +71,16 @@ Here is what each field does:
 
 ## gRPC-Specific Error Mapping
 
-It is worth understanding how gRPC status codes map to what Envoy considers an error. By default, Envoy counts these gRPC codes as errors for outlier detection:
+It is worth understanding how gRPC status codes map to what Envoy considers an error. For `consecutive5xxErrors`, Envoy maps the `grpc-status` response header to an HTTP status and then treats mapped HTTP 5xx responses as errors. That means these gRPC codes count as 5xx errors:
 
-- `CANCELLED` (1)
 - `UNKNOWN` (2)
-- `RESOURCE_EXHAUSTED` (8)
-- `UNAVAILABLE` (14)
+- `DEADLINE_EXCEEDED` (4)
+- `UNIMPLEMENTED` (12)
 - `INTERNAL` (13)
+- `UNAVAILABLE` (14)
+- `DATA_LOSS` (15)
 
-Status codes like `NOT_FOUND`, `INVALID_ARGUMENT`, and `PERMISSION_DENIED` are not considered errors for outlier detection. This makes sense because a 404 is not a sign that the server is unhealthy.
+Status codes like `CANCELLED`, `NOT_FOUND`, `INVALID_ARGUMENT`, `PERMISSION_DENIED`, and `RESOURCE_EXHAUSTED` do not map to HTTP 5xx responses in Envoy's default mapping, so they are not counted by `consecutive5xxErrors`. This makes sense because a 404 is not a sign that the server is unhealthy.
 
 ## A Production-Ready Configuration
 
