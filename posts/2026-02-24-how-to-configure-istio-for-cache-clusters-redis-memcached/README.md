@@ -60,7 +60,7 @@ The `maxConnections: 500` needs to accommodate all your application pods' connec
 
 ## Redis Sentinel Configuration
 
-Redis Sentinel provides high availability through a separate sentinel process that monitors the primary and initiates failover. Sentinel uses its own port (26379) and its own protocol:
+Redis Sentinel provides high availability through a separate sentinel process that monitors the primary and initiates failover. Sentinel uses its own port (26379) and accepts commands using the Redis protocol:
 
 ```yaml
 apiVersion: v1
@@ -100,7 +100,7 @@ spec:
           probes: 3
 ```
 
-Shorter keepalive intervals are important for Sentinel because it needs to detect failures quickly. The sentinel down-after-milliseconds is typically 5-30 seconds, so your keepalive probes need to be faster than that.
+TCP keepalive can help Envoy clean up stale sockets, but Sentinel failure detection is controlled by Sentinel's own PING checks and `down-after-milliseconds` setting. Tune `down-after-milliseconds` and quorum for failover behavior; tune TCP keepalive for connection cleanup.
 
 ## Redis Cluster Mode
 
@@ -201,7 +201,7 @@ spec:
           probes: 3
 ```
 
-Memcached clients typically use many more connections than Redis clients because Memcached doesn't have pipelining (or its pipelining is less common). Set `maxConnections` accordingly.
+Memcached clients often maintain pools of persistent TCP connections, and the right size depends on the client library, concurrency, and whether the client uses multi-key requests or quiet/noreply operations. Set `maxConnections` accordingly.
 
 ## Minimizing Sidecar Latency for Cache Traffic
 
@@ -273,11 +273,11 @@ istio_tcp_connections_opened_total{destination_service="redis.cache.svc.cluster.
 istio_tcp_connections_closed_total{destination_service="redis.cache.svc.cluster.local", response_flags!=""}
 ```
 
-If you see `response_flags` values like `UF` (upstream connection failure) or `UO` (upstream overflow), the connection pool is saturated.
+If you see `response_flags` values like `UO` (upstream overflow), the connection pool may be saturated. `UF` indicates an upstream connection failure and should be investigated alongside upstream health and network errors.
 
 ## mTLS Considerations
 
-Running mTLS between your application and cache adds encryption overhead. For internal caches that don't contain sensitive data, you might choose PERMISSIVE mode to avoid the overhead:
+Running mTLS between your application and cache adds encryption overhead. `PERMISSIVE` mode is useful during migration because the workload can accept either plaintext or mTLS, but meshed clients may still use mTLS automatically. To avoid mTLS overhead for a sidecar-mode cache port, disable it consistently for inbound and outbound traffic:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -289,10 +289,22 @@ spec:
   selector:
     matchLabels:
       app: redis
-  mtls:
-    mode: PERMISSIVE
+  portLevelMtls:
+    6379:
+      mode: DISABLE
+---
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: redis-plaintext
+  namespace: cache
+spec:
+  host: redis.cache.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: DISABLE
 ```
 
-For caches that hold sensitive data (session tokens, PII), use STRICT mode and accept the latency cost. The security tradeoff is worth it.
+For caches that hold sensitive data (session tokens, PII), use STRICT mode and ISTIO_MUTUAL client TLS and accept the latency cost. The security tradeoff is worth it.
 
 Cache clusters and service mesh can work together, but you have to respect the latency requirements. Proper port naming, generous connection limits, appropriate sidecar resources, and selective use of mTLS will keep your caching layer fast and observable.
