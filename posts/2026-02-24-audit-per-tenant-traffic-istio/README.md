@@ -95,10 +95,10 @@ spec:
                   timestamp: "%START_TIME%"
                   tenant: "tenant-a"
                   source_ip: "%DOWNSTREAM_REMOTE_ADDRESS%"
-                  source_namespace: "%REQ(X-FORWARDED-CLIENT-CERT)%"
+                  source_principal: "%DOWNSTREAM_PEER_URI_SAN%"
                   destination_service: "%REQ(:AUTHORITY)%"
                   method: "%REQ(:METHOD)%"
-                  path: "%REQ(PATH)%"
+                  path: "%PATH%"
                   protocol: "%PROTOCOL%"
                   response_code: "%RESPONSE_CODE%"
                   response_flags: "%RESPONSE_FLAGS%"
@@ -116,7 +116,7 @@ This produces structured JSON logs with a `tenant` field hardcoded to `tenant-a`
 
 For compliance, you often need to log who made the request, not just what the request was. If tenants use JWT authentication, you can include JWT claims in the audit log.
 
-First, make sure the JWT payload is available as a header:
+First, make sure the JWT claims you need for auditing are available as headers:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -128,7 +128,11 @@ spec:
   jwtRules:
   - issuer: "https://auth.tenant-a.com"
     jwksUri: "https://auth.tenant-a.com/.well-known/jwks.json"
-    outputPayloadToHeader: x-jwt-payload
+    outputClaimToHeaders:
+    - header: x-jwt-sub
+      claim: sub
+    - header: x-jwt-email
+      claim: email
 ```
 
 Then reference the header in the access log format:
@@ -138,14 +142,15 @@ log_format:
   json_format:
     timestamp: "%START_TIME%"
     tenant: "tenant-a"
-    user_identity: "%REQ(X-JWT-PAYLOAD)%"
+    user_identity: "%REQ(X-JWT-SUB)%"
+    user_email: "%REQ(X-JWT-EMAIL)%"
     method: "%REQ(:METHOD)%"
-    path: "%REQ(PATH)%"
+    path: "%PATH%"
     response_code: "%RESPONSE_CODE%"
     duration_ms: "%DURATION%"
 ```
 
-Now your audit logs include the full JWT payload, which typically contains the user ID, email, roles, and other identity information.
+Now your audit logs include the JWT subject and email claim, making it easier to answer user-specific audit questions without logging the entire token payload.
 
 ## Shipping Audit Logs to External Systems
 
@@ -214,7 +219,7 @@ data:
         Host elasticsearch.logging
         Port 9200
         Index istio-audit
-        Type _doc
+        Suppress_Type_Name On
 ```
 
 ## Querying Audit Logs Per Tenant
@@ -282,7 +287,7 @@ This specifically logs all authentication and authorization failures, which is e
 
 ## Generating Audit Reports
 
-Create periodic audit reports by aggregating log data. Here is a Prometheus query that shows request counts by tenant, response code, and path:
+Create periodic audit reports by aggregating log data. Here is a Prometheus query that shows request counts by tenant namespace, response code, and destination workload:
 
 ```promql
 sum(increase(istio_requests_total{reporter="destination"}[24h])) by (destination_workload_namespace, response_code, destination_workload)
@@ -355,7 +360,7 @@ PUT _ilm/policy/tenant-audit-policy
       "cold": {
         "min_age": "90d",
         "actions": {
-          "freeze": {}
+          "readonly": {}
         }
       },
       "delete": {
