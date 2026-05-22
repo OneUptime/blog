@@ -183,17 +183,14 @@ Maps are the most natural data structure for `for_each` iteration.
 ```hcl
 variable "buckets" {
   type = map(object({
-    acl       = string
-    versioned = bool
+    purpose = string
   }))
   default = {
     logs = {
-      acl       = "log-delivery-write"
-      versioned = false
+      purpose = "log storage"
     }
     artifacts = {
-      acl       = "private"
-      versioned = true
+      purpose = "build artifacts"
     }
   }
 }
@@ -205,7 +202,7 @@ resource "aws_s3_bucket" "managed" {
 
   tags = {
     Name    = each.key
-    Purpose = each.key
+    Purpose = each.value.purpose
   }
 }
 ```
