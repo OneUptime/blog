@@ -8,7 +8,9 @@ Description: Learn how to configure remote backends in CDKTF for secure, shared 
 
 ---
 
-When you start working with CDKTF, state is stored locally by default. That works fine for learning and personal projects, but the moment you have a team or a CI/CD pipeline, you need a remote backend. Remote backends store your Terraform state in a shared location, enable state locking to prevent concurrent modifications, and keep your state files secure. This guide covers how to configure the most common remote backends in CDKTF.
+Terraform stores state locally by default, and CDKTF projects initialized with `cdktf init --local` use local state. If you run `cdktf init` without `--local`, CDKTF defaults to HCP Terraform as the remote backend. Local state works fine for learning and personal projects, but the moment you have a team or a CI/CD pipeline, you need a remote backend. Remote backends store your Terraform state in a shared location, enable state locking to prevent concurrent modifications, and keep your state files secure. This guide covers how to configure the most common remote backends in CDKTF.
+
+Note: HashiCorp deprecated CDKTF on December 10, 2025 and no longer supports or maintains it. The examples below reflect the latest CDKTF 0.21.x APIs and current Terraform backend behavior.
 
 ## Why Remote Backends Matter
 
@@ -21,7 +23,7 @@ Remote backends solve all three problems:
 
 ## The Default: Local Backend
 
-By default, CDKTF uses the local backend, which stores state in the `cdktf.out` directory:
+Terraform's local backend stores state on the local filesystem. CDKTF also writes the synthesized Terraform configuration to the `cdktf.out` directory:
 
 ```typescript
 import { Construct } from "constructs";
@@ -30,7 +32,7 @@ import { App, TerraformStack } from "cdktf";
 class MyStack extends TerraformStack {
   constructor(scope: Construct, id: string) {
     super(scope, id);
-    // Local backend is implicit - state goes to cdktf.out/
+    // Local backend is implicit when no remote backend is configured.
   }
 }
 ```
@@ -39,7 +41,7 @@ This is fine for getting started but not suitable for production.
 
 ## S3 Backend (AWS)
 
-The S3 backend is the most popular choice for AWS users. It stores state in an S3 bucket and uses DynamoDB for state locking.
+The S3 backend is the most popular choice for AWS users. It stores state in an S3 bucket and supports state locking with an S3 lockfile. Older Terraform configurations used DynamoDB for state locking, but DynamoDB-based S3 backend locking is now deprecated.
 
 First, create the backend infrastructure (you only need to do this once):
 
@@ -61,13 +63,6 @@ aws s3api put-bucket-encryption \
   --server-side-encryption-configuration '{
     "Rules": [{"ApplyServerSideEncryptionByDefault": {"SSEAlgorithm": "aws:kms"}}]
   }'
-
-# Create the DynamoDB table for state locking
-aws dynamodb create-table \
-  --table-name terraform-state-lock \
-  --attribute-definitions AttributeName=LockID,AttributeType=S \
-  --key-schema AttributeName=LockID,KeyType=HASH \
-  --billing-mode PAY_PER_REQUEST
 ```
 
 Then configure the backend in your CDKTF stack:
@@ -87,8 +82,8 @@ class MyStack extends TerraformStack {
       key: "production/terraform.tfstate",
       region: "us-east-1",
       encrypt: true,
-      dynamodbTable: "terraform-state-lock",
     });
+    this.addOverride("terraform.backend.s3.use_lockfile", true);
 
     new AwsProvider(this, "aws", { region: "us-east-1" });
 
@@ -107,9 +102,11 @@ new S3Backend(this, {
   key: "team-a/production/terraform.tfstate",
   region: "us-east-1",
   encrypt: true,
-  dynamodbTable: "terraform-state-lock",
-  roleArn: "arn:aws:iam::111111111111:role/TerraformStateAccess",
+  assumeRole: {
+    roleArn: "arn:aws:iam::111111111111:role/TerraformStateAccess",
+  },
 });
+this.addOverride("terraform.backend.s3.use_lockfile", true);
 ```
 
 ## Azure Storage Backend
@@ -131,7 +128,8 @@ az storage account create \
 # Create a container for state files
 az storage container create \
   --name tfstate \
-  --account-name tfstateaccount
+  --account-name tfstateaccount \
+  --auth-mode login
 ```
 
 Configure the backend in CDKTF:
@@ -149,7 +147,9 @@ class MyStack extends TerraformStack {
       storageAccountName: "tfstateaccount",
       containerName: "tfstate",
       key: "production.terraform.tfstate",
+      useAzureadAuth: true,
     });
+    this.addOverride("terraform.backend.azurerm.use_cli", true);
 
     new AzurermProvider(this, "azurerm", {
       features: [{}],
@@ -164,10 +164,12 @@ For GCP users, state goes into a Google Cloud Storage bucket:
 
 ```bash
 # Create a GCS bucket for state
-gsutil mb -p your-project-id -l us-central1 gs://my-terraform-state-bucket
+gcloud storage buckets create gs://my-terraform-state-bucket \
+  --project=your-project-id \
+  --location=us-central1
 
 # Enable versioning
-gsutil versioning set on gs://my-terraform-state-bucket
+gcloud storage buckets update gs://my-terraform-state-bucket --versioning
 ```
 
 Configure in CDKTF:
@@ -230,8 +232,8 @@ class NetworkStack extends TerraformStack {
       key: "network/terraform.tfstate",
       region: "us-east-1",
       encrypt: true,
-      dynamodbTable: "terraform-state-lock",
     });
+    this.addOverride("terraform.backend.s3.use_lockfile", true);
 
     // Network resources
   }
@@ -246,8 +248,8 @@ class ApplicationStack extends TerraformStack {
       key: "application/terraform.tfstate",
       region: "us-east-1",
       encrypt: true,
-      dynamodbTable: "terraform-state-lock",
     });
+    this.addOverride("terraform.backend.s3.use_lockfile", true);
 
     // Application resources
   }
@@ -266,8 +268,8 @@ function configureBackend(stack: TerraformStack, stateKey: string): void {
     key: `${stateKey}/terraform.tfstate`,
     region: "us-east-1",
     encrypt: true,
-    dynamodbTable: "terraform-state-lock",
   });
+  stack.addOverride("terraform.backend.s3.use_lockfile", true);
 }
 
 class NetworkStack extends TerraformStack {
@@ -304,6 +306,8 @@ terraform init -migrate-state
 # Verify the state was migrated
 terraform state list
 ```
+
+For HCP Terraform, CDKTF also supports migrating local state with `cdktf diff <stack-name> --migrate-state`.
 
 ## Best Practices
 
