@@ -8,9 +8,9 @@ Description: Learn how to use the Azure Cloud Adoption Framework (CAF) Terraform
 
 ---
 
-Building an enterprise Azure environment from scratch is a massive undertaking. You need management groups, subscriptions, networking, identity, policies, monitoring, and security controls - all wired together correctly. The Azure Cloud Adoption Framework (CAF) for Terraform provides pre-built modules that implement Microsoft's recommended architecture patterns, saving you months of design and implementation work.
+Building an enterprise Azure environment from scratch is a massive undertaking. You need management groups, subscriptions, networking, identity, policies, monitoring, and security controls - all wired together correctly. The Azure Cloud Adoption Framework (CAF) enterprise-scale Terraform module provides pre-built modules that implement Microsoft's recommended architecture patterns, saving you months of design and implementation work.
 
-This guide covers how to use the Azure CAF Terraform modules, starting with the landing zone concept and working through practical deployment steps.
+This guide covers how to use the Azure CAF Terraform modules, starting with the landing zone concept and working through practical deployment steps. The CAF enterprise-scale module is now in extended support and is scheduled to be archived on August 1, 2026, so use Azure Verified Modules for Platform Landing Zones for new deployments unless you have a specific reason to use this module.
 
 ## What is the Cloud Adoption Framework
 
@@ -29,9 +29,9 @@ The CAF Terraform modules translate this architecture into reusable Terraform co
 
 There are several CAF-related Terraform modules:
 
-1. **azurerm-caf-enterprise-scale**: The main module for deploying the Enterprise-Scale architecture. Manages management groups, policies, and role assignments.
+1. **Azure/caf-enterprise-scale/azurerm**: The main Terraform Registry module for deploying the Enterprise-Scale architecture. Manages management groups, policies, role assignments, and optional platform resources.
 2. **aztfmod/azurecaf**: A naming provider that generates Azure resource names following CAF conventions.
-3. **Azure/caf-enterprise-scale**: Community modules for specific landing zone components.
+3. **aztfmod/caf**: A broader CAF supermodule for Azure platform engineering scenarios.
 
 This guide focuses primarily on the enterprise-scale module and the CAF naming provider.
 
@@ -43,17 +43,39 @@ The enterprise-scale module creates the foundation of your Azure environment:
 # versions.tf
 
 terraform {
-  required_version = ">= 1.5.0"
+  required_version = ">= 1.7.0"
 
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.80"
+      version = "~> 3.108"
+    }
+    azapi = {
+      source  = "Azure/azapi"
+      version = "~> 1.13, != 1.13.0"
+    }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.6"
+    }
+    time = {
+      source  = "hashicorp/time"
+      version = "~> 0.11"
     }
   }
 }
 
 provider "azurerm" {
+  features {}
+}
+
+provider "azurerm" {
+  alias = "connectivity"
+  features {}
+}
+
+provider "azurerm" {
+  alias = "management"
   features {}
 }
 
@@ -63,7 +85,13 @@ data "azurerm_client_config" "current" {}
 # Deploy the Enterprise-Scale Landing Zone
 module "enterprise_scale" {
   source  = "Azure/caf-enterprise-scale/azurerm"
-  version = "~> 5.0"
+  version = "~> 6.0"
+
+  providers = {
+    azurerm              = azurerm
+    azurerm.connectivity = azurerm.connectivity
+    azurerm.management   = azurerm.management
+  }
 
   # Default location for resources
   default_location = "eastus"
@@ -75,8 +103,10 @@ module "enterprise_scale" {
   root_id   = "contoso"
   root_name = "Contoso"
 
-  # Enable the core landing zone management groups
-  deploy_core_landing_zones = true
+  # Enable the core hierarchy and Corp/Online landing zones
+  deploy_core_landing_zones   = true
+  deploy_corp_landing_zones   = true
+  deploy_online_landing_zones = true
 }
 ```
 
@@ -102,7 +132,13 @@ Override the default structure to match your organization:
 ```hcl
 module "enterprise_scale" {
   source  = "Azure/caf-enterprise-scale/azurerm"
-  version = "~> 5.0"
+  version = "~> 6.0"
+
+  providers = {
+    azurerm              = azurerm
+    azurerm.connectivity = azurerm.connectivity
+    azurerm.management   = azurerm.management
+  }
 
   default_location = "eastus"
   root_parent_id   = data.azurerm_client_config.current.tenant_id
@@ -110,6 +146,7 @@ module "enterprise_scale" {
   root_name        = "Contoso"
 
   deploy_core_landing_zones = true
+  deploy_corp_landing_zones = true
 
   # Add custom landing zones
   custom_landing_zones = {
@@ -147,14 +184,20 @@ Enable the connectivity resources for hub-and-spoke networking:
 ```hcl
 module "enterprise_scale" {
   source  = "Azure/caf-enterprise-scale/azurerm"
-  version = "~> 5.0"
+  version = "~> 6.0"
+
+  providers = {
+    azurerm              = azurerm
+    azurerm.connectivity = azurerm.connectivity
+    azurerm.management   = azurerm.management
+  }
 
   default_location = "eastus"
   root_parent_id   = data.azurerm_client_config.current.tenant_id
   root_id          = "contoso"
   root_name        = "Contoso"
 
-  deploy_core_landing_zones   = true
+  deploy_core_landing_zones     = true
   deploy_connectivity_resources = true
 
   # Subscription ID for the connectivity subscription
@@ -167,8 +210,8 @@ module "enterprise_scale" {
         {
           enabled = true
           config = {
-            location                  = "eastus"
-            address_space             = ["10.0.0.0/16"]
+            location                     = "eastus"
+            address_space                = ["10.0.0.0/16"]
             link_to_ddos_protection_plan = false
 
             # Azure Firewall configuration
@@ -178,7 +221,7 @@ module "enterprise_scale" {
                 address_prefix                = "10.0.1.0/24"
                 enable_dns_proxy              = true
                 sku_tier                      = "Standard"
-                threat_intel_mode             = "Deny"
+                threat_intelligence_mode      = "Deny"
               }
             }
 
@@ -197,9 +240,9 @@ module "enterprise_scale" {
         config = {
           location = "eastus"
           enable_private_link_by_service = {
-            azure_sql_database = true
-            azure_storage_blob = true
-            azure_key_vault    = true
+            azure_sql_database_sqlserver = true
+            storage_account_blob         = true
+            azure_key_vault              = true
           }
         }
       }
@@ -215,7 +258,13 @@ Enable centralized management resources like Log Analytics and Automation:
 ```hcl
 module "enterprise_scale" {
   source  = "Azure/caf-enterprise-scale/azurerm"
-  version = "~> 5.0"
+  version = "~> 6.0"
+
+  providers = {
+    azurerm              = azurerm
+    azurerm.connectivity = azurerm.connectivity
+    azurerm.management   = azurerm.management
+  }
 
   default_location = "eastus"
   root_parent_id   = data.azurerm_client_config.current.tenant_id
@@ -264,7 +313,7 @@ terraform {
     }
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.80"
+      version = "~> 3.108"
     }
   }
 }
@@ -316,7 +365,13 @@ The enterprise-scale module comes with built-in policy assignments. You can also
 ```hcl
 module "enterprise_scale" {
   source  = "Azure/caf-enterprise-scale/azurerm"
-  version = "~> 5.0"
+  version = "~> 6.0"
+
+  providers = {
+    azurerm              = azurerm
+    azurerm.connectivity = azurerm.connectivity
+    azurerm.management   = azurerm.management
+  }
 
   default_location = "eastus"
   root_parent_id   = data.azurerm_client_config.current.tenant_id
@@ -352,7 +407,13 @@ Do not try to deploy everything at once. Follow this order:
 # Phase 1: Core management groups and policies
 module "enterprise_scale_core" {
   source  = "Azure/caf-enterprise-scale/azurerm"
-  version = "~> 5.0"
+  version = "~> 6.0"
+
+  providers = {
+    azurerm              = azurerm
+    azurerm.connectivity = azurerm.connectivity
+    azurerm.management   = azurerm.management
+  }
 
   default_location              = "eastus"
   root_parent_id                = data.azurerm_client_config.current.tenant_id
@@ -386,7 +447,7 @@ output "policy_assignment_ids" {
 
 ## Best Practices
 
-**Read the CAF documentation first.** Understand the architecture before deploying the module. The module implements an opinionated design that may not fit every organization.
+**Read the CAF documentation first.** Understand the architecture before deploying the module. The module implements an opinionated design that may not fit every organization, and Microsoft recommends Azure Verified Modules for new Azure landing zone deployments.
 
 **Start with deploy_core_landing_zones only.** Get the management group hierarchy and policies right before adding networking and management resources.
 
