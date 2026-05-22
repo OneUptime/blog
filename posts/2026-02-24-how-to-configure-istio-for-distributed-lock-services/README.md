@@ -65,7 +65,7 @@ spec:
       annotations:
         proxy.istio.io/config: |
           holdApplicationUntilProxyStarts: true
-          drainDuration: 60s
+          terminationDrainDuration: 60s
     spec:
       terminationGracePeriodSeconds: 65
       containers:
@@ -106,7 +106,7 @@ spec:
 ```
 
 Critical settings:
-- `outlierDetection.consecutive5xxErrors: 0` disables circuit breaking. ZooKeeper handles its own failure detection through sessions and heartbeats.
+- `outlierDetection.consecutive5xxErrors: 0` disables outlier-detection host ejection for consecutive 5xx-equivalent failures. ZooKeeper handles its own failure detection through sessions and heartbeats.
 - Aggressive keepalive (30s/10s) to keep connections alive through idle periods.
 - `connectTimeout: 2s` is tight because ZooKeeper clients have their own session timeout and will fail over to another server if connection takes too long.
 
@@ -114,12 +114,12 @@ Critical settings:
 
 ZooKeeper clients have a session timeout (typically 30 seconds). If the client doesn't send a heartbeat within the session timeout, ZooKeeper considers the session dead and releases all ephemeral nodes (including locks).
 
-During pod shutdown, the sidecar drain must account for this. The client needs time to gracefully close its session before the sidecar shuts down:
+During pod shutdown, the sidecar termination drain must account for this. The client needs time to gracefully close its session before the sidecar shuts down:
 
 ```yaml
 annotations:
   proxy.istio.io/config: |
-    drainDuration: 30s
+    terminationDrainDuration: 30s
     proxyMetadata:
       EXIT_ON_ZERO_ACTIVE_CONNECTIONS: "true"
 ```
@@ -257,12 +257,12 @@ A throttled sidecar will delay lock renewals.
 
 **3. Monitor renewal latency:**
 
-Track how long lock renewal requests take through the sidecar:
+Track connection churn through the sidecar:
 
 ```promql
-# TCP round-trip time to lock service
+# TCP connections opened to lock service
 
-istio_tcp_connections_opened_total{destination_service="redis-lock.coordination.svc.cluster.local"}
+rate(istio_tcp_connections_opened_total{destination_service="redis-lock.coordination.svc.cluster.local"}[5m])
 ```
 
 Application-level metrics are more useful here:
