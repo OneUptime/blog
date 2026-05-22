@@ -188,13 +188,16 @@ resource "tfe_variable" "aws_secret_key" {
 
 ## Variable Precedence
 
-When the same variable is defined in multiple places, HCP Terraform follows this precedence order (highest to lowest):
+When the same variable is defined in multiple places, HCP Terraform follows this simplified precedence order (highest to lowest):
 
-1. **CLI -var flags** (CLI-driven workflow only)
-2. **Workspace-specific variables** set in HCP Terraform
-3. **Variable sets** applied to the workspace
-4. **terraform.tfvars** or **\*.auto.tfvars** files in the configuration
-5. **Variable defaults** defined in the configuration
+1. **Priority variable sets** applied to the workspace
+2. **CLI -var and -var-file flags** (CLI-driven workflow only)
+3. **Local TF_VAR_ environment variables** (CLI-driven workflow only)
+4. **Workspace-specific variables** set in HCP Terraform
+5. **Variable sets** applied to the workspace
+6. **\*.auto.tfvars** files in the configuration
+7. **terraform.tfvars** files in the configuration
+8. **Variable defaults** defined in the configuration
 
 ```hcl
 # variables.tf - lowest precedence
@@ -209,12 +212,12 @@ instance_type = "t3.small"
 ```
 
 ```text
-# Workspace variable - highest (for non-CLI workflows)
+# Workspace variable - highest unless a priority variable set also defines it
 Key: instance_type
 Value: t3.large
 ```
 
-The workspace variable wins. The final value is `t3.large`.
+If no priority variable set also defines `instance_type`, the workspace variable wins. The final value is `t3.large`.
 
 ## HCL Variables
 
@@ -316,6 +319,7 @@ curl \
   --request PATCH \
   --data '{
     "data": {
+      "id": "var-VARIABLE_ID",
       "type": "vars",
       "attributes": {
         "value": "t3.xlarge"
