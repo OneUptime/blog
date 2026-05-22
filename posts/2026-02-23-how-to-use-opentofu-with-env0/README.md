@@ -47,32 +47,13 @@ Projects in env0 organize related environments. Create one for your infrastructu
 
 Templates define the blueprint for an environment. This is where you specify that OpenTofu should be used:
 
-```yaml
-# .env0.yml in your repository root
+```bash
+# Optional: pin the OpenTofu version from the template working directory
+# .opentofu-version
+1.12.0
 
-version: 1
-
-# Specify OpenTofu as the IaC tool
-deploy:
-  steps:
-    terraformVersion: ""  # Leave empty for custom binary
-    opentofuVersion: "1.6.2"
-
-    init:
-      commands:
-        - tofu init -input=false
-
-    plan:
-      commands:
-        - tofu plan -out=tfplan -input=false
-
-    apply:
-      commands:
-        - tofu apply -auto-approve tfplan
-
-    destroy:
-      commands:
-        - tofu destroy -auto-approve
+# Or override the template version with an env0 environment variable
+ENV0_OPENTOFU_VERSION=1.12.0
 ```
 
 Alternatively, configure the template through the env0 UI:
@@ -80,7 +61,7 @@ Alternatively, configure the template through the env0 UI:
 1. Go to **Templates** and click **Create Template**
 2. Select your repository and branch
 3. Under **IaC Tool**, select **OpenTofu**
-4. Choose the OpenTofu version (1.6.x recommended)
+4. Choose the OpenTofu version, or select the option to resolve it from your code
 5. Set the working directory if your configs are in a subdirectory
 6. Save the template
 
@@ -107,6 +88,8 @@ For AWS, the recommended approach is to configure OIDC federation so env0 assume
 
 ```hcl
 # IAM role for env0 to assume
+data "aws_caller_identity" "current" {}
+
 resource "aws_iam_role" "env0" {
   name = "env0-infrastructure-role"
 
@@ -116,12 +99,16 @@ resource "aws_iam_role" "env0" {
       {
         Effect = "Allow"
         Principal = {
-          Federated = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:oidc-provider/app.env0.com"
+          Federated = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:oidc-provider/login.app.env0.com/"
         }
-        Action = "sts:AssumeRoleWithWebIdentity"
+        Action = [
+          "sts:AssumeRoleWithWebIdentity",
+          "sts:TagSession"
+        ]
         Condition = {
           StringEquals = {
-            "app.env0.com:aud" = "your-env0-org-id"
+            "login.app.env0.com/:aud" = "hoMiq9PdkRh9LUvVpH4wIErWg50VSG1b"
+            "login.app.env0.com/:sub" = "your-env0-organization-sub"
           }
         }
       }
@@ -149,8 +136,8 @@ resource "aws_iam_role_policy_attachment" "env0_admin" {
 ### GCP Credentials
 
 ```bash
-# Upload your service account key JSON as a credential variable
-# GOOGLE_CREDENTIALS = <base64-encoded service account JSON>
+# Add a Google Cloud Service Account credential in env0 and paste the service account key JSON
+# Or set GOOGLE_CREDENTIALS to the raw service account key JSON if you manage provider credentials manually
 # Or use Workload Identity Federation for keyless auth
 ```
 
@@ -172,29 +159,14 @@ Set sensitive values as encrypted variables:
 3. Add the variable name and value
 4. Check **Sensitive** to encrypt the value
 
-You can also define variables in a `.env0.yml` file:
+You can also commit non-sensitive defaults in an OpenTofu variable definitions file and override them in env0:
 
-```yaml
-# .env0.yml
-version: 1
+```hcl
+# staging.auto.tfvars
+instance_type = "t3.micro"
+environment   = "staging"
 
-deploy:
-  steps:
-    opentofuVersion: "1.6.2"
-
-# Define variables with defaults
-variables:
-  - name: instance_type
-    value: "t3.micro"
-    description: "EC2 instance type"
-
-  - name: environment
-    value: "staging"
-    description: "Deployment environment"
-
-  - name: database_password
-    sensitive: true
-    description: "Database password - set in env0 UI"
+# Set sensitive values such as database_password in env0, not in source control.
 ```
 
 ## Cost Estimation
@@ -202,10 +174,10 @@ variables:
 One of env0's standout features is automatic cost estimation. Before any apply happens, env0 shows you the estimated cost impact of the planned changes:
 
 ```yaml
-# Enable cost estimation in your template
-# This is typically done in the env0 UI under template settings
+# Enable cost estimation for your project
+# This is typically done in the env0 UI under Project Settings > Policies
 
-# You can also set cost policies:
+# You can also enforce cost rules with env0 approval policies:
 # - Warn if monthly cost exceeds $500
 # - Block deployments that exceed $1000/month
 # - Require approval for changes over $200/month
@@ -220,9 +192,9 @@ For production environments, you want manual approval gates:
 ```yaml
 # In env0, configure approval policies:
 # 1. Navigate to your template settings
-# 2. Under "Policies", enable "Require approval"
-# 3. Set the number of required approvals
-# 4. Designate approvers by team or individual
+# 2. Under the advanced section, add an approval policy
+# 3. Select the repository and path containing your Rego files
+# 4. Save the template policy assignment
 ```
 
 You can also use custom policies written in OPA:
@@ -232,10 +204,10 @@ You can also use custom policies written in OPA:
 # Require approval for any changes to production databases
 package env0
 
-approval_required {
-  input.configuration.variables.environment == "production"
-  some resource
-  input.plan.resource_changes[resource].type == "aws_db_instance"
+pending["Production database changes require approval"] {
+  input.variables.terraform.environment == "production"
+  resource := input.plan.resource_changes[_]
+  resource.type == "aws_db_instance"
 }
 ```
 
@@ -263,49 +235,38 @@ This prevents forgotten development environments from running up cloud bills ind
 env0 supports custom workflow steps that run before or after the standard init/plan/apply sequence:
 
 ```yaml
-# .env0.yml with custom steps
-version: 1
+# env0.yml with custom steps
+version: 2
 
 deploy:
   steps:
-    opentofuVersion: "1.6.2"
+    opentofuInit:
+      before:
+        - name: Set up tools
+          run: |
+            echo "Setting up environment"
+            pip install checkov
 
-    setup:
-      commands:
-        # Run before init
-        - echo "Setting up environment"
-        - pip install checkov
+    opentofuPlan:
+      after:
+        - name: Scan OpenTofu plan
+          run: |
+            tofu show -json .tf-plan > tfplan.json
+            checkov -f tfplan.json --framework terraform_plan
 
-    init:
-      commands:
-        - tofu init -input=false
-
-    plan:
-      commands:
-        - tofu plan -out=tfplan -input=false
-        # Run security scan on the plan
-        - checkov -f tfplan --framework terraform_plan
-
-    apply:
-      commands:
-        - tofu apply -auto-approve tfplan
-
-    postApply:
-      commands:
-        # Run smoke tests after deployment
-        - ./scripts/smoke-test.sh
-        # Notify the team
-        - curl -X POST "$SLACK_WEBHOOK" -d '{"text":"Deployment complete"}'
+    opentofuApply:
+      after:
+        - name: Run smoke tests and notify
+          run: |
+            ./scripts/smoke-test.sh
+            curl -X POST "$SLACK_WEBHOOK" -d '{"text":"Deployment complete"}'
 
 destroy:
   steps:
-    setup:
-      commands:
-        - echo "Preparing for destroy"
-
-    destroy:
-      commands:
-        - tofu destroy -auto-approve
+    opentofuDestroy:
+      before:
+        - name: Prepare for destroy
+          run: echo "Preparing for destroy"
 ```
 
 ## Handling Multiple Environments
@@ -345,9 +306,9 @@ After env0 deploys your infrastructure, you need visibility into whether those s
 
 ## Troubleshooting Common Issues
 
-**OpenTofu version mismatch**: Make sure the version specified in your `.env0.yml` matches what your configuration expects. Pin to a specific version rather than using ranges.
+**OpenTofu version mismatch**: Make sure the version selected in the template, `.opentofu-version`, or `ENV0_OPENTOFU_VERSION` matches what your configuration expects. Pin to a specific version rather than using ranges.
 
-**Credential errors**: Verify that your cloud credentials are set at the correct scope (organization, project, or environment). Use `tofu init` locally with the same credentials to test.
+**Credential errors**: Verify that your cloud credentials are set at the correct scope (organization or project) and assigned to the project or environment. Use `tofu init` locally with equivalent credentials to test.
 
 **State locking conflicts**: If deployments fail with state lock errors, check that the previous run completed properly. env0 handles state locking, but manual interventions can cause conflicts.
 
