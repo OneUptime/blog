@@ -8,24 +8,24 @@ Description: Learn how to reference and use security groups across VPC boundarie
 
 ---
 
-In a single-VPC setup, referencing one security group from another is trivial. You just pass the security group ID. But once your architecture spans multiple VPCs - maybe a separate VPC for your database tier, or VPCs in different AWS accounts - things get more involved. You need VPC peering or a Transit Gateway, and your security group rules need to reference CIDR blocks instead of security group IDs in most cases.
+In a single-VPC setup, referencing one security group from another is trivial. You just pass the security group ID. But once your architecture spans multiple VPCs - maybe a separate VPC for your database tier, or VPCs in different AWS accounts - things get more involved. You need VPC peering or a Transit Gateway, and your security group rules sometimes need to reference CIDR blocks instead of security group IDs.
 
 This guide walks through the patterns for referencing security groups across VPCs in Terraform.
 
 ## The Limitation
 
-Here is the core issue: AWS security group rules can only reference other security groups within the same VPC, or in a peered VPC within the same region. You cannot directly reference a security group in a non-peered VPC or across regions.
+Here is the core issue: AWS security group rules can reference other security groups within the same VPC, in a peered VPC, or in VPCs attached to the same Transit Gateway when security group referencing is enabled. You cannot directly reference a security group in a non-peered VPC, across regions, or across Transit Gateway peering connections.
 
 This means your approach depends on the connectivity method:
 
-- **VPC Peering (same region)** - You can reference security group IDs directly
+- **VPC Peering (same region)** - You can reference security group IDs directly for inbound and outbound rules
 - **VPC Peering (cross-region)** - You must use CIDR blocks
-- **Transit Gateway** - You must use CIDR blocks
+- **Transit Gateway** - You can reference security groups in inbound rules when security group referencing is enabled on the Transit Gateway and VPC attachments; outbound rules must use CIDR blocks
 - **PrivateLink** - Different pattern altogether
 
 ## Setting Up VPC Peering
 
-Before you can reference security groups across VPCs, you need a peering connection.
+Before you can reference security groups across peered VPCs, you need a peering connection.
 
 ```hcl
 # First VPC - contains the application
@@ -96,15 +96,6 @@ resource "aws_security_group" "app_server" {
   description = "Security group for application servers"
   vpc_id      = aws_vpc.app.id
 
-  # Outbound to the database security group in the peered VPC
-  egress {
-    description     = "MySQL to database VPC"
-    from_port       = 3306
-    to_port         = 3306
-    protocol        = "tcp"
-    security_groups = [aws_security_group.database.id]
-  }
-
   tags = {
     Name = "app-server-sg"
   }
@@ -116,26 +107,41 @@ resource "aws_security_group" "database" {
   description = "Security group for database instances"
   vpc_id      = aws_vpc.database.id
 
-  # Inbound from the app server security group in the peered VPC
-  ingress {
-    description     = "MySQL from app servers"
-    from_port       = 3306
-    to_port         = 3306
-    protocol        = "tcp"
-    security_groups = [aws_security_group.app_server.id]
-  }
-
   tags = {
     Name = "database-sg"
   }
 }
+
+# Outbound to the database security group in the peered VPC
+resource "aws_vpc_security_group_egress_rule" "app_to_database" {
+  security_group_id            = aws_security_group.app_server.id
+  referenced_security_group_id = aws_security_group.database.id
+  description                  = "MySQL to database VPC"
+  from_port                    = 3306
+  to_port                      = 3306
+  ip_protocol                  = "tcp"
+
+  depends_on = [aws_vpc_peering_connection.app_to_db]
+}
+
+# Inbound from the app server security group in the peered VPC
+resource "aws_vpc_security_group_ingress_rule" "database_from_app" {
+  security_group_id            = aws_security_group.database.id
+  referenced_security_group_id = aws_security_group.app_server.id
+  description                  = "MySQL from app servers"
+  from_port                    = 3306
+  to_port                      = 3306
+  ip_protocol                  = "tcp"
+
+  depends_on = [aws_vpc_peering_connection.app_to_db]
+}
 ```
 
-This works because AWS allows cross-VPC security group references when the VPCs are peered in the same region. Terraform handles the dependency ordering automatically.
+This works because AWS allows cross-VPC security group references when the VPCs are peered in the same region. Creating the security group rules separately lets Terraform create both security groups before it adds the cross-references.
 
 ## Cross-VPC with CIDR Blocks
 
-When you can't use direct security group references (cross-region peering, Transit Gateway, or non-peered VPCs connected through other means), you fall back to CIDR blocks.
+When you can't use direct security group references (cross-region peering, Transit Gateway outbound rules, PrivateLink endpoint rules, or non-peered VPCs connected through other means), you fall back to CIDR blocks.
 
 ```hcl
 # Application VPC subnets where app servers run
@@ -250,18 +256,34 @@ resource "aws_security_group" "db_cross_account" {
   description = "Database SG with cross-account references"
   vpc_id      = aws_vpc.db.id
 
-  # Reference the app security group from the other account
-  ingress {
-    description     = "MySQL from app servers in app account"
-    from_port       = 3306
-    to_port         = 3306
-    protocol        = "tcp"
-    security_groups = ["${aws_security_group.app_cross_account.id}"]
-  }
-
   tags = {
     Name = "db-cross-account-sg"
   }
+}
+
+# Security group in the application account
+resource "aws_security_group" "app_cross_account" {
+  provider    = aws.app_account
+  name_prefix = "app-cross-acct-"
+  description = "Application SG referenced from the database account"
+  vpc_id      = aws_vpc.app.id
+
+  tags = {
+    Name = "app-cross-account-sg"
+  }
+}
+
+# Reference the app security group from the other account
+resource "aws_vpc_security_group_ingress_rule" "db_from_app_cross_account" {
+  provider                     = aws.db_account
+  security_group_id            = aws_security_group.db_cross_account.id
+  referenced_security_group_id = aws_security_group.app_cross_account.id
+  description                  = "MySQL from app servers in app account"
+  from_port                    = 3306
+  to_port                      = 3306
+  ip_protocol                  = "tcp"
+
+  depends_on = [aws_vpc_peering_connection_accepter.cross_account]
 }
 ```
 
