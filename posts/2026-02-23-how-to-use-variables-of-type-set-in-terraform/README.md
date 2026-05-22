@@ -46,7 +46,7 @@ The key differences between sets and lists:
 | Order | Ordered (preserved) | Unordered |
 | Duplicates | Allowed | Automatically removed |
 | Indexing | Yes (list[0]) | No |
-| for_each | Needs toset() | Works directly |
+| for_each | Needs toset() | Works directly for sets of strings |
 
 ```hcl
 variable "list_example" {
@@ -173,8 +173,8 @@ variable "services" {
 locals {
   # All environment-service combinations
   env_service_pairs = setproduct(var.environments, var.services)
-  # Result: [["dev","api"], ["dev","web"], ["dev","worker"],
-  #          ["staging","api"], ["staging","web"], ...]
+  # Result includes: ["dev","api"], ["dev","web"], ["dev","worker"],
+  #                  ["staging","api"], ["staging","web"], ...
 }
 ```
 
@@ -295,7 +295,8 @@ variable "database_azs" {
 
 locals {
   # We need subnets in all AZs used by any resource type
-  all_azs = setunion(var.compute_azs, var.database_azs)
+  all_azs        = setunion(var.compute_azs, var.database_azs)
+  sorted_all_azs = sort(tolist(local.all_azs))
 }
 
 resource "aws_subnet" "main" {
@@ -303,7 +304,7 @@ resource "aws_subnet" "main" {
 
   vpc_id            = aws_vpc.main.id
   availability_zone = each.value
-  cidr_block        = cidrsubnet(var.vpc_cidr, 8, index(tolist(local.all_azs), each.value))
+  cidr_block        = cidrsubnet(var.vpc_cidr, 8, index(local.sorted_all_azs, each.value))
 
   tags = {
     Name = "subnet-${each.value}"
@@ -321,9 +322,9 @@ variable "allowed_regions" {
   validation {
     condition = alltrue([
       for region in var.allowed_regions :
-      can(regex("^(us|eu|ap)-(east|west|central|south|north|southeast|northeast)-[1-3]$", region))
+      can(regex("^[a-z]{2}(?:-[a-z]+)+-[0-9]+$", region))
     ])
-    error_message = "All values must be valid AWS region names."
+    error_message = "All values must look like AWS region names, such as us-east-1 or ca-central-1."
   }
 
   validation {
