@@ -79,7 +79,7 @@ resource "kubectl_manifest" "cert_manager" {
   for_each  = data.kubectl_file_documents.cert_manager.manifests
   yaml_body = each.value
 
-  # Wait for each resource to be ready before proceeding
+  # Wait for Deployment and APIService resources in the bundle to roll out
   wait_for_rollout = true
 }
 ```
@@ -134,9 +134,6 @@ spec:
     - app.example.com
     - www.example.com
 YAML
-
-  # Wait for the resource to be ready
-  wait_for_rollout = true
 
   depends_on = [
     kubectl_manifest.cert_manager
@@ -245,11 +242,8 @@ YAML
 
   # Enable server-side apply
   server_side_apply = true
-  # Set the field manager name
-  field_manager {
-    name            = "terraform"
-    force_conflicts = true
-  }
+  # Force conflicts when Terraform should take ownership of fields
+  force_conflicts = true
 }
 ```
 
@@ -264,9 +258,6 @@ When you install CRDs and then create custom resources in the same Terraform run
 resource "kubectl_manifest" "prometheus_crds" {
   for_each  = data.kubectl_file_documents.prometheus_crds.manifests
   yaml_body = each.value
-
-  # Wait for the CRD to be fully registered
-  wait_for_rollout = true
 }
 
 # Step 2: Create custom resources that depend on those CRDs
