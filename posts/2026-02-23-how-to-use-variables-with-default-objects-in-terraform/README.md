@@ -217,7 +217,7 @@ module "app" {
 }
 ```
 
-Note: We use a ternary for boolean values because `coalesce()` considers `false` to be empty.
+Note: The ternary makes the null check explicit for boolean values. `coalesce()` skips `null` values and empty strings, but it does not consider `false` to be empty.
 
 ## Nested Default Objects
 
