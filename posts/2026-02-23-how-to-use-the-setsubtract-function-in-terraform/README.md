@@ -82,8 +82,7 @@ locals {
 
   # Find extra tags (not in required list)
   extra_tags = setsubtract(local.provided_tag_keys, var.required_tags)
-  # toset(["Owner"]) - wait, Owner IS required. Let me recalculate.
-  # Actually: toset([]) since all provided tags are in required list
+  # toset([]) since all provided tags are in required list
 }
 
 output "tag_audit" {
@@ -274,7 +273,7 @@ locals {
 
 ## The Set Function Family
 
-Here is how all three set functions relate:
+Here is how these set functions relate:
 
 ```hcl
 locals {
