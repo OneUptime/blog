@@ -238,7 +238,7 @@ variable "users" {
   default = {
     alice = {
       groups   = ["developers", "devops"]
-      policies = ["ReadOnlyAccess", "S3FullAccess"]
+      policies = ["ReadOnlyAccess", "AmazonS3FullAccess"]
     }
     bob = {
       groups   = ["developers"]
@@ -297,7 +297,7 @@ resource "aws_iam_user_policy_attachment" "this" {
   for_each = local.user_policy_map
 
   user       = aws_iam_user.this[each.value.user].name
-  policy_arn = "arn:aws:iam::policy/${each.value.policy}"
+  policy_arn = "arn:aws:iam::aws:policy/${each.value.policy}"
 }
 ```
 
