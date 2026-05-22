@@ -57,13 +57,13 @@ echo "Directory: $DIR"
 # Generate plan with old version
 tfenv use "$OLD_VERSION"
 cd "$DIR"
-terraform init -upgrade > /dev/null 2>&1
+terraform init > /dev/null 2>&1
 terraform plan -out=plan-old.tfplan -input=false > /dev/null 2>&1
 terraform show -json plan-old.tfplan > plan-old.json
 
 # Generate plan with new version
 tfenv use "$NEW_VERSION"
-terraform init -upgrade > /dev/null 2>&1
+terraform init > /dev/null 2>&1
 terraform plan -out=plan-new.tfplan -input=false > /dev/null 2>&1
 terraform show -json plan-new.tfplan > plan-new.json
 
@@ -99,7 +99,7 @@ tfenv use 1.8.0
 for module in modules/*/; do
   echo "Testing $module with Terraform $(terraform version -json | jq -r .terraform_version)..."
   cd "$module"
-  terraform init -upgrade
+  terraform init
   terraform test -verbose
   cd -
 done
@@ -121,7 +121,7 @@ tfenv use "$NEW_VERSION"
 cd "$DIR"
 
 # Init with new version
-terraform init -upgrade
+terraform init
 
 # Try to read the existing state
 echo "Checking state compatibility..."
@@ -160,7 +160,7 @@ NEW_VERSION="5.35.0"
 echo "Testing provider upgrade: $PROVIDER $OLD_VERSION -> $NEW_VERSION"
 
 # Step 1: Plan with old version
-cat > version-override.tf << EOF
+cat > versions_override.tf << EOF
 terraform {
   required_providers {
     aws = {
@@ -176,7 +176,7 @@ terraform plan -out=plan-old.tfplan
 terraform show -json plan-old.tfplan > plan-old.json
 
 # Step 2: Plan with new version
-cat > version-override.tf << EOF
+cat > versions_override.tf << EOF
 terraform {
   required_providers {
     aws = {
@@ -198,7 +198,7 @@ diff <(jq -S '.resource_changes' plan-old.json) \
      <(jq -S '.resource_changes' plan-new.json)
 
 # Clean up
-rm -f version-override.tf plan-old.* plan-new.*
+rm -f versions_override.tf plan-old.* plan-new.*
 ```
 
 ## Automated Upgrade Testing with CI
@@ -227,7 +227,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Test with Current Version
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: ${{ inputs.current_version }}
 
@@ -239,14 +239,14 @@ jobs:
           terraform show -json current.tfplan > current.json
 
       - name: Test with New Version
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: ${{ inputs.terraform_version }}
 
       - name: Generate New Plan
         working-directory: environments/${{ matrix.environment }}
         run: |
-          terraform init -upgrade
+          terraform init
           terraform plan -out=new.tfplan
           terraform show -json new.tfplan > new.json
 
@@ -278,7 +278,7 @@ jobs:
             if [ -d "$dir/tests" ]; then
               echo "Testing $dir..."
               cd "$dir"
-              terraform init -upgrade
+              terraform init
               terraform test -verbose || exit 1
               cd ..
             fi
@@ -322,11 +322,11 @@ Always have a rollback plan before upgrading:
 # scripts/prepare-rollback.sh
 # Save everything needed for rollback
 
-BACKUP_DIR="backups/$(date +%Y%m%d-%H%M%S)"
+BACKUP_DIR="$(pwd)/backups/$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$BACKUP_DIR"
 
 # Save current versions
-terraform version > "$BACKUP_DIR/terraform-version.txt"
+terraform version -json | jq -r '.terraform_version' > "$BACKUP_DIR/terraform-version.txt"
 cp .terraform.lock.hcl "$BACKUP_DIR/"
 
 # Save state backups
@@ -338,7 +338,7 @@ done
 
 echo "Rollback backup saved to $BACKUP_DIR"
 echo "To rollback:"
-echo "  1. Switch Terraform version: tfenv use \$(cat $BACKUP_DIR/terraform-version.txt | head -1 | awk '{print \$2}')"
+echo "  1. Switch Terraform version: tfenv use \$(cat $BACKUP_DIR/terraform-version.txt)"
 echo "  2. Restore lock file: cp $BACKUP_DIR/.terraform.lock.hcl ."
 echo "  3. Restore state if needed: terraform state push $BACKUP_DIR/<env>-state.json"
 ```
