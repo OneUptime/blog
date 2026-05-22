@@ -30,7 +30,7 @@ istioctl proxy-config bootstrap <pod-name> -o json
 Or directly from the Envoy admin API:
 
 ```bash
-kubectl exec <pod-name> -c istio-proxy -- curl -s localhost:15000/config_dump?resource=bootstrap
+kubectl exec <pod-name> -c istio-proxy -- pilot-agent request GET 'config_dump?resource=bootstrap'
 ```
 
 ## Customizing via Proxy Config Annotations
@@ -49,7 +49,6 @@ spec:
         proxy.istio.io/config: |
           concurrency: 4
           drainDuration: 30s
-          parentShutdownDuration: 35s
           terminationDrainDuration: 20s
           tracing:
             zipkin:
@@ -100,7 +99,7 @@ spec:
 
 ## Adding Custom Bootstrap Configuration
 
-For changes that are not covered by the proxy config API, you can inject custom bootstrap configuration using an annotation:
+For changes that are not covered by the proxy config API, you can merge custom bootstrap configuration using an annotation:
 
 ```yaml
 apiVersion: apps/v1
@@ -177,53 +176,66 @@ data:
     }
 ```
 
-This example adds an overload manager that protects Envoy from running out of memory.
+This example adds an overload manager that helps Envoy shed load before memory pressure becomes critical.
 
 ## Configuring Stats Tags
 
-Custom stats tags let you add metadata to all Envoy metrics. This is useful for grouping and filtering metrics in your monitoring system:
+Custom stats tags let you extract or attach dimensions to Envoy metrics in sinks that support tags, such as Prometheus or DogStatsD. This is useful for grouping and filtering metrics in your monitoring system:
 
 ```yaml
-apiVersion: install.istio.io/v1alpha1
-kind: IstioOperator
-spec:
-  meshConfig:
-    defaultConfig:
-      extraStatTags:
-      - "request_operation"
-      proxyStatsMatcher:
-        inclusionPrefixes:
-        - "cluster.outbound"
-        - "listener"
-        - "http.inbound"
-        inclusionRegexps:
-        - ".*circuit_breakers.*"
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: custom-bootstrap
+  namespace: default
+data:
+  custom_bootstrap.json: |
+    {
+      "stats_config": {
+        "use_all_default_tags": true,
+        "stats_tags": [
+          {
+            "tag_name": "custom_env",
+            "fixed_value": "production"
+          },
+          {
+            "tag_name": "request_operation",
+            "regex": "^http\\.((.*?)\\.)"
+          }
+        ]
+      }
+    }
 ```
 
 ## Enabling the Overload Manager
 
-The overload manager is an important production hardening feature. It prevents Envoy from crashing when it runs out of resources:
+The overload manager is an important production hardening feature. It helps Envoy shed load or stop accepting new work when configured resource thresholds are reached:
 
 ```yaml
-apiVersion: networking.istio.io/v1alpha3
-kind: EnvoyFilter
+apiVersion: v1
+kind: ConfigMap
 metadata:
   name: overload-manager
-  namespace: istio-system
-spec:
-  configPatches:
-  - applyTo: BOOTSTRAP
-    patch:
-      operation: MERGE
-      value:
-        overload_manager:
-          refresh_interval: 0.25s
-          resource_monitors:
-          - name: envoy.resource_monitors.global_downstream_max_connections
-            typed_config:
-              "@type": type.googleapis.com/envoy.extensions.resource_monitors.downstream_connections.v3.DownstreamConnectionsConfig
-              max_active_downstream_connections: 50000
+  namespace: default
+data:
+  custom_bootstrap.json: |
+    {
+      "overload_manager": {
+        "refresh_interval": "0.25s",
+        "resource_monitors": [
+          {
+            "name": "envoy.resource_monitors.global_downstream_max_connections",
+            "typed_config": {
+              "@type": "type.googleapis.com/envoy.extensions.resource_monitors.downstream_connections.v3.DownstreamConnectionsConfig",
+              "max_active_downstream_connections": 50000
+            }
+          }
+        ]
+      }
+    }
 ```
+
+Apply it to a workload with `sidecar.istio.io/bootstrapOverride: "overload-manager"`.
 
 ## Runtime Feature Flags
 
@@ -265,7 +277,7 @@ spec:
       proxyMetadata:
         ISTIO_META_DNS_CAPTURE: "true"
         ISTIO_META_DNS_AUTO_ALLOCATE: "true"
-        BOOTSTRAP_XDS_AGENT: "true"
+        PROXY_CONFIG_XDS_AGENT: "true"
 ```
 
 Per-pod:
@@ -286,8 +298,8 @@ If a sidecar is not starting correctly after bootstrap customization:
 
 kubectl logs <pod-name> -c istio-proxy
 
-# Check for bootstrap generation errors
-kubectl logs <pod-name> -c istio-init
+# Check the previous proxy logs if the sidecar is crash looping
+kubectl logs <pod-name> -c istio-proxy --previous
 
 # View the generated bootstrap file
 kubectl exec <pod-name> -c istio-proxy -- cat /etc/istio/proxy/envoy-rev.json
