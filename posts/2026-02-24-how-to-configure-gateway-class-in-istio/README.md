@@ -22,7 +22,7 @@ The resource hierarchy works like this:
 
 ## The Default Istio GatewayClass
 
-When you install Istio, it automatically registers a GatewayClass:
+When you install Istio with the Gateway API CRDs present, it automatically registers a GatewayClass:
 
 ```bash
 kubectl get gatewayclass
@@ -77,7 +77,7 @@ spec:
   description: "Internal gateways managed by Istio"
 ```
 
-Both GatewayClasses use the same Istio controller, but they can have different configurations applied through parametersRef (covered below).
+Both GatewayClasses use the same Istio controller, but they can have different defaults applied through Istio's GatewayClass default configuration (covered below).
 
 Now you can create Gateways that reference specific classes:
 
@@ -119,24 +119,55 @@ The external gateway gets a LoadBalancer service, while the internal one gets a 
 
 ## GatewayClass Parameters
 
-GatewayClass supports a `parametersRef` field that lets you attach custom configuration. Istio doesn't currently define a custom CRD for GatewayClass parameters, but you can use annotations on the Gateway resources themselves to pass configuration.
+GatewayClass supports a `parametersRef` field that lets controllers attach custom configuration. Istio's current Gateway API integration configures defaults for all Gateways in a class with a `ConfigMap` labeled `gateway.istio.io/defaults-for-class: <gateway class name>` in the root namespace, usually `istio-system`.
 
-For Istio, the common way to customize Gateway behavior is through annotations on the Gateway resource:
+For example, this sets the generated Deployment replica count for every Gateway that uses the `istio-external` class:
 
 ```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: istio-external-gateway-defaults
+  namespace: istio-system
+  labels:
+    gateway.istio.io/defaults-for-class: istio-external
+data:
+  deployment: |
+    spec:
+      replicas: 2
+```
+
+For per-Gateway customization, use the Gateway `infrastructure` field. Labels and annotations are copied onto the generated resources, and `parametersRef` can point to a same-namespace ConfigMap with strategic-merge patches for generated resources:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: custom-gateway-options
+  namespace: production
+data:
+  horizontalPodAutoscaler: |
+    spec:
+      minReplicas: 2
+      maxReplicas: 5
+  service: |
+    spec:
+      type: LoadBalancer
+---
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
   name: custom-gateway
   namespace: production
-  annotations:
-    # Control the service type
-    networking.istio.io/service-type: LoadBalancer
-    # Control the number of replicas
-    autoscaling.istio.io/minReplicas: "2"
-    autoscaling.istio.io/maxReplicas: "5"
 spec:
   gatewayClassName: istio
+  infrastructure:
+    annotations:
+      example.com/owner: platform-team
+    parametersRef:
+      group: ""
+      kind: ConfigMap
+      name: custom-gateway-options
   listeners:
   - name: http
     protocol: HTTP
@@ -169,7 +200,7 @@ If `Accepted` is `False`, the controller doesn't recognize or can't handle the G
 
 ## Controlling Gateway Infrastructure
 
-When Istio processes a Gateway resource, it creates the underlying infrastructure - a Deployment, Service, and ServiceAccount. You can influence how these are created using labels and annotations on the Gateway:
+When Istio processes a Gateway resource, it creates the underlying infrastructure - a Deployment, Service, and ServiceAccount. You can influence generated resources with the Gateway's `infrastructure` field and Istio-supported Gateway annotations:
 
 ```yaml
 apiVersion: gateway.networking.k8s.io/v1
@@ -177,12 +208,13 @@ kind: Gateway
 metadata:
   name: production-gateway
   namespace: production
-  labels:
-    environment: production
   annotations:
     networking.istio.io/service-type: LoadBalancer
 spec:
   gatewayClassName: istio
+  infrastructure:
+    labels:
+      environment: production
   listeners:
   - name: http
     protocol: HTTP
