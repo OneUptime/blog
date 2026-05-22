@@ -33,6 +33,10 @@ resource "aws_route_table" "public" {
   vpc_id = aws_vpc.main.id
 }
 
+resource "aws_internet_gateway" "main" {
+  vpc_id = aws_vpc.main.id
+}
+
 resource "aws_route" "internet" {
   route_table_id         = aws_route_table.public.id
   destination_cidr_block = "0.0.0.0/0"
@@ -126,9 +130,9 @@ output "private_subnet_ids" {
 }
 ```
 
-### Scenario 2: IAM Policy Propagation
+### Scenario 2: IAM Policy Attachments
 
-IAM policies in AWS can take a few seconds to propagate. If a module outputs a role ARN and another module immediately tries to use that role, it might fail:
+If a module outputs a role ARN and another module immediately uses that role, Terraform may not otherwise know that the role's policy attachments must be created first:
 
 ```hcl
 # modules/iam/outputs.tf
@@ -137,13 +141,15 @@ output "lambda_role_arn" {
   description = "IAM role ARN for the Lambda function"
   value       = aws_iam_role.lambda.arn
   depends_on = [
-    # Wait for policy attachments to complete
+    # Wait for policy attachments to be created
     aws_iam_role_policy_attachment.lambda_basic,
     aws_iam_role_policy_attachment.lambda_vpc,
     aws_iam_role_policy.lambda_custom,
   ]
 }
 ```
+
+This ensures Terraform waits for the attachment resources to complete. It does not remove every AWS IAM eventual consistency risk, but it does prevent Terraform from starting consumers before the policy resources exist.
 
 ### Scenario 3: Security Group Rules
 
@@ -156,16 +162,16 @@ output "app_security_group_id" {
   description = "Security group ID with all ingress and egress rules configured"
   value       = aws_security_group.app.id
   depends_on = [
-    aws_security_group_rule.app_ingress,
-    aws_security_group_rule.app_egress,
-    aws_security_group_rule.app_internal,
+    aws_vpc_security_group_ingress_rule.app_ingress,
+    aws_vpc_security_group_egress_rule.app_egress,
+    aws_vpc_security_group_ingress_rule.app_internal,
   ]
 }
 ```
 
-### Scenario 4: Database Configuration
+### Scenario 4: Database Bootstrap
 
-A database might be "available" but still setting up parameter groups or option groups:
+A database endpoint might be available before a separate bootstrap step, such as migrations or initial schema setup, has completed:
 
 ```hcl
 # modules/database/outputs.tf
@@ -174,22 +180,20 @@ output "endpoint" {
   description = "Database endpoint ready for connections"
   value       = aws_db_instance.main.endpoint
   depends_on = [
-    aws_db_parameter_group.main,
-    aws_db_option_group.main,
-    aws_db_instance.main,
+    terraform_data.db_bootstrap,
   ]
 }
 ```
 
-### Scenario 5: Kubernetes Cluster Readiness
+### Scenario 5: Kubernetes Workload Readiness
 
-An EKS cluster endpoint is available before the cluster is fully ready:
+An EKS cluster endpoint is available before node groups and add-ons are ready for workloads:
 
 ```hcl
 # modules/eks/outputs.tf
 
 output "cluster_endpoint" {
-  description = "EKS cluster API endpoint, ready for kubectl operations"
+  description = "EKS cluster API endpoint after workload dependencies are ready"
   value       = aws_eks_cluster.main.endpoint
   depends_on = [
     # Wait for node groups to be active
@@ -249,14 +253,14 @@ resource "aws_subnet" "private" {
 }
 
 resource "aws_eip" "nat" {
-  count  = length(var.public_cidrs)
+  count  = length(var.private_cidrs)
   domain = "vpc"
 }
 
 resource "aws_nat_gateway" "main" {
-  count         = length(var.public_cidrs)
+  count         = length(var.private_cidrs)
   allocation_id = aws_eip.nat[count.index].id
-  subnet_id     = aws_subnet.public[count.index].id
+  subnet_id     = aws_subnet.public[count.index % length(var.public_cidrs)].id
 }
 
 resource "aws_route_table" "public" {
@@ -362,6 +366,6 @@ Only use `depends_on` when there is a dependency that Terraform cannot infer fro
 
 ## Wrapping Up
 
-The `depends_on` argument on outputs is a targeted tool for handling timing issues between modules. It ensures that all related resources are fully provisioned before other modules start consuming the output value. The most common cases involve networking (routes and associations), IAM (policy propagation), and complex resources that have multiple sub-resources. Use it when Terraform's automatic dependency tracking is not enough, but do not reach for it as a first resort - implicit dependencies handle the majority of cases correctly.
+The `depends_on` argument on outputs is a targeted tool for handling timing issues between modules. It ensures that all related resources are fully provisioned before other modules start consuming the output value. The most common cases involve networking (routes and associations), IAM policy attachments, and complex resources that have multiple sub-resources. Use it when Terraform's automatic dependency tracking is not enough, but do not reach for it as a first resort - implicit dependencies handle the majority of cases correctly.
 
 For more on Terraform outputs, see our posts on [defining output values](https://oneuptime.com/blog/post/2026-02-23-how-to-define-output-values-in-terraform/view) and [exporting outputs from modules](https://oneuptime.com/blog/post/2026-02-23-how-to-export-outputs-from-modules-in-terraform/view).
