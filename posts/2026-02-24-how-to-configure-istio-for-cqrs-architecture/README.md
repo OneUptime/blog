@@ -10,7 +10,7 @@ Description: Configure Istio to support CQRS architecture by routing read and wr
 
 CQRS stands for Command Query Responsibility Segregation. The idea is simple: separate your read operations (queries) from your write operations (commands) into different services, data models, or even different databases. Reads and writes have fundamentally different characteristics. Reads are typically high-volume, cacheable, and latency-sensitive. Writes are lower volume, need strong consistency, and can tolerate slightly higher latency.
 
-Istio is a great tool for implementing CQRS at the infrastructure level. You can use VirtualService routing to split traffic by HTTP method, with GET requests going to read-optimized services and POST/PUT/DELETE requests going to write services. Each side gets its own traffic policies, timeouts, retries, and scaling configuration.
+Istio is a great tool for implementing CQRS at the infrastructure level. You can use VirtualService routing to split traffic by HTTP method, with GET requests going to read-optimized services and POST/PUT/PATCH/DELETE requests going to write services. Each side gets its own traffic policies, timeouts, retries, and scaling configuration.
 
 ## The CQRS Architecture with Istio
 
@@ -131,7 +131,7 @@ spec:
 The core of the CQRS setup - route by HTTP method:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: order-service
@@ -209,7 +209,7 @@ Notice the different traffic policies:
 ## Different DestinationRules for Read and Write
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: order-query
@@ -228,7 +228,7 @@ spec:
       interval: 10s
       baseEjectionTime: 15s
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: order-command
@@ -255,7 +255,7 @@ The query service gets much larger connection pools because it handles high-volu
 If this is an external-facing API, route through the Istio gateway:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: orders-api
@@ -327,7 +327,7 @@ You can handle this at the routing level by sending specific read-after-write re
           number: 80
 ```
 
-The client can request strong consistency when needed by adding the `x-consistency: strong` header. Most reads go to the fast query service, but critical reads can go to the command service which has the most up-to-date data.
+The client can request strong consistency when needed by adding the `x-consistency: strong` header. Most reads go to the fast query service, but critical reads can go to the command service if it exposes the required read endpoint backed by the primary data store.
 
 ## Rate Limiting Writes
 
