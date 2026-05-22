@@ -17,8 +17,8 @@ Terraform provides several caching mechanisms that can cut `terraform init` time
 When you run `terraform init`, Terraform:
 
 1. Reads your configuration to determine required providers
-2. Checks the lock file (`.terraform.lock.hcl`) for version constraints and checksums
-3. Downloads provider binaries from the Terraform Registry (or configured mirrors)
+2. Checks the lock file (`.terraform.lock.hcl`) for selected provider versions and checksums
+3. Downloads provider packages from the Terraform Registry (or configured mirrors)
 4. Installs providers into the `.terraform/providers` directory
 5. Initializes the backend
 
@@ -40,7 +40,7 @@ Configure it in your Terraform CLI config:
 # ~/.terraformrc (macOS/Linux) or %APPDATA%\terraform.rc (Windows)
 plugin_cache_dir = "$HOME/.terraform.d/plugin-cache"
 
-# Optional: may use symlinks for faster installs (not available on all platforms)
+# Usually leave this unset or false; true is only for exceptional workflows that do not preserve lock files
 plugin_cache_may_break_dependency_lock_file = false
 ```
 
@@ -85,7 +85,7 @@ provider_installation {
     include = ["registry.terraform.io/hashicorp/*"]
   }
 
-  # Fall back to direct download for anything not in the mirror
+  # Fall back to direct download for providers outside the HashiCorp namespace
   direct {
     exclude = ["registry.terraform.io/hashicorp/*"]
   }
@@ -121,7 +121,7 @@ The mirror directory structure looks like:
         terraform-provider-random_3.6.0_linux_amd64.zip
 ```
 
-With a filesystem mirror, `terraform init` does not make any network requests for providers, making it extremely fast even in air-gapped environments.
+With a complete filesystem mirror and no `direct` fallback for those providers, `terraform init` does not make any network requests for provider installation, making it extremely fast even in air-gapped environments.
 
 ## Method 3: CI/CD Pipeline Caching
 
@@ -141,9 +141,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
         with:
-          terraform_version: 1.7.0
+          terraform_version: 1.14.6
 
       - name: Create cache directory
         run: mkdir -p $TF_PLUGIN_CACHE_DIR
@@ -208,7 +208,7 @@ For CI/CD, build a Docker image with providers pre-installed:
 
 ```dockerfile
 # Dockerfile for Terraform with cached providers
-FROM hashicorp/terraform:1.7.0
+FROM hashicorp/terraform:1.14.6
 
 # Copy provider mirror into the image
 COPY provider-mirror/ /opt/terraform/providers/
@@ -233,14 +233,15 @@ Build the image with a script that mirrors providers first:
 # build-terraform-image.sh
 
 # Create a temp directory for mirroring
-mkdir -p provider-mirror
+MIRROR_DIR="$PWD/provider-mirror"
+mkdir -p "$MIRROR_DIR"
 
 # Mirror all providers used across projects
-cd /path/to/project1 && terraform providers mirror ../provider-mirror
-cd /path/to/project2 && terraform providers mirror ../provider-mirror
+cd /path/to/project1 && terraform providers mirror "$MIRROR_DIR"
+cd /path/to/project2 && terraform providers mirror "$MIRROR_DIR"
 
 # Build the Docker image
-docker build -t terraform-with-providers:1.7.0 .
+docker build -t terraform-with-providers:1.14.6 .
 
 # Clean up
 rm -rf provider-mirror
@@ -259,23 +260,18 @@ provider_installation {
 }
 ```
 
-You can use tools like `terraform-registry-mirror` or a simple Nginx reverse proxy with caching:
+You can use tools that implement Terraform's provider network mirror protocol, or serve the output of `terraform providers mirror` from a static HTTPS server:
 
 ```nginx
-# Nginx config for a caching Terraform registry proxy
+# Nginx config for serving a static Terraform provider mirror
 server {
     listen 443 ssl;
     server_name terraform-mirror.internal.company.com;
 
-    location /providers/ {
-        proxy_pass https://registry.terraform.io/;
-        proxy_cache terraform_cache;
-        proxy_cache_valid 200 7d;
-        proxy_cache_valid 404 1m;
+    root /var/www/terraform-mirror;
 
-        # Cache large provider binaries
-        proxy_cache_key "$scheme$request_method$host$request_uri";
-        proxy_max_temp_file_size 1024m;
+    location /providers/ {
+        try_files $uri =404;
     }
 }
 ```
@@ -332,6 +328,6 @@ terraform init
 
 ## Summary
 
-Provider downloads are the biggest bottleneck in `terraform init`. The plugin cache directory is the easiest fix and works everywhere. Filesystem mirrors eliminate network requests entirely. CI/CD pipeline caching persists the cache across runs. And Docker images with pre-installed providers give you the fastest possible init time. Pick the approach that fits your workflow, and you will save minutes on every Terraform run.
+Provider downloads are often the biggest bottleneck in `terraform init`. The plugin cache directory is the easiest fix and works everywhere. Filesystem mirrors can eliminate provider download requests entirely. CI/CD pipeline caching persists the cache across runs. And Docker images with pre-installed providers give you the fastest possible provider installation time. Pick the approach that fits your workflow, and you will save minutes on many Terraform runs.
 
 For more Terraform performance tips, see [how to speed up terraform plan with targeted planning](https://oneuptime.com/blog/post/2026-02-23-how-to-speed-up-terraform-plan-with-targeted-planning/view) and [how to optimize large Terraform state files](https://oneuptime.com/blog/post/2026-02-23-how-to-optimize-large-terraform-state-files/view).
