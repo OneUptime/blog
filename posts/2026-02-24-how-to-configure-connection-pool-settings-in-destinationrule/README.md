@@ -36,9 +36,9 @@ spec:
 
 Here is what each field does:
 
-- **maxConnections**: Maximum number of TCP connections to the service. Envoy will not open more than this many connections to all endpoints combined for this cluster. Requests that exceed this limit get queued (for HTTP) or rejected.
+- **maxConnections**: Maximum number of HTTP/1.1 or TCP connections to the destination. In Envoy this is enforced as the cluster connection circuit breaker across all endpoints for that cluster, although worker-thread races and Envoy's requirement to allocate at least one connection to a selected host can allow the active count to exceed the configured value slightly. Requests that exceed this limit get queued (for HTTP) or rejected.
 
-- **connectTimeout**: How long Envoy waits for a TCP connection to be established before giving up. Default is based on the OS, usually around 120 seconds, which is way too long for most services. Set this to something reasonable like 5 seconds.
+- **connectTimeout**: How long Envoy waits for a TCP connection to be established before giving up. Istio's default is 10 seconds. Set this to something reasonable like 5 seconds if you want connection failures to surface faster.
 
 - **tcpKeepalive**: Configures TCP keepalive probes to detect dead connections. `time` is the idle time before sending the first probe, `interval` is the time between probes, and `probes` is how many failed probes before closing the connection.
 
@@ -67,7 +67,7 @@ Breaking these down:
 
 - **http1MaxPendingRequests**: Maximum number of requests that can be queued while waiting for a connection. If the connection pool is full, new requests wait in this queue. When the queue is full too, requests get rejected with a 503.
 
-- **http2MaxRequests**: Maximum concurrent requests to the service when using HTTP/2. Since HTTP/2 multiplexes requests over a single connection, this limits the total request concurrency regardless of connection count.
+- **http2MaxRequests**: Maximum active requests to the service. Despite the field name, Istio applies this limit to both HTTP/1.1 and HTTP/2 traffic.
 
 - **maxRequestsPerConnection**: How many requests to send over a single connection before closing it and opening a new one. This is useful for load balancing - if a connection is reused forever, all requests on that connection go to the same pod.
 
@@ -107,7 +107,7 @@ This configuration:
 - Fails fast on connection issues (3 second timeout)
 - Keeps connections alive with TCP keepalive
 - Queues up to 50 pending requests
-- Limits concurrent HTTP/2 requests to 500
+- Limits active HTTP requests to 500
 - Recycles connections after 100 requests
 - Allows up to 5 concurrent retries
 
@@ -117,9 +117,9 @@ When a request arrives at Envoy, here is what happens with connection pool setti
 
 ```mermaid
 graph TD
-    A[New Request] --> B{TCP connections < maxConnections?}
+    A[New Request] --> B{Connection pool can dispatch?}
     B -->|Yes| C[Open new connection or reuse existing]
-    B -->|No| D{Pending requests < http1MaxPendingRequests?}
+    B -->|No| D{HTTP pending requests < http1MaxPendingRequests?}
     D -->|Yes| E[Queue the request]
     D -->|No| F[Return 503 Service Unavailable]
     C --> G[Send request to upstream]
@@ -129,7 +129,7 @@ graph TD
 
 ## How maxConnections Interacts with Replicas
 
-An important nuance: `maxConnections` is the total number of connections from one Envoy proxy to all endpoints of the service combined. If your service has 10 pods and `maxConnections` is 100, Envoy may open up to 100 connections spread across those 10 pods.
+An important nuance: `maxConnections` is the cluster connection limit from one Envoy proxy to all endpoints of the service combined. If your service has 10 pods and `maxConnections` is 100, Envoy will normally keep the cluster around 100 active upstream connections spread across those 10 pods, with the small exceptions noted above.
 
 This is per-Envoy behavior. If you have 20 client pods, each with its own sidecar, you could have up to 20 x 100 = 2000 total connections to your service endpoints.
 
@@ -141,9 +141,9 @@ You can test connection limits using a load generator like fortio:
 kubectl run fortio --image=fortio/fortio -- load -c 200 -qps 0 -t 30s http://my-service:8080/
 ```
 
-This sends traffic with 200 concurrent connections. If your `maxConnections` is set to 100, you should see some requests getting 503 errors after the queue fills up.
+This sends traffic with 200 concurrent Fortio workers. If your `maxConnections` is set to 100 and the HTTP pending queue also fills up, you should see some requests getting 503 errors.
 
-Check the Envoy stats to see overflow events:
+Check the Envoy cluster config to confirm the generated circuit breaker settings:
 
 ```bash
 istioctl proxy-config cluster <client-pod> --fqdn my-service.default.svc.cluster.local -o json
@@ -152,7 +152,7 @@ istioctl proxy-config cluster <client-pod> --fqdn my-service.default.svc.cluster
 You can also look at Envoy's upstream connection metrics through the admin interface:
 
 ```bash
-kubectl exec <pod-with-sidecar> -c istio-proxy -- curl -s localhost:15000/stats | grep my-service | grep overflow
+kubectl exec <pod-with-sidecar> -c istio-proxy -- pilot-agent request GET stats | grep my-service | grep overflow
 ```
 
 The `upstream_cx_overflow` counter tells you how many connections were rejected because `maxConnections` was reached. The `upstream_rq_pending_overflow` counter shows how many requests overflowed the pending queue.
@@ -195,7 +195,7 @@ The canary subset gets much tighter limits, so a misbehaving canary version cann
 
 **Forgetting the pending queue**: Even if `maxConnections` is reached, requests can still succeed if they wait in the pending queue. Set `http1MaxPendingRequests` to a reasonable value to handle short bursts.
 
-**Not setting connectTimeout**: The default TCP connect timeout is very high. A service that is completely down will still cause Envoy to wait a long time per connection attempt. Always set a reasonable timeout.
+**Not setting connectTimeout**: The default TCP connect timeout is 10 seconds. A service that is completely down will still cause Envoy to wait that long per connection attempt. Set a lower timeout when your service needs faster failure detection.
 
 ## Cleanup
 
