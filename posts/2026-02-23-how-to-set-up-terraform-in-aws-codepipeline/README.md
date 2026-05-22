@@ -12,20 +12,20 @@ AWS CodePipeline is a natural fit for teams already invested in the AWS ecosyste
 
 ## Why AWS CodePipeline for Terraform
 
-If your infrastructure lives in AWS, using CodePipeline keeps everything under one roof. You get native IAM integration, no need for long-lived credentials, built-in artifact passing between stages, and manual approval actions out of the box. The pricing model is also straightforward - you pay per pipeline per month plus CodeBuild compute time.
+If your infrastructure lives in AWS, using CodePipeline keeps everything under one roof. You get native IAM integration, no need for long-lived credentials, built-in artifact passing between stages, and manual approval actions out of the box. The pricing model is also straightforward: V1 pipelines are priced per active pipeline per month, while V2 pipelines are priced per action execution minute, plus any CodeBuild compute time.
 
 The tradeoff is that CodePipeline is more verbose to configure compared to GitHub Actions or GitLab CI. But once it is running, the tight AWS integration pays for itself.
 
 ## Architecture Overview
 
-A typical Terraform CodePipeline has four stages:
+A typical Terraform CodePipeline has these stages:
 
 1. **Source** - Pull code from CodeCommit, GitHub, or S3
-2. **Validate** - Run `terraform fmt`, `terraform validate`, and linting
-3. **Plan** - Generate and store the execution plan
-4. **Apply** - Execute the plan after manual approval
+2. **Plan** - Run `terraform fmt`, `terraform validate`, optional linting, and generate the execution plan
+3. **Approval** - Pause for manual review
+4. **Apply** - Execute the approved plan
 
-Each stage runs in a CodeBuild project, and artifacts pass between them through S3.
+The Terraform plan and apply stages run in CodeBuild projects, and artifacts pass between stages through S3.
 
 ## Setting Up the S3 Backend
 
@@ -39,13 +39,13 @@ terraform {
     bucket         = "mycompany-terraform-state"
     key            = "infrastructure/terraform.tfstate"
     region         = "us-east-1"
-    dynamodb_table = "terraform-locks"
+    use_lockfile   = true
     encrypt        = true
   }
 }
 ```
 
-Create the DynamoDB table for state locking:
+Create the S3 bucket that will hold the state and lock files:
 
 ```hcl
 # state-infra/main.tf - Bootstrap state infrastructure
@@ -63,17 +63,6 @@ resource "aws_s3_bucket_versioning" "terraform_state" {
 
   versioning_configuration {
     status = "Enabled"
-  }
-}
-
-resource "aws_dynamodb_table" "terraform_locks" {
-  name         = "terraform-locks"
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "LockID"
-
-  attribute {
-    name = "LockID"
-    type = "S"
   }
 }
 ```
@@ -112,26 +101,29 @@ resource "aws_iam_role_policy" "codebuild_terraform" {
       {
         # Allow Terraform state access
         Effect = "Allow"
+        Action = "s3:ListBucket"
+        Resource = "arn:aws:s3:::mycompany-terraform-state"
+      },
+      {
+        # Allow Terraform to read and write state
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:PutObject"
+        ]
+        Resource = "arn:aws:s3:::mycompany-terraform-state/infrastructure/terraform.tfstate"
+      },
+      {
+        # Allow Terraform to manage the S3 lock file
+        Effect = "Allow"
         Action = [
           "s3:GetObject",
           "s3:PutObject",
-          "s3:DeleteObject",
-          "s3:ListBucket"
+          "s3:DeleteObject"
         ]
         Resource = [
-          "arn:aws:s3:::mycompany-terraform-state",
-          "arn:aws:s3:::mycompany-terraform-state/*"
+          "arn:aws:s3:::mycompany-terraform-state/infrastructure/terraform.tfstate.tflock"
         ]
-      },
-      {
-        # Allow DynamoDB state locking
-        Effect = "Allow"
-        Action = [
-          "dynamodb:GetItem",
-          "dynamodb:PutItem",
-          "dynamodb:DeleteItem"
-        ]
-        Resource = "arn:aws:dynamodb:us-east-1:*:table/terraform-locks"
       },
       {
         # Allow CodeBuild logging
@@ -170,7 +162,7 @@ version: 0.2
 
 env:
   variables:
-    TF_VERSION: "1.7.0"
+    TF_VERSION: "1.15.4"
     TF_INPUT: "false"
     TF_IN_AUTOMATION: "true"
 
@@ -212,7 +204,7 @@ version: 0.2
 
 env:
   variables:
-    TF_VERSION: "1.7.0"
+    TF_VERSION: "1.15.4"
     TF_INPUT: "false"
     TF_IN_AUTOMATION: "true"
 
@@ -397,7 +389,7 @@ resource "aws_sns_topic_subscription" "email" {
 
 ## Handling Multiple Environments
 
-To run the same pipeline across dev, staging, and production, use CodePipeline variables and parameterized buildspecs:
+To run the same pipeline across dev, staging, and production, pass an `ENVIRONMENT` variable to CodeBuild and use parameterized buildspecs:
 
 ```yaml
 # buildspec-plan.yml with environment support
@@ -405,7 +397,7 @@ version: 0.2
 
 env:
   variables:
-    TF_VERSION: "1.7.0"
+    TF_VERSION: "1.15.4"
     TF_INPUT: "false"
     TF_IN_AUTOMATION: "true"
 
@@ -440,7 +432,7 @@ resource "aws_codebuild_project" "terraform_apply" {
 
 ## Monitoring Pipeline Runs
 
-Set up CloudWatch Events to track pipeline state changes:
+Set up an Amazon EventBridge rule to track pipeline state changes:
 
 ```hcl
 # monitoring.tf - Alert on pipeline failures
