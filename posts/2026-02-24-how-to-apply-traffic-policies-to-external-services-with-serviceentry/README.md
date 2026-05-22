@@ -74,16 +74,16 @@ spec:
       http:
         h2UpgradePolicy: DO_NOT_UPGRADE
         maxRequestsPerConnection: 5
-        maxPendingRequests: 100
+        http1MaxPendingRequests: 100
         maxRetries: 3
 ```
 
 What each setting does:
 
-- **maxConnections** - Maximum TCP connections to the external service. Excess connections queue up.
+- **maxConnections** - Maximum TCP connections to the external service.
 - **connectTimeout** - How long to wait for a TCP connection to establish.
 - **maxRequestsPerConnection** - Close the connection after this many requests. Useful for services that do not handle long-lived connections well.
-- **maxPendingRequests** - How many requests can wait in queue when all connections are busy. Requests beyond this get a 503.
+- **http1MaxPendingRequests** - How many requests can wait in queue when all connections are busy. Requests beyond this get a 503.
 - **maxRetries** - Maximum number of concurrent retries across all connections.
 - **h2UpgradePolicy** - Whether to upgrade HTTP/1.1 connections to HTTP/2. Set to DO_NOT_UPGRADE for APIs that do not support HTTP/2.
 
@@ -107,17 +107,19 @@ spec:
       minHealthPercent: 0
 ```
 
+For HTTP status-code-based ejection, Envoy must be able to parse HTTP responses. If your application makes end-to-end HTTPS calls and the sidecar only sees encrypted traffic, `consecutive5xxErrors` will not see the upstream HTTP status codes. Use HTTP traffic with TLS origination in the sidecar, or rely on locally originated failures such as connection failures and timeouts.
+
 How this works:
-1. If an endpoint returns 3 consecutive 5xx errors within a 10-second window, it gets ejected
+1. If an endpoint returns 3 consecutive 5xx errors, it gets ejected
 2. The ejected endpoint stays out for 30 seconds
 3. After 30 seconds, Envoy lets it back in and monitors it again
 4. If it keeps failing, the ejection time increases (30s, 60s, 90s, etc.)
 
-The `maxEjectionPercent: 100` allows ejecting all endpoints. For external services with a single endpoint (resolved through DNS to one IP), you need this or the circuit breaker never triggers.
+The `interval` controls how often Envoy analyzes hosts for interval-based outlier checks. The `maxEjectionPercent: 100` allows ejecting all endpoints. For external services with a single endpoint, setting this explicitly avoids the default 10% ejection cap preventing ejection.
 
 ## Load Balancing Algorithms
 
-By default, Envoy uses round-robin load balancing. You can change this for external services with multiple endpoints:
+By default, Istio uses a least-request load balancing policy. You can change this for external services with multiple endpoints:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -226,7 +228,7 @@ spec:
         connectTimeout: 5s
       http:
         maxRequestsPerConnection: 100
-        maxPendingRequests: 50
+        http1MaxPendingRequests: 50
         maxRetries: 5
     outlierDetection:
       consecutive5xxErrors: 5
@@ -247,10 +249,10 @@ Check that your policies are applied in Envoy:
 ```bash
 # View cluster configuration with policies
 istioctl proxy-config cluster deploy/my-app \
-  --fqdn "outbound|443||api.payment-provider.com" -o json
+  --fqdn api.payment-provider.com --port 443 -o json
 ```
 
-Look for the `circuitBreakers`, `connectionPool`, and `loadBalancingPolicy` sections in the output.
+Look for the `circuitBreakers` and load balancing fields in the cluster output.
 
 You can also test circuit breaking by sending traffic and watching for 503 responses:
 
@@ -262,7 +264,7 @@ for i in $(seq 1 100); do
 done
 ```
 
-If the circuit breaker triggers, you start seeing 503 responses.
+If the circuit breaker or connection pool limit rejects a request, you may see 503 responses from Envoy.
 
 ## Monitoring Traffic Policies
 
