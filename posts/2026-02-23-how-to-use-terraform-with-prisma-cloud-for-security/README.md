@@ -8,28 +8,29 @@ Description: Learn how to integrate Terraform with Prisma Cloud to scan infrastr
 
 ---
 
-Prisma Cloud by Palo Alto Networks is a comprehensive cloud security platform that provides cloud security posture management (CSPM), cloud workload protection, and infrastructure as code security scanning. Integrating Prisma Cloud with Terraform allows you to scan your infrastructure code for security issues before deployment and continuously monitor your cloud resources for drift and misconfigurations. This guide covers how to set up this integration.
+Prisma Cloud by Palo Alto Networks is a comprehensive cloud security platform that provides cloud security posture management (CSPM), cloud workload protection, and infrastructure as code security scanning. Integrating Prisma Cloud with Terraform allows you to scan your infrastructure code for security issues before deployment and continuously monitor your cloud resources for security misconfigurations. This guide covers how to set up this integration.
 
 ## Why Use Prisma Cloud with Terraform?
 
 Prisma Cloud provides several capabilities that enhance Terraform security. Its IaC scanning engine (powered by Checkov) can analyze Terraform configurations against hundreds of built-in policies. The platform maps findings to compliance frameworks like CIS, NIST, PCI-DSS, HIPAA, and SOC2. It also provides a centralized dashboard for tracking security posture across all your Terraform-managed infrastructure.
 
-Key benefits include pre-deployment scanning of Terraform code, real-time monitoring of deployed resources, drift detection between Terraform state and actual cloud configuration, supply chain security for Terraform modules, and centralized policy management across multiple cloud accounts.
+Key benefits include pre-deployment scanning of Terraform code, real-time monitoring of deployed resources, drift detection with Terraform or HCP Terraform, supply chain security for Terraform modules, and centralized policy management across multiple cloud accounts.
 
 ## Prerequisites
 
-You need a Prisma Cloud Enterprise account, a Prisma Cloud access key and secret key, the Prisma Cloud CLI (checkov) installed, Terraform version 1.0 or later, and cloud provider accounts onboarded to Prisma Cloud.
+You need a Prisma Cloud Enterprise account, a Prisma Cloud access key and secret key, Checkov installed, Terraform version 1.0 or later, and cloud provider accounts onboarded to Prisma Cloud.
 
 ## Step 1: Configure Prisma Cloud for IaC Scanning
 
-Set up the Prisma Cloud CLI for Terraform scanning.
+Set up Checkov for Prisma Cloud Terraform scanning.
 
 ```bash
-# Install the Prisma Cloud CLI (uses Checkov under the hood)
+# Install Checkov, the CLI used by Prisma Cloud Application Security
 
 pip install checkov
 
 # Authenticate with Prisma Cloud
+# Use the API URL for your Prisma Cloud tenant
 export PRISMA_API_URL="https://api.prismacloud.io"
 export BC_API_KEY="your-prisma-cloud-access-key::your-prisma-cloud-secret-key"
 ```
@@ -42,12 +43,12 @@ Run Prisma Cloud's scanning engine against your Terraform code.
 # Scan all Terraform files in a directory
 checkov -d terraform/ --bc-api-key $BC_API_KEY --repo-id org/repo
 
-# Scan with specific framework checks
-checkov -d terraform/ --framework terraform --check CIS_AWS
+# Scan with specific severities or Checkov policy IDs
+checkov -d terraform/ --framework terraform --check HIGH,CRITICAL
 
 # Scan and output results in different formats
-checkov -d terraform/ --output sarif --output-file results.sarif
-checkov -d terraform/ --output json --output-file results.json
+checkov -d terraform/ --output sarif --output-file-path results.sarif
+checkov -d terraform/ --output json --output-file-path results.json
 
 # Scan a Terraform plan file
 terraform plan -out=tfplan
@@ -95,7 +96,7 @@ jobs:
       # Upload SARIF to GitHub Security
       - name: Upload SARIF Results
         if: always()
-        uses: github/codeql-action/upload-sarif@v2
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: prisma-results.sarif
 
@@ -106,6 +107,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v3
+
+      - name: Install Checkov
+        run: pip install checkov
 
       - name: Terraform Init
         working-directory: terraform
@@ -170,32 +174,22 @@ class RequireIMDSv2(BaseResourceCheck):
 check = RequireIMDSv2()
 ```
 
-```python
-# custom_policies/require_vpc_flow_logs.py
+```yaml
+# custom_policies/require_vpc_flow_logs.yaml
 # Custom policy ensuring VPCs have flow logs enabled
 
-from checkov.terraform.checks.resource.base_resource_check import BaseResourceCheck
-from checkov.common.models.enums import CheckResult, CheckCategories
+metadata:
+  id: "CKV2_CUSTOM_AWS_002"
+  name: "Ensure VPC has flow logs enabled"
+  category: "LOGGING"
 
-class RequireVPCFlowLogs(BaseResourceCheck):
-    def __init__(self):
-        name = "Ensure VPC has flow logs enabled"
-        id = "CKV_CUSTOM_AWS_002"
-        supported_resources = ["aws_vpc"]
-        categories = [CheckCategories.LOGGING]
-        super().__init__(
-            name=name,
-            id=id,
-            categories=categories,
-            supported_resources=supported_resources,
-        )
-
-    def scan_resource_conf(self, conf):
-        # This check verifies that a flow log resource exists
-        # for the VPC. The actual check is cross-resource.
-        return CheckResult.UNKNOWN
-
-check = RequireVPCFlowLogs()
+definition:
+  cond_type: "connection"
+  resource_types:
+    - "aws_vpc"
+  connected_resource_types:
+    - "aws_flow_log"
+  operator: "exists"
 ```
 
 ## Step 5: Manage Prisma Cloud with Terraform
@@ -209,7 +203,7 @@ terraform {
   required_providers {
     prismacloud = {
       source  = "PaloAltoNetworks/prismacloud"
-      version = "~> 1.5"
+      version = "~> 1.7"
     }
   }
 }
@@ -230,35 +224,34 @@ resource "prismacloud_alert_rule" "terraform_iac" {
 
   notification_config {
     config_type       = "slack"
-    template_type     = "default"
     detailed_report   = true
     with_compression  = false
     frequency         = "as_it_happens"
   }
 
   policies = [
-    prismacloud_policy.require_encryption.policy_id,
     prismacloud_policy.restrict_public_access.policy_id,
   ]
 }
 
 # Create custom policies
-resource "prismacloud_policy" "require_encryption" {
-  name        = "Require Encryption on All Storage"
+resource "prismacloud_policy" "restrict_public_access" {
+  name        = "Restrict Public S3 Access"
   policy_type = "config"
+  cloud_type  = "aws"
   severity    = "high"
-  description = "Ensures all storage resources have encryption enabled"
+  description = "Detects S3 buckets that allow public access"
   enabled     = true
 
   rule {
-    name      = "require-encryption"
+    name      = "restrict-public-s3-access"
     rule_type = "Config"
     parameters = {
       savedSearch = false
-      withIac     = true
+      withIac     = false
     }
 
-    criteria = "config from iac where resource.type = 'aws_s3_bucket' AND attribute.server_side_encryption_configuration does not exist"
+    criteria = "config from cloud.resource where cloud.type = 'aws' AND api.name = 'aws-s3api-get-bucket-acl' AND json.rule = \"acl.grants[?(@.grantee=='AllUsers')] size > 0 or policyStatus.isPublic is true\""
   }
 }
 
@@ -300,26 +293,26 @@ resource "tfe_workspace_run_task" "prisma_production" {
   workspace_id      = tfe_workspace.production.id
   task_id           = tfe_organization_run_task.prisma_cloud.id
   enforcement_level = "mandatory"
-  stage             = "post_plan"
+  stages            = ["post_plan"]
 }
 
 resource "tfe_workspace_run_task" "prisma_staging" {
   workspace_id      = tfe_workspace.staging.id
   task_id           = tfe_organization_run_task.prisma_cloud.id
   enforcement_level = "advisory"
-  stage             = "post_plan"
+  stages            = ["post_plan"]
 }
 ```
 
 ## Step 7: Drift Detection
 
-Use Prisma Cloud to detect drift between Terraform state and actual cloud configuration.
+Use Terraform or HCP Terraform to detect drift between Terraform state and actual cloud configuration, and use Prisma Cloud alerts to monitor security-relevant cloud configuration changes.
 
 ```hcl
 # drift-detection.tf
-# Set up resources that Prisma Cloud will monitor for drift
+# Set up resources that Terraform can check for drift and Prisma Cloud can monitor for configuration changes
 
-# Tag resources to enable drift tracking
+# Tag resources to identify Terraform-managed infrastructure
 locals {
   common_tags = {
     ManagedBy       = "terraform"
@@ -348,12 +341,12 @@ resource "aws_security_group" "example" {
 }
 ```
 
-When Prisma Cloud detects that someone has modified these resources outside of Terraform (for example, adding a new ingress rule to the security group through the AWS console), it generates an alert. This helps enforce that all changes go through the Terraform workflow.
+When Terraform or HCP Terraform detects that someone has modified these resources outside of Terraform (for example, adding a new ingress rule to the security group through the AWS console), it reports drift in a plan. Prisma Cloud can separately generate alerts when those manual changes violate monitored cloud security policies. This helps enforce that all changes go through the Terraform workflow.
 
 ## Best Practices
 
-Integrate Prisma Cloud scanning into both pre-commit hooks and CI/CD pipelines for comprehensive coverage. Use the Prisma Cloud dashboard to track security posture trends over time. Map policies to specific compliance frameworks for audit purposes. Create suppression rules for known acceptable deviations rather than disabling checks entirely. Use Prisma Cloud's drift detection to ensure manual changes are reconciled back into Terraform. Onboard all cloud accounts to Prisma Cloud for unified visibility. Review the Prisma Cloud severity levels and adjust them to match your organization's risk appetite.
+Integrate Prisma Cloud scanning into both pre-commit hooks and CI/CD pipelines for comprehensive coverage. Use the Prisma Cloud dashboard to track security posture trends over time. Map policies to specific compliance frameworks for audit purposes. Create suppression rules for known acceptable deviations rather than disabling checks entirely. Use Terraform or HCP Terraform drift detection to ensure manual changes are reconciled back into Terraform. Onboard all cloud accounts to Prisma Cloud for unified visibility. Review the Prisma Cloud severity levels and adjust them to match your organization's risk appetite.
 
 ## Conclusion
 
-Prisma Cloud provides enterprise-grade security for Terraform deployments. Its combination of pre-deployment IaC scanning, runtime monitoring, and drift detection creates a comprehensive security posture for infrastructure as code. By integrating Prisma Cloud into your Terraform workflow, you ensure that security is validated at every stage from code to cloud, with centralized visibility and compliance reporting.
+Prisma Cloud provides enterprise-grade security for Terraform deployments. Its combination of pre-deployment IaC scanning, runtime monitoring, and Terraform drift detection creates a comprehensive security posture for infrastructure as code. By integrating Prisma Cloud into your Terraform workflow, you ensure that security is validated at every stage from code to cloud, with centralized visibility and compliance reporting.
