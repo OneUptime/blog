@@ -8,7 +8,7 @@ Description: Learn how to integrate HashiCorp Vault with Kubernetes through Terr
 
 ---
 
-Storing secrets in Kubernetes Secrets objects is fine for development, but production workloads need something better. The base64 encoding in Kubernetes Secrets is not encryption, RBAC controls are coarse, and there is no audit trail for secret access. HashiCorp Vault solves these problems, and Terraform can wire everything together - deploying Vault, configuring authentication, and setting up secret synchronization to Kubernetes.
+Storing secrets in Kubernetes Secrets objects is fine for development, but production workloads need something better. The base64 encoding in Kubernetes Secrets is not encryption, RBAC controls are coarse, and Kubernetes Secrets do not provide Vault-style per-secret access audit trails. HashiCorp Vault solves these problems, and Terraform can wire everything together - deploying Vault, configuring authentication, and setting up secret synchronization to Kubernetes.
 
 This guide covers the main patterns for getting Vault secrets into Kubernetes pods using Terraform.
 
@@ -41,7 +41,7 @@ resource "helm_release" "vault" {
   repository = "https://helm.releases.hashicorp.com"
   chart      = "vault"
   namespace  = kubernetes_namespace.vault.metadata[0].name
-  version    = "0.27.0"
+  version    = "0.32.0"
 
   values = [
     yamlencode({
@@ -127,8 +127,9 @@ EOT
 resource "vault_kubernetes_auth_backend_role" "app" {
   backend                          = vault_auth_backend.kubernetes.path
   role_name                        = "app"
-  bound_service_account_names      = ["app-sa"]
-  bound_service_account_namespaces = ["production"]
+  bound_service_account_names      = ["app-sa", "external-secrets-sa"]
+  bound_service_account_namespaces = ["production", "external-secrets"]
+  audience                         = "vault"
   token_ttl                        = 3600
   token_policies                   = [vault_policy.app.name]
 }
@@ -203,7 +204,7 @@ resource "kubernetes_deployment" "app" {
 
           # Read secrets from the injected file
           command = ["/bin/sh", "-c"]
-          args    = ["source /vault/secrets/db && exec ./app"]
+          args    = [". /vault/secrets/db && exec ./app"]
         }
       }
     }
@@ -222,7 +223,7 @@ resource "helm_release" "csi_secrets_store" {
   repository = "https://kubernetes-sigs.github.io/secrets-store-csi-driver/charts"
   chart      = "secrets-store-csi-driver"
   namespace  = "kube-system"
-  version    = "1.4.0"
+  version    = "1.5.6"
 
   set {
     name  = "syncSecret.enabled"
@@ -241,7 +242,7 @@ resource "helm_release" "vault_csi" {
   repository = "https://helm.releases.hashicorp.com"
   chart      = "vault"
   namespace  = "vault"
-  version    = "0.27.0"
+  version    = "0.32.0"
 
   values = [
     yamlencode({
@@ -274,6 +275,7 @@ spec:
   parameters:
     vaultAddress: "http://vault.vault.svc.cluster.local:8200"
     roleName: "app"
+    audience: "vault"
     objects: |
       - objectName: "db-host"
         secretPath: "secret/data/production/app/database"
@@ -308,7 +310,7 @@ resource "helm_release" "external_secrets" {
   chart            = "external-secrets"
   namespace        = "external-secrets"
   create_namespace = true
-  version          = "0.9.11"
+  version          = "2.5.0"
 
   wait = true
 }
@@ -316,7 +318,7 @@ resource "helm_release" "external_secrets" {
 # Create a SecretStore pointing to Vault
 resource "kubectl_manifest" "vault_secret_store" {
   yaml_body = <<YAML
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: vault-backend
@@ -333,6 +335,8 @@ spec:
           serviceAccountRef:
             name: "external-secrets-sa"
             namespace: "external-secrets"
+            audiences:
+              - vault
 YAML
 
   depends_on = [helm_release.external_secrets]
@@ -341,7 +345,7 @@ YAML
 # Create an ExternalSecret that syncs from Vault
 resource "kubectl_manifest" "app_external_secret" {
   yaml_body = <<YAML
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: app-secrets
@@ -397,7 +401,7 @@ resource "vault_kv_secret_v2" "app_api_keys" {
   name  = "production/app/api-keys"
 
   data_json = jsonencode({
-    main-key  = var.api_key
+    "main-key" = var.api_key
     stripe    = var.stripe_key
   })
 }
