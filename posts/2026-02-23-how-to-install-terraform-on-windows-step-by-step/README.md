@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Window, Installation, DevOps, Infrastructure as Code
+Tags: Terraform, Windows, Installation, DevOps, Infrastructure as Code
 
 Description: A complete step-by-step guide to installing Terraform on Windows using manual download, Chocolatey, and winget with PATH configuration and verification.
 
@@ -22,7 +22,7 @@ Go to the official Terraform downloads page at [https://developer.hashicorp.com/
 # Download the latest Terraform zip for Windows AMD64
 
 # Replace the version number with the latest available
-Invoke-WebRequest -Uri "https://releases.hashicorp.com/terraform/1.7.5/terraform_1.7.5_windows_amd64.zip" -OutFile "$env:TEMP\terraform.zip"
+Invoke-WebRequest -Uri "https://releases.hashicorp.com/terraform/1.15.4/terraform_1.15.4_windows_amd64.zip" -OutFile "$env:TEMP\terraform.zip"
 ```
 
 ### Step 2 - Extract the Binary
@@ -68,7 +68,7 @@ terraform -version
 You should see something like:
 
 ```text
-Terraform v1.7.5
+Terraform v1.15.4
 on windows_amd64
 ```
 
@@ -109,7 +109,7 @@ Windows 11 (and recent Windows 10 builds) comes with winget, the Windows Package
 
 ```powershell
 # Install Terraform using winget
-winget install HashiCorp.Terraform
+winget install --id Hashicorp.Terraform --exact
 ```
 
 winget handles everything automatically. You may need to restart your terminal after installation.
@@ -118,7 +118,7 @@ winget handles everything automatically. You may need to restart your terminal a
 
 ```powershell
 # Upgrade Terraform via winget
-winget upgrade HashiCorp.Terraform
+winget upgrade --id Hashicorp.Terraform --exact
 ```
 
 ## Verifying Your Installation Works
@@ -168,26 +168,14 @@ While Terraform works in any Windows terminal, I recommend using Windows Termina
 
 ### Enable Tab Completion in PowerShell
 
-You can set up basic tab completion for Terraform in PowerShell by adding this to your PowerShell profile:
+Terraform's built-in tab completion supports bash and zsh. If you use Git Bash or WSL on Windows, enable it with:
 
-```powershell
-# Open your PowerShell profile for editing
-notepad $PROFILE
+```bash
+# Register Terraform shell completion
+terraform -install-autocomplete
 ```
 
-Add the following line:
-
-```powershell
-# Register Terraform argument completer
-Register-ArgumentCompleter -Native -CommandName terraform -ScriptBlock {
-    param($wordToComplete, $commandAst, $cursorPosition)
-    $env:COMP_LINE = $commandAst.ToString()
-    $env:COMP_POINT = $cursorPosition
-    terraform | ForEach-Object {
-        [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
-    }
-}
-```
+After installation, restart your shell or reload its profile script before completion is activated.
 
 ## Troubleshooting Common Issues
 
@@ -233,7 +221,7 @@ If you prefer working in a Linux environment on Windows, you can also install Te
 ```bash
 # Inside WSL (Ubuntu), install Terraform using apt
 wget -O- https://apt.releases.hashicorp.com/gpg | sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
-echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/hashicorp.list
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(grep -oP '(?<=UBUNTU_CODENAME=).*' /etc/os-release || lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/hashicorp.list
 sudo apt update && sudo apt install terraform
 ```
 
