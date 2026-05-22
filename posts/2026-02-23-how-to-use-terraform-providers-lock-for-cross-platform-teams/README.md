@@ -8,7 +8,7 @@ Description: Learn how to use terraform providers lock to generate consistent de
 
 ---
 
-If your team has developers on macOS, Linux, and Windows all working on the same Terraform codebase, you have probably run into issues with the `.terraform.lock.hcl` file. One developer runs `terraform init`, commits the lock file, and then another developer on a different OS gets errors because the lock file does not include hashes for their platform. The `terraform providers lock` command exists to solve exactly this problem.
+If your team has developers on macOS, Linux, and Windows all working on the same Terraform codebase, you have probably seen repeated changes to the `.terraform.lock.hcl` file as Terraform learns additional provider checksums for each platform. In some setups, especially when providers are installed through a filesystem or network mirror, another developer on a different OS can also get errors because the lock file does not include hashes for their platform. The `terraform providers lock` command exists to solve exactly this problem.
 
 ## Understanding the Terraform Lock File
 
@@ -23,13 +23,13 @@ provider "registry.terraform.io/hashicorp/aws" {
   version     = "5.82.2"
   constraints = ">= 5.0.0"
   hashes = [
-    "h1:abc123...",  # hash for linux_amd64
-    "zh:def456...",  # zip hash
+    "h1:abc123...",  # package contents hash
+    "zh:def456...",  # provider zip archive hash
   ]
 }
 ```
 
-The problem arises because `terraform init` only records hashes for the platform it runs on. If you initialize on macOS ARM, the lock file only contains hashes for `darwin_arm64`. When someone on Linux tries to run `terraform init`, Terraform cannot verify the provider binary against the lock file and refuses to proceed.
+The problem arises because `terraform init` can record only the checksums it is able to verify from the provider source it uses. For providers installed directly from an origin registry with signed checksums, Terraform usually records `zh:` checksums for all official packages and adds `h1:` checksums for platforms as it learns them. If you initialize through a filesystem mirror or network mirror, Terraform may only be able to record checksums for the platform it runs on. When someone on Linux tries to run `terraform init`, Terraform might not be able to verify the provider binary against the lock file and refuses to proceed.
 
 ## The terraform providers lock Command
 
@@ -128,15 +128,16 @@ You can add a Git pre-commit hook that checks whether the lock file covers all r
 
 # Check if lock file is being committed
 if git diff --cached --name-only | grep -q ".terraform.lock.hcl"; then
-  REQUIRED_PLATFORMS=("linux_amd64" "darwin_arm64" "darwin_amd64")
+  terraform providers lock \
+    -platform=linux_amd64 \
+    -platform=darwin_arm64 \
+    -platform=darwin_amd64
 
-  for platform in "${REQUIRED_PLATFORMS[@]}"; do
-    # Each platform should have at least one h1: hash in the lock file
-    if ! grep -q "h1:" .terraform.lock.hcl; then
-      echo "WARNING: Lock file may be missing hashes for $platform"
-      echo "Run: terraform providers lock -platform=$platform"
-    fi
-  done
+  if ! git diff --quiet .terraform.lock.hcl; then
+    echo "ERROR: Lock file is missing required platform hashes"
+    echo "Run terraform providers lock for all required platforms and stage the updated lock file"
+    exit 1
+  fi
 fi
 ```
 
