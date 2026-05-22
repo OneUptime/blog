@@ -21,7 +21,7 @@ A cipher suite is a combination of algorithms used during a TLS connection:
 
 A typical cipher suite name looks like: `TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384`
 
-For TLS 1.3, the naming is simpler: `TLS_AES_256_GCM_SHA384` because TLS 1.3 only uses ECDHE for key exchange and removed older algorithms entirely.
+For TLS 1.3, the naming is simpler: `TLS_AES_256_GCM_SHA384` because TLS 1.3 negotiates key exchange and authentication separately from the cipher suite and removed older algorithms entirely.
 
 ## Default Cipher Suites in Istio
 
@@ -91,7 +91,7 @@ Avoid these cipher suites:
 
 ## TLS 1.3 Cipher Suites
 
-TLS 1.3 has a fixed set of cipher suites that cannot be disabled individually through Istio's Gateway configuration. The TLS 1.3 cipher suites are:
+Istio's `cipherSuites` setting only applies when negotiating TLS 1.0 through TLS 1.2, so it does not disable TLS 1.3 cipher suites individually. The TLS 1.3 cipher suites commonly enabled by Envoy are:
 
 - `TLS_AES_256_GCM_SHA384`
 - `TLS_AES_128_GCM_SHA256`
@@ -110,6 +110,11 @@ spec:
   meshConfig:
     meshMTLS:
       minProtocolVersion: TLSV1_2
+      cipherSuites:
+        - ECDHE-ECDSA-AES256-GCM-SHA384
+        - ECDHE-RSA-AES256-GCM-SHA384
+        - ECDHE-ECDSA-AES128-GCM-SHA256
+        - ECDHE-RSA-AES128-GCM-SHA256
 ```
 
 For more granular control over cipher suites within the mesh, use an EnvoyFilter:
@@ -196,12 +201,14 @@ After configuring cipher suites, verify with `openssl` or `nmap`:
 
 openssl s_client -connect gateway-ip:443 \
   -servername app.example.com \
+  -tls1_2 \
   -cipher ECDHE-RSA-AES256-GCM-SHA384
 
 # Test that a weak cipher is rejected
 openssl s_client -connect gateway-ip:443 \
   -servername app.example.com \
-  -cipher RC4-SHA
+  -tls1_2 \
+  -cipher AES128-SHA
 ```
 
 For a comprehensive scan:
@@ -230,7 +237,7 @@ Cipher suite choice affects performance:
 - **AES-GCM** is fast on processors with AES-NI instructions (most modern x86 and ARM processors)
 - **CHACHA20-POLY1305** is faster on processors without AES-NI (some mobile devices, older ARM)
 - **AES-256** is slightly slower than AES-128 but provides a larger security margin
-- **ECDSA** certificates are faster for key exchange than RSA certificates
+- **ECDSA** certificates usually make TLS authentication faster than RSA certificates
 
 For most server-side deployments on modern hardware, `ECDHE-ECDSA-AES256-GCM-SHA384` or `ECDHE-ECDSA-AES128-GCM-SHA256` provide the best combination of security and performance. If you serve mobile clients, include CHACHA20-POLY1305 as an option so they get good performance too.
 
