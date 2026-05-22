@@ -252,7 +252,7 @@ variable "user_teams" {
 
 locals {
   # Invert: go from user->team to team->users
-  # Use groupby (...) syntax
+  # Use grouping mode with the ellipsis (...) syntax
   team_members = {
     for user, team in var.user_teams :
     team => user...
@@ -389,6 +389,15 @@ variable "environment" {
   type = string
 }
 
+variable "project_name" {
+  type = string
+}
+
+variable "enable_monitoring" {
+  type    = bool
+  default = false
+}
+
 variable "extra_tags" {
   type    = map(string)
   default = {}
@@ -456,8 +465,8 @@ locals {
   # Merge defaults with overrides
   final_config = {
     for name, defaults in var.defaults : name => {
-      instance_type = try(var.overrides[name].instance_type, defaults.instance_type)
-      volume_size   = try(var.overrides[name].volume_size, defaults.volume_size)
+      instance_type = coalesce(try(var.overrides[name].instance_type, null), defaults.instance_type)
+      volume_size   = coalesce(try(var.overrides[name].volume_size, null), defaults.volume_size)
     }
   }
   # Result: {
