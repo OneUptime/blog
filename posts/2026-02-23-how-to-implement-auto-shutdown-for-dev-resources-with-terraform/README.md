@@ -27,6 +27,7 @@ resource "aws_instance" "dev_server" {
 
   tags = {
     Name     = "dev-server"
+    # Assumes you have created an Instance Scheduler schedule named "office-hours"
     Schedule = "office-hours"  # Tag that Instance Scheduler reads
   }
 }
@@ -38,20 +39,21 @@ resource "aws_cloudformation_stack" "instance_scheduler" {
   template_url = "https://s3.amazonaws.com/solutions-reference/instance-scheduler-on-aws/latest/instance-scheduler-on-aws.template"
 
   parameters = {
-    TagName          = "Schedule"
-    DefaultTimezone  = "US/Eastern"
-    Regions          = var.region
-    CrossAccountRoles = ""
-    ScheduleLambdaAccount = "Yes"
+    Namespace             = "dev"
+    TagName               = "Schedule"
+    DefaultTimezone       = "US/Eastern"
+    Regions               = var.region
+    UsingAWSOrganizations = "No"
+    Principals            = ""
   }
 
-  capabilities = ["CAPABILITY_IAM"]
+  capabilities = ["CAPABILITY_NAMED_IAM"]
 }
 ```
 
 ## Custom Lambda-Based Auto-Shutdown
 
-Build a custom shutdown solution:
+Build a custom shutdown solution. The EventBridge scheduled rule examples below use UTC cron expressions; adjust them for daylight saving time or use EventBridge Scheduler if you need timezone-aware schedules:
 
 ```hcl
 # Lambda function to stop instances
@@ -94,11 +96,11 @@ resource "aws_lambda_function" "start_instances" {
   }
 }
 
-# Schedule: Stop at 7 PM weekdays
+# Schedule: Stop at midnight UTC on weekdays
 resource "aws_cloudwatch_event_rule" "stop_schedule" {
   name                = "stop-dev-instances"
-  description         = "Stop development instances at 7 PM EST"
-  schedule_expression = "cron(0 0 ? * MON-FRI *)"  # 7 PM EST = midnight UTC
+  description         = "Stop development instances at midnight UTC on weekdays"
+  schedule_expression = "cron(0 0 ? * MON-FRI *)"
 }
 
 resource "aws_cloudwatch_event_target" "stop" {
@@ -106,11 +108,11 @@ resource "aws_cloudwatch_event_target" "stop" {
   arn  = aws_lambda_function.stop_instances.arn
 }
 
-# Schedule: Start at 7 AM weekdays
+# Schedule: Start at noon UTC on weekdays
 resource "aws_cloudwatch_event_rule" "start_schedule" {
   name                = "start-dev-instances"
-  description         = "Start development instances at 7 AM EST"
-  schedule_expression = "cron(0 12 ? * MON-FRI *)"  # 7 AM EST = noon UTC
+  description         = "Start development instances at noon UTC on weekdays"
+  schedule_expression = "cron(0 12 ? * MON-FRI *)"
 }
 
 resource "aws_cloudwatch_event_target" "start" {
@@ -184,7 +186,7 @@ resource "aws_lambda_permission" "allow_start" {
 
 ## RDS Auto-Shutdown
 
-Stop RDS instances during off-hours:
+Stop RDS instances during off-hours. RDS DB instances can be stopped for a maximum of 7 consecutive days before Amazon RDS automatically starts them again:
 
 ```hcl
 resource "aws_db_instance" "dev" {
