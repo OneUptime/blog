@@ -12,7 +12,7 @@ Terraform's type system can feel opaque. You write what looks like a simple map,
 
 ## What is the type Function?
 
-The `type` function returns the type of a given value. It is only available in the Terraform console (started with `terraform console`), not in regular `.tf` files.
+The `type` function returns the type of a given value. It is available in Terraform 1.0 and later, and only in the Terraform console (started with `terraform console`), not in regular `.tf` files.
 
 ```hcl
 > type("hello")
@@ -187,11 +187,17 @@ Use `type` to understand what functions actually return:
 ```hcl
 # What does keys() return?
 > type(keys({ a = 1, b = 2 }))
-list(string)
+tuple([
+    string,
+    string,
+])
 
 # What does values() return?
 > type(values({ a = 1, b = 2 }))
-list(number)
+tuple([
+    number,
+    number,
+])
 
 # What does merge() return?
 > type(merge({ a = "1" }, { b = "2" }))
@@ -206,7 +212,10 @@ set(string)
 
 # What does zipmap() return?
 > type(zipmap(["a", "b"], [1, 2]))
-map(number)
+object({
+    a: number,
+    b: number,
+})
 
 # What does concat() return?
 > type(concat(["a"], ["b"]))
@@ -257,9 +266,9 @@ map(string)
 
 # Check a for_each resource
 > type(aws_s3_bucket.main)
-map(object({
+object({
     # ... shows all attributes and their types
-}))
+})
 ```
 
 ## Practical Debugging Workflow
@@ -361,13 +370,13 @@ In HCL, `type` is the console function. There is no `typeof` function. If you tr
 # type is console-only
 ```
 
-For runtime type checking in `.tf` files, use `can` with type conversion functions:
+For checking whether values can be converted in `.tf` files, use `can` with type conversion functions:
 
 ```hcl
 locals {
-  is_string = can(tostring(var.input))
-  is_number = can(tonumber(var.input))
-  is_list   = can(tolist(var.input))
+  can_convert_to_string = can(tostring(var.input))
+  can_convert_to_number = can(tonumber(var.input))
+  can_convert_to_list   = can(tolist(var.input))
 }
 ```
 
