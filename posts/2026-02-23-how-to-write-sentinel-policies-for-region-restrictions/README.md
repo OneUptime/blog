@@ -24,7 +24,7 @@ There are several good reasons to limit which regions your teams can deploy to:
 
 The most straightforward approach is to check the provider configuration:
 
-```python
+```sentinel
 # restrict-aws-regions.sentinel
 
 # Limits AWS deployments to approved regions
@@ -41,33 +41,35 @@ allowed_regions = [
 # Check provider configurations
 providers = tfconfig.providers
 
+check_provider_region = func(provider) {
+    if provider.name is not "aws" {
+        return true
+    }
+
+    # Check if region is set as a constant
+    if "region" in provider.config {
+        region_config = provider.config.region
+        if "constant_value" in region_config {
+            region = region_config.constant_value
+            if region not in allowed_regions {
+                print("AWS provider uses region", region,
+                      "which is not in the approved list:", allowed_regions)
+                return false
+            }
+        }
+
+        # Region is set via a variable - we cannot check at config time
+        # Use tfplan to validate the actual value
+        return true
+    }
+
+    print("AWS provider must explicitly set a region")
+    return false
+}
+
 main = rule {
     all providers as _, provider {
-        if provider.provider_config_key matches "^aws.*" {
-            # Check if region is set as a constant
-            if "region" in provider.config {
-                region_config = provider.config.region
-                if "constant_value" in region_config {
-                    region = region_config.constant_value
-                    if region not in allowed_regions {
-                        print("AWS provider uses region", region,
-                              "which is not in the approved list:", allowed_regions)
-                        false
-                    } else {
-                        true
-                    }
-                } else {
-                    # Region is set via a variable - we cannot check at config time
-                    # Use tfplan to validate the actual value
-                    true
-                }
-            } else {
-                print("AWS provider must explicitly set a region")
-                false
-            }
-        } else {
-            true
-        }
+        check_provider_region(provider)
     }
 }
 ```
@@ -76,7 +78,7 @@ main = rule {
 
 For cases where the region comes from a variable, you need to check the planned values:
 
-```python
+```sentinel
 import "tfplan/v2" as tfplan
 
 allowed_regions = ["us-east-1", "us-west-2", "eu-west-1"]
@@ -99,21 +101,25 @@ get_region_from_az = func(az) {
     return az[0:length(az)-1]
 }
 
+check_instance_region = func(address, inst) {
+    az = inst.change.after.availability_zone else null
+    if az is null {
+        return true  # AZ might be auto-selected
+    }
+
+    region = get_region_from_az(az)
+    if region not in allowed_regions {
+        print(address, "is in region", region,
+              "- only allowed in:", allowed_regions)
+        return false
+    }
+
+    return true
+}
+
 main = rule {
     all ec2_instances as address, inst {
-        az = inst.change.after.availability_zone
-        if az is not null {
-            region = get_region_from_az(az)
-            if region not in allowed_regions {
-                print(address, "is in region", region,
-                      "- only allowed in:", allowed_regions)
-                false
-            } else {
-                true
-            }
-        } else {
-            true  # AZ might be auto-selected
-        }
+        check_instance_region(address, inst)
     }
 }
 ```
@@ -122,7 +128,7 @@ main = rule {
 
 Here is a policy that checks multiple resource types for region compliance:
 
-```python
+```sentinel
 import "tfplan/v2" as tfplan
 
 allowed_regions = ["us-east-1", "us-west-2", "eu-west-1"]
@@ -138,6 +144,13 @@ az_resources = {
 # Resources with explicit region attribute
 region_resources = {
     "aws_s3_bucket": "region",
+}
+
+get_attr = func(values, attr) {
+    if values is null or values is not defined or attr not in values {
+        return null
+    }
+    return values[attr]
 }
 
 # Helper to extract region from AZ
@@ -156,7 +169,7 @@ check_az_resources = func() {
             (rc.change.actions contains "create" or rc.change.actions contains "update")
         }
         for resources as address, rc {
-            az = rc.change.after[attr]
+            az = get_attr(rc.change.after, attr)
             region = get_region(az)
             if region is not null and region not in allowed_regions {
                 print(address, "is in region", region, "- not allowed")
@@ -175,7 +188,7 @@ check_region_resources = func() {
             (rc.change.actions contains "create" or rc.change.actions contains "update")
         }
         for resources as address, rc {
-            region = rc.change.after[attr]
+            region = get_attr(rc.change.after, attr)
             if region is not null and region not in allowed_regions {
                 print(address, "is in region", region, "- not allowed")
                 return false
@@ -197,8 +210,9 @@ main = rule {
 
 For Azure, the key attribute is `location`:
 
-```python
+```sentinel
 import "tfplan/v2" as tfplan
+import "strings"
 
 # Approved Azure regions
 allowed_locations = [
@@ -215,22 +229,27 @@ azure_resources = filter tfplan.resource_changes as _, rc {
     (rc.change.actions contains "create" or rc.change.actions contains "update")
 }
 
+check_azure_location = func(address, rc) {
+    location = rc.change.after.location else null
+    if location is null {
+        return true  # Some Azure resources inherit location from resource group
+    }
+
+    # Azure locations might use different casing
+    # Normalize by converting to lowercase for comparison
+    normalized_location = strings.to_lower(location)
+    if normalized_location not in allowed_locations {
+        print(address, "is in location", location,
+              "- only these locations are allowed:", allowed_locations)
+        return false
+    }
+
+    return true
+}
+
 main = rule {
     all azure_resources as address, rc {
-        location = rc.change.after.location
-        if location is not null {
-            # Azure locations might use different casing
-            # Normalize by converting to lowercase for comparison
-            if location not in allowed_locations {
-                print(address, "is in location", location,
-                      "- only these locations are allowed:", allowed_locations)
-                false
-            } else {
-                true
-            }
-        } else {
-            true  # Some Azure resources inherit location from resource group
-        }
+        check_azure_location(address, rc)
     }
 }
 ```
@@ -239,8 +258,9 @@ main = rule {
 
 For Google Cloud, check both `region` and `zone`:
 
-```python
+```sentinel
 import "tfplan/v2" as tfplan
+import "strings"
 
 # Approved GCP regions
 allowed_regions = [
@@ -263,38 +283,39 @@ get_gcp_region = func(zone) {
     return zone
 }
 
-import "strings"
-
 # Check GCP resources
 gcp_resources = filter tfplan.resource_changes as _, rc {
     rc.type matches "^google_.*" and
     (rc.change.actions contains "create" or rc.change.actions contains "update")
 }
 
+check_gcp_region = func(address, rc) {
+    # Check region attribute
+    region = rc.change.after.region else null
+    zone = rc.change.after.zone else null
+
+    if region is not null {
+        if region not in allowed_regions {
+            print(address, "is in region", region, "- not allowed")
+            return false
+        }
+        return true
+    }
+
+    if zone is not null {
+        derived_region = get_gcp_region(zone)
+        if derived_region not in allowed_regions {
+            print(address, "is in zone", zone, "(region:", derived_region, ") - not allowed")
+            return false
+        }
+    }
+
+    return true
+}
+
 main = rule {
     all gcp_resources as address, rc {
-        # Check region attribute
-        region = rc.change.after.region
-        zone = rc.change.after.zone
-
-        if region is not null {
-            if region not in allowed_regions {
-                print(address, "is in region", region, "- not allowed")
-                false
-            } else {
-                true
-            }
-        } else if zone is not null {
-            derived_region = get_gcp_region(zone)
-            if derived_region not in allowed_regions {
-                print(address, "is in zone", zone, "(region:", derived_region, ") - not allowed")
-                false
-            } else {
-                true
-            }
-        } else {
-            true
-        }
+        check_gcp_region(address, rc)
     }
 }
 ```
@@ -303,7 +324,7 @@ main = rule {
 
 If you deploy across multiple clouds, you can combine them:
 
-```python
+```sentinel
 import "tfplan/v2" as tfplan
 
 # Allowed regions per cloud
@@ -324,16 +345,18 @@ get_cloud = func(resource_type) {
 # Get region from resource based on cloud
 get_resource_region = func(resource) {
     after = resource.change.after
+    region = after.region else null
+    location = after.location else null
+    az = after.availability_zone else null
 
     # Try common region/location attributes
-    if after.region is not null and after.region is not "" {
-        return after.region
+    if region is not null and region is not "" {
+        return region
     }
-    if after.location is not null and after.location is not "" {
-        return after.location
+    if location is not null and location is not "" {
+        return location
     }
-    if after.availability_zone is not null and after.availability_zone is not "" {
-        az = after.availability_zone
+    if az is not null and az is not "" {
         return az[0:length(az)-1]
     }
 
@@ -345,24 +368,28 @@ all_resources = filter tfplan.resource_changes as _, rc {
     rc.change.actions contains "create" or rc.change.actions contains "update"
 }
 
+check_resource_region = func(address, rc) {
+    cloud = get_cloud(rc.type)
+    if cloud is "unknown" {
+        return true  # Skip non-cloud resources
+    }
+
+    region = get_resource_region(rc)
+    if region is null {
+        return true  # Cannot determine region
+    }
+
+    if region not in allowed[cloud] {
+        print(address, "(", cloud, ") - region", region, "is not allowed")
+        return false
+    }
+
+    return true
+}
+
 main = rule {
     all all_resources as address, rc {
-        cloud = get_cloud(rc.type)
-        if cloud is "unknown" {
-            true  # Skip non-cloud resources
-        } else {
-            region = get_resource_region(rc)
-            if region is null {
-                true  # Cannot determine region
-            } else {
-                if region not in allowed[cloud] {
-                    print(address, "(", cloud, ") - region", region, "is not allowed")
-                    false
-                } else {
-                    true
-                }
-            }
-        }
+        check_resource_region(address, rc)
     }
 }
 ```
@@ -371,7 +398,7 @@ main = rule {
 
 For regulatory compliance, you might need stricter enforcement:
 
-```python
+```sentinel
 import "tfplan/v2" as tfplan
 import "tfrun"
 
@@ -401,7 +428,7 @@ get_sovereignty = func() {
 sovereignty = get_sovereignty()
 
 main = rule {
-    print("Data sovereignty zone:", sovereignty)
+    print("Data sovereignty zone:", sovereignty) and
     true  # Apply cloud-specific region checks based on sovereignty zone
 }
 ```
