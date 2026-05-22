@@ -18,7 +18,7 @@ Every time a client opens a new TCP connection to a server, there is overhead: t
 
 Keep-alive connections solve this by reusing existing connections instead of creating new ones for each request. This reduces latency, lowers CPU usage, and decreases the number of sockets in TIME_WAIT state on your nodes.
 
-In Istio, the Envoy sidecar proxy handles all network traffic, so you configure keep-alive at the proxy level rather than in your application code.
+In Istio sidecar mode, the Envoy sidecar proxy handles network traffic for the workload, so you configure keep-alive at the proxy level rather than in your application code.
 
 ## TCP Keep-Alive Configuration
 
@@ -27,7 +27,7 @@ TCP keep-alive is a mechanism where the operating system sends periodic probe pa
 Istio exposes TCP keep-alive settings through the `DestinationRule` resource under `trafficPolicy.connectionPool.tcp`:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service-keep-alive
@@ -54,7 +54,7 @@ Here is what each field does:
 A more aggressive configuration for latency-sensitive services might look like:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: latency-sensitive-keep-alive
@@ -79,7 +79,7 @@ With this configuration, idle connections start getting probed after 5 minutes, 
 For HTTP services, Istio also lets you configure connection pooling behavior that works alongside TCP keep-alive. The `http` section of `connectionPool` controls how HTTP connections are managed:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: http-keep-alive-config
@@ -103,16 +103,16 @@ spec:
 
 The key field here is `maxRequestsPerConnection`. When set to 0 (the default), there is no limit on the number of requests per connection, meaning connections are reused indefinitely. If you set this to 1, every request gets a new connection (effectively disabling keep-alive at the HTTP level).
 
-The `idleTimeout` field controls how long an idle HTTP connection stays open. Setting it to 3600s (1 hour) means connections that have not been used for an hour get closed. This prevents resource waste from connections that are no longer needed.
+The `idleTimeout` field controls how long an upstream HTTP connection can stay open with no active requests. Setting it to 3600s (1 hour) means connections with no active requests for an hour get closed. This prevents resource waste from connections that are no longer needed.
 
 ## Handling Keep-Alive Mismatches
 
-One common problem is when the client-side and server-side keep-alive settings do not match. For example, if the upstream server closes idle connections after 60 seconds, but Istio keeps them in the pool for 300 seconds, you will get connection reset errors when Envoy tries to use a connection that the server already closed.
+One common problem is when the client-side and server-side idle timeout settings do not match. For example, if the upstream server closes idle HTTP connections after 60 seconds, but Istio keeps them in the pool longer than that, you can get connection reset errors when Envoy tries to use a connection that the server already closed.
 
 To fix this, make sure the Istio idle timeout is shorter than the server's idle timeout:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: match-upstream-timeout
@@ -138,7 +138,7 @@ If your upstream server has a 60-second idle timeout, setting Istio's idle timeo
 You can also configure different keep-alive settings for different versions of a service using subsets:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: versioned-keep-alive
