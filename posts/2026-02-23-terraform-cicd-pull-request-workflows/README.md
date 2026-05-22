@@ -21,7 +21,7 @@ The lifecycle of a Terraform change through PRs looks like this:
 3. Plan output is posted as a PR comment
 4. Reviewer examines the plan alongside the code diff
 5. PR is approved and merged to main
-6. Merge triggers `terraform apply` using the saved plan
+6. Merge triggers a fresh `terraform apply` from the merged main branch
 
 ## GitHub Actions Implementation
 
@@ -91,7 +91,6 @@ jobs:
           else
             exit $EXIT_CODE
           fi
-        continue-on-error: true
 
       # Post plan as PR comment
       - name: Post Plan Comment
@@ -156,7 +155,7 @@ jobs:
               });
             }
 
-      # Save plan artifact for apply stage
+      # Archive the PR plan for review traceability
       - name: Upload Plan
         if: steps.plan.outputs.has_changes == 'true'
         uses: actions/upload-artifact@v4
@@ -190,9 +189,9 @@ jobs:
       - name: Terraform Apply
         working-directory: ${{ env.TF_DIR }}
         run: |
-          # Re-plan and apply since we can't carry artifacts across workflows
+          # Re-plan and apply from the merged main branch
           terraform apply -auto-approve -no-color
-```
+````
 
 ## Branch Protection Rules
 
@@ -200,7 +199,7 @@ Set up branch protection to enforce the review workflow:
 
 ```bash
 # Using GitHub CLI to configure branch protection
-gh api repos/:owner/:repo/branches/main/protection -X PUT \
+gh api repos/{owner}/{repo}/branches/main/protection -X PUT \
   --input - << 'EOF'
 {
   "required_status_checks": {
@@ -217,7 +216,7 @@ gh api repos/:owner/:repo/branches/main/protection -X PUT \
   "required_linear_history": true
 }
 EOF
-````
+```
 
 ## CODEOWNERS for Infrastructure Review
 
@@ -325,11 +324,29 @@ on:
   schedule:
     - cron: '0 8 * * 1-5'  # Weekdays at 8am
 
+permissions:
+  contents: read
+  issues: write
+  id-token: write
+
+env:
+  TF_VERSION: "1.7.4"
+
 jobs:
   drift:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: us-east-1
 
       - name: Check for Drift
         working-directory: infrastructure
@@ -344,6 +361,8 @@ jobs:
               --title "Infrastructure drift detected $(date +%Y-%m-%d)" \
               --body "$(cat drift-output.txt)" \
               --label "drift,infrastructure"
+          elif [ $EXIT_CODE -ne 0 ]; then
+            exit $EXIT_CODE
           fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
