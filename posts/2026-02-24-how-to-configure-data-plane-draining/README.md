@@ -15,10 +15,11 @@ Connection draining is what keeps your users from seeing errors during deploymen
 When Kubernetes decides to terminate a pod (during a deployment rollout, scaling down, or node drain), here is what happens:
 
 1. The pod is marked as Terminating
-2. The pod's IP is removed from the Service endpoints
-3. Kubernetes sends SIGTERM to all containers in the pod
-4. A grace period starts (default 30 seconds)
-5. If containers are still running after the grace period, they receive SIGKILL
+2. A grace period starts (default 30 seconds)
+3. The control plane starts updating EndpointSlices so the terminating pod is no longer used for regular traffic
+4. For each container with a `preStop` hook, the kubelet runs that hook before sending the stop signal
+5. Kubernetes sends the container stop signal (usually SIGTERM) to the containers in the pod
+6. If containers are still running after the grace period, they receive SIGKILL
 
 With Istio, the `istio-proxy` container needs to coordinate with your application container. If the proxy shuts down before the app finishes handling requests, connections get broken.
 
@@ -57,10 +58,10 @@ spec:
 ```
 
 During the drain period, Envoy:
-- Stops accepting new connections on the inbound listener
+- Discourages new HTTP requests, for example by sending `Connection: close` for HTTP/1 and GOAWAY for HTTP/2
 - Allows existing connections and in-flight requests to complete
-- Returns 503 for any new requests that somehow still arrive
-- Shuts down after the drain period expires or all connections close (whichever comes first)
+- May return 503 for requests that cannot be routed to a healthy upstream
+- Shuts down after the drain period expires, unless zero-active-connection exit is enabled
 
 ## Aligning with Kubernetes Grace Period
 
@@ -80,7 +81,7 @@ spec:
         image: my-app:latest
 ```
 
-A good rule of thumb: set `terminationGracePeriodSeconds` to at least 10 seconds more than your `terminationDrainDuration`. This gives the proxy time to finish draining before Kubernetes forcefully kills it.
+A good rule of thumb: set `terminationGracePeriodSeconds` to at least 10 seconds more than your `terminationDrainDuration`, and include any `preStop` sleep time in that budget. This gives the proxy time to finish draining before Kubernetes forcefully kills it.
 
 For example:
 - `terminationGracePeriodSeconds: 45`
@@ -90,9 +91,9 @@ This gives the proxy 30 seconds to drain, with a 15-second buffer before the har
 
 ## Handling the Endpoint Propagation Delay
 
-There is a tricky timing issue. When a pod starts terminating, Kubernetes removes it from the Service endpoints. But that endpoint update takes time to propagate to all the other Envoy proxies in the mesh. During this propagation window (usually a few seconds), other proxies may still send traffic to the dying pod.
+There is a tricky timing issue. When a pod starts terminating, Kubernetes updates EndpointSlices so the terminating pod is not used for regular Service traffic. But that endpoint update takes time to propagate to all the other Envoy proxies in the mesh. During this propagation window (usually a few seconds), other proxies may still send traffic to the dying pod.
 
-To handle this, add a `preStop` hook that gives time for the endpoint removal to propagate before your application starts shutting down:
+To handle this, add a `preStop` hook that gives time for the endpoint update to propagate before your application receives SIGTERM:
 
 ```yaml
 apiVersion: apps/v1
@@ -139,20 +140,7 @@ With this setting, if all connections drain in 5 seconds, the proxy exits after 
 
 If your application uses long-lived connections (WebSocket, gRPC streaming, long polling), draining gets more complicated. These connections can last for minutes or hours, and you probably do not want to set a drain duration that long.
 
-For gRPC, Envoy can send GOAWAY frames to signal clients to reconnect:
-
-```yaml
-apiVersion: networking.istio.io/v1beta1
-kind: DestinationRule
-metadata:
-  name: my-grpc-service
-spec:
-  host: my-grpc-service
-  trafficPolicy:
-    connectionPool:
-      http:
-        h2UpgradePolicy: DEFAULT
-```
+For gRPC, Envoy can send GOAWAY frames to signal clients to reconnect, so make sure your clients handle GOAWAY and reconnect cleanly. The `h2UpgradePolicy` setting in a `DestinationRule` controls HTTP/2 upgrades for HTTP traffic; it is not a drain setting and is not required for normal gRPC traffic, which already uses HTTP/2.
 
 For WebSocket connections, you need to handle reconnection on the client side. The server-side proxy will close the WebSocket after the drain period.
 
