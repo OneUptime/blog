@@ -406,7 +406,7 @@ resource "aws_route_table" "subnets" {
 
 ## Using Separate Route Resources
 
-For large or frequently changing route tables, consider using separate `aws_route` resources instead of inline routes. This approach uses `for_each` at the resource level rather than dynamic blocks:
+For large or frequently changing route tables, consider using separate `aws_route` resources instead of inline routes. This approach uses `for_each` at the resource level rather than dynamic blocks. Do not manage the same route table with both inline `route` blocks and separate `aws_route` resources, because Terraform treats those as conflicting management styles:
 
 ```hcl
 locals {
@@ -437,25 +437,33 @@ resource "aws_route" "all" {
 }
 ```
 
-The advantage of separate resources is that adding or removing a route does not force Terraform to recreate the entire route table. Each route is managed independently.
+The advantage of separate resources is that each route is managed independently at the resource level, which makes changes to individual routes easier to review and target.
 
 ## IPv6 Routes
 
 Handle dual-stack routing by including IPv6 routes alongside IPv4:
 
 ```hcl
+resource "aws_egress_only_internet_gateway" "main" {
+  vpc_id = aws_vpc.main.id
+}
+
 variable "ipv6_routes" {
   description = "IPv6 routes"
   type = list(object({
-    ipv6_cidr_block    = string
-    gateway_id         = optional(string)
+    ipv6_cidr_block        = string
+    gateway_id             = optional(string)
     egress_only_gateway_id = optional(string)
   }))
-  default = [
+  default = []
+}
+
+locals {
+  default_ipv6_routes = [
     {
-      ipv6_cidr_block = "::/0"
-      gateway_id      = null
-      egress_only_gateway_id = null
+      ipv6_cidr_block        = "::/0"
+      gateway_id             = null
+      egress_only_gateway_id = aws_egress_only_internet_gateway.main.id
     }
   ]
 }
@@ -475,11 +483,11 @@ resource "aws_route_table" "dual_stack" {
 
   # IPv6 routes
   dynamic "route" {
-    for_each = var.ipv6_routes
+    for_each = length(var.ipv6_routes) > 0 ? var.ipv6_routes : local.default_ipv6_routes
     content {
       ipv6_cidr_block        = route.value.ipv6_cidr_block
-      gateway_id             = route.value.gateway_id
-      egress_only_gateway_id = route.value.egress_only_gateway_id
+      gateway_id             = lookup(route.value, "gateway_id", null)
+      egress_only_gateway_id = lookup(route.value, "egress_only_gateway_id", null)
     }
   }
 
