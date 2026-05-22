@@ -35,7 +35,7 @@ locals {
   with_escape  = "Line one\nLine two"  # \n is a newline
   with_tab     = "Column1\tColumn2"    # \t is a tab
   with_quote   = "She said \"hello\""  # \" is an escaped quote
-  with_dollar  = "Cost: $$100"         # $$ is a literal dollar sign
+  with_dollar  = "Cost: $100"          # $ is literal unless it begins ${...}
 }
 ```
 
@@ -49,7 +49,7 @@ locals {
 
 ### number
 
-A number can be an integer or a decimal (floating point). Terraform uses 64-bit floating point internally for all numbers.
+A number can be a whole number or a fractional value. Terraform represents numbers with arbitrary precision, though providers may convert them to more specific types such as 64-bit integers or floats.
 
 ```hcl
 variable "instance_count" {
@@ -73,9 +73,8 @@ locals {
   percentage = 0.75
   threshold  = 99.9
 
-  # Scientific notation is not supported in HCL
-  # But you can use arithmetic
-  million = 1000000
+  # Scientific notation is supported
+  million = 1e6
 }
 ```
 
@@ -315,7 +314,7 @@ variable "enabled" {
 
 # Conditional on a string "true" does not work as expected
 locals {
-  # ERROR: "true" is a non-empty string, not the bool true
+  # ERROR: "true" is a string, not the bool true
   # This would be a type error if used where bool is expected
   # status = var.enabled ? "on" : "off"
 
@@ -328,16 +327,16 @@ locals {
 
 ```hcl
 locals {
-  # This works - Terraform converts "5" to 5 for comparison
-  compare1 = "5" == 5  # true
+  # Equality does not perform automatic type conversion
+  compare1 = "5" == 5  # false
 
-  # This also works
-  compare2 = "true" == true  # This is actually false!
+  # This is also false
+  compare2 = "true" == true
   # "true" is a string, true is a bool - different types
 }
 ```
 
-Wait, that last one might surprise you. In Terraform, comparing a string to a bool with `==` does not do automatic conversion. The string `"true"` is not equal to the bool `true`. They are different types. If you need to compare them, convert one:
+That might surprise you. In Terraform, comparing values with `==` does not do automatic conversion. The string `"5"` is not equal to the number `5`, and the string `"true"` is not equal to the bool `true`. They are different types. If you need to compare them, convert one:
 
 ```hcl
 locals {
@@ -353,7 +352,7 @@ While not technically a primitive type, `null` represents the absence of a value
 ```hcl
 variable "optional_name" {
   type    = string
-  default = null  # No default value
+  default = null  # Defaults to null
 }
 
 locals {
