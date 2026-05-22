@@ -84,8 +84,8 @@ Total control plane: ~$158/month
 Ingress and egress gateways are additional Envoy pods:
 
 ```promql
-sum(kube_pod_container_resource_requests{namespace="istio-system", app=~"istio-.*gateway", resource="cpu"})
-sum(kube_pod_container_resource_requests{namespace="istio-system", app=~"istio-.*gateway", resource="memory"})
+sum(kube_pod_container_resource_requests{namespace="istio-system", pod=~"istio-.*gateway-.*", container="istio-proxy", resource="cpu"})
+sum(kube_pod_container_resource_requests{namespace="istio-system", pod=~"istio-.*gateway-.*", container="istio-proxy", resource="memory"})
 ```
 
 Plus the cost of cloud load balancers. On AWS, each Network Load Balancer costs about $16/month plus data processing charges.
@@ -102,7 +102,7 @@ Total gateway cost: ~$60-80/month
 
 Istio generates three types of telemetry data that need storage:
 
-**Metrics**: Envoy exposes hundreds of metrics per sidecar. Prometheus scrapes these at regular intervals. Each active time series consumes about 3-4 bytes per sample.
+**Metrics**: Envoy exposes hundreds of metrics per sidecar. Prometheus scrapes these at regular intervals. Prometheus stores an average of about 1-2 bytes per sample on disk, before accounting for index and WAL overhead.
 
 Estimate metrics storage:
 
@@ -110,12 +110,12 @@ Estimate metrics storage:
 Metrics per sidecar: ~300 active time series
 Total time series: 200 sidecars * 300 = 60,000
 Samples per day (15s scrape interval): 60,000 * 5,760 = 345,600,000
-Storage per sample: ~3 bytes (compressed)
-Daily storage: ~1 GB
-Monthly storage: ~30 GB
+Storage per sample: ~1-2 bytes (compressed)
+Daily storage: ~0.35-0.70 GB
+Monthly storage: ~10-21 GB
 ```
 
-At $0.10/GB for S3 or $0.023/GB for compressed Prometheus storage, that is $0.70-3.00/month for raw storage. But if you are using a managed monitoring service like Datadog or New Relic, the cost is based on ingested metrics and can be significantly higher.
+At $0.023/GB-month for S3 Standard or about $0.08-0.10/GB-month for block storage, that is roughly $0.25-2.10/month for raw storage. But if you are using a managed monitoring service like Datadog or New Relic, the cost is based on ingested metrics and can be significantly higher.
 
 **Access logs**: If enabled, each request generates an access log line of roughly 500-1000 bytes.
 
@@ -139,13 +139,13 @@ Monthly trace storage: 15 GB
 
 ## Component 5: Network Costs
 
-Sidecars add network overhead. Each request is processed twice (once by the source sidecar, once by the destination sidecar). mTLS adds about 2-5% overhead to payload size due to encryption.
+Sidecars add network overhead. Each request is processed twice (once by the source sidecar, once by the destination sidecar). mTLS adds per-connection handshake traffic and TLS record overhead, so the exact network overhead depends on connection reuse, request size, and protocol behavior.
 
 For intra-AZ traffic this is usually free on cloud providers. For cross-AZ traffic, each extra byte costs money:
 
 ```text
 Cross-AZ data transfer: $0.01/GB on AWS
-mTLS overhead: ~3% of total traffic
+Estimated mesh overhead: ~3% of total traffic
 If 30% of traffic is cross-AZ: additional cost = total_traffic * 0.03 * 0.30 * $0.01
 ```
 
