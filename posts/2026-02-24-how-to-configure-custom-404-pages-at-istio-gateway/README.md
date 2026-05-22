@@ -8,7 +8,7 @@ Description: How to serve custom 404 Not Found pages at the Istio ingress gatewa
 
 ---
 
-When someone hits a URL that does not match any of your VirtualService routes, Istio returns a plain "404 Not Found" response from Envoy. It looks terrible. The response body is either empty or contains something like "no healthy upstream" which means nothing to your users. Replacing this with a branded 404 page makes your application look professional even when people end up on wrong URLs.
+When someone hits a URL that does not match any of your VirtualService routes, Istio returns a plain "404 Not Found" response from Envoy. It looks terrible. The response body is either empty or contains a short Envoy local-reply message, which means nothing to your users. Replacing this with a branded 404 page makes your application look professional even when people end up on wrong URLs.
 
 There are several places a 404 can originate in Istio, and each requires a slightly different approach to customize.
 
@@ -16,15 +16,15 @@ There are several places a 404 can originate in Istio, and each requires a sligh
 
 In Istio, a 404 can come from three different places:
 
-1. **The gateway itself** - No VirtualService matches the requested host or path
-2. **The Envoy sidecar** - The route exists but the specific path is not found
+1. **The gateway itself** - No Gateway or VirtualService route matches the requested host or path
+2. **An Envoy proxy** - A request reaches a proxy but no route matches
 3. **The application** - Your app returns a 404 because the resource does not exist
 
 This guide focuses on cases 1 and 2, which are infrastructure-level 404s that Envoy generates.
 
 ## Approach 1: Default Route Catch-All
 
-The cleanest approach is to create a catch-all VirtualService that matches any unmatched requests and routes them to a custom 404 page server.
+The cleanest approach for unknown hosts is to create a catch-all VirtualService that routes them to a custom 404 page server.
 
 First, deploy a simple service that serves your 404 page:
 
@@ -70,9 +70,13 @@ data:
   nginx.conf: |
     server {
       listen 8080;
+      error_page 404 /index.html;
       location / {
+        return 404;
+      }
+      location = /index.html {
         root /usr/share/nginx/html;
-        try_files /index.html =404;
+        internal;
       }
       location /healthz {
         return 200 'ok';
@@ -129,7 +133,7 @@ spec:
 Now create a catch-all VirtualService. The key is to use a wildcard host that matches everything:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: catch-all-404
@@ -147,11 +151,11 @@ spec:
               number: 80
 ```
 
-This VirtualService has the lowest priority because it uses a wildcard host. Istio matches more specific hosts first, so your real services will still get their traffic. Only requests that do not match any other VirtualService will hit this catch-all.
+This VirtualService uses a wildcard host, so it is useful for requests whose host does not match a more specific VirtualService. If a host already has a VirtualService and you want to catch unmatched paths for that same host, add a final catch-all route for that host or use the EnvoyFilter approach below.
 
-## Approach 2: EnvoyFilter for Direct Response
+## Approach 2: EnvoyFilter for Response Rewrites
 
-If you do not want to deploy a separate service just for 404 pages, you can use an EnvoyFilter to return a direct response:
+If you do not want to deploy a separate service just for 404 pages, you can use an EnvoyFilter to rewrite 404 response bodies:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -188,19 +192,19 @@ spec:
                   if content_type == nil or not string.find(content_type, "text/html") then
                     response_handle:headers():replace("content-type", "text/html; charset=utf-8")
                     local html = [[
-<!DOCTYPE html>
-<html>
-<head><title>404 - Not Found</title>
-<style>
-body{font-family:sans-serif;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;background:#f5f5f5}
-.c{text-align:center}
-h1{font-size:6em;color:#ddd;margin:0}
-p{color:#666;font-size:1.2em}
-a{color:#0066cc}
-</style></head>
-<body><div class="c"><h1>404</h1><p>Page not found.</p><p><a href="/">Go home</a></p></div></body>
-</html>]]
-                    response_handle:body():setBytes(html)
+                    <!DOCTYPE html>
+                    <html>
+                    <head><title>404 - Not Found</title>
+                    <style>
+                    body{font-family:sans-serif;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;background:#f5f5f5}
+                    .c{text-align:center}
+                    h1{font-size:6em;color:#ddd;margin:0}
+                    p{color:#666;font-size:1.2em}
+                    a{color:#0066cc}
+                    </style></head>
+                    <body><div class="c"><h1>404</h1><p>Page not found.</p><p><a href="/">Go home</a></p></div></body>
+                    </html>]]
+                    response_handle:body(true):setBytes(html)
                   end
                 end
               end
@@ -248,14 +252,24 @@ spec:
                 ["app.example.com"] = "text/html",
               }
 
+              function envoy_on_request(request_handle)
+                local host = request_handle:headers():get(":authority")
+                if host then
+                  request_handle:streamInfo():dynamicMetadata():set("envoy.filters.http.lua", "host", host)
+                end
+              end
+
               function envoy_on_response(response_handle)
                 if response_handle:headers():get(":status") == "404" then
-                  local host = response_handle:headers():get(":authority")
+                  local metadata = response_handle:streamInfo():dynamicMetadata():get("envoy.filters.http.lua")
+                  local host = metadata and metadata["host"]
                   -- Strip port from host
-                  host = string.gsub(host, ":%d+$", "")
-                  if pages[host] then
+                  if host then
+                    host = string.gsub(host, ":%d+$", "")
+                  end
+                  if host and pages[host] then
                     response_handle:headers():replace("content-type", content_types[host])
-                    response_handle:body():setBytes(pages[host])
+                    response_handle:body(true):setBytes(pages[host])
                   end
                 end
               end
@@ -265,7 +279,7 @@ This returns JSON 404 responses for the API domain and HTML for the web app doma
 
 ## Setting the Correct Status Code
 
-Sometimes the gateway returns a 404 but with a different response body (like "no healthy upstream"). Make sure the status code is preserved:
+Sometimes the gateway returns a 404 but with the default Envoy response body. Make sure the status code is preserved:
 
 ```yaml
 inline_code: |
@@ -274,7 +288,7 @@ inline_code: |
     if status == "404" then
       response_handle:headers():replace(":status", "404")
       response_handle:headers():replace("content-type", "text/html; charset=utf-8")
-      response_handle:body():setBytes("<html><body><h1>Not Found</h1></body></html>")
+      response_handle:body(true):setBytes("<html><body><h1>Not Found</h1></body></html>")
     end
   end
 ```
@@ -284,7 +298,7 @@ inline_code: |
 When a request comes in with a Host header that does not match any gateway server, the gateway itself returns a 404 before any VirtualService routing happens. To handle this case, you need to add a wildcard server to the gateway:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: my-gateway
@@ -312,17 +326,17 @@ Then the catch-all VirtualService from Approach 1 will handle requests for unkno
 ## Testing Your Custom 404
 
 ```bash
-export GATEWAY_IP=$(kubectl get svc istio-ingressgateway -n istio-system -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+export GATEWAY_HOST=$(kubectl get svc istio-ingressgateway -n istio-system -o jsonpath='{.status.loadBalancer.ingress[0].ip}{.status.loadBalancer.ingress[0].hostname}')
 
 # Test with a known host but unknown path
 
-curl -v -H "Host: app.example.com" http://$GATEWAY_IP/this-does-not-exist
+curl -v -H "Host: app.example.com" http://$GATEWAY_HOST/this-does-not-exist
 
 # Test with an unknown host
-curl -v -H "Host: unknown.example.com" http://$GATEWAY_IP/
+curl -v -H "Host: unknown.example.com" http://$GATEWAY_HOST/
 
 # Test the error pages service directly
-kubectl port-forward svc/error-pages 8080:80
+kubectl port-forward svc/error-pages 8080:80 &
 curl -v http://localhost:8080/
 ```
 
@@ -331,11 +345,11 @@ curl -v http://localhost:8080/
 Track 404 rates to identify broken links or misconfigurations:
 
 ```promql
-sum(rate(istio_requests_total{response_code="404", reporter="destination"}[5m])) by (destination_service_name, source_workload)
+sum(rate(istio_requests_total{response_code="404", reporter="source", source_workload="istio-ingressgateway"}[5m])) by (destination_service_name, source_workload)
 ```
 
 A spike in 404 rates after a deployment might indicate broken routes or removed endpoints.
 
 ## Summary
 
-Custom 404 pages at the Istio gateway can be implemented with a catch-all VirtualService that routes unmatched requests to an error page service, or with an EnvoyFilter Lua script that intercepts 404 responses and replaces the body. The catch-all VirtualService approach is more maintainable for complex pages with CSS and images, while the EnvoyFilter approach avoids deploying an extra service. Make sure to add a wildcard server to your Gateway configuration to handle requests for completely unknown hosts.
+Custom 404 pages at the Istio gateway can be implemented with a catch-all VirtualService that routes unmatched hosts to an error page service, or with an EnvoyFilter Lua script that intercepts 404 responses and replaces the body. The catch-all VirtualService approach is more maintainable for complex pages with CSS and images, while the EnvoyFilter approach avoids deploying an extra service and can cover 404 responses generated after host matching. Make sure to add a wildcard server to your Gateway configuration to handle requests for completely unknown hosts.
