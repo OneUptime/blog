@@ -82,7 +82,7 @@ output "certificate_status" {
   value = {
     status     = local.cert_status
     expires_at = var.cert_expiry_date
-    checked_at = formatdate("YYYY-MM-DD HH:mm 'UTC'", local.now)
+    checked_at = formatdate("YYYY-MM-DD hh:mm 'UTC'", local.now)
   }
 }
 ```
@@ -128,7 +128,8 @@ variable "feature_launch_date" {
 }
 
 locals {
-  now = timestamp()
+  # Use plantimestamp() so the count value is known during planning.
+  now = plantimestamp()
   feature_active = timecmp(local.now, var.feature_launch_date) >= 0
 }
 
@@ -297,6 +298,8 @@ output "event_timeline" {
 ## Validating Time-Based Inputs
 
 Use `timecmp` in validation blocks to enforce time constraints:
+
+Note: `plantimestamp()` is available in Terraform v1.5 and later.
 
 ```hcl
 variable "scheduled_time" {
