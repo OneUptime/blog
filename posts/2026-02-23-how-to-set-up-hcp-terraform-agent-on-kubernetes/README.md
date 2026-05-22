@@ -27,8 +27,8 @@ There are several reasons Kubernetes is a good fit for running Terraform agents:
 
 - A Kubernetes cluster (EKS, GKE, AKS, or self-managed)
 - `kubectl` configured to access your cluster
-- An HCP Terraform agent pool with a generated token
-- Helm v3 (if using the Helm chart method)
+- An HCP Terraform agent pool with a generated token (if using raw Kubernetes manifests)
+- Helm v3 and an HCP Terraform team API token with permission to manage agent pools (if using the HCP Terraform Operator method)
 
 ## Method 1: Kubernetes Manifests
 
@@ -108,6 +108,8 @@ spec:
                   fieldPath: metadata.name
             - name: TFC_AGENT_LOG_LEVEL
               value: "info"
+            - name: TFC_AGENT_DATA_DIR
+              value: "/agent-data"
           volumeMounts:
             - name: agent-data
               mountPath: /agent-data
@@ -118,8 +120,8 @@ spec:
       # Run as non-root for security
       securityContext:
         runAsNonRoot: true
-        runAsUser: 1000
-        fsGroup: 1000
+        runAsUser: 999
+        fsGroup: 999
 ```
 
 ```bash
@@ -196,9 +198,9 @@ spec:
       # No explicit AWS credentials needed - IRSA handles it
 ```
 
-## Method 2: Helm Chart
+## Method 2: HCP Terraform Operator Helm Chart
 
-HashiCorp provides an official Helm chart for the agent:
+HashiCorp provides an official Helm chart for the HCP Terraform Operator, which can manage agent pools and agent deployments:
 
 ```bash
 # Add the HashiCorp Helm repository
@@ -206,77 +208,96 @@ helm repo add hashicorp https://helm.releases.hashicorp.com
 helm repo update
 ```
 
-Create a values file:
+Create a values file for the operator:
 
 ```yaml
-# values.yaml - Helm chart configuration
+# values.yaml - HCP Terraform Operator configuration
 replicaCount: 2
 
-agent:
-  token: ""  # We will use an existing secret instead
-
-# Reference an existing secret for the token
-existingSecret:
-  name: tfc-agent-token
-  key: token
-
-# Agent configuration
-agentConfig:
-  name: ""  # Auto-generated from pod name
-  logLevel: info
-
-# Resource limits
-resources:
-  requests:
-    memory: 512Mi
-    cpu: 500m
-  limits:
-    memory: 2Gi
-    cpu: "2"
-
-# Extra environment variables for cloud credentials
-extraEnv:
-  - name: AWS_DEFAULT_REGION
-    value: "us-east-1"
-
-# Extra environment variables from secrets
-extraEnvFrom:
-  - secretRef:
-      name: aws-credentials
-
-# Pod security context
 securityContext:
   runAsNonRoot: true
-  runAsUser: 1000
-  fsGroup: 1000
 
-# Node selector for placing agents on specific nodes
-nodeSelector:
-  workload-type: terraform-agents
-
-# Tolerations if using tainted nodes
-tolerations:
-  - key: "dedicated"
-    operator: "Equal"
-    value: "terraform-agents"
-    effect: "NoSchedule"
+# Tolerations if using tainted nodes for the operator
+operator:
+  tolerations:
+    - key: "dedicated"
+      operator: "Equal"
+      value: "platform"
+      effect: "NoSchedule"
 ```
 
-Install the chart:
+Install the operator and create an agent pool:
 
 ```bash
 # Create the namespace first
 kubectl create namespace tfc-agents
 
-# Create the secret
-kubectl create secret generic tfc-agent-token \
+# Create a secret containing an HCP Terraform team API token
+kubectl create secret generic tfc-owner \
   --namespace tfc-agents \
-  --from-literal=token="your-agent-pool-token"
+  --from-literal=token="your-team-api-token"
 
 # Install the Helm chart
-helm install tfc-agent hashicorp/terraform-cloud-agent \
+helm install hcp-terraform-operator hashicorp/hcp-terraform-operator \
   --namespace tfc-agents \
   --values values.yaml
+```
+
+Then create an `AgentPool` custom resource:
+
+```yaml
+# agentpool.yaml - Managed agent pool
+apiVersion: app.terraform.io/v1alpha2
+kind: AgentPool
+metadata:
+  name: tfc-agent-pool
+  namespace: tfc-agents
+spec:
+  organization: your-hcp-terraform-organization
+  token:
+    secretKeyRef:
+      name: tfc-owner
+      key: token
+  name: tfc-agent-pool
+  agentTokens:
+    - name: tfc-agent-pool-token
+  agentDeployment:
+    replicas: 2
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        fsGroup: 999
+      nodeSelector:
+        workload-type: terraform-agents
+      tolerations:
+        - key: "dedicated"
+          operator: "Equal"
+          value: "terraform-agents"
+          effect: "NoSchedule"
+      containers:
+        - name: tfc-agent
+          image: hashicorp/tfc-agent:latest
+          resources:
+            requests:
+              memory: 512Mi
+              cpu: 500m
+            limits:
+              memory: 2Gi
+              cpu: "2"
+          env:
+            - name: TFC_AGENT_LOG_LEVEL
+              value: "info"
+            - name: AWS_DEFAULT_REGION
+              value: "us-east-1"
+          envFrom:
+            - secretRef:
+                name: aws-credentials
+```
+
+```bash
+# Create the managed agent pool and deployment
+kubectl apply -f agentpool.yaml
 
 # Verify the installation
 helm list -n tfc-agents
@@ -324,10 +345,40 @@ spec:
 
 ### Scheduled Scaling with CronJobs
 
-For predictable workload patterns:
+For predictable workload patterns, create RBAC for a scaler ServiceAccount and then schedule scaling jobs:
 
 ```yaml
 # scale-up.yaml - Scale up during business hours
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: agent-scaler
+  namespace: tfc-agents
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: agent-scaler
+  namespace: tfc-agents
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments/scale"]
+    verbs: ["get", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: agent-scaler
+  namespace: tfc-agents
+subjects:
+  - kind: ServiceAccount
+    name: agent-scaler
+    namespace: tfc-agents
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: agent-scaler
+---
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -440,27 +491,7 @@ spec:
 
 ## Monitoring and Observability
 
-Set up monitoring for your agent pods:
-
-```yaml
-# servicemonitor.yaml - Prometheus ServiceMonitor
-# Note: tfc-agent doesn't expose metrics natively,
-# but you can monitor pod-level metrics
-apiVersion: v1
-kind: Service
-metadata:
-  name: tfc-agent-metrics
-  namespace: tfc-agents
-  labels:
-    app: tfc-agent
-spec:
-  selector:
-    app: tfc-agent
-  ports: []
-  clusterIP: None
-```
-
-Monitor agent health with kubectl:
+The agent can send OpenTelemetry telemetry to a collector by setting `TFC_AGENT_OTLP_ADDRESS`. For basic Kubernetes monitoring, monitor agent health with kubectl:
 
 ```bash
 # Check agent pod status
@@ -485,6 +516,6 @@ kubectl top pods -n tfc-agents
 
 ## Summary
 
-Deploying HCP Terraform agents on Kubernetes gives you a resilient, scalable execution platform for Terraform operations in private environments. Use Helm for a quick start or raw manifests for full control. Make sure to set appropriate resource limits, use workload identity for cloud credentials, and implement network policies to restrict agent access.
+Deploying HCP Terraform agents on Kubernetes gives you a resilient, scalable execution platform for Terraform operations in private environments. Use the HCP Terraform Operator Helm chart for managed agent pools or raw manifests for full control. Make sure to set appropriate resource limits, use workload identity for cloud credentials, and implement network policies to restrict agent access.
 
 For more on agent pools, see our guide on [configuring agent pools in HCP Terraform](https://oneuptime.com/blog/post/2026-02-23-how-to-configure-agent-pools-in-hcp-terraform/view). For broader agent architecture, check out [using HCP Terraform agents for private infrastructure](https://oneuptime.com/blog/post/2026-02-23-how-to-use-hcp-terraform-agents-for-private-infrastructure/view).
