@@ -47,16 +47,16 @@ First, create a Docker image with Terraform and Terragrunt pre-installed, or use
 ```dockerfile
 # Dockerfile.ci
 
-FROM hashicorp/terraform:1.7.0
+FROM hashicorp/terraform:1.15.4
 
 # Install Terragrunt
-ARG TERRAGRUNT_VERSION=0.55.0
+ARG TERRAGRUNT_VERSION=1.0.4
 RUN wget -q "https://github.com/gruntwork-io/terragrunt/releases/download/v${TERRAGRUNT_VERSION}/terragrunt_linux_amd64" \
     -O /usr/local/bin/terragrunt && \
     chmod +x /usr/local/bin/terragrunt
 
 # Install additional tools
-RUN apk add --no-cache bash curl jq git
+RUN apk add --no-cache bash curl jq git aws-cli
 
 ENTRYPOINT ["/bin/bash"]
 ```
@@ -77,17 +77,18 @@ Here's a complete `.gitlab-ci.yml` for Terragrunt:
 
 image: registry.gitlab.com/your-group/infra-tools:latest
 
-# Cache Terraform providers across pipeline runs
+# Cache Terragrunt's provider cache across pipeline runs
 cache:
-  key: terraform-plugins
+  key: terragrunt-provider-cache
   paths:
-    - .terraform-plugin-cache/
+    - .terragrunt-provider-cache/
 
 variables:
   TF_IN_AUTOMATION: "true"
   TF_INPUT: "false"
-  TF_PLUGIN_CACHE_DIR: "$CI_PROJECT_DIR/.terraform-plugin-cache"
-  TERRAGRUNT_NON_INTERACTIVE: "true"
+  TG_NON_INTERACTIVE: "true"
+  TG_PROVIDER_CACHE: "true"
+  TG_PROVIDER_CACHE_DIR: "$CI_PROJECT_DIR/.terragrunt-provider-cache"
 
 # Define the pipeline stages
 stages:
@@ -97,7 +98,7 @@ stages:
 
 # Run before every job
 before_script:
-  - mkdir -p "$TF_PLUGIN_CACHE_DIR"
+  - mkdir -p "$TG_PROVIDER_CACHE_DIR"
   - terraform --version
   - terragrunt --version
 
@@ -112,7 +113,7 @@ validate:
         - infrastructure/**/*
   script:
     - cd infrastructure
-    - terragrunt run-all validate --terragrunt-non-interactive
+    - terragrunt run --all -- validate
 
 # --------------------------------------------------
 # Plan stage - runs on merge requests
@@ -125,7 +126,7 @@ plan:dev:
         - infrastructure/**/*
   script:
     - cd infrastructure/dev
-    - terragrunt run-all plan --terragrunt-non-interactive -no-color 2>&1 | tee plan-output.txt
+    - terragrunt run --all -- plan -no-color 2>&1 | tee plan-output.txt
   artifacts:
     paths:
       - infrastructure/dev/plan-output.txt
@@ -156,7 +157,7 @@ plan:staging:
         - infrastructure/**/*
   script:
     - cd infrastructure/staging
-    - terragrunt run-all plan --terragrunt-non-interactive -no-color 2>&1 | tee plan-output.txt
+    - terragrunt run --all -- plan -no-color 2>&1 | tee plan-output.txt
   artifacts:
     paths:
       - infrastructure/staging/plan-output.txt
@@ -170,7 +171,7 @@ plan:prod:
         - infrastructure/**/*
   script:
     - cd infrastructure/prod
-    - terragrunt run-all plan --terragrunt-non-interactive -no-color 2>&1 | tee plan-output.txt
+    - terragrunt run --all -- plan -no-color 2>&1 | tee plan-output.txt
   artifacts:
     paths:
       - infrastructure/prod/plan-output.txt
@@ -189,7 +190,7 @@ apply:dev:
     name: dev
   script:
     - cd infrastructure/dev
-    - terragrunt run-all apply --terragrunt-non-interactive -auto-approve -no-color
+    - terragrunt run --all -- apply -no-color
 
 apply:staging:
   stage: apply
@@ -202,7 +203,7 @@ apply:staging:
   needs: ["apply:dev"]    # Deploy to staging only after dev succeeds
   script:
     - cd infrastructure/staging
-    - terragrunt run-all apply --terragrunt-non-interactive -auto-approve -no-color
+    - terragrunt run --all -- apply -no-color
 
 apply:prod:
   stage: apply
@@ -217,7 +218,7 @@ apply:prod:
   allow_failure: false
   script:
     - cd infrastructure/prod
-    - terragrunt run-all apply --terragrunt-non-interactive -auto-approve -no-color
+    - terragrunt run --all -- apply -no-color
 ````
 
 ## AWS Authentication with OIDC
@@ -226,10 +227,14 @@ GitLab supports OIDC authentication with AWS. First, set up the OIDC provider in
 
 ```hcl
 # One-time setup in your AWS account
+data "tls_certificate" "gitlab" {
+  url = "https://gitlab.com"
+}
+
 resource "aws_iam_openid_connect_provider" "gitlab" {
   url             = "https://gitlab.com"
-  client_id_list  = ["https://gitlab.com"]
-  thumbprint_list = ["b3dd7606d2b5a8b4a13771dbecc9ee1cecafa38a"]
+  client_id_list  = ["sts.amazonaws.com"]
+  thumbprint_list = [data.tls_certificate.gitlab.certificates[0].sha1_fingerprint]
 }
 
 resource "aws_iam_role" "gitlab_ci" {
@@ -245,10 +250,10 @@ resource "aws_iam_role" "gitlab_ci" {
       Action = "sts:AssumeRoleWithWebIdentity"
       Condition = {
         StringEquals = {
-          "gitlab.com:aud" = "https://gitlab.com"
+          "gitlab.com:aud" = "sts.amazonaws.com"
         }
         StringLike = {
-          "gitlab.com:sub" = "project_path:your-group/your-project:ref_type:branch:ref:main"
+          "gitlab.com:sub" = "project_path:your-group/your-project:ref_type:branch:ref:*"
         }
       }
     }]
@@ -266,17 +271,17 @@ variables:
 .aws_oidc: &aws_oidc
   id_tokens:
     GITLAB_OIDC_TOKEN:
-      aud: https://gitlab.com
+      aud: sts.amazonaws.com
   before_script:
     - >
-      export $(printf "AWS_ACCESS_KEY_ID=%s AWS_SECRET_ACCESS_KEY=%s AWS_SESSION_TOKEN=%s"
-      $(aws sts assume-role-with-web-identity
+      aws_sts_output=$(aws sts assume-role-with-web-identity
       --role-arn "$AWS_ROLE_ARN"
       --role-session-name "GitLabCI-${CI_PIPELINE_ID}"
       --web-identity-token "$GITLAB_OIDC_TOKEN"
       --duration-seconds 3600
       --query "Credentials.[AccessKeyId,SecretAccessKey,SessionToken]"
-      --output text))
+      --output text)
+    - export $(printf "AWS_ACCESS_KEY_ID=%s AWS_SECRET_ACCESS_KEY=%s AWS_SESSION_TOKEN=%s" $aws_sts_output)
 ```
 
 ## Using GitLab CI Variables
@@ -351,7 +356,7 @@ for mod in modules:
     safe_name = mod.replace("/", "-")
     pipeline[f"plan-{safe_name}"] = {
         "stage": "plan",
-        "script": [f"cd {mod}", "terragrunt plan --terragrunt-non-interactive"],
+        "script": [f"cd {mod}", "terragrunt plan"],
     }
 
 print(yaml.dump(pipeline, default_flow_style=False))
@@ -368,12 +373,11 @@ cache:
       - infrastructure/**/.terraform.lock.hcl
     prefix: terragrunt
   paths:
-    - .terraform-plugin-cache/
-    - infrastructure/**/.terragrunt-cache/
+    - .terragrunt-provider-cache/
   policy: pull-push
 ```
 
-Be careful with caching `.terragrunt-cache` - it can grow large. A safer approach is to only cache the plugin directory.
+Be careful with caching `.terragrunt-cache` - it can grow large. A safer approach is to cache Terragrunt's provider cache directory.
 
 ## Manual Destroy Jobs
 
@@ -390,7 +394,7 @@ destroy:dev:
     action: stop
   script:
     - cd infrastructure/dev
-    - terragrunt run-all destroy --terragrunt-non-interactive -auto-approve
+    - terragrunt run --all -- destroy
   allow_failure: true
 ```
 
