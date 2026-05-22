@@ -58,15 +58,11 @@ spec:
             response_headers_to_add:
               - append_action: OVERWRITE_IF_EXISTS_OR_ADD
                 header:
-                  key: x-ratelimit-limit
-                  value: "1000"
-              - append_action: OVERWRITE_IF_EXISTS_OR_ADD
-                header:
-                  key: x-ratelimit-remaining
-                  value: "999"
+                  key: x-local-rate-limit
+                  value: "true"
 ```
 
-This gives you 1000 requests per hour across all clients. The limitation is that it does not track per-client usage and the count resets on each gateway pod independently.
+This gives each gateway pod 1000 requests per hour across all clients. The limitation is that it does not track per-client usage and the count resets on each gateway pod independently.
 
 ## Per-Route Rate Limits
 
@@ -83,6 +79,22 @@ spec:
     labels:
       istio: ingressgateway
   configPatches:
+    - applyTo: HTTP_FILTER
+      match:
+        context: GATEWAY
+        listener:
+          filterChain:
+            filter:
+              name: envoy.filters.network.http_connection_manager
+              subFilter:
+                name: envoy.filters.http.router
+      patch:
+        operation: INSERT_BEFORE
+        value:
+          name: envoy.filters.http.local_ratelimit
+          typed_config:
+            "@type": type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit
+            stat_prefix: api_local_rate_limiter
     - applyTo: HTTP_ROUTE
       match:
         context: GATEWAY
@@ -102,6 +114,16 @@ spec:
                 max_tokens: 100
                 tokens_per_fill: 100
                 fill_interval: 60s
+              filter_enabled:
+                runtime_key: api_v1_users_rate_limit_enabled
+                default_value:
+                  numerator: 100
+                  denominator: HUNDRED
+              filter_enforced:
+                runtime_key: api_v1_users_rate_limit_enforced
+                default_value:
+                  numerator: 100
+                  denominator: HUNDRED
 ```
 
 ## Global Rate Limiting with External Service
@@ -412,15 +434,15 @@ The external service can check quotas against any backend (database, Redis, exte
 
 ## Monitoring Quota Usage
 
-Track rate limit metrics with Prometheus:
+Track rate limit metrics with Prometheus. In Istio, Envoy's local rate limit stats are not exposed by default, so include them with `proxyStatsMatcher` before scraping them:
 
 ```bash
 # Rate limit hit count
 
-envoy_http_local_rate_limit_enabled
-envoy_http_local_rate_limit_enforced
-envoy_http_local_rate_limit_ok
-envoy_http_local_rate_limit_rate_limited
+envoy_http_local_rate_limiter_http_local_rate_limit_enabled
+envoy_http_local_rate_limiter_http_local_rate_limit_enforced
+envoy_http_local_rate_limiter_http_local_rate_limit_ok
+envoy_http_local_rate_limiter_http_local_rate_limit_rate_limited
 ```
 
 Set up alerts for when clients are approaching their quotas:
@@ -430,7 +452,7 @@ groups:
   - name: quota-alerts
     rules:
       - alert: HighQuotaUsage
-        expr: rate(envoy_http_local_rate_limit_rate_limited[5m]) > 0.1
+        expr: rate(envoy_http_local_rate_limiter_http_local_rate_limit_rate_limited[5m]) > 0.1
         for: 5m
         annotations:
           summary: "API rate limiting is being triggered frequently"
@@ -441,7 +463,7 @@ groups:
 ```bash
 # Rapid-fire requests to test rate limiting
 for i in $(seq 1 200); do
-  status=$(curl -s -o /dev/null -w "%{http_code}" -H "x-api-key: key-abc123" https://api.example.com/api/v1/users)
+  status=$(curl -s -o /dev/null -w "%{http_code}" -H "x-client-id: client-abc123" -H "x-client-tier: free" https://api.example.com/api/v1/users)
   echo "Request $i: $status"
 done
 ```
