@@ -74,7 +74,7 @@ The `INSERT_BEFORE` operation with `subFilter.name: envoy.filters.http.router` p
 
 ## Adding Response Header Manipulation
 
-If you just need to add or modify headers without complex logic, you can use the header-to-metadata filter or a simpler Lua script:
+If you just need to add or modify headers without complex logic, you can use a simpler Lua script:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -170,7 +170,7 @@ This compresses responses larger than 1024 bytes for the specified content types
 
 ## Adding CORS Configuration
 
-While Istio supports basic CORS through VirtualService, EnvoyFilter gives you more fine-grained control:
+While Istio supports basic CORS through VirtualService, EnvoyFilter gives you more fine-grained control. Istio already configures the CORS HTTP filter in the default chain, so this example adds the per-filter CORS policy to the virtual host:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -183,21 +183,6 @@ spec:
     labels:
       app: api-service
   configPatches:
-    - applyTo: HTTP_FILTER
-      match:
-        context: SIDECAR_INBOUND
-        listener:
-          filterChain:
-            filter:
-              name: envoy.filters.network.http_connection_manager
-              subFilter:
-                name: envoy.filters.http.router
-      patch:
-        operation: INSERT_BEFORE
-        value:
-          name: envoy.filters.http.cors
-          typed_config:
-            "@type": type.googleapis.com/envoy.extensions.filters.http.cors.v3.Cors
     - applyTo: VIRTUAL_HOST
       match:
         context: SIDECAR_INBOUND
@@ -209,6 +194,7 @@ spec:
               "@type": type.googleapis.com/envoy.extensions.filters.http.cors.v3.CorsPolicy
               allow_origin_string_match:
                 - safe_regex:
+                    google_re2: {}
                     regex: "https://.*\\.example\\.com"
               allow_methods: "GET, POST, PUT, DELETE, OPTIONS"
               allow_headers: "content-type, authorization, x-request-id"
@@ -371,9 +357,9 @@ You should see your custom filter name in the list, in the correct position rela
 A few things to keep in mind about Lua filters:
 
 - Lua filters run synchronously and block the request. Keep them fast.
-- You cannot make external HTTP calls from Lua filters (use the ext_authz filter for that).
+- Lua filters can make outbound HTTP calls with `httpCall()` to configured Envoy clusters, but those calls can add latency. For authorization decisions, use the ext_authz filter instead.
 - Lua in Envoy uses LuaJIT, which has a slightly different standard library than standard Lua.
-- Errors in Lua code can crash the filter chain, so test thoroughly.
+- Errors in Lua code fail the script for the affected stream, so test thoroughly.
 
 ## Summary
 
