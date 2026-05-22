@@ -14,7 +14,7 @@ In this guide, we will explore the external data source in depth. We will cover 
 
 ## Understanding the External Provider
 
-The external data source works by executing a program and exchanging data through JSON. Terraform sends a JSON object on stdin containing the query parameters, and the program must return a JSON object on stdout. All values in both directions must be strings. The program must exit with code 0 for success, and any stderr output is displayed as a warning.
+The external data source works by executing a program and exchanging data through JSON. Terraform sends a JSON object on stdin containing the query parameters, and the program must return a JSON object on stdout. All values in both directions must be strings. The program must exit with code 0 for success. If the program cannot produce a result, it should write a human-readable error message to stderr and exit with a non-zero status.
 
 ## Provider Setup
 
@@ -216,7 +216,7 @@ output "db_host" {
 
 ## Best Practices
 
-When using the external provider, follow these guidelines. Always validate inputs in your scripts and return proper JSON. Use stderr for diagnostic messages and warnings. Make scripts idempotent since they may be called multiple times during plan and apply. Keep scripts simple and focused on data retrieval rather than making changes. Test scripts independently before integrating with Terraform.
+When using the external provider, follow these guidelines. Always validate inputs in your scripts and return proper JSON. Keep stdout reserved for the JSON result, and use stderr for human-readable error messages when exiting with a non-zero status. Make scripts idempotent and avoid observable side effects since Terraform re-runs the program each time the state is refreshed and may read data sources during planning or defer them to apply. Keep scripts simple and focused on data retrieval rather than making changes. Test scripts independently before integrating with Terraform.
 
 Remember that all values exchanged through the external data source must be strings. If you need to pass numbers or booleans, convert them to strings in the query and parse them in your script.
 
