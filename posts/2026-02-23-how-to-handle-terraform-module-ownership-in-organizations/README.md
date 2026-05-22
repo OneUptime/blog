@@ -85,8 +85,9 @@ The producer team controls the module interface and implementation. Consumer tea
 
 Create a module registry that documents ownership:
 
-```hcl
-# modules/registry.json
+`modules/registry.json`:
+
+```json
 {
   "modules": [
     {
@@ -121,7 +122,7 @@ Create a module registry that documents ownership:
 
 ### Using CODEOWNERS for Enforcement
 
-Back up documented ownership with automated enforcement:
+Back up documented ownership with automated review requests. In GitHub, enable required code owner reviews in branch protection or a ruleset to make those reviews blocking:
 
 ```text
 # .github/CODEOWNERS
@@ -207,7 +208,7 @@ When a module is no longer needed or is being replaced:
 # > See migration guide: /docs/migrate-vpc-to-networking-v2.md
 # > Removal date: 2026-06-01
 
-# Add a deprecation warning output
+# Expose a deprecation message output
 output "deprecation_warning" {
   value = "WARNING: This module is deprecated. Migrate to modules/networking-v2 by 2026-06-01."
 }
