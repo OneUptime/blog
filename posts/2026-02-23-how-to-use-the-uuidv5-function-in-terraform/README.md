@@ -136,8 +136,13 @@ locals {
 }
 
 resource "aws_db_instance" "shared" {
-  identifier = "db-${substr(local.resource_id, 0, 8)}"
-  engine     = "postgres"
+  identifier                  = "db-${substr(local.resource_id, 0, 8)}"
+  engine                      = "postgres"
+  allocated_storage           = 20
+  instance_class              = "db.t3.micro"
+  username                    = "postgres"
+  manage_master_user_password = true
+  skip_final_snapshot         = true
 
   tags = {
     SharedId = local.resource_id
@@ -153,7 +158,9 @@ locals {
 
 # Can look up the resource by its deterministic tag
 data "aws_db_instance" "shared" {
-  db_instance_identifier = "db-${substr(local.resource_id, 0, 8)}"
+  tags = {
+    SharedId = local.resource_id
+  }
 }
 ```
 
