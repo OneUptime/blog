@@ -250,31 +250,28 @@ This warning exists for good reasons. Targeted applies can leave your state file
 After a targeted apply, your state may not match what a full apply would produce. Resources that were skipped might have outdated references:
 
 ```hcl
-resource "aws_security_group" "web" {
-  name = "web-sg"
-  # Changed this rule
-  ingress {
-    from_port   = 443
-    to_port     = 443
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
+resource "random_pet" "bucket_name" {
+  length    = 5
+  separator = "-"
+  prefix    = "learning"
 }
 
-resource "aws_instance" "web" {
-  vpc_security_group_ids = [aws_security_group.web.id]
+module "s3_bucket" {
+  source = "terraform-aws-modules/s3-bucket/aws"
+
+  bucket = random_pet.bucket_name.id
 }
 ```
 
-If you target only the security group, the instance might not pick up the change if it needs to be updated too.
+If you target only `random_pet.bucket_name`, Terraform can update the generated name without updating the S3 bucket module that depends on it.
 
 ### Missing Downstream Updates
 
 Resources that depend on your target but are not themselves targeted will be skipped:
 
 ```bash
-# This updates the VPC but skips updating subnets that reference it
-terraform apply -target=aws_vpc.main
+# This updates the generated name but skips the bucket that uses it
+terraform apply -target=random_pet.bucket_name
 ```
 
 ### Output Values Not Updated
