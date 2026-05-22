@@ -79,7 +79,7 @@ locals {
 
 ## Parsing AWS ARNs
 
-ARNs follow a colon-separated format that `split` handles perfectly.
+ARNs follow a colon-separated format, though the resource portion can also contain colons.
 
 ```hcl
 locals {
@@ -94,7 +94,7 @@ locals {
   service     = local.arn_parts[2]  # "lambda"
   region      = local.arn_parts[3]  # "us-east-1"
   account_id  = local.arn_parts[4]  # "123456789012"
-  resource    = local.arn_parts[6]  # "my-processor"
+  resource    = join(":", slice(local.arn_parts, 5, length(local.arn_parts)))  # "function:my-processor"
 }
 ```
 
@@ -147,8 +147,8 @@ locals {
   subdomain = local.domain_parts[0]
   # Result: "api"
 
-  # Get the top-level domain (last two parts)
-  tld = join(".", slice(local.domain_parts, length(local.domain_parts) - 2, length(local.domain_parts)))
+  # Get the registered domain (last two parts)
+  registered_domain = join(".", slice(local.domain_parts, length(local.domain_parts) - 2, length(local.domain_parts)))
   # Result: "example.com"
 }
 ```
