@@ -16,18 +16,34 @@ When you run `terraform plan` or `terraform apply`, Terraform acquires a lock on
 
 The lock mechanism depends on your backend:
 
-- **S3 backend** - Uses a DynamoDB table
-- **GCS backend** - Uses built-in object locking
+- **S3 backend** - Uses an S3 lockfile, or a DynamoDB table for older configurations
+- **GCS backend** - Uses built-in backend locking
 - **Azure Blob** - Uses blob leases
 - **Consul** - Uses Consul sessions
 - **PostgreSQL** - Uses advisory locks
 
-## Setting Up DynamoDB Locking for S3 Backend
+## Setting Up Locking for S3 Backend
 
-This is the most common setup for AWS users:
+Current Terraform versions support native S3 lockfiles, so this is the preferred setup for AWS users:
 
 ```hcl
-# backend.tf - S3 backend with DynamoDB locking
+# backend.tf - S3 backend with native S3 locking
+
+terraform {
+  backend "s3" {
+    bucket         = "mycompany-terraform-state"
+    key            = "production/terraform.tfstate"
+    region         = "us-east-1"
+    encrypt        = true
+    use_lockfile   = true
+  }
+}
+```
+
+DynamoDB-based locking is deprecated in the S3 backend, but you may still see it in older configurations:
+
+```hcl
+# backend.tf - S3 backend with deprecated DynamoDB locking
 
 terraform {
   backend "s3" {
@@ -40,7 +56,7 @@ terraform {
 }
 ```
 
-Create the DynamoDB table:
+If you use the legacy DynamoDB option, create the DynamoDB table:
 
 ```hcl
 # state-infra/main.tf - Bootstrap the locking table
@@ -70,15 +86,8 @@ The DynamoDB table stores lock entries with information about who holds the lock
 
 ```json
 {
-  "LockID": "mycompany-terraform-state/production/terraform.tfstate-md5",
-  "Info": {
-    "ID": "a1b2c3d4-uuid",
-    "Operation": "OperationTypeApply",
-    "Who": "runner@github-actions",
-    "Version": "1.7.0",
-    "Created": "2026-02-23T10:30:00Z",
-    "Path": "production/terraform.tfstate"
-  }
+  "LockID": "mycompany-terraform-state/production/terraform.tfstate",
+  "Info": "{\"ID\":\"a1b2c3d4-uuid\",\"Operation\":\"OperationTypeApply\",\"Who\":\"runner@github-actions\",\"Version\":\"1.7.0\",\"Created\":\"2026-02-23T10:30:00Z\",\"Path\":\"mycompany-terraform-state/production/terraform.tfstate\"}"
 }
 ```
 
@@ -136,19 +145,23 @@ Configure your pipeline to retry lock acquisition instead of failing immediately
     for i in $(seq 1 $MAX_RETRIES); do
       echo "Attempt $i of $MAX_RETRIES"
 
-      if terraform plan -no-color -out=tfplan 2>&1; then
+      output=$(terraform plan -no-color -out=tfplan 2>&1)
+      status=$?
+
+      if [ $status -eq 0 ]; then
         echo "Plan succeeded"
         exit 0
       fi
 
       # Check if the failure was due to a lock
-      if terraform plan -no-color -out=tfplan 2>&1 | grep -q "Error acquiring the state lock"; then
+      if echo "$output" | grep -q "Error acquiring the state lock"; then
         echo "State is locked. Waiting ${RETRY_DELAY}s before retry..."
         sleep $RETRY_DELAY
         RETRY_DELAY=$((RETRY_DELAY * 2))  # Exponential backoff
       else
         echo "Plan failed for a non-lock reason"
-        exit 1
+        echo "$output"
+        exit $status
       fi
     done
 
@@ -214,7 +227,7 @@ Stale locks happen when a pipeline run crashes or times out without releasing th
 # Check if a lock exists and how old it is
 aws dynamodb get-item \
   --table-name terraform-state-locks \
-  --key '{"LockID": {"S": "mycompany-terraform-state/production/terraform.tfstate-md5"}}' \
+  --key '{"LockID": {"S": "mycompany-terraform-state/production/terraform.tfstate"}}' \
   --query 'Item.Info.S' \
   --output text | python3 -c "
 import json, sys
@@ -284,10 +297,10 @@ jobs:
 
 ## Automated Stale Lock Cleanup
 
-For teams that frequently hit stale locks, automate the cleanup:
+For teams that frequently hit stale locks with the legacy DynamoDB locking option, automate the cleanup:
 
 ```python
-# cleanup_stale_locks.py - Run on a schedule to clean up stale locks
+# cleanup_stale_locks.py - Run on a schedule to clean up stale DynamoDB locks
 import boto3
 import json
 from datetime import datetime, timezone, timedelta
@@ -300,24 +313,37 @@ table = dynamodb.Table('terraform-state-locks')
 
 def cleanup_stale_locks():
     """Scan for and remove locks older than MAX_LOCK_AGE."""
-    response = table.scan()
+    scan_kwargs = {}
 
-    for item in response['Items']:
-        lock_id = item['LockID']
-        info = json.loads(item.get('Info', '{}'))
+    while True:
+        response = table.scan(**scan_kwargs)
 
-        created_str = info.get('Created', '')
-        if not created_str:
-            continue
+        for item in response['Items']:
+            lock_id = item['LockID']
+            info_raw = item.get('Info', '{}')
+            info = json.loads(info_raw)
 
-        created = datetime.fromisoformat(created_str.replace('Z', '+00:00'))
-        age = datetime.now(timezone.utc) - created
+            created_str = info.get('Created', '')
+            if not created_str:
+                continue
 
-        if age > MAX_LOCK_AGE:
-            print(f"Removing stale lock: {lock_id}")
-            print(f"  Held by: {info.get('Who', 'unknown')}")
-            print(f"  Age: {age}")
-            table.delete_item(Key={'LockID': lock_id})
+            created = datetime.fromisoformat(created_str.replace('Z', '+00:00'))
+            age = datetime.now(timezone.utc) - created
+
+            if age > MAX_LOCK_AGE:
+                print(f"Removing stale lock: {lock_id}")
+                print(f"  Held by: {info.get('Who', 'unknown')}")
+                print(f"  Age: {age}")
+                table.delete_item(
+                    Key={'LockID': lock_id},
+                    ConditionExpression='#info = :info',
+                    ExpressionAttributeNames={'#info': 'Info'},
+                    ExpressionAttributeValues={':info': info_raw},
+                )
+
+        if 'LastEvaluatedKey' not in response:
+            break
+        scan_kwargs['ExclusiveStartKey'] = response['LastEvaluatedKey']
 
 if __name__ == "__main__":
     cleanup_stale_locks()
