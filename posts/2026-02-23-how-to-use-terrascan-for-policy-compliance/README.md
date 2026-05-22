@@ -55,7 +55,7 @@ terrascan scan
 terrascan scan -i terraform -d ./infrastructure
 
 # Scan with specific policy types
-terrascan scan -i terraform -d . -p aws
+terrascan scan -i terraform -d . -t aws
 
 # Output as JSON
 terrascan scan -i terraform -d . -o json
@@ -132,7 +132,7 @@ terraform plan -out=tfplan.binary
 terraform show -json tfplan.binary > tfplan.json
 
 # Scan the plan
-terrascan scan -i terraform -f tfplan.json --config-only
+terrascan scan -i tfplan -f tfplan.json -t aws
 ```
 
 Plan scanning resolves variables and data sources, giving you a more complete picture of what will actually be deployed.
@@ -162,29 +162,21 @@ requiredEncryptionEBS[api.id] {
     api := input.aws_ebs_volume[_]
     not api.config.encrypted
 }
-
-# Rule: All RDS instances must have storage encryption
-requiredEncryptionRDS[api.id] {
-    api := input.aws_db_instance[_]
-    not api.config.storage_encrypted
-}
 ```
 
 Create the accompanying metadata file:
 
 ```json
 {
-    "name": "requiredEncryption",
+    "name": "requiredEncryptionEBS",
     "file": "require_encryption.rego",
     "policy_type": "aws",
     "resource_type": "aws_ebs_volume",
     "template_args": {
-        "name": "requiredEncryptionEBS",
-        "prefix": "",
-        "suffix": ""
+        "prefix": ""
     },
     "severity": "HIGH",
-    "description": "All storage resources must have encryption enabled",
+    "description": "All EBS volumes must have encryption enabled",
     "category": "Data Protection",
     "version": 1,
     "id": "CUSTOM_AWS_001"
@@ -207,8 +199,7 @@ terrascan server --port 9010
 
 # Send a scan request
 curl -X POST "http://localhost:9010/v1/terraform/v12/aws/local/file/scan" \
-  -F "file=@main.tf" \
-  -H "Content-Type: multipart/form-data"
+  -F "file=@main.tf"
 ```
 
 You can also use server mode as a Kubernetes admission controller to prevent non-compliant resources from being deployed.
@@ -219,8 +210,8 @@ When you need to suppress a finding:
 
 ```hcl
 # In-file skip
-#ts:skip=AC_AWS_0207 Encryption handled by AWS Organization SCP
 resource "aws_s3_bucket" "data" {
+  #ts:skip=AC_AWS_0207 Encryption handled by AWS Organization SCP
   bucket = "my-data-bucket"
 }
 ```
@@ -239,7 +230,10 @@ skip-rules = [
 ]
 
 [notifications]
-webhook-url = "https://hooks.slack.com/services/T00000/B00000/XXXX"
+[notifications.webhook]
+type = "webhook"
+[notifications.webhook.config]
+url = "https://hooks.slack.com/services/T00000/B00000/XXXX"
 ```
 
 Run with the config file:
@@ -289,11 +283,10 @@ repos:
   - repo: https://github.com/tenable/terrascan
     rev: v1.19.0
     hooks:
-      - id: terrascan
+      - id: terraform-pre-commit
         args:
-          - '-i terraform'
-          - '-p aws'
-          - '--severity HIGH'
+          - '-i'
+          - 'terraform'
 ```
 
 ## Generating Compliance Reports
