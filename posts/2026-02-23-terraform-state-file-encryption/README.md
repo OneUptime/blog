@@ -230,7 +230,7 @@ With CSEK, you are responsible for managing the key. If you lose it, the state i
 
 ## Consul Backend Encryption
 
-Consul supports encryption in transit (TLS) and at rest (through Consul's gossip encryption):
+Consul supports encryption in transit through TLS for API communication and gossip encryption for agent-to-agent cluster traffic:
 
 ```hcl
 terraform {
@@ -247,12 +247,14 @@ terraform {
 }
 ```
 
-For encryption at rest, configure Consul's gossip encryption:
+For encrypted agent gossip traffic, configure Consul's gossip encryption:
 
 ```hcl
 # consul-config.hcl
 encrypt = "your-gossip-encryption-key"
 ```
+
+For encryption at rest, protect the Consul data directory and snapshots with disk or storage-layer encryption. Gossip encryption does not encrypt KV data at rest.
 
 ## PostgreSQL Backend Encryption
 
