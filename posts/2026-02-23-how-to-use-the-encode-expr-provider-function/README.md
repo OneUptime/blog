@@ -8,7 +8,7 @@ Description: Learn how to use the encode_expr provider function in Terraform to 
 
 ---
 
-When you need to convert a Terraform value back into its HCL expression representation as a string, the `encode_expr` provider function is the tool for the job. Introduced alongside other provider-defined functions in Terraform 1.8, `encode_expr` does the reverse of what functions like `decode_tfvars` do. It takes a Terraform value - a string, number, list, map, or any complex type - and produces the HCL expression string that represents it.
+When you need to convert a Terraform value back into its Terraform expression representation as a string, the `encode_expr` provider function is the tool for the job. Introduced alongside other provider-defined functions in Terraform 1.8, `encode_expr` encodes a single value as a plain expression, without the `.tfvars` container that `encode_tfvars` produces. It takes a Terraform value - a string, number, list, map, or any complex type - and produces a Terraform expression string approximating that value.
 
 This is useful when you are generating Terraform code, building templates, or constructing configuration files that need to contain valid HCL syntax.
 
@@ -16,11 +16,11 @@ This is useful when you are generating Terraform code, building templates, or co
 
 Put simply, `encode_expr` serializes a Terraform value into a string that, if you pasted it into a `.tf` file, would be a valid HCL expression. For example, a list like `["a", "b", "c"]` gets turned into the string `["a", "b", "c"]` - the literal HCL representation.
 
-This is different from `jsonencode`, which produces JSON syntax. While JSON and HCL overlap for simple types, they diverge for things like heredoc strings, object syntax, and how booleans are represented in context.
+This is different from `jsonencode`, which produces minified JSON syntax. While JSON and Terraform expression syntax overlap for simple types, they diverge for things like object syntax, string escaping, and formatting.
 
 ## Setting Up the Provider
 
-Just like other built-in Terraform provider functions, you need to declare the `hashicorp/terraform` provider:
+Just like other built-in Terraform provider functions, you need to declare the built-in `terraform` provider:
 
 ```hcl
 # main.tf - Required provider declaration
@@ -30,7 +30,7 @@ terraform {
 
   required_providers {
     terraform = {
-      source = "hashicorp/terraform"
+      source = "terraform.io/builtin/terraform"
     }
   }
 }
@@ -80,7 +80,7 @@ output "encoded_map" {
 
 ## Generating Terraform Code
 
-The primary use case for `encode_expr` is when you need to generate Terraform configuration files programmatically. Maybe you have a CI/CD pipeline that generates `.tfvars` files, or you want to create configuration templates:
+One use case for `encode_expr` is when you need to generate Terraform configuration files programmatically. If you are generating a complete `.tfvars` file from an object, `encode_tfvars` is usually the better fit, but `encode_expr` is useful when you need to insert individual expression values into generated content:
 
 ```hcl
 # Generate a tfvars file content dynamically
@@ -189,7 +189,6 @@ variable "workspaces" {
     bucket         = string
     key            = string
     region         = string
-    dynamodb_table = string
     encrypt        = bool
   }))
   default = {
@@ -197,14 +196,12 @@ variable "workspaces" {
       bucket         = "my-terraform-state-dev"
       key            = "infrastructure/terraform.tfstate"
       region         = "us-east-1"
-      dynamodb_table = "terraform-locks-dev"
       encrypt        = true
     }
     prod = {
       bucket         = "my-terraform-state-prod"
       key            = "infrastructure/terraform.tfstate"
       region         = "us-east-1"
-      dynamodb_table = "terraform-locks-prod"
       encrypt        = true
     }
   }
@@ -220,7 +217,7 @@ resource "local_file" "backend_config" {
     "bucket         = ${provider::terraform::encode_expr(each.value.bucket)}",
     "key            = ${provider::terraform::encode_expr(each.value.key)}",
     "region         = ${provider::terraform::encode_expr(each.value.region)}",
-    "dynamodb_table = ${provider::terraform::encode_expr(each.value.dynamodb_table)}",
+    "use_lockfile   = ${provider::terraform::encode_expr(true)}",
     "encrypt        = ${provider::terraform::encode_expr(each.value.encrypt)}",
     "",
   ])
@@ -254,14 +251,16 @@ This is important when you are generating configuration that might include optio
 
 There are a few things to be aware of when working with `encode_expr`:
 
-1. The output is always a single-line representation. If you need pretty-printed, multi-line HCL for deeply nested structures, you may need to do additional formatting.
+1. The output is intended to be a Terraform expression representation, but HashiCorp warns that the exact syntax used to encode certain values may change in future Terraform versions. Avoid depending on the exact formatting in contexts where a future syntax change would be disruptive.
 
-2. Map keys are sorted alphabetically in the output. If key order matters to you for readability, you will need to handle that separately.
+2. The output is always a single-line representation. If you need pretty-printed, multi-line HCL for deeply nested structures, you may need to do additional formatting.
 
-3. The function works only with values that Terraform can fully evaluate at plan time. You cannot encode values that depend on resources that have not been created yet (values that are "known after apply").
+3. Map keys may not preserve the same order you wrote in source code. If key order matters to you for readability, you will need to handle that separately.
+
+4. If the input value is unknown during planning, the encoded string will also be unknown until Terraform can evaluate the input value.
 
 ## Summary
 
-The `encode_expr` function is the complement to `decode_tfvars`. Where `decode_tfvars` reads HCL into Terraform values, `encode_expr` writes Terraform values back out as HCL. It is most useful when you are generating Terraform or HCL configuration files programmatically, building templates, or creating tooling that produces valid HCL output. Combined with `templatefile` and `local_file`, it gives you a clean pipeline for dynamic code generation within Terraform itself.
+The `encode_expr` function is related to `encode_tfvars` and `decode_tfvars`, but it operates on a single value rather than a full `.tfvars` document. It is useful when you are generating Terraform or HCL configuration files programmatically, building templates, or creating tooling that produces valid HCL output. Combined with `templatefile` and `local_file`, it gives you a clean pipeline for dynamic code generation within Terraform itself.
 
 For the complementary parsing function, see [How to Use the decode_tfvars Provider Function](https://oneuptime.com/blog/post/2026-02-23-how-to-use-the-decode-tfvars-provider-function/view). To test these functions interactively, check out [How to Debug Function Outputs Using terraform console](https://oneuptime.com/blog/post/2026-02-23-how-to-debug-function-outputs-using-terraform-console/view).
