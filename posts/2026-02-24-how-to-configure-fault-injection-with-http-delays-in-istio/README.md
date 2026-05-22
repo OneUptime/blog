@@ -35,7 +35,7 @@ This is important to understand: the delay adds to whatever the upstream service
 Here's a simple VirtualService that adds a 5-second delay to all requests:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: product-api
@@ -73,7 +73,7 @@ You should see the response take at least 5 seconds.
 Injecting delays on 100% of traffic is useful for controlled testing, but for more realistic scenarios, you want to affect only a percentage:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: product-api
@@ -99,7 +99,7 @@ This adds a 3-second delay to 10% of requests. The other 90% pass through normal
 You can target delays to specific routes using match conditions:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: product-api
@@ -131,7 +131,7 @@ Only requests to `/api/search` get the delay. Requests to other paths are unaffe
 Target delays based on request headers. This is useful for testing specific users or request types:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: product-api
@@ -173,7 +173,7 @@ curl http://product-api:8080/products
 You might want to test different levels of degradation. Use multiple match rules:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: product-api
@@ -228,27 +228,27 @@ spec:
 When you inject delays, you should see the effects in your monitoring:
 
 ```bash
-# Watch response times in proxy access logs
+# Watch response times in proxy access logs, if access logging is enabled
 kubectl logs deploy/test-client -c istio-proxy -n production -f
 
 # Check latency histograms in Prometheus
 # istio_request_duration_milliseconds_bucket
 ```
 
-The access logs show the duration field, which includes the injected delay:
+The access logs show the request duration, which includes the injected delay:
 
 ```text
-"duration": "5023"  # 5 seconds of injected delay + 23ms actual processing
+%DURATION% = 5023  # 5 seconds of injected delay + 23ms actual processing
 ```
 
 If your application has its own timeout set lower than the injected delay, you'll see timeout errors. That's actually what you want to test - does your application handle timeouts gracefully?
 
-## Combining Delays with Timeouts
+## Testing Delays Against Timeouts
 
-A powerful testing pattern is combining fault injection delays with Istio timeouts to verify that timeout configuration works correctly:
+A powerful testing pattern is injecting delays that exceed your application's timeout to verify that timeout handling works correctly:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: product-api
@@ -262,20 +262,19 @@ spec:
           fixedDelay: 10s
           percentage:
             value: 100.0
-      timeout: 3s
       route:
         - destination:
             host: product-api
 ```
 
-With this configuration, every request gets a 10-second delay injected, but the timeout is set to 3 seconds. The request should time out after 3 seconds with a 504 Gateway Timeout. If it doesn't, something is wrong with your timeout configuration.
+With this configuration, every request gets a 10-second delay injected. If your application has a 3-second timeout for calls to `product-api`, the call should fail after about 3 seconds. Keep the timeout in the calling application or in a separate route that does not also configure fault injection, because Istio does not enable route-level timeouts or retries when client-side faults are enabled on the same route.
 
 ## Cleaning Up
 
 When you're done testing, remove the fault injection by either deleting the VirtualService or updating it to remove the fault block:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: product-api
