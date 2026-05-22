@@ -23,7 +23,7 @@ dirname("configs/app/settings.yaml") # Returns: "configs/app"
 dirname("file.txt")                  # Returns: "."
 ```
 
-It works like the Unix `dirname` command and follows the same conventions.
+On Unix-like hosts, it works like the Unix `dirname` command. Terraform documents this function as platform-dependent, so Windows hosts use backslashes as path separators and normalize returned paths accordingly.
 
 ## Exploring in terraform console
 
@@ -85,7 +85,7 @@ resource "aws_lambda_function" "functions" {
   function_name = each.value
   role          = aws_iam_role.lambda.arn
   handler       = "handler.main"
-  runtime       = "python3.9"
+  runtime       = "python3.13"
 
   filename         = "${path.module}/functions/${each.value}/handler.zip"
   source_code_hash = filebase64sha256("${path.module}/functions/${each.value}/handler.zip")
@@ -308,7 +308,7 @@ You can nest `dirname` calls to walk up the directory tree:
 locals {
   full_path = "/opt/apps/myapp/v2.1/config/app.yaml"
 
-  level_0 = full_path                       # /opt/apps/myapp/v2.1/config/app.yaml
+  level_0 = local.full_path                 # /opt/apps/myapp/v2.1/config/app.yaml
   level_1 = dirname(local.full_path)        # /opt/apps/myapp/v2.1/config
   level_2 = dirname(local.level_1)          # /opt/apps/myapp/v2.1
   level_3 = dirname(local.level_2)          # /opt/apps/myapp
@@ -327,12 +327,11 @@ locals {
 > dirname("file.txt")
 "."
 
-# dirname handles both forward and back slashes
-# but always returns forward slashes
+# dirname uses the host platform's path separator
+# Windows hosts use backslashes and Unix-like hosts use forward slashes
 
-# dirname does not normalize paths
-# dirname("a/b/../c/file.txt") returns "a/b/../c"
-# The ".." is preserved as-is
+# dirname normalizes the returned path string
+# On Unix-like hosts, dirname("a/b/../c/file.txt") returns "a/c"
 
 # dirname is evaluated at plan time
 # No filesystem access is required
