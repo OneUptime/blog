@@ -156,7 +156,7 @@ terraform -version
 # Should show: Terraform v1.6.6
 ```
 
-Now, whenever you `cd` into this project directory, tfenv automatically switches to version 1.6.6. When you leave the directory, it reverts to your global default.
+Now, whenever you run `terraform` from this project directory, tfenv automatically selects version 1.6.6. When you run `terraform` outside the project, it falls back to the version selected by the nearest applicable `.terraform-version` file or your global default.
 
 ### How Version Resolution Works
 
@@ -165,13 +165,14 @@ tfenv checks for the Terraform version in this order:
 1. `TFENV_TERRAFORM_VERSION` environment variable (if set)
 2. `.terraform-version` file in the current directory
 3. `.terraform-version` file in parent directories (walks up the tree)
-4. `~/.tfenv/version` file (global default)
+4. `.terraform-version` file in your home directory
+5. tfenv's global version file (for a manual install, `~/.tfenv/version`)
 
 This means you can have a `.terraform-version` file at the root of a monorepo and it applies to all subdirectories.
 
 ## Auto-Install on Use
 
-You can configure tfenv to automatically install a version if it is not already present:
+tfenv automatically installs a requested version by default if it is not already present. To make that behavior explicit in your shell configuration, set:
 
 ```bash
 # Enable auto-install (add to ~/.bashrc or ~/.zshrc)
@@ -195,16 +196,16 @@ git commit -m "Pin Terraform version to 1.7.5"
 
 This ensures every developer on your team uses the same Terraform version for the project, eliminating "works on my machine" issues related to version differences.
 
-## Using Min and Max Version Constraints
+## Using Latest Version Patterns
 
-You can use version constraints in `.terraform-version`:
+You can use `latest:<regex>` patterns in `.terraform-version`:
 
 ```bash
-# Use the latest installed version matching a constraint
+# Use the latest installed version matching a pattern
 echo "latest:^1.6" > .terraform-version
 ```
 
-This tells tfenv to use the latest installed version that starts with `1.6`.
+This tells tfenv to use the latest installed version that matches the regular expression `^1.6`.
 
 ## Uninstalling Terraform Versions
 
@@ -267,7 +268,7 @@ asdf is a universal version manager that supports many tools including Terraform
 # Using asdf instead of tfenv
 asdf plugin add terraform
 asdf install terraform 1.7.5
-asdf global terraform 1.7.5
+asdf set -u terraform 1.7.5
 ```
 
 If Terraform is the only tool you need to version-manage, tfenv is lighter weight and more focused.
@@ -303,7 +304,7 @@ sudo dnf remove terraform
 
 ### Hash Verification Failures
 
-If downloads fail hash verification, it is usually a network issue (partial download). Clear the cache and try again:
+If downloads fail hash verification, it is usually a network issue (partial download). Retry the install:
 
 ```bash
 # Retry the install
