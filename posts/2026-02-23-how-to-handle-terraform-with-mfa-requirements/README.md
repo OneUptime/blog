@@ -242,9 +242,8 @@ For GitHub Actions, use OIDC federation to avoid storing any credentials:
 ```hcl
 # GitHub Actions OIDC provider
 resource "aws_iam_openid_connect_provider" "github" {
-  url             = "https://token.actions.githubusercontent.com"
-  client_id_list  = ["sts.amazonaws.com"]
-  thumbprint_list = ["6938fd4d98bab03faadb97b34396831e3780aea1"]
+  url            = "https://token.actions.githubusercontent.com"
+  client_id_list = ["sts.amazonaws.com"]
 }
 
 # Role that GitHub Actions can assume
@@ -285,11 +284,13 @@ terraform {
     bucket         = "my-terraform-state"
     key            = "production/terraform.tfstate"
     region         = "us-east-1"
-    dynamodb_table = "terraform-locks"
+    use_lockfile   = true
 
     # Use the same role assumption for state access
-    role_arn = "arn:aws:iam::123456789012:role/terraform-executor"
-    profile  = "terraform"
+    assume_role = {
+      role_arn = "arn:aws:iam::123456789012:role/terraform-executor"
+    }
+    profile = "terraform"
   }
 }
 ```
