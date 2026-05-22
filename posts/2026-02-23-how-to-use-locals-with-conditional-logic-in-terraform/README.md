@@ -147,11 +147,11 @@ locals {
 
   # Production-specific settings
   production_config = local.is_production ? {
-    multi_az                = true
-    backup_retention_period = 30
-    deletion_protection     = true
-    storage_encrypted       = true
-    performance_insights    = true
+    multi_az                     = true
+    backup_retention_period      = 30
+    deletion_protection          = true
+    storage_encrypted            = true
+    performance_insights_enabled = true
   } : {}
 
   # Development-specific settings
@@ -247,7 +247,7 @@ locals {
 }
 ```
 
-The `coalesce` function returns the first non-null value from its arguments, which pairs well with `try` for optional overrides.
+The `coalesce` function returns the first value that is not null or an empty string from its arguments, which pairs well with `try` for optional overrides.
 
 ## Complex Multi-Condition Logic
 
@@ -275,8 +275,8 @@ locals {
   # Encryption is required if production, or compliant, or in US region
   require_encryption = local.is_production || local.is_compliant || local.is_us_region
 
-  # KMS key type depends on compliance level
-  kms_key_spec = local.is_compliant ? "SYMMETRIC_DEFAULT" : "SYMMETRIC_DEFAULT"
+  # KMS key type for AWS service encryption
+  kms_key_spec = "SYMMETRIC_DEFAULT"
 
   # Backup retention depends on both environment and compliance
   backup_retention_days = (
@@ -317,8 +317,6 @@ locals {
     capacity_provider = local.is_production ? "FARGATE" : "FARGATE_SPOT"
 
     enable_execute_command = !local.is_production
-
-    health_check_grace_period = local.is_production ? 120 : 30
   }
 }
 
@@ -336,8 +334,7 @@ resource "aws_ecs_service" "app" {
   deployment_maximum_percent         = local.ecs_config.deployment_configuration.maximum_percent
   deployment_minimum_healthy_percent = local.ecs_config.deployment_configuration.minimum_healthy_percent
 
-  enable_execute_command    = local.ecs_config.enable_execute_command
-  health_check_grace_period_seconds = local.ecs_config.health_check_grace_period
+  enable_execute_command = local.ecs_config.enable_execute_command
 }
 ```
 
