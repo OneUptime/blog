@@ -196,7 +196,13 @@ metadata:
   name: my-app
   namespace: default
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   template:
+    metadata:
+      labels:
+        app: my-app
     spec:
       containers:
       - name: app
@@ -263,9 +269,9 @@ spec:
 
 ## Port Matching and Protocol Detection
 
-Istio uses port names to determine the protocol. Ports named `http-*`, `grpc-*`, or `https-*` are treated as HTTP traffic. Ports named `tcp-*` are treated as TCP. Unnamed ports default to TCP.
+Istio can automatically detect HTTP and HTTP/2 traffic. You can also explicitly specify the protocol on Kubernetes Service ports with port names such as `http-*`, `grpc-*`, `https-*`, or `tcp-*`, or with the `appProtocol` field. If Istio cannot determine the protocol, traffic is treated as plain TCP.
 
-This matters because HTTP-specific fields (like `methods` and `paths`) only work on ports that Istio recognizes as HTTP. If you try to match on `methods` for a TCP port, those fields will be ignored and the rule will match based on the remaining non-HTTP fields only.
+This matters because HTTP-specific fields (like `methods` and `paths`) only work on HTTP traffic. If you try to match on `methods` for a TCP port in an ALLOW policy, the rule will not match the TCP traffic. For DENY policies, missing HTTP attributes are treated as matches, so scope DENY policies to specific ports when using HTTP-only fields.
 
 ```yaml
 # This will NOT work as expected for a TCP port
@@ -275,7 +281,7 @@ This matters because HTTP-specific fields (like `methods` and `paths`) only work
       ports:
       - "5432"  # TCP port
       methods:
-      - "GET"   # Ignored for TCP traffic
+      - "GET"   # Does not match TCP traffic in an ALLOW rule
 ```
 
 For TCP ports, stick to port, principal, namespace, and IP-based matching.
