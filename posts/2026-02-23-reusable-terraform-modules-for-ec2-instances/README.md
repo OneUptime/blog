@@ -22,7 +22,7 @@ Before writing any code, list out what your EC2 module needs to manage:
 - IAM instance profile
 - User data scripts
 - Tags and naming conventions
-- Optional Elastic IP association
+- Optional public IP address association
 
 You do not want the module to manage the VPC, subnets, or security groups directly. Those should come from other modules and be passed in as variables.
 
@@ -147,7 +147,7 @@ data "aws_ami" "amazon_linux" {
 
   filter {
     name   = "name"
-    values = ["al2023-ami-*-x86_64"]
+    values = ["al2023-ami-2023.*-x86_64"]
   }
 
   filter {
@@ -181,8 +181,8 @@ resource "aws_instance" "this" {
   iam_instance_profile   = var.iam_instance_profile
   monitoring             = var.enable_monitoring
 
-  # Encode user data as base64 if provided
-  user_data = var.user_data != null ? base64encode(var.user_data) : null
+  # Pass user data as plain text; use user_data_base64 for binary or pre-encoded data
+  user_data = var.user_data
 
   associate_public_ip_address = var.associate_public_ip
 
@@ -208,7 +208,7 @@ resource "aws_instance" "this" {
     }
   )
 
-  # Prevent accidental destruction in production
+  # Keep the original AMI after initial creation
   lifecycle {
     ignore_changes = [ami]  # Don't replace instance when AMI updates
   }
