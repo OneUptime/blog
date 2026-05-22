@@ -172,7 +172,7 @@ kubectl apply -f virtual-service.yaml --dry-run=client
 kubectl apply -f virtual-service.yaml --dry-run=server
 ```
 
-Server-side dry run is more thorough because it runs the Istio validation webhook. If your resource has invalid fields or references, you'll see the error without actually creating the resource.
+Server-side dry run is more thorough because it sends the request to the API server and runs admission validation, including the Istio validation webhook. It can catch invalid fields and webhook validation errors without actually creating the resource, but use `istioctl analyze` as well for Istio-specific cross-resource checks.
 
 Also use `istioctl analyze`:
 
@@ -356,7 +356,7 @@ kubectl apply -f istio-config/virtual-services.yaml -n $NAMESPACE
 kubectl apply -f istio-config/auth-policies.yaml -n $NAMESPACE
 
 echo "Verifying..."
-kubectl get vs,dr,gw,pa -n $NAMESPACE
+kubectl get vs,dr,gw,pa,ap -n $NAMESPACE
 
 echo "Checking proxy sync..."
 istioctl proxy-status | grep $NAMESPACE
