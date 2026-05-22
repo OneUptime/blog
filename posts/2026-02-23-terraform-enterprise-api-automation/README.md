@@ -25,6 +25,7 @@ Every API request needs an authentication token. TFE supports several token type
 # Generate at: Organization > Team > Settings > API Token
 
 # Organization token - for organization-level operations
+# Cannot perform plans or applies
 # Generate at: Organization > Settings > API Token
 
 # Set the token as an environment variable
@@ -187,6 +188,7 @@ curl -s \
 
 ```bash
 # Trigger a plan run
+# Use a user or team token here; organization tokens cannot create runs.
 RUN_ID=$(curl -s \
   --header "Authorization: Bearer ${TFE_TOKEN}" \
   --header "Content-Type: application/vnd.api+json" \
@@ -218,7 +220,7 @@ echo "Run triggered: ${RUN_ID}"
 
 ```bash
 #!/bin/bash
-# wait-for-plan.sh - Poll a run until it reaches a terminal state
+# wait-for-plan.sh - Poll a run until it can be approved or reaches a terminal state
 
 RUN_ID="$1"
 TIMEOUT=600  # 10 minutes
@@ -233,8 +235,16 @@ while [ ${ELAPSED} -lt ${TIMEOUT} ]; do
   echo "[$(date '+%H:%M:%S')] Run status: ${STATUS}"
 
   case "${STATUS}" in
-    "planned")
+    "planned"|"policy_checked")
       echo "Plan complete. Ready for approval."
+      exit 0
+      ;;
+    "policy_override")
+      echo "Plan complete, but a soft-failed policy must be overridden before apply."
+      exit 1
+      ;;
+    "planned_and_finished")
+      echo "Run finished with no changes to apply."
       exit 0
       ;;
     "applied")
@@ -259,6 +269,7 @@ exit 1
 
 ```bash
 # After reviewing the plan, apply it
+# Use a user or team token here; organization tokens cannot apply runs.
 curl -s \
   --header "Authorization: Bearer ${TFE_TOKEN}" \
   --header "Content-Type: application/vnd.api+json" \
@@ -393,10 +404,9 @@ RESPONSE=$(curl -s -D - \
   --header "Authorization: Bearer ${TFE_TOKEN}" \
   "${TFE_URL}/api/v2/organizations/my-org/workspaces?page[size]=20")
 
-# Look for rate limit headers:
-# X-RateLimit-Limit: 30
-# X-RateLimit-Remaining: 28
-# X-RateLimit-Reset: 1708700000
+# Most endpoints allow 30 requests per second per user.
+# If a request is throttled, check the x-ratelimit-limit header
+# on the 429 response for the limit that applied.
 
 # Add a retry wrapper for API calls
 api_call() {
