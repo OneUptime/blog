@@ -104,8 +104,11 @@ jobs:
             echo "drift_detected=true" >> $GITHUB_OUTPUT
             # Extract summary of changes
             grep -E "^(Plan:|  #|  \+|  -|  ~)" plan-output.txt > drift-summary.txt
-          else
+          elif [ $EXIT_CODE -eq 0 ]; then
             echo "drift_detected=false" >> $GITHUB_OUTPUT
+          else
+            echo "Terraform plan failed"
+            exit 1
           fi
 
       - name: Create Issue for Drift
@@ -116,6 +119,7 @@ jobs:
             const fs = require('fs');
             const summary = fs.readFileSync('terraform/drift-summary.txt', 'utf8');
             const fullPlan = fs.readFileSync('terraform/plan-output.txt', 'utf8');
+            const fence = '```';
 
             // Check if an open drift issue already exists
             const issues = await github.rest.issues.listForRepo({
@@ -129,16 +133,16 @@ jobs:
 
             Terraform detected the following drift from the expected state:
 
-            ```
+            ${fence}
             ${summary}
-            ```
+            ${fence}
 
             <details>
             <summary>Full plan output</summary>
 
-            ```
+            ${fence}
             ${fullPlan.substring(0, 60000)}
-            ```
+            ${fence}
             </details>
 
             **Action Required**: Review the drift and either:
@@ -284,6 +288,9 @@ jobs:
           if [ $EXIT_CODE -eq 2 ]; then
             echo "DRIFT DETECTED in ${{ matrix.environment }}"
             exit 1  # Fail the job to make drift visible
+          elif [ $EXIT_CODE -eq 1 ]; then
+            echo "Terraform plan failed in ${{ matrix.environment }}"
+            exit 1
           fi
 ```
 
@@ -304,12 +311,12 @@ For non-critical drift, you can auto-remediate by applying the Terraform config:
 
 For production, always require human review before remediation.
 
-## Drift Prevention with AWS Config Rules
+## Tag Drift Detection with AWS Config Rules
 
 Complement Terraform drift detection with cloud-native tools:
 
 ```hcl
-# aws-config.tf - Detect manual changes via AWS Config
+# aws-config.tf - Detect tag drift via AWS Config
 resource "aws_config_configuration_recorder" "main" {
   name     = "terraform-drift-recorder"
   role_arn = aws_iam_role.config_role.arn
