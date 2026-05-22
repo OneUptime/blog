@@ -8,7 +8,7 @@ Description: Cut Terraform plan execution time dramatically by using -refresh=fa
 
 ---
 
-The biggest time sink in `terraform plan` is the refresh phase. During refresh, Terraform makes an API call for every resource in your state to check its current status. With 500 resources, that is 500+ API calls, and each one takes time. The `-refresh=false` flag tells Terraform to skip all of those API calls and trust that the state file is already up to date.
+The biggest time sink in `terraform plan` is often the refresh phase. During refresh, Terraform asks providers to read the current status of every resource in your state, which can require one or more remote API calls per resource. With 500 resources, that can mean 500+ API calls, and each one takes time. The `-refresh=false` flag tells Terraform to skip that state synchronization step and trust that the state file is already up to date.
 
 This can reduce plan time from minutes to seconds. But it comes with trade-offs you need to understand before using it.
 
@@ -25,7 +25,7 @@ aws_security_group.web: Refreshing state... [id=sg-jkl012]
 ... (hundreds more)
 ```
 
-Each "Refreshing state" line is an API call to AWS (or whatever provider you are using). These calls check whether the real resource still matches what Terraform has recorded in the state file.
+Each "Refreshing state" line means Terraform is asking the provider to read the current object from AWS (or whatever provider you are using). These reads check whether the real resource still matches what Terraform has recorded in the state file.
 
 ## Using -refresh=false
 
@@ -75,11 +75,11 @@ This is the primary use case. You know you have not made any manual changes to t
 
 ### After a Recent Full Refresh
 
-If you just ran a full plan or refresh, the state is current:
+If you just ran a full plan or refresh-only apply, the state is current:
 
 ```bash
 # Do a full refresh first
-terraform refresh
+terraform apply -refresh-only
 
 # Now you can safely skip refresh for a while
 terraform plan -refresh=false
@@ -100,7 +100,7 @@ For pull request checks where you want fast feedback on the plan structure (not 
 
 ### When Combined with -target
 
-If you are targeting specific resources, skipping refresh on the rest of the state is usually safe:
+If you are targeting specific resources, skipping refresh can be useful for fast development checks, but it still will not detect drift in the targeted resources or their dependencies:
 
 ```bash
 # Only care about the Lambda function you are editing
@@ -135,7 +135,7 @@ If a previous apply failed partway through, the state might not match reality:
 
 ```bash
 # After a failed apply, always do a full refresh
-terraform refresh
+terraform apply -refresh-only
 terraform plan  # Full refresh to reconcile state
 ```
 
@@ -148,12 +148,12 @@ If you are running scheduled drift detection, the entire point is to refresh:
 terraform plan -detailed-exitcode  # Full refresh required
 ```
 
-## Using -refresh-only for Targeted Refresh
+## Using -refresh-only for Periodic Refresh
 
-Terraform 1.1+ introduced `-refresh-only` mode, which updates the state without planning any changes:
+Terraform 0.15.4+ introduced `-refresh-only` mode, which updates the state without planning infrastructure changes:
 
 ```bash
-# Update state to match reality, without planning changes
+# Update state to match reality, without planning infrastructure changes
 terraform apply -refresh-only
 
 # You can also review what the refresh found
