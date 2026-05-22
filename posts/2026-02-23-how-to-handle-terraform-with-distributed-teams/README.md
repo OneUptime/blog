@@ -31,11 +31,17 @@ on:
   pull_request:
     paths: ['infrastructure/**']
 
+permissions:
+  contents: read
+  issues: write
+
 jobs:
   plan-and-document:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
 
       - name: Terraform Plan
         id: plan
@@ -80,7 +86,7 @@ jobs:
             *This plan was generated at ${new Date().toISOString()}*
             *Plan will expire in 4 hours - re-run if needed*`;
 
-            github.rest.issues.createComment({
+            await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
@@ -102,7 +108,7 @@ terraform {
     key            = "team-backend/production/terraform.tfstate"
     region         = "us-east-1"
     encrypt        = true
-    dynamodb_table = "terraform-state-locks"
+    use_lockfile   = true
 
     # Use consistent region regardless of team location
     # to avoid confusion about state location
@@ -111,43 +117,29 @@ terraform {
 ```
 
 ```hcl
-# state-locking/dynamodb.tf
-# DynamoDB table for state locking with enhanced monitoring
+# state-locking/s3.tf
+# S3 bucket settings for state locking and recovery
 
-resource "aws_dynamodb_table" "terraform_locks" {
-  name         = "terraform-state-locks"
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "LockID"
+resource "aws_s3_bucket" "terraform_state" {
+  bucket = "myorg-terraform-state"
+}
 
-  attribute {
-    name = "LockID"
-    type = "S"
-  }
+resource "aws_s3_bucket_versioning" "terraform_state" {
+  bucket = aws_s3_bucket.terraform_state.id
 
-  # Enable streams to monitor lock activity
-  stream_enabled   = true
-  stream_view_type = "NEW_AND_OLD_IMAGES"
-
-  tags = {
-    Purpose   = "terraform-state-locking"
-    ManagedBy = "terraform"
+  versioning_configuration {
+    status = "Enabled"
   }
 }
 
-# Alert when locks are held for too long
-# (might indicate a stale lock from a failed run)
-resource "aws_cloudwatch_metric_alarm" "stale_lock" {
-  alarm_name          = "terraform-stale-lock"
-  comparison_operator = "GreaterThanThreshold"
-  evaluation_periods  = 1
-  metric_name         = "StaleLockCount"
-  namespace           = "Terraform/StateLocking"
-  period              = 1800  # 30 minutes
-  statistic           = "Maximum"
-  threshold           = 0
-  alarm_description   = "A Terraform state lock has been held for over 30 minutes"
+resource "aws_s3_bucket_server_side_encryption_configuration" "terraform_state" {
+  bucket = aws_s3_bucket.terraform_state.id
 
-  alarm_actions = [aws_sns_topic.terraform_alerts.arn]
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
 }
 ```
 
@@ -196,15 +188,16 @@ Design review processes that account for time zone differences:
 # scripts/timezone-aware-review.py
 # Assign reviewers based on time zone coverage
 
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 # Team member time zones
 team_members = {
-    "alice": {"tz": "America/New_York", "utc_offset": -5},
-    "bob": {"tz": "Europe/London", "utc_offset": 0},
-    "charlie": {"tz": "Asia/Tokyo", "utc_offset": 9},
-    "diana": {"tz": "America/Los_Angeles", "utc_offset": -8},
-    "eve": {"tz": "Europe/Berlin", "utc_offset": 1},
+    "alice": {"tz": "America/New_York"},
+    "bob": {"tz": "Europe/London"},
+    "charlie": {"tz": "Asia/Tokyo"},
+    "diana": {"tz": "America/Los_Angeles"},
+    "eve": {"tz": "Europe/Berlin"},
 }
 
 def find_optimal_reviewers(pr_author, urgency="normal"):
@@ -226,8 +219,9 @@ def find_optimal_reviewers(pr_author, urgency="normal"):
         if name == pr_author:
             continue
 
-        # Calculate their local time
-        local_hour = (now_utc.hour + info["utc_offset"]) % 24
+        # Calculate their local time using IANA time zone rules
+        local_time = now_utc.astimezone(ZoneInfo(info["tz"]))
+        local_hour = local_time.hour
 
         # Check if they will be in working hours within target time
         hours_until_available = 0
@@ -240,7 +234,7 @@ def find_optimal_reviewers(pr_author, urgency="normal"):
             available_reviewers.append({
                 "name": name,
                 "hours_until_available": hours_until_available,
-                "local_time": f"{local_hour}:00"
+                "local_time": local_time.strftime("%H:%M")
             })
 
     return sorted(available_reviewers, key=lambda x: x["hours_until_available"])
