@@ -17,12 +17,13 @@ This guide shows you how to set up automatic canary analysis using Istio's built
 Istio generates rich telemetry data for every request that passes through the mesh. The key metrics for canary analysis are:
 
 ```promql
-# Request success rate
-
-istio_requests_total{response_code=~"2.*|3.*"}
+# Request success rate percentage
+sum(rate(istio_requests_total{response_code!~"5.*"}[5m]))
+/
+sum(rate(istio_requests_total[5m])) * 100
 
 # Request error rate
-istio_requests_total{response_code=~"5.*"}
+sum(rate(istio_requests_total{response_code=~"5.*"}[5m]))
 
 # Request latency
 istio_request_duration_milliseconds_bucket
@@ -121,7 +122,7 @@ spec:
       sum(rate(istio_request_duration_milliseconds_bucket{
         reporter="destination",
         destination_workload_namespace="{{ namespace }}",
-        destination_workload=~"{{ target }}-canary"
+        destination_workload=~"{{ target }}"
       }[{{ interval }}])) by (le)
     )
 ```
@@ -156,12 +157,12 @@ spec:
   query: |
     sum(rate(orders_processed_total{
       namespace="{{ namespace }}",
-      deployment=~"{{ target }}-canary"
+      deployment=~"{{ target }}"
     }[{{ interval }}]))
     /
     sum(rate(orders_received_total{
       namespace="{{ namespace }}",
-      deployment=~"{{ target }}-canary"
+      deployment=~"{{ target }}"
     }[{{ interval }}]))
     * 100
 ```
@@ -196,14 +197,14 @@ spec:
       sum(rate(istio_requests_total{
         reporter="destination",
         destination_workload_namespace="{{ namespace }}",
-        destination_workload="{{ target }}-canary",
+        destination_workload="{{ target }}",
         response_code!~"5.*"
       }[{{ interval }}]))
       /
       sum(rate(istio_requests_total{
         reporter="destination",
         destination_workload_namespace="{{ namespace }}",
-        destination_workload="{{ target }}-canary"
+        destination_workload="{{ target }}"
       }[{{ interval }}]))
     )
     -
@@ -251,8 +252,8 @@ analysis:
 - Each step takes `interval` (1 minute) to evaluate
 - From 0% to 50% at 10% steps = 5 steps
 - Total promotion time if all checks pass: 5 minutes
-- Up to 5 failed checks allowed before rollback
-- Total maximum analysis time: ~10 minutes
+- Rollback after 5 failed checks
+- Rollback time if checks keep failing: 5 minutes
 
 For high-traffic services, shorter intervals work because metrics are statistically significant. For low-traffic services, use longer intervals (2-5 minutes) to accumulate enough data points.
 
