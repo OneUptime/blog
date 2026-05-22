@@ -53,6 +53,23 @@ resource "aws_security_group" "consul_server" {
     description = "Consul Serf LAN UDP"
   }
 
+  # Consul Serf WAN (TCP and UDP)
+  ingress {
+    from_port   = 8302
+    to_port     = 8302
+    protocol    = "tcp"
+    cidr_blocks = [var.vpc_cidr]
+    description = "Consul Serf WAN TCP"
+  }
+
+  ingress {
+    from_port   = 8302
+    to_port     = 8302
+    protocol    = "udp"
+    cidr_blocks = [var.vpc_cidr]
+    description = "Consul Serf WAN UDP"
+  }
+
   # Consul HTTP API
   ingress {
     from_port   = 8500
@@ -130,10 +147,16 @@ provider "consul" {
   token      = var.consul_acl_token
 }
 
+# Register the API server node in the Consul catalog
+resource "consul_node" "api" {
+  name    = aws_instance.api_server.id
+  address = aws_instance.api_server.private_ip
+}
+
 # Register a service in Consul
 resource "consul_service" "api" {
   name    = "api-service"
-  node    = aws_instance.api_server.id
+  node    = consul_node.api.name
   port    = 8080
   tags    = ["api", var.environment, "v${var.api_version}"]
   address = aws_instance.api_server.private_ip
@@ -148,10 +171,16 @@ resource "consul_service" "api" {
   }
 }
 
+# Register the database node in the Consul catalog
+resource "consul_node" "database" {
+  name    = "rds-${var.environment}"
+  address = aws_db_instance.main.address
+}
+
 # Register the database service
 resource "consul_service" "database" {
   name    = "database"
-  node    = "rds-${var.environment}"
+  node    = consul_node.database.name
   port    = 5432
   tags    = ["postgres", var.environment]
   address = aws_db_instance.main.address
@@ -235,20 +264,17 @@ resource "consul_config_entry" "api_to_database" {
       {
         Name       = "api-service"
         Action     = "allow"
-        Precedence = 9
         Type       = "consul"
       },
       {
         Name       = "worker-service"
         Action     = "allow"
-        Precedence = 9
         Type       = "consul"
       },
       {
         # Deny all other services
         Name       = "*"
         Action     = "deny"
-        Precedence = 8
         Type       = "consul"
       }
     ]
@@ -316,10 +342,16 @@ variable "tags" {
   default = []
 }
 
+# Register the node in the Consul catalog
+resource "consul_node" "this" {
+  name    = var.instance_id
+  address = var.instance_ip
+}
+
 # Register the service in Consul
 resource "consul_service" "this" {
   name    = var.service_name
-  node    = var.instance_id
+  node    = consul_node.this.name
   port    = var.port
   address = var.instance_ip
   tags    = var.tags
