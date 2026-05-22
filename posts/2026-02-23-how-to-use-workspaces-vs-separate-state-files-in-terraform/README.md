@@ -167,7 +167,9 @@ terraform {
     bucket = "dev-terraform-state"
     key    = "app/terraform.tfstate"
     region = "us-east-1"
-    role_arn = "arn:aws:iam::111111111111:role/dev-terraform"
+    assume_role = {
+      role_arn = "arn:aws:iam::111111111111:role/dev-terraform"
+    }
   }
 }
 
@@ -177,7 +179,9 @@ terraform {
     bucket = "prod-terraform-state"
     key    = "app/terraform.tfstate"
     region = "us-east-1"
-    role_arn = "arn:aws:iam::222222222222:role/prod-terraform"
+    assume_role = {
+      role_arn = "arn:aws:iam::222222222222:role/prod-terraform"
+    }
   }
 }
 ```
@@ -392,7 +396,7 @@ Ask these questions:
 
 4. **How critical is production isolation?** If an accidental `terraform destroy` in production would be catastrophic, separate directories add a meaningful safety layer.
 
-5. **Are you using Terraform Cloud?** Terraform Cloud workspaces are more like directories than CLI workspaces. If you are on Terraform Cloud, lean into its workspace model.
+5. **Are you using HCP Terraform?** HCP Terraform workspaces are more like directories than CLI workspaces. If you are on HCP Terraform, lean into its workspace model.
 
 ## Conclusion
 
