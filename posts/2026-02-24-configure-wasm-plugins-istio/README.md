@@ -12,7 +12,7 @@ Deploying a Wasm plugin is only half the story. Getting the configuration right 
 
 ## The WasmPlugin Resource Structure
 
-Here is the full structure of a WasmPlugin resource with all configurable fields:
+Here is the structure of a WasmPlugin resource with common configurable fields:
 
 ```yaml
 apiVersion: extensions.istio.io/v1alpha1
@@ -54,7 +54,6 @@ spec:
   vmConfig:
     env:
     - name: MY_ENV_VAR
-      value: some-value
       valueFrom: HOST
 ```
 
@@ -76,9 +75,9 @@ spec:
 spec:
   phase: STATS
 
-# Default (unspecified) - runs just before the router
+# Default (unspecified) - generally runs just before the router
 spec:
-  phase: UNSPECIFIED
+  phase: UNSPECIFIED_PHASE
 ```
 
 Practical examples of phase selection:
@@ -86,7 +85,7 @@ Practical examples of phase selection:
 - **Custom authentication** (validating API keys, custom tokens) - use `AUTHN`
 - **Custom authorization** (checking permissions against an external service) - use `AUTHZ`
 - **Request logging or metrics** - use `STATS`
-- **Request/response transformation** (modifying headers, body) - use `UNSPECIFIED`
+- **Request/response transformation** (modifying headers, body) - omit `phase` or use `UNSPECIFIED_PHASE`
 
 ## Configuring Plugin Priority
 
@@ -114,7 +113,7 @@ spec:
   url: oci://registry.example.com/plugins/ip-allowlist:v1.0
 ```
 
-If two plugins have the same priority, the order is not guaranteed. Always set explicit priorities when ordering matters.
+If two plugins have the same priority, Istio derives the ordering deterministically from the plugins' names and namespaces. Always set explicit priorities when ordering matters.
 
 ## Passing Runtime Configuration
 
@@ -205,7 +204,7 @@ spec:
       valueFrom: HOST
 ```
 
-The `valueFrom: HOST` option reads the environment variable from the Envoy process, which is useful for pulling in dynamic values.
+The `valueFrom: HOST` option reads the environment variable with the same name from the Envoy process, which is useful for pulling in dynamic values.
 
 ## Targeting Workloads
 
@@ -256,6 +255,8 @@ spec:
     name: my-service
 ```
 
+For `Service` targets, `targetRefs` applies to waypoint proxies. Do not set both `selector` and `targetRefs` on the same WasmPlugin.
+
 ## Configuring Plugin for Traffic Direction
 
 By default, plugins process both inbound and outbound traffic. You can restrict this with match rules:
@@ -284,7 +285,7 @@ Or apply an updated YAML:
 kubectl apply -f updated-wasmplugin.yaml
 ```
 
-Envoy will reload the configuration and call `on_configure` again on the existing plugin instances. This lets you change plugin behavior (like updating rate limits or allowed API keys) without a new Wasm build.
+Istio will push the updated configuration to Envoy, and the plugin receives it through `on_configure` as the new configuration is applied. This lets you change plugin behavior (like updating rate limits or allowed API keys) without a new Wasm build.
 
 ## Validating Configuration
 
