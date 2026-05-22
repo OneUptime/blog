@@ -18,10 +18,10 @@ For AWS:
 1. Provider block configuration (bad - don't hardcode credentials)
 2. Environment variables (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`)
 3. Shared credentials file (`~/.aws/credentials`)
-4. EC2 instance profile / ECS task role
-5. Web identity token (OIDC)
+4. Shared config file (`~/.aws/config`)
+5. ECS task role / EKS web identity token / EC2 instance profile
 
-For CI/CD, you want option 2 (environment variables) backed by OIDC tokens. Never use option 1.
+For CI/CD, you typically want short-lived credentials exported as environment variables by an OIDC-aware action, or web identity environment variables such as `AWS_ROLE_ARN` and `AWS_WEB_IDENTITY_TOKEN_FILE`. Never use option 1.
 
 ## AWS Authentication with OIDC
 
@@ -71,7 +71,6 @@ The AWS side requires an OIDC provider and IAM role:
 resource "aws_iam_openid_connect_provider" "github" {
   url             = "https://token.actions.githubusercontent.com"
   client_id_list  = ["sts.amazonaws.com"]
-  thumbprint_list = ["6938fd4d98bab03faadb97b34396831e3780aea1"]
 }
 
 # IAM role for Terraform CI
@@ -111,16 +110,18 @@ resource "aws_iam_role_policy_attachment" "terraform_ci" {
 ```yaml
 # .gitlab-ci.yml
 terraform_apply:
-  image: hashicorp/terraform:1.7.4
+  image: hashicorp/terraform:1.15.4
   id_tokens:
     GITLAB_OIDC_TOKEN:
-      aud: https://gitlab.com
+      aud: sts.amazonaws.com
   variables:
     # Use the OIDC token for authentication
-    AWS_WEB_IDENTITY_TOKEN_FILE: $CI_JOB_JWT_FILE
+    AWS_WEB_IDENTITY_TOKEN_FILE: $CI_PROJECT_DIR/.aws/web_identity_token
     AWS_ROLE_ARN: arn:aws:iam::123456789012:role/terraform-ci
     AWS_DEFAULT_REGION: us-east-1
   script:
+    - mkdir -p "$CI_PROJECT_DIR/.aws"
+    - echo "$GITLAB_OIDC_TOKEN" > "$AWS_WEB_IDENTITY_TOKEN_FILE"
     - terraform init
     - terraform apply -auto-approve
 ```
@@ -142,7 +143,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Azure Login via OIDC
-        uses: azure/login@v2
+        uses: azure/login@v3
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
@@ -211,7 +212,7 @@ jobs:
 
       # Authenticate with GCP via Workload Identity Federation
       - name: Authenticate to GCP
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: projects/123456/locations/global/workloadIdentityPools/github-pool/providers/github-provider
           service_account: terraform-ci@my-project.iam.gserviceaccount.com
@@ -241,10 +242,13 @@ resource "google_iam_workload_identity_pool_provider" "github" {
   display_name                       = "GitHub"
 
   attribute_mapping = {
-    "google.subject"       = "assertion.sub"
-    "attribute.actor"      = "assertion.actor"
-    "attribute.repository" = "assertion.repository"
+    "google.subject"              = "assertion.sub"
+    "attribute.actor"             = "assertion.actor"
+    "attribute.repository"        = "assertion.repository"
+    "attribute.repository_owner"  = "assertion.repository_owner"
   }
+
+  attribute_condition = "assertion.repository_owner == 'myorg'"
 
   oidc {
     issuer_uri = "https://token.actions.githubusercontent.com"
@@ -284,14 +288,14 @@ jobs:
 
       # GCP via Workload Identity
       - name: Configure GCP
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
       # Azure via OIDC
       - name: Configure Azure
-        uses: azure/login@v2
+        uses: azure/login@v3
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
