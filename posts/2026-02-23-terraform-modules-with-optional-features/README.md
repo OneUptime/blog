@@ -180,6 +180,18 @@ variable "tier" {
   }
 }
 
+variable "multi_az" {
+  description = "Override the preset multi-AZ setting. Set to null to use the tier default."
+  type        = bool
+  default     = null
+}
+
+variable "backup_retention" {
+  description = "Override the preset backup retention in days. Set to null to use the tier default."
+  type        = number
+  default     = null
+}
+
 locals {
   presets = {
     minimal = {
@@ -269,7 +281,7 @@ resource "aws_security_group" "this" {
 
 This pattern is used in many community modules. It lets callers conditionally include a module without wrapping it in a conditional expression (which Terraform does not support at the module level without `count` or `for_each`).
 
-As of Terraform 1.5+, you can also use `count` and `for_each` directly on module blocks:
+As of Terraform 0.13+, you can also use `count` and `for_each` directly on module blocks:
 
 ```hcl
 module "monitoring" {
