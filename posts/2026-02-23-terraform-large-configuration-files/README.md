@@ -304,7 +304,7 @@ tflint --recursive
 
 For very large configurations (hundreds of resources), these optimizations matter:
 
-1. Use `-target` for focused plans during development (but always run full plans before merging):
+1. Use `-target` only for exceptional cases, such as recovering from mistakes or working around Terraform limitations, and always run a full plan before merging:
 ```bash
 # Plan only the networking changes during development
 terraform plan -target=module.vpc
@@ -316,9 +316,9 @@ terraform plan -target=module.vpc
 terraform apply -parallelism=30
 ```
 
-3. Use `terraform plan -refresh=false` when you know state is current and want to skip the refresh step.
+3. Use `terraform plan -refresh=false` only when you know state is current and want to skip the refresh step for a faster speculative plan. Always run a normal plan before applying because disabling refresh can miss external changes.
 
-4. Consider data source caching by storing frequently used data source results in local values rather than calling the same data source multiple times.
+4. Consider declaring frequently used data sources once and reusing their results through references or local values instead of defining duplicate data sources.
 
 ## Wrapping Up
 
