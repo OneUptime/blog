@@ -1,18 +1,18 @@
-# How to Use Dynamic Blocks for SSL Certificate Configuration
+# How to Use for_each for SSL Certificate Configuration
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Dynamic Blocks, SSL, TLS, ACM, AWS, Infrastructure as Code
+Tags: Terraform, for_each, SSL, TLS, ACM, AWS, Infrastructure as Code
 
-Description: Learn how to manage SSL and TLS certificate configurations dynamically in Terraform using dynamic blocks for ACM certificates, load balancers, and CloudFront.
+Description: Learn how to manage SSL and TLS certificate configurations dynamically in Terraform using for_each expressions for ACM certificates, load balancers, and CloudFront.
 
 ---
 
-SSL/TLS certificate management in AWS involves several moving pieces: ACM certificate requests, DNS validation records, load balancer listeners, and CloudFront distributions. When you manage multiple domains and certificates, dynamic blocks keep the configuration clean and scalable.
+SSL/TLS certificate management in AWS involves several moving pieces: ACM certificate requests, DNS validation records, load balancer listeners, and CloudFront distributions. When you manage multiple domains and certificates, for_each expressions keep the configuration clean and scalable.
 
 ## ACM Certificate with Dynamic SANs
 
-An ACM certificate can cover a primary domain and multiple Subject Alternative Names (SANs). Dynamic blocks are not needed here since SANs are a simple list, but the validation records that follow require dynamic generation:
+An ACM certificate can cover a primary domain and multiple Subject Alternative Names (SANs). Dynamic blocks are not needed here since SANs are a simple list, but the validation records that follow require dynamic resource generation:
 
 ```hcl
 variable "domain_name" {
@@ -249,13 +249,8 @@ resource "aws_cloudfront_distribution" "main" {
     cached_methods         = ["GET", "HEAD"]
     target_origin_id       = "alb"
     viewer_protocol_policy = "redirect-to-https"
-
-    forwarded_values {
-      query_string = true
-      cookies {
-        forward = "all"
-      }
-    }
+    cache_policy_id          = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad" # Managed-CachingDisabled
+    origin_request_policy_id = "216adef6-5c7f-47e4-b989-5492eafa07d3" # Managed-AllViewer
   }
 
   # Dynamic viewer certificate - custom or default
