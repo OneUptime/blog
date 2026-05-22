@@ -8,13 +8,13 @@ Description: How to integrate Istio traffic management with Spinnaker deployment
 
 ---
 
-Spinnaker is one of the most battle-tested continuous delivery platforms out there, and it has built-in support for Kubernetes and Istio. When you combine them, you can build deployment pipelines that gradually shift traffic using Istio VirtualServices, run automated canary analysis using Kayenta (Spinnaker's canary analysis engine), and automatically promote or roll back based on real metrics.
+Spinnaker is one of the most battle-tested continuous delivery platforms out there, and it has built-in support for Kubernetes and canary analysis. When you combine it with Istio manifests, you can build deployment pipelines that gradually shift traffic using Istio VirtualServices, run automated canary analysis using Kayenta (Spinnaker's canary analysis engine), and automatically promote or roll back based on real metrics.
 
 The integration works by having Spinnaker manage both the Kubernetes deployments and the Istio traffic routing resources. Spinnaker treats Istio VirtualServices and DestinationRules as Kubernetes manifests that it can deploy and modify as part of a pipeline stage.
 
 ## Setting Up Spinnaker with Kubernetes
 
-Assuming you have Spinnaker installed (via Halyard or the Operator), configure the Kubernetes provider to access your cluster:
+Assuming you have Spinnaker installed, configure the Kubernetes provider to access your cluster. For Halyard-managed installs, the commands look like this:
 
 ```bash
 # Using Halyard
@@ -122,47 +122,31 @@ In Spinnaker, configure this stage to use the Docker image artifact from your tr
 
 ### Stage 2: Shift Traffic
 
-Add a "Patch (Manifest)" stage to update the VirtualService:
+Add a "Patch (Manifest)" stage to update the VirtualService. In the stage, set the account to `my-k8s-account`, namespace to `production`, kind to `VirtualService`, name to `my-app-vsvc`, and merge strategy to `merge`. Use a JSON merge patch for Istio CRDs because Kubernetes strategic merge patch is not supported for custom resources:
 
 ```json
 {
-  "account": "my-k8s-account",
-  "cloudProvider": "kubernetes",
-  "manifests": [
-    {
-      "apiVersion": "networking.istio.io/v1",
-      "kind": "VirtualService",
-      "metadata": {
-        "name": "my-app-vsvc",
-        "namespace": "production"
-      },
-      "spec": {
-        "hosts": ["my-app.production.svc.cluster.local"],
-        "http": [
+  "spec": {
+    "http": [
+      {
+        "route": [
           {
-            "route": [
-              {
-                "destination": {
-                  "host": "my-app.production.svc.cluster.local",
-                  "subset": "stable"
-                },
-                "weight": 90
-              },
-              {
-                "destination": {
-                  "host": "my-app.production.svc.cluster.local",
-                  "subset": "canary"
-                },
-                "weight": 10
-              }
-            ]
+            "destination": {
+              "host": "my-app.production.svc.cluster.local",
+              "subset": "stable"
+            },
+            "weight": 90
+          },
+          {
+            "destination": {
+              "host": "my-app.production.svc.cluster.local",
+              "subset": "canary"
+            },
+            "weight": 10
           }
         ]
       }
-    }
-  ],
-  "options": {
-    "mergeStrategy": "strategic"
+    ]
   }
 }
 ```
@@ -220,7 +204,8 @@ Create a canary config in Spinnaker that uses Istio metrics:
       "name": "error_rate",
       "query": {
         "type": "prometheus",
-        "customInlineTemplate": "sum(rate(istio_requests_total{destination_workload=\"${scope}\",response_code=~\"5.*\"}[5m])) / sum(rate(istio_requests_total{destination_workload=\"${scope}\"}[5m]))"
+        "serviceType": "prometheus",
+        "customInlineTemplate": "PromQL:sum(rate(istio_requests_total{destination_workload=\"${scope}\",response_code=~\"5.*\"}[5m])) / sum(rate(istio_requests_total{destination_workload=\"${scope}\"}[5m]))"
       },
       "analysisConfigurations": {
         "canary": {
@@ -233,7 +218,8 @@ Create a canary config in Spinnaker that uses Istio metrics:
       "name": "latency_p99",
       "query": {
         "type": "prometheus",
-        "customInlineTemplate": "histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{destination_workload=\"${scope}\"}[5m])) by (le))"
+        "serviceType": "prometheus",
+        "customInlineTemplate": "PromQL:histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{destination_workload=\"${scope}\"}[5m])) by (le))"
       },
       "analysisConfigurations": {
         "canary": {
@@ -285,14 +271,13 @@ Add a rollback stage that triggers when canary analysis fails:
 {
   "type": "patchManifest",
   "account": "my-k8s-account",
-  "manifests": [
+  "location": "production",
+  "manifestName": "virtualService my-app-vsvc",
+  "options": {
+    "mergeStrategy": "merge"
+  },
+  "patchBody": [
     {
-      "apiVersion": "networking.istio.io/v1",
-      "kind": "VirtualService",
-      "metadata": {
-        "name": "my-app-vsvc",
-        "namespace": "production"
-      },
       "spec": {
         "http": [
           {
