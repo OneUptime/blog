@@ -19,7 +19,7 @@ The concept is simple:
 1. Workspace A (the source) completes a successful apply
 2. HCP Terraform automatically queues a run in Workspace B (the target)
 3. Workspace B plans against its current configuration with updated remote state
-4. If auto-apply is enabled on Workspace B, it applies automatically
+4. If the Auto-apply run triggers setting is enabled on Workspace B, it applies automatically
 
 The triggered run in Workspace B is a normal run - it goes through plan, policy checks, cost estimation, and apply just like any other run. The only difference is that it was triggered by another workspace rather than by a VCS push or manual action.
 
@@ -68,7 +68,6 @@ curl \
   --request POST \
   --data '{
     "data": {
-      "type": "run-triggers",
       "relationships": {
         "sourceable": {
           "data": {
@@ -172,6 +171,8 @@ resource "tfe_run_trigger" "eu_after_primary" {
 
 Run triggers are most useful when the target workspace reads data from the source workspace's state:
 
+Before using `terraform_remote_state`, configure the source workspace's remote state sharing so the target workspace is allowed to read its outputs.
+
 ```hcl
 # In the compute workspace, reference networking outputs
 data "terraform_remote_state" "networking" {
@@ -205,7 +206,13 @@ data "tfe_outputs" "networking" {
 }
 
 resource "aws_instance" "app" {
-  subnet_id = data.tfe_outputs.networking.values.private_subnet_ids[0]
+  ami           = var.ami_id
+  instance_type = var.instance_type
+  subnet_id     = data.tfe_outputs.networking.nonsensitive_values.private_subnet_ids[0]
+
+  vpc_security_group_ids = [
+    data.tfe_outputs.networking.nonsensitive_values.app_security_group_id
+  ]
 }
 ```
 
@@ -217,9 +224,9 @@ When the networking workspace applies and changes outputs, the run trigger fires
 
 If a source workspace fails, no trigger fires. Only successful applies trigger downstream runs. This is built-in protection against cascading failures.
 
-However, if a downstream workspace fails after being triggered, it does not prevent further downstream triggers. To handle this:
+If a downstream workspace fails after being triggered, run triggers sourced from that workspace do not fire. Other independent branches in the dependency graph can still continue. To handle failures:
 
-1. Keep auto-apply disabled on critical workspaces
+1. Keep Auto-apply run triggers disabled on critical workspaces
 2. Set up notifications for failed runs
 3. Review the plan before confirming triggered runs in production
 
