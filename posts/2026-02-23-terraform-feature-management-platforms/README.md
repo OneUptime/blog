@@ -211,6 +211,7 @@ resource "launchdarkly_feature_flag_environment" "new_checkout_prod" {
   env_key = "production"
 
   on = true
+  off_variation = 1
 
   # Individual user targets
   targets {
@@ -241,6 +242,7 @@ resource "launchdarkly_feature_flag_environment" "new_checkout_dev" {
   env_key = "development"
 
   on = true
+  off_variation = 1
 
   fallthrough {
     variation = 0  # Everyone sees the new checkout in dev
@@ -273,6 +275,7 @@ resource "launchdarkly_feature_flag_environment" "new_feature_rollout" {
 
   # Only enable after the service is deployed
   on = true
+  off_variation = 1
 
   fallthrough {
     # Start with a small rollout percentage
@@ -301,27 +304,28 @@ provider "split" {
 
 # Create a split (feature flag)
 resource "split_split" "new_feature" {
-  workspace_id = var.split_workspace_id
-  traffic_type = "user"
-  name         = "new-dashboard"
-  description  = "Enable the new dashboard experience"
+  workspace_id     = var.split_workspace_id
+  traffic_type_id  = var.split_traffic_type_id
+  name             = "new-dashboard"
+  description      = "Enable the new dashboard experience"
 }
 
 # Define treatments and targeting
 resource "split_split_definition" "new_feature_prod" {
-  workspace_id  = var.split_workspace_id
-  environment   = "production"
-  split_name    = split_split.new_feature.name
-  traffic_type  = "user"
+  workspace_id   = var.split_workspace_id
+  environment_id = var.split_environment_id
+  split_name     = split_split.new_feature.name
 
   default_treatment = "off"
 
   treatment {
-    name = "on"
+    name           = "on"
+    configurations = "{}"
   }
 
   treatment {
-    name = "off"
+    name           = "off"
+    configurations = "{}"
   }
 
   # Percentage-based rollout
@@ -349,7 +353,7 @@ on:
   workflow_dispatch:
     inputs:
       feature_flag:
-        description: "Feature flag key to roll out"
+        description: "Terraform resource name for the feature flag environment to roll out"
         required: true
       environment:
         description: "Target environment"
@@ -363,11 +367,15 @@ jobs:
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v3
 
+      - name: Initialize Terraform
+        run: terraform init
+
       - name: Roll out to 10%
         run: |
           terraform apply -auto-approve \
             -var="feature_rollout_weights=[10000,90000]" \
-            -target="launchdarkly_feature_flag_environment.${FEATURE_FLAG}"
+            -var="environment=${{ inputs.environment }}" \
+            -target="launchdarkly_feature_flag_environment.${{ inputs.feature_flag }}"
 
       - name: Wait and monitor
         run: sleep 1800  # Wait 30 minutes
@@ -379,10 +387,14 @@ jobs:
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v3
 
+      - name: Initialize Terraform
+        run: terraform init
+
       - name: Roll out to 50%
         run: |
           terraform apply -auto-approve \
-            -var="feature_rollout_weights=[50000,50000]"
+            -var="feature_rollout_weights=[50000,50000]" \
+            -var="environment=${{ inputs.environment }}"
 
       - name: Wait and monitor
         run: sleep 3600  # Wait 1 hour
@@ -394,10 +406,14 @@ jobs:
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v3
 
+      - name: Initialize Terraform
+        run: terraform init
+
       - name: Roll out to 100%
         run: |
           terraform apply -auto-approve \
-            -var="feature_rollout_weights=[100000,0]"
+            -var="feature_rollout_weights=[100000,0]" \
+            -var="environment=${{ inputs.environment }}"
 ```
 
 ## Best Practices
