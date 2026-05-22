@@ -217,7 +217,7 @@ Very short lifetimes for environments with strict compliance requirements. This 
 
 Shorter certificate lifetimes have trade-offs:
 
-**More CSR requests** - With a 1-hour TTL, each sidecar requests a new certificate roughly every 48 minutes (80% of lifetime). In a cluster with 1,000 pods, that is about 1,250 CSR requests per hour.
+**More CSR requests** - With a 1-hour TTL, each sidecar requests a new certificate roughly every 30 minutes by default (50% of lifetime, with a small jitter). In a cluster with 1,000 pods, that is about 2,000 CSR requests per hour.
 
 **More CPU on istiod** - Each CSR requires a signature operation. Monitor istiod's CPU usage after changing lifetimes.
 
