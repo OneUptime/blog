@@ -8,7 +8,7 @@ Description: Learn how to use the filemd5 function in Terraform to compute MD5 h
 
 ---
 
-The `filemd5` function computes the MD5 hash of a file's contents and returns it as a hexadecimal string. While MD5 is not suitable for security purposes, it is still widely used in cloud infrastructure for change detection and content verification - most notably as the ETag format for S3 objects.
+The `filemd5` function computes the MD5 hash of a file's contents and returns it as a hexadecimal string. While MD5 is not suitable for security purposes, it is still widely used in cloud infrastructure for change detection and content verification - including S3 ETags for objects where S3 represents the ETag as an MD5 digest.
 
 ## What Is the filemd5 Function?
 
@@ -26,7 +26,7 @@ The returned string is always 32 hexadecimal characters long.
 
 ## S3 ETags - The Primary Use Case
 
-The main reason you will use `filemd5` is for S3 object ETags. Amazon S3 uses MD5 hashes as ETags for objects, and Terraform uses the `etag` attribute to detect when an object needs to be re-uploaded:
+The main reason you will use `filemd5` is for S3 object ETags. For plaintext objects or objects encrypted with SSE-S3 and uploaded without multipart upload, Amazon S3 uses an MD5 digest as the ETag, and Terraform uses the `etag` attribute to detect when an object needs to be re-uploaded:
 
 ```hcl
 resource "aws_s3_object" "app_config" {
@@ -40,6 +40,8 @@ resource "aws_s3_object" "app_config" {
 ```
 
 Without the `etag`, Terraform would look at the key, bucket, and source path - and if those have not changed, it would skip the upload even if the file's contents are different.
+
+If the object uses SSE-KMS or another case where the S3 ETag is not an MD5 digest, use the `source_hash` argument instead. Terraform stores `source_hash` in state and uses it to trigger updates without depending on S3's ETag format.
 
 ## Uploading Multiple Files with Change Detection
 
@@ -77,7 +79,7 @@ resource "aws_s3_object" "website" {
   # Set content type based on file extension
   content_type = lookup(
     local.content_types,
-    regex("\\.[^.]+$", each.value),
+    try(regex("\\.[^.]+$", each.value), ""),
     "application/octet-stream"
   )
 
@@ -206,6 +208,22 @@ locals {
 
   # Cacheable file extensions get long TTLs
   cacheable_extensions = [".js", ".css", ".png", ".jpg", ".gif", ".svg", ".woff", ".woff2"]
+
+  content_types = {
+    ".html" = "text/html"
+    ".css"  = "text/css"
+    ".js"   = "application/javascript"
+    ".json" = "application/json"
+    ".png"  = "image/png"
+    ".jpg"  = "image/jpeg"
+    ".gif"  = "image/gif"
+    ".svg"  = "image/svg+xml"
+    ".ico"  = "image/x-icon"
+    ".txt"  = "text/plain"
+    ".xml"   = "application/xml"
+    ".woff"  = "font/woff"
+    ".woff2" = "font/woff2"
+  }
 }
 
 resource "aws_s3_object" "site_files" {
@@ -215,7 +233,7 @@ resource "aws_s3_object" "site_files" {
   key          = each.value
   source       = "${local.site_dir}/${each.value}"
   etag         = filemd5("${local.site_dir}/${each.value}")
-  content_type = lookup(local.content_types, regex("\\.[^.]+$", each.value), "application/octet-stream")
+  content_type = lookup(local.content_types, try(regex("\\.[^.]+$", each.value), ""), "application/octet-stream")
 
   # Long cache for static assets, short cache for HTML
   cache_control = anytrue([
@@ -224,10 +242,14 @@ resource "aws_s3_object" "site_files" {
   ]) ? "max-age=31536000, immutable" : "max-age=300, must-revalidate"
 }
 
-# Invalidate CloudFront when files change
+data "aws_cloudfront_cache_policy" "caching_optimized" {
+  name = "Managed-CachingOptimized"
+}
+
+# Track site changes in the CloudFront distribution comment
 resource "aws_cloudfront_distribution" "site" {
   # Use a hash of all file hashes to detect any change
-  # This can be used to trigger invalidations
+  # Create a separate CloudFront invalidation outside Terraform when needed
   comment = "Site hash: ${md5(join(",", [for f in local.files : filemd5("${local.site_dir}/${f}")]))}"
 
   # ... distribution configuration
@@ -235,20 +257,18 @@ resource "aws_cloudfront_distribution" "site" {
   origin {
     domain_name = aws_s3_bucket.site.bucket_regional_domain_name
     origin_id   = "s3-site"
+
+    s3_origin_config {
+      origin_access_identity = ""
+    }
   }
 
   default_cache_behavior {
     allowed_methods        = ["GET", "HEAD"]
+    cache_policy_id        = data.aws_cloudfront_cache_policy.caching_optimized.id
     cached_methods         = ["GET", "HEAD"]
     target_origin_id       = "s3-site"
     viewer_protocol_policy = "redirect-to-https"
-
-    forwarded_values {
-      query_string = false
-      cookies {
-        forward = "none"
-      }
-    }
   }
 
   restrictions {
@@ -316,6 +336,6 @@ output "config_comparison" {
 
 ## Summary
 
-The `filemd5` function computes an MD5 hash of a file's contents and is primarily used for S3 object ETags. When you set the `etag` attribute on an `aws_s3_object` to `filemd5(source_path)`, Terraform can detect when a file's contents change and re-upload it accordingly. While MD5 is not suitable for security-sensitive operations, it is perfectly fine for change detection, content comparison, and cache invalidation triggers. For security-sensitive hashing, use `filesha256` or `filebase64sha256` instead.
+The `filemd5` function computes an MD5 hash of a file's contents and is primarily used for S3 object ETags where the S3 ETag is an MD5 digest. When you set the `etag` attribute on an `aws_s3_object` to `filemd5(source_path)`, Terraform can detect when a file's contents change and re-upload it accordingly. Use `source_hash` instead when S3 ETags are not MD5 digests, such as with SSE-KMS or multipart-uploaded objects. While MD5 is not suitable for security-sensitive operations, it is perfectly fine for change detection and content comparison. For stronger file integrity checks, use `filesha256` or `filebase64sha256` instead.
 
 For related functions, see our posts on the [filesha256 function](https://oneuptime.com/blog/post/2026-02-23-how-to-use-the-filesha256-function-in-terraform/view) and the [filebase64sha256 function](https://oneuptime.com/blog/post/2026-02-23-how-to-use-the-filebase64sha256-function-in-terraform/view).
