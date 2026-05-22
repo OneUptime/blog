@@ -37,7 +37,7 @@ flowchart TD
 Here is a basic DestinationRule that sets up circuit breaking:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service
@@ -61,9 +61,9 @@ spec:
 
 Breaking this down:
 
-- `maxConnections: 100` - Maximum 100 TCP connections to the service
+- `maxConnections: 100` - Maximum 100 HTTP/1.1 or TCP connections to a destination host
 - `http1MaxPendingRequests: 50` - Maximum 50 requests waiting for a connection
-- `http2MaxRequests: 100` - Maximum 100 active HTTP/2 requests
+- `http2MaxRequests: 100` - Maximum 100 active requests to the destination
 - `maxRequestsPerConnection: 10` - Close connection after 10 requests (forces reconnection)
 - `consecutive5xxErrors: 5` - Eject instance after 5 consecutive 5xx errors
 - `interval: 10s` - Check for errors every 10 seconds
@@ -81,7 +81,7 @@ connectionPool:
     connectTimeout: 5s
 ```
 
-`maxConnections` controls the total number of TCP connections the Envoy proxy will open to the upstream service. Once this limit is hit, new requests get a 503.
+`maxConnections` controls the number of HTTP/1.1 or TCP connections the Envoy proxy will open to a destination host. Once this limit is hit, new requests get a 503.
 
 `connectTimeout` is how long to wait for the TCP handshake. Default is usually fine, but increase it if your services are in different regions.
 
@@ -96,9 +96,9 @@ connectionPool:
     maxRetries: 3
 ```
 
-`http1MaxPendingRequests` limits requests queued while waiting for a connection. This is crucial for preventing request buildup when the service is slow.
+`http1MaxPendingRequests` limits requests queued while waiting for a ready connection pool connection. This applies to both HTTP/1.1 and HTTP/2, and is crucial for preventing request buildup when the service is slow.
 
-`http2MaxRequests` limits concurrent requests over HTTP/2 (and gRPC, since gRPC uses HTTP/2). Since HTTP/2 multiplexes requests over a single connection, this acts as the total request concurrency limit.
+`http2MaxRequests` limits active requests to a destination. It applies to both HTTP/1.1 and HTTP/2, and is especially important for HTTP/2 and gRPC because HTTP/2 multiplexes requests over a single connection.
 
 `maxRequestsPerConnection` set to 0 means unlimited requests per connection. Set it to a positive number to periodically close connections and reconnect, which helps with load balancing across new pods.
 
@@ -128,7 +128,7 @@ outlierDetection:
 Here is a complete example for a production service:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: catalog-service
@@ -179,7 +179,7 @@ To see if the circuit breaker is actually tripping:
 ```bash
 # Check for overflow (circuit breaker trips)
 kubectl exec deploy/catalog-service -n production -c istio-proxy -- \
-  curl -s localhost:15000/stats | grep "upstream_rq_pending_overflow"
+  curl -s localhost:15000/stats | grep -E "upstream_rq_(pending|active)_overflow"
 
 # Check for ejected hosts
 kubectl exec deploy/catalog-service -n production -c istio-proxy -- \
@@ -190,16 +190,16 @@ kubectl exec deploy/catalog-service -n production -c istio-proxy -- \
 
 **Setting limits too low.** If `maxConnections` is 10 but your service normally handles 50 concurrent requests, the circuit breaker will trip constantly under normal load. Always look at your current traffic patterns before setting limits.
 
-**Forgetting about HTTP/2.** If your services use HTTP/2 or gRPC, `http1MaxPendingRequests` is less relevant. Focus on `http2MaxRequests` instead.
+**Forgetting about HTTP/2.** If your services use HTTP/2 or gRPC, remember that requests are multiplexed over a single connection. Pay close attention to `http2MaxRequests` for active request concurrency.
 
-**Not accounting for retries.** Retries count against connection pool limits. If you have 3 retries configured, your effective request rate to the upstream is up to 3x your incoming request rate.
+**Not accounting for retries.** Retries count against connection pool limits. If you have 3 retries configured, your effective request rate to the upstream is up to 4x your incoming request rate: the original request plus up to 3 retry attempts.
 
 **maxEjectionPercent too high.** Setting this to 100% means all instances can be ejected, leaving no backends to serve traffic. Keep it at 50% or lower in production.
 
 ```bash
 # Quick health check of circuit breaking status
 kubectl exec deploy/my-app -c istio-proxy -- \
-  curl -s localhost:15000/clusters | grep -E "cx_active|rq_active|ejected"
+  curl -s localhost:15000/clusters | grep -E "cx_active|rq_active|ejections_active"
 ```
 
 Circuit breaking is not a set-and-forget configuration. Start with conservative limits, monitor the overflow and ejection metrics, and adjust based on real traffic patterns. The goal is to protect your services from cascading failures, not to throttle normal traffic.
