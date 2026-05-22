@@ -4,23 +4,26 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Terragrunt, Infrastructure as Code, DevOps, Teardown, Multi-Module, Automation
 
-Description: Learn how to use Terragrunt destroy-all and run-all destroy to safely tear down multi-module infrastructure in the correct reverse dependency order.
+Description: Learn how to use Terragrunt destroy-all, run-all destroy, and run --all destroy to safely tear down multi-module infrastructure in the correct reverse dependency order.
 
 ---
 
-Tearing down infrastructure is the reverse of deploying it, and getting the order wrong can leave you with orphaned resources, dangling references, and broken state. Terragrunt's `destroy-all` command (now `run-all destroy`) handles this by reversing the dependency graph and destroying modules in the correct order.
+Tearing down infrastructure is the reverse of deploying it, and getting the order wrong can leave you with orphaned resources, dangling references, and broken state. Terragrunt's legacy `destroy-all` command (later `run-all destroy`, and now `run --all destroy`) handles this by reversing the dependency graph and destroying modules in the correct order.
 
-## destroy-all vs run-all destroy
+## destroy-all vs run-all destroy vs run --all destroy
 
-Like the other legacy commands, `destroy-all` has been replaced by `run-all`:
+Like the other legacy commands, `destroy-all` was replaced by `run-all`, and `run-all` is now deprecated in favor of `run --all`:
 
 ```bash
-# Legacy (deprecated, still works)
+# Legacy (older Terragrunt releases)
 
 terragrunt destroy-all
 
-# Modern (recommended)
+# Newer, but now also deprecated
 terragrunt run-all destroy
+
+# Modern (recommended)
+terragrunt run --all destroy
 ```
 
 ## How Reverse Ordering Works
@@ -44,20 +47,23 @@ This is critical because you cannot destroy a VPC while an RDS instance is still
 ```bash
 # Destroy all modules in the dev environment
 cd live/dev
-terragrunt run-all destroy
+terragrunt run --all destroy
 ```
 
-You will see a confirmation prompt:
+When using `run --all` with `destroy`, Terragrunt automatically passes `-auto-approve` to Terraform/OpenTofu because shared stdin makes per-module approval prompts impractical. To preview the destroy order before running it, use:
+
+```bash
+terragrunt list --as destroy -l
+```
+
+Example output:
 
 ```text
-WARNING: Are you sure you want to run 'terragrunt destroy' in each folder of the stack described above?
-There is no undo!
-  Module /path/to/live/dev/app
-  Module /path/to/live/dev/ecs
-  Module /path/to/live/dev/rds
-  Module /path/to/live/dev/vpc
-
-Type 'yes' to confirm:
+Type  Path
+unit  app
+unit  ecs
+unit  rds
+unit  vpc
 ```
 
 Notice the modules are listed in destroy order - `app` first, `vpc` last.
@@ -67,8 +73,8 @@ Notice the modules are listed in destroy order - `app` first, `vpc` last.
 For automated teardowns (like cleaning up CI/CD test environments):
 
 ```bash
-# Auto-approve the destroy
-terragrunt run-all destroy --terragrunt-non-interactive
+# Suppress Terragrunt prompts in automation
+terragrunt run --all --non-interactive -- destroy
 ```
 
 Be very careful with this. There is no undo.
@@ -82,7 +88,7 @@ The most common use case is cleaning up ephemeral environments after testing:
 ```bash
 # Tear down the feature branch environment
 cd live/feature-branch-123
-terragrunt run-all destroy --terragrunt-non-interactive
+terragrunt run --all --non-interactive -- destroy
 
 # Remove the directory after destroy
 rm -rf live/feature-branch-123
@@ -97,9 +103,10 @@ Some teams spin up dev environments during business hours and tear them down at 
 # destroy-dev.sh - runs on a cron schedule
 
 cd /path/to/live/dev-ephemeral
-terragrunt run-all destroy \
-  --terragrunt-non-interactive \
-  --terragrunt-parallelism 2 \
+terragrunt run --all \
+  --non-interactive \
+  --parallelism 2 \
+  -- destroy \
   2>&1 | tee /var/log/terraform/destroy-$(date +%Y%m%d).log
 ```
 
@@ -110,11 +117,11 @@ When reorganizing your Terragrunt structure, you may need to destroy and recreat
 ```bash
 # Destroy the old structure
 cd live/dev/old-structure
-terragrunt run-all destroy --terragrunt-non-interactive
+terragrunt run --all --non-interactive -- destroy
 
 # Now apply the new structure
 cd live/dev/new-structure
-terragrunt run-all apply --terragrunt-non-interactive
+terragrunt run --all --non-interactive -- apply
 ```
 
 ## Selective Destroy
@@ -123,16 +130,18 @@ You usually do not want to destroy everything. Use filters to target specific mo
 
 ```bash
 # Only destroy application modules, keep infrastructure
-terragrunt run-all destroy \
-  --terragrunt-include-dir "*/app" \
-  --terragrunt-include-dir "*/worker" \
-  --terragrunt-non-interactive
+terragrunt run --all \
+  --filter './**/app' \
+  --filter './**/worker' \
+  --non-interactive \
+  -- destroy
 
 # Destroy everything except the VPC and database
-terragrunt run-all destroy \
-  --terragrunt-exclude-dir "*/vpc" \
-  --terragrunt-exclude-dir "*/rds" \
-  --terragrunt-non-interactive
+terragrunt run --all \
+  --filter '!./**/vpc' \
+  --filter '!./**/rds' \
+  --non-interactive \
+  -- destroy
 ```
 
 ### Destroying a Single Module
@@ -186,8 +195,7 @@ Resources That Take a Long Time to Destroy
 Some resources (like RDS instances with final snapshots or CloudFront distributions) take a long time to destroy. Increase the timeout:
 
 ```bash
-# The default timeout is 2 minutes per module
-# Use Terraform's own timeout configuration in the resource
+# Use Terraform's own timeout configuration in resources that support it
 ```
 
 ### Dependent Resources Outside Terragrunt
@@ -233,9 +241,10 @@ jobs:
           BRANCH_SLUG=$(echo "${{ github.head_ref }}" | tr '/' '-' | tr '[:upper:]' '[:lower:]')
           if [ -d "live/pr-${BRANCH_SLUG}" ]; then
             cd "live/pr-${BRANCH_SLUG}"
-            terragrunt run-all destroy \
-              --terragrunt-non-interactive \
-              --terragrunt-parallelism 2
+            terragrunt run --all \
+              --non-interactive \
+              --parallelism 2 \
+              -- destroy
           fi
 ```
 
@@ -248,10 +257,10 @@ Always plan the destroy before executing:
 ```bash
 # See what will be destroyed
 cd live/dev
-terragrunt run-all plan -destroy
+terragrunt run --all -- plan -destroy
 
 # If it looks correct, proceed
-terragrunt run-all destroy --terragrunt-non-interactive
+terragrunt run --all --non-interactive -- destroy
 ```
 
 The `plan -destroy` command shows you exactly what will be removed without doing it.
@@ -304,7 +313,7 @@ If module A depends on module B and module B has a `dependencies` block pointing
 
 ### Modules with No Dependencies
 
-Modules with no declared dependencies can be destroyed in any order. During `run-all destroy`, they are destroyed after all modules that depend on them.
+Modules with no declared dependencies can be destroyed in any order. During `run --all destroy`, they are destroyed after all modules that depend on them.
 
 ### Cross-Environment Dependencies
 
@@ -316,12 +325,12 @@ dependency "hub_vpc" {
 }
 ```
 
-Running `run-all destroy` from the dev directory will not destroy the shared VPC (it is outside the directory scope). But be aware that destroying the dev module may break the reference.
+Running `run --all destroy` from the dev directory will not destroy the shared VPC by default because it is outside the directory scope. But be aware that destroying the dev module may break the reference.
 
 ## Conclusion
 
-`run-all destroy` is a powerful and potentially dangerous command. It correctly handles reverse dependency ordering, which is the hard part of infrastructure teardown. Use it for cleaning up test and ephemeral environments, and always plan the destroy first to review what will be removed.
+`run --all destroy` is a powerful and potentially dangerous command. It correctly handles reverse dependency ordering, which is the hard part of infrastructure teardown. Use it for cleaning up test and ephemeral environments, and always plan the destroy first to review what will be removed.
 
-For production environments, prefer destroying individual modules with careful review rather than blanket `run-all destroy`. Add safeguards like the pre-hook shown above to prevent accidental production teardowns.
+For production environments, prefer destroying individual modules with careful review rather than blanket `run --all destroy`. Add safeguards like the pre-hook shown above to prevent accidental production teardowns.
 
 For the broader context on multi-module operations, see [How to Use Terragrunt run-all Command](https://oneuptime.com/blog/post/2026-02-23-how-to-use-terragrunt-run-all-command/view).
