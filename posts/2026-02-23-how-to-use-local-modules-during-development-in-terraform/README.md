@@ -12,7 +12,7 @@ When you are developing a new Terraform module, you do not want to push to a Git
 
 ## Local Module Source Syntax
 
-Local modules use relative file paths as their source. Terraform recognizes a source as local if it starts with `./` or `../`.
+Local modules can use relative file paths as their source. Terraform recognizes portable relative local paths when they start with `./` or `../`.
 
 ```hcl
 # Reference a module in a subdirectory of your project
@@ -217,6 +217,10 @@ terraform {
     aws = {
       source  = "hashicorp/aws"
       version = "~> 5.0"
+    }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.0"
     }
   }
 
