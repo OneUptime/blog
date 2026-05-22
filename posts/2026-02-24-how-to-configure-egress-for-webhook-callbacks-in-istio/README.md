@@ -119,7 +119,7 @@ spec:
     mode: ALLOW_ANY
 ```
 
-This is a compromise. The `webhook-delivery` namespace can reach any external host, but the rest of your mesh stays restricted. You still get access logs and metrics for the webhook traffic.
+This is a compromise. The `webhook-delivery` namespace can reach any external host, but the rest of your mesh stays restricted. Unknown destinations in `ALLOW_ANY` mode have reduced observability, so define ServiceEntries for destinations that need full Istio monitoring and control.
 
 ### Option 3: Wildcard ServiceEntries
 
@@ -209,9 +209,39 @@ spec:
 
 Webhooks often need retry logic. If the external endpoint is temporarily unavailable, your application should retry. Istio can help with this through retry configuration on the VirtualService, but for TLS passthrough traffic (which most webhook traffic is), retries need to be handled at the application level.
 
-For HTTP-level webhooks where you control the TLS, you can use Istio retries:
+For HTTP-level webhooks where the proxy can see the HTTP request, such as traffic using Istio TLS origination, you can use Istio retries:
 
 ```yaml
+apiVersion: networking.istio.io/v1
+kind: ServiceEntry
+metadata:
+  name: slack-webhook
+  namespace: default
+spec:
+  hosts:
+  - hooks.slack.com
+  ports:
+  - number: 80
+    name: http
+    protocol: HTTP
+    targetPort: 443
+  location: MESH_EXTERNAL
+  resolution: DNS
+---
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: slack-webhook-tls
+  namespace: default
+spec:
+  host: hooks.slack.com
+  trafficPolicy:
+    portLevelSettings:
+    - port:
+        number: 80
+      tls:
+        mode: SIMPLE
+---
 apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
@@ -225,7 +255,7 @@ spec:
     - destination:
         host: hooks.slack.com
         port:
-          number: 443
+          number: 80
     retries:
       attempts: 3
       perTryTimeout: 5s
@@ -254,16 +284,16 @@ spec:
 
 ## Monitoring Webhook Delivery
 
-Track webhook delivery success rates through the egress gateway metrics:
+Track webhook connection volume through the egress gateway metrics for TLS passthrough traffic:
 
 ```promql
-sum(rate(istio_requests_total{
+sum(rate(istio_tcp_connections_opened_total{
   reporter="source",
   destination_service_name="istio-egressgateway"
-}[5m])) by (response_code, destination_service_name)
+}[5m])) by (destination_service_name)
 ```
 
-Set up an alert for webhook delivery failures:
+For HTTP traffic where Istio can see response codes, set up an alert for webhook delivery failures:
 
 ```yaml
 - alert: WebhookDeliveryFailures
