@@ -22,7 +22,7 @@ The `concat` function takes two or more lists as arguments and returns a single 
 concat(list1, list2, ...)
 ```
 
-All input lists must contain elements of the same type, or types that Terraform can unify.
+The input lists can contain mixed element types, but the result still needs to match the type expected by whatever argument or expression consumes it.
 
 ## Basic Usage in Terraform Console
 
@@ -86,13 +86,16 @@ locals {
 resource "aws_security_group" "app" {
   name   = "app-sg"
   vpc_id = aws_vpc.main.id
+}
 
-  ingress {
-    from_port   = 443
-    to_port     = 443
-    protocol    = "tcp"
-    cidr_blocks = local.all_allowed_cidrs
-  }
+resource "aws_vpc_security_group_ingress_rule" "app_https" {
+  for_each = toset(local.all_allowed_cidrs)
+
+  security_group_id = aws_security_group.app.id
+  cidr_ipv4         = each.value
+  from_port         = 443
+  to_port           = 443
+  ip_protocol       = "tcp"
 }
 ```
 
@@ -157,15 +160,14 @@ locals {
   )
 }
 
-resource "aws_security_group_rule" "ingress" {
-  count = length(local.open_ports)
+resource "aws_vpc_security_group_ingress_rule" "ingress" {
+  for_each = { for port in local.open_ports : tostring(port) => port }
 
-  type              = "ingress"
-  from_port         = local.open_ports[count.index]
-  to_port           = local.open_ports[count.index]
-  protocol          = "tcp"
-  cidr_blocks       = ["10.0.0.0/8"]
   security_group_id = aws_security_group.app.id
+  cidr_ipv4         = "10.0.0.0/8"
+  from_port         = each.value
+  to_port           = each.value
+  ip_protocol       = "tcp"
 }
 ```
 
@@ -283,15 +285,15 @@ variable "additional_ebs_volumes" {
 }
 
 locals {
-  # Root volume is always present
-  root_volume = [{
-    device_name = "/dev/sda1"
+  # Data volume is always present
+  default_ebs_volumes = [{
+    device_name = "/dev/sdf"
     volume_size = 50
     volume_type = "gp3"
   }]
 
-  # Combine root with any additional volumes
-  all_volumes = concat(local.root_volume, var.additional_ebs_volumes)
+  # Combine the default data volume with any additional volumes
+  all_volumes = concat(local.default_ebs_volumes, var.additional_ebs_volumes)
 }
 
 resource "aws_instance" "app" {
@@ -331,7 +333,7 @@ The `concat` function is fundamental to Terraform list manipulation. It provides
 Key takeaways:
 
 - `concat` joins two or more lists into one, preserving order and duplicates
-- All lists must contain elements of compatible types
+- The result must match the type expected by the expression or argument that consumes it
 - Empty lists are valid inputs and act as no-ops
 - Use `distinct` afterward if you need deduplication
 - Pairs well with conditional expressions using `[]` as a conditional no-op
