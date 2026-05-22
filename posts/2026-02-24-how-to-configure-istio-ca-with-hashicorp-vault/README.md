@@ -68,10 +68,13 @@ vault secrets enable -path=pki_intermediate pki
 
 vault secrets tune -max-lease-ttl=43800h pki_intermediate
 
-# Generate intermediate CSR
-vault write -format=json pki_intermediate/intermediate/generate/internal \
+# Generate intermediate CSR and export the matching private key for Istio
+vault write -format=json pki_intermediate/intermediate/generate/exported \
   common_name="Istio Intermediate CA" \
-  key_bits=4096 | jq -r '.data.csr' > istio-intermediate.csr
+  key_bits=4096 > istio-intermediate.json
+
+jq -r '.data.csr' istio-intermediate.json > istio-intermediate.csr
+jq -r '.data.private_key' istio-intermediate.json > ca-key.pem
 
 # Sign with root CA
 vault write -format=json pki/root/sign-intermediate \
@@ -92,12 +95,6 @@ vault read -format=json pki/cert/ca | jq -r '.data.certificate' > root-cert.pem
 
 # Get the intermediate CA certificate
 vault read -format=json pki_intermediate/cert/ca | jq -r '.data.certificate' > ca-cert.pem
-
-# Export the intermediate CA private key
-# Note: You need to generate the key as "exported" type for this
-vault write -format=json pki_intermediate/intermediate/generate/exported \
-  common_name="Istio Intermediate CA" \
-  key_bits=4096 | jq -r '.data.private_key' > ca-key.pem
 
 # Build cert chain
 cat ca-cert.pem root-cert.pem > cert-chain.pem
@@ -143,9 +140,42 @@ cert-manager needs to authenticate with Vault. Use Kubernetes auth:
 # Enable Kubernetes auth in Vault
 vault auth enable kubernetes
 
-# Configure it with the cluster's CA and API server
+# Configure it with the Kubernetes API server.
+# If Vault is not running inside the same Kubernetes cluster, also set
+# token_reviewer_jwt and kubernetes_ca_cert for your cluster.
 vault write auth/kubernetes/config \
   kubernetes_host="https://kubernetes.default.svc:443"
+
+# Let cert-manager request short-lived tokens for the service account
+kubectl create namespace cert-manager --dry-run=client -o yaml | kubectl apply -f -
+kubectl create serviceaccount -n cert-manager vault-issuer
+
+kubectl apply -f - <<EOF
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: vault-issuer-tokenrequest
+  namespace: cert-manager
+rules:
+- apiGroups: [""]
+  resources: ["serviceaccounts/token"]
+  resourceNames: ["vault-issuer"]
+  verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: vault-issuer-tokenrequest
+  namespace: cert-manager
+subjects:
+- kind: ServiceAccount
+  name: cert-manager
+  namespace: cert-manager
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: vault-issuer-tokenrequest
+EOF
 
 # Create a policy for cert-manager
 vault policy write cert-manager - <<EOF
@@ -162,8 +192,9 @@ EOF
 
 # Create a Kubernetes auth role
 vault write auth/kubernetes/role/cert-manager \
-  bound_service_account_names=cert-manager-istio-csr \
+  bound_service_account_names=vault-issuer \
   bound_service_account_namespaces=cert-manager \
+  audience="vault://vault-istio-issuer" \
   policies=cert-manager \
   ttl=1h
 ```
@@ -171,8 +202,11 @@ vault write auth/kubernetes/role/cert-manager \
 ### Step 3: Install cert-manager
 
 ```bash
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.0/cert-manager.yaml
-kubectl wait --for=condition=Available deployment --all -n cert-manager --timeout=120s
+helm install cert-manager oci://quay.io/jetstack/charts/cert-manager \
+  --namespace cert-manager \
+  --create-namespace \
+  --version v1.20.2 \
+  --set crds.enabled=true
 ```
 
 ### Step 4: Create Vault Issuer
@@ -191,19 +225,28 @@ spec:
         role: cert-manager
         mountPath: /v1/auth/kubernetes
         serviceAccountRef:
-          name: cert-manager-istio-csr
+          name: vault-issuer
 ```
 
 ### Step 5: Install istio-csr
 
 ```bash
-helm install istio-csr jetstack/cert-manager-istio-csr \
+kubectl create secret generic -n cert-manager istio-root-ca \
+  --from-file=ca.pem=root-cert.pem
+
+helm upgrade cert-manager-istio-csr oci://quay.io/jetstack/charts/cert-manager-istio-csr \
+  --install \
   --namespace cert-manager \
-  --set "app.certmanager.issuerRef.name=vault-istio-issuer" \
-  --set "app.certmanager.issuerRef.kind=ClusterIssuer" \
-  --set "app.certmanager.issuerRef.group=cert-manager.io" \
+  --wait \
+  --set "app.certmanager.issuer.name=vault-istio-issuer" \
+  --set "app.certmanager.issuer.kind=ClusterIssuer" \
+  --set "app.certmanager.issuer.group=cert-manager.io" \
   --set "app.server.clusterID=cluster.local" \
-  --set "app.tls.rootCAFile=/var/run/secrets/istio-csr/ca.pem"
+  --set "app.tls.rootCAFile=/var/run/secrets/istio-csr/ca.pem" \
+  --set "volumeMounts[0].name=root-ca" \
+  --set "volumeMounts[0].mountPath=/var/run/secrets/istio-csr" \
+  --set "volumes[0].name=root-ca" \
+  --set "volumes[0].secret.secretName=istio-root-ca"
 ```
 
 ### Step 6: Install Istio Without Built-in CA
