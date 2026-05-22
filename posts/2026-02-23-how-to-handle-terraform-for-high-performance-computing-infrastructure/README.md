@@ -30,11 +30,9 @@ resource "aws_instance" "gpu_worker" {
   ami           = data.aws_ami.deep_learning.id
   instance_type = "p4d.24xlarge"  # 8x A100 GPUs
   placement_group = aws_placement_group.hpc.id
-  subnet_id     = var.private_subnet_ids[count.index % length(var.private_subnet_ids)]
 
   # EFA (Elastic Fabric Adapter) for high-speed networking
-  network_interface {
-    device_index         = 0
+  primary_network_interface {
     network_interface_id = aws_network_interface.efa[count.index].id
   }
 
@@ -46,11 +44,8 @@ resource "aws_instance" "gpu_worker" {
     encrypted   = true
   }
 
-  # NVMe instance storage for scratch space
-  ephemeral_block_device {
-    device_name  = "/dev/sdb"
-    virtual_name = "ephemeral0"
-  }
+  # p4d NVMe instance store volumes are exposed automatically.
+  # Format and mount them in user_data for scratch space.
 
   user_data = templatefile("hpc-worker-init.sh", {
     cluster_name = var.cluster_name
@@ -94,10 +89,6 @@ resource "aws_fsx_lustre_file_system" "hpc" {
   deployment_type             = "PERSISTENT_2"
   per_unit_storage_throughput = 250  # MB/s per TiB
 
-  # Link to S3 for data import/export
-  import_path = "s3://${aws_s3_bucket.hpc_data.id}"
-  export_path = "s3://${aws_s3_bucket.hpc_data.id}/results"
-
   log_configuration {
     level       = "WARN_ERROR"
     destination = aws_cloudwatch_log_group.lustre.arn
@@ -107,6 +98,23 @@ resource "aws_fsx_lustre_file_system" "hpc" {
     Name        = "hpc-lustre-${var.environment}"
     Cluster     = var.cluster_name
     Environment = var.environment
+  }
+}
+
+# Link FSx for Lustre to S3 for data import/export
+resource "aws_fsx_data_repository_association" "hpc_data" {
+  file_system_id       = aws_fsx_lustre_file_system.hpc.id
+  data_repository_path = "s3://${aws_s3_bucket.hpc_data.id}"
+  file_system_path     = "/hpc-data"
+
+  s3 {
+    auto_import_policy {
+      events = ["NEW", "CHANGED", "DELETED"]
+    }
+
+    auto_export_policy {
+      events = ["NEW", "CHANGED", "DELETED"]
+    }
   }
 }
 
@@ -223,7 +231,7 @@ HPC workloads can be extremely expensive. Use Terraform to implement cost contro
 # Cost optimization for HPC infrastructure
 
 # Use spot instances for fault-tolerant HPC workloads
-resource "aws_launch_template" "hpc_spot" {
+resource "aws_launch_template" "hpc_worker" {
   name_prefix   = "hpc-spot-"
   image_id      = data.aws_ami.deep_learning.id
   instance_type = "p4d.24xlarge"
@@ -281,7 +289,7 @@ resource "aws_budgets_budget" "hpc" {
 
 Use placement groups to minimize network latency between HPC instances. Cluster placement groups ensure instances are in the same availability zone and network segment, which is critical for tightly coupled parallel workloads.
 
-Use Elastic Fabric Adapter (EFA) for MPI-based workloads. EFA provides significantly lower latency than standard networking, with bandwidth up to 400 Gbps on supported instance types.
+Use Elastic Fabric Adapter (EFA) for MPI-based workloads. EFA provides significantly lower latency than standard networking, with bandwidth depending on the supported instance type; p4d supports up to 400 Gbps, while newer accelerated instances can support higher EFA bandwidth.
 
 Scale to zero when idle. HPC instances are expensive, often costing tens of dollars per hour per instance. Use auto-scaling to spin down when no jobs are queued, and set budget alerts to prevent runaway costs.
 
@@ -289,7 +297,7 @@ Use FSx for Lustre for parallel I/O workloads. Standard file systems cannot hand
 
 Choose the right instance type for your workload. GPU instances (p4d, p5) for deep learning, compute instances (hpc6a) for simulations, and memory instances (x2idn) for large-memory workloads. Matching the instance to the workload avoids paying for resources you do not use.
 
-Use spot instances for fault-tolerant workloads. Many HPC jobs can checkpoint and resume, making them excellent candidates for spot instances at 60-90% savings over on-demand pricing.
+Use spot instances for fault-tolerant workloads. Many HPC jobs can checkpoint and resume, making them excellent candidates for spot instances at up to 90% savings over on-demand pricing.
 
 ## Conclusion
 
