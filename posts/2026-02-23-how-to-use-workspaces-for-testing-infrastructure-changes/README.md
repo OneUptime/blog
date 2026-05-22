@@ -60,6 +60,12 @@ variable "environment_config" {
       db_instance_class = "db.t3.medium"
       multi_az         = false
     }
+    dev = {
+      instance_type    = "t3.small"
+      instance_count   = 1
+      db_instance_class = "db.t3.small"
+      multi_az         = false
+    }
     # Default config for any test workspace
     test = {
       instance_type    = "t3.small"
@@ -164,7 +170,7 @@ echo "  terraform apply test-${FEATURE_NAME}.tfplan"
 ```bash
 #!/bin/bash
 # test-infrastructure.sh
-# Applies the plan and runs validation tests
+# Applies the current configuration and runs validation tests
 
 set -e
 
@@ -254,7 +260,7 @@ jobs:
   test-infra:
     runs-on: ubuntu-latest
     env:
-      TF_WORKSPACE: test-pr-${{ github.event.pull_request.number }}
+      TEST_WORKSPACE: test-pr-${{ github.event.pull_request.number }}
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
@@ -272,8 +278,8 @@ jobs:
       - name: Create Test Workspace
         working-directory: terraform
         run: |
-          terraform workspace new "$TF_WORKSPACE" 2>/dev/null || \
-            terraform workspace select "$TF_WORKSPACE"
+          terraform workspace new "$TEST_WORKSPACE" 2>/dev/null || \
+            terraform workspace select "$TEST_WORKSPACE"
 
       - name: Terraform Plan
         working-directory: terraform
@@ -296,7 +302,7 @@ jobs:
         run: |
           terraform destroy -auto-approve
           terraform workspace select default
-          terraform workspace delete "$TF_WORKSPACE"
+          terraform workspace delete "$TEST_WORKSPACE"
 ```
 
 ## Cost Control for Test Workspaces
@@ -333,22 +339,20 @@ resource "aws_instance" "prod_app" {
 }
 ```
 
-Also set up a scheduled job to find and destroy abandoned test workspaces:
+Also set up a scheduled job to list abandoned test workspaces for cleanup:
 
 ```bash
 #!/bin/bash
 # find-stale-test-workspaces.sh
-# Finds test workspaces older than 24 hours
-
-MAX_AGE_HOURS=24
+# Lists test workspaces so you can review and clean them up
 
 terraform workspace list | grep "test-" | tr -d ' *' | while read ws; do
   terraform workspace select "$ws"
 
-  # Check the last modified time of the state
-  last_modified=$(terraform state pull | jq -r '.serial')
+  # Show the current state serial to help identify recent state changes
+  state_serial=$(terraform state pull | jq -r '.serial')
 
-  echo "Workspace: $ws (serial: $last_modified)"
+  echo "Workspace: $ws (state serial: $state_serial)"
   echo "  Consider destroying if no longer needed"
 done
 ```
