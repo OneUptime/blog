@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, HCL, Configuration, Backend, Infrastructure as Code
 
-Description: Learn how to configure Terraform behavior using the terraform block, including required version, required providers, backend configuration, and experimental features.
+Description: Learn how to configure Terraform behavior using the terraform block, including required version, required providers, backend configuration, and advanced settings.
 
 ---
 
 The `terraform` block is where you configure Terraform itself - not your infrastructure, but the tool that manages it. It controls which Terraform version is required, which providers to use, where state is stored, and other engine-level settings.
 
-This post covers every section of the `terraform` block and how to configure them for real-world projects.
+This post covers the common sections of the `terraform` block and how to configure them for real-world projects.
 
 ## The terraform Block Structure
 
-Here is a complete `terraform` block showing all the major sections:
+Here is a representative `terraform` block showing the major commonly used sections:
 
 ```hcl
 terraform {
@@ -112,7 +112,7 @@ terraform {
     bucket         = "mycompany-terraform-state"
     key            = "production/infrastructure/terraform.tfstate"
     region         = "us-east-1"
-    dynamodb_table = "terraform-locks"  # state locking
+    use_lockfile   = true               # state locking
     encrypt        = true               # encrypt state at rest
   }
 }
@@ -190,7 +190,7 @@ terraform {
 terraform init \
   -backend-config="bucket=mycompany-terraform-state" \
   -backend-config="region=us-east-1" \
-  -backend-config="dynamodb_table=terraform-locks"
+  -backend-config="use_lockfile=true"
 ```
 
 Or use a backend config file:
@@ -199,7 +199,7 @@ Or use a backend config file:
 # backend.hcl
 bucket         = "mycompany-terraform-state"
 region         = "us-east-1"
-dynamodb_table = "terraform-locks"
+use_lockfile   = true
 encrypt        = true
 ```
 
@@ -209,12 +209,12 @@ terraform init -backend-config=backend.hcl
 
 ## experiments
 
-Terraform occasionally introduces experimental features that you can opt into:
+Terraform occasionally introduces experimental features that you can opt into when a Terraform release documents an available experiment keyword:
 
 ```hcl
 terraform {
   # Enable experimental features (use with caution)
-  experiments = [module_variable_optional_attrs]
+  experiments = ["documented_experiment_name"]
 }
 ```
 
@@ -274,7 +274,7 @@ terraform {
     bucket         = "mycompany-terraform-state"
     key            = "production/main/terraform.tfstate"
     region         = "us-east-1"
-    dynamodb_table = "terraform-locks"
+    use_lockfile   = true
     encrypt        = true
   }
 }
