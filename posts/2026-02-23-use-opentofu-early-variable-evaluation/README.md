@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: OpenTofu, Terraform, Variable, Infrastructure as Code, Configuration
 
-Description: Learn how to use OpenTofu's early variable and locals evaluation feature to use variables in backend configurations, module sources, and other places where Terraform requires hardcoded values.
+Description: Learn how to use OpenTofu's early variable and locals evaluation feature to use variables in backend configurations, module sources, and other places where values usually need to be known during initialization.
 
 ---
 
-One of the most requested features in the Terraform ecosystem has been the ability to use variables in backend configuration and module sources. Terraform requires these values to be hardcoded or passed via command-line flags, which leads to workarounds like wrapper scripts and Terragrunt. OpenTofu solved this with early variable and locals evaluation. This guide explains what it is, how it works, and how to use it.
+One of the most requested features in the Terraform ecosystem has been the ability to use variables in backend configuration and module sources. Terraform still does not allow input variables in backend blocks, and older Terraform versions required module sources and versions to be hardcoded, which led to workarounds like wrapper scripts and Terragrunt. OpenTofu 1.8 solved this with early variable and locals evaluation. This guide explains what it is, how it works, and how to use it.
 
 ## The Problem This Solves
 
@@ -30,21 +30,21 @@ terraform {
 }
 ```
 
-Terraform throws an error: "Variables may not be used here." The same restriction applies to module sources:
+Terraform throws an error: "Variables may not be used here." In OpenTofu, the same early-evaluation feature also applies to module sources and versions:
 
 ```hcl
-# THIS ALSO DOES NOT WORK IN TERRAFORM
+# THIS DOES NOT WORK IN OLDER TERRAFORM VERSIONS
 variable "module_version" {
   type = string
 }
 
 module "vpc" {
   source  = "terraform-aws-modules/vpc/aws"
-  version = var.module_version  # Error!
+  version = var.module_version  # Error in older Terraform versions
 }
 ```
 
-These limitations force teams to use partial backend configuration with `-backend-config` flags, Terragrunt, or code generation. OpenTofu's early variable evaluation removes these restrictions.
+Current Terraform supports module `source` and `version` expressions only when any input variables they reference are declared as constant variables. Backend configuration still cannot refer to input variables or locals. OpenTofu's early variable evaluation removes these restrictions for OpenTofu users.
 
 ## How Early Evaluation Works
 
@@ -190,6 +190,11 @@ variable "kms_key_id" {
   sensitive = true
 }
 
+variable "aws_region" {
+  type    = string
+  default = "us-east-1"
+}
+
 terraform {
   encryption {
     key_provider "aws_kms" "main" {
@@ -311,10 +316,12 @@ locals {
 
 terraform {
   backend "s3" {
-    bucket   = "central-state-${var.environment}"
-    key      = "account-${var.aws_account_id}/terraform.tfstate"
-    region   = "us-east-1"
-    role_arn = local.assume_role_arn
+    bucket = "central-state-${var.environment}"
+    key    = "account-${var.aws_account_id}/terraform.tfstate"
+    region = "us-east-1"
+    assume_role = {
+      role_arn = local.assume_role_arn
+    }
   }
 }
 ```
@@ -378,6 +385,6 @@ Update your CI/CD pipeline accordingly:
 - run: tofu init -var="environment=${{ env.ENVIRONMENT }}"
 ```
 
-Early variable evaluation is one of those features that seems small but changes how you structure your entire project. It removes the need for wrapper tools, code generation, and awkward `-backend-config` flags. If you are already using OpenTofu, there is no reason not to take advantage of it.
+Early variable evaluation is one of those features that seems small but changes how you structure your entire project. It removes the need for wrapper tools, code generation, and awkward `-backend-config` flags. If you are already using OpenTofu 1.8 or later, there is no reason not to take advantage of it.
 
 For more OpenTofu-specific features, see [How to Use OpenTofu Provider-Defined Functions](https://oneuptime.com/blog/post/2026-02-23-use-opentofu-provider-defined-functions/view).
