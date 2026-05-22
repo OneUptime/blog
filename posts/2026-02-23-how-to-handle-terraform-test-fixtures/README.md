@@ -96,7 +96,23 @@ tags = {
 }
 ```
 
-Reference them in native tests:
+For native tests, Terraform automatically loads `terraform.tfvars`, `terraform.tfvars.json`, and `*.auto.tfvars` files from the test directory. Use one of those names for fixtures you want Terraform to load automatically:
+
+```hcl
+# tests/default.auto.tfvars
+
+vpc_cidr           = "10.0.0.0/16"
+environment        = "test"
+availability_zones = ["us-east-1a", "us-east-1b"]
+enable_nat_gateway = true
+tags = {
+  Environment = "test"
+  Project     = "fixture-test"
+  ManagedBy   = "terraform"
+}
+```
+
+Reference them in native tests, and override values inline when a specific run needs different inputs:
 
 ```hcl
 # tests/unit.tftest.hcl
@@ -104,15 +120,9 @@ Reference them in native tests:
 # Use the default fixture
 run "default_config" {
   command = plan
-  variables {
-    # Load from fixture file
-  }
 
-  # Or inline the variables
   variables {
-    vpc_cidr           = "10.0.0.0/16"
-    environment        = "test"
-    availability_zones = ["us-east-1a", "us-east-1b"]
+    environment = "test"
   }
 
   assert {
