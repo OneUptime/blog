@@ -36,8 +36,8 @@ Make sure you have the testing helper package:
 ```go
 // go.mod should include these dependencies
 require (
-    github.com/hashicorp/terraform-plugin-framework v1.5.0
-    github.com/hashicorp/terraform-plugin-testing v1.6.0
+    github.com/hashicorp/terraform-plugin-framework v1.19.0
+    github.com/hashicorp/terraform-plugin-testing v1.16.0
 )
 ```
 
@@ -223,6 +223,14 @@ data "example_server" "test" {
 Sometimes the built-in check functions are not enough. You can write custom check functions:
 
 ```go
+import (
+    "context"
+    "fmt"
+
+    "github.com/hashicorp/terraform-plugin-testing/helper/resource"
+    "github.com/hashicorp/terraform-plugin-testing/terraform"
+)
+
 // testCheckServerExists verifies the server exists in the API
 func testCheckServerExists(resourceName string) resource.TestCheckFunc {
     return func(s *terraform.State) error {
@@ -297,6 +305,13 @@ func TestAccServerResource_lifecycle(t *testing.T) {
 You should also test that your provider handles error cases correctly:
 
 ```go
+import (
+    "regexp"
+    "testing"
+
+    "github.com/hashicorp/terraform-plugin-testing/helper/resource"
+)
+
 func TestAccServerResource_invalidRegion(t *testing.T) {
     resource.Test(t, resource.TestCase{
         PreCheck:                 func() { testAccPreCheck(t) },
