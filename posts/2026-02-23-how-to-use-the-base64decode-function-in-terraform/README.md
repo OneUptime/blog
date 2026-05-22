@@ -29,18 +29,17 @@ The input must be a valid base64-encoded string. If it is not valid base64, Terr
 The most common use case is decoding values that come from external systems:
 
 ```hcl
-# AWS Secrets Manager returns base64-encoded secrets
+# AWS Secrets Manager can return string or binary secrets
 data "aws_secretsmanager_secret_version" "db_creds" {
   secret_id = "prod/database/credentials"
 }
 
 locals {
-  # The secret value is a JSON string (not base64 in this case,
-  # but some secrets are stored as base64)
+  # String secrets are returned as the decrypted string value
   db_creds = jsondecode(data.aws_secretsmanager_secret_version.db_creds.secret_string)
 }
 
-# If the secret IS base64-encoded
+# If the string secret value itself was stored as base64 text
 locals {
   raw_secret      = data.aws_secretsmanager_secret_version.db_creds.secret_string
   decoded_secret  = base64decode(local.raw_secret)
@@ -50,7 +49,7 @@ locals {
 
 ## Decoding Kubernetes Secret Values
 
-When reading Kubernetes secrets through data sources, values come base64-encoded:
+Kubernetes Secret manifests and API responses store `data` values as base64-encoded strings. The Terraform Kubernetes provider usually decodes string data for you:
 
 ```hcl
 data "kubernetes_secret" "app" {
@@ -62,7 +61,7 @@ data "kubernetes_secret" "app" {
 
 locals {
   # Kubernetes secrets are base64-encoded in the API
-  # Note: the Terraform Kubernetes provider usually decodes for you,
+  # Note: the Terraform Kubernetes provider decodes data for you,
   # but if using kubectl_manifest or external data, you may need manual decoding
   db_password = data.kubernetes_secret.app.data["password"]
 }
@@ -97,7 +96,8 @@ Some cloud providers return instance metadata in base64:
 
 ```hcl
 data "aws_instance" "web" {
-  instance_id = var.instance_id
+  instance_id   = var.instance_id
+  get_user_data = true
 }
 
 # If you retrieve user data from an existing instance, it may be base64-encoded
@@ -287,7 +287,7 @@ locals {
 
 3. Padding characters (`=`) at the end of the base64 string are expected. Some systems omit padding, which may cause issues. Terraform handles standard base64 with padding.
 
-4. Whitespace in the input is not automatically handled. If the base64 string contains newlines or spaces (common in PEM certificates), you may need to strip them first with `replace`.
+4. Newlines in the input are accepted, but other whitespace such as spaces or tabs is not automatically handled. If the base64 string contains other whitespace, strip it first with `replace`.
 
 ## Summary
 
