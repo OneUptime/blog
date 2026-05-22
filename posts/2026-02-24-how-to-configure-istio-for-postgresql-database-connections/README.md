@@ -100,7 +100,7 @@ spec:
       mode: ISTIO_MUTUAL
 ```
 
-The `maxConnections` setting caps the number of TCP connections to the PostgreSQL pod. The `connectTimeout` sets how long to wait when establishing new connections. The `ISTIO_MUTUAL` TLS mode means Istio handles mTLS automatically using its own certificates.
+The `maxConnections` setting caps the number of TCP connections to the destination service. The `connectTimeout` sets how long to wait when establishing new connections. The `ISTIO_MUTUAL` TLS mode means Istio handles mTLS automatically using its own certificates.
 
 ## Setting Up a VirtualService for TCP Routing
 
@@ -125,7 +125,7 @@ spec:
               number: 5432
 ```
 
-This is a straightforward pass-through route. It becomes more useful when you have multiple PostgreSQL replicas and want to split read and write traffic.
+This is a straightforward pass-through route. It becomes more useful when you have different PostgreSQL endpoints or subsets and want to route TCP connections between them. Istio cannot inspect PostgreSQL queries, so read/write splitting still needs to happen in your application or in a PostgreSQL-aware proxy.
 
 ## Handling External PostgreSQL (Outside the Mesh)
 
@@ -148,26 +148,11 @@ spec:
   resolution: DNS
 ```
 
-And a corresponding DestinationRule for TLS origination if your external database requires SSL:
-
-```yaml
-apiVersion: networking.istio.io/v1
-kind: DestinationRule
-metadata:
-  name: external-postgresql
-  namespace: database
-spec:
-  host: my-postgres.example.com
-  trafficPolicy:
-    tls:
-      mode: SIMPLE
-```
-
-The `SIMPLE` mode means the Istio sidecar will initiate a TLS connection to the external PostgreSQL server. This is different from `ISTIO_MUTUAL`, which is for in-mesh communication.
+If your external PostgreSQL database requires SSL, configure it in the PostgreSQL client, for example with `sslmode=require`, `sslmode=verify-ca`, or `sslmode=verify-full`. A normal PostgreSQL SSL connection starts with PostgreSQL's own SSL negotiation before TLS begins, so do not add a `DestinationRule` with `tls.mode: SIMPLE` unless the upstream endpoint expects TLS from the first byte, such as a TLS proxy or a direct-TLS setup.
 
 ## Dealing with Connection Timeouts
 
-PostgreSQL connections can be long-lived, especially with connection pooling. By default, Istio's sidecar may close idle connections. You need to configure idle timeouts to match your PostgreSQL settings:
+PostgreSQL connections can be long-lived, especially with connection pooling. Istio's default TCP idle timeout is one hour, and the sidecar may close idle connections after that. You can configure idle timeouts to match your PostgreSQL and connection pool settings:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -185,7 +170,7 @@ spec:
         idleTimeout: 3600s
 ```
 
-Setting `idleTimeout` to 3600 seconds (one hour) prevents Istio from prematurely closing idle database connections. Match this value with your PostgreSQL `idle_in_transaction_session_timeout` and your connection pool's idle timeout settings.
+Setting `idleTimeout` to 3600 seconds keeps the documented one-hour default explicit. If your application keeps idle pooled connections longer than that, set a higher value or disable the timeout with `0s`, and make sure your PostgreSQL server timeouts and connection pool idle timeout settings are aligned.
 
 ## PeerAuthentication for Database Namespace
 
