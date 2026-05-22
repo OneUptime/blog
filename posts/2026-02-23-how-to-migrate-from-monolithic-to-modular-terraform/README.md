@@ -8,7 +8,7 @@ Description: Learn how to break apart a monolithic Terraform configuration into 
 
 ---
 
-Monolithic Terraform configurations start simple but become unwieldy as infrastructure grows. A single state file managing hundreds of resources leads to slow plan times, risky applies, and team collaboration bottlenecks. Migrating to a modular structure improves maintainability, enables parallel team workflows, and reduces the blast radius of changes. This guide walks you through the migration process.
+Monolithic Terraform configurations start simple but become unwieldy as infrastructure grows. A single state file managing hundreds of resources leads to slow plan times, risky applies, and team collaboration bottlenecks. Migrating to a modular structure improves maintainability and enables clearer team workflows; splitting state by domain can also reduce the blast radius of changes. This guide walks you through the migration process.
 
 ## Signs You Need to Modularize
 
@@ -235,6 +235,7 @@ terraform {
   backend "s3" {
     bucket = "terraform-state"
     key    = "production/networking/terraform.tfstate"
+    region = "us-east-1"
   }
 }
 
@@ -250,6 +251,7 @@ terraform {
   backend "s3" {
     bucket = "terraform-state"
     key    = "production/compute/terraform.tfstate"
+    region = "us-east-1"
   }
 }
 
@@ -259,6 +261,7 @@ data "terraform_remote_state" "networking" {
   config = {
     bucket = "terraform-state"
     key    = "production/networking/terraform.tfstate"
+    region = "us-east-1"
   }
 }
 
@@ -333,6 +336,6 @@ Migrate one module at a time to minimize risk. Use moved blocks for state transi
 
 ## Conclusion
 
-Migrating from monolithic to modular Terraform improves code organization, team collaboration, and operational safety. The process is methodical: design the module structure, extract resources, move state, and verify. By using moved blocks and following dependency order, you can complete the migration without disrupting running infrastructure. The effort pays off through faster plan times, safer applies, and better code reuse.
+Migrating from monolithic to modular Terraform improves code organization, team collaboration, and operational safety. The process is methodical: design the module structure, extract resources, move state, and verify. By using moved blocks and following dependency order, you can complete the migration without disrupting running infrastructure. The effort pays off through clearer ownership and better code reuse, with faster plan times and safer applies when large configurations are split into separate state files.
 
 For related guides, see [How to Plan Large-Scale Terraform Migrations](https://oneuptime.com/blog/post/2026-02-23-how-to-plan-large-scale-terraform-migrations/view) and [How to Import Resources into Modules in Terraform](https://oneuptime.com/blog/post/2026-02-23-how-to-import-resources-into-modules-in-terraform/view).
