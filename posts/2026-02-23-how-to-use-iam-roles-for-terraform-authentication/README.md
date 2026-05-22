@@ -102,6 +102,11 @@ resource "aws_iam_role" "ecs_execution" {
   })
 }
 
+resource "aws_iam_role_policy_attachment" "ecs_execution" {
+  role       = aws_iam_role.ecs_execution.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+}
+
 # Task role (for Terraform to use)
 resource "aws_iam_role" "terraform_task" {
   name = "terraform-task"
@@ -345,6 +350,8 @@ resource "aws_iam_role" "terraform_prod" {
 ## Session Tags for Audit Trails
 
 Use session tags to track who is running Terraform:
+
+The target role's trust policy must allow `sts:TagSession` in addition to `sts:AssumeRole` when you pass session tags.
 
 ```hcl
 provider "aws" {
