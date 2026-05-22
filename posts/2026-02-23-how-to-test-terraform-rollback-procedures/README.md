@@ -103,7 +103,7 @@ else
 fi
 
 # Verify no extra resources remain
-BASELINE_COUNT=$(jq 'length' /tmp/baseline-state.json)
+BASELINE_COUNT=$(jq '.resources | length' /tmp/baseline-state.json)
 CURRENT_STATE=$(terraform state pull)
 CURRENT_COUNT=$(echo "$CURRENT_STATE" | jq '.resources | length')
 
@@ -143,10 +143,11 @@ echo "After change: $(terraform state list | wc -l) resources"
 echo ""
 echo "Step 3: Restoring state backup..."
 
-# For local state
+# For the currently configured backend
 terraform state push /tmp/state-backup.json
 
-# For remote state (S3 backend), you would:
+# For remote state stored in an S3 backend with versioning, you could also restore
+# a previous S3 object version after ensuring no other Terraform runs are active:
 # aws s3 cp s3://bucket/path/terraform.tfstate s3://bucket/path/terraform.tfstate.broken
 # aws s3 cp /tmp/state-backup.json s3://bucket/path/terraform.tfstate
 
@@ -155,8 +156,10 @@ echo "After restore: $(terraform state list | wc -l) resources"
 # Step 4: Plan to see what Terraform wants to do
 echo ""
 echo "Step 4: Running plan after state restore..."
+set +e
 terraform plan -detailed-exitcode
 EXIT=$?
+set -e
 
 if [ $EXIT -eq 2 ]; then
     echo ""
@@ -169,11 +172,14 @@ fi
 
 ## Automated Rollback Tests with Terratest
 
+These fixture directories should use the same backend configuration and state key so that applying the baseline, change, and rollback configurations updates the same Terraform state.
+
 ```go
 // test/rollback_test.go
 package test
 
 import (
+    "os"
     "testing"
 
     "github.com/gruntwork-io/terratest/modules/terraform"
@@ -233,7 +239,7 @@ func TestStateRestoreRollback(t *testing.T) {
     terraform.InitAndApply(t, opts)
 
     // Save the state
-    stateBeforeChange := terraform.RunTerraformCommand(t, opts, "state", "pull")
+    stateBeforeChange := terraform.RunTerraformCommandAndGetStdout(t, opts, "state", "pull")
 
     // Make a change
     changeOpts := &terraform.Options{
@@ -247,7 +253,7 @@ func TestStateRestoreRollback(t *testing.T) {
     // Restore the previous state
     // Write state to temp file and push it
     tmpFile := "/tmp/test-state-restore.json"
-    os.WriteFile(tmpFile, []byte(stateBeforeChange), 0644)
+    require.NoError(t, os.WriteFile(tmpFile, []byte(stateBeforeChange), 0644))
     terraform.RunTerraformCommand(t, opts, "state", "push", tmpFile)
 
     // Plan should show the change resources need to be destroyed
@@ -266,6 +272,18 @@ Blue-green deployments let you rollback by switching traffic back to the old env
 variable "active_environment" {
   type    = string
   default = "blue"
+}
+
+variable "blue_version" {
+  type = string
+}
+
+variable "green_version" {
+  type = string
+}
+
+variable "zone_id" {
+  type = string
 }
 
 # Blue environment
