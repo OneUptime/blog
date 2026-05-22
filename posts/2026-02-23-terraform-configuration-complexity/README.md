@@ -50,13 +50,22 @@ Each directory gets its own state file and its own plan/apply cycle. The benefit
 ```hcl
 # application/main.tf
 
-# Only references foundation outputs, does not manage networking
+# Only references foundation and platform outputs, does not manage networking
 
 data "terraform_remote_state" "foundation" {
   backend = "s3"
   config = {
     bucket = "terraform-state"
     key    = "foundation/terraform.tfstate"
+    region = "us-east-1"
+  }
+}
+
+data "terraform_remote_state" "platform" {
+  backend = "s3"
+  config = {
+    bucket = "terraform-state"
+    key    = "platform/terraform.tfstate"
     region = "us-east-1"
   }
 }
@@ -303,7 +312,7 @@ Tools complement these strategies:
 
 - **tflint** catches errors and enforces naming conventions
 - **terraform-docs** generates module documentation automatically
-- **checkov** or **tfsec** scan for security misconfigurations
+- **checkov** or **Trivy** scan for security misconfigurations
 - **Terragrunt** manages multi-directory configurations and keeps backend config DRY
 - **Spacelift** or **HCP Terraform** add policy enforcement and approval workflows
 
