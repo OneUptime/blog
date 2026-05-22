@@ -29,38 +29,25 @@ Each cluster needs a unique network identifier and a shared root of trust for mT
 All clusters need certificates from the same root CA:
 
 ```bash
-# Create the root CA directory
-
+# Run these commands from the top-level Istio installation directory
 mkdir -p certs
-cd certs
+pushd certs
 
-# Generate root certificate
-openssl req -new -x509 -nodes -days 3650 \
-  -keyout root-key.pem -out root-cert.pem \
-  -subj "/O=MyOrg/CN=Root CA"
+# Generate root certificate and key
+make -f ../tools/certs/Makefile.selfsigned.mk \
+  ROOTCA_CN="Root CA" \
+  ROOTCA_ORG="MyOrg" \
+  root-ca
 
 # Generate intermediate CA for each cluster
 for CLUSTER in us-east-1 us-west-1 eu-west-1; do
-  mkdir -p ${CLUSTER}
-
-  # Generate key
-  openssl genrsa -out ${CLUSTER}/ca-key.pem 4096
-
-  # Generate CSR
-  openssl req -new -key ${CLUSTER}/ca-key.pem \
-    -out ${CLUSTER}/ca-csr.pem \
-    -subj "/O=MyOrg/CN=${CLUSTER} Intermediate CA"
-
-  # Sign with root CA
-  openssl x509 -req -in ${CLUSTER}/ca-csr.pem \
-    -CA root-cert.pem -CAkey root-key.pem \
-    -CAcreateserial -days 1825 \
-    -out ${CLUSTER}/ca-cert.pem
-
-  # Create cert chain
-  cat ${CLUSTER}/ca-cert.pem root-cert.pem > ${CLUSTER}/cert-chain.pem
-  cp root-cert.pem ${CLUSTER}/root-cert.pem
+  make -f ../tools/certs/Makefile.selfsigned.mk \
+    INTERMEDIATE_CN="${CLUSTER} Intermediate CA" \
+    INTERMEDIATE_ORG="MyOrg" \
+    ${CLUSTER}-cacerts
 done
+
+popd
 ```
 
 ### Install Certificates in Each Cluster
@@ -79,6 +66,14 @@ for CLUSTER in us-east-1 us-west-1 eu-west-1; do
 done
 ```
 
+Set the default network for each cluster:
+
+```bash
+kubectl label namespace istio-system topology.istio.io/network=us-east-1-network --context us-east-1 --overwrite
+kubectl label namespace istio-system topology.istio.io/network=us-west-1-network --context us-west-1 --overwrite
+kubectl label namespace istio-system topology.istio.io/network=eu-west-1-network --context eu-west-1 --overwrite
+```
+
 ## Step 2: Install Istio in Each Cluster
 
 Each cluster gets its own Istio installation with multi-cluster settings:
@@ -93,7 +88,7 @@ spec:
       meshID: my-mesh
       multiCluster:
         clusterName: us-east-1
-      network: us-east-network
+      network: us-east-1-network
   meshConfig:
     defaultConfig:
       proxyMetadata:
@@ -111,7 +106,7 @@ spec:
       meshID: my-mesh
       multiCluster:
         clusterName: us-west-1
-      network: us-west-network
+      network: us-west-1-network
   meshConfig:
     defaultConfig:
       proxyMetadata:
@@ -129,7 +124,7 @@ spec:
       meshID: my-mesh
       multiCluster:
         clusterName: eu-west-1
-      network: eu-west-network
+      network: eu-west-1-network
   meshConfig:
     defaultConfig:
       proxyMetadata:
@@ -342,7 +337,7 @@ spec:
 # Deploy a test pod
 kubectl run sleep --image=curlimages/curl --context us-east-1 -n app -- sleep infinity
 
-# Call the service - should reach local and potentially remote endpoints
+# Call the service - should reach local endpoints while they are healthy
 kubectl exec -it sleep -n app --context us-east-1 -- \
   curl -s http://my-service.app:8080/health
 
@@ -352,7 +347,7 @@ kubectl exec -it sleep -n app --context us-east-1 -- \
 # Should show which cluster handled the request
 
 # Verify endpoints from all clusters are visible
-istioctl proxy-config endpoints deploy/my-service -n app --context us-east-1 | grep my-service
+istioctl proxy-config endpoints sleep -n app --context us-east-1 | grep my-service
 ```
 
 ## Disaster Recovery Testing
