@@ -56,7 +56,7 @@ This is the most important test. `istioctl analyze` checks your configuration fo
 ```yaml
 - name: Run istioctl analyze
   run: |
-    istioctl analyze k8s/istio/ --all-namespaces 2>&1
+    istioctl analyze --use-kube=false k8s/istio/ 2>&1
     if [ $? -ne 0 ]; then
       echo "istioctl analyze found issues"
       exit 1
@@ -85,9 +85,11 @@ Use Open Policy Agent (OPA) with Conftest to enforce your organization's Istio p
 ```yaml
 - name: Install conftest
   run: |
+    CONFTEST_VERSION=0.68.2
     curl -L -o conftest.tar.gz \
-      https://github.com/open-policy-agent/conftest/releases/latest/download/conftest_Linux_x86_64.tar.gz
+      https://github.com/open-policy-agent/conftest/releases/download/v${CONFTEST_VERSION}/conftest_${CONFTEST_VERSION}_Linux_x86_64.tar.gz
     tar xzf conftest.tar.gz
+    sudo mv conftest /usr/local/bin/conftest
 
 - name: Run policy checks
   run: |
@@ -99,25 +101,27 @@ Example policies in `policy/istio/main.rego`:
 ```rego
 package main
 
-deny[msg] {
+import rego.v1
+
+deny contains msg if {
   input.kind == "VirtualService"
   not input.spec.hosts
   msg = "VirtualService must specify at least one host"
 }
 
-deny[msg] {
+deny contains msg if {
   input.kind == "DestinationRule"
   input.spec.trafficPolicy.tls.mode == "DISABLE"
   msg = "DestinationRule must not disable TLS"
 }
 
-deny[msg] {
+deny contains msg if {
   input.kind == "PeerAuthentication"
   input.spec.mtls.mode == "DISABLE"
   msg = "PeerAuthentication must not disable mTLS"
 }
 
-deny[msg] {
+deny contains msg if {
   input.kind == "AuthorizationPolicy"
   input.spec.action == "ALLOW"
   not input.spec.rules
@@ -166,15 +170,12 @@ For thorough testing, spin up a test cluster, deploy your application with Istio
 
 - name: Run connectivity tests
   run: |
-    # Test that traffic routes correctly
-    kubectl run test-client --image=curlimages/curl --restart=Never -- \
-      curl -s -o /dev/null -w "%{http_code}" http://my-app.default.svc.cluster.local:8080/health
+    kubectl run test-client --image=curlimages/curl --restart=Never --command -- sleep 3600
+    trap 'kubectl delete pod test-client --ignore-not-found=true' EXIT
+    kubectl wait --for=condition=Ready pod/test-client --timeout=120s
 
-    # Wait for the test pod to complete
-    kubectl wait --for=condition=Ready pod/test-client --timeout=60s
-
-    # Get the result
-    RESULT=$(kubectl logs test-client)
+    RESULT=$(kubectl exec test-client -c test-client -- \
+      curl -s -o /dev/null -w "%{http_code}" http://my-app.default.svc.cluster.local:8080/health)
     if [ "$RESULT" != "200" ]; then
       echo "Health check failed with status: $RESULT"
       exit 1
@@ -209,6 +210,7 @@ on:
   pull_request:
     paths:
       - 'k8s/istio/**'
+      - 'policy/istio/**'
 
 jobs:
   static-analysis:
@@ -218,18 +220,31 @@ jobs:
 
       - name: Install tools
         run: |
-          ISTIO_VERSION=1.22.0
+          ISTIO_VERSION=1.29.2
           curl -L https://istio.io/downloadIstio | ISTIO_VERSION=$ISTIO_VERSION sh -
           echo "$PWD/istio-$ISTIO_VERSION/bin" >> $GITHUB_PATH
 
+          CONFTEST_VERSION=0.68.2
+          curl -L -o conftest.tar.gz \
+            https://github.com/open-policy-agent/conftest/releases/download/v${CONFTEST_VERSION}/conftest_${CONFTEST_VERSION}_Linux_x86_64.tar.gz
+          tar xzf conftest.tar.gz
+          sudo mv conftest /usr/local/bin/conftest
+
+          KUBECONFORM_VERSION=0.7.0
+          curl -L -o kubeconform.tar.gz \
+            https://github.com/yannh/kubeconform/releases/download/v${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz
+          tar xzf kubeconform.tar.gz
+          sudo mv kubeconform /usr/local/bin/kubeconform
+
       - name: Schema validation
         run: |
-          for file in k8s/istio/*.yaml; do
-            python3 -c "import yaml; yaml.safe_load(open('$file'))" || exit 1
-          done
+          kubeconform \
+            -schema-location default \
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            k8s/istio/*.yaml
 
       - name: istioctl analyze
-        run: istioctl analyze k8s/istio/ --all-namespaces
+        run: istioctl analyze --use-kube=false k8s/istio/
 
       - name: Policy checks
         run: conftest test k8s/istio/*.yaml -p policy/istio/
@@ -240,12 +255,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install tools
+        run: |
+          curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.31.0/kind-linux-amd64
+          chmod +x ./kind
+          sudo mv ./kind /usr/local/bin/kind
+
+          ISTIO_VERSION=1.29.2
+          curl -L https://istio.io/downloadIstio | ISTIO_VERSION=$ISTIO_VERSION sh -
+          echo "$PWD/istio-$ISTIO_VERSION/bin" >> $GITHUB_PATH
+
       - name: Create test cluster
         run: kind create cluster --name test
 
       - name: Install Istio and deploy
         run: |
           istioctl install --set profile=minimal -y
+          kubectl label namespace default istio-injection=enabled
           kubectl apply -f k8s/app/
           kubectl apply -f k8s/istio/
 
@@ -257,7 +283,7 @@ jobs:
         run: kind delete cluster --name test
 ```
 
-The static analysis job runs first and fast. If it fails, the integration job does not run, saving time and resources. The integration job only runs for pull requests that modify Istio configuration files.
+The static analysis job runs first and fast. If it fails, the integration job does not run, saving time and resources. The integration job only runs for pull requests that modify Istio configuration or policy files.
 
 ## Testing on Every PR
 
