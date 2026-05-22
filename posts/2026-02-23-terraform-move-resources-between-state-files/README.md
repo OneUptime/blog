@@ -43,7 +43,7 @@ terraform -chdir=/path/to/destination state pull > destination-state-backup.json
 
 ## Basic State Move Between Files
 
-The `terraform state mv` command with the `-state` and `-state-out` flags moves a resource from one state file to another.
+For local state files, the `terraform state mv` command with the `-state` and `-state-out` flags moves a resource from one state file to another.
 
 ### Step 1: Identify the Resource Address
 
@@ -86,7 +86,7 @@ terraform state mv \
 
 ## Moving Resources with Remote State
 
-If you use remote state (S3, Terraform Cloud, etc.), the process is slightly different because you cannot directly reference the state file path. You need to work from within each configuration's directory.
+If you need to move a resource between separate configurations that use remote state (S3, Terraform Cloud, etc.), the process is slightly different because the `-state` and `-state-out` file options are legacy options for local state. You need to work from within each configuration's directory.
 
 ### Step 1: Remove from Source
 
@@ -108,11 +108,11 @@ cd /path/to/destination
 terraform import aws_vpc.main vpc-0abc123def456
 ```
 
-This two-step approach (remove then import) works with any backend.
+This two-step approach (remove then import) works with any backend when moving a resource between separate Terraform configurations.
 
 ### Step 3: Update Configuration
 
-Make sure the destination configuration has the matching resource block:
+Make sure the source configuration no longer declares the resource and the destination configuration has the matching resource block:
 
 ```hcl
 # In the destination configuration
@@ -270,7 +270,7 @@ data "aws_vpc" "main" {
   }
 }
 
-# Or use a remote state data source
+# Or use a root output exposed by the networking state
 data "terraform_remote_state" "networking" {
   backend = "s3"
   config = {
@@ -303,7 +303,7 @@ Before performing state moves:
 
 2. Not handling cross-references. If resource B references resource A, and you move A to a different state, B's reference breaks.
 
-3. Moving resources with remote state using `-state` flags. Remote state requires the remove-and-import approach.
+3. Moving resources between remote states using `-state` flags. The `-state` and `-state-out` flags are legacy options for local state files; use remove-and-import when moving a resource between separate remote-backed configurations.
 
 4. Not backing up state before the move. If something goes wrong, you need the backup to restore.
 
