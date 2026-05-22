@@ -35,10 +35,10 @@ terraform workspace show
 
 ## Where This Information Lives
 
-Terraform tracks the current workspace in a file called `.terraform/environment`. You can read it directly, but using the command is preferred:
+By default, Terraform tracks the current workspace in a file called `.terraform/environment`. You can read it directly, but using the command is preferred because environment variables such as `TF_WORKSPACE` and `TF_DATA_DIR` can change the active workspace or data directory:
 
 ```bash
-# The command reads from this file
+# The command uses Terraform's current workspace selection
 cat .terraform/environment
 # Output: staging
 
@@ -47,7 +47,7 @@ terraform workspace show
 # Output: staging
 ```
 
-If the `.terraform/environment` file does not exist, Terraform assumes you are in the `default` workspace. This file is created by `terraform init` or the first workspace command you run.
+If the `.terraform/environment` file does not exist and no workspace is selected through another mechanism, Terraform assumes you are in the `default` workspace.
 
 ## Using workspace show in Shell Scripts
 
@@ -161,6 +161,8 @@ tf_workspace() {
     cat .terraform/environment
   elif [ -d ".terraform" ]; then
     echo "default"
+  else
+    return 1
   fi
 }
 
@@ -172,6 +174,8 @@ export PS1='\u@\h:\w $(tf_workspace && echo "[tf:$(tf_workspace)]") \$ '
 #   if [ -d ".terraform" ]; then
 #     TF_WS=$(tf_workspace)
 #     RPROMPT="[tf:${TF_WS}]"
+#   else
+#     RPROMPT=""
 #   fi
 # }
 ```
