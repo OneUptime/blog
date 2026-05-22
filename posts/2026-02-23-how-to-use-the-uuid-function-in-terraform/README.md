@@ -8,11 +8,11 @@ Description: Learn how to use Terraform's uuid function to generate unique ident
 
 ---
 
-The `uuid()` function in Terraform generates a random UUID (Universally Unique Identifier) in the standard v4 format. UUIDs are useful when you need guaranteed unique identifiers for resources, configurations, or tracking purposes. But the function has some behaviors that can surprise you if you are not prepared. This post covers how to use it correctly and when to reach for alternatives.
+The `uuid()` function in Terraform generates a random UUID-formatted string. UUIDs are useful when you need highly unique identifiers for resources, configurations, or tracking purposes. But the function has some behaviors that can surprise you if you are not prepared. This post covers how to use it correctly and when to reach for alternatives.
 
 ## Basic Usage
 
-The function takes no arguments and returns a new v4 UUID every time it is called:
+The function takes no arguments and returns a new UUID-formatted string every time it is called:
 
 ```hcl
 output "random_id" {
@@ -25,20 +25,19 @@ Each call generates a different UUID. Running `terraform plan` twice produces di
 
 ## UUID Format
 
-The UUID follows the standard v4 format: 8-4-4-4-12 hexadecimal characters separated by hyphens:
+The UUID follows the familiar 8-4-4-4-12 hexadecimal character format separated by hyphens:
 
 ```text
-xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
+xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 ```
 
-Where `x` is a random hex digit and `y` is one of 8, 9, a, or b. The `4` indicates it is a version 4 (random) UUID.
+Where each `x` is a random hex digit. Terraform's built-in `uuid()` output is not RFC-compliant, so do not rely on version 4 or variant bits being set. If you need a valid RFC-compliant version 4 UUID, use a provider resource such as `random_uuid4`.
 
 ```hcl
 output "uuid_example" {
   value = uuid()
-  # "f47ac10b-58cc-4372-a567-0e02b2c3d479"
-  #                ^                         (always 4 - version 4)
-  #                     ^                    (always 8, 9, a, or b)
+  # "b5ee72a3-54dd-c4b8-551c-4bdc0204cedb"
+  # UUID-formatted, but not guaranteed to be an RFC-compliant v4 UUID
 }
 ```
 
@@ -75,7 +74,7 @@ resource "aws_instance" "web" {
 
   tags = {
     DeploymentId = random_uuid.deployment_id.result
-    # Stable across plans - only changes if the random_uuid resource is tainted
+    # Stable across plans - changes if the random_uuid resource is tainted or recreated
   }
 }
 
@@ -289,8 +288,8 @@ output "suffix" {
 
 3. Assuming `uuid()` returns the same value when referenced multiple times in a single plan. Each call to `uuid()` returns a different value. Store it in a local if you need to reference the same UUID in multiple places.
 
-4. Forgetting that `uuid()` values are not cryptographically secure. They are fine for uniqueness but should not be used as secrets or tokens.
+4. Treating `uuid()` values as secrets. They are identifiers, not credentials, and should not be used as secrets or tokens.
 
 ## Summary
 
-The `uuid()` function generates a random v4 UUID on every call. Its main use is as a trigger for resources that should always re-execute. For persistent unique identifiers, use the `random_uuid` resource from the random provider instead, as it stores the value in state and keeps it stable across plans. The key rule: if you want the UUID to stay the same between runs, do not use `uuid()`.
+The `uuid()` function generates a random UUID-formatted string on every call. Its main use is as a trigger for resources that should always re-execute. For persistent unique identifiers, use the `random_uuid` resource from the random provider instead, as it stores the value in state and keeps it stable across plans. The key rule: if you want the UUID to stay the same between runs, do not use `uuid()`.
