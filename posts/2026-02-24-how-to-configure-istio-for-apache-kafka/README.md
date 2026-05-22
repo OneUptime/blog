@@ -53,7 +53,7 @@ spec:
 
 The headless service gives each pod a DNS entry like `kafka-0.kafka-headless.messaging.svc.cluster.local`. The regular `kafka-bootstrap` service is what clients use for initial connection.
 
-The StatefulSet:
+The Kafka container portion of the StatefulSet should keep your normal Kafka KRaft or ZooKeeper settings, storage, and broker IDs, with the listener exposed on a TCP-named port:
 
 ```yaml
 apiVersion: apps/v1
@@ -90,12 +90,12 @@ spec:
 The critical piece is the `KAFKA_ADVERTISED_LISTENERS` configuration. Each broker must advertise its StatefulSet DNS name so clients can find it. You typically set this with an init container or a startup script that reads the pod's hostname:
 
 ```yaml
-- name: KAFKA_ADVERTISED_LISTENERS
-  value: "PLAINTEXT://$(POD_NAME).kafka-headless.messaging.svc.cluster.local:9092"
 - name: POD_NAME
   valueFrom:
     fieldRef:
       fieldPath: metadata.name
+- name: KAFKA_ADVERTISED_LISTENERS
+  value: "PLAINTEXT://$(POD_NAME).kafka-headless.messaging.svc.cluster.local:9092"
 ```
 
 ## DestinationRule for Kafka
@@ -186,8 +186,8 @@ spec:
     - "*.confluent.cloud"
   ports:
     - number: 9092
-      name: tcp-kafka
-      protocol: TCP
+      name: tls-kafka
+      protocol: TLS
   location: MESH_EXTERNAL
   resolution: NONE
 ---
@@ -200,10 +200,10 @@ spec:
   host: "*.confluent.cloud"
   trafficPolicy:
     tls:
-      mode: SIMPLE
+      mode: DISABLE
 ```
 
-The wildcard is important because Confluent Cloud (and AWS MSK) use different hostnames for each broker. The client discovers these through the metadata response.
+The wildcard is important because Confluent Cloud (and AWS MSK) use different hostnames for each broker. The client discovers these through the metadata response. For Confluent Cloud and other Kafka endpoints where the Kafka client uses TLS or SASL_SSL, let the Kafka client originate TLS and do not configure Istio TLS origination. Adjust the port and protocol to match your provider's bootstrap endpoint.
 
 ## Access Control for Kafka
 
