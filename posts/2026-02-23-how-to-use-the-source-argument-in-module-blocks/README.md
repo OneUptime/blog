@@ -4,21 +4,21 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Module, Configuration, Infrastructure as Code, DevOps
 
-Description: A comprehensive guide to the Terraform module source argument covering all supported source types including local paths, Git, registries, S3, GCS, and HTTP URLs.
+Description: A comprehensive guide to the Terraform module source argument covering supported source types including local paths, Git, Mercurial, registries, S3, GCS, and HTTP URLs.
 
 ---
 
-The `source` argument in a Terraform module block tells Terraform where to find the module's code. It is the only truly required meta-argument in a module block, and it supports a surprising variety of source types. Depending on your needs, you can point to a local directory, a Git repository, the Terraform Registry, an S3 bucket, a GCS bucket, or even a plain HTTP URL that serves a zip file.
+The `source` argument in a Terraform module block tells Terraform where to find the module's code. It is the only required built-in argument in a module block, and it supports a surprising variety of source types. Depending on your needs, you can point to a local directory, a Git or Mercurial repository, the Terraform Registry, an S3 bucket, a GCS bucket, or an HTTP URL that serves an archive or redirects Terraform to another module source.
 
-This guide covers every source type, when to use each, and the syntax details that matter.
+This guide covers the common source types, when to use each, and the syntax details that matter.
 
 ## How source Works
 
-When you run `terraform init`, Terraform reads the `source` argument in each module block, downloads the module code to `.terraform/modules/`, and registers it. Subsequent commands like `plan` and `apply` use the local copy. You need to re-run `terraform init` (or `terraform init -upgrade`) whenever you change a source or want to pick up updates from remote sources.
+When you run `terraform init`, Terraform reads the `source` argument in each module block, installs remote module code under `.terraform/modules/`, and registers it. Subsequent commands like `plan` and `apply` use the installed copy. You need to re-run `terraform init` (or `terraform init -upgrade`) whenever you change a source or want to pick up updates from remote sources.
 
 ```hcl
 module "example" {
-  source = "..."  # Terraform downloads from here during init
+  source = "..."  # Terraform installs remote modules from here during init
 
   # All other arguments are passed as input variables to the module
   name = "my-resource"
@@ -81,7 +81,7 @@ Key characteristics:
 
 ## Git Repositories
 
-Git sources use the `git::` prefix:
+Generic Git sources use the `git::` prefix. GitHub and Bitbucket also have shorthand forms:
 
 ```hcl
 # HTTPS
@@ -126,18 +126,18 @@ For AWS-hosted module archives:
 ```hcl
 # S3 source
 module "vpc" {
-  source = "s3::https://myorg-terraform-modules.s3.amazonaws.com/vpc/v1.0.0.zip"
+  source = "s3::https://s3.amazonaws.com/myorg-terraform-modules/vpc/v1.0.0.zip"
 }
 
 # Regional S3 endpoint
 module "vpc" {
-  source = "s3::https://myorg-terraform-modules.s3.us-east-1.amazonaws.com/vpc/v1.0.0.zip"
+  source = "s3::https://s3.us-west-2.amazonaws.com/myorg-terraform-modules/vpc/v1.0.0.zip"
 }
 ```
 
 Key characteristics:
 - Uses AWS IAM for authentication
-- Module must be a zip archive
+- Module must be an archive, such as zip, tar.gz, tar.bz2, or tar.xz
 - Best for: AWS-native organizations, simple private module hosting
 
 ## GCS Buckets
@@ -153,12 +153,12 @@ module "network" {
 
 Key characteristics:
 - Uses Google Cloud IAM for authentication
-- Module must be a zip archive
+- Module must be an archive, such as zip, tar.gz, tar.bz2, or tar.xz
 - Best for: GCP-native organizations
 
 ## HTTP URLs
 
-Terraform can download modules from any HTTP/HTTPS URL that serves a zip, tar.gz, or other supported archive:
+Terraform can download modules from an HTTP/HTTPS URL that serves a zip, tar.gz, or other supported archive:
 
 ```hcl
 # HTTP source - must be an archive file
@@ -167,11 +167,11 @@ module "vpc" {
 }
 ```
 
-Terraform detects the archive type from the URL or content type. Supported formats include zip, tar.gz, tar.bz2, and tar.xz.
+Terraform detects common archive types from the URL extension. Supported formats include zip, tar.gz, tar.bz2, and tar.xz. HTTP URLs can also act as vanity URLs by returning an `X-Terraform-Get` response header or a `terraform-get` HTML meta tag that points Terraform to another module source.
 
 Key characteristics:
 - Works with any HTTP server or CDN
-- No authentication built in (must be public or use URL tokens)
+- Can authenticate with credentials from `.netrc` when the server requests them
 - Best for: simple distribution, CDN-hosted modules, internal artifact servers
 
 ## Terraform Cloud/Enterprise Private Modules
@@ -196,16 +196,17 @@ credentials "app.terraform.io" {
 
 ## The source Cannot Be Dynamic
 
-An important limitation: the `source` argument cannot use variables, locals, or any dynamic expression. It must be a literal string:
+An important limitation: the `source` argument cannot use arbitrary dynamic expressions or template sequences. In Terraform v1.15 and later, it can reference local values and input variables declared with `const = true`, but ordinary runtime variables are still not allowed:
 
 ```hcl
 # This does NOT work
 variable "module_source" {
+  type    = string
   default = "./modules/vpc"
 }
 
 module "vpc" {
-  source = var.module_source  # ERROR: source must be a literal string
+  source = var.module_source  # ERROR unless module_source is declared with const = true
 }
 ```
 
