@@ -14,20 +14,22 @@ Connection draining is the process of gracefully shutting down a service instanc
 
 When Kubernetes terminates a pod (during a rolling update, scale-down, or node drain), the following happens by default:
 
-1. Kubernetes sends SIGTERM to the pod's containers
-2. The pod is removed from the Service's endpoints list
-3. After `terminationGracePeriodSeconds` (default 30s), Kubernetes sends SIGKILL
+1. Kubernetes marks the pod as terminating and starts the grace-period countdown
+2. Kubernetes starts updating EndpointSlices so the endpoint is no longer ready for regular Service traffic
+3. For each container with a `preStop` hook, the kubelet runs the hook before sending that container its TERM signal
+4. The kubelet sends SIGTERM to the pod's containers
+5. After `terminationGracePeriodSeconds` (default 30s), Kubernetes sends SIGKILL to any remaining processes
 
-The problem is that steps 1 and 2 happen concurrently. Other pods might still send requests to the terminating pod because the endpoint removal hasn't propagated yet. And the Envoy sidecar might shut down before the application finishes handling its last requests.
+The problem is that endpoint updates and container shutdown happen during the same grace period. Other pods might still send requests to the terminating pod because the endpoint update hasn't propagated everywhere yet. And the Envoy sidecar might shut down before the application finishes handling its last requests.
 
 ## Envoy's Drain Mechanism
 
-Envoy has built-in drain support. When it receives a SIGTERM, it enters a "draining" state:
+Envoy has built-in drain support. In Istio, when `istio-agent` receives SIGTERM or SIGINT, it tells Envoy to enter a graceful draining state:
 
-1. It stops accepting new connections on its listeners
+1. It discourages new connections and new requests
 2. It sends `Connection: close` headers on HTTP/1.1 responses and GOAWAY frames on HTTP/2
 3. It waits for existing connections to finish
-4. After the drain duration, it closes remaining connections and exits
+4. After the drain duration, `istio-agent` terminates any remaining Envoy processes
 
 You can control the drain duration with the `terminationDrainDuration` setting:
 
@@ -92,18 +94,18 @@ spec:
 
 Here's the timeline:
 
-1. **t=0**: Kubernetes sends SIGTERM, starts removing the pod from endpoints
-2. **t=0 to t=5**: The preStop hook runs (`sleep 5`), giving time for endpoint removal to propagate
-3. **t=5**: The application starts its shutdown
-4. **t=0**: Envoy also receives SIGTERM and starts draining for 25 seconds
-5. **t=25**: Envoy closes remaining connections
+1. **t=0**: Kubernetes marks the pod as terminating and starts updating EndpointSlices
+2. **t=0 to t=5**: The application container's preStop hook runs (`sleep 5`), giving time for endpoint updates to propagate
+3. **t=5**: The application container receives SIGTERM and starts its shutdown
+4. **t=0**: The sidecar container, which has no preStop hook in this example, can receive SIGTERM and start Envoy draining for 25 seconds
+5. **t=25**: `istio-agent` terminates any remaining Envoy processes
 6. **t=60**: Kubernetes sends SIGKILL (but ideally everything is already shut down)
 
-The `sleep 5` preStop hook is a simple but effective trick. It gives kube-proxy and Envoy time to update their routing tables before the pod actually stops accepting requests.
+The `sleep 5` preStop hook is a simple but effective trick. It gives kube-proxy and Envoy time to observe endpoint updates before the application receives SIGTERM.
 
 ## Configuring Outlier Detection for Draining
 
-Outlier detection works alongside draining to handle unhealthy endpoints. When a pod starts draining and returns errors, outlier detection can eject it from the load balancer pool faster:
+Outlier detection works alongside draining to handle unhealthy endpoints. If clients still reach a terminating pod and see 5xx responses or connection failures, outlier detection can eject that endpoint from each client proxy's load balancer pool faster:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -123,7 +125,7 @@ spec:
         idleTimeout: 30s
 ```
 
-If a draining pod starts returning 503 errors (which Envoy does during drain), the outlier detection kicks in and stops sending traffic to it after 3 consecutive errors.
+If a draining endpoint starts producing 5xx responses or local connection failures, outlier detection can kick in and stop that client proxy from sending traffic to it after the configured threshold is reached.
 
 ## Connection Draining for the Ingress Gateway
 
@@ -159,9 +161,9 @@ spec:
     ingressGateways:
       - name: istio-ingressgateway
         k8s:
-          env:
-            - name: TERMINATION_DRAIN_DURATION_SECONDS
-              value: "60"
+          podAnnotations:
+            proxy.istio.io/config: |
+              terminationDrainDuration: 60s
 ```
 
 ## Testing Connection Draining
@@ -231,7 +233,7 @@ kubectl exec my-pod -c istio-proxy -- \
   pilot-agent request GET stats | grep downstream_cx_destroy
 ```
 
-In Prometheus, you can track `envoy_server_drain_count` and `envoy_server_state` to monitor drain events across your fleet.
+In Prometheus, you can track `envoy_server_live` and `envoy_server_state` to monitor drain state across your fleet.
 
 ## Best Practices Summary
 
