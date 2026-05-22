@@ -88,7 +88,7 @@ Be careful not to set this too high. Cloud provider APIs have rate limits, and e
 
 ## Use -target for Quick Changes
 
-When you know exactly what you need to change, use `-target` to limit the scope:
+When you are recovering from a problem or need to work around a Terraform limitation, use `-target` to limit the scope:
 
 ```bash
 # Only plan changes for a specific resource
@@ -98,9 +98,9 @@ terraform plan -target=aws_instance.app_server
 terraform plan -target=module.database
 ```
 
-This skips refreshing and planning for everything else. On a project with 1,000 resources, targeting a single resource can reduce plan time from 10 minutes to 30 seconds.
+This focuses planning on the selected resource and the objects it depends on. On a project with 1,000 resources, targeting a single resource can reduce plan time from 10 minutes to 30 seconds.
 
-**Warning**: Do not make `-target` your default workflow. It can lead to drift if you skip planning the full infrastructure too often. Use it for quick iterations, but always do a full plan before merging changes.
+**Warning**: Do not make `-target` your default workflow. HashiCorp recommends it only for exceptional circumstances. It can lead to incomplete plans if you skip planning the full infrastructure too often. Use it sparingly, and always do a full plan before merging changes.
 
 ## Disable Refresh When Safe
 
@@ -114,7 +114,7 @@ This tells Terraform to trust the state file and not query the cloud provider. F
 
 ## Use Provider Plugin Caching
 
-Every `terraform init` downloads provider plugins by default. For large projects with multiple providers, this can waste significant time. Set up a local cache:
+Without a shared cache, each Terraform working directory stores its own provider plugins, so `terraform init` can download separate copies of the same providers across projects. For large projects with multiple providers, this can waste significant time. Set up a local cache:
 
 ```bash
 # Set the plugin cache directory
@@ -128,7 +128,7 @@ Now when you run `terraform init` in any project, providers are downloaded once 
 
 The state backend matters more than you might think. If your state file is large (tens of megabytes), every plan and apply starts with downloading and parsing it.
 
-For S3 backends, enable DynamoDB locking but make sure the DynamoDB table is in the same region as your S3 bucket. For remote backends like Terraform Cloud, state access is generally faster because of their optimizations.
+For S3 backends, enable S3 state locking with `use_lockfile = true`. Older configurations may use DynamoDB locking, but HashiCorp now marks DynamoDB-based locking as deprecated. For managed backends like HCP Terraform, use the backend's built-in state storage and locking features.
 
 ```hcl
 terraform {
@@ -136,7 +136,7 @@ terraform {
     bucket         = "my-terraform-state"
     key            = "production/terraform.tfstate"
     region         = "us-east-1"
-    dynamodb_table = "terraform-locks"
+    use_lockfile   = true
     encrypt        = true
   }
 }
@@ -144,7 +144,7 @@ terraform {
 
 ## Minimize Data Source Usage
 
-Each data source triggers an API call during planning. If you have dozens of data sources querying things that rarely change, consider replacing them with variables or local values:
+Many provider data sources trigger API calls during planning. If you have dozens of data sources querying things that rarely change, consider replacing them with variables or local values:
 
 ```hcl
 # Instead of this (makes an API call every plan)
@@ -170,7 +170,7 @@ Terraform workspaces share the same configuration but use different state files.
 
 ## Monitor and Profile
 
-Terraform has a built-in way to get timing information. Enable debug logging to see where time is spent:
+Terraform has built-in debug logging. Enable trace logging to see where time is spent:
 
 ```bash
 # Enable trace-level logging
