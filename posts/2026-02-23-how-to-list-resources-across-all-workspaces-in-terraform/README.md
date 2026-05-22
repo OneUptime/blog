@@ -89,8 +89,17 @@ OUTPUT_FILE="resource-inventory-$(date +%Y%m%d).txt"
 echo "Terraform Resource Inventory - $(date)" > "$OUTPUT_FILE"
 echo "========================================" >> "$OUTPUT_FILE"
 
-# Collect all resources
-declare -A TYPE_COUNTS
+resource_type_from_address() {
+  local address="$1"
+
+  while [[ "$address" == module.* ]]; do
+    address="${address#module.}"
+    address="${address#*.}"
+  done
+
+  address="${address#data.}"
+  printf '%s\n' "${address%%.*}"
+}
 
 terraform workspace list | tr -d ' *' | while read -r ws; do
   [ -z "$ws" ] && continue
@@ -103,8 +112,8 @@ terraform workspace list | tr -d ' *' | while read -r ws; do
 
   # Get resources and group by type
   terraform state list 2>/dev/null | sort | while read -r resource; do
-    # Extract the resource type (everything before the first dot)
-    resource_type=$(echo "$resource" | cut -d'.' -f1)
+    # Extract the resource type, ignoring any module path prefix
+    resource_type=$(resource_type_from_address "$resource")
     echo "  [$resource_type] $resource" >> "$OUTPUT_FILE"
   done
 
@@ -176,7 +185,7 @@ jq '.workspaces[] | select(.resource_count > 10) | .name' all-resources.json
 
 # List all unique resource types
 jq '.workspaces[].resources[]' all-resources.json | \
-  jq -r 'split(".")[0]' | sort -u
+  jq -r 'gsub("^(module\\.[^.]+(\\[[^]]+\\])?\\.)*"; "") | sub("^data\\."; "") | split(".")[0]' | sort -u
 ```
 
 ## Getting Resource Details Across Workspaces
@@ -193,6 +202,18 @@ set -e
 RESOURCE_TYPE=${1:-"aws_instance"}
 ORIGINAL_WS=$(terraform workspace show)
 
+resource_type_from_address() {
+  local address="$1"
+
+  while [[ "$address" == module.* ]]; do
+    address="${address#module.}"
+    address="${address#*.}"
+  done
+
+  address="${address#data.}"
+  printf '%s\n' "${address%%.*}"
+}
+
 echo "Detailed listing for resource type: $RESOURCE_TYPE"
 echo "=================================================="
 
@@ -202,7 +223,11 @@ terraform workspace list | tr -d ' *' | while read -r ws; do
   terraform workspace select "$ws" > /dev/null 2>&1
 
   # Find all resources of the specified type
-  matching=$(terraform state list 2>/dev/null | grep "^${RESOURCE_TYPE}\." || true)
+  matching=$(terraform state list 2>/dev/null | while read -r resource; do
+    if [ "$(resource_type_from_address "$resource")" = "$RESOURCE_TYPE" ]; then
+      echo "$resource"
+    fi
+  done)
 
   if [ -n "$matching" ]; then
     echo ""
@@ -213,7 +238,7 @@ terraform workspace list | tr -d ' *' | while read -r ws; do
       echo "  Resource: $resource"
       # Pull specific attributes
       terraform state show "$resource" 2>/dev/null | \
-        grep -E "^\s+(id|arn|name|instance_type|tags)" | \
+        grep -E "^[[:space:]]+(id|arn|name|instance_type|tags)[[:space:]]+=" | \
         sed 's/^/    /'
       echo ""
     done
@@ -269,6 +294,19 @@ def get_workspaces():
             workspaces.append(ws)
     return workspaces
 
+def resource_type_from_address(address):
+    """Extract the resource type from a Terraform resource address."""
+    parts = address.split(".")
+    index = 0
+
+    while index + 1 < len(parts) and parts[index] == "module":
+        index += 2
+
+    if index < len(parts) and parts[index] == "data":
+        index += 1
+
+    return parts[index] if index < len(parts) else address
+
 def get_resources(workspace):
     """Get all resources in a workspace."""
     run_terraform(["workspace", "select", workspace])
@@ -296,7 +334,7 @@ def main():
         # Count by resource type
         for resource in resources:
             if resource:
-                resource_type = resource.split(".")[0]
+                resource_type = resource_type_from_address(resource)
                 type_summary[resource_type] += 1
 
     # Restore original workspace
@@ -345,6 +383,18 @@ WS1=$1
 WS2=$2
 ORIGINAL_WS=$(terraform workspace show)
 
+resource_type_from_address() {
+  local address="$1"
+
+  while [[ "$address" == module.* ]]; do
+    address="${address#module.}"
+    address="${address#*.}"
+  done
+
+  address="${address#data.}"
+  printf '%s\n' "${address%%.*}"
+}
+
 if [ -z "$WS1" ] || [ -z "$WS2" ]; then
   echo "Usage: $0 <workspace1> <workspace2>"
   exit 1
@@ -352,10 +402,14 @@ fi
 
 # Get resource types for each workspace
 terraform workspace select "$WS1" > /dev/null 2>&1
-WS1_TYPES=$(terraform state list 2>/dev/null | cut -d'.' -f1 | sort -u)
+WS1_TYPES=$(terraform state list 2>/dev/null | while read -r resource; do
+  resource_type_from_address "$resource"
+done | sort -u)
 
 terraform workspace select "$WS2" > /dev/null 2>&1
-WS2_TYPES=$(terraform state list 2>/dev/null | cut -d'.' -f1 | sort -u)
+WS2_TYPES=$(terraform state list 2>/dev/null | while read -r resource; do
+  resource_type_from_address "$resource"
+done | sort -u)
 
 echo "Resource Type Comparison: $WS1 vs $WS2"
 echo "========================================="
@@ -393,6 +447,9 @@ on:
 jobs:
   audit:
     runs-on: ubuntu-latest
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
     steps:
       - uses: actions/checkout@v4
 
@@ -400,9 +457,6 @@ jobs:
 
       - name: Terraform Init
         run: terraform init
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
       - name: Generate Inventory
         run: |
@@ -422,7 +476,7 @@ Switching workspaces and pulling state takes time, especially with remote backen
 
 - Cache the state locally when possible
 - Run the inventory script during off-peak hours
-- Consider using Terraform Cloud's API instead of CLI for faster access
+- Consider using HCP Terraform's API instead of CLI for faster access
 - Parallelize workspace queries if your backend supports concurrent reads
 
 ## Summary
