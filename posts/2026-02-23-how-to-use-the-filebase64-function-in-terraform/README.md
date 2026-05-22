@@ -8,7 +8,7 @@ Description: Learn how to use the filebase64 function in Terraform to read local
 
 ---
 
-The `filebase64` function reads a file from the local filesystem and returns its contents as a base64-encoded string. This is essential when you need to pass binary files or file contents to cloud resources that expect base64-encoded data, such as Lambda function code, EC2 user data, or container image configurations.
+The `filebase64` function reads a file from the local filesystem and returns its contents as a base64-encoded string. This is essential when you need to pass binary files or file contents to cloud resources that expect base64-encoded data, such as EC2 user data, S3 object content, or container image configurations.
 
 ## What Is the filebase64 Function?
 
@@ -29,11 +29,11 @@ Unlike the `file` function which only handles UTF-8 text, `filebase64` can handl
 Many cloud APIs require binary data to be transmitted as base64-encoded strings. This encoding converts binary data into a text-safe format that can be embedded in JSON, HCL, and other text-based formats without corruption. Common scenarios include:
 
 - EC2 user data
-- Lambda function code
+- S3 object content
 - Container definitions
 - Cloud-init configurations
-- Certificate and key data
-- Custom AMI boot configurations
+- Binary secret data
+- VM extension scripts
 
 ## Basic Usage with EC2 User Data
 
@@ -176,22 +176,21 @@ locals {
 
 The rule is simple: use `file` for text you want to use as-is, use `filebase64` when you need base64 encoding (especially for binary files).
 
-## Passing Certificates and Keys
+## Passing Binary Secret Data
 
-Some resources need certificates in base64 format:
+Some resources have separate attributes for base64-encoded binary secret data:
 
 ```hcl
-resource "kubernetes_secret" "tls" {
+resource "kubernetes_secret" "binary_bundle" {
   metadata {
-    name      = "app-tls"
+    name      = "app-binary-bundle"
     namespace = "default"
   }
 
-  type = "kubernetes.io/tls"
+  type = "Opaque"
 
-  data = {
-    "tls.crt" = filebase64("${path.module}/certs/tls.crt")
-    "tls.key" = filebase64("${path.module}/certs/tls.key")
+  binary_data = {
+    "truststore.p12" = filebase64("${path.module}/certs/truststore.p12")
   }
 }
 ```
@@ -264,7 +263,7 @@ resource "aws_s3_object" "assets" {
 
 ## GCP Cloud Functions
 
-Google Cloud Functions can use base64-encoded source:
+Google Cloud Functions usually reference a source archive stored in Cloud Storage. For local ZIP archives, upload the raw file with `source` rather than base64-encoding it into `content`:
 
 ```hcl
 resource "google_cloudfunctions_function" "processor" {
@@ -279,13 +278,13 @@ resource "google_cloudfunctions_function" "processor" {
 resource "google_storage_bucket_object" "function_zip" {
   name    = "functions/processor.zip"
   bucket  = google_storage_bucket.functions.name
-  content = filebase64("${path.module}/functions/processor.zip")
+  source  = "${path.module}/functions/processor.zip"
 }
 ```
 
 ## Combining with filebase64sha256 for Change Detection
 
-A common pattern is using `filebase64` for the content and `filebase64sha256` for detecting changes:
+A common pattern is using a file path for the content and `filebase64sha256` for detecting changes:
 
 ```hcl
 resource "aws_lambda_function" "api" {
@@ -320,6 +319,6 @@ resource "aws_lambda_function" "api" {
 
 ## Summary
 
-The `filebase64` function reads any local file - text or binary - and returns a base64-encoded string. It is essential for passing file contents to cloud resources that expect base64 data, such as EC2 user data, Lambda code, S3 objects, Kubernetes secrets, and Azure VM extensions. For text files, it produces the same result as `base64encode(file(...))`, but for binary files it is the only correct option. Keep in mind that base64 encoding adds about 33% to the data size, and the encoded content is stored in the Terraform state.
+The `filebase64` function reads any local file - text or binary - and returns a base64-encoded string. It is essential for passing file contents to cloud resources that expect base64 data, such as EC2 user data, S3 objects, Kubernetes binary secret data, and Azure VM extensions. For text files, it produces the same result as `base64encode(file(...))`, but for binary files it is the only correct option. Keep in mind that base64 encoding adds about 33% to the data size, and the encoded content is stored in the Terraform state.
 
 For related functions, check out our posts on the [file function](https://oneuptime.com/blog/post/2026-02-23-how-to-use-the-file-function-to-read-local-files-in-terraform/view) and the [filebase64sha256 function](https://oneuptime.com/blog/post/2026-02-23-how-to-use-the-filebase64sha256-function-in-terraform/view).
