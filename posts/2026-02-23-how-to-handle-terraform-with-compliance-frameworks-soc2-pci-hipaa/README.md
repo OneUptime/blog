@@ -18,7 +18,7 @@ All three frameworks share core requirements around encryption, access control, 
 
 ### Encryption Everywhere
 
-SOC2 (CC6.1), PCI DSS (Req 3.4, 4.1), and HIPAA (164.312(a)(2)(iv)) all require encryption of sensitive data at rest and in transit.
+SOC2 security and confidentiality criteria, PCI DSS (Req 3 and 4.2), and HIPAA (164.312(a)(2)(iv), 164.312(e)(1)) all include controls for protecting sensitive data at rest and in transit. HIPAA encryption implementation specifications are addressable, so document your rationale if you use equivalent safeguards instead of encryption.
 
 ```hcl
 # Module for creating compliant S3 buckets
@@ -293,14 +293,14 @@ resource "aws_iam_role_policy" "cardholder_data" {
 }
 ```
 
-### Web Application Firewall (Req 6.6)
+### Web Application Firewall (Req 6.4.2)
 
 ```hcl
 # WAF for payment processing endpoints
 resource "aws_wafv2_web_acl" "payment" {
   name        = "payment-waf"
   scope       = "REGIONAL"
-  description = "WAF for PCI DSS Requirement 6.6"
+  description = "WAF for PCI DSS Requirement 6.4.2"
 
   default_action {
     allow {}
@@ -343,7 +343,7 @@ HIPAA focuses on protecting electronic protected health information (ePHI).
 ### Access Controls (164.312(a)(1))
 
 ```hcl
-# Session timeout for HIPAA compliance
+# IAM password policy for HIPAA access control
 resource "aws_iam_account_password_policy" "hipaa" {
   minimum_password_length        = 14
   require_lowercase_characters   = true
