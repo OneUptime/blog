@@ -41,7 +41,7 @@ variable "puppet_environment" {
 }
 
 variable "puppet_role" {
-  description = "Role to assign via trusted facts"
+  description = "Role to assign via an external fact"
   type        = string
 }
 
@@ -157,7 +157,7 @@ EOF
 
 ## Method 2: Auto-Signing Certificates
 
-For automated workflows, configure Puppet Server to auto-sign certificates based on trusted facts.
+For automated workflows, configure Puppet Server to auto-sign certificates based on a strict policy.
 
 ```hcl
 # puppet-server-config.tf
@@ -187,7 +187,7 @@ resource "aws_instance" "puppet_server" {
 cat > /etc/puppetlabs/puppet/autosign.rb <<'RUBY'
 #!/opt/puppetlabs/puppet/bin/ruby
 # Policy-based autosigning script
-# Validates CSR extensions to determine if auto-signing is allowed
+# Validates the CSR and certname to determine if auto-signing is allowed
 
 require 'openssl'
 
@@ -206,7 +206,7 @@ RUBY
 chmod 755 /etc/puppetlabs/puppet/autosign.rb
 
 # Configure Puppet Server to use the autosign script
-puppet config set autosign /etc/puppetlabs/puppet/autosign.rb --section master
+puppet config set autosign /etc/puppetlabs/puppet/autosign.rb --section server
 ```
 
 ## Method 3: Using Terraform with Puppet Bolt
@@ -342,7 +342,7 @@ resource "aws_instance" "puppet_node" {
   provisioner "local-exec" {
     when    = destroy
     command = <<-EOT
-      puppet cert clean ${self.tags["Name"]} || true
+      puppetserver ca clean --certname ${self.tags["Name"]} || true
     EOT
   }
 }
