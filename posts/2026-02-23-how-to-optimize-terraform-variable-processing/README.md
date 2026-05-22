@@ -14,18 +14,18 @@ This post covers how Terraform processes variables internally and what you can d
 
 ## How Terraform Processes Variables
 
-When you run `terraform plan`, Terraform goes through these steps related to variables:
+When you run `terraform plan`, Terraform goes through these steps related to variables and expressions:
 
-1. **Parse .tfvars files and command-line inputs**: Terraform reads all variable sources and merges them
+1. **Parse .tfvars files and command-line inputs**: Terraform reads variable sources and applies its documented precedence rules
 2. **Evaluate variable defaults and validation**: Default values are applied and validation blocks run
-3. **Evaluate locals**: Local values are computed, potentially depending on variables and other locals
-4. **Expand expressions in resources**: Resource attributes that reference variables and locals are evaluated
+3. **Build the dependency graph**: Terraform analyzes references between variables, locals, resources, providers, and modules
+4. **Evaluate expressions during planning**: Local values and resource arguments that reference variables and locals are evaluated as Terraform walks the graph
 
-Each of these steps happens before any API calls. For small configurations, this is instant. For large ones with complex transformations, it adds up.
+Input parsing happens before planning work begins, while expression evaluation happens as part of planning. For small configurations, this is instant. For large ones with complex transformations, it adds up.
 
 ## Avoiding Complex Local Transformations
 
-Locals are evaluated eagerly during planning. If you have locals that do heavy data transformation, they run on every plan:
+Locals are expressions that Terraform evaluates when they are referenced during planning. If you have locals that do heavy data transformation, they can run on every plan:
 
 ```hcl
 # Slow: Complex transformation on every plan
@@ -92,7 +92,7 @@ Large `.tfvars` files take time to parse. If your tfvars file is several hundred
 
 ### Using JSON Instead of HCL for Large Data
 
-Terraform can read `.tfvars.json` files. JSON parsing is faster than HCL parsing for large data structures:
+Terraform can read `.tfvars.json` files. JSON is often a better fit for large machine-generated input because Terraform parses JSON variable files as an object whose keys are variable names:
 
 ```bash
 # Generate tfvars as JSON
@@ -117,9 +117,20 @@ Instead of one massive variable with everything, split into focused variables:
 # Instead of one giant variable
 variable "everything" {
   type = object({
-    networking = object({...})
-    compute    = object({...})
-    database   = object({...})
+    networking = object({
+      vpc_cidr = string
+      subnets  = map(string)
+    })
+    compute = object({
+      instances = map(object({
+        type   = string
+        subnet = string
+      }))
+    })
+    database = object({
+      engine  = string
+      storage = number
+    })
   })
 }
 
@@ -148,7 +159,7 @@ This does not make parsing faster per se, but it makes each project (after state
 Variable validation blocks run on every plan. Keep them simple:
 
 ```hcl
-# Expensive: Complex validation with regex on large strings
+# Expensive: Complex validation on large strings
 variable "config_json" {
   type = string
   validation {
@@ -178,14 +189,20 @@ variable "services" {
     cpu          = number
     memory       = number
     port         = number
-    health_check = object({...})
-    scaling      = object({...})
+    health_check = object({
+      path     = string
+      interval = number
+    })
+    scaling = object({
+      min_capacity = number
+      max_capacity = number
+    })
     # ... many more fields
   }))
 }
 
 resource "aws_ecs_service" "services" {
-  for_each = var.services  # Entire complex map is processed for indexing
+  for_each = var.services  # Terraform must know this map before remote resource actions
   name     = each.key
   # ...
 }
@@ -207,7 +224,7 @@ variable "service_configs" {
 }
 
 resource "aws_ecs_service" "services" {
-  for_each = var.service_names  # Simple set, fast indexing
+  for_each = var.service_names  # Terraform only needs the stable set of service names for instance keys
   name     = each.key
   # Reference config from separate variable
   # ...
@@ -218,7 +235,7 @@ resource "aws_ecs_service" "services" {
 
 ### Avoid Redundant Locals
 
-Every local is evaluated on every plan. Remove ones that are not used:
+Local values that are referenced during planning are evaluated from their expressions. Remove unused locals and inline simple one-off expressions where it keeps the configuration clear:
 
 ```hcl
 locals {
@@ -242,11 +259,11 @@ resource "aws_vpc" "main" {
 
 ### Avoid Chains of Dependent Locals
 
-Long chains of locals that depend on each other create serial evaluation:
+Long chains of locals that depend on each other can create unnecessary intermediate collections:
 
 ```hcl
 locals {
-  # Each depends on the previous - evaluated serially
+  # Each depends on the previous - creates intermediate values
   raw_data    = yamldecode(file("config.yaml"))
   filtered    = { for k, v in local.raw_data : k => v if v.enabled }
   transformed = { for k, v in local.filtered : k => merge(v, { name = k }) }
