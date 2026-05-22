@@ -8,7 +8,7 @@ Description: Use Istio's metric classification to categorize and label metrics b
 
 ---
 
-When you look at raw Istio metrics, you see individual URL paths, exact response codes, and other high-cardinality values. For meaningful analysis, you often need to group these into categories. Instead of tracking `/api/users/123` and `/api/users/456` separately, you want them grouped as "user API requests." Instead of distinguishing between HTTP 502 and 503, you might want them all labeled as "server errors." Istio's metric classification capabilities let you do exactly this.
+When you add raw request or response attributes to Istio metrics, you can end up with individual URL paths, exact response codes, and other high-cardinality values. For meaningful analysis, you often need to group these into categories. Instead of tracking `/api/users/123` and `/api/users/456` separately, you want them grouped as "user API requests." Instead of distinguishing between HTTP 502 and 503, you might want them all labeled as "server errors." Istio's metric classification capabilities let you do exactly this.
 
 ## The Problem with Raw Metrics
 
@@ -22,7 +22,7 @@ GET /api/products/search?q=widget
 DELETE /api/users/123/sessions/abc
 ```
 
-If you track each path as a separate label value, you get an explosion of time series. Each unique user ID, order ID, and search query creates a new series. Prometheus quickly runs out of memory.
+If you add each path as a separate label value, you get an explosion of time series. Each unique user ID, order ID, and search query creates a new series. Prometheus quickly runs out of memory.
 
 What you actually want is:
 
@@ -178,9 +178,9 @@ tagOverrides:
   content_class:
     operation: UPSERT
     value: >-
-      request.headers['content-type'] == 'application/json' ? 'json' :
-      request.headers['content-type'] == 'application/xml' ? 'xml' :
-      request.headers['content-type'] == 'multipart/form-data' ? 'file-upload' :
+      ('content-type' in request.headers && request.headers['content-type'].startsWith('application/json')) ? 'json' :
+      ('content-type' in request.headers && request.headers['content-type'].startsWith('application/xml')) ? 'xml' :
+      ('content-type' in request.headers && request.headers['content-type'].startsWith('multipart/form-data')) ? 'file-upload' :
       'other'
 ```
 
@@ -191,9 +191,9 @@ tagOverrides:
   auth_method:
     operation: UPSERT
     value: >-
-      request.headers['authorization'].startsWith('Bearer') ? 'jwt' :
-      request.headers['authorization'].startsWith('Basic') ? 'basic' :
-      request.headers['x-api-key'] != '' ? 'api-key' :
+      ('authorization' in request.headers && request.headers['authorization'].startsWith('Bearer')) ? 'jwt' :
+      ('authorization' in request.headers && request.headers['authorization'].startsWith('Basic')) ? 'basic' :
+      ('x-api-key' in request.headers && request.headers['x-api-key'] != '') ? 'api-key' :
       'unauthenticated'
 ```
 
@@ -204,9 +204,9 @@ tagOverrides:
   client_type:
     operation: UPSERT
     value: >-
-      request.headers['x-client-type'] == 'mobile-ios' ? 'ios' :
-      request.headers['x-client-type'] == 'mobile-android' ? 'android' :
-      request.headers['x-client-type'] == 'web' ? 'web' :
+      ('x-client-type' in request.headers && request.headers['x-client-type'] == 'mobile-ios') ? 'ios' :
+      ('x-client-type' in request.headers && request.headers['x-client-type'] == 'mobile-android') ? 'android' :
+      ('x-client-type' in request.headers && request.headers['x-client-type'] == 'web') ? 'web' :
       'unknown'
 ```
 
@@ -269,8 +269,8 @@ spec:
             priority:
               operation: UPSERT
               value: >-
-                request.headers['x-priority'] == 'high' ? 'high' :
-                request.headers['x-priority'] == 'low' ? 'low' :
+                ('x-priority' in request.headers && request.headers['x-priority'] == 'high') ? 'high' :
+                ('x-priority' in request.headers && request.headers['x-priority'] == 'low') ? 'low' :
                 'normal'
 ```
 
@@ -294,8 +294,8 @@ tagOverrides:
   cache_hit:
     operation: UPSERT
     value: >-
-      response.headers['x-cache'] == 'HIT' ? 'hit' :
-      response.headers['x-cache'] == 'MISS' ? 'miss' :
+      ('x-cache' in response.headers && response.headers['x-cache'] == 'HIT') ? 'hit' :
+      ('x-cache' in response.headers && response.headers['x-cache'] == 'MISS') ? 'miss' :
       'none'
   rate_limited:
     operation: UPSERT
@@ -315,7 +315,7 @@ sum(rate(istio_requests_total{cache_hit=~"hit|miss"}[5m])) by (destination_workl
 
 **Keep categories bounded.** Every unique combination of label values creates a new time series. If you add a label with 10 values and another with 5 values, that's 50x more series than before.
 
-**Use a default/catch-all category.** Always include an "other" or "unknown" category in your classification expressions. Otherwise, requests that don't match any pattern get an empty string label, which can cause confusion.
+**Use a default/catch-all category.** Always include an "other" or "unknown" category in your classification expressions. Otherwise, requests that don't match any pattern can end up with an empty or unset label, which can cause confusion.
 
 **Apply the same classification to related metrics.** If you classify `REQUEST_COUNT` by operation, also classify `REQUEST_DURATION` the same way so you can correlate volume with latency.
 
