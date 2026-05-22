@@ -71,6 +71,7 @@ resource "aws_iam_role_policy" "resource_scanner" {
           "ec2:DescribeVolumes",
           "ec2:DescribeSnapshots",
           "ec2:CreateSnapshot",
+          "ec2:DeleteSnapshot",
           "ec2:DeleteVolume",
           "ec2:DescribeInstances",
           "ec2:DescribeAddresses",
@@ -112,7 +113,7 @@ resource "aws_sns_topic_subscription" "email" {
 
 ## Finding Idle Elastic IPs
 
-Elastic IPs that are not associated with running instances incur charges. This is easy to detect and fix.
+Elastic IPs incur charges whether they are associated with running resources or idle, but unassociated Elastic IPs are especially easy waste to detect and fix.
 
 ```hcl
 # Lambda function to find unassociated Elastic IPs
@@ -153,7 +154,7 @@ Load balancers with no healthy targets or zero requests are a common source of w
 ```hcl
 # CloudWatch alarm for idle ALB detection
 resource "aws_cloudwatch_metric_alarm" "idle_alb" {
-  for_each = var.load_balancer_arns
+  for_each = var.load_balancer_dimensions
 
   alarm_name          = "idle-alb-${each.key}"
   comparison_operator = "LessThanOrEqualToThreshold"
@@ -259,9 +260,9 @@ resource "aws_lambda_permission" "allow_eventbridge" {
 }
 ```
 
-## Using Terraform State to Detect Drift
+## Using Terraform Data Sources to Detect Drift
 
-Terraform state itself can help identify resources that have drifted from their intended configuration or should no longer exist.
+Terraform data sources can help identify resources that have drifted from their intended configuration or should no longer exist.
 
 ```hcl
 # Use Terraform data sources to check resource utilization
