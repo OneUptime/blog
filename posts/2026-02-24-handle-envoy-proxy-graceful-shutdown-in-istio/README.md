@@ -15,18 +15,17 @@ Graceful shutdown is closely related to connection draining but covers the broad
 When a pod is terminated, here is the detailed sequence of events:
 
 1. Kubernetes API marks the pod as Terminating
-2. The pod is removed from Service endpoints (kube-proxy/Envoy updates)
-3. The kubelet sends SIGTERM to all containers in the pod
-4. The preStop hooks for each container run in parallel
-5. Application containers start their shutdown process
-6. The istio-proxy container (pilot-agent) receives SIGTERM
-7. pilot-agent sends a drain request to Envoy
-8. Envoy begins draining connections
-9. After drainDuration, pilot-agent sends SIGTERM to Envoy
-10. After parentShutdownDuration, pilot-agent sends SIGKILL to Envoy
-11. If terminationGracePeriodSeconds is exceeded, kubelet sends SIGKILL
+2. The kubelet starts the pod shutdown process
+3. The preStop hook runs for each container that defines one
+4. The kubelet sends SIGTERM to process 1 in each container
+5. The control plane updates EndpointSlice state so the terminating pod is no longer used for regular Service traffic
+6. Application containers start their shutdown process
+7. The istio-proxy container (istio-agent) receives SIGTERM
+8. istio-agent tells Envoy to begin gracefully draining
+9. After terminationDrainDuration, istio-agent kills any remaining Envoy processes
+10. If terminationGracePeriodSeconds is exceeded, kubelet sends SIGKILL
 
-Steps 2 and 3 happen at roughly the same time but are independent processes. This creates a race condition where new requests can arrive at the pod after it has started shutting down.
+The kubelet shutdown process and EndpointSlice updates happen at roughly the same time but are independent processes. This creates a race condition where new requests can arrive at the pod after it has started shutting down.
 
 ## The Istio Proxy Shutdown Sequence
 
@@ -36,10 +35,8 @@ The pilot-agent manages Envoy's lifecycle. When it receives SIGTERM:
 SIGTERM -> pilot-agent
   |
   |-> POST /drain_listeners to Envoy admin (starts listener drain)
-  |-> Wait for drainDuration
-  |-> POST /quitquitquit to Envoy admin (graceful stop)
-  |-> Wait for parentShutdownDuration - drainDuration
-  |-> SIGKILL Envoy (forced stop)
+  |-> Wait for terminationDrainDuration
+  |-> Kill any remaining Envoy processes
 ```
 
 Configure these timings:
@@ -50,17 +47,16 @@ kind: IstioOperator
 spec:
   meshConfig:
     defaultConfig:
-      drainDuration: 30s
-      parentShutdownDuration: 35s
+      terminationDrainDuration: 30s
 ```
 
 ## Solving the Common Shutdown Problems
 
 ### Problem 1: Application exits before Envoy finishes draining
 
-If your application shuts down immediately on SIGTERM, in-flight requests from the application to other services will fail because the Envoy sidecar is still draining.
+If your application shuts down immediately on SIGTERM, in-flight requests handled by the application can fail because the process exits before the work is complete.
 
-Solution: Add a preStop hook to your application container:
+Solution: Add a preStop hook to delay SIGTERM to your application container:
 
 ```yaml
 containers:
@@ -68,7 +64,7 @@ containers:
   lifecycle:
     preStop:
       exec:
-        command: ["/bin/sh", "-c", "sleep 15 && kill 1"]
+        command: ["/bin/sh", "-c", "sleep 15"]
 ```
 
 Or better, have your application handle SIGTERM gracefully by stopping accepting new work and finishing existing requests.
@@ -127,7 +123,7 @@ spec:
       holdApplicationUntilProxyStarts: true
 ```
 
-This adds a postStart lifecycle hook that blocks the application container from starting until the Envoy proxy is ready.
+This configures sidecar injection so the proxy starts first and the application containers are blocked until the Envoy proxy is ready.
 
 ## The SIGTERM Propagation Problem
 
@@ -185,7 +181,7 @@ If you see any errors during the rollout, your shutdown configuration needs adju
 
 ## Best Practices for Production
 
-1. Set `terminationGracePeriodSeconds` to at least 45 seconds (30s drain + 15s buffer)
+1. Set `terminationGracePeriodSeconds` to at least 45 seconds (30s termination drain + 15s buffer)
 2. Add a preStop sleep of 5-10 seconds to handle the endpoint propagation race
 3. Enable `EXIT_ON_ZERO_ACTIVE_CONNECTIONS` for services with long-lived connections
 4. Use `holdApplicationUntilProxyStarts: true` to prevent startup issues
@@ -201,6 +197,9 @@ metadata:
   name: my-service
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: my-service
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -208,11 +207,11 @@ spec:
       maxSurge: 1
   template:
     metadata:
+      labels:
+        app: my-service
       annotations:
         proxy.istio.io/config: |
-          drainDuration: 30s
-          parentShutdownDuration: 35s
-          terminationDrainDuration: 15s
+          terminationDrainDuration: 30s
           proxyMetadata:
             EXIT_ON_ZERO_ACTIVE_CONNECTIONS: "true"
     spec:
