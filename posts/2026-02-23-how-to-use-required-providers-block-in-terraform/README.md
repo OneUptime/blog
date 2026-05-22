@@ -101,7 +101,7 @@ terraform {
       version = "~> 5.0"
     }
 
-    # Pessimistic constraint on minor version (allows 5.30.x)
+    # Pessimistic constraint on minor version (allows 2.25.x)
     kubernetes = {
       source  = "hashicorp/kubernetes"
       version = "~> 2.25.0"
@@ -126,9 +126,9 @@ The `~>` (pessimistic) operator is the most commonly used:
 
 | Constraint | Allows | Does Not Allow |
 |-----------|--------|----------------|
-| `~> 5.0` | 5.0.0 through 5.99.99 | 6.0.0+ |
-| `~> 5.30` | 5.30.0 through 5.99.99 | 6.0.0+ |
-| `~> 5.30.0` | 5.30.0 through 5.30.99 | 5.31.0+ |
+| `~> 5.0` | >= 5.0.0, < 6.0.0 | 6.0.0+ |
+| `~> 5.30` | >= 5.30.0, < 6.0.0 | 6.0.0+ |
+| `~> 5.30.0` | >= 5.30.0, < 5.31.0 | 5.31.0+ |
 | `>= 5.0, < 6.0` | Same as `~> 5.0` | 6.0.0+ |
 
 ## required_providers in Modules
@@ -163,7 +163,7 @@ terraform {
 
 module "vpc" {
   source = "./modules/vpc"
-  # The root module's aws provider (v5.30.x) satisfies
+  # The root module's aws provider (>= 5.30.0, < 6.0.0) satisfies
   # the module's requirement (>= 4.0.0)
 }
 ```
@@ -328,8 +328,8 @@ APPROVED_SOURCES=(
 )
 
 # Extract provider sources from configuration
-USED_SOURCES=$(terraform providers -json 2>/dev/null | \
-  jq -r '.providers[].provider.source // empty' | sort -u)
+USED_SOURCES=$(terraform providers 2>/dev/null | \
+  sed -n 's/.*provider\[\([^]]*\)\].*/\1/p' | sort -u)
 
 for source in $USED_SOURCES; do
   APPROVED=false
@@ -355,7 +355,7 @@ echo "All provider sources are approved."
 # List providers used by current configuration
 terraform providers
 
-# Show detailed provider requirements including modules
+# Pre-populate dependency lock file checksums for multiple platforms
 terraform providers lock -platform=linux_amd64 -platform=darwin_arm64
 
 # Check which version was actually installed
