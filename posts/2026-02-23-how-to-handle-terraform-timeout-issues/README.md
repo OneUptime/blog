@@ -38,10 +38,13 @@ resource "aws_db_instance" "production" {
   engine         = "postgres"
   engine_version = "15.4"
   instance_class = "db.r6g.2xlarge"
+  username       = "dbadmin"
 
-  allocated_storage     = 500
-  max_allocated_storage = 1000
-  storage_encrypted     = true
+  allocated_storage           = 500
+  max_allocated_storage       = 1000
+  storage_encrypted           = true
+  manage_master_user_password = true
+  skip_final_snapshot         = true
 
   # Increase timeouts for large database creation
   timeouts {
@@ -133,7 +136,6 @@ provider "aws" {
   retry_mode  = "adaptive"  # Adaptive retry with exponential backoff
   max_retries = 25           # Default is 25, but you can increase
 
-  # Custom HTTP timeout
   default_tags {
     tags = {
       ManagedBy = "terraform"
@@ -182,15 +184,14 @@ terraform {
     bucket         = "terraform-state"
     key            = "production/terraform.tfstate"
     region         = "us-east-1"
-    dynamodb_table = "terraform-locks"
 
-    # Increase timeouts
-    skip_metadata_api_check = false
+    # Native S3 state locking
+    use_lockfile = true
   }
 }
 ```
 
-If DynamoDB lock acquisition is timing out:
+If you are still using the deprecated DynamoDB locking mechanism and lock acquisition is timing out:
 
 ```bash
 # Check for stale locks
@@ -219,7 +220,7 @@ terraform state pull | wc -c
 
 ## Provider HTTP Timeouts
 
-Some providers have configurable HTTP timeout settings:
+Some providers and resources have configurable retry or timeout settings:
 
 ```hcl
 # AWS provider
@@ -233,21 +234,27 @@ provider "aws" {
 
 # Kubernetes provider
 provider "kubernetes" {
-  # Increase timeout for slow API servers
   exec {
-    api_version = "client.authentication.k8s.io/v1beta1"
+    api_version = "client.authentication.k8s.io/v1"
     command     = "aws"
     args        = ["eks", "get-token", "--cluster-name", var.cluster_name]
   }
 }
 
-# Helm provider
+# Helm releases support per-operation timeouts
 provider "helm" {
-  kubernetes {
+  kubernetes = {
     host                   = var.cluster_endpoint
     cluster_ca_certificate = base64decode(var.cluster_ca)
     token                  = var.cluster_token
   }
+}
+
+resource "helm_release" "ingress" {
+  name       = "ingress-nginx"
+  repository = "https://kubernetes.github.io/ingress-nginx"
+  chart      = "ingress-nginx"
+  timeout    = 900
 }
 ```
 
@@ -263,13 +270,13 @@ terraform state show aws_db_instance.production
 # Step 2: Check what AWS thinks the state is
 aws rds describe-db-instances --db-instance-identifier production-db
 
-# Step 3: If the resource was actually created, do a refresh
-terraform refresh
+# Step 3: If the resource was actually created, refresh state
+terraform apply -refresh-only
 
 # Step 4: If the resource is stuck in a creating/modifying state,
 # wait for it to finish, then refresh
 aws rds wait db-instance-available --db-instance-identifier production-db
-terraform refresh
+terraform apply -refresh-only
 
 # Step 5: If the resource failed and needs cleanup
 terraform state rm aws_db_instance.production
@@ -286,7 +293,7 @@ When your CI/CD pipeline has a job timeout that is shorter than your Terraform o
 jobs:
   terraform:
     runs-on: ubuntu-latest
-    timeout-minutes: 120  # Increase from default 360 for long applies
+    timeout-minutes: 360  # Default and maximum are 360 minutes
 
     steps:
       - name: Terraform Apply
@@ -362,6 +369,7 @@ For resources that are slow to create, avoid downtime by creating the replacemen
 resource "aws_db_instance" "production" {
   # ... configuration ...
 
+  # Ensure identifiers and names can be unique before enabling this.
   lifecycle {
     create_before_destroy = true
   }
