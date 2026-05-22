@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Service Discovery, DNS, Consul, Cloud Map, DevOps
 
-Description: Learn how to build service discovery infrastructure with Terraform, including AWS Cloud Map, Consul integration, DNS-based discovery, and service mesh configurations for dynamic environments.
+Description: Learn how to build service discovery infrastructure with Terraform, including AWS Cloud Map, Consul integration, and DNS-based discovery for dynamic environments.
 
 ---
 
@@ -115,16 +115,25 @@ resource "aws_route53_record" "services" {
   }
 }
 
-# Health checks for service endpoints
-resource "aws_route53_health_check" "services" {
+# Target group health checks used by the ALB and Route 53 alias evaluate_target_health
+resource "aws_lb_target_group" "services" {
   for_each = var.service_endpoints
 
-  fqdn              = each.value.alb_dns_name
-  port               = 443
-  type               = "HTTPS"
-  resource_path      = "/health"
-  failure_threshold  = 3
-  request_interval   = 30
+  name        = "${each.key}-${var.environment}"
+  port        = each.value.port
+  protocol    = "HTTP"
+  vpc_id      = var.vpc_id
+  target_type = "ip"
+
+  health_check {
+    enabled             = true
+    path                = "/health"
+    protocol            = "HTTP"
+    matcher             = "200-399"
+    healthy_threshold   = 2
+    unhealthy_threshold = 3
+    interval            = 30
+  }
 
   tags = {
     Service = each.key
@@ -198,6 +207,13 @@ resource "aws_security_group" "consul" {
     cidr_blocks = [var.vpc_cidr]
   }
 
+  ingress {
+    from_port   = 8301
+    to_port     = 8301
+    protocol    = "udp"
+    cidr_blocks = [var.vpc_cidr]
+  }
+
   # Server RPC
   ingress {
     from_port   = 8300
@@ -217,7 +233,7 @@ resource "aws_security_group" "consul" {
 
 ## Monitoring Service Discovery Health
 
-Track the health of your service discovery infrastructure:
+Track the health of your service discovery infrastructure. For ECS services registered in Cloud Map, Container Insights can monitor whether the expected tasks are running:
 
 ```hcl
 # service-discovery/monitoring.tf
@@ -229,18 +245,19 @@ resource "aws_cloudwatch_metric_alarm" "service_count" {
   alarm_name          = "service-discovery-${each.key}-instance-count"
   comparison_operator = "LessThanThreshold"
   evaluation_periods  = 2
-  metric_name         = "HealthyInstanceCount"
-  namespace           = "AWS/ServiceDiscovery"
+  metric_name         = "RunningTaskCount"
+  namespace           = "ECS/ContainerInsights"
   period              = 60
   statistic           = "Minimum"
   threshold           = 1
-  alarm_description   = "No healthy instances for ${each.key}"
+  alarm_description   = "No running ECS tasks for ${each.key}"
+  treat_missing_data  = "breaching"
 
   alarm_actions = [aws_sns_topic.alerts.arn]
 
   dimensions = {
-    ServiceId   = aws_service_discovery_service.services[each.key].id
-    NamespaceId = aws_service_discovery_private_dns_namespace.main.id
+    ClusterName = var.ecs_cluster_name
+    ServiceName = aws_ecs_service.app[each.key].name
   }
 }
 
@@ -256,11 +273,11 @@ resource "aws_cloudwatch_dashboard" "service_discovery" {
         height = 4
         properties = {
           metrics = [
-            ["AWS/ServiceDiscovery", "HealthyInstanceCount",
-             "ServiceId", aws_service_discovery_service.services[name].id,
-             "NamespaceId", aws_service_discovery_private_dns_namespace.main.id]
+            ["ECS/ContainerInsights", "RunningTaskCount",
+             "ClusterName", var.ecs_cluster_name,
+             "ServiceName", aws_ecs_service.app[name].name]
           ]
-          title  = "${name} - Healthy Instances"
+          title  = "${name} - Running Tasks"
           period = 60
         }
       }
@@ -271,9 +288,9 @@ resource "aws_cloudwatch_dashboard" "service_discovery" {
 
 ## Best Practices
 
-Use short DNS TTLs for service discovery records. Long TTLs prevent quick failover when services move or scale. A TTL of 10 seconds is appropriate for most microservices environments.
+Use short DNS TTLs for service discovery records. Long TTLs prevent quick failover when services move or scale. A TTL of 10 seconds is appropriate for most Cloud Map microservices environments. Route 53 alias records use the alias target's TTL, so configure failover through the target resource health instead of trying to set a TTL on the alias record.
 
-Implement health checks for all discovered services. Without health checks, clients may be routed to unhealthy instances. Use application-level health checks that verify the service can handle requests, not just that the process is running.
+Implement health checks for all discovered services. Without health checks, clients may be routed to unhealthy instances. Use application-level health checks that verify the service can handle requests, not just that the process is running. For AWS Cloud Map custom health checks, your health checker must report status with `UpdateInstanceCustomHealthStatus`; for Route 53 private hosted zones, use ALB target health or CloudWatch-metric based health checks for private endpoints.
 
 Choose the right discovery mechanism for your architecture. Cloud Map is simplest for ECS, Consul provides the most features including key-value storage and service mesh, and DNS is the most universal and works with any application.
 
