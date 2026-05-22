@@ -67,7 +67,7 @@ Each participating service also needs its own Deployment and Service (order-serv
 The orchestrator calls each service in sequence. Configure Istio with appropriate timeout and retry policies for each step:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: payment-service
@@ -116,7 +116,7 @@ Important differences: the payment processing endpoint gets zero retries because
 Each step in the saga needs a timeout that is long enough for the operation to complete but short enough to not hold up the entire saga indefinitely:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: inventory-service
@@ -149,14 +149,14 @@ spec:
       retryOn: 5xx,connect-failure
 ```
 
-Compensating actions (release, refund, cancel) should always have retries. If a compensation fails, you are left in an inconsistent state - a partially completed saga that neither succeeded nor rolled back fully.
+Compensating actions (release, refund, cancel) should be idempotent and have retries. If a compensation fails, you are left in an inconsistent state - a partially completed saga that neither succeeded nor rolled back fully.
 
 ## Circuit Breaking for Saga Participants
 
 If a saga participant service is down, you want to know fast rather than waiting for timeouts:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: payment-service
@@ -175,7 +175,7 @@ spec:
       interval: 10s
       baseEjectionTime: 30s
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: inventory-service
@@ -200,7 +200,7 @@ spec:
 The saga orchestrator is the most critical component in an orchestrated saga. If it crashes mid-saga, you have a partial transaction. Make it highly available and give it its own traffic policies:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: saga-orchestrator
@@ -223,7 +223,7 @@ spec:
 Also configure the gateway route to the orchestrator with appropriate settings:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: order-saga
@@ -247,14 +247,14 @@ spec:
     timeout: 60s
 ```
 
-The 60-second timeout on the gateway is the total time allowed for the entire saga to complete. It should be longer than the sum of individual step timeouts since steps run sequentially.
+The 60-second timeout on the gateway bounds the client-facing request to the orchestrator. If the client waits synchronously for the saga result, it should be longer than the expected successful path. The orchestrator should still enforce its own durable saga deadline rather than relying only on the gateway timeout.
 
 ## Header Propagation for Saga Tracing
 
-Tracing a saga through multiple services requires header propagation. The saga ID should flow through every step:
+Tracing a saga through multiple services requires header propagation. Istio can add static request headers, but your application code must propagate the saga ID through every step:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: saga-orchestrator
@@ -272,15 +272,21 @@ spec:
           x-saga-trace: "enabled"
 ```
 
-Your application code must propagate both the standard Istio trace headers and the saga-specific headers:
+Your application code must propagate both the trace context headers used with Istio and the saga-specific headers:
 
 ```python
+import requests
+
 SAGA_HEADERS = [
     'x-request-id',
+    'traceparent',
+    'tracestate',
     'x-b3-traceid',
     'x-b3-spanid',
     'x-b3-parentspanid',
     'x-b3-sampled',
+    'x-b3-flags',
+    'b3',
     'x-saga-id',
     'x-saga-step',
 ]
@@ -298,7 +304,7 @@ def call_next_saga_step(step_url, payload, incoming_request):
 
 ## Handling Saga Timeouts
 
-When the overall saga times out, the orchestrator needs to trigger compensating actions. But the orchestrator itself might be the one that timed out. To handle this, implement a saga recovery mechanism:
+When the application-level saga deadline expires, the orchestrator needs to trigger compensating actions. But the orchestrator can crash or fail before it finishes compensation. To handle this, implement a saga recovery mechanism:
 
 ```yaml
 apiVersion: batch/v1
@@ -326,18 +332,18 @@ The recovery job runs every 5 minutes, finds sagas that have been in progress fo
 
 ## Monitoring Saga Health
 
-Track saga completion rates and durations:
+Track saga rates and durations. These queries use default Istio metrics and labels; if you need per-endpoint labels such as path or method, add them with Istio Telemetry metric overrides first:
 
 ```text
-# Saga start rate
+# Saga orchestrator request rate
 
-sum(rate(istio_requests_total{destination_service="saga-orchestrator.production.svc.cluster.local",request_url_path="/api/orders",request_method="POST"}[5m]))
+sum(rate(istio_requests_total{destination_service="saga-orchestrator.production.svc.cluster.local",reporter="destination"}[5m]))
 
 # Payment step error rate
-sum(rate(istio_requests_total{destination_service="payment-service.production.svc.cluster.local",response_code=~"5.*"}[5m]))
+sum(rate(istio_requests_total{destination_service="payment-service.production.svc.cluster.local",reporter="destination",response_code=~"5.*"}[5m]))
 
 # Overall saga latency
-histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{destination_service="saga-orchestrator.production.svc.cluster.local"}[5m])) by (le))
+histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{destination_service="saga-orchestrator.production.svc.cluster.local",reporter="destination"}[5m])) by (le))
 ```
 
 ## Choreographed Sagas with Istio
@@ -346,7 +352,7 @@ For choreographed sagas (event-driven without a central orchestrator), Istio's r
 
 ```yaml
 # Each service has its own webhook endpoint for receiving events
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: payment-events
@@ -369,8 +375,8 @@ spec:
       perTryTimeout: 2s
 ```
 
-Event webhook endpoints should always have retries since event delivery needs to be reliable.
+Event webhook endpoints should have retries when the handlers are idempotent, since event delivery needs to be reliable and retries can produce duplicate deliveries.
 
 ## Summary
 
-Istio supports the saga pattern by providing reliable communication between saga participants. For orchestrated sagas, configure different timeout and retry policies per step: no retries for non-idempotent forward actions, aggressive retries for compensating actions. Set circuit breakers to detect failing participants quickly. Propagate saga headers through the service chain for tracing. Use the overall gateway timeout to bound the saga duration. For choreographed sagas, focus on reliable event delivery with retries on webhook endpoints. Run a saga recovery CronJob to handle stuck sagas. Monitor completion rates and per-step error rates to catch issues early.
+Istio supports the saga pattern by providing reliable communication between saga participants. For orchestrated sagas, configure different timeout and retry policies per step: no retries for non-idempotent forward actions, and retries for idempotent compensating actions. Set circuit breakers to detect failing participants quickly. Propagate saga headers through the service chain for tracing. Use the gateway timeout to bound the client-facing request, and enforce saga deadlines in the orchestrator. For choreographed sagas, focus on reliable event delivery with retries on idempotent webhook endpoints. Run a saga recovery CronJob to handle stuck sagas. Monitor request rates and per-step error rates to catch issues early.
