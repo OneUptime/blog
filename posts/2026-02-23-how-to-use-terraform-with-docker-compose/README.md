@@ -197,8 +197,6 @@ The Docker Compose template uses Terraform variables for environment-specific co
 
 ```yaml
 # templates/docker-compose.yml.tftpl
-version: "3.8"
-
 services:
   # Application service
   app:
@@ -223,7 +221,7 @@ services:
       options:
         awslogs-group: "/docker/${environment}/app"
         awslogs-region: "${aws_region}"
-        awslogs-stream-prefix: "app"
+        awslogs-stream: "app"
 
   # Nginx reverse proxy
   nginx:
@@ -253,7 +251,7 @@ services:
       options:
         awslogs-group: "/docker/${environment}/worker"
         awslogs-region: "${aws_region}"
-        awslogs-stream-prefix: "worker"
+        awslogs-stream: "worker"
 ```
 
 ## Using the Docker Terraform Provider
@@ -346,7 +344,7 @@ resource "aws_cloudwatch_log_group" "worker" {
 
 Use Docker Compose for simpler deployments where container orchestration features like auto-scaling and service mesh are not needed. Always template your Docker Compose files through Terraform so that environment-specific configuration is injected at deploy time rather than stored in the compose file.
 
-Pin Docker image versions in production - never use the "latest" tag. Set up health checks for all services so Docker can automatically restart unhealthy containers.
+Pin Docker image versions in production - never use the "latest" tag. Set up health checks for all services so Docker can report unhealthy containers and gate dependent services; use a restart policy or external monitoring if you need automatic recovery.
 
 For container orchestration at larger scale, see our guides on [cost optimization for Kubernetes with Terraform](https://oneuptime.com/blog/post/2026-02-23-how-to-handle-cost-optimization-for-kubernetes-with-terraform/view) and [using Terraform with Nomad for workload orchestration](https://oneuptime.com/blog/post/2026-02-23-how-to-use-terraform-with-nomad-for-workload-orchestration/view).
 
