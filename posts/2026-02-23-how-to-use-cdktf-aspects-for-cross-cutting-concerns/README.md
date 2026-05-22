@@ -8,7 +8,7 @@ Description: Learn how to use CDKTF aspects to apply cross-cutting concerns like
 
 ---
 
-Some infrastructure requirements apply to every resource in your project. Every resource needs tags. Every S3 bucket needs encryption. Every security group needs logging. Implementing these one resource at a time is tedious and error-prone. CDKTF aspects give you a way to apply these cross-cutting concerns automatically to every resource in a stack or even across your entire application. This guide shows you how to build and use aspects effectively.
+Some infrastructure requirements apply to every resource in your project. Every resource needs tags. Every S3 bucket needs encryption. Every security group needs logging. Implementing these one resource at a time is tedious and error-prone. CDKTF aspects give you a way to apply these cross-cutting concerns automatically to every resource in a stack or even across your entire application. This guide shows you how to build and use aspects effectively. Note that HashiCorp deprecated CDKTF on December 10, 2025, so use these patterns for existing CDKTF projects or with an actively maintained fork.
 
 ## What Are Aspects?
 
@@ -26,7 +26,7 @@ An aspect implements a single method:
 
 ```typescript
 import { IAspect } from "cdktf";
-import { Construct, IConstruct } from "constructs";
+import { IConstruct } from "constructs";
 
 // Every aspect must implement the visit method
 class MyAspect implements IAspect {
@@ -42,14 +42,15 @@ class MyAspect implements IAspect {
 You apply aspects using the `Aspects.of()` method:
 
 ```typescript
-import { Aspects } from "cdktf";
+import { App, Aspects } from "cdktf";
+
+const app = new App();
 
 // Apply to a specific stack
 const stack = new MyStack(app, "production");
 Aspects.of(stack).add(new MyAspect());
 
 // Apply to the entire app (all stacks)
-const app = new App();
 Aspects.of(app).add(new MyAspect());
 
 // Apply to a specific construct within a stack
@@ -62,7 +63,7 @@ Aspects.of(myConstruct).add(new MyAspect());
 The most common use case for aspects is adding tags to all resources:
 
 ```typescript
-import { IAspect } from "cdktf";
+import { App, Aspects, IAspect } from "cdktf";
 import { IConstruct } from "constructs";
 
 // Aspect that adds tags to every resource that supports tagging
@@ -74,18 +75,22 @@ class TaggingAspect implements IAspect {
   }
 
   visit(node: IConstruct): void {
-    // Check if the node has a tagsInput property (most AWS resources do)
+    // Check if the node has tags and tagsInput properties (most AWS resources do)
     if (this.isTaggable(node)) {
-      const resource = node as any;
       // Merge our tags with any existing tags
-      const existingTags = resource.tagsInput || {};
-      resource.tags = { ...existingTags, ...this.tags };
+      const existingTags = node.tagsInput || {};
+      node.tags = { ...this.tags, ...existingTags };
     }
   }
 
-  private isTaggable(node: IConstruct): boolean {
+  private isTaggable(
+    node: IConstruct
+  ): node is IConstruct & {
+    tags: Record<string, string>;
+    tagsInput?: Record<string, string>;
+  } {
     // Check if the construct has tags support
-    return "tagsInput" in (node as any);
+    return "tags" in node && "tagsInput" in node;
   }
 }
 
@@ -113,7 +118,6 @@ Aspects can validate resources and produce warnings or errors:
 ```typescript
 import { IAspect, Annotations } from "cdktf";
 import { IConstruct } from "constructs";
-import { S3Bucket } from "@cdktf/provider-aws/lib/s3-bucket";
 import { Instance } from "@cdktf/provider-aws/lib/instance";
 import { SecurityGroup } from "@cdktf/provider-aws/lib/security-group";
 
@@ -122,7 +126,7 @@ class SecurityValidationAspect implements IAspect {
   visit(node: IConstruct): void {
     // Check that no instances use t2.micro (old generation)
     if (node instanceof Instance) {
-      if (node.instanceType === "t2.micro") {
+      if (node.instanceTypeInput === "t2.micro") {
         Annotations.of(node).addWarning(
           "Consider using t3.micro instead of t2.micro for better performance"
         );
@@ -131,7 +135,7 @@ class SecurityValidationAspect implements IAspect {
 
     // Check that security groups do not allow unrestricted SSH
     if (node instanceof SecurityGroup) {
-      const ingress = node.ingress;
+      const ingress = node.ingressInput;
       if (Array.isArray(ingress)) {
         for (const rule of ingress) {
           if (
@@ -154,7 +158,7 @@ Aspects.of(stack).add(new SecurityValidationAspect());
 
 The difference between `addWarning` and `addError` is important:
 - `addWarning` produces a warning message but does not prevent synthesis
-- `addError` produces an error and prevents deployment
+- `addError` produces an error annotation that fails synthesis in the CDKTF toolkit
 
 ## Building an Encryption Enforcement Aspect
 
@@ -169,7 +173,7 @@ class EncryptionEnforcementAspect implements IAspect {
   visit(node: IConstruct): void {
     // Check RDS instances
     if (node instanceof DbInstance) {
-      if (!node.storageEncrypted) {
+      if (node.storageEncryptedInput !== true) {
         Annotations.of(node).addError(
           "RDS instance must have storage encryption enabled. " +
           "Set storageEncrypted: true"
@@ -179,7 +183,7 @@ class EncryptionEnforcementAspect implements IAspect {
 
     // Check EBS volumes
     if (node instanceof EbsVolume) {
-      if (!node.encrypted) {
+      if (node.encryptedInput !== true) {
         Annotations.of(node).addError(
           "EBS volume must be encrypted. Set encrypted: true"
         );
@@ -213,16 +217,17 @@ class CostControlAspect implements IAspect {
 
   visit(node: IConstruct): void {
     if (node instanceof Instance) {
-      if (!this.allowedInstanceTypes.includes(node.instanceType || "")) {
+      const instanceType = node.instanceTypeInput || "";
+      if (!this.allowedInstanceTypes.includes(instanceType)) {
         Annotations.of(node).addError(
-          `Instance type ${node.instanceType} is not allowed in ` +
+          `Instance type ${instanceType} is not allowed in ` +
           `${this.environment}. Allowed types: ${this.allowedInstanceTypes.join(", ")}`
         );
       }
     }
 
     if (node instanceof DbInstance) {
-      if (this.environment !== "production" && node.multiAz) {
+      if (this.environment !== "production" && node.multiAzInput === true) {
         Annotations.of(node).addWarning(
           "Multi-AZ is enabled in a non-production environment. " +
           "This doubles the cost of the database."
@@ -269,7 +274,7 @@ import { Testing } from "cdktf";
 import { TerraformStack } from "cdktf";
 import { AwsProvider } from "@cdktf/provider-aws/lib/provider";
 import { Instance } from "@cdktf/provider-aws/lib/instance";
-import { Aspects, Annotations } from "cdktf";
+import { Aspects, AnnotationMetadataEntryType } from "cdktf";
 
 describe("CostControlAspect", () => {
   it("should reject large instances in development", () => {
@@ -277,7 +282,7 @@ describe("CostControlAspect", () => {
     const stack = new TerraformStack(app, "test");
     new AwsProvider(stack, "aws", { region: "us-east-1" });
 
-    new Instance(stack, "big-server", {
+    const instance = new Instance(stack, "big-server", {
       ami: "ami-12345",
       instanceType: "t3.xlarge",
     });
@@ -285,11 +290,15 @@ describe("CostControlAspect", () => {
     Aspects.of(stack).add(new CostControlAspect("development"));
 
     // Synthesize triggers the aspects
-    const synthesized = Testing.synth(stack);
+    Testing.synth(stack);
 
     // Check for validation errors
     // The synth should produce errors about the instance type
-    expect(Annotations.of(stack).hasError()).toBeTruthy();
+    expect(
+      instance.node.metadata.some(
+        (entry) => entry.type === AnnotationMetadataEntryType.ERROR
+      )
+    ).toBeTruthy();
   });
 });
 ```
