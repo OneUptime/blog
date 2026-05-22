@@ -8,7 +8,7 @@ Description: How to configure different certificate authorities for different na
 
 ---
 
-In a multi-tenant Kubernetes cluster, you might want different namespaces to use different certificate authorities. This creates trust boundaries between tenants. Services within a namespace trust each other through their shared CA, but services in different namespaces cannot establish mTLS connections because their certificates come from different CAs.
+In a multi-tenant Kubernetes cluster, you might want different namespaces to use different certificate authorities. This creates trust boundaries between tenants. Services within a namespace can share the same certificate signer, while services in different namespaces can be configured to use different signers and trust anchors. If those signers do not share a trusted root, cross-namespace mTLS connections will fail.
 
 ## Why Different CAs per Namespace?
 
@@ -21,44 +21,39 @@ The default Istio setup uses a single CA for the entire mesh. Every workload get
 
 ## Using cert-manager for Per-Namespace CAs
 
-The most practical approach to per-namespace CAs in Istio is using cert-manager with the istio-csr component. This replaces istiod's built-in CA with cert-manager for certificate signing.
+The documented approach to different CAs per namespace in Istio is Istio's Kubernetes CSR integration with cert-manager's Kubernetes CSR controller. Different workloads request certificates with different signer names, and cert-manager signs those CSRs with the corresponding Issuer or ClusterIssuer.
 
-Install istio-csr:
+Install cert-manager with the Kubernetes CSR controller enabled:
 
 ```bash
 helm repo add jetstack https://charts.jetstack.io
 helm repo update
 
-helm install istio-csr jetstack/cert-manager-istio-csr \
+helm install cert-manager jetstack/cert-manager \
   --namespace cert-manager \
-  --set "app.tls.rootCAFile=/var/run/secrets/istio-csr/ca.pem" \
-  --set "app.certmanager.issuer.group=cert-manager.io" \
-  --set "app.certmanager.issuer.kind=Issuer" \
-  --set "app.certmanager.issuer.name=istio-ca"
+  --create-namespace \
+  --set crds.enabled=true \
+  --set featureGates="ExperimentalCertificateSigningRequestControllers=true"
 ```
 
-## Setting Up Per-Namespace Issuers
+## Setting Up Per-Namespace Signers
 
-Create a different cert-manager Issuer in each namespace:
+Create a different cert-manager ClusterIssuer for each namespace's Istio signer:
 
 ```yaml
-# Namespace: team-alpha
-
+# Root CA for team-alpha
 apiVersion: cert-manager.io/v1
-kind: Issuer
+kind: ClusterIssuer
 metadata:
-  name: istio-ca
-  namespace: team-alpha
+  name: selfsigned-team-alpha
 spec:
-  ca:
-    secretName: team-alpha-ca-key-pair
+  selfSigned: {}
 ---
-# The CA certificate for team-alpha
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
   name: team-alpha-ca
-  namespace: team-alpha
+  namespace: cert-manager
 spec:
   isCA: true
   commonName: team-alpha-ca
@@ -69,26 +64,33 @@ spec:
     algorithm: ECDSA
     size: 256
   issuerRef:
-    name: root-ca
+    name: selfsigned-team-alpha
     kind: ClusterIssuer
+    group: cert-manager.io
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: team-alpha
+spec:
+  ca:
+    secretName: team-alpha-ca-key-pair
 ```
 
 ```yaml
-# Namespace: team-beta
+# Root CA for team-beta
 apiVersion: cert-manager.io/v1
-kind: Issuer
+kind: ClusterIssuer
 metadata:
-  name: istio-ca
-  namespace: team-beta
+  name: selfsigned-team-beta
 spec:
-  ca:
-    secretName: team-beta-ca-key-pair
+  selfSigned: {}
 ---
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
   name: team-beta-ca
-  namespace: team-beta
+  namespace: cert-manager
 spec:
   isCA: true
   commonName: team-beta-ca
@@ -99,11 +101,20 @@ spec:
     algorithm: ECDSA
     size: 256
   issuerRef:
-    name: root-ca
+    name: selfsigned-team-beta
     kind: ClusterIssuer
+    group: cert-manager.io
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: team-beta
+spec:
+  ca:
+    secretName: team-beta-ca-key-pair
 ```
 
-Both intermediate CAs are signed by the same `root-ca` ClusterIssuer. This means they share a common trust root but have separate signing certificates.
+These examples use separate self-signed roots. If you instead sign both namespace CAs from the same offline root, they share a common trust root but have separate signing certificates.
 
 ## Configuring Istio to Use Per-Namespace Signing
 
@@ -116,14 +127,73 @@ spec:
   values:
     pilot:
       env:
-        ENABLE_CA_SERVER: "false"
+        EXTERNAL_CA: ISTIOD_RA_KUBERNETES_API
   meshConfig:
     defaultConfig:
       proxyMetadata:
         ISTIO_META_CERT_SIGNER: istio-system
+    caCertificates:
+    - pem: |
+        <istio-system root CA PEM>
+      certSigners:
+      - clusterissuers.cert-manager.io/istio-system
+    - pem: |
+        <team-alpha root CA PEM>
+      certSigners:
+      - clusterissuers.cert-manager.io/team-alpha
+    - pem: |
+        <team-beta root CA PEM>
+      certSigners:
+      - clusterissuers.cert-manager.io/team-beta
+  components:
+    pilot:
+      k8s:
+        env:
+        - name: CERT_SIGNER_DOMAIN
+          value: clusterissuers.cert-manager.io
+        - name: PILOT_CERT_PROVIDER
+          value: k8s.io/clusterissuers.cert-manager.io/istio-system
+        overlays:
+        - kind: ClusterRole
+          name: istiod-clusterrole-istio-system
+          patches:
+          - path: rules[-1]
+            value: |
+              apiGroups:
+              - certificates.k8s.io
+              resourceNames:
+              - clusterissuers.cert-manager.io/istio-system
+              - clusterissuers.cert-manager.io/team-alpha
+              - clusterissuers.cert-manager.io/team-beta
+              resources:
+              - signers
+              verbs:
+              - approve
 ```
 
-With `ENABLE_CA_SERVER: "false"`, istiod does not run its own CA. All certificate signing goes through cert-manager via istio-csr.
+With `EXTERNAL_CA: ISTIOD_RA_KUBERNETES_API`, istiod acts as a registration authority and uses Kubernetes CertificateSigningRequest resources instead of its built-in CA.
+
+The default `istio-system` signer in this example also needs a matching `ClusterIssuer`, or you can change `ISTIO_META_CERT_SIGNER` and `PILOT_CERT_PROVIDER` to a signer you already created. Then configure each namespace to request the right signer:
+
+```yaml
+apiVersion: networking.istio.io/v1beta1
+kind: ProxyConfig
+metadata:
+  name: team-alpha-cert-signer
+  namespace: team-alpha
+spec:
+  environmentVariables:
+    ISTIO_META_CERT_SIGNER: team-alpha
+---
+apiVersion: networking.istio.io/v1beta1
+kind: ProxyConfig
+metadata:
+  name: team-beta-cert-signer
+  namespace: team-beta
+spec:
+  environmentVariables:
+    ISTIO_META_CERT_SIGNER: team-beta
+```
 
 ## Trust Boundaries and Cross-Namespace Communication
 
@@ -150,24 +220,26 @@ For full isolation, use completely separate root CAs:
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
 metadata:
-  name: root-ca-alpha
+  name: team-alpha
 spec:
-  selfSigned: {}
+  ca:
+    secretName: team-alpha-ca-key-pair
 ---
 # ClusterIssuer for team-beta with its own root
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
 metadata:
-  name: root-ca-beta
+  name: team-beta
 spec:
-  selfSigned: {}
+  ca:
+    secretName: team-beta-ca-key-pair
 ```
 
 With separate roots, mTLS connections between team-alpha and team-beta will fail because neither trusts the other's root CA. This is the strongest form of isolation.
 
-## Using PeerAuthentication for Namespace Isolation
+## Using AuthorizationPolicy for Namespace Isolation
 
-Even without per-namespace CAs, you can achieve some isolation using PeerAuthentication and AuthorizationPolicy:
+Even without per-namespace CAs, you can achieve some isolation using AuthorizationPolicy:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -186,7 +258,7 @@ spec:
         namespaces: ["istio-system"]
 ```
 
-This only allows traffic from the same namespace and the Istio system namespace. It is not as strong as CA-level isolation (someone could disable the policy), but it is simpler to set up.
+This only allows traffic from the same namespace and the Istio system namespace. It is not the same as CA-level isolation, but it is simpler to set up.
 
 ## Verifying Per-Namespace Certificates
 
@@ -208,7 +280,7 @@ The issuers should be different (team-alpha-ca vs team-beta-ca).
 
 ## Selective Cross-Namespace Trust
 
-If you want most namespaces isolated but some able to communicate, you can configure selective trust:
+If you want most namespaces isolated but some able to communicate, you can configure additional trust anchors for selected cert signers:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -220,36 +292,38 @@ spec:
         -----BEGIN CERTIFICATE-----
         <team-alpha root CA>
         -----END CERTIFICATE-----
+      certSigners:
+      - clusterissuers.cert-manager.io/team-alpha
     - pem: |
         -----BEGIN CERTIFICATE-----
         <team-beta root CA>
         -----END CERTIFICATE-----
+      certSigners:
+      - clusterissuers.cert-manager.io/team-beta
 ```
 
-This adds both root CAs to the trust bundle for specific workloads that need cross-namespace access.
+This adds both root CAs to the mesh trust configuration and scopes each trust anchor to the matching Kubernetes signer.
 
 ## Practical Example: Dev and Prod Isolation
 
 A common use case is isolating development and production namespaces:
 
 ```yaml
-# dev namespace uses a dev CA
+# dev namespace uses a dev CA from the dev-ca-key-pair Secret
 apiVersion: cert-manager.io/v1
-kind: Issuer
+kind: ClusterIssuer
 metadata:
-  name: istio-ca
-  namespace: dev
+  name: dev
 spec:
   ca:
     secretName: dev-ca-key-pair
 
 ---
-# prod namespace uses a prod CA
+# prod namespace uses a prod CA from the prod-ca-key-pair Secret
 apiVersion: cert-manager.io/v1
-kind: Issuer
+kind: ClusterIssuer
 metadata:
-  name: istio-ca
-  namespace: prod
+  name: prod
 spec:
   ca:
     secretName: prod-ca-key-pair
@@ -265,7 +339,8 @@ Monitor each namespace's CA independently:
 # Check certificate status per namespace
 for ns in team-alpha team-beta; do
   echo "=== $ns ==="
-  kubectl get certificate -n "$ns"
+  kubectl get clusterissuer "$ns"
+  kubectl get certificate -n cert-manager "$ns-ca"
   for pod in $(kubectl get pods -n "$ns" -o jsonpath='{.items[*].metadata.name}'); do
     expiry=$(istioctl proxy-config secret "$pod.$ns" -o json 2>/dev/null | \
       jq -r '.dynamicActiveSecrets[0].secret.tlsCertificate.certificateChain.inlineBytes' 2>/dev/null | \
@@ -275,4 +350,4 @@ for ns in team-alpha team-beta; do
 done
 ```
 
-Per-namespace CAs add complexity but provide real security benefits for multi-tenant environments. If you just need logical isolation, authorization policies are simpler. But if you need cryptographic isolation where different tenants literally cannot decrypt each other's traffic, per-namespace CAs are the way to go.
+Per-namespace CAs add complexity but provide real security benefits for multi-tenant environments. If you just need logical isolation, authorization policies are simpler. But if you need cryptographic isolation where different tenants cannot authenticate to each other at the mTLS layer, per-namespace CAs are the way to go.
