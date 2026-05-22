@@ -14,7 +14,7 @@ This guide covers installing Terragrunt on all major platforms and setting up yo
 
 ## Prerequisites
 
-Terragrunt requires Terraform to be installed first. Verify your Terraform installation:
+This guide uses Terraform with Terragrunt, so install Terraform first and verify your Terraform installation:
 
 ```bash
 # Check Terraform is installed
@@ -22,10 +22,10 @@ Terragrunt requires Terraform to be installed first. Verify your Terraform insta
 terraform version
 
 # You should see output like:
-# Terraform v1.7.0
+# Terraform v1.14.0
 ```
 
-If Terraform is not installed, grab it from [terraform.io](https://www.terraform.io/downloads) or use your package manager.
+If Terraform is not installed, grab it from [developer.hashicorp.com/terraform/install](https://developer.hashicorp.com/terraform/install) or use your package manager.
 
 ## Installing Terragrunt on macOS
 
@@ -37,7 +37,7 @@ brew install terragrunt
 
 # Verify the installation
 terragrunt --version
-# terragrunt version 0.54.0
+# terragrunt version v1.0.5
 ```
 
 If you need a specific version:
@@ -45,8 +45,8 @@ If you need a specific version:
 ```bash
 # Install a specific version with asdf
 asdf plugin add terragrunt
-asdf install terragrunt 0.54.0
-asdf global terragrunt 0.54.0
+asdf install terragrunt 1.0.5
+asdf global terragrunt 1.0.5
 ```
 
 ## Installing Terragrunt on Linux
@@ -55,12 +55,12 @@ On Linux, download the binary directly or use a package manager.
 
 ```bash
 # Option 1: Download the binary directly
-TERRAGRUNT_VERSION="0.54.0"
-curl -L "https://github.com/gruntwork-io/terragrunt/releases/download/v${TERRAGRUNT_VERSION}/terragrunt_linux_amd64" \
-  -o /usr/local/bin/terragrunt
+TERRAGRUNT_VERSION="v1.0.5"
+curl -L "https://github.com/gruntwork-io/terragrunt/releases/download/${TERRAGRUNT_VERSION}/terragrunt_linux_amd64" \
+  -o terragrunt
 
-# Make it executable
-chmod +x /usr/local/bin/terragrunt
+# Install it on your PATH
+sudo install -m 0755 terragrunt /usr/local/bin/terragrunt
 
 # Verify
 terragrunt --version
@@ -70,25 +70,22 @@ For ARM-based systems (like AWS Graviton):
 
 ```bash
 # Download the ARM64 binary
-curl -L "https://github.com/gruntwork-io/terragrunt/releases/download/v${TERRAGRUNT_VERSION}/terragrunt_linux_arm64" \
-  -o /usr/local/bin/terragrunt
+curl -L "https://github.com/gruntwork-io/terragrunt/releases/download/${TERRAGRUNT_VERSION}/terragrunt_linux_arm64" \
+  -o terragrunt
 
-chmod +x /usr/local/bin/terragrunt
+sudo install -m 0755 terragrunt /usr/local/bin/terragrunt
 ```
 
 Using package managers:
 
 ```bash
-# Ubuntu/Debian with the official repository
-# (check Gruntwork docs for the latest instructions)
-curl -L https://github.com/gruntwork-io/terragrunt/releases/download/v0.54.0/terragrunt_linux_amd64 -o terragrunt
-sudo mv terragrunt /usr/local/bin/
-sudo chmod +x /usr/local/bin/terragrunt
+# Linux with Homebrew
+brew install terragrunt
 
 # With asdf version manager
 asdf plugin add terragrunt
-asdf install terragrunt 0.54.0
-asdf global terragrunt 0.54.0
+asdf install terragrunt 1.0.5
+asdf global terragrunt 1.0.5
 ```
 
 ## Installing Terragrunt on Windows
@@ -162,6 +159,9 @@ The root `terragrunt.hcl` file contains shared configuration that all child modu
 ```hcl
 # live/terragrunt.hcl
 
+# Use Terraform instead of Terragrunt's default OpenTofu binary
+terraform_binary = "terraform"
+
 # Configure remote state backend
 remote_state {
   backend = "s3"
@@ -173,11 +173,11 @@ remote_state {
     key            = "${path_relative_to_include()}/terraform.tfstate"
     region         = "us-east-1"
     encrypt        = true
-    # DynamoDB table for state locking
-    dynamodb_table = "terraform-locks"
+    # S3 lockfile for state locking
+    use_lockfile   = true
   }
 
-  # Automatically create the S3 bucket and DynamoDB table if they don't exist
+  # Generate backend.tf for Terraform
   generate = {
     path      = "backend.tf"
     if_exists = "overwrite_terragrunt"
@@ -191,7 +191,7 @@ generate "provider" {
 
   contents = <<EOF
 terraform {
-  required_version = ">= 1.5.0"
+  required_version = ">= 1.10.0"
 
   required_providers {
     aws = {
@@ -323,13 +323,13 @@ terragrunt destroy
 
 # Run a command across all modules in a directory
 cd live/production/us-east-1
-terragrunt run-all plan
+terragrunt run --all plan
 
 # Apply all modules in dependency order
-terragrunt run-all apply
+terragrunt run --all apply
 
 # Destroy all modules in reverse dependency order
-terragrunt run-all destroy
+terragrunt run --all destroy
 ```
 
 ## Generating Provider Blocks
@@ -338,6 +338,13 @@ Terragrunt can generate provider blocks so you do not need them in every module.
 
 ```hcl
 # live/terragrunt.hcl
+
+locals {
+  env_config    = read_terragrunt_config(find_in_parent_folders("env.hcl"))
+  region_config = read_terragrunt_config(find_in_parent_folders("region.hcl"))
+  environment   = local.env_config.locals.environment
+  region        = local.region_config.locals.region
+}
 
 # Generate AWS provider with the correct region
 generate "provider" {
@@ -412,9 +419,9 @@ Pin your Terragrunt version in the root config to ensure consistency.
 ```hcl
 # live/terragrunt.hcl
 
-terragrunt_version_constraint = ">= 0.54.0"
+terragrunt_version_constraint = ">= 1.0.5"
 
-terraform_version_constraint = ">= 1.5.0"
+terraform_version_constraint = ">= 1.10.0"
 ```
 
 ## Useful Tips
@@ -430,23 +437,23 @@ Debug configuration issues:
 
 ```bash
 # Show the generated Terraform configuration
-terragrunt render-json
+terragrunt render --json -w
 
 # Enable debug logging
-TG_LOG=debug terragrunt plan
+TG_LOG_LEVEL=debug terragrunt plan
 
 # Show the dependency graph
-terragrunt graph-dependencies
+terragrunt dag graph
 ```
 
 Speed up operations:
 
 ```bash
 # Run modules in parallel (default is 10)
-terragrunt run-all apply --terragrunt-parallelism 20
+terragrunt run --all --parallelism 20 -- apply
 
 # Skip auto-init
-terragrunt plan --terragrunt-no-auto-init
+terragrunt plan --no-auto-init
 ```
 
 ## Best Practices
@@ -455,7 +462,7 @@ terragrunt plan --terragrunt-no-auto-init
 - Use `env.hcl` and `region.hcl` files for environment-specific variables
 - Pin module versions in the `source` attribute
 - Use `mock_outputs` in dependencies for independent planning
-- Run `terragrunt run-all plan` before `run-all apply` to review all changes
+- Run `terragrunt run --all plan` before `terragrunt run --all apply` to review all changes
 - Store Terragrunt configuration in the same repository as your Terraform modules
 - Use `.terragrunt-cache` in `.gitignore` - it contains generated files
 - Set `terragrunt_version_constraint` to prevent version drift across team members
