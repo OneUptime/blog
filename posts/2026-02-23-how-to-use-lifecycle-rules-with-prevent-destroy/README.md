@@ -8,7 +8,7 @@ Description: Learn how to use Terraform's prevent_destroy lifecycle rule to prot
 
 ---
 
-Accidentally destroying a production database with Terraform is the kind of mistake that makes headlines. The `prevent_destroy` lifecycle rule is a safety net that blocks Terraform from destroying a resource, even if the configuration changes would normally trigger destruction. It protects your most critical resources from accidental deletion.
+Accidentally destroying a production database with Terraform is the kind of mistake that makes headlines. The `prevent_destroy` lifecycle rule is a safety net that blocks Terraform from destroying a resource while that lifecycle rule remains in the configuration, even if the configuration changes would normally trigger destruction. It protects your most critical resources from accidental deletion through Terraform.
 
 This post covers how `prevent_destroy` works, which resources should use it, and how to handle the situations where you actually do need to destroy a protected resource.
 
@@ -22,6 +22,9 @@ resource "aws_db_instance" "main" {
   engine         = "postgres"
   engine_version = "15.4"
   instance_class = "db.r5.large"
+  allocated_storage = 100
+  username       = "postgres"
+  manage_master_user_password = true
 
   lifecycle {
     prevent_destroy = true
@@ -57,6 +60,9 @@ resource "aws_db_instance" "production" {
   identifier     = "${var.project}-prod-db"
   engine         = "postgres"
   instance_class = "db.r5.large"
+  allocated_storage = 100
+  username       = "postgres"
+  manage_master_user_password = true
 
   # Additional safety measures
   deletion_protection     = true  # AWS-level protection
@@ -72,6 +78,8 @@ resource "aws_db_instance" "production" {
 resource "aws_rds_cluster" "production" {
   cluster_identifier = "${var.project}-aurora-prod"
   engine             = "aurora-postgresql"
+  master_username    = "postgres"
+  manage_master_user_password = true
 
   deletion_protection     = true
   skip_final_snapshot     = false
@@ -188,6 +196,9 @@ resource "aws_db_instance" "main" {
   engine         = "postgres"
   engine_version = "15.4"
   instance_class = "db.r5.large"  # Changing this to db.r5.xlarge is fine
+  allocated_storage = 100
+  username       = "postgres"
+  manage_master_user_password = true
 
   lifecycle {
     prevent_destroy = true
@@ -204,9 +215,10 @@ But if you change an attribute that forces replacement (like the `engine` from p
 `prevent_destroy` blocks the plan in these scenarios:
 
 1. **`terraform destroy`** - Attempting to destroy all infrastructure
-2. **Removing the resource from configuration** - Deleting the resource block
-3. **Changing an attribute that forces replacement** - Terraform would need to destroy and recreate
-4. **Removing the module that contains the resource** - The resource would be destroyed
+2. **Changing an attribute that forces replacement** - Terraform would need to destroy and recreate
+3. **Destroying a module instance that still contains the protected resource** - The resource would be destroyed
+
+It does not block destruction if someone removes the resource block, or the module block that contains it, from the configuration. In that case, the `prevent_destroy` rule is no longer present for Terraform to evaluate.
 
 ```hcl
 # Scenario: Changing an attribute that forces replacement
@@ -215,6 +227,9 @@ resource "aws_db_instance" "main" {
   identifier     = "${var.project}-db"
   engine         = "mysql"  # Changed from "postgres" - forces replacement
   instance_class = "db.r5.large"
+  allocated_storage = 100
+  username       = "admin"
+  manage_master_user_password = true
 
   lifecycle {
     prevent_destroy = true
@@ -234,6 +249,9 @@ resource "aws_db_instance" "main" {
   identifier     = "${var.project}-db"
   engine         = "postgres"
   instance_class = "db.r5.large"
+  allocated_storage = 100
+  username       = "postgres"
+  manage_master_user_password = true
 
   lifecycle {
     prevent_destroy = false  # Changed from true
@@ -275,6 +293,9 @@ resource "aws_db_instance" "main" {
   identifier     = "${var.project}-${var.environment}-db"
   engine         = "postgres"
   instance_class = var.db_instance_class
+  allocated_storage = 100
+  username       = "postgres"
+  manage_master_user_password = true
 
   lifecycle {
     # Note: prevent_destroy does not support variables
@@ -292,6 +313,9 @@ resource "aws_db_instance" "main" {
   identifier     = "${var.project}-prod-db"
   engine         = "postgres"
   instance_class = "db.r5.large"
+  allocated_storage = 100
+  username       = "postgres"
+  manage_master_user_password = true
 
   lifecycle {
     prevent_destroy = true
@@ -303,6 +327,9 @@ resource "aws_db_instance" "main" {
   identifier     = "${var.project}-dev-db"
   engine         = "postgres"
   instance_class = "db.t3.micro"
+  allocated_storage = 20
+  username       = "postgres"
+  manage_master_user_password = true
 
   # No prevent_destroy - dev databases can be freely destroyed
 }
@@ -317,6 +344,9 @@ resource "aws_db_instance" "main" {
   identifier          = "${var.project}-prod-db"
   engine              = "postgres"
   instance_class      = "db.r5.large"
+  allocated_storage   = 100
+  username            = "postgres"
+  manage_master_user_password = true
   deletion_protection = true  # AWS API will reject delete requests
 
   skip_final_snapshot     = false
@@ -354,7 +384,8 @@ resource "aws_s3_bucket_versioning" "critical_data" {
   }
 }
 
-# Object lock prevents even versioned objects from being deleted
+# Object Lock protects retained object versions from permanent deletion
+# or overwrite during the retention period
 resource "aws_s3_bucket_object_lock_configuration" "critical_data" {
   bucket = aws_s3_bucket.critical_data.id
 
@@ -388,6 +419,11 @@ Protecting a database but not its subnet group or parameter group can still caus
 ```hcl
 resource "aws_db_instance" "main" {
   identifier             = "${var.project}-db"
+  allocated_storage      = 100
+  engine                 = "postgres"
+  instance_class         = "db.r5.large"
+  username               = "postgres"
+  manage_master_user_password = true
   db_subnet_group_name   = aws_db_subnet_group.main.name
   parameter_group_name   = aws_db_parameter_group.main.name
 
