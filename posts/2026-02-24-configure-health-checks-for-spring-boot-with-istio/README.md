@@ -145,12 +145,12 @@ Once the startup probe succeeds, the liveness and readiness probes take over wit
 
 ## Istio Probe Rewriting
 
-By default, Istio rewrites HTTP probes to route them through the sidecar proxy. This means health check requests go: kubelet -> envoy sidecar -> your app. This usually works fine, but there are edge cases.
+By default, Istio rewrites HTTP probes to route them through the sidecar agent. This means health check requests go: kubelet -> Istio sidecar agent -> your app. This usually works fine, but there are edge cases.
 
 ### How Probe Rewriting Works
 
 When Istio injects the sidecar, it modifies your probe configuration:
-- The original probe path and port are stored in an annotation
+- The original probe path and port are stored in the `ISTIO_KUBE_APP_PROBERS` environment variable on the sidecar
 - The probe is rewritten to hit port 15020 on the sidecar
 - The sidecar forwards the probe to your actual application
 
@@ -176,9 +176,9 @@ Or globally in the mesh configuration:
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
-  meshConfig:
-    defaultConfig:
-      holdApplicationUntilProxyStarts: true
+  values:
+    sidecarInjectorWebhook:
+      rewriteAppHTTPProbe: false
 ```
 
 ## Custom Health Indicators
@@ -270,7 +270,7 @@ spring:
       minimum-idle: 2
 ```
 
-`initialization-fail-timeout: -1` means HikariCP will keep retrying the connection indefinitely instead of failing fast.
+`initialization-fail-timeout: -1` means HikariCP will bypass the initial connection attempt, let the pool start immediately, and try to obtain connections in the background instead of failing fast during startup.
 
 For other dependencies, use Spring Retry:
 
