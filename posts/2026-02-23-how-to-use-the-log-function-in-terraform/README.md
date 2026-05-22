@@ -54,9 +54,9 @@ If you need the natural logarithm (base e), you would use `log(number, 2.7182818
 2.321928094887362
 
 > log(50, 10)
-1.6989700043360187
+1.6989700043360185
 
-# log of 1 is always 0 regardless of base
+# log of 1 is always 0 for any valid base
 > log(1, 2)
 0
 > log(1, 10)
@@ -351,8 +351,9 @@ output "retry_config" {
 There are a few things to keep in mind:
 
 ```hcl
-# log(0, base) is undefined and will cause an error
+# log(0, base) is undefined and returns -Inf
 # log(negative, base) is undefined and will cause an error
+# log(number, 1) and log(number, base <= 0) are not valid logarithms
 
 # Always validate inputs before using log
 variable "count" {
@@ -364,10 +365,20 @@ variable "count" {
     error_message = "Count must be positive for logarithm calculation."
   }
 }
+
+variable "log_base" {
+  type    = number
+  default = 2
+
+  validation {
+    condition     = var.log_base > 0 && var.log_base != 1
+    error_message = "Log base must be positive and must not be 1."
+  }
+}
 ```
 
 ## Summary
 
-The `log` function in Terraform computes the logarithm of a number in a given base. While it sounds purely mathematical, it is genuinely useful for infrastructure calculations - especially anything involving powers of 2 (subnets, partitions, shards) or order-of-magnitude decisions (tier selection, scaling policies). The most common pattern is `ceil(log(n, 2))` to find how many bits or levels you need to accommodate a certain number of items. Just remember to validate that your inputs are positive, since logarithms of zero or negative numbers are undefined.
+The `log` function in Terraform computes the logarithm of a number in a given base. While it sounds purely mathematical, it is genuinely useful for infrastructure calculations - especially anything involving powers of 2 (subnets, partitions, shards) or order-of-magnitude decisions (tier selection, scaling policies). The most common pattern is `ceil(log(n, 2))` to find how many bits or levels you need to accommodate a certain number of items. Just remember to validate that your number is positive and your base is positive and not 1, since logarithms outside those ranges are undefined.
 
 For more Terraform math functions, check out our posts on the [pow function](https://oneuptime.com/blog/post/2026-02-23-how-to-use-the-pow-function-in-terraform/view) and the [ceil function](https://oneuptime.com/blog/post/2026-02-23-how-to-use-the-ceil-function-in-terraform/view).
