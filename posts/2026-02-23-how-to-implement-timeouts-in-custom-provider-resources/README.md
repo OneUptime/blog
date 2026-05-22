@@ -23,7 +23,7 @@ Without timeouts, a stuck API call can leave users waiting forever. With timeout
 
 ## Adding Timeouts to Your Schema
 
-The Plugin Framework provides built-in timeout support. Add timeouts to your resource schema using the `timeouts` block:
+The Plugin Framework works with the `terraform-plugin-framework-timeouts` module to support configurable timeouts. Add timeouts to your resource schema using the `timeouts` block:
 
 ```go
 import (
