@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Security, Sensitive Data, Infrastructure as Code, Best Practice
 
-Description: Learn how to mark resource attributes as sensitive in Terraform to prevent secrets from appearing in plan output, logs, and state file exploration.
+Description: Learn how to mark resource attributes as sensitive in Terraform to prevent secrets from appearing in plan output, logs, and routine terminal output.
 
 ---
 
@@ -183,7 +183,7 @@ output "private_key" {
 
 ## Working with Sensitive Values in Provisioners
 
-Sensitive values in provisioners require extra attention:
+Sensitive values in provisioners require extra attention. Terraform suppresses sensitive values in provisioner log output, but the commands you run can still write secrets to remote files or expose them outside Terraform's control:
 
 ```hcl
 resource "aws_instance" "app" {
@@ -200,21 +200,23 @@ resource "aws_instance" "app" {
 
   provisioner "remote-exec" {
     inline = [
-      # Be careful - this could log the password
+      # Be careful - this writes the password directly from an inline shell command
       "echo 'DB_PASSWORD=${var.db_password}' >> /etc/app/config",
     ]
   }
 }
 ```
 
-The problem here is that the provisioner command itself might log the sensitive value. A better approach:
+The problem here is that the provisioner command handles the secret directly in shell. A better approach:
 
 ```hcl
 provisioner "remote-exec" {
   inline = [
     # Write to a file without echoing the value
+    "install -m 600 /dev/null /etc/app/config",
     "cat > /etc/app/config << 'CONF'",
     "DB_HOST=${aws_db_instance.main.endpoint}",
+    "DB_PASSWORD=${var.db_password}",
     "CONF",
   ]
 }
@@ -244,7 +246,7 @@ terraform {
     region         = "us-east-1"
     encrypt        = true
     kms_key_id     = "arn:aws:kms:us-east-1:123456789012:key/my-key"
-    dynamodb_table = "terraform-lock"
+    use_lockfile   = true
   }
 }
 ```
@@ -330,6 +332,6 @@ resource "aws_ssm_parameter" "api_key" {
 
 ## Conclusion
 
-Sensitive resource attributes in Terraform are your first line of defense against leaking secrets in plan output, CI/CD logs, and terminal sessions. Use the `sensitive` flag on variables, outputs, and locals that contain secrets. Remember that sensitivity is a display concern, not an encryption mechanism - your state file still contains plaintext values and needs its own protection through backend encryption and access controls. Combine sensitive attributes with external secrets managers like AWS Secrets Manager or HashiCorp Vault for a complete secrets management strategy.
+Sensitive resource attributes in Terraform are your first line of defense against leaking secrets in plan output, CI/CD logs, and terminal sessions. Use the `sensitive` flag on variables and outputs that contain secrets, and use `sensitive()` when you need to mark an expression as sensitive inline. Remember that sensitivity is a display concern, not an encryption mechanism - your state file still contains plaintext values and needs its own protection through backend encryption and access controls. Combine sensitive attributes with external secrets managers like AWS Secrets Manager or HashiCorp Vault for a complete secrets management strategy.
 
 For more on resource management, see our guide on [how to understand resource addressing in Terraform](https://oneuptime.com/blog/post/2026-02-23-terraform-resource-addressing/view).
