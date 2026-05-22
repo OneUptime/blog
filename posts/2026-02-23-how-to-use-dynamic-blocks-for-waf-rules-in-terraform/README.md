@@ -165,7 +165,7 @@ waf_rules = [
 
 ## Managed Rule Group References
 
-AWS provides managed rule groups (like the OWASP Core Rule Set) that you can reference in your WAF ACL. Dynamic blocks work well here too:
+AWS provides managed rule groups (like the AWS Core Rule Set) that you can reference in your WAF ACL. Dynamic blocks work well here too:
 
 ```hcl
 variable "managed_rule_groups" {
@@ -228,7 +228,7 @@ resource "aws_wafv2_web_acl" "main" {
           name        = rule.value.name
           vendor_name = rule.value.vendor
 
-          # Dynamic excluded rules
+          # Dynamic rule action overrides
           dynamic "rule_action_override" {
             for_each = rule.value.excluded_rules
             content {
@@ -257,9 +257,9 @@ resource "aws_wafv2_web_acl" "main" {
 }
 ```
 
-## Complex Statements with AND/OR Logic
+## Complex Statements with AND Logic
 
-WAF supports compound statements. Here is how to build them dynamically:
+WAF supports compound statements. Here is how to build AND statements dynamically:
 
 ```hcl
 variable "compound_rules" {
@@ -269,11 +269,9 @@ variable "compound_rules" {
     action   = string
     # List of conditions that are ANDed together
     conditions = list(object({
-      type          = string  # "geo", "ip_set", "byte_match"
+      type          = string  # "geo" or "ip_set"
       country_codes = optional(list(string))
       ip_set_arn    = optional(string)
-      search_string = optional(string)
-      field         = optional(string)
     }))
   }))
 }
@@ -332,6 +330,13 @@ resource "aws_wafv2_rule_group" "compound" {
             country_codes = rule.value.conditions[0].country_codes
           }
         }
+
+        dynamic "ip_set_reference_statement" {
+          for_each = length(rule.value.conditions) == 1 && rule.value.conditions[0].type == "ip_set" ? [1] : []
+          content {
+            arn = rule.value.conditions[0].ip_set_arn
+          }
+        }
       }
 
       visibility_config {
@@ -380,7 +385,7 @@ resource "aws_wafv2_ip_set" "main" {
 
 Keep these points in mind when working with WAF configurations:
 
-1. WAF capacity limits are per rule group. Complex rules consume more capacity. Test your capacity usage incrementally.
+1. WAF capacity units apply to rules, rule groups, and web ACLs. Complex rules consume more capacity. Test your capacity usage incrementally.
 
 2. The action block in WAF is exclusive - only one of `allow`, `block`, or `count` should be present. Use the conditional dynamic block pattern shown above.
 
