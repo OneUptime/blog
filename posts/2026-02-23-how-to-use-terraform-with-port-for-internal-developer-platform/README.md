@@ -127,6 +127,10 @@ resource "port_blueprint" "service" {
         title   = "Has Cache"
         default = false
       }
+      "has_monitoring" = {
+        title   = "Has Monitoring"
+        default = false
+      }
     }
   }
 
@@ -161,17 +165,15 @@ resource "port_blueprint" "terraform_workspace" {
         title = "Last Apply Status"
         enum  = ["success", "failed", "pending"]
       }
+      "last_apply_time" = {
+        title  = "Last Apply Time"
+        format = "date-time"
+      }
     }
     number_props = {
       "resource_count" = {
         title       = "Managed Resources"
         description = "Number of resources managed by this workspace"
-      }
-    }
-    string_props = {
-      "last_apply_time" = {
-        title  = "Last Apply Time"
-        format = "date-time"
       }
     }
   }
@@ -202,45 +204,47 @@ resource "port_action" "create_service" {
   identifier = "create_service"
   title      = "Create New Service"
   icon       = "Rocket"
-  blueprint  = port_blueprint.service.identifier
-
-  trigger = "CREATE"
 
   # Define the form that developers fill out
-  user_properties = {
-    string_props = {
-      "service_name" = {
-        title       = "Service Name"
-        description = "Name of the new service (lowercase, hyphens)"
-        pattern     = "^[a-z][a-z0-9-]*$"
-        required    = true
+  self_service_trigger = {
+    operation            = "CREATE"
+    blueprint_identifier = port_blueprint.service.identifier
+
+    user_properties = {
+      string_props = {
+        "service_name" = {
+          title       = "Service Name"
+          description = "Name of the new service (lowercase, hyphens)"
+          pattern     = "^[a-z][a-z0-9-]*$"
+          required    = true
+        }
+        "language" = {
+          title    = "Language"
+          enum     = ["go", "python", "nodejs", "java"]
+          required = true
+        }
+        "environment" = {
+          title    = "Target Environment"
+          enum     = ["staging", "production"]
+          required = true
+          default  = "staging"
+        }
+        "instance_size" = {
+          title    = "Instance Size"
+          enum     = ["small", "medium", "large"]
+          required = true
+          default  = "small"
+        }
       }
-      "language" = {
-        title    = "Language"
-        enum     = ["go", "python", "nodejs", "java"]
-        required = true
-      }
-      "environment" = {
-        title    = "Target Environment"
-        enum     = ["staging", "production"]
-        required = true
-        default  = "staging"
-      }
-      "instance_size" = {
-        title    = "Instance Size"
-        enum     = ["small", "medium", "large"]
-        required = true
-        default  = "small"
-      }
-    }
-    boolean_props = {
-      "include_database" = {
-        title   = "Include Database"
-        default = false
-      }
-      "include_cache" = {
-        title   = "Include Redis Cache"
-        default = false
+      boolean_props = {
+        "include_database" = {
+          title   = "Include Database"
+          default = false
+        }
+        "include_cache" = {
+          title   = "Include Redis Cache"
+          default = false
+        }
       }
     }
   }
@@ -250,6 +254,15 @@ resource "port_action" "create_service" {
     org      = var.github_org
     repo     = "infrastructure"
     workflow = "create-service.yml"
+    workflow_inputs = jsonencode({
+      service_name     = "{{ .inputs.service_name }}"
+      language         = "{{ .inputs.language }}"
+      environment      = "{{ .inputs.environment }}"
+      instance_size    = "{{ .inputs.instance_size }}"
+      include_database = "{{ .inputs.include_database }}"
+      include_cache    = "{{ .inputs.include_cache }}"
+      port_run_id      = "{{ .run.id }}"
+    })
   }
 }
 
@@ -258,23 +271,25 @@ resource "port_action" "scale_service" {
   identifier = "scale_service"
   title      = "Scale Service"
   icon       = "Scale"
-  blueprint  = port_blueprint.service.identifier
 
-  trigger = "DAY-2"
+  self_service_trigger = {
+    operation            = "DAY-2"
+    blueprint_identifier = port_blueprint.service.identifier
 
-  user_properties = {
-    number_props = {
-      "replicas" = {
-        title       = "Number of Replicas"
-        minimum     = 1
-        maximum     = 20
-        required    = true
+    user_properties = {
+      number_props = {
+        "replicas" = {
+          title    = "Number of Replicas"
+          minimum  = 1
+          maximum  = 20
+          required = true
+        }
       }
-    }
-    string_props = {
-      "instance_type" = {
-        title = "Instance Type"
-        enum  = ["t3.small", "t3.medium", "t3.large", "t3.xlarge"]
+      string_props = {
+        "instance_type" = {
+          title = "Instance Type"
+          enum  = ["t3.small", "t3.medium", "t3.large", "t3.xlarge"]
+        }
       }
     }
   }
@@ -283,6 +298,11 @@ resource "port_action" "scale_service" {
     org      = var.github_org
     repo     = "infrastructure"
     workflow = "scale-service.yml"
+    workflow_inputs = jsonencode({
+      replicas      = "{{ .inputs.replicas }}"
+      instance_type = "{{ .inputs.instance_type }}"
+      port_run_id   = "{{ .run.id }}"
+    })
   }
 }
 
@@ -291,16 +311,21 @@ resource "port_action" "destroy_service" {
   identifier = "destroy_service"
   title      = "Destroy Service Infrastructure"
   icon       = "Trash"
-  blueprint  = port_blueprint.service.identifier
 
-  trigger = "DELETE"
+  self_service_trigger = {
+    operation            = "DELETE"
+    blueprint_identifier = port_blueprint.service.identifier
+  }
 
-  required_approval = true
+  required_approval = "true"
 
   github_method = {
     org      = var.github_org
     repo     = "infrastructure"
     workflow = "destroy-service.yml"
+    workflow_inputs = jsonencode({
+      port_run_id = "{{ .run.id }}"
+    })
   }
 }
 ```
@@ -332,9 +357,11 @@ on:
       include_database:
         description: 'Include database'
         required: true
+        type: boolean
       include_cache:
         description: 'Include cache'
         required: true
+        type: boolean
       port_run_id:
         description: 'Port action run ID'
         required: true
@@ -383,7 +410,7 @@ jobs:
         id: tf_output
         working-directory: services/${{ inputs.service_name }}
         run: |
-          echo "outputs=$(terraform output -json)" >> $GITHUB_OUTPUT
+          echo "outputs=$(terraform output -json | jq -c .)" >> "$GITHUB_OUTPUT"
 
       # Register the service in Port catalog
       - name: Create Port Entity
@@ -426,6 +453,8 @@ Keep the Port catalog in sync with your actual Terraform state.
 ```hcl
 # port-sync.tf
 # Sync Terraform resources to Port catalog entities
+
+data "aws_caller_identity" "current" {}
 
 # Create an environment entity in Port
 resource "port_entity" "production_env" {
@@ -486,38 +515,38 @@ resource "port_scorecard" "infra_quality" {
   title      = "Infrastructure Quality"
   blueprint  = port_blueprint.service.identifier
 
-  rules = {
-    "has_monitoring" = {
+  rules = [
+    {
       identifier = "has_monitoring"
       title      = "Has Monitoring"
       level      = "Gold"
       query = {
         combinator = "and"
         conditions = [
-          {
+          jsonencode({
             property = "has_monitoring"
             operator = "="
             value    = true
-          }
+          })
         ]
       }
-    }
-    "uses_managed_database" = {
+    },
+    {
       identifier = "uses_managed_database"
       title      = "Uses Managed Database"
       level      = "Silver"
       query = {
         combinator = "and"
         conditions = [
-          {
+          jsonencode({
             property = "has_database"
             operator = "="
             value    = true
-          }
+          })
         ]
       }
     }
-  }
+  ]
 }
 ```
 
