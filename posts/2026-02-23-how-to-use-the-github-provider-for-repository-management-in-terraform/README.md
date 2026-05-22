@@ -54,7 +54,6 @@ resource "github_repository" "microservice" {
   has_issues      = true
   has_projects    = true
   has_wiki        = false
-  has_downloads   = false
   has_discussions  = false
 
   allow_merge_commit = false
@@ -64,12 +63,15 @@ resource "github_repository" "microservice" {
 
   delete_branch_on_merge = true
 
-  vulnerability_alerts = true
-
   template {
     owner      = var.github_org
     repository = "microservice-template"
   }
+}
+
+resource "github_repository_vulnerability_alerts" "microservice" {
+  repository = github_repository.microservice.name
+  enabled    = true
 }
 
 # Repository from a variable map
@@ -114,7 +116,6 @@ resource "github_repository" "repos" {
   has_projects           = true
   allow_squash_merge     = true
   delete_branch_on_merge = true
-  vulnerability_alerts   = true
 
   dynamic "template" {
     for_each = each.value.template != "" ? [each.value.template] : []
@@ -123,6 +124,13 @@ resource "github_repository" "repos" {
       repository = template.value
     }
   }
+}
+
+resource "github_repository_vulnerability_alerts" "repos" {
+  for_each = var.repositories
+
+  repository = github_repository.repos[each.key].name
+  enabled    = true
 }
 ```
 
@@ -226,9 +234,9 @@ variable "webhook_secret" {
 ```hcl
 # secrets.tf - Manage Actions secrets
 resource "github_actions_organization_secret" "docker_password" {
-  secret_name     = "DOCKER_PASSWORD"
-  visibility      = "all"
-  plaintext_value = var.docker_password
+  secret_name = "DOCKER_PASSWORD"
+  visibility  = "all"
+  value       = var.docker_password
 }
 
 variable "docker_password" {
