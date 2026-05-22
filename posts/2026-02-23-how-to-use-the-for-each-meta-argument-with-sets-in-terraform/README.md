@@ -121,15 +121,14 @@ variable "allowed_ports" {
   default     = ["443", "8080", "8443"]
 }
 
-resource "aws_security_group_rule" "ingress" {
+resource "aws_vpc_security_group_ingress_rule" "ingress" {
   for_each = var.allowed_ports
 
-  type              = "ingress"
-  from_port         = tonumber(each.key)
-  to_port           = tonumber(each.key)
-  protocol          = "tcp"
-  cidr_blocks       = [var.vpc_cidr]
   security_group_id = aws_security_group.app.id
+  cidr_ipv4         = var.vpc_cidr
+  from_port         = tonumber(each.key)
+  ip_protocol       = "tcp"
+  to_port           = tonumber(each.key)
   description       = "Allow port ${each.key}"
 }
 ```
@@ -246,15 +245,14 @@ locals {
 }
 
 # Create security group rules for unique ports
-resource "aws_security_group_rule" "service_ports" {
+resource "aws_vpc_security_group_ingress_rule" "service_ports" {
   for_each = local.unique_ports
 
-  type              = "ingress"
-  from_port         = tonumber(each.key)
-  to_port           = tonumber(each.key)
-  protocol          = "tcp"
   security_group_id = aws_security_group.app.id
-  cidr_blocks       = [var.vpc_cidr]
+  cidr_ipv4         = var.vpc_cidr
+  from_port         = tonumber(each.key)
+  ip_protocol       = "tcp"
+  to_port           = tonumber(each.key)
 }
 ```
 
@@ -320,15 +318,15 @@ variable "admin_users" {
 locals {
   # Set difference - users who are NOT admins
   regular_users = setsubtract(var.all_users, var.admin_users)
-  # Result: ["bob", "charlie", "eve"]
+  # Contains: "bob", "charlie", "eve"
 
   # Set intersection - users who ARE admins (same as admin_users here)
   confirmed_admins = setintersection(var.all_users, var.admin_users)
-  # Result: ["alice", "diana"]
+  # Contains: "alice", "diana"
 
   # Set union - combine two sets
   all_privileged = setunion(var.admin_users, toset(["frank"]))
-  # Result: ["alice", "diana", "frank"]
+  # Contains: "alice", "diana", "frank"
 }
 
 # Create admin policies only for admin users
@@ -359,11 +357,14 @@ variable "ports" {
   default = [80, 443, 8080]
 }
 
-resource "aws_security_group_rule" "this" {
+resource "aws_vpc_security_group_ingress_rule" "this" {
   for_each = toset([for p in var.ports : tostring(p)])
 
-  from_port = tonumber(each.key)
-  to_port   = tonumber(each.key)
+  security_group_id = aws_security_group.app.id
+  cidr_ipv4         = var.vpc_cidr
+  from_port         = tonumber(each.key)
+  ip_protocol       = "tcp"
+  to_port           = tonumber(each.key)
   # ...
 }
 ```
