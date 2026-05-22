@@ -282,15 +282,15 @@ terraform state list
 
 ## Switching with Remote Backends
 
-With remote backends, switching workspaces triggers a remote state lookup. The first time you access a workspace's state after switching, Terraform downloads it from the backend:
+With remote backends, Terraform stores each workspace's state in a separate location in the configured backend. After switching, the next command that needs state reads from the selected workspace's backend location:
 
 ```bash
-# With S3 backend, switching reads from a different S3 key
+# With S3 backend, state-aware commands read from a different S3 key
 terraform workspace select prod
-# Terraform reads from: s3://bucket/env:/prod/key
+# Terraform reads prod state from: s3://bucket/env:/prod/key
 
 terraform workspace select dev
-# Terraform reads from: s3://bucket/env:/dev/key
+# Terraform reads dev state from: s3://bucket/env:/dev/key
 ```
 
 This is transparent - you do not need to do anything special. But be aware that it requires network access to the backend.
