@@ -8,7 +8,7 @@ Description: How to build custom observability pipelines with Istio using the Te
 
 ---
 
-Istio generates a ton of telemetry data out of the box. Metrics, traces, and access logs flow from every sidecar in your mesh. The challenge is not generating the data but routing it to the right places and transforming it to match your monitoring stack. Building a custom observability pipeline lets you control exactly what data goes where.
+Istio can generate a ton of telemetry data. Metrics, traces, and access logs can flow from every sidecar in your mesh. The challenge is not generating the data but routing it to the right places and transforming it to match your monitoring stack. Building a custom observability pipeline lets you control exactly what data goes where.
 
 ## The Istio Telemetry Architecture
 
@@ -31,8 +31,8 @@ kind: IstioOperator
 spec:
   meshConfig:
     extensionProviders:
-    - name: otel-collector
-      opentelemetry:
+    - name: otel-access-log
+      envoyOtelAls:
         service: otel-collector.observability.svc.cluster.local
         port: 4317
     - name: custom-access-log
@@ -54,7 +54,7 @@ spec:
 
 ## Setting Up OpenTelemetry Collector
 
-The OpenTelemetry Collector is the backbone of a custom observability pipeline. It receives data from Istio, processes it, and exports it to your backends:
+The OpenTelemetry Collector is the backbone of a custom observability pipeline. It receives OTLP traces and access logs from Istio, processes telemetry, and exports it to your backends:
 
 ```yaml
 apiVersion: apps/v1
@@ -82,6 +82,8 @@ spec:
           name: otlp-http
         - containerPort: 8888
           name: metrics
+        - containerPort: 8889
+          name: prom-exporter
         volumeMounts:
         - name: config
           mountPath: /etc/otelcol-contrib
@@ -105,6 +107,12 @@ spec:
   - port: 4318
     targetPort: 4318
     name: otlp-http
+  - port: 8888
+    targetPort: 8888
+    name: metrics
+  - port: 8889
+    targetPort: 8889
+    name: prom-exporter
 ```
 
 The collector configuration defines receivers, processors, and exporters:
@@ -140,10 +148,9 @@ data:
           action: insert
       filter:
         error_mode: ignore
-        traces:
-          span:
-          - 'attributes["http.target"] == "/health"'
-          - 'attributes["http.target"] == "/ready"'
+        trace_conditions:
+        - 'span.attributes["http.target"] == "/health"'
+        - 'span.attributes["http.target"] == "/ready"'
 
     exporters:
       prometheus:
@@ -157,14 +164,14 @@ data:
         endpoint: tempo.observability.svc.cluster.local:4317
         tls:
           insecure: true
-      loki:
-        endpoint: http://loki.observability.svc.cluster.local:3100/loki/api/v1/push
+      otlphttp/loki:
+        endpoint: http://loki.observability.svc.cluster.local:3100/otlp
 
     service:
       pipelines:
         metrics:
           receivers: [otlp]
-          processors: [memory_limiter, batch, attributes]
+          processors: [memory_limiter, attributes, batch]
           exporters: [prometheus]
         traces:
           receivers: [otlp]
@@ -173,15 +180,15 @@ data:
         logs:
           receivers: [otlp]
           processors: [memory_limiter, batch]
-          exporters: [loki]
+          exporters: [otlphttp/loki]
 ```
 
 This configuration:
-- Receives OTLP data from Istio sidecars
+- Receives OTLP traces and access logs from Istio, plus any OTLP metrics you send to the collector
 - Batches data for efficiency
-- Adds an `environment` label to all telemetry
+- Adds an `environment` attribute to telemetry handled by that processor
 - Filters out health check traces
-- Exports metrics to Prometheus, traces to Jaeger and Tempo, and logs to Loki
+- Exposes metrics for Prometheus to scrape, sends traces to Jaeger and Tempo, and sends logs to Loki through Loki's OTLP endpoint
 
 ## Enabling Telemetry with the Telemetry API
 
@@ -203,7 +210,7 @@ spec:
     - name: prometheus
   accessLogging:
   - providers:
-    - name: otel-collector
+    - name: otel-access-log
 ```
 
 For per-namespace or per-workload configuration:
@@ -224,7 +231,7 @@ spec:
     randomSamplingPercentage: 100
   accessLogging:
   - providers:
-    - name: otel-collector
+    - name: otel-access-log
     - name: custom-access-log
 ```
 
@@ -232,7 +239,7 @@ The payment service gets 100% trace sampling while the mesh default is 10%.
 
 ## Custom Metric Pipelines
 
-Sometimes you need to transform Istio's metrics before they reach your monitoring backend. The OTel Collector's processor pipeline is perfect for this:
+Sometimes you need to transform Istio's metrics before they reach your monitoring backend. If you scrape or receive those metrics through the OTel Collector, the processor pipeline is perfect for this:
 
 ```yaml
 processors:
@@ -287,14 +294,18 @@ connectors:
   routing:
     default_pipelines: [traces/default]
     table:
-    - statement: route() where attributes["service.name"] == "payment-service"
+    - context: resource
+      condition: attributes["service.name"] == "payment-service"
       pipelines: [traces/payment]
 
 service:
   pipelines:
-    traces/default:
+    traces/in:
       receivers: [otlp]
       processors: [batch]
+      exporters: [routing]
+    traces/default:
+      receivers: [routing]
       exporters: [otlp/jaeger]
     traces/payment:
       receivers: [routing]
