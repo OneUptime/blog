@@ -12,7 +12,7 @@ Terraform configurations often deal with deeply nested data structures, optional
 
 ## What is the try Function?
 
-The `try` function evaluates a series of expressions and returns the result of the first one that does not produce an error. If all expressions fail, Terraform raises the error from the last expression.
+The `try` function evaluates a series of expressions and returns the result of the first one that does not produce an error. If all expressions fail, Terraform returns an error describing all of the problems it encountered.
 
 ```hcl
 # try(expression1, expression2, ..., fallback)
@@ -289,9 +289,9 @@ locals {
 ## try with Data Source Results
 
 ```hcl
-# Data source that might fail
+# Data source that is only queried when enabled
 data "aws_ami" "custom" {
-  count = 1
+  count = var.use_custom_ami ? 1 : 0
 
   most_recent = true
   owners      = ["self"]
@@ -303,7 +303,8 @@ data "aws_ami" "custom" {
 }
 
 locals {
-  # Use custom AMI if available, otherwise fall back to a known AMI
+  # Use the custom AMI if the data source is enabled, otherwise fall back to a known AMI.
+  # try cannot catch provider errors if the data source itself fails to read.
   ami_id = try(data.aws_ami.custom[0].id, var.fallback_ami_id)
 }
 ```
@@ -344,9 +345,9 @@ locals {
 ## Edge Cases
 
 ```hcl
-# All expressions fail - returns the last error
+# All expressions fail - returns an error describing all failed attempts
 # try(tonumber("a"), tonumber("b"))
-# Error: the value "b" cannot be converted to number
+# Error: both values cannot be converted to number
 
 # null is a valid result (not an error)
 > try(null, "fallback")
