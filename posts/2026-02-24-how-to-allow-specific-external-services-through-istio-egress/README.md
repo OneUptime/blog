@@ -27,7 +27,7 @@ spec:
   ports:
   - number: 443
     name: https
-    protocol: TLS
+    protocol: HTTPS
   resolution: DNS
   location: MESH_EXTERNAL
 ```
@@ -41,7 +41,7 @@ Each field matters:
 
 ## Allowing HTTPS API Services
 
-Most external APIs use HTTPS on port 443. Use `protocol: TLS` (not `HTTPS`) when your application initiates TLS directly:
+Most external APIs use HTTPS on port 443. Use `protocol: HTTPS` for standard HTTPS services:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -56,14 +56,14 @@ spec:
   ports:
   - number: 443
     name: https
-    protocol: TLS
+    protocol: HTTPS
   resolution: DNS
   location: MESH_EXTERNAL
 ```
 
-Why `TLS` and not `HTTPS`? When your application sends HTTPS, the sidecar sees an already-encrypted TLS connection. It cannot inspect the HTTP layer. Setting the protocol to `TLS` tells Istio to handle it as a TLS passthrough, routing based on the SNI header.
+When your application sends HTTPS, the sidecar sees an already-encrypted TLS connection. It cannot inspect the HTTP layer, but it can still match HTTPS traffic by the SNI value in the TLS handshake.
 
-Use `protocol: HTTPS` only when you are doing TLS origination at the sidecar (where the application sends plain HTTP and Istio encrypts it).
+Use `protocol: TLS` for raw TLS protocols that are not HTTP over TLS. For TLS origination at the sidecar, the application sends plain HTTP and a DestinationRule configures Istio to encrypt the upstream connection.
 
 ## Allowing External Databases
 
@@ -124,7 +124,7 @@ spec:
   - "*.abc123.mongodb.net"
   ports:
   - number: 27017
-    name: tcp-mongo
+    name: tls-mongo
     protocol: TLS
   resolution: NONE
   location: MESH_EXTERNAL
@@ -175,7 +175,7 @@ spec:
   ports:
   - number: 443
     name: https
-    protocol: TLS
+    protocol: HTTPS
   resolution: DNS
   location: MESH_EXTERNAL
 ```
@@ -193,7 +193,7 @@ spec:
   ports:
   - number: 443
     name: https
-    protocol: TLS
+    protocol: HTTPS
   resolution: DNS
   location: MESH_EXTERNAL
 ```
@@ -212,7 +212,7 @@ spec:
   ports:
   - number: 443
     name: https
-    protocol: TLS
+    protocol: HTTPS
   resolution: DNS
   location: MESH_EXTERNAL
 ```
@@ -235,7 +235,7 @@ spec:
   ports:
   - number: 443
     name: https
-    protocol: TLS
+    protocol: HTTPS
   resolution: NONE
   location: MESH_EXTERNAL
 ```
@@ -257,7 +257,7 @@ spec:
   ports:
   - number: 443
     name: https
-    protocol: TLS
+    protocol: HTTPS
   resolution: DNS
   location: MESH_EXTERNAL
 ```
@@ -277,7 +277,7 @@ spec:
   ports:
   - number: 443
     name: https
-    protocol: TLS
+    protocol: HTTPS
   resolution: NONE
   location: MESH_EXTERNAL
 ```
@@ -298,7 +298,7 @@ spec:
   ports:
   - number: 443
     name: https
-    protocol: TLS
+    protocol: HTTPS
   resolution: NONE
   location: MESH_EXTERNAL
 ```
@@ -317,7 +317,7 @@ spec:
   ports:
   - number: 443
     name: https
-    protocol: TLS
+    protocol: HTTPS
   resolution: NONE
   location: MESH_EXTERNAL
 ```
@@ -342,7 +342,7 @@ spec:
   ports:
   - number: 443
     name: https
-    protocol: TLS
+    protocol: HTTPS
   resolution: DNS
   location: MESH_EXTERNAL
   exportTo:
@@ -368,7 +368,7 @@ spec:
   ports:
   - number: 443
     name: https
-    protocol: TLS
+    protocol: HTTPS
   resolution: DNS
   location: MESH_EXTERNAL
   exportTo:
@@ -382,7 +382,7 @@ After creating ServiceEntries, verify they work:
 ```bash
 # Check the service is in the registry
 
-istioctl proxy-config clusters deploy/my-app | grep stripe
+istioctl proxy-config clusters <my-app-pod> | grep stripe
 
 # Test connectivity
 kubectl exec deploy/my-app -- curl -s -o /dev/null -w "%{http_code}" https://api.stripe.com
@@ -398,8 +398,8 @@ kubectl exec deploy/my-app -- curl -s -o /dev/null -w "%{http_code}" https://not
 
 **Getting connection reset instead of 502.** This usually happens for TCP protocol connections (databases). The sidecar resets the TCP connection instead of sending an HTTP 502.
 
-**Application works but metrics show unknown destination.** The ServiceEntry might have the wrong protocol. For HTTPS traffic from the application, use `protocol: TLS`. For HTTP traffic, use `protocol: HTTP`.
+**Application works but metrics show unknown destination.** The ServiceEntry might have the wrong protocol. For HTTPS traffic from the application, use `protocol: HTTPS`. For raw TLS protocols, use `protocol: TLS`. For HTTP traffic, use `protocol: HTTP`.
 
 ## Summary
 
-Allowing specific external services through Istio egress requires creating ServiceEntry resources with the correct host, port, protocol, and resolution settings. Use `protocol: TLS` for services your application connects to with HTTPS, `protocol: TCP` for databases, and `resolution: DNS` for single hosts or `resolution: NONE` for wildcards. Organize ServiceEntries by namespace using `exportTo` to limit which workloads can access each external service, and always verify connectivity after adding new entries.
+Allowing specific external services through Istio egress requires creating ServiceEntry resources with the correct host, port, protocol, and resolution settings. Use `protocol: HTTPS` for services your application connects to with HTTPS, `protocol: TCP` for databases, and `resolution: DNS` for single hosts or `resolution: NONE` for wildcards. Organize ServiceEntries by namespace using `exportTo` to limit which workloads can access each external service, and always verify connectivity after adding new entries.
