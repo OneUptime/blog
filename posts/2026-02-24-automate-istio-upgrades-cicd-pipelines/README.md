@@ -72,6 +72,11 @@ jobs:
           curl -L https://istio.io/downloadIstio | ISTIO_VERSION=${{ steps.version.outputs.version }} sh -
           echo "$PWD/istio-${{ steps.version.outputs.version }}/bin" >> $GITHUB_PATH
 
+      - name: Configure Istio Helm repo
+        run: |
+          helm repo add istio https://istio-release.storage.googleapis.com/charts
+          helm repo update
+
       - name: Run pre-check against staging
         run: |
           istioctl x precheck --kubeconfig $STAGING_KUBECONFIG
@@ -105,6 +110,11 @@ After pre-checks pass, upgrade the staging cluster:
       - name: Read target version
         id: version
         run: echo "version=$(cat infrastructure/istio/version.yaml | grep version | awk '{print $2}')" >> $GITHUB_OUTPUT
+
+      - name: Configure Istio Helm repo
+        run: |
+          helm repo add istio https://istio-release.storage.googleapis.com/charts
+          helm repo update
 
       - name: Upgrade Istio base
         run: |
@@ -150,6 +160,17 @@ Run comprehensive tests against the staging environment:
     needs: staging-upgrade
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
+      - name: Read target version
+        id: version
+        run: echo "version=$(cat infrastructure/istio/version.yaml | grep version | awk '{print $2}')" >> $GITHUB_OUTPUT
+
+      - name: Install istioctl
+        run: |
+          curl -L https://istio.io/downloadIstio | ISTIO_VERSION=${{ steps.version.outputs.version }} sh -
+          echo "$PWD/istio-${{ steps.version.outputs.version }}/bin" >> $GITHUB_PATH
+
       - name: Wait for stabilization
         run: sleep 120
 
@@ -194,6 +215,17 @@ For production, use a revision-based canary approach:
     runs-on: ubuntu-latest
     environment: production
     steps:
+      - uses: actions/checkout@v4
+
+      - name: Read target version
+        id: version
+        run: echo "version=$(cat infrastructure/istio/version.yaml | grep version | awk '{print $2}')" >> $GITHUB_OUTPUT
+
+      - name: Configure Istio Helm repo
+        run: |
+          helm repo add istio https://istio-release.storage.googleapis.com/charts
+          helm repo update
+
       - name: Install canary revision
         run: |
           helm install istiod-canary istio/istiod \
@@ -201,6 +233,17 @@ For production, use a revision-based canary approach:
             --version ${{ steps.version.outputs.version }} \
             --set revision=canary \
             -f infrastructure/istio/istiod-values.yaml \
+            --wait --timeout 300s \
+            --kubeconfig $PRODUCTION_KUBECONFIG
+
+      - name: Install canary gateway
+        run: |
+          helm install istio-ingressgateway-canary istio/gateway \
+            -n istio-system \
+            --version ${{ steps.version.outputs.version }} \
+            --set revision=canary \
+            -f infrastructure/istio/gateway-values.yaml \
+            --wait --timeout 300s \
             --kubeconfig $PRODUCTION_KUBECONFIG
 
       - name: Migrate canary namespaces
@@ -231,6 +274,22 @@ After the canary phase passes, migrate all remaining namespaces:
     runs-on: ubuntu-latest
     environment: production-full
     steps:
+      - uses: actions/checkout@v4
+
+      - name: Read target version
+        id: version
+        run: echo "version=$(cat infrastructure/istio/version.yaml | grep version | awk '{print $2}')" >> $GITHUB_OUTPUT
+
+      - name: Install istioctl
+        run: |
+          curl -L https://istio.io/downloadIstio | ISTIO_VERSION=${{ steps.version.outputs.version }} sh -
+          echo "$PWD/istio-${{ steps.version.outputs.version }}/bin" >> $GITHUB_PATH
+
+      - name: Configure Istio Helm repo
+        run: |
+          helm repo add istio https://istio-release.storage.googleapis.com/charts
+          helm repo update
+
       - name: Migrate remaining namespaces
         run: |
           REMAINING=$(kubectl get ns -l istio-injection=enabled \
@@ -255,6 +314,10 @@ After the canary phase passes, migrate all remaining namespaces:
       - name: Remove old revision
         run: |
           helm delete istiod -n istio-system --kubeconfig $PRODUCTION_KUBECONFIG
+          helm upgrade istio-base istio/base \
+            -n istio-system \
+            --set defaultRevision=canary \
+            --kubeconfig $PRODUCTION_KUBECONFIG
 ```
 
 ## Automatic Rollback
@@ -267,6 +330,8 @@ Build rollback into the pipeline so it triggers automatically on failure:
     if: failure()
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
       - name: Rollback canary namespaces
         run: |
           CANARY_NAMESPACES=$(cat infrastructure/istio/canary-namespaces.txt)
@@ -282,6 +347,8 @@ Build rollback into the pipeline so it triggers automatically on failure:
       - name: Remove canary revision
         run: |
           helm delete istiod-canary -n istio-system \
+            --kubeconfig $PRODUCTION_KUBECONFIG
+          helm delete istio-ingressgateway-canary -n istio-system \
             --kubeconfig $PRODUCTION_KUBECONFIG
 
       - name: Notify team
@@ -304,13 +371,16 @@ metadata:
   namespace: argocd
 spec:
   project: infrastructure
-  source:
-    repoURL: https://istio-release.storage.googleapis.com/charts
-    chart: istiod
-    targetRevision: 1.21.0
-    helm:
-      valueFiles:
-        - $values/infrastructure/istio/istiod-values.yaml
+  sources:
+    - repoURL: https://istio-release.storage.googleapis.com/charts
+      chart: istiod
+      targetRevision: 1.30.0
+      helm:
+        valueFiles:
+          - $values/infrastructure/istio/istiod-values.yaml
+    - repoURL: https://github.com/your-org/infrastructure.git
+      targetRevision: main
+      ref: values
   destination:
     server: https://kubernetes.default.svc
     namespace: istio-system
