@@ -23,6 +23,8 @@ resource "aws_db_instance" "production" {
   engine_version = "15.4"
   instance_class = "db.r5.2xlarge"
   allocated_storage = 500
+  username          = "admin"
+  manage_master_user_password = true
 
   # Custom timeouts for long-running operations
   timeouts {
@@ -42,6 +44,9 @@ resource "aws_db_instance" "main" {
   identifier     = "production"
   engine         = "postgres"
   instance_class = "db.r5.4xlarge"
+  allocated_storage = 500
+  username          = "admin"
+  manage_master_user_password = true
 
   timeouts {
     create = "60m"
@@ -60,9 +65,9 @@ resource "aws_eks_cluster" "main" {
   }
 
   timeouts {
-    create = "30m"
-    update = "60m"
-    delete = "30m"
+    create = "60m"
+    update = "90m"
+    delete = "60m"
   }
 }
 
@@ -70,11 +75,9 @@ resource "aws_eks_cluster" "main" {
 resource "aws_cloudfront_distribution" "cdn" {
   # ... distribution config
 
-  timeouts {
-    create = "45m"
-    update = "45m"
-    delete = "30m"
-  }
+  # CloudFront distributions do not support a timeouts block.
+  # By default, Terraform waits until the distribution status is Deployed.
+  wait_for_deployment = true
 }
 
 # ElastiCache clusters
@@ -85,9 +88,9 @@ resource "aws_elasticache_cluster" "redis" {
   num_cache_nodes      = 1
 
   timeouts {
-    create = "40m"
-    update = "40m"
-    delete = "30m"
+    create = "60m"
+    update = "120m"
+    delete = "60m"
   }
 }
 
@@ -97,9 +100,9 @@ resource "aws_opensearch_domain" "logs" {
   engine_version = "OpenSearch_2.11"
 
   timeouts {
-    create = "60m"
-    update = "120m"  # Blue/green deployments can be very slow
-    delete = "60m"
+    create = "120m"
+    update = "240m"  # Blue/green deployments can be very slow
+    delete = "120m"
   }
 }
 ```
@@ -111,9 +114,8 @@ Terraform accepts several time formats:
 ```hcl
 timeouts {
   create = "60m"      # 60 minutes
-  create = "1h"       # 1 hour
-  create = "1h30m"    # 1 hour 30 minutes
-  create = "5400s"    # 5400 seconds
+  update = "1h"       # 1 hour
+  delete = "1h30m"    # 1 hour 30 minutes
 }
 ```
 
@@ -124,12 +126,21 @@ timeouts {
 Structure your dependency graph so slow resources start creating as early as possible:
 
 ```hcl
-# These can all start creating in parallel
+# Fast prerequisites should be available before slow resources that need them
+resource "aws_db_subnet_group" "main" {
+  name       = "main"
+  subnet_ids = var.private_subnet_ids
+}
+
+# Slow resources can start as soon as their direct prerequisites are ready
 resource "aws_db_instance" "main" {
-  identifier     = "production-db"
-  engine         = "postgres"
-  instance_class = "db.r5.large"
-  # No dependency on other resources - starts immediately
+  identifier           = "production-db"
+  engine               = "postgres"
+  instance_class       = "db.r5.large"
+  allocated_storage    = 100
+  username             = "admin"
+  manage_master_user_password = true
+  db_subnet_group_name = aws_db_subnet_group.main.name
 }
 
 resource "aws_eks_cluster" "main" {
@@ -148,18 +159,11 @@ resource "aws_elasticache_cluster" "redis" {
   num_cache_nodes = 1
   # Also starts immediately
 }
-
-# Faster resources that depend on the slow ones
-resource "aws_db_subnet_group" "main" {
-  # This is fast - finishes while DB is still creating
-  name       = "main"
-  subnet_ids = var.private_subnet_ids
-}
 ```
 
 ### Use Targeted Applies for Bootstrapping
 
-For initial setup, create slow resources first in a targeted apply:
+For exceptional initial setup cases, create slow resources first in a targeted apply:
 
 ```bash
 # Step 1: Create the slow resources (runs in parallel with each other)
@@ -171,6 +175,8 @@ terraform apply \
 # Step 2: Create everything else
 terraform apply
 ```
+
+Use `-target` sparingly. Terraform documents resource targeting for exceptional situations, not as a routine workflow.
 
 ### Separate Slow Resources into Different State Files
 
@@ -214,10 +220,9 @@ If the resource was created successfully but Terraform timed out:
 # Option 1: Import the resource into state
 terraform import aws_db_instance.main production-database
 
-# Option 2: Increase the timeout and apply again
-# Update your .tf file with a longer timeout, then:
+# Option 2: If Terraform already recorded the resource in state,
+# increase the timeout and apply again
 terraform apply
-# Terraform will detect the existing resource and update state
 ```
 
 ### If the Resource Actually Failed
@@ -272,7 +277,7 @@ resource "aws_rds_cluster" "main" {
 }
 ```
 
-## Using null_resource for Custom Waiting
+## Using terraform_data for Custom Waiting
 
 For resources that need custom wait logic:
 
@@ -281,10 +286,13 @@ resource "aws_db_instance" "main" {
   identifier     = "production"
   engine         = "postgres"
   instance_class = "db.r5.large"
+  allocated_storage = 100
+  username = "admin"
+  manage_master_user_password = true
 }
 
 # Wait for the database to be fully ready (not just "available")
-resource "null_resource" "db_ready" {
+resource "terraform_data" "db_ready" {
   depends_on = [aws_db_instance.main]
 
   provisioner "local-exec" {
@@ -305,8 +313,8 @@ resource "null_resource" "db_ready" {
 }
 
 # Resources that need the DB to be fully ready
-resource "null_resource" "run_migrations" {
-  depends_on = [null_resource.db_ready]
+resource "terraform_data" "run_migrations" {
+  depends_on = [terraform_data.db_ready]
 
   provisioner "local-exec" {
     command = "./run-migrations.sh"
@@ -350,6 +358,6 @@ pipeline {
 
 ## Conclusion
 
-Long-running resource creation is an unavoidable part of cloud infrastructure. The main tools for handling it in Terraform are custom timeouts, strategic configuration structure, and targeted applies. Set generous timeouts for resources like RDS instances, EKS clusters, and CloudFront distributions. Structure your configuration so slow resources start creating as early as possible in the dependency graph. Consider separating rarely-changed slow resources into their own state files. And when timeouts do occur, remember that the resource might still be creating successfully - check the cloud provider console before panicking.
+Long-running resource creation is an unavoidable part of cloud infrastructure. The main tools for handling it in Terraform are custom timeouts, strategic configuration structure, and targeted applies. Set generous timeouts for resources like RDS instances, EKS clusters, and OpenSearch domains, and use provider-specific wait settings such as CloudFront's `wait_for_deployment` when a resource does not support custom timeouts. Structure your configuration so slow resources start creating as early as possible in the dependency graph. Consider separating rarely-changed slow resources into their own state files. And when timeouts do occur, remember that the resource might still be creating successfully - check the cloud provider console before panicking.
 
 For another common timing challenge, see our guide on [how to handle eventual consistency issues with Terraform resources](https://oneuptime.com/blog/post/2026-02-23-terraform-eventual-consistency-issues/view).
