@@ -86,15 +86,14 @@ When a nested field is a list of objects and maps to repeated blocks in the reso
 variable "notification_configs" {
   type = list(object({
     name = string
-    channels = list(object({
-      type     = string  # "email", "slack", "pagerduty"
-      endpoint = string
-      severity = list(string)
-    }))
-    filters = list(object({
-      field    = string
-      operator = string
-      value    = string
+    metric_queries = list(object({
+      id          = string
+      metric_name = string
+      namespace   = string
+      period      = number
+      stat        = string
+      dimensions  = map(string)
+      return_data = bool
     }))
   }))
 }
@@ -105,20 +104,22 @@ resource "aws_cloudwatch_metric_alarm" "alerts" {
   alarm_name          = each.value.name
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 1
-  metric_name         = "Errors"
-  namespace           = "Custom"
-  period              = 300
-  statistic           = "Sum"
   threshold           = 0
 
-  # The channels list maps to alarm_actions
-  alarm_actions = [
-    for ch in each.value.channels : lookup(local.channel_arns, "${ch.type}-${ch.endpoint}", "")
-  ]
+  dynamic "metric_query" {
+    for_each = each.value.metric_queries
+    content {
+      id          = metric_query.value.id
+      return_data = metric_query.value.return_data
 
-  # Dynamic dimensions from the filters nested list
-  dimensions = {
-    for filter in each.value.filters : filter.field => filter.value
+      metric {
+        metric_name = metric_query.value.metric_name
+        namespace   = metric_query.value.namespace
+        period      = metric_query.value.period
+        stat        = metric_query.value.stat
+        dimensions  = metric_query.value.dimensions
+      }
+    }
   }
 }
 ```
@@ -174,7 +175,7 @@ resource "aws_route" "custom" {
 
 ## Nested Objects with Optional Fields
 
-When nested objects have optional fields, use the `optional()` type modifier and handle nulls inside the dynamic block:
+When nested objects have optional fields, use the `optional()` type modifier and handle nulls in the resource arguments:
 
 ```hcl
 variable "databases" {
@@ -238,9 +239,9 @@ variable "application" {
         size  = string
         az    = string
         disks = list(object({
-          size = number
-          type = string
-          mount = string
+          size        = number
+          type        = string
+          device_name = string
         }))
       }))
     }))
@@ -268,12 +269,12 @@ locals {
     for item in flatten([
       for inst_key, inst in local.all_instances : [
         for disk_idx, disk in inst.disks : {
-          key       = "${inst_key}-disk-${disk_idx}"
-          inst_key  = inst_key
-          size      = disk.size
-          type      = disk.type
-          mount     = disk.mount
-          az        = inst.az
+          key         = "${inst_key}-disk-${disk_idx}"
+          inst_key    = inst_key
+          size        = disk.size
+          type        = disk.type
+          device_name = disk.device_name
+          az          = inst.az
         }
       ]
     ]) : item.key => item
@@ -305,7 +306,7 @@ resource "aws_ebs_volume" "disks" {
 
   tags = {
     Name       = each.key
-    MountPoint = each.value.mount
+    DeviceName = each.value.device_name
     Instance   = each.value.inst_key
   }
 }
@@ -314,7 +315,7 @@ resource "aws_ebs_volume" "disks" {
 resource "aws_volume_attachment" "disks" {
   for_each = local.all_disks
 
-  device_name = each.value.mount
+  device_name = each.value.device_name
   volume_id   = aws_ebs_volume.disks[each.key].id
   instance_id = aws_instance.app[each.value.inst_key].id
 }
