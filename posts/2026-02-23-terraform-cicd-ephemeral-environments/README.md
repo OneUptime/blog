@@ -54,11 +54,13 @@ locals {
     Environment = "preview"
     Name        = local.safe_name
     TTL         = var.ttl_hours
-    CreatedAt   = timestamp()
+    CreatedAt   = time_static.created.rfc3339
     ManagedBy   = "terraform"
     Ephemeral   = "true"
   }
 }
+
+resource "time_static" "created" {}
 
 # Dedicated VPC for this environment (or use a shared one)
 module "vpc" {
@@ -216,15 +218,22 @@ jobs:
       - name: Run Integration Tests
         run: |
           # Wait for environment to be healthy
+          HEALTHY=false
           for i in $(seq 1 30); do
             STATUS=$(curl -s -o /dev/null -w '%{http_code}' "${{ needs.deploy.outputs.url }}/health" || echo "000")
             if [ "$STATUS" = "200" ]; then
               echo "Environment is healthy"
+              HEALTHY=true
               break
             fi
             echo "Waiting for environment... (attempt $i, status: $STATUS)"
             sleep 10
           done
+
+          if [ "$HEALTHY" != "true" ]; then
+            echo "Environment did not become healthy"
+            exit 1
+          fi
 
           # Run tests
           npm run test:integration -- --base-url="${{ needs.deploy.outputs.url }}"
@@ -276,6 +285,11 @@ on:
   schedule:
     - cron: '0 */4 * * *'  # Every 4 hours
 
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: read
+
 jobs:
   cleanup:
     runs-on: ubuntu-latest
@@ -291,18 +305,26 @@ jobs:
 
       - name: Find Stale Environments
         run: |
-          # List all preview state files
-          STATES=$(aws s3 ls s3://terraform-state/preview/ --recursive | awk '{print $4}')
+          NOW=$(date -u +%s)
+          TTL_SECONDS=$((48 * 60 * 60))
 
-          for STATE_KEY in $STATES; do
+          # List all preview state files and use their S3 last-modified time for TTL cleanup
+          aws s3 ls s3://terraform-state/preview/ --recursive | while read -r DATE TIME SIZE STATE_KEY; do
+            case "$STATE_KEY" in
+              */terraform.tfstate) ;;
+              *) continue ;;
+            esac
+
             ENV_NAME=$(echo "$STATE_KEY" | cut -d'/' -f2)
+            STATE_TIME=$(date -u -d "${DATE} ${TIME}" +%s)
+            AGE_SECONDS=$((NOW - STATE_TIME))
 
             # Check if the PR is still open
             PR_NUMBER=$(echo "$ENV_NAME" | sed 's/pr-//')
             PR_STATE=$(gh pr view "$PR_NUMBER" --json state -q '.state' 2>/dev/null || echo "UNKNOWN")
 
-            if [ "$PR_STATE" = "CLOSED" ] || [ "$PR_STATE" = "MERGED" ] || [ "$PR_STATE" = "UNKNOWN" ]; then
-              echo "Destroying stale environment: $ENV_NAME (PR state: $PR_STATE)"
+            if [ "$PR_STATE" = "CLOSED" ] || [ "$PR_STATE" = "MERGED" ] || [ "$PR_STATE" = "UNKNOWN" ] || [ "$AGE_SECONDS" -gt "$TTL_SECONDS" ]; then
+              echo "Destroying stale environment: $ENV_NAME (PR state: $PR_STATE, age: ${AGE_SECONDS}s)"
 
               cd environments/preview
               terraform init -backend-config="key=preview/${ENV_NAME}/terraform.tfstate"
@@ -316,7 +338,7 @@ jobs:
 
 ## Cost Control for Ephemeral Environments
 
-Keep preview costs under control with smaller resource sizes and spending limits:
+Keep preview costs under control with smaller resource sizes and cost-tracking tags:
 
 ```hcl
 # environments/preview/sizing.tf
@@ -358,6 +380,6 @@ Ephemeral environments with Terraform CI/CD involve:
 3. Pipeline triggers on PR open (create), sync (update), and close (destroy)
 4. Integration test jobs that run against the preview environment
 5. TTL-based cleanup for environments that outlive their PRs
-6. Cost controls with minimal resource sizing and spending alerts
+6. Cost controls with minimal resource sizing and cost-tracking tags
 
 Start simple with a single-service preview and expand to full-stack previews as the pattern proves itself. The payoff is significant: developers get fast, isolated testing environments without manual infrastructure setup. For managing the feature branch workflow around these environments, see [Terraform CI/CD with feature branch workflows](https://oneuptime.com/blog/post/2026-02-23-terraform-cicd-feature-branch-workflows/view).
