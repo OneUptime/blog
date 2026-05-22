@@ -8,7 +8,7 @@ Description: Learn how to use workspace health checks in HCP Terraform to monito
 
 ---
 
-Workspace health checks in HCP Terraform are a proactive monitoring feature that continuously evaluates the state of your managed infrastructure. Instead of waiting until someone runs `terraform plan` to discover problems, health checks run in the background and alert you when something is off - whether that is infrastructure drift, failed preconditions, or stale runs.
+Workspace health checks in HCP Terraform are a proactive monitoring feature that continuously evaluates the state of your managed infrastructure. Instead of waiting until someone runs `terraform plan` to discover problems, health checks run in the background and alert you when something is off - whether that is infrastructure drift, failed checks, or assessment errors.
 
 This guide covers how to enable and configure health checks, what they monitor, and how to build a process around them.
 
@@ -18,7 +18,7 @@ Workspace health assessments check two primary things:
 
 ### 1. Drift Detection
 
-Health checks run periodic `terraform plan` operations to compare your actual infrastructure against the Terraform state. If someone made a manual change, the health check catches it.
+Health checks run periodic speculative plan operations to compare your actual infrastructure against your Terraform configuration. If someone made a manual change that invalidates the configuration, the health check catches it.
 
 ### 2. Continuous Validation
 
@@ -125,15 +125,14 @@ resource "tfe_workspace" "production" {
 
 ## Understanding Health Status
 
-Workspaces with health checks enabled show one of these statuses:
+Workspaces with health checks enabled show health summaries and warning labels like these:
 
 | Status | Meaning |
 |---|---|
-| **Healthy** | No drift detected, all checks passing |
+| **No warning** | No drift detected, all checks passing |
 | **Drifted** | Infrastructure has changed outside of Terraform |
-| **Errored** | The health assessment itself failed (credential issues, etc.) |
-| **Assessment failed** | Check or validation conditions returned false |
-| **Unknown** | Assessment has not run yet |
+| **Check failed** | One or more continuous validation checks returned false |
+| **Health error** | The health assessment itself failed (credential issues, etc.) |
 
 ## Writing Effective Check Blocks
 
@@ -163,13 +162,12 @@ check "web_service_health" {
 ```hcl
 # Verify SSL certificate is not expiring soon
 check "certificate_expiry" {
-  data "aws_acm_certificate" "app_cert" {
-    domain   = "app.example.com"
-    statuses = ["ISSUED"]
+  data "tls_certificate" "app_cert" {
+    url = "https://app.example.com"
   }
 
   assert {
-    condition     = timecmp(data.aws_acm_certificate.app_cert.not_after, timeadd(timestamp(), "720h")) > 0
+    condition     = timecmp(data.tls_certificate.app_cert.certificates[length(data.tls_certificate.app_cert.certificates) - 1].not_after, timeadd(timestamp(), "720h")) > 0
     error_message = "SSL certificate expires within 30 days"
   }
 }
@@ -225,13 +223,13 @@ WORKSPACE_ID="ws-xxxxxxxxxxxxxxxx"
 
 curl \
   --header "Authorization: Bearer $TFC_TOKEN" \
-  "https://app.terraform.io/api/v2/workspaces/${WORKSPACE_ID}/assessment-results" \
-  | jq '.data[] | {
-    created: .attributes["created-at"],
-    drifted: .attributes.drifted,
-    checks_passed: .attributes["checks-passed"],
-    checks_failed: .attributes["checks-failed"],
-    resource_drift: (.attributes["resource-drift"] // [] | length)
+  "https://app.terraform.io/api/v2/workspaces/${WORKSPACE_ID}/current-assessment-result" \
+  | jq '.data.attributes | {
+    created: .["created-at"],
+    drifted: .drifted,
+    checks_passed: .["checks-passed"],
+    checks_failed: .["checks-failed"],
+    resources_drifted: .["resources-drifted"]
   }'
 ```
 
@@ -309,13 +307,15 @@ def get_all_workspaces():
 def get_health_status(workspace_id):
     """Get the latest health assessment for a workspace."""
     resp = requests.get(
-        f"{BASE_URL}/workspaces/{workspace_id}/assessment-results",
-        headers=HEADERS,
-        params={"page[size]": 1}
+        f"{BASE_URL}/workspaces/{workspace_id}/current-assessment-result",
+        headers=HEADERS
     )
-    results = resp.json()["data"]
-    if results:
-        return results[0]["attributes"]
+    if resp.status_code == 404:
+        return None
+    resp.raise_for_status()
+    result = resp.json().get("data")
+    if result:
+        return result["attributes"]
     return None
 
 # Generate health report
@@ -396,7 +396,7 @@ resource "tfe_notification_configuration" "oneuptime_webhook" {
 
 **Assessments not running**: Verify the workspace has a successful run (health checks need at least one applied state). Check that `assessments-enabled` is true.
 
-**False positives from check blocks**: If a check depends on external services that have intermittent availability, consider adding retry logic or using a less strict condition.
+**False positives from check blocks**: If a check depends on external services that have intermittent availability, consider using a less strict condition or monitoring that dependency with a dedicated availability tool.
 
 **Assessment errors**: These usually indicate credential issues. The health assessment uses the same credentials as regular runs - make sure workspace variables are current.
 
