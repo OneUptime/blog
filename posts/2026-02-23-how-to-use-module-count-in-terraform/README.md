@@ -51,7 +51,7 @@ module "monitoring" {
 }
 ```
 
-When `enable_monitoring` is `true`, `count = 1` and the module is created. When it is `false`, `count = 0` and the module is completely skipped - no resources are created, no providers are initialized for it.
+When `enable_monitoring` is `true`, `count = 1` and the module is created. When it is `false`, `count = 0` and no module instances are created, so no resources from that module are created.
 
 ## Common Conditional Patterns
 
@@ -261,7 +261,7 @@ module "application" {
   vpc_id     = module.vpc.vpc_id
   db_endpoint = var.create_database ? module.database[0].endpoint : var.external_db_endpoint
 
-  # Explicit dependency since the conditional reference might not capture it
+  # Explicit dependency for any hidden dependency not captured by direct references
   depends_on = [module.database]
 }
 ```
