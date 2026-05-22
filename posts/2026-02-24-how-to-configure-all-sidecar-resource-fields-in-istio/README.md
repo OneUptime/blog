@@ -8,18 +8,18 @@ Description: A detailed walkthrough of every field in the Istio Sidecar resource
 
 ---
 
-The Sidecar resource in Istio gives you fine-grained control over the scope and behavior of the Envoy proxy sidecar attached to your workloads. By default, every sidecar in the mesh is configured to reach every other service and accept traffic on all ports. For large meshes, that is wasteful and potentially insecure. The Sidecar resource lets you narrow things down.
+The Sidecar resource in Istio gives you fine-grained control over the scope and behavior of the Envoy proxy sidecar attached to your workloads. By default, every sidecar in the mesh is configured to reach every other service and accept traffic on the ports associated with the workload. For large meshes, that is wasteful and noisy. The Sidecar resource lets you narrow things down.
 
 ## Why Use the Sidecar Resource
 
 In a mesh with hundreds or thousands of services, each Envoy proxy maintains configuration for every service it could possibly talk to. That means every sidecar receives cluster, endpoint, and listener updates for every service in the mesh. This leads to high memory usage and slow configuration push times.
 
-The Sidecar resource trims that down. You define exactly which services a workload needs to reach, and Istio only pushes configuration for those services. The result is faster config updates, lower memory usage, and a cleaner security posture.
+The Sidecar resource trims that down. You define exactly which services a workload needs to import into its outbound configuration, and Istio only pushes configuration for those services. The result is faster config updates, lower memory usage, and a smaller proxy configuration surface.
 
 ## Top-Level Structure
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: my-sidecar
@@ -38,12 +38,11 @@ spec:
     - hosts:
         - "./*"
         - "istio-system/*"
+  inboundConnectionPool:
+    http:
+      http1MaxPendingRequests: 1024
   outboundTrafficPolicy:
     mode: REGISTRY_ONLY
-    egressProxy:
-      host: egress-gateway.istio-system.svc.cluster.local
-      port:
-        number: 443
 ```
 
 ## Workload Selector
@@ -66,7 +65,7 @@ The `workloadSelector` determines which pods this Sidecar configuration applies 
 ```yaml
 # Namespace default sidecar (no workloadSelector)
 
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -96,10 +95,10 @@ spec:
         mode: SIMPLE
         serverCertificate: /etc/certs/server.pem
         privateKey: /etc/certs/key.pem
-        caCertificates: /etc/certs/ca.pem
-        credentialName: inbound-tls
-        subjectAltNames:
-          - my-app.default.svc.cluster.local
+      connectionPool:
+        http:
+          http1MaxPendingRequests: 1024
+          maxRequestsPerConnection: 100
 ```
 
 Each ingress listener has these fields:
@@ -153,21 +152,48 @@ tls:
   serverCertificate: /etc/certs/server.pem
   privateKey: /etc/certs/key.pem
   caCertificates: /etc/certs/ca.pem
-  credentialName: inbound-tls
   subjectAltNames:
     - client.example.com
-  httpsRedirect: false
   minProtocolVersion: TLSV1_2
   maxProtocolVersion: TLSV1_3
   cipherSuites:
     - ECDHE-RSA-AES256-GCM-SHA384
 ```
 
-TLS on ingress listeners supports the same modes as Gateway TLS: `SIMPLE`, `MUTUAL`, `ISTIO_MUTUAL`, `OPTIONAL_MUTUAL`. The fields mirror what you see in the Gateway resource. When using `credentialName`, the secret is read from the workload's namespace.
+Sidecar ingress TLS termination is an experimental feature and must be enabled with `ENABLE_TLS_ON_SIDECAR_INGRESS`. It currently supports only `SIMPLE` and `MUTUAL` TLS modes. Unlike gateways, sidecar ingress TLS does not support `credentialName`; mount the certificate files into the sidecar and reference them with file paths.
+
+### Connection Pool
+
+```yaml
+connectionPool:
+  http:
+    http1MaxPendingRequests: 1024
+    http2MaxRequests: 1024
+    maxRequestsPerConnection: 100
+  tcp:
+    maxConnections: 100
+```
+
+The `connectionPool` field controls inbound connection pool settings for this ingress port. It overrides the top-level `inboundConnectionPool` setting for the same port.
+
+## Inbound Connection Pool
+
+```yaml
+spec:
+  inboundConnectionPool:
+    http:
+      http1MaxPendingRequests: 1024
+      http2MaxRequests: 1024
+      maxRequestsPerConnection: 100
+    tcp:
+      maxConnections: 100
+```
+
+The top-level `inboundConnectionPool` field controls the connection volume Envoy accepts from the network for all inbound listeners. A per-port ingress `connectionPool` overrides this default.
 
 ## Egress Listeners
 
-The `egress` section controls what services the sidecar can reach. This is the most commonly configured part.
+The `egress` section controls which outbound service configuration the sidecar imports. This is the most commonly configured part.
 
 ```yaml
 spec:
@@ -192,7 +218,7 @@ port:
   name: http-outbound
 ```
 
-When specified, the egress listener applies only to traffic on this port. If omitted, it applies to all ports. You can have multiple egress entries for different ports.
+When specified, the egress listener uses this as the default destination port for the imported hosts. If omitted, Istio infers listener ports from the imported hosts. You can have multiple egress entries for different ports.
 
 ### Bind
 
@@ -216,7 +242,7 @@ The `hosts` field is the key part of egress configuration. It uses the format `n
 - `./*` means all services in the same namespace as the sidecar
 - `istio-system/*` means all services in the istio-system namespace
 - `*/reviews.bookinfo.svc.cluster.local` means the reviews service in any namespace
-- `~/*` means no services (block everything)
+- `~/*` means no services are imported into the outbound configuration
 
 You can be as broad or narrow as you want. The more specific your egress hosts list, the less configuration Envoy needs to maintain.
 
@@ -224,7 +250,7 @@ A common pattern is to have a namespace-level default that allows same-namespace
 
 ```yaml
 # Namespace default - restricted
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -236,7 +262,7 @@ spec:
         - "istio-system/*"
 ---
 # Override for specific workload that needs backend access
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: api-gateway-sidecar
@@ -265,26 +291,14 @@ This controls what happens when a workload tries to reach a service that is not 
 - `ALLOW_ANY` - traffic to unknown services is allowed and passed through as-is
 - `REGISTRY_ONLY` - traffic to unknown services is blocked
 
-This setting on the Sidecar resource overrides the mesh-wide `outboundTrafficPolicy` setting from MeshConfig.
+This setting on the Sidecar resource overrides the mesh-wide `outboundTrafficPolicy` setting from MeshConfig for the selected workload.
 
-There is also an `egressProxy` sub-field:
-
-```yaml
-outboundTrafficPolicy:
-  mode: ALLOW_ANY
-  egressProxy:
-    host: egress-gateway.istio-system.svc.cluster.local
-    subset: default
-    port:
-      number: 443
-```
-
-The `egressProxy` routes all external traffic through a specific egress gateway. This is useful for organizations that need to funnel all outgoing traffic through a controlled exit point for auditing or compliance.
+The Sidecar API does not have an `egressProxy` field. To route external traffic through an egress gateway, configure a `ServiceEntry`, egress `Gateway`, `VirtualService`, and usually a `DestinationRule`.
 
 ## Full Working Example
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: productpage-sidecar
@@ -318,6 +332,6 @@ spec:
     mode: REGISTRY_ONLY
 ```
 
-This Sidecar configuration for the productpage workload explicitly declares that it only needs to reach the reviews and details services on port 9080, plus anything in istio-system. Envoy will only maintain configuration for those services, keeping the proxy lean and efficient. Any attempt to reach other services will be blocked because of the `REGISTRY_ONLY` policy.
+This Sidecar configuration for the productpage workload explicitly scopes outbound configuration to the reviews and details services on port 9080, plus anything in istio-system. Envoy will only maintain configuration for those imported services, keeping the proxy lean and efficient. The `REGISTRY_ONLY` policy drops unknown outbound destinations, but Sidecar egress scoping by itself is not an outbound firewall.
 
 Using Sidecar resources across your mesh is one of the best ways to improve performance at scale. Start with namespace-level defaults and refine from there based on actual traffic patterns.
