@@ -73,11 +73,15 @@ Options include:
 
 For many teams, using public IPs on the east-west gateways is the simplest approach. Since all traffic is mTLS-encrypted, it is secure even over the public internet. You just need to make sure firewall rules allow port 15443 between the clusters.
 
+Use a Layer 4 load balancer for the east-west gateway; a Layer 7 load balancer that terminates TLS is not compatible with Istio's `AUTO_PASSTHROUGH` mode.
+
 ## Creating the Shared Root CA
 
 Generate a root CA and per-cluster intermediate CAs:
 
 ```bash
+mkdir -p certs
+
 # Root CA
 openssl req -new -newkey rsa:4096 -x509 -sha256 \
   -days 3650 -nodes \
@@ -117,6 +121,7 @@ Install the CA secrets:
 ```bash
 # AWS cluster
 kubectl --context=aws create namespace istio-system
+kubectl --context=aws label namespace istio-system topology.istio.io/network=aws-network --overwrite
 kubectl --context=aws create secret generic cacerts -n istio-system \
   --from-file=ca-cert.pem=certs/aws-ca-cert.pem \
   --from-file=ca-key.pem=certs/aws-ca-key.pem \
@@ -125,6 +130,7 @@ kubectl --context=aws create secret generic cacerts -n istio-system \
 
 # GCP cluster
 kubectl --context=gcp create namespace istio-system
+kubectl --context=gcp label namespace istio-system topology.istio.io/network=gcp-network --overwrite
 kubectl --context=gcp create secret generic cacerts -n istio-system \
   --from-file=ca-cert.pem=certs/gcp-ca-cert.pem \
   --from-file=ca-key.pem=certs/gcp-ca-key.pem \
@@ -263,7 +269,7 @@ spec:
       baseEjectionTime: 30s
 ```
 
-This keeps traffic local to the cloud where the caller is running, but automatically fails over to the other cloud if the local service is unhealthy.
+When the service is deployed in both clouds and the nodes have region topology labels, this keeps traffic local to the cloud where the caller is running, but automatically fails over to the other cloud if the local service is unhealthy.
 
 ## Security Policies Across Clouds
 
@@ -295,15 +301,18 @@ Centralize observability by federating Prometheus instances or using a centraliz
 
 ```yaml
 # prometheus-federation.yaml on the central cluster
+scrape_configs:
 - job_name: 'aws-istio'
   honor_labels: true
   metrics_path: '/federate'
   params:
     'match[]':
-    - '{job="istio-mesh"}'
+    - '{job="kubernetes-pods"}'
   static_configs:
   - targets:
-    - 'prometheus-aws.monitoring.svc.cluster.local:9090'
+    - 'prometheus.aws.example.com'
+    labels:
+      cluster: 'aws-cluster'
 ```
 
 Multi-cloud Istio is not trivial to set up, but once the foundation is in place - shared root CA, matching trust domains, east-west gateways, cross-cluster discovery - it works remarkably well. Services communicate across cloud providers as if they were in the same cluster, with full mTLS encryption and consistent policy enforcement.
