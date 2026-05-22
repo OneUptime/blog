@@ -29,7 +29,7 @@ Without tags, you end up with a flat list of workspace names and the hope that y
 1. Go to your workspace
 2. On the workspace overview, find the **Tags** section
 3. Click **Add tags** or the edit icon
-4. Type tag names and press Enter
+4. Type tag keys and values, then save
 
 ### Using the TFE Provider
 
@@ -37,57 +37,55 @@ Without tags, you end up with a flat list of workspace names and the hope that y
 # Create a workspace with tags
 
 resource "tfe_workspace" "production_api" {
-  name           = "production-api"
-  organization   = "your-org"
-  execution_mode = "remote"
+  name         = "production-api"
+  organization = "your-org"
 
-  tag_names = [
-    "production",
-    "api",
-    "aws",
-    "team-backend",
-    "auto-apply-disabled",
-  ]
+  tags = {
+    environment = "production"
+    service     = "api"
+    cloud       = "aws"
+    team        = "backend"
+    auto_apply  = "disabled"
+  }
 }
 
 resource "tfe_workspace" "staging_api" {
-  name           = "staging-api"
-  organization   = "your-org"
-  execution_mode = "remote"
-  auto_apply     = true
+  name         = "staging-api"
+  organization = "your-org"
+  auto_apply   = true
 
-  tag_names = [
-    "staging",
-    "api",
-    "aws",
-    "team-backend",
-    "auto-apply-enabled",
-  ]
+  tags = {
+    environment = "staging"
+    service     = "api"
+    cloud       = "aws"
+    team        = "backend"
+    auto_apply  = "enabled"
+  }
 }
 ```
 
 ### Through the API
 
 ```bash
-# Add tags to an existing workspace
+# Add or update key-value tags on an existing workspace
 WORKSPACE_ID="ws-xxxxxxxxxxxxxxxx"
 
 curl \
   --header "Authorization: Bearer $TFC_TOKEN" \
   --header "Content-Type: application/vnd.api+json" \
-  --request POST \
+  --request PATCH \
   --data '{
     "data": [
-      { "type": "tags", "attributes": { "name": "production" } },
-      { "type": "tags", "attributes": { "name": "aws" } },
-      { "type": "tags", "attributes": { "name": "team-platform" } }
+      { "type": "tag-bindings", "attributes": { "key": "environment", "value": "production" } },
+      { "type": "tag-bindings", "attributes": { "key": "cloud", "value": "aws" } },
+      { "type": "tag-bindings", "attributes": { "key": "team", "value": "platform" } }
     ]
   }' \
-  "https://app.terraform.io/api/v2/workspaces/${WORKSPACE_ID}/relationships/tags"
+  "https://app.terraform.io/api/v2/workspaces/${WORKSPACE_ID}/tag-bindings"
 ```
 
 ```bash
-# Remove a tag from a workspace
+# Remove a legacy flat string tag from a workspace
 curl \
   --header "Authorization: Bearer $TFC_TOKEN" \
   --header "Content-Type: application/vnd.api+json" \
@@ -109,19 +107,18 @@ The most common tagging pattern:
 ```hcl
 locals {
   environment_tags = {
-    development = ["development", "non-production", "auto-apply-enabled"]
-    staging     = ["staging", "non-production", "auto-apply-enabled"]
-    production  = ["production", "manual-apply", "monitored"]
+    development = { environment = "development", tier = "non-production", auto_apply = "enabled", apply_mode = "auto", monitoring = "standard" }
+    staging     = { environment = "staging", tier = "non-production", auto_apply = "enabled", apply_mode = "auto", monitoring = "standard" }
+    production  = { environment = "production", tier = "production", auto_apply = "disabled", apply_mode = "manual", monitoring = "enhanced" }
   }
 }
 
 resource "tfe_workspace" "app" {
   for_each = local.environment_tags
 
-  name           = "app-${each.key}"
-  organization   = "your-org"
-  execution_mode = "remote"
-  tag_names      = each.value
+  name         = "app-${each.key}"
+  organization = "your-org"
+  tags         = each.value
 }
 ```
 
@@ -134,15 +131,15 @@ locals {
   workspaces = {
     "api-gateway" = {
       team = "team-platform"
-      tags = ["production", "networking", "aws"]
+      tags = { environment = "production", category = "networking", cloud = "aws" }
     }
     "user-service" = {
       team = "team-backend"
-      tags = ["production", "compute", "aws"]
+      tags = { environment = "production", category = "compute", cloud = "aws" }
     }
     "frontend-cdn" = {
       team = "team-frontend"
-      tags = ["production", "cdn", "aws"]
+      tags = { environment = "production", category = "cdn", cloud = "aws" }
     }
   }
 }
@@ -150,10 +147,9 @@ locals {
 resource "tfe_workspace" "managed" {
   for_each = local.workspaces
 
-  name           = each.key
-  organization   = "your-org"
-  execution_mode = "remote"
-  tag_names      = concat(each.value.tags, [each.value.team])
+  name         = each.key
+  organization = "your-org"
+  tags         = merge(each.value.tags, { team = each.value.team })
 }
 ```
 
@@ -193,12 +189,12 @@ The workspace list page has a tag filter. Click on a tag to see all workspaces w
 # Filter workspaces by a single tag
 curl \
   --header "Authorization: Bearer $TFC_TOKEN" \
-  "https://app.terraform.io/api/v2/organizations/${TFC_ORG}/workspaces?search[tags]=production"
+  "https://app.terraform.io/api/v2/organizations/${TFC_ORG}/workspaces?filter%5Btagged%5D%5B0%5D%5Bkey%5D=environment&filter%5Btagged%5D%5B0%5D%5Bvalue%5D=production"
 
-# Filter by multiple tags (comma-separated means AND)
+# Filter by multiple key-value tags (multiple filters mean AND)
 curl \
   --header "Authorization: Bearer $TFC_TOKEN" \
-  "https://app.terraform.io/api/v2/organizations/${TFC_ORG}/workspaces?search[tags]=production,aws"
+  "https://app.terraform.io/api/v2/organizations/${TFC_ORG}/workspaces?filter%5Btagged%5D%5B0%5D%5Bkey%5D=environment&filter%5Btagged%5D%5B0%5D%5Bvalue%5D=production&filter%5Btagged%5D%5B1%5D%5Bkey%5D=cloud&filter%5Btagged%5D%5B1%5D%5Bvalue%5D=aws"
 ```
 
 ### Using Tags with the Cloud Block
@@ -212,7 +208,10 @@ terraform {
     organization = "your-org"
 
     workspaces {
-      tags = ["app-api", "aws"]
+      tags = {
+        service = "api"
+        cloud   = "aws"
+      }
     }
   }
 }
@@ -235,15 +234,16 @@ Apply an action to all workspaces with a specific tag:
 
 ```bash
 #!/bin/bash
-# bulk-update-by-tag.sh - Update all workspaces with a given tag
+# bulk-update-by-tag.sh - Update all workspaces with a given key-value tag
 
-TAG="$1"
-ACTION="$2"  # e.g., "lock", "unlock", "enable-assessments"
+TAG_KEY="$1"
+TAG_VALUE="$2"
+ACTION="$3"  # e.g., "lock", "unlock", "enable-assessments"
 
 # Get all workspaces with the tag
 WORKSPACES=$(curl -s \
   --header "Authorization: Bearer $TFC_TOKEN" \
-  "https://app.terraform.io/api/v2/organizations/${TFC_ORG}/workspaces?search[tags]=${TAG}&page[size]=100" \
+  "https://app.terraform.io/api/v2/organizations/${TFC_ORG}/workspaces?filter%5Btagged%5D%5B0%5D%5Bkey%5D=${TAG_KEY}&filter%5Btagged%5D%5B0%5D%5Bvalue%5D=${TAG_VALUE}&page%5Bsize%5D=100" \
   | jq -r '.data[].id')
 
 for WS_ID in $WORKSPACES; do
@@ -299,7 +299,12 @@ resource "tfe_variable" "prod_env" {
 # Get all production workspaces by tag
 data "tfe_workspace_ids" "production" {
   organization = "your-org"
-  tag_names    = ["production"]
+
+  tag_filters {
+    include = {
+      environment = "production"
+    }
+  }
 }
 
 # Apply the variable set to all production workspaces
@@ -342,14 +347,24 @@ def get_all_workspaces():
         page += 1
     return workspaces
 
+def get_effective_tags(workspace_id):
+    resp = requests.get(
+        f"{BASE_URL}/workspaces/{workspace_id}/effective-tag-bindings",
+        headers=HEADERS,
+    )
+    resp.raise_for_status()
+    return resp.json()["data"]
+
 # Group workspaces by tag
 tag_groups = defaultdict(list)
 workspaces = get_all_workspaces()
 
 for ws in workspaces:
-    tags = ws["attributes"].get("tag-names", [])
+    tags = get_effective_tags(ws["id"])
     for tag in tags:
-        tag_groups[tag].append(ws["attributes"]["name"])
+        attributes = tag["attributes"]
+        tag_name = f"{attributes['key']}={attributes['value']}"
+        tag_groups[tag_name].append(ws["attributes"]["name"])
 
 # Print report
 for tag in sorted(tag_groups.keys()):
@@ -363,7 +378,7 @@ for tag in sorted(tag_groups.keys()):
 Establish conventions early to keep tags useful as your organization scales:
 
 ```text
-# Use lowercase with hyphens
+# Use lowercase with hyphens or underscores
 production         # Good
 Production         # Avoid mixed case
 PRODUCTION         # Avoid all caps
