@@ -111,7 +111,7 @@ spec:
       holdApplicationUntilProxyStarts: true
 ```
 
-This makes the Kubernetes kubelet wait for the sidecar's readiness probe to pass before starting the application container.
+This causes Istio's sidecar injector to put the proxy first in the pod's container list and block the other containers until the proxy is ready.
 
 ## Pod-Specific DNS and Addressing
 
@@ -137,7 +137,7 @@ kubectl exec deploy/sleep -c sleep -n cache -- \
 Stateful applications often maintain long-lived connections. Database connection pools, message broker consumers, and cache clients all keep connections open for extended periods. The sidecar proxy needs to be configured to handle this:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: redis-dr
@@ -158,7 +158,7 @@ The `idleTimeout` is critical. If set too low, the sidecar closes idle connectio
 
 ### Databases (MySQL, PostgreSQL, MongoDB)
 
-Database protocols are server-speaks-first, meaning the server sends data before the client. Istio's protocol sniffing does not work for these. Always use explicit port naming:
+Some database protocols, such as MySQL, are server-speaks-first, meaning the server sends data before the client. Istio's automatic protocol selection does not work for server-first protocols, and database protocol parsers are not enabled by default. Always use explicit port naming:
 
 ```yaml
 ports:
@@ -166,11 +166,11 @@ ports:
     port: 3306
   - name: tcp-postgres
     port: 5432
-  - name: mongo
+  - name: tcp-mongo
     port: 27017
 ```
 
-For MongoDB, Istio has built-in protocol support:
+For MongoDB, Istio lists `mongo` as experimental application protocol support. Use it only if you have enabled the corresponding Istio protocol parser; otherwise keep the port as opaque TCP:
 
 ```yaml
 ports:
@@ -180,7 +180,7 @@ ports:
 
 ### Kafka
 
-Kafka presents a challenge because brokers advertise their addresses to clients, and those addresses must be reachable. In Istio, the advertised addresses are pod IPs, which the sidecar intercepts correctly:
+Kafka presents a challenge because brokers advertise their addresses to clients, and those addresses must be reachable. In Istio, advertise stable pod DNS names so clients can resolve and connect to the specific broker through the sidecar:
 
 ```yaml
 apiVersion: v1
@@ -203,6 +203,9 @@ metadata:
 spec:
   serviceName: kafka
   replicas: 3
+  selector:
+    matchLabels:
+      app: kafka
   template:
     metadata:
       labels:
@@ -215,6 +218,10 @@ spec:
         - name: kafka
           image: confluentinc/cp-kafka:7.5.0
           env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
             - name: KAFKA_ADVERTISED_LISTENERS
               value: "PLAINTEXT://$(POD_NAME).kafka.default.svc.cluster.local:9092"
 ```
@@ -235,7 +242,7 @@ ports:
 
 ## mTLS Considerations
 
-StatefulSet pods talking to each other through Istio get automatic mTLS. But some applications implement their own TLS, which conflicts with Istio's mTLS. If your database already uses TLS:
+StatefulSet pods talking to each other through Istio get automatic mTLS. Application-level TLS can usually run inside Istio mTLS, but some workloads may still need plaintext database listeners for mesh traffic or a migration period for non-mesh clients. If your database already uses TLS:
 
 Option 1: Disable application-level TLS and let Istio handle encryption:
 
@@ -258,6 +265,17 @@ spec:
       app: redis
   mtls:
     mode: DISABLE
+---
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: redis-disable-mtls
+  namespace: cache
+spec:
+  host: redis.cache.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: DISABLE
 ```
 
 Option 3: Use PERMISSIVE mode while transitioning:
@@ -314,7 +332,7 @@ Sometimes the sidecar causes more problems than it solves for stateful workloads
 ```yaml
 template:
   metadata:
-    annotations:
+    labels:
       sidecar.istio.io/inject: "false"
 ```
 
