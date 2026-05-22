@@ -197,7 +197,7 @@ module "email_worker" {
     memory          = 1024
     replicas        = 2
     environment = {
-      QUEUE_URL = module.email_worker.queue_url
+      LOG_LEVEL = "info"
     }
   }
 
@@ -294,7 +294,7 @@ resource "aws_db_instance" "main" {
 }
 
 output "endpoint" {
-  value = aws_db_instance.main.endpoint
+  value = aws_db_instance.main.address
 }
 
 output "port" {
@@ -320,9 +320,9 @@ output "port" {
 ```
 
 ```hcl
-# main.tf - Choose the right adapter
+# main.tf - Choose the right adapter by setting a concrete module source
 module "database" {
-  source = "./modules/database/${var.cloud_provider}"
+  source = "./modules/database/aws"
 
   name           = "myapp-db"
   engine         = "postgres"
