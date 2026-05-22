@@ -127,7 +127,7 @@ The `rules` field determines which requests get sent to the external authorizer.
 Here's a practical external authorizer in Python using Flask:
 
 ```python
-from flask import Flask, request, jsonify
+from flask import Flask, request
 import requests
 import os
 
@@ -135,11 +135,16 @@ app = Flask(__name__)
 
 PERMISSION_SERVICE_URL = os.getenv("PERMISSION_SERVICE_URL", "http://permission-service:8080")
 
-@app.route("/authz", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
+@app.route("/healthz", methods=["GET"])
+def healthz():
+    return "OK", 200
+
+@app.route("/authz", defaults={"original_path": ""}, methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
+@app.route("/authz/<path:original_path>", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 def check_auth():
     # Extract the original request information
-    original_method = request.headers.get("X-Forwarded-Method", request.method)
-    original_path = request.headers.get("X-Forwarded-Uri", request.path)
+    original_method = request.method
+    original_path = f"/{original_path}" if original_path else "/"
     auth_header = request.headers.get("Authorization", "")
 
     # No token = deny
@@ -274,6 +279,9 @@ data:
 
     default allow := false
 
+    # Load your issuer's JWKS or PEM public key into OPA data at data.jwt.verification_key.
+    jwt_constraints := {"cert": data.jwt.verification_key}
+
     # Allow health checks
     allow if {
         http_request.path == "/healthz"
@@ -287,7 +295,8 @@ data:
     # Check JWT claims for protected endpoints
     allow if {
         token := parse_bearer_token(http_request.headers.authorization)
-        claims := io.jwt.decode(token)[1]
+        [valid, _, claims] := io.jwt.decode_verify(token, jwt_constraints)
+        valid
         has_permission(claims, http_request.method, http_request.path)
     }
 
