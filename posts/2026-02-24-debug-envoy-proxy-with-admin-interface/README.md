@@ -41,7 +41,7 @@ The output is large. Filter it:
 
 ```bash
 # Only bootstrap config
-kubectl exec <pod-name> -c istio-proxy -- curl -s "localhost:15000/config_dump?resource=bootstrap"
+kubectl exec <pod-name> -c istio-proxy -- curl -s "localhost:15000/config_dump?mask=bootstrap"
 
 # Only listeners
 kubectl exec <pod-name> -c istio-proxy -- curl -s "localhost:15000/config_dump?resource=dynamic_listeners"
@@ -96,7 +96,7 @@ Envoy tracks thousands of statistics. This is where you find detailed metrics ab
 # All stats
 kubectl exec <pod-name> -c istio-proxy -- curl -s localhost:15000/stats
 
-# Filter by prefix
+# Filter by regex
 kubectl exec <pod-name> -c istio-proxy -- curl -s "localhost:15000/stats?filter=cluster.outbound.*my-service"
 
 # Prometheus format
@@ -200,7 +200,7 @@ kubectl exec <pod-name> -c istio-proxy -- curl -s -X POST "localhost:15000/loggi
 kubectl exec <pod-name> -c istio-proxy -- curl -s -X POST "localhost:15000/logging?upstream=debug"
 
 # See current log levels
-kubectl exec <pod-name> -c istio-proxy -- curl -s localhost:15000/logging
+kubectl exec <pod-name> -c istio-proxy -- curl -s -X POST localhost:15000/logging
 
 # Reset to warning level
 kubectl exec <pod-name> -c istio-proxy -- curl -s -X POST "localhost:15000/logging?level=warning"
