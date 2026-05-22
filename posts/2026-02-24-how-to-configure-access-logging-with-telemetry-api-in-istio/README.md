@@ -160,7 +160,7 @@ spec:
     - providers:
         - name: envoy
       filter:
-        expression: "response.duration > 1000"
+        expression: "request.duration > duration('1s')"
 ```
 
 This logs any request that takes more than 1000 milliseconds (1 second). Great for catching latency issues without the noise of fast, successful requests.
@@ -175,7 +175,7 @@ spec:
     - providers:
         - name: envoy
       filter:
-        expression: "response.code >= 400 || response.duration > 2000"
+        expression: "response.code >= 400 || request.duration > duration('2s')"
 ```
 
 This logs requests that either return errors OR take more than 2 seconds.
@@ -207,9 +207,7 @@ metadata:
   namespace: noisy-namespace
 spec:
   accessLogging:
-    - providers:
-        - name: envoy
-      disabled: true
+    - disabled: true
 ```
 
 To disable for a specific workload:
@@ -225,9 +223,7 @@ spec:
     matchLabels:
       app: healthcheck-service
   accessLogging:
-    - providers:
-        - name: envoy
-      disabled: true
+    - disabled: true
 ```
 
 ## Multiple Access Log Providers
