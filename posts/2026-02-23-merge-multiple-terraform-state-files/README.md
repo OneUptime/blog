@@ -78,7 +78,7 @@ terraform {
     bucket         = "my-terraform-state"
     key            = "merged/terraform.tfstate"
     region         = "us-east-1"
-    dynamodb_table = "terraform-locks"
+    use_lockfile   = true
   }
 }
 ```
@@ -101,14 +101,11 @@ terraform state pull > /tmp/database.tfstate
 
 ## Step 4: Move Resources into the Target State
 
-Initialize the merged configuration to create an empty state, then use `terraform state mv` to move resources from each source state into the merged state:
+Initialize the merged configuration, then use `terraform state mv` to move resources from each source state into the merged state file:
 
 ```bash
 cd terraform/merged
 terraform init
-
-# Pull the empty state as the target
-terraform state pull > /tmp/merged.tfstate
 ```
 
 Now move resources from each source:
@@ -118,38 +115,45 @@ Now move resources from each source:
 terraform state mv \
   -state=/tmp/networking.tfstate \
   -state-out=/tmp/merged.tfstate \
+  aws_vpc.main \
   aws_vpc.main
 
 terraform state mv \
   -state=/tmp/networking.tfstate \
   -state-out=/tmp/merged.tfstate \
+  aws_subnet.public \
   aws_subnet.public
 
 terraform state mv \
   -state=/tmp/networking.tfstate \
   -state-out=/tmp/merged.tfstate \
+  aws_subnet.private \
   aws_subnet.private
 
 # Move compute resources into the merged state
 terraform state mv \
   -state=/tmp/compute.tfstate \
   -state-out=/tmp/merged.tfstate \
+  aws_instance.web_server \
   aws_instance.web_server
 
 terraform state mv \
   -state=/tmp/compute.tfstate \
   -state-out=/tmp/merged.tfstate \
+  aws_autoscaling_group.app \
   aws_autoscaling_group.app
 
 # Move database resources into the merged state
 terraform state mv \
   -state=/tmp/database.tfstate \
   -state-out=/tmp/merged.tfstate \
+  aws_db_instance.main \
   aws_db_instance.main
 
 terraform state mv \
   -state=/tmp/database.tfstate \
   -state-out=/tmp/merged.tfstate \
+  aws_db_subnet_group.main \
   aws_db_subnet_group.main
 ```
 
@@ -243,9 +247,6 @@ set -euo pipefail
 
 MERGED_STATE="/tmp/merged.tfstate"
 
-# Initialize the merged state as empty
-echo '{"version":4,"terraform_version":"1.7.0","serial":0,"lineage":"","outputs":{},"resources":[]}' > "$MERGED_STATE"
-
 # Define source states and their resources
 declare -A SOURCES
 SOURCES["/tmp/networking.tfstate"]="aws_vpc.main aws_subnet.public aws_subnet.private aws_internet_gateway.main aws_route_table.public"
@@ -259,6 +260,7 @@ for state_file in "${!SOURCES[@]}"; do
     terraform state mv \
       -state="$state_file" \
       -state-out="$MERGED_STATE" \
+      "$resource" \
       "$resource"
   done
 done
@@ -275,6 +277,7 @@ If your source states contain resources inside modules, you can either keep the 
 terraform state mv \
   -state=/tmp/networking.tfstate \
   -state-out=/tmp/merged.tfstate \
+  module.vpc.aws_vpc.main \
   module.vpc.aws_vpc.main
 
 # Or flatten it by moving to a top-level address
