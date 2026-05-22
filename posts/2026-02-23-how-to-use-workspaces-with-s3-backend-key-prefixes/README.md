@@ -43,7 +43,7 @@ staging:  acme-terraform-state/env:/staging/services/api/terraform.tfstate
 prod:     acme-terraform-state/env:/prod/services/api/terraform.tfstate
 ```
 
-Notice the `env:` prefix. This is hardcoded by Terraform and cannot be changed through configuration. The colon is part of the prefix, which makes it an unusual S3 key path but is perfectly valid.
+Notice the `env:` prefix. This is Terraform's default workspace key prefix. The colon is part of the prefix, which makes it an unusual S3 key path but is perfectly valid.
 
 ## Customizing the workspace_key_prefix
 
@@ -93,7 +93,7 @@ prod:     acme-terraform-state/services/api/prod/terraform.tfstate
 
 ## Organizing Multiple Projects in One Bucket
 
-Many teams use a single S3 bucket for all Terraform state. Using `workspace_key_prefix` and unique `key` values keeps everything organized:
+Many teams use a single S3 bucket for all Terraform state. Using `workspace_key_prefix` keeps named workspaces organized:
 
 ```hcl
 # Project: networking
@@ -105,7 +105,7 @@ terraform {
     key                  = "terraform.tfstate"
     region               = "us-east-1"
     workspace_key_prefix = "networking"
-    dynamodb_table       = "terraform-locks"
+    use_lockfile         = true
     encrypt              = true
   }
 }
@@ -118,7 +118,7 @@ terraform {
     key                  = "terraform.tfstate"
     region               = "us-east-1"
     workspace_key_prefix = "services/api"
-    dynamodb_table       = "terraform-locks"
+    use_lockfile         = true
     encrypt              = true
   }
 }
@@ -131,17 +131,16 @@ terraform {
     key                  = "terraform.tfstate"
     region               = "us-east-1"
     workspace_key_prefix = "services/web"
-    dynamodb_table       = "terraform-locks"
+    use_lockfile         = true
     encrypt              = true
   }
 }
 ```
 
-The resulting S3 structure:
+The resulting S3 structure for named workspaces:
 
 ```text
 acme-terraform-state/
-  terraform.tfstate                              (networking default)
   networking/
     dev/terraform.tfstate                        (networking dev)
     staging/terraform.tfstate                    (networking staging)
@@ -155,6 +154,8 @@ acme-terraform-state/
       dev/terraform.tfstate                      (web dev)
       prod/terraform.tfstate                     (web prod)
 ```
+
+Because the default workspace ignores `workspace_key_prefix`, these project examples should avoid the default workspace or use distinct `key` values for any default workspace state.
 
 ## IAM Policies Based on Key Prefixes
 
@@ -206,9 +207,9 @@ The predictable path structure lets you write precise IAM policies:
 
 This policy lets users work with dev and staging workspaces but blocks write access to production state.
 
-## DynamoDB Lock Table with Workspaces
+## S3 Lock Files with Workspaces
 
-The DynamoDB lock entries use the full S3 path as the lock ID:
+Terraform's S3 backend can use S3 lock files for state locking:
 
 ```hcl
 terraform {
@@ -216,21 +217,21 @@ terraform {
     bucket               = "acme-terraform-state"
     key                  = "terraform.tfstate"
     region               = "us-east-1"
-    dynamodb_table       = "terraform-locks"
+    use_lockfile         = true
     workspace_key_prefix = "services/api"
   }
 }
 ```
 
-Lock entries in DynamoDB:
+Lock files in S3:
 
 ```text
-LockID: acme-terraform-state/services/api/dev/terraform.tfstate
-LockID: acme-terraform-state/services/api/staging/terraform.tfstate
-LockID: acme-terraform-state/services/api/prod/terraform.tfstate
+s3://acme-terraform-state/services/api/dev/terraform.tfstate.tflock
+s3://acme-terraform-state/services/api/staging/terraform.tfstate.tflock
+s3://acme-terraform-state/services/api/prod/terraform.tfstate.tflock
 ```
 
-All workspaces can share a single DynamoDB table because the lock IDs are unique per workspace.
+All workspaces can share the same S3 bucket because the state and lock file keys are unique per workspace.
 
 ## Setting Up the S3 Bucket for Workspaces
 
@@ -288,22 +289,6 @@ resource "aws_s3_bucket_public_access_block" "state" {
   restrict_public_buckets = true
 }
 
-# DynamoDB table for state locking
-resource "aws_dynamodb_table" "locks" {
-  name         = "terraform-locks"
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "LockID"
-
-  attribute {
-    name = "LockID"
-    type = "S"
-  }
-
-  tags = {
-    Purpose   = "Terraform State Locking"
-    ManagedBy = "terraform-bootstrap"
-  }
-}
 ```
 
 ## Cross-Referencing State Between Workspaces
@@ -414,7 +399,7 @@ terraform workspace new prod
 
 **State file appears in an unexpected location.** Verify `workspace_key_prefix` and `key` in your backend config. The full path is `<prefix>/<workspace>/<key>`.
 
-**Lock conflicts.** Check the DynamoDB table for stale locks. The lock ID is the full S3 path. You can manually delete stale lock entries if Terraform crashed without releasing the lock.
+**Lock conflicts.** Check for stale `.tflock` objects alongside the state file. You can manually delete stale lock files if Terraform crashed without releasing the lock.
 
 ## Conclusion
 
