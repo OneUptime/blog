@@ -18,8 +18,8 @@ When Istio enables mTLS, the Envoy sidecar handles all TLS negotiation transpare
 
 Common reasons:
 
-1. **The app does its own TLS** - if an application already terminates TLS, having the sidecar also do TLS creates a double encryption problem
-2. **The app uses a protocol Envoy cannot parse** - custom binary protocols or server-first protocols
+1. **The app does its own TLS** - application-level TLS can usually pass through the sidecar as opaque TCP, but it can break if you also configure Istio or another proxy to terminate or originate TLS for that same connection
+2. **The app uses a protocol Envoy cannot automatically detect** - custom binary protocols or server-first protocols can require explicit TCP protocol configuration
 3. **The app bypasses the sidecar** - using host networking, connecting to IPs directly, or using non-standard ports
 4. **The init container cannot set up iptables** - some security contexts prevent the istio-init container from modifying network rules
 5. **The app cannot handle sidecar startup delays** - the application tries to connect before the sidecar is ready
@@ -34,9 +34,13 @@ kind: Deployment
 metadata:
   name: legacy-app
 spec:
+  selector:
+    matchLabels:
+      app: legacy-app
   template:
     metadata:
-      annotations:
+      labels:
+        app: legacy-app
         sidecar.istio.io/inject: "false"
     spec:
       containers:
@@ -44,23 +48,7 @@ spec:
         image: legacy-app:v2.3
 ```
 
-But if the rest of your mesh uses strict mTLS, other services cannot communicate with this app. You need to configure a PeerAuthentication policy that allows plaintext traffic to this workload:
-
-```yaml
-apiVersion: security.istio.io/v1
-kind: PeerAuthentication
-metadata:
-  name: legacy-app-permissive
-  namespace: default
-spec:
-  selector:
-    matchLabels:
-      app: legacy-app
-  mtls:
-    mode: DISABLE
-```
-
-And a DestinationRule so that meshed clients know to use plaintext when talking to this service:
+If you have explicit traffic policies that force mTLS for this service, meshed clients cannot communicate with an app that has no sidecar. You need a DestinationRule so that meshed clients know to use plaintext when talking to this service:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -85,8 +73,13 @@ kind: Deployment
 metadata:
   name: legacy-app
 spec:
+  selector:
+    matchLabels:
+      app: legacy-app
   template:
     metadata:
+      labels:
+        app: legacy-app
       annotations:
         traffic.sidecar.istio.io/excludeInboundPorts: "3306,6379"
         traffic.sidecar.istio.io/excludeOutboundPorts: "3306,6379"
@@ -144,7 +137,7 @@ spec:
     mode: DISABLE
 ```
 
-The sidecar still proxies all traffic and collects telemetry, but it does not enforce or negotiate TLS. Other services in the mesh can still reach this app - they just will not get mTLS for this specific connection.
+The sidecar still proxies inbound traffic and collects telemetry, but it does not enforce or negotiate TLS for inbound connections. Other services in the mesh can still reach this app if their outbound policy uses plaintext for this host - they just will not get mTLS for this specific connection.
 
 ## Strategy 5: Use a Gateway for Legacy-to-Mesh Communication
 
@@ -192,32 +185,30 @@ spec:
 
 The legacy app connects to the gateway using standard TLS (not mTLS). The gateway then forwards the request to the meshed service using mTLS. This gives you an encrypted path from the legacy app to the mesh without requiring the legacy app to participate in the mTLS handshake.
 
-## Strategy 6: Sidecar with Interception Mode NONE
+## Strategy 6: Sidecar with Capture Mode NONE
 
-For applications that have issues with iptables-based traffic interception, you can use the NONE interception mode. In this mode, the sidecar is deployed but does not intercept traffic automatically. The application must be configured to use the sidecar as an explicit proxy:
+For applications that have issues with iptables-based traffic interception, you can use NONE capture mode. In this mode, the sidecar is deployed but does not intercept traffic automatically. The application must be configured to use listeners exposed by the sidecar:
 
 ```yaml
-apiVersion: apps/v1
-kind: Deployment
+apiVersion: networking.istio.io/v1
+kind: Sidecar
 metadata:
-  name: legacy-app
+  name: legacy-app-explicit
+  namespace: default
 spec:
-  template:
-    metadata:
-      annotations:
-        sidecar.istio.io/interceptionMode: NONE
-    spec:
-      containers:
-      - name: legacy-app
-        image: legacy-app:v2.3
-        env:
-        - name: HTTP_PROXY
-          value: "http://127.0.0.1:15001"
-        - name: HTTPS_PROXY
-          value: "http://127.0.0.1:15001"
+  workloadSelector:
+    labels:
+      app: legacy-app
+  ingress:
+  - port:
+      number: 9080
+      protocol: HTTP
+      name: http
+    defaultEndpoint: 127.0.0.1:8080
+    captureMode: NONE
 ```
 
-This only works if the application respects HTTP_PROXY environment variables.
+This only works if the pod is deployed without iptables traffic capture and the sidecar proxy is started with interception mode set to `NONE`.
 
 ## Handling External Databases
 
