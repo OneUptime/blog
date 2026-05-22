@@ -41,7 +41,7 @@ The argument "ami" is required, but no definition was found.
 
 ### Syntax Errors
 
-Basic HCL parsing errors like missing braces, bad indentation, or typos:
+Basic HCL parsing errors like missing braces, invalid tokens, or malformed expressions:
 
 ```hcl
 # This will fail validation - missing closing brace
@@ -116,7 +116,7 @@ Understanding the limitations is just as important:
 - **Does not check if resource configurations are valid with the cloud provider** - It does not know if an AMI ID actually exists or if an instance type is available in your region
 - **Does not check state** - It does not compare against existing infrastructure
 - **Does not check if credentials are valid** - Authentication issues are not caught
-- **Does not check provider-specific argument values** - For example, it will not flag an invalid CIDR block format
+- **Does not guarantee every provider-specific value is valid** - Providers can catch some local schema and value issues, but validate does not call provider APIs to confirm that values are valid in the real cloud environment
 - **Does not check if resources will actually succeed** - A security group rule might reference a non-existent VPC, and validate will not catch that
 
 For these deeper checks, you need `terraform plan`.
@@ -160,6 +160,7 @@ Successful output:
 
 ```json
 {
+  "format_version": "1.0",
   "valid": true,
   "error_count": 0,
   "warning_count": 0,
@@ -171,6 +172,7 @@ Error output:
 
 ```json
 {
+  "format_version": "1.0",
   "valid": false,
   "error_count": 1,
   "warning_count": 0,
@@ -339,7 +341,7 @@ variable "instance_type" {
 }
 ```
 
-These validation rules are checked during `terraform validate` and `terraform plan`, giving you earlier feedback on invalid inputs.
+These validation rules are checked when Terraform creates a plan, giving you earlier feedback on invalid inputs before any changes are applied.
 
 ## Validate vs Plan
 
@@ -348,7 +350,7 @@ Here is a quick comparison:
 | Feature | terraform validate | terraform plan |
 |---------|-------------------|----------------|
 | Speed | Very fast | Slower (queries cloud) |
-| Credentials needed | No | Yes |
+| Credentials needed | No | Usually |
 | Checks syntax | Yes | Yes |
 | Checks types | Yes | Yes |
 | Checks cloud validity | No | Yes |
@@ -386,4 +388,4 @@ terraform validate
 
 ## Conclusion
 
-`terraform validate` is a lightweight, fast safety check that should be part of every Terraform workflow. Run it locally before committing, enforce it in CI/CD pipelines, and use it in pre-commit hooks. It catches syntax errors, type mismatches, and reference issues instantly without needing cloud credentials or network access. Combined with `terraform fmt` for formatting and `terraform plan` for full validation, you get a thorough quality assurance pipeline for your infrastructure code.
+`terraform validate` is a lightweight, fast safety check that should be part of every Terraform workflow. Run it locally before committing, enforce it in CI/CD pipelines, and use it in pre-commit hooks. It catches syntax errors, type mismatches, and reference issues without needing cloud credentials or remote API access. Combined with `terraform fmt` for formatting and `terraform plan` for full validation, you get a thorough quality assurance pipeline for your infrastructure code.
