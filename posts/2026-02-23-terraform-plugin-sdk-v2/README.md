@@ -21,7 +21,6 @@ Use SDKv2 if you are maintaining an existing provider that already uses it, or i
 package main
 
 import (
-    "github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
     "github.com/hashicorp/terraform-plugin-sdk/v2/plugin"
     "github.com/yourorg/terraform-provider-example/internal/provider"
 )
@@ -120,6 +119,7 @@ package provider
 import (
     "context"
     "fmt"
+    "time"
 
     "github.com/hashicorp/terraform-plugin-sdk/v2/diag"
     "github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
@@ -146,7 +146,7 @@ func resourceServer() *schema.Resource {
                 Type:         schema.TypeString,
                 Required:     true,
                 Description:  "Name of the server.",
-                ValidateFunc: validation.StringLenBetween(3, 64),
+                ValidateDiagFunc: validation.ToDiagFunc(validation.StringLenBetween(3, 64)),
             },
 
             // String with allowed values
@@ -154,7 +154,7 @@ func resourceServer() *schema.Resource {
                 Type:         schema.TypeString,
                 Required:     true,
                 Description:  "Server size tier.",
-                ValidateFunc: validation.StringInSlice([]string{"small", "medium", "large"}, false),
+                ValidateDiagFunc: validation.ToDiagFunc(validation.StringInSlice([]string{"small", "medium", "large"}, false)),
             },
 
             // String that forces resource replacement when changed
@@ -163,7 +163,7 @@ func resourceServer() *schema.Resource {
                 Required:     true,
                 ForceNew:     true,
                 Description:  "Deployment region. Changing this forces a new resource.",
-                ValidateFunc: validation.StringInSlice([]string{"us-east-1", "us-west-2", "eu-west-1"}, false),
+                ValidateDiagFunc: validation.ToDiagFunc(validation.StringInSlice([]string{"us-east-1", "us-west-2", "eu-west-1"}, false)),
             },
 
             // Integer attribute
@@ -172,7 +172,7 @@ func resourceServer() *schema.Resource {
                 Optional:     true,
                 Default:      2,
                 Description:  "Number of CPU cores.",
-                ValidateFunc: validation.IntBetween(1, 128),
+                ValidateDiagFunc: validation.ToDiagFunc(validation.IntBetween(1, 128)),
             },
 
             // Boolean attribute
@@ -329,7 +329,7 @@ func resourceServerRead(ctx context.Context, d *schema.ResourceData, meta interf
             d.SetId("")
             return nil
         }
-        return diag.FromErr(fmt.Errorf("error reading server: %w", err))
+        return diag.FromErr(fmt.Errorf("error reading server %q: %w", d.Id(), err))
     }
 
     // Set all attributes from the API response
@@ -375,7 +375,7 @@ func resourceServerUpdate(ctx context.Context, d *schema.ResourceData, meta inte
 
     _, err := client.UpdateServer(ctx, d.Id(), updateReq)
     if err != nil {
-        return diag.FromErr(fmt.Errorf("error updating server: %w", err))
+        return diag.FromErr(fmt.Errorf("error updating server %q: %w", d.Id(), err))
     }
 
     return resourceServerRead(ctx, d, meta)
@@ -391,7 +391,7 @@ func resourceServerDelete(ctx context.Context, d *schema.ResourceData, meta inte
             // Already deleted, nothing to do
             return nil
         }
-        return diag.FromErr(fmt.Errorf("error deleting server: %w", err))
+        return diag.FromErr(fmt.Errorf("error deleting server %q: %w", d.Id(), err))
     }
 
     // Clear the ID to indicate the resource has been removed
@@ -402,26 +402,26 @@ func resourceServerDelete(ctx context.Context, d *schema.ResourceData, meta inte
 
 ## Custom Validation Functions
 
-SDKv2 supports custom validation through ValidateFunc.
+SDKv2 supports custom validation through ValidateDiagFunc.
 
 ```go
 // Custom validation for IP addresses
-func validateIPAddress(v interface{}, k string) (warns []string, errs []error) {
+func validateIPAddress(v interface{}, path cty.Path) diag.Diagnostics {
     value := v.(string)
     if net.ParseIP(value) == nil {
-        errs = append(errs, fmt.Errorf("%q is not a valid IP address: %s", k, value))
+        return diag.Errorf("%q is not a valid IP address", value)
     }
-    return
+    return nil
 }
 
 // Custom validation for CIDR blocks
-func validateCIDR(v interface{}, k string) (warns []string, errs []error) {
+func validateCIDR(v interface{}, path cty.Path) diag.Diagnostics {
     value := v.(string)
     _, _, err := net.ParseCIDR(value)
     if err != nil {
-        errs = append(errs, fmt.Errorf("%q is not a valid CIDR block: %s", k, value))
+        return diag.Errorf("%q is not a valid CIDR block", value)
     }
-    return
+    return nil
 }
 ```
 
@@ -464,8 +464,8 @@ import (
     "github.com/hashicorp/terraform-plugin-framework/providerserver"
     "github.com/hashicorp/terraform-plugin-go/tfprotov6"
     "github.com/hashicorp/terraform-plugin-go/tfprotov6/tf6server"
+    "github.com/hashicorp/terraform-plugin-mux/tf5to6server"
     "github.com/hashicorp/terraform-plugin-mux/tf6muxserver"
-    "github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 
     frameworkProvider "github.com/yourorg/terraform-provider-example/internal/framework"
     sdkProvider "github.com/yourorg/terraform-provider-example/internal/sdkv2"
@@ -474,24 +474,39 @@ import (
 func main() {
     ctx := context.Background()
 
-    // Create mux server combining both SDKv2 and Framework providers
-    muxServer, err := tf6muxserver.NewMuxServer(
+    upgradedSdkServer, err := tf5to6server.UpgradeServer(
         ctx,
-        // SDKv2 provider (existing resources)
-        func() tfprotov6.ProviderServer {
-            return schema.NewGRPCProviderServer(sdkProvider.Provider())
-        },
-        // Framework provider (new resources)
-        providerserver.NewProtocol6(frameworkProvider.New("dev")),
+        sdkProvider.Provider().GRPCProvider,
     )
     if err != nil {
         log.Fatal(err)
     }
 
-    tf6server.Serve(
+    // Create mux server combining both SDKv2 and Framework providers
+    providers := []func() tfprotov6.ProviderServer{
+        // SDKv2 provider (existing resources), upgraded from protocol 5 to 6
+        func() tfprotov6.ProviderServer {
+            return upgradedSdkServer
+        },
+        // Framework provider (new resources)
+        providerserver.NewProtocol6(frameworkProvider.New("dev")),
+    }
+
+    muxServer, err := tf6muxserver.NewMuxServer(
+        ctx,
+        providers...,
+    )
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    err = tf6server.Serve(
         "registry.terraform.io/yourorg/example",
         muxServer.ProviderServer,
     )
+    if err != nil {
+        log.Fatal(err)
+    }
 }
 ```
 
