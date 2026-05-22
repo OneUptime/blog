@@ -8,7 +8,7 @@ Description: Learn how to configure AWS load balancer listeners and rules dynami
 
 ---
 
-When managing AWS Application Load Balancers (ALBs) or Network Load Balancers (NLBs) with Terraform, you often need multiple listeners, each with different configurations. Dynamic blocks let you define these listeners and their rules from variable data instead of hardcoding every block. This post shows you how.
+When managing AWS Application Load Balancers (ALBs) with Terraform, you often need multiple listeners, each with different configurations. `for_each` and dynamic blocks let you define these listeners and their nested action or rule configuration from variable data instead of hardcoding every block. This post shows you how.
 
 ## The Static Approach and Its Limitations
 
@@ -263,7 +263,7 @@ You can adjust the weights in your variables to gradually shift traffic from one
 
 ## Dynamic Additional Certificates
 
-HTTPS listeners can have multiple certificates for different domains. Use a dynamic block for the additional certificates:
+HTTPS listeners can have multiple certificates for different domains. Use `for_each` with the separate listener certificate resource for the additional certificates:
 
 ```hcl
 variable "additional_certificates" {
