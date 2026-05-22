@@ -98,6 +98,10 @@ json.dump(result, sys.stdout)
 
 # Read JSON input from stdin
 eval "$(jq -r '@sh "VPC_ID=\(.vpc_id) PREFIX=\(.prefix)"')"
+if [[ ! "$PREFIX" =~ ^[0-9]+$ ]]; then
+  echo "prefix must be numeric" >&2
+  exit 1
+fi
 
 # Query AWS for existing CIDR blocks
 EXISTING=$(aws ec2 describe-subnets \
@@ -264,6 +268,10 @@ input_data = json.load(sys.stdin)
 db_path = f"/opt/data/{input_data['database']}.db"
 table = input_data['table']
 key = input_data['key']
+allowed_tables = {"server_configs"}
+if table not in allowed_tables:
+    print(f"Unsupported table: {table}", file=sys.stderr)
+    sys.exit(1)
 
 conn = sqlite3.connect(db_path)
 cursor = conn.cursor()
