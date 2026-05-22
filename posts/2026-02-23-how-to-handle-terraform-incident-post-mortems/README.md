@@ -88,8 +88,9 @@ aws s3api list-object-versions \
   --query 'Versions[].{VersionId:VersionId,LastModified:LastModified,Size:Size}' \
   --output table
 
-# Step 2: Check DynamoDB lock history
-echo "--- Lock Table Activity ---"
+# Step 2: Check the current DynamoDB lock record if you still use the
+# deprecated DynamoDB-based locking mechanism
+echo "--- Current Lock Record ---"
 aws dynamodb query \
   --table-name terraform-locks \
   --key-condition-expression "LockID = :lid" \
@@ -126,11 +127,11 @@ def analyze_state_diff(old_state_file, new_state_file):
         new_state = json.load(f)
 
     old_resources = {
-        r["module"] + "." + r["type"] + "." + r["name"]: r
+        r["address"]: r
         for r in flatten_resources(old_state)
     }
     new_resources = {
-        r["module"] + "." + r["type"] + "." + r["name"]: r
+        r["address"]: r
         for r in flatten_resources(new_state)
     }
 
@@ -159,10 +160,21 @@ def flatten_resources(state):
     """Flatten resources from state file."""
     resources = []
     for resource in state.get("resources", []):
-        module = resource.get("module", "root")
+        module = resource.get("module")
+        base_address = ".".join(
+            part for part in [module, resource["type"], resource["name"]]
+            if part
+        )
         for instance in resource.get("instances", []):
+            index_key = instance.get("index_key")
+            if isinstance(index_key, str):
+                address = f'{base_address}["{index_key}"]'
+            elif index_key is not None:
+                address = f"{base_address}[{index_key}]"
+            else:
+                address = base_address
             resources.append({
-                "module": module,
+                "address": address,
                 "type": resource["type"],
                 "name": resource["name"],
                 "attributes": instance.get("attributes", {})
@@ -197,7 +209,7 @@ root_causes:
       - "Manual resource modifications outside Terraform"
       - "State file edited directly"
     prevention:
-      - "Use DynamoDB locking for all state operations"
+      - "Use S3 state locking with use_lockfile, or DynamoDB locking only for older Terraform versions that require it"
       - "Implement drift detection pipeline"
       - "Lock down console access for Terraform-managed resources"
 
