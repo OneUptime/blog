@@ -12,10 +12,11 @@ The HTTP backend is one of Terraform's most flexible state storage options. Inst
 
 ## How the HTTP Backend Works
 
-The HTTP backend interacts with your state server through three HTTP methods:
+The HTTP backend interacts with your state server through these HTTP methods:
 
 - **GET** - Retrieve the current state
 - **POST** - Store updated state
+- **DELETE** - Purge state
 - **LOCK/UNLOCK** - Optional endpoints for state locking (using a separate URL)
 
 Your server needs to handle these operations and return appropriate HTTP status codes.
@@ -29,7 +30,7 @@ Here is the minimal configuration:
 
 terraform {
   backend "http" {
-    # URL for GET and POST operations
+    # URL for GET, POST, and DELETE operations
     address = "https://state.example.com/terraform/myproject"
 
     # Optional: separate URLs for lock and unlock
@@ -50,7 +51,7 @@ terraform init
 
 ## Authentication
 
-The HTTP backend supports several authentication methods.
+The HTTP backend supports HTTP basic authentication and mutual TLS authentication.
 
 ### Basic Authentication
 
@@ -77,15 +78,18 @@ terraform init \
   -backend-config="password=${STATE_SERVER_PASSWORD}"
 ```
 
-### Custom Headers
+### Mutual TLS
 
-For token-based authentication, you can set custom headers in newer Terraform versions by passing them through a partial configuration file:
+For certificate-based authentication, you can set PEM-encoded client certificate options through a partial configuration file or environment variables:
 
 ```hcl
 # backend.hcl
-address        = "https://state.example.com/terraform/myproject"
-lock_address   = "https://state.example.com/terraform/myproject/lock"
-unlock_address = "https://state.example.com/terraform/myproject/unlock"
+address                    = "https://state.example.com/terraform/myproject"
+lock_address               = "https://state.example.com/terraform/myproject/lock"
+unlock_address             = "https://state.example.com/terraform/myproject/unlock"
+client_certificate_pem     = "-----BEGIN CERTIFICATE-----..."
+client_private_key_pem     = "-----BEGIN PRIVATE KEY-----..."
+client_ca_certificate_pem  = "-----BEGIN CERTIFICATE-----..."
 ```
 
 ## Building a Simple State Server
@@ -97,15 +101,12 @@ Let's build a minimal HTTP state server in Python to understand the protocol:
 # A minimal Terraform HTTP state backend server
 
 from flask import Flask, request, jsonify
-import json
 import os
-import uuid
 import threading
 
 app = Flask(__name__)
 
-# In-memory storage (use a database in production)
-states = {}
+# In-memory locks (use a database in production)
 locks = {}
 lock_mutex = threading.Lock()
 
@@ -133,12 +134,22 @@ def update_state(project):
     lock_id = request.args.get("ID")
 
     # Verify the lock if one is held
-    if project in locks and locks[project] != lock_id:
-        return jsonify({"error": "state locked by another process"}), 409
+    if project in locks and locks[project].get("ID") != lock_id:
+        return jsonify(locks[project]), 409
 
     # Write the state data
     with open(state_file, "w") as f:
         f.write(request.data.decode("utf-8"))
+
+    return "", 200
+
+@app.route("/terraform/<project>", methods=["DELETE"])
+def delete_state(project):
+    """Delete the current state for a project."""
+    state_file = os.path.join(STATE_DIR, f"{project}.tfstate")
+
+    if os.path.exists(state_file):
+        os.remove(state_file)
 
     return "", 200
 
@@ -148,27 +159,26 @@ def lock_state(project):
     with lock_mutex:
         if project in locks:
             # Already locked - return the existing lock info
-            return jsonify({"error": "already locked"}), 409
+            return jsonify(locks[project]), 409
 
         # Parse the lock info from Terraform
-        lock_info = request.json
-        lock_id = lock_info.get("ID", str(uuid.uuid4()))
-        locks[project] = lock_id
+        lock_info = request.json or {}
+        locks[project] = lock_info
 
         return "", 200
 
-@app.route("/terraform/<project>/lock", methods=["UNLOCK"])
+@app.route("/terraform/<project>/unlock", methods=["UNLOCK"])
 def unlock_state(project):
     """Release a lock on the state."""
     with lock_mutex:
-        lock_info = request.json
+        lock_info = request.json or {}
         lock_id = lock_info.get("ID")
 
         if project not in locks:
             return "", 200
 
-        if locks[project] != lock_id:
-            return jsonify({"error": "lock ID mismatch"}), 409
+        if locks[project].get("ID") != lock_id:
+            return jsonify(locks[project]), 409
 
         del locks[project]
         return "", 200
@@ -204,13 +214,14 @@ import (
     "net/http"
     "os"
     "path/filepath"
+    "strings"
     "sync"
 )
 
 // StateServer handles Terraform state operations
 type StateServer struct {
     stateDir string
-    locks    map[string]string
+    locks    map[string]LockInfo
     mu       sync.RWMutex
 }
 
@@ -230,18 +241,32 @@ func NewStateServer(stateDir string) *StateServer {
     os.MkdirAll(stateDir, 0700)
     return &StateServer{
         stateDir: stateDir,
-        locks:    make(map[string]string),
+        locks:    make(map[string]LockInfo),
     }
 }
 
 func (s *StateServer) handleState(w http.ResponseWriter, r *http.Request) {
-    project := r.URL.Path[len("/terraform/"):]
+    project := strings.TrimPrefix(r.URL.Path, "/terraform/")
+
+    if strings.HasSuffix(project, "/lock") {
+        project = strings.TrimSuffix(project, "/lock")
+        s.lockState(w, r, project)
+        return
+    }
+
+    if strings.HasSuffix(project, "/unlock") {
+        project = strings.TrimSuffix(project, "/unlock")
+        s.unlockState(w, r, project)
+        return
+    }
 
     switch r.Method {
     case "GET":
         s.getState(w, project)
     case "POST":
         s.updateState(w, r, project)
+    case "DELETE":
+        s.deleteState(w, project)
     default:
         http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
     }
@@ -268,6 +293,10 @@ func (s *StateServer) updateState(w http.ResponseWriter, r *http.Request, projec
         return
     }
 
+    if !s.checkLock(w, r, project) {
+        return
+    }
+
     statePath := filepath.Join(s.stateDir, project+".tfstate")
     if err := os.WriteFile(statePath, body, 0600); err != nil {
         http.Error(w, "failed to write state", http.StatusInternalServerError)
@@ -275,6 +304,89 @@ func (s *StateServer) updateState(w http.ResponseWriter, r *http.Request, projec
     }
 
     w.WriteHeader(http.StatusOK)
+}
+
+func (s *StateServer) deleteState(w http.ResponseWriter, project string) {
+    statePath := filepath.Join(s.stateDir, project+".tfstate")
+    if err := os.Remove(statePath); err != nil && !os.IsNotExist(err) {
+        http.Error(w, "failed to delete state", http.StatusInternalServerError)
+        return
+    }
+
+    w.WriteHeader(http.StatusOK)
+}
+
+func (s *StateServer) lockState(w http.ResponseWriter, r *http.Request, project string) {
+    if r.Method != "LOCK" {
+        http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+        return
+    }
+
+    var lockInfo LockInfo
+    if err := json.NewDecoder(r.Body).Decode(&lockInfo); err != nil {
+        http.Error(w, "invalid lock info", http.StatusBadRequest)
+        return
+    }
+
+    s.mu.Lock()
+    defer s.mu.Unlock()
+
+    if existing, ok := s.locks[project]; ok {
+        w.Header().Set("Content-Type", "application/json")
+        w.WriteHeader(http.StatusConflict)
+        json.NewEncoder(w).Encode(existing)
+        return
+    }
+
+    s.locks[project] = lockInfo
+    w.WriteHeader(http.StatusOK)
+}
+
+func (s *StateServer) unlockState(w http.ResponseWriter, r *http.Request, project string) {
+    if r.Method != "UNLOCK" {
+        http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+        return
+    }
+
+    var lockInfo LockInfo
+    if err := json.NewDecoder(r.Body).Decode(&lockInfo); err != nil {
+        http.Error(w, "invalid lock info", http.StatusBadRequest)
+        return
+    }
+
+    s.mu.Lock()
+    defer s.mu.Unlock()
+
+    existing, ok := s.locks[project]
+    if !ok {
+        w.WriteHeader(http.StatusOK)
+        return
+    }
+
+    if existing.ID != lockInfo.ID {
+        w.Header().Set("Content-Type", "application/json")
+        w.WriteHeader(http.StatusConflict)
+        json.NewEncoder(w).Encode(existing)
+        return
+    }
+
+    delete(s.locks, project)
+    w.WriteHeader(http.StatusOK)
+}
+
+func (s *StateServer) checkLock(w http.ResponseWriter, r *http.Request, project string) bool {
+    s.mu.RLock()
+    existing, ok := s.locks[project]
+    s.mu.RUnlock()
+
+    if !ok || existing.ID == r.URL.Query().Get("ID") {
+        return true
+    }
+
+    w.Header().Set("Content-Type", "application/json")
+    w.WriteHeader(http.StatusConflict)
+    json.NewEncoder(w).Encode(existing)
+    return false
 }
 
 func main() {
@@ -314,6 +426,11 @@ terraform {
     username = "terraform"
     password = "password"
 
+    # Mutual TLS authentication
+    client_certificate_pem    = "-----BEGIN CERTIFICATE-----..."
+    client_private_key_pem    = "-----BEGIN PRIVATE KEY-----..."
+    client_ca_certificate_pem = "-----BEGIN CERTIFICATE-----..."
+
     # Skip TLS verification (not recommended for production)
     skip_cert_verification = false
 
@@ -339,23 +456,24 @@ terraform {
     lock_method   = "POST"
     unlock_method = "DELETE"
 
-    username = "gitlab-ci-token"
+    username = "your-gitlab-username"
     password = "your-personal-access-token"
   }
 }
 ```
 
-## Using with Terraform Cloud API
+## Using with Terraform Cloud
 
-You can even point the HTTP backend at Terraform Cloud's API (though the native Terraform Cloud backend is usually better):
+Use the native Terraform Cloud backend instead of the generic HTTP backend. Terraform Cloud's state version API returns JSON:API metadata and uses bearer-token authentication, so it is not a drop-in HTTP backend endpoint:
 
 ```hcl
 terraform {
-  backend "http" {
-    address = "https://app.terraform.io/api/v2/organizations/ORG/workspaces/WORKSPACE/current-state-version"
+  cloud {
+    organization = "ORG"
 
-    # Token-based auth through init
-    # terraform init -backend-config="username=token" -backend-config="password=YOUR_TFC_TOKEN"
+    workspaces {
+      name = "WORKSPACE"
+    }
   }
 }
 ```
@@ -399,4 +517,4 @@ Terraform will retry on 5xx errors based on the retry configuration.
 
 ## Summary
 
-The HTTP backend gives you total control over how and where Terraform state is stored. Whether you build a custom server, use a service like GitLab, or integrate with an existing internal API, the HTTP backend adapts to your needs. The protocol is simple - just GET, POST, LOCK, and UNLOCK - making it straightforward to implement. The trade-off is that you are responsible for the reliability, security, and durability of your state storage. For simpler setups, consider a managed backend like [Azure Blob Storage](https://oneuptime.com/blog/post/2026-02-23-terraform-azure-blob-storage-backend/view) or [GCS](https://oneuptime.com/blog/post/2026-02-23-terraform-gcs-backend/view).
+The HTTP backend gives you total control over how and where Terraform state is stored. Whether you build a custom server, use a service like GitLab, or integrate with an existing internal API, the HTTP backend adapts to your needs. The protocol is simple - just GET, POST, DELETE, LOCK, and UNLOCK - making it straightforward to implement. The trade-off is that you are responsible for the reliability, security, and durability of your state storage. For simpler setups, consider a managed backend like [Azure Blob Storage](https://oneuptime.com/blog/post/2026-02-23-terraform-azure-blob-storage-backend/view) or [GCS](https://oneuptime.com/blog/post/2026-02-23-terraform-gcs-backend/view).
