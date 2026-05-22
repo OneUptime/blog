@@ -20,7 +20,7 @@ Envoy proxies in Istio automatically handle several categories of headers:
 
 **x-envoy-** headers: Internal Envoy headers like `x-envoy-upstream-service-time` are managed by the proxy.
 
-**Trace context headers**: Envoy generates and propagates trace headers, but here is the catch - it only does this for the first hop. Your application code must forward these headers when making outbound calls.
+**Trace context headers**: Envoy generates trace headers when needed and forwards them to the proxied application, but here is the catch - it cannot automatically correlate your application's outbound request with the inbound request that triggered it. Your application code must forward these headers when making outbound calls.
 
 The trace headers that need propagation include:
 
@@ -100,6 +100,11 @@ def get_orders():
 And in Go:
 
 ```go
+import (
+    "io"
+    "net/http"
+)
+
 func propagateHeaders(r *http.Request, outReq *http.Request) {
     headers := []string{
         "x-request-id",
@@ -125,7 +130,14 @@ func orderHandler(w http.ResponseWriter, r *http.Request) {
 
     client := &http.Client{}
     resp, err := client.Do(outReq)
-    // handle response...
+    if err != nil {
+        http.Error(w, err.Error(), http.StatusBadGateway)
+        return
+    }
+    defer resp.Body.Close()
+
+    w.WriteHeader(resp.StatusCode)
+    _, _ = io.Copy(w, resp.Body)
 }
 ```
 
@@ -154,7 +166,7 @@ spec:
         - header:
             key: x-custom-source
             value: my-service
-          append: true
+          append_action: APPEND_IF_EXISTS_OR_ADD
 ```
 
 ## Using VirtualService for Header Manipulation
@@ -241,10 +253,11 @@ The `forwardedClientCert` setting controls how the `X-Forwarded-Client-Cert` hea
 
 ## Verifying Header Propagation
 
-Deploy a test service that echoes back all headers it receives:
+Deploy a test service that echoes back all headers it receives and a client pod that can send requests from inside the mesh:
 
 ```bash
 kubectl apply -f https://raw.githubusercontent.com/istio/istio/master/samples/httpbin/httpbin.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/master/samples/sleep/sleep.yaml
 ```
 
 Then send a request with trace headers and verify they arrive:
