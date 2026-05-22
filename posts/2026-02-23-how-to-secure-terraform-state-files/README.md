@@ -72,7 +72,7 @@ Problems with local state:
 
 Remote backends store state in a centralized location with proper security controls. The most common options are:
 
-### AWS S3 with DynamoDB Locking
+### AWS S3 with Native Locking
 
 ```hcl
 terraform {
@@ -81,7 +81,7 @@ terraform {
     key            = "production/infrastructure.tfstate"
     region         = "us-east-1"
     encrypt        = true                        # Enable server-side encryption
-    dynamodb_table = "terraform-state-locks"     # Enable state locking
+    use_lockfile   = true                        # Enable state locking
     kms_key_id     = "alias/terraform-state-key" # Use a custom KMS key
   }
 }
@@ -131,17 +131,6 @@ resource "aws_s3_bucket_public_access_block" "state" {
   restrict_public_buckets = true
 }
 
-# DynamoDB table for state locking
-resource "aws_dynamodb_table" "state_locks" {
-  name         = "terraform-state-locks"
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "LockID"
-
-  attribute {
-    name = "LockID"
-    type = "S"
-  }
-}
 ```
 
 ### Azure Blob Storage
@@ -271,7 +260,6 @@ resource "aws_iam_policy" "terraform_state" {
         Action = [
           "s3:GetObject",
           "s3:PutObject",
-          "s3:DeleteObject",
           "s3:ListBucket"
         ]
         Resource = [
@@ -280,14 +268,14 @@ resource "aws_iam_policy" "terraform_state" {
         ]
       },
       {
-        Sid    = "AllowStateLocking"
+        Sid    = "AllowStateLockfileAccess"
         Effect = "Allow"
         Action = [
-          "dynamodb:PutItem",
-          "dynamodb:GetItem",
-          "dynamodb:DeleteItem"
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:DeleteObject"
         ]
-        Resource = "arn:aws:dynamodb:us-east-1:123456789012:table/terraform-state-locks"
+        Resource = "arn:aws:s3:::my-terraform-state/production/infrastructure.tfstate.tflock"
       },
       {
         Sid    = "AllowKMSAccess"
@@ -341,7 +329,8 @@ crash.log
 ```yaml
 # .pre-commit-config.yaml
 repos:
-  - repo: https://github.com/antonbabenko/pre-commit-tf
+  - repo: https://github.com/antonbabenko/pre-commit-terraform
+    rev: v1.105.0
     hooks:
       - id: terraform_checkov
       - id: terraform_validate
