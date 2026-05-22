@@ -149,10 +149,10 @@ variable "app_config" {
 }
 
 locals {
-  # Step 1: Flatten domains across all apps
-  all_domains = distinct(flatten([
+  # Step 1: Flatten and sort domains across all apps
+  all_domains = sort(distinct(flatten([
     for app_name, app in var.app_config : app.domains
-  ]))
+  ])))
   # Result: ["api.example.com", "example.com", "www.example.com"]
 
   # Step 2: Flatten routes with their app context
@@ -293,37 +293,40 @@ variable "subnet_tiers" {
 }
 
 locals {
-  # Step 1: Calculate subnet offset for each tier
-  tier_offsets = {
-    for i, tier in var.subnet_tiers : tier.name => sum([
-      for j in range(i) : var.subnet_tiers[j].count
-    ])
-  }
-
-  # Step 2: Generate all subnets with their CIDRs
-  all_subnets = flatten([
+  # Step 1: Expand tiers into one subnet specification per subnet
+  subnet_specs = flatten([
     for tier in var.subnet_tiers : [
       for i in range(tier.count) : {
-        key    = "${tier.name}-${i}"
-        name   = tier.name
-        index  = i
-        cidr   = cidrsubnet(var.vpc_cidr, tier.newbits, local.tier_offsets[tier.name] + i)
-        public = tier.public
-        az     = data.aws_availability_zones.available.names[i % length(data.aws_availability_zones.available.names)]
+        key     = "${tier.name}-${i}"
+        name    = tier.name
+        index   = i
+        newbits = tier.newbits
+        public  = tier.public
       }
     ]
   ])
 
-  # Step 3: Create lookup maps
+  # Step 2: Allocate consecutive CIDRs, supporting different subnet sizes per tier
+  subnet_cidrs = cidrsubnets(var.vpc_cidr, local.subnet_specs[*].newbits...)
+
+  # Step 3: Generate all subnets with their CIDRs
+  all_subnets = [
+    for idx, spec in local.subnet_specs : merge(spec, {
+      cidr = local.subnet_cidrs[idx]
+      az   = data.aws_availability_zones.available.names[spec.index % length(data.aws_availability_zones.available.names)]
+    })
+  ]
+
+  # Step 4: Create lookup maps
   subnet_map = { for s in local.all_subnets : s.key => s }
 
-  # Step 4: Group by tier for easy access
+  # Step 5: Group by tier for easy access
   subnets_by_tier = {
     for tier_name in distinct([for s in local.all_subnets : s.name]) :
     tier_name => [for s in local.all_subnets : s if s.name == tier_name]
   }
 
-  # Step 5: Extract specific groups
+  # Step 6: Extract specific groups
   public_cidrs   = [for s in local.all_subnets : s.cidr if s.public]
   private_cidrs  = [for s in local.all_subnets : s.cidr if !s.public]
 }
