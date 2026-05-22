@@ -19,7 +19,7 @@ Consider this scenario with simple Istio timeouts:
 ```yaml
 # Frontend to Service A: 10s timeout
 
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: service-a-vs
@@ -34,7 +34,7 @@ spec:
 
 ---
 # Service A to Service B: 8s timeout
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: service-b-vs
@@ -54,18 +54,19 @@ The problem: Service A takes 5 seconds of processing, then calls Service B with 
 
 The idea is simple: each service passes the remaining deadline to the next service as a header. Istio does not have built-in deadline propagation, but you can implement it using a combination of headers and application code.
 
-The common approach uses the `grpc-timeout` header (which works for both gRPC and HTTP) or a custom `x-deadline` header.
+The common approach uses the `grpc-timeout` header for gRPC services, or a custom header such as `x-deadline` for HTTP services.
 
 ## Using grpc-timeout Header
 
-For gRPC services, deadline propagation is built into the protocol. The `grpc-timeout` header carries the remaining deadline automatically. Istio's Envoy proxies understand this header and will apply it.
+For gRPC services, deadline propagation is built into the protocol. gRPC libraries send the `grpc-timeout` header with the remaining timeout for the RPC. Envoy can use this header for gRPC stream duration when the route is configured to honor it, but you should not rely on `grpc-timeout` as a general-purpose HTTP timeout header.
 
-For HTTP services, you can use the same pattern manually. The `grpc-timeout` header format is `<value><unit>` where unit is one of:
+The `grpc-timeout` header format is `<value><unit>` where the value is a positive integer with at most 8 digits, and unit is one of:
 - `H` for hours
 - `M` for minutes
 - `S` for seconds
 - `m` for milliseconds
 - `u` for microseconds
+- `n` for nanoseconds
 
 Your application code needs to:
 1. Read the incoming `grpc-timeout` header
@@ -89,7 +90,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
     defer cancel()
 
     // Do some processing
-    result := doWork(ctx)
+    doWork(ctx)
 
     // Calculate remaining time for downstream call
     elapsed := time.Since(startTime)
@@ -100,7 +101,11 @@ func handler(w http.ResponseWriter, r *http.Request) {
     }
 
     // Call downstream with remaining deadline
-    req, _ := http.NewRequestWithContext(ctx, "GET", "http://service-b:8080/api", nil)
+    req, err := http.NewRequestWithContext(ctx, "GET", "http://service-b:8080/api", nil)
+    if err != nil {
+        http.Error(w, "invalid downstream request", http.StatusInternalServerError)
+        return
+    }
     req.Header.Set("grpc-timeout", formatGRPCTimeout(remaining))
 
     // Propagate trace headers
@@ -126,27 +131,43 @@ func parseGRPCTimeout(s string) time.Duration {
     }
     val := s[:len(s)-1]
     unit := s[len(s)-1:]
-    n, _ := strconv.ParseInt(val, 10, 64)
+    n, err := strconv.ParseInt(val, 10, 64)
+    if err != nil || n <= 0 || len(val) > 8 {
+        return 0
+    }
     switch unit {
+    case "H":
+        return time.Duration(n) * time.Hour
+    case "M":
+        return time.Duration(n) * time.Minute
     case "S":
         return time.Duration(n) * time.Second
     case "m":
         return time.Duration(n) * time.Millisecond
-    case "M":
-        return time.Duration(n) * time.Minute
+    case "u":
+        return time.Duration(n) * time.Microsecond
+    case "n":
+        return time.Duration(n) * time.Nanosecond
     default:
         return 0
     }
 }
 
 func formatGRPCTimeout(d time.Duration) string {
-    return strconv.FormatInt(d.Milliseconds(), 10) + "m"
+    ms := d.Milliseconds()
+    if ms <= 0 {
+        return "1m"
+    }
+    if ms > 99999999 {
+        return "99999999m"
+    }
+    return strconv.FormatInt(ms, 10) + "m"
 }
 ```
 
 ## Using Custom x-deadline Header
 
-An alternative approach is to pass an absolute deadline timestamp. This avoids errors from clock drift between header propagation:
+An alternative approach is to pass an absolute deadline timestamp. This can make the deadline easier to compare at each hop, but it requires reasonably synchronized clocks across services:
 
 ```python
 import time
@@ -163,6 +184,7 @@ def process():
         deadline = float(deadline_str) / 1000.0
     else:
         deadline = time.time() + 10.0  # Default 10 seconds from now
+        deadline_str = str(int(deadline * 1000))
 
     remaining = deadline - time.time()
     if remaining <= 0:
@@ -224,15 +246,16 @@ spec:
           name: envoy.filters.http.lua
           typed_config:
             "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-            inline_code: |
-              function envoy_on_request(request_handle)
-                local deadline = request_handle:headers():get("x-deadline")
-                if not deadline then
-                  local now = os.time()
-                  local deadline_ms = (now + 30) * 1000
-                  request_handle:headers():add("x-deadline", tostring(deadline_ms))
+            defaultSourceCode:
+              inlineString: |
+                function envoy_on_request(request_handle)
+                  local deadline = request_handle:headers():get("x-deadline")
+                  if not deadline then
+                    local now = os.time()
+                    local deadline_ms = (now + 30) * 1000
+                    request_handle:headers():add("x-deadline", tostring(deadline_ms))
+                  end
                 end
-              end
 ```
 
 This sets a 30-second deadline for all incoming requests that do not already have one.
@@ -242,7 +265,7 @@ This sets a 30-second deadline for all incoming requests that do not already hav
 Your Istio VirtualService timeouts should be slightly longer than the deadline to allow for cleanup:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: service-a-vs
@@ -256,7 +279,7 @@ spec:
       timeout: 35s  # 30s deadline + 5s buffer for cleanup
 ```
 
-The Istio timeout acts as a hard backstop. The application should respect the deadline header and stop processing on its own, but if it does not, the Istio timeout will force-terminate the request.
+The Istio timeout acts as a hard backstop for the proxy. The application should respect the deadline header and stop processing on its own; if it does not, the Istio timeout stops the proxy from waiting indefinitely and returns a timeout to the caller.
 
 ## Monitoring Deadline Violations
 
@@ -270,7 +293,7 @@ sum(rate(istio_requests_total{response_code="504"}[5m])) by (destination_service
 You can also add the deadline header as a custom metric dimension to track which services are consistently running close to their deadline:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: deadline-metrics
@@ -286,7 +309,7 @@ spec:
           tagOverrides:
             has_deadline:
               operation: UPSERT
-              value: "request.headers['x-deadline'] != '' ? 'true' : 'false'"
+              value: "'x-deadline' in request.headers ? 'true' : 'false'"
 ```
 
 ## Summary
