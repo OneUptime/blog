@@ -8,14 +8,14 @@ Description: Learn how to configure default fallback routes in Istio VirtualServ
 
 ---
 
-Every VirtualService should have a default fallback route. Without one, requests that do not match any of your specific rules get dropped with a 404 or, worse, end up somewhere unexpected. A well-designed fallback route acts as a safety net, catching anything your specific rules missed and sending it to a sensible destination.
+Every VirtualService should have a default fallback route. Without one, requests that do not match any of your specific rules can get a 404 from the proxy because no route matched. A well-designed fallback route acts as a safety net, catching anything your specific rules missed and sending it to a sensible destination.
 
 ## What is a Fallback Route
 
 A fallback route is simply an HTTP route rule with no match conditions. Because Istio evaluates rules top-to-bottom and uses the first match, a rule without conditions matches everything. Put it last, and it catches all traffic that slipped past your specific rules.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -48,7 +48,7 @@ The last rule has no `match` field, so it matches any request that did not match
 
 ## Why Fallback Routes Matter
 
-Without a fallback route, Istio generates a default route to the host specified in the VirtualService's `hosts` field. This usually works fine, but it gives you no control over the behavior. With an explicit fallback, you can:
+When there is no VirtualService at all, Istio's default behavior sends traffic to all versions of the destination service. Once you define a VirtualService with specific match rules, unmatched requests do not automatically fall through to that default behavior. With an explicit fallback, you can:
 
 - Route to a specific service or version
 - Add timeouts and retries
@@ -61,7 +61,7 @@ Without a fallback route, Istio generates a default route to the host specified 
 The most common pattern is routing unmatched traffic to a stable version:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -100,7 +100,7 @@ Only requests with specific version headers go to beta or canary. Everything els
 You can use the fallback to return a specific error for unknown paths:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-service
@@ -141,7 +141,7 @@ Requests that do not match any known API path get a 404 response. The `route` is
 Redirect unmatched traffic to a help page or documentation:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: web-app
@@ -177,7 +177,7 @@ Any path that is not `/app` or `/docs` gets redirected to `/app`.
 Add informational headers to fallback responses so you can tell when a request hit the fallback:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -212,7 +212,7 @@ When debugging, check the `x-route-match` response header to see which route the
 For ingress gateways, the fallback route handles requests for unknown paths or unexpected traffic:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: ingress-routes
@@ -252,7 +252,7 @@ Unknown subdomains get redirected to the main website.
 Even the fallback can use weighted routing:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -292,7 +292,7 @@ The safe approach is to keep everything in one VirtualService:
 ```yaml
 # Good: single VirtualService with clear fallback
 
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -323,7 +323,7 @@ spec:
 TCP VirtualService routes also support fallback patterns:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: tcp-services
@@ -376,7 +376,7 @@ istioctl proxy-config routes deploy/my-app -n default -o json
 
 1. **Putting the fallback first** - A route without match conditions matches everything. If it is first, no other rules will ever trigger.
 
-2. **Missing fallback entirely** - Without a fallback, unmatched requests either get a 404 or go to the default Kubernetes service routing, which might not be what you want.
+2. **Missing fallback entirely** - Without a fallback in a VirtualService that uses specific matches, unmatched requests can get a 404 from the proxy.
 
 3. **Forgetting the fallback in canary setups** - If you add header-based canary routing but forget the fallback, regular traffic without the canary header gets no route.
 
