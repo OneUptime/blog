@@ -45,17 +45,17 @@ provider "registry.terraform.io/hashicorp/random" {
 Each provider entry contains:
 
 - **version:** The exact version that was selected and installed.
-- **constraints:** The version constraint from your `required_providers` block.
-- **hashes:** Cryptographic checksums of the provider binary. Terraform verifies these on every init to detect tampering or corruption.
+- **constraints:** The version constraints Terraform considered when selecting the provider.
+- **hashes:** Cryptographic checksums of valid provider packages. Terraform verifies these on every init to detect tampering or corruption.
 
 ## How Hashing Works
 
-Terraform records two types of hashes:
+Terraform records two main types of hashes:
 
-- **h1:** A hash of the provider package zip file. Platform-specific.
-- **zh:** A hash of the provider binary content. Also platform-specific.
+- **h1:** The current preferred hash scheme, computed from the contents of the provider distribution package.
+- **zh:** A legacy "zip hash" scheme, computed from each official provider `.zip` package.
 
-When you run `terraform init` on a Mac, the lock file gets hashes for `darwin_arm64`. If a teammate on Linux runs `terraform init`, their hashes for `linux_amd64` are added.
+When you install a provider from its origin registry, Terraform can often record signed `zh:` hashes for all available platform packages, plus `h1:` hashes for the packages it has verified. If a teammate on another platform later runs `terraform init`, Terraform may add the corresponding `h1:` hash for that platform after verifying the package against an existing checksum.
 
 ```hcl
 # Lock file with hashes for multiple platforms
@@ -65,8 +65,8 @@ provider "registry.terraform.io/hashicorp/aws" {
   hashes = [
     "h1:abc123...",   # darwin_arm64
     "h1:xyz789...",   # linux_amd64
-    "zh:def456...",   # darwin_arm64
-    "zh:uvw234...",   # linux_amd64
+    "zh:def456...",   # official provider zip package
+    "zh:uvw234...",   # another official provider zip package
   ]
 }
 ```
@@ -145,7 +145,7 @@ Every `terraform init` verifies the downloaded provider against the lock file ha
 ```
 
 This can happen when:
-- The lock file was generated on a different platform and does not include your platform's hashes.
+- The lock file was generated through an installation method that did not record checksums for your platform.
 - Someone tampered with the provider binary.
 - A mirror serves a different version than expected.
 
@@ -179,7 +179,7 @@ jobs:
   plan:
     runs-on: ubuntu-latest  # linux_amd64
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: hashicorp/setup-terraform@v3
 
       - name: Terraform Init
@@ -264,7 +264,7 @@ jobs:
   update:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: hashicorp/setup-terraform@v3
 
       - name: Update Providers
@@ -275,7 +275,7 @@ jobs:
             -platform=darwin_arm64
 
       - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v6
+        uses: peter-evans/create-pull-request@v8
         with:
           title: "Update Terraform provider versions"
           body: "Automated provider version update. Review the lock file changes."
