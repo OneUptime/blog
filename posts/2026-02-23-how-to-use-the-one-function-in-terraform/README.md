@@ -22,7 +22,7 @@ The `one` function takes a list or set and returns its single element. If the co
 one(collection)
 ```
 
-This function was introduced in Terraform 1.0.
+This function is available in Terraform v0.15 and later.
 
 ## Basic Usage in Terraform Console
 
@@ -131,18 +131,22 @@ data "aws_vpc" "selected" {
   }
 }
 
-# When you have a list and expect one match
+# When you have a filtered list and expect one match
+data "aws_subnets" "primary" {
+  filter {
+    name   = "tag:Name"
+    values = ["primary-subnet"]
+  }
+}
+
 locals {
-  target_subnet = one([
-    for s in data.aws_subnet.all :
-    s if s.tags["Name"] == "primary-subnet"
-  ])
+  target_subnet_id = one(data.aws_subnets.primary.ids)
 }
 
 resource "aws_instance" "app" {
   ami           = data.aws_ami.ubuntu.id
   instance_type = "t3.micro"
-  subnet_id     = local.target_subnet != null ? local.target_subnet.id : null
+  subnet_id     = local.target_subnet_id
 }
 ```
 
