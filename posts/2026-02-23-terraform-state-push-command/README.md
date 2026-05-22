@@ -8,12 +8,12 @@ Description: Guide to using terraform state push to upload Terraform state to a 
 
 ---
 
-The `terraform state push` command uploads a local state file to the configured remote backend. It is the counterpart to `terraform state pull`. While `state pull` is a safe, read-only operation you can run anytime, `state push` directly overwrites the remote state and needs to be handled with care. Used correctly, it is a powerful tool for state recovery, migration, and troubleshooting.
+The `terraform state push` command uploads a local state file to the configured backend, usually remote state. It is the counterpart to `terraform state pull`. While `state pull` is a safe, read-only operation you can run anytime, `state push` directly overwrites the destination state and needs to be handled with care. Used correctly, it is a powerful tool for state recovery, migration, and troubleshooting.
 
 ## Basic Usage
 
 ```bash
-# Push a local state file to the remote backend
+# Push a local state file to the configured backend
 
 terraform state push terraform.tfstate
 ```
@@ -27,11 +27,12 @@ When you run `terraform state push`, Terraform:
 1. Reads the local state file you specified
 2. Connects to the configured backend
 3. Checks lineage and serial number (safety checks)
-4. Uploads the state, replacing the current remote state
+4. Uploads the state, replacing the current destination state
 
 The safety checks are important. Terraform will refuse to push if:
 - The lineage of the local state does not match the remote state
 - The serial number of the local state is lower than the remote state
+- The lineage and serial match, but the state contents are different
 
 These checks prevent accidentally overwriting a newer state with an older one.
 
@@ -40,7 +41,7 @@ These checks prevent accidentally overwriting a newer state with an older one.
 If you need to force the push (for example, during state recovery), use the `-force` flag:
 
 ```bash
-# Force push, bypassing lineage and serial checks
+# Force push, bypassing lineage and serial safety checks
 terraform state push -force recovered-state.json
 ```
 
@@ -63,7 +64,7 @@ terraform state push backup-20260223.json
 
 ### Recovering from the Auto-Backup
 
-When running state commands, Terraform saves backups:
+Terraform state subcommands that modify state write backups. If you have a backup from a previous state operation, you can use it to restore state:
 
 ```bash
 # After a failed state operation, the backup exists
@@ -231,7 +232,7 @@ terraform state list
 ### Lineage Mismatch
 
 ```text
-Error: Cannot overwrite state with a different lineage
+Failed to write state: cannot import state with lineage "..." over unrelated state with lineage "..."
 ```
 
 The local state has a different lineage than the remote state. This usually means you are trying to push state from a completely different project. If you are certain this is correct, use `-force`:
@@ -243,7 +244,7 @@ terraform state push -force state-file.json
 ### Serial Number Regression
 
 ```text
-Error: Cannot overwrite state with an earlier serial number
+Failed to write state: cannot import state with serial 10 over newer state with serial 12
 ```
 
 The local state has a lower serial than the remote. This means the remote state is newer. Make sure you actually want to roll back:
@@ -256,7 +257,7 @@ terraform state push -force state-file.json
 ### Invalid State Format
 
 ```text
-Error: Error reading state file
+Error reading source state "state-file.json": ...
 ```
 
 The file you are trying to push is not valid Terraform state JSON. Verify the file:
