@@ -8,7 +8,7 @@ Description: Learn how to create, manage, and retrieve secrets from Azure Key Va
 
 ---
 
-Azure Key Vault is Microsoft's managed secrets, keys, and certificate management service. Using it with Terraform lets you centralize secret management for your Azure infrastructure while keeping sensitive values out of your Terraform configurations and state files (as much as possible). This guide covers creating Key Vaults, storing secrets, retrieving them in Terraform, and integrating with Azure services.
+Azure Key Vault is Microsoft's managed secrets, keys, and certificate management service. Using it with Terraform lets you centralize secret management for your Azure infrastructure while keeping sensitive values out of your Terraform configurations where possible. Be aware that Terraform stores managed or read secret values in state, so protect your backend and plan files accordingly. This guide covers creating Key Vaults, storing secrets, retrieving them in Terraform, and integrating with Azure services.
 
 ## Creating a Key Vault
 
@@ -36,7 +36,7 @@ resource "azurerm_key_vault" "main" {
   purge_protection_enabled    = true
 
   # Enable RBAC authorization (recommended over access policies)
-  enable_rbac_authorization = true
+  rbac_authorization_enabled = true
 
   # Network restrictions
   network_acls {
@@ -95,7 +95,7 @@ resource "azurerm_key_vault_secret" "db_connection" {
   key_vault_id = azurerm_key_vault.main.id
 
   value = jsonencode({
-    server   = azurerm_postgresql_server.main.fqdn
+    server   = azurerm_postgresql_flexible_server.main.fqdn
     database = "myapp"
     username = "admin"
     password = random_password.database.result
@@ -134,19 +134,17 @@ data "azurerm_key_vault_secret" "db_password" {
 }
 
 # Use the secret in resources
-resource "azurerm_postgresql_server" "main" {
+resource "azurerm_postgresql_flexible_server" "main" {
   name                = "psql-myapp-prod"
   location            = azurerm_resource_group.main.location
   resource_group_name = azurerm_resource_group.main.name
 
-  sku_name   = "GP_Gen5_2"
-  version    = "11"
-  storage_mb = 51200
+  sku_name   = "GP_Standard_D2s_v3"
+  version    = "16"
+  storage_mb = 32768
 
-  administrator_login          = "psqladmin"
-  administrator_login_password = data.azurerm_key_vault_secret.db_password.value
-
-  ssl_enforcement_enabled = true
+  administrator_login    = "psqladmin"
+  administrator_password = data.azurerm_key_vault_secret.db_password.value
 }
 ```
 
@@ -171,10 +169,11 @@ resource "azurerm_role_assignment" "app_secrets_reader" {
 
 # Assign the identity to an App Service
 resource "azurerm_linux_web_app" "main" {
-  name                = "app-myapp-prod"
-  location            = azurerm_resource_group.main.location
-  resource_group_name = azurerm_resource_group.main.name
-  service_plan_id     = azurerm_service_plan.main.id
+  name                            = "app-myapp-prod"
+  location                        = azurerm_resource_group.main.location
+  resource_group_name             = azurerm_resource_group.main.name
+  service_plan_id                 = azurerm_service_plan.main.id
+  key_vault_reference_identity_id = azurerm_user_assigned_identity.app.id
 
   identity {
     type         = "UserAssigned"
@@ -226,7 +225,7 @@ resource "azurerm_role_assignment" "crypto_user" {
 # If your Key Vault uses access policies instead of RBAC
 resource "azurerm_key_vault" "main" {
   # ... other config ...
-  enable_rbac_authorization = false  # Use access policies
+  rbac_authorization_enabled = false  # Use access policies
 }
 
 resource "azurerm_key_vault_access_policy" "app" {
@@ -349,7 +348,7 @@ resource "azurerm_monitor_diagnostic_setting" "keyvault" {
     category = "AuditEvent"
   }
 
-  metric {
+  enabled_metric {
     category = "AllMetrics"
   }
 }
