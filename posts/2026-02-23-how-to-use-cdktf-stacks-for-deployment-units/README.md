@@ -8,7 +8,7 @@ Description: Learn how to organize your CDKTF infrastructure into stacks as inde
 
 ---
 
-In CDKTF, a stack is an independent deployment unit that maps to a separate Terraform state file. Each stack can be deployed, updated, or destroyed independently of other stacks. This is a powerful organizational tool that lets you split your infrastructure into logical pieces with separate lifecycles. This guide covers how stacks work, when to use multiple stacks, and patterns for organizing your infrastructure.
+In CDKTF, a stack is an independent deployment unit that maps to separate Terraform state. Each stack can be deployed, updated, or destroyed independently of other stacks. This is a powerful organizational tool that lets you split your infrastructure into logical pieces with separate lifecycles. Note that CDKTF is deprecated as of December 10, 2025, and HashiCorp no longer supports or maintains it. This guide covers how stacks work, when to use multiple stacks, and patterns for organizing your infrastructure.
 
 ## What Is a Stack?
 
@@ -86,7 +86,7 @@ class NetworkStack extends TerraformStack {
     this.vpcId = vpc.id;
     this.subnetId = subnet.id;
 
-    // Output values so other stacks can read them
+    // Output values so independently deployed stacks can read them
     new TerraformOutput(this, "vpc-id-output", {
       value: vpc.id,
     });
@@ -185,7 +185,7 @@ class DatabaseStack extends TerraformStack {
 For stacks that are deployed independently or managed by different teams, use remote state data sources:
 
 ```typescript
-import { DataTerraformRemoteState } from "cdktf";
+import { DataTerraformRemoteStateS3 } from "cdktf";
 
 class ApplicationStack extends TerraformStack {
   constructor(scope: Construct, id: string) {
@@ -194,13 +194,10 @@ class ApplicationStack extends TerraformStack {
     new AwsProvider(this, "aws", { region: "us-east-1" });
 
     // Read outputs from the network stack's remote state
-    const networkState = new DataTerraformRemoteState(this, "network-state", {
-      backend: "s3",
-      config: {
-        bucket: "my-terraform-state",
-        key: "network/terraform.tfstate",
-        region: "us-east-1",
-      },
+    const networkState = new DataTerraformRemoteStateS3(this, "network-state", {
+      bucket: "my-terraform-state",
+      key: "network/terraform.tfstate",
+      region: "us-east-1",
     });
 
     // Use the values from remote state
@@ -316,7 +313,7 @@ new ApplicationStack(app, "myapp-dev-app");
 
 2. **Minimize cross-stack references**. The fewer dependencies between stacks, the more independently they can be deployed.
 
-3. **Use outputs for sharing**. Always use `TerraformOutput` to expose values that other stacks need.
+3. **Use outputs for remote-state sharing**. Use `TerraformOutput` to expose values that independently deployed stacks or other configurations need to read from remote state.
 
 4. **Document stack dependencies**. Make it clear which stacks depend on which, and what order they should be deployed in.
 
