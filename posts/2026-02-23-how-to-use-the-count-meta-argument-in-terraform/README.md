@@ -73,6 +73,11 @@ variable "subnet_ids" {
   type = list(string)
 }
 
+data "aws_subnet" "selected" {
+  count = length(var.subnet_ids)
+  id    = var.subnet_ids[count.index]
+}
+
 resource "aws_instance" "app" {
   count = var.instance_count
 
@@ -278,7 +283,7 @@ resource "aws_instance" "worker" {
   # All workers are interchangeable
 }
 
-# 3. Resources with computed count from another resource
+# 3. Resources with count derived from another counted resource collection
 resource "aws_eip" "nat" {
   count  = length(aws_subnet.public)
   domain = "vpc"
