@@ -8,7 +8,7 @@ Description: Learn how to configure and use the S3 backend in OpenTofu for remot
 
 ---
 
-Storing OpenTofu state in Amazon S3 is the most popular remote backend option for AWS users. It provides durability, versioning, encryption, and when combined with DynamoDB, state locking to prevent concurrent modifications. This guide covers setting up the S3 backend from scratch, including the supporting infrastructure.
+Storing OpenTofu state in Amazon S3 is the most popular remote backend option for AWS users. It provides durability, versioning, encryption, and state locking to prevent concurrent modifications. This guide covers setting up the S3 backend from scratch, including the supporting infrastructure for DynamoDB-based locking.
 
 ## Why Use an S3 Backend
 
@@ -16,13 +16,13 @@ Local state files work fine for personal projects, but they fall apart in teams.
 
 - State is stored remotely so all team members access the same state
 - S3 versioning keeps a history of state changes for rollback
-- DynamoDB provides locking to prevent two people from applying at the same time
+- DynamoDB or S3 lockfiles provide locking to prevent two people from applying at the same time
 - Server-side encryption protects sensitive data in state
 - S3 lifecycle policies can manage old state versions
 
 ## Creating the S3 Backend Infrastructure
 
-Before you can use the S3 backend, you need the bucket and DynamoDB table. Here is the chicken-and-egg problem: you need infrastructure to store state, but you usually use OpenTofu to create infrastructure. The solution is to create the backend resources with a separate configuration that uses local state, or create them manually.
+Before you can use the S3 backend with DynamoDB locking, you need the bucket and DynamoDB table. Here is the chicken-and-egg problem: you need infrastructure to store state, but you usually use OpenTofu to create infrastructure. The solution is to create the backend resources with a separate configuration that uses local state, or create them manually.
 
 ```hcl
 # backend-setup/main.tf
@@ -206,7 +206,9 @@ terraform {
     encrypt        = true
 
     # Assume a role in the shared services account to access the bucket
-    role_arn = "arn:aws:iam::111111111111:role/OpenTofuStateAccess"
+    assume_role = {
+      role_arn = "arn:aws:iam::111111111111:role/OpenTofuStateAccess"
+    }
   }
 }
 
@@ -239,6 +241,7 @@ The IAM role for state access needs these permissions:
     {
       "Effect": "Allow",
       "Action": [
+        "dynamodb:DescribeTable",
         "dynamodb:GetItem",
         "dynamodb:PutItem",
         "dynamodb:DeleteItem"
@@ -248,6 +251,8 @@ The IAM role for state access needs these permissions:
   ]
 }
 ```
+
+The role also needs `kms:Encrypt`, `kms:Decrypt`, and `kms:GenerateDataKey` permissions on the KMS key when `kms_key_id` is configured.
 
 ## Using KMS Encryption
 
