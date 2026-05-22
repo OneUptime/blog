@@ -59,8 +59,8 @@ jobs:
       # Install OPA
       - name: Install OPA
         run: |
-          curl -L -o opa https://openpolicyagent.org/downloads/v0.62.0/opa_linux_amd64_static
-          chmod +x opa
+          curl -L -o opa https://openpolicyagent.org/downloads/latest/opa_linux_amd64
+          chmod 755 opa
           sudo mv opa /usr/local/bin/
 
       # Run policy checks
@@ -102,19 +102,20 @@ jobs:
 # policies/encryption.rego
 package terraform
 
-# Deny unencrypted S3 buckets
-deny[msg] {
+# Deny S3 bucket encryption configurations without a default encryption rule
+deny contains msg if {
     resource := input.resource_changes[_]
-    resource.type == "aws_s3_bucket"
+    resource.type == "aws_s3_bucket_server_side_encryption_configuration"
     resource.change.actions[_] == "create"
 
     # Check if encryption configuration exists
-    not resource.change.after.server_side_encryption_configuration
-    msg := sprintf("S3 bucket '%s' must have encryption enabled", [resource.address])
+    rules := object.get(resource.change.after, "rule", [])
+    count(rules) == 0
+    msg := sprintf("S3 bucket encryption configuration '%s' must define a default encryption rule", [resource.address])
 }
 
 # Deny unencrypted RDS instances
-deny[msg] {
+deny contains msg if {
     resource := input.resource_changes[_]
     resource.type == "aws_db_instance"
     resource.change.actions[_] == "create"
@@ -124,7 +125,7 @@ deny[msg] {
 }
 
 # Deny unencrypted EBS volumes
-deny[msg] {
+deny contains msg if {
     resource := input.resource_changes[_]
     resource.type == "aws_ebs_volume"
     resource.change.actions[_] == "create"
@@ -139,7 +140,7 @@ deny[msg] {
 package terraform
 
 # Deny security groups with 0.0.0.0/0 ingress
-deny[msg] {
+deny contains msg if {
     resource := input.resource_changes[_]
     resource.type == "aws_security_group_rule"
     resource.change.actions[_] == "create"
@@ -158,13 +159,14 @@ deny[msg] {
 }
 
 # Deny public subnets without explicit approval tag
-deny[msg] {
+deny contains msg if {
     resource := input.resource_changes[_]
     resource.type == "aws_subnet"
     resource.change.actions[_] == "create"
     resource.change.after.map_public_ip_on_launch == true
 
-    not resource.change.after.tags["PublicSubnetApproved"]
+    tags := object.get(resource.change.after, "tags", {})
+    not tags["PublicSubnetApproved"]
     msg := sprintf("Public subnet '%s' requires 'PublicSubnetApproved' tag", [resource.address])
 }
 ```
@@ -182,13 +184,14 @@ taggable_types := {
     "aws_ecs_service", "aws_lambda_function", "aws_vpc"
 }
 
-deny[msg] {
+deny contains msg if {
     resource := input.resource_changes[_]
     taggable_types[resource.type]
     resource.change.actions[_] == "create"
 
     # Find missing tags
-    existing_tags := {tag | resource.change.after.tags[tag]}
+    tags := object.get(resource.change.after, "tags", {})
+    existing_tags := {tag | tags[tag]}
     missing := required_tags - existing_tags
 
     count(missing) > 0
@@ -211,6 +214,7 @@ Checkov provides hundreds of built-in policy checks:
     framework: terraform
     output_format: cli
     soft_fail: false
+    external_checks_dirs: policies/custom_checks
     # Skip specific checks if needed
     skip_check: CKV_AWS_145  # Skip specific check ID
     # Only run specific checks
@@ -278,17 +282,17 @@ If you use Terraform Cloud, Sentinel policies run automatically:
 # sentinel/require-encryption.sentinel
 import "tfplan/v2" as tfplan
 
-# Find all S3 buckets being created
-s3_buckets = filter tfplan.resource_changes as _, rc {
-    rc.type is "aws_s3_bucket" and
+# Find all S3 bucket encryption configurations being created or updated
+s3_encryption_configs = filter tfplan.resource_changes as _, rc {
+    rc.type is "aws_s3_bucket_server_side_encryption_configuration" and
     rc.mode is "managed" and
     (rc.change.actions contains "create" or rc.change.actions contains "update")
 }
 
 # Check encryption configuration
 encryption_check = rule {
-    all s3_buckets as _, bucket {
-        bucket.change.after.server_side_encryption_configuration is not null
+    all s3_encryption_configs as _, config {
+        config.change.after.rule is not null
     }
 }
 
@@ -351,18 +355,20 @@ jobs:
       # Layer 3: Custom organization policies
       - name: Organization Policies (OPA)
         run: |
-          opa eval --input infrastructure/plan.json \
+          opa eval --fail-defined \
+            --input infrastructure/plan.json \
             --data policies/ \
             --format json \
-            'data.terraform.deny'
+            'data.terraform.deny[_]'
 
       # Layer 4: Cost policies
       - name: Cost Policy Check
         run: |
-          infracost breakdown --path infrastructure/plan.json --format json > /tmp/cost.json
-          opa eval --input /tmp/cost.json \
+          infracost breakdown --path infrastructure/plan.json --format json --out-file /tmp/cost.json
+          opa eval --fail-defined \
+            --input /tmp/cost.json \
             --data policies/cost.rego \
-            'data.terraform.cost.deny'
+            'data.terraform.cost.deny[_]'
 ```
 
 ## Summary
