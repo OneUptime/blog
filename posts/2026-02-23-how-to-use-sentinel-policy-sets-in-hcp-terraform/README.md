@@ -25,9 +25,9 @@ When a Terraform run triggers in an attached workspace, all policies in the poli
 The simplest way to get started is through the HCP Terraform web interface:
 
 1. Navigate to your organization settings
-2. Click on "Policy Sets" under "Governance"
-3. Click "Create a new policy set"
-4. Choose the source (VCS or API)
+2. Click on "Policies"
+3. Click "Connect a new policy set"
+4. Choose the workflow (VCS, managed policies, or no VCS connection)
 5. Configure the connection
 6. Select which workspaces to apply it to
 
@@ -43,17 +43,17 @@ Your VCS repository needs a `sentinel.hcl` file that defines the policies:
 # sentinel.hcl - Policy set configuration
 
 policy "enforce-tags" {
-    source            = "./policies/enforce-tags.sentinel"
+    source            = "./enforce-tags.sentinel"
     enforcement_level = "hard-mandatory"
 }
 
 policy "restrict-instance-types" {
-    source            = "./policies/restrict-instance-types.sentinel"
+    source            = "./restrict-instance-types.sentinel"
     enforcement_level = "soft-mandatory"
 }
 
 policy "cost-limit" {
-    source            = "./policies/cost-limit.sentinel"
+    source            = "./cost-limit.sentinel"
     enforcement_level = "advisory"
 }
 ```
@@ -63,11 +63,10 @@ The complete repository structure:
 ```text
 my-policy-repo/
   sentinel.hcl
-  policies/
-    enforce-tags.sentinel
-    restrict-instance-types.sentinel
-    cost-limit.sentinel
-  lib/
+  enforce-tags.sentinel
+  restrict-instance-types.sentinel
+  cost-limit.sentinel
+  modules/
     helpers.sentinel
   test/
     enforce-tags/
@@ -80,12 +79,12 @@ my-policy-repo/
 ### Connecting the Repository
 
 ```bash
-# Using the Terraform CLI or API to create a policy set
+# Using the HCP Terraform API or the tfe provider to create a policy set
 
 # Or configure it through the HCP Terraform UI
 
 # Navigate to:
-# Organization Settings > Policy Sets > Create Policy Set
+# Organization Settings > Policies > Connect a new policy set
 # Source: "Connect to a version control provider"
 # Repository: your-org/sentinel-policies
 # Branch: main
@@ -108,20 +107,13 @@ curl \
       "attributes": {
         "name": "security-policies",
         "description": "Core security policies for all workspaces",
+        "kind": "sentinel",
         "global": true,
         "policies-path": "/security",
         "vcs-repo": {
           "identifier": "myorg/sentinel-policies",
           "branch": "main",
           "oauth-token-id": "ot-xxxxxxxxxxxx"
-        }
-      },
-      "relationships": {
-        "organization": {
-          "data": {
-            "type": "organizations",
-            "id": "my-org"
-          }
         }
       }
     }
@@ -231,7 +223,7 @@ You can pass parameters to policies through the policy set configuration. This l
 # sentinel.hcl with parameters
 
 policy "restrict-instance-types" {
-    source            = "./policies/restrict-instance-types.sentinel"
+    source            = "./restrict-instance-types.sentinel"
     enforcement_level = "hard-mandatory"
 
     params = {
@@ -242,7 +234,7 @@ policy "restrict-instance-types" {
 
 In the policy, access the parameter:
 
-```python
+```sentinel
 # restrict-instance-types.sentinel
 import "tfplan/v2" as tfplan
 
@@ -273,9 +265,9 @@ For immediate updates without a VCS push:
 # through the UI: Policy Set > Settings > "Update from VCS"
 ```
 
-## Monitoring Policy Evaluations
+## Monitoring Policy Checks
 
-After policy sets are deployed, you can monitor their evaluations:
+After policy sets are deployed, you can monitor their checks:
 
 ```bash
 # List policy checks for a run
@@ -289,7 +281,7 @@ curl \
   https://app.terraform.io/api/v2/policy-checks/polchk-xxxxxxxxxxxx
 ```
 
-The UI also shows policy evaluation results directly on the run page, including which policies passed, failed, and any print output.
+The UI also shows policy check results directly on the run page, including which policies passed, failed, and any print output.
 
 ## Troubleshooting Policy Sets
 
@@ -311,10 +303,10 @@ curl \
   --header "Authorization: Bearer $TFC_TOKEN" \
   https://app.terraform.io/api/v2/policy-sets/polset-xxxxxxxxxxxx
 
-# Check recent policy evaluations
+# Check policy checks for a run
 curl \
   --header "Authorization: Bearer $TFC_TOKEN" \
-  https://app.terraform.io/api/v2/policy-sets/polset-xxxxxxxxxxxx/policy-checks
+  https://app.terraform.io/api/v2/runs/run-xxxxxxxxxxxx/policy-checks
 ```
 
 ## Best Practices
