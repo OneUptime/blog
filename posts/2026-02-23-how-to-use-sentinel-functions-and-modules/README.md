@@ -19,6 +19,8 @@ A Sentinel function works like functions in most programming languages. You defi
 ```python
 # A function that checks if a string starts with a given prefix
 
+import "strings"
+
 starts_with = func(str, prefix) {
     return strings.has_prefix(str, prefix)
 }
@@ -134,8 +136,9 @@ validate_sg_rules = func(ingress_rules, restricted_ports) {
     for ingress_rules as rule {
         from_port = rule.from_port else 0
         to_port = rule.to_port else 0
+        cidr_blocks = rule.cidr_blocks else []
 
-        for rule.cidr_blocks as cidr {
+        for cidr_blocks as cidr {
             if is_public_cidr(cidr) {
                 for restricted_ports as port {
                     if from_port <= port and to_port >= port {
@@ -277,13 +280,14 @@ Now your policies can import and use the module:
 # policies/require-tags.sentinel
 # Enforce required tags on all AWS resources
 
+import "tfplan/v2" as tfplan
 import "tfplan-functions" as tf
 
 # Define required tags
 required_tags = ["environment", "owner", "cost-center", "project"]
 
 # Get all resource changes
-allResources = filter tf.tfplan.resource_changes as _, rc {
+allResources = filter tfplan.resource_changes as _, rc {
     rc.mode is "managed" and
     (rc.change.actions contains "create" or
      rc.change.actions contains "update")
@@ -329,7 +333,7 @@ is_approved_region = func(region) {
 
 # Get the provider region from a resource
 get_resource_region = func(resource) {
-    # Try to get region from provider configuration
+    # Some resources expose region as an attribute; otherwise return unknown.
     provider_name = resource.provider_name else ""
     if strings.has_suffix(provider_name, "aws") {
         return resource.change.after.region else "unknown"
@@ -354,16 +358,14 @@ is_rds_public = func(rds_resource) {
 
 ## Testing Modules
 
-Testing modules follows the same pattern as testing policies, but you need to mock the module imports:
+Testing modules follows the same pattern as testing policies, but local module dependencies must be configured in the test case:
 
 ```python
 # test/require-tags/pass.hcl
 # Test that properly tagged resources pass the policy
 
-mock "tfplan-functions" {
-    module {
-        source = "../../modules/tfplan-functions/tfplan-functions.sentinel"
-    }
+import "module" "tfplan-functions" {
+    source = "../../modules/tfplan-functions/tfplan-functions.sentinel"
 }
 
 mock "tfplan/v2" {
@@ -393,7 +395,7 @@ As your module library matures, version it properly. Use Git tags to pin module 
 ```hcl
 # sentinel.hcl with versioned module reference
 module "tfplan-functions" {
-    source  = "git::https://github.com/myorg/sentinel-modules.git//tfplan-functions?ref=v1.2.0"
+    source = "https://raw.githubusercontent.com/myorg/sentinel-modules/v1.2.0/tfplan-functions/tfplan-functions.sentinel"
 }
 ```
 
