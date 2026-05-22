@@ -69,7 +69,7 @@ Consistent naming makes modules discoverable and their purpose clear.
 terraform-aws-vpc
 terraform-aws-ecs-service
 terraform-aws-rds-postgres
-terraform-azure-vnet
+terraform-azurerm-vnet
 terraform-google-gke
 
 # Variable naming: Use snake_case, be descriptive
@@ -131,7 +131,7 @@ Large organizations need a clear versioning strategy:
 # Development environments: Allow minor version updates
 module "vpc" {
   source  = "app.terraform.io/myorg/vpc/aws"
-  version = "~> 2.1"  # Allows 2.1.x but not 2.2.0
+  version = "~> 2.1.0"  # Allows 2.1.x but not 2.2.0
 }
 
 # Production environments: Pin exact versions
@@ -171,7 +171,7 @@ jobs:
 
       # Lint with tflint
       - name: TFLint
-        uses: terraform-linters/setup-tflint@v4
+        uses: terraform-linters/setup-tflint@v6
       - run: |
           tflint --init
           tflint
@@ -192,9 +192,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Security scanning with tfsec
-      - name: tfsec
-        uses: aquasecurity/tfsec-action@v1.0.3
+      # Security scanning with Trivy
+      - name: Trivy
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: config
 
       # Policy check with checkov
       - name: Checkov
