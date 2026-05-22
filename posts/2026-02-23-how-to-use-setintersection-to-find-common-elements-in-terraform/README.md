@@ -12,7 +12,7 @@ Finding what two or more groups have in common is a fundamental operation in inf
 
 ## What is setintersection?
 
-The `setintersection` function takes two or more sets and returns a new set containing only the elements that are present in all of them.
+The `setintersection` function takes one or more sets and returns a new set containing only the elements that are present in all of them.
 
 ```hcl
 # Find common elements between two sets
@@ -85,24 +85,36 @@ When deploying across multiple regions, you might need to find shared AZ pattern
 data "aws_availability_zones" "region_a" {
   provider = aws.us_east_1
   state    = "available"
+
+  filter {
+    name   = "opt-in-status"
+    values = ["opt-in-not-required"]
+  }
 }
 
 data "aws_availability_zones" "region_b" {
   provider = aws.us_west_2
   state    = "available"
+
+  filter {
+    name   = "opt-in-status"
+    values = ["opt-in-not-required"]
+  }
 }
 
 locals {
   # Extract just the AZ suffixes (a, b, c, etc.)
   region_a_suffixes = toset([
     for az in data.aws_availability_zones.region_a.names :
-    replace(az, data.aws_availability_zones.region_a.names[0], "")
+    substr(az, length(data.aws_availability_zones.region_a.id), -1)
   ])
 
   region_b_suffixes = toset([
     for az in data.aws_availability_zones.region_b.names :
-    replace(az, data.aws_availability_zones.region_b.names[0], "")
+    substr(az, length(data.aws_availability_zones.region_b.id), -1)
   ])
+
+  common_az_suffixes = setintersection(local.region_a_suffixes, local.region_b_suffixes)
 }
 ```
 
