@@ -14,7 +14,7 @@ This guide explains when and how to use the `providers` argument in module block
 
 ## How Provider Inheritance Works
 
-Before diving into the `providers` argument, it is important to understand the default behavior. When you call a module without specifying `providers`, the module inherits all providers from the calling module that match by name:
+Before diving into the `providers` argument, it is important to understand the default behavior. When you call a module without specifying `providers`, the module inherits default provider configurations from the calling module that match by name:
 
 ```hcl
 # Root module
@@ -350,7 +350,7 @@ module "data_replication" {
 
 ## Common Mistakes
 
-**Forgetting to pass providers to nested modules.** If Module A calls Module B, and Module A receives explicit providers, Module B also needs them passed explicitly. Provider inheritance only works for the default (non-aliased) provider.
+**Forgetting to pass aliased providers to nested modules.** If Module A calls Module B, and Module B needs an aliased provider configuration, Module A also needs to pass that provider explicitly. Provider inheritance only works for default (non-aliased) provider configurations.
 
 **Mismatched provider names.** The keys in the `providers` map must match what the module expects. If the module uses `aws`, the key must be `aws`. If the module declares `configuration_aliases = [aws.secondary]`, you must provide `aws.secondary`.
 
