@@ -20,11 +20,14 @@ Terraform includes a built-in command that installs autocomplete for you:
 terraform -install-autocomplete
 ```
 
-This command detects your shell and appends the necessary configuration to your profile file (`~/.bashrc` for Bash or `~/.zshrc` for Zsh). After running it, reload your shell:
+This command appends the necessary configuration to your profile file (`~/.bashrc` for Bash on Linux, `~/.bash_profile` for Bash on macOS, or `~/.zshrc` for Zsh). After running it, reload your shell:
 
 ```bash
 # Reload Bash
 source ~/.bashrc
+
+# Or reload Bash on macOS
+source ~/.bash_profile
 
 # Or reload Zsh
 source ~/.zshrc
@@ -36,38 +39,18 @@ If the automatic install does not work for your setup, or if you want to underst
 
 ## Setting Up Autocomplete in Bash
 
-### Step 1 - Check bash-completion Is Installed
+### Step 1 - Check Bash Programmable Completion Is Available
 
-Terraform's autocomplete relies on the `bash-completion` package. Check if it is installed:
-
-```bash
-# Check if bash-completion is available
-type _init_completion 2>/dev/null && echo "bash-completion is installed" || echo "bash-completion is NOT installed"
-```
-
-If it is not installed:
+Terraform's autocomplete uses Bash's built-in programmable completion support through the `complete` command. Check that you are running Bash and that `complete` is available:
 
 ```bash
-# On Ubuntu/Debian
-sudo apt-get install -y bash-completion
-
-# On CentOS/RHEL
-sudo dnf install -y bash-completion
-
-# On macOS with Homebrew
-brew install bash-completion@2
-```
-
-For macOS, you also need to source bash-completion in your profile. Add this to `~/.bash_profile`:
-
-```bash
-# Enable bash-completion on macOS
-[[ -r "/opt/homebrew/etc/profile.d/bash_completion.sh" ]] && . "/opt/homebrew/etc/profile.d/bash_completion.sh"
+echo "$BASH_VERSION"
+type complete
 ```
 
 ### Step 2 - Add the Terraform Completion Script
 
-Add the following to your `~/.bashrc`:
+Add the following to your `~/.bashrc` on Linux, or to `~/.bash_profile` on macOS:
 
 ```bash
 # Enable Terraform autocomplete
@@ -89,6 +72,9 @@ complete -C ~/.tfenv/versions/1.7.5/terraform terraform
 ```bash
 # Reload the shell configuration
 source ~/.bashrc
+
+# Or on macOS
+source ~/.bash_profile
 
 # Test autocomplete - type "terraform " and press Tab
 terraform <TAB>
@@ -123,7 +109,7 @@ Add this to your `~/.zshrc`:
 ```bash
 # Enable Terraform autocomplete in Zsh
 autoload -U +X bashcompinit && bashcompinit
-complete -C /usr/local/bin/terraform terraform
+complete -o nospace -C /usr/local/bin/terraform terraform
 ```
 
 The `bashcompinit` function enables Bash-style completion in Zsh, which is what Terraform's completion system uses.
@@ -133,7 +119,7 @@ Again, adjust the path if your binary is elsewhere:
 ```bash
 # For Homebrew on Apple Silicon
 autoload -U +X bashcompinit && bashcompinit
-complete -C /opt/homebrew/bin/terraform terraform
+complete -o nospace -C /opt/homebrew/bin/terraform terraform
 ```
 
 ### Step 3 - Reload and Test
@@ -154,9 +140,10 @@ Once set up, pressing Tab after `terraform` will complete:
 
 ```text
 terraform <TAB>
-# Shows: apply, console, destroy, fmt, get, graph, import, init,
-#        login, logout, output, plan, providers, refresh, show,
-#        state, taint, test, untaint, validate, version, workspace
+# Shows commands for your Terraform version, such as:
+# apply, console, destroy, fmt, get, graph, import, init,
+# login, logout, output, plan, providers, show, state,
+# test, validate, version, workspace
 ```
 
 ### Subcommands
@@ -173,9 +160,10 @@ terraform workspace <TAB>
 
 ```text
 terraform plan -<TAB>
-# Shows: -compact-warnings, -destroy, -detailed-exitcode,
-#        -input, -json, -lock, -lock-timeout, -no-color,
-#        -out, -parallelism, -refresh-only, -replace, -target, -var, -var-file
+# Shows options for your Terraform version, such as:
+# -compact-warnings, -destroy, -detailed-exitcode, -input,
+# -json, -lock, -lock-timeout, -no-color, -out, -parallelism,
+# -refresh-only, -replace, -target, -var, -var-file
 ```
 
 This is incredibly handy for flags you do not use often. Instead of checking the documentation every time, just press Tab.
@@ -199,7 +187,7 @@ This means `bashcompinit` is not loaded. Make sure you have both lines in your `
 
 ```bash
 autoload -U +X bashcompinit && bashcompinit
-complete -C /usr/local/bin/terraform terraform
+complete -o nospace -C /usr/local/bin/terraform terraform
 ```
 
 The order matters. `bashcompinit` must be loaded before the `complete` command.
@@ -233,6 +221,13 @@ If you use tfenv or another version manager, the binary path might change when y
 complete -C "$(which terraform)" terraform
 ```
 
+For Zsh, keep the `autoload -U +X bashcompinit && bashcompinit` line before this and include `-o nospace`:
+
+```bash
+autoload -U +X bashcompinit && bashcompinit
+complete -o nospace -C "$(which terraform)" terraform
+```
+
 Note: This resolves the path once when the shell starts. If you switch Terraform versions mid-session, you may need to reload your shell.
 
 ## Oh My Zsh Users
@@ -259,7 +254,7 @@ If you are using Oh My Zsh, this is the easiest approach.
 
 ## Fish Shell Users
 
-While this post focuses on Bash and Zsh, I will briefly mention Fish shell. Terraform does not natively support Fish completions, but the community has created completion scripts. You can find them on GitHub:
+While this post focuses on Bash and Zsh, I will briefly mention Fish shell. Terraform's current official documentation covers shell tab-completion for Bash and Zsh, and Fish users can also use community-maintained completion scripts. You can find them on GitHub:
 
 ```fish
 # Fish users can create a completion file at
@@ -282,6 +277,8 @@ alias tfa='terraform apply'
 # Make autocomplete work with the 'tf' alias too
 complete -C /usr/local/bin/terraform tf
 ```
+
+In Zsh, use the same `bashcompinit` setup shown earlier and add `-o nospace` to the `complete` command.
 
 Now `tf <TAB>` works just like `terraform <TAB>`.
 
