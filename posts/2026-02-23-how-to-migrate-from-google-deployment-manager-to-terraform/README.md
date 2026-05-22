@@ -8,11 +8,11 @@ Description: Learn how to migrate your Google Cloud Deployment Manager configura
 
 ---
 
-Google Cloud Deployment Manager is Google's native infrastructure as code service, but many teams are moving to Terraform for its multi-cloud support, richer module ecosystem, and more expressive configuration language. Migrating from Deployment Manager to Terraform requires transferring resource ownership carefully to avoid disrupting running infrastructure. This guide provides a complete migration path.
+Google Cloud Deployment Manager was Google's native infrastructure as code service, but Google discontinued support for Deployment Manager on March 31, 2026. Many teams are moving to Terraform for its multi-cloud support, richer module ecosystem, and more expressive configuration language. Migrating from Deployment Manager to Terraform requires transferring resource ownership carefully to avoid disrupting running infrastructure. This guide provides a complete migration path for environments where Deployment Manager deployments and APIs are still accessible during a transition.
 
 ## Why Migrate from Deployment Manager to Terraform
 
-Deployment Manager uses YAML or Python/Jinja2 templates, which can become complex for large deployments. Terraform offers HCL, a purpose-built configuration language with better readability. Terraform also has broader provider coverage, an extensive module registry, and active community development. Google itself has invested significantly in the Terraform Google provider, making it a well-supported option for GCP infrastructure.
+Deployment Manager used YAML or Python/Jinja2 templates, which can become complex for large deployments. Terraform offers HCL, a purpose-built configuration language with better readability. Terraform also has broader provider coverage, an extensive module registry, and active community development. Google itself has invested significantly in the Terraform Google provider, making it a well-supported option for GCP infrastructure.
 
 ## Understanding Deployment Manager Resource Ownership
 
@@ -33,9 +33,10 @@ gcloud deployment-manager deployments list
 gcloud deployment-manager deployments describe my-deployment \
   --format='table(resources.name, resources.type, resources.id)'
 
-# Export the deployment configuration
-gcloud deployment-manager deployments describe my-deployment \
-  --format=yaml > deployment-config.yaml
+# Export the latest manifest's original configuration
+gcloud deployment-manager manifests describe \
+  --deployment=my-deployment \
+  --format='value(config.content)' > deployment-config.yaml
 
 # Get the expanded configuration (with all templates resolved)
 gcloud deployment-manager manifests describe \
@@ -100,6 +101,8 @@ Terraform equivalent:
 
 ```hcl
 # Provider configuration
+variable "project_id" {}
+
 provider "google" {
   project = var.project_id
   region  = "us-central1"
@@ -197,13 +200,13 @@ After Terraform successfully manages the resources, remove them from Deployment 
 # Delete the deployment with abandon policy
 # This removes the deployment but keeps all resources
 gcloud deployment-manager deployments delete my-deployment \
-  --delete-policy=ABANDON
+  --delete-policy=abandon
 
 # Confirm the resources still exist
 gcloud compute instances describe my-instance --zone=us-central1-a
 ```
 
-The `--delete-policy=ABANDON` flag is critical. Without it, Deployment Manager would delete all resources.
+The `--delete-policy=abandon` flag is critical. Without it, Deployment Manager would delete all resources.
 
 ## Step 7: Final Verification
 
@@ -233,6 +236,16 @@ def GenerateConfig(context):
             'properties': {
                 'zone': context.properties['zone'],
                 'machineType': f'zones/{context.properties["zone"]}/machineTypes/{context.properties["machine_type"]}',
+                'disks': [{
+                    'boot': True,
+                    'autoDelete': True,
+                    'initializeParams': {
+                        'sourceImage': 'projects/debian-cloud/global/images/family/debian-11'
+                    }
+                }],
+                'networkInterfaces': [{
+                    'network': 'global/networks/default'
+                }]
             }
         })
     return {'resources': resources}
@@ -292,7 +305,7 @@ gcloud deployment-manager resources list \
 
   case "$type" in
     "compute.v1.instance")
-      ZONE=$(gcloud compute instances list --filter="name=$name" --format='value(zone)')
+      ZONE=$(gcloud compute instances list --filter="name=$name" --format='value(zone.basename())')
       echo "import {"
       echo "  to = google_compute_instance.${name//-/_}"
       echo "  id = \"projects/$PROJECT/zones/$ZONE/instances/$name\""
@@ -322,10 +335,10 @@ done
 
 ## Best Practices
 
-Migrate one deployment at a time. Always use `--delete-policy=ABANDON` when removing deployments. Test the complete migration workflow in a non-production project first. Keep Deployment Manager configurations in version control alongside Terraform code during the transition. Verify every import with `terraform plan` before moving to the next deployment. Document the mapping between Deployment Manager resource names and Terraform resource addresses.
+Migrate one deployment at a time. Always use `--delete-policy=abandon` when removing deployments. Test the complete migration workflow in a non-production project first. Keep Deployment Manager configurations in version control alongside Terraform code during the transition. Verify every import with `terraform plan` before moving to the next deployment. Document the mapping between Deployment Manager resource names and Terraform resource addresses.
 
 ## Conclusion
 
-Migrating from Google Deployment Manager to Terraform follows a clear pattern: write equivalent configuration, import existing resources, verify, and then abandon the deployment. The `--delete-policy=ABANDON` flag makes this a safe operation. With the Google Terraform provider's comprehensive resource support, most Deployment Manager configurations translate directly to Terraform HCL. Take a methodical approach, and you will have your GCP infrastructure fully managed by Terraform.
+Migrating from Google Deployment Manager to Terraform follows a clear pattern: write equivalent configuration, import existing resources, verify, and then abandon the deployment. The `--delete-policy=abandon` flag makes this a safe operation. With the Google Terraform provider's comprehensive resource support, most Deployment Manager configurations translate directly to Terraform HCL. Take a methodical approach, and you will have your GCP infrastructure fully managed by Terraform.
 
 For related guides, see [How to Use the GCP Config Connector with Terraform](https://oneuptime.com/blog/post/2026-02-23-how-to-use-the-gcp-config-connector-with-terraform/view) and [How to Use Terraformer to Auto-Generate Terraform from Cloud](https://oneuptime.com/blog/post/2026-02-23-how-to-use-terraformer-to-auto-generate-terraform-from-cloud/view).
