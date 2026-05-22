@@ -93,7 +93,7 @@ variable "aws_region" {
 
   validation {
     condition     = can(regex("^[a-z]{2}-[a-z]+-[0-9]+$", var.aws_region))
-    error_message = "AWS region '${var.aws_region}' is not valid. Expected format: us-east-1, eu-west-2, ap-southeast-1."
+    error_message = "AWS region '${var.aws_region}' does not match the expected format. Examples: us-east-1, eu-west-2, ap-southeast-1."
   }
 }
 ```
@@ -101,7 +101,7 @@ variable "aws_region" {
 If someone passes `us-east1` (missing the second hyphen), the message reads:
 
 ```text
-AWS region 'us-east1' is not valid. Expected format: us-east-1, eu-west-2, ap-southeast-1.
+AWS region 'us-east1' does not match the expected format. Examples: us-east-1, eu-west-2, ap-southeast-1.
 ```
 
 ### 4. Explain Constraints
@@ -218,7 +218,7 @@ variable "workspace_name" {
 
 ### Validating Sensitive Values
 
-For sensitive variables, do not include the actual value in the error message. Terraform would expose it in the output.
+For sensitive variables, do not include the actual value in the error message. Terraform treats expressions that use sensitive variables as sensitive, so it will not display the resulting message.
 
 ```hcl
 variable "database_password" {
@@ -305,10 +305,11 @@ variable "bucket_name" {
 }
 ```
 
-With the second approach, a user who passes `My-Bucket` gets:
+With the second approach, a user who passes `My-Bucket` gets specific messages such as:
 
 ```text
 S3 bucket name must start with a lowercase letter or number. Got: 'M'.
+S3 bucket name can only contain lowercase letters, numbers, hyphens, and periods. Got: 'My-Bucket'.
 ```
 
 instead of the useless "Invalid S3 bucket name."
