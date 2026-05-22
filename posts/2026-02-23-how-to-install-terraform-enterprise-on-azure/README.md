@@ -178,7 +178,7 @@ resource "azurerm_storage_account" "tfe" {
 
 resource "azurerm_storage_container" "tfe" {
   name                  = "tfe-data"
-  storage_account_name  = azurerm_storage_account.tfe.name
+  storage_account_id    = azurerm_storage_account.tfe.id
   container_access_type = "private"
 }
 
@@ -293,8 +293,12 @@ resource "azurerm_linux_virtual_machine" "tfe" {
 
   custom_data = base64encode(templatefile("${path.module}/templates/cloud-init.sh", {
     tfe_license             = var.tfe_license
+    tfe_image_tag           = var.tfe_image_tag
     tfe_hostname            = var.tfe_hostname
     tfe_encryption_password = var.tfe_encryption_password
+    tfe_tls_cert            = var.tfe_tls_cert
+    tfe_tls_key             = var.tfe_tls_key
+    tfe_tls_ca_bundle       = var.tfe_tls_ca_bundle
     db_host                 = azurerm_postgresql_flexible_server.tfe.fqdn
     db_username             = "terraform"
     db_password             = var.db_password
@@ -324,22 +328,47 @@ curl -fsSL https://get.docker.com | sh
 systemctl enable docker
 systemctl start docker
 
+install -d -m 0755 /opt/tfe/certs
+
+cat > /opt/tfe/certs/cert.pem <<'EOF'
+${tfe_tls_cert}
+EOF
+
+cat > /opt/tfe/certs/key.pem <<'EOF'
+${tfe_tls_key}
+EOF
+chmod 0600 /opt/tfe/certs/key.pem
+
+cat > /opt/tfe/certs/bundle.pem <<'EOF'
+${tfe_tls_ca_bundle}
+EOF
+
 # Pull and run Terraform Enterprise
 echo "${tfe_license}" | docker login images.releases.hashicorp.com \
   --username terraform --password-stdin
 
-docker pull images.releases.hashicorp.com/hashicorp/terraform-enterprise:latest
+docker pull images.releases.hashicorp.com/hashicorp/terraform-enterprise:${tfe_image_tag}
 
 docker run -d \
   --name terraform-enterprise \
   --restart always \
+  --read-only \
+  --tmpfs /tmp:mode=01777 \
+  --tmpfs /run \
+  --tmpfs /var/log/terraform-enterprise \
+  -p 80:80 \
   -p 443:443 \
-  -p 8800:8800 \
-  -v tfe-data:/var/lib/terraform-enterprise \
+  -v /var/run/docker.sock:/run/docker.sock \
+  -v /opt/tfe/certs:/etc/ssl/private/terraform-enterprise:ro \
+  -v terraform-enterprise-cache:/var/cache/tfe-task-worker/terraform \
   -e TFE_LICENSE="${tfe_license}" \
   -e TFE_HOSTNAME="${tfe_hostname}" \
   -e TFE_ENCRYPTION_PASSWORD="${tfe_encryption_password}" \
   -e TFE_OPERATIONAL_MODE="external" \
+  -e TFE_DISK_CACHE_VOLUME_NAME="terraform-enterprise-cache" \
+  -e TFE_TLS_CERT_FILE="/etc/ssl/private/terraform-enterprise/cert.pem" \
+  -e TFE_TLS_KEY_FILE="/etc/ssl/private/terraform-enterprise/key.pem" \
+  -e TFE_TLS_CA_BUNDLE_FILE="/etc/ssl/private/terraform-enterprise/bundle.pem" \
   -e TFE_DATABASE_HOST="${db_host}" \
   -e TFE_DATABASE_USER="${db_username}" \
   -e TFE_DATABASE_PASSWORD="${db_password}" \
@@ -350,7 +379,7 @@ docker run -d \
   -e TFE_OBJECT_STORAGE_AZURE_CONTAINER="${storage_container_name}" \
   -e TFE_OBJECT_STORAGE_AZURE_ACCOUNT_KEY="${storage_account_key}" \
   --cap-add IPC_LOCK \
-  images.releases.hashicorp.com/hashicorp/terraform-enterprise:latest
+  images.releases.hashicorp.com/hashicorp/terraform-enterprise:${tfe_image_tag}
 ```
 
 ## Step 6: Variables
@@ -374,10 +403,33 @@ variable "tfe_license" {
   description = "Terraform Enterprise license"
 }
 
+variable "tfe_image_tag" {
+  type        = string
+  description = "Terraform Enterprise release tag, such as vYYYYMM-#. The latest tag is not valid."
+}
+
 variable "tfe_encryption_password" {
   type        = string
   sensitive   = true
   description = "Encryption password for TFE data"
+}
+
+variable "tfe_tls_cert" {
+  type        = string
+  sensitive   = true
+  description = "PEM-encoded TLS certificate for Terraform Enterprise"
+}
+
+variable "tfe_tls_key" {
+  type        = string
+  sensitive   = true
+  description = "PEM-encoded TLS private key for Terraform Enterprise"
+}
+
+variable "tfe_tls_ca_bundle" {
+  type        = string
+  sensitive   = true
+  description = "PEM-encoded CA bundle for Terraform Enterprise"
 }
 
 variable "db_password" {
@@ -395,6 +447,11 @@ variable "ssh_public_key_path" {
 variable "admin_cidr" {
   type        = string
   description = "CIDR block for SSH access"
+}
+
+variable "log_analytics_workspace_id" {
+  type        = string
+  description = "Log Analytics workspace ID for Azure Monitor diagnostic settings"
 }
 ```
 
@@ -423,8 +480,8 @@ ssh azureuser@<vm-private-ip>
 sudo docker ps
 sudo docker logs terraform-enterprise
 
-# Check the health endpoint
-curl -k https://localhost/_health_check
+# Check application readiness
+sudo docker exec terraform-enterprise tfectl app health readiness
 ```
 
 ## Post-Deployment
