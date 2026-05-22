@@ -17,7 +17,7 @@ There are several strategies you can use, each with different trade-offs:
 | Strategy | How It Works | Best For |
 |---|---|---|
 | Canary | Gradually shift % of traffic to new version | Most services |
-| Blue-Green | Switch all traffic at once between two versions | Stateful services, databases |
+| Blue-Green | Switch all traffic at once between two versions | Services that need all-at-once cutover |
 | A/B Testing | Route specific user segments to new version | Feature testing |
 | Traffic Mirroring | Copy traffic to new version without affecting users | High-risk changes |
 
@@ -54,6 +54,20 @@ spec:
         image: my-app:v1.0
         ports:
         - containerPort: 8080
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-app
+  namespace: production
+spec:
+  selector:
+    app: my-app
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 8080
 
 ---
 # Canary deployment (new version)
@@ -147,9 +161,13 @@ Flagger is a progressive delivery tool that automates the canary process with Is
 # Add the Flagger Helm repo
 helm repo add flagger https://flagger.app
 
+# Install Flagger's Canary CRD
+kubectl apply -f https://raw.githubusercontent.com/fluxcd/flagger/main/artifacts/flagger/crd.yaml
+
 # Install Flagger with Istio as the mesh provider
-helm install flagger flagger/flagger \
-  --namespace istio-system \
+helm upgrade -i flagger flagger/flagger \
+  --namespace=istio-system \
+  --set crd.create=false \
   --set meshProvider=istio \
   --set metricsServer=http://prometheus.monitoring:9090
 ```
@@ -270,7 +288,7 @@ With `iterations` instead of `maxWeight`/`stepWeight`, Flagger uses blue-green s
 
 ## Traffic Mirroring
 
-For high-risk changes, mirror production traffic to the new version without affecting real users:
+For high-risk changes, mirror production traffic to the new version without putting the canary response in the user path:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -294,7 +312,7 @@ spec:
       value: 100.0
 ```
 
-The canary receives a copy of all traffic, but its responses are discarded. You can observe the canary's error rates and latency without any risk to production users.
+The canary receives a copy of all traffic, but its responses are discarded. Use this for idempotent or side-effect-safe requests, since the canary still processes the mirrored requests. You can observe the canary's error rates and latency before proceeding with a real canary or blue-green deployment.
 
 ```bash
 # Monitor the mirrored canary
