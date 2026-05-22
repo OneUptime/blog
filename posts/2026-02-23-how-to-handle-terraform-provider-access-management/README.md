@@ -115,10 +115,6 @@ resource "aws_iam_openid_connect_provider" "github" {
   url = "https://token.actions.githubusercontent.com"
 
   client_id_list = ["sts.amazonaws.com"]
-
-  thumbprint_list = [
-    "6938fd4d98bab03faadb97b34396831e3780aea1"
-  ]
 }
 
 # GitLab CI OIDC provider
@@ -126,10 +122,6 @@ resource "aws_iam_openid_connect_provider" "gitlab" {
   url = "https://gitlab.com"
 
   client_id_list = ["https://gitlab.com"]
-
-  thumbprint_list = [
-    "b3dd7606d2b5a8b4a13771dbecc9ee1cecafa38a"
-  ]
 }
 ```
 
@@ -190,6 +182,9 @@ resource "aws_iam_role" "terraform_hub" {
         }
         Action = "sts:AssumeRoleWithWebIdentity"
         Condition = {
+          StringEquals = {
+            "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
+          }
           StringLike = {
             "token.actions.githubusercontent.com:sub" = "repo:myorg/infrastructure:*"
           }
@@ -260,7 +255,8 @@ Automate credential rotation for any long-lived credentials:
 # Automated credential rotation for Terraform service accounts
 
 import boto3
-from datetime import datetime, timedelta
+import json
+from datetime import datetime
 
 def rotate_access_keys(iam_user, max_age_days=90):
     """Rotate access keys that are older than max_age_days."""
@@ -343,7 +339,7 @@ Track and alert on provider access patterns:
 
 resource "aws_cloudwatch_log_metric_filter" "terraform_assume_role" {
   name           = "terraform-role-assumptions"
-  pattern        = "{ $.eventName = \"AssumeRole\" && $.requestParameters.roleArn = \"*terraform*\" }"
+  pattern        = "{ ($.eventName = \"AssumeRole\" || $.eventName = \"AssumeRoleWithWebIdentity\") && $.requestParameters.roleArn = \"*terraform*\" }"
   log_group_name = aws_cloudwatch_log_group.cloudtrail.name
 
   metric_transformation {
