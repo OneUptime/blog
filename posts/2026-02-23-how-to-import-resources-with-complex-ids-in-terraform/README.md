@@ -27,13 +27,13 @@ terraform import aws_instance.web i-0abc123def456789a
 terraform import aws_iam_role.admin arn:aws:iam::123456789012:role/admin-role
 
 # Compound ID with slash delimiter
-terraform import aws_route_table_association.a subnet-0abc123/rtbassoc-0def456
+terraform import aws_route_table_association.a subnet-0abc123/rtb-0def456
 
-# Compound ID with colon delimiter
-terraform import aws_security_group_rule.ingress sg-0abc123:ingress:tcp:443:443:0.0.0.0/0
+# Compound ID with underscore delimiter
+terraform import aws_security_group_rule.ingress sg-0abc123_ingress_tcp_443_443_0.0.0.0/0
 
-# Compound ID with pipe delimiter
-terraform import azurerm_network_security_rule.rule1 "/subscriptions/.../rule1|/subscriptions/.../nsg1"
+# Full provider resource ID
+terraform import azurerm_network_security_rule.rule1 "/subscriptions/.../resourceGroups/my-rg/providers/Microsoft.Network/networkSecurityGroups/my-nsg/securityRules/rule1"
 
 # Name-based ID with path
 terraform import google_compute_firewall.default projects/my-project/global/firewalls/my-firewall
@@ -47,25 +47,25 @@ Many AWS resources have compound IDs. Here are common examples:
 
 ```bash
 # Security group rules use a compound format:
-# sg-id:type:protocol:from_port:to_port:source
+# sg-id_type_protocol_from_port_to_port_source
 terraform import aws_security_group_rule.allow_https \
-  'sg-0abc123:ingress:tcp:443:443:0.0.0.0/0'
+  'sg-0abc123_ingress_tcp_443_443_0.0.0.0/0'
 
 # For rules with security group sources
 terraform import aws_security_group_rule.allow_internal \
-  'sg-0abc123:ingress:tcp:0:65535:sg-0def456'
+  'sg-0abc123_ingress_tcp_0_65535_sg-0def456'
 
 # For rules with IPv6 sources
 terraform import aws_security_group_rule.allow_https_v6 \
-  'sg-0abc123:ingress:tcp:443:443:::/0'
+  'sg-0abc123_ingress_tcp_443_443_::/0'
 ```
 
 ### Route Table Associations
 
 ```bash
-# Route table associations use subnet-id/association-id
+# Route table associations use associated-resource-id/route-table-id
 terraform import aws_route_table_association.public \
-  'subnet-0abc123/rtbassoc-0def456'
+  'subnet-0abc123/rtb-0def456'
 ```
 
 ### IAM Policy Attachments
@@ -138,7 +138,7 @@ az resource list --resource-group my-rg --query '[].{Name:name, ID:id}' -o table
 
 ## GCP Complex Import IDs
 
-GCP resources often use a project/region/name format:
+GCP resources often use a project/location/name format:
 
 ```bash
 # Compute Instance
@@ -157,8 +157,8 @@ terraform import google_sql_database.users \
 terraform import google_project_iam_member.viewer \
   'my-project roles/viewer user:admin@example.com'
 
-# Cloud Storage Bucket ACL
-terraform import google_storage_bucket_acl.photos_acl \
+# Cloud Storage Bucket
+terraform import google_storage_bucket.photos \
   'my-photos-bucket'
 ```
 
@@ -226,7 +226,7 @@ Import blocks handle complex IDs more cleanly because you avoid shell escaping:
 # Complex IDs are easier in import blocks
 import {
   to = aws_security_group_rule.allow_https
-  id = "sg-0abc123:ingress:tcp:443:443:0.0.0.0/0"
+  id = "sg-0abc123_ingress_tcp_443_443_0.0.0.0/0"
 }
 
 import {
