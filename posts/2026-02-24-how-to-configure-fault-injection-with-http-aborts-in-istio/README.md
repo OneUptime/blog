@@ -34,7 +34,7 @@ This is different from delay injection, where the request eventually reaches the
 Here's a VirtualService that returns a 503 error on all requests:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: payment-service
@@ -68,7 +68,7 @@ You'll get back a 503 immediately, with a response body of `fault filter abort`.
 For more realistic testing, inject failures on only a percentage of requests:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: payment-service
@@ -168,7 +168,7 @@ fault:
 Inject aborts only on specific paths:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: payment-service
@@ -200,7 +200,7 @@ Only the refund endpoint gets failure injection. The charge endpoint and everyth
 Use headers to control which requests get aborted. This is the safest approach for testing in shared environments:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: payment-service
@@ -242,7 +242,7 @@ curl http://payment-service:8080/charge
 You can inject both delays and aborts in the same VirtualService to test compound failure scenarios:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: payment-service
@@ -267,9 +267,10 @@ spec:
 
 With this configuration, for each request:
 
-- 10% of requests get an immediate 503 abort
-- 20% of the remaining requests get a 3-second delay
-- The rest proceed normally
+- 10% of requests get a 503 abort
+- 20% of requests get a 3-second delay
+- Because delay and abort faults are evaluated independently, a request can be delayed and then aborted
+- Requests that do not match either fault proceed normally
 
 This creates a realistic degradation scenario where some requests are slow and some fail entirely.
 
@@ -317,7 +318,7 @@ kubectl delete virtualservice payment-service -n production
 
 # Option 2: Apply a clean version
 kubectl apply -f - <<EOF
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: payment-service
