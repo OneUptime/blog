@@ -16,7 +16,7 @@ The `tfrun` import gives you access to:
 
 - Workspace information (name, auto-apply setting, working directory)
 - Organization details
-- Run source (how it was triggered)
+- Run metadata such as the creator, commit SHA, and message
 - Whether it is a destroy operation
 - Cost estimation data (when enabled)
 
@@ -26,7 +26,7 @@ This metadata lets you write policies that behave differently based on context. 
 
 Unlike the other Terraform imports, `tfrun` does not have a version suffix:
 
-```python
+```sentinel
 # Import run metadata - no version suffix needed
 
 import "tfrun"
@@ -36,7 +36,7 @@ import "tfrun"
 
 The workspace data is one of the most frequently used parts of `tfrun`:
 
-```python
+```sentinel
 import "tfrun"
 
 # Access workspace properties
@@ -54,7 +54,7 @@ print("Working directory:", working_dir)
 
 The most common pattern is using workspace names to determine the environment and apply different rules:
 
-```python
+```sentinel
 import "tfrun"
 import "tfplan/v2" as tfplan
 
@@ -91,16 +91,13 @@ main = rule {
 
 ### Preventing Auto-Apply in Production
 
-```python
+```sentinel
 import "tfrun"
 
 # Production workspaces should not have auto-apply enabled
 main = rule {
-    if tfrun.workspace.name matches ".*-prod$" {
+    not (tfrun.workspace.name matches ".*-prod$") or
         tfrun.workspace.auto_apply is false
-    } else {
-        true
-    }
 }
 ```
 
@@ -108,7 +105,7 @@ main = rule {
 
 You can access organization-level data:
 
-```python
+```sentinel
 import "tfrun"
 
 # Access organization name
@@ -120,77 +117,59 @@ main = rule {
 }
 ```
 
-## Run Source
+## Run Metadata
 
-The `tfrun.source` property tells you how the run was triggered. This can be used to restrict which methods are allowed for certain operations:
+The `tfrun.created_by`, `tfrun.commit_sha`, and `tfrun.message` properties provide metadata about the run. You can also use `tfrun.workspace.vcs_repo` to check whether the workspace is connected to a VCS repository:
 
-```python
+```sentinel
 import "tfrun"
 
-# Possible sources: "tfe-api", "tfe-ui", "tfe-cli", "tfe-vcs"
-
-# Production workspaces should only be deployed through VCS or API
+# Production workspaces should be connected to VCS and have a commit SHA
 main = rule {
-    if tfrun.workspace.name matches ".*-prod$" {
-        tfrun.source in ["tfe-vcs", "tfe-api"]
-    } else {
-        true
-    }
+    not (tfrun.workspace.name matches ".*-prod$") or
+        (tfrun.workspace.vcs_repo is not null and tfrun.commit_sha is not "")
 }
 ```
 
-This is useful for enforcing that production deployments go through your CI/CD pipeline rather than being triggered manually.
+This is useful for enforcing that production workspaces are tied to reviewed source control metadata.
 
 ## Destroy Detection
 
 The `tfrun.is_destroy` property tells you whether the current run is a destroy operation:
 
-```python
+```sentinel
 import "tfrun"
 
 # Prevent destroy operations on production workspaces
 main = rule {
-    if tfrun.workspace.name matches ".*-prod$" {
+    not (tfrun.workspace.name matches ".*-prod$") or
         tfrun.is_destroy is false
-    } else {
-        true
-    }
 }
 ```
 
 You can also combine this with other conditions:
 
-```python
+```sentinel
 import "tfrun"
 
-# Allow destroy only from API (automated cleanup) in non-prod
+# Allow destroy operations only in non-prod
 main = rule {
-    if tfrun.is_destroy {
-        if tfrun.workspace.name matches ".*-prod$" {
-            # Never allow production destroys through Sentinel
-            # (they should be handled through a separate approval process)
-            false
-        } else {
-            # Non-prod destroys are fine from any source
-            true
-        }
-    } else {
-        true
-    }
+    not tfrun.is_destroy or
+        not (tfrun.workspace.name matches ".*-prod$")
 }
 ```
 
 ## Cost Estimation
 
-When cost estimation is enabled in HCP Terraform, you can access the cost data through `tfrun.cost_estimation`:
+When cost estimation is enabled in HCP Terraform, you can access the cost data through `tfrun.cost_estimate`:
 
-```python
+```sentinel
 import "tfrun"
 
 # Access cost estimation data
-proposed_cost = tfrun.cost_estimation.proposed_monthly_cost
-prior_cost = tfrun.cost_estimation.prior_monthly_cost
-delta = tfrun.cost_estimation.delta_monthly_cost
+proposed_cost = tfrun.cost_estimate.proposed_monthly_cost
+prior_cost = tfrun.cost_estimate.prior_monthly_cost
+delta = tfrun.cost_estimate.delta_monthly_cost
 
 print("Current monthly cost:", prior_cost)
 print("Proposed monthly cost:", proposed_cost)
@@ -199,7 +178,7 @@ print("Monthly cost change:", delta)
 
 ### Setting Cost Limits
 
-```python
+```sentinel
 import "tfrun"
 
 # Maximum allowed monthly cost
@@ -210,12 +189,12 @@ max_cost_increase = 500.00
 
 # Check total cost
 cost_within_budget = rule {
-    float(tfrun.cost_estimation.proposed_monthly_cost) <= max_monthly_cost
+    float(tfrun.cost_estimate.proposed_monthly_cost) <= max_monthly_cost
 }
 
 # Check cost increase
 increase_within_limit = rule {
-    float(tfrun.cost_estimation.delta_monthly_cost) <= max_cost_increase
+    float(tfrun.cost_estimate.delta_monthly_cost) <= max_cost_increase
 }
 
 main = rule {
@@ -225,7 +204,7 @@ main = rule {
 
 ### Environment-Specific Cost Limits
 
-```python
+```sentinel
 import "tfrun"
 
 # Different cost limits per environment
@@ -242,31 +221,35 @@ get_cost_limit = func(workspace) {
 limit = get_cost_limit(tfrun.workspace.name)
 
 main = rule {
-    float(tfrun.cost_estimation.proposed_monthly_cost) <= limit
+    float(tfrun.cost_estimate.proposed_monthly_cost) <= limit
 }
 ```
 
 ### Percentage-Based Cost Controls
 
-```python
+```sentinel
 import "tfrun"
 
 # Do not allow cost increases greater than 20%
 max_increase_pct = 20.0
 
-prior = float(tfrun.cost_estimation.prior_monthly_cost)
-proposed = float(tfrun.cost_estimation.proposed_monthly_cost)
+prior = float(tfrun.cost_estimate.prior_monthly_cost)
+proposed = float(tfrun.cost_estimate.proposed_monthly_cost)
 
-main = rule {
+cost_increase_ok = func() {
     if prior > 0 {
         # Calculate percentage increase
         pct_increase = ((proposed - prior) / prior) * 100
         print("Cost increase:", pct_increase, "%")
-        pct_increase <= max_increase_pct
+        return pct_increase <= max_increase_pct
     } else {
         # No prior cost, just check the absolute limit
-        proposed <= 1000.00
+        return proposed <= 1000.00
     }
+}
+
+main = rule {
+    cost_increase_ok()
 }
 ```
 
@@ -276,7 +259,7 @@ The real value of `tfrun` comes from combining it with resource-level imports to
 
 ### Production-Specific Resource Restrictions
 
-```python
+```sentinel
 import "tfrun"
 import "tfplan/v2" as tfplan
 
@@ -293,23 +276,17 @@ rds_instances = filter all_changes as _, rc {
 }
 
 encryption_required = rule {
-    if is_prod {
+    not is_prod or
         all rds_instances as _, db {
             db.change.after.storage_encrypted is true
-        }
-    } else {
-        true
     }
 }
 
 # In production, require multi-AZ deployments
 multi_az_required = rule {
-    if is_prod {
+    not is_prod or
         all rds_instances as _, db {
             db.change.after.multi_az is true
-        }
-    } else {
-        true
     }
 }
 
@@ -320,22 +297,20 @@ main = rule {
 
 ### Time-Based Restrictions
 
-While `tfrun` does not directly provide timestamps, you can use workspace naming or other metadata to implement deployment windows:
+The `tfrun.created_at` value provides the run creation timestamp in RFC3339 format. You can load it with Sentinel's `time` import to implement deployment windows:
 
-```python
+```sentinel
 import "tfrun"
+import "time"
 
-# Block deployments to production based on workspace tags or naming
-# (Real time-based restrictions would need an external data source)
+run_created = time.load(tfrun.created_at)
+is_business_hours_utc = run_created.weekday not in [0, 6] and
+    run_created.hour >= 9 and run_created.hour < 17
 
-# Only allow production deploys via VCS (enforces code review)
+# Only allow production deploys during weekday business hours in UTC
 main = rule {
-    if tfrun.workspace.name matches ".*-prod$" {
-        # Must come through VCS (meaning it was merged and reviewed)
-        tfrun.source is "tfe-vcs"
-    } else {
-        true
-    }
+    not (tfrun.workspace.name matches ".*-prod$") or
+        is_business_hours_utc
 }
 ```
 
@@ -343,7 +318,7 @@ main = rule {
 
 Here is a comprehensive policy that uses `tfrun` for governance:
 
-```python
+```sentinel
 # governance.sentinel
 # Comprehensive governance policy using tfrun metadata
 
@@ -356,47 +331,41 @@ is_staging = tfrun.workspace.name matches ".*-staging$"
 
 # Rule 1: No destroys in production
 no_prod_destroy = rule {
-    if is_prod {
-        tfrun.is_destroy is false
-    } else {
-        true
-    }
+    not is_prod or tfrun.is_destroy is false
 }
 
 # Rule 2: Cost controls
-cost_control = rule {
+cost_within_limit = func() {
     if is_prod {
-        float(tfrun.cost_estimation.proposed_monthly_cost) <= 10000.00
+        return float(tfrun.cost_estimate.proposed_monthly_cost) <= 10000.00
     } else if is_staging {
-        float(tfrun.cost_estimation.proposed_monthly_cost) <= 3000.00
+        return float(tfrun.cost_estimate.proposed_monthly_cost) <= 3000.00
     } else {
-        float(tfrun.cost_estimation.proposed_monthly_cost) <= 1000.00
+        return float(tfrun.cost_estimate.proposed_monthly_cost) <= 1000.00
     }
 }
 
-# Rule 3: Production deployments must come through VCS
-deployment_method = rule {
-    if is_prod {
-        tfrun.source is "tfe-vcs"
-    } else {
-        true
-    }
+cost_control = rule {
+    cost_within_limit()
+}
+
+# Rule 3: Production workspaces must be connected to VCS
+vcs_metadata = rule {
+    not is_prod or
+        (tfrun.workspace.vcs_repo is not null and tfrun.commit_sha is not "")
 }
 
 # Rule 4: Auto-apply restrictions
 auto_apply_check = rule {
-    if is_prod or is_staging {
+    not (is_prod or is_staging) or
         tfrun.workspace.auto_apply is false
-    } else {
-        true
-    }
 }
 
 # Main rule combines everything
 main = rule {
     no_prod_destroy and
     cost_control and
-    deployment_method and
+    vcs_metadata and
     auto_apply_check
 }
 ```
@@ -411,10 +380,12 @@ Here is a quick reference of all available properties:
 - `tfrun.workspace.working_directory` - Working directory
 - `tfrun.workspace.vcs_repo` - VCS repository information
 - `tfrun.organization.name` - Organization name
-- `tfrun.source` - Run trigger source
+- `tfrun.created_by` - User who created the run
+- `tfrun.commit_sha` - Commit SHA associated with the run
+- `tfrun.created_at` - Run creation timestamp
 - `tfrun.is_destroy` - Whether this is a destroy run
-- `tfrun.cost_estimation.prior_monthly_cost` - Current monthly cost
-- `tfrun.cost_estimation.proposed_monthly_cost` - Projected monthly cost
-- `tfrun.cost_estimation.delta_monthly_cost` - Cost difference
+- `tfrun.cost_estimate.prior_monthly_cost` - Current monthly cost
+- `tfrun.cost_estimate.proposed_monthly_cost` - Projected monthly cost
+- `tfrun.cost_estimate.delta_monthly_cost` - Cost difference
 
-The `tfrun` import is the key to writing policies that understand context. Without it, every policy would apply the same rules regardless of environment, deployment method, or cost implications. For more on writing effective policies, check our guides on [Sentinel imports](https://oneuptime.com/blog/post/2026-02-23-how-to-use-sentinel-imports-for-terraform/view) and [policies for cost control](https://oneuptime.com/blog/post/2026-02-23-how-to-write-sentinel-policies-for-cost-control/view).
+The `tfrun` import is the key to writing policies that understand context. Without it, every policy would apply the same rules regardless of environment, run metadata, or cost implications. For more on writing effective policies, check our guides on [Sentinel imports](https://oneuptime.com/blog/post/2026-02-23-how-to-use-sentinel-imports-for-terraform/view) and [policies for cost control](https://oneuptime.com/blog/post/2026-02-23-how-to-write-sentinel-policies-for-cost-control/view).
