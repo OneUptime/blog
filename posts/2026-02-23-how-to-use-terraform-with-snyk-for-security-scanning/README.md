@@ -200,7 +200,7 @@ jobs:
       # Upload SARIF results to GitHub Security
       - name: Upload SARIF
         if: always()
-        uses: github/codeql-action/upload-sarif@v2
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: snyk.sarif
 
@@ -220,13 +220,17 @@ jobs:
         working-directory: terraform
         run: terraform plan -out=tfplan
 
+      - name: Convert Terraform Plan to JSON
+        working-directory: terraform
+        run: terraform show -json tfplan > tfplan.json
+
       # Scan the plan file too
       - name: Snyk Plan Scan
         uses: snyk/actions/iac@master
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         with:
-          file: terraform/tfplan
+          file: terraform/tfplan.json
           args: --severity-threshold=high
 
       - name: Terraform Apply
@@ -235,50 +239,36 @@ jobs:
         run: terraform apply -auto-approve tfplan
 ```
 
-## Step 4: Custom Snyk Rules
+## Step 4: Snyk Ignores and Custom Rules
 
-Create custom rules for organization-specific requirements.
+Use the `.snyk` policy file for issue ignores. For organization-specific custom checks, Snyk IaC custom rules are available on Enterprise plans, created with the Snyk IaC Rules SDK, and used as a rules bundle.
 
 ```yaml
 # .snyk
 # Snyk configuration file for the project
+
+version: v1.25.0
 
 # Ignore specific issues globally
 ignore:
   SNYK-CC-TF-73:
     - '*':
         reason: 'S3 bucket logging handled at organization level'
-        expires: '2026-06-01'
+        expires: '2026-06-01T00:00:00.000Z'
 
-# Custom severity overrides
 patch: {}
 ```
 
-```json
-// .snyk.d/rules/custom-rules.json
-// Custom Snyk IaC rules for the organization
-{
-  "rules": [
-    {
-      "id": "CUSTOM-001",
-      "title": "EC2 instances must use IMDSv2",
-      "description": "Instance Metadata Service v2 must be required",
-      "severity": "high",
-      "resource": "aws_instance",
-      "path": "metadata_options.http_tokens",
-      "expected": "required"
-    },
-    {
-      "id": "CUSTOM-002",
-      "title": "All resources must have cost center tag",
-      "description": "Resources must include CostCenter tag for billing",
-      "severity": "medium",
-      "resource": "*",
-      "path": "tags.CostCenter",
-      "expected": "not_empty"
-    }
-  ]
-}
+```bash
+# Install the custom rules SDK
+npm install -g snyk-iac-rules
+
+# Generate a custom rule template
+snyk-iac-rules template -r require_cost_center_tag
+
+# Build and use the generated rules bundle
+snyk-iac-rules build
+snyk iac test terraform/ --rules=bundle.tar.gz
 ```
 
 ## Step 5: Scanning Terraform Plan Output
@@ -298,13 +288,20 @@ terraform plan -out=tfplan
 # Convert to JSON for scanning
 terraform show -json tfplan > tfplan.json
 
-# Run Snyk on the plan
+set +e
 snyk iac test tfplan.json \
   --severity-threshold=high \
   --json > snyk-plan-results.json
+SNYK_EXIT=$?
+set -e
+
+if [ "$SNYK_EXIT" -ne 0 ] && [ ! -s snyk-plan-results.json ]; then
+  echo "Snyk failed before producing scan results"
+  exit "$SNYK_EXIT"
+fi
 
 # Check if any high or critical issues were found
-HIGH_COUNT=$(jq '[.infrastructureAsCodeIssues[] | select(.severity == "high" or .severity == "critical")] | length' snyk-plan-results.json)
+HIGH_COUNT=$(jq '[.infrastructureAsCodeIssues[]? | select(.severity == "high" or .severity == "critical")] | length' snyk-plan-results.json)
 
 if [ "$HIGH_COUNT" -gt 0 ]; then
   echo "Found $HIGH_COUNT high/critical severity issues in the Terraform plan"
@@ -317,14 +314,14 @@ echo "No high/critical issues found. Plan is safe to apply."
 
 ## Step 6: Snyk Integration with Terraform Cloud
 
-If you use Terraform Cloud, integrate Snyk as a run task.
+If you use Terraform Cloud with run task entitlement, integrate Snyk as a run task.
 
 ```hcl
 # tfc-snyk.tf
 # Configure Snyk as a Terraform Cloud run task
 resource "tfe_organization_run_task" "snyk" {
   organization = var.tfe_organization
-  url          = "https://api.snyk.io/v1/terraform-cloud/run-task"
+  url          = var.snyk_run_task_url
   name         = "snyk-iac-scan"
   enabled      = true
   hmac_key     = var.snyk_run_task_hmac_key
@@ -335,7 +332,7 @@ resource "tfe_workspace_run_task" "snyk" {
   workspace_id      = tfe_workspace.production.id
   task_id           = tfe_organization_run_task.snyk.id
   enforcement_level = "mandatory"
-  stage             = "post_plan"
+  stages            = ["post_plan"]
 }
 
 # Define the workspace
@@ -347,14 +344,13 @@ resource "tfe_workspace" "production" {
 
 ## Step 7: Monitoring and Reporting
 
-Use Snyk's monitoring capabilities to track security posture over time.
+Use recurring Snyk IaC tests and reports to track security posture over time.
 
 ```bash
-# Monitor Terraform configurations for new issues
+# Capture a Snyk Web UI snapshot of Terraform configuration issues
 snyk iac test terraform/ --report
 
-# Set up scheduled monitoring
-snyk monitor --all-projects
+# Set up scheduled recurring tests in CI for ongoing visibility
 ```
 
 ```yaml
@@ -372,12 +368,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Snyk Monitor
+      - name: Snyk IaC Report
         uses: snyk/actions/iac@master
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         with:
-          command: monitor
           args: --report
           file: terraform/
 ```
@@ -390,8 +385,8 @@ For VS Code, install the Snyk extension and it will automatically scan Terraform
 
 ## Best Practices
 
-Run Snyk scans on every pull request to catch issues early. Use severity thresholds to distinguish between blocking and non-blocking issues. Create custom rules for organization-specific requirements that go beyond standard security checks. Scan both the Terraform configuration files and the plan output for comprehensive coverage. Use Snyk's reporting features to track security posture trends over time. Integrate with Terraform Cloud run tasks for seamless security gates. Review and update your Snyk ignore list regularly to ensure it remains current.
+Run Snyk scans on every pull request to catch issues early. Use severity thresholds to distinguish between blocking and non-blocking issues. Create custom rules for organization-specific requirements that go beyond standard security checks when your plan supports them. Scan both the Terraform configuration files and the plan output for comprehensive coverage. Use Snyk's reporting snapshots to track security posture over time. Integrate with Terraform Cloud run tasks for seamless security gates. Review and update your Snyk ignore list regularly to ensure it remains current.
 
 ## Conclusion
 
-Snyk provides a developer-friendly approach to Terraform security scanning. By integrating Snyk into your development workflow through IDE extensions, CLI scans, and CI/CD pipelines, you create multiple layers of security validation. This ensures that security issues are caught and fixed as early as possible in the development process, reducing the risk of misconfigurations reaching production. Combined with Snyk's continuous monitoring, you maintain ongoing visibility into your infrastructure's security posture.
+Snyk provides a developer-friendly approach to Terraform security scanning. By integrating Snyk into your development workflow through IDE extensions, CLI scans, and CI/CD pipelines, you create multiple layers of security validation. This ensures that security issues are caught and fixed as early as possible in the development process, reducing the risk of misconfigurations reaching production. Combined with recurring Snyk IaC reports or SCM integration, you maintain ongoing visibility into your infrastructure's security posture.
