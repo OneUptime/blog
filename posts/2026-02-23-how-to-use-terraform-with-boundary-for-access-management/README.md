@@ -14,7 +14,7 @@ This guide covers how to deploy Boundary with Terraform and configure secure acc
 
 ## Understanding Boundary's Access Model
 
-Boundary uses a scope-based organizational model. At the top level, you have organizations. Within organizations, you have projects. Projects contain targets (the resources users want to access), host catalogs (collections of hosts), and credential stores. Users authenticate through an identity provider and are granted access to targets based on roles and permissions.
+Boundary uses a scope-based organizational model. The global scope contains organizations, and organizations contain projects. Projects contain targets (the resources users want to access), host catalogs (collections of hosts), and credential stores. Users authenticate through an identity provider and are granted access to targets based on roles and permissions.
 
 ## Deploying Boundary Infrastructure
 
@@ -226,7 +226,7 @@ resource "boundary_target" "ssh_web" {
   scope_id     = boundary_scope.environments["production"].id
   name         = "web-server-ssh"
   description  = "SSH access to web servers"
-  type         = "tcp"
+  type         = "ssh"
   default_port = 22
 
   host_source_ids = [boundary_host_set_static.web.id]
@@ -241,6 +241,20 @@ resource "boundary_target" "ssh_web" {
   ]
 }
 
+# Register the database host
+resource "boundary_host_static" "database" {
+  host_catalog_id = boundary_host_catalog_static.servers["production"].id
+  name            = "production-database"
+  address         = var.database_host
+}
+
+# Host set for the production database
+resource "boundary_host_set_static" "database" {
+  host_catalog_id = boundary_host_catalog_static.servers["production"].id
+  name            = "database"
+  host_ids        = [boundary_host_static.database.id]
+}
+
 # Database target
 resource "boundary_target" "database" {
   scope_id     = boundary_scope.environments["production"].id
@@ -251,6 +265,10 @@ resource "boundary_target" "database" {
 
   host_source_ids = [boundary_host_set_static.database.id]
 
+  brokered_credential_source_ids = [
+    boundary_credential_library_vault.db_creds.id
+  ]
+
   session_max_seconds      = 1800
   session_connection_limit = 1
 }
@@ -258,7 +276,7 @@ resource "boundary_target" "database" {
 
 ## Credential Management with Vault Integration
 
-Connect Boundary to Vault for dynamic credential injection.
+Connect Boundary to Vault for credential brokering and, in HCP Boundary or Boundary Enterprise, credential injection.
 
 ```hcl
 # Vault credential store
@@ -271,17 +289,14 @@ resource "boundary_credential_store_vault" "main" {
   namespace   = "admin"
 }
 
-# Vault credential library for SSH certificates
+# Vault credential library for SSH private keys stored in Vault KV
 resource "boundary_credential_library_vault" "ssh_creds" {
   credential_store_id = boundary_credential_store_vault.main.id
   name                = "ssh-credentials"
   description         = "SSH credentials from Vault"
-  path                = "ssh/creds/admin"
-  http_method         = "POST"
-  http_request_body   = jsonencode({
-    ip = "{{.Host}}"
-  })
-  credential_type = "ssh_private_key"
+  path                = "secret/data/ssh/admin"
+  http_method         = "GET"
+  credential_type     = "ssh_private_key"
 }
 
 # Vault credential library for database access
@@ -346,10 +361,10 @@ resource "boundary_role" "auditor" {
 
 ## Best Practices
 
-Use OIDC authentication to integrate Boundary with your existing identity provider rather than managing users directly in Boundary. Connect Boundary to Vault for dynamic credential injection so users never see or handle actual credentials. Set session time limits and connection limits on all targets to reduce the window of exposure if a session is compromised.
+Use OIDC authentication to integrate Boundary with your existing identity provider rather than managing users directly in Boundary. Connect Boundary to Vault for brokered credentials and, where supported, credential injection so users do not need long-lived credentials. Set session time limits and connection limits on all targets to reduce the window of exposure if a session is compromised.
 
 For related security tools, see our guides on [using Terraform with Vault for secret management](https://oneuptime.com/blog/post/2026-02-23-how-to-use-terraform-with-vault-for-secret-management/view) and [using Terraform with Consul for service discovery](https://oneuptime.com/blog/post/2026-02-23-how-to-use-terraform-with-consul-for-service-discovery/view).
 
 ## Conclusion
 
-Terraform and Boundary together provide a modern, identity-based approach to infrastructure access management. Boundary eliminates the need for SSH keys, VPNs, and bastion hosts by providing a secure proxy that authenticates users through your identity provider and injects credentials dynamically. Terraform manages the entire lifecycle, from deploying the Boundary infrastructure to configuring targets, roles, and credential stores. This combination delivers the security, auditability, and user experience that traditional access management approaches cannot match.
+Terraform and Boundary together provide a modern, identity-based approach to infrastructure access management. Boundary reduces the need to distribute SSH keys, VPNs, and bastion-host access by providing a secure proxy that authenticates users through your identity provider and can broker or inject credentials from Vault. Terraform manages the entire lifecycle, from deploying the Boundary infrastructure to configuring targets, roles, and credential stores. This combination delivers the security, auditability, and user experience that traditional access management approaches cannot match.
