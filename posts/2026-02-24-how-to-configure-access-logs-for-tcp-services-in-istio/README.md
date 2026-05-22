@@ -8,15 +8,15 @@ Description: Learn how to configure and interpret access logs for TCP services i
 
 ---
 
-Most Istio documentation focuses on HTTP services, which makes sense since that's the majority of traffic in most meshes. But plenty of real workloads communicate over raw TCP - databases, message brokers, gRPC streams, custom binary protocols. These services need logging too, and the approach is a bit different from HTTP access logs.
+Most Istio documentation focuses on HTTP services, which makes sense since that's the majority of traffic in most meshes. But plenty of real workloads communicate over raw TCP - databases, message brokers, TLS passthrough connections, custom binary protocols. These services need logging too, and the approach is a bit different from HTTP access logs.
 
 ## How TCP Logging Differs from HTTP
 
 When Envoy handles HTTP traffic, it understands the full request/response cycle. It can log the HTTP method, path, status code, headers, and response timing. With TCP traffic, Envoy operates at the connection level. It sees bytes flowing in and out, connection durations, and upstream/downstream addresses, but it has no concept of individual requests within the TCP stream.
 
-This means TCP access logs capture connection-level events rather than request-level events:
+This means TCP access logs capture connection-level information rather than request-level information:
 
-- When a TCP connection opens
+- When the TCP connection started
 - How long the connection lasts
 - How many bytes were transferred
 - Whether the connection was terminated cleanly
@@ -89,7 +89,7 @@ A typical TCP access log entry looks like this:
 }
 ```
 
-This tells you that a connection lasted about 15 seconds, transferred about 36 KB total, and connected to a PostgreSQL service. The `requested_server_name` field shows the SNI value, which Istio uses for routing in mTLS scenarios.
+This tells you that a connection lasted about 15 seconds, transferred about 36 KB total, and connected to a PostgreSQL service. The `requested_server_name` field shows the SNI value when one is present; for plain TCP connections it may be `-`.
 
 ## Response Flags for TCP
 
@@ -101,10 +101,9 @@ Response flags are critical for understanding TCP connection issues. Here are th
 | `UO` | Upstream overflow (circuit breaking) |
 | `NR` | No route configured |
 | `URX` | Upstream retry limit exceeded |
-| `UC` | Upstream connection termination |
-| `DC` | Downstream connection termination |
-| `LR` | Connection local reset |
-| `UR` | Connection upstream reset |
+| `UH` | No healthy upstream |
+| `NC` | Upstream cluster not found |
+| `DT` | Connection duration timeout |
 
 When you see `UF` in a TCP log, it means Envoy couldn't establish a connection to the upstream service. This usually points to the target pod being down, a misconfigured service entry, or a network policy blocking the connection.
 
@@ -240,7 +239,8 @@ spec:
         value:
           typed_config:
             "@type": type.googleapis.com/envoy.extensions.filters.network.tcp_proxy.v3.TcpProxy
-            access_log_flush_interval: 30s
+            access_log_options:
+              access_log_flush_interval: 30s
 ```
 
 With this configuration, Envoy emits a log entry every 30 seconds for each active TCP connection, plus a final entry when the connection closes. The periodic entries show the running byte count, making it possible to monitor throughput on long-lived connections.
@@ -291,7 +291,7 @@ istioctl proxy-config cluster <pod-name> -n database | grep postgres
 istioctl analyze -n database
 ```
 
-A common issue is forgetting to name the port with a `tcp-` prefix. Without it, Istio defaults to opaque TCP handling, which usually works but can lead to inconsistent behavior with auto protocol detection.
+A common issue is forgetting to name the port with a `tcp-` prefix. Without it, Istio tries automatic protocol detection and treats traffic as plain TCP if it cannot detect HTTP or HTTP/2. Server-first protocols such as MySQL are incompatible with automatic protocol selection, so explicit port naming is safer.
 
 ## Summary
 
