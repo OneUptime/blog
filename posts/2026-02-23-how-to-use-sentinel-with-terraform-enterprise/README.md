@@ -8,13 +8,13 @@ Description: Set up and manage Sentinel policies in Terraform Enterprise with po
 
 ---
 
-Terraform Enterprise gives you the self-hosted version of Terraform Cloud with additional features for large organizations. One of its most valuable capabilities is Sentinel integration, which lets you enforce policies on every Terraform run across your entire organization. Unlike open-source Terraform where policy enforcement requires external tools, Terraform Enterprise makes Sentinel a native part of the workflow.
+Terraform Enterprise gives you the self-hosted version of HCP Terraform with additional features for large organizations. One of its most valuable capabilities is Sentinel integration, which lets you enforce policies on every Terraform run across your entire organization. Unlike open-source Terraform where policy enforcement requires external tools, Terraform Enterprise makes Sentinel a native part of the workflow.
 
 This post covers how to set up Sentinel in Terraform Enterprise from scratch, manage policy sets, scope policies to the right workspaces, and build an organizational governance workflow.
 
 ## How Sentinel Fits into the Terraform Enterprise Workflow
 
-In Terraform Enterprise, every run goes through a defined sequence: plan, policy check, and then apply. Sentinel sits between plan and apply. After Terraform generates a plan, Sentinel evaluates the planned changes against your policies. If a hard-mandatory policy fails, the apply is blocked. If a soft-mandatory policy fails, authorized users can override the failure and proceed.
+In Terraform Enterprise, every run goes through a defined sequence: plan, policy check, and then apply. Sentinel sits between plan and apply. After Terraform generates a plan, Sentinel evaluates the planned changes against your policies. If a hard-mandatory policy fails, the apply is blocked unless you are using policy evaluations and have explicitly enabled mandatory overrides on the policy set. If a soft-mandatory policy fails, authorized users can override the failure and proceed.
 
 This position in the workflow is powerful because Sentinel has access to the full plan data - every resource being created, modified, or destroyed, along with all their attributes and the current state.
 
@@ -26,9 +26,8 @@ Start by creating a Git repository for your policies:
 
 ```text
 sentinel-policies/
-    policies/
-        require-tags.sentinel
-        restrict-regions.sentinel
+    require-tags.sentinel
+    restrict-regions.sentinel
     modules/
         common/
             common.sentinel
@@ -53,13 +52,13 @@ module "common" {
 
 # Tag enforcement policy
 policy "require-tags" {
-    source            = "./policies/require-tags.sentinel"
+    source            = "./require-tags.sentinel"
     enforcement_level = "hard-mandatory"
 }
 
 # Region restriction policy
 policy "restrict-regions" {
-    source            = "./policies/restrict-regions.sentinel"
+    source            = "./restrict-regions.sentinel"
     enforcement_level = "hard-mandatory"
 }
 ```
@@ -147,7 +146,7 @@ curl \
 
 Terraform Enterprise supports three enforcement levels that determine what happens when a policy fails:
 
-**hard-mandatory**: The run is blocked. No one can override the failure. Use this for security-critical rules like "no public databases" or "encryption required."
+**hard-mandatory**: The run is blocked. In legacy policy checks, no one can override the failure. In policy evaluations, mandatory failures can only be overridden if the policy set is explicitly configured to allow mandatory overrides. Use this for security-critical rules like "no public databases" or "encryption required."
 
 **soft-mandatory**: The run is blocked by default, but users with the "Manage Policy Overrides" permission can approve the run anyway. Use this for rules that might have legitimate exceptions.
 
@@ -160,19 +159,19 @@ Here is a pattern that works well for organizations:
 
 # Security: Never allow exceptions
 policy "no-public-databases" {
-    source            = "./policies/no-public-databases.sentinel"
+    source            = "./no-public-databases.sentinel"
     enforcement_level = "hard-mandatory"
 }
 
 # Compliance: Allow documented exceptions
 policy "require-encryption" {
-    source            = "./policies/require-encryption.sentinel"
+    source            = "./require-encryption.sentinel"
     enforcement_level = "soft-mandatory"
 }
 
 # Best practices: Inform but do not block
 policy "naming-conventions" {
-    source            = "./policies/naming-conventions.sentinel"
+    source            = "./naming-conventions.sentinel"
     enforcement_level = "advisory"
 }
 ```
@@ -240,7 +239,7 @@ if is_production {
 
 ## Cost Estimation Policies
 
-Terraform Enterprise includes cost estimation. You can write Sentinel policies that enforce cost limits:
+Terraform Enterprise can enable cost estimation. Cost estimate data is available to Sentinel policies in legacy policy checks when a cost estimate exists. You can write Sentinel policies that enforce cost limits:
 
 ```python
 # cost-limit.sentinel
@@ -252,14 +251,10 @@ import "decimal"
 # Maximum allowed monthly cost increase per run (in USD)
 max_monthly_increase = decimal.new(500)
 
-# Get the cost estimate
-proposed_cost = decimal.new(tfrun.cost_estimate.proposed_monthly_cost)
-previous_cost = decimal.new(tfrun.cost_estimate.prior_monthly_cost)
-cost_increase = proposed_cost.subtract(previous_cost)
+# Get the cost estimate delta
+cost_increase = decimal.new(tfrun.cost_estimate.delta_monthly_cost)
 
-print("Previous monthly cost: $" + previous_cost.string())
-print("Proposed monthly cost: $" + proposed_cost.string())
-print("Cost increase: $" + cost_increase.string())
+print("Cost increase: $" + cost_increase.string)
 
 # Check if the cost increase exceeds the limit
 main = rule {
@@ -291,24 +286,21 @@ For organizations with many teams and workspaces, structure your policy sets by 
 # Global policies - apply to all workspaces
 global-security/
     sentinel.hcl
-    policies/
-        require-encryption.sentinel
-        deny-public-access.sentinel
+    require-encryption.sentinel
+    deny-public-access.sentinel
 
 # Team-specific policies
 team-platform/
     sentinel.hcl
-    policies/
-        naming-conventions.sentinel
-        approved-instance-types.sentinel
+    naming-conventions.sentinel
+    approved-instance-types.sentinel
 
 # Environment-specific policies
 production-only/
     sentinel.hcl
-    policies/
-        require-multi-az.sentinel
-        require-deletion-protection.sentinel
-        cost-limits.sentinel
+    require-multi-az.sentinel
+    require-deletion-protection.sentinel
+    cost-limits.sentinel
 ```
 
 Each directory is a separate policy set in Terraform Enterprise, connected to the same or different repositories.
@@ -323,10 +315,10 @@ curl \
     --header "Authorization: Bearer $TFE_TOKEN" \
     "https://tfe.mycompany.com/api/v2/runs/run-xxxx/policy-checks"
 
-# List all policy check results (for reporting)
+# List organization runs, then query policy checks for the runs you want to report on
 curl \
     --header "Authorization: Bearer $TFE_TOKEN" \
-    "https://tfe.mycompany.com/api/v2/organizations/myorg/policy-checks"
+    "https://tfe.mycompany.com/api/v2/organizations/myorg/runs?filter%5Bstatus_group%5D=final"
 ```
 
 Build dashboards that track policy pass rates, common violations, and override frequency to measure your governance program's effectiveness.
