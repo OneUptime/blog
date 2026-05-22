@@ -19,8 +19,8 @@ Consider a simple chain: Frontend -> API -> Database Service.
 If the Database Service has a brief hiccup and returns 503 for a few seconds, here is what happens with aggressive retries:
 
 ```text
-Frontend retries 5 times per request
-  -> API retries 5 times per request to Database
+Frontend allows up to 5 total tries per request
+  -> API allows up to 5 total tries per request to Database
     -> Each frontend request generates up to 25 database requests
 ```
 
@@ -47,7 +47,7 @@ Red flags to look for:
 
 ## Set Sensible Retry Defaults
 
-For most services, 2-3 retry attempts is the sweet spot:
+For most services, 1-2 retries is a good starting point:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -71,7 +71,7 @@ spec:
 
 Important settings:
 
-- `attempts: 2` means one retry after the initial attempt fails (total of 2 tries)
+- `attempts: 2` means two retries after the initial attempt fails (up to 3 total tries)
 - `perTryTimeout: 3s` prevents a single retry from hanging
 - `timeout: 10s` puts an absolute cap on total time including retries
 - `retryOn` should be specific about which failures to retry
@@ -88,7 +88,7 @@ retries:
   retryOn: 5xx
 ```
 
-A 500 Internal Server Error usually means the request is bad and retrying will not help. A 503 Service Unavailable might be temporary, but a 501 Not Implemented never will be.
+A 500 Internal Server Error often means the service hit a server-side failure that an immediate retry will not fix. A 503 Service Unavailable might be temporary, but a 501 Not Implemented never will be.
 
 Be specific:
 
@@ -105,7 +105,7 @@ Valid retry conditions include:
 - `unavailable` - gRPC UNAVAILABLE status
 - `cancelled` - gRPC CANCELLED status
 - `gateway-error` - 502, 503, 504 responses
-- `retriable-status-codes` - status codes listed in `x-envoy-retriable-status-codes` header
+- `retriable-status-codes` - status codes listed in the retry policy or in the `x-envoy-retriable-status-codes` header
 
 ## Always Set Timeouts with Retries
 
@@ -124,21 +124,21 @@ spec:
         - destination:
             host: slow-service
       retries:
-        attempts: 2
+        attempts: 1
         perTryTimeout: 5s
       timeout: 12s
 ```
 
 The math works like this:
 - First attempt: up to 5 seconds
-- Second attempt: up to 5 seconds
+- One retry: up to 5 seconds
 - Total timeout: 12 seconds (leaves a 2 second buffer)
 
-If `timeout` is less than `attempts * perTryTimeout`, the overall timeout will cut off retries early, which is actually fine. It means the system fails fast rather than hanging.
+If `timeout` is less than `(1 + attempts) * perTryTimeout`, the overall timeout will cut off retries early, which is actually fine. It means the system fails fast rather than hanging.
 
 ## Use Circuit Breakers with Retries
 
-Circuit breakers are the complement to retries. They stop sending traffic to a failing service entirely, instead of hammering it with retries:
+Circuit breakers are the complement to retries. They can eject failing endpoints from the load-balancing pool and cap retry concurrency, instead of hammering unhealthy pods with retries:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -167,9 +167,9 @@ Key settings:
 - `interval: 10s` - check every 10 seconds
 - `baseEjectionTime: 30s` - keep the pod ejected for at least 30 seconds
 - `maxEjectionPercent: 50` - never eject more than half the pods
-- `maxRetries: 3` - limit concurrent retries across the connection pool
+- `maxRetries: 3` - limit concurrent retries across the connection pool for this upstream cluster
 
-The `maxRetries` in the connection pool is different from VirtualService retries. It limits the total number of in-flight retries to a destination, acting as a global retry budget.
+The `maxRetries` in the connection pool is different from VirtualService retries. It limits the number of in-flight retries to the destination cluster from each proxy, acting as a per-proxy retry budget.
 
 ## Handle Retry Amplification in Deep Call Chains
 
@@ -231,18 +231,16 @@ The general rule is: retry at the edge, not at every level.
 
 ## Monitor Retry Behavior
 
-Track retry metrics to understand what is happening in your mesh:
+Track retry-related metrics to understand what is happening in your mesh:
 
 ```bash
-# Check for high retry rates
-curl -s "http://localhost:9090/api/v1/query?query=sum(rate(istio_requests_total{response_flags=~'.*RR.*'}[5m])) by (destination_service)" | jq '.data.result'
+# Check for requests that exhausted the configured retry limit
+curl -s "http://localhost:9090/api/v1/query?query=sum(rate(istio_requests_total{response_flags=~'.*URX.*'}[5m])) by (destination_service)" | jq '.data.result'
 ```
 
-Response flags that indicate retries:
-- `URX` - upstream request retry limit exceeded
-- `UPE` - upstream protocol error (may trigger retries)
+The `URX` response flag means the upstream retry limit was exceeded. It does not count every retry attempt. For actual retry volume, use Envoy retry metrics such as `upstream_rq_retry` if you scrape Envoy cluster stats.
 
-Set up alerts for excessive retries:
+Set up alerts for requests that exceed retry limits:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
@@ -253,9 +251,9 @@ spec:
   groups:
     - name: istio-retries
       rules:
-        - alert: HighRetryRate
+        - alert: RetryLimitExceeded
           expr: |
-            sum(rate(istio_requests_total{response_flags=~".*RR.*|.*URX.*"}[5m])) by (destination_service)
+            sum(rate(istio_requests_total{response_flags=~".*URX.*"}[5m])) by (destination_service)
             /
             sum(rate(istio_requests_total[5m])) by (destination_service)
             > 0.1
@@ -263,12 +261,12 @@ spec:
           labels:
             severity: warning
           annotations:
-            summary: "High retry rate to {{ $labels.destination_service }}"
+            summary: "Retry limit exceeded for {{ $labels.destination_service }}"
 ```
 
 ## Test Retry Behavior Under Failure
 
-Use fault injection to simulate failures and observe retry behavior:
+Use fault injection to simulate failures, but do not put retries and fault injection on the same HTTP route. Istio disables retries and timeouts on a client-side route where faults are enabled, so use this to generate controlled failures and validate retrying callers separately:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -287,9 +285,6 @@ spec:
       route:
         - destination:
             host: api-server
-      retries:
-        attempts: 2
-        retryOn: gateway-error
 ```
 
 Monitor the actual request amplification during this test. If your downstream services see a massive spike in traffic, your retry configuration needs tightening.
