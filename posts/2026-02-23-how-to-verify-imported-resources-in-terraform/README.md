@@ -151,19 +151,19 @@ gcloud compute instances describe my-instance \
   --format='table(name,machineType,status,networkInterfaces[0].networkIP)'
 ```
 
-## Step 5: Use terraform refresh
+## Step 5: Use Refresh-Only Planning
 
-Refresh the state to pick up any recent changes made outside Terraform:
+Check for any recent changes made outside Terraform before updating state:
 
 ```bash
-# Refresh state from the cloud provider
-terraform refresh
+# Preview state-only changes from the cloud provider
+terraform plan -refresh-only
 
 # Or use plan with refresh (default behavior)
 terraform plan
 ```
 
-This ensures the state reflects the current reality, not a stale snapshot from when you imported.
+This ensures Terraform compares against the current reality, not a stale snapshot from when you imported. If you need to persist refresh-only changes to state without modifying remote objects, use `terraform apply -refresh-only`.
 
 ## Step 6: Validate Resource Dependencies
 
@@ -191,16 +191,16 @@ resource "aws_instance" "web" {
 }
 ```
 
-## Step 7: Test with terraform apply -target
+## Step 7: Test with terraform plan -target
 
-For critical resources, use targeted apply to test the import in isolation:
+For critical resources, use targeted planning as a diagnostic to inspect the imported resource in isolation:
 
 ```bash
-# Apply only the imported resource to verify no changes
-terraform apply -target=aws_instance.web
+# Plan only the imported resource to verify no changes
+terraform plan -target=aws_instance.web
 ```
 
-If the targeted apply shows no changes, the import is verified for that resource.
+If the targeted plan shows no changes, the import is verified for that resource. Follow up with a full `terraform plan` before applying changes, because resource targeting can exclude related changes elsewhere in the configuration.
 
 ## Automated Verification Script
 
@@ -263,16 +263,16 @@ For teams using policy as code, add verification policies:
 
 package terraform.verify
 
-# Deny any resource replacements after import
-deny[msg] {
-  resource := input.resource_changes[_]
-  resource.change.actions[_] == "delete"
+# Deny any resource deletions or replacements after import
+deny contains msg if {
+  some resource in input.resource_changes
+  "delete" in resource.change.actions
   msg := sprintf("Resource %s would be deleted - verify import configuration", [resource.address])
 }
 
 # Warn about any in-place updates
-warn[msg] {
-  resource := input.resource_changes[_]
+warn contains msg if {
+  some resource in input.resource_changes
   resource.change.actions == ["update"]
   msg := sprintf("Resource %s has configuration drift - review changes", [resource.address])
 }
