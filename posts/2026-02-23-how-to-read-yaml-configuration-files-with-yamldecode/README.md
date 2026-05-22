@@ -94,6 +94,7 @@ database:
   engine: postgres
   version: "15"
   instance_class: db.r5.large
+  username: app_admin
   storage_gb: 100
   multi_az: true
   backup_retention: 7
@@ -119,12 +120,14 @@ resource "aws_subnet" "public" {
 }
 
 resource "aws_db_instance" "main" {
-  engine               = local.infra.database.engine
-  engine_version       = local.infra.database.version
-  instance_class       = local.infra.database.instance_class
-  allocated_storage    = local.infra.database.storage_gb
-  multi_az             = local.infra.database.multi_az
-  backup_retention_period = local.infra.database.backup_retention
+  engine                      = local.infra.database.engine
+  engine_version              = local.infra.database.version
+  instance_class              = local.infra.database.instance_class
+  username                    = local.infra.database.username
+  manage_master_user_password = true
+  allocated_storage           = local.infra.database.storage_gb
+  multi_az                    = local.infra.database.multi_az
+  backup_retention_period     = local.infra.database.backup_retention
 }
 ```
 
@@ -259,8 +262,8 @@ services:
   notification-service:
     port: 8083
     replicas: 1
-    cpu: 128
-    memory: 256
+    cpu: 256
+    memory: 512
     health_check_path: /ping
     public: false
 ```
@@ -283,12 +286,9 @@ resource "aws_ecs_task_definition" "services" {
   container_definitions = jsonencode([{
     name      = each.key
     image     = "${var.ecr_repo}/${each.key}:${var.image_tag}"
-    cpu       = each.value.cpu
-    memory    = each.value.memory
     essential = true
     portMappings = [{
       containerPort = each.value.port
-      hostPort      = each.value.port
     }]
     healthCheck = {
       command = ["CMD-SHELL", "curl -f http://localhost:${each.value.port}${each.value.health_check_path} || exit 1"]
