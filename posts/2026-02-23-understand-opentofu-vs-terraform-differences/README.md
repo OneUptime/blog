@@ -12,7 +12,7 @@ OpenTofu and Terraform share the same roots but have diverged in important ways 
 
 ## The Licensing Split
 
-The most fundamental difference is the license. Terraform switched from the Mozilla Public License 2.0 (MPL 2.0) to the Business Source License 1.1 (BSL 1.1) in August 2023. The BSL is not an open-source license by the Open Source Initiative's definition. It restricts competitive use of Terraform.
+The most fundamental difference is the license. Terraform switched from the Mozilla Public License 2.0 (MPL 2.0) to the Business Source License 1.1 (BSL 1.1) in August 2023. The BSL is not an open-source license by the Open Source Initiative's definition. It restricts certain competitive offerings built with HashiCorp products.
 
 OpenTofu uses the MPL 2.0 license, which is a recognized open-source license. This means:
 
@@ -24,7 +24,7 @@ For most end-users deploying infrastructure, the license difference does not aff
 
 ## Governance Structure
 
-Terraform is controlled by HashiCorp (now part of IBM after the 2024 acquisition). Product decisions, roadmap priorities, and release schedules are determined by HashiCorp.
+Terraform is controlled by HashiCorp, which became part of IBM when IBM completed its acquisition in February 2025. Product decisions, roadmap priorities, and release schedules are determined by HashiCorp.
 
 OpenTofu is a Linux Foundation project with a community-driven governance model. Decisions are made through an open RFC process, and multiple companies contribute to development. The steering committee includes representatives from various organizations, not just one company.
 
@@ -75,9 +75,9 @@ terraform {
 }
 ```
 
-**Provider-Defined Functions**: OpenTofu supports functions defined by providers, extending the function ecosystem beyond built-in functions.
+**Provider Iteration**: OpenTofu supports `for_each` on aliased provider configurations, which helps manage repeated provider instances such as multiple regions or accounts without writing a separate provider block for each one.
 
-**for_each with Count Results**: OpenTofu allows using `for_each` with resources that use `count`, making certain patterns easier to express.
+**OCI Registry Sources**: OpenTofu supports OCI registries as a source for modules and provider mirrors, which can be useful for organizations that already distribute artifacts through OCI-compatible registries.
 
 ### Features Unique to Terraform
 
@@ -85,7 +85,7 @@ terraform {
 
 **Terraform Stacks**: A newer feature for managing groups of related configurations as a single unit.
 
-**Import Block Enhancements**: Terraform has been iterating on the `import` block feature with some improvements that may not have been ported to OpenTofu yet.
+**Import Block Enhancements**: Terraform has been iterating on the `import` block feature with improvements such as `for_each` imports and identity-based imports that may not all be available in the same form in OpenTofu.
 
 ## Registry Differences
 
@@ -108,7 +108,7 @@ terraform {
 }
 ```
 
-There are edge cases where a provider might be available on one registry but not the other, particularly for very new or niche providers. If you encounter this, you can configure provider installation to use direct downloads.
+There are edge cases where a provider might be available on one registry but not the other, particularly for very new or niche providers. If you encounter this, you can configure provider installation to use a filesystem or network mirror.
 
 ## Command Compatibility
 
@@ -123,7 +123,7 @@ terraform destroy
 terraform state list
 terraform import
 
-# OpenTofu equivalents (same flags, same behavior)
+# OpenTofu equivalents (many of the same flags and closely similar behavior)
 tofu init
 tofu plan
 tofu apply
@@ -132,7 +132,7 @@ tofu state list
 tofu import
 ```
 
-Configuration files use the same syntax, the same block types, and the same built-in functions. A `.tf` file that works with Terraform 1.5 will work with OpenTofu 1.6 without changes in almost all cases.
+Configuration files use the same core syntax and many of the same block types and built-in functions, with version-specific additions on both sides. A `.tf` file that works with Terraform 1.5 will work with OpenTofu 1.6 without changes in almost all cases.
 
 ## State File Compatibility
 
