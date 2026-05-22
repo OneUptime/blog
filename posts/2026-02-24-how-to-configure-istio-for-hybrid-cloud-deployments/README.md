@@ -46,11 +46,21 @@ aws ec2 create-customer-gateway \
 
 For GCP, use Cloud VPN or Cloud Interconnect. For Azure, use Azure VPN Gateway or ExpressRoute.
 
-The key requirement is that pod CIDRs and service CIDRs from both environments are routable across the connection. If they overlap, you need NAT or you need to re-address one side.
+The key requirement is that the networks do not overlap and that the endpoints used for cross-environment traffic are reachable. If workloads can communicate directly, pod CIDRs must be routable across the connection. If they cannot, configure Istio networks and east-west gateways so cross-network traffic has reachable gateway addresses.
 
 ## Installing the Primary Control Plane
 
 Install Istio on the cloud cluster as the primary:
+
+```bash
+kubectl --context=cloud-cluster create namespace istio-system
+
+kubectl --context=cloud-cluster create secret generic cacerts -n istio-system \
+  --from-file=ca-cert.pem=certs/ca-cert.pem \
+  --from-file=ca-key.pem=certs/ca-key.pem \
+  --from-file=root-cert.pem=certs/root-cert.pem \
+  --from-file=cert-chain.pem=certs/cert-chain.pem
+```
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -69,32 +79,56 @@ spec:
       multiCluster:
         clusterName: cloud-cluster
       network: cloud-network
+      externalIstiod: true
 ```
 
 ```bash
 istioctl install -f istio-primary.yaml --context=cloud-cluster
 ```
 
+Expose the primary control plane through an east-west gateway so the remote cluster can reach it:
+
+```bash
+samples/multicluster/gen-eastwest-gateway.sh \
+  --network cloud-network | \
+  istioctl --context=cloud-cluster install -y -f -
+
+kubectl --context=cloud-cluster apply -n istio-system -f samples/multicluster/expose-istiod.yaml
+```
+
 ## Connecting an On-Premises Kubernetes Cluster
 
 If your on-premises environment runs Kubernetes, you can join it to the mesh as a remote cluster.
 
-Set up shared trust first by using the same root CA:
+Set up shared trust first by using the same root CA files you used for the primary cluster:
 
 ```bash
 # Create cacerts secret on the on-prem cluster
 kubectl --context=onprem-cluster create namespace istio-system
 
 kubectl --context=onprem-cluster create secret generic cacerts -n istio-system \
-  --from-file=ca-cert.pem=certs/onprem-ca-cert.pem \
-  --from-file=ca-key.pem=certs/onprem-ca-key.pem \
+  --from-file=ca-cert.pem=certs/ca-cert.pem \
+  --from-file=ca-key.pem=certs/ca-key.pem \
   --from-file=root-cert.pem=certs/root-cert.pem \
-  --from-file=cert-chain.pem=certs/onprem-cert-chain.pem
+  --from-file=cert-chain.pem=certs/cert-chain.pem
 ```
 
 Install Istio on the on-prem cluster as a remote:
 
-```yaml
+```bash
+kubectl --context=onprem-cluster annotate namespace istio-system \
+  topology.istio.io/controlPlaneClusters=cloud-cluster
+
+kubectl --context=onprem-cluster label namespace istio-system \
+  topology.istio.io/network=onprem-network
+
+DISCOVERY_ADDRESS=$(kubectl --context=cloud-cluster \
+  -n istio-system get svc istio-eastwestgateway \
+  -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+```
+
+```bash
+cat > istio-remote.yaml <<EOF
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 metadata:
@@ -109,8 +143,10 @@ spec:
       multiCluster:
         clusterName: onprem-cluster
       network: onprem-network
+      remotePilotAddress: ${DISCOVERY_ADDRESS}
     istiodRemote:
       injectionPath: /inject/cluster/onprem-cluster/net/onprem-network
+EOF
 ```
 
 ```bash
@@ -124,32 +160,20 @@ istioctl create-remote-secret \
   --context=onprem-cluster \
   --name=onprem-cluster | \
   kubectl apply --context=cloud-cluster -f -
-
-istioctl create-remote-secret \
-  --context=cloud-cluster \
-  --name=cloud-cluster | \
-  kubectl apply --context=onprem-cluster -f -
 ```
 
 ## Setting Up East-West Gateways
 
-Since cloud and on-prem are on different networks, you need east-west gateways to bridge them:
+Since cloud and on-prem are on different networks, you need east-west gateways to bridge them. The cloud gateway is already exposing the primary control plane; now expose user services and install the gateway on the remote cluster:
 
 ```bash
-# East-west gateway on the cloud cluster
-samples/multicluster/gen-eastwest-gateway.sh \
-  --mesh hybrid-mesh --cluster cloud-cluster --network cloud-network | \
-  istioctl --context=cloud-cluster install -y -f -
-
-# Expose services
+# Expose services on the cloud cluster
 kubectl --context=cloud-cluster apply -n istio-system -f samples/multicluster/expose-services.yaml
 
 # East-west gateway on the on-prem cluster
 samples/multicluster/gen-eastwest-gateway.sh \
-  --mesh hybrid-mesh --cluster onprem-cluster --network onprem-network | \
+  --network onprem-network | \
   istioctl --context=onprem-cluster install -y -f -
-
-kubectl --context=onprem-cluster apply -n istio-system -f samples/multicluster/expose-services.yaml
 ```
 
 The east-west gateway uses port 15443 with AUTO_PASSTHROUGH TLS mode, meaning it routes mTLS traffic based on SNI without terminating it.
@@ -177,8 +201,8 @@ spec:
 On the VM, install the Istio sidecar agent:
 
 ```bash
-# Download the Istio sidecar
-curl -LO https://storage.googleapis.com/istio-release/releases/1.20.0/deb/istio-sidecar.deb
+# Download the Istio sidecar for your Istio release
+curl -LO https://storage.googleapis.com/istio-release/releases/1.30.0/deb/istio-sidecar.deb
 
 # Install
 sudo dpkg -i istio-sidecar.deb
@@ -194,14 +218,19 @@ Create the mesh configuration on the VM:
 istioctl x workload entry configure \
   --file workload-group.yaml \
   --output /tmp/vm-config \
-  --clusterID cloud-cluster \
-  --autoregister
+  --clusterID cloud-cluster
 ```
 
 Copy the generated files to the VM and start the Istio agent:
 
 ```bash
-sudo cp /tmp/vm-config/* /etc/istio/
+sudo mkdir -p /etc/certs /var/run/secrets/tokens /var/lib/istio/envoy /etc/istio/config /etc/istio/proxy
+sudo cp /tmp/vm-config/root-cert.pem /etc/certs/root-cert.pem
+sudo cp /tmp/vm-config/istio-token /var/run/secrets/tokens/istio-token
+sudo cp /tmp/vm-config/cluster.env /var/lib/istio/envoy/cluster.env
+sudo cp /tmp/vm-config/mesh.yaml /etc/istio/config/mesh
+sudo sh -c 'cat /tmp/vm-config/hosts >> /etc/hosts'
+sudo chown -R istio-proxy /var/lib/istio /etc/certs /etc/istio/proxy /etc/istio/config /var/run/secrets
 sudo systemctl start istio
 ```
 
@@ -231,6 +260,8 @@ metadata:
   name: legacy-payment
   namespace: production
 spec:
+  selector:
+    app: legacy-payment
   ports:
   - port: 8080
     name: http
