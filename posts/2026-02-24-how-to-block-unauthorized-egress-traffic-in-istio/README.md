@@ -91,10 +91,10 @@ Each ServiceEntry acts as an allowlist entry. Only hosts listed in a ServiceEntr
 
 ## Step 3: Discover Existing External Dependencies
 
-Before blocking everything, you need to know what your workloads are currently accessing. If you have access logs enabled, you can mine them for external connections:
+Before blocking everything, you need to know what your workloads are currently accessing. If you have access logs enabled, you can mine sidecar proxy logs from source workloads for external connections:
 
 ```bash
-kubectl logs -n istio-system -l istio=ingressgateway -c istio-proxy --since=24h | \
+kubectl logs -n default deploy/my-app -c istio-proxy --since=24h | \
   grep -o '"authority":"[^"]*"' | sort | uniq -c | sort -rn
 ```
 
@@ -115,7 +115,7 @@ Any traffic hitting the BlackHoleCluster is being blocked. Use this to find miss
 
 ## Step 4: Add Authorization Policies for Fine-Grained Control
 
-ServiceEntries control which external hosts are reachable from the mesh, but they apply globally. If you want to restrict which workloads can reach specific external services, use AuthorizationPolicies on the egress gateway.
+ServiceEntries control which external hosts are reachable from the mesh, but they are not workload-specific. If you want to restrict which workloads can reach specific external services, use AuthorizationPolicies on the egress gateway.
 
 First, route your egress traffic through an egress gateway (covered in previous guides). Then apply policies:
 
@@ -171,9 +171,12 @@ spec:
     to:
     - operation:
         ports: ["443"]
+    when:
+    - key: connection.sni
+      values: ["api.github.com"]
 ```
 
-This only allows the `ci-runner` service account in the `backend` namespace to reach the egress gateway.
+This only allows the `ci-runner` service account in the `backend` namespace to route TLS traffic with SNI `api.github.com` through the egress gateway.
 
 ## Step 5: Block Specific Destinations
 
@@ -191,12 +194,12 @@ spec:
       istio: egressgateway
   action: DENY
   rules:
-  - from:
-    - source:
-        namespaces: ["*"]
-    to:
+  - to:
     - operation:
-        hosts: ["evil-exfiltration-site.com"]
+        ports: ["443"]
+    when:
+    - key: connection.sni
+      values: ["evil-exfiltration-site.com"]
 ```
 
 ## Using Sidecar Resources to Restrict Egress at the Namespace Level
@@ -215,10 +218,10 @@ spec:
   egress:
   - hosts:
     - "istio-system/*"
-    - "./backend-api.default.svc.cluster.local"
+    - "default/backend-api.default.svc.cluster.local"
 ```
 
-This restricts workloads in the `frontend` namespace to only reach services in `istio-system` (which includes the egress gateway) and the `backend-api` service. They cannot directly access any other service in the mesh or any external service.
+This restricts workloads in the `frontend` namespace to only reach services in `istio-system` (which includes the egress gateway) and the `backend-api` service in the `default` namespace. They cannot directly access any other service in the mesh or any external service.
 
 ## Monitoring Blocked Traffic
 
@@ -257,7 +260,7 @@ Blocking egress in a running production cluster can break things if you are not 
 
 **Forgetting about DNS**: Even with `REGISTRY_ONLY`, pods need DNS resolution to work. If your pods use an external DNS server, you might need a ServiceEntry for it.
 
-**Init containers**: Init containers run before the sidecar proxy is ready. If they make external calls, those calls might fail. Use `holdApplicationUntilProxyStarts` in the mesh config to mitigate this.
+**Startup commands and jobs**: Application containers can start before the sidecar proxy is ready. If they make external calls immediately, those calls might fail. Use `holdApplicationUntilProxyStarts` in the mesh config or pod proxy config to mitigate this.
 
 **Helm chart dependencies**: Helm hooks and jobs often pull images or check external endpoints. Make sure these are covered by ServiceEntries.
 
