@@ -27,27 +27,33 @@ Sentinel is HashiCorp's policy-as-code framework built for Terraform Enterprise 
 ```hcl
 # sentinel/policies/require-encryption.sentinel
 
-# Sentinel policy requiring encryption on all storage resources
+# Sentinel policy requiring encryption and versioning on configured S3 bucket resources
 
 import "tfplan/v2" as tfplan
 
-# Get all S3 buckets being created or modified
-s3_buckets = filter tfplan.resource_changes as _, rc {
-  rc.type is "aws_s3_bucket" and
+# Get all S3 bucket encryption configurations being created or modified
+s3_encryption_configs = filter tfplan.resource_changes as _, rc {
+  rc.type is "aws_s3_bucket_server_side_encryption_configuration" and
+    (rc.change.actions contains "create" or rc.change.actions contains "update")
+}
+
+# Get all S3 bucket versioning configurations being created or modified
+s3_versioning_configs = filter tfplan.resource_changes as _, rc {
+  rc.type is "aws_s3_bucket_versioning" and
     (rc.change.actions contains "create" or rc.change.actions contains "update")
 }
 
 # Check that server-side encryption is enabled
 require_encryption = rule {
-  all s3_buckets as _, bucket {
-    bucket.change.after.server_side_encryption_configuration is not null
+  all s3_encryption_configs as _, config {
+    config.change.after.rule is not null
   }
 }
 
 # Check that versioning is enabled
 require_versioning = rule {
-  all s3_buckets as _, bucket {
-    bucket.change.after.versioning[0].enabled is true
+  all s3_versioning_configs as _, config {
+    config.change.after.versioning_configuration[0].status is "Enabled"
   }
 }
 
@@ -117,6 +123,7 @@ OPA is an open-source policy engine that works with any Terraform workflow.
 
 package terraform.tags
 
+import rego.v1
 import input as tfplan
 
 # Define required tags
@@ -126,7 +133,7 @@ required_tags := {"Environment", "Owner", "ManagedBy", "CostCenter"}
 resources := tfplan.resource_changes
 
 # Check for missing tags on each resource
-deny[msg] {
+deny contains msg if {
   resource := resources[_]
   resource.change.actions[_] == "create"
 
@@ -150,12 +157,14 @@ deny[msg] {
 
 package terraform.security
 
+import rego.v1
 import input as tfplan
 
 # Deny public S3 buckets
-deny[msg] {
+deny contains msg if {
   resource := tfplan.resource_changes[_]
   resource.type == "aws_s3_bucket_acl"
+  resource.change.actions[_] == "create"
   resource.change.after.acl == "public-read"
 
   msg := sprintf(
@@ -165,7 +174,7 @@ deny[msg] {
 }
 
 # Deny unencrypted RDS instances
-deny[msg] {
+deny contains msg if {
   resource := tfplan.resource_changes[_]
   resource.type == "aws_db_instance"
   resource.change.actions[_] == "create"
@@ -178,7 +187,7 @@ deny[msg] {
 }
 
 # Deny security groups with unrestricted ingress
-deny[msg] {
+deny contains msg if {
   resource := tfplan.resource_changes[_]
   resource.type == "aws_security_group_rule"
   resource.change.actions[_] == "create"
@@ -215,6 +224,15 @@ jobs:
       - uses: hashicorp/setup-terraform@v3
       - uses: open-policy-agent/setup-opa@v2
 
+      - name: Install Conftest
+        run: |
+          LATEST_VERSION=$(wget -O - "https://api.github.com/repos/open-policy-agent/conftest/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/' | cut -c 2-)
+          ARCH=$(arch)
+          SYSTEM=$(uname)
+          wget "https://github.com/open-policy-agent/conftest/releases/download/v${LATEST_VERSION}/conftest_${LATEST_VERSION}_${SYSTEM}_${ARCH}.tar.gz"
+          tar xzf conftest_${LATEST_VERSION}_${SYSTEM}_${ARCH}.tar.gz
+          sudo mv conftest /usr/local/bin
+
       - name: Terraform Init
         working-directory: terraform
         run: terraform init
@@ -232,19 +250,27 @@ jobs:
             --input terraform/tfplan.json \
             --data policies/terraform/ \
             --format pretty \
-            "data.terraform.tags.deny" | tee tag-results.txt
+            --fail-defined \
+            "data.terraform.tags.deny[_]" | tee tag-results.txt
 
           opa eval \
             --input terraform/tfplan.json \
             --data policies/terraform/ \
             --format pretty \
-            "data.terraform.security.deny" | tee security-results.txt
+            --fail-defined \
+            "data.terraform.security.deny[_]" | tee security-results.txt
 
       # Alternatively use conftest for easier integration
       - name: Run Conftest
         run: |
           conftest test terraform/tfplan.json \
             --policy policies/terraform/ \
+            --namespace terraform.tags \
+            --output table
+
+          conftest test terraform/tfplan.json \
+            --policy policies/terraform/ \
+            --namespace terraform.security \
             --output table
 ```
 
@@ -281,11 +307,13 @@ jobs:
           soft_fail: false
           # Check against specific compliance frameworks
           check: CKV_AWS_145,CKV_AWS_144,CKV_AWS_19
+          # Load custom checks from the repository
+          external_checks_dirs: custom_checks/
 
       # Upload results to GitHub Security tab
       - name: Upload SARIF
         if: always()
-        uses: github/codeql-action/upload-sarif@v2
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: results.sarif
 ```
@@ -380,24 +408,24 @@ Feature: Resource Tagging
 - name: Run Terraform Compliance
   run: |
     terraform plan -out=tfplan
-    terraform show -json tfplan > tfplan.json
-    terraform-compliance -f compliance/ -p tfplan.json
+    terraform-compliance -f compliance/ -p tfplan
 ```
 
 ## Method 5: Regula for Multi-Framework Compliance
 
-Regula maps infrastructure configurations to compliance frameworks like CIS, SOC2, and HIPAA.
+Regula maps infrastructure configurations to compliance frameworks like the CIS benchmarks. Regula is no longer actively maintained, but it can still be useful for legacy workflows that already rely on it.
 
 ```yaml
 # .github/workflows/regula.yml
 - name: Run Regula
   run: |
-    regula run terraform/ \
+    terraform plan -out=tfplan
+    terraform show -json tfplan > tfplan.json
+    regula run tfplan.json \
       --format table \
       --severity high \
       --input-type tf-plan \
-      --include CIS_AWS \
-      --include SOC2
+      --include CIS_AWS
 ```
 
 ## Integrating Multiple Tools
@@ -436,6 +464,12 @@ jobs:
         run: |
           conftest test terraform/tfplan.json \
             --policy policies/ \
+            --namespace terraform.tags \
+            --output table
+
+          conftest test terraform/tfplan.json \
+            --policy policies/ \
+            --namespace terraform.security \
             --output table
 
       # BDD compliance tests
@@ -443,7 +477,7 @@ jobs:
         run: |
           terraform-compliance \
             -f compliance/ \
-            -p terraform/tfplan.json
+            -p terraform/tfplan
 
       # Summary comment on PR
       - name: Post Compliance Summary
