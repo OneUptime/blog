@@ -37,7 +37,7 @@ bcrypt(string, cost)
 
 Regular hash functions like SHA-256 and MD5 are designed to be fast. That is great for change detection but terrible for password hashing, because attackers can try billions of guesses per second.
 
-Bcrypt is intentionally slow. A cost factor of 10 means the algorithm performs 2^10 (1,024) iterations of its internal function. Increasing the cost by 1 doubles the time required:
+Bcrypt is intentionally slow. The cost factor is exponential, so increasing the cost by 1 roughly doubles the time required:
 
 ```hcl
 # Cost 10 (default) - about 100ms per hash
@@ -57,9 +57,11 @@ output "higher_cost" {
 
 Unlike every other hash function in Terraform, bcrypt is non-deterministic. Each call produces a different hash because bcrypt includes a random salt. This means:
 
-1. Running `terraform plan` will always show the bcrypt output as changed
-2. You should use `ignore_changes` in lifecycle blocks for resources that use bcrypt
+1. Running `terraform plan` will show changes for outputs or resource arguments that directly depend on `bcrypt`
+2. You should avoid using `bcrypt` directly in resource arguments unless the value is meant to be set only during creation
 3. The state file will contain the hash, not the plaintext
+
+HashiCorp recommends using `bcrypt` only in `provisioner` blocks, or in data resources whose results are only used in `provisioner` blocks. If you use `ignore_changes`, remember that Terraform will also ignore legitimate future changes to that argument.
 
 ```hcl
 # Each call produces a different hash
@@ -100,8 +102,8 @@ resource "aws_instance" "server" {
     echo "admin:${bcrypt(var.admin_password)}" | chpasswd -e
   EOF
 
-  # Prevent Terraform from recreating the instance on every plan
-  # because bcrypt generates a new hash each time
+  # Prevent Terraform from planning a user_data update on every plan.
+  # This also means later user_data changes are ignored.
   lifecycle {
     ignore_changes = [user_data]
   }
@@ -114,7 +116,7 @@ resource "aws_instance" "server" {
 
 ### Database User Provisioning
 
-Some database systems accept bcrypt-hashed passwords:
+Some database or application provisioning tools accept bcrypt-hashed passwords:
 
 ```hcl
 variable "db_users" {
@@ -136,19 +138,19 @@ locals {
   }
 }
 
-# Generate a SQL script to create users
-resource "local_file" "create_users" {
-  filename = "${path.module}/generated/create_users.sql"
-  content = join("\n", [
-    for name, user in local.hashed_users :
-    "CREATE USER '${name}' WITH PASSWORD '${user.password_hash}' ROLE '${user.role}';"
-  ])
-
-  # Sensitive because it contains hashed passwords
-  file_permission = "0600"
-
-  lifecycle {
-    ignore_changes = [content]
+# Generate a SQL script to create users during provisioning
+resource "null_resource" "create_users_sql" {
+  provisioner "local-exec" {
+    command = <<-EOT
+      mkdir -p "${path.module}/generated"
+      umask 077
+      cat > "${path.module}/generated/create_users.sql" <<'SQL'
+${join("\n", [
+  for name, user in local.hashed_users :
+  "CREATE USER '${name}' WITH PASSWORD '${user.password_hash}'; -- role: ${user.role}"
+])}
+SQL
+    EOT
   }
 }
 ```
@@ -185,7 +187,8 @@ resource "aws_ssm_parameter" "app_config" {
   value = local.app_config
 
   lifecycle {
-    # The bcrypt hash changes every apply, so ignore content changes
+    # The bcrypt hash changes every plan. Use this only for initial
+    # creation, because Terraform will ignore later value changes too.
     ignore_changes = [value]
   }
 }
@@ -193,14 +196,15 @@ resource "aws_ssm_parameter" "app_config" {
 
 ### Using with the ignore_changes Lifecycle
 
-Since bcrypt is non-deterministic, you almost always need `ignore_changes`:
+Since bcrypt is non-deterministic, avoid putting it in arguments Terraform uses for change detection:
 
 ```hcl
 resource "null_resource" "setup" {
   triggers = {
     # Do NOT use bcrypt in triggers - it changes every time
-    # Instead, use a deterministic hash for change detection
-    password_indicator = sha256(var.admin_password)
+    # Avoid password-derived trigger values unless you accept storing
+    # that derived value in state.
+    setup_version = "1"
   }
 
   provisioner "local-exec" {
@@ -217,7 +221,7 @@ The cost factor should be high enough to make brute-force attacks impractical, b
 ```hcl
 locals {
   # Rough timing guidelines (varies by hardware):
-  # Cost 8  - ~25ms (minimum recommended)
+  # Cost 8  - ~25ms
   # Cost 10 - ~100ms (default, good for most cases)
   # Cost 12 - ~400ms (good for high-security passwords)
   # Cost 14 - ~1.6s (slow but very secure)
@@ -244,11 +248,11 @@ terraform {
     key            = "production/terraform.tfstate"
     region         = "us-west-2"
     encrypt        = true  # Enable server-side encryption
-    dynamodb_table = "terraform-locks"  # Enable state locking
+    use_lockfile   = true  # Enable S3 state locking
   }
 }
 ```
 
 ## Summary
 
-The `bcrypt` function fills an important niche in Terraform: secure password hashing. Unlike `md5`, `sha1`, or `sha256`, bcrypt is specifically designed for passwords with its built-in salt and adjustable cost factor. The trade-off is that it is non-deterministic, requiring `ignore_changes` lifecycle rules in most cases. Use it whenever you need to provision passwords in your infrastructure, and always mark the inputs and outputs as sensitive. For regular content hashing needs, stick with [sha256](https://oneuptime.com/blog/post/2026-02-23-how-to-use-the-sha256-function-in-terraform/view) or [md5](https://oneuptime.com/blog/post/2026-02-23-how-to-use-the-md5-function-in-terraform/view).
+The `bcrypt` function fills an important niche in Terraform: secure password hashing. Unlike `md5`, `sha1`, or `sha256`, bcrypt is specifically designed for passwords with its built-in salt and adjustable cost factor. The trade-off is that it is non-deterministic, so it is best used in provisioner workflows rather than ordinary resource arguments. Use it whenever you need to provision password hashes in your infrastructure, and always mark the inputs and outputs as sensitive. For regular content hashing needs, stick with [sha256](https://oneuptime.com/blog/post/2026-02-23-how-to-use-the-sha256-function-in-terraform/view) or [md5](https://oneuptime.com/blog/post/2026-02-23-how-to-use-the-md5-function-in-terraform/view).
