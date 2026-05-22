@@ -8,15 +8,15 @@ Description: Learn how to use the Terraform Plugin Framework to build providers 
 
 ---
 
-The Terraform Plugin Framework is the modern, recommended way to build Terraform providers. It replaced the older Plugin SDKv2 with a redesigned architecture that provides strong typing through Go generics, built-in attribute validation, plan modification capabilities, and a cleaner development experience. If you are starting a new provider today, you should use the Plugin Framework.
+The Terraform Plugin Framework is the modern, recommended way to build Terraform providers. It is the newer SDK for provider development, while SDKv2 remains maintained for Terraform 1.x with most new feature development focused on the framework. The framework provides framework-specific value types, built-in attribute validation, plan modification capabilities, and a cleaner development experience. If you are starting a new provider today, you should use the Plugin Framework.
 
 In this guide, we will explore the key concepts and patterns of the Plugin Framework. You will learn how the framework structures providers, resources, and data sources, and how to take advantage of its features for building robust providers.
 
 ## Plugin Framework vs SDKv2
 
-Before diving in, it is worth understanding why the Plugin Framework exists. The SDKv2 used `map[string]*schema.Schema` to define resource schemas, which provided no compile-time type safety. You could misspell an attribute name and only discover the error at runtime. The Plugin Framework uses Go structs with struct tags, giving you compile-time verification that your code matches your schema.
+Before diving in, it is worth understanding why the Plugin Framework exists. The SDKv2 used `map[string]*schema.Schema` to define resource schemas, which made schema/data mismatches easier to miss until tests or runtime behavior exposed them. The Plugin Framework uses dedicated schema packages and Go structs with `tfsdk` struct tags to map schema data into typed Go models. The framework reports mismatches during data conversion, and keeping schema definitions and models aligned makes provider code easier to maintain.
 
-The Framework also handles plan modification and validation natively, whereas SDKv2 required workarounds. And it supports protocol version 6, which enables advanced features like nested attributes and stricter type checking.
+The Framework also handles plan modification and validation natively, whereas SDKv2 required workarounds. It supports protocol version 6, the latest and recommended Terraform plugin protocol version, while also supporting protocol version 5 for compatibility scenarios.
 
 ## The Provider Interface
 
@@ -52,6 +52,7 @@ import (
     "os"
 
     "github.com/hashicorp/terraform-plugin-framework/datasource"
+    "github.com/hashicorp/terraform-plugin-framework/path"
     "github.com/hashicorp/terraform-plugin-framework/provider"
     "github.com/hashicorp/terraform-plugin-framework/provider/schema"
     "github.com/hashicorp/terraform-plugin-framework/resource"
@@ -103,7 +104,36 @@ func (p *ExampleProvider) Configure(ctx context.Context, req provider.ConfigureR
         return
     }
 
-    // Allow environment variable overrides
+    // If provided in configuration, values must be known before configuring the client.
+    if config.Host.IsUnknown() {
+        resp.Diagnostics.AddAttributeError(
+            path.Root("host"),
+            "Unknown Host",
+            "The provider cannot create the API client because the 'host' attribute is unknown. Set the value statically in configuration or use the EXAMPLE_HOST environment variable.",
+        )
+    }
+
+    if config.Token.IsUnknown() {
+        resp.Diagnostics.AddAttributeError(
+            path.Root("token"),
+            "Unknown Token",
+            "The provider cannot create the API client because the 'token' attribute is unknown. Set the value statically in configuration or use the EXAMPLE_TOKEN environment variable.",
+        )
+    }
+
+    if config.Timeout.IsUnknown() {
+        resp.Diagnostics.AddAttributeError(
+            path.Root("timeout"),
+            "Unknown Timeout",
+            "The provider cannot create the API client because the 'timeout' attribute is unknown. Set the value statically in configuration.",
+        )
+    }
+
+    if resp.Diagnostics.HasError() {
+        return
+    }
+
+    // Default to environment variables, then override with Terraform configuration.
     host := os.Getenv("EXAMPLE_HOST")
     if !config.Host.IsNull() {
         host = config.Host.ValueString()
@@ -167,6 +197,20 @@ func (p *ExampleProvider) DataSources(_ context.Context) []func() datasource.Dat
 The Plugin Framework provides a rich set of attribute types that map to Terraform's type system.
 
 ```go
+import (
+    "context"
+
+    "github.com/hashicorp/terraform-plugin-framework/resource"
+    "github.com/hashicorp/terraform-plugin-framework/resource/schema"
+    "github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+    "github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+    "github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
+    "github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+    "github.com/hashicorp/terraform-plugin-framework/types"
+    "github.com/hashicorp/terraform-plugin-framework/validator"
+    "github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
+)
+
 func (r *ServerResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
     resp.Schema = schema.Schema{
         Description: "Manages a server instance.",
@@ -302,8 +346,8 @@ type ServerResourceModel struct {
     DNSNames        types.List   `tfsdk:"dns_names"`
     Tags            types.Map    `tfsdk:"tags"`
     SecurityGroupIDs types.Set   `tfsdk:"security_group_ids"`
-    NetworkConfig   types.Object `tfsdk:"network_config"`
-    Disks           types.List   `tfsdk:"disks"`
+    NetworkConfig   NetworkConfigModel `tfsdk:"network_config"`
+    Disks           []DiskModel `tfsdk:"disks"`
 }
 
 // NetworkConfigModel for the nested attribute
@@ -327,9 +371,11 @@ The Plugin Framework includes built-in validators and lets you create custom one
 
 ```go
 import (
-    "github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+    "regexp"
+
+    "github.com/hashicorp/terraform-plugin-framework/validator"
     "github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
-    "github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
+    "github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 )
 
 // Using built-in validators
@@ -403,18 +449,22 @@ type Resource interface {
 
 // Optional interfaces for additional capabilities
 type ResourceWithConfigure interface {
+    Resource
     Configure(context.Context, ConfigureRequest, *ConfigureResponse)
 }
 
 type ResourceWithImportState interface {
+    Resource
     ImportState(context.Context, ImportStateRequest, *ImportStateResponse)
 }
 
 type ResourceWithModifyPlan interface {
+    Resource
     ModifyPlan(context.Context, ModifyPlanRequest, *ModifyPlanResponse)
 }
 
 type ResourceWithValidateConfig interface {
+    Resource
     ValidateConfig(context.Context, ValidateConfigRequest, *ValidateConfigResponse)
 }
 ```
