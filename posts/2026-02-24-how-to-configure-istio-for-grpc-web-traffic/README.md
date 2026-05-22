@@ -8,7 +8,7 @@ Description: How to configure Istio to handle gRPC-Web traffic from browser clie
 
 ---
 
-gRPC-Web is a JavaScript client library that lets browser applications call gRPC services. Browsers cannot use native gRPC because they do not support HTTP/2 trailers or direct control over HTTP/2 frames. gRPC-Web works around this by encoding gRPC messages in a format that works over HTTP/1.1 or HTTP/2 without trailers, and it relies on a proxy to translate between gRPC-Web and native gRPC.
+gRPC-Web is a protocol and JavaScript client implementation that lets browser applications call gRPC services. Browsers cannot use native gRPC because browser APIs do not expose the HTTP/2 trailers or direct frame control that native gRPC depends on. gRPC-Web works around this by encoding gRPC messages and trailers in a format that works over HTTP/1.1 or HTTP/2, and it relies on a proxy to translate between gRPC-Web and native gRPC.
 
 Envoy, which powers Istio's data plane, has built-in support for this translation. This guide shows how to configure Istio to serve gRPC-Web traffic from browser clients.
 
@@ -22,7 +22,7 @@ Browser (gRPC-Web over HTTP/1.1 or HTTP/2)
     -> gRPC Service (native gRPC over HTTP/2)
 ```
 
-The browser sends a request with `Content-Type: application/grpc-web` or `application/grpc-web+proto`. Envoy's gRPC-Web filter converts this into a standard gRPC request and forwards it to the backend. The response goes through the reverse translation.
+The browser sends a request with `Content-Type: application/grpc-web`, `application/grpc-web+proto`, `application/grpc-web-text`, or `application/grpc-web-text+proto`, depending on the client wire format. Envoy's gRPC-Web filter converts this into a standard gRPC request and forwards it to the backend. The response goes through the reverse translation.
 
 ## Enabling gRPC-Web on the Ingress Gateway
 
@@ -211,7 +211,7 @@ On the frontend, use the `grpc-web` npm package:
 npm install grpc-web google-protobuf
 ```
 
-Generate the client stubs from your proto files:
+Make sure `protoc`, `protoc-gen-js`, and `protoc-gen-grpc-web` are installed and available on your `PATH`, then generate the client stubs from your proto files:
 
 ```bash
 protoc -I=. order.proto \
@@ -280,7 +280,7 @@ Make sure the `authorization` header is in your CORS `allowHeaders` list.
 
 ## gRPC-Web Streaming
 
-gRPC-Web supports server-side streaming but not client-side or bidirectional streaming. For server streaming:
+gRPC-Web supports server-side streaming in `grpcwebtext` mode, but not client-side or bidirectional streaming. For server streaming:
 
 ```javascript
 const stream = client.streamOrders(request, {});
@@ -352,11 +352,11 @@ kubectl logs -n istio-system deploy/istio-ingressgateway | \
 
 ### Content-Type Mismatches
 
-The client must send `Content-Type: application/grpc-web` or `application/grpc-web+proto`. If the wrong content type is sent, the gRPC-Web filter will not process the request.
+The client must send a gRPC-Web content type such as `application/grpc-web`, `application/grpc-web+proto`, `application/grpc-web-text`, or `application/grpc-web-text+proto`. If the wrong content type is sent, the gRPC-Web filter will not process the request.
 
 ## Monitoring gRPC-Web Traffic
 
-gRPC-Web requests show up in Istio metrics with the same labels as regular gRPC:
+After translation, destination-side Istio metrics for the backend can use the same gRPC labels as regular gRPC:
 
 ```text
 istio_requests_total{
@@ -366,38 +366,43 @@ istio_requests_total{
 }
 ```
 
-The `request_protocol` will show `grpc` because by the time the request reaches the destination, it has been translated from gRPC-Web to native gRPC.
+At the destination side, `request_protocol` can show `grpc` because by the time the request reaches the backend, it has been translated from gRPC-Web to native gRPC. Metrics reported by the ingress gateway itself may still reflect the downstream HTTP connection from the browser.
 
 ## Testing the Full Setup
 
-Use a simple HTML page to test:
+Use a simple page in your bundled frontend app to test:
 
 ```html
 <!DOCTYPE html>
 <html>
 <head>
-  <script src="./generated/order_grpc_web_pb.js"></script>
-  <script src="./generated/order_pb.js"></script>
+  <script src="./dist/test-grpc.js"></script>
 </head>
 <body>
   <button onclick="testGrpc()">Test gRPC-Web</button>
   <div id="result"></div>
-  <script>
-    function testGrpc() {
-      const client = new proto.order.OrderServiceClient('https://api.example.com');
-      const req = new proto.order.GetOrderRequest();
-      req.setOrderId('test-123');
-      client.getOrder(req, {}, (err, resp) => {
-        if (err) {
-          document.getElementById('result').innerText = 'Error: ' + err.message;
-        } else {
-          document.getElementById('result').innerText = 'Success: ' + JSON.stringify(resp.toObject());
-        }
-      });
-    }
-  </script>
 </body>
 </html>
+```
+
+Bundle a small test module into `dist/test-grpc.js`:
+
+```javascript
+const { OrderServiceClient } = require('./generated/order_grpc_web_pb');
+const { GetOrderRequest } = require('./generated/order_pb');
+
+window.testGrpc = function testGrpc() {
+  const client = new OrderServiceClient('https://api.example.com');
+  const req = new GetOrderRequest();
+  req.setOrderId('test-123');
+  client.getOrder(req, {}, (err, resp) => {
+    if (err) {
+      document.getElementById('result').innerText = 'Error: ' + err.message;
+    } else {
+      document.getElementById('result').innerText = 'Success: ' + JSON.stringify(resp.toObject());
+    }
+  });
+};
 ```
 
 ## Wrapping Up
