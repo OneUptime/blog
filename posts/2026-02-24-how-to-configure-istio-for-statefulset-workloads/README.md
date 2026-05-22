@@ -121,9 +121,9 @@ Avoid setting load balancing policies on headless services. Since headless servi
 
 ## mTLS with StatefulSets
 
-mTLS works with StatefulSets, but there are some considerations. When pods address each other by their individual DNS names, Istio needs to validate the peer's identity. This works automatically because Istio assigns SPIFFE identities based on the service account, not the pod name.
+mTLS works with StatefulSets, but there are some considerations. When pods address each other by their individual DNS names, Istio validates the peer's workload identity. This works automatically because Istio assigns SPIFFE identities based on the service account, not the pod name.
 
-If your StatefulSet pods use different service accounts (unusual but possible), you need a PeerAuthentication policy:
+If you want the StatefulSet to require mesh mTLS, use a PeerAuthentication policy. Using different service accounts does not require a special PeerAuthentication policy by itself, but any AuthorizationPolicy that checks identities must allow the relevant service account principals:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -175,7 +175,7 @@ spec:
       annotations:
         proxy.istio.io/config: |
           holdApplicationUntilProxyStarts: true
-          drainDuration: 60s
+          terminationDrainDuration: 60s
     spec:
       terminationGracePeriodSeconds: 75
       containers:
@@ -183,7 +183,7 @@ spec:
         image: postgres:16
 ```
 
-For shutdown, set a drain duration that gives the application time to gracefully transfer leadership, sync data, or deregister from the cluster.
+For shutdown, set a termination drain duration that gives the application time to gracefully transfer leadership, sync data, or deregister from the cluster.
 
 ## Persistent Volume Considerations
 
@@ -195,7 +195,7 @@ StatefulSets use PersistentVolumeClaims for stable storage. The sidecar doesn't 
 kubectl get pod my-db-0 -n database -o jsonpath='{.spec.volumes[*].name}'
 ```
 
-Typically the sidecar adds volumes for: istio-envoy (writable proxy config), istio-data (stats and certs), istiod-ca-cert (CA certificate), and istio-token (service account token).
+The exact names vary by Istio version and injection settings, but the sidecar typically adds volumes for writable proxy data, certificates, CA bundles, and service account tokens.
 
 ## Scaling StatefulSets
 
