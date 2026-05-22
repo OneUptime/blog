@@ -43,7 +43,7 @@ EOF
 }
 ```
 
-This works, but the JSON lives inside a heredoc. Terraform cannot validate the structure until AWS rejects it. You also lose syntax highlighting in most editors, and variable interpolation inside heredocs is fragile.
+This works, but the JSON lives inside a heredoc. Terraform can only treat the heredoc as a string, so IAM-specific mistakes are often not caught until AWS evaluates the policy. You also lose syntax highlighting in most editors, and variable interpolation inside heredocs is fragile.
 
 With `jsonencode`, you write HCL instead:
 
@@ -71,7 +71,7 @@ resource "aws_iam_policy" "s3_read" {
 }
 ```
 
-Terraform validates the HCL structure during `terraform validate`. Your editor gives you proper syntax highlighting. Diffs in version control are clean. And you can use variables and expressions anywhere inside the structure.
+Terraform validates the HCL expression structure during `terraform validate`. Your editor gives you proper syntax highlighting. Diffs in version control are clean. And you can use variables and expressions anywhere inside the structure.
 
 ## Using Variables Inside jsonencode
 
@@ -308,7 +308,7 @@ resource "aws_iam_role" "cross_account" {
 Terraform also offers the `aws_iam_policy_document` data source (covered in a [separate post](https://oneuptime.com/blog/post/2026-02-23-terraform-aws-iam-policy-document-data-source/view)). Here is a quick comparison:
 
 - Use `jsonencode` when you want something quick and readable, when your policy is relatively static, or when you are already comfortable with the JSON policy structure.
-- Use the `aws_iam_policy_document` data source when you need to merge policies, when you want Terraform-native validation, or when you have complex condition blocks.
+- Use the `aws_iam_policy_document` data source when you need to merge policies, when you want Terraform-native policy construction and document-shape checks, or when you have complex condition blocks.
 
 Both approaches are valid. Pick whichever keeps your configuration clearest for your team.
 
@@ -324,4 +324,4 @@ Watch out for a few things when using `jsonencode`:
 
 ## Wrapping Up
 
-The `jsonencode` function is the simplest way to write IAM policies in Terraform without fighting raw JSON. You get variable interpolation, clean diffs, editor support, and early validation. For most IAM policies, it strikes the right balance between simplicity and flexibility. Start using it in your next Terraform project and you will wonder why you ever wrote raw JSON heredocs.
+The `jsonencode` function is the simplest way to write IAM policies in Terraform without fighting raw JSON. You get variable interpolation, clean diffs, editor support, and earlier HCL validation. For most IAM policies, it strikes the right balance between simplicity and flexibility. Start using it in your next Terraform project and you will wonder why you ever wrote raw JSON heredocs.
