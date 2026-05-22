@@ -56,16 +56,16 @@ variable "cidr_block" {
 
   validation {
     # Enforce minimum network size
-    condition     = tonumber(split("/", var.cidr_block)[1]) <= 20
+    condition     = try(tonumber(split("/", var.cidr_block)[1]) <= 20, false)
     error_message = "CIDR block must be /20 or larger for production VPCs."
   }
 
   validation {
     # Only allow RFC 1918 private ranges
     condition = anytrue([
-      can(cidrsubnet("10.0.0.0/8", 0, 0)) && startswith(var.cidr_block, "10."),
-      can(cidrsubnet("172.16.0.0/12", 0, 0)) && startswith(var.cidr_block, "172."),
-      can(cidrsubnet("192.168.0.0/16", 0, 0)) && startswith(var.cidr_block, "192.168."),
+      can(regex("^10\\.", var.cidr_block)),
+      can(regex("^172\\.(1[6-9]|2[0-9]|3[0-1])\\.", var.cidr_block)),
+      can(regex("^192\\.168\\.", var.cidr_block)),
     ])
     error_message = "CIDR block must be in a private IP range (10.x, 172.16-31.x, or 192.168.x)."
   }
@@ -123,6 +123,10 @@ data "aws_ami" "ubuntu" {
   }
 }
 
+data "aws_subnet" "selected" {
+  id = var.subnet_id
+}
+
 resource "aws_instance" "web" {
   ami           = data.aws_ami.ubuntu.id
   instance_type = var.instance_type
@@ -131,7 +135,7 @@ resource "aws_instance" "web" {
   lifecycle {
     precondition {
       # Verify the AMI is not too old
-      condition     = timecmp(data.aws_ami.ubuntu.creation_date, timeadd(timestamp(), "-720h")) > 0
+      condition     = timecmp(data.aws_ami.ubuntu.creation_date, timeadd(plantimestamp(), "-720h")) > 0
       error_message = "The selected AMI is more than 30 days old. Please update the AMI filter."
     }
 
@@ -144,16 +148,16 @@ resource "aws_instance" "web" {
 }
 ```
 
-### Preconditions on Data Sources
+### Postconditions on Data Sources
 
-Data sources can also have preconditions. This is useful for validating assumptions about existing infrastructure.
+Data sources can also have postconditions. This is useful for validating assumptions about existing infrastructure after Terraform reads it.
 
 ```hcl
 data "aws_subnet" "app" {
   id = var.subnet_id
 
   lifecycle {
-    precondition {
+    postcondition {
       condition     = self.available_ip_address_count > 10
       error_message = "Subnet ${var.subnet_id} has fewer than 10 available IPs. Choose a different subnet."
     }
@@ -172,6 +176,7 @@ resource "aws_db_instance" "main" {
   engine_version = "15.4"
   instance_class = "db.r6g.large"
   allocated_storage = 100
+  storage_encrypted = true
   db_name        = "appdb"
   username       = var.db_username
   password       = var.db_password
@@ -193,9 +198,9 @@ resource "aws_db_instance" "main" {
 }
 ```
 
-### Postconditions on Output Values
+### Preconditions on Output Values
 
-Module outputs can also have postconditions, which are useful for validating the interface between modules.
+Module outputs can also have preconditions, which are useful for validating the interface between modules.
 
 ```hcl
 output "database_endpoint" {
@@ -211,7 +216,7 @@ output "database_endpoint" {
 
 ## Check Blocks
 
-Check blocks are different from the others. They run after apply and produce warnings, not errors. They do not block the deployment. This makes them ideal for operational checks that you want visibility into but that should not prevent deployment.
+Check blocks are different from the others. They run at the end of plan or apply and produce warnings, not errors. They do not block the deployment. This makes them ideal for operational checks that you want visibility into but that should not prevent deployment.
 
 ```hcl
 check "website_health" {
@@ -226,13 +231,12 @@ check "website_health" {
 }
 
 check "certificate_expiry" {
-  data "aws_acm_certificate" "app" {
-    domain   = "app.example.com"
-    statuses = ["ISSUED"]
+  data "tls_certificate" "app" {
+    url = "https://app.example.com"
   }
 
   assert {
-    condition     = timecmp(data.aws_acm_certificate.app.not_after, timeadd(timestamp(), "720h")) > 0
+    condition     = timecmp(data.tls_certificate.app.certificates[0].not_after, timeadd(plantimestamp(), "720h")) > 0
     error_message = "SSL certificate expires within 30 days. Please renew."
   }
 }
@@ -246,8 +250,8 @@ Here is a quick decision guide:
 |---|---|---|---|
 | Variable validation | Plan (early) | Error | Input format and value constraints |
 | Precondition | Plan (after data) | Error | Assumptions about existing infrastructure |
-| Postcondition | Apply | Error | Verifying resource state after creation |
-| Check block | Apply | Warning | Operational health checks |
+| Postcondition | After plan or apply | Error | Verifying resource state after creation |
+| Check block | End of plan or apply | Warning | Operational health checks |
 
 ## Advanced Patterns
 
@@ -336,8 +340,8 @@ variable "region" {
   type = string
 
   validation {
-    condition     = can(regex("^(us|eu|ap)-(east|west|central|south|north|southeast|northeast)-[1-3]$", var.region))
-    error_message = "Invalid AWS region '${var.region}'. Expected format: us-east-1, eu-west-2, ap-southeast-1, etc."
+    condition     = can(regex("^[a-z]{2}(-[a-z]+)+-[0-9]+$", var.region))
+    error_message = "Invalid AWS region '${var.region}'. Expected format: us-east-1, eu-west-2, ap-southeast-1, ca-central-1, etc."
   }
 }
 ```
