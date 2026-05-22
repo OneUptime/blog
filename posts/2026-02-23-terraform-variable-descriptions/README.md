@@ -40,7 +40,7 @@ Descriptions show up in several places:
 1. **Interactive prompts** - when Terraform asks for a value
 2. **Terraform Registry** - on the module's input/output documentation page
 3. **terraform-docs** - a popular documentation generation tool
-4. **terraform plan** - in some contexts when values are being resolved
+4. **Terraform CLI commands** - when `plan` or `apply` prompts for required input variables
 5. **IDE integration** - VS Code and other editors with Terraform plugins show descriptions on hover
 
 Given this visibility, investing in good descriptions pays off.
