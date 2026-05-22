@@ -83,15 +83,14 @@ resource "aws_subnet" "private" {
 }
 
 # Assign different ports
-resource "aws_security_group_rule" "app_ports" {
+resource "aws_vpc_security_group_ingress_rule" "app_ports" {
   count = 3
 
-  type              = "ingress"
-  from_port         = 8080 + count.index  # 8080, 8081, 8082
-  to_port           = 8080 + count.index
-  protocol          = "tcp"
-  cidr_blocks       = ["10.0.0.0/16"]
   security_group_id = aws_security_group.app.id
+  cidr_ipv4         = "10.0.0.0/16"
+  from_port         = 8080 + count.index  # 8080, 8081, 8082
+  ip_protocol       = "tcp"
+  to_port           = 8080 + count.index
 }
 ```
 
