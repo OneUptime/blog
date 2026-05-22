@@ -20,7 +20,7 @@ A Terraform plan shows you what resources will be created, modified, or destroye
 - Validate that resource configurations match your policies
 - Ensure the plan succeeds without errors in the first place
 
-Testing plans before applying is the cheapest form of infrastructure validation. It does not create real resources, costs nothing, and runs fast.
+Testing plans before applying is one of the cheapest forms of infrastructure validation. It does not create real resources, usually avoids infrastructure costs, and runs fast.
 
 ## Step 1 - Validate Configuration Syntax
 
@@ -171,22 +171,23 @@ For more structured policy testing, you can use OPA with the plan JSON. Write Re
 
 package terraform
 
+import rego.v1
 import input as plan
 
 # Collect all resource deletions
-deletions[resource] {
+deletions contains resource if {
     resource := plan.resource_changes[_]
     resource.change.actions[_] == "delete"
 }
 
 # Deny if too many deletions
-deny[msg] {
+deny contains msg if {
     count(deletions) > 5
     msg := sprintf("Plan would destroy %d resources, which exceeds the limit of 5", [count(deletions)])
 }
 
 # Deny if any security group allows 0.0.0.0/0 ingress
-deny[msg] {
+deny contains msg if {
     resource := plan.resource_changes[_]
     resource.type == "aws_security_group_rule"
     resource.change.after.type == "ingress"
@@ -308,7 +309,7 @@ done
 
 There are a few things to watch out for when testing plans:
 
-- State file freshness matters. If your state is out of date, the plan will show changes that have already been applied. Always run `terraform refresh` or use a remote backend with locking.
+- State file freshness matters. Terraform refreshes state in memory during a normal plan, but if you need to update state without changing infrastructure, review the result with `terraform plan -refresh-only` or `terraform apply -refresh-only` instead of the deprecated `terraform refresh` command.
 - Provider credentials are required even for planning. The plan phase calls provider APIs to read current state and validate configurations.
 - Plan files are tied to a specific state. Do not generate a plan on Monday and apply it on Friday - the infrastructure may have changed.
 - Some values are only known after apply. The plan will show `(known after apply)` for computed attributes, which limits what you can validate.
