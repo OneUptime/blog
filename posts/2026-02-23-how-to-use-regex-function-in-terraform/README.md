@@ -33,9 +33,9 @@ Terraform uses the RE2 regular expression syntax, which is the same engine used 
 > regex("[0-9]+", "server42")
 "42"
 
-# Match with a capture group - returns the captured part
+# Match with a capture group - returns a list of captured values
 > regex("server-([0-9]+)", "server-42")
-"42"
+["42"]
 
 # Multiple capture groups return a list
 > regex("([a-z]+)-([0-9]+)", "web-001")
@@ -55,7 +55,7 @@ locals {
   arn = "arn:aws:s3:::my-bucket-prod/data/file.txt"
 
   # Extract the bucket name
-  bucket_name = regex("arn:aws:s3:::([^/]+)", local.arn)
+  bucket_name = regex("arn:aws:s3:::([^/]+)", local.arn)[0]
   # Result: "my-bucket-prod"
 
   # Parse a full ARN into components
@@ -177,9 +177,9 @@ locals {
 }
 ```
 
-## Safe regex with can()
+## Safe regex with can() and try()
 
-Since `regex` throws an error when there is no match, always wrap it with `can()` for conditional logic.
+Since `regex` throws an error when there is no match, wrap it with `can()` in validation rules or use `try()` when you need a fallback value.
 
 ```hcl
 locals {
@@ -252,18 +252,18 @@ Here are some patterns you will use frequently.
 ```hcl
 locals {
   # IP address validation
-  is_valid_ip = can(regex("^([0-9]{1,3}\\.){3}[0-9]{1,3}$", "192.168.1.1"))
+  is_valid_ip = can(regex("^(?:(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])$", "192.168.1.1"))
 
   # AWS region format
   is_valid_region = can(regex("^[a-z]{2}-[a-z]+-[0-9]+$", "us-east-1"))
 
-  # S3 bucket name rules
+  # Basic S3 bucket name shape
   is_valid_bucket = can(regex("^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$", "my-bucket"))
 
   # Kubernetes namespace format
   is_valid_ns = can(regex("^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$", "my-namespace"))
 
-  # Semantic version
+  # Version tag format
   is_valid_semver = can(regex("^v?[0-9]+\\.[0-9]+\\.[0-9]+(-[a-zA-Z0-9.]+)?$", "v1.2.3-beta.1"))
 }
 ```
