@@ -41,12 +41,10 @@ run "s3_encryption_enabled" {
   command = plan
 
   assert {
-    condition = alltrue([
-      for rc in plan.resource_changes : true
-      if rc.type != "aws_s3_bucket" || (
-        rc.change.after.server_side_encryption_configuration != null
-      )
-    ])
+    condition = try(
+      aws_s3_bucket_server_side_encryption_configuration.app.rule[0].apply_server_side_encryption_by_default[0].sse_algorithm != null,
+      false
+    )
     error_message = "All S3 buckets must have server-side encryption configured"
   }
 }
@@ -56,15 +54,12 @@ run "no_open_ssh" {
   command = plan
 
   assert {
-    condition = alltrue([
-      for rc in plan.resource_changes : true
-      if rc.type != "aws_security_group_rule" || !(
-        rc.change.after.type == "ingress" &&
-        rc.change.after.from_port <= 22 &&
-        rc.change.after.to_port >= 22 &&
-        contains(rc.change.after.cidr_blocks, "0.0.0.0/0")
-      )
-    ])
+    condition = !(
+      aws_security_group_rule.ssh.type == "ingress" &&
+      aws_security_group_rule.ssh.from_port <= 22 &&
+      aws_security_group_rule.ssh.to_port >= 22 &&
+      try(contains(aws_security_group_rule.ssh.cidr_blocks, "0.0.0.0/0"), false)
+    )
     error_message = "Security groups must not allow SSH from 0.0.0.0/0"
   }
 }
@@ -98,9 +93,8 @@ run "rds_encryption" {
 
   assert {
     condition = alltrue([
-      for rc in plan.resource_changes :
-      rc.change.after.storage_encrypted == true
-      if rc.type == "aws_db_instance"
+      for db in values(aws_db_instance.databases) :
+      db.storage_encrypted == true
     ])
     error_message = "All RDS instances must have storage encryption enabled"
   }
@@ -112,9 +106,8 @@ run "ebs_encryption" {
 
   assert {
     condition = alltrue([
-      for rc in plan.resource_changes :
-      rc.change.after.encrypted == true
-      if rc.type == "aws_ebs_volume"
+      for volume in values(aws_ebs_volume.volumes) :
+      volume.encrypted == true
     ])
     error_message = "All EBS volumes must be encrypted"
   }
@@ -126,12 +119,11 @@ run "s3_no_public_access" {
 
   assert {
     condition = alltrue([
-      for rc in plan.resource_changes :
-      rc.change.after.block_public_acls == true &&
-      rc.change.after.block_public_policy == true &&
-      rc.change.after.ignore_public_acls == true &&
-      rc.change.after.restrict_public_buckets == true
-      if rc.type == "aws_s3_bucket_public_access_block"
+      for block in values(aws_s3_bucket_public_access_block.buckets) :
+      block.block_public_acls == true &&
+      block.block_public_policy == true &&
+      block.ignore_public_acls == true &&
+      block.restrict_public_buckets == true
     ])
     error_message = "All S3 buckets must block public access"
   }
@@ -158,15 +150,18 @@ run "required_tags_present" {
   # Check that resources with tags have the required ones
   assert {
     condition = alltrue([
-      for rc in plan.resource_changes :
-      (rc.change.after.tags != null &&
-       lookup(rc.change.after.tags, "Environment", null) != null &&
-       lookup(rc.change.after.tags, "Project", null) != null &&
-       lookup(rc.change.after.tags, "CostCenter", null) != null &&
-       lookup(rc.change.after.tags, "ManagedBy", null) == "terraform")
-      if contains(["aws_instance", "aws_s3_bucket", "aws_rds_cluster",
-                    "aws_vpc", "aws_subnet"], rc.type) &&
-         rc.change.actions != ["delete"]
+      for tags in [
+        aws_instance.app.tags,
+        aws_s3_bucket.logs.tags,
+        aws_rds_cluster.database.tags,
+        aws_vpc.main.tags,
+        aws_subnet.private.tags
+      ] :
+      tags != null &&
+      lookup(tags, "Environment", null) != null &&
+      lookup(tags, "Project", null) != null &&
+      lookup(tags, "CostCenter", null) != null &&
+      lookup(tags, "ManagedBy", null) == "terraform"
     ])
     error_message = "All resources must have Environment, Project, CostCenter, and ManagedBy tags"
   }
