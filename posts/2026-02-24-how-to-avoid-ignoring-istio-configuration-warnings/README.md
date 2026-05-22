@@ -22,7 +22,7 @@ istioctl analyze --all-namespaces
 
 It checks for things like:
 - VirtualServices referencing non-existent hosts
-- DestinationRules with subsets that do not match any pods
+- DestinationRules with subset labels that do not match any workloads
 - Conflicting configuration between resources
 - Gateway configuration issues
 - Schema validation errors
@@ -30,40 +30,40 @@ It checks for things like:
 Sample output:
 
 ```text
-Warning [IST0101] (VirtualService production/api-routes) Referenced host not found: "api-v3.production.svc.cluster.local"
-Warning [IST0104] (Gateway istio-system/production-gw) The gateway refers to a server that has a port that is not exposed by the Service associated with the gateway
-Error [IST0106] (VirtualService production/reviews) Referenced subset not found: "canary" in destination rule production/reviews
+Error [IST0101] (VirtualService production/api-routes) Referenced host not found: "api-v3.production.svc.cluster.local"
+Warning [IST0162] (Gateway istio-system/production-gw) The gateway refers to a port that is not exposed by the Service associated with the gateway
+Error [IST0106] (VirtualService production/reviews) Schema validation error: percentage 120 is not in range 0..100
 ```
 
 Each finding has a code (like IST0101) and tells you exactly what is wrong and where.
 
 ## Why Warnings Matter
 
-Let me walk through what each common warning means in practice.
+Let me walk through what each common analyzer finding means in practice.
 
 ### IST0101: Referenced Host Not Found
 
 ```text
-Warning [IST0101] (VirtualService production/api) Referenced host not found: "api-v3"
+Error [IST0101] (VirtualService production/api) Referenced host not found: "api-v3"
 ```
 
 This means a VirtualService is trying to route traffic to a service that does not exist. In production, requests matching this route will return 503 errors. Not a warning. An actual outage for that traffic path.
 
-### IST0104: Gateway Port Mismatch
+### IST0162: Gateway Port Mismatch
 
 ```text
-Warning [IST0104] (Gateway istio-system/main-gw) Referenced port not found
+Warning [IST0162] (Gateway istio-system/main-gw) The gateway refers to a port that is not exposed by the Service associated with the gateway
 ```
 
 Your gateway configuration references a port that the gateway service does not expose. External traffic on that port will not reach your services.
 
-### IST0106: Subset Not Found
+### IST0106: Schema Validation Error
 
 ```text
-Error [IST0106] (VirtualService production/reviews) Referenced subset not found: "canary"
+Error [IST0106] (VirtualService production/reviews) Schema validation error: percentage 120 is not in range 0..100
 ```
 
-A VirtualService routes to a subset that does not exist in the DestinationRule. Requests going to this subset will fail with a 503. If this is your canary traffic, your canary deployment is broken.
+An Istio resource does not match the expected schema. For a VirtualService, that could be an invalid route weight, a field with the wrong type, or another value that the Istio API does not accept.
 
 ### IST0108: Unknown Annotation
 
@@ -132,13 +132,13 @@ You can analyze configuration files before applying them to the cluster:
 istioctl analyze my-virtualservice.yaml
 
 # Analyze multiple files
-istioctl analyze -R ./istio-config/
+istioctl analyze ./istio-config/
 
-# Analyze files in context of what is already in the cluster
-istioctl analyze my-virtualservice.yaml --use-kube
+# Analyze only local files, without using the live cluster
+istioctl analyze --use-kube=false my-virtualservice.yaml
 ```
 
-The `--use-kube` flag is important because it checks your new configuration against existing cluster resources. A VirtualService might look fine on its own but reference a DestinationRule that does not exist in the cluster.
+By default, `istioctl analyze` uses the live cluster when it can, so file arguments are checked in the context of existing cluster resources. If you want a standalone file-only check, set `--use-kube=false`.
 
 ## Set Up Scheduled Analysis
 
@@ -159,7 +159,7 @@ spec:
           serviceAccountName: istio-analyzer
           containers:
             - name: analyzer
-              image: istio/istioctl:1.22.0
+              image: istio/istioctl:1.30.0
               command:
                 - /bin/sh
                 - -c
@@ -182,18 +182,15 @@ Sometimes analyze reports issues that are not actually problems. Document these 
 
 ```bash
 # Suppress specific messages
-istioctl analyze --all-namespaces --suppress "IST0108=Pod *.monitoring/*"
+istioctl analyze --all-namespaces --suppress "IST0108=Pod *.monitoring"
 ```
 
 This suppresses IST0108 warnings for pods in the monitoring namespace while still catching the same warning in other namespaces.
 
-You can also create a suppression file:
+You can also suppress analyzer messages on the resource itself with an annotation:
 
-```yaml
-# analysis-suppressions.yaml
-- code: IST0108
-  resource: "Pod monitoring/*"
-  reason: "Monitoring pods use custom annotations that are not Istio-specific"
+```bash
+kubectl annotate pod api-abc123 -n monitoring galley.istio.io/analyze-suppress=IST0108
 ```
 
 ## Track Warning Count Over Time
@@ -213,17 +210,18 @@ The trend matters more than the absolute number. If warnings are increasing, con
 
 ## Common Warnings and Quick Fixes
 
-Here is a reference for the most frequent warnings:
+Here is a reference for the most frequent analyzer messages:
 
 | Code | Meaning | Fix |
 |------|---------|-----|
-| IST0101 | Referenced host not found | Check hostname spelling, verify service exists |
+| IST0101 | Referenced resource not found | Check hostname, gateway, subset, or other referenced resource |
 | IST0102 | Namespace not injected | Add `istio-injection=enabled` label |
-| IST0104 | Gateway port mismatch | Align gateway ports with Service definition |
-| IST0106 | Subset not found | Add subset to DestinationRule or fix reference |
+| IST0103 | Pod missing proxy | Enable injection and restart pods |
+| IST0106 | Schema validation error | Fix the invalid field or value reported in the message |
 | IST0108 | Unknown annotation | Fix annotation spelling |
-| IST0128 | Deployment pod missing proxy | Enable injection and restart pods |
-| IST0131 | VirtualService without gateway | Add gateway reference or remove if mesh-internal |
+| IST0131 | Ineffective VirtualService match | Remove or change the duplicate match |
+| IST0132 | VirtualService host not found in Gateway | Align VirtualService hosts with Gateway hosts |
+| IST0162 | Gateway port mismatch | Align gateway ports with Service definition |
 
 ## Make It a Team Habit
 
