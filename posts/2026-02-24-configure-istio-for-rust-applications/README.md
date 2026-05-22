@@ -12,7 +12,7 @@ Rust applications are gaining popularity in Kubernetes environments, especially 
 
 ## Basic Deployment
 
-Rust apps compile to a single static binary, making the Docker image very small:
+Rust apps compile to a single binary, and can be statically linked when you build for a target like `x86_64-unknown-linux-musl`. Even dynamically linked Rust services can use very small runtime images:
 
 ```yaml
 apiVersion: apps/v1
@@ -47,7 +47,7 @@ spec:
             memory: 64Mi
 ```
 
-Those resource numbers are not a typo. A typical Rust HTTP service uses 5-15MB of memory at idle. It is one of the most efficient runtimes you can run in Kubernetes. The Istio sidecar will actually use several times more resources than the application itself.
+Those resource numbers are not a typo for a small service. Simple Rust HTTP services often use very little memory at idle, but profile your own app and remember that the Istio sidecar may use more resources than the application container itself.
 
 ## Service Definition
 
@@ -191,14 +191,14 @@ containers:
     failureThreshold: 10
 ```
 
-Rust apps start in milliseconds, so the initialDelaySeconds can be very low.
+Many Rust apps start quickly, so the initialDelaySeconds can often be very low.
 
 ## Trace Header Propagation with Actix Web
 
-Create an extractor and middleware for trace headers:
+Create a helper for trace headers:
 
 ```rust
-use actix_web::{HttpRequest, HttpResponse, web, middleware};
+use actix_web::{HttpRequest, HttpResponse};
 use reqwest::Client;
 use std::collections::HashMap;
 
@@ -259,12 +259,11 @@ Axum makes this cleaner with extractors and middleware:
 ```rust
 use axum::{
     extract::Request,
-    http::{HeaderMap, HeaderName, HeaderValue},
+    http::{HeaderMap, HeaderName},
     middleware::{self, Next},
     response::Response,
 };
 use std::str::FromStr;
-use tower::ServiceBuilder;
 
 const TRACE_HEADERS: &[&str] = &[
     "x-request-id", "x-b3-traceid", "x-b3-spanid",
@@ -305,30 +304,22 @@ use tokio::signal;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    let server = HttpServer::new(|| {
+    HttpServer::new(|| {
         App::new()
             // ... routes
     })
+    .shutdown_signal(async {
+        let mut sigterm = signal::unix::signal(signal::unix::SignalKind::terminate())
+            .expect("Failed to create SIGTERM handler");
+        sigterm.recv().await;
+
+        println!("SIGTERM received, waiting for sidecar drain...");
+        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+    })
     .bind("0.0.0.0:8080")?
     .shutdown_timeout(20)
-    .run();
-
-    let server_handle = server.handle();
-
-    // Spawn a task to handle shutdown
-    tokio::spawn(async move {
-        signal::unix::signal(signal::unix::SignalKind::terminate())
-            .expect("Failed to create SIGTERM handler")
-            .recv()
-            .await;
-
-        println!("SIGTERM received, shutting down...");
-        // Wait for sidecar to drain
-        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-        server_handle.stop(true).await;
-    });
-
-    server.await
+    .run()
+    .await
 }
 ```
 
@@ -414,14 +405,14 @@ spec:
       baseEjectionTime: 30s
 ```
 
-Rust apps handle concurrency extremely well, so you can set higher connection limits than most other languages.
+Rust apps often handle concurrency well, but tune connection limits from load tests rather than assuming a single set of values will fit every service.
 
 ## Dockerfile for Minimal Images
 
 ```dockerfile
 # Build stage
 
-FROM rust:1.75 as builder
+FROM rust:1.95 as builder
 WORKDIR /app
 COPY . .
 RUN cargo build --release
@@ -433,14 +424,14 @@ EXPOSE 8080
 CMD ["/pricing-service"]
 ```
 
-Using distroless images gives you the smallest possible container, but note that Istio's init container needs iptables. This works fine because the init container runs its own image.
+Using distroless images gives you a small runtime container, but note that Istio sidecar injection may use an init container for iptables unless your cluster uses Istio CNI. This works fine because the init container runs its own image.
 
 ## Common Rust + Istio Issues
 
 **No shell in distroless images**: If you use distroless, you cannot use shell-based preStop hooks. Either use a slightly larger base image or handle the shutdown delay in your Rust code (as shown above).
 
-**Tokio runtime and sidecar**: The Tokio async runtime starts very quickly, often before the sidecar. Use `holdApplicationUntilProxyStarts` if your app makes network calls during initialization.
+**Tokio runtime and sidecar**: The Tokio async runtime starts very quickly, often before the sidecar. Use the `proxy.istio.io/config` annotation with `holdApplicationUntilProxyStarts: true` if your app makes network calls during initialization.
 
 **Connection pools**: Libraries like `sqlx` and `deadpool` manage their own connection pools. These work fine through the sidecar, but make sure connection timeouts are set appropriately.
 
-Rust applications are excellent mesh citizens. They start fast, use minimal resources, and handle high concurrency. The main consideration is that the sidecar proxy will be the dominant resource consumer for most Rust services, which is worth factoring into your resource planning.
+Rust applications can be excellent mesh citizens. They often start fast, use minimal resources, and handle high concurrency. The main consideration is that the sidecar proxy can be the dominant resource consumer for small Rust services, which is worth factoring into your resource planning.
