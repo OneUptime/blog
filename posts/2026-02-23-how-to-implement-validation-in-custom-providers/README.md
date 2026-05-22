@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Provider Development, Validation, Infrastructure as Code, Custom Provider
 
-Description: Learn how to implement attribute validation in custom Terraform providers using validators, plan modifiers, and custom validation logic to ensure correct configurations.
+Description: Learn how to implement attribute validation in custom Terraform providers using attribute validators, config validators, and custom validation logic to ensure correct configurations.
 
 ---
 
-Validation is one of the most important aspects of building a custom Terraform provider. Without proper validation, users can submit invalid configurations that only fail at apply time, leading to frustration and wasted effort. By catching errors early during the plan phase, you create a much better user experience and prevent costly mistakes.
+Validation is one of the most important aspects of building a custom Terraform provider. Without proper validation, users can submit invalid configurations that only fail at apply time, leading to frustration and wasted effort. By catching errors early during validation and planning, you create a much better user experience and prevent costly mistakes.
 
 In this guide, we will walk through the different validation mechanisms available in the Terraform Plugin Framework and show you how to implement them effectively in your custom provider.
 
@@ -23,9 +23,9 @@ Good validation provides clear, actionable error messages that tell users exactl
 The Terraform Plugin Framework offers several validation mechanisms:
 
 1. **Attribute validators** - validate individual attribute values
-2. **Schema validators** - validate combinations of attributes
+2. **Config validators** - validate combinations of attributes
 3. **Custom validators** - implement complex validation logic
-4. **Plan-time validation** - validate during the planning phase
+4. **Plan modification diagnostics** - return diagnostics during planning when validation requires configured provider data
 
 ## Implementing Attribute Validators
 
@@ -145,7 +145,7 @@ The `ConfigValidators` method on resources lets you implement cross-attribute va
 // ConfigValidators returns a list of config validators for the resource
 func (r *ServerResource) ConfigValidators(ctx context.Context) []resource.ConfigValidator {
     return []resource.ConfigValidator{
-        // Use the built-in conflict validator
+        // Use the built-in at-least-one validator
         resourcevalidator.AtLeastOneOf(
             path.MatchRoot("inline_policy"),
             path.MatchRoot("policy_arn"),
@@ -179,38 +179,47 @@ func (v *sslConfigValidator) ValidateResource(ctx context.Context, req resource.
     }
 
     // If SSL is enabled, certificate path must be set
-    if !enableSSL.IsNull() && enableSSL.ValueBool() {
-        if certPath.IsNull() || certPath.ValueString() == "" {
-            resp.Diagnostics.AddError(
-                "Missing Certificate Path",
-                "When enable_ssl is true, certificate_path must be provided.",
-            )
-        }
+    if enableSSL.IsUnknown() || enableSSL.IsNull() || !enableSSL.ValueBool() {
+        return
+    }
+
+    if certPath.IsUnknown() {
+        return
+    }
+
+    if certPath.IsNull() || certPath.ValueString() == "" {
+        resp.Diagnostics.AddAttributeError(
+            path.Root("certificate_path"),
+            "Missing Certificate Path",
+            "When enable_ssl is true, certificate_path must be provided.",
+        )
     }
 }
 ```
 
 ## Validation with External API Calls
 
-In some cases, you may want to validate attribute values against an external API. For example, checking if a region name is valid by querying the API. Be cautious with this approach because validation runs during plan, and making API calls during plan can slow things down or cause issues when the API is unavailable.
+In some cases, you may want to validate attribute values against an external API. For example, checking if a region name is valid by querying the API. Be cautious with this approach because configuration validation runs offline before the resource is configured. If you need a configured API client, use resource-level plan modification, which runs during planning.
 
 ```go
-// apiRegionValidator validates regions against the API
-type apiRegionValidator struct {
-    client *api.Client
-}
-
-func (v apiRegionValidator) ValidateString(ctx context.Context, req validator.StringRequest, resp *validator.StringResponse) {
-    if req.ConfigValue.IsUnknown() || req.ConfigValue.IsNull() {
+// ModifyPlan validates regions against the API during planning.
+func (r *ServerResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+    if req.Plan.Raw.IsNull() {
         return
     }
 
-    region := req.ConfigValue.ValueString()
+    var region types.String
+
+    resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("region"), &region)...)
+
+    if resp.Diagnostics.HasError() || region.IsUnknown() || region.IsNull() {
+        return
+    }
 
     // Cache the valid regions to avoid repeated API calls
-    validRegions, err := v.client.ListRegions(ctx)
+    validRegions, err := r.client.ListRegions(ctx)
     if err != nil {
-        // Log a warning but do not fail validation
+        // Log a warning but do not fail planning
         // The apply step will catch invalid regions
         tflog.Warn(ctx, "Unable to validate region against API", map[string]interface{}{
             "error": err.Error(),
@@ -218,16 +227,16 @@ func (v apiRegionValidator) ValidateString(ctx context.Context, req validator.St
         return
     }
 
-    for _, r := range validRegions {
-        if r.Name == region {
+    for _, validRegion := range validRegions {
+        if validRegion.Name == region.ValueString() {
             return
         }
     }
 
     resp.Diagnostics.AddAttributeError(
-        req.Path,
+        path.Root("region"),
         "Invalid Region",
-        fmt.Sprintf("Region %q is not valid. Valid regions: %s", region, strings.Join(regionNames(validRegions), ", ")),
+        fmt.Sprintf("Region %q is not valid. Valid regions: %s", region.ValueString(), strings.Join(regionNames(validRegions), ", ")),
     )
 }
 ```
@@ -291,7 +300,7 @@ func TestValidURL(t *testing.T) {
                 t.Fatal("expected error, got none")
             }
             if !tc.expectError && response.Diagnostics.HasError() {
-                t.Fatalf("unexpected error: %s", response.Diagnostics.Errors())
+                t.Fatalf("unexpected error: %v", response.Diagnostics.Errors())
             }
         })
     }
