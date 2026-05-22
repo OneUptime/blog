@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Terragrunt, Infrastructure as Code, DevOps, Deployment, Multi-Module, Automation
 
-Description: Learn how to use Terragrunt apply-all and run-all apply to deploy infrastructure changes across multiple modules safely with dependency ordering and error handling.
+Description: Learn how to use Terragrunt apply-all and run --all apply to deploy infrastructure changes across multiple modules safely with dependency ordering and error handling.
 
 ---
 
-Deploying infrastructure changes across multiple Terraform modules in the right order is one of Terragrunt's core strengths. The `apply-all` command (now `run-all apply`) handles this by building a dependency graph and applying modules in the correct sequence, with independent modules running in parallel.
+Deploying infrastructure changes across multiple Terraform modules in the right order is one of Terragrunt's core strengths. The `apply-all` command (later `run-all apply`, and now `run --all apply`) handles this by building a dependency graph and applying modules in the correct sequence, with independent modules running in parallel.
 
-## apply-all vs run-all apply
+## apply-all vs run --all apply
 
-Like the other `-all` commands, `apply-all` is deprecated in favor of the `run-all` prefix:
+Like the other `-all` commands, `apply-all` is deprecated in favor of the `run --all` form:
 
 ```bash
 # Legacy (deprecated, still works)
@@ -20,30 +20,20 @@ Like the other `-all` commands, `apply-all` is deprecated in favor of the `run-a
 terragrunt apply-all
 
 # Modern (recommended)
-terragrunt run-all apply
+terragrunt run --all -- apply
 ```
 
-Use `run-all apply` going forward.
+Use `run --all apply` going forward.
 
 ## Basic Usage
 
 ```bash
 # Apply all modules in the dev environment
 cd live/dev
-terragrunt run-all apply
+terragrunt run --all -- apply
 ```
 
-Terragrunt scans for all `terragrunt.hcl` files, resolves dependencies, and applies in order. You will see a confirmation prompt showing which modules will be affected:
-
-```text
-Are you sure you want to run 'terragrunt apply' in each folder of the stack described above?
-  Module /path/to/live/dev/vpc
-  Module /path/to/live/dev/rds
-  Module /path/to/live/dev/ecs
-  Module /path/to/live/dev/app
-
-Type 'yes' to confirm:
-```
+Terragrunt scans for all `terragrunt.hcl` files, resolves dependencies, and applies in order. If the run includes external dependencies, Terragrunt may prompt you to confirm whether those dependencies should be included.
 
 ## Non-Interactive Mode
 
@@ -51,27 +41,27 @@ For CI/CD pipelines, skip the confirmation prompt:
 
 ```bash
 # Auto-approve everything
-terragrunt run-all apply --terragrunt-non-interactive
+terragrunt run --all --non-interactive -- apply
 ```
 
-This passes `-auto-approve` to each `terraform apply` call and skips Terragrunt's own confirmation prompt.
+For `run --all apply`, Terragrunt automatically passes `-auto-approve` to each `terraform apply` call because individual approvals cannot reliably share stdin. The `--non-interactive` flag also skips Terragrunt's own prompts.
 
 ## Applying Saved Plans
 
-The safest deployment approach is to plan first, review, then apply the exact plan:
+A common deployment approach is to plan first, review, then apply the exact plan:
 
 ```bash
 # Step 1: Generate and save plans
 cd live/dev
-terragrunt run-all plan -out=tfplan
+terragrunt run --all -- plan -out=tfplan
 
 # Step 2: Review the plans (manually or in CI)
 
 # Step 3: Apply the saved plans
-terragrunt run-all apply tfplan
+terragrunt run --all -- apply tfplan
 ```
 
-When applying a saved plan file, Terraform skips the confirmation prompt because the plan was already reviewed.
+When applying a saved plan file, Terraform skips the confirmation prompt because passing the plan file is treated as approval. With multi-module runs, remember that downstream plans are based on dependency outputs that exist at plan time, not on outputs that earlier modules will produce during the later apply.
 
 ## Dependency-Aware Execution
 
@@ -125,7 +115,7 @@ Terragrunt reports which modules were skipped and why.
 You can force all modules to attempt even if dependencies fail:
 
 ```bash
-terragrunt run-all apply --terragrunt-ignore-dependency-errors --terragrunt-non-interactive
+terragrunt run --all --non-interactive --queue-ignore-errors -- apply
 ```
 
 This is generally not recommended for apply operations since modules may fail without correct dependency outputs.
@@ -137,32 +127,36 @@ Configure automatic retries in your root `terragrunt.hcl`:
 ```hcl
 # Root terragrunt.hcl
 
-# Retry up to 3 times on transient errors
-retry_max_attempts = 3
-retry_sleep_interval_sec = 10
+errors {
+  retry "transient_errors" {
+    # Retry up to 3 times on transient errors
+    max_attempts = 3
+    sleep_interval_sec = 10
 
-retryable_errors = [
-  "(?s).*Error creating.*timeout.*",
-  "(?s).*RequestLimitExceeded.*",
-  "(?s).*Throttling.*",
-  "(?s).*TooManyRequestsException.*",
-  "(?s).*connection reset by peer.*",
-]
+    retryable_errors = [
+      "(?s).*Error creating.*timeout.*",
+      "(?s).*RequestLimitExceeded.*",
+      "(?s).*Throttling.*",
+      "(?s).*TooManyRequestsException.*",
+      "(?s).*connection reset by peer.*",
+    ]
+  }
+}
 ```
 
-This is particularly useful with `run-all apply` because applying many modules in parallel can trigger cloud provider rate limits.
+This is particularly useful with `run --all apply` because applying many modules in parallel can trigger cloud provider rate limits.
 
 ## Controlling Parallelism
 
 ```bash
 # Full parallelism (default)
-terragrunt run-all apply --terragrunt-non-interactive
+terragrunt run --all --non-interactive -- apply
 
 # Limited parallelism to reduce API rate limiting
-terragrunt run-all apply --terragrunt-non-interactive --terragrunt-parallelism 3
+terragrunt run --all --non-interactive --parallelism 3 -- apply
 
 # Sequential execution (safest but slowest)
-terragrunt run-all apply --terragrunt-non-interactive --terragrunt-parallelism 1
+terragrunt run --all --non-interactive --parallelism 1 -- apply
 ```
 
 For production deployments, lower parallelism is often safer because it reduces the blast radius of issues and makes logs easier to follow.
@@ -173,29 +167,29 @@ You often do not need to apply everything. Target specific modules:
 
 ```bash
 # Apply only networking modules
-terragrunt run-all apply --terragrunt-include-dir "*/vpc" --terragrunt-include-dir "*/subnets"
+terragrunt run --all --filter './**/vpc' --filter './**/subnets' -- apply
 
 # Apply everything except monitoring
-terragrunt run-all apply --terragrunt-exclude-dir "*/monitoring"
+terragrunt run --all --filter '!./**/monitoring' -- apply
 
 # Apply a specific layer
 cd live/dev/compute
-terragrunt run-all apply
+terragrunt run --all -- apply
 ```
 
-When you include specific modules, Terragrunt still respects their dependencies. If you include the app module but not the vpc module it depends on, Terragrunt will handle it gracefully (assuming vpc was already applied).
+When you include specific modules, Terragrunt still respects dependency ordering for the units in the run queue. If you include the app module but not the vpc module it depends on, Terragrunt can still read the vpc dependency outputs if vpc was already applied.
 
 ## Bootstrapping a New Environment
 
-Setting up a new environment from scratch is one of the best use cases for `run-all apply`:
+Setting up a new environment from scratch is one of the best use cases for `run --all apply`:
 
 ```bash
 # Create the entire dev environment
 cd live/dev
-terragrunt run-all apply --terragrunt-non-interactive
+terragrunt run --all --non-interactive -- apply
 ```
 
-Make sure all your dependencies have mock outputs configured, because on first run, no module has state yet:
+If you run `plan` before the first `apply`, make sure dependencies that do not have state yet have mock outputs configured:
 
 ```hcl
 dependency "vpc" {
@@ -249,24 +243,24 @@ jobs:
       - name: Plan
         run: |
           cd live/dev
-          terragrunt run-all plan \
-            --terragrunt-non-interactive \
-            --terragrunt-parallelism 3 \
-            -out=tfplan 2>&1 | tee plan-output.txt
+          terragrunt run --all \
+            --non-interactive \
+            --parallelism 3 \
+            -- plan -out=tfplan 2>&1 | tee plan-output.txt
 
       - name: Apply
         run: |
           cd live/dev
-          terragrunt run-all apply \
-            --terragrunt-non-interactive \
-            --terragrunt-parallelism 2 \
-            tfplan
+          terragrunt run --all \
+            --non-interactive \
+            --parallelism 2 \
+            -- apply tfplan
 ```
 
 Key points:
 - Use `concurrency` to prevent parallel deployments
 - Never cancel infrastructure deployments (`cancel-in-progress: false`)
-- Use saved plans for consistency between plan and apply
+- Use saved plans for consistency between plan and apply when dependency outputs are stable
 - Lower parallelism for apply than plan
 
 ## Monitoring Progress
@@ -275,24 +269,24 @@ For long-running applies, you may want to track progress:
 
 ```bash
 # Stream output with timestamps
-terragrunt run-all apply --terragrunt-non-interactive 2>&1 | while IFS= read -r line; do
+terragrunt run --all --non-interactive -- apply 2>&1 | while IFS= read -r line; do
   echo "$(date +%H:%M:%S) $line"
 done
 ```
 
 ## Recovering from Partial Failures
 
-If `run-all apply` partially fails (some modules applied, some did not), you can safely re-run it:
+If `run --all apply` partially fails (some modules applied, some did not), you can safely re-run it:
 
 ```bash
 # Re-run the apply - already-applied modules will show "no changes"
 cd live/dev
-terragrunt run-all apply --terragrunt-non-interactive
+terragrunt run --all --non-interactive -- apply
 ```
 
 Terraform is idempotent, so re-applying modules that already succeeded will show "no changes" and complete quickly. Only the failed modules will actually do work.
 
-## When Not to Use run-all apply
+## When Not to Use run --all apply
 
 There are situations where applying individually is better:
 
@@ -309,6 +303,6 @@ terragrunt apply
 
 ## Conclusion
 
-`run-all apply` is the workhorse command for multi-module Terragrunt deployments. It handles dependency ordering, parallel execution, and error propagation automatically. Use it with saved plans for the safest deployment workflow, configure retries for transient errors, and control parallelism based on your cloud provider's rate limits.
+`run --all apply` is the workhorse command for multi-module Terragrunt deployments. It handles dependency ordering, parallel execution, and error propagation automatically. Use it with saved plans when dependency outputs are stable, configure retries for transient errors, and control parallelism based on your cloud provider's rate limits.
 
 For tearing down infrastructure, see [How to Use Terragrunt destroy-all for Multi-Module Destroy](https://oneuptime.com/blog/post/2026-02-23-how-to-use-terragrunt-destroy-all-for-multi-module-destroy/view).
