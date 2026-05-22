@@ -8,7 +8,7 @@ Description: How to configure health checks on an Istio Ingress Gateway for load
 
 ---
 
-Health checks on the Istio Gateway operate at two levels. First, the gateway itself needs to report its health to upstream load balancers so unhealthy gateway pods get removed from rotation. Second, the gateway needs to know if backend services are healthy so it does not send traffic to failing pods. Getting both levels right is key for a reliable setup.
+Health checks on the Istio Gateway operate at two levels. First, the gateway itself needs to report its health to upstream load balancers so unhealthy gateway pods get removed from rotation. Second, the gateway can use Kubernetes endpoint readiness, passive outlier detection, or Envoy active health checks to avoid sending traffic to failing backend pods. Getting both levels right is key for a reliable setup.
 
 ## Gateway Pod Health Checks
 
@@ -20,17 +20,10 @@ The Istio ingress gateway pod has a built-in health check endpoint on port 15021
 curl http://<GATEWAY_POD_IP>:15021/healthz/ready
 ```
 
-This endpoint returns 200 when the Envoy proxy in the gateway pod is ready to accept traffic. The default Kubernetes deployment for the ingress gateway already has this configured:
+This endpoint returns 200 when the Envoy proxy in the gateway pod is ready to accept traffic. Current Istio gateway installations inject a readiness probe for this endpoint by default, or you can set one explicitly:
 
 ```yaml
 readinessProbe:
-  httpGet:
-    path: /healthz/ready
-    port: 15021
-  initialDelaySeconds: 1
-  periodSeconds: 2
-  failureThreshold: 30
-livenessProbe:
   httpGet:
     path: /healthz/ready
     port: 15021
@@ -76,15 +69,26 @@ metadata:
   namespace: istio-system
   annotations:
     service.beta.kubernetes.io/aws-load-balancer-healthcheck-path: /healthz/ready
-    service.beta.kubernetes.io/aws-load-balancer-healthcheck-port: "15021"
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-port: "status-port"
     service.beta.kubernetes.io/aws-load-balancer-healthcheck-protocol: http
 ```
 
 ### GCP Load Balancer Health Check
 
-For GCP, the health check is usually configured automatically. If you need to customize it:
+For GCP, the health check is usually configured automatically. If you expose the gateway through GKE Ingress or an Application Load Balancer and need to customize the backend service health check, use a BackendConfig. The Service port associated with the BackendConfig must also be referenced by the Ingress:
 
 ```yaml
+apiVersion: cloud.google.com/v1
+kind: BackendConfig
+metadata:
+  name: istio-hc-config
+  namespace: istio-system
+spec:
+  healthCheck:
+    type: HTTP
+    requestPath: /healthz/ready
+    port: 15021
+---
 apiVersion: v1
 kind: Service
 metadata:
@@ -96,7 +100,7 @@ metadata:
 
 ## Backend Health Checking with DestinationRules
 
-To configure how the gateway checks backend service health, use DestinationRules with outlier detection:
+To configure how the gateway passively detects unhealthy backend instances, use DestinationRules with outlier detection:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -115,8 +119,8 @@ spec:
 
 This configuration:
 - Ejects a backend pod after 3 consecutive 5xx errors
-- Checks every 10 seconds
-- Ejects the pod for at least 30 seconds
+- Runs the outlier detection analysis every 10 seconds
+- Ejects the pod for at least 30 seconds, with longer ejection times after repeated ejections
 - Never ejects more than 50% of pods (to maintain some capacity)
 
 ```mermaid
@@ -260,11 +264,11 @@ kubectl get endpoints my-service
 istioctl proxy-config endpoint deploy/istio-ingressgateway -n istio-system | grep my-service
 ```
 
-The endpoint output shows health status flags:
+The endpoint output includes columns such as `STATUS` and `OUTLIER CHECK`:
 
-- `HEALTHY` - Pod is receiving traffic
-- `UNHEALTHY` - Pod failed health checks
-- `DRAINING` - Pod is being removed gracefully
+- `HEALTHY` - Endpoint is available for traffic
+- `UNHEALTHY` - Endpoint failed health checks or was marked unhealthy
+- `OK` under `OUTLIER CHECK` - Endpoint has not been ejected by outlier detection
 
 ## Circuit Breaking
 
