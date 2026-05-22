@@ -12,7 +12,7 @@ Terraform configuration files use UTF-8 encoding exclusively. This means you can
 
 ## Terraform Files Must Be UTF-8
 
-Every `.tf` and `.tf.json` file must be UTF-8 encoded. Terraform will reject files that use other encodings like Latin-1, Windows-1252, or UTF-16.
+Every `.tf` and `.tf.json` file must be UTF-8 encoded. Terraform will reject files that contain non-UTF-8 byte sequences, such as non-ASCII text saved as Latin-1, Windows-1252, or UTF-16.
 
 If you create a file in an editor that uses a different encoding, Terraform may throw parse errors or produce garbled output. Most modern editors default to UTF-8, but it is worth checking.
 
@@ -41,7 +41,7 @@ resource "aws_ssm_parameter" "greeting" {
 resource "aws_ssm_parameter" "japanese" {
   name  = "/app/greeting-ja"
   type  = "String"
-  value = "Hello World"
+  value = "こんにちは世界"
 }
 
 # Tags can contain UTF-8 characters
@@ -59,13 +59,17 @@ resource "aws_instance" "web" {
 
 However, keep in mind that while Terraform handles these characters fine, your cloud provider might have restrictions on what characters are allowed in specific fields. AWS resource names, for instance, often only accept ASCII characters.
 
-## Identifiers Must Be ASCII
+## Identifiers Can Use Unicode
 
-While string values support full UTF-8, Terraform identifiers - resource names, variable names, local names, and so on - are restricted to ASCII letters, digits, underscores, and hyphens:
+String values support full UTF-8, and Terraform identifiers - argument names, resource names, variable names, local names, and so on - also accept Unicode letters. Terraform implements the Unicode identifier syntax and extends it to allow the ASCII hyphen character:
 
 ```hcl
-# Valid identifiers - ASCII only
+# Valid identifiers
 variable "instance_type" {
+  type = string
+}
+
+variable "tipo_de_instancia" {
   type = string
 }
 
@@ -74,16 +78,19 @@ resource "aws_instance" "web_server" {
   instance_type = var.instance_type
 }
 
-# These would NOT work as identifiers:
-# variable "tipo_de_instancia" {}   # actually fine - ASCII accented chars are not used here
-# variable "instance-type" {}        # hyphens ARE allowed in variable names - this works
+# Hyphens are also allowed in identifiers
+variable "instance-type" {
+  type = string
+}
+
+# This would NOT work as an identifier:
 # resource "aws_instance" "web server" {}  # spaces are NOT allowed
 ```
 
 The rules for identifiers are:
-- Must start with a letter or underscore
-- Can contain letters, digits, underscores, and hyphens
-- Letters must be ASCII (a-z, A-Z)
+- The first character must not be a digit
+- Can contain Unicode letters, digits, underscores, and hyphens
+- Cannot contain spaces
 
 ## Unicode Escape Sequences
 
@@ -98,7 +105,7 @@ locals {
   extended = "\U0001F600"  # a grinning face emoji
 
   # You can also just type UTF-8 characters directly
-  direct_copyright = "2026 My Company"
+  direct_copyright = "© 2026 My Company"
 }
 
 output "copyright_notice" {
@@ -158,29 +165,28 @@ If a template file is not UTF-8, the `file()` and `templatefile()` functions wil
 
 ## String Functions and UTF-8
 
-Terraform's string functions are UTF-8 aware. They operate on Unicode code points, not raw bytes:
+Terraform's string functions are UTF-8 aware. They operate on Unicode characters, not raw bytes:
 
 ```hcl
 locals {
   text = "Hello"
 
-  # length counts Unicode characters, not bytes
+  # length counts user-perceived characters, not bytes
   char_count = length(local.text)  # this counts characters
 
   # substr works on characters, not bytes
   first_five = substr(local.text, 0, 5)
 
-  # upper and lower work with ASCII letters
+  # upper and lower use Unicode case rules
   upper_text = upper("hello world")  # "HELLO WORLD"
   lower_text = lower("HELLO WORLD")  # "hello world"
 
-  # String comparison is byte-level
-  # Two strings with the same Unicode characters but different
-  # byte representations (e.g., composed vs decomposed) may not match
+  # Unicode normalization can affect exact byte representation
+  # when strings are encoded for external systems
 }
 ```
 
-A subtle gotcha: Unicode has multiple ways to represent some characters. For example, the character "e with accent" can be a single code point (U+00E9) or two code points (e + combining accent). Terraform compares strings at the byte level, so these would not be equal.
+A subtle gotcha: Unicode has multiple ways to represent some characters. For example, the character "e with accent" can be a single code point (U+00E9) or two code points (e + combining accent). Terraform applies Unicode normalization to strings, so be careful if an external system depends on an exact byte representation.
 
 ## JSON Encoding and UTF-8
 
@@ -209,15 +215,20 @@ output "config" {
 If you need to handle non-UTF-8 binary data, use base64 encoding:
 
 ```hcl
-# Encode binary or non-UTF-8 data as base64
+# Encode text as base64
 resource "aws_instance" "web" {
   ami           = "ami-0c55b159cbfafe1f0"
   instance_type = "t3.micro"
 
-  # user_data is base64 encoded automatically by the provider
-  user_data = base64encode(templatefile("${path.module}/scripts/init.sh", {
+  # Use user_data_base64 when passing base64-encoded user data
+  user_data_base64 = base64encode(templatefile("${path.module}/scripts/init.sh", {
     app_name = var.app_name
   }))
+}
+
+# Read raw file bytes as base64, without interpreting the file as UTF-8
+locals {
+  archive_base64 = filebase64("${path.module}/files/archive.zip")
 }
 
 # Decode base64 data
@@ -228,7 +239,7 @@ locals {
 
 ## BOM (Byte Order Mark) Handling
 
-UTF-8 files sometimes start with a BOM (Byte Order Mark) - the bytes `EF BB BF`. Some Windows editors add this automatically. Terraform handles UTF-8 BOM gracefully in most cases, but it is best practice to save files without a BOM.
+UTF-8 files sometimes start with a BOM (Byte Order Mark) - the bytes `EF BB BF`. Some Windows editors add this automatically. UTF-8 does not require a BOM, and Terraform state files must not include one, so it is best practice to save Terraform-related files without a BOM.
 
 ```bash
 # Check for BOM
@@ -275,6 +286,6 @@ sed -i 's/\r$//' main.tf
 
 ## Wrapping Up
 
-Terraform uses UTF-8 encoding for all configuration files. String values support the full Unicode range, but identifiers are restricted to ASCII. When working with template files, make sure they are also UTF-8 encoded. Be aware of Unicode normalization issues when comparing strings, and use `.editorconfig` to keep your team's files consistently encoded. For binary data, use base64 encoding functions.
+Terraform uses UTF-8 encoding for all configuration files. String values support the full Unicode range, and identifiers can use Unicode identifier characters. When working with template files, make sure they are also UTF-8 encoded. Be aware of Unicode normalization issues when passing strings to systems that care about exact byte representation, and use `.editorconfig` to keep your team's files consistently encoded. For binary data, use base64 encoding functions such as `filebase64()`.
 
 For more on Terraform file handling, see [How to Understand Terraform File Loading Order](https://oneuptime.com/blog/post/2026-02-23-terraform-file-loading-order/view) and [How to Use .tf.json Files for Machine-Generated Terraform](https://oneuptime.com/blog/post/2026-02-23-terraform-tf-json-files/view).
