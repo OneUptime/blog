@@ -142,14 +142,14 @@ EOF
 
 These are extremely tight limits (1 connection, 1 pending request) to make it easy to trigger the circuit breaker.
 
-Now send concurrent traffic:
+Now send concurrent traffic from an Istio-injected client pod:
 
 ```bash
 kubectl run fortio --image=fortio/fortio --rm -it -- \
   load -c 5 -qps 0 -n 100 http://httpbin:8000/get
 ```
 
-With 5 concurrent connections but a limit of 1, you should see about 80% of requests getting 503 errors. The fortio output shows you the exact percentages.
+With 5 concurrent workers but a connection and request limit of 1, you should see some requests getting 503 errors. The exact percentage varies because Envoy allows some leeway as connections and requests are scheduled. The fortio output shows you the exact percentages.
 
 ## Monitoring Circuit Breaker State
 
@@ -162,6 +162,7 @@ kubectl exec <pod> -c istio-proxy -- curl -s localhost:15000/stats | grep overfl
 Key counters:
 - `upstream_cx_overflow` - TCP connection limit hit
 - `upstream_rq_pending_overflow` - HTTP pending request limit hit
+- `upstream_rq_active_overflow` - Active request limit hit
 - `upstream_rq_retry_overflow` - Retry limit hit
 
 For outlier detection:
@@ -171,7 +172,7 @@ kubectl exec <pod> -c istio-proxy -- curl -s localhost:15000/stats | grep outlie
 ```
 
 - `outlier_detection.ejections_active` - Pods currently ejected
-- `outlier_detection.ejections_total` - Total ejections
+- `outlier_detection.ejections_enforced_total` - Total enforced ejections
 
 ## Circuit Breaking Per Subset
 
