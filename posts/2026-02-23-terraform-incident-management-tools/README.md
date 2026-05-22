@@ -89,11 +89,11 @@ resource "pagerduty_schedule" "platform_secondary" {
 
   layer {
     name                         = "Weekly Rotation"
-    start                        = "2024-01-08T08:00:00-05:00"  # Offset by 1 week
-    rotation_virtual_start       = "2024-01-08T08:00:00-05:00"
+    start                        = "2024-01-01T08:00:00-05:00"
+    rotation_virtual_start       = "2024-01-01T08:00:00-05:00"
     rotation_turn_length_seconds = 604800
 
-    users = var.primary_oncall_users  # Same users, different offset
+    users = concat(slice(var.primary_oncall_users, 1, length(var.primary_oncall_users)), [var.primary_oncall_users[0]])  # Same users, rotated by one position
   }
 }
 
@@ -259,6 +259,16 @@ resource "pagerduty_service" "background_jobs" {
     start_time = "09:00:00"
     end_time   = "18:00:00"
   }
+
+  scheduled_actions {
+    type       = "urgency_change"
+    to_urgency = "high"
+
+    at {
+      type = "named_time"
+      name = "support_hours_start"
+    }
+  }
 }
 
 # Service integration with monitoring tools
@@ -320,6 +330,28 @@ resource "opsgenie_schedule" "platform_oncall" {
   enabled       = true
 }
 
+# Add a weekly rotation to the schedule
+resource "opsgenie_schedule_rotation" "platform_weekly" {
+  schedule_id = opsgenie_schedule.platform_oncall.id
+  name        = "Weekly Rotation"
+  start_date  = "2024-01-01T09:00:00-05:00"
+  type        = "weekly"
+  length      = 1
+
+  participant {
+    type = "user"
+    id   = var.team_lead_id
+  }
+
+  dynamic "participant" {
+    for_each = var.team_member_ids
+    content {
+      type = "user"
+      id   = participant.value
+    }
+  }
+}
+
 # Create an escalation
 resource "opsgenie_escalation" "platform" {
   name          = "Platform Escalation"
@@ -327,7 +359,7 @@ resource "opsgenie_escalation" "platform" {
 
   rules {
     condition   = "if-not-acked"
-    notify_type = "schedule"
+    notify_type = "default"
     delay       = 5
     recipient {
       type = "schedule"
@@ -337,7 +369,7 @@ resource "opsgenie_escalation" "platform" {
 
   rules {
     condition   = "if-not-acked"
-    notify_type = "user"
+    notify_type = "default"
     delay       = 15
     recipient {
       type = "user"
