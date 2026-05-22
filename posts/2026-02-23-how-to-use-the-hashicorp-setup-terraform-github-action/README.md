@@ -35,7 +35,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: "1.7.5"
 
@@ -54,17 +54,17 @@ The `terraform_version` input supports several formats:
 
 ```yaml
 # Exact version
-- uses: hashicorp/setup-terraform@v3
+- uses: hashicorp/setup-terraform@v4
   with:
     terraform_version: "1.7.5"
 
 # Latest patch of a minor version
-- uses: hashicorp/setup-terraform@v3
+- uses: hashicorp/setup-terraform@v4
   with:
     terraform_version: "~1.7.0"
 
 # Latest stable version (not recommended for production)
-- uses: hashicorp/setup-terraform@v3
+- uses: hashicorp/setup-terraform@v4
   with:
     terraform_version: "latest"
 ```
@@ -80,7 +80,7 @@ steps:
     id: tf_version
     run: echo "version=$(cat .terraform-version)" >> $GITHUB_OUTPUT
 
-  - uses: hashicorp/setup-terraform@v3
+  - uses: hashicorp/setup-terraform@v4
     with:
       terraform_version: ${{ steps.tf_version.outputs.version }}
 ```
@@ -96,7 +96,7 @@ This is incredibly useful for workflows that need to process Terraform output:
 
 ````yaml
 steps:
-  - uses: hashicorp/setup-terraform@v3
+  - uses: hashicorp/setup-terraform@v4
 
   - name: Terraform Init
     run: terraform init
@@ -132,7 +132,7 @@ The wrapper can cause issues in some situations. If you are piping Terraform out
 
 ```yaml
 # Disable the wrapper when using JSON output or piping
-- uses: hashicorp/setup-terraform@v3
+- uses: hashicorp/setup-terraform@v4
   with:
     terraform_wrapper: false
 
@@ -152,7 +152,7 @@ Disable the wrapper when:
 The action can configure Terraform Cloud credentials automatically:
 
 ```yaml
-- uses: hashicorp/setup-terraform@v3
+- uses: hashicorp/setup-terraform@v4
   with:
     cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
     cli_config_credentials_hostname: "app.terraform.io"
@@ -175,7 +175,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: "1.7.5"
           cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
@@ -191,7 +191,7 @@ jobs:
 For Terraform Enterprise with a custom hostname:
 
 ```yaml
-- uses: hashicorp/setup-terraform@v3
+- uses: hashicorp/setup-terraform@v4
   with:
     cli_config_credentials_token: ${{ secrets.TFE_TOKEN }}
     cli_config_credentials_hostname: "tfe.mycompany.com"
@@ -219,7 +219,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: "1.7.5"
 
@@ -240,7 +240,7 @@ Provider downloads can be slow. Cache them to speed up your workflows:
 steps:
   - uses: actions/checkout@v4
 
-  - uses: hashicorp/setup-terraform@v3
+  - uses: hashicorp/setup-terraform@v4
     with:
       terraform_version: "1.7.5"
 
@@ -254,6 +254,9 @@ steps:
       key: terraform-providers-${{ hashFiles('**/.terraform.lock.hcl') }}
       restore-keys: |
         terraform-providers-
+
+  - name: Create plugin cache directory
+    run: mkdir -p ~/.terraform.d/plugin-cache
 
   - name: Terraform Init
     run: terraform init
