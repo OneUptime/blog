@@ -27,11 +27,10 @@ export TF_LOG_PATH="terraform-trace.log"
 terraform plan
 ```
 
-The trace log shows every API call Terraform makes, including timestamps. Look for gaps between calls:
+The trace log includes detailed Terraform core and provider activity with timestamps. Many providers also log HTTP request and response lines. Look for large timestamp gaps around provider operations:
 
 ```bash
-# Find API calls that took the longest
-# Look for timestamps with large gaps
+# Inspect request and response lines, then look for timestamp gaps
 grep -E "HTTP Request|HTTP Response" terraform-trace.log | head -50
 ```
 
@@ -96,7 +95,7 @@ This way, the fast resources get quick feedback while the slow ones run separate
 
 ## Caching Data Source Results
 
-Data sources are evaluated every plan, and some are slow. If the data does not change often, consider replacing data sources with variables or local values:
+Data sources are usually read during planning, unless Terraform must defer the read until apply because the data source depends on values that are not known yet. Some provider-backed data sources are slow. If the data does not change often and is already controlled by your deployment environment, consider replacing data sources with variables or local values:
 
 ```hcl
 # Slow - queries the AWS API every plan
@@ -147,9 +146,9 @@ resource "aws_elasticsearch_domain" "main" {
 
 ## Using Provider-Specific Performance Features
 
-### AWS Provider: Assume Role Session Caching
+### AWS Provider: Assume Role Session Duration
 
-If you use assume role, the provider makes a separate STS call for each role assumption. Configure it to reuse sessions:
+If you use assume role and your runs are long enough for credentials to expire, configure an appropriate session duration:
 
 ```hcl
 provider "aws" {
@@ -158,11 +157,11 @@ provider "aws" {
   assume_role {
     role_arn     = "arn:aws:iam::123456789012:role/TerraformRole"
     session_name = "TerraformSession"
-    # Setting a longer duration reduces re-authentication overhead
+    # Setting a suitable duration can avoid credential expiry during long runs
     duration     = "1h"
   }
 
-  # Use default tags to reduce per-resource API calls for tagging
+  # Use default tags to replace repeated per-resource tag blocks
   default_tags {
     tags = {
       ManagedBy   = "terraform"
@@ -188,7 +187,7 @@ provider "google" {
 }
 ```
 
-This collects API calls for up to 10 seconds and sends them as a batch. This reduces the total number of round trips.
+This collects supported request types for up to 10 seconds and sends them as a batch. The Google provider documents batching for specific resources, including `google_project_service` and Google IAM resources; most resources do not implement batching.
 
 ## Reducing Refresh Scope with -target
 
@@ -199,7 +198,9 @@ When you need a refreshed plan for specific resources but want to skip slow reso
 terraform plan -target=module.api_gateway -target=module.lambda_functions
 ```
 
-The slow CloudFront distributions and IAM policies in other modules will not be refreshed.
+Terraform will focus the plan on the targeted modules and the resources they depend on, so unrelated slow resources are usually outside the plan scope.
+
+Use `-target` only for exceptional cases. Because targeting narrows the plan scope, it can leave unrelated drift undetected.
 
 ## Implementing a Two-Phase Plan
 
@@ -240,20 +241,24 @@ terraform plan -no-color > plan-output.txt 2>&1
 end=$(date +%s)
 
 duration=$((end - start))
-resource_count=$(grep -c "Refreshing state" plan-output.txt)
+resource_count=$(grep -c "Refreshing state" plan-output.txt || true)
 changes=$(grep -c "will be" plan-output.txt)
 
 echo "Plan completed in ${duration}s"
 echo "Resources refreshed: ${resource_count}"
 echo "Changes detected: ${changes}"
-echo "Average time per resource: $(echo "scale=2; $duration / $resource_count" | bc)s"
+if [ "$resource_count" -gt 0 ]; then
+  echo "Average time per resource: $(echo "scale=2; $duration / $resource_count" | bc)s"
+else
+  echo "Average time per resource: n/a"
+fi
 ```
 
 If the average time per resource increases, investigate which API calls are getting slower.
 
-## Using Terraform Cloud for Faster API Access
+## Using Terraform Cloud for Consistent Runner Placement
 
-Terraform Cloud workers often have better network connectivity to cloud provider APIs than your local machine or CI/CD runners:
+Remote runs in Terraform Cloud can give you more consistent runner placement than laptops or self-managed CI/CD runners:
 
 ```hcl
 terraform {
@@ -266,7 +271,7 @@ terraform {
 }
 ```
 
-This is because Terraform Cloud workers run in major cloud regions with optimized networking. If your CI/CD runner is in a different region from your resources, the API latency adds up.
+This can help when slow plans are partly caused by local network conditions or self-managed CI/CD runners that are far from the provider APIs. It will not fix provider-side slowness, throttling, or inherently slow resource operations, so compare timings before making it your primary optimization.
 
 ## Summary
 
