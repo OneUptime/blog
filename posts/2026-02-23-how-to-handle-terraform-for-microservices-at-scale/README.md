@@ -211,9 +211,10 @@ Split state files by service for independent deployments:
 # services/user-service/backend.tf
 terraform {
   backend "s3" {
-    bucket = "myorg-terraform-state"
-    key    = "services/user-service/production/terraform.tfstate"
-    region = "us-east-1"
+    bucket       = "myorg-terraform-state"
+    key          = "services/user-service/production/terraform.tfstate"
+    region       = "us-east-1"
+    use_lockfile = true
   }
 }
 
@@ -221,9 +222,10 @@ terraform {
 # teams/commerce/backend.tf
 terraform {
   backend "s3" {
-    bucket = "myorg-terraform-state"
-    key    = "teams/commerce/production/terraform.tfstate"
-    region = "us-east-1"
+    bucket       = "myorg-terraform-state"
+    key          = "teams/commerce/production/terraform.tfstate"
+    region       = "us-east-1"
+    use_lockfile = true
   }
 }
 ```
@@ -242,7 +244,7 @@ on:
       service_name:
         required: true
         type: string
-      image_tag:
+      container_image:
         required: true
         type: string
 
@@ -258,7 +260,7 @@ jobs:
           cd services/${{ inputs.service_name }}
           terraform init
           terraform apply -auto-approve \
-            -var="image_tag=${{ inputs.image_tag }}"
+            -var="container_image=${{ inputs.container_image }}"
 ```
 
 ## Best Practices
