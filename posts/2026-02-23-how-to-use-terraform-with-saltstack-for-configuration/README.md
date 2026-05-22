@@ -120,7 +120,7 @@ cat > /etc/salt/minion <<EOF
 # Salt Minion configuration
 master: ${salt_master_ip}
 id: ${minion_id}
-environment: ${salt_environment}
+saltenv: ${salt_environment}
 
 # Set mine interval for data sharing
 mine_interval: 60
@@ -208,10 +208,11 @@ mkdir -p /srv/reactor
 
 cat > /srv/reactor/auto_accept.sls <<EOF
 # Auto-accept minion keys matching the pattern
-{% if data['id'] | regex_match('${auto_accept_pattern}') %}
+{% if 'act' in data and data['act'] == 'pend' and (data['id'] | regex_match('${auto_accept_pattern}')) is not none %}
 accept_key:
   wheel.key.accept:
-    - match: {{ data['id'] }}
+    - args:
+      - match: {{ data['id'] }}
 {% endif %}
 EOF
 
@@ -291,6 +292,7 @@ curl -L "${salt_states_url}" | tar xz -C /srv/salt
 cat > /etc/salt/minion <<EOF
 # Masterless mode configuration
 file_client: local
+master_type: disable
 log_level: info
 
 file_roots:
@@ -329,15 +331,15 @@ cat > /etc/cron.d/salt-apply <<EOF
 EOF
 ```
 
-## Method 4: Using Salt Cloud with Terraform State
+## Method 4: Generating Salt Metadata from Terraform State
 
-Salt Cloud can read Terraform outputs to manage the Salt configuration of Terraform-created instances.
+Terraform can generate YAML metadata from its state so Salt-related automation can consume the same instance details.
 
 ```hcl
-# salt-cloud-integration.tf
-# Generate a Salt Cloud map file from Terraform state
-resource "local_file" "salt_cloud_map" {
-  filename = "${path.module}/salt-cloud-map.yml"
+# salt-metadata.tf
+# Generate Salt metadata from Terraform state
+resource "local_file" "salt_node_metadata" {
+  filename = "${path.module}/salt-node-metadata.yml"
 
   content = yamlencode({
     for idx, instance in aws_instance.salt_managed :
