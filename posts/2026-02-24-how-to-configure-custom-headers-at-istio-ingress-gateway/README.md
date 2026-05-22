@@ -55,7 +55,7 @@ spec:
 The difference between `set` and `add` is important:
 
 - `set` overwrites the header if it already exists, or creates it if it does not
-- `add` appends a new value even if the header already exists (creating duplicate headers)
+- `add` appends a new value even if the header already exists (usually as a comma-separated list, depending on the header)
 - `remove` deletes the header entirely
 
 ## Adding Security Headers
@@ -121,14 +121,14 @@ spec:
         - header:
             key: x-served-by
             value: "istio-ingress"
-          append: false
+          append_action: OVERWRITE_IF_EXISTS_OR_ADD
         response_headers_to_remove:
         - x-envoy-upstream-service-time
 ```
 
 ## Adding Request ID Headers
 
-For distributed tracing, you often want to make sure every request has a unique ID. Envoy generates `x-request-id` automatically, but you might want to expose it with a different name:
+For distributed tracing, you often want to make sure every request has a unique ID. Envoy generates `x-request-id` when request ID generation is enabled and the request does not already have one, but you might want to expose it with a different name:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -151,7 +151,7 @@ spec:
         - header:
             key: x-correlation-id
             value: "%REQ(x-request-id)%"
-          append: false
+          append_action: OVERWRITE_IF_EXISTS_OR_ADD
 ```
 
 The `%REQ(x-request-id)%` syntax is an Envoy command operator that references the value of the `x-request-id` header from the original request.
@@ -224,10 +224,10 @@ spec:
         request:
           set:
             x-forwarded-proto: "https"
-            x-real-ip: "%DOWNSTREAM_REMOTE_ADDRESS_WITHOUT_PORT%"
+            x-real-ip: "%REQ(x-envoy-external-address)%"
 ```
 
-Note that Envoy already sets `x-forwarded-for` and `x-forwarded-proto` in most cases. Check your backend's requirements before adding redundant headers.
+Note that Envoy already sets `x-forwarded-for` and `x-forwarded-proto` in most cases. If you need the original client IP behind another proxy or load balancer, make sure the gateway's trusted hop settings are correct; `%DOWNSTREAM_REMOTE_ADDRESS_WITHOUT_PORT%` is only the immediate downstream peer. Check your backend's requirements before adding redundant headers.
 
 ## Conditional Header Manipulation
 
@@ -297,11 +297,11 @@ istioctl analyze --namespace default
 
 ## Common Pitfalls
 
-**Header names are case-insensitive in HTTP/2.** Envoy normalizes all header names to lowercase when using HTTP/2. If your backend expects mixed-case headers, it will still receive them in lowercase.
+**Header names are case-insensitive.** HTTP header field names are case-insensitive, and Envoy normalizes header keys internally. HTTP/2 requires lowercase header names, and Envoy also normalizes HTTP/1.1 header keys unless you configure HTTP/1 header casing behavior.
 
 **Order of operations.** Request headers are modified before the request is sent to the backend. Response headers are modified before the response is sent to the client. EnvoyFilter patches run at the Envoy level, which may be before or after VirtualService modifications depending on the filter chain position.
 
-**Duplicate headers.** Using `add` instead of `set` can create duplicate headers. Some backends don't handle this well. Prefer `set` unless you specifically need multiple values for the same header name.
+**Duplicate or multi-value headers.** Using `add` instead of `set` can append another value to an existing header. Some backends don't handle multi-value headers well. Prefer `set` unless you specifically need multiple values for the same header name.
 
 **EnvoyFilter compatibility.** EnvoyFilter patches are tied to Envoy's internal API. They can break when you upgrade Istio. VirtualService header manipulation is more stable across versions.
 
