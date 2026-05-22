@@ -8,16 +8,16 @@ Description: Understand how Istio enhances ClusterIP services with advanced load
 
 ---
 
-ClusterIP is the default Kubernetes service type, and it is by far the most common in an Istio mesh. When Istio is running, ClusterIP services get a massive upgrade in capabilities. Instead of just round-robin load balancing through kube-proxy, you get intelligent routing, circuit breaking, retries, observability, and mutual TLS. But there are details about how Istio handles ClusterIP services that are worth understanding.
+ClusterIP is the default Kubernetes service type, and it is by far the most common in an Istio mesh. When Istio is running, ClusterIP services get a massive upgrade in capabilities. Instead of just basic service load balancing through kube-proxy, you get intelligent routing, circuit breaking, retries, observability, and mutual TLS. But there are details about how Istio handles ClusterIP services that are worth understanding.
 
 ## How Istio Intercepts ClusterIP Traffic
 
-Without Istio, when a pod sends traffic to a ClusterIP service (like `http://my-service:8080`), kube-proxy's iptables or IPVS rules intercept the traffic and route it to one of the backing pods using simple round-robin or random selection.
+Without Istio, when a pod sends traffic to a ClusterIP service (like `http://my-service:8080`), kube-proxy's iptables or IPVS rules intercept the traffic and route it to one of the backing pods using the proxy mode's selection behavior.
 
 With Istio, the traffic flow changes. The sidecar proxy (Envoy) intercepts the traffic before kube-proxy does:
 
 1. Application sends request to `my-service:8080`
-2. iptables rules (set by istio-init) redirect to Envoy on port 15001
+2. iptables rules (set by the injected proxy setup or Istio CNI) redirect outbound traffic to Envoy on port 15001
 3. Envoy resolves the service and picks a backend using its own load balancing
 4. Envoy sends the request to the selected backend pod's sidecar
 5. The receiving sidecar forwards to the application
@@ -26,7 +26,7 @@ Because Envoy handles the routing, kube-proxy's load balancing is effectively by
 
 ## Load Balancing Options
 
-The default load balancing for ClusterIP services in Istio is round-robin. You can change it using a DestinationRule:
+Istio chooses a load balancing policy for ClusterIP services when you do not specify one. You can explicitly set one using a DestinationRule:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -41,7 +41,8 @@ spec:
 ```
 
 Available algorithms:
-- `ROUND_ROBIN` - Default, rotates through endpoints
+- `UNSPECIFIED` - Lets Istio choose the default
+- `ROUND_ROBIN` - Rotates through endpoints
 - `LEAST_REQUEST` - Routes to the endpoint with fewest active requests
 - `RANDOM` - Random selection
 - `PASSTHROUGH` - Forwards to the original destination without load balancing
@@ -131,7 +132,7 @@ spec:
       maxEjectionPercent: 50
 ```
 
-When a pod returns 3 consecutive 5xx errors within 10 seconds, it gets ejected from the load balancing pool for 30 seconds. The `maxEjectionPercent: 50` means at most half the pods can be ejected at once, preventing a complete service outage.
+When a pod returns 3 consecutive 5xx errors, it becomes eligible for ejection during the outlier detection sweep that runs every 10 seconds. The initial ejection lasts at least 30 seconds, and repeated ejections can increase that duration. The `maxEjectionPercent: 50` means at most half the pods can be ejected at once, preventing a complete service outage.
 
 ## Retries and Timeouts
 
@@ -156,7 +157,7 @@ spec:
       retryOn: 5xx,reset,connect-failure,retriable-4xx
 ```
 
-Each retry attempt has a 3-second timeout. The total timeout for all attempts combined is 10 seconds. Retries go to a different pod when possible, which is useful when one pod is experiencing issues.
+Each try, including the initial request and any retries, has a 3-second timeout. The total timeout for all attempts combined is 10 seconds. With `attempts: 3`, Envoy can make up to 4 total tries. Retries go to a different pod when possible, which is useful when one pod is experiencing issues.
 
 ## Observability Enhancements
 
@@ -238,13 +239,14 @@ spec:
 
 ## mTLS Between ClusterIP Services
 
-With Istio, traffic between ClusterIP services is encrypted with mTLS by default (in recent versions). Verify it:
+With Istio, traffic between workloads with sidecars is automatically upgraded to mTLS by default. That is different from enforcing `STRICT` mTLS, which requires a PeerAuthentication policy. Verify the effective pod configuration:
 
 ```bash
-istioctl proxy-config endpoint deploy/my-client -n my-namespace | grep my-service
+CLIENT_POD=$(kubectl get pod -n my-namespace -l app=my-client -o jsonpath='{.items[0].metadata.name}')
+istioctl x describe pod "$CLIENT_POD" -n my-namespace
 ```
 
-Look for the `STRICT` mTLS mode in the output.
+Look for output indicating that clients speak mTLS, or warnings about TLS conflicts.
 
 If you need to verify that encryption is actually happening:
 
