@@ -16,13 +16,13 @@ This guide walks through the practical steps to get SOAP/XML web services runnin
 
 SOAP traffic has a few characteristics that affect Istio configuration:
 
-- All requests use HTTP POST (SOAP does not use GET, PUT, or DELETE)
+- SOAP operation requests commonly use HTTP POST, while metadata such as WSDL is usually fetched with GET
 - The actual operation being called is in the SOAP body or SOAPAction header, not the URL path
 - Payloads tend to be larger due to XML verbosity
 - Content type is `text/xml` or `application/soap+xml`
 - WSDL files need to be accessible for service consumers
 
-Since all requests go to the same URL path and use POST, you cannot do path-based routing like you would with REST. Instead, you need to use header-based routing.
+Since many SOAP operations go to the same URL path and use POST, you often cannot rely on path-based routing like you would with REST. Instead, you need to use header-based routing.
 
 ## Deploying a SOAP Service
 
@@ -91,7 +91,7 @@ spec:
 SOAP requests typically include a `SOAPAction` header that identifies the operation being called. You can use this for routing in Istio:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: payment-service-vs
@@ -102,7 +102,7 @@ spec:
   http:
   - match:
     - headers:
-        SOAPAction:
+        soapaction:
           exact: "\"urn:processPayment\""
     route:
     - destination:
@@ -114,7 +114,7 @@ spec:
       retryOn: connect-failure
   - match:
     - headers:
-        SOAPAction:
+        soapaction:
           exact: "\"urn:getPaymentStatus\""
     route:
     - destination:
@@ -130,7 +130,7 @@ spec:
     timeout: 15s
 ```
 
-Note the escaped quotes in the SOAPAction values. SOAPAction headers in SOAP 1.1 are typically enclosed in quotes.
+Note the escaped quotes in the SOAPAction values. SOAPAction headers in SOAP 1.1 are typically enclosed in quotes. Istio header match keys should be written in lowercase, so the examples use `soapaction`.
 
 For SOAP 1.2, the action is usually in the Content-Type header rather than SOAPAction:
 
@@ -147,32 +147,23 @@ For SOAP 1.2, the action is usually in the Content-Type header rather than SOAPA
 
 ## WSDL Access Configuration
 
-SOAP consumers need access to the WSDL file. Make sure you allow GET requests to the WSDL endpoint:
+SOAP consumers need access to the WSDL file. Make sure you allow GET requests to the WSDL endpoint. In practice, add this match before the SOAP POST matches in the same `VirtualService`:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
-kind: VirtualService
-metadata:
-  name: payment-wsdl
-  namespace: soap-services
-spec:
-  hosts:
-  - payment-service
-  http:
-  - match:
-    - uri:
-        prefix: /ws/payment
-      method:
-        exact: GET
-    route:
-    - destination:
-        host: payment-service
-    timeout: 5s
+- match:
+  - uri:
+      prefix: /ws/payment
+    method:
+      exact: GET
+  route:
+  - destination:
+      host: payment-service
+  timeout: 5s
 ```
 
 ## Handling Large XML Payloads
 
-SOAP/XML payloads are verbose and can be quite large. You might need to adjust buffer sizes:
+SOAP/XML payloads are verbose and can be quite large. If you need Envoy to buffer and cap the request body size for a SOAP workload, use the HTTP buffer filter:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -185,19 +176,22 @@ spec:
     labels:
       app: payment-service
   configPatches:
-  - applyTo: NETWORK_FILTER
+  - applyTo: HTTP_FILTER
     match:
       context: SIDECAR_INBOUND
       listener:
         filterChain:
           filter:
             name: envoy.filters.network.http_connection_manager
+            subFilter:
+              name: envoy.filters.http.router
     patch:
-      operation: MERGE
+      operation: INSERT_BEFORE
       value:
+        name: envoy.filters.http.buffer
         typed_config:
-          "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
-          max_request_headers_kb: 64
+          "@type": type.googleapis.com/envoy.extensions.filters.http.buffer.v3.Buffer
+          max_request_bytes: 10485760
 ```
 
 ## Connection Pooling for SOAP Services
@@ -205,7 +199,7 @@ spec:
 SOAP services are often backed by heavyweight application servers (like WebLogic or WebSphere) that can handle fewer concurrent connections. Set conservative limits:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: payment-service-dr
@@ -234,7 +228,7 @@ spec:
 Rolling out a new version of a SOAP service with traffic splitting:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: payment-service-versions
@@ -249,7 +243,7 @@ spec:
     labels:
       version: v2
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: payment-canary
@@ -274,7 +268,7 @@ spec:
 Restrict which services can call the SOAP endpoint:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: payment-service-auth
@@ -308,7 +302,7 @@ spec:
 If external consumers need to access your SOAP service:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: soap-gateway
@@ -327,7 +321,7 @@ spec:
     hosts:
     - "services.example.com"
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: payment-external
@@ -357,15 +351,15 @@ Since SOAP uses HTTP, Istio metrics work just like they would for any HTTP servi
 # Request rate and error rates
 
 kubectl exec -n istio-system deploy/prometheus -- \
-  promtool query instant 'sum(rate(istio_requests_total{destination_service="payment-service.soap-services.svc.cluster.local"}[5m])) by (response_code)'
+  promtool query instant http://localhost:9090 'sum(rate(istio_requests_total{destination_service="payment-service.soap-services.svc.cluster.local"}[5m])) by (response_code)'
 
 # Latency
 kubectl exec -n istio-system deploy/prometheus -- \
-  promtool query instant 'histogram_quantile(0.95, sum(rate(istio_request_duration_milliseconds_bucket{destination_service="payment-service.soap-services.svc.cluster.local"}[5m])) by (le))'
+  promtool query instant http://localhost:9090 'histogram_quantile(0.95, sum(rate(istio_request_duration_milliseconds_bucket{destination_service="payment-service.soap-services.svc.cluster.local"}[5m])) by (le))'
 ```
 
 The main limitation is that Istio cannot differentiate between different SOAP operations in its metrics since they all go to the same URL. For operation-level metrics, you need application-level instrumentation.
 
 ## Summary
 
-SOAP/XML web services work with Istio since they use HTTP under the hood. The key differences from REST are that you need SOAPAction header-based routing instead of path-based routing, you should be prepared for larger payloads due to XML verbosity, and you need to ensure WSDL endpoints remain accessible. Retry policies need extra caution since SOAP operations might not be idempotent. With these configurations in place, you can bring legacy SOAP services into the service mesh and benefit from mTLS, observability, and traffic management.
+SOAP/XML web services work with Istio since they use HTTP under the hood. The key differences from REST are that you often need SOAPAction header-based routing instead of path-based routing, you should be prepared for larger payloads due to XML verbosity, and you need to ensure WSDL endpoints remain accessible. Retry policies need extra caution since SOAP operations might not be idempotent. With these configurations in place, you can bring legacy SOAP services into the service mesh and benefit from mTLS, observability, and traffic management.
