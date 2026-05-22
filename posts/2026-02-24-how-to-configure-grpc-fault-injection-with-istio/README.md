@@ -24,7 +24,7 @@ Both can be configured with a percentage, so you only affect a fraction of traff
 To add artificial latency to a gRPC service:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: grpc-backend
@@ -50,7 +50,7 @@ This adds a 3-second delay to 50% of all gRPC requests to `grpc-backend`. The ot
 To make a percentage of requests fail immediately:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: grpc-backend
@@ -78,12 +78,12 @@ For gRPC, an HTTP 503 maps to a gRPC `UNAVAILABLE` status code. Here is the mapp
 - HTTP 429 -> `UNAVAILABLE`
 - HTTP 500 -> `INTERNAL`
 - HTTP 503 -> `UNAVAILABLE`
-- HTTP 504 -> `DEADLINE_EXCEEDED`
+- HTTP 504 -> `UNAVAILABLE`
 
 You can also inject gRPC status codes directly using the `grpcStatus` field:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: grpc-backend
@@ -96,20 +96,20 @@ spec:
         abort:
           percentage:
             value: 10
-          grpcStatus: 14
+          grpcStatus: UNAVAILABLE
       route:
         - destination:
             host: grpc-backend.default.svc.cluster.local
 ```
 
-The value `14` is the gRPC status code for `UNAVAILABLE`. Using `grpcStatus` is more precise for gRPC services because you get the exact status code you want.
+The value `UNAVAILABLE` is the gRPC status code to return. Using `grpcStatus` is more precise for gRPC services because you get the exact status code you want.
 
 ## Combining Delays and Aborts
 
 You can apply both fault types simultaneously:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: grpc-backend
@@ -126,7 +126,7 @@ spec:
         abort:
           percentage:
             value: 10
-          grpcStatus: 14
+          grpcStatus: UNAVAILABLE
       route:
         - destination:
             host: grpc-backend.default.svc.cluster.local
@@ -136,10 +136,10 @@ With this config, 30% of requests get delayed by 2 seconds, and independently, 1
 
 ## Targeting Specific Methods
 
-You probably do not want to inject faults on all gRPC methods. You can target specific ones using header matching:
+You probably do not want to inject faults on all gRPC methods. You can target specific ones using URI matching:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: grpc-backend
@@ -149,9 +149,8 @@ spec:
     - grpc-backend.default.svc.cluster.local
   http:
     - match:
-        - headers:
-            ":path":
-              exact: "/mypackage.MyService/SlowMethod"
+        - uri:
+            exact: "/mypackage.MyService/SlowMethod"
       fault:
         delay:
           percentage:
@@ -172,7 +171,7 @@ This only injects the delay on calls to `SlowMethod`, while all other methods ar
 For testing in production (carefully), you can trigger faults based on a custom header so only test traffic is affected:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: grpc-backend
@@ -189,7 +188,7 @@ spec:
         abort:
           percentage:
             value: 100
-          grpcStatus: 14
+          grpcStatus: UNAVAILABLE
       route:
         - destination:
             host: grpc-backend.default.svc.cluster.local
@@ -233,21 +232,21 @@ fault:
   abort:
     percentage:
       value: 50
-    grpcStatus: 14
+    grpcStatus: UNAVAILABLE
 ```
 
-With 3 retries, your effective failure rate should drop to about 12.5% (0.5^3).
+With 3 retries, your effective failure rate should drop to about 6.25% (0.5^4), assuming the original request plus each retry is an independent attempt.
 
 **Scenario 3: Circuit breaker activation**
 
-Inject 100% failures for a subset of traffic and verify the circuit breaker ejects the faulty upstream:
+Inject 100% failures for a subset of traffic and verify your client-side circuit breaker or failure handling activates:
 
 ```yaml
 fault:
   abort:
     percentage:
       value: 100
-    grpcStatus: 13
+    grpcStatus: INTERNAL
 ```
 
 ## Verifying Fault Injection Is Working
@@ -262,13 +261,13 @@ kubectl exec -it <client-pod> -c istio-proxy -- \
 ```
 
 Look for:
-- `http.inbound.fault.delays_injected` - number of delays injected
-- `http.inbound.fault.aborts_injected` - number of aborts injected
+- `http.<stat_prefix>.fault.delays_injected` - number of delays injected
+- `http.<stat_prefix>.fault.aborts_injected` - number of aborts injected
 
 Also check the access logs for fault-related response flags:
 
 ```bash
-kubectl logs <server-pod> -c istio-proxy | grep "FI"
+kubectl logs <client-pod> -c istio-proxy | grep -E "FI|DI"
 ```
 
 The response flag `FI` indicates a fault-injected response, and `DI` indicates an injected delay.
