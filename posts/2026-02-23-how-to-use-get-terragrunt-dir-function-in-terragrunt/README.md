@@ -8,7 +8,7 @@ Description: Learn how to use get_terragrunt_dir in Terragrunt to resolve file p
 
 ---
 
-The `get_terragrunt_dir()` function returns the absolute path to the directory containing the current `terragrunt.hcl` file. It sounds simple, and it is - but it is one of the most frequently used functions in Terragrunt because reliable path resolution is critical when you are reading files, referencing local modules, or running scripts.
+The `get_terragrunt_dir()` function returns the absolute path to the directory containing the current Terragrunt configuration file. It sounds simple, and it is - but it is one of the most frequently used functions in Terragrunt because reliable path resolution is critical when you are reading files, referencing local modules, or running scripts.
 
 ## Basic Usage
 
@@ -70,7 +70,7 @@ Each module directory can have its own config files, and `get_terragrunt_dir()` 
 Use `get_terragrunt_dir()` in `extra_arguments` to load `.tfvars` files from the module directory:
 
 ```hcl
-# Root terragrunt.hcl
+# root.hcl
 
 terraform {
   extra_arguments "module_vars" {
@@ -98,7 +98,7 @@ Example setup:
 
 ```text
 live/
-  terragrunt.hcl              # root config
+  root.hcl                    # root config
   dev/
     app/
       terragrunt.hcl          # child config
@@ -106,7 +106,7 @@ live/
 ```
 
 ```hcl
-# live/terragrunt.hcl (root)
+# live/root.hcl (root)
 
 locals {
   # When this root config is processed as part of the child include:
@@ -119,7 +119,7 @@ locals {
 # live/dev/app/terragrunt.hcl (child)
 
 include "root" {
-  path = find_in_parent_folders()
+  path = find_in_parent_folders("root.hcl")
 }
 
 locals {
@@ -131,7 +131,7 @@ locals {
 So if you want the root config to read a file from the child's directory, use `get_original_terragrunt_dir()`:
 
 ```hcl
-# live/terragrunt.hcl (root)
+# live/root.hcl (root)
 
 terraform {
   extra_arguments "module_vars" {
@@ -234,7 +234,7 @@ EOF
 When `get_terragrunt_dir()` is used in the root configuration, it returns the root's directory. This is useful for referencing files that live alongside the root config:
 
 ```hcl
-# live/terragrunt.hcl (root)
+# live/root.hcl (root)
 
 locals {
   # Read a project-wide config from the root directory
@@ -278,7 +278,7 @@ Print the value to verify:
 ```bash
 # Render the configuration and check paths
 cd live/dev/app
-terragrunt render-json | jq '.locals'
+terragrunt render --json | jq '.locals'
 ```
 
 Or use a temporary output:
@@ -294,7 +294,7 @@ locals {
 A frequent mistake is using `get_terragrunt_dir()` in a root config and expecting it to return the child's directory:
 
 ```hcl
-# live/terragrunt.hcl (root) - WRONG
+# live/root.hcl (root) - WRONG
 terraform {
   extra_arguments "vars" {
     commands = ["plan", "apply"]
@@ -310,7 +310,7 @@ terraform {
 Use `get_original_terragrunt_dir()` instead:
 
 ```hcl
-# live/terragrunt.hcl (root) - CORRECT
+# live/root.hcl (root) - CORRECT
 terraform {
   extra_arguments "vars" {
     commands = ["plan", "apply"]
