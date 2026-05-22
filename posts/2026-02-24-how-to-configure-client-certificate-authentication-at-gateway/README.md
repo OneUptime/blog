@@ -75,7 +75,8 @@ openssl req -new -key client.key \
 openssl x509 -req -in client.csr \
   -CA ca.crt -CAkey ca.key \
   -CAcreateserial -out client.crt \
-  -days 365 -sha256
+  -days 365 -sha256 \
+  -extfile <(printf "subjectAltName=URI:spiffe://partner.example.com/ns/prod/sa/partner-service")
 ```
 
 ## Creating Kubernetes Secrets
@@ -109,7 +110,7 @@ kubectl create -n istio-system secret generic api-credential \
 Set the TLS mode to `MUTUAL` on the Gateway:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: mtls-gateway
@@ -160,7 +161,7 @@ curl -v --resolve api.example.com:443:$GATEWAY_IP \
 Create a VirtualService to route authenticated traffic:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-vs
@@ -180,33 +181,32 @@ spec:
 
 ## Authorization Based on Client Certificate
 
-After the TLS handshake, the client certificate's subject information is available for authorization decisions. Istio extracts the client certificate's SAN and makes it available in the request context.
-
-Use an AuthorizationPolicy to allow only specific clients:
+After the TLS handshake, the gateway has validated the client certificate against the configured CA. If you want the gateway to accept only specific client identities, add the allowed client SANs to the Gateway TLS settings:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
-kind: AuthorizationPolicy
+apiVersion: networking.istio.io/v1
+kind: Gateway
 metadata:
-  name: require-client-cert
+  name: mtls-gateway
   namespace: default
 spec:
   selector:
-    matchLabels:
-      app: api-service
-  action: ALLOW
-  rules:
-    - from:
-        - source:
-            namespaces:
-              - istio-system
-      when:
-        - key: connection.uri_san_peer_certificate
-          values:
-            - "spiffe://cluster.local/ns/istio-system/sa/istio-ingressgateway-service-account"
+    istio: ingressgateway
+  servers:
+    - port:
+        number: 443
+        name: https
+        protocol: HTTPS
+      tls:
+        mode: MUTUAL
+        credentialName: api-credential
+        subjectAltNames:
+          - "spiffe://partner.example.com/ns/prod/sa/partner-service"
+      hosts:
+        - "api.example.com"
 ```
 
-For more granular control based on the client certificate's subject, you can use an EnvoyFilter to extract the certificate details and add them as headers:
+For more granular control in the backend application, you can use an EnvoyFilter to forward certificate details as headers:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -245,7 +245,7 @@ This adds the client certificate details as the `x-forwarded-client-cert` (XFCC)
 Sometimes you want to accept client certificates if provided but not require them. Use `OPTIONAL_MUTUAL` mode:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: optional-mtls-gateway
