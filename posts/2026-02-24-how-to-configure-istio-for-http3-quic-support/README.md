@@ -23,7 +23,7 @@ For service mesh traffic, this can mean lower tail latencies and more resilient 
 Before you start, make sure you have:
 
 - Istio 1.18 or later installed (HTTP/3 support improved significantly in recent versions)
-- A Kubernetes cluster with UDP load balancer support
+- A Kubernetes cluster with UDP load balancer support and mixed-protocol LoadBalancer Services enabled (stable in Kubernetes 1.26 and later)
 - `istioctl` installed and configured
 
 Check your Istio version first:
@@ -42,10 +42,6 @@ First, update your Istio installation to enable the QUIC listener on the gateway
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
-  meshConfig:
-    defaultConfig:
-      proxyMetadata:
-        ISTIO_ENABLE_QUIC_LISTENERS: "true"
   components:
     ingressGateways:
       - name: istio-ingressgateway
@@ -53,6 +49,10 @@ spec:
         k8s:
           service:
             ports:
+              - name: status-port
+                port: 15021
+                targetPort: 15021
+                protocol: TCP
               - name: https
                 port: 443
                 targetPort: 8443
@@ -63,6 +63,10 @@ spec:
                 protocol: UDP
           hpaSpec:
             minReplicas: 2
+  values:
+    pilot:
+      env:
+        PILOT_ENABLE_QUIC_LISTENERS: "true"
 ```
 
 Apply this with:
@@ -71,7 +75,7 @@ Apply this with:
 istioctl install -f istio-http3-config.yaml
 ```
 
-Notice the key detail here: both TCP and UDP listeners share port 443. This is how HTTP/3 Alt-Svc discovery works. Clients first connect over HTTP/2 on TCP, receive an Alt-Svc header advertising HTTP/3 support, and then upgrade to QUIC over UDP on subsequent requests.
+Notice the key detail here: both TCP and UDP listeners share port 443. This is how HTTP/3 Alt-Svc discovery works. Clients first connect over HTTPS on TCP, receive an Alt-Svc header advertising HTTP/3 support, and then open QUIC over UDP on subsequent requests.
 
 ## Configuring the Gateway Resource
 
@@ -131,7 +135,7 @@ spec:
 
 ## Using EnvoyFilter for Fine-Grained QUIC Settings
 
-If you need more control over the HTTP/3 behavior, you can use an EnvoyFilter to tweak the QUIC settings:
+If you need more control over HTTP connection behavior on the QUIC listener, use EnvoyFilter carefully and verify the generated Envoy configuration for your Istio version. EnvoyFilter patches depend on Envoy xDS internals and can break across proxy upgrades. For example, you can merge HTTP connection manager settings on the HTTP/3 filter chain:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -144,25 +148,28 @@ spec:
     labels:
       istio: ingressgateway
   configPatches:
-    - applyTo: FILTER_CHAIN
+    - applyTo: NETWORK_FILTER
       match:
         context: GATEWAY
         listener:
           portNumber: 8443
           filterChain:
             transportProtocol: quic
+            filter:
+              name: envoy.filters.network.http_connection_manager
       patch:
         operation: MERGE
         value:
-          transportSocket:
-            name: envoy.transport_sockets.quic
-            typedConfig:
-              "@type": type.googleapis.com/envoy.extensions.transport_sockets.quic.v3.QuicDownstreamTransport
+          name: envoy.filters.network.http_connection_manager
+          typed_config:
+            "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+            common_http_protocol_options:
+              idle_timeout: 30s
 ```
 
 ## Verifying HTTP/3 Is Working
 
-After deploying everything, you can verify HTTP/3 is active using curl (version 7.88 or later with HTTP/3 support):
+After deploying everything, you can verify HTTP/3 is active using a curl build that includes HTTP/3 support:
 
 ```bash
 curl --http3 -v https://app.example.com/
@@ -177,7 +184,7 @@ kubectl exec -n istio-system deploy/istio-ingressgateway \
   -- curl -s localhost:15000/stats | grep http3
 ```
 
-Look for counters like `http3.downstream.rx` and `http3.downstream.tx` incrementing.
+Look for counters with the `http3.downstream` prefix, along with UDP listener and QUIC connection stats such as `downstream_rx_datagram_dropped` and QUIC error counters.
 
 ## Load Balancer Considerations
 
@@ -192,10 +199,15 @@ metadata:
   name: istio-ingressgateway
   namespace: istio-system
   annotations:
-    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    service.beta.kubernetes.io/aws-load-balancer-type: "external"
+    service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: "instance"
 spec:
   type: LoadBalancer
   ports:
+    - name: status-port
+      port: 15021
+      targetPort: 15021
+      protocol: TCP
     - name: https
       port: 443
       targetPort: 8443
@@ -208,9 +220,9 @@ spec:
 
 ## Connection Migration
 
-One of the most useful features of QUIC is connection migration. When a client's IP address changes (like a phone switching from WiFi to cellular), the QUIC connection survives. This is handled automatically by the protocol, and Envoy supports it out of the box once QUIC is enabled.
+One of the most useful features of QUIC is connection migration. When a client's IP address changes (like a phone switching from WiFi to cellular), QUIC can keep the connection alive by using connection IDs instead of binding the connection only to the 5-tuple.
 
-You do not need any special Istio configuration for connection migration to work. Just make sure your load balancer supports it and does not terminate connections based solely on the source IP changing.
+In Kubernetes, this depends on the load balancer continuing to send packets for the migrated connection to the same Envoy gateway instance, or being QUIC-aware enough to route by connection ID. A basic UDP load balancer that rehashes traffic after the client source address changes can still break the connection.
 
 ## Troubleshooting
 
@@ -222,7 +234,7 @@ If HTTP/3 is not working, check these common issues:
 
 3. **Old Istio version**: HTTP/3 support is experimental in older versions. Upgrade to at least 1.18.
 
-4. **Certificate issues**: QUIC requires TLS 1.3. Make sure your certificates are valid and properly configured.
+4. **TLS issues**: QUIC uses TLS 1.3. Make sure your certificates and TLS settings are valid and that your clients support TLS 1.3.
 
 Check the gateway logs for errors:
 
@@ -238,4 +250,4 @@ Keep in mind that HTTP/3 support in Istio is still evolving. Check the Istio rel
 
 ## Wrapping Up
 
-Getting HTTP/3 running in Istio takes a bit of configuration across multiple resources, but the process is fairly straightforward once you understand the moving parts. The key pieces are enabling QUIC listeners in the mesh config, making sure your load balancer supports UDP, and having proper TLS certificates in place. From there, Envoy handles the protocol negotiation automatically, and your clients can start benefiting from faster connections.
+Getting HTTP/3 running in Istio takes a bit of configuration across multiple resources, but the process is fairly straightforward once you understand the moving parts. The key pieces are enabling QUIC listeners in the Istio control plane, making sure your load balancer supports UDP, and having proper TLS certificates in place. From there, Envoy handles the protocol negotiation automatically, and your clients can start benefiting from faster connections.
