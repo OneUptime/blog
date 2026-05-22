@@ -26,17 +26,19 @@ resource "aws_db_instance" "production" {
   engine         = "postgres"
   engine_version = "15.4"
   instance_class = "db.r6g.xlarge"
+  username       = "app_admin"
+  password       = var.database_password
 
   allocated_storage     = 500
   max_allocated_storage = 2000
   storage_encrypted     = true
 
-  multi_az                = true
-  deletion_protection     = true
-  skip_final_snapshot     = false
-  final_snapshot_identifier = "app-production-final-${formatdate("YYYY-MM-DD", timestamp())}"
-  backup_retention_period = 35
-  copy_tags_to_snapshot   = true
+  multi_az                  = true
+  deletion_protection       = true
+  skip_final_snapshot       = false
+  final_snapshot_identifier = "app-production-final-${var.final_snapshot_date}"
+  backup_retention_period   = 35
+  copy_tags_to_snapshot     = true
 
   lifecycle {
     # CRITICAL: Prevent accidental destruction
@@ -111,7 +113,8 @@ Some changes to stateful resources force replacement. Know which ones:
 # - engine (destroys and recreates!)
 # - storage_encrypted (destroys and recreates!)
 
-# Safe pattern for risky changes: use moved blocks
+# Safe pattern for renaming Terraform resource addresses: use moved blocks
+# Moved blocks do not make provider-level replacements like engine changes safe.
 moved {
   from = aws_db_instance.old_name
   to   = aws_db_instance.new_name
@@ -159,6 +162,16 @@ resource "aws_volume_attachment" "data" {
 ```hcl
 # stateful/queues.tf
 # SQS queues that hold in-flight messages
+
+resource "aws_sqs_queue" "orders_dlq" {
+  name                      = "orders-production-dlq"
+  message_retention_seconds = 1209600  # 14 days
+  sqs_managed_sse_enabled   = true
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
 
 resource "aws_sqs_queue" "orders" {
   name                       = "orders-production"
@@ -227,7 +240,7 @@ resource "aws_backup_selection" "stateful" {
 
 Always use prevent_destroy on production stateful resources. This is your last line of defense against accidental data loss.
 
-Enable deletion_protection at the resource level too. This provides a second layer of protection beyond Terraform lifecycle rules.
+Enable deletion_protection at the resource level too, where the resource supports it. This provides a second layer of protection beyond Terraform lifecycle rules.
 
 Backup before making any changes. Even in-place updates can go wrong. Always have a recent backup before modifying stateful resources.
 
