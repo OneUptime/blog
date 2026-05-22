@@ -95,7 +95,7 @@ Managing DNS records from a spreadsheet is a common pattern:
 # name,type,value,ttl
 # api,A,10.0.1.50,300
 # www,CNAME,cdn.example.com,3600
-# mail,MX,mail.example.com,3600
+# mail,MX,"10 mail.example.com",3600
 # _dmarc,TXT,"v=DMARC1; p=reject",3600
 
 locals {
@@ -166,6 +166,9 @@ Define firewall rules in a spreadsheet:
 
 locals {
   firewall_rules = csvdecode(file("${path.module}/data/firewall_rules.csv"))
+
+  ingress_rules = [for rule in local.firewall_rules : rule if rule.type == "ingress"]
+  egress_rules  = [for rule in local.firewall_rules : rule if rule.type == "egress"]
 }
 
 resource "aws_security_group" "app" {
@@ -174,15 +177,25 @@ resource "aws_security_group" "app" {
   vpc_id      = aws_vpc.main.id
 }
 
-resource "aws_security_group_rule" "rules" {
-  for_each = { for idx, rule in local.firewall_rules : "${rule.type}-${rule.protocol}-${rule.from_port}" => rule }
+resource "aws_vpc_security_group_ingress_rule" "rules" {
+  for_each = { for idx, rule in local.ingress_rules : "${rule.protocol}-${rule.from_port}-${rule.to_port}-${idx}" => rule }
 
   security_group_id = aws_security_group.app.id
-  type              = each.value.type
-  protocol          = each.value.protocol
-  from_port         = tonumber(each.value.from_port)
-  to_port           = tonumber(each.value.to_port)
-  cidr_blocks       = [each.value.cidr]
+  cidr_ipv4         = each.value.cidr
+  ip_protocol       = each.value.protocol
+  from_port         = each.value.protocol == "-1" ? null : tonumber(each.value.from_port)
+  to_port           = each.value.protocol == "-1" ? null : tonumber(each.value.to_port)
+  description       = each.value.description
+}
+
+resource "aws_vpc_security_group_egress_rule" "rules" {
+  for_each = { for idx, rule in local.egress_rules : "${rule.protocol}-${rule.from_port}-${rule.to_port}-${idx}" => rule }
+
+  security_group_id = aws_security_group.app.id
+  cidr_ipv4         = each.value.cidr
+  ip_protocol       = each.value.protocol
+  from_port         = each.value.protocol == "-1" ? null : tonumber(each.value.from_port)
+  to_port           = each.value.protocol == "-1" ? null : tonumber(each.value.to_port)
   description       = each.value.description
 }
 ```
