@@ -12,9 +12,9 @@ gRPC services have different characteristics than REST APIs, and those differenc
 
 ## gRPC vs HTTP/1.1: Why It Matters for Circuit Breaking
 
-With HTTP/1.1, each TCP connection handles one request at a time. If you want 100 concurrent requests, you need 100 connections. The `maxConnections` and `http1MaxPendingRequests` settings directly control concurrency.
+With HTTP/1.1, each TCP connection normally handles one active request at a time. If you want 100 concurrent in-flight requests without queuing, you generally need many connections. The `maxConnections` setting limits upstream TCP connections, while `http1MaxPendingRequests` limits how many requests can wait for a ready connection.
 
-With gRPC (HTTP/2), a single TCP connection can handle hundreds of concurrent requests through multiplexing. So `maxConnections` becomes less important - what matters is `http2MaxRequests`, which limits the total number of concurrent requests across all connections.
+With gRPC (HTTP/2), a single TCP connection can handle many concurrent requests through multiplexing. So `maxConnections` becomes less important - what matters most for circuit breaking is `http2MaxRequests`, which limits the total number of active requests to a destination.
 
 ```mermaid
 flowchart LR
@@ -34,7 +34,7 @@ flowchart LR
 ## Basic gRPC Circuit Breaking Configuration
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: grpc-service
@@ -55,27 +55,27 @@ spec:
       maxEjectionPercent: 50
 ```
 
-The key setting here is `http2MaxRequests: 500`. This caps the total number of concurrent gRPC calls to 500. When the 501st call comes in, it gets a gRPC UNAVAILABLE error (which maps to HTTP 503).
+The key setting here is `http2MaxRequests: 500`. This caps the total number of concurrent gRPC calls to 500. When the 501st call comes in, Envoy rejects it with an HTTP 503, which gRPC clients surface as UNAVAILABLE.
 
-The `maxConnections: 10` setting is less critical for gRPC since HTTP/2 multiplexes well, but it still limits the number of TCP connections Envoy opens. With 10 connections and 500 max requests, each connection handles up to 50 concurrent streams.
+The `maxConnections: 10` setting is less critical for gRPC since HTTP/2 multiplexes well, but it still limits the number of TCP connections Envoy opens. It does not divide the 500 request limit evenly across connections; if you need a per-connection HTTP/2 stream limit, use `maxConcurrentStreams`.
 
 ## Handling gRPC Error Codes
 
-gRPC has its own status codes that map to HTTP status codes. For outlier detection, Istio treats gRPC errors as follows:
+gRPC has its own status codes. Normal gRPC responses are carried over HTTP/2 with an HTTP `:status` of 200 and a `grpc-status` trailer, but Envoy maps `grpc-status` values to HTTP-style status codes for outlier detection:
 
 | gRPC Status | HTTP Status | Counted by consecutive5xxErrors? |
 |------------|-------------|--------------------------------|
 | OK (0) | 200 | No |
 | UNAVAILABLE (14) | 503 | Yes |
 | INTERNAL (13) | 500 | Yes |
-| DEADLINE_EXCEEDED (4) | 504 | Yes (with consecutiveGatewayErrors) |
+| DEADLINE_EXCEEDED (4) | 504 | Yes (also a gateway error) |
 | RESOURCE_EXHAUSTED (8) | 429 | No |
 | NOT_FOUND (5) | 404 | No |
 
-For gRPC services, `consecutiveGatewayErrors` is often more appropriate than `consecutive5xxErrors` because UNAVAILABLE and DEADLINE_EXCEEDED are the most common transient errors:
+For gRPC services where you only want to eject hosts for gateway-style failures such as `UNAVAILABLE` and `DEADLINE_EXCEEDED`, `consecutiveGatewayErrors` can be more targeted than `consecutive5xxErrors`. Gateway errors are also included in `consecutive5xxErrors`, so if you configure both, set `consecutiveGatewayErrors` lower than `consecutive5xxErrors` for it to have an effect:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: grpc-service
@@ -95,7 +95,7 @@ spec:
 Unary (request-response) gRPC calls are the simplest case. They behave like regular HTTP requests, just over HTTP/2:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: user-service-grpc
@@ -117,7 +117,7 @@ spec:
       maxEjectionPercent: 40
 ```
 
-With 5 TCP connections and 200 max requests, each connection handles up to 40 concurrent RPCs. The `maxRequestsPerConnection: 500` recycles connections after 500 total RPCs, ensuring load gets redistributed.
+With 5 TCP connections and 200 max requests, Envoy allows up to 200 active RPCs to the destination. The `maxRequestsPerConnection: 500` drains and recycles connections after 500 total RPCs, which can help redistribute new work over time.
 
 ## Configuring for Streaming gRPC
 
@@ -126,7 +126,7 @@ gRPC streaming (server-streaming, client-streaming, or bidirectional) complicate
 For services with streaming RPCs, you need higher concurrency limits:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: event-stream-service
@@ -147,7 +147,7 @@ spec:
       maxEjectionPercent: 30
 ```
 
-Notice `maxRequestsPerConnection: 0` (unlimited). For streaming services, you do not want to forcibly close connections because that would terminate active streams. Set it to 0 and let streams complete naturally.
+Notice `maxRequestsPerConnection: 0` (unlimited). For streaming services, you usually do not want request-count-based connection draining because it can churn long-lived HTTP/2 connections and force new streams onto other connections. Set it to 0 and let streams complete naturally.
 
 The `http2MaxRequests: 2000` is higher than usual because long-lived streams tie up request slots for their entire duration. If you have 500 clients each maintaining a streaming connection, you need at least 500 request slots just for the streams.
 
@@ -158,7 +158,7 @@ Many gRPC services have both unary and streaming methods. You cannot configure d
 The practical approach is to configure for the streaming case (higher limits, no connection recycling) and rely on outlier detection for protection:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: chat-service
@@ -184,7 +184,7 @@ spec:
 gRPC has its own deadline mechanism. When combining with Istio timeouts, be aware that both can trigger:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: grpc-service
@@ -205,7 +205,7 @@ spec:
         retryOn: "connect-failure,refused-stream"
 ```
 
-Setting `timeout: 0s` disables the route timeout, which is essential for streaming RPCs. The retries with `perTryTimeout: 5s` only apply to the initial connection, not to the stream itself.
+Setting `timeout: 0s` disables the route timeout, which is important for streaming RPCs. The `perTryTimeout: 5s` value applies to each attempt, including the initial call; retries are safest for unary or explicitly idempotent RPCs and generally cannot recover an already-established stream after response data has started.
 
 ## Monitoring gRPC Circuit Breaking
 
@@ -241,9 +241,7 @@ envoy_cluster_upstream_rq_active{cluster_name="outbound|50051||grpc-service.defa
 Use ghz (a gRPC benchmarking tool) to test:
 
 ```bash
-# Install ghz
-kubectl run ghz --image=ghz-image --restart=Never -- \
-  ghz --insecure \
+ghz --insecure \
   --proto /protos/service.proto \
   --call mypackage.MyService/MyMethod \
   -d '{"key": "value"}' \
