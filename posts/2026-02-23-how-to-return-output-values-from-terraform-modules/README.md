@@ -14,7 +14,7 @@ This guide covers how to define outputs, what to expose, and the patterns that m
 
 ## Basic Output Definition
 
-Outputs are defined in the module's `outputs.tf` file:
+Outputs are commonly defined in the module's `outputs.tf` file:
 
 ```hcl
 # modules/vpc/outputs.tf
@@ -40,10 +40,12 @@ output "private_subnet_ids" {
 }
 ```
 
-Each output has three parts:
+Each output commonly has three parts:
 - **name** - The identifier used to reference this output
 - **description** - Documents what the output represents
 - **value** - The expression that computes the output's value
+
+The output name and `value` are required. The `description` is optional, but it is strongly recommended for reusable modules.
 
 ## Accessing Module Outputs
 
@@ -166,7 +168,7 @@ output "subnet_cidr_blocks" {
 
 ## Sensitive Outputs
 
-If an output contains sensitive data, mark it to prevent it from showing in plan output and logs:
+If an output contains sensitive data, mark it to prevent it from showing in Terraform CLI output:
 
 ```hcl
 output "db_password" {
@@ -267,8 +269,8 @@ output "load_balancer_dns" {
   value       = aws_lb.this.dns_name
 
   precondition {
-    condition     = aws_lb.this.status == "active"
-    error_message = "Load balancer is not in active status."
+    condition     = length(aws_lb.this.dns_name) > 0
+    error_message = "Load balancer DNS name is not available."
   }
 }
 ```
