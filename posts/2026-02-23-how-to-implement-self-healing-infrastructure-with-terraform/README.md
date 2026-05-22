@@ -39,14 +39,21 @@ jobs:
         working-directory: infrastructure/${{ matrix.workspace }}
         run: |
           terraform init
+          set +e
           terraform plan -detailed-exitcode -out=drift.tfplan 2>&1 | tee plan.txt
-          echo "exitcode=$?" >> $GITHUB_OUTPUT
+          exitcode=${PIPESTATUS[0]}
+          set -e
+          echo "exitcode=$exitcode" >> $GITHUB_OUTPUT
+          if [ "$exitcode" -eq 1 ]; then
+            exit 1
+          fi
 
       - name: Auto-Remediate Safe Changes
         if: steps.drift.outputs.exitcode == '2'
+        working-directory: infrastructure/${{ matrix.workspace }}
         run: |
           # Only auto-remediate specific types of drift
-          python scripts/classify-drift.py plan.txt
+          python ../../scripts/classify-drift.py plan.txt
           if [ $? -eq 0 ]; then
             echo "Drift is safe to auto-remediate"
             terraform apply drift.tfplan
@@ -61,7 +68,6 @@ jobs:
 # Determine if drift is safe to auto-remediate
 
 import sys
-import re
 
 # Changes that are safe to auto-fix
 SAFE_DRIFT = [
@@ -82,15 +88,21 @@ DANGEROUS_DRIFT = [
 
 def classify_drift(plan_file):
     with open(plan_file) as f:
-        plan = f.read()
+        plan = f.read().lower()
 
     # Check for dangerous changes
     for pattern in DANGEROUS_DRIFT:
-        if pattern in plan.lower():
+        if pattern in plan:
             print(f"DANGEROUS: Found {pattern} drift, requires manual review")
             return False
 
-    return True
+    # Only remediate drift that matches known safe categories
+    for pattern in SAFE_DRIFT:
+        if pattern in plan:
+            return True
+
+    print("UNKNOWN: No recognized safe drift found, requires manual review")
+    return False
 
 if __name__ == "__main__":
     is_safe = classify_drift(sys.argv[1])
@@ -122,7 +134,7 @@ resource "aws_autoscaling_group" "app" {
 
   launch_template {
     id      = aws_launch_template.app.id
-    version = "$Latest"
+    version = aws_launch_template.app.latest_version
   }
 
   # Instance refresh for rolling updates
@@ -177,9 +189,11 @@ Configure databases for automatic failover and recovery:
 # Database with automatic failover and recovery
 
 resource "aws_rds_cluster" "main" {
-  cluster_identifier = "app-production"
-  engine             = "aurora-postgresql"
-  engine_version     = "15.4"
+  cluster_identifier          = "app-production"
+  engine                      = "aurora-postgresql"
+  engine_version              = "15.17"
+  master_username             = "app_admin"
+  manage_master_user_password = true
 
   # Multi-AZ for automatic failover
   availability_zones = ["us-east-1a", "us-east-1b", "us-east-1c"]
@@ -188,12 +202,10 @@ resource "aws_rds_cluster" "main" {
   backup_retention_period = 30
   preferred_backup_window = "03:00-04:00"
 
-  # Automatic minor version upgrades
-  auto_minor_version_upgrade = true
-
   # Deletion protection
-  deletion_protection = true
-  skip_final_snapshot = false
+  deletion_protection       = true
+  skip_final_snapshot       = false
+  final_snapshot_identifier = "app-production-final"
 }
 
 # Multiple instances for failover
@@ -204,6 +216,10 @@ resource "aws_rds_cluster_instance" "main" {
   cluster_identifier = aws_rds_cluster.main.id
   instance_class     = "db.r6g.large"
   engine             = aws_rds_cluster.main.engine
+  engine_version     = aws_rds_cluster.main.engine_version
+
+  # Automatic minor version upgrades
+  auto_minor_version_upgrade = true
 
   # Automatic failover happens when primary is unhealthy
   # Aurora handles this automatically
@@ -233,7 +249,7 @@ resource "aws_lambda_function" "remediation" {
   }
 }
 
-# Trigger remediation on specific CloudWatch alarms
+# Trigger remediation on specific EventBridge events
 resource "aws_cloudwatch_event_rule" "ec2_state_change" {
   name        = "ec2-state-change"
   description = "Detect EC2 instance state changes"
@@ -251,6 +267,14 @@ resource "aws_cloudwatch_event_target" "remediation" {
   rule      = aws_cloudwatch_event_rule.ec2_state_change.name
   target_id = "remediation"
   arn       = aws_lambda_function.remediation.arn
+}
+
+resource "aws_lambda_permission" "allow_eventbridge" {
+  statement_id  = "AllowExecutionFromEventBridge"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.remediation.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.ec2_state_change.arn
 }
 ```
 
@@ -293,6 +317,14 @@ resource "aws_cloudwatch_metric_alarm" "health_check" {
   dimensions = {
     HealthCheckId = aws_route53_health_check.app.id
   }
+}
+
+resource "aws_lambda_permission" "allow_cloudwatch_alarm" {
+  statement_id  = "AllowExecutionFromCloudWatchAlarm"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.remediation.function_name
+  principal     = "lambda.alarms.cloudwatch.amazonaws.com"
+  source_arn    = aws_cloudwatch_metric_alarm.health_check.arn
 }
 ```
 
