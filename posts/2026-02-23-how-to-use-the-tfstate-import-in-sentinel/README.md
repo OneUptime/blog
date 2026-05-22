@@ -23,7 +23,7 @@ The important thing to remember is that `tfstate` represents the state before th
 
 ## Importing tfstate
 
-```python
+```sentinel
 # Standard import
 
 import "tfstate/v2" as tfstate
@@ -33,7 +33,7 @@ import "tfstate/v2" as tfstate
 
 The `tfstate.resources` collection contains all resources tracked in the Terraform state. Each resource has a simpler structure compared to `tfplan` resources because there is no "change" to represent.
 
-```python
+```sentinel
 import "tfstate/v2" as tfstate
 
 # Iterate over all resources in state
@@ -63,7 +63,7 @@ for tfstate.resources as address, resource {
 
 Unlike `tfplan` where you use `change.after`, in `tfstate` you access attribute values directly through the `values` property:
 
-```python
+```sentinel
 import "tfstate/v2" as tfstate
 
 # Get all EC2 instances in state
@@ -84,7 +84,7 @@ for ec2_instances as address, instance {
 
 One of the most common uses of `tfstate` is counting resources. This lets you enforce limits on how many resources of a type can exist.
 
-```python
+```sentinel
 import "tfstate/v2" as tfstate
 import "tfplan/v2" as tfplan
 
@@ -123,7 +123,7 @@ main = rule {
 
 You can use `tfstate` to audit the current state of your infrastructure. This is useful for detecting drift from compliance standards.
 
-```python
+```sentinel
 import "tfstate/v2" as tfstate
 
 # Find all S3 buckets in state
@@ -131,16 +131,18 @@ s3_buckets = filter tfstate.resources as _, r {
     r.type is "aws_s3_bucket"
 }
 
+# Find S3 bucket versioning resources in state
+s3_bucket_versioning = filter tfstate.resources as _, r {
+    r.type is "aws_s3_bucket_versioning"
+}
+
 # Check that all existing buckets have versioning enabled
 versioning_enabled = rule {
     all s3_buckets as address, bucket {
-        if bucket.values.versioning is not null and
-           length(bucket.values.versioning) > 0 {
-            bucket.values.versioning[0].enabled is true
-        } else {
-            print("Bucket", address, "does not have versioning configured")
-            false
-        }
+        any s3_bucket_versioning as _, versioning {
+            versioning.values.bucket is bucket.values.bucket and
+            versioning.values.versioning_configuration[0].status is "Enabled"
+        } or (print("Bucket", address, "does not have versioning configured") and false)
     }
 }
 
@@ -153,7 +155,7 @@ main = rule {
 
 Tainted resources are marked for replacement on the next apply. You might want to track or restrict operations involving tainted resources:
 
-```python
+```sentinel
 import "tfstate/v2" as tfstate
 
 # Find tainted resources
@@ -163,14 +165,8 @@ tainted_resources = filter tfstate.resources as _, r {
 
 # Report on tainted resources (advisory policy)
 main = rule {
-    if length(tainted_resources) > 0 {
-        for tainted_resources as address, _ {
-            print("Tainted resource found:", address)
-        }
-        # This is informational - still pass the policy
-        true
-    } else {
-        true
+    all tainted_resources as address, _ {
+        print("Tainted resource found:", address)
     }
 }
 ```
@@ -179,7 +175,7 @@ main = rule {
 
 Resources in modules have a `module_address` that tells you their location in the module hierarchy:
 
-```python
+```sentinel
 import "tfstate/v2" as tfstate
 
 # Get all resources in state
@@ -209,7 +205,7 @@ The real power of `tfstate` comes when you combine it with `tfplan`. Here are so
 
 ### Preventing Deletion of Resources with Dependencies
 
-```python
+```sentinel
 import "tfstate/v2" as tfstate
 import "tfplan/v2" as tfplan
 
@@ -224,11 +220,17 @@ existing_subnets = filter tfstate.resources as _, r {
     r.type is "aws_subnet"
 }
 
+# Find subnets being deleted in the same plan
+subnet_deletes = filter tfplan.resource_changes as _, rc {
+    rc.type is "aws_subnet" and
+    rc.change.actions contains "delete"
+}
+
 # Get the VPC IDs of subnets that still exist
 check_vpc_delete = func(vpc_change) {
     vpc_id = vpc_change.change.before.id
-    for existing_subnets as _, subnet {
-        if subnet.values.vpc_id is vpc_id {
+    for existing_subnets as address, subnet {
+        if subnet.values.vpc_id is vpc_id and address not in subnet_deletes {
             print("Cannot delete VPC", vpc_id, "- it still has subnets")
             return false
         }
@@ -245,7 +247,7 @@ main = rule {
 
 ### Enforcing Resource Limits per Environment
 
-```python
+```sentinel
 import "tfstate/v2" as tfstate
 import "tfrun"
 
@@ -275,22 +277,20 @@ main = rule {
 
 ### Validating Existing Security Posture
 
-```python
+```sentinel
 import "tfstate/v2" as tfstate
 
-# Check all existing security groups
-security_groups = filter tfstate.resources as _, r {
-    r.type is "aws_security_group"
+# Check all existing security group ingress rules
+security_group_ingress_rules = filter tfstate.resources as _, r {
+    r.type is "aws_vpc_security_group_ingress_rule"
 }
 
-# Verify no security group allows all inbound traffic
+# Verify no security group ingress rule allows all inbound traffic
 no_wide_open = rule {
-    all security_groups as address, sg {
-        all sg.values.ingress as _, rule {
-            not (rule.from_port is 0 and
-                 rule.to_port is 65535 and
-                 rule.cidr_blocks contains "0.0.0.0/0")
-        }
+    all security_group_ingress_rules as address, rule {
+        not ((rule.values.ip_protocol is "-1" or
+              (rule.values.from_port is 0 and rule.values.to_port is 65535)) and
+             rule.values.cidr_ipv4 is "0.0.0.0/0")
     }
 }
 
@@ -303,7 +303,7 @@ main = rule {
 
 The `tfstate` import also gives you access to current output values:
 
-```python
+```sentinel
 import "tfstate/v2" as tfstate
 
 # Access outputs from state
@@ -320,7 +320,7 @@ main = rule {
 
 When a workspace has no existing state (like on the first run), `tfstate.resources` will be empty. Your policies should handle this gracefully:
 
-```python
+```sentinel
 import "tfstate/v2" as tfstate
 
 all_resources = tfstate.resources
