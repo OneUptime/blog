@@ -21,7 +21,7 @@ Start with the strictest security defaults and relax only where necessary.
 All service-to-service communication must be encrypted. No exceptions:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -43,7 +43,7 @@ istioctl x describe pod <pod-name> -n <namespace>
 Every service starts with deny-all. Access is granted explicitly:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: deny-all
@@ -55,7 +55,7 @@ spec:
 Then add specific allow policies for each legitimate communication path:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: allow-api-to-account-service
@@ -85,7 +85,7 @@ spec:
 Validate authentication tokens before traffic enters the mesh:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: RequestAuthentication
 metadata:
   name: jwt-auth
@@ -100,7 +100,7 @@ spec:
     forwardOriginalToken: true
     outputPayloadToHeader: x-jwt-payload
 ---
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: require-jwt
@@ -144,7 +144,7 @@ spec:
         "upstream_service_time": "%RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)%",
         "source_principal": "%DOWNSTREAM_PEER_URI_SAN%",
         "destination_principal": "%UPSTREAM_PEER_URI_SAN%",
-        "source_namespace": "%DOWNSTREAM_PEER_NAMESPACE%",
+        "source_address": "%DOWNSTREAM_REMOTE_ADDRESS%",
         "user_agent": "%REQ(USER-AGENT)%",
         "request_id": "%REQ(X-REQUEST-ID)%",
         "authority": "%REQ(:AUTHORITY)%",
@@ -160,7 +160,7 @@ The `source_principal` and `destination_principal` fields are especially importa
 Financial services have endpoints that handle money movement, account access, and PII. Add extra protection:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: transfer-service-authz
@@ -183,18 +183,18 @@ spec:
         - /api/transfers
     when:
     - key: request.headers[x-idempotency-key]
-      notValues:
-      - ""
+      values:
+      - "*"
 ```
 
-The `when` condition ensures that transfer requests must include an idempotency key header. This prevents duplicate transfers.
+The `when` condition ensures that transfer requests must include an idempotency key header. Your transfer service should use that key to make repeated requests idempotent.
 
 ## Timeout and Retry Policies for Financial Operations
 
 Financial operations need careful timeout and retry settings. Never retry money-moving operations unless you have idempotency guarantees:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: transfer-service-vs
@@ -238,7 +238,7 @@ Financial systems often require network segmentation between different trust zon
 ```yaml
 # Core banking services can only see other core services
 
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: core-banking-sidecar
@@ -251,7 +251,7 @@ spec:
 
 ---
 # API layer can see core banking and shared services
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: api-sidecar
@@ -270,7 +270,7 @@ spec:
 Financial applications often depend on external services (payment networks, credit bureaus, regulatory APIs). Protect against their failures:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: payment-network-dr
@@ -296,7 +296,7 @@ spec:
 When connecting to external financial services, configure TLS properly:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: external-bank-api
@@ -304,11 +304,14 @@ metadata:
 spec:
   host: api.externalbank.com
   trafficPolicy:
-    tls:
-      mode: SIMPLE
-      caCertificates: /etc/certs/external-bank-ca.pem
+    portLevelSettings:
+    - port:
+        number: 80
+      tls:
+        mode: SIMPLE
+        caCertificates: /etc/certs/external-bank-ca.pem
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-bank-api
@@ -317,6 +320,10 @@ spec:
   hosts:
   - api.externalbank.com
   ports:
+  - number: 80
+    name: http
+    protocol: HTTP
+    targetPort: 443
   - number: 443
     name: https
     protocol: HTTPS
@@ -348,7 +355,7 @@ groups:
 
   - alert: TransferServiceHighLatency
     expr: |
-      histogram_quantile(0.99, rate(istio_request_duration_milliseconds_bucket{destination_workload="transfer-service"}[5m])) > 5000
+      histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{destination_workload="transfer-service"}[5m])) by (le)) > 5000
     for: 5m
     annotations:
       summary: "Transfer service P99 latency above 5 seconds"
@@ -367,16 +374,10 @@ kubectl create secret generic cacerts -n istio-system \
   --from-file=cert-chain.pem
 ```
 
-Then configure Istio to use it:
+Then install or restart Istio so `istiod` reads the `cacerts` secret:
 
-```yaml
-apiVersion: install.istio.io/v1alpha1
-kind: IstioOperator
-spec:
-  values:
-    pilot:
-      env:
-        EXTERNAL_CA: ISTIOD_RA_KUBERNETES_API
+```bash
+istioctl install <flags-you-used-to-install-Istio>
 ```
 
 Configuring Istio for financial services is about setting strict defaults and being explicit about every allowed communication path. The combination of mTLS, authorization policies, audit logging, and network segmentation gives you a security posture that meets regulatory requirements while keeping the platform manageable for development teams.
