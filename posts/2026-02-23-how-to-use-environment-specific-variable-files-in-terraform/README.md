@@ -214,7 +214,7 @@ infrastructure/
 bucket         = "mycompany-terraform-state"
 key            = "production/orderservice/terraform.tfstate"
 region         = "us-east-1"
-dynamodb_table = "terraform-locks"
+use_lockfile   = true
 encrypt        = true
 ```
 
@@ -223,7 +223,7 @@ encrypt        = true
 bucket         = "mycompany-terraform-state"
 key            = "dev/orderservice/terraform.tfstate"
 region         = "us-east-1"
-dynamodb_table = "terraform-locks"
+use_lockfile   = true
 encrypt        = true
 ```
 
@@ -307,6 +307,8 @@ REQUIRED_VARS=(
 )
 
 for env_file in envs/*.tfvars; do
+  [[ "${env_file}" == "envs/shared.tfvars" ]] && continue
+
   echo "Checking ${env_file}..."
   for var in "${REQUIRED_VARS[@]}"; do
     if ! grep -q "^${var}" "${env_file}"; then
