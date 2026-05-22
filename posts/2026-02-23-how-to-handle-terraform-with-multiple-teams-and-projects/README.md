@@ -28,11 +28,11 @@ The most critical decision is how to isolate Terraform state across teams and pr
 # infrastructure/team-backend/production/backend.tf
 terraform {
   backend "s3" {
-    bucket         = "myorg-terraform-state"
-    key            = "team-backend/production/terraform.tfstate"
-    region         = "us-east-1"
-    dynamodb_table = "terraform-locks"
-    encrypt        = true
+    bucket       = "myorg-terraform-state"
+    key          = "team-backend/production/terraform.tfstate"
+    region       = "us-east-1"
+    encrypt      = true
+    use_lockfile = true
   }
 }
 
@@ -165,18 +165,24 @@ resource "aws_iam_role_policy" "team_terraform" {
         ]
         Condition = {
           StringEquals = {
-            "aws:RequestTag/Team" = each.key
+            "aws:ResourceTag/Team" = each.key
           }
         }
       },
       {
-        # Allow reading shared resources
+        # Allow read-only discovery for AWS APIs that require Resource = "*"
         Effect = "Allow"
-        Action = ["ec2:Describe*", "s3:GetObject"]
+        Action = ["ec2:Describe*"]
         Resource = "*"
+      },
+      {
+        # Allow reading shared Terraform outputs from a controlled state prefix
+        Effect = "Allow"
+        Action = ["s3:GetObject"]
+        Resource = "arn:aws:s3:::myorg-terraform-state/shared/*"
         Condition = {
           StringEquals = {
-            "aws:ResourceTag/Shared" = "true"
+            "s3:ExistingObjectTag/Shared" = "true"
           }
         }
       }
@@ -295,6 +301,9 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
     # Use team-specific environment with its own secrets
     environment: team-backend-production
 
@@ -367,8 +376,12 @@ resource "aws_cloudwatch_dashboard" "team" {
         height = 6
         properties = {
           metrics = [
-            ["AWS/ECS", "CPUUtilization", "ServiceName", "${each.key}-*"]
+            [{
+              expression = "SELECT AVG(CPUUtilization) FROM SCHEMA(\"AWS/ECS\", ServiceName) WHERE tag.Team = '${each.key}' GROUP BY ServiceName"
+              id         = "team_services"
+            }]
           ]
+          region = "us-east-1"
           title = "${each.key} - Service CPU"
         }
       }
