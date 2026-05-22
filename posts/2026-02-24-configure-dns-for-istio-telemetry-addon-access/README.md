@@ -96,7 +96,7 @@ aws route53 change-resource-record-sets --hosted-zone-id Z1234567890 \
         "Name": "grafana.monitoring.example.com",
         "Type": "A",
         "AliasTarget": {
-          "HostedZoneId": "Z35SXDOTRQ7X7K",
+          "HostedZoneId": "<LOAD_BALANCER_HOSTED_ZONE_ID>",
           "DNSName": "a1b2c3d4.us-east-1.elb.amazonaws.com",
           "EvaluateTargetHealth": true
         }
@@ -111,9 +111,43 @@ Manual DNS works but does not scale. When the ingress gateway IP changes (after 
 
 ### Install external-dns
 
-Deploy external-dns to watch your Kubernetes resources and automatically create DNS records:
+Deploy external-dns to watch your Kubernetes resources and automatically create DNS records. For clusters with RBAC enabled, include permissions for Istio Gateway and VirtualService resources:
 
 ```yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: external-dns
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: external-dns
+rules:
+  - apiGroups: [""]
+    resources: ["services", "pods"]
+    verbs: ["get", "watch", "list"]
+  - apiGroups: ["discovery.k8s.io"]
+    resources: ["endpointslices"]
+    verbs: ["get", "watch", "list"]
+  - apiGroups: ["networking.istio.io"]
+    resources: ["gateways", "virtualservices"]
+    verbs: ["get", "watch", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: external-dns-viewer
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: external-dns
+subjects:
+  - kind: ServiceAccount
+    name: external-dns
+    namespace: kube-system
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -132,7 +166,7 @@ spec:
       serviceAccountName: external-dns
       containers:
         - name: external-dns
-          image: registry.k8s.io/external-dns/external-dns:v0.14.0
+          image: registry.k8s.io/external-dns/external-dns:v0.21.0
           args:
             - --source=istio-virtualservice
             - --source=istio-gateway
@@ -142,7 +176,7 @@ spec:
             - --txt-owner-id=my-cluster
 ```
 
-The `--source=istio-virtualservice` flag tells external-dns to watch Istio VirtualService resources and create DNS records for the hostnames defined in them. The `--domain-filter` restricts which domains external-dns can manage.
+The `--source=istio-virtualservice` flag tells external-dns to watch Istio VirtualService resources and create DNS records for the hostnames defined in them. Current external-dns Istio sources require Istio 1.22 or later. The `--domain-filter` restricts which domains external-dns can manage.
 
 ### Configure Cloud Provider Credentials
 
@@ -189,7 +223,7 @@ You should see log lines showing record creation for each hostname in your Virtu
 
 ## Using CoreDNS for Internal DNS
 
-If your telemetry dashboards should only be accessible from within the cluster or your corporate network, you can configure CoreDNS instead of public DNS:
+If your telemetry dashboards should only be accessible from within the cluster or your corporate network, you can configure CoreDNS instead of public DNS. On managed clusters that import a `coredns-custom` ConfigMap, such as AKS, that can look like this:
 
 ```yaml
 apiVersion: v1
