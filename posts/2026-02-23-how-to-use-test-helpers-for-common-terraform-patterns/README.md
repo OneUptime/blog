@@ -19,7 +19,9 @@ func TestSomething(t *testing.T) {
     t.Parallel()
     opts := &terraform.Options{
         TerraformDir: "../modules/something",
-        Vars: map[string]interface{}{...},
+        Vars: map[string]interface{}{
+            "environment": "test",
+        },
     }
     defer terraform.Destroy(t, opts)
     terraform.InitAndApply(t, opts)
@@ -64,15 +66,16 @@ func ModuleOptions(t *testing.T, module string, vars map[string]interface{}) *te
         prefix = envPrefix
     }
 
-    // Inject the test prefix into variables
-    if vars == nil {
-        vars = make(map[string]interface{})
+    // Inject the test prefix into variables without mutating the caller's map
+    moduleVars := make(map[string]interface{}, len(vars)+1)
+    for key, value := range vars {
+        moduleVars[key] = value
     }
-    vars["name_prefix"] = prefix
+    moduleVars["name_prefix"] = prefix
 
     return &terraform.Options{
         TerraformDir: fmt.Sprintf("../modules/%s", module),
-        Vars:         vars,
+        Vars:         moduleVars,
         // Retry on transient errors
         RetryableTerraformErrors: map[string]string{
             "RequestLimitExceeded": "AWS API rate limit",
@@ -117,6 +120,7 @@ Wrap common output assertions into helper functions.
 package helpers
 
 import (
+    "fmt"
     "regexp"
     "testing"
 
@@ -176,40 +180,42 @@ Validate that AWS resources were actually created correctly.
 package helpers
 
 import (
+    "context"
     "testing"
 
-    "github.com/aws/aws-sdk-go/aws"
-    "github.com/aws/aws-sdk-go/aws/session"
-    "github.com/aws/aws-sdk-go/service/ec2"
+    "github.com/aws/aws-sdk-go-v2/aws"
+    "github.com/aws/aws-sdk-go-v2/config"
+    "github.com/aws/aws-sdk-go-v2/service/ec2"
+    "github.com/aws/aws-sdk-go-v2/service/ec2/types"
     "github.com/stretchr/testify/assert"
     "github.com/stretchr/testify/require"
 )
 
 // AssertVPCExists verifies a VPC exists and returns its details
-func AssertVPCExists(t *testing.T, region string, vpcId string) *ec2.Vpc {
+func AssertVPCExists(t *testing.T, region string, vpcId string) *types.Vpc {
     t.Helper()
 
-    sess := session.Must(session.NewSession(&aws.Config{
-        Region: aws.String(region),
-    }))
-    svc := ec2.New(sess)
+    cfg, err := config.LoadDefaultConfig(context.Background(), config.WithRegion(region))
+    require.NoError(t, err, "AWS configuration should load")
+    svc := ec2.NewFromConfig(cfg)
 
-    result, err := svc.DescribeVpcs(&ec2.DescribeVpcsInput{
-        VpcIds: []*string{aws.String(vpcId)},
+    result, err := svc.DescribeVpcs(context.Background(), &ec2.DescribeVpcsInput{
+        VpcIds: []string{vpcId},
     })
     require.NoError(t, err, "VPC %s should exist", vpcId)
     require.Len(t, result.Vpcs, 1, "Should find exactly one VPC")
 
-    return result.Vpcs[0]
+    vpc := result.Vpcs[0]
+    return &vpc
 }
 
 // AssertVPCHasTag verifies a VPC has a specific tag
-func AssertVPCHasTag(t *testing.T, vpc *ec2.Vpc, key string, value string) {
+func AssertVPCHasTag(t *testing.T, vpc *types.Vpc, key string, value string) {
     t.Helper()
 
     for _, tag := range vpc.Tags {
-        if aws.StringValue(tag.Key) == key {
-            assert.Equal(t, value, aws.StringValue(tag.Value),
+        if aws.ToString(tag.Key) == key {
+            assert.Equal(t, value, aws.ToString(tag.Value),
                 "VPC tag '%s' should be '%s'", key, value)
             return
         }
@@ -218,16 +224,15 @@ func AssertVPCHasTag(t *testing.T, vpc *ec2.Vpc, key string, value string) {
 }
 
 // AssertSecurityGroupAllowsPort checks if a security group allows a specific port
-func AssertSecurityGroupAllowsPort(t *testing.T, region string, sgId string, port int64) {
+func AssertSecurityGroupAllowsPort(t *testing.T, region string, sgId string, port int32) {
     t.Helper()
 
-    sess := session.Must(session.NewSession(&aws.Config{
-        Region: aws.String(region),
-    }))
-    svc := ec2.New(sess)
+    cfg, err := config.LoadDefaultConfig(context.Background(), config.WithRegion(region))
+    require.NoError(t, err, "AWS configuration should load")
+    svc := ec2.NewFromConfig(cfg)
 
-    result, err := svc.DescribeSecurityGroups(&ec2.DescribeSecurityGroupsInput{
-        GroupIds: []*string{aws.String(sgId)},
+    result, err := svc.DescribeSecurityGroups(context.Background(), &ec2.DescribeSecurityGroupsInput{
+        GroupIds: []string{sgId},
     })
     require.NoError(t, err)
     require.Len(t, result.SecurityGroups, 1)
@@ -235,7 +240,8 @@ func AssertSecurityGroupAllowsPort(t *testing.T, region string, sgId string, por
     sg := result.SecurityGroups[0]
     found := false
     for _, rule := range sg.IpPermissions {
-        if aws.Int64Value(rule.FromPort) <= port && aws.Int64Value(rule.ToPort) >= port {
+        if aws.ToString(rule.IpProtocol) == "-1" ||
+            (aws.ToInt32(rule.FromPort) <= port && aws.ToInt32(rule.ToPort) >= port) {
             found = true
             break
         }
@@ -254,6 +260,7 @@ package helpers
 
 import (
     "fmt"
+    "net/http"
     "testing"
     "time"
 
