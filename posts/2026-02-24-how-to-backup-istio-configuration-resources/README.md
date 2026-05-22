@@ -92,6 +92,7 @@ The raw kubectl output includes metadata fields that will cause problems during 
 ```bash
 #!/bin/bash
 # clean-backup.sh
+# Requires PyYAML: python3 -m pip install pyyaml
 
 for file in "$1"/*.yaml; do
   echo "Cleaning $file..."
@@ -151,7 +152,7 @@ spec:
                   BACKUP_DIR="/backup/istio-$(date +%Y%m%d-%H%M%S)"
                   mkdir -p "$BACKUP_DIR"
 
-                  RESOURCES="virtualservices destinationrules gateways serviceentries sidecars envoyfilters peerauthentications requestauthentications authorizationpolicies telemetry"
+                  RESOURCES="virtualservices destinationrules gateways serviceentries sidecars envoyfilters workloadentries workloadgroups proxyconfigs peerauthentications requestauthentications authorizationpolicies telemetry"
 
                   for resource in $RESOURCES; do
                     kubectl get "$resource" --all-namespaces -o yaml > "$BACKUP_DIR/$resource.yaml" 2>/dev/null
@@ -225,18 +226,21 @@ Velero is a popular Kubernetes backup tool that works well for Istio resources. 
 # Install Velero (assuming AWS backend)
 velero install \
   --provider aws \
+  --plugins velero/velero-plugin-for-aws:v1.13.0 \
   --bucket my-backup-bucket \
-  --secret-file ./credentials-velero
+  --secret-file ./credentials-velero \
+  --backup-location-config region=us-east-1 \
+  --snapshot-location-config region=us-east-1
 
 # Create a backup of all Istio resources
 velero backup create istio-backup \
-  --include-resources virtualservices,destinationrules,gateways,serviceentries,sidecars,envoyfilters,peerauthentications,requestauthentications,authorizationpolicies,telemetry \
+  --include-resources virtualservices.networking.istio.io,destinationrules.networking.istio.io,gateways.networking.istio.io,serviceentries.networking.istio.io,sidecars.networking.istio.io,envoyfilters.networking.istio.io,workloadentries.networking.istio.io,workloadgroups.networking.istio.io,proxyconfigs.networking.istio.io,peerauthentications.security.istio.io,requestauthentications.security.istio.io,authorizationpolicies.security.istio.io,telemetries.telemetry.istio.io \
   --include-namespaces "*"
 
 # Create a scheduled backup
 velero schedule create istio-daily \
   --schedule="0 2 * * *" \
-  --include-resources virtualservices,destinationrules,gateways,serviceentries,sidecars,envoyfilters,peerauthentications,requestauthentications,authorizationpolicies,telemetry \
+  --include-resources virtualservices.networking.istio.io,destinationrules.networking.istio.io,gateways.networking.istio.io,serviceentries.networking.istio.io,sidecars.networking.istio.io,envoyfilters.networking.istio.io,workloadentries.networking.istio.io,workloadgroups.networking.istio.io,proxyconfigs.networking.istio.io,peerauthentications.security.istio.io,requestauthentications.security.istio.io,authorizationpolicies.security.istio.io,telemetries.telemetry.istio.io \
   --include-namespaces "*" \
   --ttl 720h
 ```
@@ -251,7 +255,7 @@ Storing Istio configuration in Git gives you version history and audit trails. H
 
 cd /path/to/istio-config-repo
 
-RESOURCES="virtualservices destinationrules gateways serviceentries sidecars envoyfilters peerauthentications requestauthentications authorizationpolicies telemetry"
+RESOURCES="virtualservices destinationrules gateways serviceentries sidecars envoyfilters workloadentries workloadgroups proxyconfigs peerauthentications requestauthentications authorizationpolicies telemetry"
 
 for resource in $RESOURCES; do
   mkdir -p "$resource"
