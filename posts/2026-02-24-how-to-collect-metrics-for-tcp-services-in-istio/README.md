@@ -8,7 +8,7 @@ Description: Monitor TCP-based services in Istio including databases, message qu
 
 ---
 
-Not everything in your service mesh speaks HTTP. Databases, message queues, cache servers, and custom protocols all use raw TCP connections. Istio still provides observability for these services, but the metrics are different from the HTTP ones. Instead of request counts and latency histograms, you get connection counts, bytes transferred, and connection durations. Understanding these metrics is essential if you want full visibility into your mesh.
+Not everything in your service mesh speaks HTTP. Databases, message queues, cache servers, and custom protocols all use raw TCP connections. Istio still provides observability for these services, but the metrics are different from the HTTP ones. Instead of request counts and latency histograms, you get connection counts and bytes transferred. Understanding these metrics is essential if you want full visibility into your mesh.
 
 ## How Istio Handles TCP Traffic
 
@@ -56,9 +56,9 @@ spec:
       targetPort: 9187
 ```
 
-The `tcp-` prefix tells Istio to treat this as TCP traffic. Without it, Istio might try to parse the traffic as HTTP and generate errors.
+The `tcp-` prefix tells Istio to treat this as opaque TCP traffic. Without explicit protocol selection, Istio will try to automatically detect HTTP and HTTP/2 and will treat traffic it cannot identify as plain TCP, which can be problematic for some server-first protocols.
 
-Other valid protocol prefixes include `mysql-`, `mongo-`, `redis-`, and `grpc-`. Using the correct prefix helps Istio apply protocol-specific handling where available.
+Other valid protocol prefixes include `mysql-`, `mongo-`, `redis-`, and `grpc-`. The `mysql-`, `mongo-`, and `redis-` prefixes enable experimental application-protocol handling only when the corresponding Istio environment variables are enabled; otherwise Istio treats them as opaque TCP streams. Using the correct prefix helps Istio apply protocol-specific handling where available.
 
 ## Querying TCP Metrics
 
@@ -290,7 +290,7 @@ istio_tcp_connections_opened_total{
 }
 ```
 
-The labels are similar to HTTP metrics but don't include `response_code` or `request_protocol` since those concepts don't apply to raw TCP.
+The labels are similar to HTTP metrics but don't include `response_code`, since HTTP response codes don't apply to raw TCP. Istio can still include `request_protocol`, which is set to the request or connection protocol.
 
 ## Customizing TCP Metrics
 
@@ -313,7 +313,7 @@ spec:
           tagOverrides:
             destination_port:
               operation: UPSERT
-              value: "destination.port"
+              value: "string(destination.port)"
 ```
 
 ## Building a TCP Services Dashboard
