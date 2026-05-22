@@ -177,6 +177,8 @@ jobs:
       modules: ${{ steps.changes.outputs.modules }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - id: changes
         run: |
           # Detect which modules changed
@@ -184,7 +186,7 @@ jobs:
             grep '^modules/' | \
             cut -d'/' -f2 | \
             sort -u | \
-            jq -R . | jq -s .)
+            jq -R . | jq -cs .)
           echo "modules=$changed" >> $GITHUB_OUTPUT
 
   test:
