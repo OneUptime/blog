@@ -18,7 +18,7 @@ The typical workflow is: Terraform creates the target infrastructure, Spinnaker 
 
 ## Prerequisites
 
-You need Terraform version 1.0 or later, a running Spinnaker installation (Halyard or Helm-based), a Kubernetes cluster, cloud provider accounts configured in both tools, and familiarity with Spinnaker pipelines.
+You need Terraform version 1.0 or later, a running Spinnaker installation, a Kubernetes cluster, cloud provider accounts configured in both tools, and familiarity with Spinnaker pipelines. For new Spinnaker installations, use the current Kustomize-based deployment guidance; Halyard is deprecated and kept only for historical deployments.
 
 ## Step 1: Provision Spinnaker Infrastructure with Terraform
 
@@ -59,7 +59,7 @@ module "eks" {
   version = "~> 20.0"
 
   cluster_name    = "spinnaker-cluster"
-  cluster_version = "1.29"
+  cluster_version = "1.33"
 
   vpc_id     = module.vpc.vpc_id
   subnet_ids = module.vpc.private_subnets
@@ -169,7 +169,7 @@ resource "helm_release" "spinnaker" {
     value = "true"
   }
 
-  # Set resource limits
+  # Add a Gate profile override
   set {
     name  = "halyard.additionalProfileConfigMaps.data.gate-local\\.yml"
     value = "server.port: 8084"
@@ -234,7 +234,7 @@ resource "kubernetes_namespace" "environments" {
 }
 ```
 
-## Step 4: Create Spinnaker Pipeline Templates
+## Step 4: Create Spinnaker Pipeline Configurations
 
 Use Terraform to manage Spinnaker pipeline configurations as code.
 
@@ -306,6 +306,8 @@ locals {
         account             = "kubernetes"
         cloudProvider        = "kubernetes"
         namespaceOverride    = "canary"
+        source               = "artifact"
+        manifestArtifactId   = "deployment-manifest"
         trafficManagement = {
           enabled = true
           options = {
@@ -323,6 +325,8 @@ locals {
         account             = "kubernetes"
         cloudProvider        = "kubernetes"
         namespaceOverride    = "production"
+        source               = "artifact"
+        manifestArtifactId   = "deployment-manifest"
       }
     ]
   }
@@ -363,7 +367,7 @@ resource "null_resource" "trigger_deployment" {
 
 ## Integrating Terraform Stages in Spinnaker Pipelines
 
-Spinnaker can also run Terraform as a pipeline stage using the Terraform plugin.
+Spinnaker can also run Terraform as a pipeline stage after installing the Terraform Integration service and plugin.
 
 ```hcl
 # spinnaker-terraform-stage.tf
@@ -421,7 +425,7 @@ locals {
 
 ## Best Practices
 
-Keep the boundary clear: Terraform manages infrastructure, Spinnaker manages application deployments. Use Terraform to provision the target environments that Spinnaker deploys to. Store Spinnaker pipeline configurations as code alongside your Terraform configurations. Use Spinnaker's built-in Terraform stage for infrastructure changes that need deployment pipeline safety features. Configure proper RBAC in both tools to control who can modify infrastructure versus who can deploy applications. Use Spinnaker's canary analysis with Terraform-provisioned monitoring infrastructure.
+Keep the boundary clear: Terraform manages infrastructure, Spinnaker manages application deployments. Use Terraform to provision the target environments that Spinnaker deploys to. Store Spinnaker pipeline configurations as code alongside your Terraform configurations. Use the Terraform Integration plugin for infrastructure changes that need deployment pipeline safety features. Configure proper RBAC in both tools to control who can modify infrastructure versus who can deploy applications. Use Spinnaker's canary analysis with Terraform-provisioned monitoring infrastructure.
 
 ## Conclusion
 
