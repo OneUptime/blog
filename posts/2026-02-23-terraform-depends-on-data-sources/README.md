@@ -23,7 +23,7 @@ resource "aws_s3_bucket" "logs" {
   bucket = "my-app-logs-bucket"
 }
 
-# Try to look up S3 buckets with a name prefix
+# Try to look up the S3 bucket by name
 # Problem: this may run BEFORE the bucket above is created
 data "aws_s3_bucket" "logs" {
   bucket = "my-app-logs-bucket"
@@ -50,9 +50,9 @@ data "aws_s3_bucket" "logs" {
 
 ## How depends_on Changes Data Source Behavior
 
-When you add `depends_on` to a data source, two important things change:
+When you add `depends_on` to a data source and the dependency has changes pending, two important things change:
 
-1. The data source is deferred from the plan phase to the apply phase. During planning, all of its attributes show as "known after apply."
+1. The data source is deferred from the plan phase to the apply phase. During planning, its attributes show as "known after apply."
 
 2. Any resources that depend on this data source also become partially unknown during the plan.
 
@@ -61,7 +61,16 @@ This has a cascading effect:
 ```hcl
 resource "aws_iam_role" "app" {
   name               = "app-role"
-  assume_role_policy = data.aws_iam_policy_document.assume.json
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = {
+        Service = "lambda.amazonaws.com"
+      }
+    }]
+  })
 }
 
 # This data source depends_on the role
@@ -76,7 +85,7 @@ resource "aws_lambda_function" "app" {
   function_name = "my-function"
   role          = data.aws_iam_role.app.arn
   handler       = "index.handler"
-  runtime       = "nodejs18.x"
+  runtime       = "nodejs24.x"
   filename      = "function.zip"
 }
 ```
@@ -145,7 +154,7 @@ data "aws_iam_policy" "custom" {
 
 ## When You Do NOT Need depends_on
 
-If your data source references an attribute from a managed resource, Terraform creates an implicit dependency automatically. You do not need `depends_on` in this case:
+If your data source references an attribute from a managed resource, Terraform creates an implicit dependency automatically. Terraform can also detect dependencies through expressions such as local values. You do not need `depends_on` in this case:
 
 ```hcl
 resource "aws_vpc" "main" {
@@ -161,7 +170,7 @@ data "aws_subnets" "private" {
 }
 ```
 
-The rule is simple: if the data source directly references an attribute of a managed resource, Terraform handles the ordering. If the dependency is indirect or based on side effects, you need `depends_on`.
+The rule is simple: if the data source references an attribute of a managed resource through Terraform expressions, Terraform handles the ordering. If the dependency is based on side effects that Terraform cannot infer from references, you need `depends_on`.
 
 ## depends_on with Module Data Sources
 
@@ -285,7 +294,16 @@ Often, the data source is unnecessary because the resource itself exposes the sa
 # Unnecessary pattern
 resource "aws_iam_role" "app" {
   name               = "app-role"
-  assume_role_policy = data.aws_iam_policy_document.assume.json
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = {
+        Service = "lambda.amazonaws.com"
+      }
+    }]
+  })
 }
 
 data "aws_iam_role" "app" {
@@ -326,6 +344,6 @@ For complex dependency chains, consider splitting your configuration into separa
 
 ## Conclusion
 
-The `depends_on` meta-argument is a useful tool for controlling when Terraform reads data sources, but it comes with trade-offs. It defers data source evaluation to the apply phase, making plans less informative. The best approach is to use implicit dependencies through attribute references whenever possible and reserve `depends_on` for cases where the dependency truly cannot be expressed through references. When you do use it, keep the dependency list minimal and document why the explicit dependency is necessary.
+The `depends_on` meta-argument is a useful tool for controlling when Terraform reads data sources, but it comes with trade-offs. When dependencies have pending changes, it defers data source evaluation to the apply phase, making plans less informative. The best approach is to use implicit dependencies through attribute references whenever possible and reserve `depends_on` for cases where the dependency truly cannot be expressed through references. When you do use it, keep the dependency list minimal and document why the explicit dependency is necessary.
 
 For a broader look at dependency management, see our guide on [how to handle data source dependencies in Terraform](https://oneuptime.com/blog/post/2026-02-23-terraform-data-source-dependencies/view).
