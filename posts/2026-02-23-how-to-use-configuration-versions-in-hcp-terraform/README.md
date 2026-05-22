@@ -101,12 +101,14 @@ curl -s \
     source: .data.attributes.source
   }'
 
-# List runs for this configuration version
+# List recent workspace runs that used this configuration version
 curl -s \
   --header "Authorization: Bearer $TF_TOKEN" \
   --header "Content-Type: application/vnd.api+json" \
-  "https://app.terraform.io/api/v2/configuration-versions/$CV_ID/runs" | \
-  jq '.data[] | {id: .id, status: .attributes.status}'
+  "https://app.terraform.io/api/v2/workspaces/$WORKSPACE_ID/runs?include=configuration_version" | \
+  jq --arg cv_id "$CV_ID" '.data[] |
+    select(.relationships["configuration-version"].data.id == $cv_id) |
+    {id: .id, status: .attributes.status}'
 ```
 
 ## Configuration Version Attributes
@@ -149,32 +151,27 @@ curl -s \
     id: .id,
     status: .attributes.status,
     source: .attributes.source,
-    created: .attributes["created-at"],
     speculative: .attributes.speculative
   }'
 ```
 
-The `source` field tells you how the configuration version was created:
+The `source` field tells you how the configuration version was created. Common values include:
 
 - `tfe-api` - Created via API
-- `tfe-ui` - Created via UI
-- `bitbucket` / `github` / `gitlab` - Created from VCS
-- `terraform-cli` - Created from CLI workflow
+- VCS provider values such as `gitlab` - Created from VCS
+- Other HCP Terraform-created values may appear for UI or CLI-driven workflows
 
 ## Downloading Configuration Files
 
 You can download the files from a configuration version to inspect what code was used in a specific run:
 
 ```bash
-# Get the download URL
-DOWNLOAD_URL=$(curl -s \
+# Download and extract
+curl -sL \
   --header "Authorization: Bearer $TF_TOKEN" \
   --header "Content-Type: application/vnd.api+json" \
   "https://app.terraform.io/api/v2/configuration-versions/$CV_ID/download" \
-  -w '%{redirect_url}' -o /dev/null)
-
-# Download and extract
-curl -sL "$DOWNLOAD_URL" -o config-download.tar.gz
+  -o config-download.tar.gz
 mkdir -p config-review
 tar -xzf config-download.tar.gz -C config-review
 ls config-review/
@@ -280,7 +277,7 @@ echo "View at: https://app.terraform.io/app/my-org/workspaces/my-workspace/runs/
 Configuration versions move through these states:
 
 - `pending` - Just created, waiting for upload
-- `uploading` - Upload in progress
+- `fetching` - HCP Terraform is fetching files from a connected VCS repository
 - `uploaded` - Upload complete, ready for runs
 - `archived` - Older version that has been archived
 - `errored` - Upload failed
