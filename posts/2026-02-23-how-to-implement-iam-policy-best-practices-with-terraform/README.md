@@ -78,6 +78,8 @@ This policy only grants access to a single bucket and only the specific actions 
 For services and applications, always prefer IAM roles over IAM users with long-lived credentials. Terraform makes it straightforward to create roles with proper assume role policies.
 
 ```hcl
+data "aws_caller_identity" "current" {}
+
 # Create a role for an ECS task
 resource "aws_iam_role" "ecs_task_role" {
   name = "ecs-app-task-role"
@@ -359,6 +361,6 @@ This approach lets you compose policies from multiple sources while keeping each
 
 ## Summary
 
-IAM policy management with Terraform comes down to a few key habits: scope permissions narrowly, prefer roles over users, use permission boundaries as guardrails, and wrap patterns in reusable modules. The Terraform code becomes your security documentation, and the state file becomes your audit trail for who has access to what.
+IAM policy management with Terraform comes down to a few key habits: scope permissions narrowly, prefer roles over users, use permission boundaries as guardrails, and wrap patterns in reusable modules. The Terraform code becomes your security documentation, and the state file records the IAM resources Terraform manages.
 
 For more on securing your Terraform workflows, check out our guide on [how to scan Terraform plans for security issues](https://oneuptime.com/blog/post/2026-02-23-how-to-scan-terraform-plans-for-security-issues/view) and [how to handle Terraform with compliance frameworks](https://oneuptime.com/blog/post/2026-02-23-how-to-handle-terraform-with-compliance-frameworks-soc2-pci-hipaa/view).
