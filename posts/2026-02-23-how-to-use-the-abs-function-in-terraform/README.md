@@ -131,8 +131,8 @@ variable "subnet_cidr_prefix" {
 
 locals {
   # Calculate how many bits of subnetting are needed
-  # This works regardless of which is larger
-  newbits = abs(var.subnet_cidr_prefix - var.vpc_cidr_prefix)
+  # This assumes the subnet prefix is larger than the VPC prefix
+  newbits = var.subnet_cidr_prefix - var.vpc_cidr_prefix
 
   # Number of possible subnets
   num_subnets = pow(2, local.newbits)
@@ -192,7 +192,7 @@ locals {
   # Calculate maintenance window in UTC
   # If local maintenance is at 2 AM, convert to UTC
   local_maintenance_hour = 2
-  utc_maintenance_hour   = (local.local_maintenance_hour - var.utc_offset_hours) % 24
+  utc_maintenance_hour   = (local.local_maintenance_hour - var.utc_offset_hours + 24) % 24
 }
 
 output "maintenance_info" {
@@ -308,8 +308,9 @@ locals {
   max_absolute = max([for v in local.values : abs(v)]...)
   # Result: 10
 
-  # Sum of absolute values (using a workaround since Terraform has no sum function)
-  # You would typically compute this in a data source or external script
+  # Sum of absolute values
+  total_absolute = sum([for v in local.values : abs(v)])
+  # Result: 34
 }
 
 output "absolute_values" {
@@ -318,6 +319,10 @@ output "absolute_values" {
 
 output "max_absolute" {
   value = local.max_absolute
+}
+
+output "total_absolute" {
+  value = local.total_absolute
 }
 ```
 
