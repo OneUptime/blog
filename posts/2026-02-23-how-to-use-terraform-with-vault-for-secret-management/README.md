@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Vault, Secret Management, HashiCorp, Security, DevOps
 
-Description: Learn how to integrate Terraform with HashiCorp Vault for secure secret management, dynamic credentials, and encrypted state storage in your infrastructure pipelines.
+Description: Learn how to integrate Terraform with HashiCorp Vault for secure secret management, dynamic credentials, and safer state handling in your infrastructure pipelines.
 
 ---
 
-Managing secrets in infrastructure-as-code is one of the most critical security challenges teams face. Hardcoding passwords, API keys, and certificates in Terraform configurations is a common anti-pattern that creates significant security risks. HashiCorp Vault solves this problem by providing a centralized secret management system that integrates natively with Terraform. Together, they enable a workflow where secrets are never stored in code or state files in plain text.
+Managing secrets in infrastructure-as-code is one of the most critical security challenges teams face. Hardcoding passwords, API keys, and certificates in Terraform configurations is a common anti-pattern that creates significant security risks. HashiCorp Vault solves this problem by providing a centralized secret management system that integrates natively with Terraform. Together, they enable a workflow where secrets are not hardcoded in code, while Terraform state and plan files are still protected as sensitive artifacts.
 
 This guide covers practical patterns for integrating Terraform with Vault, from basic secret retrieval to advanced dynamic credential generation.
 
 ## Why Vault with Terraform
 
-Terraform needs secrets to provision infrastructure - database passwords, API tokens, TLS certificates, and more. Without Vault, these secrets typically end up in one of three bad places: environment variables (easily leaked), terraform.tfvars files (accidentally committed to git), or the Terraform state file (stored unencrypted). Vault eliminates all three problems by providing a secure, auditable source of truth for secrets.
+Terraform needs secrets to provision infrastructure - database passwords, API tokens, TLS certificates, and more. Without Vault, these secrets typically end up in one of three bad places: environment variables (easily leaked), terraform.tfvars files (accidentally committed to git), or the Terraform state file. Vault reduces the need to store secrets in code or variable files by providing a secure, auditable source of truth, but any secrets read or written by Terraform can still be persisted in state and plan files.
 
 ## Setting Up the Vault Provider
 
@@ -27,7 +27,7 @@ terraform {
   required_providers {
     vault = {
       source  = "hashicorp/vault"
-      version = "~> 3.0"
+      version = "~> 5.0"
     }
   }
 }
@@ -40,6 +40,7 @@ provider "vault" {
 
 # Alternative: Authenticate using AppRole (recommended for CI/CD)
 provider "vault" {
+  alias   = "approle"
   address = var.vault_address
 
   auth_login {
@@ -53,10 +54,12 @@ provider "vault" {
 
 # Alternative: Authenticate using AWS IAM (for AWS-hosted Terraform)
 provider "vault" {
+  alias   = "aws_iam"
   address = var.vault_address
 
   auth_login {
     path = "auth/aws/login"
+    method = "aws"
     parameters = {
       role = "terraform-role"
     }
@@ -81,7 +84,7 @@ data "vault_kv_secret_v2" "api_keys" {
   name  = "api-keys/${var.environment}"
 }
 
-# Use secrets in resources without exposing them in code
+# Use secrets in resources without hardcoding them in code
 resource "aws_db_instance" "main" {
   identifier     = "app-db-${var.environment}"
   engine         = "postgres"
@@ -129,8 +132,9 @@ resource "vault_database_secret_backend_connection" "postgres" {
 
   postgresql {
     connection_url = "postgres://{{username}}:{{password}}@${aws_db_instance.main.address}:5432/application"
-    username       = var.vault_db_admin_user
-    password       = var.vault_db_admin_password
+    username            = var.vault_db_admin_user
+    password_wo         = var.vault_db_admin_password
+    password_wo_version = 1
   }
 }
 
@@ -172,7 +176,7 @@ resource "vault_database_secret_backend_role" "readwrite" {
 
 ## Managing Vault Policies with Terraform
 
-Define access policies that control which Terraform workspaces can read which secrets.
+Define access policies for the tokens used by each Terraform workspace or environment.
 
 ```hcl
 # Policy for the production Terraform workspace
@@ -260,29 +264,35 @@ resource "vault_pki_secret_backend_role" "server" {
 }
 
 # Issue a certificate for the application
-data "vault_pki_secret_backend_cert" "app" {
+resource "vault_pki_secret_backend_cert" "app" {
   backend     = vault_mount.pki.path
   name        = vault_pki_secret_backend_role.server.name
   common_name = "app.${var.environment}.internal.company.com"
   ttl         = "720h"
 }
 
-# Use the certificate in an ALB
+# Import the certificate into ACM for use by an ALB
 resource "aws_acm_certificate" "app" {
-  certificate_body  = data.vault_pki_secret_backend_cert.app.certificate
-  private_key       = data.vault_pki_secret_backend_cert.app.private_key
-  certificate_chain = data.vault_pki_secret_backend_cert.app.ca_chain
+  certificate_body  = vault_pki_secret_backend_cert.app.certificate
+  private_key       = vault_pki_secret_backend_cert.app.private_key
+  certificate_chain = join("\n", vault_pki_secret_backend_cert.app.ca_chain)
 }
 ```
 
 ## Securing Terraform State
 
-Use Vault's transit secrets engine to encrypt sensitive values in Terraform state.
+Terraform does not automatically encrypt state with Vault transit. Use a secure remote backend with encryption, access controls, and locking. If you have a custom pipeline that encrypts state artifacts before storage, Vault transit can provide the encryption key.
 
 ```hcl
-# Transit key for encrypting Terraform state
+# Enable the transit secrets engine
+resource "vault_mount" "transit" {
+  path = "transit"
+  type = "transit"
+}
+
+# Transit key for custom state artifact encryption
 resource "vault_transit_secret_backend_key" "terraform_state" {
-  backend = "transit"
+  backend = vault_mount.transit.path
   name    = "terraform-state-${var.environment}"
   type    = "aes256-gcm96"
 
@@ -295,7 +305,7 @@ resource "vault_transit_secret_backend_key" "terraform_state" {
 
 Never store Vault tokens in Terraform code or state. Use short-lived authentication methods like AppRole or AWS IAM auth. Prefer dynamic secrets over static secrets wherever possible, as they reduce the blast radius of a compromise. Use separate Vault policies for each environment to enforce least-privilege access.
 
-Mark all sensitive values in Terraform as sensitive to prevent them from appearing in logs or plan output:
+Mark outputs that contain sensitive values as sensitive to prevent them from appearing in normal CLI output:
 
 ```hcl
 output "db_password" {
