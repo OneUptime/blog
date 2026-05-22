@@ -58,6 +58,7 @@ module "blue" {
   instance_count  = var.active_environment == "blue" ? 3 : 1  # Scale down inactive
   instance_type   = "t3.large"
   subnet_ids      = module.networking.private_subnet_ids
+  vpc_id          = module.networking.vpc_id
   security_groups = [aws_security_group.app.id]
 }
 
@@ -70,6 +71,7 @@ module "green" {
   instance_count  = var.active_environment == "green" ? 3 : 1
   instance_type   = "t3.large"
   subnet_ids      = module.networking.private_subnet_ids
+  vpc_id          = module.networking.vpc_id
   security_groups = [aws_security_group.app.id]
 }
 
@@ -89,6 +91,18 @@ resource "aws_lb_listener_rule" "app" {
     }
   }
 }
+
+output "active_environment" {
+  value = var.active_environment
+}
+
+output "blue_version" {
+  value = var.blue_version
+}
+
+output "green_version" {
+  value = var.green_version
+}
 ```
 
 ```hcl
@@ -98,12 +112,14 @@ variable "app_version" { type = string }
 variable "instance_count" { type = number }
 variable "instance_type" { type = string }
 variable "subnet_ids" { type = list(string) }
+variable "vpc_id" { type = string }
 variable "security_groups" { type = list(string) }
 
 resource "aws_launch_template" "app" {
-  name_prefix   = "app-${var.name}-"
-  image_id      = data.aws_ami.app.id
-  instance_type = var.instance_type
+  name_prefix            = "app-${var.name}-"
+  image_id               = data.aws_ami.app.id
+  instance_type          = var.instance_type
+  vpc_security_group_ids = var.security_groups
 
   user_data = base64encode(templatefile("${path.module}/userdata.sh", {
     app_version = var.app_version
@@ -194,13 +210,15 @@ jobs:
     outputs:
       target_env: ${{ steps.current.outputs.target }}
       current_env: ${{ steps.current.outputs.current }}
+      current_blue_version: ${{ steps.current.outputs.blue_version }}
+      current_green_version: ${{ steps.current.outputs.green_version }}
 
     steps:
       - uses: actions/checkout@v4
 
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v4
         with:
-          terraform_version: 1.7.0
+          terraform_version: 1.14.6
           terraform_wrapper: false
 
       - name: Configure AWS credentials
@@ -217,6 +235,11 @@ jobs:
 
           # Read current active environment from Terraform state
           CURRENT=$(terraform output -raw active_environment 2>/dev/null || echo "blue")
+          BLUE_VERSION=$(terraform output -raw blue_version 2>/dev/null || echo "")
+          GREEN_VERSION=$(terraform output -raw green_version 2>/dev/null || echo "")
+
+          echo "blue_version=$BLUE_VERSION" >> $GITHUB_OUTPUT
+          echo "green_version=$GREEN_VERSION" >> $GITHUB_OUTPUT
 
           if [ "$CURRENT" = "blue" ]; then
             echo "current=blue" >> $GITHUB_OUTPUT
@@ -236,9 +259,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v4
         with:
-          terraform_version: 1.7.0
+          terraform_version: 1.14.6
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -252,10 +275,19 @@ jobs:
           terraform init -no-color
 
           TARGET=${{ needs.determine-target.outputs.target_env }}
+          BLUE_VERSION="${{ needs.determine-target.outputs.current_blue_version }}"
+          GREEN_VERSION="${{ needs.determine-target.outputs.current_green_version }}"
+
+          if [ "$TARGET" = "blue" ]; then
+            BLUE_VERSION="${{ inputs.app_version }}"
+          else
+            GREEN_VERSION="${{ inputs.app_version }}"
+          fi
 
           # Update the target environment version but keep traffic on current
           terraform apply -no-color -auto-approve \
-            -var="${TARGET}_version=${{ inputs.app_version }}" \
+            -var="blue_version=$BLUE_VERSION" \
+            -var="green_version=$GREEN_VERSION" \
             -var="active_environment=${{ needs.determine-target.outputs.current_env }}"
 
   health-check:
@@ -293,9 +325,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v4
         with:
-          terraform_version: 1.7.0
+          terraform_version: 1.14.6
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -307,9 +339,13 @@ jobs:
         run: |
           cd $TF_DIR
           terraform init -no-color
+          BLUE_VERSION=$(terraform output -raw blue_version)
+          GREEN_VERSION=$(terraform output -raw green_version)
 
           # Switch the active environment
           terraform apply -no-color -auto-approve \
+            -var="blue_version=$BLUE_VERSION" \
+            -var="green_version=$GREEN_VERSION" \
             -var="active_environment=${{ needs.determine-target.outputs.target_env }}"
 
           echo "Traffic switched to ${{ needs.determine-target.outputs.target_env }}"
@@ -331,12 +367,12 @@ resource "aws_lb_listener_rule" "app" {
     forward {
       target_group {
         arn    = module.blue.target_group_arn
-        weight = var.active_environment == "blue" ? var.blue_weight : (100 - var.blue_weight)
+        weight = var.blue_weight
       }
 
       target_group {
         arn    = module.green.target_group_arn
-        weight = var.active_environment == "green" ? var.blue_weight : (100 - var.blue_weight)
+        weight = 100 - var.blue_weight
       }
     }
   }
@@ -364,17 +400,42 @@ Gradually shift traffic in the pipeline:
     terraform init -no-color
 
     TARGET=${{ needs.determine-target.outputs.target_env }}
+    CURRENT=${{ needs.determine-target.outputs.current_env }}
+    BLUE_VERSION=$(terraform output -raw blue_version)
+    GREEN_VERSION=$(terraform output -raw green_version)
+
+    if [ "$TARGET" = "blue" ]; then
+      WEIGHT_10=10
+      WEIGHT_50=50
+      WEIGHT_100=100
+    else
+      WEIGHT_10=90
+      WEIGHT_50=50
+      WEIGHT_100=0
+    fi
 
     # Shift 10% of traffic
-    terraform apply -auto-approve -var="blue_weight=90"
+    terraform apply -auto-approve \
+      -var="blue_version=$BLUE_VERSION" \
+      -var="green_version=$GREEN_VERSION" \
+      -var="active_environment=$CURRENT" \
+      -var="blue_weight=$WEIGHT_10"
     sleep 120  # Monitor for 2 minutes
 
     # Shift 50% of traffic
-    terraform apply -auto-approve -var="blue_weight=50"
+    terraform apply -auto-approve \
+      -var="blue_version=$BLUE_VERSION" \
+      -var="green_version=$GREEN_VERSION" \
+      -var="active_environment=$CURRENT" \
+      -var="blue_weight=$WEIGHT_50"
     sleep 300  # Monitor for 5 minutes
 
     # Shift 100% of traffic
-    terraform apply -auto-approve -var="active_environment=$TARGET" -var="blue_weight=100"
+    terraform apply -auto-approve \
+      -var="blue_version=$BLUE_VERSION" \
+      -var="green_version=$GREEN_VERSION" \
+      -var="active_environment=$TARGET" \
+      -var="blue_weight=$WEIGHT_100"
 ```
 
 ## Rollback
@@ -394,9 +455,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v4
         with:
-          terraform_version: 1.7.0
+          terraform_version: 1.14.6
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -410,10 +471,14 @@ jobs:
           terraform init -no-color
 
           CURRENT=$(terraform output -raw active_environment)
+          BLUE_VERSION=$(terraform output -raw blue_version)
+          GREEN_VERSION=$(terraform output -raw green_version)
           ROLLBACK=$([ "$CURRENT" = "blue" ] && echo "green" || echo "blue")
 
           echo "Rolling back from $CURRENT to $ROLLBACK"
           terraform apply -no-color -auto-approve \
+            -var="blue_version=$BLUE_VERSION" \
+            -var="green_version=$GREEN_VERSION" \
             -var="active_environment=$ROLLBACK"
 ```
 
