@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Testing, Unit Test, Infrastructure as Code, HCL
 
-Description: Learn how to write unit tests for Terraform using the native test framework introduced in Terraform 1.6, including test file structure, assertions, and mock providers.
+Description: Learn how to write unit tests for Terraform using the native test framework introduced in Terraform 1.6, including test file structure, assertions, and plan-mode tests.
 
 ---
 
-Terraform 1.6 introduced a native test framework that lets you write tests in HCL without any external tools. You can validate your module logic, check output values, and verify resource configurations - all without deploying real infrastructure. This guide focuses specifically on writing unit tests using this built-in framework.
+Terraform 1.6 introduced a native test framework that lets you write tests in HCL without any external tools. You can validate your module logic, check output values, and verify resource configurations without deploying real infrastructure when you use plan-mode tests. This guide focuses specifically on writing unit tests using this built-in framework.
 
 ## What Makes a Test a Unit Test
 
-In Terraform's testing model, a unit test is one that validates module behavior without creating real infrastructure. This is achieved through `command = plan` in your test runs, which executes the plan phase but never calls `terraform apply`. Combined with mock providers, you can test your configuration logic in isolation.
+In Terraform's testing model, a unit test is one that validates module behavior without creating real infrastructure. This is achieved through `command = plan` in your test runs, which executes the plan phase but never calls `terraform apply`. In Terraform 1.7 and later, you can combine plan-mode tests with mock providers to test your configuration logic in isolation.
 
-Unit tests are fast, free, and safe. They do not need cloud credentials, do not incur costs, and cannot accidentally break anything.
+Plan-mode unit tests are fast, free, and safe because they do not create infrastructure. If a test uses real providers or data sources, it may still need provider configuration or credentials; mock providers avoid that requirement for supported tests.
 
 ## Setting Up Your Test Files
 
