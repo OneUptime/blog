@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Module, Versioning, Infrastructure as Code, DevOps, Best Practice
 
-Description: Learn how to pin Terraform module versions using exact versions, constraints, and lock files to ensure reproducible and safe infrastructure deployments.
+Description: Learn how to pin Terraform module versions using exact versions and constraints to ensure reproducible and safe infrastructure deployments.
 
 ---
 
-When you use a Terraform module without pinning its version, you are running whatever the latest version happens to be at the time of `terraform init`. This might work fine today, but the next time someone initializes the project - maybe in a CI/CD pipeline, maybe on a teammate's laptop - a newer version with breaking changes could silently slip in. Pinning module versions prevents this.
+When you use a registry Terraform module without pinning its version, you are running whatever the latest version happens to be at the time of `terraform init`. For Git sources, omitting a `ref` means Terraform uses the repository's default branch at the time it installs the module. This might work fine today, but the next time someone initializes the project - maybe in a CI/CD pipeline, maybe on a teammate's laptop - newer module code with breaking changes could silently slip in. Pinning module versions prevents this.
 
 This guide covers the practical mechanics of version pinning for every type of module source.
 
@@ -77,7 +77,7 @@ module "vpc" {
 }
 ```
 
-Tags are the best option because they are immutable (unlike branches, which move forward) and human-readable (unlike commit SHAs, which are opaque).
+Tags are usually the best option because they are intended to be stable release markers and are human-readable (unlike commit SHAs, which are opaque). For maximum protection, protect release tags in your Git hosting platform or use commit SHAs.
 
 ### Tagging Strategy for Git Modules
 
@@ -103,7 +103,7 @@ module "vpc" {
 
 ## Pinning S3 and GCS Module Versions
 
-For S3 and GCS sources, versioning is built into the object path:
+For S3 and GCS sources, a common approach is to put the version in the object path:
 
 ```hcl
 # S3 - version is part of the object path
@@ -117,11 +117,11 @@ module "network" {
 }
 ```
 
-Since the version is in the URL, changing versions means changing the URL. This is explicit and clear, though it lacks the constraint syntax that registry modules offer.
+Since the version is in the URL path, changing versions means changing the URL. This is explicit and clear, though it lacks the constraint syntax that registry modules offer.
 
 ## The Dependency Lock File
 
-Starting with Terraform 1.0, the `.terraform.lock.hcl` file records the exact versions of providers used. However, this lock file does not currently lock module versions - it only covers providers. Module version locking depends entirely on the version constraints you specify in your code.
+Starting with Terraform 0.14, the `.terraform.lock.hcl` file records the exact versions of providers used. However, this lock file does not currently lock module versions - it only covers providers. Module version locking depends on the version constraints and source references you specify in your code.
 
 This makes explicit version pinning in your module blocks even more important.
 
@@ -209,7 +209,7 @@ For registry modules, you can check available versions:
 
 ```bash
 # List versions of a registry module
-terraform providers mirror -platform=linux_amd64 .  # shows available versions
+curl https://registry.terraform.io/v1/modules/terraform-aws-modules/vpc/aws/versions
 # Or check the registry website directly
 ```
 
@@ -238,20 +238,19 @@ jobs:
       - name: Terraform Init
         run: terraform init
         # Do NOT use -upgrade in CI unless intentional
-        # This ensures the same versions as the developer's last init
+        # Exact module pins and the committed provider lock file keep installs predictable
 
       - name: Terraform Plan
         run: terraform plan -out=tfplan
 ```
 
-Notice that the CI pipeline does not use `-upgrade`. This ensures it uses the same versions the developer had when they last ran `terraform init` locally.
+Notice that the CI pipeline does not use `-upgrade`. With exact module pins and a committed provider lock file, this keeps installs predictable and avoids intentional upgrades happening during routine CI runs.
 
 ## Automated Version Update Tools
 
 Tools like Dependabot and Renovate can automatically detect outdated module versions and create pull requests to upgrade them:
 
 ```json
-// renovate.json - Renovate configuration for Terraform modules
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "terraform": {
@@ -264,7 +263,7 @@ This creates PRs when new versions of your pinned modules are released, letting 
 
 ## Common Mistakes
 
-**Not pinning at all.** This is the most dangerous mistake. Without a version pin, `terraform init` grabs the latest version, which could include breaking changes.
+**Not pinning at all.** This is the most dangerous mistake. Without a version pin, registry modules can resolve to the latest version and Git modules can resolve to the current default branch, which could include breaking changes.
 
 **Pinning too loosely.** Using `version = ">= 5.0"` means any future 5.x or 6.x or 100.x version is acceptable. That is not really pinning.
 
