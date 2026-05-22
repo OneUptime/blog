@@ -109,16 +109,20 @@ resource "aws_s3_bucket" "data" {
 # aws_s3_bucket.data.arn                  - Bucket ARN
 # aws_s3_bucket.data.bucket_domain_name   - Domain name
 # aws_s3_bucket.data.hosted_zone_id       - Route53 zone ID
-# aws_s3_bucket.data.region               - Bucket region
+# aws_s3_bucket.data.bucket_region        - Bucket region
 ```
 
 ### RDS Instances
 
 ```hcl
 resource "aws_db_instance" "main" {
-  identifier     = "my-database"
-  engine         = "postgres"
-  instance_class = "db.r5.large"
+  identifier          = "my-database"
+  engine              = "postgres"
+  instance_class      = "db.r5.large"
+  allocated_storage   = 20
+  username            = "admin"
+  password            = var.db_password
+  skip_final_snapshot = true
 }
 
 # Computed attributes
@@ -151,10 +155,10 @@ For most configurations, `(known after apply)` in your plan is normal and expect
 
 ### 2. Use Elastic IPs for Predictable Addressing
 
-When you need to know an IP address before the instance exists:
+When you need a stable IP address that can exist independently of the instance:
 
 ```hcl
-# Allocate the EIP first - its address is computed but known before the instance
+# Allocate the EIP first - its address is computed independently of the instance
 resource "aws_eip" "web" {
   domain = "vpc"
 }
@@ -165,7 +169,7 @@ resource "aws_route53_record" "web" {
   name    = "web.example.com"
   type    = "A"
   ttl     = 300
-  records = [aws_eip.web.public_ip]  # Known after EIP creation
+  records = [aws_eip.web.public_ip]  # Known after EIP allocation
 }
 
 # Associate the EIP with the instance
@@ -202,11 +206,13 @@ When you need to build strings from computed attributes, use locals for clarity:
 
 ```hcl
 resource "aws_db_instance" "main" {
-  identifier     = "my-database"
-  engine         = "postgres"
-  instance_class = "db.r5.large"
-  username       = "admin"
-  password       = var.db_password
+  identifier          = "my-database"
+  engine              = "postgres"
+  instance_class      = "db.r5.large"
+  allocated_storage   = 20
+  username            = "admin"
+  password            = var.db_password
+  skip_final_snapshot = true
 }
 
 locals {
@@ -266,9 +272,13 @@ resource "aws_instance" "web" {
 }
 
 resource "aws_db_instance" "main" {
-  identifier     = "production"
-  engine         = "postgres"
-  instance_class = "db.r5.large"
+  identifier          = "production"
+  engine              = "postgres"
+  instance_class      = "db.r5.large"
+  allocated_storage   = 20
+  username            = "admin"
+  password            = var.db_password
+  skip_final_snapshot = true
 
   lifecycle {
     postcondition {
@@ -284,8 +294,11 @@ resource "aws_db_instance" "main" {
 When Terraform refreshes state, computed attributes are updated with current values from the cloud provider:
 
 ```bash
-# Refresh state to get current computed values
-terraform refresh
+# Preview refresh changes without modifying remote objects
+terraform plan -refresh-only
+
+# Apply refresh changes after reviewing them
+terraform apply -refresh-only
 
 # Or use plan with refresh (default behavior)
 terraform plan
@@ -315,7 +328,7 @@ When computed attributes cause problems:
 # See the current state values for a resource
 terraform state show aws_instance.web
 
-# See all computed attributes
+# See current state values
 terraform show
 
 # Check if a value changed unexpectedly
@@ -324,6 +337,6 @@ terraform plan -detailed-exitcode
 
 ## Conclusion
 
-Computed attributes are a fundamental part of working with Terraform. They represent the reality that some values simply do not exist until cloud resources are created. The key is to structure your configuration so that the dependency chain flows naturally - let Terraform handle the ordering, use elastic IPs or pre-allocated resources when you need predictable values during planning, and use data sources for values that already exist. The `(known after apply)` marker in your plan output is not a problem to solve; it is normal behavior that tells you Terraform understands the creation order.
+Computed attributes are a fundamental part of working with Terraform. They represent the reality that some values simply do not exist until cloud resources are created. The key is to structure your configuration so that the dependency chain flows naturally - let Terraform handle the ordering, use elastic IPs or pre-allocated resources when you need stable values, and use data sources for values that already exist. The `(known after apply)` marker in your plan output is not a problem to solve; it is normal behavior that tells you Terraform understands the creation order.
 
 For related patterns, see our guide on [how to handle resource attribute conflicts in Terraform](https://oneuptime.com/blog/post/2026-02-23-terraform-resource-attribute-conflicts/view).
