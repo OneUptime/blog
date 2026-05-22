@@ -20,6 +20,8 @@ Consider this resource definition where everything is computed inline:
 # This works, but it is hard to read
 
 resource "aws_instance" "app" {
+  count = var.instance_count
+
   ami           = data.aws_ami.amazon_linux.id
   instance_type = var.environment == "production" ? "m5.xlarge" : (var.environment == "staging" ? "m5.large" : "t3.micro")
   subnet_id     = var.is_public ? element(aws_subnet.public[*].id, count.index % length(aws_subnet.public)) : element(aws_subnet.private[*].id, count.index % length(aws_subnet.private))
@@ -65,6 +67,8 @@ locals {
 }
 
 resource "aws_instance" "app" {
+  count = var.instance_count
+
   ami           = data.aws_ami.amazon_linux.id
   instance_type = local.instance_type
   subnet_id     = element(local.target_subnets, count.index % length(local.target_subnets))
@@ -116,7 +120,7 @@ locals {
   }
 
   # Select the config for the current environment
-  current_db_config = local.db_config[var.environment]
+  current_db_config = lookup(local.db_config, var.environment, local.db_config.dev)
 }
 
 resource "aws_rds_instance" "db" {
@@ -232,12 +236,11 @@ resource "aws_iam_user" "admins" {
 }
 
 # Create team group memberships
-resource "aws_iam_group_membership" "teams" {
+resource "aws_iam_user_group_membership" "teams" {
   for_each = local.team_membership_map
 
-  name  = each.key
-  group = each.value.team_name
-  users = [each.value.user_name]
+  user   = each.value.user_name
+  groups = [each.value.team_name]
 }
 ```
 
