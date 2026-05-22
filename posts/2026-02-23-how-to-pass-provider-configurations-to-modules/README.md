@@ -48,9 +48,9 @@ provider "aws" {
   region = "us-east-1"
 }
 
-# This module has no aws provider to inherit!
+# Terraform will use the implied empty default aws provider here.
 module "vpc" {
-  source = "./modules/vpc"  # Will fail - no default aws provider
+  source = "./modules/vpc"  # Will fail because the default aws provider is not configured
   cidr   = "10.0.0.0/16"
 }
 ```
@@ -209,7 +209,7 @@ resource "aws_vpc" "this" {
 
 ## Passing Providers Through Nested Modules
 
-When you have nested modules (A calls B calls C), providers need to be explicitly passed at each level if you are using the `providers` argument:
+When you have nested modules (A calls B calls C), default provider configurations can still be inherited from one module to the next. Aliased provider configurations are different: they are never inherited automatically, so they need to be explicitly passed at each level where the child module expects to use that alias.
 
 ```hcl
 # Root module
@@ -231,15 +231,15 @@ module "infrastructure" {
 module "networking" {
   source = "./modules/networking"
 
-  # Must pass provider through - it does not auto-inherit
-  # when the parent received it via explicit providers argument
+  # Optional for a default provider, because Module B can inherit
+  # Module A's default aws provider implicitly.
   providers = {
     aws = aws
   }
 }
 ```
 
-Actually, there is a nuance here. If Module A itself does not use `configuration_aliases` and receives the default `aws` provider, then Module B inherits it implicitly. The explicit pass-through is needed when Module A has aliased providers.
+If Module A receives a default `aws` provider, then Module B can inherit it implicitly. The explicit pass-through is required only when Module B needs an aliased provider configuration, or when you want Module B to use a different provider configuration than Module A's default.
 
 ## Real-World Pattern: Multi-Account with Assumed Roles
 
@@ -350,7 +350,7 @@ You cannot dynamically change the provider per instance of `for_each`. If you ne
 
 When a module is not using the provider you expect, check:
 
-1. Does the module have a `provider` block inside it? That overrides any passed provider.
+1. Does the module have a `provider` block inside it? That can prevent the caller's passed provider configuration from being used.
 2. Are you passing the provider explicitly? If yes, is the key name correct?
 3. Is the module nested? Providers might not be flowing through intermediate modules.
 
@@ -363,6 +363,6 @@ terraform providers
 
 ## Summary
 
-Passing provider configurations to modules is how you enable multi-region, multi-account, and multi-cloud Terraform deployments. Modules should declare their provider requirements with `required_providers` but never define `provider` blocks. The default (non-aliased) provider is inherited implicitly. Aliased providers must be passed explicitly using the `providers` argument. When a module needs multiple configurations of the same provider, declare `configuration_aliases`. And when nesting modules that use explicit providers, make sure to pass them through each level.
+Passing provider configurations to modules is how you enable multi-region, multi-account, and multi-cloud Terraform deployments. Modules should declare their provider requirements with `required_providers` but never define `provider` blocks. The default (non-aliased) provider is inherited implicitly. Aliased providers must be passed explicitly using the `providers` argument. When a module needs multiple configurations of the same provider, declare `configuration_aliases`. And when nesting modules that need aliased providers or non-default mappings, make sure to pass those provider configurations through each level.
 
 For the `providers` argument syntax details, see [How to Use the providers Argument in Module Blocks](https://oneuptime.com/blog/post/2026-02-23-how-to-use-the-providers-argument-in-module-blocks/view). For module composition, check out [How to Chain Module Outputs to Other Module Inputs](https://oneuptime.com/blog/post/2026-02-23-how-to-chain-module-outputs-to-other-module-inputs/view).
