@@ -191,7 +191,7 @@ spec:
             memory: 512Mi
         startupProbe:
           httpGet:
-            path: /healthz
+            path: /ready
             port: 3000
           periodSeconds: 2
           failureThreshold: 30
@@ -215,7 +215,7 @@ The startup probe gives the app up to 60 seconds (30 * 2) to start. Express.js a
 
 ## How Istio Handles These Probes
 
-When Istio injects the sidecar, it rewrites your HTTP probes to go through the Envoy proxy on port 15020. The probe request path changes to include the original port and path as query parameters.
+When Istio injects the sidecar, it rewrites your HTTP probes to go through the sidecar agent on port 15020. The probe request path changes to an `/app-health/<container-name>/livez` or `/app-health/<container-name>/readyz` path, and Istio stores the original port and path in the sidecar's `ISTIO_KUBE_APP_PROBERS` environment variable.
 
 You can see the rewritten probes:
 
@@ -230,14 +230,15 @@ The rewriting is transparent - your Express.js app responds to the same path and
 In rare cases, the probe rewriting can cause problems:
 
 1. If the sidecar is not ready when Kubernetes sends the first probe
-2. If your app uses custom headers in probe responses that the sidecar strips
+2. If your app depends on probe response bodies, because the sidecar returns the status code and strips the response body
 
 To disable rewriting:
 
 ```yaml
-metadata:
-  annotations:
-    sidecar.istio.io/rewriteAppHTTPProbers: "false"
+template:
+  metadata:
+    annotations:
+      sidecar.istio.io/rewriteAppHTTPProbers: "false"
 ```
 
 ## Handling the Sidecar Startup Race
@@ -247,9 +248,10 @@ Express.js apps start very fast - often in under a second. The Istio sidecar tak
 ### Solution 1: Hold Application Start
 
 ```yaml
-metadata:
-  annotations:
-    proxy.istio.io/config: '{"holdApplicationUntilProxyStarts": true}'
+template:
+  metadata:
+    annotations:
+      proxy.istio.io/config: '{"holdApplicationUntilProxyStarts": true}'
 ```
 
 ### Solution 2: Retry Logic in Your App
@@ -286,7 +288,7 @@ Add a small script that checks if the sidecar is ready before starting your app:
 # wait-for-sidecar.sh
 
 echo "Waiting for Istio sidecar..."
-until curl -s http://localhost:15020/healthz/ready > /dev/null 2>&1; do
+until curl -s http://localhost:15021/healthz/ready > /dev/null 2>&1; do
   sleep 0.5
 done
 echo "Sidecar is ready, starting application..."
@@ -344,8 +346,11 @@ Proper shutdown coordination between Express.js, Kubernetes, and Istio:
 ```javascript
 const http = require('http');
 const express = require('express');
+const mongoose = require('mongoose');
+const Redis = require('ioredis');
 
 const app = express();
+const redis = new Redis(process.env.REDIS_URL);
 let isShuttingDown = false;
 
 // Health check routes
@@ -375,13 +380,13 @@ app.get('/api/data', (req, res) => {
 
 const server = http.createServer(app);
 
+// Keep-alive connections should have a timeout
+server.keepAliveTimeout = 65000; // Tune this to match your proxy/client idle timeouts
+server.headersTimeout = 66000;
+
 server.listen(3000, () => {
   console.log('Server running on port 3000');
 });
-
-// Keep-alive connections should have a timeout
-server.keepAliveTimeout = 65000; // Slightly higher than Envoy's idle timeout
-server.headersTimeout = 66000;
 
 // Graceful shutdown
 process.on('SIGTERM', () => {
@@ -389,15 +394,19 @@ process.on('SIGTERM', () => {
   isShuttingDown = true;
 
   // Stop accepting new connections
-  server.close(() => {
+  server.close(async () => {
     console.log('Server closed');
 
-    // Close database connections
-    mongoose.connection.close(false, () => {
+    try {
+      // Close database connections
+      await mongoose.connection.close(false);
       redis.disconnect();
       console.log('All connections closed');
       process.exit(0);
-    });
+    } catch (err) {
+      console.error('Error during shutdown:', err);
+      process.exit(1);
+    }
   });
 
   // Force exit after timeout
@@ -411,23 +420,24 @@ process.on('SIGTERM', () => {
 In your deployment, add a preStop hook:
 
 ```yaml
-containers:
-- name: api-service
-  lifecycle:
-    preStop:
-      exec:
-        command: ["/bin/sh", "-c", "sleep 5"]
 spec:
+  containers:
+  - name: api-service
+    lifecycle:
+      preStop:
+        exec:
+          command: ["/bin/sh", "-c", "sleep 5"]
   terminationGracePeriodSeconds: 35
 ```
 
 The shutdown sequence:
-1. Kubernetes sends SIGTERM
-2. preStop hook sleeps 5 seconds (sidecar drains connections)
-3. Express sets isShuttingDown = true (health checks start returning 503)
-4. server.close() stops accepting new connections
-5. Existing requests finish processing
-6. Connections close, process exits
+1. Kubernetes starts pod termination and removes the pod from service endpoints
+2. The preStop hook sleeps 5 seconds
+3. Kubernetes sends SIGTERM after the preStop hook completes
+4. Express sets isShuttingDown = true (health checks start returning 503)
+5. server.close() stops accepting new connections
+6. Existing requests finish processing
+7. Connections close, process exits
 
 ## Multiple Health Check Patterns
 
@@ -500,7 +510,7 @@ app.get('/ready', async (req, res) => {
 
 ## Common Express.js + Istio Health Check Issues
 
-**Keep-alive timeout mismatch**: Express's default keep-alive timeout (5 seconds) is shorter than Envoy's. This can cause "connection reset" errors. Set `server.keepAliveTimeout = 65000`.
+**Keep-alive timeout mismatch**: Node.js's default keep-alive timeout (5 seconds) may be shorter than your proxy or client idle timeout. This can cause "connection reset" errors. Set `server.keepAliveTimeout` to a value that matches your environment, for example `server.keepAliveTimeout = 65000` with `server.headersTimeout` set slightly higher.
 
 **Request timeout on probes**: If your readiness check makes database calls that are slow, the probe might time out. Set `timeoutSeconds` in the probe configuration and make sure your dependency checks have their own timeouts.
 
@@ -523,8 +533,8 @@ app.get('/healthz', (req, res) => {
   const memUsage = process.memoryUsage();
   const heapUsedMB = memUsage.heapUsed / 1024 / 1024;
 
-  // Flag as unhealthy if heap usage exceeds 90% of limit
-  if (heapUsedMB > 450) { // Assuming 512Mi limit
+  // Flag as unhealthy if heap usage exceeds an application-specific threshold
+  if (heapUsedMB > 450) { // Example threshold; tune for your app
     return res.status(503).json({
       status: 'unhealthy',
       reason: 'high memory usage',
