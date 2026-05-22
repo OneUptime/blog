@@ -25,7 +25,7 @@ The timestamp must be a string in RFC 3339 format (like `2026-02-23T14:30:00Z`).
 
 ## Format Specifiers
 
-The `formatdate` function uses letter-based specifiers. Here are all the available ones:
+The `formatdate` function uses letter-based specifiers. Here are the most useful ones:
 
 ```hcl
 locals {
@@ -48,13 +48,12 @@ locals {
   # Day of week
   day_name   = formatdate("EEEE", local.ts)      # "Monday"
   day_abbrev = formatdate("EEE", local.ts)       # "Mon"
-  day_short  = formatdate("EE", local.ts)        # "Mo"
 
   # Hour (24-hour)
-  hour_24 = formatdate("HH", local.ts)          # "14"
+  hour_24 = formatdate("hh", local.ts)           # "14"
 
   # Hour (12-hour)
-  hour_12 = formatdate("hh", local.ts)          # "02"
+  hour_12 = formatdate("HH", local.ts)           # "02"
   ampm    = formatdate("AA", local.ts)           # "PM"
   ampm_lc = formatdate("aa", local.ts)           # "pm"
 
@@ -65,9 +64,9 @@ locals {
   second = formatdate("ss", local.ts)            # "09"
 
   # Timezone
-  tz_offset = formatdate("Z", local.ts)          # "Z"
-  tz_colon  = formatdate("ZZZZ", local.ts)       # "Z"
-  tz_name   = formatdate("ZZZZZ", local.ts)      # "UTC"
+  tz_utc    = formatdate("Z", local.ts)          # "Z"
+  tz_offset = formatdate("ZZZZ", local.ts)       # "+0000"
+  tz_name   = formatdate("ZZZ", local.ts)        # "UTC"
 }
 ```
 
@@ -84,7 +83,7 @@ locals {
   # Example: "2026-02-23"
 
   # ISO 8601 datetime
-  iso_datetime = formatdate("YYYY-MM-DD'T'HH:mm:ssZ", local.now)
+  iso_datetime = formatdate("YYYY-MM-DD'T'hh:mm:ssZ", local.now)
   # Example: "2026-02-23T14:30:00Z"
 
   # US date format
@@ -100,7 +99,7 @@ locals {
   # Example: "February 23, 2026"
 
   # Compact format (good for resource names)
-  compact = formatdate("YYYYMMDDHHmmss", local.now)
+  compact = formatdate("YYYYMMDDhhmmss", local.now)
   # Example: "20260223143000"
 
   # Short compact
@@ -116,7 +115,7 @@ One of the most practical uses is adding deployment timestamps to resource tags:
 ```hcl
 locals {
   deploy_date = formatdate("YYYY-MM-DD", timestamp())
-  deploy_time = formatdate("HH:mm:ss", timestamp())
+  deploy_time = formatdate("hh:mm:ss", timestamp())
 
   common_tags = {
     DeployDate  = local.deploy_date
@@ -151,15 +150,15 @@ locals {
     "%s-%s-snapshot-%s",
     var.project,
     var.environment,
-    formatdate("YYYY-MM-DD-HHmm", timestamp())
+    formatdate("YYYY-MM-DD-hhmm", timestamp())
   )
   # Example: "myapp-prod-snapshot-2026-02-23-1430"
 
-  # Weekly backup naming
+  # Monthly backup naming
   backup_name = format(
-    "backup-%s-week%s",
+    "backup-%s-month%s",
     formatdate("YYYY", timestamp()),
-    formatdate("WW", timestamp())
+    formatdate("MM", timestamp())
   )
 }
 ```
@@ -170,9 +169,10 @@ Build expiration dates for resources:
 
 ```hcl
 locals {
-  # Current time plus 90 days for certificate expiry tracking
   deploy_timestamp = timestamp()
   deploy_date      = formatdate("YYYY-MM-DD", local.deploy_timestamp)
+  expiry_timestamp = timeadd(local.deploy_timestamp, "2160h")
+  expiry_date      = formatdate("YYYY-MM-DD", local.expiry_timestamp)
 
   # Tag with quarter information
   quarter = ceil(tonumber(formatdate("M", local.deploy_timestamp)) / 3)
@@ -186,6 +186,7 @@ resource "aws_instance" "app" {
   tags = {
     Name           = "app-server"
     DeployDate     = local.deploy_date
+    ExpiryDate     = local.expiry_date
     FiscalQuarter  = local.fiscal_quarter  # "Q1-2026"
   }
 }
@@ -200,7 +201,7 @@ locals {
   ts = timestamp()
 
   # "Deployed on February 23, 2026 at 14:30"
-  message = formatdate("'Deployed on' MMMM DD, YYYY 'at' HH:mm", local.ts)
+  message = formatdate("'Deployed on' MMMM DD, YYYY 'at' hh:mm", local.ts)
 
   # "Date: 2026-02-23"
   labeled = formatdate("'Date:' YYYY-MM-DD", local.ts)
@@ -213,7 +214,7 @@ locals {
 locals {
   audit_entry = format(
     "[%s] Resource deployed by Terraform in %s environment",
-    formatdate("YYYY-MM-DD HH:mm:ss 'UTC'", timestamp()),
+    formatdate("YYYY-MM-DD hh:mm:ss 'UTC'", timestamp()),
     var.environment
   )
   # "[2026-02-23 14:30:00 UTC] Resource deployed by Terraform in production environment"
@@ -227,7 +228,7 @@ Outputs with formatted dates help operators quickly see when infrastructure was 
 ```hcl
 output "deployment_info" {
   value = {
-    deployed_at  = formatdate("MMMM DD, YYYY 'at' hh:mm AA", timestamp())
+    deployed_at  = formatdate("MMMM DD, YYYY 'at' HH:mm AA", timestamp())
     deployed_by  = "terraform"
     environment  = var.environment
     date_compact = formatdate("YYYYMMDD", timestamp())
@@ -244,8 +245,8 @@ locals {
   thirty_days    = timeadd(local.now, "720h")
   expiry_date    = formatdate("YYYY-MM-DD", local.thirty_days)
 
-  # Format a date from an external data source
-  cert_expiry_raw = data.aws_acm_certificate.main.not_after
+  # Format a date from an external input
+  cert_expiry_raw = var.cert_expiry_timestamp
   cert_expiry     = formatdate("MMMM DD, YYYY", local.cert_expiry_raw)
 }
 ```
@@ -254,14 +255,14 @@ locals {
 
 A few things to keep in mind:
 
-1. The `timestamp()` function returns a new value every time Terraform evaluates it. This means resources that depend on it will show as changed on every plan. Use `plantimestamp()` if you want a consistent value within a single plan run.
+1. The `timestamp()` function returns the current time when Terraform evaluates it during apply. This means resources that depend on it will show as changed on every plan. Use `plantimestamp()` if you need the plan time for comparisons, or the Time provider if you need a stable timestamp stored in state.
 
-2. The format specifiers are case-sensitive. `MM` is month, `mm` is minute. `HH` is 24-hour, `hh` is 12-hour. Getting these mixed up is a common mistake.
+2. The format specifiers are case-sensitive. `MM` is month, `mm` is minute. `hh` is 24-hour, `HH` is 12-hour. Getting these mixed up is a common mistake.
 
-3. All timestamps are in UTC. If you need local time, you will have to calculate the offset manually with `timeadd`.
+3. `timestamp()` returns UTC. If you need local time, you will have to calculate the offset manually with `timeadd`.
 
 4. The format string does not support arbitrary text without quoting. Letters that match specifiers will be interpreted as format verbs unless wrapped in single quotes.
 
 ## Summary
 
-The `formatdate` function is essential for creating human-readable dates in Terraform. Use it for resource tags, naming conventions, audit trails, and deployment metadata. Remember the key specifiers: `YYYY` for year, `MM` for month, `DD` for day, `HH` for 24-hour, `mm` for minutes, and `ss` for seconds. Combine it with `timestamp()` for current time or with other time functions for calculated dates.
+The `formatdate` function is essential for creating human-readable dates in Terraform. Use it for resource tags, naming conventions, audit trails, and deployment metadata. Remember the key specifiers: `YYYY` for year, `MM` for month, `DD` for day, `hh` for 24-hour, `mm` for minutes, and `ss` for seconds. Combine it with `timestamp()` for current time or with other time functions for calculated dates.
