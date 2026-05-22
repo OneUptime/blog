@@ -14,14 +14,14 @@ This guide covers configuring all three notification types with practical exampl
 
 ## Notification Triggers
 
-HCP Terraform can notify you on these events:
+HCP Terraform can notify you on these run events:
 
 - **run:created** - A new run was created
 - **run:planning** - A run started planning
 - **run:needs_attention** - A run needs manual confirmation or has policy overrides
 - **run:applying** - A run started applying
 - **run:completed** - A run finished successfully
-- **run:errored** - A run failed
+- **run:errored** - A run failed or was canceled
 
 You pick which events matter for each notification channel. For production workspaces, you probably want `run:needs_attention`, `run:completed`, and `run:errored`. For dev workspaces, `run:errored` alone might be enough.
 
@@ -146,7 +146,7 @@ resource "tfe_notification_configuration" "prod_webhook" {
   workspace_id     = tfe_workspace.production.id
   destination_type = "generic"
   url              = "https://hooks.example.com/terraform-events"
-  token            = var.webhook_token  # Sent in the Authorization header
+  token            = var.webhook_token  # Used to sign the request body
 
   triggers = [
     "run:created",
@@ -185,11 +185,11 @@ HCP Terraform sends a POST request with this JSON structure:
 }
 ```
 
-The `token` you configure is sent in the `Authorization` header as `Bearer <token>`, so your endpoint can verify the request is from HCP Terraform.
+The `token` you configure is used as the key for an HMAC-SHA-512 signature. HCP Terraform sends the signature in the `X-TFE-Notification-Signature` header, so your endpoint can verify the request body came from HCP Terraform.
 
 ### Microsoft Teams Integration
 
-Microsoft Teams uses a different webhook format. Use a middleware or transformation layer:
+HCP Terraform can send Microsoft Teams-formatted notifications directly. Use a middleware or transformation layer only if you need custom formatting or additional routing:
 
 ```hcl
 # Option 1: Direct Teams webhook (limited formatting)
