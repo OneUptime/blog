@@ -20,12 +20,12 @@ Terraform offers two regex functions with different behaviors:
 regex("[a-z]+", "hello123")
 # Result: "hello"
 
-# regexall(pattern, string) - returns ALL matches as a list (never errors)
+# regexall(pattern, string) - returns ALL matches as a list
 regexall("[a-z]+", "hello123world")
 # Result: ["hello", "world"]
 ```
 
-The critical difference: `regex` will throw an error if there is no match, while `regexall` returns an empty list. This matters a lot for validation, because you typically want to check whether something matches without crashing your plan.
+The critical difference: `regex` will throw an error if there is no match, while `regexall` returns an empty list when there are no matches. This matters a lot for validation, because you typically want to check whether something matches without crashing your plan.
 
 ## Basic Variable Validation
 
@@ -57,11 +57,14 @@ variable "bucket_name" {
   description = "Name for the S3 bucket"
 
   validation {
-    condition = can(regex(
-      "^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$",
-      var.bucket_name
-    ))
-    error_message = "Bucket name must be 3-63 characters, lowercase letters, numbers, hyphens, and periods only. Must start and end with a letter or number."
+    condition = (
+      can(regex("^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$", var.bucket_name)) &&
+      length(regexall("\\.\\.", var.bucket_name)) == 0 &&
+      length(regexall("^[0-9]{1,3}(\\.[0-9]{1,3}){3}$", var.bucket_name)) == 0 &&
+      length(regexall("^(xn--|sthree-|amzn-s3-demo-)", var.bucket_name)) == 0 &&
+      length(regexall("(-s3alias|--ol-s3|\\.mrap|--x-s3|--table-s3)$", var.bucket_name)) == 0
+    )
+    error_message = "Bucket name must be 3-63 characters, lowercase letters, numbers, hyphens, and periods only. Must start and end with a letter or number, not contain adjacent periods, not look like an IP address, and not use reserved S3 prefixes or suffixes."
   }
 }
 
@@ -71,11 +74,11 @@ variable "resource_group_name" {
   description = "Name for the Azure resource group"
 
   validation {
-    condition = can(regex(
-      "^[a-zA-Z0-9._()-]{1,90}$",
-      var.resource_group_name
-    ))
-    error_message = "Resource group name must be 1-90 characters and contain only alphanumerics, underscores, parentheses, hyphens, and periods."
+    condition = (
+      can(regex("^[a-zA-Z0-9._()-]{1,90}$", var.resource_group_name)) &&
+      length(regexall("\\.$", var.resource_group_name)) == 0
+    )
+    error_message = "Resource group name must be 1-90 characters, contain only alphanumerics, underscores, parentheses, hyphens, and periods, and not end with a period."
   }
 }
 
@@ -85,11 +88,11 @@ variable "gcp_project_id" {
   description = "GCP project ID"
 
   validation {
-    condition = can(regex(
-      "^[a-z][a-z0-9-]{4,28}[a-z0-9]$",
-      var.gcp_project_id
-    ))
-    error_message = "GCP project ID must be 6-30 characters, start with a letter, contain only lowercase letters, numbers, and hyphens, and not end with a hyphen."
+    condition = (
+      can(regex("^[a-z][a-z0-9-]{4,28}[a-z0-9]$", var.gcp_project_id)) &&
+      length(regexall("(google|ssl)", var.gcp_project_id)) == 0
+    )
+    error_message = "GCP project ID must be 6-30 characters, start with a letter, contain only lowercase letters, numbers, and hyphens, not end with a hyphen, and not contain restricted strings such as google or ssl."
   }
 }
 ```
@@ -141,9 +144,9 @@ variable "allowed_cidrs" {
   validation {
     condition = alltrue([
       for cidr in var.allowed_cidrs :
-      can(regex("^([0-9]{1,3}\\.){3}[0-9]{1,3}/[0-9]{1,2}$", cidr))
+      can(cidrhost(cidr, 0))
     ])
-    error_message = "All entries must be valid CIDR blocks."
+    error_message = "All entries must be valid CIDR blocks that Terraform can parse."
   }
 }
 ```
@@ -175,10 +178,10 @@ variable "app_version" {
 
   validation {
     condition = can(regex(
-      "^v?[0-9]+\\.[0-9]+\\.[0-9]+(-[a-zA-Z0-9.]+)?$",
+      "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(-((0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*)(\\.(0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(\\+([0-9a-zA-Z-]+(\\.[0-9a-zA-Z-]+)*))?$",
       var.app_version
     ))
-    error_message = "Version must follow semantic versioning (e.g., 1.2.3 or v1.2.3-beta.1)."
+    error_message = "Version must follow semantic versioning (e.g., 1.2.3, 1.2.3-beta.1, or 1.2.3+build.5)."
   }
 }
 ```
@@ -378,7 +381,7 @@ locals {
   k8s_namespace_pattern = "^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$"
 
   # Docker image tag
-  docker_tag_pattern = "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$"
+  docker_tag_pattern = "^[a-zA-Z0-9_][a-zA-Z0-9_.-]{0,127}$"
 }
 ```
 
