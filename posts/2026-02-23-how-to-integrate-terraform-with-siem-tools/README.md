@@ -76,7 +76,7 @@ resource "splunk_inputs_http_event_collector" "terraform" {
   sourcetype = "terraform:event"
   disabled   = false
 
-  use_ack = true
+  use_ack = 0
 }
 ```
 
@@ -113,7 +113,7 @@ EOF
 )
 
 # Send to Splunk HEC
-curl -k -X POST \
+curl -X POST \
   -H "Authorization: Splunk ${SPLUNK_HEC_TOKEN}" \
   -H "Content-Type: application/json" \
   -d "${PAYLOAD}" \
@@ -283,7 +283,8 @@ resource "azurerm_sentinel_log_analytics_workspace_onboarding" "main" {
   workspace_id = azurerm_log_analytics_workspace.sentinel.id
 }
 
-# Create a custom table for Terraform events
+# Manage retention for an existing custom table for Terraform events.
+# Create the custom table through Azure Monitor Logs or a Data Collection Rule before ingesting events.
 resource "azurerm_log_analytics_workspace_table" "terraform_events" {
   workspace_id = azurerm_log_analytics_workspace.sentinel.id
   name         = "TerraformEvents_CL"
@@ -312,8 +313,8 @@ resource "azurerm_sentinel_alert_rule_scheduled" "suspicious_iam_changes" {
   trigger_operator  = "GreaterThan"
   trigger_threshold = 0
 
-  incident_configuration {
-    create_incident = true
+  incident {
+    create_incident_enabled = true
     grouping {
       enabled                 = true
       lookback_duration       = "PT5H"
@@ -340,19 +341,19 @@ OUTPUT_FILE="$2"
 terraform show -json "$PLAN_FILE" > /tmp/plan.json
 
 # Extract resource changes using jq
-jq '[.resource_changes[] | {
+jq '[.resource_changes // [] | .[] | {
   address: .address,
   resource_type: .type,
-  change_type: .change.actions[0],
+  change_type: (.change.actions | join(",")),
   provider: .provider_name,
-  before: (.change.before | keys // []),
-  after: (.change.after | keys // [])
+  before: (.change.before // {} | keys),
+  after: (.change.after // {} | keys)
 }]' /tmp/plan.json > "$OUTPUT_FILE"
 
 # Count changes by type
-CREATED=$(jq '[.[] | select(.change_type == "create")] | length' "$OUTPUT_FILE")
+CREATED=$(jq '[.[] | select(.change_type | contains("create"))] | length' "$OUTPUT_FILE")
 UPDATED=$(jq '[.[] | select(.change_type == "update")] | length' "$OUTPUT_FILE")
-DELETED=$(jq '[.[] | select(.change_type == "delete")] | length' "$OUTPUT_FILE")
+DELETED=$(jq '[.[] | select(.change_type | contains("delete"))] | length' "$OUTPUT_FILE")
 
 echo "Resources to create: $CREATED"
 echo "Resources to update: $UPDATED"
@@ -395,6 +396,7 @@ jobs:
             --user "${{ github.actor }}"
 
       - name: Terraform Apply
+        id: apply
         run: terraform apply -auto-approve tfplan
 
       # Log the apply event to SIEM
