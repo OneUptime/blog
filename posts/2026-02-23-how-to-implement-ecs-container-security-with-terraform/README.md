@@ -182,27 +182,24 @@ resource "aws_ecs_task_definition" "order_service" {
       # Read-only root filesystem
       readonlyRootFilesystem = true
 
-      # Mount a writable tmpfs for temporary files
-      mountPoints = [
-        {
-          sourceVolume  = "tmp"
-          containerPath = "/tmp"
-          readOnly      = false
-        }
-      ]
-
-      # No elevated privileges
-      privileged = false
+      # No elevated capabilities
       linuxParameters = {
         capabilities = {
           drop = ["ALL"]
-          # Only add capabilities you actually need
-          # add = ["NET_BIND_SERVICE"]
+          # Fargate only supports adding SYS_PTRACE
+          # add = ["SYS_PTRACE"]
         }
         initProcessEnabled = true  # Proper signal handling
+        tmpfs = [
+          {
+            containerPath = "/tmp"
+            size          = 64
+            mountOptions  = ["rw", "nosuid", "nodev", "noexec"]
+          }
+        ]
       }
 
-      # Secrets from Secrets Manager (not environment variables)
+      # Secrets from Secrets Manager (not plaintext environment values)
       secrets = [
         {
           name      = "DB_CONNECTION_STRING"
@@ -253,10 +250,6 @@ resource "aws_ecs_task_definition" "order_service" {
       ]
     }
   ])
-
-  volume {
-    name = "tmp"
-  }
 
   tags = {
     Service = "order-service"
@@ -386,13 +379,14 @@ resource "aws_cloudwatch_log_group" "order_service" {
 # Alarm for task failures
 resource "aws_cloudwatch_metric_alarm" "ecs_task_failures" {
   alarm_name          = "ecs-order-service-task-failures"
-  comparison_operator = "GreaterThanThreshold"
+  comparison_operator = "LessThanThreshold"
   evaluation_periods  = 2
   metric_name         = "RunningTaskCount"
   namespace           = "ECS/ContainerInsights"
   period              = 60
   statistic           = "Average"
-  threshold           = 0
+  threshold           = 2
+  treat_missing_data  = "breaching"
 
   dimensions = {
     ClusterName = aws_ecs_cluster.main.name
