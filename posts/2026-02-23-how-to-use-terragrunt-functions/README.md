@@ -84,7 +84,7 @@ For a detailed exploration, see [How to Use the path_relative_to_include Functio
 
 ## path_relative_from_include
 
-The inverse of `path_relative_to_include`. Returns the relative path from the included configuration back to the current one. This is useful when the parent needs to generate paths that point to child directories:
+The inverse of `path_relative_to_include`. Returns the relative path from the current `terragrunt.hcl` back to the included configuration. This is useful when the parent needs to generate paths that point to files relative to the included configuration:
 
 ```hcl
 # Root terragrunt.hcl
@@ -92,7 +92,7 @@ terraform {
   extra_arguments "module_vars" {
     commands = ["plan", "apply"]
     optional_var_files = [
-      # Path from root down to the child module's directory
+      # Path from the child module back to the root configuration directory
       "${path_relative_from_include()}/module.tfvars"
     ]
   }
@@ -223,7 +223,7 @@ locals {
 
 ## run_cmd
 
-Executes a shell command and returns its stdout. Use this sparingly - it runs every time Terragrunt evaluates the configuration:
+Executes a shell command and returns its stdout. Use this sparingly - by default, Terragrunt caches `run_cmd` results for the same directory and command, but uncached commands can still run every time Terragrunt evaluates the configuration:
 
 ```hcl
 locals {
@@ -240,7 +240,7 @@ inputs = {
 }
 ```
 
-There is also `run_cmd("--terragrunt-forward-tf-stdout", ...)` for commands whose output should be forwarded to the terminal.
+There is also `run_cmd("--terragrunt-forward-tf-stdout", ...)` for commands whose output should be forwarded to the terminal, and `run_cmd("--terragrunt-no-cache", ...)` for commands that must not use the default cache.
 
 ## Combining Functions
 
