@@ -19,7 +19,7 @@ Before writing policies, define what good IAM hygiene looks like for your organi
 - No IAM policies with wildcard (*) actions on wildcard (*) resources
 - No inline IAM policies (use managed policies instead)
 - IAM roles must have a maximum session duration
-- No IAM users with console access (use SSO instead)
+- No IAM users with console access (use IAM Identity Center instead)
 - IAM policies must not allow iam:PassRole with wildcard resources
 - Service roles must follow the naming convention
 - No IAM access keys for root or admin users
@@ -28,13 +28,14 @@ Before writing policies, define what good IAM hygiene looks like for your organi
 
 The most dangerous IAM pattern is `"Action": "*"` on `"Resource": "*"`. This grants full administrative access and should never appear in your Terraform code:
 
-```python
+```sentinel
 # deny-wildcard-iam.sentinel
 
 # Block IAM policies that grant wildcard actions on wildcard resources
 
 import "tfplan/v2" as tfplan
 import "json"
+import "types"
 
 # Get all IAM policy resources
 iam_policies = filter tfplan.resource_changes as _, rc {
@@ -109,12 +110,14 @@ main = rule {
 
 Some IAM actions are particularly dangerous because they enable privilege escalation. Block these unless explicitly approved:
 
-```python
+```sentinel
 # restrict-dangerous-iam-actions.sentinel
 # Block IAM policies that contain privilege escalation vectors
 
 import "tfplan/v2" as tfplan
 import "json"
+import "strings"
+import "types"
 
 # Actions that enable privilege escalation
 dangerous_actions = [
@@ -131,6 +134,19 @@ dangerous_actions = [
     "iam:UpdateAssumeRolePolicy",
     "sts:AssumeRole",
 ]
+
+action_matches = func(action, dangerous_action) {
+    normalized_action = strings.to_lower(action)
+    normalized_dangerous_action = strings.to_lower(dangerous_action)
+    dangerous_parts = strings.split(normalized_dangerous_action, ":")
+    dangerous_service = dangerous_parts[0]
+
+    return normalized_action is "*" or
+        normalized_action is normalized_dangerous_action or
+        normalized_action is dangerous_service + ":*" or
+        (strings.has_suffix(normalized_action, "*") and
+            strings.has_prefix(normalized_dangerous_action, strings.trim_suffix(normalized_action, "*")))
+}
 
 # Get all IAM policy resources
 iam_policies = filter tfplan.resource_changes as _, rc {
@@ -159,7 +175,15 @@ for iam_policies as address, resource {
 
             if effect is "Allow" {
                 for actions as action {
-                    if action in dangerous_actions {
+                    matched_dangerous_action = false
+
+                    for dangerous_actions as dangerous_action {
+                        if action_matches(action, dangerous_action) {
+                            matched_dangerous_action = true
+                        }
+                    }
+
+                    if matched_dangerous_action {
                         append(violations, address +
                             " contains dangerous action: " + action)
                     }
@@ -187,7 +211,7 @@ main = rule {
 
 Inline policies are harder to audit and manage than managed policies. Enforce that all teams use managed policies attached to roles:
 
-```python
+```sentinel
 # deny-inline-policies.sentinel
 # Block inline IAM policies - require managed policies instead
 
@@ -208,10 +232,23 @@ inline_policies = filter tfplan.resource_changes as _, rc {
      rc.change.actions contains "update")
 }
 
+role_inline_policies = filter tfplan.resource_changes as _, rc {
+    rc.type is "aws_iam_role" and
+    rc.mode is "managed" and
+    (rc.change.actions contains "create" or
+     rc.change.actions contains "update") and
+    length(rc.change.after.inline_policy else []) > 0
+}
+
 violations = []
 for inline_policies as address, _ {
     append(violations, address +
         " - use aws_iam_policy with aws_iam_role_policy_attachment instead")
+}
+
+for role_inline_policies as address, _ {
+    append(violations, address +
+        " - move inline_policy blocks to aws_iam_policy with aws_iam_role_policy_attachment")
 }
 
 if length(violations) > 0 {
@@ -231,7 +268,7 @@ main = rule {
 
 Consistent naming makes it easy to identify what a role does and who owns it during incident response:
 
-```python
+```sentinel
 # enforce-iam-naming.sentinel
 # Enforce naming conventions for IAM roles
 
@@ -293,11 +330,11 @@ main = rule {
 
 ## Policy 5: Block IAM User Creation
 
-In organizations using SSO (which you should be), there is rarely a need to create IAM users. This policy blocks IAM user creation:
+In organizations using IAM Identity Center (which you should be), there is rarely a need to create IAM users. This policy blocks IAM user creation:
 
-```python
+```sentinel
 # deny-iam-users.sentinel
-# Block creation of IAM users - enforce SSO usage
+# Block creation of IAM users - enforce IAM Identity Center usage
 
 import "tfplan/v2" as tfplan
 
@@ -318,7 +355,7 @@ violations = []
 
 for iam_users as address, _ {
     append(violations, address +
-        " - IAM users are not allowed. Use AWS SSO instead.")
+        " - IAM users are not allowed. Use IAM Identity Center instead.")
 }
 
 for iam_access_keys as address, _ {
@@ -344,7 +381,7 @@ main = rule {
 
 Long-lived sessions increase the blast radius if credentials are compromised. Enforce a maximum session duration:
 
-```python
+```sentinel
 # enforce-session-duration.sentinel
 # Enforce maximum session duration for IAM roles
 
