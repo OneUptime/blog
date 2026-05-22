@@ -74,7 +74,7 @@ spec:
       holdApplicationUntilProxyStarts: true
 ```
 
-This works by adding a `postStart` lifecycle hook to the sidecar container that blocks until the proxy is ready. The application container's startup is delayed by the Kubernetes kubelet until the sidecar's `postStart` hook completes.
+This works by injecting the sidecar at the start of the pod's container list and configuring it to block the start of the application containers until the proxy is ready.
 
 You can also set this per-pod via annotation:
 
@@ -97,17 +97,7 @@ spec:
 
 ## Image Pull Configuration
 
-containerd uses a different image pull configuration than Docker. If you're using a private registry for Istio images, make sure containerd is configured to authenticate:
-
-On the node, the containerd config file is typically at `/etc/containerd/config.toml`:
-
-```toml
-[plugins."io.containerd.grpc.v1.cri".registry.configs."my-registry.example.com".auth]
-  username = "user"
-  password = "pass"
-```
-
-Or better, use Kubernetes image pull secrets:
+containerd uses a different image pull configuration than Docker. If you're using a private registry for Istio images, prefer Kubernetes image pull secrets:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -118,6 +108,8 @@ spec:
       imagePullSecrets:
       - name: my-registry-secret
 ```
+
+Node-level registry authentication is also possible, but the exact containerd configuration depends on your containerd version. Current containerd versions use a registry `config_path` with per-registry `hosts.toml` files, while older `registry.configs.*.auth` settings are deprecated.
 
 ## Cgroup Configuration
 
@@ -262,15 +254,14 @@ Most Istio components work fine with the default `runc` handler. If you're using
 
 ## Performance on containerd
 
-containerd is generally faster than Docker for container operations:
+containerd is generally lighter than Docker Engine for Kubernetes container operations:
 
-- Container startup is about 20-30% faster
+- Container startup can be faster
 - Image pull is comparable
 - Memory overhead is lower (no Docker daemon)
 
-For Istio, the faster startup time means:
-- Sidecar injection adds less overhead to pod startup
-- Rolling updates are faster
-- Scale-up events complete more quickly
+For Istio, this means the runtime itself usually isn't the bottleneck:
+- Sidecar injection and proxy startup are still the main Istio-specific startup costs
+- Rolling updates and scale-up events depend more on image pull time, scheduling, and proxy readiness than on Istio's container runtime support
 
-containerd is the recommended runtime for production Istio deployments. It's simpler, lighter, and well-tested with Istio. If you're still running Docker as your container runtime, migrating to containerd is straightforward and Istio won't need any configuration changes.
+containerd is a common production runtime for Kubernetes clusters running Istio. It's simpler, lighter, and well-tested with Istio. If you're still running Docker through `cri-dockerd`, Istio generally won't need runtime-specific configuration changes when you move to containerd.
