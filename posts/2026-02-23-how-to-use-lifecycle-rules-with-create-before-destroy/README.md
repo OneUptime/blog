@@ -8,7 +8,7 @@ Description: Learn how to use Terraform's create_before_destroy lifecycle rule t
 
 ---
 
-When Terraform needs to replace a resource (destroy the old one and create a new one), its default behavior is to destroy first, then create. For many resources, this causes downtime. The `create_before_destroy` lifecycle rule reverses this order: Terraform creates the replacement resource first, then destroys the old one. This is essential for zero-downtime deployments.
+When Terraform needs to replace a resource (destroy the old one and create a new one), its default behavior is to destroy first, then create. For many resources, this causes downtime. The `create_before_destroy` lifecycle rule reverses this order: Terraform creates the replacement resource first, then destroys the old one. This is an important building block for zero-downtime deployments.
 
 This post explains how `create_before_destroy` works, which resources need it, and the edge cases you will encounter.
 
@@ -61,7 +61,7 @@ Resources That Commonly Need create_before_destroy
 
 ### Security Groups
 
-If you change a security group's name or description, AWS requires replacement. Without `create_before_destroy`, instances referencing the group briefly lose their security group.
+If you change a security group's name or description, AWS requires replacement. Without `create_before_destroy`, Terraform tries to destroy the old security group before creating the replacement, which can fail or cause disruption when other resources still reference it.
 
 ```hcl
 resource "aws_security_group" "app" {
@@ -93,7 +93,7 @@ Using `name_prefix` instead of `name` is important here. With `name_prefix`, AWS
 
 ### Launch Configurations and Launch Templates
 
-Auto Scaling Groups reference launch configurations. If the launch config changes, the ASG needs the new one before releasing the old one.
+Auto Scaling Groups reference launch configurations or launch templates. Launch configurations are immutable, so if one changes, the ASG needs the new one before releasing the old one. Launch templates support versions, so changing template settings usually creates a new launch template version rather than replacing the whole launch template resource.
 
 ```hcl
 resource "aws_launch_template" "app" {
@@ -107,7 +107,7 @@ resource "aws_launch_template" "app" {
 }
 
 resource "aws_autoscaling_group" "app" {
-  name                = "${var.project}-app-asg"
+  name_prefix         = "${var.project}-app-asg-"
   min_size            = var.min_size
   max_size            = var.max_size
   desired_capacity    = var.desired_capacity
@@ -205,7 +205,7 @@ Resources that have this limitation include:
 
 ## create_before_destroy with Dependencies
 
-When resource A has `create_before_destroy` and resource B depends on A, Terraform applies `create_before_destroy` to B as well. This cascade can cause unexpected behavior.
+When resource A has `create_before_destroy` and depends on resource B, Terraform applies `create_before_destroy` to B as well. This cascade can cause unexpected behavior.
 
 ```hcl
 resource "aws_security_group" "app" {
@@ -217,8 +217,8 @@ resource "aws_security_group" "app" {
   }
 }
 
-# This instance inherits create_before_destroy behavior
-# because it depends on the security group
+# The security group can inherit create_before_destroy behavior
+# from a resource that depends on it
 resource "aws_instance" "app" {
   ami                    = var.ami_id
   instance_type          = "t3.micro"
@@ -226,7 +226,7 @@ resource "aws_instance" "app" {
 }
 ```
 
-If the security group is replaced, Terraform will also replace the instance using create-before-destroy semantics, even though the instance does not have the lifecycle rule explicitly set.
+If the instance has `create_before_destroy`, Terraform also stores that behavior for the security group dependency. You cannot then override `create_before_destroy` to `false` on that security group without creating dependency-ordering problems.
 
 ## Combining with Other Lifecycle Rules
 
@@ -243,7 +243,7 @@ resource "aws_db_instance" "main" {
     # Create replacement before destroying old one
     create_before_destroy = true
 
-    # Ignore AMI changes from external updates
+    # Ignore engine version changes from external updates
     ignore_changes = [engine_version]
 
     # Do NOT combine with prevent_destroy - they conflict
@@ -396,6 +396,6 @@ resource "aws_autoscaling_group" "web" {
 
 ## Summary
 
-`create_before_destroy` is your primary tool for zero-downtime resource replacements in Terraform. Enable it on resources that serve traffic or are referenced by other resources - security groups, launch templates, ACM certificates, and database instances. Always use `name_prefix` or `identifier_prefix` instead of fixed names to avoid naming conflicts during the overlap period. Be aware that the rule cascades to dependent resources and that both old and new resources run simultaneously during the transition.
+`create_before_destroy` is a key tool for zero-downtime resource replacements in Terraform. Enable it on resources that serve traffic or are referenced by other resources - security groups, launch configurations, ACM certificates, and database instances. Always use `name_prefix` or `identifier_prefix` instead of fixed names to avoid naming conflicts during the overlap period. Be aware that the rule cascades to dependencies and that both old and new resources run simultaneously during the transition.
 
 For more on lifecycle management, see our post on [using prevent_destroy](https://oneuptime.com/blog/post/2026-02-23-how-to-use-lifecycle-rules-with-prevent-destroy/view) and our overview of [Terraform lifecycle rules](https://oneuptime.com/blog/post/2026-01-24-terraform-lifecycle-rules/view).
