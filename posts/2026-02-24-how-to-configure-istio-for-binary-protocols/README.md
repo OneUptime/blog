@@ -69,7 +69,7 @@ spec:
 Binary protocols often maintain long-lived connections, and some use connection pooling at the application level. Configure Istio's connection pooling to accommodate your protocol's connection patterns:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: trading-engine
@@ -98,7 +98,7 @@ TCP routing options are limited compared to HTTP, but you can still do useful th
 ### Traffic Splitting
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: trading-engine-split
@@ -117,7 +117,7 @@ spec:
             subset: v2
           weight: 10
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: trading-engine-versions
@@ -140,7 +140,7 @@ Remember that for TCP, the routing decision happens at connection establishment.
 You can route TCP traffic based on the source:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: trading-engine-source
@@ -169,7 +169,7 @@ This sends traffic from pods labeled `app: premium-client` to a dedicated subset
 Circuit breaking for binary protocol services relies on connection-level failures since Istio cannot inspect the protocol content:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: trading-engine-outlier
@@ -241,8 +241,13 @@ kind: Deployment
 metadata:
   name: trading-engine
 spec:
+  selector:
+    matchLabels:
+      app: trading-engine
   template:
     metadata:
+      labels:
+        app: trading-engine
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/port: "9090"
@@ -261,7 +266,7 @@ spec:
 
 ## Using EnvoyFilter for Advanced Binary Protocol Handling
 
-If you need more than basic TCP proxying, you can use EnvoyFilter to add custom Envoy filters for your binary protocol. For example, if your protocol has a length-prefixed framing, you could use the `envoy.filters.network.direct_response` or write a custom Envoy filter in Lua or Wasm.
+If you need more than basic TCP proxying, you can use EnvoyFilter to add custom Envoy network filters for your binary protocol. For example, if your protocol has length-prefixed framing, you would need a custom native or Wasm network filter. The `envoy.filters.network.direct_response` filter is only useful when you want Envoy to respond immediately to a new connection with a fixed response.
 
 This is advanced territory and usually not necessary unless you need protocol-aware load balancing or request-level metrics for your binary protocol.
 
