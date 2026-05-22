@@ -23,7 +23,7 @@ version: 2.1
 
 # Import the Terraform orb
 orbs:
-  terraform: circleci/terraform@3.2
+  terraform: circleci/terraform@3.2.1
 
 # Use orb commands directly
 workflows:
@@ -36,13 +36,17 @@ workflows:
           checkout: true
           path: terraform
           context: aws-credentials
+          persist-workspace: true
+          requires:
+            - terraform/validate
       - hold:
           type: approval
           requires:
             - terraform/plan
       - terraform/apply:
-          checkout: true
+          attach-workspace: true
           path: terraform
+          plan: plan.out
           context: aws-credentials
           requires:
             - hold
@@ -323,21 +327,14 @@ jobs:
       - run:
           name: Configure AWS Credentials
           command: |
-            # Get the OIDC token from CircleCI
-            OIDC_TOKEN=$(curl -s -H "Authorization: Bearer ${CIRCLE_OIDC_TOKEN_V2}" \
-              "${CIRCLE_OIDC_TOKEN_URL}" | jq -r '.oidc_token')
+            # Write CircleCI's OIDC token to a file for the AWS provider
+            OIDC_TOKEN_FILE="${HOME}/circleci-oidc-token"
+            printf '%s' "${CIRCLE_OIDC_TOKEN_V2}" > "${OIDC_TOKEN_FILE}"
 
-            # Assume the AWS role using the OIDC token
-            CREDS=$(aws sts assume-role-with-web-identity \
-              --role-arn "arn:aws:iam::123456789012:role/circleci-terraform" \
-              --role-session-name "circleci-${CIRCLE_BUILD_NUM}" \
-              --web-identity-token "${OIDC_TOKEN}" \
-              --output json)
-
-            # Export credentials for Terraform
-            echo "export AWS_ACCESS_KEY_ID=$(echo $CREDS | jq -r '.Credentials.AccessKeyId')" >> $BASH_ENV
-            echo "export AWS_SECRET_ACCESS_KEY=$(echo $CREDS | jq -r '.Credentials.SecretAccessKey')" >> $BASH_ENV
-            echo "export AWS_SESSION_TOKEN=$(echo $CREDS | jq -r '.Credentials.SessionToken')" >> $BASH_ENV
+            # Export web identity settings for Terraform's AWS provider
+            echo 'export AWS_ROLE_ARN="arn:aws:iam::123456789012:role/circleci-terraform"' >> "$BASH_ENV"
+            echo "export AWS_WEB_IDENTITY_TOKEN_FILE=\"${OIDC_TOKEN_FILE}\"" >> "$BASH_ENV"
+            echo "export AWS_ROLE_SESSION_NAME=\"circleci-${CIRCLE_BUILD_NUM}\"" >> "$BASH_ENV"
 
       - terraform-init:
           working_directory: terraform
@@ -347,9 +344,9 @@ jobs:
           command: terraform plan -out=tfplan -input=false
 ```
 
-## Pull Request-Only Plans
+## Pull Request and Feature Branch Plans
 
-Run plans on pull requests without applying:
+Run plans on pull requests and feature branches without applying:
 
 ```yaml
 workflows:
