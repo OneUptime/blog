@@ -22,20 +22,18 @@ You can configure Istiod log levels through the IstioOperator:
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
-  components:
-    pilot:
-      k8s:
-        env:
-        - name: PILOT_LOG_LEVEL
-          value: "default:info,ads:debug,networking:debug"
+  values:
+    global:
+      logging:
+        level: "default:info,ads:debug,networking:debug"
 ```
 
-The format is `scope:level,scope:level`. Available levels are `debug`, `info`, `warn`, `error`, and `none`.
+The format is `scope:level,scope:level`. Available levels are `debug`, `info`, `warn`, `error`, `fatal`, and `none`.
 
 Or with istioctl:
 
 ```bash
-istioctl install --set values.pilot.env.PILOT_LOG_LEVEL="default:info,ads:debug"
+istioctl install --set values.global.logging.level="default:info,ads:debug"
 ```
 
 ### Changing Log Levels at Runtime
@@ -43,8 +41,11 @@ istioctl install --set values.pilot.env.PILOT_LOG_LEVEL="default:info,ads:debug"
 You don't need to restart Istiod to change log levels. Use the ControlZ API on port 9876:
 
 ```bash
-kubectl exec -n istio-system deployment/istiod -- \
-  curl -s -X PUT "localhost:9876/scopej/ads" \
+# In one terminal
+kubectl port-forward -n istio-system deployment/istiod 9876:9876
+
+# In another terminal
+curl -s -X PUT "localhost:9876/scopej/ads" \
   -d '{"name":"ads","outputLevel":"debug"}'
 ```
 
@@ -141,26 +142,25 @@ spec:
   template:
     metadata:
       annotations:
-        proxy.istio.io/config: |
-          proxyStatsMatcher:
-            inclusionRegexps:
-            - ".*"
+        sidecar.istio.io/logLevel: debug
+        sidecar.istio.io/componentLogLevel: "http:debug,router:debug"
     spec:
       containers:
       - name: httpbin
         image: kennethreitz/httpbin
 ```
 
-Or set it globally through the mesh config:
+Or set it globally through install values:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
-  meshConfig:
-    defaultConfig:
-      proxyMetadata:
-        ISTIO_META_LOG_LEVEL: "debug"
+  values:
+    global:
+      proxy:
+        logLevel: debug
+        componentLogLevel: "http:debug,router:debug"
 ```
 
 ### Viewing Envoy Logs
@@ -311,7 +311,7 @@ istioctl proxy-config log httpbin-abc123.default --level warning
 
 These flags are often enough to diagnose the issue without even enabling debug logging.
 
-**Correlate with request IDs.** Istio adds `x-request-id` headers to all requests. Use this to trace a single request across multiple services in the logs:
+**Correlate with request IDs.** Envoy can generate `x-request-id` headers for HTTP requests that don't already have one. Use this to trace a single request across multiple services in the logs:
 
 ```bash
 kubectl logs httpbin-abc123 -c istio-proxy | grep "request-id-value"
