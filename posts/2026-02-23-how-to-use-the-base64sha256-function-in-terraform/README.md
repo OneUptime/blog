@@ -8,7 +8,7 @@ Description: Learn how to use Terraform's base64sha256 function to generate base
 
 ---
 
-Several cloud services expect hash values in base64 encoding rather than hexadecimal. AWS Lambda's `source_code_hash`, for example, requires a base64-encoded SHA-256 hash to detect code changes. Terraform's `base64sha256` function produces exactly this format, saving you from manually chaining `sha256` and `base64encode` together.
+Several cloud services expect hash values in base64 encoding rather than hexadecimal. AWS Lambda's `source_code_hash`, for example, requires a base64-encoded SHA-256 hash to detect code changes. Terraform's `base64sha256` function produces exactly this format without encoding the hexadecimal output from `sha256`.
 
 ## What Does base64sha256 Do?
 
@@ -180,7 +180,7 @@ resource "aws_ssm_parameter" "config" {
 
 ### Cloud Functions on GCP
 
-Google Cloud Functions also use base64sha256 for source code change detection:
+For Google Cloud Functions, you can use `filebase64sha256` when naming the Cloud Storage object that contains the function source. This gives the object a new name when the zip file changes:
 
 ```hcl
 resource "google_storage_bucket_object" "function_zip" {
@@ -231,13 +231,13 @@ output "file_hash" {
   value = filebase64sha256("${path.module}/artifact.zip")
 }
 
-# Less efficient - reads the file into memory, then hashes the string
-output "file_hash_manual" {
-  value = base64sha256(file("${path.module}/artifact.zip"))
+# Works only for UTF-8 text files, not binary archives
+output "text_file_hash_manual" {
+  value = base64sha256(file("${path.module}/config.json"))
 }
 ```
 
-Use `filebase64sha256` for file hashing since it is more memory-efficient, especially with large files.
+Use `filebase64sha256` for file hashing since it works directly with file bytes, including binary files such as zip archives.
 
 ## A Complete Lambda Deployment Example
 
@@ -261,7 +261,7 @@ terraform {
 data "archive_file" "lambda" {
   type        = "zip"
   source_dir  = "${path.module}/src"
-  output_path = "${path.module}/build/function.zip"
+  output_path = "${path.module}/function.zip"
 }
 
 # IAM role for the Lambda function
@@ -298,7 +298,7 @@ resource "aws_lambda_function" "main" {
 
   environment {
     variables = {
-      ENVIRONMENT = var.environment
+      ENVIRONMENT = "production"
     }
   }
 }
