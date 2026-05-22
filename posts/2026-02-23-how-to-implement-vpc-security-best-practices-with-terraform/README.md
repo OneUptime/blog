@@ -473,6 +473,30 @@ resource "aws_ec2_traffic_mirror_filter_rule" "ingress" {
   destination_cidr_block = "0.0.0.0/0"
   source_cidr_block      = "0.0.0.0/0"
 }
+
+resource "aws_ec2_traffic_mirror_filter_rule" "egress" {
+  traffic_mirror_filter_id = aws_ec2_traffic_mirror_filter.main.id
+  description              = "Mirror all outbound TCP"
+  rule_number              = 100
+  rule_action              = "accept"
+  traffic_direction        = "egress"
+  protocol                 = 6  # TCP
+
+  destination_cidr_block = "0.0.0.0/0"
+  source_cidr_block      = "0.0.0.0/0"
+}
+
+resource "aws_ec2_traffic_mirror_session" "app" {
+  description              = "Mirror application ENI traffic to IDS"
+  network_interface_id     = var.source_network_interface_id
+  session_number           = 1
+  traffic_mirror_filter_id = aws_ec2_traffic_mirror_filter.main.id
+  traffic_mirror_target_id = aws_ec2_traffic_mirror_target.ids.id
+
+  tags = {
+    Name = "app-mirror-session"
+  }
+}
 ```
 
 ## GuardDuty for VPC Threat Detection
@@ -481,20 +505,21 @@ resource "aws_ec2_traffic_mirror_filter_rule" "ingress" {
 resource "aws_guardduty_detector" "main" {
   enable = true
 
-  datasources {
-    s3_logs {
-      enable = true
-    }
-    kubernetes {
-      audit_logs {
-        enable = true
-      }
-    }
-  }
-
   tags = {
     Name = "guardduty-detector"
   }
+}
+
+resource "aws_guardduty_detector_feature" "s3_data_events" {
+  detector_id = aws_guardduty_detector.main.id
+  name        = "S3_DATA_EVENTS"
+  status      = "ENABLED"
+}
+
+resource "aws_guardduty_detector_feature" "eks_audit_logs" {
+  detector_id = aws_guardduty_detector.main.id
+  name        = "EKS_AUDIT_LOGS"
+  status      = "ENABLED"
 }
 ```
 
