@@ -38,26 +38,26 @@ Each line is a resource address. The format is `<type>.<name>` for root-level re
 
 ## Filtering by Address
 
-You can pass an address pattern to filter the output:
+You can pass a resource address to filter the output:
 
 ```bash
-# List only aws_instance resources
-terraform state list aws_instance
+# List a specific aws_instance resource and its instances
+terraform state list aws_instance.worker
 
 # Output:
-# aws_instance.web
 # aws_instance.worker[0]
 # aws_instance.worker[1]
 # aws_instance.worker[2]
 ```
 
-The filter matches the beginning of the address:
+The filter is based on Terraform resource addresses, not arbitrary prefixes. To filter only by resource type, pipe the full list to another command:
 
 ```bash
-# List all resources with a specific name prefix
-terraform state list aws_instance.worker
+# List only root-level aws_instance resources
+terraform state list | grep '^aws_instance\.'
 
 # Output:
+# aws_instance.web
 # aws_instance.worker[0]
 # aws_instance.worker[1]
 # aws_instance.worker[2]
@@ -122,7 +122,7 @@ Data sources appear in the list with a `data.` prefix:
 
 ```bash
 # List all data sources
-terraform state list data.
+terraform state list | grep '^data\.'
 
 # Output:
 # data.aws_ami.ubuntu
@@ -152,7 +152,7 @@ The output of `terraform state list` is designed for scripting. Each address is 
 
 ```bash
 # Count resources grouped by type
-terraform state list | sed 's/\[.*//; s/\..*//' | sort | uniq -c | sort -rn
+terraform state list | sed 's/\[.*//; s/^data\.//; s/^.*\.\([^.]*\.[^.]*\)$/\1/; s/\..*//' | sort | uniq -c | sort -rn
 
 # Output:
 #   15 aws_security_group_rule
@@ -182,7 +182,7 @@ Combine state list with other terraform commands:
 
 ```bash
 # Show details for all instances
-for resource in $(terraform state list aws_instance); do
+for resource in $(terraform state list | grep '^aws_instance\.'); do
   echo "=== $resource ==="
   terraform state show "$resource"
   echo ""
@@ -295,7 +295,7 @@ Before running `terraform state mv` or `terraform state rm`, use `state list` to
 
 ```bash
 # Find the exact address before moving
-terraform state list aws_instance
+terraform state list | grep '^aws_instance\.'
 
 # Verify the address exists
 terraform state list aws_instance.old_name
