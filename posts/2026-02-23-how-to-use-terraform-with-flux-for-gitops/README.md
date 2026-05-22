@@ -18,7 +18,7 @@ The typical workflow is: Terraform creates the cluster and installs Flux, Flux t
 
 ## Prerequisites
 
-You need a cloud provider account, Terraform version 1.0 or later, the Flux CLI installed, a GitHub personal access token with repo permissions, and kubectl configured for cluster access.
+You need a cloud provider account, Terraform version 1.5 or later, the Flux CLI installed, a GitHub personal access token with repo permissions, and kubectl configured for cluster access.
 
 ## Step 1: Provision the Kubernetes Cluster
 
@@ -29,7 +29,7 @@ Start with Terraform to create the underlying infrastructure.
 
 # Define required providers for the Terraform configuration
 terraform {
-  required_version = ">= 1.0"
+  required_version = ">= 1.5"
 
   required_providers {
     aws = {
@@ -48,6 +48,10 @@ terraform {
       source  = "integrations/github"
       version = "~> 6.0"
     }
+    tls = {
+      source  = "hashicorp/tls"
+      version = "~> 4.0"
+    }
   }
 }
 
@@ -64,7 +68,7 @@ module "eks" {
   version = "~> 20.0"
 
   cluster_name    = "flux-demo-cluster"
-  cluster_version = "1.29"
+  cluster_version = "1.34"
 
   cluster_endpoint_public_access = true
   vpc_id                         = module.vpc.vpc_id
@@ -180,9 +184,6 @@ resource "kubernetes_manifest" "app_source" {
       ref = {
         branch = "main"
       }
-      secretRef = {
-        name = "app-repo-credentials"
-      }
     }
   }
 
@@ -285,7 +286,7 @@ resource "kubernetes_manifest" "nginx_release" {
     kind       = "HelmRelease"
 
     metadata = {
-      name      = "nginx-ingress"
+      name      = "nginx"
       namespace = "flux-system"
     }
 
@@ -293,8 +294,8 @@ resource "kubernetes_manifest" "nginx_release" {
       interval = "10m"
       chart = {
         spec = {
-          chart   = "nginx-ingress-controller"
-          version = "9.x"
+          chart   = "nginx"
+          version = "22.x"
           sourceRef = {
             kind      = "HelmRepository"
             name      = "bitnami"
@@ -304,7 +305,7 @@ resource "kubernetes_manifest" "nginx_release" {
       }
 
       # Target namespace for the Helm release
-      targetNamespace = "ingress-system"
+      targetNamespace = "web-system"
       install = {
         createNamespace = true
       }
@@ -368,10 +369,24 @@ Configure Flux to send notifications about deployment status.
 
 ```hcl
 # flux-notifications.tf
+# Store the Slack webhook URL in a Kubernetes Secret
+resource "kubernetes_secret" "slack_webhook" {
+  metadata {
+    name      = "slack-webhook"
+    namespace = "flux-system"
+  }
+
+  data = {
+    address = var.slack_webhook_url
+  }
+
+  depends_on = [flux_bootstrap_git.this]
+}
+
 # Create a notification provider for Slack
 resource "kubernetes_manifest" "slack_provider" {
   manifest = {
-    apiVersion = "notification.toolkit.fluxcd.io/v1"
+    apiVersion = "notification.toolkit.fluxcd.io/v1beta3"
     kind       = "Provider"
 
     metadata = {
@@ -382,17 +397,19 @@ resource "kubernetes_manifest" "slack_provider" {
     spec = {
       type    = "slack"
       channel = "deployments"
-      address = var.slack_webhook_url
+      secretRef = {
+        name = "slack-webhook"
+      }
     }
   }
 
-  depends_on = [flux_bootstrap_git.this]
+  depends_on = [kubernetes_secret.slack_webhook]
 }
 
 # Create an alert for Flux events
 resource "kubernetes_manifest" "flux_alert" {
   manifest = {
-    apiVersion = "notification.toolkit.fluxcd.io/v1"
+    apiVersion = "notification.toolkit.fluxcd.io/v1beta3"
     kind       = "Alert"
 
     metadata = {
@@ -429,29 +446,22 @@ resource "kubernetes_manifest" "flux_alert" {
 
 ## Multi-Cluster Setup
 
-For organizations managing multiple clusters, Terraform can bootstrap Flux on each one.
+For organizations managing multiple clusters, run the bootstrap once per cluster, using that cluster's Flux provider configuration and a unique Git path.
 
 ```hcl
 # multi-cluster.tf
-# Define cluster configurations
-locals {
-  clusters = {
-    production = {
-      path   = "clusters/production"
-      branch = "main"
-    }
-    staging = {
-      path   = "clusters/staging"
-      branch = "staging"
-    }
-  }
+# Bootstrap Flux in the production cluster stack
+resource "flux_bootstrap_git" "production" {
+  provider = flux.production
+
+  path = "clusters/production"
 }
 
-# Bootstrap Flux on each cluster
-resource "flux_bootstrap_git" "clusters" {
-  for_each = local.clusters
+# Bootstrap Flux in the staging cluster stack
+resource "flux_bootstrap_git" "staging" {
+  provider = flux.staging
 
-  path = each.value.path
+  path = "clusters/staging"
 }
 ```
 
