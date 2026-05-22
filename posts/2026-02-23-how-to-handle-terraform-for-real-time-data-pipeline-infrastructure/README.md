@@ -21,7 +21,7 @@ In this guide, we will cover how to build real-time data pipeline infrastructure
 
 resource "aws_kinesis_stream" "events" {
   name             = "events-${var.environment}"
-  shard_count      = var.environment == "production" ? 10 : 2
+  shard_count      = var.environment == "production" ? null : 2
   retention_period = 168  # 7 days
 
   stream_mode_details {
@@ -55,10 +55,6 @@ resource "aws_lambda_function" "stream_processor" {
       DLQ_URL       = aws_sqs_queue.processing_dlq.url
       ENVIRONMENT   = var.environment
     }
-  }
-
-  dead_letter_config {
-    target_arn = aws_sqs_queue.processing_dlq.arn
   }
 }
 
@@ -96,7 +92,7 @@ resource "aws_msk_cluster" "main" {
   number_of_broker_nodes = var.environment == "production" ? 6 : 3
 
   broker_node_group_info {
-    instance_type   = var.environment == "production" ? "kafka.m5.2xlarge" : "kafka.t3.small"
+    instance_type   = var.environment == "production" ? "kafka.m5.4xlarge" : "kafka.t3.small"
     client_subnets  = var.private_subnet_ids
     security_groups = [aws_security_group.msk.id]
 
@@ -104,9 +100,12 @@ resource "aws_msk_cluster" "main" {
       ebs_storage_info {
         volume_size = var.environment == "production" ? 1000 : 100
 
-        provisioned_throughput {
-          enabled           = var.environment == "production"
-          volume_throughput = var.environment == "production" ? 250 : 0
+        dynamic "provisioned_throughput" {
+          for_each = var.environment == "production" ? [1] : []
+          content {
+            enabled           = true
+            volume_throughput = 250
+          }
         }
       }
     }
