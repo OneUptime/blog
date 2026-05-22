@@ -91,11 +91,11 @@ resource "spacelift_stack" "staging" {
 Configure cloud credentials using Spacelift's integration rather than storing static keys:
 
 ```hcl
-# aws-integration.tf - Native AWS integration via OIDC
+# aws-integration.tf - Native AWS integration via STS AssumeRole
 resource "spacelift_aws_integration" "production" {
   name = "aws-production"
 
-  # Spacelift assumes this role using OIDC
+  # Spacelift assumes this role and uses a generated external ID
   role_arn                       = "arn:aws:iam::123456789012:role/spacelift-terraform"
   duration_seconds               = 3600
   generate_credentials_in_worker = false
@@ -124,10 +124,13 @@ Spacelift uses Open Policy Agent (OPA) for policy enforcement. Write policies in
 package spacelift
 
 # Deny if too many resources are being destroyed
+delete_changes := [r | r := input.terraform.resource_changes[_]; r.change.actions[_] == "delete"]
+
 deny[reason] {
-  count(input.terraform.resource_changes[_].change.actions[_] == "delete") > 3
+  delete_count := count(delete_changes)
+  delete_count > 3
   reason := sprintf("Plan wants to destroy more than 3 resources. Found: %d", [
-    count([r | r := input.terraform.resource_changes[_]; r.change.actions[_] == "delete"])
+    delete_count
   ])
 }
 
@@ -147,19 +150,21 @@ warn[reason] {
 package spacelift
 
 # Require approval for production stacks
-approve {
+requires_approval {
   input.run.state == "UNCONFIRMED"
   input.stack.labels[_] == "production"
 }
 
-# Auto-approve staging if no destructive changes
+# Auto-approve runs that do not match the production rule
 approve {
-  not destructive_changes
-  input.stack.labels[_] == "staging"
+  not requires_approval
 }
 
-destructive_changes {
-  input.terraform.resource_changes[_].change.actions[_] == "delete"
+# Approve production after at least one approval and no rejections
+approve {
+  requires_approval
+  count(input.reviews.current.approvals) > 0
+  count(input.reviews.current.rejections) == 0
 }
 ```
 
@@ -168,17 +173,19 @@ Register policies in Spacelift:
 ```hcl
 # policies.tf
 resource "spacelift_policy" "plan_safety" {
-  name = "plan-safety-checks"
-  type = "PLAN"
-  body = file("policies/plan-policy.rego")
+  name        = "plan-safety-checks"
+  type        = "PLAN"
+  engine_type = "REGO_V0"
+  body        = file("policies/plan-policy.rego")
 
   labels = ["all-stacks"]
 }
 
 resource "spacelift_policy" "approval" {
-  name = "production-approval"
-  type = "APPROVAL"
-  body = file("policies/approval-policy.rego")
+  name        = "production-approval"
+  type        = "APPROVAL"
+  engine_type = "REGO_V0"
+  body        = file("policies/approval-policy.rego")
 
   labels = ["production"]
 }
@@ -186,6 +193,11 @@ resource "spacelift_policy" "approval" {
 # Attach policy to stacks
 resource "spacelift_policy_attachment" "plan_safety_prod" {
   policy_id = spacelift_policy.plan_safety.id
+  stack_id  = spacelift_stack.production.id
+}
+
+resource "spacelift_policy_attachment" "approval_prod" {
+  policy_id = spacelift_policy.approval.id
   stack_id  = spacelift_stack.production.id
 }
 ```
@@ -274,7 +286,7 @@ resource "spacelift_context_attachment" "prod_infra" {
 
 ## Cost Estimation
 
-Spacelift provides built-in cost estimation for Terraform plans:
+Spacelift provides cost estimation for Terraform plans through its Infracost integration. To enable it, add the `infracost` label to the stack and set an `INFRACOST_API_KEY` environment variable:
 
 ```text
 Plan Summary:
@@ -296,14 +308,20 @@ package spacelift
 
 # Warn on plans that increase costs by more than $100/month
 warn[reason] {
-  input.run.changes.cost.delta > 100
-  reason := sprintf("Monthly cost increase of $%.2f exceeds $100 threshold", [input.run.changes.cost.delta])
+  previous_cost := to_number(input.third_party_metadata.infracost.projects[0].pastBreakdown.totalMonthlyCost)
+  monthly_cost := to_number(input.third_party_metadata.infracost.projects[0].breakdown.totalMonthlyCost)
+  delta := monthly_cost - previous_cost
+  delta > 100
+  reason := sprintf("Monthly cost increase of $%.2f exceeds $100 threshold", [delta])
 }
 
 # Deny plans that increase costs by more than $1000/month
 deny[reason] {
-  input.run.changes.cost.delta > 1000
-  reason := sprintf("Monthly cost increase of $%.2f exceeds $1000 limit. Requires manual override.", [input.run.changes.cost.delta])
+  previous_cost := to_number(input.third_party_metadata.infracost.projects[0].pastBreakdown.totalMonthlyCost)
+  monthly_cost := to_number(input.third_party_metadata.infracost.projects[0].breakdown.totalMonthlyCost)
+  delta := monthly_cost - previous_cost
+  delta > 1000
+  reason := sprintf("Monthly cost increase of $%.2f exceeds $1000 limit. Requires manual override.", [delta])
 }
 ```
 
@@ -313,27 +331,29 @@ Configure notifications for Spacelift events:
 
 ```hcl
 # notifications.tf
-resource "spacelift_webhook" "slack" {
-  endpoint = "https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX"
-  secret   = var.webhook_secret
+resource "spacelift_webhook" "production" {
+  endpoint = "https://example.com/spacelift-webhook"
+  stack_id = spacelift_stack.production.id
   enabled  = true
 }
 
-# Configure which events trigger the webhook
-resource "spacelift_notification_policy" "production_alerts" {
-  name = "production-alerts"
+# Send failed run notifications to Slack
+resource "spacelift_policy" "production_alerts" {
+  name        = "production-alerts"
+  type        = "NOTIFICATION"
+  engine_type = "REGO_V0"
+
   body = <<-EOT
     package spacelift
 
     # Notify on failed runs
-    notify[msg] {
-      input.run.state == "FAILED"
-      input.stack.labels[_] == "production"
-      msg := {
-        "type": "slack",
-        "channel": "#infrastructure-alerts",
-        "text": sprintf("Terraform run failed for %s: %s", [input.stack.name, input.run.id])
-      }
+    slack[{"channel_id": "C0000000000"}] {
+      input.run_updated != null
+      run := input.run_updated.run
+      stack := input.run_updated.stack
+
+      run.state == "FAILED"
+      stack.labels[_] == "production"
     }
   EOT
 }
