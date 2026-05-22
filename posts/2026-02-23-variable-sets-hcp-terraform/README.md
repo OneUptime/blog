@@ -286,16 +286,22 @@ resource "tfe_variable" "dd_app_key" {
 
 ## Variable Precedence with Variable Sets
 
-When a variable is defined in multiple places, workspace-specific variables take priority over variable set values:
+When a variable is defined in multiple places, HCP Terraform applies the most specific non-priority value after any run-specific values:
 
 ```text
 Priority (highest to lowest):
-1. Workspace-specific variables
-2. Variable sets applied to workspace directly
-3. Variable sets applied via project
-4. Global variable sets
-5. terraform.auto.tfvars files
-6. Variable defaults in configuration
+1. Priority variable sets
+2. Command line arguments (-var and -var-file) in CLI-driven runs
+3. Local environment variables prefixed with TF_VAR_ in CLI-driven runs
+4. Workspace-specific variables
+5. Workspace-scoped variable sets owned by the project
+6. Project-scoped variable sets owned by the project
+7. Workspace-scoped variable sets owned by the organization
+8. Project-scoped variable sets owned by the organization
+9. Global variable sets
+10. *.auto.tfvars files
+11. terraform.tfvars
+12. Variable defaults in configuration
 ```
 
 This means you can set a default in a global variable set and override it on specific workspaces:
