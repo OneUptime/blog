@@ -8,7 +8,7 @@ Description: Learn how to store Terraform state in Kubernetes Secrets, including
 
 ---
 
-Storing Terraform state in Kubernetes Secrets is an option that makes sense when Kubernetes is central to your infrastructure and you want to keep your state close to your workloads. The Kubernetes backend stores the state as a Kubernetes Secret object, which means it benefits from Kubernetes RBAC, namespace isolation, and etcd encryption. This guide covers how to set it up and what to watch out for.
+Storing Terraform state in Kubernetes Secrets is an option that makes sense when Kubernetes is central to your infrastructure and you want to keep your state close to your workloads. The Kubernetes backend stores the state as a Kubernetes Secret object, which means it benefits from Kubernetes RBAC, namespace isolation, and, when configured for your cluster, etcd encryption. This guide covers how to set it up and what to watch out for.
 
 ## When to Use the Kubernetes Backend
 
@@ -18,7 +18,7 @@ This backend is a good fit when:
 - You run Terraform from within Kubernetes (e.g., in a CI/CD pipeline running on the cluster)
 - You want namespace-level isolation for different teams or environments
 - You do not want to introduce additional storage services just for Terraform state
-- Your state files are relatively small (Kubernetes Secrets have a 1MB size limit)
+- Your state files are relatively small (individual Kubernetes Secrets have a 1MiB size limit)
 
 It is not ideal for very large state files or environments where Kubernetes is not the central platform.
 
@@ -57,6 +57,9 @@ terraform {
 
     # The namespace where the Secret will be stored
     namespace     = "terraform-state"
+
+    # The kubeconfig file Terraform should use
+    config_path   = "~/.kube/config"
   }
 }
 ```
@@ -83,7 +86,7 @@ The Kubernetes backend uses the same authentication as `kubectl`. There are seve
 
 ### Default kubeconfig
 
-By default, Terraform uses your `~/.kube/config` file:
+For a local workflow, point Terraform at your kubeconfig file:
 
 ```hcl
 terraform {
@@ -91,7 +94,8 @@ terraform {
     secret_suffix = "myproject"
     namespace     = "terraform-state"
 
-    # Uses default kubeconfig automatically
+    # Use the default kubeconfig path explicitly
+    config_path   = "~/.kube/config"
   }
 }
 ```
@@ -176,7 +180,7 @@ rules:
   # Permissions for state storage (Secrets)
   - apiGroups: [""]
     resources: ["secrets"]
-    verbs: ["get", "create", "update", "patch", "delete"]
+    verbs: ["get", "list", "create", "update", "patch", "delete"]
   # Permissions for state locking (Leases)
   - apiGroups: ["coordination.k8s.io"]
     resources: ["leases"]
@@ -219,7 +223,7 @@ kubectl get leases -n terraform-state
 
 # Output during an active operation:
 # NAME                          HOLDER   AGE
-# tflock-default-myproject      abc123   5s
+# lock-tfstate-default-myproject abc123   5s
 ```
 
 The lease is automatically released when the operation completes. If it gets stuck:
@@ -229,7 +233,7 @@ The lease is automatically released when the operation completes. If it gets stu
 terraform force-unlock LOCK_ID
 
 # Or manually delete the lease (last resort)
-kubectl delete lease tflock-default-myproject -n terraform-state
+kubectl delete lease lock-tfstate-default-myproject -n terraform-state
 ```
 
 ## Inspecting State
@@ -240,10 +244,10 @@ You can view the stored state directly through kubectl:
 # Get the secret containing the state
 kubectl get secret tfstate-default-myproject -n terraform-state -o yaml
 
-# The state is base64-encoded in the secret data
-# Decode it to see the actual state JSON
+# The state is gzip-compressed and base64-encoded in the secret data
+# Decode and decompress it to see the actual state JSON
 kubectl get secret tfstate-default-myproject -n terraform-state \
-  -o jsonpath='{.data.tfstate}' | base64 --decode | jq .
+  -o jsonpath='{.data.tfstate}' | base64 --decode | gzip -dc | jq .
 ```
 
 ## Encryption at Rest
@@ -343,11 +347,10 @@ spec:
 
 ## Size Limitations
 
-Kubernetes Secrets have a hard limit of 1MB. Since the state is base64-encoded inside the Secret, the effective state size limit is about 750KB of raw JSON. If your state file grows beyond this:
+Individual Kubernetes Secrets have a hard limit of 1MiB. Terraform compresses state before storing it and can split larger state payloads across multiple Secrets, but very large state files can still become awkward to operate and back up. If your state file grows significantly:
 
 - Split your infrastructure into smaller configurations
 - Use a different backend (S3, GCS, Azure Blob) for large projects
-- Consider using the `etcd` backend directly for larger limits
 
 Check your current state size:
 
@@ -355,7 +358,7 @@ Check your current state size:
 # Check the size of your current state
 terraform state pull | wc -c
 
-# If it's approaching 750KB, consider splitting
+# If it is growing quickly, consider splitting
 ```
 
 ## Backup Strategy
@@ -374,4 +377,4 @@ Tools like Velero can automate this as part of cluster-wide backups.
 
 ## Summary
 
-The Kubernetes Secret backend is a niche but useful option for storing Terraform state when Kubernetes is at the center of your infrastructure. It provides namespace isolation, RBAC-based access control, and state locking through Leases. The main limitation is the 1MB Secret size cap, which makes it unsuitable for very large state files. For teams already deep in the Kubernetes ecosystem, it keeps everything in one place and avoids adding external storage dependencies. For more Terraform backend options, see our posts on [Consul backend](https://oneuptime.com/blog/post/2026-02-23-terraform-consul-backend/view) and [PostgreSQL backend](https://oneuptime.com/blog/post/2026-02-23-terraform-postgresql-backend/view).
+The Kubernetes Secret backend is a niche but useful option for storing Terraform state when Kubernetes is at the center of your infrastructure. It provides namespace isolation, RBAC-based access control, and state locking through Leases. The main limitation is that the state is stored in Kubernetes API objects, which can become awkward for very large state files even though Terraform can split state across multiple Secrets. For teams already deep in the Kubernetes ecosystem, it keeps everything in one place and avoids adding external storage dependencies. For more Terraform backend options, see our posts on [Consul backend](https://oneuptime.com/blog/post/2026-02-23-terraform-consul-backend/view) and [PostgreSQL backend](https://oneuptime.com/blog/post/2026-02-23-terraform-postgresql-backend/view).
