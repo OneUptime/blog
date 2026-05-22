@@ -20,7 +20,7 @@ Without any controls, Kubernetes load balancing might send traffic anywhere. If 
 
 ## Setting Up Region Labels
 
-First, make sure your nodes and pods have proper region labels. Kubernetes nodes should have topology labels:
+First, make sure your nodes have proper region labels. Kubernetes nodes should have topology labels:
 
 ```bash
 # Check existing labels
@@ -34,14 +34,14 @@ kubectl label node node-us-1 topology.kubernetes.io/region=us-east-1
 kubectl label node node-us-1 topology.kubernetes.io/zone=us-east-1a
 ```
 
-Istio automatically picks up these labels and includes them in the locality information for each endpoint.
+Istio automatically picks up these node labels and includes them in the locality information for each endpoint. For subset-based routing, also label the workloads or pods with application-level region labels that Istio can use as endpoint selectors.
 
 ## Approach 1: Header-Based Routing
 
 The simplest approach is to route traffic based on a request header that indicates the user's region. Your application or API gateway sets this header, and Istio routes accordingly.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: user-data-residency
@@ -72,10 +72,10 @@ spec:
             subset: default
 ```
 
-Define the subsets based on locality:
+Define the subsets based on workload labels:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: user-data-subsets
@@ -85,10 +85,10 @@ spec:
   subsets:
     - name: eu-region
       labels:
-        topology.kubernetes.io/region: eu-west-1
+        data-region: eu
     - name: us-region
       labels:
-        topology.kubernetes.io/region: us-east-1
+        data-region: us
     - name: default
       labels:
         app: user-data-api
@@ -102,7 +102,7 @@ spec:
 For stricter data residency, use locality-aware load balancing with no failover to other regions:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: eu-data-strict
@@ -132,7 +132,7 @@ The `distribute` field explicitly says that traffic from EU regions must stay in
 For the US side:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: us-data-strict
@@ -142,6 +142,10 @@ spec:
   trafficPolicy:
     tls:
       mode: ISTIO_MUTUAL
+    outlierDetection:
+      consecutive5xxErrors: 5
+      interval: 30s
+      baseEjectionTime: 30s
     localityLbSetting:
       enabled: true
       distribute:
@@ -162,7 +166,7 @@ US data can go to any US region, but never to EU.
 Add authorization policies as a hard enforcement layer. Even if routing is misconfigured, authorization policies prevent data from crossing boundaries:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: eu-data-only-from-eu
@@ -189,7 +193,7 @@ This ensures that only services in EU namespaces can access EU data services. Ev
 Deploy region-specific ingress gateways that only accept traffic for that region's data:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: eu-ingress
@@ -208,7 +212,7 @@ spec:
       hosts:
         - "eu.api.example.com"
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: eu-ingress-routing
@@ -230,10 +234,10 @@ Configure DNS so that `eu.api.example.com` resolves to an EU-based load balancer
 
 ## Blocking Cross-Region Traffic in Federated Meshes
 
-If you're running federated meshes across regions, you need to make sure that federation doesn't accidentally violate data residency. Apply authorization policies on the east-west gateways:
+If you're running federated meshes across regions, you need to make sure that federation doesn't accidentally violate data residency. Apply authorization policies on the east-west gateways. Keep the match to source identity or ports on gateways; HTTP-only fields such as `hosts` only match the HTTP Host header and are not reliable for opaque TCP or mTLS passthrough traffic:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: block-cross-region-data
@@ -244,15 +248,15 @@ spec:
       istio: eastwestgateway
   action: DENY
   rules:
-    - to:
-        - operation:
-            hosts:
-              - "eu-user-data-api.eu-user-service.svc.cluster.local"
-      from:
+    - from:
         - source:
             notNamespaces:
               - "eu-user-service"
               - "eu-web-app"
+      to:
+        - operation:
+            ports:
+              - "15443"
 ```
 
 ## Monitoring Data Residency Compliance
