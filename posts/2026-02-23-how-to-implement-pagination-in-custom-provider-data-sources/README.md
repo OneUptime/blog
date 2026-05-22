@@ -55,9 +55,11 @@ type ServersDataSource struct {
 }
 
 type ServersDataSourceModel struct {
-    ID      types.String        `tfsdk:"id"`
-    Region  types.String        `tfsdk:"region"`
-    Servers []ServerItemModel   `tfsdk:"servers"`
+    ID         types.String      `tfsdk:"id"`
+    Region     types.String      `tfsdk:"region"`
+    Status     types.String      `tfsdk:"status"`
+    NamePrefix types.String      `tfsdk:"name_prefix"`
+    Servers    []ServerItemModel `tfsdk:"servers"`
 }
 
 type ServerItemModel struct {
@@ -243,7 +245,7 @@ func (d *ServersDataSource) fetchAllServersWithPageNumber(ctx context.Context, r
         allServers = append(allServers, result.Servers...)
 
         // Check if we have all results
-        if len(result.Servers) < perPage || page >= result.TotalPages {
+        if len(result.Servers) < perPage || (result.TotalPages > 0 && page >= result.TotalPages) {
             break
         }
 
@@ -372,6 +374,9 @@ Apply server-side filters when the API supports them, and client-side filters fo
 func (d *ServersDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
     var config ServersDataSourceModel
     resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
+    if resp.Diagnostics.HasError() {
+        return
+    }
 
     // Build the API request with server-side filters
     listReq := &api.ListServersRequest{
