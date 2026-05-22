@@ -24,9 +24,9 @@ Let us implement each of these.
 
 ## Using Cost Estimation Data
 
-HCP Terraform can estimate the monthly cost of planned changes. Sentinel can access this data through the `tfrun` import:
+HCP Terraform can estimate the monthly cost of planned changes. In HCP Terraform's legacy policy checks, Sentinel can access this data through the `tfrun` import:
 
-```python
+```sentinel
 # cost-limit.sentinel
 
 # Enforces maximum monthly cost and cost increase limits
@@ -40,9 +40,9 @@ max_monthly_cost = 10000.00
 max_cost_increase = 500.00
 
 # Get cost data
-proposed = float(tfrun.cost_estimation.proposed_monthly_cost)
-prior = float(tfrun.cost_estimation.prior_monthly_cost)
-delta = float(tfrun.cost_estimation.delta_monthly_cost)
+proposed = float(tfrun.cost_estimate.proposed_monthly_cost)
+prior = float(tfrun.cost_estimate.prior_monthly_cost)
+delta = float(tfrun.cost_estimate.delta_monthly_cost)
 
 # Check total cost
 total_within_budget = rule {
@@ -75,7 +75,7 @@ main = rule {
 
 Different environments should have different budgets:
 
-```python
+```sentinel
 import "tfrun"
 
 # Cost limits per environment
@@ -110,8 +110,8 @@ get_env = func() {
 env = get_env()
 limits = cost_limits[env]
 
-proposed = float(tfrun.cost_estimation.proposed_monthly_cost)
-delta = float(tfrun.cost_estimation.delta_monthly_cost)
+proposed = float(tfrun.cost_estimate.proposed_monthly_cost)
+delta = float(tfrun.cost_estimate.delta_monthly_cost)
 
 main = rule {
     if proposed > limits["max_monthly"] {
@@ -132,14 +132,14 @@ main = rule {
 
 Rather than absolute numbers, you might want to limit percentage increases:
 
-```python
+```sentinel
 import "tfrun"
 
 # Maximum allowed percentage increase
 max_increase_pct = 25.0
 
-prior = float(tfrun.cost_estimation.prior_monthly_cost)
-proposed = float(tfrun.cost_estimation.proposed_monthly_cost)
+prior = float(tfrun.cost_estimate.prior_monthly_cost)
+proposed = float(tfrun.cost_estimate.proposed_monthly_cost)
 
 main = rule {
     if prior > 0 {
@@ -166,7 +166,7 @@ main = rule {
 
 Beyond the cost estimation, you can directly block expensive instance types:
 
-```python
+```sentinel
 import "tfplan/v2" as tfplan
 
 # Expensive instance types that require special approval
@@ -207,7 +207,7 @@ Resource Count Limits
 
 Limit how many of an expensive resource type can exist:
 
-```python
+```sentinel
 import "tfplan/v2" as tfplan
 import "tfstate/v2" as tfstate
 
@@ -261,7 +261,7 @@ main = rule {
 
 Some services are inherently expensive and should be restricted:
 
-```python
+```sentinel
 import "tfplan/v2" as tfplan
 
 # Services that require approval before use
@@ -299,7 +299,7 @@ main = rule {
 
 Storage costs can accumulate quietly. Control them with policies:
 
-```python
+```sentinel
 import "tfplan/v2" as tfplan
 
 # EBS volume size limits
@@ -376,7 +376,7 @@ main = rule {
 
 NAT gateways are a common source of unexpected costs:
 
-```python
+```sentinel
 import "tfplan/v2" as tfplan
 import "tfstate/v2" as tfstate
 
@@ -390,16 +390,21 @@ existing_nat_gateways = filter tfstate.resources as _, r {
     r.type is "aws_nat_gateway"
 }
 
-# Limit NAT gateways (they cost about $32/month each plus data transfer)
+deleted_nat_gateways = filter tfplan.resource_changes as _, rc {
+    rc.type is "aws_nat_gateway" and
+    rc.change.actions contains "delete"
+}
+
+# Limit NAT gateways (in many US regions, they cost about $32/month each plus data processing)
 max_nat_gateways = 4
 
-projected = length(existing_nat_gateways) + length(new_nat_gateways)
+projected = length(existing_nat_gateways) + length(new_nat_gateways) - length(deleted_nat_gateways)
 
 main = rule {
     if projected > max_nat_gateways {
         print("Projected NAT gateway count:", projected,
               "exceeds limit of", max_nat_gateways)
-        print("Each NAT gateway costs ~$32/month plus $0.045/GB data transfer")
+        print("Each NAT gateway costs roughly $32/month plus per-GB data processing in many US regions")
         false
     } else {
         true
@@ -411,7 +416,7 @@ main = rule {
 
 Here is a policy that combines multiple cost control strategies:
 
-```python
+```sentinel
 # cost-governance.sentinel
 # Comprehensive cost control policy
 
@@ -422,8 +427,8 @@ import "tfplan/v2" as tfplan
 max_monthly = 10000.00
 max_increase = 1000.00
 
-proposed_cost = float(tfrun.cost_estimation.proposed_monthly_cost)
-cost_delta = float(tfrun.cost_estimation.delta_monthly_cost)
+proposed_cost = float(tfrun.cost_estimate.proposed_monthly_cost)
+cost_delta = float(tfrun.cost_estimate.delta_monthly_cost)
 
 budget_check = rule {
     proposed_cost <= max_monthly and cost_delta <= max_increase
