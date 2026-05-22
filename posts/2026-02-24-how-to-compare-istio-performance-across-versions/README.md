@@ -26,28 +26,28 @@ The cleanest approach is to run two separate clusters (or at least two separate 
 
 Istio supports running multiple control planes simultaneously using revisions. This is the best way to compare versions on the same cluster.
 
-Install the current version with a revision tag:
+Install the current version with its matching `istioctl` binary and a revision:
 
 ```bash
-istioctl install --revision=1-20 -f - <<EOF
+istioctl install --revision=1-29 -f - <<EOF
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
-  revision: "1-20"
+  revision: "1-29"
   values:
     global:
       meshID: mesh1
 EOF
 ```
 
-Install the new version with a different revision:
+Install the new version with its matching `istioctl` binary and a different revision:
 
 ```bash
-istioctl install --revision=1-21 -f - <<EOF
+istioctl install --revision=1-30 -f - <<EOF
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
-  revision: "1-21"
+  revision: "1-30"
   values:
     global:
       meshID: mesh1
@@ -57,11 +57,11 @@ EOF
 Create separate namespaces for each version:
 
 ```bash
-kubectl create namespace bench-v120
-kubectl label namespace bench-v120 istio.io/rev=1-20
+kubectl create namespace bench-v129
+kubectl label namespace bench-v129 istio.io/rev=1-29
 
-kubectl create namespace bench-v121
-kubectl label namespace bench-v121 istio.io/rev=1-21
+kubectl create namespace bench-v130
+kubectl label namespace bench-v130 istio.io/rev=1-30
 ```
 
 Deploy identical workloads to both namespaces:
@@ -118,18 +118,30 @@ spec:
               cpu: "1"
             limits:
               cpu: "2"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: echo-server
+spec:
+  selector:
+    app: echo-server
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
 ```
 
 ```bash
-kubectl apply -f workload.yaml -n bench-v120
-kubectl apply -f workload.yaml -n bench-v121
+kubectl apply -f workload.yaml -n bench-v129
+kubectl apply -f workload.yaml -n bench-v130
 ```
 
 Verify that each namespace is using the correct Istio version:
 
 ```bash
-istioctl proxy-status -n bench-v120
-istioctl proxy-status -n bench-v121
+istioctl proxy-status -n bench-v129
+istioctl proxy-status -n bench-v130
 ```
 
 ## The Benchmark Suite
@@ -139,7 +151,7 @@ Create a comprehensive benchmark script that tests multiple dimensions:
 ```bash
 #!/bin/bash
 
-VERSIONS=("v120:bench-v120" "v121:bench-v121")
+VERSIONS=("v129:bench-v129" "v130:bench-v130")
 RESULTS_DIR="/tmp/istio-compare-$(date +%Y%m%d)"
 mkdir -p "$RESULTS_DIR"
 
@@ -219,30 +231,30 @@ echo ""
 for test in latency throughput large-payload churn; do
   echo "## $test"
   echo ""
-  echo "| Metric | v1.20 | v1.21 | Change |"
+  echo "| Metric | v1.29 | v1.30 | Change |"
   echo "|--------|-------|-------|--------|"
 
-  V120="${RESULTS_DIR}/v120-${test}.json"
-  V121="${RESULTS_DIR}/v121-${test}.json"
+  V129="${RESULTS_DIR}/v129-${test}.json"
+  V130="${RESULTS_DIR}/v130-${test}.json"
 
-  if [ -f "$V120" ] && [ -f "$V121" ]; then
+  if [ -f "$V129" ] && [ -f "$V130" ]; then
     # QPS
-    QPS_120=$(jq '.ActualQPS' "$V120")
-    QPS_121=$(jq '.ActualQPS' "$V121")
-    QPS_CHANGE=$(echo "scale=1; ($QPS_121 - $QPS_120) / $QPS_120 * 100" | bc)
-    echo "| QPS | $QPS_120 | $QPS_121 | ${QPS_CHANGE}% |"
+    QPS_129=$(jq '.ActualQPS' "$V129")
+    QPS_130=$(jq '.ActualQPS' "$V130")
+    QPS_CHANGE=$(echo "scale=1; ($QPS_130 - $QPS_129) / $QPS_129 * 100" | bc)
+    echo "| QPS | $QPS_129 | $QPS_130 | ${QPS_CHANGE}% |"
 
     # P50 latency
-    P50_120=$(jq '[.DurationHistogram.Percentiles[] | select(.Percentile == 50)] | .[0].Value * 1000' "$V120")
-    P50_121=$(jq '[.DurationHistogram.Percentiles[] | select(.Percentile == 50)] | .[0].Value * 1000' "$V121")
-    P50_CHANGE=$(echo "scale=1; ($P50_121 - $P50_120) / $P50_120 * 100" | bc)
-    echo "| P50 (ms) | $P50_120 | $P50_121 | ${P50_CHANGE}% |"
+    P50_129=$(jq '[.DurationHistogram.Percentiles[] | select(.Percentile == 50)] | .[0].Value * 1000' "$V129")
+    P50_130=$(jq '[.DurationHistogram.Percentiles[] | select(.Percentile == 50)] | .[0].Value * 1000' "$V130")
+    P50_CHANGE=$(echo "scale=1; ($P50_130 - $P50_129) / $P50_129 * 100" | bc)
+    echo "| P50 (ms) | $P50_129 | $P50_130 | ${P50_CHANGE}% |"
 
     # P99 latency
-    P99_120=$(jq '[.DurationHistogram.Percentiles[] | select(.Percentile == 99)] | .[0].Value * 1000' "$V120")
-    P99_121=$(jq '[.DurationHistogram.Percentiles[] | select(.Percentile == 99)] | .[0].Value * 1000' "$V121")
-    P99_CHANGE=$(echo "scale=1; ($P99_121 - $P99_120) / $P99_120 * 100" | bc)
-    echo "| P99 (ms) | $P99_120 | $P99_121 | ${P99_CHANGE}% |"
+    P99_129=$(jq '[.DurationHistogram.Percentiles[] | select(.Percentile == 99)] | .[0].Value * 1000' "$V129")
+    P99_130=$(jq '[.DurationHistogram.Percentiles[] | select(.Percentile == 99)] | .[0].Value * 1000' "$V130")
+    P99_CHANGE=$(echo "scale=1; ($P99_130 - $P99_129) / $P99_129 * 100" | bc)
+    echo "| P99 (ms) | $P99_129 | $P99_130 | ${P99_CHANGE}% |"
   fi
 
   echo ""
@@ -256,15 +268,11 @@ Collect resource usage during the benchmarks:
 ```bash
 #!/bin/bash
 
-for NS in bench-v120 bench-v121; do
+for NS in bench-v129 bench-v130; do
   echo "=== $NS ==="
 
-  # Memory usage
-  echo "Memory:"
-  kubectl top pods -n "$NS" --containers | grep istio-proxy
-
-  # CPU usage
-  echo "CPU:"
+  # CPU and memory usage
+  echo "CPU and memory:"
   kubectl top pods -n "$NS" --containers | grep istio-proxy
 
   # Envoy version
@@ -280,23 +288,23 @@ For a more detailed comparison, use Prometheus:
 
 avg(rate(container_cpu_usage_seconds_total{
   container="istio-proxy",
-  namespace="bench-v120"
+  namespace="bench-v129"
 }[5m]))
 
 avg(rate(container_cpu_usage_seconds_total{
   container="istio-proxy",
-  namespace="bench-v121"
+  namespace="bench-v130"
 }[5m]))
 
 # Compare memory
 avg(container_memory_working_set_bytes{
   container="istio-proxy",
-  namespace="bench-v120"
+  namespace="bench-v129"
 })
 
 avg(container_memory_working_set_bytes{
   container="istio-proxy",
-  namespace="bench-v121"
+  namespace="bench-v130"
 })
 ```
 
@@ -306,17 +314,17 @@ Don't just compare data plane performance. The control plane (istiod) also chang
 
 ```promql
 # xDS push time per revision
-histogram_quantile(0.99, sum(rate(pilot_xds_push_time_bucket{revision="1-20"}[5m])) by (le))
-histogram_quantile(0.99, sum(rate(pilot_xds_push_time_bucket{revision="1-21"}[5m])) by (le))
+histogram_quantile(0.99, sum(rate(pilot_xds_push_time_bucket{revision="1-29"}[5m])) by (le))
+histogram_quantile(0.99, sum(rate(pilot_xds_push_time_bucket{revision="1-30"}[5m])) by (le))
 
 # Memory usage per istiod instance
 container_memory_working_set_bytes{
-  pod=~"istiod-1-20.*",
+  pod=~"istiod-1-29.*",
   container="discovery"
 }
 
 container_memory_working_set_bytes{
-  pod=~"istiod-1-21.*",
+  pod=~"istiod-1-30.*",
   container="discovery"
 }
 ```
@@ -326,29 +334,29 @@ container_memory_working_set_bytes{
 Measure how quickly each version pushes configuration changes. Add a new service and time how long it takes for proxies to receive the update:
 
 ```bash
-# Time the configuration push for v1.20
+# Time the configuration push for v1.29
 START=$(date +%s%N)
-kubectl create -n bench-v120 service clusterip timing-test --tcp=9999:9999
+kubectl create -n bench-v129 service clusterip timing-test --tcp=9999:9999
 # Wait until the proxy sees the new cluster
-while ! kubectl exec -n bench-v120 deploy/echo-server -c istio-proxy -- \
+while ! kubectl exec -n bench-v129 deploy/echo-server -c istio-proxy -- \
   pilot-agent request GET /clusters 2>/dev/null | grep -q timing-test; do
   sleep 0.1
 done
 END=$(date +%s%N)
-echo "v1.20 push time: $(( (END - START) / 1000000 )) ms"
+echo "v1.29 push time: $(( (END - START) / 1000000 )) ms"
 
-# Clean up and repeat for v1.21
-kubectl delete -n bench-v120 service timing-test
+# Clean up and repeat for v1.30
+kubectl delete -n bench-v129 service timing-test
 
 START=$(date +%s%N)
-kubectl create -n bench-v121 service clusterip timing-test --tcp=9999:9999
-while ! kubectl exec -n bench-v121 deploy/echo-server -c istio-proxy -- \
+kubectl create -n bench-v130 service clusterip timing-test --tcp=9999:9999
+while ! kubectl exec -n bench-v130 deploy/echo-server -c istio-proxy -- \
   pilot-agent request GET /clusters 2>/dev/null | grep -q timing-test; do
   sleep 0.1
 done
 END=$(date +%s%N)
-echo "v1.21 push time: $(( (END - START) / 1000000 )) ms"
-kubectl delete -n bench-v121 service timing-test
+echo "v1.30 push time: $(( (END - START) / 1000000 )) ms"
+kubectl delete -n bench-v130 service timing-test
 ```
 
 ## Automating Version Comparison
@@ -391,7 +399,7 @@ spec:
 After collecting all the data, create a summary report:
 
 ```text
-Istio Version Comparison: 1.20.3 -> 1.21.0
+Istio Version Comparison: 1.29.2 -> 1.30.0
 ============================================
 
 Data Plane Performance:
