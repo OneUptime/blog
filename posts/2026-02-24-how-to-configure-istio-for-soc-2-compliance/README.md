@@ -47,6 +47,10 @@ for item in data['items']:
     mode = item['spec'].get('mtls', {}).get('mode', 'unset')
     if mode != 'STRICT':
         print(f'WARNING: {ns}/{name} has mode={mode}')
+    for port, mtls in item['spec'].get('portLevelMtls', {}).items():
+        port_mode = mtls.get('mode', 'unset')
+        if port_mode != 'STRICT':
+            print(f'WARNING: {ns}/{name} port {port} has mode={port_mode}')
 "
 ```
 
@@ -154,7 +158,7 @@ spec:
         "request_path": "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%",
         "response_code": "%RESPONSE_CODE%",
         "response_flags": "%RESPONSE_FLAGS%",
-        "connection_security_policy": "%DOWNSTREAM_TLS_VERSION%",
+        "tls_version": "%DOWNSTREAM_TLS_VERSION%",
         "user_agent": "%REQ(USER-AGENT)%",
         "request_id": "%REQ(X-REQUEST-ID)%",
         "authority": "%REQ(:AUTHORITY)%",
@@ -164,7 +168,7 @@ spec:
       }
 ```
 
-This format captures who accessed what, when, from where, and whether the connection was secured - all things auditors want to see.
+This format captures who accessed what, when, from where, and which TLS version was negotiated - all things auditors want to see.
 
 ### Shipping Logs to a SIEM
 
@@ -180,17 +184,23 @@ data:
     [INPUT]
         Name              tail
         Path              /var/log/containers/*istio-proxy*.log
-        Parser            json
-        Tag               istio.access.*
+        multiline.parser  docker, cri
+        Tag               kube.*
+
+    [FILTER]
+        Name              kubernetes
+        Match             kube.*
+        Merge_Log         On
+        Merge_Parser      json
 
     [OUTPUT]
         Name              forward
-        Match             istio.access.*
+        Match             kube.*
         Host              siem-collector.security
         Port              24224
 ```
 
-SOC 2 typically requires log retention for at least 1 year. Configure your log storage accordingly.
+SOC 2 does not prescribe a single log retention period, but many audits expect security-relevant logs to be retained for the full audit period, commonly up to 1 year. Configure your log storage according to your retention policy and auditor expectations.
 
 ## Network Segmentation (CC6.1, CC6.6)
 
@@ -261,9 +271,9 @@ spec:
 
 This gives you auditable, gradual rollouts instead of big-bang deployments.
 
-## Availability Monitoring (A1.2)
+## Availability Monitoring (A1.1)
 
-SOC 2 Availability criteria require monitoring. Configure Istio telemetry for comprehensive monitoring:
+SOC 2 Availability criteria require monitoring current use of system components and capacity. Configure Istio telemetry for comprehensive monitoring:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -279,7 +289,7 @@ Key metrics to monitor for SOC 2:
 - `istio_requests_total` - Request counts per service
 - `istio_request_duration_milliseconds` - Latency
 - `istio_tcp_connections_opened_total` - Connection tracking
-- `envoy_server_ssl_handshake_error` - TLS failures (potential attacks)
+- Envoy listener `ssl.connection_error` stats - TLS connection errors (metric names vary by listener stat prefix)
 
 Set up alerts for security-relevant anomalies:
 
