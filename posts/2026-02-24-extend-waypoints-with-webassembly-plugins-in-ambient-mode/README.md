@@ -8,7 +8,7 @@ Description: How to extend Istio waypoint proxies in ambient mode with custom We
 
 ---
 
-Waypoint proxies in Istio ambient mode run Envoy, which means they support WebAssembly (Wasm) plugins. Wasm lets you inject custom logic into the request/response path without modifying the proxy itself. You can add custom headers, implement rate limiting schemes, transform request bodies, enforce custom authorization rules, or integrate with external services.
+Waypoint proxies in Istio ambient mode run Envoy, which means they support WebAssembly (Wasm) plugins through Istio's TrafficExtension API. Wasm lets you inject custom logic into the request/response path without modifying the proxy itself. You can add custom headers, implement rate limiting schemes, transform request bodies, enforce custom authorization rules, or integrate with external services.
 
 This guide shows how to build, deploy, and manage Wasm plugins for waypoint proxies in ambient mode.
 
@@ -39,11 +39,13 @@ Here is a basic Wasm plugin written in Go using the proxy-wasm SDK. This plugin 
 package main
 
 import (
-	"github.com/tetratelabs/proxy-wasm-go-sdk/proxywasm"
-	"github.com/tetratelabs/proxy-wasm-go-sdk/proxywasm/types"
+	"github.com/proxy-wasm/proxy-wasm-go-sdk/proxywasm"
+	"github.com/proxy-wasm/proxy-wasm-go-sdk/proxywasm/types"
 )
 
-func main() {
+func main() {}
+
+func init() {
 	proxywasm.SetVMContext(&vmContext{})
 }
 
@@ -73,10 +75,12 @@ func (ctx *httpContext) OnHttpResponseHeaders(numHeaders int, endOfStream bool) 
 }
 ```
 
-Build it using TinyGo:
+Build it using Go 1.24 or later:
 
 ```bash
-tinygo build -o plugin.wasm -scheduler=none -target=wasi ./main.go
+go mod init example.com/custom-header-plugin
+go get github.com/proxy-wasm/proxy-wasm-go-sdk
+env GOOS=wasip1 GOARCH=wasm go build -buildmode=c-shared -o plugin.wasm ./main.go
 ```
 
 ## Hosting the Wasm Binary
@@ -90,21 +94,15 @@ oras push registry.example.com/istio-wasm/custom-header:v1 \
   plugin.wasm:application/vnd.module.wasm.content.layer.v1+wasm
 ```
 
-Alternatively, you can host the binary on an HTTP server. For testing, you can use a ConfigMap, though this has size limitations:
-
-```bash
-kubectl create configmap wasm-plugin \
-  --from-file=plugin.wasm \
-  -n bookinfo
-```
+Alternatively, you can host the binary on an HTTP server. A `file://` URL is also supported when the `.wasm` file is already present inside the proxy container.
 
 ## Deploying a Wasm Plugin to a Waypoint
 
-Use the WasmPlugin custom resource to attach a Wasm plugin to your waypoint proxy:
+Use the TrafficExtension custom resource to attach a Wasm plugin to your waypoint proxy:
 
 ```yaml
 apiVersion: extensions.istio.io/v1alpha1
-kind: WasmPlugin
+kind: TrafficExtension
 metadata:
   name: custom-header-plugin
   namespace: bookinfo
@@ -113,22 +111,23 @@ spec:
     - kind: Gateway
       group: gateway.networking.k8s.io
       name: bookinfo-waypoint
-  url: oci://registry.example.com/istio-wasm/custom-header:v1
   phase: STATS
-  pluginConfig:
-    header_name: "x-custom-header"
-    header_value: "processed-by-wasm"
+  wasm:
+    url: oci://registry.example.com/istio-wasm/custom-header:v1
+    pluginConfig:
+      header_name: "x-custom-header"
+      header_value: "processed-by-wasm"
 ```
 
 The `targetRefs` field specifies which waypoint proxy gets the plugin. The `phase` field determines where in the filter chain the plugin runs:
 
-- `AUTHN`: Runs during authentication phase
-- `AUTHZ`: Runs during authorization phase
-- `STATS`: Runs during stats collection phase (after request processing)
+- `AUTHN`: Inserts the extension before Istio authentication filters
+- `AUTHZ`: Inserts the extension before Istio authorization filters and after Istio authentication filters
+- `STATS`: Inserts the extension before Istio stats filters and after Istio authorization filters
 
 ## Plugin Configuration
 
-The `pluginConfig` field passes configuration to the Wasm plugin. The plugin reads this during initialization:
+The `wasm.pluginConfig` field passes configuration to the Wasm plugin. The plugin reads this during initialization:
 
 ```go
 func (ctx *pluginContext) OnPluginStart(pluginConfigurationSize int) types.OnPluginStartStatus {
@@ -149,7 +148,7 @@ Here is a more practical example - a Wasm plugin that implements simple rate lim
 
 ```yaml
 apiVersion: extensions.istio.io/v1alpha1
-kind: WasmPlugin
+kind: TrafficExtension
 metadata:
   name: rate-limiter
   namespace: bookinfo
@@ -158,15 +157,16 @@ spec:
     - kind: Gateway
       group: gateway.networking.k8s.io
       name: bookinfo-waypoint
-  url: oci://registry.example.com/istio-wasm/rate-limiter:v1
   phase: AUTHN
-  pluginConfig:
-    requests_per_minute: 100
-    header_key: "x-api-key"
-    burst_size: 10
+  wasm:
+    url: oci://registry.example.com/istio-wasm/rate-limiter:v1
+    pluginConfig:
+      requests_per_minute: 100
+      header_key: "x-api-key"
+      burst_size: 10
 ```
 
-The plugin code would track request counts per API key and reject requests that exceed the limit.
+The plugin code would track request counts per API key and reject requests that exceed the limit. Without an external store, this kind of counter is local to each waypoint proxy instance.
 
 ## Example: Request Validation Plugin
 
@@ -174,7 +174,7 @@ A plugin that validates JSON request bodies before they reach the service:
 
 ```yaml
 apiVersion: extensions.istio.io/v1alpha1
-kind: WasmPlugin
+kind: TrafficExtension
 metadata:
   name: request-validator
   namespace: bookinfo
@@ -183,14 +183,15 @@ spec:
     - kind: Gateway
       group: gateway.networking.k8s.io
       name: bookinfo-waypoint
-  url: oci://registry.example.com/istio-wasm/request-validator:v1
   phase: AUTHN
-  pluginConfig:
-    max_body_size: 1048576
-    required_content_type: "application/json"
-    required_fields:
-      - "user_id"
-      - "action"
+  wasm:
+    url: oci://registry.example.com/istio-wasm/request-validator:v1
+    pluginConfig:
+      max_body_size: 1048576
+      required_content_type: "application/json"
+      required_fields:
+        - "user_id"
+        - "action"
 ```
 
 ## Using Wasm Plugins from HTTP URLs
@@ -199,7 +200,7 @@ If you cannot use an OCI registry, serve the Wasm binary from HTTP:
 
 ```yaml
 apiVersion: extensions.istio.io/v1alpha1
-kind: WasmPlugin
+kind: TrafficExtension
 metadata:
   name: custom-plugin
   namespace: bookinfo
@@ -208,9 +209,10 @@ spec:
     - kind: Gateway
       group: gateway.networking.k8s.io
       name: bookinfo-waypoint
-  url: https://wasm-storage.example.com/plugins/custom-plugin.wasm
-  sha256: "abc123def456..."
   phase: STATS
+  wasm:
+    url: https://wasm-storage.example.com/plugins/custom-plugin.wasm
+    sha256: "abc123def456..."
 ```
 
 The `sha256` field is recommended for HTTP URLs to ensure the binary has not been tampered with. Calculate it:
@@ -223,10 +225,10 @@ sha256sum plugin.wasm
 
 ### Check Plugin Loading
 
-Verify the WasmPlugin resource was accepted:
+Verify the TrafficExtension resource was accepted:
 
 ```bash
-kubectl get wasmplugin -n bookinfo
+kubectl get trafficextension -n bookinfo
 ```
 
 ### Check Envoy Logs
@@ -264,7 +266,7 @@ You can attach multiple Wasm plugins to the same waypoint. They execute in order
 
 ```yaml
 apiVersion: extensions.istio.io/v1alpha1
-kind: WasmPlugin
+kind: TrafficExtension
 metadata:
   name: auth-plugin
   namespace: bookinfo
@@ -273,12 +275,13 @@ spec:
     - kind: Gateway
       group: gateway.networking.k8s.io
       name: bookinfo-waypoint
-  url: oci://registry.example.com/istio-wasm/auth:v1
   phase: AUTHN
   priority: 10
+  wasm:
+    url: oci://registry.example.com/istio-wasm/auth:v1
 ---
 apiVersion: extensions.istio.io/v1alpha1
-kind: WasmPlugin
+kind: TrafficExtension
 metadata:
   name: metrics-plugin
   namespace: bookinfo
@@ -287,12 +290,13 @@ spec:
     - kind: Gateway
       group: gateway.networking.k8s.io
       name: bookinfo-waypoint
-  url: oci://registry.example.com/istio-wasm/metrics:v1
   phase: STATS
   priority: 20
+  wasm:
+    url: oci://registry.example.com/istio-wasm/metrics:v1
 ```
 
-Lower priority numbers execute first within the same phase.
+Higher priority numbers execute first within the same phase.
 
 ## Performance Considerations
 
@@ -313,7 +317,7 @@ kubectl exec deploy/bookinfo-waypoint -n bookinfo -- \
 
 ## Updating Wasm Plugins
 
-To update a plugin, push a new version to the registry and update the WasmPlugin resource:
+To update a plugin, push a new version to the registry and update the TrafficExtension resource:
 
 ```bash
 oras push registry.example.com/istio-wasm/custom-header:v2 plugin-v2.wasm:application/vnd.module.wasm.content.layer.v1+wasm
@@ -321,9 +325,10 @@ oras push registry.example.com/istio-wasm/custom-header:v2 plugin-v2.wasm:applic
 
 ```yaml
 spec:
-  url: oci://registry.example.com/istio-wasm/custom-header:v2
+  wasm:
+    url: oci://registry.example.com/istio-wasm/custom-header:v2
 ```
 
-Envoy reloads the plugin without restarting. This makes it possible to update plugin logic without any traffic disruption.
+Envoy reloads the plugin without restarting the waypoint proxy, assuming the new module can be fetched and loaded successfully.
 
 Wasm plugins are a powerful extension mechanism for waypoint proxies. They let you implement custom logic that goes beyond what Istio's built-in features offer, all while keeping the mesh infrastructure clean and standardized.
