@@ -39,31 +39,35 @@ Break the Terraform workflow into phases and time each one:
 # profile-terraform.sh
 # Time each phase of a Terraform run
 
+now_ms() {
+  perl -MTime::HiRes=time -e 'printf "%.0f\n", time() * 1000'
+}
+
 echo "=== Profiling Terraform Execution ==="
 echo ""
 
 # Phase 1: Init
 echo "Phase 1: Init"
-start=$(date +%s%N)
+start=$(now_ms)
 terraform init -input=false > /dev/null 2>&1
-end=$(date +%s%N)
-init_ms=$(( (end - start) / 1000000 ))
+end=$(now_ms)
+init_ms=$((end - start))
 echo "  Init: ${init_ms}ms"
 
 # Phase 2: Plan without refresh (measures graph evaluation + config processing)
 echo "Phase 2: Plan (no refresh)"
-start=$(date +%s%N)
+start=$(now_ms)
 terraform plan -refresh=false -input=false > /dev/null 2>&1
-end=$(date +%s%N)
-plan_norefresh_ms=$(( (end - start) / 1000000 ))
+end=$(now_ms)
+plan_norefresh_ms=$((end - start))
 echo "  Plan (no refresh): ${plan_norefresh_ms}ms"
 
 # Phase 3: Plan with refresh (measures state refresh + everything else)
 echo "Phase 3: Plan (with refresh)"
-start=$(date +%s%N)
+start=$(now_ms)
 terraform plan -input=false > /dev/null 2>&1
-end=$(date +%s%N)
-plan_refresh_ms=$(( (end - start) / 1000000 ))
+end=$(now_ms)
+plan_refresh_ms=$((end - start))
 echo "  Plan (with refresh): ${plan_refresh_ms}ms"
 
 # Derived metrics
@@ -75,7 +79,9 @@ echo "  Config/Graph:   ${plan_norefresh_ms}ms"
 echo "  State Refresh:  ${refresh_ms}ms"
 echo "  Total Plan:     ${plan_refresh_ms}ms"
 echo ""
-echo "  Refresh is $(( refresh_ms * 100 / plan_refresh_ms ))% of total plan time"
+if [ "$plan_refresh_ms" -gt 0 ]; then
+  echo "  Refresh is $(( refresh_ms * 100 / plan_refresh_ms ))% of total plan time"
+fi
 ```
 
 This tells you if your bottleneck is in initialization, configuration processing, or state refresh. In most large projects, state refresh dominates.
@@ -105,12 +111,10 @@ grep -n "Refreshing state" terraform-trace.log | tail -1
 # Find slow API calls (gaps > 5 seconds between lines)
 awk '
   /^[0-9]{4}/ {
-    # Parse timestamp
-    split($1, date, "T")
-    split($2, time, ".")
-    current = time[1]
-    if (prev != "" && current != prev) {
-      # Simple comparison - just print transitions
+    # Parse Terraform log timestamp in the first field, for example:
+    # 2026-05-22T10:33:09.123Z
+    current = (substr($1, 12, 2) * 3600) + (substr($1, 15, 2) * 60) + substr($1, 18, 2)
+    if (prev != "" && current - prev > 5) {
       print prev_line
       print $0
       print "---"
@@ -122,7 +126,7 @@ awk '
 
 # Count API calls by provider
 grep -c "HTTP Request" terraform-trace.log
-grep "HTTP Request" terraform-trace.log | grep -oP 'https://[^/]+' | sort | uniq -c | sort -rn
+grep "HTTP Request" terraform-trace.log | grep -Eo 'https://[^/ ]+' | sort | uniq -c | sort -rn
 ```
 
 ## Provider-Level Profiling
@@ -131,12 +135,11 @@ You can log only provider activity, which is cleaner than full trace logging:
 
 ```bash
 export TF_LOG_PROVIDER=TRACE
-export TF_LOG_PATH="provider-trace.log"
 
-terraform plan
+terraform plan 2>provider-trace.log
 
 # Analyze provider-specific timings
-grep -E "making.*request|received.*response" provider-trace.log | head -50
+grep -Ei "making.*request|received.*response|HTTP Request" provider-trace.log | head -50
 ```
 
 ## Profiling with Go's pprof
@@ -151,8 +154,8 @@ Since Terraform is written in Go, you can use Go's built-in profiling tools. Thi
 git clone https://github.com/hashicorp/terraform.git
 cd terraform
 
-# Add pprof import to main.go and build
-# Then run with profiling enabled
+# Instrument a local development build with net/http/pprof or runtime/pprof
+# Then build and run your instrumented binary
 ```
 
 For most users, log-based profiling is sufficient.
@@ -165,6 +168,10 @@ Here is a comprehensive profiling script:
 #!/bin/bash
 # terraform-profile.sh
 # Comprehensive Terraform performance profiling
+
+now_ms() {
+  perl -MTime::HiRes=time -e 'printf "%.0f\n", time() * 1000'
+}
 
 REPORT_FILE="terraform-profile-$(date +%Y%m%d-%H%M%S).txt"
 
@@ -188,7 +195,7 @@ echo "" >> "$REPORT_FILE"
 
 # Resource types breakdown
 echo "=== Resource Types ===" >> "$REPORT_FILE"
-terraform state list 2>/dev/null | sed 's/\[.*$//' | sort | uniq -c | sort -rn | head -20 >> "$REPORT_FILE"
+terraform state list 2>/dev/null | sed 's/\[.*$//' | awk -F. '{ for (i = 1; i <= NF; i++) if ($i == "data") { print "data." $(i + 1); next } print $(NF-1) }' | sort | uniq -c | sort -rn | head -20 >> "$REPORT_FILE"
 echo "" >> "$REPORT_FILE"
 
 # State file size
@@ -201,23 +208,23 @@ echo "" >> "$REPORT_FILE"
 echo "=== Timing ===" >> "$REPORT_FILE"
 
 # Init time
-start=$(date +%s%N)
+start=$(now_ms)
 terraform init -input=false > /dev/null 2>&1
-end=$(date +%s%N)
-echo "Init: $(( (end - start) / 1000000 ))ms" >> "$REPORT_FILE"
+end=$(now_ms)
+echo "Init: $((end - start))ms" >> "$REPORT_FILE"
 
 # Plan without refresh
-start=$(date +%s%N)
+start=$(now_ms)
 terraform plan -refresh=false -input=false > /dev/null 2>&1
-end=$(date +%s%N)
-plan_norefresh=$(( (end - start) / 1000000 ))
+end=$(now_ms)
+plan_norefresh=$((end - start))
 echo "Plan (no refresh): ${plan_norefresh}ms" >> "$REPORT_FILE"
 
 # Plan with refresh
-start=$(date +%s%N)
+start=$(now_ms)
 terraform plan -input=false > /dev/null 2>&1
-end=$(date +%s%N)
-plan_refresh=$(( (end - start) / 1000000 ))
+end=$(now_ms)
+plan_refresh=$((end - start))
 echo "Plan (with refresh): ${plan_refresh}ms" >> "$REPORT_FILE"
 
 # Derived
@@ -231,7 +238,7 @@ echo "" >> "$REPORT_FILE"
 echo "=== Recommendations ===" >> "$REPORT_FILE"
 
 if [ "$resource_count" -gt 300 ]; then
-  echo "- Consider splitting state: $resource_count resources is above recommended limit" >> "$REPORT_FILE"
+  echo "- Consider whether splitting state would reduce refresh and plan time for $resource_count resources" >> "$REPORT_FILE"
 fi
 
 if [ "$refresh_time" -gt 60000 ]; then
@@ -258,6 +265,10 @@ Create a simple tracking system to detect performance regressions:
 
 METRICS_FILE="terraform-metrics.csv"
 
+now_ms() {
+  perl -MTime::HiRes=time -e 'printf "%.0f\n", time() * 1000'
+}
+
 # Create header if file does not exist
 if [ ! -f "$METRICS_FILE" ]; then
   echo "date,resources,state_kb,init_ms,plan_norefresh_ms,plan_refresh_ms" > "$METRICS_FILE"
@@ -267,17 +278,17 @@ fi
 resources=$(terraform state list 2>/dev/null | wc -l | tr -d ' ')
 state_kb=$(( $(terraform state pull 2>/dev/null | wc -c) / 1024 ))
 
-start=$(date +%s%N)
+start=$(now_ms)
 terraform init -input=false > /dev/null 2>&1
-init_ms=$(( ($(date +%s%N) - start) / 1000000 ))
+init_ms=$(( $(now_ms) - start ))
 
-start=$(date +%s%N)
+start=$(now_ms)
 terraform plan -refresh=false -input=false > /dev/null 2>&1
-plan_norefresh_ms=$(( ($(date +%s%N) - start) / 1000000 ))
+plan_norefresh_ms=$(( $(now_ms) - start ))
 
-start=$(date +%s%N)
+start=$(now_ms)
 terraform plan -input=false > /dev/null 2>&1
-plan_refresh_ms=$(( ($(date +%s%N) - start) / 1000000 ))
+plan_refresh_ms=$(( $(now_ms) - start ))
 
 # Append to CSV
 echo "$(date +%Y-%m-%d),$resources,$state_kb,$init_ms,$plan_norefresh_ms,$plan_refresh_ms" >> "$METRICS_FILE"
@@ -298,7 +309,7 @@ Here is how to interpret common profiling patterns:
 
 **High init time**: Your bottleneck is provider downloads. Solutions: use plugin cache, pre-download providers, reduce provider count.
 
-**Consistent across all phases**: Your state file is too large. Solution: split into smaller projects.
+**Consistent slowdown across all phases**: Your state file, backend, or execution environment may be slow. Solution: check backend latency and consider splitting into smaller projects.
 
 ## Summary
 
