@@ -54,9 +54,9 @@ dynamic "ingress" {
 
 After setting `iterator = rule`, you must use `rule.value` and `rule.key` in the content block. The original name `ingress` no longer works as an iterator reference.
 
-## When Custom Iterators Are Necessary
+## When Custom Iterators Are Useful
 
-There are three main situations where you need a custom iterator.
+There are three main situations where a custom iterator helps.
 
 ### Situation 1 - Nested Dynamic Blocks with Same Labels
 
@@ -71,7 +71,7 @@ dynamic "statement" {
   for_each = var.rules
   content {
     dynamic "statement" {
-      for_each = statement.value.sub_rules  # This "statement" is ambiguous
+      for_each = statement.value.sub_rules  # This still uses the outer iterator
       content {
         # "statement" here refers to the inner iterator
         # Cannot access the outer statement values
@@ -349,7 +349,7 @@ Without custom iterators (`group`, `waf_rule`, `condition`), this code would be 
 
 ## Best Practices
 
-1. Always use custom iterators when nesting dynamic blocks.
+1. Use custom iterators when nested dynamic blocks have similar or repeated labels.
 2. Choose descriptive names - `rule` is better than `r`, `env_var` is better than `e`.
 3. Be consistent within a module - if you name one iterator `svc`, do not name a similar one `service` elsewhere.
 4. Document the iterator when the relationship between the iterator and the data is not obvious.
