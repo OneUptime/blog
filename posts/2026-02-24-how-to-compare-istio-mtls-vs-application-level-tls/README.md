@@ -108,7 +108,7 @@ Even with cert-manager, you still need to configure your application to reload c
 [App Container] ==TLS==> [Sidecar] ==double-encrypted==> [Sidecar] ==TLS==> [App Container]
 ```
 
-If you use application-level TLS with Istio mTLS enabled, the traffic is double-encrypted. This is wasteful but not harmful. You can disable Istio mTLS for specific services using DestinationRule:
+If you use application-level TLS with Istio mTLS enabled, the traffic is double-encrypted. This is wasteful but not harmful. To send application-level TLS through the sidecars without Istio mTLS on that hop, disable TLS origination on the client side with a DestinationRule and make sure the destination workload's PeerAuthentication allows plaintext sidecar-to-sidecar traffic (for example, PERMISSIVE mode or a port-level DISABLE rule):
 
 ```yaml
 apiVersion: networking.istio.io/v1beta1
@@ -188,10 +188,10 @@ Use application-level TLS when:
 For most organizations, the practical approach is:
 1. Enable Istio mTLS (STRICT mode) for all in-mesh traffic
 2. Use application-level TLS only for traffic that leaves the mesh (external services, third-party APIs)
-3. Use ServiceEntry with TLS origination for outbound connections to external HTTPS services
+3. Use ServiceEntry and DestinationRule TLS origination for outbound connections to external HTTPS services
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-api
@@ -199,11 +199,22 @@ spec:
   hosts:
     - api.external-service.com
   ports:
-    - number: 443
-      name: https
-      protocol: TLS
+    - number: 80
+      name: http
+      protocol: HTTP
+      targetPort: 443
   resolution: DNS
   location: MESH_EXTERNAL
+---
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: external-api
+spec:
+  host: api.external-service.com
+  trafficPolicy:
+    tls:
+      mode: SIMPLE
 ```
 
 ## Summary
