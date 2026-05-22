@@ -10,6 +10,8 @@ Description: Learn how to integrate CDKTF with CI/CD pipelines using GitHub Acti
 
 Running CDKTF from your laptop works for development, but production infrastructure should be deployed through a CI/CD pipeline. Automated pipelines ensure consistency, provide audit trails, enable code reviews before deployment, and prevent "it works on my machine" problems. This guide shows how to set up CDKTF in CI/CD pipelines using GitHub Actions, GitLab CI, and general patterns that work with any platform.
 
+Note: HashiCorp deprecated CDKTF on December 10, 2025. Existing CDKTF projects can still use these CI/CD patterns, but new projects should account for the lack of ongoing CDKTF support and maintenance.
+
 ## Why CI/CD for Infrastructure
 
 Manual deployments are risky. Someone might forget to pull the latest code. Someone might have different environment variables set. Someone might accidentally deploy to production instead of staging. A CI/CD pipeline eliminates all of these risks by running the same commands, in the same environment, every time.
@@ -36,8 +38,6 @@ on:
     branches: [main]
 
 env:
-  # Terraform/CDKTF version
-  CDKTF_VERSION: "0.20.0"
   NODE_VERSION: "20"
   # AWS credentials from GitHub secrets
   AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -70,6 +70,9 @@ jobs:
     needs: test
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
 
@@ -82,23 +85,24 @@ jobs:
         run: npm ci
 
       - name: Install Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
         with:
           terraform_wrapper: false
 
       - name: Run diff
         id: diff
         run: |
-          npx cdktf diff --no-color 2>&1 | tee plan-output.txt
+          # Replace my-stack with the stack you want to review
+          npx cdktf diff my-stack --no-color 2>&1 | tee plan-output.txt
 
       - name: Post plan to PR
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const fs = require('fs');
             const plan = fs.readFileSync('plan-output.txt', 'utf8');
-            const body = `## Terraform Plan\n```\n${plan.substring(0, 60000)}\n````;
-            github.rest.issues.createComment({
+            const body = ['## Terraform Plan', '```', plan.substring(0, 60000), '```'].join('\n');
+            await github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -123,7 +127,7 @@ jobs:
         run: npm ci
 
       - name: Install Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
         with:
           terraform_wrapper: false
 
@@ -150,12 +154,16 @@ variables:
 cache:
   key: ${CI_COMMIT_REF_SLUG}
   paths:
-    - node_modules/
+    - .npm/
+    - .gen/
 
 # Install dependencies before each stage
 before_script:
-  - npm ci
-  - npm install -g terraform
+  - npm ci --cache .npm --prefer-offline
+  - apt-get update && apt-get install -y gnupg wget lsb-release
+  - wget -O- https://apt.releases.hashicorp.com/gpg | gpg --dearmor | tee /usr/share/keyrings/hashicorp-archive-keyring.gpg > /dev/null
+  - echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(grep -oP '(?<=UBUNTU_CODENAME=).*' /etc/os-release || lsb_release -cs) main" | tee /etc/apt/sources.list.d/hashicorp.list
+  - apt-get update && apt-get install -y terraform
   - npx cdktf --version
 
 test:
@@ -167,7 +175,8 @@ test:
 plan:
   stage: plan
   script:
-    - npx cdktf diff
+    # Replace my-stack with the stack you want to review
+    - npx cdktf diff my-stack
   only:
     - merge_requests
 
@@ -214,6 +223,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_wrapper: false
       - run: npm ci
       - run: npm test
       - name: Deploy to development
@@ -230,6 +242,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_wrapper: false
       - run: npm ci
       - name: Deploy to staging
         run: npx cdktf deploy staging-stack --auto-approve
@@ -246,6 +261,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_wrapper: false
       - run: npm ci
       - name: Deploy to production
         run: npx cdktf deploy production-stack --auto-approve
@@ -292,6 +310,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_wrapper: false
       - run: npm ci
       - run: npx cdktf deploy --auto-approve '*'
 ```
@@ -309,6 +330,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_wrapper: false
       - run: npm ci
       - run: npx cdktf deploy network --auto-approve
 
@@ -320,6 +344,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_wrapper: false
       - run: npm ci
       - run: npx cdktf deploy database --auto-approve
 
@@ -331,6 +358,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_wrapper: false
       - run: npm ci
       - run: npx cdktf deploy application --auto-approve
 ```
@@ -344,14 +374,14 @@ steps:
   - uses: actions/cache@v4
     with:
       path: |
-        node_modules/
+        ~/.npm
         .gen/
       key: ${{ runner.os }}-cdktf-${{ hashFiles('package-lock.json', 'cdktf.json') }}
       restore-keys: |
         ${{ runner.os }}-cdktf-
 
   - run: npm ci
-  - run: npx cdktf get  # Only generates if cache is stale
+  - run: npx cdktf get  # Generates missing provider and module bindings
 ```
 
 ## Drift Detection Schedule
@@ -373,12 +403,16 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_wrapper: false
       - run: npm ci
 
       - name: Check for drift
         id: drift
         run: |
-          npx cdktf diff --no-color 2>&1 | tee drift-output.txt
+          # Replace my-stack with the stack you want to check
+          npx cdktf diff my-stack --no-color 2>&1 | tee drift-output.txt
           if grep -q "No changes" drift-output.txt; then
             echo "drift=false" >> $GITHUB_OUTPUT
           else
