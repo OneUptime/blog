@@ -223,7 +223,7 @@ resource "aws_db_instance" "this" {
   deletion_protection        = var.deletion_protection
 
   # Authentication
-  iam_database_authentication_enabled = true
+  iam_database_authentication_enabled = contains(["mysql", "postgres", "mariadb"], var.engine)
 
   tags = merge(var.tags, {
     SecurityBaseline = "v1.0"
@@ -238,6 +238,7 @@ Notice how the module enforces certain values regardless of input:
 - `publicly_accessible` is always `false`
 - `backup_retention_period` is at least 14 days
 - `monitoring_interval` and `performance_insights_enabled` are always on
+- IAM database authentication is enabled for supported engines
 
 ## Create a Network Security Baseline
 
@@ -295,8 +296,10 @@ Modules alone are not enough. Teams might bypass them or use raw resources. Use 
 # policy/baseline_enforcement.rego
 package terraform.baseline
 
+import rego.v1
+
 # Deny unencrypted S3 buckets
-deny[msg] {
+deny contains msg if {
   resource := input.resource_changes[_]
   resource.type == "aws_s3_bucket"
   not has_encryption(resource)
@@ -304,7 +307,7 @@ deny[msg] {
 }
 
 # Deny publicly accessible RDS instances
-deny[msg] {
+deny contains msg if {
   resource := input.resource_changes[_]
   resource.type == "aws_db_instance"
   resource.change.after.publicly_accessible == true
@@ -312,18 +315,44 @@ deny[msg] {
 }
 
 # Deny VPCs without flow logs
-deny[msg] {
+deny contains msg if {
   vpc := input.resource_changes[_]
   vpc.type == "aws_vpc"
   vpc.change.actions[_] == "create"
-  not has_flow_log(vpc.address)
+  not has_flow_log(vpc)
   msg := sprintf("VPC %s must have flow logs enabled", [vpc.address])
 }
 
-has_flow_log(vpc_address) {
+has_encryption(bucket) if {
+  encryption := input.resource_changes[_]
+  encryption.type == "aws_s3_bucket_server_side_encryption_configuration"
+  encryption.change.actions[_] != "delete"
+  encryption.change.after.bucket == bucket.change.after.bucket
+}
+
+has_encryption(bucket) if {
+  encryption := configuration_resources[_]
+  encryption.type == "aws_s3_bucket_server_side_encryption_configuration"
+  refs := object.get(object.get(encryption.expressions, "bucket", {}), "references", [])
+  refs[_] == sprintf("%s.id", [bucket.address])
+}
+
+has_flow_log(vpc) if {
   flow_log := input.resource_changes[_]
   flow_log.type == "aws_flow_log"
-  contains(flow_log.change.after_unknown.vpc_id, vpc_address)
+  flow_log.change.actions[_] != "delete"
+  flow_log.change.after.vpc_id == vpc.change.after.id
+}
+
+has_flow_log(vpc) if {
+  flow_log := configuration_resources[_]
+  flow_log.type == "aws_flow_log"
+  refs := object.get(object.get(flow_log.expressions, "vpc_id", {}), "references", [])
+  refs[_] == sprintf("%s.id", [vpc.address])
+}
+
+configuration_resources contains resource if {
+  resource := input.configuration.root_module.resources[_]
 }
 ```
 
