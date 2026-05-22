@@ -66,11 +66,12 @@ resource "aws_rds_instance" "backstage" {
 
 # Deploy Backstage to Kubernetes
 resource "helm_release" "backstage" {
-  name       = "backstage"
-  repository = "https://backstage.github.io/charts"
-  chart      = "backstage"
-  namespace  = "backstage"
-  version    = "1.0.0"
+  name             = "backstage"
+  repository       = "https://backstage.github.io/charts"
+  chart            = "backstage"
+  namespace        = "backstage"
+  create_namespace = true
+  version          = "2.7.0"
 
   set {
     name  = "backstage.appConfig.backend.database.client"
@@ -80,6 +81,16 @@ resource "helm_release" "backstage" {
   set {
     name  = "backstage.appConfig.backend.database.connection.host"
     value = aws_rds_instance.backstage.address
+  }
+
+  set {
+    name  = "backstage.appConfig.backend.database.connection.port"
+    value = "5432"
+  }
+
+  set {
+    name  = "backstage.appConfig.backend.database.connection.user"
+    value = "backstage"
   }
 
   set_sensitive {
@@ -119,6 +130,7 @@ spec:
         - name
         - description
         - owner
+        - repoUrl
       properties:
         name:
           title: Service Name
@@ -137,6 +149,13 @@ spec:
           ui:options:
             catalogFilter:
               kind: Group
+        repoUrl:
+          title: Repository Location
+          type: string
+          ui:field: RepoUrlPicker
+          ui:options:
+            allowedHosts:
+              - github.com
 
     - title: Infrastructure Configuration
       required:
@@ -194,6 +213,7 @@ spec:
           databaseEngine: ${{ parameters.databaseEngine }}
           cacheEnabled: ${{ parameters.cacheEnabled }}
           owner: ${{ parameters.owner }}
+          repoUrl: ${{ parameters.repoUrl }}
 
     # Step 2: Generate the application code
     - id: generate-app
@@ -204,14 +224,17 @@ spec:
         targetPath: app
         values:
           serviceName: ${{ parameters.name }}
+          description: ${{ parameters.description }}
+          environment: ${{ parameters.environment }}
+          owner: ${{ parameters.owner }}
+          repoUrl: ${{ parameters.repoUrl }}
 
     # Step 3: Publish to GitHub
     - id: publish
       name: Publish to GitHub
       action: publish:github
       input:
-        allowedHosts: ['github.com']
-        repoUrl: github.com?owner=${{ parameters.owner }}&repo=${{ parameters.name }}
+        repoUrl: ${{ parameters.repoUrl }}
         description: ${{ parameters.description }}
         defaultBranch: main
 
@@ -228,7 +251,7 @@ spec:
       name: Provision Infrastructure
       action: github:actions:dispatch
       input:
-        repoUrl: github.com?owner=${{ parameters.owner }}&repo=${{ parameters.name }}
+        repoUrl: ${{ parameters.repoUrl }}
         workflowId: terraform.yml
         branchOrTagName: main
 
@@ -341,8 +364,9 @@ metadata:
   name: ${{ values.serviceName }}
   description: ${{ values.description }}
   annotations:
-    github.com/project-slug: ${{ values.owner }}/${{ values.serviceName }}
+    github.com/project-slug: ${{ values.repoUrl | projectSlug }}
     backstage.io/techdocs-ref: dir:.
+    terraform/workspace: services/${{ values.serviceName }}/${{ values.environment }}
   tags:
     - terraform
     - ${{ values.environment }}
@@ -351,10 +375,7 @@ spec:
   lifecycle: production
   owner: ${{ values.owner }}
   dependsOn:
-    - resource:default/${{ values.serviceName }}-database
-    - resource:default/${{ values.serviceName }}-cache
-  providesApis:
-    - ${{ values.serviceName }}-api
+    - resource:default/${{ values.serviceName }}-infrastructure
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Resource
@@ -385,8 +406,15 @@ import {
   TableColumn,
 } from '@backstage/core-components';
 
+type TerraformResource = {
+  name: string;
+  type: string;
+  status: string;
+  lastUpdated: string;
+};
+
 // Define the columns for the resource table
-const columns: TableColumn[] = [
+const columns: TableColumn<TerraformResource>[] = [
   { title: 'Resource', field: 'name' },
   { title: 'Type', field: 'type' },
   { title: 'Status', field: 'status' },
@@ -398,11 +426,15 @@ export const TerraformCard = () => {
   const workspace = entity.metadata.annotations?.['terraform/workspace'];
 
   // Fetch Terraform state information from your backend
-  const [resources, setResources] = React.useState([]);
+  const [resources, setResources] = React.useState<TerraformResource[]>([]);
 
   React.useEffect(() => {
+    if (!workspace) {
+      return;
+    }
+
     // Call your backend API to get Terraform state
-    fetch(`/api/terraform/workspaces/${workspace}/resources`)
+    fetch(`/api/terraform/workspaces/${encodeURIComponent(workspace)}/resources`)
       .then(res => res.json())
       .then(data => setResources(data));
   }, [workspace]);
@@ -438,6 +470,9 @@ on:
 jobs:
   terraform:
     runs-on: ubuntu-latest
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
     steps:
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v3
@@ -453,9 +488,6 @@ jobs:
       - name: Terraform Apply
         working-directory: terraform
         run: terraform apply -auto-approve tfplan
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 ```
 
 ## Best Practices
