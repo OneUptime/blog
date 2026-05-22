@@ -131,7 +131,7 @@ The saved plan file is a binary format - you cannot read it directly, but `terra
 
 ### Why Save Plans?
 
-In a team environment or CI/CD pipeline, time passes between when someone reviews the plan and when it gets applied. During that time, someone else might change the infrastructure. A saved plan captures a snapshot, and `terraform apply tfplan` will fail if the state has changed since the plan was created. This prevents applying stale plans.
+In a team environment or CI/CD pipeline, time passes between when someone reviews the plan and when it gets applied. During that time, someone else might make changes through the same Terraform state. A saved plan captures a snapshot, and `terraform apply tfplan` applies only the actions in that saved plan instead of generating a new one. This prevents Terraform from applying unreviewed configuration or variable changes.
 
 ## Useful Flags
 
@@ -145,7 +145,7 @@ terraform plan -target=aws_instance.web
 terraform plan -target=module.vpc
 ```
 
-Use `-target` sparingly. It skips dependency analysis for resources outside the target, which can miss important changes.
+Use `-target` sparingly. Terraform includes the targeted resources and the objects they depend on, but it can still miss unrelated changes elsewhere in the configuration.
 
 ### -var (Pass Variable Values)
 
