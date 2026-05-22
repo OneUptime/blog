@@ -105,6 +105,21 @@ locals {
   }
 }
 
+data "aws_ami" "latest" {
+  most_recent = true
+  owners      = ["099720109477"]
+
+  filter {
+    name   = "name"
+    values = ["ubuntu/images/hvm-ssd-gp3/ubuntu-jammy-22.04-amd64-server-*"]
+  }
+
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
+}
+
 # AWS compute
 resource "aws_instance" "main" {
   count = var.cloud_provider == "aws" ? 1 : 0
@@ -126,7 +141,12 @@ resource "azurerm_linux_virtual_machine" "main" {
   size                = local.instance_type_map["azure"][var.instance_size]
   admin_username      = "adminuser"
 
-  network_interface_ids = [azurerm_network_interface.main[0].id]
+  network_interface_ids = [var.azure_network_interface_id]
+
+  admin_ssh_key {
+    username   = "adminuser"
+    public_key = var.azure_ssh_public_key
+  }
 
   os_disk {
     caching              = "ReadWrite"
@@ -192,12 +212,18 @@ resource "aws_customer_gateway" "azure" {
 }
 
 resource "aws_vpn_connection" "to_azure" {
-  vpn_gateway_id      = aws_vpn_gateway.main.id
-  customer_gateway_id = aws_customer_gateway.azure.id
-  type                = "ipsec.1"
-  static_routes_only  = true
+  vpn_gateway_id        = aws_vpn_gateway.main.id
+  customer_gateway_id   = aws_customer_gateway.azure.id
+  type                  = "ipsec.1"
+  static_routes_only    = true
+  tunnel1_preshared_key = var.vpn_shared_key
 
   tags = { Name = "aws-to-azure-vpn" }
+}
+
+resource "aws_vpn_connection_route" "azure" {
+  vpn_connection_id      = aws_vpn_connection.to_azure.id
+  destination_cidr_block = var.azure_vnet_cidr
 }
 
 # Azure side
@@ -223,6 +249,16 @@ resource "azurerm_local_network_gateway" "aws" {
   resource_group_name = azurerm_resource_group.main.name
   gateway_address     = aws_vpn_connection.to_azure.tunnel1_address
   address_space       = [module.aws_vpc.vpc_cidr]
+}
+
+resource "azurerm_virtual_network_gateway_connection" "aws" {
+  name                       = "azure-to-aws-connection"
+  location                   = azurerm_resource_group.main.location
+  resource_group_name        = azurerm_resource_group.main.name
+  type                       = "IPsec"
+  virtual_network_gateway_id = azurerm_virtual_network_gateway.main.id
+  local_network_gateway_id   = azurerm_local_network_gateway.aws.id
+  shared_key                 = var.vpn_shared_key
 }
 ```
 
