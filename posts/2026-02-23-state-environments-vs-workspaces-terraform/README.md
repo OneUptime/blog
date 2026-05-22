@@ -107,7 +107,7 @@ terraform {
     bucket         = "my-terraform-state"
     key            = "app/terraform.tfstate"
     region         = "us-east-1"
-    dynamodb_table = "terraform-locks"
+    use_lockfile   = true
   }
 }
 ```
@@ -147,7 +147,7 @@ terraform {
     bucket         = "my-terraform-state"
     key            = "dev/app/terraform.tfstate"
     region         = "us-east-1"
-    dynamodb_table = "terraform-locks"
+    use_lockfile   = true
   }
 }
 ```
@@ -170,7 +170,7 @@ terraform {
     bucket         = "my-terraform-state"
     key            = "production/app/terraform.tfstate"
     region         = "us-east-1"
-    dynamodb_table = "terraform-locks"
+    use_lockfile   = true
   }
 }
 ```
@@ -234,7 +234,7 @@ variable "enable_backups" {
 ### Environment Directory Pros
 
 - Each environment is explicit and self-contained. You can see exactly what production looks like by reading its directory.
-- No risk of accidentally applying to the wrong environment.
+- Less risk of accidentally applying to the wrong environment because the working directory and backend are explicit.
 - Easy to have different resources per environment (monitoring in prod, debug tools in dev).
 - Each environment can use different Terraform versions, provider versions, or module versions.
 - Better for code review - changes to production are clearly visible in PRs.
@@ -307,7 +307,7 @@ remote_state {
     bucket         = "my-terraform-state"
     key            = "${path_relative_to_include()}/terraform.tfstate"
     region         = "us-east-1"
-    dynamodb_table = "terraform-locks"
+    use_lockfile   = true
   }
 }
 ```
@@ -332,7 +332,7 @@ cd terraform/environments/dev
 terraform init
 terraform state push /tmp/dev.tfstate
 
-cd terraform/environments/production
+cd ../production
 terraform init
 terraform state push /tmp/production.tfstate
 ```
