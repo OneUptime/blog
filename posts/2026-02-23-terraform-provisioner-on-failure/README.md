@@ -197,10 +197,13 @@ resource "aws_instance" "web" {
   provisioner "local-exec" {
     command = <<-EOT
       for i in 1 2 3 4 5; do
-        curl -s -f -X POST https://api.pagerduty.com/services \
-          -H "Authorization: Token token=${var.pd_token}" \
+        curl -s -f -X POST "${var.service_registry_url}" \
+          -H "Content-Type: application/json" \
           -d '{"service":{"name":"web-${self.id}"}}' && break
         echo "Attempt $i failed, retrying in 10 seconds..."
+        if [ "$i" -eq 5 ]; then
+          exit 1
+        fi
         sleep 10
       done
     EOT
@@ -272,7 +275,7 @@ provisioner "local-exec" {
 
 2. **Use continue for non-critical side effects.** Notifications, monitoring registration, and logging are good candidates.
 
-3. **Always use continue for destruction-time provisioners.** You rarely want cleanup tasks to block resource destruction.
+3. **Usually use continue for destruction-time provisioners.** You rarely want cleanup tasks to block resource destruction.
 
 4. **Add retry logic for flaky operations.** Instead of relying solely on `on_failure`, build retries into the command itself.
 
