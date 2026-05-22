@@ -8,19 +8,19 @@ Description: How to enroll namespaces and individual workloads into an Istio amb
 
 ---
 
-One of the best things about Istio ambient mode is how easy it is to add workloads to the mesh. No sidecar injection, no pod restarts, no deployment changes. You label a namespace and the workloads are immediately part of the mesh with mTLS encryption.
+One of the best things about Istio ambient mode is how easy it is to add workloads to the mesh. No sidecar injection, no pod restarts, no deployment changes. You label a namespace and eligible workloads are added to the mesh with mTLS encryption.
 
 This guide covers the different ways to enroll workloads, how to verify enrollment, and some patterns for gradual rollout.
 
 ## Namespace-Level Enrollment
 
-The most common approach is enrolling an entire namespace at once. Every pod in that namespace becomes part of the ambient mesh:
+The most common approach is enrolling an entire namespace at once. Eligible pods in that namespace become part of the ambient mesh:
 
 ```bash
 kubectl label namespace my-app istio.io/dataplane-mode=ambient
 ```
 
-That is it. Instantly, all pods in `my-app` have their traffic routed through ztunnel. Communication between these pods (and other meshed pods) is encrypted with mTLS.
+That is it. Within a short time, pods in `my-app` have their traffic routed through ztunnel, unless a pod opts out or is already using sidecar mode. Communication between these pods (and other meshed pods) is encrypted with mTLS.
 
 Verify the label was applied:
 
@@ -47,6 +47,9 @@ metadata:
   name: my-service
   namespace: my-app
 spec:
+  selector:
+    matchLabels:
+      app: my-service
   template:
     metadata:
       labels:
@@ -70,16 +73,16 @@ The most reliable way to verify enrollment is checking whether ztunnel recognize
 istioctl ztunnel-config workloads
 ```
 
-This lists all workloads that ztunnel is actively managing. Your enrolled pods should appear with their identity and protocol information:
+This lists the workload configuration known to ztunnel. Your enrolled pods should appear with their identity and protocol information:
 
 ```text
-NAMESPACE    POD NAME           IP          NODE        PROTOCOL
-my-app       frontend-abc123    10.0.1.5    node-1      HBONE
-my-app       backend-def456     10.0.1.6    node-1      HBONE
-my-app       database-ghi789    10.0.2.3    node-2      HBONE
+NAMESPACE    POD NAME           IP          NODE        WAYPOINT  PROTOCOL
+my-app       frontend-abc123    10.0.1.5    node-1      None      HBONE
+my-app       backend-def456     10.0.1.6    node-1      None      HBONE
+my-app       database-ghi789    10.0.2.3    node-2      None      HBONE
 ```
 
-The `HBONE` protocol indicates the workload is part of the ambient mesh and traffic is being tunneled.
+The `HBONE` protocol indicates the workload is configured to send and accept HBONE traffic. By itself, it does not mean the workload rejects plaintext traffic; use `PeerAuthentication` in `STRICT` mode when you need that behavior.
 
 ### Check Connection Encryption
 
@@ -174,6 +177,9 @@ metadata:
   name: legacy-service
   namespace: my-app
 spec:
+  selector:
+    matchLabels:
+      app: legacy-service
   template:
     metadata:
       labels:
@@ -193,7 +199,7 @@ When pods in an ambient namespace communicate with pods in a non-ambient namespa
 
 - **Ambient to Ambient**: Full mTLS, encrypted and authenticated
 - **Ambient to non-mesh**: ztunnel sends traffic as plain TCP (no mTLS to the destination)
-- **Non-mesh to Ambient**: ztunnel accepts plain TCP traffic (no mTLS from the source)
+- **Non-mesh to Ambient**: The non-mesh pod sends traffic directly to the destination pod, and the destination ztunnel can accept plain TCP traffic unless policy rejects it
 
 This means you can gradually enroll namespaces without breaking existing communication. Unencrypted communication still works, but you lose the security benefits for those connections.
 
@@ -233,10 +239,10 @@ This shows both ambient and sidecar enrollment in one view.
 When you label a namespace with `istio.io/dataplane-mode=ambient`:
 
 1. istiod notices the label change through its Kubernetes watch
-2. istiod notifies ztunnel instances about the new workloads
+2. ztunnel receives updated workload configuration from istiod through xDS
 3. The istio-cni plugin configures traffic interception rules on each node for the affected pods
 4. ztunnel starts handling traffic for those pods
-5. mTLS is established automatically using certificates from istiod
+5. ztunnel obtains workload certificates and establishes mTLS automatically for mesh traffic
 
 This entire process takes a few seconds. The workload pods are completely unaware that anything changed - they keep sending and receiving traffic as before, but now it flows through ztunnel and gets encrypted.
 
