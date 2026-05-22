@@ -16,7 +16,7 @@ In this post, I will walk you through the entire process from installing Homebre
 
 Before we get started, make sure you have the following:
 
-- A Mac running macOS 12 (Monterey) or later
+- A Mac running a Homebrew-supported version of macOS (currently macOS 14 Sonoma or later)
 - Terminal access (you can use the built-in Terminal app or iTerm2)
 - Admin privileges on your machine
 - An internet connection
@@ -40,7 +40,7 @@ brew --version
 
 You should see output like `Homebrew 4.x.x`. If Homebrew is not found, you may need to add it to your PATH. The installer usually prints instructions for this at the end of the install process.
 
-For Apple Silicon Macs (M1/M2/M3), Homebrew installs to `/opt/homebrew`. You may need to add this to your shell profile:
+For Apple Silicon Macs, Homebrew installs to `/opt/homebrew`. You may need to add this to your shell profile:
 
 ```bash
 # Add Homebrew to PATH for Apple Silicon Macs (add to ~/.zshrc)
@@ -92,7 +92,7 @@ terraform -version
 You should see output similar to:
 
 ```text
-Terraform v1.7.x
+Terraform v1.x.x
 on darwin_arm64
 ```
 
@@ -180,16 +180,19 @@ echo $PATH | tr ':' '\n' | grep brew
 If you see permission errors during installation, do not use `sudo` with Homebrew. Instead, fix the permissions:
 
 ```bash
-# Fix Homebrew directory permissions
-sudo chown -R $(whoami) $(brew --prefix)/*
+# Check Homebrew's diagnostics and follow the specific ownership advice it prints
+brew doctor
 ```
 
 ### Conflicts with Existing Installation
 
-If you installed Terraform manually before (by downloading the binary directly), you may have conflicts. Remove the old binary first:
+If you installed Terraform manually before (by downloading the binary directly), you may have conflicts. Check which Terraform binary is first in your PATH and remove the old manual binary if it is not managed by Homebrew:
 
 ```bash
-# Find and remove any manually installed terraform binary
+# Find the active terraform binary
+which terraform
+
+# Remove an old manually installed binary if it is in /usr/local/bin
 sudo rm -f /usr/local/bin/terraform
 ```
 
