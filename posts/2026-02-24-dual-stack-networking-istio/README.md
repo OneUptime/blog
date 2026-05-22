@@ -61,12 +61,16 @@ spec:
       proxyMetadata:
         ISTIO_DUAL_STACK: "true"
   values:
-    global:
-      proxy:
-        privileged: false
+    pilot:
+      env:
+        ISTIO_DUAL_STACK: "true"
+      ipFamilyPolicy: RequireDualStack
+    gateways:
+      istio-ingressgateway:
+        ipFamilyPolicy: RequireDualStack
 ```
 
-When dual-stack is enabled, Istio's init container sets up both iptables (for IPv4) and ip6tables (for IPv6) redirect rules. The Envoy proxy binds listeners on both `0.0.0.0` and `::`.
+When dual-stack is enabled, Istio's sidecar traffic interception sets up both iptables (for IPv4) and ip6tables (for IPv6) redirect rules. Envoy represents dual-stack listeners with a primary address and `additionalAddresses`; for the virtual inbound listener, that means `0.0.0.0` with `::` as an additional address.
 
 Verify the setup:
 
@@ -120,14 +124,14 @@ The service has both an IPv4 and IPv6 cluster IP. Clients can reach it over eith
 
 ## How Envoy Handles Dual-Stack
 
-With dual-stack enabled, Envoy's listeners bind to both address families. The outbound listener handles connections to both IPv4 and IPv6 service IPs:
+With dual-stack enabled, Envoy's listeners can bind to both address families. The outbound listener handles connections to both IPv4 and IPv6 service IPs:
 
 ```bash
-istioctl proxy-config listener deploy/my-client -n my-app -o json | \
-  jq '.[].address.socketAddress.address'
+istioctl proxy-config listeners deploy/my-client -n my-app -o json | \
+  jq '.[] | {name: .name, address: .address, additionalAddresses: .additionalAddresses}'
 ```
 
-You should see both `0.0.0.0` and `::` addresses.
+For dual-stack services, you should see one family in `address` and the other in `additionalAddresses`. For the virtual inbound listener, this is commonly `0.0.0.0` plus `::`.
 
 Check the endpoints:
 
@@ -169,16 +173,22 @@ The cloud load balancer needs to support dual-stack too. On AWS, use the NLB wit
 ```yaml
 metadata:
   annotations:
-    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    service.beta.kubernetes.io/aws-load-balancer-type: "external"
+    service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: "instance"
     service.beta.kubernetes.io/aws-load-balancer-ip-address-type: "dualstack"
 ```
 
-On GKE:
+On GKE, use the Kubernetes dual-stack Service fields. If you need static load balancer addresses on GKE 1.29 or later, use GKE's static address annotation with address resource names:
 
 ```yaml
 metadata:
   annotations:
-    networking.gke.io/load-balancer-ip-versions: "IPv4,IPv6"
+    networking.gke.io/load-balancer-ip-addresses: "my-ipv4-address,my-ipv6-address-range"
+spec:
+  ipFamilyPolicy: RequireDualStack
+  ipFamilies:
+  - IPv4
+  - IPv6
 ```
 
 ## Authorization Policies for Dual-Stack
@@ -216,14 +226,19 @@ CoreDNS returns both A (IPv4) and AAAA (IPv6) records for dual-stack services:
 kubectl exec deploy/my-client -- nslookup my-api.my-app.svc.cluster.local
 ```
 
-The response includes both address types. Istio's DNS proxy also returns both:
+The response includes both address types. In sidecar mode, Istio DNS capture is not enabled by default. If you enable it with `ISTIO_META_DNS_CAPTURE`, the sidecar DNS proxy returns the same Kubernetes Service responses while handling DNS locally:
 
-```bash
-kubectl exec deploy/my-client -c istio-proxy -- \
-  pilot-agent request GET /dns_lookup?hostname=my-api.my-app.svc.cluster.local
+```yaml
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
+spec:
+  meshConfig:
+    defaultConfig:
+      proxyMetadata:
+        ISTIO_META_DNS_CAPTURE: "true"
 ```
 
-The application (or more precisely, the system resolver) decides which address to use based on the Happy Eyeballs algorithm, which typically prefers IPv6.
+The application, resolver configuration, and connection library decide which address to use. Clients that implement Happy Eyeballs generally try IPv6 and IPv4 in a way that reduces connection delay rather than relying only on DNS record order.
 
 ## VirtualService and DestinationRule
 
@@ -285,7 +300,7 @@ spec:
   location: MESH_EXTERNAL
 ```
 
-With `resolution: DNS`, Istio resolves both A and AAAA records for `api.example.com` and can connect over either address family.
+With `resolution: DNS`, Istio's proxy periodically resolves `api.example.com` and uses the DNS results it is configured to use. In a dual-stack mesh, verify the proxy endpoints to confirm that the expected IPv4 and IPv6 addresses are present.
 
 For static endpoints with both address families:
 
@@ -309,14 +324,14 @@ spec:
 
 ## Monitoring Dual-Stack Traffic
 
-Istio metrics include the source and destination addresses, which you can use to track IPv4 vs IPv6 traffic:
+Istio standard request metrics aggregate by workload and service labels, not by raw source and destination IP address. Use them for service-level traffic totals:
 
 ```promql
 # Total requests (both IP families)
 sum(rate(istio_requests_total{destination_service="my-api.my-app.svc.cluster.local"}[5m]))
 ```
 
-To specifically track which address family is being used, check the Envoy stats:
+To investigate which address family is being used, check Envoy endpoint and connection details:
 
 ```bash
 istioctl proxy-config stats deploy/my-client -n my-app | grep "upstream_cx\|downstream_cx"
@@ -353,13 +368,15 @@ kubectl logs my-pod -c istio-init
 Verify the `ISTIO_DUAL_STACK` metadata is set:
 
 ```bash
-kubectl get pod my-pod -o jsonpath='{.metadata.annotations}' | grep -i dual
+istioctl proxy-config bootstrap deploy/my-app -n my-app -o json | \
+  jq '.bootstrap.node.metadata.ISTIO_DUAL_STACK'
 ```
 
 Check the listener addresses:
 
 ```bash
-istioctl proxy-config listener deploy/my-app -n my-app -o json | jq '.[].address'
+istioctl proxy-config listeners deploy/my-app -n my-app -o json | \
+  jq '.[] | {address: .address, additionalAddresses: .additionalAddresses}'
 ```
 
 **Connection failures to IPv6 endpoints:**
@@ -382,7 +399,7 @@ kubectl exec my-pod -- ip -6 route
 If you are migrating from IPv4-only to dual-stack, follow this approach:
 
 1. Enable dual-stack on the cluster (node and CNI level)
-2. Update Istio configuration to enable `ISTIO_DUAL_STACK`
+2. Update Istio configuration to enable `ISTIO_DUAL_STACK` for both the proxy metadata and pilot environment
 3. Update services to `PreferDualStack` (not `RequireDualStack`)
 4. Verify that existing IPv4 traffic continues to work
 5. Test IPv6 connectivity between services
@@ -393,8 +410,8 @@ If you are migrating from IPv4-only to dual-stack, follow this approach:
 kubectl patch svc my-api -n my-app -p '{"spec":{"ipFamilyPolicy":"PreferDualStack"}}'
 ```
 
-Using `PreferDualStack` is the safest choice because it falls back to single-stack if dual-stack is not available on a particular node or namespace.
+Using `PreferDualStack` is the safest choice because it falls back to single-stack if dual-stack is not enabled or supported by the cluster.
 
 ## Summary
 
-Dual-stack networking in Istio adds IPv6 support alongside IPv4, giving you flexibility as the internet continues its transition. Enable it through the `ISTIO_DUAL_STACK` mesh configuration, configure services with `PreferDualStack` or `RequireDualStack`, and make sure authorization policies include both IPv4 and IPv6 address ranges. The traffic management features (VirtualService, DestinationRule) work transparently across both address families. Verify your setup by checking both iptables and ip6tables rules and testing connectivity over both protocols.
+Dual-stack networking in Istio adds IPv6 support alongside IPv4, giving you flexibility as the internet continues its transition. Enable it through `ISTIO_DUAL_STACK` in both proxy metadata and pilot settings, configure services with `PreferDualStack` or `RequireDualStack`, and make sure authorization policies include both IPv4 and IPv6 address ranges. The traffic management features (VirtualService, DestinationRule) work transparently across both address families. Verify your setup by checking both iptables and ip6tables rules and testing connectivity over both protocols.
