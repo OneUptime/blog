@@ -160,6 +160,41 @@ The issuer should show your intermediate CA's subject.
 
 If your organization uses cert-manager, you can integrate it with Istio:
 
+Install cert-manager with the `ExperimentalCertificateSigningRequestControllers` feature gate enabled, then create a cert-manager `ClusterIssuer` for Istio:
+
+```yaml
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: selfsigned-istio-issuer
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: istio-ca
+  namespace: cert-manager
+spec:
+  isCA: true
+  commonName: istio-system
+  secretName: istio-ca-selfsigned
+  issuerRef:
+    name: selfsigned-istio-issuer
+    kind: ClusterIssuer
+    group: cert-manager.io
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: istio-system
+spec:
+  ca:
+    secretName: istio-ca-selfsigned
+```
+
+Then configure Istio to use cert-manager through the Kubernetes CSR API:
+
 ```yaml
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
@@ -172,32 +207,33 @@ spec:
     defaultConfig:
       proxyMetadata:
         ISTIO_META_CERT_SIGNER: istio-system
-```
-
-Then configure cert-manager as the issuer:
-
-```yaml
-apiVersion: cert-manager.io/v1
-kind: Issuer
-metadata:
-  name: istio-ca
-  namespace: istio-system
-spec:
-  ca:
-    secretName: istio-ca-key-pair
----
-apiVersion: cert-manager.io/v1
-kind: Certificate
-metadata:
-  name: istio-ca
-  namespace: istio-system
-spec:
-  isCA: true
-  commonName: istio-ca
-  secretName: istio-ca-key-pair
-  issuerRef:
-    name: selfsigned-issuer
-    kind: ClusterIssuer
+    caCertificates:
+    - pem: |
+        <paste the ca.crt value from the istio-ca-selfsigned secret here>
+      certSigners:
+      - clusterissuers.cert-manager.io/istio-system
+  components:
+    pilot:
+      k8s:
+        env:
+        - name: CERT_SIGNER_DOMAIN
+          value: clusterissuers.cert-manager.io
+        - name: PILOT_CERT_PROVIDER
+          value: k8s.io/clusterissuers.cert-manager.io/istio-system
+        overlays:
+        - kind: ClusterRole
+          name: istiod-clusterrole-istio-system
+          patches:
+          - path: rules[-1]
+            value: |
+              apiGroups:
+              - certificates.k8s.io
+              resourceNames:
+              - clusterissuers.cert-manager.io/istio-system
+              resources:
+              - signers
+              verbs:
+              - approve
 ```
 
 ## Using HashiCorp Vault as the CA
