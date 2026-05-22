@@ -8,7 +8,7 @@ Description: Configure GitHub Actions environments for Terraform deployments wit
 
 ---
 
-GitHub Actions environments provide deployment protection rules, environment-specific secrets, and approval gates. When combined with Terraform, they give you a proper promotion workflow - changes deploy to dev first, then staging with automatic approval, and finally production with manual approval from designated reviewers.
+GitHub Actions environments provide deployment protection rules, environment-specific secrets, and approval gates. When combined with Terraform, they give you a proper promotion workflow - changes deploy to dev first, then staging automatically, and finally production with manual approval from designated reviewers.
 
 This is a significant improvement over workflows that either deploy everywhere at once or rely on separate branches for each environment. With environments, you get a single workflow that progresses through environments safely.
 
@@ -43,7 +43,9 @@ For **production**:
 - `AWS_SECRET_ACCESS_KEY` - production account credentials
 - `TF_VAR_environment` - "production"
 
-This way the same workflow step uses different credentials depending on which environment it runs in.
+For pull request plans, add repository-level read-only credentials such as `AWS_PLAN_ACCESS_KEY_ID` and `AWS_PLAN_SECRET_ACCESS_KEY`, or configure OIDC with a read-only role.
+
+This way the same workflow step uses different credentials depending on which environment the job references.
 
 ## Basic Environment Workflow
 
@@ -87,8 +89,8 @@ jobs:
         run: terraform plan -var-file="environments/${{ matrix.environment }}/terraform.tfvars" -no-color -input=false
         working-directory: terraform
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_PLAN_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_PLAN_SECRET_ACCESS_KEY }}
 
   # Deploy to dev - no approval needed
   deploy-dev:
@@ -278,11 +280,12 @@ deploy-production:
     concurrency:
       group: terraform-production
       cancel-in-progress: false
+      queue: max
     steps:
       # ... deployment steps
 ```
 
-The `cancel-in-progress: false` setting ensures that a running deployment is not cancelled by a newer one. Instead, the newer deployment waits.
+The `cancel-in-progress: false` setting ensures that a running deployment is not cancelled by a newer one. The `queue: max` setting allows newer deployments to wait in the concurrency group instead of replacing the existing pending deployment.
 
 ## Viewing Deployment History
 
