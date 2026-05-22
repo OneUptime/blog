@@ -65,21 +65,20 @@ resource "aws_ebs_volume" "data" {
 # Port 8443 exposed for internal mTLS communication only.
 # External traffic is blocked by the ALB security group.
 # Approved in security review SEC-2025-089.
-resource "aws_security_group_rule" "internal_tls" {
-  type        = "ingress"
-  from_port   = 8443
-  to_port     = 8443
-  protocol    = "tcp"
-  cidr_blocks = ["10.0.0.0/8"]
+resource "aws_vpc_security_group_ingress_rule" "internal_tls" {
+  from_port         = 8443
+  to_port           = 8443
+  ip_protocol       = "tcp"
+  cidr_ipv4         = "10.0.0.0/8"
   security_group_id = aws_security_group.app.id
 }
 
 # 3. ALWAYS comment workarounds and temporary configurations
 
-# WORKAROUND: Force new deployment when task definition changes.
-# This is needed because the ECS service does not detect task
-# definition updates automatically with the current provider version.
-# Remove when upgrading to AWS provider >= 5.35.
+# WORKAROUND: Force new deployment when the container image tag is reused.
+# ECS starts a new deployment when task_definition changes, but this service
+# currently publishes new images to the same tag.
+# Remove when image tags are immutable in the deployment pipeline.
 # Tracking: INFRA-5678
 resource "aws_ecs_service" "api" {
   force_new_deployment = true
@@ -142,7 +141,7 @@ output "database_endpoint" {
 
 Every module needs a comprehensive README. Use terraform-docs to generate part of it automatically:
 
-```markdown
+````markdown
 # Networking Module
 
 ## Overview
@@ -172,7 +171,7 @@ module "networking" {
   environment       = "production"
   name_prefix       = "myapp"
 }
-```bash
+```
 
 ### With Custom Subnet Sizing
 ```hcl
@@ -185,7 +184,7 @@ module "networking" {
   environment           = "production"
   name_prefix           = "myapp"
 }
-```bash
+```
 
 ## Requirements
 | Name | Version |
@@ -208,7 +207,7 @@ module "networking" {
 ## Related Modules
 - [vpc-peering](../vpc-peering) - Manages VPC peering connections
 - [transit-gateway](../transit-gateway) - Manages transit gateway
-```text
+````
 
 ### Automating README Generation
 
@@ -226,14 +225,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
 
       - name: Generate terraform-docs
-        uses: terraform-docs/gh-actions@v1.2.0
+        uses: terraform-docs/gh-actions@v1.4.1
         with:
-          working-dir: modules/
+          working-dir: .
+          recursive: true
+          recursive-path: modules
           output-file: README.md
           output-method: inject
-          git-push: true
+          git-push: "true"
 ```
 
 ## Architecture Decision Records
