@@ -49,10 +49,22 @@ variable "scale_increment" {
   default     = 2
 }
 
+variable "subnet_ids" {
+  description = "Subnets used by the Auto Scaling group"
+  type        = list(string)
+}
+
 # Read current state
 data "aws_autoscaling_group" "web" {
   name = "web-tier-production"
 }
+
+data "aws_launch_template" "web" {
+  name = "web-tier-production"
+}
+
+# Import this existing Auto Scaling group into state before the first run:
+# terraform import aws_autoscaling_group.web web-tier-production
 
 locals {
   current_capacity = data.aws_autoscaling_group.web.desired_capacity
@@ -224,28 +236,37 @@ variable "reason" {
   type        = string
 }
 
-# Promote the read replica
-resource "aws_db_instance" "promoted" {
-  identifier = var.replica_identifier
+variable "hosted_zone_id" {
+  description = "Route 53 hosted zone ID for the database record"
+  type        = string
+}
 
-  # These settings take effect after promotion
-  backup_retention_period = 7
-  multi_az                = true
+variable "domain" {
+  description = "Domain name for the database record"
+  type        = string
+}
 
-  # Tag to indicate this was a failover promotion
-  tags = {
-    PromotedAt     = timestamp()
-    PromotionReason = var.reason
-    ManagedBy      = "terraform-runbook"
+resource "null_resource" "promote_replica" {
+  triggers = {
+    replica_identifier = var.replica_identifier
+    reason             = var.reason
   }
 
-  lifecycle {
-    ignore_changes = [
-      engine_version,
-      instance_class,
-      allocated_storage
-    ]
+  provisioner "local-exec" {
+    command = <<EOT
+aws rds promote-read-replica \
+  --db-instance-identifier ${var.replica_identifier} \
+  --backup-retention-period 7
+aws rds wait db-instance-available \
+  --db-instance-identifier ${var.replica_identifier}
+EOT
   }
+}
+
+data "aws_db_instance" "promoted" {
+  db_instance_identifier = var.replica_identifier
+
+  depends_on = [null_resource.promote_replica]
 }
 
 # Update DNS to point to the new primary
@@ -255,12 +276,12 @@ resource "aws_route53_record" "database" {
   type    = "CNAME"
   ttl     = 60  # Low TTL during failover
 
-  records = [aws_db_instance.promoted.endpoint]
+  records = [data.aws_db_instance.promoted.address]
 }
 
 output "failover_result" {
   value = {
-    new_primary_endpoint = aws_db_instance.promoted.endpoint
+    new_primary_endpoint = data.aws_db_instance.promoted.endpoint
     dns_record           = aws_route53_record.database.fqdn
     promoted_at          = timestamp()
   }
@@ -289,7 +310,9 @@ resource "aws_security_group" "isolation" {
   description = "Isolation security group for incident ${var.incident_id}"
   vpc_id      = data.aws_instance.target.vpc_id
 
-  # No ingress or egress rules - complete isolation
+  ingress = []
+  egress  = []
+
   tags = {
     Name       = "isolation-${var.incident_id}"
     IncidentID = var.incident_id
@@ -304,15 +327,26 @@ data "aws_instance" "target" {
   instance_id = var.instance_id
 }
 
-# Replace the instance's security groups with the isolation group
-resource "aws_network_interface_sg_attachment" "isolation" {
-  security_group_id    = aws_security_group.isolation.id
-  network_interface_id = data.aws_instance.target.network_interface_id
+# Replace the primary network interface's security groups with the isolation group
+resource "null_resource" "isolate_instance" {
+  triggers = {
+    instance_id          = var.instance_id
+    network_interface_id = data.aws_instance.target.primary_network_interface_id
+    isolation_sg_id      = aws_security_group.isolation.id
+  }
+
+  provisioner "local-exec" {
+    command = "aws ec2 modify-network-interface-attribute --network-interface-id ${data.aws_instance.target.primary_network_interface_id} --groups ${aws_security_group.isolation.id}"
+  }
 }
 
 # Create a snapshot for forensic analysis
 resource "aws_ebs_snapshot" "forensic" {
-  for_each  = toset(data.aws_instance.target.ebs_block_device[*].volume_id)
+  for_each = toset(concat(
+    data.aws_instance.target.root_block_device[*].volume_id,
+    data.aws_instance.target.ebs_block_device[*].volume_id
+  ))
+
   volume_id = each.value
 
   tags = {
@@ -397,12 +431,18 @@ data "aws_ebs_snapshots" "old" {
   }
 }
 
+data "aws_ebs_snapshot" "old" {
+  for_each = toset(data.aws_ebs_snapshots.old.ids)
+
+  snapshot_ids = [each.value]
+}
+
 locals {
   cutoff_date = timeadd(timestamp(), "-${var.max_age_days * 24}h")
 
   old_snapshots = [
-    for snap in data.aws_ebs_snapshots.old.ids :
-    snap if timecmp(data.aws_ebs_snapshots.old.snapshots[index(data.aws_ebs_snapshots.old.ids, snap)].start_time, local.cutoff_date) < 0
+    for id, snap in data.aws_ebs_snapshot.old :
+    id if timecmp(snap.start_time, local.cutoff_date) < 0
   ]
 }
 
