@@ -22,10 +22,10 @@ Add your kubeconfig as a CI/CD variable:
 2. Add `KUBE_CONFIG` with your base64-encoded kubeconfig
 3. Mark it as protected and masked
 
-You will also want these variables:
-- `REGISTRY_USER` - Container registry username
-- `REGISTRY_PASSWORD` - Container registry password
-- `CONTAINER_REGISTRY` - Your registry URL (e.g., `registry.gitlab.com/your-group/your-project`)
+GitLab also provides these predefined variables for the project container registry:
+- `CI_REGISTRY_USER` - Container registry username
+- `CI_REGISTRY_PASSWORD` - Container registry password
+- `CI_REGISTRY_IMAGE` - Your registry image path (e.g., `registry.gitlab.com/your-group/your-project`)
 
 ## The Pipeline Configuration
 
@@ -43,8 +43,8 @@ stages:
 variables:
   DOCKER_TLS_CERTDIR: "/certs"
   IMAGE_TAG: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA
-  KUBECTL_VERSION: "1.28.0"
-  ISTIO_VERSION: "1.20.0"
+  KUBECTL_VERSION: "1.36.0"
+  ISTIO_VERSION: "1.30.0"
 
 .kube_setup: &kube_setup
   before_script:
@@ -58,7 +58,7 @@ build:
   services:
     - docker:24-dind
   script:
-    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
     - docker build -t $IMAGE_TAG .
     - docker push $IMAGE_TAG
   only:
@@ -72,9 +72,9 @@ Before deploying anything, validate your Istio configuration files. This catches
 ```yaml
 validate-istio:
   stage: validate
-  image: bitnami/kubectl:$KUBECTL_VERSION
-  <<: *kube_setup
+  image: alpine:3.20
   script:
+    - apk add --no-cache curl
     - curl -L https://istio.io/downloadIstio | ISTIO_VERSION=$ISTIO_VERSION sh -
     - export PATH=$PWD/istio-$ISTIO_VERSION/bin:$PATH
     - |
@@ -94,7 +94,7 @@ validate-istio:
 
 ## Deploying the Canary
 
-The canary deployment stage creates a new version alongside the existing one and routes a small amount of traffic to it:
+The canary deployment stage creates a new version alongside the existing one and routes a small amount of traffic to it. This assumes the stable deployment's pods are labeled `version: stable`, the canary deployment below uses `version: canary`, and a Gateway named `my-app-gateway` exists.
 
 ```yaml
 deploy-canary:
@@ -133,14 +133,33 @@ deploy-canary:
     - kubectl rollout status deployment/my-app-canary -n production --timeout=180s
     - |
       cat <<EOF | kubectl apply -f -
-      apiVersion: networking.istio.io/v1beta1
+      apiVersion: networking.istio.io/v1
+      kind: DestinationRule
+      metadata:
+        name: my-app
+        namespace: production
+      spec:
+        host: my-app
+        subsets:
+        - name: stable
+          labels:
+            version: stable
+        - name: canary
+          labels:
+            version: canary
+      EOF
+    - |
+      cat <<EOF | kubectl apply -f -
+      apiVersion: networking.istio.io/v1
       kind: VirtualService
       metadata:
         name: my-app
         namespace: production
       spec:
         hosts:
-        - my-app
+        - my-app.example.com
+        gateways:
+        - my-app-gateway
         http:
         - route:
           - destination:
@@ -166,8 +185,9 @@ After the canary is deployed, run automated tests against it and check metrics:
 ```yaml
 test-canary:
   stage: test-canary
-  image: curlimages/curl:latest
-  <<: *kube_setup
+  image:
+    name: curlimages/curl:latest
+    entrypoint: [""]
   script:
     - echo "Waiting for canary traffic to flow..."
     - sleep 120
@@ -176,7 +196,7 @@ test-canary:
       for i in $(seq 1 50); do
         STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
           -H "Host: my-app.example.com" \
-          http://istio-ingressgateway.istio-system/health)
+          http://istio-ingressgateway.istio-system.svc.cluster.local/health)
         if [ "$STATUS" != "200" ]; then
           FAILURES=$((FAILURES + 1))
         fi
@@ -210,14 +230,16 @@ promote:
     - |
       # Route all traffic to stable
       cat <<EOF | kubectl apply -f -
-      apiVersion: networking.istio.io/v1beta1
+      apiVersion: networking.istio.io/v1
       kind: VirtualService
       metadata:
         name: my-app
         namespace: production
       spec:
         hosts:
-        - my-app
+        - my-app.example.com
+        gateways:
+        - my-app-gateway
         http:
         - route:
           - destination:
@@ -254,14 +276,16 @@ rollback:
   script:
     - |
       cat <<EOF | kubectl apply -f -
-      apiVersion: networking.istio.io/v1beta1
+      apiVersion: networking.istio.io/v1
       kind: VirtualService
       metadata:
         name: my-app
         namespace: production
       spec:
         hosts:
-        - my-app
+        - my-app.example.com
+        gateways:
+        - my-app-gateway
         http:
         - route:
           - destination:
@@ -289,7 +313,7 @@ deploy-review:
     - export REVIEW_SLUG=$(echo $CI_COMMIT_REF_SLUG | head -c 20)
     - |
       cat <<EOF | kubectl apply -f -
-      apiVersion: networking.istio.io/v1beta1
+      apiVersion: networking.istio.io/v1
       kind: VirtualService
       metadata:
         name: my-app-$REVIEW_SLUG
