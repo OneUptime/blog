@@ -97,7 +97,7 @@ resource "aws_lambda_function" "functions" {
   function_name = trimsuffix(basename(each.value), ".zip")
   role          = aws_iam_role.lambda.arn
   handler       = "index.handler"
-  runtime       = "python3.9"
+  runtime       = "python3.13"
 
   filename         = "${path.module}/dist/${each.value}"
   source_code_hash = filebase64sha256("${path.module}/dist/${each.value}")
@@ -224,7 +224,7 @@ locals {
     for f in local.files : basename(f) => {
       full_path = f
       filename  = basename(f)
-      # Get the extension (everything after the last dot)
+      # Get the extension (the last dot and everything after it)
       extension = regex("\\.[^.]+$", basename(f))
       # Get the name without extension
       name_only = trimsuffix(basename(f), regex("\\.[^.]+$", basename(f)))
@@ -298,7 +298,7 @@ variable "arn_like_paths" {
   type = list(string)
   default = [
     "arn:aws:s3:::my-bucket/path/to/object.json",
-    "arn:aws:lambda:us-east-1:123456:function:my-function",
+    "arn:aws:iam::123456789012:role/service-role/my-role",
   ]
 }
 
@@ -308,7 +308,7 @@ locals {
     for arn in var.arn_like_paths :
     basename(arn)
   ]
-  # Result: ["object.json", "my-function"]
+  # Result: ["object.json", "my-role"]
 }
 ```
 
@@ -408,8 +408,8 @@ locals {
 # basename does not handle URL query parameters
 # basename("file.txt?v=2") returns "file.txt?v=2"
 
-# basename works with both forward and back slashes
-# But always returns just the last component
+# basename uses the host platform's path separator
+# On Unix-like systems, "/" is the separator; on Windows, "\" is the separator
 ```
 
 ## Summary
