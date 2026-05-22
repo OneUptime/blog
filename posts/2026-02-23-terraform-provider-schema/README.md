@@ -36,10 +36,12 @@ package provider
 
 import (
     "context"
+    "regexp"
 
     "github.com/hashicorp/terraform-plugin-framework/provider"
     "github.com/hashicorp/terraform-plugin-framework/provider/schema"
     "github.com/hashicorp/terraform-plugin-framework/types"
+    "github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
     "github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
     "github.com/hashicorp/terraform-plugin-framework/schema/validator"
 )
@@ -64,10 +66,10 @@ func (p *YourProvider) Schema(_ context.Context, _ provider.SchemaRequest, resp 
         MarkdownDescription: "The **YourService** provider configures the API client used to manage YourService resources.",
 
         Attributes: map[string]schema.Attribute{
-            // Required string attribute
+            // Optional string attribute, with environment fallback handled in Configure
             "api_url": schema.StringAttribute{
                 Description: "Base URL of the YourService API. Can be set with the YOURSERVICE_API_URL environment variable.",
-                Required:    true,
+                Optional:    true,
                 Validators: []validator.String{
                     stringvalidator.LengthAtLeast(1),
                     // Validate URL format
@@ -78,30 +80,26 @@ func (p *YourProvider) Schema(_ context.Context, _ provider.SchemaRequest, resp 
                 },
             },
 
-            // Required sensitive attribute
+            // Optional sensitive attribute, with environment fallback handled in Configure
             "api_key": schema.StringAttribute{
                 Description: "API key for authentication. Can be set with the YOURSERVICE_API_KEY environment variable.",
-                Required:    true,
-                Sensitive:   true,  // Value is masked in plan output and logs
+                Optional:    true,
+                Sensitive:   true,  // Value is masked in Terraform CLI output
             },
 
-            // Optional attribute with default value
+            // Optional attribute, defaulted in Configure
             "timeout": schema.Int64Attribute{
                 Description: "API request timeout in seconds.",
                 Optional:    true,
-                Computed:    true,  // Computed is needed when using Default
-                Default:     int64default.StaticInt64(30),
                 Validators: []validator.Int64{
                     int64validator.Between(5, 300),
                 },
             },
 
-            // Optional attribute with default
+            // Optional attribute, defaulted in Configure
             "retry_count": schema.Int64Attribute{
                 Description: "Number of times to retry failed API requests.",
                 Optional:    true,
-                Computed:    true,
-                Default:     int64default.StaticInt64(3),
                 Validators: []validator.Int64{
                     int64validator.Between(0, 10),
                 },
@@ -123,8 +121,6 @@ func (p *YourProvider) Schema(_ context.Context, _ provider.SchemaRequest, resp 
             "debug": schema.BoolAttribute{
                 Description: "Enable debug logging for API requests.",
                 Optional:    true,
-                Computed:    true,
-                Default:     booldefault.StaticBool(false),
             },
         },
     }
@@ -185,9 +181,9 @@ func Provider() *schema.Provider {
 }
 ```
 
-Resource Schema Patterns
+## Resource Schema Patterns
 
-Resource schemas follow the same patterns but include additional concepts like computed attributes, ForceNew, and nested blocks.
+Resource schemas follow the same patterns but include additional concepts like computed attributes, replacement plan modifiers, and nested attributes.
 
 ```go
 // Plugin Framework resource schema
@@ -332,12 +328,12 @@ func (p *YourProvider) Configure(ctx context.Context, req provider.ConfigureRequ
 
     // Priority: explicit config > environment variable
     apiURL := os.Getenv("YOURSERVICE_API_URL")
-    if !config.APIURL.IsNull() {
+    if !config.APIURL.IsNull() && !config.APIURL.IsUnknown() {
         apiURL = config.APIURL.ValueString()
     }
 
     apiKey := os.Getenv("YOURSERVICE_API_KEY")
-    if !config.APIKey.IsNull() {
+    if !config.APIKey.IsNull() && !config.APIKey.IsUnknown() {
         apiKey = config.APIKey.ValueString()
     }
 
@@ -361,7 +357,22 @@ func (p *YourProvider) Configure(ctx context.Context, req provider.ConfigureRequ
         return
     }
 
-    client := NewClient(apiURL, apiKey)
+    timeout := int64(30)
+    if !config.Timeout.IsNull() && !config.Timeout.IsUnknown() {
+        timeout = config.Timeout.ValueInt64()
+    }
+
+    retryCount := int64(3)
+    if !config.RetryCount.IsNull() && !config.RetryCount.IsUnknown() {
+        retryCount = config.RetryCount.ValueInt64()
+    }
+
+    debug := false
+    if !config.Debug.IsNull() && !config.Debug.IsUnknown() {
+        debug = config.Debug.ValueBool()
+    }
+
+    client := NewClient(apiURL, apiKey, timeout, retryCount, debug)
     resp.DataSourceData = client
     resp.ResourceData = client
 }
@@ -373,7 +384,7 @@ Make breaking changes impossible by planning your schema carefully before releas
 
 Use `Computed: true` with `PlanModifiers: UseStateForUnknown` for server-generated IDs. This tells Terraform the value will be filled in after creation and should not change on subsequent plans.
 
-Mark sensitive attributes with `Sensitive: true`. This prevents their values from appearing in plan output, logs, and state file diffs.
+Mark sensitive attributes with `Sensitive: true`. This generally masks their values in Terraform CLI output, but it does not change how values are stored in state. Avoid logging sensitive values from your provider, or explicitly mask them before writing logs.
 
 Use consistent naming conventions. Attribute names should be lowercase with underscores. Boolean attributes should read naturally as questions: `public_ip_enabled` is clearer than `enable_public_ip`.
 
