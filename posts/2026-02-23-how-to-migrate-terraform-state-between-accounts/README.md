@@ -48,12 +48,7 @@ aws s3api put-bucket-versioning \
   --bucket terraform-state-new-account \
   --versioning-configuration Status=Enabled
 
-# Create DynamoDB table for locking
-aws dynamodb create-table \
-  --table-name terraform-locks \
-  --attribute-definitions AttributeName=LockID,AttributeType=S \
-  --key-schema AttributeName=LockID,KeyType=HASH \
-  --billing-mode PAY_PER_REQUEST
+# Terraform's S3 backend can use a native lock file for locking
 ```
 
 ### Step 3: Update Backend Configuration
@@ -65,10 +60,12 @@ terraform {
     bucket         = "terraform-state-new-account"
     key            = "prod/terraform.tfstate"
     region         = "us-east-1"
-    dynamodb_table = "terraform-locks"
+    use_lockfile   = true
     encrypt        = true
     # If using cross-account access
-    role_arn       = "arn:aws:iam::DESTINATION_ACCOUNT_ID:role/TerraformStateAccess"
+    assume_role = {
+      role_arn = "arn:aws:iam::DESTINATION_ACCOUNT_ID:role/TerraformStateAccess"
+    }
   }
 }
 ```
@@ -217,7 +214,9 @@ terraform {
     bucket   = "terraform-state"
     key      = "prod/terraform.tfstate"
     region   = "us-east-1"
-    role_arn = "arn:aws:iam::STATE_ACCOUNT_ID:role/TerraformStateAccess"
+    assume_role = {
+      role_arn = "arn:aws:iam::STATE_ACCOUNT_ID:role/TerraformStateAccess"
+    }
   }
 }
 
@@ -228,7 +227,9 @@ data "terraform_remote_state" "network" {
     bucket   = "terraform-state"
     key      = "network/terraform.tfstate"
     region   = "us-east-1"
-    role_arn = "arn:aws:iam::NETWORK_ACCOUNT_ID:role/TerraformStateReader"
+    assume_role = {
+      role_arn = "arn:aws:iam::NETWORK_ACCOUNT_ID:role/TerraformStateReader"
+    }
   }
 }
 ```
@@ -261,16 +262,18 @@ resource "aws_iam_role_policy" "terraform_state_access" {
     Statement = [
       {
         Effect = "Allow"
-        Action = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:ListBucket"]
-        Resource = [
-          "arn:aws:s3:::terraform-state",
-          "arn:aws:s3:::terraform-state/*"
-        ]
+        Action = ["s3:ListBucket"]
+        Resource = "arn:aws:s3:::terraform-state"
       },
       {
         Effect = "Allow"
-        Action = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:DeleteItem"]
-        Resource = "arn:aws:dynamodb:us-east-1:STATE_ACCOUNT_ID:table/terraform-locks"
+        Action = ["s3:GetObject", "s3:PutObject"]
+        Resource = "arn:aws:s3:::terraform-state/prod/terraform.tfstate"
+      },
+      {
+        Effect = "Allow"
+        Action = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
+        Resource = "arn:aws:s3:::terraform-state/prod/terraform.tfstate.tflock"
       }
     ]
   })
