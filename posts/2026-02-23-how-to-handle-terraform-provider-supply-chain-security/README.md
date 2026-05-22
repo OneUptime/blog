@@ -56,14 +56,13 @@ provider "registry.terraform.io/hashicorp/aws" {
   version     = "5.31.0"
   constraints = "5.31.0"
   hashes = [
-    "h1:ltxyuBWIy9cq0kIKFNMQOr5kXsdMJia0qWHMJ+U/IfY=",
-    "zh:0caa0a477a96c383a07c1a5e05bd4ceaa4597c7cdb1ac82e9a7e6684ad848e74",
+    "zh:0cdb9c2083bf0902442384f7309367791e4640581652dda456f2d6d7abf0de8d",
     # ... more hashes
   ]
 }
 ```
 
-The lock file ensures that everyone on your team and your CI/CD pipeline gets exactly the same provider binary. If someone tries to substitute a different binary for the same version, Terraform will refuse to proceed because the checksums will not match.
+The lock file ensures that everyone on your team and your CI/CD pipeline gets the same selected provider version and a package matching the recorded checksum for their platform. If someone tries to substitute a different binary for the same version, Terraform will refuse to proceed because the checksums will not match.
 
 Run `terraform providers lock` to generate checksums for multiple platforms:
 
@@ -100,7 +99,7 @@ For third-party providers, check whether the provider author signs their release
 
 For organizations with strict security requirements, running a private provider registry gives you full control over which providers and versions are available.
 
-You can use Terraform Enterprise or Terraform Cloud for this, but you can also set up a lightweight registry using a network mirror:
+You can use Terraform Enterprise or Terraform Cloud for this, but you can also set up a lightweight provider mirror using a filesystem mirror:
 
 ```hcl
 # ~/.terraformrc or terraform.rc
@@ -123,7 +122,7 @@ Then populate the mirror directory:
 # Create the mirror directory structure
 terraform providers mirror /opt/terraform/providers
 
-# Or mirror specific providers
+# Or mirror a specific target platform
 terraform providers mirror \
   -platform=linux_amd64 \
   /opt/terraform/providers
@@ -201,13 +200,13 @@ for version in $PROVIDERS; do
 done
 ```
 
-You can also use tools like `tfsec`, `checkov`, or `snyk` that maintain databases of known issues with specific provider versions.
+You can also use dependency monitoring tools like Dependabot or Renovate to track provider updates, and use tools like `tfsec`, `checkov`, or `snyk` to scan Terraform configurations for infrastructure security issues.
 
 ## Implement Provider Governance with Sentinel or OPA
 
 If you use Terraform Cloud/Enterprise, Sentinel policies can restrict which providers are allowed:
 
-```python
+```sentinel
 # Sentinel policy: only allow approved providers
 import "tfconfig/v2" as tfconfig
 
@@ -220,7 +219,7 @@ approved_providers = [
 
 provider_check = rule {
   all tfconfig.providers as _, provider {
-    provider.source in approved_providers
+    provider.full_name in approved_providers
   }
 }
 
@@ -229,11 +228,13 @@ main = rule {
 }
 ```
 
-For open-source Terraform, use OPA (Open Policy Agent) with conftest:
+For open-source Terraform, use OPA (Open Policy Agent) with conftest against Terraform plan JSON:
 
 ```rego
 # policy/providers.rego
 package main
+
+import rego.v1
 
 # List of approved provider sources
 approved_sources := {
@@ -241,10 +242,10 @@ approved_sources := {
   "registry.terraform.io/hashicorp/random",
 }
 
-deny[msg] {
-  provider := input.terraform.required_providers[name]
-  not provider.source in approved_sources
-  msg := sprintf("Provider '%s' with source '%s' is not approved", [name, provider.source])
+deny contains msg if {
+  some _, provider in input.configuration.provider_config
+  not provider.full_name in approved_sources
+  msg := sprintf("Provider '%s' is not approved", [provider.full_name])
 }
 ```
 
