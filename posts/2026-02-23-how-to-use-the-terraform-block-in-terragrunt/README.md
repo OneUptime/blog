@@ -204,6 +204,11 @@ terraform {
   }
 
   # Copy the plan output for auditing
+  extra_arguments "save_plan" {
+    commands  = ["plan"]
+    arguments = ["-out=tfplan"]
+  }
+
   after_hook "save_plan" {
     commands     = ["plan"]
     execute      = ["bash", "-c", "cp tfplan /audit/plans/vpc-$(date +%s).plan"]
@@ -232,20 +237,20 @@ terraform {
 
 ## The include_in_copy Parameter
 
-When Terragrunt copies the module source to `.terragrunt-cache`, it usually copies only the files from the source directory. You can include additional files from parent directories:
+When Terragrunt copies files to `.terragrunt-cache`, it downloads the module source and also copies files from the Terragrunt working directory. By default, hidden files and folders are excluded from that copy step, but you can include them:
 
 ```hcl
 terraform {
   source = "../../../modules/vpc"
 
-  # Also copy .tf files from the module's parent directory
+  # Also copy this hidden file from the Terragrunt working directory
   include_in_copy = [
-    "../../common/*.tf",
+    ".python-version",
   ]
 }
 ```
 
-This is useful when your Terraform modules share common files that live in a parent directory.
+This is useful when your Terraform module needs hidden files or other excluded files from the directory containing `terragrunt.hcl`.
 
 ## Practical Example: Full terraform Block
 
@@ -262,8 +267,6 @@ terraform {
       "apply",
       "destroy",
       "import",
-      "push",
-      "refresh",
     ]
 
     # Load region and environment vars automatically
@@ -276,7 +279,7 @@ terraform {
 
   # Set lock timeout to avoid flaky failures in CI
   extra_arguments "lock_timeout" {
-    commands  = ["plan", "apply", "destroy", "refresh"]
+    commands  = ["plan", "apply", "destroy", "import"]
     arguments = ["-lock-timeout=10m"]
   }
 
@@ -307,7 +310,8 @@ Child modules inherit this configuration through `include`:
 # live/dev/vpc/terragrunt.hcl
 
 include "root" {
-  path = find_in_parent_folders()
+  path           = find_in_parent_folders()
+  merge_strategy = "deep"
 }
 
 # The source is specific to this module
@@ -320,7 +324,7 @@ inputs = {
 }
 ```
 
-The child's `terraform` block gets merged with the root's. The child provides `source`, while the root provides `extra_arguments` and hooks.
+With `merge_strategy = "deep"`, the child's `terraform` block gets merged with the root's. The child provides `source`, while the root provides `extra_arguments` and hooks.
 
 ## Source with Double Slash
 
