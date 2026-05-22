@@ -14,7 +14,7 @@ This post covers how to set up CLI-driven Terraform Cloud workflows in CI/CD pip
 
 ## CLI-Driven vs. VCS-Driven
 
-Terraform Cloud supports two workflow models:
+Terraform Cloud supports several workflow models, including API-driven runs. This post focuses on two common options:
 
 - **VCS-driven**: Terraform Cloud connects directly to your repo and triggers runs on commits. No CI/CD pipeline needed.
 - **CLI-driven**: Your CI/CD pipeline runs `terraform plan` and `terraform apply`, but the actual execution happens on Terraform Cloud workers.
@@ -23,7 +23,7 @@ CLI-driven gives you more control because you can add custom steps (security sca
 
 ## Setting Up the Backend
 
-Configure your Terraform to use the Terraform Cloud backend:
+Configure Terraform to use the Terraform Cloud integration:
 
 ```hcl
 # backend.tf
@@ -93,6 +93,7 @@ jobs:
       - name: Terraform Plan
         working-directory: infrastructure
         run: |
+          set -o pipefail
           # The plan executes on TFC workers, output streams to CI
           terraform plan -no-color 2>&1 | tee plan-output.txt
 
@@ -159,7 +160,7 @@ jobs:
 
 ## Setting Variables in Terraform Cloud
 
-Terraform Cloud workspaces have their own variable storage. Set them via the API or CLI:
+Terraform Cloud workspaces have their own variable storage. Set them via the API or pass run-specific Terraform variables from the CLI environment:
 
 ```yaml
 # Set workspace variables via API before running
@@ -196,7 +197,7 @@ Or use the `TF_VAR_` environment variable prefix:
   run: terraform plan -no-color
 ```
 
-## Workspace Management with CLI
+## Workspace Management with API
 
 Create and manage workspaces programmatically:
 
@@ -221,8 +222,21 @@ curl -s \
         \"name\": \"${WORKSPACE_NAME}\",
         \"execution-mode\": \"remote\",
         \"auto-apply\": false,
-        \"terraform-version\": \"1.7.4\",
-        \"tag-names\": [\"ephemeral\", \"ci-created\"]
+        \"terraform-version\": \"1.7.4\"
+      },
+      \"relationships\": {
+        \"tag-bindings\": {
+          \"data\": [
+            {
+              \"type\": \"tag-bindings\",
+              \"attributes\": { \"key\": \"lifecycle\", \"value\": \"ephemeral\" }
+            },
+            {
+              \"type\": \"tag-bindings\",
+              \"attributes\": { \"key\": \"source\", \"value\": \"ci-created\" }
+            }
+          ]
+        }
       }
     }
   }"
@@ -236,6 +250,7 @@ Terraform Cloud runs go through several statuses. Your CI pipeline needs to hand
 - name: Terraform Plan with Status Check
   working-directory: infrastructure
   run: |
+    set -o pipefail
     # Start the plan
     terraform plan -no-color 2>&1 | tee plan-output.txt
     EXIT_CODE=$?
@@ -366,4 +381,4 @@ Using Terraform Cloud CLI in CI/CD pipelines gives you:
 4. Speculative plans - non-blocking plans for PRs
 5. Team collaboration - run history, approval workflows in TFC UI
 
-Set it up by configuring the `cloud {}` backend block and providing a TFC API token to your CI pipeline. The Terraform commands work the same way - the difference is where they execute. For setting up the full CI/CD workflow, see [Terraform CI/CD with pull request workflows](https://oneuptime.com/blog/post/2026-02-23-terraform-cicd-pull-request-workflows/view).
+Set it up by configuring the `cloud {}` block and providing a TFC API token to your CI pipeline. The Terraform commands work the same way - the difference is where they execute. For setting up the full CI/CD workflow, see [Terraform CI/CD with pull request workflows](https://oneuptime.com/blog/post/2026-02-23-terraform-cicd-pull-request-workflows/view).
