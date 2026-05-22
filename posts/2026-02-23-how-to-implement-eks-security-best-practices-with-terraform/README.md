@@ -20,7 +20,7 @@ Start with a cluster that is locked down by default:
 resource "aws_eks_cluster" "main" {
   name     = "production"
   role_arn = aws_iam_role.eks_cluster.arn
-  version  = "1.29"
+  version  = "1.33"
 
   vpc_config {
     subnet_ids              = aws_subnet.private[*].id
@@ -101,11 +101,8 @@ resource "aws_eks_node_group" "main" {
     min_size     = 2
   }
 
-  # Use the latest Amazon Linux 2 EKS-optimized AMI
-  ami_type = "AL2_x86_64"
-
-  # Encrypt EBS volumes
-  disk_size = 50
+  # Use the Amazon Linux 2023 EKS-optimized AMI
+  ami_type = "AL2023_x86_64_STANDARD"
 
   # Use launch template for more control
   launch_template {
@@ -140,9 +137,6 @@ resource "aws_launch_template" "eks_nodes" {
     http_tokens                 = "required"  # IMDSv2 only
     http_put_response_hop_limit = 1
   }
-
-  # Use the EKS-optimized AMI
-  image_id = data.aws_ssm_parameter.eks_ami.value
 
   monitoring {
     enabled = true
@@ -237,14 +231,33 @@ Use Calico or Cilium for network policy enforcement:
 
 ```hcl
 # Install Calico for network policy support
+resource "helm_release" "calico_crds" {
+  name       = "calico-crds"
+  repository = "https://docs.tigera.io/calico/charts"
+  chart      = "crd.projectcalico.org.v1"
+  namespace  = "tigera-operator"
+  version    = "v3.32.0"
+
+  create_namespace = true
+}
+
 resource "helm_release" "calico" {
   name       = "calico"
   repository = "https://docs.tigera.io/calico/charts"
   chart      = "tigera-operator"
   namespace  = "tigera-operator"
-  version    = "3.27.0"
+  version    = "v3.32.0"
 
   create_namespace = true
+
+  set = [
+    {
+      name  = "installation.kubernetesProvider"
+      value = "EKS"
+    }
+  ]
+
+  depends_on = [helm_release.calico_crds]
 }
 
 # Default deny-all network policy for a namespace
@@ -279,7 +292,7 @@ resource "kubernetes_network_policy" "order_service" {
       from {
         namespace_selector {
           match_labels = {
-            name = "ingress-nginx"
+            "kubernetes.io/metadata.name" = "ingress-nginx"
           }
         }
       }
@@ -289,14 +302,27 @@ resource "kubernetes_network_policy" "order_service" {
       }
     }
 
-    # Allow egress to DNS and specific services
+    # Allow egress to DNS and HTTPS
     egress {
       # DNS
       to {
-        namespace_selector {}
+        namespace_selector {
+          match_labels = {
+            "kubernetes.io/metadata.name" = "kube-system"
+          }
+        }
+        pod_selector {
+          match_labels = {
+            k8s-app = "kube-dns"
+          }
+        }
       }
       ports {
         protocol = "UDP"
+        port     = 53
+      }
+      ports {
+        protocol = "TCP"
         port     = 53
       }
     }
