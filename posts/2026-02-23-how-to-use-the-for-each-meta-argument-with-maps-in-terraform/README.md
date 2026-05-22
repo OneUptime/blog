@@ -135,7 +135,7 @@ resource "aws_cloudwatch_log_group" "this" {
     app     = 30
     access  = 90
     error   = 365
-    audit   = 2555
+    audit   = 2557
   }
 
   name              = "/aws/${var.project}/${each.key}"
@@ -156,6 +156,7 @@ variable "services" {
     cpu      = number
     memory   = number
     replicas = number
+    public   = optional(bool, false)
   }))
 }
 
@@ -163,7 +164,7 @@ locals {
   # Create a map of target groups from services that need a load balancer
   public_services = {
     for name, svc in var.services : name => svc
-    if lookup(svc, "public", false)
+    if svc.public
   }
 }
 
