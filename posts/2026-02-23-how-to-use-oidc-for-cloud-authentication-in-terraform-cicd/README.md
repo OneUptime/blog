@@ -18,7 +18,7 @@ The flow is straightforward:
 2. The pipeline presents this token to your cloud provider (AWS, GCP, Azure)
 3. The cloud provider validates the token against the CI/CD platform's OIDC endpoint
 4. If valid, the cloud provider issues short-lived credentials for that specific run
-5. The credentials expire when the pipeline run ends
+5. The credentials expire after the short session duration configured by the cloud provider or action
 
 The result is that your pipeline gets temporary credentials scoped to exactly what it needs, with no static secrets to manage or rotate.
 
@@ -34,8 +34,7 @@ resource "aws_iam_openid_connect_provider" "github" {
 
   client_id_list = ["sts.amazonaws.com"]
 
-  # GitHub's OIDC thumbprint
-  thumbprint_list = ["6938fd4d98bab03faadb97b34396831e3780aea1"]
+  # No thumbprint is needed for GitHub; AWS validates GitHub through its trusted CA list.
 }
 ```
 
@@ -196,6 +195,12 @@ resource "google_service_account_iam_member" "github_terraform" {
 
 ```yaml
 # .github/workflows/terraform-gcp.yml
+name: Terraform GCP Deploy
+
+on:
+  push:
+    branches: [main]
+
 permissions:
   id-token: write
   contents: read
@@ -258,13 +263,28 @@ resource "azurerm_role_assignment" "terraform" {
 
 ```yaml
 # GitHub Actions with Azure OIDC
-- name: Azure Login via OIDC
-  uses: azure/login@v2
-  with:
-    client-id: ${{ secrets.AZURE_CLIENT_ID }}
-    tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-    subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-    # No client secret needed - OIDC handles authentication
+name: Terraform Azure Deploy
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Azure Login via OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          # No client secret needed - OIDC handles authentication
 ```
 
 ## OIDC with GitLab CI
@@ -278,18 +298,15 @@ apply:
   image: hashicorp/terraform:1.7.0
   id_tokens:
     GITLAB_OIDC_TOKEN:
-      aud: https://gitlab.com  # The audience claim
+      aud: sts.amazonaws.com  # Must match the audience configured in AWS IAM
+  variables:
+    AWS_ROLE_ARN: arn:aws:iam::123456789012:role/terraform-cicd
+    AWS_WEB_IDENTITY_TOKEN_FILE: $CI_PROJECT_DIR/.aws/gitlab-oidc-token
+    AWS_ROLE_SESSION_NAME: gitlab-ci-$CI_PROJECT_ID-$CI_PIPELINE_ID
   script:
-    # Exchange the OIDC token for AWS credentials
-    - >
-      export $(printf "AWS_ACCESS_KEY_ID=%s AWS_SECRET_ACCESS_KEY=%s AWS_SESSION_TOKEN=%s"
-      $(aws sts assume-role-with-web-identity
-      --role-arn arn:aws:iam::123456789012:role/terraform-cicd
-      --role-session-name gitlab-ci
-      --web-identity-token $GITLAB_OIDC_TOKEN
-      --duration-seconds 3600
-      --query 'Credentials.[AccessKeyId,SecretAccessKey,SessionToken]'
-      --output text))
+    # Let Terraform's AWS provider exchange the OIDC token for AWS credentials
+    - mkdir -p "$(dirname "$AWS_WEB_IDENTITY_TOKEN_FILE")"
+    - printf '%s' "$GITLAB_OIDC_TOKEN" > "$AWS_WEB_IDENTITY_TOKEN_FILE"
 
     - terraform init -no-color
     - terraform apply -no-color -auto-approve
@@ -327,15 +344,16 @@ Condition = {
 
 Common problems and their fixes:
 
-```bash
+```yaml
 # Debug: Print the OIDC token claims (GitHub Actions)
 - name: Debug OIDC token
   run: |
     TOKEN=$(curl -s -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-      "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sts.amazonaws.com")
+      "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sts.amazonaws.com" | jq -r '.value')
 
     # Decode the JWT (without verification, for debugging only)
-    echo $TOKEN | jq -r '.value' | cut -d. -f2 | base64 -d 2>/dev/null | jq .
+    PAYLOAD=$(echo "$TOKEN" | cut -d. -f2 | tr '_-' '/+' | awk '{ while (length($0) % 4) $0 = $0 "="; print }')
+    echo "$PAYLOAD" | base64 -d 2>/dev/null | jq .
 ```
 
 Common issues:
