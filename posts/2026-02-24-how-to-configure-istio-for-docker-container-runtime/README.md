@@ -8,11 +8,11 @@ Description: How to configure and run Istio on Kubernetes clusters using the Doc
 
 ---
 
-While Docker as a Kubernetes container runtime has been deprecated since Kubernetes 1.20 (and removed in 1.24), many clusters are still running Docker through the dockershim compatibility layer or using Docker Desktop for local development. If you're working with Istio on one of these clusters, there are specific things to know about how Docker interacts with Istio's networking and sidecar injection.
+While Kubernetes' built-in dockershim integration for Docker Engine was deprecated in Kubernetes 1.20 and removed in 1.24, some clusters still use Docker Engine through the external cri-dockerd adapter, and Docker Desktop is still common for local development. If you're working with Istio on one of these clusters, there are specific things to know about how Docker interacts with Istio's networking and sidecar injection.
 
 ## Docker Runtime and Istio Compatibility
 
-Istio works with Docker as a container runtime, but it's worth understanding how the pieces fit together. Docker creates containers using its own networking stack, which includes bridge networks and veth pairs. Kubernetes nodes running Docker use the dockershim (or cri-dockerd in newer setups) to translate CRI (Container Runtime Interface) calls into Docker API calls.
+Istio works with Kubernetes clusters that use Docker Engine through a CRI adapter, but it's worth understanding how the pieces fit together. Docker has its own networking stack for standalone containers, including bridge networks and veth pairs, but Kubernetes pod networking is provided by the cluster network plugin and the pod network namespace. Kubernetes nodes running Docker before Kubernetes 1.24 used dockershim; newer setups that still use Docker Engine need cri-dockerd to translate CRI (Container Runtime Interface) calls into Docker API calls.
 
 For Istio, the key interaction point is the network namespace. The sidecar and your application container share the same network namespace within a pod, regardless of the container runtime. Istio's init container sets up iptables rules in this shared namespace to redirect traffic through the Envoy sidecar.
 
@@ -52,13 +52,13 @@ spec:
       holdApplicationUntilProxyStarts: true
 ```
 
-The `holdApplicationUntilProxyStarts` setting is particularly relevant on Docker clusters. Docker sometimes starts containers in a slightly different order than other runtimes, and this flag ensures the application container waits for the sidecar to be ready.
+The `holdApplicationUntilProxyStarts` setting is useful when you want application containers to wait until the sidecar proxy is ready. This startup coordination is an Istio behavior and is not specific to Docker.
 
 ## Iptables Considerations with Docker
 
 Istio's init container modifies the pod's iptables rules to capture traffic. On Docker-based nodes, there's a potential interaction with Docker's own iptables rules on the host.
 
-Docker creates iptables rules on the host for port mapping and inter-container communication. These are separate from the pod-level iptables that Istio modifies, but they can interact in unexpected ways.
+Docker creates iptables or nftables rules on the host for bridge networking, port mapping, and inter-container communication. These are separate from the pod-level iptables that Istio modifies, but host firewall policy can still affect pod traffic.
 
 If you're running into connectivity issues, check both levels:
 
@@ -67,9 +67,9 @@ If you're running into connectivity issues, check both levels:
 
 kubectl exec -it deploy/my-app -c istio-proxy -- iptables -t nat -L -n
 
-# Host-level iptables (on the node)
+# Host-level Docker iptables (on the node)
 # SSH to node first
-iptables -t nat -L -n | grep ISTIO
+iptables -t nat -L -n | grep DOCKER
 ```
 
 ## Docker Desktop and Istio for Local Development
@@ -88,7 +88,7 @@ Docker Desktop is a popular choice for local Kubernetes development. Here's how 
 istioctl install --set profile=demo
 ```
 
-The `demo` profile includes all Istio features but with lower resource requests, making it suitable for local development.
+The `demo` profile is designed to showcase Istio functionality with modest resource requirements, making it suitable for local development.
 
 4. Enable sidecar injection:
 
@@ -120,7 +120,7 @@ To find the container ID:
 docker ps | grep my-app
 ```
 
-You'll see two containers for each Istio-enabled pod: one for your application and one for `istio-proxy`.
+You'll see the application and `istio-proxy` containers for each Istio-enabled pod. Depending on the runtime output, you may also see the pod sandbox (`pause`) container and completed init containers.
 
 ## Network Modes and Istio
 
@@ -148,10 +148,35 @@ Common Istio ports:
 Istio sidecar injection adds images that need to be pulled. On Docker-based clusters, the first pod creation might be slow because Docker needs to pull the Istio proxy image:
 
 ```bash
-# Pre-pull Istio images on all nodes
-kubectl get nodes -o name | while read node; do
-  kubectl debug $node --image=docker.io/istio/proxyv2:1.20.0 -- echo "pulled"
-done
+# Pre-pull the Istio proxy image on all Linux nodes with a temporary DaemonSet
+kubectl apply -f - <<'EOF'
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: istio-proxy-prepull
+spec:
+  selector:
+    matchLabels:
+      app: istio-proxy-prepull
+  template:
+    metadata:
+      labels:
+        app: istio-proxy-prepull
+    spec:
+      nodeSelector:
+        kubernetes.io/os: linux
+      tolerations:
+      - operator: Exists
+      initContainers:
+      - name: proxyv2
+        image: docker.io/istio/proxyv2:<istio-version>
+        command: ["/usr/local/bin/pilot-agent", "version"]
+      containers:
+      - name: pause
+        image: registry.k8s.io/pause:3.10
+EOF
+kubectl rollout status daemonset/istio-proxy-prepull
+kubectl delete daemonset istio-proxy-prepull
 ```
 
 Or configure your Istio installation to use a local registry:
@@ -161,7 +186,7 @@ apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
   hub: my-registry.example.com/istio
-  tag: 1.20.0
+  tag: <istio-version>
 ```
 
 ## Migration from Docker to containerd
@@ -171,7 +196,7 @@ If you're planning to migrate from Docker to containerd (which most clusters sho
 1. Istio doesn't need any configuration changes when you switch runtimes
 2. The sidecar injection works the same way
 3. iptables rules in the pod namespace are runtime-agnostic
-4. The only visible change is the `CONTAINER-RUNTIME` field in node info
+4. The visible runtime change is the `CONTAINER-RUNTIME` field in node info, plus any node-level tooling that depended on Docker-specific commands or paths
 
 To migrate a node:
 
@@ -185,7 +210,7 @@ kubectl drain <node-name> --ignore-daemonsets
 kubectl uncordon <node-name>
 ```
 
-Istio pods on the migrated node will restart with the new runtime without any issues.
+Istio-injected pods should be rescheduled with the new runtime like other Kubernetes pods, but verify them after migration, especially if any node-level tooling depended on Docker-specific commands or paths.
 
 ## Performance Considerations
 
