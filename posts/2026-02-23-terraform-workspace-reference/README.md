@@ -275,14 +275,16 @@ You can add validation to prevent typos or unsupported workspace names:
 
 ```hcl
 locals {
-  valid_workspaces = toset(["dev", "staging", "production"])
+  valid_workspaces = ["dev", "staging", "production"]
+}
 
-  # This will cause an error during plan if the workspace is not valid
-  validate_workspace = (
-    contains(local.valid_workspaces, terraform.workspace)
-    ? true
-    : tobool("ERROR: workspace '${terraform.workspace}' is not valid. Use one of: ${join(", ", local.valid_workspaces)}")
-  )
+output "validated_workspace" {
+  value = terraform.workspace
+
+  precondition {
+    condition     = contains(local.valid_workspaces, terraform.workspace)
+    error_message = "Workspace '${terraform.workspace}' is not valid. Use one of: ${join(", ", local.valid_workspaces)}."
+  }
 }
 ```
 
