@@ -42,18 +42,18 @@ After installation, configure the Terraform versions your organization uses:
 3. Click "Add Terraform"
 4. Enter a name (e.g., "terraform-1.7.5")
 5. Check "Install automatically"
-6. Select the version from the dropdown
+6. Select the version and platform from the dropdown
 
 You can add multiple versions for different projects:
 
 ```text
 Name: terraform-1.7.5
 Install automatically: checked
-Version: 1.7.5
+Version/platform: 1.7.5-linux-amd64
 
 Name: terraform-1.6.6
 Install automatically: checked
-Version: 1.6.6
+Version/platform: 1.6.6-linux-amd64
 ```
 
 The plugin downloads the specified version on the first use and caches it on the agent.
@@ -360,13 +360,13 @@ tool:
           - installSource:
               installers:
                 - terraformInstaller:
-                    id: "1.7.5"
+                    id: "1.7.5-linux-amd64"
       - name: "terraform-1.6.6"
         properties:
           - installSource:
               installers:
                 - terraformInstaller:
-                    id: "1.6.6"
+                    id: "1.6.6-linux-amd64"
 ```
 
 This ensures your Terraform tool configuration is version controlled and reproducible across Jenkins instances.
@@ -377,7 +377,7 @@ This ensures your Terraform tool configuration is version controlled and reprodu
 Make sure the `tools` block or `tool` step references the exact name you configured in Global Tool Configuration. Names are case-sensitive.
 
 **Issue: Plugin does not install the expected version**
-Check the agent's filesystem for cached installations. The plugin caches downloads at `~/.jenkins/tools/`. Clear the cache if a corrupted download is causing issues.
+Check the agent's filesystem for cached installations. Jenkins stores tool installations under its configured tool directory for the controller or agent, commonly under `$JENKINS_HOME/tools` on the controller or under the agent's remote root. Clear the cached tool installation if a corrupted download is causing issues.
 
 **Issue: Different agents have different versions**
 The plugin installs per-agent. If an agent does not have the version cached, it will download it on first use. This may cause the first build on a new agent to be slower.
