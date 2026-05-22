@@ -8,7 +8,7 @@ Description: Implement secure communication between microservices using Istio's 
 
 ---
 
-One of the strongest reasons to use Istio is its security model. Out of the box, you get mutual TLS between services, fine-grained authorization policies, and automatic certificate rotation. Your application code doesn't need to know about any of it. Here's how to build a properly secured service mesh from the ground up.
+One of the strongest reasons to use Istio is its security model. Out of the box, Istio can automatically use mutual TLS between meshed services, and it gives you fine-grained authorization policies and automatic certificate rotation. Your application code doesn't need to know about any of it. Here's how to build a properly secured service mesh from the ground up.
 
 ## How Istio Security Works
 
@@ -23,7 +23,7 @@ The sidecar proxy handles all of this transparently. Your application sends plai
 
 ## Step 1: Enable Strict mTLS
 
-By default, Istio uses "permissive" mode, which accepts both plain text and mTLS connections. For production, switch to strict mode:
+By default, Istio sidecar mode automatically sends mTLS between workloads with proxies, but workloads can still accept plain text connections unless you configure strict peer authentication. For production, switch to strict mode:
 
 ```yaml
 # Mesh-wide strict mTLS
@@ -77,11 +77,11 @@ spec:
 Verify mTLS is working:
 
 ```bash
-# Check mTLS status for all services
-istioctl proxy-config endpoints deploy/my-service -n default | grep STRICT
+# Check endpoint metadata for tlsMode: istio
+istioctl proxy-config endpoints deploy/my-service -n default -o json | grep '"tlsMode": "istio"'
 
-# Verify a specific connection
-istioctl authn tls-check my-service.default.svc.cluster.local
+# Inspect the pod, services, and policies that affect the workload
+istioctl experimental describe pod my-service-pod.default
 
 # Check certificates
 istioctl proxy-config secret deploy/my-service -n default
