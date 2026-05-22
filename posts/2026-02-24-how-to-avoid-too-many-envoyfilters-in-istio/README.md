@@ -66,11 +66,10 @@ spec:
       patch:
         operation: MERGE
         value:
-          route:
-            response_headers_to_add:
-              - header:
-                  key: X-Frame-Options
-                  value: DENY
+          response_headers_to_add:
+            - header:
+                key: X-Frame-Options
+                value: DENY
 
 ---
 # GOOD: VirtualService for response headers
@@ -95,29 +94,10 @@ spec:
 
 ### Rate Limiting
 
-If you are using EnvoyFilters for local rate limiting, consider using the Istio Telemetry API or an external rate limiting service:
+If you are using EnvoyFilters for local or global rate limiting, be aware that Istio's documented Envoy rate limiting examples still use EnvoyFilter. If you only need overload protection, use DestinationRule circuit breakers instead:
 
 ```yaml
-# Instead of an EnvoyFilter, use a dedicated rate limiting service
-apiVersion: networking.istio.io/v1
-kind: VirtualService
-metadata:
-  name: api
-spec:
-  hosts:
-    - api
-  http:
-    - route:
-        - destination:
-            host: api
-      timeout: 5s
-      retries:
-        attempts: 2
-```
-
-For global rate limiting, deploy an external rate limiter and reference it through DestinationRule circuit breakers:
-
-```yaml
+# This is circuit breaking, not request rate limiting.
 apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
@@ -131,6 +111,8 @@ spec:
         http2MaxRequests: 1000
         maxRequestsPerConnection: 50
 ```
+
+For true request rate limiting, consider enforcing quotas in the application, at an API gateway, or through a dedicated external rate limiting service. If you must use Envoy's local or global rate limit filters in the sidecar or gateway, keep those EnvoyFilters scoped and tested carefully.
 
 ### Custom Access Logging
 
@@ -171,9 +153,9 @@ spec:
             metric: REQUEST_COUNT
             mode: CLIENT_AND_SERVER
           tagOverrides:
-            custom_tag:
+            request_host:
               operation: UPSERT
-              value: "request.headers['x-custom-header']"
+              value: "request.host"
 ```
 
 ## When EnvoyFilters Are Justified
@@ -223,9 +205,9 @@ spec:
               end
 ```
 
-### Pin to Specific Proxy Versions
+### Document Specific Proxy Versions
 
-Add a comment documenting which Envoy version this was tested against:
+Add a comment documenting which Istio proxy version this was tested against. If the patch is version-specific, use `match.proxy.proxyVersion` to limit where it applies:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -244,6 +226,8 @@ spec:
     - applyTo: CLUSTER
       match:
         context: SIDECAR_OUTBOUND
+        proxy:
+          proxyVersion: '^1\.28\..*'
       patch:
         operation: MERGE
         value:
