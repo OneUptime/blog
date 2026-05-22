@@ -21,13 +21,13 @@ The most frequent public access misconfigurations in AWS include:
 - ECS services with public IPs in public subnets
 - Redshift clusters accessible from the internet
 
-Let us write policies to address each of these.
+Let us write policies to address several of these.
 
 ## Restricting S3 Public Access
 
 AWS has made significant improvements with S3 Block Public Access settings. Your policy should enforce these:
 
-```python
+```sentinel
 # restrict-s3-public-access.sentinel
 
 # Prevents S3 buckets from having public access
@@ -74,11 +74,29 @@ validate_public_access_block = func(block) {
 }
 
 # If buckets are being created, ensure public access blocks exist
+bucket_has_public_access_block = func(bucket) {
+    bucket_name = bucket.change.after.bucket else null
+
+    if bucket_name is null {
+        print(bucket.address, "- bucket name is unknown, cannot match public access block")
+        return false
+    }
+
+    matching_blocks = filter s3_public_access_blocks as _, block {
+        (block.change.after.bucket else null) is bucket_name
+    }
+
+    if length(matching_blocks) is 0 {
+        print(bucket.address, "- must have an aws_s3_bucket_public_access_block")
+        return false
+    }
+
+    return true
+}
+
 buckets_have_blocks = rule {
-    if length(s3_buckets) > 0 {
-        length(s3_public_access_blocks) >= length(s3_buckets)
-    } else {
-        true
+    all s3_buckets as _, bucket {
+        bucket_has_public_access_block(bucket)
     }
 }
 
@@ -96,7 +114,7 @@ main = rule {
 
 ### Blocking Public ACLs on Buckets
 
-```python
+```sentinel
 import "tfplan/v2" as tfplan
 
 # Disallowed ACL values
@@ -128,7 +146,7 @@ main = rule {
 
 Open security group rules are perhaps the single most dangerous misconfiguration:
 
-```python
+```sentinel
 # restrict-security-groups.sentinel
 # Prevents overly permissive security group rules
 
@@ -143,6 +161,12 @@ security_groups = filter tfplan.resource_changes as _, rc {
 # Get standalone security group rules
 sg_rules = filter tfplan.resource_changes as _, rc {
     rc.type is "aws_security_group_rule" and
+    rc.change.actions contains "create"
+}
+
+# Get current VPC security group ingress rules
+vpc_sg_ingress_rules = filter tfplan.resource_changes as _, rc {
+    rc.type is "aws_vpc_security_group_ingress_rule" and
     rc.change.actions contains "create"
 }
 
@@ -164,16 +188,16 @@ validate_inline_rules = func(sg) {
             to = rule.to_port
 
             # Block all-ports open
-            if from is 0 and to is 65535 {
+            if rule.protocol in ["-1", "all"] or (from is 0 and to is 65535) {
                 print(sg.address, "- ingress rule allows all ports from 0.0.0.0/0")
                 valid = false
-            }
-
-            # Block restricted ports
-            for restricted_ports as port {
-                if from <= port and to >= port {
-                    print(sg.address, "- port", port, "is open to 0.0.0.0/0")
-                    valid = false
+            } else {
+                # Block restricted ports
+                for restricted_ports as port {
+                    if from <= port and to >= port {
+                        print(sg.address, "- port", port, "is open to 0.0.0.0/0")
+                        valid = false
+                    }
                 }
             }
         }
@@ -197,9 +221,41 @@ validate_sg_rule = func(rule) {
     to = rule.change.after.to_port
 
     # Block all-ports open
-    if from is 0 and to is 65535 {
+    if rule.change.after.protocol in ["-1", "all"] or (from is 0 and to is 65535) {
         print(rule.address, "- allows all ports from 0.0.0.0/0")
         return false
+    }
+
+    # Block restricted ports
+    for restricted_ports as port {
+        if from <= port and to >= port {
+            print(rule.address, "- port", port, "is open to 0.0.0.0/0")
+            return false
+        }
+    }
+
+    return true
+}
+
+# Check current VPC security group ingress rules
+validate_vpc_sg_ingress_rule = func(rule) {
+    if rule.change.after.cidr_ipv4 is not "0.0.0.0/0" {
+        return true
+    }
+
+    protocol = rule.change.after.ip_protocol
+
+    # Block all-ports open
+    if protocol is "-1" {
+        print(rule.address, "- allows all ports from 0.0.0.0/0")
+        return false
+    }
+
+    from = rule.change.after.from_port else null
+    to = rule.change.after.to_port else null
+
+    if from is null or to is null {
+        return true
     }
 
     # Block restricted ports
@@ -225,8 +281,14 @@ standalone_rules_valid = rule {
     }
 }
 
+vpc_ingress_rules_valid = rule {
+    all vpc_sg_ingress_rules as _, r {
+        validate_vpc_sg_ingress_rule(r)
+    }
+}
+
 main = rule {
-    inline_rules_valid and standalone_rules_valid
+    inline_rules_valid and standalone_rules_valid and vpc_ingress_rules_valid
 }
 ```
 
@@ -234,7 +296,7 @@ main = rule {
 
 RDS instances should never be publicly accessible in most organizations:
 
-```python
+```sentinel
 import "tfplan/v2" as tfplan
 
 # Get RDS instances
@@ -243,9 +305,9 @@ rds_instances = filter tfplan.resource_changes as _, rc {
     (rc.change.actions contains "create" or rc.change.actions contains "update")
 }
 
-# Get RDS clusters
-rds_clusters = filter tfplan.resource_changes as _, rc {
-    rc.type is "aws_rds_cluster" and
+# Get RDS cluster instances
+rds_cluster_instances = filter tfplan.resource_changes as _, rc {
+    rc.type is "aws_rds_cluster_instance" and
     (rc.change.actions contains "create" or rc.change.actions contains "update")
 }
 
@@ -254,6 +316,14 @@ no_public_rds = rule {
     all rds_instances as address, db {
         if db.change.after.publicly_accessible is true {
             print(address, "- RDS instances must not be publicly accessible")
+            false
+        } else {
+            true
+        }
+    } and
+    all rds_cluster_instances as address, db {
+        if db.change.after.publicly_accessible is true {
+            print(address, "- RDS cluster instances must not be publicly accessible")
             false
         } else {
             true
@@ -268,7 +338,7 @@ main = rule {
 
 ## Preventing Public Elasticsearch/OpenSearch Domains
 
-```python
+```sentinel
 import "tfplan/v2" as tfplan
 
 # Get Elasticsearch domains
@@ -296,7 +366,7 @@ main = rule {
 
 Sometimes the public access issue is not about the resource itself but about where it is deployed:
 
-```python
+```sentinel
 import "tfplan/v2" as tfplan
 
 # Resource types that should not have public IPs
@@ -312,7 +382,7 @@ resources = filter tfplan.resource_changes as _, rc {
 # Check for public IP assignment
 main = rule {
     all resources as address, rc {
-        if rc.change.after.associate_public_ip_address is true {
+        if (rc.change.after.associate_public_ip_address else false) is true {
             print(address, "- should not have a public IP address.",
                   "Use a load balancer or NAT gateway instead.")
             false
@@ -327,7 +397,7 @@ main = rule {
 
 Here is a combined policy that addresses multiple public access vectors:
 
-```python
+```sentinel
 # no-public-access.sentinel
 # Comprehensive policy to prevent public resource exposure
 
@@ -353,13 +423,14 @@ s3_blocked = rule {
 
 # Check RDS public access
 rds = filter tfplan.resource_changes as _, rc {
-    rc.type is "aws_db_instance" and
+    (rc.type is "aws_db_instance" or
+     rc.type is "aws_rds_cluster_instance") and
     (rc.change.actions contains "create" or rc.change.actions contains "update")
 }
 
 rds_private = rule {
     all rds as address, db {
-        db.change.after.publicly_accessible is not true
+        (db.change.after.publicly_accessible else false) is not true
     }
 }
 
@@ -370,11 +441,20 @@ sg_rules = filter tfplan.resource_changes as _, rc {
     rc.change.after.type is "ingress"
 }
 
+vpc_sg_ingress_rules = filter tfplan.resource_changes as _, rc {
+    rc.type is "aws_vpc_security_group_ingress_rule" and
+    rc.change.actions contains "create"
+}
+
 sg_restricted = rule {
     all sg_rules as address, r {
-        not (r.change.after.cidr_blocks contains "0.0.0.0/0" and
-             r.change.after.from_port is 0 and
-             r.change.after.to_port is 65535)
+        not ((r.change.after.cidr_blocks else []) contains "0.0.0.0/0" and
+             (r.change.after.protocol in ["-1", "all"] or
+              (r.change.after.from_port is 0 and r.change.after.to_port is 65535)))
+    } and
+    all vpc_sg_ingress_rules as address, r {
+        not (r.change.after.cidr_ipv4 is "0.0.0.0/0" and
+             r.change.after.ip_protocol is "-1")
     }
 }
 
@@ -386,7 +466,7 @@ ec2 = filter tfplan.resource_changes as _, rc {
 
 no_public_ec2 = rule {
     all ec2 as _, inst {
-        inst.change.after.associate_public_ip_address is not true
+        (inst.change.after.associate_public_ip_address else false) is not true
     }
 }
 
@@ -399,7 +479,7 @@ main = rule {
 
 Some resources legitimately need public access (load balancers, CDN origins, etc.). Handle exceptions explicitly:
 
-```python
+```sentinel
 import "tfplan/v2" as tfplan
 
 # Resources that are allowed to have public access
@@ -419,12 +499,12 @@ check_public = func(resource) {
     after = resource.change.after
 
     # Check various public access attributes
-    if after.publicly_accessible is true {
+    if (after.publicly_accessible else false) is true {
         print(resource.address, "- publicly_accessible must be false")
         return false
     }
 
-    if after.associate_public_ip_address is true {
+    if (after.associate_public_ip_address else false) is true {
         print(resource.address, "- should not have a public IP")
         return false
     }
