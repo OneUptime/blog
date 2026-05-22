@@ -251,7 +251,7 @@ terraform apply destroy-plan
 
 ## Building Safety Into Automated Pipelines
 
-If you must use `-auto-approve`, add safety layers around it:
+If you must run automated applies, add safety layers around them:
 
 ```bash
 #!/bin/bash
@@ -269,8 +269,10 @@ if [ "$CURRENT_WORKSPACE" != "$EXPECTED_WORKSPACE" ]; then
 fi
 
 # Safety check 2: Run plan first and check for issues
+set +e
 terraform plan -out=tfplan -detailed-exitcode
 PLAN_EXIT=$?
+set -e
 
 case $PLAN_EXIT in
   0)
