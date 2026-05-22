@@ -45,9 +45,6 @@ spec:
           limits:
             cpu: 200m
             memory: 128Mi
-        volumeMounts:
-        - name: shared-files
-          mountPath: /var/www/html
       - name: php-fpm
         image: myregistry/shop-api:1.0.0
         resources:
@@ -57,15 +54,9 @@ spec:
           limits:
             cpu: 2000m
             memory: 512Mi
-        volumeMounts:
-        - name: shared-files
-          mountPath: /var/www/html
         env:
         - name: APP_ENV
           value: "production"
-      volumes:
-      - name: shared-files
-        emptyDir: {}
 ```
 
 With Istio, this pod gets a third container - the istio-proxy sidecar. Traffic flows like this: Client -> Envoy Sidecar -> Nginx -> PHP-FPM.
@@ -80,6 +71,10 @@ kind: Deployment
 metadata:
   name: shop-api
 spec:
+  selector:
+    matchLabels:
+      app: shop-api
+      version: v1
   template:
     metadata:
       labels:
@@ -163,6 +158,8 @@ server {
         fastcgi_param HTTP_X_B3_SPANID $http_x_b3_spanid;
         fastcgi_param HTTP_X_B3_PARENTSPANID $http_x_b3_parentspanid;
         fastcgi_param HTTP_X_B3_SAMPLED $http_x_b3_sampled;
+        fastcgi_param HTTP_X_B3_FLAGS $http_x_b3_flags;
+        fastcgi_param HTTP_B3 $http_b3;
         fastcgi_param HTTP_TRACEPARENT $http_traceparent;
         fastcgi_param HTTP_TRACESTATE $http_tracestate;
     }
@@ -179,7 +176,11 @@ For the Nginx-served liveness check and a PHP-based readiness check:
 
 ```php
 <?php
-// routes/api.php (Laravel example)
+// routes/web.php (Laravel example)
+
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Route;
 
 Route::get('/ready', function () {
     try {
@@ -291,14 +292,15 @@ class TraceHeaders
 }
 ```
 
-Register the middleware in your kernel:
+Register the middleware globally in `bootstrap/app.php`:
 
 ```php
-// app/Http/Kernel.php
-protected $middleware = [
-    \App\Http\Middleware\TraceHeaders::class,
-    // ... other middleware
-];
+use App\Http\Middleware\TraceHeaders;
+use Illuminate\Foundation\Configuration\Middleware;
+
+->withMiddleware(function (Middleware $middleware): void {
+    $middleware->append(TraceHeaders::class);
+})
 ```
 
 Create a helper for making HTTP calls with trace headers:
@@ -371,6 +373,12 @@ function callService(string $url): string
     curl_setopt($ch, CURLOPT_HTTPHEADER, getTraceHeaders());
     curl_setopt($ch, CURLOPT_TIMEOUT, 30);
     $response = curl_exec($ch);
+    if ($response === false) {
+        $error = curl_error($ch);
+        curl_close($ch);
+        throw new RuntimeException($error);
+    }
+
     curl_close($ch);
     return $response;
 }
@@ -453,6 +461,9 @@ metadata:
   name: shop-worker
 spec:
   replicas: 2
+  selector:
+    matchLabels:
+      app: shop-worker
   template:
     metadata:
       labels:
