@@ -134,21 +134,21 @@ spec:
   - providers:
     - name: envoy
     filter:
-      expression: "response.code >= 400"
+      expression: "!has(response.code) || response.code >= 400"
 ```
 
-Only log errors. You can combine conditions:
+Only log errors, including entries without a response code such as connection failures. You can combine conditions:
 
 ```yaml
 filter:
-  expression: "response.code >= 500 || response.duration > 1000"
+  expression: '(!has(response.code) || response.code >= 500) || (has(request.duration) && request.duration > duration("1s"))'
 ```
 
 Log only non-health-check requests:
 
 ```yaml
 filter:
-  expression: "request.url_path != '/healthz' && request.url_path != '/readyz'"
+  expression: "!has(request.url_path) || (request.url_path != '/healthz' && request.url_path != '/readyz')"
 ```
 
 ## Per-Namespace and Per-Workload Logging
@@ -178,7 +178,7 @@ spec:
   - providers:
     - name: envoy
     filter:
-      expression: "response.code >= 400"
+      expression: "!has(response.code) || response.code >= 400"
 ```
 
 Target specific workloads:
@@ -259,10 +259,10 @@ kubectl logs <pod-name> -c istio-proxy -f
 
 Access logging has a performance cost. Every request requires serializing log data and writing it out. For high-throughput services, consider:
 
-1. Using JSON encoding (faster than text for structured data)
+1. Using JSON encoding for structured log ingestion
 2. Filtering to only log errors or slow requests
 3. Keeping the log format lean - do not include every possible field
-4. Using the gRPC ALS instead of file logging for better batching
+4. Using the gRPC ALS when you want to stream access logs to a central service
 
 Measure the impact:
 
