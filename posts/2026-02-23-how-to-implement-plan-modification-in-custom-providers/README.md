@@ -8,7 +8,7 @@ Description: Learn how to implement plan modifiers in custom Terraform providers
 
 ---
 
-Plan modification is a powerful feature in Terraform's Plugin Framework that lets you control how attribute values behave during the planning phase. With plan modifiers, you can set default values, mark resources for replacement when certain attributes change, and customize the planned state before Terraform shows it to the user.
+Plan modification is a powerful feature in Terraform's Plugin Framework that lets you control how attribute values behave during the planning phase. With plan modifiers, you can adjust unknown planned values, mark resources for replacement when certain attributes change, and customize the planned state before Terraform shows it to the user.
 
 In this guide, we will explore the different types of plan modifiers available and show you how to implement them effectively in your custom Terraform provider.
 
@@ -18,7 +18,7 @@ When a user runs `terraform plan`, Terraform computes a plan that describes the 
 
 Plan modifiers can do several things:
 
-- Set default values for optional attributes
+- Adjust unknown planned values for optional and computed attributes
 - Mark a resource for replacement when an attribute changes (force new)
 - Compute values that depend on other attributes
 - Suppress unnecessary diffs
@@ -32,9 +32,12 @@ The order of operations is:
 
 1. Configuration parsing
 2. Validation
-3. Plan modification
-4. Plan output to user
-5. Apply (if approved)
+3. Attribute defaults are applied to null configuration values
+4. Computed attributes with null configuration are marked unknown when needed
+5. Attribute plan modifiers run
+6. Resource-level plan modification runs
+7. Plan output to user
+8. Apply (if approved)
 
 ## Built-in Plan Modifiers
 
@@ -42,19 +45,17 @@ The Plugin Framework provides several built-in plan modifiers that cover common 
 
 ### Default Values
 
-One of the most common needs is setting default values for optional attributes:
+Default values are not plan modifiers, but they are applied during the planning process before attribute plan modifiers run. One of the most common needs is setting default values for optional attributes:
 
 ```go
 import (
     "context"
+
+    "github.com/hashicorp/terraform-plugin-framework/resource"
     "github.com/hashicorp/terraform-plugin-framework/resource/schema"
-    "github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
-    "github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
-    "github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
-    "github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
-    "github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
-    "github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
     "github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+    "github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
+    "github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 )
 
 func (r *ServerResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
@@ -221,7 +222,14 @@ func (m conditionalReplaceModifier) MarkdownDescription(ctx context.Context) str
 
 func (m conditionalReplaceModifier) PlanModifyString(ctx context.Context, req planmodifier.StringRequest, resp *planmodifier.StringResponse) {
     // If there is no state (creating for the first time), skip
-    if req.StateValue.IsNull() {
+    if req.State.Raw.IsNull() {
+        return
+    }
+
+    // If either value is null or unknown, there is not enough information
+    // to safely decide whether replacement is required
+    if req.StateValue.IsNull() || req.StateValue.IsUnknown() ||
+        req.PlanValue.IsNull() || req.PlanValue.IsUnknown() {
         return
     }
 
@@ -273,12 +281,18 @@ func (m immutableModifier) MarkdownDescription(ctx context.Context) string {
 
 func (m immutableModifier) PlanModifyString(ctx context.Context, req planmodifier.StringRequest, resp *planmodifier.StringResponse) {
     // If there is no state, this is a create operation - allow any value
-    if req.StateValue.IsNull() {
+    if req.State.Raw.IsNull() {
+        return
+    }
+
+    // If the configured value is null or unknown, there is no known change
+    // to validate during planning
+    if req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() {
         return
     }
 
     // If the config value differs from the state value, report an error
-    if !req.ConfigValue.IsNull() && !req.ConfigValue.Equal(req.StateValue) {
+    if !req.ConfigValue.Equal(req.StateValue) {
         resp.Diagnostics.AddAttributeError(
             req.Path,
             "Immutable Attribute",
@@ -300,7 +314,7 @@ func Immutable() planmodifier.String {
 
 ## Plan Modifiers for Different Attribute Types
 
-The Plugin Framework supports plan modifiers for all attribute types. Each type has its own interface:
+The Plugin Framework supports plan modifiers for attribute types. Each type has its own interface:
 
 ```go
 // String plan modifier
@@ -329,7 +343,7 @@ type ObjectPlanModifier interface {
 }
 ```
 
-Resource-Level Plan Modification
+## Resource-Level Plan Modification
 
 In addition to attribute-level plan modifiers, you can implement resource-level plan modification using the `ModifyPlan` method:
 
@@ -355,7 +369,8 @@ func (r *ServerResource) ModifyPlan(ctx context.Context, req resource.ModifyPlan
     }
 
     // Compute a derived attribute
-    if !plan.Name.IsUnknown() && !plan.Region.IsUnknown() {
+    if !plan.Name.IsNull() && !plan.Name.IsUnknown() &&
+        !plan.Region.IsNull() && !plan.Region.IsUnknown() {
         fqdn := fmt.Sprintf("%s.%s.example.com", plan.Name.ValueString(), plan.Region.ValueString())
         plan.FQDN = types.StringValue(fqdn)
     }
