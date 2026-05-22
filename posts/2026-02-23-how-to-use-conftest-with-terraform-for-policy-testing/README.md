@@ -30,7 +30,7 @@ brew install conftest
 # Linux
 wget https://github.com/open-policy-agent/conftest/releases/latest/download/conftest_Linux_x86_64.tar.gz
 tar xzf conftest_Linux_x86_64.tar.gz
-mv conftest /usr/local/bin/
+sudo mv conftest /usr/local/bin/
 
 # Verify installation
 conftest --version
@@ -63,14 +63,25 @@ Conftest uses the `main` package by default and looks for `deny`, `warn`, and `v
 # policy/security.rego
 package main
 
+import future.keywords.if
+import future.keywords.contains
+
+bucket_has_encryption(bucket_name) if {
+    encryption := input.resource_changes[_]
+    encryption.type == "aws_s3_bucket_server_side_encryption_configuration"
+    encryption.change.actions[_] != "delete"
+    encryption.change.after.bucket == bucket_name
+}
+
 # Deny S3 buckets without encryption
-deny[msg] {
+deny contains msg if {
     resource := input.resource_changes[_]
     resource.type == "aws_s3_bucket"
     resource.change.actions[_] == "create"
 
-    # Check for missing encryption configuration
-    not resource.change.after.server_side_encryption_configuration
+    # Check for the standalone encryption configuration resource
+    bucket_name := resource.change.after.bucket
+    not bucket_has_encryption(bucket_name)
 
     msg := sprintf(
         "S3 bucket '%s' must have server-side encryption configured",
@@ -79,7 +90,7 @@ deny[msg] {
 }
 
 # Warn about resources missing tags (non-blocking)
-warn[msg] {
+warn contains msg if {
     resource := input.resource_changes[_]
     resource.change.actions[_] != "delete"
 
@@ -118,13 +129,16 @@ policy/
     limits.rego
 ```
 
-Use namespaces to match the directory structure:
+Use namespaces to match the directory structure. When you do this, run Conftest with `--all-namespaces` or `--namespace` so it evaluates packages outside the default `main` namespace:
 
 ```rego
 # policy/security/encryption.rego
 package main.security.encryption
 
-deny[msg] {
+import future.keywords.if
+import future.keywords.contains
+
+deny contains msg if {
     resource := input.resource_changes[_]
     resource.type == "aws_ebs_volume"
     resource.change.actions[_] != "delete"
@@ -138,8 +152,11 @@ deny[msg] {
 # policy/security/network.rego
 package main.security.network
 
+import future.keywords.if
+import future.keywords.contains
+
 # No security groups allowing all inbound traffic
-deny[msg] {
+deny contains msg if {
     resource := input.resource_changes[_]
     resource.type == "aws_security_group"
     resource.change.actions[_] != "delete"
@@ -162,13 +179,13 @@ Run specific policy directories:
 
 ```bash
 # Run only security policies
-conftest test plan.json --policy policy/security/
+conftest test plan.json --policy policy/security/ --all-namespaces
 
 # Run multiple policy directories
-conftest test plan.json --policy policy/security/ --policy policy/compliance/
+conftest test plan.json --policy policy/security/ --policy policy/compliance/ --all-namespaces
 
 # Run all policies
-conftest test plan.json --policy policy/
+conftest test plan.json --policy policy/ --all-namespaces
 ```
 
 ## Cost Control Policies
@@ -178,6 +195,9 @@ Conftest is great for preventing expensive resource choices:
 ```rego
 # policy/cost/instance_types.rego
 package main.cost
+
+import future.keywords.if
+import future.keywords.contains
 
 # Maximum allowed instance type sizes by family
 max_instance_size := {
@@ -194,7 +214,7 @@ size_order := {
     "8xlarge": 9, "12xlarge": 10, "16xlarge": 11, "24xlarge": 12
 }
 
-deny[msg] {
+deny contains msg if {
     resource := input.resource_changes[_]
     resource.type == "aws_instance"
     resource.change.actions[_] != "delete"
@@ -215,7 +235,7 @@ deny[msg] {
 }
 
 # Warn about expensive instance types
-warn[msg] {
+warn contains msg if {
     resource := input.resource_changes[_]
     resource.type == "aws_instance"
     resource.change.actions[_] != "delete"
@@ -262,7 +282,7 @@ jobs:
           LATEST=$(curl -s https://api.github.com/repos/open-policy-agent/conftest/releases/latest | jq -r '.tag_name' | sed 's/v//')
           wget "https://github.com/open-policy-agent/conftest/releases/download/v${LATEST}/conftest_${LATEST}_Linux_x86_64.tar.gz"
           tar xzf "conftest_${LATEST}_Linux_x86_64.tar.gz"
-          mv conftest /usr/local/bin/
+          sudo mv conftest /usr/local/bin/
 
       - name: Generate Terraform Plan
         run: |
@@ -271,7 +291,9 @@ jobs:
           terraform show -json tfplan > plan.json
 
       - name: Run Policy Tests
-        run: conftest test plan.json --output json | tee results.json
+        run: |
+          set -o pipefail
+          conftest test plan.json --output json | tee results.json
 
       - name: Comment on PR with results
         if: always()
