@@ -132,6 +132,7 @@ import (
 
     "github.com/hashicorp/terraform-plugin-framework/datasource"
     "github.com/hashicorp/terraform-plugin-framework/provider"
+    "github.com/hashicorp/terraform-plugin-framework/provider/schema"
     "github.com/hashicorp/terraform-plugin-framework/resource"
 )
 
@@ -152,6 +153,21 @@ func (p *ExampleProvider) Metadata(ctx context.Context, req provider.MetadataReq
     resp.TypeName = "example"
     resp.Version = p.version
 }
+
+func (p *ExampleProvider) Schema(ctx context.Context, req provider.SchemaRequest, resp *provider.SchemaResponse) {
+    resp.Schema = schema.Schema{}
+}
+
+func (p *ExampleProvider) Configure(ctx context.Context, req provider.ConfigureRequest, resp *provider.ConfigureResponse) {
+}
+
+func (p *ExampleProvider) DataSources(ctx context.Context) []func() datasource.DataSource {
+    return nil
+}
+
+func (p *ExampleProvider) Resources(ctx context.Context) []func() resource.Resource {
+    return nil
+}
 ```
 
 ## Version Constraints in Terraform
@@ -163,18 +179,23 @@ terraform {
   required_providers {
     example = {
       source  = "example/example"
-      # Different constraint styles
-      version = "1.2.3"       # Exact version
-      version = ">= 1.2.0"   # Minimum version
-      version = "~> 1.2"     # Compatible with 1.2.x (>= 1.2.0, < 2.0.0)
-      version = "~> 1.2.3"   # Compatible with 1.2.x (>= 1.2.3, < 1.3.0)
-      version = ">= 1.0, < 2.0" # Range
+      version = "~> 1.2"
     }
   }
 }
 ```
 
-The `~>` operator (pessimistic constraint) is the most commonly used and recommended approach. It allows patch and minor updates but prevents major version changes.
+Different constraint styles include:
+
+```hcl
+version = "1.2.3"          # Exact version
+version = ">= 1.2.0"       # Minimum version
+version = "~> 1.2"         # Compatible with 1.x (>= 1.2.0, < 2.0.0)
+version = "~> 1.2.3"       # Compatible with 1.2.x (>= 1.2.3, < 1.3.0)
+version = ">= 1.0, < 2.0"  # Range
+```
+
+The `~>` operator (pessimistic constraint) is the most commonly used and recommended approach for root modules. Depending on how many version components you specify, it can allow patch-only updates or both minor and patch updates while preventing unwanted larger upgrades.
 
 ## Pre-release Versions
 
@@ -237,7 +258,7 @@ When planning to remove features in a future major version, deprecate them first
 ```go
 "legacy_field": schema.StringAttribute{
     Optional:           true,
-    DeprecatedMessage:  "Use 'new_field' instead. This attribute will be removed in v3.0.0.",
+    DeprecationMessage: "Use 'new_field' instead. This attribute will be removed in v3.0.0.",
     Description:        "Deprecated: Use new_field instead.",
 },
 ```
