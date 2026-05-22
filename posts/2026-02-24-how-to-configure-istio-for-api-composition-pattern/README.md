@@ -166,6 +166,27 @@ spec:
 apiVersion: networking.istio.io/v1beta1
 kind: VirtualService
 metadata:
+  name: inventory-service
+  namespace: production
+spec:
+  hosts:
+  - inventory-service
+  http:
+  - match:
+    - sourceLabels:
+        app: product-composer
+    route:
+    - destination:
+        host: inventory-service
+    timeout: 2s
+    retries:
+      attempts: 1
+      perTryTimeout: 1s
+      retryOn: 5xx,connect-failure
+---
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
   name: recommendation-service
   namespace: production
 spec:
@@ -352,20 +373,20 @@ Track the overall composition latency and per-service contribution:
 
 ```text
 # Overall composition latency
-histogram_quantile(0.95, sum(rate(istio_request_duration_milliseconds_bucket{destination_service="product-composer.production.svc.cluster.local"}[5m])) by (le))
+histogram_quantile(0.95, sum(rate(istio_request_duration_milliseconds_bucket{reporter="destination",destination_service="product-composer.production.svc.cluster.local"}[5m])) by (le))
 
 # Per-service latency from the composer
-histogram_quantile(0.95, sum(rate(istio_request_duration_milliseconds_bucket{source_workload="product-composer"}[5m])) by (le, destination_service))
+histogram_quantile(0.95, sum(rate(istio_request_duration_milliseconds_bucket{reporter="source",source_workload="product-composer"}[5m])) by (le, destination_service))
 
 # Per-service error rate from the composer
-sum(rate(istio_requests_total{source_workload="product-composer",response_code=~"5.*"}[5m])) by (destination_service)
+sum(rate(istio_requests_total{reporter="source",source_workload="product-composer",response_code=~"5.*"}[5m])) by (destination_service)
 ```
 
 This shows you which downstream service is the bottleneck. If the recommendation service is consistently the slowest, either optimize it or reduce its timeout further.
 
 ## Scaling the Composer
 
-The composer is CPU-bound (making many concurrent HTTP calls) and memory-bound (holding multiple response payloads). Scale it based on request rate:
+The composer is network-I/O-heavy, and it can become CPU-bound when it processes many concurrent HTTP responses or memory-bound when it holds multiple response payloads. The simple HPA below scales on CPU utilization; for direct request-rate scaling, use a custom or external metric:
 
 ```yaml
 apiVersion: autoscaling/v2
