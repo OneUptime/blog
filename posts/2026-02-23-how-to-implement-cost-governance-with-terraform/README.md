@@ -75,7 +75,7 @@ resource "aws_budgets_budget" "team_budgets" {
   # Filter by team tag
   cost_filter {
     name   = "TagKeyValue"
-    values = ["user:Team$${each.key}"]
+    values = [format("user:Team$%s", each.key)]
   }
 
   notification {
@@ -124,7 +124,6 @@ resource "aws_config_config_rule" "required_tags" {
       "AWS::EC2::Instance",
       "AWS::RDS::DBInstance",
       "AWS::S3::Bucket",
-      "AWS::Lambda::Function",
       "AWS::ElasticLoadBalancingV2::LoadBalancer",
     ]
   }
@@ -133,7 +132,7 @@ resource "aws_config_config_rule" "required_tags" {
 # Tag policy at the AWS Organization level
 resource "aws_organizations_policy" "tagging" {
   name        = "required-tagging-policy"
-  description = "Enforce required tags across the organization"
+  description = "Standardize required tags across the organization"
   type        = "TAG_POLICY"
 
   content = jsonencode({
@@ -141,6 +140,13 @@ resource "aws_organizations_policy" "tagging" {
       Environment = {
         tag_key = {
           "@@assign" = "Environment"
+        }
+        report_required_tag_for = {
+          "@@assign" = [
+            "ec2:instance",
+            "rds:db",
+            "s3:bucket"
+          ]
         }
         tag_value = {
           "@@assign" = ["development", "staging", "production"]
@@ -156,6 +162,13 @@ resource "aws_organizations_policy" "tagging" {
       CostCenter = {
         tag_key = {
           "@@assign" = "CostCenter"
+        }
+        report_required_tag_for = {
+          "@@assign" = [
+            "ec2:instance",
+            "rds:db",
+            "s3:bucket"
+          ]
         }
         enforced_for = {
           "@@assign" = [
