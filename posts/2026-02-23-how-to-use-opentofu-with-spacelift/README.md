@@ -47,7 +47,7 @@ A "stack" in Spacelift is a managed instance of an IaC project. To create one th
 
 1. Click **Create Stack** in the dashboard
 2. Select your repository and branch
-3. Under the **Backend** section, choose **OpenTofu** as the tool
+3. In the **Choose vendor** step, set the workflow tool to **OpenTofu**
 4. Specify the OpenTofu version you want to use
 
 You can also create stacks programmatically using the Spacelift Terraform provider:
@@ -70,12 +70,13 @@ resource "spacelift_stack" "infrastructure" {
   description = "Production infrastructure managed with OpenTofu"
 
   # Repository settings
-  repository   = "my-org/infrastructure"
+  repository   = "infrastructure"
   branch       = "main"
   project_root = "environments/production"
 
   # Use OpenTofu instead of Terraform
-  opentofu_version = "1.6.2"
+  terraform_workflow_tool = "OPEN_TOFU"
+  terraform_version       = "1.11.6"
 
   # Enable auto-deploy on push to main
   autodeploy = true
@@ -142,7 +143,7 @@ resource "spacelift_environment_variable" "database_password" {
   stack_id   = spacelift_stack.infrastructure.id
   name       = "TF_VAR_database_password"
   value      = var.database_password
-  write_only = true  # Sensitive value, not visible in UI
+  write_only = true  # Hidden in Spacelift UI; value is still stored in Terraform state
 }
 
 # Mount a file (e.g., a backend configuration)
@@ -192,7 +193,8 @@ package spacelift
 
 # Only trigger runs when .tf files change
 track {
-  input.push.affected_files[_] == glob.match("**/*.tf", [], _)
+  some i
+  glob.match("**/*.tf", ["/"], input.push.affected_files[i])
 }
 
 # Ignore changes to documentation
@@ -201,7 +203,8 @@ ignore {
 }
 
 any_tf_files_changed {
-  input.push.affected_files[_] == glob.match("**/*.tf", [], _)
+  some i
+  glob.match("**/*.tf", ["/"], input.push.affected_files[i])
 }
 ```
 
@@ -248,18 +251,22 @@ In larger setups, you often have stacks that depend on outputs from other stacks
 ```hcl
 # Networking stack
 resource "spacelift_stack" "networking" {
-  name             = "networking"
-  repository       = "my-org/infrastructure"
-  project_root     = "modules/networking"
-  opentofu_version = "1.6.2"
+  name                    = "networking"
+  repository              = "infrastructure"
+  branch                  = "main"
+  project_root            = "modules/networking"
+  terraform_workflow_tool = "OPEN_TOFU"
+  terraform_version       = "1.11.6"
 }
 
 # Application stack depends on networking
 resource "spacelift_stack" "application" {
-  name             = "application"
-  repository       = "my-org/infrastructure"
-  project_root     = "modules/application"
-  opentofu_version = "1.6.2"
+  name                    = "application"
+  repository              = "infrastructure"
+  branch                  = "main"
+  project_root            = "modules/application"
+  terraform_workflow_tool = "OPEN_TOFU"
+  terraform_version       = "1.11.6"
 }
 
 # Define the dependency
