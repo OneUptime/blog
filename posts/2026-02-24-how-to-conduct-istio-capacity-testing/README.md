@@ -28,6 +28,9 @@ If you cannot replicate your full production environment, focus on matching the 
 Use a synthetic workload that generates controllable traffic patterns. The `fortio` load testing tool, originally developed at Google for Istio testing, is an excellent choice:
 
 ```bash
+# Create the test namespace if it does not already exist
+kubectl create namespace test --dry-run=client -o yaml | kubectl apply -f -
+
 # Deploy fortio server (acts as an upstream service)
 
 kubectl apply -f - <<EOF
@@ -110,10 +113,10 @@ EOF
 
 ## Creating Realistic Mesh Topology
 
-Real meshes have multiple services with dependencies. Create a chain of services to test multi-hop scenarios:
+Real meshes have multiple services with dependencies. Create multiple services to test multi-service scenarios:
 
 ```bash
-# Deploy a service chain: client -> frontend -> backend -> database-mock
+# Deploy multiple services for a more representative topology
 for svc in frontend backend database-mock; do
 kubectl apply -f - <<EOF
 apiVersion: apps/v1
@@ -304,11 +307,11 @@ sum(rate(container_cpu_usage_seconds_total{container="istio-proxy", namespace="t
 container_memory_working_set_bytes{container="istio-proxy", namespace="test"}
 
 # Request success rate
-sum(rate(istio_requests_total{namespace="test", response_code="200"}[1m]))
-/ sum(rate(istio_requests_total{namespace="test"}[1m]))
+sum(rate(istio_requests_total{destination_service_namespace="test", response_code="200"}[1m]))
+/ sum(rate(istio_requests_total{destination_service_namespace="test"}[1m]))
 
 # P99 latency
-histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{namespace="test"}[1m])) by (le))
+histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{destination_service_namespace="test"}[1m])) by (le))
 ```
 
 ## Analyzing Results
@@ -338,10 +341,11 @@ Look for these common bottlenecks:
 
 ```bash
 # Check for CPU throttling
-kubectl exec <pod> -c istio-proxy -- curl -s localhost:15000/stats | grep "cfs_throttled"
+kubectl exec <pod> -c istio-proxy -- sh -c \
+  'cat /sys/fs/cgroup/cpu.stat 2>/dev/null || cat /sys/fs/cgroup/cpu/cpu.stat'
 
 # Check Envoy connection stats
-kubectl exec <pod> -c istio-proxy -- curl -s localhost:15000/stats | grep "upstream_cx"
+kubectl exec <pod> -c istio-proxy -- pilot-agent request GET stats | grep "upstream_cx"
 ```
 
 ## Documenting Capacity Limits
