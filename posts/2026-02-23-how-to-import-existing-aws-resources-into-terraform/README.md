@@ -117,17 +117,17 @@ resource "aws_security_group" "web" {
 
 import {
   to = aws_vpc.main
-  id = "vpc-0abcd1234efgh5678"
+  id = "vpc-0abcd1234ef567890"
 }
 
 import {
   to = aws_subnet.public
-  id = "subnet-0abcd1234efgh5678"
+  id = "subnet-0abcd1234ef567890"
 }
 
 import {
   to = aws_security_group.web
-  id = "sg-0abcd1234efgh5678"
+  id = "sg-0abcd1234ef567890"
 }
 ```
 
