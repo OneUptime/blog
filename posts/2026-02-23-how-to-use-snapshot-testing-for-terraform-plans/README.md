@@ -52,7 +52,8 @@ set -e
 
 SNAPSHOT_DIR="tests/snapshots"
 MODULE_DIR="${1:-.}"
-SNAPSHOT_FILE="${SNAPSHOT_DIR}/$(basename $MODULE_DIR)-plan.snapshot.json"
+ROOT_DIR="$(pwd)"
+SNAPSHOT_FILE="${ROOT_DIR}/${SNAPSHOT_DIR}/$(basename "$MODULE_DIR")-plan.snapshot.json"
 
 # Create snapshot directory if it doesn't exist
 mkdir -p "$SNAPSHOT_DIR"
@@ -67,7 +68,7 @@ terraform show -json tfplan > /tmp/current-plan.json
 # This makes snapshots stable across runs
 jq '{
   resource_changes: [
-    .resource_changes[] | {
+    (.resource_changes // [])[] | {
       address: .address,
       type: .type,
       change: {
@@ -165,8 +166,8 @@ func TestPlanSnapshot(t *testing.T) {
     // Check if snapshot file exists
     if _, err := os.Stat(snapshotFile); os.IsNotExist(err) {
         // Create initial snapshot
-        os.MkdirAll(filepath.Dir(snapshotFile), 0755)
-        os.WriteFile(snapshotFile, currentJSON, 0644)
+        require.NoError(t, os.MkdirAll(filepath.Dir(snapshotFile), 0755))
+        require.NoError(t, os.WriteFile(snapshotFile, currentJSON, 0644))
         t.Log("Created initial snapshot. Review and commit it.")
         return
     }
@@ -182,7 +183,13 @@ func TestPlanSnapshot(t *testing.T) {
 
 // extractSnapshot pulls out the stable parts of a plan
 func extractSnapshot(plan map[string]interface{}) PlanSnapshot {
-    snapshot := PlanSnapshot{}
+    snapshot := PlanSnapshot{
+        OutputChanges: map[string]interface{}{},
+    }
+
+    if outputs, ok := plan["output_changes"].(map[string]interface{}); ok {
+        snapshot.OutputChanges = outputs
+    }
 
     if changes, ok := plan["resource_changes"].([]interface{}); ok {
         for _, c := range changes {
@@ -208,7 +215,7 @@ func extractSnapshot(plan map[string]interface{}) PlanSnapshot {
 
 ## Using the Native Test Framework for Snapshot-Like Tests
 
-While Terraform's native test framework does not have built-in snapshot support, you can approximate it by asserting on the number and types of resources in a plan.
+While Terraform's native test framework does not have built-in snapshot support or expose the full plan JSON to assertions, you can approximate it by asserting on the planned values of resources and outputs.
 
 ```hcl
 # tests/snapshot.tftest.hcl
@@ -219,35 +226,38 @@ variables {
   availability_zones = ["us-east-1a", "us-east-1b"]
 }
 
-# Verify the plan creates the expected number of resources
-run "resource_count_check" {
+# Verify the plan produces the expected VPC settings
+run "vpc_check" {
   command = plan
 
-  # If someone adds or removes resources, this fails
-  # Acts as a lightweight snapshot - you know the resource footprint
   assert {
-    condition     = length(plan.resource_changes) == 7
-    error_message = "Expected 7 resource changes in plan, got ${length(plan.resource_changes)}"
+    condition     = aws_vpc.main.cidr_block == "10.0.0.0/16"
+    error_message = "VPC CIDR block changed unexpectedly"
+  }
+
+  assert {
+    condition     = aws_vpc.main.tags["Environment"] == "dev"
+    error_message = "VPC environment tag changed unexpectedly"
   }
 }
 
-# Verify specific resources are in the plan
-run "expected_resources_present" {
+# Verify subnet layout matches the expected footprint
+run "subnet_layout_check" {
   command = plan
 
   assert {
-    condition     = contains([for rc in plan.resource_changes : rc.type], "aws_vpc")
-    error_message = "Plan should include an aws_vpc resource"
+    condition     = length(aws_subnet.public) == 2
+    error_message = "Expected exactly 2 public subnets"
   }
 
   assert {
-    condition     = contains([for rc in plan.resource_changes : rc.type], "aws_subnet")
-    error_message = "Plan should include aws_subnet resources"
+    condition     = length(aws_subnet.private) == 2
+    error_message = "Expected exactly 2 private subnets"
   }
 
   assert {
-    condition     = length([for rc in plan.resource_changes : rc if rc.type == "aws_subnet"]) == 4
-    error_message = "Plan should create exactly 4 subnets (2 public, 2 private)"
+    condition     = alltrue([for subnet in aws_subnet.public : startswith(subnet.cidr_block, "10.0.")])
+    error_message = "Public subnet CIDR blocks changed unexpectedly"
   }
 }
 ```
@@ -301,7 +311,7 @@ def normalize_plan(plan_data):
         after = change['change'].get('after', {}) or {}
         for field in VOLATILE_FIELDS:
             after.pop(field, None)
-        normalized_change['after_known'] = after
+        normalized_change['after'] = after
 
         normalized['resource_changes'].append(normalized_change)
 
