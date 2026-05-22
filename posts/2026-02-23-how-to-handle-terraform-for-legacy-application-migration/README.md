@@ -106,12 +106,14 @@ resource "aws_instance" "app_server" {
   }
 }
 
-# Database - migrating from Oracle to PostgreSQL
+# Database target after converting the Oracle schema to PostgreSQL
 resource "aws_db_instance" "main" {
   identifier     = "order-processing-migration"
   engine         = "postgres"
-  engine_version = "15.4"
+  engine_version = "15.17"
   instance_class = "db.r6g.2xlarge"
+  username       = var.postgres_username
+  password       = var.postgres_password
 
   allocated_storage     = 2000
   max_allocated_storage = 4000
@@ -127,7 +129,7 @@ resource "aws_db_instance" "main" {
   }
 }
 
-# VPN connection to on-premises for migration period
+# VPN gateway for on-premises connectivity during the migration period
 resource "aws_vpn_gateway" "migration" {
   vpc_id = module.networking.vpc_id
 
@@ -214,7 +216,7 @@ resource "aws_lb_listener_rule" "migration" {
 
 ## Database Migration with DMS
 
-Use AWS DMS for database migration managed through Terraform:
+Use AWS DMS for data migration after converting the Oracle schema to PostgreSQL:
 
 ```hcl
 # migration/database/dms.tf
