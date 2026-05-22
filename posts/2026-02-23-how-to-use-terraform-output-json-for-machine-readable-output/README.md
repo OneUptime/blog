@@ -112,7 +112,7 @@ terraform output -json instance_ids | jq -r '.[]'
 
 ```bash
 # Get a specific key
-terraform output -json subnet_map | jq -r '.public'
+terraform output -json subnet_map | jq -c '.public'
 # ["subnet-abc","subnet-def"]
 
 # Get all keys
@@ -293,7 +293,7 @@ jobs:
         id: outputs
         run: |
           # Export all outputs as step outputs
-          terraform output -json | jq -r 'to_entries[] | select(.value.sensitive == false) | "\(.key)=\(.value.value)"' >> $GITHUB_OUTPUT
+          terraform output -json | jq -r 'to_entries[] | select(.value.sensitive == false) | "\(.key)=\(.value.value)"' >> "$GITHUB_OUTPUT"
 
   deploy:
     needs: infrastructure
@@ -319,11 +319,12 @@ DB_HOST=$(jq -r '.database_endpoint.value' outputs.json)
 ### Generating Environment Files
 
 ```bash
-# Generate a .env file from Terraform outputs
+# Generate a shell-safe .env file from string Terraform outputs
 terraform output -json | jq -r '
   to_entries[]
   | select(.value.sensitive == false)
-  | "TF_OUTPUT_\(.key | ascii_upcase)=\(.value.value)"
+  | select(.value.type == "string")
+  | "TF_OUTPUT_\(.key | ascii_upcase)=\(.value.value | @sh)"
 ' > terraform.env
 
 # Source in subsequent scripts
