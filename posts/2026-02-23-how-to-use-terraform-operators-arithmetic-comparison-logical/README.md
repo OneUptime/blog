@@ -8,7 +8,7 @@ Description: Learn how to use arithmetic, comparison, and logical operators in T
 
 ---
 
-Terraform supports three categories of operators: arithmetic for calculations, comparison for evaluating conditions, and logical for combining boolean expressions. While they are straightforward if you have any programming background, there are some Terraform-specific behaviors worth knowing about.
+Terraform supports arithmetic operators for calculations, equality and comparison operators for evaluating conditions, and logical operators for combining boolean expressions. While they are straightforward if you have any programming background, there are some Terraform-specific behaviors worth knowing about.
 
 Let's go through each category with practical infrastructure examples.
 
@@ -111,13 +111,13 @@ resource "aws_subnet" "private" {
 
 ### Division Behavior
 
-Division in Terraform always produces a floating-point result:
+Division in Terraform can produce a fractional number:
 
 ```hcl
 locals {
-  # Integer division still gives float
-  result1 = 10 / 3    # 3.3333333333333335
-  result2 = 15 / 5    # 3 (but internally it is 3.0)
+  # Division does not perform integer truncation
+  result1 = 10 / 3    # 3.333...
+  result2 = 15 / 5    # 3
 
   # If you need integer division, use floor()
   integer_div = floor(10 / 3)  # 3
@@ -132,9 +132,9 @@ locals {
 }
 ```
 
-## Comparison Operators
+## Equality and Comparison Operators
 
-Comparison operators return boolean values (`true` or `false`):
+Equality and comparison operators return boolean values (`true` or `false`):
 
 | Operator | Meaning | Example | Result |
 |----------|---------|---------|--------|
@@ -145,7 +145,7 @@ Comparison operators return boolean values (`true` or `false`):
 | `<=` | Less than or equal | `5 <= 5` | `true` |
 | `>=` | Greater than or equal | `3 >= 5` | `false` |
 
-### String Comparison
+### String Equality
 
 ```hcl
 variable "environment" {
@@ -153,11 +153,11 @@ variable "environment" {
 }
 
 locals {
-  # Exact string comparison
+  # Exact string equality
   is_production = var.environment == "production"
   is_not_dev    = var.environment != "development"
 
-  # String comparison is case-sensitive
+  # String equality is case-sensitive
   check1 = "Hello" == "hello"   # false
   check2 = "Hello" == "Hello"   # true
 }
@@ -290,6 +290,10 @@ locals {
   )
 }
 
+data "aws_cloudfront_cache_policy" "caching_optimized" {
+  name = "Managed-CachingOptimized"
+}
+
 # Create CDN only if conditions are met
 resource "aws_cloudfront_distribution" "app" {
   count = local.create_cdn ? 1 : 0
@@ -300,13 +304,7 @@ resource "aws_cloudfront_distribution" "app" {
     allowed_methods  = ["GET", "HEAD"]
     cached_methods   = ["GET", "HEAD"]
     target_origin_id = "app"
-
-    forwarded_values {
-      query_string = false
-      cookies {
-        forward = "none"
-      }
-    }
+    cache_policy_id  = data.aws_cloudfront_cache_policy.caching_optimized.id
 
     viewer_protocol_policy = "redirect-to-https"
   }
@@ -405,4 +403,4 @@ variable "config" {
 
 ## Summary
 
-Terraform's operators cover the three essential categories: arithmetic (`+`, `-`, `*`, `/`, `%`) for calculations, comparison (`==`, `!=`, `<`, `>`, `<=`, `>=`) for conditions, and logical (`&&`, `||`, `!`) for combining boolean expressions. Use them in locals for calculated values, in conditional expressions for dynamic configuration, and in validation blocks for input checking. When combining multiple operators, use parentheses to make the precedence explicit and your code readable.
+Terraform's operators cover arithmetic (`+`, `-`, `*`, `/`, `%`) for calculations, equality and comparison (`==`, `!=`, `<`, `>`, `<=`, `>=`) for conditions, and logical (`&&`, `||`, `!`) for combining boolean expressions. Use them in locals for calculated values, in conditional expressions for dynamic configuration, and in validation blocks for input checking. When combining multiple operators, use parentheses to make the precedence explicit and your code readable.
