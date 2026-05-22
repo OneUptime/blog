@@ -218,9 +218,6 @@ exec > /var/log/app-setup.log 2>&1
 
 echo "Starting application setup..."
 
-# Wait for cloud-init package installation to complete
-cloud-init status --wait
-
 # Configure Docker
 systemctl enable docker
 systemctl start docker
@@ -365,6 +362,10 @@ resource "aws_launch_template" "app" {
   image_id      = data.aws_ami.ubuntu.id
   instance_type = var.instance_type
 
+  iam_instance_profile {
+    name = var.instance_profile_name
+  }
+
   # Use the multi-part cloud-init config
   user_data = base64encode(data.cloudinit_config.asg_config.rendered)
 
@@ -470,7 +471,7 @@ resource "aws_instance" "debug" {
       # Print cloud-init status for debugging
       - cloud-init status --long
       # List all cloud-init modules that ran
-      - cat /run/cloud-init/status.json | jq .
+      - cat /run/cloud-init/status.json
   CLOUDINIT
 
   tags = {
