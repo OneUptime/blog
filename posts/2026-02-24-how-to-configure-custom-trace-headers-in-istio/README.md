@@ -45,6 +45,7 @@ apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
   meshConfig:
+    enableTracing: true
     extensionProviders:
       - name: zipkin-tracing
         zipkin:
@@ -59,6 +60,7 @@ apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
   meshConfig:
+    enableTracing: true
     extensionProviders:
       - name: otel-tracing
         opentelemetry:
@@ -68,7 +70,7 @@ spec:
 
 ## Configuring B3 Headers Explicitly
 
-If you want B3 headers with an OpenTelemetry backend, you need to configure the Envoy bootstrap to use B3 propagation. This is done through mesh config:
+If you want Istio to write B3 headers explicitly, use the Zipkin provider and set the provider's `traceContextOption`. `USE_B3` writes only B3 headers, which is also the default for the Zipkin provider:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -80,19 +82,20 @@ spec:
       tracing:
         sampling: 10
     extensionProviders:
-      - name: otel-tracing
-        opentelemetry:
-          service: otel-collector.observability.svc.cluster.local
-          port: 4317
+      - name: zipkin-tracing
+        zipkin:
+          service: zipkin.observability.svc.cluster.local
+          port: 9411
+          traceContextOption: USE_B3
 ```
 
-The propagation format is tied to the provider type. Zipkin providers use B3, OpenTelemetry providers use W3C.
+If you are migrating from B3 to W3C and need both formats temporarily, use `USE_B3_WITH_W3C_PROPAGATION` on the Zipkin provider instead. In that mode, Envoy extracts B3 first, falls back to W3C `traceparent` when B3 is not present, and injects both B3 and W3C headers on upstream requests. The OpenTelemetry extension provider exports spans over OTLP and does not expose a B3 propagation option in Istio mesh config.
 
 ## Working with Both Formats Simultaneously
 
-In some environments, you have services that use B3 and others that use W3C. Envoy can handle both by checking for incoming headers in multiple formats.
+In some environments, you have services that use B3 and others that use W3C. With the Zipkin provider's `USE_B3_WITH_W3C_PROPAGATION` option, Envoy can handle both by checking for incoming headers in multiple formats.
 
-When a request arrives with B3 headers, Envoy uses those. When it arrives with W3C `traceparent`, Envoy uses that. If both are present, the behavior depends on the configured provider.
+When a request arrives with B3 headers, Envoy uses those. When it arrives with W3C `traceparent` and no B3 headers, Envoy uses that. If both are present in Zipkin dual-propagation mode, B3 takes precedence.
 
 To support both formats in your application's header propagation:
 
@@ -324,8 +327,8 @@ If you're migrating from B3 to W3C Trace Context, do it gradually:
 3. Verify traces are still connected
 4. After confirming everything works, you can optionally remove B3 propagation from application code
 
-During the transition, propagating both formats ensures no traces are broken.
+During the transition, propagating both formats reduces the risk of broken traces while services and proxies are being migrated.
 
 ## Summary
 
-The trace header format in Istio is determined by the extension provider type - Zipkin providers generate B3, OpenTelemetry providers generate W3C Trace Context. For maximum compatibility, propagate both formats in your application code. Use the Telemetry API's custom tags to capture application-specific headers as span attributes, and use VirtualService or EnvoyFilter to add or remove headers at mesh boundaries. The key is making sure all services in a trace agree on which headers carry the trace context.
+The trace header format in Istio is determined by the tracing provider configuration - Zipkin providers generate B3 by default and can be configured for B3 plus W3C propagation, while OpenTelemetry providers generate W3C Trace Context. For maximum compatibility, propagate both formats in your application code during migrations. Use the Telemetry API's custom tags to capture application-specific headers as span attributes, and use VirtualService or EnvoyFilter to add or remove headers at mesh boundaries. The key is making sure all services in a trace agree on which headers carry the trace context.
