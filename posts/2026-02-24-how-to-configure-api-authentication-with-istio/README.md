@@ -46,7 +46,7 @@ Key fields:
 
 - `issuer`: The expected value of the `iss` claim in the JWT. Tokens with a different issuer are rejected.
 - `jwksUri`: The URL where Istio can fetch the public keys to verify token signatures. Istio fetches and caches these keys automatically.
-- `forwardOriginalToken`: When true, the original JWT is passed to the backend service in the Authorization header.
+- `forwardOriginalToken`: When true, the original JWT is kept on the upstream request instead of being stripped before the backend service receives it.
 
 ### Step 2: Handle Token Location
 
@@ -179,7 +179,7 @@ spec:
       values: ["admin"]
 ```
 
-The `request.auth.claims[role]` syntax extracts the `role` claim from the validated JWT. You can use any claim in the token.
+The `request.auth.claims[role]` syntax extracts the `role` claim from the validated JWT. AuthorizationPolicy claim matching supports claims that are strings or lists of strings.
 
 For nested claims:
 
@@ -217,7 +217,7 @@ spec:
       claim: "role"
 ```
 
-The `outputClaimToHeaders` field extracts specific claims and sets them as request headers. Your backend service can read `x-user-id`, `x-user-email`, and `x-user-role` without parsing the JWT itself.
+The `outputClaimToHeaders` field extracts supported scalar claims and sets them as request headers. Your backend service can read `x-user-id`, `x-user-email`, and `x-user-role` without parsing the JWT itself.
 
 ## Per-Service Authentication
 
@@ -249,7 +249,7 @@ When authentication fails, Istio returns different HTTP status codes:
 - **401 Unauthorized**: The JWT is present but invalid (expired, wrong signature, wrong issuer)
 - **403 Forbidden**: The JWT is valid but the AuthorizationPolicy denies the request
 
-Customize the error response:
+To explicitly deny unauthenticated requests on a path:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -308,10 +308,11 @@ Check proxy logs for authentication decisions:
 kubectl logs -l istio=ingressgateway -n istio-system | grep "jwt"
 ```
 
-Verify the JWKS is cached:
+Check that the JWT authentication filter is present in the proxy config:
 
 ```bash
-istioctl proxy-config secret deploy/istio-ingressgateway -n istio-system
+istioctl proxy-config listener deployment/istio-ingressgateway -n istio-system -o json \
+  | jq '.. | objects | select(."@type"? == "type.googleapis.com/envoy.extensions.filters.http.jwt_authn.v3.JwtAuthentication")'
 ```
 
 If Istio can't fetch the JWKS, all token validation will fail. Make sure the gateway can reach the JWKS URI.
@@ -319,7 +320,13 @@ If Istio can't fetch the JWKS, all token validation will fail. Make sure the gat
 Decode and inspect a JWT to verify its claims:
 
 ```bash
-echo "$TOKEN" | cut -d'.' -f2 | base64 -d 2>/dev/null | python3 -m json.tool
+python3 - "$TOKEN" <<'PY'
+import base64, json, sys
+
+payload = sys.argv[1].split(".")[1]
+payload += "=" * (-len(payload) % 4)
+print(json.dumps(json.loads(base64.urlsafe_b64decode(payload)), indent=2))
+PY
 ```
 
 API authentication with Istio removes the burden from your application code and centralizes it in the infrastructure. Your services receive pre-validated requests with authentication context in the headers. This is cleaner, more secure, and easier to maintain than implementing JWT validation in every service.
