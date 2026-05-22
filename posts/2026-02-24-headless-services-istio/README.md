@@ -35,7 +35,7 @@ For StatefulSets, each pod also gets its own DNS entry: `my-stateful-app-0.my-st
 
 ## How Istio Handles Headless Services
 
-With regular services, Istio's sidecar proxy intercepts traffic to the ClusterIP and load-balances across the endpoints. With headless services, there is no ClusterIP to intercept. Instead, Istio creates individual cluster endpoints for each pod.
+With regular services, Istio's sidecar proxy intercepts traffic to the ClusterIP and load-balances across the endpoints. With headless services, there is no ClusterIP to intercept. Instead, Istio configures listeners for the headless service endpoint IP and port pairs. For HTTP ports, Istio can also match traffic by the `Host` header.
 
 Check the proxy configuration for a headless service:
 
@@ -43,9 +43,9 @@ Check the proxy configuration for a headless service:
 istioctl proxy-config endpoint deploy/my-client -n my-namespace | grep my-stateful-service
 ```
 
-You will see individual pod IPs listed as separate endpoints, rather than a single cluster entry.
+You will see individual pod IPs listed as endpoints for the service.
 
-The difference matters for load balancing. With regular services, Istio controls the load balancing algorithm (round-robin, random, least connections, etc.). With headless services, the DNS-based resolution means the client might always connect to the same pod if DNS caching is involved.
+The difference matters for load balancing. With regular services, Istio controls the load balancing algorithm (round-robin, random, least connections, etc.). With headless services, DNS resolution returns pod IPs, so TCP clients may connect to the same pod if DNS caching is involved. For HTTP traffic sent with the service host, Istio can still apply HTTP routing and request load balancing.
 
 ## StatefulSets and Istio
 
@@ -99,7 +99,7 @@ The gossip port (16379) is used for inter-node communication in Redis Cluster. T
 
 ## mTLS with Headless Services
 
-mTLS works with headless services, but the certificate validation is slightly different. With regular services, the TLS certificate SAN (Subject Alternative Name) matches the service name. With headless services, Istio validates against the pod's service account identity.
+mTLS works with headless services. Istio's identity model is based on workload identity, and on Kubernetes that identity is the service account. During mTLS, the client-side proxy verifies that the service account identity presented by the server is authorized to run the target service.
 
 Make sure PeerAuthentication is configured:
 
@@ -122,7 +122,7 @@ kubectl get pods -n my-namespace -o jsonpath='{range .items[*]}{.metadata.name}{
 
 ## Traffic Routing for Headless Services
 
-VirtualService routing works differently with headless services. You cannot use header-based or path-based routing to control which pod gets the request because the client's DNS resolution already determined the target pod.
+VirtualService routing works differently with headless services. For HTTP traffic sent to the service name, Istio can still use header-based or path-based routing because it matches on the `Host` header. For TCP traffic, or HTTP traffic sent directly to a pod IP without the service host, routing is limited because the client's DNS resolution already determined the target pod IP.
 
 However, you can use DestinationRule to set traffic policies:
 
@@ -222,7 +222,7 @@ spec:
 
 ## DNS Proxy and Headless Services
 
-Istio's DNS proxy (enabled by default in recent versions) intercepts DNS queries and can return the pod IPs directly. This can affect how headless services resolve:
+Istio's DNS proxy can intercept DNS queries and return pod IPs directly. In sidecar mode this feature is not enabled by default; in ambient mode it is enabled by default starting with Istio 1.25. This can affect how headless services resolve:
 
 ```bash
 # Check if DNS proxy is enabled
@@ -230,7 +230,7 @@ Istio's DNS proxy (enabled by default in recent versions) intercepts DNS queries
 istioctl proxy-config listener deploy/my-client -n my-namespace --port 15053
 ```
 
-If DNS proxy causes issues with headless service resolution, you can disable it for specific workloads:
+If DNS proxy is enabled and causes issues with headless service resolution, you can disable it for specific sidecar workloads:
 
 ```yaml
 metadata:
@@ -244,7 +244,7 @@ metadata:
 
 **Sticky connections.** Headless service clients often cache DNS results, leading to all traffic going to one pod. If you need better distribution, use client-side load balancing or connect through a regular ClusterIP service instead.
 
-**Pod not resolving.** If a specific pod of a StatefulSet does not resolve via DNS, check that the pod is ready. Kubernetes only includes ready pods in DNS responses for headless services.
+**Pod not resolving.** If a specific pod of a StatefulSet does not resolve via DNS, check that the pod is ready. Kubernetes includes ready endpoints in DNS responses for headless services unless the Service sets `publishNotReadyAddresses: true`.
 
 ```bash
 kubectl get pods -n my-namespace -l app=redis-cluster -o wide
