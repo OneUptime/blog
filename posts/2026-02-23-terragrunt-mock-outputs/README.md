@@ -169,14 +169,14 @@ dependency "vpc" {
 
   mock_outputs_allowed_terraform_commands = ["validate", "plan"]
 
-  # "shallow" (default) - use real outputs when available, fall back to mocks
-  # "no_merge" - use only real outputs or only mocks, never mix
+  # "no_merge" (default) - use real outputs when available; only use mocks when no outputs exist
+  # "shallow" - use real outputs when available, fall back to mocks for missing keys
   # "deep_map_only" - deep merge maps, shallow merge everything else
   mock_outputs_merge_strategy_with_state = "shallow"
 }
 ```
 
-The `shallow` strategy (default) is usually what you want. It uses real output values when they exist and fills in mock values for any outputs that are missing.
+The `shallow` strategy is usually what you want when you need missing output keys to fall back to mocks. It uses real output values when they exist and fills in mock values for any outputs that are missing. If you leave the setting at the default `no_merge`, Terragrunt uses the real state outputs as-is when any outputs exist.
 
 ## Common Pattern: Centralized Mock Definitions
 
@@ -223,14 +223,14 @@ inputs = {
 }
 ```
 
-## Mock Outputs for run-all
+## Mock Outputs for run --all
 
-Mock outputs are especially important when using `run-all plan`. Without them, Terragrunt would have to apply dependencies first:
+Mock outputs are especially important when using `run --all plan`. Without them, Terragrunt would have to apply dependencies first:
 
 ```bash
 # This works even on a fresh environment with no applied infrastructure
 cd infrastructure/dev
-terragrunt run-all plan --terragrunt-non-interactive
+terragrunt run --all --non-interactive -- plan
 ```
 
 Terragrunt resolves the dependency graph, sees that mock_outputs are defined, and uses them for modules whose dependencies haven't been applied.
@@ -262,7 +262,7 @@ If you're getting unexpected values, check whether real outputs or mocks are bei
 
 ```bash
 # Debug logging shows which outputs are used
-terragrunt plan --terragrunt-log-level debug 2>&1 | grep -i "mock\|output"
+terragrunt plan --log-level debug 2>&1 | grep -i "mock\|output"
 
 # Check if the dependency has actual outputs
 cd ../vpc
@@ -285,7 +285,7 @@ dependency "vpc" {
 }
 ```
 
-With `skip_outputs = true`, Terragrunt doesn't try to fetch outputs at all. This means you can't reference `dependency.vpc.outputs.*` in your inputs - it's useful when you only need the dependency for ordering, not for data.
+With `skip_outputs = true`, Terragrunt doesn't try to fetch outputs at all. Without `mock_outputs`, `dependency.vpc.outputs` is an empty map, so references like `dependency.vpc.outputs.vpc_id` will fail. This is useful when you only need the dependency for ordering, not for data.
 
 Mock outputs are better when you actually need the output values for planning.
 
