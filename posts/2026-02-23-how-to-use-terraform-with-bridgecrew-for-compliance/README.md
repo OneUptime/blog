@@ -35,8 +35,8 @@ checkov -d terraform/
 # Run with specific checks
 checkov -d terraform/ --check CKV_AWS_18,CKV_AWS_19,CKV_AWS_145
 
-# Run with a specific compliance framework
-checkov -d terraform/ --framework terraform --check CIS_AWS
+# Run all Terraform checks for compliance review
+checkov -d terraform/ --framework terraform
 
 # Output in different formats
 checkov -d terraform/ --output json > results.json
@@ -92,7 +92,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "compliant_data" {
   rule {
     apply_server_side_encryption_by_default {
       sse_algorithm     = "aws:kms"
-      kms_master_key_id = aws_kms_key.s3.arn
+      kms_master_key_id = "alias/aws/s3"
     }
     bucket_key_enabled = true
   }
@@ -110,7 +110,7 @@ resource "aws_s3_bucket_public_access_block" "compliant_data" {
 resource "aws_s3_bucket_logging" "compliant_data" {
   bucket = aws_s3_bucket.compliant_data.id
 
-  target_bucket = aws_s3_bucket.logs.id
+  target_bucket = "company-log-bucket"
   target_prefix = "data-bucket-logs/"
 }
 ```
@@ -170,7 +170,7 @@ check = RequireStandardTags()
 # custom_policies/restrict_regions.py
 # Custom policy restricting allowed AWS regions
 
-from checkov.terraform.checks.provider.base_provider_check import BaseProviderCheck
+from checkov.terraform.checks.provider.base_check import BaseProviderCheck
 from checkov.common.models.enums import CheckResult, CheckCategories
 
 class RestrictAWSRegions(BaseProviderCheck):
@@ -206,7 +206,7 @@ check = RestrictAWSRegions()
 # custom_policies/yaml_policies/require_deletion_protection.yaml
 # YAML-based custom policy
 metadata:
-  id: "CKV_CUSTOM_003"
+  id: "CKV2_CUSTOM_003"
   name: "Ensure RDS instances have deletion protection enabled"
   category: "BACKUP_AND_RECOVERY"
   severity: "HIGH"
@@ -281,7 +281,7 @@ jobs:
               });
             }
 
-            github.rest.issues.createComment({
+            await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
@@ -291,7 +291,7 @@ jobs:
       # Upload SARIF to GitHub Security
       - name: Upload SARIF
         if: always()
-        uses: github/codeql-action/upload-sarif@v2
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: checkov-results.sarif
 
@@ -308,6 +308,9 @@ jobs:
         run: |
           terraform init
           terraform plan -out=tfplan
+
+      - name: Install Checkov
+        run: pip install checkov
 
       # Scan the plan file
       - name: Scan Terraform Plan
@@ -327,12 +330,11 @@ checkov -d terraform/ \
   --bc-api-key "$BC_API_KEY" \
   --repo-id "org/infrastructure"
 
-# Generate a compliance report
+# Generate a Terraform scan report for compliance review
 checkov -d terraform/ \
   --bc-api-key "$BC_API_KEY" \
   --framework terraform \
-  --check CIS_AWS \
-  --output json > cis-report.json
+  --output json > terraform-compliance-report.json
 ```
 
 The Bridgecrew platform provides a dashboard showing compliance posture trends, drift detection between scans, automated fix pull requests for common issues, and compliance reporting for CIS, SOC2, HIPAA, and PCI-DSS.
@@ -379,11 +381,11 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "data" {
 Generate compliance reports for audit purposes.
 
 ```bash
-# Generate a CIS AWS benchmark report
-checkov -d terraform/ --framework terraform --check CIS_AWS --output json > cis-aws-report.json
+# Generate a Terraform scan report for compliance review
+checkov -d terraform/ --framework terraform --output json > terraform-compliance-report.json
 
-# Generate SOC2 compliance report
-checkov -d terraform/ --framework terraform --check SOC2 --output json > soc2-report.json
+# Generate a filtered report for specific controls
+checkov -d terraform/ --framework terraform --check CKV_AWS_18,CKV_AWS_19,CKV_AWS_145 --output json > s3-controls-report.json
 
 # Generate a comprehensive report with all frameworks
 checkov -d terraform/ \
