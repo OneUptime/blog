@@ -70,15 +70,18 @@ export AWS_PROFILE="production"
 export AWS_DEFAULT_REGION="us-east-1"
 ```
 
-This reads credentials from `~/.aws/credentials` under the specified profile name.
+This reads credentials from the shared AWS config and credentials files under the specified profile name.
 
 ### Assuming a Role
 
 ```bash
 # Set the role to assume
+export AWS_PROFILE="production"
 export AWS_ROLE_ARN="arn:aws:iam::123456789012:role/TerraformRole"
 export AWS_ROLE_SESSION_NAME="terraform-session"
 ```
+
+The role is assumed using source credentials from the normal AWS credential chain, such as the profile set in `AWS_PROFILE`.
 
 ## Azure Authentication
 
@@ -223,8 +226,8 @@ export TF_CLI_ARGS_apply="-parallelism=30"
 # Point to a custom CLI config file
 export TF_CLI_CONFIG_FILE="/path/to/custom/terraformrc"
 
-# Skip provider verification (not recommended for production)
-# export TF_SKIP_PROVIDER_VERIFY=1
+# Allow the plugin cache to create incomplete lock file entries (use only in exceptional cases)
+# export TF_PLUGIN_CACHE_MAY_BREAK_DEPENDENCY_LOCK_FILE=1
 ```
 
 ## Making Environment Variables Persistent
@@ -332,7 +335,7 @@ Before committing code, make sure no credentials slipped into your Terraform fil
 
 ```bash
 # Search for potential credential leaks
-grep -r "AKIA\|secret_key\|password\|token" *.tf
+grep -RIn --include='*.tf' -E "AKIA|secret_key|password|token" .
 ```
 
 ## Verifying Authentication
