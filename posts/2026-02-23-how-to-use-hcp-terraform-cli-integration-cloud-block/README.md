@@ -8,7 +8,7 @@ Description: Complete guide to using the HCP Terraform CLI integration with the 
 
 ---
 
-The cloud block in Terraform is the bridge between your local CLI and HCP Terraform. It lets you run commands locally while execution, state storage, and variable management all happen remotely. If you have been using the older `remote` backend, the cloud block is its modern replacement with better ergonomics and more features. This post covers everything you need to know to set it up and use it effectively.
+The cloud block in Terraform is the bridge between your local CLI and HCP Terraform. It lets you run commands locally while remote execution, state storage, and workspace variable management happen in HCP Terraform by default. If you have been using the older `remote` backend, the cloud block is its modern replacement with better ergonomics and more features. This post covers everything you need to know to set it up and use it effectively.
 
 ## Why Use the Cloud Block
 
@@ -108,7 +108,7 @@ terraform workspace select web-server-production
 
 ## CLI-Driven Workflow vs VCS-Driven Workflow
 
-The cloud block supports two execution modes. Understanding the difference is important.
+The cloud block supports the CLI-driven workflow and can also coexist with VCS-driven workflows. Understanding the difference is important.
 
 In **CLI-driven mode**, you trigger runs from your terminal. The plan and apply still execute remotely on HCP Terraform, but you initiate them with `terraform plan` and `terraform apply` from your machine.
 
@@ -123,9 +123,9 @@ terraform apply
 # You confirm in your terminal
 ```
 
-In **VCS-driven mode**, runs trigger automatically when you push to your connected repository. The cloud block configuration still matters because it tells Terraform which organization and workspace to use.
+In **VCS-driven mode**, runs trigger automatically when you push to your connected repository. HCP Terraform uses the workspace's VCS settings as the source of truth for applies; the cloud block is mainly useful if you also want developers to run CLI-driven speculative plans against the same workspace.
 
-Set the execution mode in the workspace settings:
+To make CLI-driven runs execute in HCP Terraform rather than locally, set the workspace execution mode to `remote` in the workspace settings:
 
 ```bash
 # Set execution mode via API
@@ -169,7 +169,7 @@ This is useful for debugging, testing provider configurations, or when you need 
 
 ## Passing Variables
 
-When using remote execution, variables need to be set in HCP Terraform rather than passed via command-line flags. However, the cloud block respects `-var` and `-var-file` for locally executed runs.
+When using remote execution, common variables and provider credentials are usually set in HCP Terraform. You can also pass run-specific Terraform variables with `-var`, `-var-file`, or local `TF_VAR_` environment variables when starting CLI-driven runs.
 
 ```hcl
 # variables.tf
@@ -210,17 +210,16 @@ curl -s \
 
 ## Structured Run Output
 
-The cloud block supports structured run output starting in Terraform 1.6. This gives you richer plan output directly in your terminal:
+The cloud block supports structured run output, which displays remote plan and apply results in a human-readable format in your terminal. If you need machine-readable JSON for automation in a CLI-driven workspace that supports saved plans, create a saved plan and inspect it with `terraform show -json`:
 
 ```bash
-# Enable structured output by setting the environment variable
-export TF_CLI_ARGS_plan="-json"
+# Create a remote saved plan
+terraform plan -out=tfplan
 
-# Or just run with the flag
-terraform plan
+# Inspect the saved plan as JSON
+terraform show -json tfplan
 
-# The output now includes resource-level details,
-# drift detection results, and clearer change summaries
+# Remote saved plans require Terraform CLI 1.6 or later
 ```
 
 ## Migration from Remote Backend
@@ -250,14 +249,15 @@ terraform {
 }
 ```
 
-Run `terraform init -migrate-state` to complete the migration:
+Run `terraform init` and follow the prompts to complete the migration:
 
 ```bash
 # Migrate from remote backend to cloud block
-terraform init -migrate-state
+terraform init
 
-# Terraform detects the backend change and migrates state
-# Your state remains in HCP Terraform - no data loss
+# Terraform detects the backend change
+# If you were already using the remote backend with HCP Terraform,
+# Terraform continues using the same HCP Terraform workspaces
 ```
 
 ## Handling the .terraform Directory
@@ -267,12 +267,11 @@ The cloud block stores connection metadata in `.terraform/`. Add it to your `.gi
 ```gitignore
 # .gitignore
 .terraform/
-.terraform.lock.hcl
 *.tfstate
 *.tfstate.backup
 ```
 
-Keep the `.terraform.lock.hcl` file committed if you want reproducible provider versions across your team. Remove it from `.gitignore` in that case.
+Keep the `.terraform.lock.hcl` file committed so your team uses reproducible provider selections.
 
 ## Troubleshooting Common Issues
 
