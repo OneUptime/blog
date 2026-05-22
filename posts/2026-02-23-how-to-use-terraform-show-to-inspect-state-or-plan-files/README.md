@@ -128,25 +128,35 @@ Here are some practical examples of extracting information from the JSON output:
 
 ```bash
 # List all resource addresses in the state
-terraform show -json | jq -r '.values.root_module.resources[].address'
+terraform show -json | jq -r '
+  .values.root_module
+  | recurse(.child_modules[]?)
+  | .resources[]?
+  | .address
+'
 
 # Get the instance ID of a specific resource
 terraform show -json | jq -r '
-  .values.root_module.resources[]
+  .values.root_module
+  | recurse(.child_modules[]?)
+  | .resources[]?
   | select(.address == "aws_instance.web")
   | .values.id
 '
 
 # List all resources of a specific type
 terraform show -json | jq -r '
-  .values.root_module.resources[]
+  .values.root_module
+  | recurse(.child_modules[]?)
+  | .resources[]?
   | select(.type == "aws_s3_bucket")
   | .address
 '
 
 # Count resources by type
 terraform show -json | jq '
-  [.values.root_module.resources[].type]
+  [.values.root_module | recurse(.child_modules[]?) | .resources[]? | .type]
+  | sort
   | group_by(.)
   | map({type: .[0], count: length})
 '
@@ -228,14 +238,15 @@ echo "Generated: $(date)"
 echo ""
 
 # Total resource count
-TOTAL=$(terraform show -json | jq '.values.root_module.resources | length')
+TOTAL=$(terraform show -json | jq '[.values.root_module | recurse(.child_modules[]?) | .resources[]?] | length')
 echo "Total managed resources: $TOTAL"
 echo ""
 
 # Resources by type
 echo "Resources by type:"
 terraform show -json | jq -r '
-  [.values.root_module.resources[].type]
+  [.values.root_module | recurse(.child_modules[]?) | .resources[]? | .type]
+  | sort
   | group_by(.)
   | map("  \(.[0]): \(length)")
   | .[]
@@ -245,7 +256,8 @@ terraform show -json | jq -r '
 echo ""
 echo "Resources by provider:"
 terraform show -json | jq -r '
-  [.values.root_module.resources[].provider_name]
+  [.values.root_module | recurse(.child_modules[]?) | .resources[]? | .provider_name]
+  | sort
   | group_by(.)
   | map("  \(.[0]): \(length)")
   | .[]
@@ -260,10 +272,10 @@ terraform show -json | jq -r '
 
 # Capture resource lists from each environment
 cd /infra/staging
-terraform show -json | jq -r '.values.root_module.resources[].type' | sort | uniq -c > /tmp/staging-resources.txt
+terraform show -json | jq -r '.values.root_module | recurse(.child_modules[]?) | .resources[]? | .type' | sort | uniq -c > /tmp/staging-resources.txt
 
 cd /infra/production
-terraform show -json | jq -r '.values.root_module.resources[].type' | sort | uniq -c > /tmp/prod-resources.txt
+terraform show -json | jq -r '.values.root_module | recurse(.child_modules[]?) | .resources[]? | .type' | sort | uniq -c > /tmp/prod-resources.txt
 
 # Compare them
 echo "Differences between staging and production:"
@@ -283,12 +295,17 @@ resource "aws_db_instance" "main" {
 }
 ```
 
-If you need to see sensitive values (be careful with this in shared environments), you can use the JSON output and pipe through jq. The JSON output includes sensitive values but marks them with a `sensitive` field in the metadata.
+If you need to see sensitive values (be careful with this in shared environments), you can use the JSON output and pipe through jq. The JSON output includes sensitive values in plain text, and the JSON format also includes `sensitive_values` metadata that identifies which attributes are sensitive.
 
 ```bash
 # The JSON output still includes sensitive values
 # Be careful not to log this in CI/CD
-terraform show -json | jq '.values.root_module.resources[] | select(.sensitive_values | length > 0)'
+terraform show -json | jq '
+  .values.root_module
+  | recurse(.child_modules[]?)
+  | .resources[]?
+  | select((.sensitive_values // {}) | length > 0)
+'
 ```
 
 ## Common Issues and Tips
@@ -303,7 +320,7 @@ terraform state list
 terraform init
 ```
 
-**Plan file expired**: Saved plan files can become stale if the state changes between plan and show. Terraform will warn you about this:
+**Plan file expired**: Saved plan files can become stale if the state changes after the plan was created. Terraform reports a stale saved plan when you try to apply it, so generate a fresh plan before applying:
 
 ```bash
 # If the state has changed since the plan was created,
@@ -316,7 +333,7 @@ terraform show tfplan
 
 ```bash
 # Only show resources in a specific module
-terraform show -json | jq '.values.root_module.child_modules[] | select(.address == "module.networking")'
+terraform show -json | jq '.values.root_module | recurse(.child_modules[]?) | select(.address == "module.networking")'
 ```
 
 ## Summary
