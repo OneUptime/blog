@@ -20,7 +20,7 @@ You need a Codefresh account, Terraform configurations stored in a Git repositor
 
 ## Step 1: Basic Terraform Pipeline in Codefresh
 
-Create a Codefresh pipeline that runs Terraform operations.
+Create a Codefresh pipeline that runs Terraform operations. If you use a saved plan file with an approval step, enable Codefresh's shared volume retention for builds pending approval so the plan file is still available after approval.
 
 ```yaml
 # codefresh.yml
@@ -106,7 +106,7 @@ steps:
 
 ## Step 2: Multi-Environment Terraform Pipeline
 
-Handle multiple environments with a single pipeline using Codefresh variables.
+Handle multiple environments with a single pipeline using Codefresh variables. As with the basic pipeline, retain the shared volume when an approval step separates the plan and apply steps.
 
 ```yaml
 # codefresh-multi-env.yml
@@ -136,7 +136,7 @@ steps:
     image: hashicorp/terraform:1.6
     working_directory: '${{clone}}/terraform'
     commands:
-      - terraform init
+      - terraform init -reconfigure
         -backend-config="key=staging/terraform.tfstate"
       - terraform workspace select staging || terraform workspace new staging
       - terraform plan -var-file=environments/staging.tfvars -out=staging.tfplan
@@ -164,7 +164,7 @@ steps:
     image: hashicorp/terraform:1.6
     working_directory: '${{clone}}/terraform'
     commands:
-      - terraform init
+      - terraform init -reconfigure
         -backend-config="key=production/terraform.tfstate"
       - terraform workspace select production || terraform workspace new production
       - terraform plan -var-file=environments/production.tfvars -out=production.tfplan
@@ -235,16 +235,19 @@ steps:
       - AWS_ACCESS_KEY_ID=${{AWS_ACCESS_KEY_ID}}
       - AWS_SECRET_ACCESS_KEY=${{AWS_SECRET_ACCESS_KEY}}
 
-  # Sync ArgoCD application via Codefresh GitOps
+  # Sync ArgoCD application after Terraform provisioning
   gitops_sync:
-    title: 'Sync Application via GitOps'
+    title: 'Sync Application with Argo CD'
     stage: 'Deploy Application'
-    type: gitops-sync
-    arguments:
-      app_name: 'my-application'
-      context: 'argo-cd'
-      wait_healthy: true
-      timeout: 300
+    image: quay.io/argoproj/argocd:latest
+    commands:
+      - argocd login $ARGOCD_SERVER --username $ARGOCD_USERNAME --password $ARGOCD_PASSWORD --grpc-web
+      - argocd app sync my-application
+      - argocd app wait my-application --sync --health --timeout 300
+    environment:
+      - ARGOCD_SERVER=${{ARGOCD_SERVER}}
+      - ARGOCD_USERNAME=${{ARGOCD_USERNAME}}
+      - ARGOCD_PASSWORD=${{ARGOCD_PASSWORD}}
 ```
 
 ## Step 4: Custom Terraform Step Type
@@ -257,7 +260,7 @@ Create a reusable Codefresh step type for Terraform operations.
 kind: step-type
 version: '1.0'
 metadata:
-  name: terraform
+  name: my-account/terraform
   version: 1.0.0
   description: Run Terraform operations
 
@@ -325,14 +328,14 @@ version: '1.0'
 steps:
   init:
     title: 'Terraform Init'
-    type: terraform
+    type: my-account/terraform:1.0.0
     arguments:
       ACTION: init
       WORKING_DIR: '${{CF_VOLUME_PATH}}/terraform'
 
   plan:
     title: 'Terraform Plan'
-    type: terraform
+    type: my-account/terraform:1.0.0
     arguments:
       ACTION: plan
       WORKING_DIR: '${{CF_VOLUME_PATH}}/terraform'
@@ -340,7 +343,7 @@ steps:
 
   apply:
     title: 'Terraform Apply'
-    type: terraform
+    type: my-account/terraform:1.0.0
     arguments:
       ACTION: apply
       WORKING_DIR: '${{CF_VOLUME_PATH}}/terraform'
@@ -365,6 +368,7 @@ steps:
   check_changes:
     title: 'Check for Terraform Changes'
     image: alpine/git
+    working_directory: '${{clone}}'
     commands:
       - |
         # Check if any Terraform files were modified
@@ -379,10 +383,11 @@ steps:
   terraform_plan:
     title: 'Terraform Plan'
     image: hashicorp/terraform:1.6
+    working_directory: '${{clone}}/terraform'
     when:
       condition:
         all:
-          tf_changed: '${{TF_CHANGED}} == true'
+          tf_changed: "'${{TF_CHANGED}}' == 'true'"
     commands:
       - terraform init
       - terraform plan -out=tfplan
@@ -390,7 +395,7 @@ steps:
 
 ## Best Practices
 
-Use Codefresh's built-in caching to speed up Terraform init by caching the .terraform directory. Store Terraform state in a remote backend and never in the pipeline workspace. Use Codefresh pipeline variables for secrets and reference them with the `${{VARIABLE}}` syntax. Implement approval steps between plan and apply for production environments. Use the custom step type to standardize Terraform operations across teams. Leverage Codefresh's parallel execution to plan multiple environments simultaneously. Export Terraform outputs using cf_export to pass them to subsequent pipeline steps.
+Use Codefresh's built-in caching to speed up Terraform init by caching the .terraform directory. Store Terraform state in a remote backend and never in the pipeline workspace. Use Codefresh pipeline variables for secrets and reference them with the `${{VARIABLE}}` syntax. Implement approval steps between plan and apply for production environments, and retain the shared volume if the apply step uses a saved plan file created before the approval. Use the custom step type to standardize Terraform operations across teams. Leverage Codefresh's parallel execution to plan multiple environments simultaneously. Export Terraform outputs using cf_export to pass them to subsequent pipeline steps.
 
 ## Conclusion
 
