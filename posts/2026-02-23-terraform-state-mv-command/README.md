@@ -22,7 +22,7 @@ Think of it this way: your state file says "the resource at address `aws_instanc
 terraform state mv [options] SOURCE DESTINATION
 ```
 
-Both SOURCE and DESTINATION are resource addresses.
+Both SOURCE and DESTINATION are Terraform addresses, such as resource instance, resource, or module addresses. Resource moves must use the same resource type.
 
 ## Renaming a Resource
 
@@ -132,28 +132,31 @@ This is much faster than moving resources individually when you rename a module.
 
 ## Dry Run
 
-Unfortunately, `terraform state mv` does not have a built-in dry-run flag. The best approach is to verify before and after:
+The `terraform state mv` command has a built-in dry-run flag that reports matching resource instances without moving them. You should still verify before and after:
 
 ```bash
 # Step 1: Check current state
 terraform state list > before.txt
 
-# Step 2: Run the move
+# Step 2: Preview the move
+terraform state mv -dry-run aws_instance.old aws_instance.new
+
+# Step 3: Run the move
 terraform state mv aws_instance.old aws_instance.new
 
-# Step 3: Check the result
+# Step 4: Check the result
 terraform state list > after.txt
 
-# Step 4: Compare
+# Step 5: Compare
 diff before.txt after.txt
 
-# Step 5: Verify no infrastructure changes
+# Step 6: Verify no infrastructure changes
 terraform plan
 ```
 
 ## Backup and Recovery
 
-Terraform automatically creates a backup before modifying state. You can also specify a custom backup path:
+Terraform automatically creates a backup before modifying state. For local state, you can also specify a custom backup path:
 
 ```bash
 # Create a custom backup
@@ -173,7 +176,7 @@ terraform state push ./state-backup.tfstate
 
 ## Moving Between State Files
 
-To move a resource from one state file to another (useful when splitting configurations):
+To move a resource from one local state file to another (useful when splitting configurations):
 
 ```bash
 # Move a resource from one state to another
@@ -183,7 +186,7 @@ terraform state mv \
   aws_instance.web aws_instance.web
 ```
 
-For remote backends, you need to use `terraform state pull` and `terraform state push`:
+For separate remote backends, a common approach is to remove the binding from the source state and import the existing object into the destination state:
 
 ```bash
 # In the source directory, remove from state
@@ -316,11 +319,11 @@ If the plan shows changes, something is off. Review and fix before applying.
 A typo in the destination address creates a resource at a wrong address:
 
 ```bash
-# Oops - typo in destination
-terraform state mv aws_instance.web aws_intance.web  # "intance" not "instance"
+# Oops - typo in destination resource name
+terraform state mv aws_instance.web aws_instance.weeb
 
 # Fix by moving again
-terraform state mv aws_intance.web aws_instance.web
+terraform state mv aws_instance.weeb aws_instance.web
 ```
 
 ### Forgetting Quoted Addresses
