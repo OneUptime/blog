@@ -21,9 +21,9 @@ The most common use case is provider authentication. The AWS provider, for examp
 The simplest way to add environment variables is through the HCP Terraform web interface:
 
 1. Navigate to your workspace
-2. Click **Variables** in the left sidebar
-3. Click **Add variable** under the **Environment Variables** section
-4. Enter the key, value, and optionally mark it as sensitive
+2. Click the **Variables** tab
+3. Click **Add variable** in the **Workspace Variables** section
+4. Choose the **Environment variable** category, then enter the key, value, and optionally mark it as sensitive
 5. Click **Save variable**
 
 This is fine for one-off setups, but for repeatable workflows, use the API.
@@ -276,9 +276,12 @@ TFC_AWS_RUN_ROLE_ARN=arn:aws:iam::123456789012:role/tfc-role
 # For Azure
 TFC_AZURE_PROVIDER_AUTH=true
 TFC_AZURE_RUN_CLIENT_ID=your-client-id
+ARM_SUBSCRIPTION_ID=your-subscription-id
+ARM_TENANT_ID=your-tenant-id
 
 # For GCP
 TFC_GCP_PROVIDER_AUTH=true
+TFC_GCP_WORKLOAD_PROVIDER_NAME=projects/123456789/locations/global/workloadIdentityPools/my-pool/providers/my-provider
 TFC_GCP_RUN_SERVICE_ACCOUNT_EMAIL=terraform@project.iam.gserviceaccount.com
 ```
 
@@ -303,6 +306,7 @@ curl -s \
   --header "Content-Type: application/vnd.api+json" \
   --data '{
     "data": {
+      "id": "var-VARIABLE_ID",
       "type": "vars",
       "attributes": {
         "value": "new-value-here"
