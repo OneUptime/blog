@@ -31,6 +31,7 @@ Before starting, make sure you have:
 gcloud services enable cloudbuild.googleapis.com
 gcloud services enable cloudresourcemanager.googleapis.com
 gcloud services enable iam.googleapis.com
+gcloud services enable secretmanager.googleapis.com
 ```
 
 ## Setting Up the GCS State Backend
@@ -55,13 +56,14 @@ gsutil versioning set on gs://myproject-terraform-state
 
 ## IAM Permissions for Cloud Build
 
-The Cloud Build service account needs permissions to manage your GCP resources and access the state bucket:
+Create a dedicated service account for Terraform builds. Google recommends using a user-specified service account instead of relying on whichever default Cloud Build service account your project uses:
 
 ```bash
-# Get the Cloud Build service account email
 PROJECT_ID=$(gcloud config get-value project)
-PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format='value(projectNumber)')
-CB_SA="${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com"
+CB_SA="terraform-cloud-build@${PROJECT_ID}.iam.gserviceaccount.com"
+
+gcloud iam service-accounts create terraform-cloud-build \
+  --display-name="Terraform Cloud Build"
 
 # Grant editor role for managing resources
 gcloud projects add-iam-policy-binding $PROJECT_ID \
@@ -82,6 +84,10 @@ gcloud iam roles create terraformRunner \
   --title="Terraform Runner" \
   --description="Permissions for Terraform CI/CD" \
   --permissions="compute.instances.create,compute.instances.delete,compute.instances.get,compute.networks.create,compute.networks.delete,compute.networks.get"
+
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:${CB_SA}" \
+  --role="projects/${PROJECT_ID}/roles/terraformRunner"
 ```
 
 ## Cloud Build Configuration
@@ -91,13 +97,16 @@ Cloud Build uses a `cloudbuild.yaml` file to define build steps. Each step runs 
 ```yaml
 # cloudbuild.yaml - Full Terraform CI/CD pipeline
 timeout: "1800s"  # 30 minute timeout
+serviceAccount: "projects/myproject/serviceAccounts/terraform-cloud-build@myproject.iam.gserviceaccount.com"
+options:
+  logging: CLOUD_LOGGING_ONLY
 
 substitutions:
   _TF_VERSION: "1.7.0"
   _ENVIRONMENT: "production"
 
 steps:
-  # Step 1: Install Terraform
+  # Step 1: Verify Terraform
   - id: "install-terraform"
     name: "hashicorp/terraform:${_TF_VERSION}"
     entrypoint: "terraform"
@@ -144,7 +153,7 @@ steps:
       - "-out=tfplan"
     waitFor: ["tf-validate", "tf-fmt"]
 
-  # Step 6: Apply (only on main branch)
+  # Step 6: Apply the saved plan
   - id: "tf-apply"
     name: "hashicorp/terraform:${_TF_VERSION}"
     entrypoint: "terraform"
@@ -168,6 +177,7 @@ gcloud builds triggers create github \
   --repo-owner="myorg" \
   --pull-request-pattern="^main$" \
   --build-config="cloudbuild-plan.yaml" \
+  --service-account="projects/$PROJECT_ID/serviceAccounts/$CB_SA" \
   --description="Run terraform plan on pull requests"
 
 # Trigger apply on merge to main
@@ -177,6 +187,7 @@ gcloud builds triggers create github \
   --repo-owner="myorg" \
   --branch-pattern="^main$" \
   --build-config="cloudbuild-apply.yaml" \
+  --service-account="projects/$PROJECT_ID/serviceAccounts/$CB_SA" \
   --description="Run terraform apply when merged to main"
 ```
 
@@ -187,6 +198,8 @@ For better control, split the pipeline into separate files:
 ```yaml
 # cloudbuild-plan.yaml - Runs on pull requests
 timeout: "600s"
+options:
+  logging: CLOUD_LOGGING_ONLY
 
 steps:
   - id: "tf-init"
@@ -211,6 +224,8 @@ steps:
 ```yaml
 # cloudbuild-apply.yaml - Runs on merge to main
 timeout: "1800s"
+options:
+  logging: CLOUD_LOGGING_ONLY
 
 steps:
   - id: "tf-init"
@@ -254,23 +269,12 @@ steps:
 
 ## Adding Manual Approval
 
-Cloud Build does not have a native approval step like AWS CodePipeline. You can work around this by splitting into two pipelines and using Pub/Sub with a Cloud Function:
+Cloud Build supports native approvals for triggers. Add `--require-approval` when you create the apply trigger, or update an existing trigger:
 
-```yaml
-# cloudbuild-plan.yaml - Ends by publishing to Pub/Sub
-steps:
-  # ... init and plan steps ...
-
-  - id: "request-approval"
-    name: "gcr.io/cloud-builders/gcloud"
-    entrypoint: "bash"
-    args:
-      - "-c"
-      - |
-        # Publish a message requesting approval
-        gcloud pubsub topics publish terraform-approvals \
-          --message="Plan ready for review" \
-          --attribute="build_id=$BUILD_ID,trigger_id=$TRIGGER_NAME"
+```bash
+gcloud builds triggers update github terraform-apply-main \
+  --region="global" \
+  --require-approval
 ```
 
 ## Parallel Build Steps
@@ -307,15 +311,15 @@ steps:
 
 ## Logging and Monitoring
 
-Cloud Build logs go to Cloud Logging by default. Set up alerts for failed builds:
+Cloud Build logs can be stored in Cloud Storage or Cloud Logging depending on your logging configuration. For failed build alerts, subscribe to Cloud Build status notifications on the `cloud-builds` Pub/Sub topic or configure a Cloud Build notifier:
 
 ```bash
-# Create an alert policy for failed Terraform builds
-gcloud alpha monitoring policies create \
-  --display-name="Terraform Build Failures" \
-  --condition-display-name="Build failed" \
-  --condition-filter='resource.type="build" AND jsonPayload.status="FAILURE"' \
-  --notification-channels="projects/myproject/notificationChannels/123456"
+# Create the default topic for Cloud Build status notifications
+gcloud pubsub topics create cloud-builds
+
+# Create a pull subscription that can process messages where attributes.status="FAILURE"
+gcloud pubsub subscriptions create terraform-build-failures \
+  --topic=cloud-builds
 ```
 
 You can also stream build logs in real time:
@@ -327,6 +331,6 @@ gcloud builds log --stream $BUILD_ID
 
 ## Summary
 
-Google Cloud Build provides a clean, serverless way to run Terraform pipelines without managing any infrastructure. The container-based build steps give you full control over tooling, and the native GCP IAM integration eliminates credential management headaches. The main thing to watch out for is the lack of a built-in approval mechanism, which requires a workaround with Pub/Sub or a manual trigger.
+Google Cloud Build provides a clean, serverless way to run Terraform pipelines without managing any infrastructure. The container-based build steps give you full control over tooling, and the native GCP IAM integration eliminates credential management headaches. The main thing to watch out for is making sure apply workflows are gated with trigger approvals or a separate manual trigger.
 
 For more on Terraform CI/CD patterns, see our guide on [implementing plan and apply stages](https://oneuptime.com/blog/post/2026-02-23-how-to-implement-plan-and-apply-stages-in-cicd-for-terraform/view) and [using OIDC for cloud authentication](https://oneuptime.com/blog/post/2026-02-23-how-to-use-oidc-for-cloud-authentication-in-terraform-cicd/view).
