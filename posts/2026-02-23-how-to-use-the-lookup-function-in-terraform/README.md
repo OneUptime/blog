@@ -22,7 +22,7 @@ The `lookup` function retrieves a value from a map by its key. If the key is not
 lookup(map, key, default)
 ```
 
-The third argument (default) is optional in recent Terraform versions. If omitted and the key is not found, Terraform raises an error.
+The third argument (default) is optional for historical reasons, but omitting it has been deprecated since Terraform v0.7 because it is equivalent to direct map access. If omitted and the key is not found, Terraform raises an error.
 
 ## Basic Usage in Terraform Console
 
@@ -35,7 +35,7 @@ The third argument (default) is optional in recent Terraform versions. If omitte
 > lookup({name = "web", size = "large"}, "color", "blue")
 "blue"
 
-# Without default - errors if key is missing
+# Without default - works for existing keys, but this form is deprecated
 > lookup({name = "web"}, "name")
 "web"
 
@@ -62,6 +62,12 @@ locals {
     dev     = "t3.micro"
     staging = "t3.medium"
     prod    = "m5.large"
+  }
+
+  db_instance_classes = {
+    dev     = "db.t3.micro"
+    staging = "db.t3.medium"
+    prod    = "db.m5.large"
   }
 
   instance_counts = {
@@ -92,7 +98,7 @@ resource "aws_instance" "app" {
 resource "aws_db_instance" "main" {
   identifier        = "app-db-${var.environment}"
   engine            = "postgres"
-  instance_class    = lookup(local.instance_types, var.environment, "db.t3.micro")
+  instance_class    = lookup(local.db_instance_classes, var.environment, "db.t3.micro")
   allocated_storage = lookup(local.db_storage, var.environment, 20)
   username          = "admin"
   password          = var.db_password
