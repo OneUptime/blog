@@ -10,16 +10,12 @@ Description: A complete guide to running OpenTofu inside Docker containers, cove
 
 Running OpenTofu in Docker gives you a consistent, reproducible environment for your infrastructure-as-code workflows. It eliminates "works on my machine" issues, simplifies CI/CD pipelines, and lets you pin the exact version of OpenTofu along with all its dependencies. This guide walks through everything from using the official image to building custom containers for your team.
 
-## Using the Official OpenTofu Docker Image
+## Using the OpenTofu Docker Image
 
-The OpenTofu project publishes official Docker images to GitHub Container Registry:
+OpenTofu 1.6.x images are available from GitHub Container Registry. Current OpenTofu releases starting with 1.10 no longer support running the official image directly with `docker run`, so the examples below pin the 1.6.2 image:
 
 ```bash
-# Pull the latest OpenTofu image
-
-docker pull ghcr.io/opentofu/opentofu:latest
-
-# Pull a specific version
+# Pull the pinned OpenTofu image
 docker pull ghcr.io/opentofu/opentofu:1.6.2
 
 # Run a simple command
@@ -131,7 +127,6 @@ docker run --rm \
 echo "my-secret-key" | docker secret create aws_secret_key -
 
 # Reference in docker-compose.yml
-# version: "3.8"
 # services:
 #   tofu:
 #     image: ghcr.io/opentofu/opentofu:1.6.2
@@ -205,8 +200,6 @@ For projects that need multiple steps or services alongside OpenTofu, Docker Com
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
-
 services:
   tofu:
     image: ghcr.io/opentofu/opentofu:1.6.2
@@ -327,19 +320,27 @@ on:
 jobs:
   plan:
     runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/opentofu/opentofu:1.6.2
 
     steps:
       - uses: actions/checkout@v4
 
       - name: OpenTofu Init
-        working-directory: ./infrastructure
-        run: tofu init
+        run: |
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/workspace" \
+            -w /workspace/infrastructure \
+            ghcr.io/opentofu/opentofu:1.6.2 \
+            init
 
       - name: OpenTofu Plan
-        working-directory: ./infrastructure
-        run: tofu plan -no-color
+        run: |
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/workspace" \
+            -w /workspace/infrastructure \
+            -e AWS_ACCESS_KEY_ID \
+            -e AWS_SECRET_ACCESS_KEY \
+            ghcr.io/opentofu/opentofu:1.6.2 \
+            plan -no-color
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -349,7 +350,9 @@ jobs:
 
 ```yaml
 # .gitlab-ci.yml
-image: ghcr.io/opentofu/opentofu:1.6.2
+image:
+  name: ghcr.io/opentofu/opentofu:1.6.2
+  entrypoint: [""]
 
 stages:
   - validate
@@ -431,6 +434,6 @@ After deploying infrastructure with OpenTofu, monitoring ensures everything stay
 
 ## Conclusion
 
-Docker provides a clean, repeatable environment for running OpenTofu. Whether you use the official image for simple workflows or build custom images with your full toolchain, containerization eliminates environment inconsistencies and makes your IaC pipelines more reliable. Start with the official image and customize as your needs grow.
+Docker provides a clean, repeatable environment for running OpenTofu. Whether you use a pinned runnable OpenTofu 1.6.x image for simple workflows or build custom images with your full toolchain, containerization eliminates environment inconsistencies and makes your IaC pipelines more reliable. Start with a pinned image for legacy workflows or a custom image for current OpenTofu releases, and customize as your needs grow.
 
 For more OpenTofu guides, see our posts on [version management with tofuenv](https://oneuptime.com/blog/post/2026-02-23-how-to-handle-opentofu-version-management-with-tofuenv/view) and [using OpenTofu with existing Terraform Enterprise](https://oneuptime.com/blog/post/2026-02-23-how-to-use-opentofu-with-existing-terraform-enterprise/view).
