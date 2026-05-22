@@ -1,16 +1,16 @@
-# How to Configure Istio for eBPF-Based Data Plane
+# How to Configure Istio with an eBPF-Based CNI Data Plane
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, eBPF, Data Plane, Kubernetes, Networking, Service Mesh
 
-Description: How to configure Istio to use eBPF for traffic redirection instead of iptables, reducing overhead and improving data plane performance.
+Description: How to run Istio on top of an eBPF-based Kubernetes CNI data plane while keeping Istio traffic redirection compatible with the mesh.
 
 ---
 
-Istio traditionally uses iptables rules to intercept and redirect traffic to the Envoy sidecar proxy. While this works, iptables has performance overhead, adds latency to every packet, and creates complex rule chains that are hard to debug. eBPF (extended Berkeley Packet Filter) is an alternative that moves traffic interception into the Linux kernel, offering lower latency and better performance.
+Istio sidecar mode traditionally uses iptables rules to intercept and redirect traffic to the Envoy sidecar proxy. Istio CNI can move the privileged setup work out of each application pod, but in current Istio releases it still configures iptables rules for sidecar traffic redirection. eBPF (extended Berkeley Packet Filter) is commonly used by Kubernetes CNIs such as Cilium for the cluster networking data plane, offering efficient load balancing, policy, and routing in the Linux kernel.
 
-Here is how to configure Istio to use eBPF for its data plane operations.
+Here is how to run Istio with an eBPF-based CNI data plane without breaking Istio's supported traffic redirection model.
 
 ## Why eBPF Instead of iptables
 
@@ -21,32 +21,28 @@ iptables works by creating a chain of rules in the netfilter framework. Every pa
 - Debugging iptables rules is painful
 - iptables can cause issues with other components that modify rules
 
-eBPF programs run directly in the kernel and can make routing decisions more efficiently. Instead of traversing a chain of rules, an eBPF program makes a single function call to determine where traffic should go.
+eBPF programs run directly in the kernel and can make routing decisions more efficiently. For Istio, the important distinction is that eBPF can power the underlying Kubernetes CNI data plane, while Istio still owns mesh traffic capture to the sidecar proxy or ztunnel.
 
-## Option 1: Istio CNI with eBPF Traffic Redirection
+## Option 1: Istio CNI Traffic Redirection
 
-Istio's CNI plugin can use eBPF instead of iptables for traffic interception. This is the most integrated approach.
+Istio's CNI plugin is the most integrated way to configure Istio traffic redirection without requiring each application pod to run a privileged `istio-init` container. In current Istio sidecar mode, the CNI plugin configures iptables in the pod network namespace; it does not switch sidecar interception to eBPF.
 
-Install Istio with the CNI plugin and eBPF redirection:
+Install Istio with the CNI plugin:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 metadata:
-  name: istio-ebpf
+  name: istio-cni
 spec:
   profile: default
   components:
     cni:
       enabled: true
-  values:
-    cni:
-      ambient:
-        redirectMode: ebpf
 ```
 
 ```bash
-istioctl install -f istio-ebpf.yaml -y
+istioctl install -f istio-cni.yaml -y
 ```
 
 Verify the CNI plugin is running:
@@ -55,19 +51,15 @@ Verify the CNI plugin is running:
 kubectl get pods -n istio-system -l k8s-app=istio-cni-node
 ```
 
-Check that eBPF programs are loaded on the nodes:
+Check that Istio redirection rules are present in an injected pod:
 
 ```bash
-# SSH into a node or use a debug pod
-
-kubectl debug node/my-node -it --image=ubuntu
-# Inside the debug container:
-# bpftool prog list | grep istio
+kubectl debug my-pod -it --image=gcr.io/istio-release/base --profile=netadmin -- iptables-save | grep ISTIO
 ```
 
-## Option 2: Istio Ambient Mesh with eBPF
+## Option 2: Istio Ambient Mesh
 
-Istio's ambient mesh mode uses ztunnel for L4 traffic processing and can leverage eBPF for traffic redirection between pods and ztunnel.
+Istio's ambient mesh mode uses ztunnel for L4 traffic processing. Current ambient mesh uses in-pod redirection managed by the Istio CNI node agent; older Istio ambient documentation described an experimental eBPF redirection mode, but that approach is historical and is no longer needed.
 
 ```bash
 # Install Istio with ambient profile
@@ -77,7 +69,7 @@ istioctl install --set profile=ambient -y
 kubectl label namespace production istio.io/dataplane-mode=ambient
 ```
 
-In ambient mode, the eBPF programs redirect traffic from application pods to the ztunnel running on the same node:
+In ambient mode, Istio CNI configures traffic from application pods to the ztunnel running on the same node:
 
 ```bash
 # Verify ambient mode is active
@@ -87,58 +79,63 @@ kubectl get namespace production --show-labels | grep dataplane-mode
 kubectl get pods -n istio-system -l app=ztunnel
 ```
 
-The eBPF redirection in ambient mode handles:
+The ambient redirection handles:
 - Redirecting outbound traffic from pods to ztunnel
 - Redirecting inbound traffic from ztunnel to pods
-- Bypassing the network stack for node-local traffic
+- Keeping the capture inside the pod network namespace for compatibility with primary CNIs
 
 ## Option 3: Using Cilium CNI with Istio
 
 Cilium is a CNI plugin built on eBPF. You can use Cilium's eBPF data plane alongside Istio, where Cilium handles L3/L4 networking and Istio handles L7 traffic management.
 
-Install Cilium with Istio integration:
+Install Cilium with Istio-compatible settings:
 
 ```bash
 # Install Cilium
 helm repo add cilium https://helm.cilium.io/
 helm install cilium cilium/cilium \
   --namespace kube-system \
-  --set socketLB.enabled=true \
-  --set nodePort.enabled=true \
-  --set externalIPs.enabled=true
+  --set kubeProxyReplacement=false \
+  --set cni.exclusive=false
 ```
 
-Then install Istio, configuring it to work with Cilium:
+If you run Cilium as a full kube-proxy replacement, also restrict socket load balancing to the host namespace so it does not interfere with Istio proxying:
+
+```bash
+helm upgrade cilium cilium/cilium \
+  --namespace kube-system \
+  --set kubeProxyReplacement=true \
+  --set socketLB.hostNamespaceOnly=true \
+  --set cni.exclusive=false
+```
+
+Then install Istio normally. For sidecar mode with Istio CNI:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
   profile: default
-  meshConfig:
-    defaultConfig:
-      interceptionMode: NONE  # Let Cilium handle traffic interception
-  values:
+  components:
     cni:
-      enabled: false  # Cilium handles CNI
+      enabled: true
 ```
 
-When using Cilium with Istio, Cilium's eBPF programs handle the traffic redirection to the Envoy sidecar, replacing Istio's iptables-based approach.
+When using Cilium with Istio, Cilium's eBPF programs handle the Kubernetes networking data plane. Istio still handles mesh traffic capture and proxying through Istio CNI, sidecar injection, ztunnel, and Envoy.
 
-## Verifying eBPF Traffic Redirection
+## Verifying eBPF CNI and Istio Traffic Redirection
 
-After setup, verify that eBPF is handling traffic interception instead of iptables:
+After setup, verify both layers separately:
 
 ```bash
-# Check if iptables rules are absent or minimal in pods
-kubectl exec my-pod -c istio-proxy -- iptables -t nat -L -n
-# With eBPF, you should see fewer or no ISTIO_* chains
+# Check Istio redirection rules in a workload pod
+kubectl debug my-pod -it --image=gcr.io/istio-release/base --profile=netadmin -- iptables-save | grep ISTIO
 
-# Check eBPF programs on the node
-kubectl exec -n istio-system ztunnel-pod -- bpftool prog list 2>/dev/null
+# Check Cilium status
+kubectl exec -n kube-system ds/cilium -- cilium-dbg status
 
-# Check for eBPF maps
-kubectl exec -n istio-system ztunnel-pod -- bpftool map list 2>/dev/null
+# Check Cilium BPF maps
+kubectl exec -n kube-system ds/cilium -- cilium-dbg map list 2>/dev/null
 ```
 
 ## Performance Comparison: eBPF vs iptables
@@ -146,25 +143,24 @@ kubectl exec -n istio-system ztunnel-pod -- bpftool map list 2>/dev/null
 Measure the difference in your environment:
 
 ```bash
-# Install a load testing tool
-kubectl apply -f https://raw.githubusercontent.com/fortio/fortio/master/docs/fortio-deployment.yaml
+# Start a temporary Fortio client
+kubectl run fortio --image=fortio/fortio --restart=Never -- fortio server -http-port 8080
 
 # Run a latency test
-kubectl exec deploy/fortio -- fortio load \
+kubectl exec fortio -- fortio load \
   -c 50 -qps 5000 -t 60s \
   http://my-service:8080/health
 
 # Record the P50, P99, and P99.9 latencies
 ```
 
-Expected improvements with eBPF:
+Expected improvements from Cilium's eBPF data plane depend on which Cilium features you enable and on your workload:
 
-- P50 latency reduction of 0.5-1ms per hop
-- P99 latency reduction of 1-3ms per hop
+- Lower Kubernetes service load-balancing overhead when using kube-proxy replacement
 - Lower CPU usage on nodes with many pods
 - More predictable latency under high load
 
-The improvements are most noticeable in clusters with many pods per node and high-traffic services.
+The improvements are most noticeable in clusters with many pods per node and high-traffic services, but you should benchmark your own mesh because Istio's proxy path still contributes to request latency.
 
 ## eBPF Kernel Requirements
 
@@ -176,11 +172,11 @@ kubectl get nodes -o json | \
 ```
 
 Minimum kernel versions:
-- Basic eBPF support: 4.15+
-- Socket-level operations: 5.4+
-- Full feature set for Istio/Cilium: 5.10+
+- Cilium system requirement: Linux kernel 5.10+ or a distribution-supported equivalent
+- Recommended kernel for modern Cilium features: 5.10+
+- Some kube-proxy replacement and socket load-balancing features may require newer kernels
 
-If your nodes run older kernels, you will need to stick with iptables-based interception.
+If your nodes run older kernels, you will need to stick with a CNI mode and Istio configuration supported by your platform.
 
 ## Configuring eBPF Program Behavior
 
@@ -195,9 +191,9 @@ metadata:
   namespace: kube-system
 data:
   # Enable socket-level load balancing
-  bpf-lb-sock: "true"
+  bpf-lb-sock-hostns-only: "true"
   # Enable BPF-based masquerading
-  enable-bpf-masquerade: "true"
+  enable-bpf-masquerade: "false"
   # Set BPF map size
   bpf-map-dynamic-size-ratio: "0.0025"
   # Enable host routing via BPF
@@ -217,24 +213,18 @@ bpftool prog show
 journalctl -k | grep -i "bpf\|ebpf"
 
 # Monitor Cilium eBPF metrics (if using Cilium)
-kubectl exec -n kube-system ds/cilium -- cilium bpf metrics list
+kubectl exec -n kube-system ds/cilium -- cilium-dbg bpf metrics list
 ```
 
-Set up monitoring for eBPF-related metrics:
+Enable Cilium Prometheus metrics and let the Cilium Helm chart create the ServiceMonitor resources:
 
-```yaml
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: cilium-metrics
-  namespace: monitoring
-spec:
-  selector:
-    matchLabels:
-      k8s-app: cilium
-  endpoints:
-  - port: metrics
-    interval: 15s
+```bash
+helm upgrade cilium cilium/cilium \
+  --namespace kube-system \
+  --set prometheus.enabled=true \
+  --set prometheus.serviceMonitor.enabled=true \
+  --set operator.prometheus.enabled=true \
+  --set operator.prometheus.serviceMonitor.enabled=true
 ```
 
 ## Troubleshooting eBPF Issues
@@ -244,9 +234,8 @@ Common issues and solutions:
 ### Traffic Not Being Intercepted
 
 ```bash
-# Check if BPF programs are attached
-kubectl exec -n istio-system ztunnel-pod -- \
-  ls /sys/fs/bpf/ 2>/dev/null
+# Check Istio ambient redirection logs
+kubectl logs ds/ztunnel -n istio-system | grep inpod
 
 # Check CNI plugin logs
 kubectl logs -n istio-system -l k8s-app=istio-cni-node --tail=50
@@ -256,10 +245,10 @@ kubectl logs -n istio-system -l k8s-app=istio-cni-node --tail=50
 
 ```bash
 # Check for BPF map memory pressure
-kubectl exec -n kube-system ds/cilium -- cilium bpf map list 2>/dev/null
+kubectl exec -n kube-system ds/cilium -- cilium-dbg map list 2>/dev/null
 
 # Verify socket-level interception is active
-kubectl exec -n kube-system ds/cilium -- cilium status 2>/dev/null | grep eBPF
+kubectl get configmap -n kube-system cilium-config -o yaml | grep bpf-lb-sock-hostns
 ```
 
 ### Kernel Compatibility Issues
@@ -273,16 +262,16 @@ kubectl debug node/my-node -it --image=ubuntu -- \
 
 ## When to Use eBPF vs iptables
 
-Choose eBPF when:
-- Your nodes run kernel 5.10+ (or 5.4+ minimum)
+Choose an eBPF CNI data plane when:
+- Your nodes run kernel 5.10+ or a distribution-supported equivalent
 - You have high-traffic services where latency matters
 - You run many pods per node
-- You want easier debugging of traffic interception
+- You want Cilium features such as eBPF service load balancing, policy, and observability
 
-Stick with iptables when:
+Stick with the default Istio and CNI behavior when:
 - Your nodes run older kernels
 - You need maximum compatibility with all Kubernetes distributions
 - Your traffic volume is low enough that iptables overhead is negligible
 - You are running managed Kubernetes where you do not control the node OS
 
-eBPF-based traffic interception is the future of Istio's data plane. The performance benefits are real and measurable, and as kernel support matures across cloud providers, the adoption barriers continue to decrease. If your environment supports it, eBPF is worth the switch.
+eBPF-based Kubernetes networking can pair well with Istio, especially with Cilium, but it is not a drop-in replacement for Istio's supported traffic capture. Keep Istio's redirection model enabled, configure Cilium so it does not interfere with Istio proxying, and benchmark the result in your own environment.
