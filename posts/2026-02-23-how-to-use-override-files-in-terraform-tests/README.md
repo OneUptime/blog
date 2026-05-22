@@ -12,9 +12,9 @@ Terraform override files let you replace parts of your configuration without mod
 
 ## What Are Override Files
 
-Override files are Terraform configuration files named with an `_override` suffix (like `backend_override.tf`) or exactly named `override.tf`. When Terraform loads a directory, it merges override files on top of the regular configuration, replacing any blocks that match.
+Override files are Terraform configuration files named with an `_override` suffix (like `backend_override.tf`) or exactly named `override.tf`. When Terraform loads a directory, it merges override files on top of the regular configuration, matching top-level blocks by their headers.
 
-The key rule: override files replace blocks at the block level, not the attribute level. If you override a resource block, the entire resource definition is replaced.
+The key rule: override files merge top-level blocks, replace individual attributes you set, and replace nested blocks of the same type. If you override a resource block and set only one argument, the other arguments from the original block are preserved.
 
 ```text
 my-module/
@@ -26,11 +26,11 @@ my-module/
 
 ## Override Files in Tests
 
-The native Terraform test framework handles override files through the `override_resource`, `override_data`, and `override_module` blocks in `.tftest.hcl` files. These were introduced alongside mock providers to give you fine-grained control over test behavior.
+The native Terraform test framework has test-only override blocks named `override_resource`, `override_data`, and `override_module` in `.tftest.hcl` files. These are separate from traditional override files and give you fine-grained control over test behavior.
 
 ### Overriding Resources
 
-Use `override_resource` to replace specific resource behavior in tests:
+Use `override_resource` to override specific resource values in tests:
 
 ```hcl
 # tests/unit.tftest.hcl
@@ -151,7 +151,7 @@ terraform {
     bucket         = "my-terraform-state"
     key            = "production/terraform.tfstate"
     region         = "us-east-1"
-    dynamodb_table = "terraform-locks"
+    use_lockfile   = true
     encrypt        = true
   }
 }
@@ -195,6 +195,10 @@ provider "aws" {
 provider "aws" {
   region  = "us-east-1"
   profile = "testing"
+
+  assume_role {
+    role_arn = "arn:aws:iam::123456789012:role/testing"
+  }
 
   default_tags {
     tags = {
@@ -277,9 +281,9 @@ rm -f backend_override.tf provider_override.tf
 
 Understanding how overrides merge is important:
 
-1. **Top-level blocks are matched by type, name, and labels.** A `resource "aws_instance" "app"` override replaces the original `resource "aws_instance" "app"` block entirely.
+1. **Top-level blocks are matched by type and labels.** A `resource "aws_instance" "app"` override merges into the original `resource "aws_instance" "app"` block.
 
-2. **Nested blocks within a matched block are merged.** If both the original and override have a `tags` block, the override's tags replace the original's tags.
+2. **Nested blocks within a matched block are replaced by block type.** If an override contains a nested block, it replaces all original nested blocks of that type. Nested block contents are not merged, except for special cases such as `lifecycle` in resource blocks.
 
 3. **Attributes within a matched block are replaced individually.** If the override sets `instance_type` but not `ami`, the original `ami` is preserved.
 
@@ -303,7 +307,7 @@ resource "aws_instance" "app" {
   instance_type = "t3.micro"  # Only this attribute changes
 
   tags = {
-    Name        = "test-app"      # Tags block is fully replaced
+    Name        = "test-app"      # Tags attribute is replaced
     Environment = "test"
     TestRun     = "true"
   }
@@ -317,13 +321,13 @@ resource "aws_instance" "app" {
 
 1. **Prefer the test framework overrides** (`override_resource`, `override_data`, `override_module`) over traditional override files when possible. They are scoped to test files and do not risk affecting production code.
 
-2. **Always gitignore traditional override files.** They are meant to be local-only. If you need shared overrides, put them in the `.tftest.hcl` files instead.
+2. **Gitignore local traditional override files.** Local backend or provider override files are meant to stay local. If you need shared test overrides for resources, data sources, or modules, put them in the `.tftest.hcl` files instead.
 
 3. **Document which attributes you are overriding and why.** Override files can be confusing if someone does not know they exist.
 
 4. **Use overrides sparingly.** If you find yourself overriding most of your configuration, the module might need refactoring to be more testable.
 
-5. **Be aware of the full replacement behavior.** If you override a resource block, make sure you include all required attributes, not just the ones you want to change.
+5. **Be aware of nested block replacement behavior.** If you override nested blocks, make sure you include the nested block content you still need, and confirm the merged configuration still passes Terraform's validation rules.
 
 Override files are a powerful tool in your Terraform testing toolkit. Combined with mock providers and the native test framework, they let you test your infrastructure code thoroughly without the cost and complexity of managing real cloud resources.
 
