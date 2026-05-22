@@ -46,7 +46,7 @@ Note that string values are wrapped in quotes. To get the raw value without quot
 
 ## The -raw Flag
 
-The `-raw` flag strips quotes from string values, making it suitable for use in scripts and command substitution:
+The `-raw` flag converts a primitive output value to a string and prints it without Terraform formatting, making it suitable for use in scripts and command substitution:
 
 ```bash
 # With -raw: no quotes
@@ -72,7 +72,7 @@ echo "VPC: $VPC_ID"
 # VPC: "vpc-0abc123def456789"
 ```
 
-The `-raw` flag only works with string outputs. For lists, maps, and objects, use `-json` instead.
+The `-raw` flag only works with values Terraform can automatically convert to strings, such as strings, numbers, and booleans. For lists, maps, and objects, use `-json` instead.
 
 ## The -json Flag
 
@@ -129,9 +129,13 @@ terraform output
 # vpc_id = "vpc-abc123"
 ```
 
-To reveal a sensitive output, use `-raw` or `-json`:
+To reveal a sensitive output, request that output explicitly. Use `-raw` or `-json` when you also need script-friendly or JSON formatting:
 
 ```bash
+# Reveal by querying the output by name
+terraform output database_password
+# "my-secret-password"
+
 # Reveal with -raw
 terraform output -raw database_password
 # my-secret-password
@@ -141,7 +145,7 @@ terraform output -json database_password
 # "my-secret-password"
 ```
 
-This is intentional - revealing sensitive values requires an explicit flag, preventing accidental exposure in logs.
+This is intentional - listing all outputs stays redacted, while revealing a sensitive value requires an explicit query or machine-readable flag.
 
 ## Using in Shell Scripts
 
@@ -286,10 +290,10 @@ deploy:
 
 ## Specifying State Location
 
-By default, `terraform output` reads from the state configured in your backend. You can also read from a specific state file:
+By default, `terraform output` reads from the state configured in your backend. When you are using the local backend, you can also read from a specific state file:
 
 ```bash
-# Read from a specific state file
+# Read from a specific local state file
 terraform output -state=path/to/terraform.tfstate
 
 # Read from a different working directory
@@ -298,11 +302,11 @@ terraform -chdir=/path/to/config output vpc_id
 
 ## No Outputs Defined
 
-If you run `terraform output` and no outputs are defined, you get an empty result:
+If you run `terraform output` and no outputs are defined, Terraform returns a warning:
 
 ```bash
 terraform output
-# (no output)
+# Warning: No outputs found
 
 # Querying a non-existent output gives an error
 terraform output nonexistent
@@ -328,7 +332,7 @@ fi
 | Flag | Best For | Complex Types | Quotes |
 |------|----------|--------------|--------|
 | (none) | Human reading | Terraform format | Yes (strings) |
-| `-raw` | Shell scripts, single strings | Not supported | No |
+| `-raw` | Shell scripts, primitive values | Not supported | No |
 | `-json` | Programmatic use, all types | Supported | JSON format |
 
 ## A Complete Workflow Example
