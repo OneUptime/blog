@@ -20,30 +20,30 @@ These are the costs that show up on your cloud bill.
 
 ### Sidecar Proxy Costs
 
-For a cluster with 200 pods, with sidecars requesting 50m CPU and 64Mi memory each (right-sized):
+For a cluster with 200 pods, with sidecars requesting 50m CPU and 64Mi memory each (right-sized), using illustrative allocation rates derived from AWS m5.xlarge on-demand pricing and split across CPU and memory:
 
 ```text
 CPU: 200 * 0.05 cores = 10 cores
-Memory: 200 * 0.0625 GB = 12.5 GB
-Monthly cost (AWS m5.xlarge pricing): 10 * $35 + 12.5 * $8.76 = $460/month
+Memory: 200 * 0.0625 GiB = 12.5 GiB
+Monthly cost: 10 * $17.50 + 12.5 * $4.38 = ~$230/month
 ```
 
 With default requests (100m CPU, 128Mi memory):
 
 ```text
 CPU: 200 * 0.1 = 20 cores
-Memory: 200 * 0.125 = 25 GB
-Monthly cost: 20 * $35 + 25 * $8.76 = $919/month
+Memory: 200 * 0.125 GiB = 25 GiB
+Monthly cost: 20 * $17.50 + 25 * $4.38 = ~$460/month
 ```
 
 ### Control Plane Costs
 
-Three istiod replicas with 500m CPU and 1 GB memory each:
+Three right-sized istiod replicas with 500m CPU and 1 GiB memory each:
 
 ```text
-CPU: 3 * 0.5 = 1.5 cores = $52.50/month
-Memory: 3 * 1 GB = 3 GB = $26.28/month
-Total: ~$79/month
+CPU: 3 * 0.5 = 1.5 cores = $26.25/month
+Memory: 3 * 1 GiB = 3 GiB = $13.14/month
+Total: ~$39/month
 ```
 
 ### Gateway Costs
@@ -51,14 +51,14 @@ Total: ~$79/month
 Two ingress gateway pods plus a cloud load balancer:
 
 ```text
-Compute: 2 * (0.25 cores + 0.5 GB) = ~$22/month
+Compute: 2 * (0.25 cores + 0.5 GiB) = ~$13/month
 Load balancer: ~$16/month
-Total: ~$38/month
+Total: ~$29/month
 ```
 
 ### Total Direct Istio Cost
 
-With right-sized sidecars: **~$577/month** for 200 pods.
+With right-sized sidecars: **~$298/month** for 200 pods.
 
 ## Direct Infrastructure Costs Without Istio
 
@@ -66,9 +66,9 @@ Without Istio, you still need some of the same capabilities. Here is what replac
 
 ### Application-Level TLS
 
-Without mTLS from Istio, you need TLS termination somewhere. Options:
+Without mTLS from Istio, you need transport encryption and workload authentication somewhere. Options:
 
-- **Cloud load balancer to each service**: Each internal NLB costs ~$16/month. If you need TLS between 20 services, that is $320/month.
+- **Cloud load balancer to each service**: Each internal NLB costs ~$16/month. If you need TLS access to 20 services through load balancers, that is $320/month.
 - **Application-level TLS**: Free in terms of infrastructure, but requires each service to manage certificates.
 - **Network policies only**: Free, but no encryption in transit.
 
@@ -82,7 +82,7 @@ Without Istio, each service needs its own instrumentation for:
 - Distributed tracing (span generation and propagation)
 - Access logging
 
-Using OpenTelemetry SDKs adds minimal infrastructure cost, but there is a development cost for each service.
+Using OpenTelemetry SDKs adds minimal infrastructure cost, but there is a development cost for each service. Istio reduces this work for mesh metrics and access logs, but applications still need to propagate trace context if you want complete distributed traces.
 
 ### Retry and Circuit Breaking Logic
 
@@ -137,7 +137,7 @@ If you need mTLS, retries, circuit breakers, and observability, someone has to b
 
 ### Security Gaps
 
-Without automatic mTLS, internal traffic is often unencrypted. One compromised pod can sniff traffic from other services. The cost of a security breach dwarfs the cost of running Istio.
+Without automatic mTLS, internal traffic is often unencrypted. If an attacker gains network-level access or compromises a component that handles service-to-service traffic, plaintext traffic is easier to inspect or misuse. The cost of a security breach dwarfs the cost of running Istio.
 
 ### Inconsistent Observability
 
@@ -158,15 +158,15 @@ Here is a realistic comparison for a 200-pod cluster with 50 services:
 
 | Cost Category | With Istio | Without Istio |
 |---|---|---|
-| Sidecar/proxy compute | $460/month | $0 |
-| Control plane | $79/month | $0 |
-| Gateways + LB | $38/month | $0 |
+| Sidecar/proxy compute | $230/month | $0 |
+| Control plane | $39/month | $0 |
+| Gateways + LB | $29/month | $0 |
 | Internal TLS | $0 (included) | $0-320/month |
-| Observability instrumentation | $0 (included) | $0 (but dev cost) |
+| Mesh metrics/access logs | $0 (included) | $0 (but dev cost) |
 | Custom retry/circuit breaker lib | $0 (included) | ~$2,000/month (maintenance) |
 | Traffic management tooling | $0 (included) | ~$1,500/month (maintenance) |
 | Operational overhead | $1,875/month | $500/month |
-| **Total monthly** | **~$2,452/month** | **~$4,320/month** |
+| **Total monthly** | **~$2,173/month** | **~$4,320/month** |
 
 These numbers will vary widely based on your team, scale, and requirements. A team that only needs basic load balancing and does not care about mTLS or traffic management will find Istio expensive. A team running 50+ microservices with compliance requirements will find it cheaper than building everything in-house.
 
