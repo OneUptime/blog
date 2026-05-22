@@ -288,16 +288,16 @@ To check what `get_env()` resolves to, you have a few options:
 echo $IMAGE_TAG
 terragrunt plan
 
-# Use render-json to see resolved values
-terragrunt render-json | jq '.inputs'
+# Use render to see resolved values as JSON
+terragrunt render --format json | jq '.inputs'
 
 # Set environment variables inline for testing
-IMAGE_TAG=test DB_PASSWORD=test terragrunt render-json | jq '.inputs'
+IMAGE_TAG=test DB_PASSWORD=test terragrunt render --format json | jq '.inputs'
 ```
 
 ## Security Considerations
 
-Be aware that `get_env()` values end up as `TF_VAR_*` environment variables when Terraform runs. This means:
+Be aware that values from `get_env()` that you pass through `inputs` end up as `TF_VAR_*` environment variables when Terraform runs. This means:
 
 - They may appear in process listings (`ps aux`)
 - They are visible in CI/CD logs if you are not careful
