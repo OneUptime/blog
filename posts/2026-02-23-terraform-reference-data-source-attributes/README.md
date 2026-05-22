@@ -101,7 +101,7 @@ data "aws_region" "current" {}
 # Use them to build ARNs or account-specific values
 locals {
   account_id = data.aws_caller_identity.current.account_id
-  region     = data.aws_region.current.name
+  region     = data.aws_region.current.region
 
   # Build an ECR repository URL
   ecr_url = "${local.account_id}.dkr.ecr.${local.region}.amazonaws.com"
@@ -257,12 +257,12 @@ data "aws_region" "current" {}
 
 # In conditionals
 locals {
-  is_us_east = data.aws_region.current.name == "us-east-1"
+  is_us_east = data.aws_region.current.region == "us-east-1"
 }
 
 # In string interpolation
 resource "aws_s3_bucket" "regional" {
-  bucket = "myapp-data-${data.aws_region.current.name}"
+  bucket = "myapp-data-${data.aws_region.current.region}"
 }
 
 # In dynamic blocks
