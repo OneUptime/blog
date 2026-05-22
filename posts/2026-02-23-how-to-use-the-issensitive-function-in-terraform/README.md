@@ -14,6 +14,8 @@ Terraform's sensitivity system automatically protects secret values from being d
 
 The `issensitive` function takes any value and returns `true` if it is marked as sensitive, or `false` if it is not.
 
+> Note: `issensitive` is available in Terraform v1.8 and later.
+
 ```hcl
 variable "public_value" {
   type    = string
@@ -232,7 +234,7 @@ locals {
   # Create safe tags by masking sensitive values
   safe_tags = {
     for key, value in var.metadata :
-    key => issensitive(value) ? "***" : nonsensitive(value)
+    key => issensitive(value) ? "***" : value
   }
 }
 
