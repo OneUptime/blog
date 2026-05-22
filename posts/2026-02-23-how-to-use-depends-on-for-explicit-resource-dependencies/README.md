@@ -91,7 +91,9 @@ When one resource creates infrastructure that another resource needs but does no
 ```hcl
 # VPN gateway must be attached before routes can use it
 resource "aws_vpn_gateway" "main" {
-  vpc_id = aws_vpc.main.id
+  tags = {
+    Name = "${var.project}-vpn-gateway"
+  }
 }
 
 resource "aws_vpn_gateway_attachment" "main" {
@@ -236,7 +238,7 @@ resource "aws_iam_policy" "app" {
 
 # The data source queries the policy after it is created
 data "aws_iam_policy" "app" {
-  name = aws_iam_policy.app.name
+  name = "${var.project}-app-policy"
 
   depends_on = [aws_iam_policy.app]
 }
