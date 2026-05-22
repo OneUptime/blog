@@ -67,7 +67,7 @@ You can verify this:
 ```bash
 # Check endpoint addresses
 istioctl proxy-config endpoints deployment/sleep -n sample --context="${CTX_CLUSTER1}" -o json | \
-  jq '.[] | select(.hostName | contains("helloworld")) | .endpoint'
+  jq '.[] | select(.clusterName | contains("helloworld")) | .endpoints[].lbEndpoints[]'
 ```
 
 For different-network endpoints, you will see the east-west gateway IP with metadata indicating the actual destination.
@@ -77,7 +77,7 @@ For different-network endpoints, you will see the east-west gateway IP with meta
 By default, Istiod distributes endpoints for all services to all proxies. In large meshes, this can create excessive memory usage and configuration push overhead. You can scope which endpoints a proxy sees using Sidecar resources:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -95,7 +95,7 @@ This tells Istiod to only push endpoints for services in the same namespace, ist
 For cross-cluster traffic, make sure the Sidecar resource includes the namespaces of the remote services you need:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -126,7 +126,7 @@ The latency of this propagation depends on the Kubernetes watch connection. Typi
 Additionally, Envoy's outlier detection provides client-side health checking. If a remote endpoint starts returning 5xx errors, the sidecar can eject it locally before the Kubernetes-level health check catches up:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: reviews
