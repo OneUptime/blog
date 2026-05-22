@@ -37,7 +37,7 @@ The parentheses are not required but strongly recommended for readability. Each 
 
 ## How Nesting Works
 
-Terraform's ternary is right-associative, meaning the rightmost ternary is evaluated first. But for readability, think of it as a chain of if/else-if/else:
+Terraform's ternary groups to the right when chained. The first condition is evaluated to select a branch, and a conditional in the false branch gives you the familiar if/else-if/else shape:
 
 ```hcl
 # This nested expression:
@@ -289,7 +289,7 @@ locals {
 }
 ```
 
-## Nested Conditionals with count and for_each
+## Nested Conditionals with count
 
 ```hcl
 variable "deployment_type" {
