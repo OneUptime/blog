@@ -91,7 +91,7 @@ locals {
     metadata:
       name: app-config
       labels:
-        ${indent(8, local.labels_yaml)}
+        ${indent(4, local.labels_yaml)}
     data:
       config.yaml: |
         setting: enabled
@@ -125,7 +125,7 @@ locals {
       name: app-config
     data:
       config.json: |
-        ${indent(8, local.app_config)}
+        ${indent(4, local.app_config)}
   EOT
 }
 ```
@@ -149,7 +149,7 @@ locals {
     #cloud-config
     runcmd:
       - |
-        ${indent(8, chomp(local.script_body))}
+        ${indent(4, chomp(local.script_body))}
   EOT
 }
 ```
@@ -192,7 +192,7 @@ locals {
             - name: myapp
               image: myapp:latest
               ports:
-                ${indent(16, local.ports_yaml)}
+                ${indent(12, local.ports_yaml)}
   EOT
 }
 ```
@@ -216,7 +216,7 @@ locals {
   # Build the full Nginx config
   nginx_config = <<-EOT
     upstream backend {
-        ${indent(8, local.upstream_entries)}
+        ${indent(4, local.upstream_entries)}
     }
 
     server {
@@ -286,7 +286,7 @@ locals {
 
   config = <<-EOT
     config {
-      ${indent(6, chomp(local.all_rules))}
+      ${indent(2, chomp(local.all_rules))}
     }
   EOT
 }
@@ -300,7 +300,7 @@ Watch out for a couple of pitfalls.
 # Mistake: forgetting that the first line is NOT indented
 # If you need all lines indented, add a newline at the start
 locals {
-  all_indented = "\n${indent(4, "line1\nline2\nline3")}"
+  all_indented = indent(4, "\nline1\nline2\nline3")
   # Now all visible lines have 4-space indentation
 }
 
