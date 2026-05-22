@@ -58,7 +58,7 @@ module "eks" {
   version = "~> 20.0"
 
   cluster_name    = var.cluster_name
-  cluster_version = "1.29"
+  cluster_version = "1.35"
 
   # Enable public and private access to the cluster
   cluster_endpoint_public_access  = true
@@ -126,7 +126,7 @@ resource "helm_release" "argocd" {
   name       = "argocd"
   repository = "https://argoproj.github.io/argo-helm"
   chart      = "argo-cd"
-  version    = "5.51.0"
+  version    = "9.5.15"
   namespace  = kubernetes_namespace.argocd.metadata[0].name
 
   # Configure ArgoCD server settings
@@ -156,10 +156,15 @@ resource "helm_release" "argocd" {
     value = "2"
   }
 
-  # Set the admin password
+  # Set the admin password using a precomputed bcrypt hash
   set_sensitive {
     name  = "configs.secret.argocdServerAdminPassword"
-    value = bcrypt(var.argocd_admin_password)
+    value = var.argocd_admin_password_hash
+  }
+
+  set {
+    name  = "configs.secret.argocdServerAdminPasswordMtime"
+    value = var.argocd_admin_password_mtime
   }
 
   depends_on = [kubernetes_namespace.argocd]
@@ -168,7 +173,7 @@ resource "helm_release" "argocd" {
 
 ## Step 3: Configure ArgoCD Applications with Terraform
 
-After installing ArgoCD, use Terraform to configure the applications it should manage.
+After installing ArgoCD, use Terraform to configure the applications it should manage. Because Terraform validates `kubernetes_manifest` resources against the Kubernetes API during planning, apply the cluster and ArgoCD Helm release first, or keep the ArgoCD custom resources in a separate Terraform workspace, before applying Application and AppProject manifests.
 
 ```hcl
 # argocd-apps.tf
@@ -368,11 +373,20 @@ The output from Terraform often becomes input for ArgoCD applications. For examp
 
 ```hcl
 # handoff.tf
+# Create the application namespace before writing secrets into it
+resource "kubernetes_namespace" "production" {
+  metadata {
+    name = "production"
+  }
+
+  depends_on = [module.eks]
+}
+
 # Create a Kubernetes secret with infrastructure outputs for application use
 resource "kubernetes_secret" "infra_outputs" {
   metadata {
     name      = "infrastructure-config"
-    namespace = "production"
+    namespace = kubernetes_namespace.production.metadata[0].name
   }
 
   data = {
@@ -381,7 +395,7 @@ resource "kubernetes_secret" "infra_outputs" {
     s3_bucket_name    = module.s3.bucket_name
   }
 
-  depends_on = [module.eks]
+  depends_on = [kubernetes_namespace.production]
 }
 ```
 
