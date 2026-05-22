@@ -16,7 +16,7 @@ When you open a workspace in HCP Terraform and go to the Variables section, you 
 
 **Terraform Variables** map directly to `variable` blocks in your code. When HCP Terraform runs your plan or apply, it passes these values to Terraform as if you had used `-var` flags.
 
-**Environment Variables** are set as shell environment variables in the execution environment. They are available to providers, provisioners, and external programs - but not to your Terraform code directly.
+**Environment Variables** are set as shell environment variables in the execution environment. They are available to providers, provisioners, and external programs - but not to your Terraform code directly, unless you use Terraform's special `TF_VAR_` environment variable convention.
 
 ## Terraform Variables in Detail
 
@@ -172,7 +172,7 @@ Here is the practical breakdown:
 | Aspect | Terraform Variables | Environment Variables |
 |--------|--------------------|-----------------------|
 | Category | `terraform` | `env` |
-| Used by | Your HCL code via `var.name` | Providers, provisioners, shell |
+| Used by | Your HCL code via `var.name` | Providers, provisioners, shell; `TF_VAR_` variables can also set input variables |
 | Declared in | `variable` blocks | Not declared in HCL |
 | HCL types | Supports complex types | Always strings |
 | Purpose | Application configuration | Authentication, runtime settings |
@@ -239,11 +239,16 @@ In the HCP Terraform workspace, you would set:
 
 When the same Terraform variable is set in multiple places, HCP Terraform follows this precedence order (highest to lowest):
 
-1. CLI `-var` flags (only for CLI-driven runs)
-2. Workspace Terraform variables
-3. `*.auto.tfvars` files in the configuration
-4. `terraform.tfvars` file
-5. Variable `default` values in code
+1. Priority variable sets, when configured
+2. CLI `-var` and `-var-file` options (only for CLI-driven runs)
+3. Local `TF_VAR_` environment variables (only for CLI-driven runs)
+4. Workspace Terraform variables
+5. Non-priority variable sets
+6. `*.auto.tfvars` files in the configuration
+7. `terraform.tfvars` file
+8. Variable `default` values in code
+
+Variable set precedence also depends on priority, ownership, scope, and, for conflicting variable sets at the same scope, lexical order by variable set name.
 
 ```hcl
 # This default is overridden by the workspace variable
