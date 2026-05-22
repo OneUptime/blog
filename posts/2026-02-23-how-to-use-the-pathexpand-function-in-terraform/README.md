@@ -115,7 +115,7 @@ locals {
 }
 ```
 
-This combination covers all possible path formats a user might provide.
+This combination handles common current-user home directory paths and relative paths a user might provide.
 
 ## Behavior on Different Operating Systems
 
@@ -142,11 +142,10 @@ output "cert_path" {
 
 ### Other User Home Directories
 
-The `~username` syntax (referencing another user's home directory) is also supported on Unix-like systems:
+The `~username` syntax (referencing another user's home directory) is not expanded by Terraform's `pathexpand` function. It only expands a leading `~` segment for the current user:
 
 ```hcl
-# Expands to the home directory of the "deploy" user
-# For example: /home/deploy/.ssh/authorized_keys
+# Returns "~deploy/.ssh/authorized_keys" unchanged
 output "deploy_keys" {
   value = pathexpand("~deploy/.ssh/authorized_keys")
 }
@@ -176,7 +175,7 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 5.0"
+      version = "~> 6.0"
     }
   }
 }
@@ -198,7 +197,7 @@ resource "aws_key_pair" "main" {
 }
 
 resource "aws_instance" "web" {
-  ami           = "ami-0c55b159cbfafe1f0"
+  ami           = "resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64"
   instance_type = "t3.micro"
   key_name      = aws_key_pair.main.key_name
 
