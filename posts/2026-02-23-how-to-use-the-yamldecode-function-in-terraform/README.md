@@ -12,7 +12,7 @@ YAML is everywhere in modern infrastructure - Kubernetes manifests, Ansible play
 
 ## What Does yamldecode Do?
 
-The `yamldecode` function takes a string containing YAML and converts it into a Terraform value. Maps become Terraform maps, lists become lists, strings stay as strings, and numbers stay as numbers.
+The `yamldecode` function takes a string containing YAML and converts it into a Terraform value. Mappings become Terraform objects, sequences become tuples, strings stay as strings, and numbers stay as numbers.
 
 ```hcl
 # Parse a simple YAML string
@@ -37,8 +37,8 @@ Here is how YAML types map to Terraform types:
 
 | YAML Type | Terraform Type |
 |-----------|---------------|
-| Mapping   | map (object)  |
-| Sequence  | list (tuple)  |
+| Mapping   | object        |
+| Sequence  | tuple         |
 | String    | string        |
 | Integer   | number        |
 | Float     | number        |
@@ -262,15 +262,15 @@ YAML automatically interprets certain strings as non-string types:
 ```yaml
 # These might surprise you:
 version: 1.0      # Parsed as number 1, not string "1.0"
-enabled: yes      # Parsed as boolean true
-country: no       # Parsed as boolean false!
+enabled: true     # Parsed as boolean true
+country: no       # Parsed as string "no" in YAML 1.2
 ```
 
 To avoid this, quote strings that might be misinterpreted:
 
 ```yaml
 version: "1.0"
-enabled: "yes"
+enabled: "true"
 country: "no"
 ```
 
