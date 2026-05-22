@@ -57,9 +57,9 @@ resource "aws_iam_role_policy_attachment" "initial" {
 Use CloudTrail to see which APIs Terraform actually calls:
 
 ```bash
-# Query CloudTrail for all actions performed by the Terraform role
+# Query CloudTrail for actions from a known Terraform role session name
 aws cloudtrail lookup-events \
-  --lookup-attributes AttributeKey=Username,AttributeValue=terraform-deploy \
+  --lookup-attributes AttributeKey=Username,AttributeValue=terraform-session \
   --start-time "2026-02-01T00:00:00Z" \
   --end-time "2026-02-23T00:00:00Z" \
   --query 'Events[].{Time:EventTime,Event:EventName,Source:EventSource}' \
@@ -70,7 +70,8 @@ Then create a custom policy based on actual usage:
 
 ```bash
 # Use IAM Access Analyzer to generate a policy from CloudTrail data
-aws accessanalyzer generate-policy \
+aws accessanalyzer start-policy-generation \
+  --policy-generation-details '{"principalArn":"arn:aws:iam::123456789012:role/terraform-deploy"}' \
   --cloud-trail-details '{
     "trails": [
       {
@@ -83,11 +84,15 @@ aws accessanalyzer generate-policy \
     "startTime": "2026-02-01T00:00:00Z",
     "endTime": "2026-02-23T00:00:00Z"
   }'
+
+# After the job status is SUCCEEDED, retrieve the generated policy
+aws accessanalyzer get-generated-policy \
+  --job-id c557dc4a-0338-4489-95dd-739014860ff9
 ```
 
 ## Strategy 2: Permission Boundaries
 
-AWS IAM permission boundaries set a maximum limit on what a role can do, regardless of the policies attached:
+AWS IAM permission boundaries set the maximum identity-based permissions a role can receive from its attached policies:
 
 ```hcl
 # Create a permission boundary
@@ -185,9 +190,9 @@ resource "aws_iam_policy" "terraform_scoped" {
         ]
       },
       {
-        # EC2: Only in specific VPC
+        # EC2: Only create instances in a specific VPC
         Effect = "Allow"
-        Action = ["ec2:*"]
+        Action = ["ec2:RunInstances"]
         Resource = "*"
         Condition = {
           StringEquals = {
@@ -252,15 +257,22 @@ resource "azurerm_role_definition" "terraform" {
       # Resource groups
       "Microsoft.Resources/subscriptions/resourceGroups/read",
 
-      # Required for state management
+      # Required to manage the storage container
       "Microsoft.Storage/storageAccounts/blobServices/containers/*"
     ]
 
+    data_actions = [
+      # Required for blob state access when using Azure AD authentication
+      "Microsoft.Storage/storageAccounts/blobServices/containers/blobs/*"
+    ]
+
     not_actions = [
-      # Explicitly deny dangerous operations
+      # Exclude role-management operations from this custom role
       "Microsoft.Authorization/roleAssignments/write",
       "Microsoft.Authorization/roleDefinitions/write"
     ]
+
+    not_data_actions = []
   }
 
   assignable_scopes = [
@@ -373,8 +385,33 @@ resource "aws_iam_policy" "terraform_prod" {
       {
         Effect = "Allow"
         Action = [
-          "ec2:DescribeInstances",
-          "ec2:RunInstances",
+          "ec2:DescribeInstances"
+        ]
+        Resource = "*"
+        Condition = {
+          StringEquals = {
+            "aws:RequestedRegion" = "us-east-1"
+          }
+        }
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "ec2:RunInstances"
+        ]
+        Resource = "*"
+        Condition = {
+          StringEquals = {
+            "aws:RequestTag/Environment" = "production"
+          }
+          "ForAllValues:StringEquals" = {
+            "aws:TagKeys" = ["Environment", "ManagedBy"]
+          }
+        }
+      },
+      {
+        Effect = "Allow"
+        Action = [
           "ec2:TerminateInstances"
         ]
         Resource = "*"
