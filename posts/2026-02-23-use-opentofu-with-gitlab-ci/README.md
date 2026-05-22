@@ -17,8 +17,6 @@ Create a `.gitlab-ci.yml` file in your repository root:
 ```yaml
 # .gitlab-ci.yml
 
-image: ghcr.io/opentofu/opentofu:1.8.0
-
 variables:
   TF_ROOT: "infrastructure"
   TF_STATE_NAME: "production"
@@ -28,14 +26,18 @@ stages:
   - plan
   - apply
 
-cache:
-  key: opentofu-plugins
-  paths:
-    - ${TF_ROOT}/.terraform/
-
-before_script:
-  - cd ${TF_ROOT}
-  - tofu init
+default:
+  image:
+    name: ghcr.io/opentofu/opentofu:1.8.0
+    entrypoint: [""]
+  cache:
+    key: opentofu-plugins
+    paths:
+      - ${TF_ROOT}/.terraform/
+  before_script:
+    - apk --no-cache add jq
+    - cd ${TF_ROOT}
+    - tofu init
 
 validate:
   stage: validate
@@ -50,6 +52,11 @@ plan:
   stage: plan
   script:
     - tofu plan -out=plan.bin
+    - >
+      tofu show -json plan.bin | jq -r
+      '([.resource_changes[]?.change.actions?] | flatten) |
+      {"create": (map(select(. == "create")) | length), "update": (map(select(. == "update")) | length), "delete": (map(select(. == "delete")) | length)}'
+      > plan.json
     - tofu show -no-color plan.bin > plan.txt
   artifacts:
     paths:
@@ -141,7 +148,11 @@ plan:
   stage: plan
   script:
     - tofu plan -out=plan.bin
-    - tofu show -json plan.bin > plan.json
+    - >
+      tofu show -json plan.bin | jq -r
+      '([.resource_changes[]?.change.actions?] | flatten) |
+      {"create": (map(select(. == "create")) | length), "update": (map(select(. == "update")) | length), "delete": (map(select(. == "delete")) | length)}'
+      > plan.json
     - tofu show -no-color plan.bin > plan.txt
   artifacts:
     paths:
@@ -153,13 +164,13 @@ plan:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 ```
 
-GitLab natively renders Terraform plan reports in the merge request widget when you use the `reports:terraform` artifact. This works with OpenTofu because the plan JSON format is compatible.
+GitLab natively renders OpenTofu plan summaries in the merge request widget when you use the `reports:terraform` artifact. This works with OpenTofu by deriving the create, update, and delete counts from OpenTofu's JSON plan output.
 
-To generate the JSON plan:
+To generate the JSON plan summary:
 
 ```bash
 # Generate JSON plan for GitLab's MR widget
-tofu show -json plan.bin | jq '.' > plan.json
+tofu show -json plan.bin | jq -r '([.resource_changes[]?.change.actions?] | flatten) | {"create": (map(select(. == "create")) | length), "update": (map(select(. == "update")) | length), "delete": (map(select(. == "delete")) | length)}' > plan.json
 ```
 
 ## Multi-Environment Pipeline
@@ -168,8 +179,6 @@ Handle staging and production deployments:
 
 ```yaml
 # .gitlab-ci.yml
-image: ghcr.io/opentofu/opentofu:1.8.0
-
 stages:
   - validate
   - plan-staging
@@ -180,8 +189,14 @@ stages:
 variables:
   TF_ROOT: "infrastructure"
 
+default:
+  image:
+    name: ghcr.io/opentofu/opentofu:1.8.0
+    entrypoint: [""]
+
 .tofu_init:
   before_script:
+    - apk --no-cache add jq
     - cd ${TF_ROOT}
     - tofu init -backend-config="environments/${ENVIRONMENT}/backend.hcl"
 
@@ -202,7 +217,11 @@ plan-staging:
     ENVIRONMENT: staging
   script:
     - tofu plan -var-file="environments/staging/terraform.tfvars" -out=plan.bin
-    - tofu show -json plan.bin > plan.json
+    - >
+      tofu show -json plan.bin | jq -r
+      '([.resource_changes[]?.change.actions?] | flatten) |
+      {"create": (map(select(. == "create")) | length), "update": (map(select(. == "update")) | length), "delete": (map(select(. == "delete")) | length)}'
+      > plan.json
   artifacts:
     paths:
       - ${TF_ROOT}/plan.bin
@@ -233,7 +252,11 @@ plan-production:
     ENVIRONMENT: production
   script:
     - tofu plan -var-file="environments/production/terraform.tfvars" -out=plan.bin
-    - tofu show -json plan.bin > plan.json
+    - >
+      tofu show -json plan.bin | jq -r
+      '([.resource_changes[]?.change.actions?] | flatten) |
+      {"create": (map(select(. == "create")) | length), "update": (map(select(. == "update")) | length), "delete": (map(select(. == "delete")) | length)}'
+      > plan.json
   artifacts:
     paths:
       - ${TF_ROOT}/plan.bin
@@ -268,9 +291,9 @@ GitLab has a built-in HTTP backend for Terraform state. It works with OpenTofu t
 # backend.tf
 terraform {
   backend "http" {
-    address        = "https://gitlab.com/api/v4/projects/${PROJECT_ID}/terraform/state/${STATE_NAME}"
-    lock_address   = "https://gitlab.com/api/v4/projects/${PROJECT_ID}/terraform/state/${STATE_NAME}/lock"
-    unlock_address = "https://gitlab.com/api/v4/projects/${PROJECT_ID}/terraform/state/${STATE_NAME}/lock"
+    address        = "https://gitlab.com/api/v4/projects/<PROJECT_ID>/terraform/state/<STATE_NAME>"
+    lock_address   = "https://gitlab.com/api/v4/projects/<PROJECT_ID>/terraform/state/<STATE_NAME>/lock"
+    unlock_address = "https://gitlab.com/api/v4/projects/<PROJECT_ID>/terraform/state/<STATE_NAME>/lock"
     lock_method    = "POST"
     unlock_method  = "DELETE"
     retry_wait_min = 5
@@ -284,18 +307,19 @@ variables:
   TF_STATE_NAME: "production"
   TF_ADDRESS: "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/${TF_STATE_NAME}"
 
-before_script:
-  - cd ${TF_ROOT}
-  - |
-    tofu init \
-      -backend-config="address=${TF_ADDRESS}" \
-      -backend-config="lock_address=${TF_ADDRESS}/lock" \
-      -backend-config="unlock_address=${TF_ADDRESS}/lock" \
-      -backend-config="username=gitlab-ci-token" \
-      -backend-config="password=${CI_JOB_TOKEN}" \
-      -backend-config="lock_method=POST" \
-      -backend-config="unlock_method=DELETE" \
-      -backend-config="retry_wait_min=5"
+default:
+  before_script:
+    - cd ${TF_ROOT}
+    - |
+      tofu init \
+        -backend-config="address=${TF_ADDRESS}" \
+        -backend-config="lock_address=${TF_ADDRESS}/lock" \
+        -backend-config="unlock_address=${TF_ADDRESS}/lock" \
+        -backend-config="username=gitlab-ci-token" \
+        -backend-config="password=${CI_JOB_TOKEN}" \
+        -backend-config="lock_method=POST" \
+        -backend-config="unlock_method=DELETE" \
+        -backend-config="retry_wait_min=5"
 ```
 
 ## Caching Strategies
@@ -303,19 +327,21 @@ before_script:
 Cache provider plugins to speed up pipeline runs:
 
 ```yaml
-cache:
-  key:
-    files:
-      - ${TF_ROOT}/.terraform.lock.hcl
-  paths:
-    - ${TF_ROOT}/.terraform/providers/
+default:
+  cache:
+    key:
+      files:
+        - ${TF_ROOT}/.terraform.lock.hcl
+    paths:
+      - ${TF_ROOT}/.terraform/providers/
 
 # Or use a global cache
-cache:
-  key: opentofu-${CI_COMMIT_REF_SLUG}
-  paths:
-    - ${TF_ROOT}/.terraform/
-  policy: pull-push
+default:
+  cache:
+    key: opentofu-${CI_COMMIT_REF_SLUG}
+    paths:
+      - ${TF_ROOT}/.terraform/
+    policy: pull-push
 ```
 
 ## Scheduled Drift Detection
@@ -327,8 +353,14 @@ drift-check:
     - cd ${TF_ROOT}
     - tofu init
     - |
+      set +e
       tofu plan -detailed-exitcode -no-color > drift.txt 2>&1
       EXIT=$?
+      set -e
+      if [ $EXIT -eq 1 ]; then
+        cat drift.txt
+        exit 1
+      fi
       if [ $EXIT -eq 2 ]; then
         echo "DRIFT DETECTED"
         cat drift.txt
@@ -368,7 +400,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Install OpenTofu
-ARG OPENTOFU_VERSION=1.8.0
+ARG OPENTOFU_VERSION=1.12.0
 RUN curl -LO "https://github.com/opentofu/opentofu/releases/download/v${OPENTOFU_VERSION}/tofu_${OPENTOFU_VERSION}_linux_amd64.zip" \
     && unzip "tofu_${OPENTOFU_VERSION}_linux_amd64.zip" -d /usr/local/bin/ \
     && rm "tofu_${OPENTOFU_VERSION}_linux_amd64.zip"
@@ -379,7 +411,6 @@ RUN curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2
     && ./aws/install \
     && rm -rf awscliv2.zip aws
 
-ENTRYPOINT [""]
 ```
 
 ```yaml
