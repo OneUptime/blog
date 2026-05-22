@@ -8,7 +8,7 @@ Description: Learn how to write advanced Terraform variable validation rules tha
 
 ---
 
-Simple validation rules check one thing: is the value in an allowed list, does it match a regex, is it within a range. But production modules often need more sophisticated checks. You might need to validate that two fields are consistent with each other, that a list has no duplicates, that CIDR blocks do not overlap, or that conditional fields are only set when certain flags are enabled.
+Simple validation rules check one thing: is the value in an allowed list, does it match a regex, is it within a range. But production modules often need more sophisticated checks. You might need to validate that two fields are consistent with each other, that a list has no duplicates, that CIDR blocks are well-formed, or that conditional fields are only set when certain flags are enabled.
 
 This post walks through advanced validation patterns that go beyond the basics.
 
@@ -80,9 +80,9 @@ variable "subnet_cidrs" {
 
 The `toset()` call removes duplicates from a list. If the original list had 5 items and the set has 4, there was a duplicate.
 
-## Validating Non-Overlapping CIDR Blocks
+## Validating CIDR Block Format
 
-This is a more advanced check that ensures CIDR blocks do not overlap with each other:
+This is a more advanced check that ensures CIDR blocks are valid and that the VPC CIDR uses private address space:
 
 ```hcl
 variable "network_config" {
@@ -91,13 +91,16 @@ variable "network_config" {
     subnet_cidrs = list(string)
   })
 
-  # All subnets must be within the VPC CIDR
+  # The VPC CIDR and all subnet CIDRs must be valid
   validation {
-    condition = alltrue([
-      for cidr in var.network_config.subnet_cidrs :
-      can(cidrsubnet(var.network_config.vpc_cidr, 0, 0))
-    ])
-    error_message = "All subnet CIDRs must be valid CIDR blocks."
+    condition = (
+      can(cidrhost(var.network_config.vpc_cidr, 0)) &&
+      alltrue([
+        for cidr in var.network_config.subnet_cidrs :
+        can(cidrhost(cidr, 0))
+      ])
+    )
+    error_message = "The VPC CIDR and all subnet CIDRs must be valid CIDR blocks."
   }
 
   # VPC CIDR must use private address space
@@ -119,7 +122,7 @@ Some fields should only be required when another field has a specific value. Use
 ```hcl
 variable "storage" {
   type = object({
-    type       = string            # "gp3", "io1", "io2"
+    type       = string            # "gp2", "gp3", "io1", "io2"
     size_gb    = number
     iops       = optional(number)
     throughput = optional(number)
@@ -188,9 +191,9 @@ variable "services" {
   # Validate CPU values are Fargate-compatible
   validation {
     condition = alltrue([
-      for name, svc in var.services : contains([256, 512, 1024, 2048, 4096], svc.cpu)
+      for name, svc in var.services : contains([256, 512, 1024, 2048, 4096, 8192, 16384], svc.cpu)
     ])
-    error_message = "CPU must be a valid Fargate value: 256, 512, 1024, 2048, or 4096."
+    error_message = "CPU must be a valid Fargate value: 256, 512, 1024, 2048, 4096, 8192, or 16384."
   }
 
   # Validate memory is compatible with CPU
@@ -199,10 +202,12 @@ variable "services" {
     condition = alltrue([
       for name, svc in var.services : (
         (svc.cpu == 256 && contains([512, 1024, 2048], svc.memory)) ||
-        (svc.cpu == 512 && svc.memory >= 1024 && svc.memory <= 4096) ||
-        (svc.cpu == 1024 && svc.memory >= 2048 && svc.memory <= 8192) ||
-        (svc.cpu == 2048 && svc.memory >= 4096 && svc.memory <= 16384) ||
-        (svc.cpu == 4096 && svc.memory >= 8192 && svc.memory <= 30720)
+        (svc.cpu == 512 && contains([1024, 2048, 3072, 4096], svc.memory)) ||
+        (svc.cpu == 1024 && contains([2048, 3072, 4096, 5120, 6144, 7168, 8192], svc.memory)) ||
+        (svc.cpu == 2048 && svc.memory >= 4096 && svc.memory <= 16384 && svc.memory % 1024 == 0) ||
+        (svc.cpu == 4096 && svc.memory >= 8192 && svc.memory <= 30720 && svc.memory % 1024 == 0) ||
+        (svc.cpu == 8192 && svc.memory >= 16384 && svc.memory <= 61440 && svc.memory % 4096 == 0) ||
+        (svc.cpu == 16384 && svc.memory >= 32768 && svc.memory <= 122880 && svc.memory % 8192 == 0)
       )
     ])
     error_message = "Memory value must be compatible with the specified CPU. See Fargate documentation for valid CPU/memory combinations."
@@ -297,7 +302,7 @@ variable "monitoring" {
   validation {
     condition = (
       var.monitoring.config == null ||
-      contains([1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1827, 3653],
+      contains([1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1096, 1827, 2192, 2557, 2922, 3288, 3653],
         try(var.monitoring.config.retention_days, 30))
     )
     error_message = "retention_days must be a CloudWatch Logs supported value."
