@@ -76,6 +76,11 @@ on:
   pull_request:
     paths: ['infrastructure/**']
 
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
 jobs:
   classify-risk:
     runs-on: ubuntu-latest
@@ -88,7 +93,7 @@ jobs:
         id: plan
         run: |
           terraform init
-          terraform plan -out=tfplan -json > plan.json
+          terraform plan -out=tfplan
           terraform show -json tfplan > plan-details.json
 
       - name: Classify Risk Level
@@ -120,7 +125,7 @@ jobs:
               riskLevel === 'medium' ? '- Team Lead' :
               'Auto-approved (low risk)'}`;
 
-            github.rest.issues.createComment({
+            await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
@@ -169,6 +174,7 @@ Automatically classify the risk level of each Terraform change:
 # Classify the risk level of a Terraform plan
 
 import json
+import os
 import sys
 
 # Resources that always require extra review
@@ -195,6 +201,9 @@ def classify_risk(plan_file):
     modifies = len([c for c in changes if "update" in c["change"]["actions"]])
     destroys = len([c for c in changes if "delete" in c["change"]["actions"]])
 
+    with open("plan-summary.json", "w") as f:
+        json.dump({"add": adds, "change": modifies, "destroy": destroys}, f)
+
     # Check for sensitive resources
     sensitive_changes = [
         c for c in changes
@@ -214,7 +223,12 @@ def classify_risk(plan_file):
 
 if __name__ == "__main__":
     risk = classify_risk(sys.argv[1])
-    print(f"::set-output name=risk_level::{risk}")
+    output_file = os.environ.get("GITHUB_OUTPUT")
+    if output_file:
+        with open(output_file, "a") as f:
+            f.write(f"risk_level={risk}\n")
+    else:
+        print(f"risk_level={risk}")
 ```
 
 ## Implementing Slack-Based Approvals
@@ -223,13 +237,11 @@ For organizations that want approvals outside of Git, integrate with Slack:
 
 ```python
 # scripts/slack-approval.py
-# Send approval requests via Slack and wait for responses
+# Send approval requests via Slack; handle button responses with Slack interactivity
 
 import requests
-import json
-import time
 
-def request_approval(plan_summary, workspace, approvers, webhook_url):
+def request_approval(plan_summary, workspace, approver_webhooks):
     """Send an approval request to Slack."""
     blocks = [
         {
@@ -273,10 +285,10 @@ def request_approval(plan_summary, workspace, approvers, webhook_url):
         }
     ]
 
-    # Send to each approver channel
-    for approver in approvers:
+    # Incoming webhooks are tied to a configured channel.
+    for approver, webhook_url in approver_webhooks.items():
         requests.post(webhook_url, json={
-            "channel": approver,
+            "text": f"Terraform approval request for {workspace}",
             "blocks": blocks
         })
 ```
@@ -289,7 +301,10 @@ Implement expiring approvals so that stale plans do not get applied:
 # scripts/approval-manager.py
 # Manage time-bound approval states
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
+
+def utc_now():
+    return datetime.now(UTC)
 
 class ApprovalManager:
     def __init__(self, store):
@@ -297,13 +312,14 @@ class ApprovalManager:
 
     def create_approval_request(self, plan_id, plan_hash, ttl_hours=4):
         """Create a new approval request with expiration."""
-        expiry = datetime.utcnow() + timedelta(hours=ttl_hours)
+        now = utc_now()
+        expiry = now + timedelta(hours=ttl_hours)
 
         self.store.put({
             "plan_id": plan_id,
             "plan_hash": plan_hash,
             "status": "pending",
-            "created_at": datetime.utcnow().isoformat(),
+            "created_at": now.isoformat(),
             "expires_at": expiry.isoformat(),
             "approvals": [],
             "rejections": []
@@ -313,12 +329,12 @@ class ApprovalManager:
         """Record an approval if the request has not expired."""
         request = self.store.get(plan_id)
 
-        if datetime.utcnow() > datetime.fromisoformat(request["expires_at"]):
+        if utc_now() > datetime.fromisoformat(request["expires_at"]):
             raise ValueError("Approval request has expired. Please re-plan.")
 
         request["approvals"].append({
             "approver": approver,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": utc_now().isoformat()
         })
 
         self.store.update(plan_id, request)
@@ -327,7 +343,7 @@ class ApprovalManager:
         """Check if a plan has enough valid approvals."""
         request = self.store.get(plan_id)
 
-        if datetime.utcnow() > datetime.fromisoformat(request["expires_at"]):
+        if utc_now() > datetime.fromisoformat(request["expires_at"]):
             return False
 
         return len(request["approvals"]) >= required_count
@@ -367,10 +383,14 @@ jobs:
             --incident "${{ github.event.inputs.incident_id }}"
 
       - name: Terraform Apply
-        run: terraform apply -auto-approve
+        run: |
+          terraform init
+          terraform apply -auto-approve
 
       # Notify security team about the emergency override
       - name: Notify Security Team
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
         run: |
           curl -X POST "$SLACK_WEBHOOK" \
             -H 'Content-Type: application/json' \
