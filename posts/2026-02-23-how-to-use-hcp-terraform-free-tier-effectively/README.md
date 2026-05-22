@@ -12,7 +12,7 @@ HCP Terraform (formerly Terraform Cloud) offers a generous free tier that many t
 
 ## What the Free Tier Includes
 
-The HCP Terraform free tier gives you access to a surprisingly complete set of features. You get up to 500 managed resources, unlimited workspaces, remote state management, VCS integration, and a single concurrent run. The free tier also includes access to the private module registry and basic team management for up to five users.
+The HCP Terraform free tier gives you access to a surprisingly complete set of features. You get up to 500 managed resources, unlimited workspaces, remote state management, VCS integration, and a single concurrent run. The enhanced free tier also includes access to the private module registry and collaboration for unlimited users.
 
 That is more than enough for many startups and small teams. The key is knowing how to organize your workloads to stay within those limits.
 
@@ -35,7 +35,7 @@ terraform {
 }
 ```
 
-One common mistake is creating separate organizations for different projects. Keep everything under one organization on the free tier. This way, your five team members can access all workspaces without hitting user limits.
+One common mistake is creating separate organizations for different projects. Keep everything under one organization on the free tier. This way, your team can access all workspaces while tracking the 500 managed-resource limit in one place.
 
 ## Workspace Organization Strategy
 
@@ -78,10 +78,12 @@ terraform {
   }
 }
 
-# Reference networking outputs using data source
-data "terraform_remote_state" "networking" {
-  backend = "remote"
+provider "tfe" {
+  hostname = "app.terraform.io"
+}
 
+# Reference networking outputs using the HCP Terraform provider
+data "tfe_outputs" "networking" {
   config = {
     organization = "my-startup"
     workspaces = {
@@ -91,40 +93,20 @@ data "terraform_remote_state" "networking" {
 }
 ```
 
-This pattern keeps your resource count per workspace manageable and makes it easy to understand what each workspace controls.
+This pattern keeps each workspace easier to reason about and makes it clear what each workspace controls.
 
 ## Staying Within the 500 Resource Limit
 
-The 500-resource limit applies across your entire organization. To track your resource usage, check the organization settings page regularly.
+The 500-resource limit applies across your entire organization. To track your resource usage, check the Usage page regularly.
 
 Here are some practical tips for staying under the limit:
 
-First, avoid managing resources that do not need to be in Terraform. Things like one-off test instances or resources managed by other tools should stay out of your state.
+First, avoid managing resources that do not need to be in Terraform. Things like one-off test instances or resources managed by other tools should stay out of your state. A declared resource still counts as a managed resource even if you set `ignore_changes = all`, so remove bootstrap-only resources from both configuration and state when Terraform no longer needs to manage them.
 
-```hcl
-# Use lifecycle rules to ignore resources you only create once
-resource "aws_iam_role" "bootstrap" {
-  name = "bootstrap-role"
-
-  # Prevent Terraform from counting this in ongoing management
-  # if you only need it during initial setup
-  lifecycle {
-    ignore_changes = all
-  }
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Action = "sts:AssumeRole"
-        Effect = "Allow"
-        Principal = {
-          Service = "ec2.amazonaws.com"
-        }
-      }
-    ]
-  })
-}
+```bash
+# After removing a bootstrap-only resource from configuration,
+# remove it from state so Terraform no longer manages it.
+terraform state rm aws_iam_role.bootstrap
 ```
 
 Second, consolidate where possible. Instead of creating individual security group rules as separate resources, use inline rules:
@@ -231,7 +213,7 @@ terraform plan
 
 ## Team Collaboration Tips
 
-With five users on the free tier, establish clear ownership patterns. Assign workspace ownership so team members know who is responsible for what.
+With multiple users on the free tier, establish clear ownership patterns. Assign workspace ownership so team members know who is responsible for what.
 
 ```hcl
 # Use workspace tags to indicate ownership
@@ -255,26 +237,26 @@ Watch for these signals that you are outgrowing the free tier:
 
 - Regularly hitting the 500-resource limit
 - Needing more than one concurrent run
-- Requiring team-level access controls (read-only vs. admin)
-- Needing Sentinel policies for governance
-- More than five team members need access
+- Requiring more advanced team-level access controls or governance workflows
+- Needing more than the free tier's limited policy set for Sentinel or OPA governance
+- Needing paid-tier collaboration features such as change requests or team notifications
 
 Until you hit those walls, the free tier is genuinely capable of supporting production infrastructure. Many teams run on it for months or even years before needing to upgrade.
 
 ## Monitoring Your Usage
 
-Keep an eye on your resource count and run history through the HCP Terraform dashboard. The organization settings page shows your current resource consumption against the free tier limits.
+Keep an eye on your resource count and run history through the HCP Terraform dashboard. The Usage page shows your current resource consumption against the free tier limits.
 
 ```bash
 # You can also check workspace details via the API
 curl -s \
   --header "Authorization: Bearer $TF_TOKEN" \
   --header "Content-Type: application/vnd.api+json" \
-  "https://app.terraform.io/api/v2/organizations/my-startup/workspaces" | \
+  "https://app.terraform.io/api/v2/organizations/my-startup/workspaces?page%5Bsize%5D=100" | \
   jq '.data[] | {name: .attributes.name, resources: .attributes["resource-count"]}'
 ```
 
-This API call lists all your workspaces and their resource counts, helping you track usage programmatically.
+This API call lists up to 100 workspaces and their resource counts, helping you track usage programmatically. If you have more than 100 workspaces, follow the pagination links in the API response.
 
 ## Wrapping Up
 
