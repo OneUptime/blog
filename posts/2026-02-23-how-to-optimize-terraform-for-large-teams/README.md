@@ -49,9 +49,10 @@ Each directory has its own state file. Engineers working on networking do not bl
 
 terraform {
   backend "s3" {
-    bucket = "company-terraform-state"
-    key    = "prod/networking/terraform.tfstate"
-    region = "us-east-1"
+    bucket       = "company-terraform-state"
+    key          = "prod/networking/terraform.tfstate"
+    region       = "us-east-1"
+    use_lockfile = true
   }
 }
 
@@ -111,10 +112,10 @@ For large teams, your Git workflow matters as much as your Terraform code struct
 
 ```yaml
 # .github/CODEOWNERS - Assign ownership per directory
-/infrastructure/networking/  @networking-team
-/infrastructure/database/    @database-team
-/infrastructure/compute/     @platform-team
-/infrastructure/monitoring/  @sre-team
+/infrastructure/networking/  @your-org/networking-team
+/infrastructure/database/    @your-org/database-team
+/infrastructure/compute/     @your-org/platform-team
+/infrastructure/monitoring/  @your-org/sre-team
 ```
 
 Require plan output in pull requests so reviewers can see exactly what will change:
@@ -134,7 +135,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
 
       - name: Terraform Init
         run: terraform init
@@ -151,10 +152,10 @@ jobs:
         with:
           script: |
             const output = `#### Terraform Plan
-            ```
+
+            \`\`\`
             ${{ steps.plan.outputs.stdout }}
-            ```
-            `;
+            \`\`\``;
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
@@ -238,14 +239,16 @@ tflint --recursive
 
 At scale, you cannot review every Terraform plan manually. Use policy engines to automate guardrails:
 
-```python
+```rego
 # Using OPA/Conftest for policy checks
 # policy/terraform.rego
 
 package terraform
 
+import rego.v1
+
 # Deny resources without required tags
-deny[msg] {
+deny contains msg if {
   resource := input.resource_changes[_]
   resource.type == "aws_instance"
   not resource.change.after.tags.Environment
@@ -253,7 +256,7 @@ deny[msg] {
 }
 
 # Deny overly permissive security groups
-deny[msg] {
+deny contains msg if {
   resource := input.resource_changes[_]
   resource.type == "aws_security_group_rule"
   resource.change.after.cidr_blocks[_] == "0.0.0.0/0"
@@ -288,20 +291,30 @@ jobs:
         component: [networking, compute, database, monitoring]
     steps:
       - uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v4
+
+      - name: Terraform Init
+        run: terraform init
+        working-directory: infrastructure/${{ matrix.component }}
+
       - name: Terraform Plan
         id: plan
-        run: |
-          terraform init
-          terraform plan -detailed-exitcode -out=tfplan
+        run: terraform plan -detailed-exitcode -out=tfplan
         working-directory: infrastructure/${{ matrix.component }}
         continue-on-error: true
 
       # Exit code 2 means there are changes (drift detected)
       - name: Notify on Drift
-        if: steps.plan.outcome == 'failure'
+        if: steps.plan.outputs.exitcode == '2'
         run: |
           echo "Drift detected in ${{ matrix.component }}"
           # Send notification to Slack, PagerDuty, etc.
+
+      - name: Fail on Plan Error
+        if: steps.plan.outputs.exitcode == '1'
+        run: exit 1
 ```
 
 Monitoring tools like [OneUptime](https://oneuptime.com) can integrate with these drift detection pipelines to give you a unified view of infrastructure health alongside your application monitoring.
@@ -311,13 +324,13 @@ Monitoring tools like [OneUptime](https://oneuptime.com) can integrate with thes
 For large teams, running Terraform locally is asking for trouble. Somebody will forget to pull the latest code, or run an apply from a stale branch. Move all applies to CI/CD:
 
 ```hcl
-# Enforce that applies only happen through automation
+# Configure HCP Terraform workspaces for remote operations
 terraform {
-  backend "remote" {
+  cloud {
     organization = "your-org"
 
     workspaces {
-      prefix = "prod-"
+      tags = ["prod"]
     }
   }
 }
