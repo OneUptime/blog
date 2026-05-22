@@ -269,7 +269,7 @@ When upgrading modules, follow this process:
 ```bash
 # Step 1: Check what is currently installed
 tofu version
-grep 'version' *.tf | grep module
+grep -R 'version[[:space:]]=' *.tf
 
 # Step 2: Update the version in your configuration
 # Edit the module block to the new version
@@ -303,7 +303,7 @@ module "vpc" {
 
   # v5 might have changed variable names or defaults
   enable_nat_gateway = true
-  # New required variable in v5
+  # Optional variable with a default that you can override
   nat_gateway_destination_cidr_block = "0.0.0.0/0"
 }
 ```
@@ -353,13 +353,12 @@ Modules expose outputs that other modules or resources can reference:
 
 ```hcl
 # One module's output feeds into another
-resource "aws_security_group_rule" "allow_rds" {
-  type                     = "ingress"
-  from_port                = 5432
-  to_port                  = 5432
-  protocol                 = "tcp"
-  source_security_group_id = module.eks.cluster_security_group_id
-  security_group_id        = module.rds.db_security_group_id
+resource "aws_route53_record" "database" {
+  zone_id = var.private_zone_id
+  name    = "db.example.internal"
+  type    = "CNAME"
+  ttl     = 300
+  records = [module.rds.db_instance_address]
 }
 ```
 
