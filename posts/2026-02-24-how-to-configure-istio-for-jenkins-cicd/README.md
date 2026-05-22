@@ -93,6 +93,8 @@ pipeline {
 
 The real value comes from a canary pipeline that uses Istio traffic management. Here is a more complete Jenkinsfile:
 
+This example assumes you already have a Kubernetes Service named `my-app` and a stable Deployment named `my-app-stable` whose pods are labeled `app: my-app` and `version: stable`.
+
 ```groovy
 pipeline {
     agent any
@@ -173,7 +175,22 @@ EOF
                     sh """
                         STABLE_WEIGHT=\$((100 - ${params.CANARY_WEIGHT}))
                         cat <<EOF | kubectl apply -f -
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: my-app
+  namespace: ${NAMESPACE}
+spec:
+  host: my-app
+  subsets:
+  - name: stable
+    labels:
+      version: stable
+  - name: canary
+    labels:
+      version: canary
+---
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -238,7 +255,22 @@ EOF
                             -n ${NAMESPACE} --timeout=300s
 
                         cat <<EOF | kubectl apply -f -
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: my-app
+  namespace: ${NAMESPACE}
+spec:
+  host: my-app
+  subsets:
+  - name: stable
+    labels:
+      version: stable
+  - name: canary
+    labels:
+      version: canary
+---
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -265,7 +297,22 @@ EOF
                 sh """
                     echo "Rolling back..."
                     cat <<EOF | kubectl apply -f -
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: my-app
+  namespace: ${NAMESPACE}
+spec:
+  host: my-app
+  subsets:
+  - name: stable
+    labels:
+      version: stable
+  - name: canary
+    labels:
+      version: canary
+---
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -309,7 +356,22 @@ def call(Map config) {
 
     sh """
         cat <<EOF | kubectl apply -f -
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: ${service}
+  namespace: ${namespace}
+spec:
+  host: ${service}
+  subsets:
+  - name: stable
+    labels:
+      version: stable
+  - name: canary
+    labels:
+      version: canary
+---
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: ${service}
