@@ -1,21 +1,21 @@
-# How to Configure All VirtualService Fields in Istio
+# How to Configure Common VirtualService Fields in Istio
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, VirtualService, Traffic Management, Kubernetes, Service Mesh
 
-Description: A complete walkthrough of every VirtualService field in Istio with practical YAML examples for traffic routing, retries, timeouts, and more.
+Description: A practical walkthrough of common VirtualService fields in Istio with YAML examples for traffic routing, retries, timeouts, and more.
 
 ---
 
-The VirtualService is probably the most commonly used Istio resource. It controls how requests get routed to services within your mesh. But most people only scratch the surface of what it can do. There are a lot of fields tucked away in the spec that can help you build really sophisticated routing rules. This post walks through all of them with real YAML you can adapt for your own deployments.
+The VirtualService is probably the most commonly used Istio resource. It controls how requests get routed to services within your mesh. But most people only scratch the surface of what it can do. There are a lot of fields tucked away in the spec that can help you build really sophisticated routing rules. This post walks through many of the most useful ones with real YAML you can adapt for your own deployments.
 
 ## Top-Level Structure
 
 Every VirtualService starts with the standard Kubernetes metadata plus a few Istio-specific top-level fields:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service
@@ -90,7 +90,7 @@ spec:
             subset: v2
 ```
 
-That is a pretty loaded match block. The `uri` field supports `exact`, `prefix`, and `regex` matching. Same goes for `headers`, `method`, `scheme`, and `authority`. The `queryParams` field also supports the same string match types. The `sourceLabels` field lets you match based on the calling workload's labels, while `sourceNamespace` restricts the match to traffic from a specific namespace. The `ignoreUriCase` flag makes URI matching case-insensitive. The `withoutHeaders` field is the inverse of `headers` - it matches when the specified headers are NOT present.
+That is a pretty loaded match block. The `uri` field supports `exact`, `prefix`, and `regex` matching. Same goes for `headers`, `method`, `scheme`, and `authority`. The `queryParams` field also supports the same string match types. The `sourceLabels` field selects rules for calling workloads with matching labels, while `sourceNamespace` restricts the rule to workloads from a specific namespace. The `ignoreUriCase` flag makes exact and prefix URI matching case-insensitive. The `withoutHeaders` field is the inverse of `headers` - if a request header matches a rule listed there, the route does not match.
 
 ### Route Destinations
 
@@ -125,11 +125,10 @@ http:
       authority: new-host.example.com
       redirectCode: 301
       scheme: https
-      port: 443
       derivePort: FROM_PROTOCOL_DEFAULT
 ```
 
-Redirects send back an HTTP redirect response instead of forwarding. The `redirectCode` defaults to 301. You can change the scheme, authority, URI, and port. The `derivePort` field can be `FROM_PROTOCOL_DEFAULT` or `FROM_REQUEST_PORT`.
+Redirects send back an HTTP redirect response instead of forwarding. The `redirectCode` defaults to 301. You can change the scheme, authority, URI, and port. The `derivePort` field can be `FROM_PROTOCOL_DEFAULT` or `FROM_REQUEST_PORT`, and it is mutually exclusive with setting `port` directly.
 
 ### Rewrite
 
@@ -139,7 +138,6 @@ http:
       - uri:
           prefix: /api/v1
     rewrite:
-      uri: /api/v2
       authority: backend.example.com
       uriRegexRewrite:
         match: "/service/([^/]+)(.*)"
@@ -221,7 +219,7 @@ http:
   - route:
       - destination:
           host: reviews
-            subset: v1
+          subset: v1
     mirror:
       host: reviews
       subset: v2
@@ -310,7 +308,7 @@ TCP routes are for non-HTTP traffic. The match conditions are similar to TLS rou
 Here is a more realistic example that combines several features:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: reviews
@@ -351,4 +349,4 @@ spec:
 
 This routes canary-flagged traffic to v3 with retries, splits regular traffic 90/10 between v1 and v2, applies a 5-second timeout, and injects a 2-second delay to 1% of normal traffic for resilience testing.
 
-Understanding every VirtualService field gives you fine-grained control over traffic flow in your mesh. You do not need to use all of them at once, but knowing they exist means you can reach for the right tool when the situation calls for it.
+Understanding these VirtualService fields gives you fine-grained control over traffic flow in your mesh. You do not need to use all of them at once, but knowing they exist means you can reach for the right tool when the situation calls for it.
