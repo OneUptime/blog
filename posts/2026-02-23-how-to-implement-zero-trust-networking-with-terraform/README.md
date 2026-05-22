@@ -42,8 +42,11 @@ resource "aws_iam_role" "order_service" {
         }
         Action = "sts:AssumeRole"
         Condition = {
-          ArnEquals = {
-            "aws:SourceArn" = "arn:aws:ecs:${var.region}:${data.aws_caller_identity.current.account_id}:task-definition/order-service:*"
+          ArnLike = {
+            "aws:SourceArn" = "arn:aws:ecs:${var.region}:${data.aws_caller_identity.current.account_id}:*"
+          }
+          StringEquals = {
+            "aws:SourceAccount" = data.aws_caller_identity.current.account_id
           }
         }
       }
@@ -224,7 +227,7 @@ resource "aws_vpc_endpoint" "all_services" {
   vpc_id              = aws_vpc.main.id
   service_name        = "com.amazonaws.${var.region}.${each.value}"
   vpc_endpoint_type   = each.value == "dynamodb" ? "Gateway" : "Interface"
-  private_dns_enabled = each.value != "dynamodb"
+  private_dns_enabled = each.value != "dynamodb" ? true : null
 
   subnet_ids         = each.value != "dynamodb" ? aws_subnet.private[*].id : null
   route_table_ids    = each.value == "dynamodb" ? aws_route_table.private[*].id : null
