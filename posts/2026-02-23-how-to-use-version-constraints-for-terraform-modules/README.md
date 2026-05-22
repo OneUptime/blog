@@ -35,7 +35,7 @@ For non-registry sources, version pinning happens through the source URL itself 
 
 ## The Constraint Operators
 
-Terraform supports six version constraint operators. Here is what each one does.
+Terraform supports seven version constraint operator forms. Here is what each one does.
 
 ### Exact Match (= or no operator)
 
@@ -97,11 +97,11 @@ version = "~> 5.5.0"
 # ~> 5.5 means >= 5.5, < 6.0 (allows minor and patch updates)
 version = "~> 5.5"
 
-# ~> 5 means >= 5, < 6 (allows everything within major version 5)
-version = "~> 5"
+# Use an explicit range to allow everything within major version 5
+version = ">= 5.0.0, < 6.0.0"
 ```
 
-The `~>` operator allows the rightmost version component to increment. So `~> 5.5.0` allows `5.5.1`, `5.5.2`, `5.5.99` but not `5.6.0`. And `~> 5.5` allows `5.6`, `5.7`, `5.99` but not `6.0`.
+The `~>` operator allows the rightmost version component to increment. So `~> 5.5.0` allows `5.5.1`, `5.5.2`, `5.5.99` but not `5.6.0`. And `~> 5.5` allows `5.6`, `5.7`, `5.99` but not `6.0`. If you want to allow an entire major version, use an explicit range like `>= 5.0.0, < 6.0.0`.
 
 ## Combining Constraints
 
@@ -129,7 +129,7 @@ Version constraints make the most sense when modules follow semantic versioning 
 Based on this:
 - `~> 5.5.0` (allow patches) is safe because patches should only fix bugs.
 - `~> 5.5` (allow minor updates) is moderately safe because minor updates add features but should not break existing usage.
-- `~> 5` (allow everything in major version) is the same as `>= 5.0.0, < 6.0.0` and assumes the module author respects semver boundaries.
+- `>= 5.0.0, < 6.0.0` (allow everything in major version 5) assumes the module author respects semver boundaries.
 
 ## Constraint Strategies for Different Environments
 
@@ -209,15 +209,14 @@ curl -s "https://registry.terraform.io/v1/modules/terraform-aws-modules/vpc/aws/
 
 ## Resolving Version Conflicts
 
-If two modules require different versions of the same nested module, Terraform may not be able to resolve the conflict:
+Module version conflicts usually happen when a single module block's constraint cannot match any available release:
 
 ```hcl
-# Module A requires subnets module ~> 1.0
-# Module B requires subnets module ~> 2.0
 # This is a conflict - both cannot be satisfied simultaneously
+version = "~> 1.0, ~> 2.0"
 ```
 
-In practice, this is rare because Terraform installs separate copies of modules (unlike providers, which are shared). Each module block gets its own copy of its source.
+In practice, cross-module version conflicts are rare because Terraform installs separate copies of modules (unlike providers, which are shared). Each module block gets its own copy of its source, so two different module blocks can use different versions of the same module source.
 
 ## Documenting Version Decisions
 
@@ -237,9 +236,12 @@ This helps the next person understand why a specific version was chosen and when
 
 ## Automated Constraint Validation
 
-You can use `terraform validate` to check that your constraints are syntactically correct:
+You can use `terraform validate` to check that your constraints are syntactically correct after the working directory is initialized:
 
 ```bash
+# Initialize first so referenced modules are installed
+terraform init -backend=false
+
 # Validate the configuration including version constraints
 terraform validate
 
