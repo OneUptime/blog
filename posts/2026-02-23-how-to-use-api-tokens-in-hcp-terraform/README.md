@@ -10,7 +10,7 @@ Description: A comprehensive guide to creating, managing, and securing API token
 
 API tokens are the keys to automating anything in HCP Terraform. Whether you are integrating with CI/CD pipelines, scripting workspace management, or building custom tooling around your Terraform workflows, you need to understand how tokens work, which type to use, and how to keep them secure.
 
-HCP Terraform offers three types of API tokens, each designed for different use cases. Picking the wrong one can either leave you with too little access or too much. Let us break down each type and how to use them properly.
+HCP Terraform offers three primary types of API tokens for general automation, each designed for different use cases. Picking the wrong one can either leave you with too little access or too much. Let us break down each type and how to use them properly.
 
 ## The Three Types of API Tokens
 
@@ -72,7 +72,15 @@ curl \
   --header "Authorization: Bearer $TFC_TOKEN" \
   --header "Content-Type: application/vnd.api+json" \
   --request POST \
-  https://app.terraform.io/api/v2/teams/team-xxxxxxxx/authentication-token
+  --data '{
+    "data": {
+      "type": "authentication-tokens",
+      "attributes": {
+        "description": "CI pipeline token"
+      }
+    }
+  }' \
+  https://app.terraform.io/api/v2/teams/team-xxxxxxxx/authentication-tokens
 ```
 
 You can also manage team tokens with Terraform:
@@ -80,7 +88,8 @@ You can also manage team tokens with Terraform:
 ```hcl
 # Create a team token using the TFE provider
 resource "tfe_team_token" "ci_pipeline" {
-  team_id = tfe_team.ci_team.id
+  team_id     = tfe_team.ci_team.id
+  description = "CI pipeline token"
 }
 
 # Store the token securely - it is only available at creation time
@@ -102,6 +111,14 @@ curl \
   --header "Authorization: Bearer $TFC_TOKEN" \
   --header "Content-Type: application/vnd.api+json" \
   --request POST \
+  --data '{
+    "data": {
+      "type": "authentication-token",
+      "attributes": {
+        "expired-at": "2026-06-01T00:00:00.000Z"
+      }
+    }
+  }' \
   https://app.terraform.io/api/v2/organizations/your-org/authentication-token
 ```
 
@@ -140,7 +157,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v4
         with:
           cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
 
@@ -156,17 +173,14 @@ jobs:
 For non-GitHub Actions environments, create the credentials file:
 
 ```bash
-# Create the credentials file for CI environments
-mkdir -p ~/.terraform.d
-cat > ~/.terraform.d/credentials.tfrc.json << EOF
-{
-  "credentials": {
-    "app.terraform.io": {
-      "token": "${TFC_TOKEN}"
-    }
-  }
+# Create a CLI config file for CI environments
+cat > terraform.rc << EOF
+credentials "app.terraform.io" {
+  token = "${TFC_TOKEN}"
 }
 EOF
+
+export TF_CLI_CONFIG_FILE="$PWD/terraform.rc"
 ```
 
 Or use the environment variable approach:
@@ -193,11 +207,12 @@ curl \
     "data": {
       "type": "authentication-tokens",
       "attributes": {
+        "description": "CI pipeline token",
         "expired-at": "2026-06-01T00:00:00.000Z"
       }
     }
   }' \
-  https://app.terraform.io/api/v2/teams/team-xxxxxxxx/authentication-token
+  https://app.terraform.io/api/v2/teams/team-xxxxxxxx/authentication-tokens
 ```
 
 For token rotation, here is a practical approach:
@@ -208,12 +223,13 @@ For token rotation, here is a practical approach:
 
 TEAM_ID="team-xxxxxxxx"
 ORG_TOKEN="your-org-token"
+OLD_TOKEN_ID="at-xxxxxxxx"
 
 # Delete the existing token
 curl \
   --header "Authorization: Bearer $ORG_TOKEN" \
   --request DELETE \
-  "https://app.terraform.io/api/v2/teams/${TEAM_ID}/authentication-token"
+  "https://app.terraform.io/api/v2/authentication-tokens/${OLD_TOKEN_ID}"
 
 # Create a new token with expiration
 NEW_TOKEN=$(curl -s \
@@ -224,11 +240,12 @@ NEW_TOKEN=$(curl -s \
     "data": {
       "type": "authentication-tokens",
       "attributes": {
+        "description": "CI pipeline token",
         "expired-at": "2026-09-01T00:00:00.000Z"
       }
     }
   }' \
-  "https://app.terraform.io/api/v2/teams/${TEAM_ID}/authentication-token" \
+  "https://app.terraform.io/api/v2/teams/${TEAM_ID}/authentication-tokens" \
   | jq -r '.data.attributes.token')
 
 # Update the secret in your CI/CD system
@@ -248,10 +265,10 @@ curl \
   --header "Authorization: Bearer $TFC_TOKEN" \
   https://app.terraform.io/api/v2/users/user-xxxxxxxx/authentication-tokens
 
-# Check if a team token exists
+# List team tokens in an organization
 curl \
   --header "Authorization: Bearer $TFC_TOKEN" \
-  https://app.terraform.io/api/v2/teams/team-xxxxxxxx/authentication-token
+  https://app.terraform.io/api/v2/organizations/your-org/team-tokens
 ```
 
 ## Security Best Practices
@@ -310,7 +327,7 @@ curl \
 curl \
   --header "Authorization: Bearer $TFC_TOKEN" \
   --request DELETE \
-  https://app.terraform.io/api/v2/teams/team-xxxxxxxx/authentication-token
+  https://app.terraform.io/api/v2/authentication-tokens/at-xxxxxxxx
 
 # Revoke an organization token
 curl \
@@ -321,6 +338,6 @@ curl \
 
 ## Summary
 
-API tokens in HCP Terraform come in three flavors - user, team, and organization - each suited for different scenarios. The most important principles are: use team tokens for CI/CD (not user tokens), always set expiration dates, store tokens in proper secret managers, and rotate them on a regular schedule.
+API tokens in HCP Terraform come in three primary flavors for general automation - user, team, and organization - each suited for different scenarios. The most important principles are: use team tokens for CI/CD (not user tokens), always set expiration dates, store tokens in proper secret managers, and rotate them on a regular schedule.
 
 For related topics, see our guides on [using the HCP Terraform API for automation](https://oneuptime.com/blog/post/2026-02-23-how-to-use-the-hcp-terraform-api-for-automation/view) and [using HCP Terraform with GitHub Actions](https://oneuptime.com/blog/post/2026-02-23-how-to-use-hcp-terraform-with-github-actions/view).
