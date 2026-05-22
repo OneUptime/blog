@@ -58,13 +58,13 @@ resource "aws_instance" "app_server" {
 
   lifecycle {
     # Tags might be modified by AWS Config auto-tagging
-    # AMI might be updated by a separate image pipeline
+    # AMI might come from a data source that changes over time
     ignore_changes = [ami, tags]
   }
 }
 ```
 
-In this case, both the AMI and tags are ignored. If your image pipeline updates the AMI or AWS Config adds compliance tags, Terraform will not undo those changes.
+In this case, both the AMI and tags are ignored after creation. If your AMI data source starts returning a newer image or AWS Config adds compliance tags, Terraform will not replace the instance or undo those tag changes.
 
 ## Using ignore_changes = all
 
@@ -85,7 +85,7 @@ resource "aws_instance" "managed_externally" {
 
 This tells Terraform: create the resource, then hands off. Terraform will still track the resource in state and destroy it if you remove it from configuration, but it will never propose any updates.
 
-Be careful with `all`. It effectively turns the resource into a "create-only" object. If you actually need to change something, you will have to either remove `ignore_changes`, taint the resource, or use `terraform state rm` and re-import.
+Be careful with `all`. It effectively turns the resource into a "create-only" object. If you actually need to change something, you will have to either remove `ignore_changes`, force replacement with `terraform apply -replace=...`, or use `terraform state rm` and re-import.
 
 ## Common Use Cases
 
@@ -241,11 +241,11 @@ The `ignore_changes` rule only applies to updates. The initial value in your con
 
 ### Plan Output Can Be Confusing
 
-When `ignore_changes` is active, `terraform plan` will not show diffs for those attributes, even if the actual state has drifted significantly. This can mask real problems. If your EC2 instance is running on a completely different AMI than your configuration says, and you have `ignore_changes = [ami]`, you will never know about it from the plan output.
+When `ignore_changes` is active, `terraform plan` will not propose updates just to bring those attributes back in line with your configuration. Terraform may still report remote object changes during refresh in some cases, but ignored attributes will not become planned update actions. This can mask real problems. If an attribute is materially different from your configuration and you have ignored it, you should not rely on a normal plan to enforce it.
 
 ### Interactions with replace_triggered_by
 
-If you use `replace_triggered_by` alongside `ignore_changes`, be aware that `ignore_changes` takes precedence for the attributes it covers. A change to an ignored attribute will not trigger a replacement, even if `replace_triggered_by` references something that would normally cause one.
+If you use `replace_triggered_by` alongside `ignore_changes`, remember that `replace_triggered_by` responds to planned changes in the resources or attributes it references. If an attribute is ignored and therefore has no planned update, that ignored difference will not by itself trigger a replacement.
 
 ## When Not to Use ignore_changes
 
