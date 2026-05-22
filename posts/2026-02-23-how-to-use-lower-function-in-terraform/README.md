@@ -8,7 +8,7 @@ Description: Learn how to use the lower function in Terraform to convert strings
 
 ---
 
-Many cloud resources require lowercase names. S3 bucket names must be lowercase. DNS records are case-insensitive but conventionally lowercase. Tags often need normalization. The `lower` function in Terraform converts all Unicode letters in a string to their lowercase equivalents, making it an essential tool for keeping your infrastructure configuration consistent.
+Many cloud resources require lowercase names. S3 bucket names must be lowercase. DNS records are case-insensitive but conventionally lowercase. Tags often need normalization. The `lower` function in Terraform converts all cased Unicode letters in a string to their lowercase equivalents, making it an essential tool for keeping your infrastructure configuration consistent.
 
 ## What Does lower Do?
 
@@ -42,13 +42,13 @@ It handles Unicode properly, so it works with international characters, not just
 "hello-world_123"
 
 # Unicode support
-> lower("BONJOUR")
-"bonjour"
+> lower("ΓΕΙΑ ΣΟΥ")
+"γεια σου"
 ```
 
 ## Normalizing S3 Bucket Names
 
-AWS S3 bucket names must be lowercase. Using `lower` ensures compliance regardless of how users provide the input.
+AWS S3 bucket names must be lowercase. Using `lower` helps meet the lowercase requirement regardless of how users provide the input, but you should still validate the rest of the S3 bucket naming rules.
 
 ```hcl
 variable "bucket_name" {
@@ -111,7 +111,7 @@ variable "project_name" {
   }
 
   validation {
-    condition     = can(regex("^[a-z][a-z0-9-]+$", var.project_name))
+    condition     = can(regex("^[a-z][a-z0-9-]*$", var.project_name))
     error_message = "Project name must start with a letter and contain only lowercase letters, numbers, and hyphens."
   }
 }
