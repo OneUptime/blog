@@ -159,15 +159,15 @@ output "subnets" {
 
 ## Storage Capacity Calculations
 
-Storage sizes are often expressed in powers of 2 (KB, MB, GB, TB):
+Storage sizes are often expressed in powers of 2 (KiB, MiB, GiB, TiB):
 
 ```hcl
 variable "storage_unit" {
   type    = string
-  default = "GB"
+  default = "GiB"
   validation {
-    condition     = contains(["KB", "MB", "GB", "TB"], var.storage_unit)
-    error_message = "Storage unit must be KB, MB, GB, or TB."
+    condition     = contains(["KiB", "MiB", "GiB", "TiB"], var.storage_unit)
+    error_message = "Storage unit must be KiB, MiB, GiB, or TiB."
   }
 }
 
@@ -179,21 +179,21 @@ variable "storage_amount" {
 locals {
   # Convert named units to bytes using powers of 1024
   unit_multipliers = {
-    KB = pow(1024, 1)
-    MB = pow(1024, 2)
-    GB = pow(1024, 3)
-    TB = pow(1024, 4)
+    KiB = pow(1024, 1)
+    MiB = pow(1024, 2)
+    GiB = pow(1024, 3)
+    TiB = pow(1024, 4)
   }
 
   storage_bytes = var.storage_amount * local.unit_multipliers[var.storage_unit]
-  storage_gb    = var.storage_amount * local.unit_multipliers[var.storage_unit] / pow(1024, 3)
+  storage_gib   = var.storage_amount * local.unit_multipliers[var.storage_unit] / pow(1024, 3)
 }
 
 output "storage" {
   value = {
     input    = "${var.storage_amount} ${var.storage_unit}"
     bytes    = local.storage_bytes
-    gb       = local.storage_gb
+    gib      = local.storage_gib
   }
 }
 ```
