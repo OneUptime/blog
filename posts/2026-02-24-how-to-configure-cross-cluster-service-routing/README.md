@@ -12,7 +12,7 @@ Cross-cluster service routing is what makes a multi-cluster Istio mesh actually 
 
 ## How Cross-Cluster Routing Works
 
-When you set up a multi-cluster Istio mesh with remote secrets, each cluster's istiod discovers services in all clusters. When a sidecar proxy does a DNS lookup for `my-service.production.svc.cluster.local`, Istio returns endpoints from all clusters where that service exists.
+When you set up a multi-cluster Istio mesh with remote secrets, each cluster's istiod discovers services in all clusters. When a client calls `my-service.production.svc.cluster.local`, the client cluster still needs a DNS entry for that host. Istio then uses its service registry to route to endpoints from all clusters where that service exists.
 
 The proxy then routes based on the configuration you provide, with VirtualService and DestinationRule resources controlling the routing behavior.
 
@@ -82,11 +82,24 @@ spec:
 EOF
 ```
 
-Now create the same namespace in cluster1 (even if the service doesn't exist there):
+Now create the same namespace and a matching Service in cluster1 (even if there are no local pods there). Kubernetes is not multi-cluster-aware, so the client cluster needs a DNS entry for the service before Istio can route the request:
 
 ```bash
 kubectl --context=${CTX_CLUSTER1} create namespace backend
 kubectl --context=${CTX_CLUSTER1} label namespace backend istio-injection=enabled
+
+kubectl --context=${CTX_CLUSTER1} apply -n backend -f - <<EOF
+apiVersion: v1
+kind: Service
+metadata:
+  name: payment-service
+spec:
+  selector:
+    app: payment-service
+  ports:
+    - port: 80
+      targetPort: 80
+EOF
 ```
 
 From a pod in cluster1, you can now call the service:
@@ -96,14 +109,14 @@ kubectl --context=${CTX_CLUSTER1} exec -n backend deploy/sleep -c sleep -- \
   curl -s payment-service.backend:80
 ```
 
-Istio's DNS auto-allocation handles the resolution, and the proxy routes the traffic to cluster2's endpoints.
+Kubernetes DNS handles the service name resolution in cluster1, and the proxy routes the traffic to cluster2's endpoints. You can also use Istio DNS proxying with address auto-allocation instead of creating matching Services in every consuming cluster.
 
 ## Weighted Cross-Cluster Routing
 
 You can split traffic between clusters using VirtualService weights. This is useful for canary deployments across clusters:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: payment-service
@@ -123,10 +136,10 @@ spec:
           weight: 20
 ```
 
-For this to work, you need a DestinationRule that defines the subsets. Since Istio doesn't have a built-in "cluster" label for subsets, you need to use pod labels that identify which cluster a pod belongs to:
+For this to work, you need a DestinationRule that defines the subsets. Istio provides the built-in `topology.istio.io/cluster` label for per-cluster subset selection:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: payment-service
@@ -136,34 +149,20 @@ spec:
   subsets:
     - name: cluster1
       labels:
-        cluster: cluster1
+        topology.istio.io/cluster: cluster1
     - name: cluster2
       labels:
-        cluster: cluster2
+        topology.istio.io/cluster: cluster2
 ```
 
-Add the `cluster` label to your pods:
-
-```yaml
-# In cluster1's deployment
-metadata:
-  labels:
-    app: payment-service
-    cluster: cluster1
-
-# In cluster2's deployment
-metadata:
-  labels:
-    app: payment-service
-    cluster: cluster2
-```
+The subset names can be whatever you want, but the label values must match the Istio cluster names from your multi-cluster installation.
 
 ## Routing Based on Headers
 
 You can route traffic to a specific cluster based on request headers. This is great for testing:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: payment-service
@@ -192,7 +191,7 @@ Now requests with `x-route-to: cluster2` header go to cluster2, and everything e
 For external traffic entering through an ingress gateway, you can route to services in any cluster:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: api-gateway
@@ -211,7 +210,7 @@ spec:
       hosts:
         - "api.example.com"
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-routing
@@ -247,7 +246,7 @@ If `payment-service` only exists in cluster2, the ingress gateway in cluster1 wi
 What if both clusters have a service with the same name but different implementations? By default, Istio merges the endpoints. If you don't want that, use Sidecar resources to control which services are visible:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
