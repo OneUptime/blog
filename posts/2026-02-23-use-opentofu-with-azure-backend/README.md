@@ -90,12 +90,13 @@ resource "azurerm_resource_group" "state" {
 }
 
 resource "azurerm_storage_account" "state" {
-  name                     = "orgopentofu${random_string.suffix.result}"
-  resource_group_name      = azurerm_resource_group.state.name
-  location                 = azurerm_resource_group.state.location
-  account_tier             = "Standard"
-  account_replication_type = "LRS"
-  min_tls_version          = "TLS1_2"
+  name                          = "orgopentofu${random_string.suffix.result}"
+  resource_group_name           = azurerm_resource_group.state.name
+  location                      = azurerm_resource_group.state.location
+  account_tier                  = "Standard"
+  account_replication_type      = "LRS"
+  min_tls_version               = "TLS1_2"
+  allow_nested_items_to_be_public = false
 
   blob_properties {
     versioning_enabled = true
@@ -114,7 +115,7 @@ resource "random_string" "suffix" {
 
 resource "azurerm_storage_container" "state" {
   name                  = "tfstate"
-  storage_account_name  = azurerm_storage_account.state.name
+  storage_account_id    = azurerm_storage_account.state.id
   container_access_type = "private"
 }
 
@@ -188,6 +189,7 @@ terraform {
     storage_account_name = "orgopentofuabcd1234"
     container_name       = "tfstate"
     key                  = "production.tfstate"
+    use_azuread_auth     = true
     use_oidc             = false
   }
 }
@@ -204,6 +206,7 @@ terraform {
     storage_account_name = "orgopentofuabcd1234"
     container_name       = "tfstate"
     key                  = "production.tfstate"
+    use_azuread_auth     = true
     use_msi              = true
     subscription_id      = "your-subscription-id"
     tenant_id            = "your-tenant-id"
@@ -222,13 +225,14 @@ terraform {
     storage_account_name = "orgopentofuabcd1234"
     container_name       = "tfstate"
     key                  = "production.tfstate"
+    use_azuread_auth     = true
     use_oidc             = true
   }
 }
 ```
 
 ```bash
-# Set the OIDC token
+# Enable OIDC and identify the federated credential
 export ARM_USE_OIDC=true
 export ARM_CLIENT_ID="..."
 export ARM_TENANT_ID="..."
@@ -343,7 +347,7 @@ tofu init -backend-config=backend-prod.hcl
 Apply these security measures to protect your state:
 
 ```bash
-# Disable public network access
+# Deny public network access by default
 az storage account update \
   --name "$STORAGE_ACCOUNT" \
   --resource-group "$RESOURCE_GROUP" \
@@ -358,8 +362,8 @@ az storage account network-rule add \
 # Enable diagnostic logging
 az monitor diagnostic-settings create \
   --name "state-audit" \
-  --resource "/subscriptions/<SUB_ID>/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.Storage/storageAccounts/$STORAGE_ACCOUNT" \
-  --logs '[{"category": "StorageRead", "enabled": true}, {"category": "StorageWrite", "enabled": true}]' \
+  --resource "/subscriptions/<SUB_ID>/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.Storage/storageAccounts/$STORAGE_ACCOUNT/blobServices/default" \
+  --logs '[{"category": "StorageRead", "enabled": true}, {"category": "StorageWrite", "enabled": true}, {"category": "StorageDelete", "enabled": true}]' \
   --workspace "<LOG_ANALYTICS_WORKSPACE_ID>"
 ```
 
