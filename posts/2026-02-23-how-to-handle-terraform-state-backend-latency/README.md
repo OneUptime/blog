@@ -14,14 +14,14 @@ This is not just annoying. In CI/CD pipelines, backend latency can add minutes t
 
 ## Understanding Where the Latency Comes From
 
-Terraform needs to read your entire state file at the beginning of every operation. It also needs to write the updated state back after every apply. If your state file is large or your backend is far away (geographically or in terms of network hops), this creates noticeable delays.
+Terraform needs to read your entire state file at the beginning of operations like `plan` and `apply`. It also needs to write the updated state back after every apply. If your state file is large or your backend is far away (geographically or in terms of network hops), this creates noticeable delays.
 
 The most common backends where you will see latency are:
 
-- **S3 with DynamoDB locking** - The state read itself is usually fast, but the DynamoDB lock acquisition and release add overhead.
+- **S3 with native lockfiles or legacy DynamoDB locking** - The state read itself is usually fast, but lock acquisition and release add overhead.
 - **Azure Blob Storage** - Latency varies depending on the storage account tier and region.
 - **GCS (Google Cloud Storage)** - Generally fast, but cross-region access can be slow.
-- **Terraform Cloud/Enterprise** - Depends on your network path to HashiCorp's infrastructure.
+- **HCP Terraform/Terraform Enterprise** - Depends on your network path to HashiCorp's infrastructure.
 - **HTTP backends** - Entirely dependent on the server you are pointing at.
 
 ## Measuring the Actual Latency
@@ -56,13 +56,13 @@ terraform {
     bucket         = "my-terraform-state"
     key            = "prod/terraform.tfstate"
     region         = "us-east-1"  # Match this to your CI runner region
-    dynamodb_table = "terraform-locks"
+    use_lockfile   = true
     encrypt        = true
   }
 }
 ```
 
-If you have runners in multiple regions, consider having regional state buckets with replication, or pick the region where most of your operations happen.
+If you have runners in multiple regions, use separate regional state only for separate regional stacks, or pick the region where most of your operations happen. Do not rely on cross-region replication as a locking strategy.
 
 ## Strategy 2: Split Large State Files
 
@@ -103,12 +103,14 @@ terraform {
     bucket         = "my-terraform-state"
     key            = "prod/terraform.tfstate"
     region         = "us-east-1"
-    dynamodb_table = "terraform-locks"
+    use_lockfile   = true
     encrypt        = true
 
     # Enable S3 Transfer Acceleration
     # Note: You need to enable this on the bucket first
-    endpoint = "my-terraform-state.s3-accelerate.amazonaws.com"
+    endpoints = {
+      s3 = "https://s3-accelerate.amazonaws.com"
+    }
   }
 }
 ```
@@ -122,9 +124,25 @@ aws s3api put-bucket-accelerate-configuration \
   --accelerate-configuration Status=Enabled
 ```
 
-## Strategy 4: Optimize DynamoDB for Locking
+Transfer Acceleration only helps when the accelerated path is actually faster for your clients, and the bucket name must be DNS-compliant and cannot contain periods. Test it from your runner locations before making it the default.
 
-DynamoDB state locking is a common bottleneck. The default provisioned throughput might not be enough for teams running many concurrent operations.
+## Strategy 4: Prefer Native S3 Locking
+
+For the S3 backend, Terraform now supports native S3 state locking with `use_lockfile = true`. DynamoDB-based locking is deprecated and will be removed in a future minor version, so use S3 lockfiles for new configurations:
+
+```hcl
+terraform {
+  backend "s3" {
+    bucket       = "my-terraform-state"
+    key          = "prod/terraform.tfstate"
+    region       = "us-east-1"
+    use_lockfile = true
+    encrypt      = true
+  }
+}
+```
+
+If you are still on an older Terraform version or migrating an existing backend that uses DynamoDB locking, DynamoDB can become a bottleneck. The default provisioned throughput might not be enough for teams running many concurrent operations.
 
 ```hcl
 # Create the lock table with appropriate capacity
@@ -145,11 +163,11 @@ resource "aws_dynamodb_table" "terraform_locks" {
 }
 ```
 
-Using `PAY_PER_REQUEST` billing mode means you do not have to worry about provisioned capacity limits. The lock acquisition will not get throttled during busy periods.
+Using `PAY_PER_REQUEST` billing mode means you do not have to worry about provisioned capacity limits while you are still using the legacy DynamoDB locking mechanism.
 
 ## Strategy 5: Use Partial Backend Configuration
 
-If you are running `terraform init` frequently (for example, in CI), you can speed things up by using partial backend configuration and caching the initialization:
+If you are running `terraform init` frequently (for example, in CI), partial backend configuration helps keep environment-specific backend settings out of your source files:
 
 ```hcl
 # backend.tf - Keep this minimal
@@ -159,52 +177,62 @@ terraform {
 ```
 
 ```bash
-# init.sh - Pass config at init time, and cache the .terraform directory
+# init.sh - Pass non-secret backend config at init time
 terraform init \
   -backend-config="bucket=my-terraform-state" \
   -backend-config="key=prod/terraform.tfstate" \
   -backend-config="region=us-east-1" \
-  -backend-config="dynamodb_table=terraform-locks" \
+  -backend-config="use_lockfile=true" \
   -reconfigure
 ```
 
-In CI pipelines, you can cache the `.terraform` directory between runs to avoid re-downloading providers and re-initializing the backend every time.
+Avoid passing backend credentials through `-backend-config` because Terraform writes the final backend configuration into the `.terraform` directory and saved plan files. Use environment variables or your CI system's identity mechanism for credentials. For speed, cache provider plugins instead of relying on cached backend metadata.
 
-## Strategy 6: Use State Caching in CI/CD
+## Strategy 6: Use Provider Caching in CI/CD
 
-Most CI systems support caching. Use it for the `.terraform` directory:
+Most CI systems support caching. Use it for Terraform's provider plugin cache:
 
 ```yaml
 # GitLab CI example
 terraform-plan:
   stage: plan
+  variables:
+    TF_PLUGIN_CACHE_DIR: "$CI_PROJECT_DIR/.terraform.d/plugin-cache"
   cache:
     key: terraform-${CI_COMMIT_REF_SLUG}
     paths:
-      - .terraform/
+      - .terraform.d/plugin-cache/
   script:
+    - mkdir -p "$TF_PLUGIN_CACHE_DIR"
     - terraform init -input=false
     - terraform plan -out=tfplan
 ```
 
 ```yaml
 # GitHub Actions example
-- name: Cache Terraform
-  uses: actions/cache@v3
+- name: Cache Terraform providers
+  uses: actions/cache@v5
   with:
-    path: .terraform
+    path: ~/.terraform.d/plugin-cache
     key: terraform-${{ hashFiles('**/.terraform.lock.hcl') }}
     restore-keys: |
       terraform-
+
+- name: Terraform init
+  env:
+    TF_PLUGIN_CACHE_DIR: ~/.terraform.d/plugin-cache
+  run: |
+    mkdir -p "$TF_PLUGIN_CACHE_DIR"
+    terraform init -input=false
 ```
 
-This avoids the full initialization overhead on every run. The backend connection still needs to happen, but the provider downloads and plugin setup are cached.
+This avoids provider downloads on every run. The backend connection and provider metadata checks still need to happen, but the provider binaries are reused from the cache.
 
 ## Strategy 7: Consider Alternative Backends
 
 If S3 latency is consistently a problem, consider whether a different backend might work better for your use case:
 
-- **Terraform Cloud** handles state management as a service and optimizes for this use case.
+- **HCP Terraform** handles state management as a service and optimizes for this use case. This was previously called Terraform Cloud.
 - **Consul** can be deployed close to your runners for very low latency.
 - **PostgreSQL** backend is an option if you already have a database server nearby.
 
