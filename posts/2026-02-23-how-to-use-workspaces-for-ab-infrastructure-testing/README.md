@@ -56,8 +56,8 @@ variable "db_instance_class" {
   type        = string
 }
 
-variable "enable_enhanced_networking" {
-  description = "Enable enhanced networking on instances"
+variable "enable_ebs_optimization" {
+  description = "Enable EBS optimization on instances"
   type        = bool
   default     = false
 }
@@ -73,6 +73,17 @@ variable "ebs_iops" {
   type        = number
   default     = 3000
 }
+
+variable "db_username" {
+  description = "Master username for the test database"
+  type        = string
+}
+
+variable "db_password" {
+  description = "Master password for the test database"
+  type        = string
+  sensitive   = true
+}
 ```
 
 Create variant files with the specific differences:
@@ -84,19 +95,19 @@ variant_name               = "variant-a"
 instance_type              = "m5.xlarge"
 instance_count             = 2
 db_instance_class          = "db.r5.large"
-enable_enhanced_networking = false
+enable_ebs_optimization    = false
 ebs_volume_type            = "gp3"
 ebs_iops                   = 3000
 ```
 
 ```hcl
 # variants/variant-b.tfvars
-# Variant B: Testing newer generation instances with enhanced networking
+# Variant B: Testing newer generation instances with EBS optimization
 variant_name               = "variant-b"
 instance_type              = "m6i.xlarge"
 instance_count             = 2
 db_instance_class          = "db.r6g.large"
-enable_enhanced_networking = true
+enable_ebs_optimization    = true
 ebs_volume_type            = "gp3"
 ebs_iops                   = 6000
 ```
@@ -145,8 +156,8 @@ resource "aws_instance" "app" {
   instance_type = var.instance_type
   subnet_id     = aws_subnet.private[count.index % length(aws_subnet.private)].id
 
-  # Enhanced networking if enabled for this variant
-  ebs_optimized = var.enable_enhanced_networking
+  # EBS optimization if enabled for this variant
+  ebs_optimized = var.enable_ebs_optimization
 
   root_block_device {
     volume_type = var.ebs_volume_type
@@ -170,12 +181,14 @@ resource "aws_instance" "app" {
 resource "aws_db_instance" "test" {
   identifier     = "${local.name_prefix}-db"
   engine         = "postgres"
-  engine_version = "15.4"
+  engine_version = "15"
   instance_class = var.db_instance_class
+  username       = var.db_username
+  password       = var.db_password
 
   allocated_storage = 100
   storage_type      = var.ebs_volume_type
-  iops              = var.ebs_volume_type == "io1" ? var.ebs_iops : null
+  iops              = contains(["io1", "io2"], var.ebs_volume_type) ? var.ebs_iops : null
 
   db_subnet_group_name   = aws_db_subnet_group.test.name
   vpc_security_group_ids = [aws_security_group.db.id]
@@ -198,7 +211,7 @@ To compare variants, you need consistent monitoring across both:
 ```hcl
 # monitoring.tf
 
-# CloudWatch dashboard that shows both variants side by side
+# CloudWatch dashboard for the selected variant
 resource "aws_cloudwatch_dashboard" "ab_test" {
   dashboard_name = "${local.name_prefix}-dashboard"
 
@@ -232,12 +245,12 @@ resource "aws_cloudwatch_dashboard" "ab_test" {
         height = 6
         properties = {
           title   = "Network I/O - ${var.variant_name}"
-          metrics = [
+          metrics = concat([
             for i, inst in aws_instance.app : [
               ["AWS/EC2", "NetworkIn", "InstanceId", inst.id, { label = "In ${i + 1}" }],
               ["AWS/EC2", "NetworkOut", "InstanceId", inst.id, { label = "Out ${i + 1}" }]
             ]
-          ]
+          ]...)
           period = 60
           stat   = "Average"
         }
@@ -271,7 +284,7 @@ resource "aws_cloudwatch_metric_alarm" "high_latency" {
   metric_name         = "ResponseLatency"
   namespace           = "ABTest/${var.variant_name}"
   period              = 60
-  statistic           = "p99"
+  extended_statistic  = "p99"
   threshold           = 500
   alarm_description   = "P99 latency exceeded 500ms for ${var.variant_name}"
 
