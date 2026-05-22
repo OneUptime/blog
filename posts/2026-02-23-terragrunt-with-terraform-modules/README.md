@@ -49,7 +49,7 @@ The Terraform module itself doesn't change at all. It still has its `variables.t
 
 ## Module Source Types
 
-Terragrunt supports all the same source types as Terraform, plus some extras.
+Terragrunt supports the same module source syntax as Terraform for local paths, Git URLs, and archive URLs. For Terraform Registry modules, use Terragrunt's `tfr` protocol.
 
 ### Git Repository
 
@@ -93,7 +93,7 @@ terraform {
 
 ## Using Local Modules During Development
 
-When you're actively developing a module, using git references is slow because Terragrunt downloads the source every time. Use local paths instead:
+When you're actively developing a module, using git references can slow down iteration and may require refreshing Terragrunt's cached copy to pick up changes. Use local paths instead:
 
 ```hcl
 # For development - fast, uses local files
@@ -159,7 +159,8 @@ inputs = {
 ```hcl
 # dev/vpc/terragrunt.hcl
 include "root" {
-  path = find_in_parent_folders()
+  path           = find_in_parent_folders()
+  merge_strategy = "deep"
 }
 
 # These merge with root inputs
@@ -169,7 +170,7 @@ inputs = {
 }
 ```
 
-The child's inputs merge with (and override) the root's inputs.
+With `merge_strategy = "deep"`, the child's inputs merge with (and override) the root's inputs.
 
 ## Module Dependencies
 
@@ -205,7 +206,7 @@ inputs = {
 }
 ```
 
-Terragrunt automatically determines the correct apply order based on these dependencies.
+When you run commands across multiple modules, Terragrunt determines the correct order based on these dependencies.
 
 ## Module Composition with Multiple Includes
 
@@ -231,12 +232,14 @@ inputs = {
 ```hcl
 # dev/vpc/terragrunt.hcl
 include "root" {
-  path = find_in_parent_folders()
+  path           = find_in_parent_folders()
+  merge_strategy = "deep"
 }
 
 include "vpc_common" {
-  path   = "${get_repo_root()}/_envcommon/vpc.hcl"
-  expose = true
+  path           = "${get_repo_root()}/_envcommon/vpc.hcl"
+  expose         = true
+  merge_strategy = "deep"
 }
 
 # Override or add environment-specific inputs
@@ -249,12 +252,14 @@ inputs = {
 ```hcl
 # prod/vpc/terragrunt.hcl
 include "root" {
-  path = find_in_parent_folders()
+  path           = find_in_parent_folders()
+  merge_strategy = "deep"
 }
 
 include "vpc_common" {
-  path   = "${get_repo_root()}/_envcommon/vpc.hcl"
-  expose = true
+  path           = "${get_repo_root()}/_envcommon/vpc.hcl"
+  expose         = true
+  merge_strategy = "deep"
 }
 
 # Production overrides
@@ -324,12 +329,12 @@ terragrunt plan
 terragrunt apply
 ```
 
-With `run-all`, you can see the impact across all modules that use the updated module:
+With `run --all`, you can see the impact across all modules that use the updated module:
 
 ```bash
 # Plan all modules in dev to see cascading effects
 cd dev
-terragrunt run-all plan
+terragrunt run --all plan
 ```
 
 ## Keeping Modules Small and Focused
