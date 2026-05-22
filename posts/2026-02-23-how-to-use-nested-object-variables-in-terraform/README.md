@@ -79,6 +79,7 @@ variable "application" {
       engine_version = string
       instance_class = string
       storage_gb     = number
+      username       = string
       multi_az       = bool
       backup = object({
         retention_days = number
@@ -124,6 +125,7 @@ application = {
     engine_version = "15.4"
     instance_class = "db.r6g.xlarge"
     storage_gb     = 500
+    username       = "app_admin"
     multi_az       = true
     backup = {
       retention_days = 35
@@ -133,7 +135,7 @@ application = {
 
   cache = {
     node_type       = "cache.r6g.large"
-    num_cache_nodes = 3
+    num_cache_nodes = 1
     engine_version  = "7.0"
   }
 
@@ -167,8 +169,10 @@ resource "aws_db_instance" "main" {
   engine_version = var.application.database.engine_version
   instance_class = var.application.database.instance_class
 
-  allocated_storage = var.application.database.storage_gb
-  multi_az          = var.application.database.multi_az
+  allocated_storage           = var.application.database.storage_gb
+  username                    = var.application.database.username
+  manage_master_user_password = true
+  multi_az                    = var.application.database.multi_az
 
   backup_retention_period = var.application.database.backup.retention_days
   backup_window           = var.application.database.backup.window
@@ -379,8 +383,10 @@ resource "aws_db_instance" "databases" {
   engine_version = each.value.engine.version
   instance_class = each.value.sizing.instance_class
 
-  allocated_storage = each.value.sizing.storage_gb
-  multi_az          = each.value.availability.multi_az
+  allocated_storage           = each.value.sizing.storage_gb
+  username                    = "app_admin"
+  manage_master_user_password = true
+  multi_az                    = each.value.availability.multi_az
 
   tags = {
     Name     = "${var.project}-${each.key}"
