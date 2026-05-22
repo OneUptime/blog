@@ -36,7 +36,7 @@ terraform {
     key            = "prod/infrastructure/terraform.tfstate"
     region         = "us-east-1"
     encrypt        = true
-    dynamodb_table = "terraform-locks"
+    use_lockfile   = true
   }
 }
 ```
@@ -69,6 +69,8 @@ resource "aws_s3_bucket_lifecycle_configuration" "terraform_state" {
   rule {
     id     = "expire-old-versions"
     status = "Enabled"
+
+    filter {}
 
     noncurrent_version_expiration {
       noncurrent_days = 90
@@ -122,8 +124,9 @@ resource "google_storage_bucket" "terraform_state" {
       type = "Delete"
     }
     condition {
-      num_newer_versions = 30
-      with_state         = "ARCHIVED"
+      days_since_noncurrent_time = 90
+      send_age_if_zero           = false
+      with_state                 = "ARCHIVED"
     }
   }
 }
@@ -196,6 +199,8 @@ resource "aws_s3_bucket_replication_configuration" "state_replication" {
     id     = "replicate-state"
     status = "Enabled"
 
+    filter {}
+
     destination {
       bucket        = aws_s3_bucket.state_backup_replica.arn
       storage_class = "STANDARD_IA"
@@ -241,6 +246,14 @@ jobs:
           path: state-backup.json
           retention-days: 30
 
+      - name: Publish Backup Metric
+        run: |
+          aws cloudwatch put-metric-data \
+            --namespace Terraform/State \
+            --metric-name BackupSuccess \
+            --value 1 \
+            --unit Count
+
       - name: Terraform Plan
         run: terraform plan -out=tfplan
 
@@ -253,22 +266,18 @@ jobs:
 Set up alerts to catch backup failures early:
 
 ```hcl
-# monitoring.tf - Alert when state backups are stale
+# monitoring.tf - Alert when the backup success metric is missing
 resource "aws_cloudwatch_metric_alarm" "state_backup_stale" {
   alarm_name          = "terraform-state-backup-stale"
   comparison_operator = "LessThanThreshold"
   evaluation_periods  = 1
-  metric_name         = "NumberOfObjects"
-  namespace           = "AWS/S3"
+  metric_name         = "BackupSuccess"
+  namespace           = "Terraform/State"
   period              = 86400  # Check daily
-  statistic           = "Average"
+  statistic           = "Sum"
   threshold           = 1
-  alarm_description   = "No new state file versions in the last 24 hours"
-
-  dimensions = {
-    BucketName  = "my-terraform-state"
-    StorageType = "AllStorageTypes"
-  }
+  treat_missing_data  = "breaching"
+  alarm_description   = "No successful Terraform state backup in the last 24 hours"
 
   alarm_actions = [aws_sns_topic.alerts.arn]
 }
@@ -290,8 +299,8 @@ aws s3api list-object-versions \
   --max-items 10
 
 # Step 3: Push the backup state
-# Make sure to increment the serial number to avoid conflicts
-terraform state push state-backup.json
+# Use -force only after verifying this is the correct snapshot to restore
+terraform state push -force state-backup.json
 
 # Step 4: Verify the restored state
 terraform plan
