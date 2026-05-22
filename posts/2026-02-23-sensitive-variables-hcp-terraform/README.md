@@ -89,7 +89,7 @@ Terraform will perform the following actions:
     }
 ```
 
-Terraform redacts sensitive values in plan output, state display, and logs. The value `(sensitive value)` appears instead of the actual secret.
+Terraform redacts sensitive values in plan output and logs that Terraform controls, but sensitive values can still be stored in state and plan files. The value `(sensitive value)` appears instead of the actual secret in Terraform output.
 
 ## Sensitive Variables in Configuration
 
@@ -229,7 +229,7 @@ resource "aws_db_instance" "main" {
 }
 ```
 
-This approach means HCP Terraform never stores the secret - it is fetched at runtime. You still need credentials to access the secrets manager, which go in HCP Terraform as sensitive environment variables.
+This approach means HCP Terraform does not store the secret as a workspace variable - it is fetched at runtime. Terraform may still store values returned by data sources or passed to resource arguments in state and plan files, so treat those artifacts as sensitive or use ephemeral and write-only provider features where supported. You still need credentials to access the secrets manager, which go in HCP Terraform as sensitive environment variables.
 
 ### Option 2: Sync Secrets to HCP Terraform Variables
 
@@ -253,14 +253,14 @@ curl \
   --header "Authorization: Bearer $TFC_TOKEN" \
   --header "Content-Type: application/vnd.api+json" \
   --request PATCH \
-  --data "{
-    \"data\": {
-      \"type\": \"vars\",
-      \"attributes\": {
-        \"value\": \"$DB_PASSWORD\"
+  --data "$(jq -n --arg value "$DB_PASSWORD" '{
+    data: {
+      type: "vars",
+      attributes: {
+        value: $value
       }
     }
-  }" \
+  }')" \
   "https://app.terraform.io/api/v2/workspaces/$WORKSPACE_ID/vars/$VAR_ID"
 ```
 
