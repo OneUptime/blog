@@ -8,7 +8,7 @@ Description: Learn how to use the Terraform HTTP provider to make API calls, per
 
 ---
 
-The HTTP provider in Terraform makes HTTP requests and exposes the response data for use in your configuration. It is useful for health checks before deployment, fetching remote configuration, validating API endpoints, and reading data from HTTP-accessible services. The http data source makes a GET request and provides the response body, status code, and headers.
+The HTTP provider in Terraform makes HTTP requests and exposes the response data for use in your configuration. It is useful for health checks before deployment, fetching remote configuration, validating API endpoints, and reading data from HTTP-accessible services. By default, the http data source makes a GET request and provides the response body, status code, and headers.
 
 In this guide, we will explore the HTTP provider for various use cases including health checks, configuration fetching, API validation, and conditional deployment based on API responses.
 
@@ -78,6 +78,13 @@ data "http" "api_health" {
     attempts     = 3
     min_delay_ms = 1000
     max_delay_ms = 5000
+  }
+
+  lifecycle {
+    postcondition {
+      condition     = self.status_code == 200
+      error_message = "API health check failed."
+    }
   }
 }
 
@@ -155,11 +162,11 @@ variable "security_group_id" {
 }
 ```
 
-## Validating SSL Certificates
+## Checking HTTPS Endpoint Accessibility
 
 ```hcl
-# ssl-check.tf - Verify an HTTPS endpoint is accessible
-data "http" "ssl_check" {
+# https-check.tf - Verify an HTTPS endpoint is accessible
+data "http" "https_check" {
   url = "https://api.${var.domain}"
 
   request_headers = {
@@ -167,8 +174,8 @@ data "http" "ssl_check" {
   }
 }
 
-output "ssl_valid" {
-  value = data.http.ssl_check.status_code >= 200 && data.http.ssl_check.status_code < 400
+output "https_accessible" {
+  value = data.http.https_check.status_code >= 200 && data.http.https_check.status_code < 400
 }
 ```
 
@@ -264,4 +271,4 @@ output "health_status" {
 
 ## Conclusion
 
-The HTTP provider is a lightweight way to integrate external HTTP services into your Terraform workflow. Whether you are performing pre-deployment health checks, fetching remote configuration, or validating endpoints, the http data source provides the data you need. For more complex API interactions that require POST requests or authentication flows, consider using the [external provider](https://oneuptime.com/blog/post/2026-02-23-how-to-use-the-external-provider-for-custom-scripts-in-terraform/view) with custom scripts instead.
+The HTTP provider is a lightweight way to integrate external HTTP services into your Terraform workflow. Whether you are performing pre-deployment health checks, fetching remote configuration, or validating endpoints, the http data source provides the data you need. For more complex API interactions that require state-changing requests, custom authentication flows, or response processing beyond Terraform expressions, consider using the [external provider](https://oneuptime.com/blog/post/2026-02-23-how-to-use-the-external-provider-for-custom-scripts-in-terraform/view) with custom scripts instead.
