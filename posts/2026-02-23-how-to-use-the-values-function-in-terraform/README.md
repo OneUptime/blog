@@ -166,9 +166,7 @@ variable "instance_types" {
 
 locals {
   # Check if any server is using an xlarge instance
-  has_xlarge = anytrue([
-    for v in values(var.instance_types) : can(regex("xlarge", v))
-  ])
+  has_xlarge = contains(values(var.instance_types), "m5.xlarge")
   # Result: true
 }
 ```
@@ -191,7 +189,7 @@ variable "server_amis" {
 locals {
   # Find all unique AMIs in use
   unique_amis = distinct(values(var.server_amis))
-  # Result: ["ami-12345", "ami-67890"]
+  # Result: ["ami-67890", "ami-12345"]
 }
 ```
 
@@ -212,7 +210,7 @@ variable "team_members" {
 locals {
   # Get a flat list of all team members
   all_members = flatten(values(var.team_members))
-  # Result: ["alice", "bob", "carol", "dave", "eve"]
+  # Result: ["alice", "bob", "eve", "carol", "dave"]
 }
 ```
 
@@ -259,7 +257,7 @@ variable "dns_records" {
 locals {
   # Get all DNS values for auditing
   all_dns_targets = [for record in values(var.dns_records) : record.value]
-  # Result: ["lb.example.com", "lb.example.com", "mail.example.com"]
+  # Result: ["lb.example.com", "mail.example.com", "lb.example.com"]
 
   # Get unique targets
   unique_dns_targets = distinct([for record in values(var.dns_records) : record.value])
@@ -312,19 +310,20 @@ module "ecs_service" {
 
 ## A Note on Object Types
 
-The `values` function works with maps but not with object types directly. If you have an object, you may need to use a `for` expression:
+Terraform often treats maps and objects similarly in expressions. If you have a complex object, `values` can still return its attribute values in key order:
 
 ```hcl
 # This works with a map
 values({ "a" = 1, "b" = 2 })
 
-# For complex objects, use for expressions
+# This also works with an object
 locals {
   config = {
     name = "myapp"
     port = 8080
   }
-  config_values = [for k, v in local.config : v]
+  config_values = values(local.config)
+  # Result: ["myapp", 8080]
 }
 ```
 
