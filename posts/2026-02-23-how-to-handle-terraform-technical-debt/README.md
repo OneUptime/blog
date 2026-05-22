@@ -30,7 +30,7 @@ terraform {
       version = "~> 3.76.0"  # Version 3 is significantly behind current
     }
   }
-  required_version = ">= 0.14"  # Very old Terraform version
+  required_version = ">= 0.14"  # Allows very old Terraform versions
 }
 ```
 
@@ -199,8 +199,15 @@ MODULES_WITHOUT_README=$(find modules/ -maxdepth 1 -mindepth 1 -type d | while r
 done)
 echo "Modules without README: $(echo "$MODULES_WITHOUT_README" | grep -c '.')"
 
-VARS_WITHOUT_DESC=$(grep -rn 'variable "' modules/ --include="*.tf" -A5 | \
-  grep -B1 'variable "' | grep -v 'description' | wc -l)
+VARS_WITHOUT_DESC=$(find modules/ -name "*.tf" -print0 | xargs -0 awk '
+  /variable "[^"]+"/ { in_variable = 1; has_description = 0 }
+  in_variable && /description[[:space:]]*=/ { has_description = 1 }
+  in_variable && /^}/ {
+    if (!has_description) missing++
+    in_variable = 0
+  }
+  END { print missing + 0 }
+')
 echo "Variables potentially missing descriptions: $VARS_WITHOUT_DESC"
 ```
 
