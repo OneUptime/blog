@@ -12,13 +12,13 @@ When working with cloud infrastructure, you sometimes receive encrypted data tha
 
 ## What Does rsadecrypt Do?
 
-The `rsadecrypt` function decrypts a base64-encoded ciphertext using an RSA private key in PEM format. It uses PKCS#1 v1.5 padding (the standard RSA encryption scheme).
+The `rsadecrypt` function decrypts a base64-encoded ciphertext using an unencrypted RSA private key in PEM format. The ciphertext must use PKCS#1 v1.5 padding.
 
 ```hcl
 # Decrypt ciphertext using an RSA private key
 
 output "decrypted" {
-  value     = rsadecrypt(base64_encoded_ciphertext, private_key_pem)
+  value     = rsadecrypt(var.base64_encoded_ciphertext, file(var.private_key_path))
   sensitive = true
 }
 ```
@@ -30,7 +30,7 @@ rsadecrypt(ciphertext, privatekey)
 ```
 
 - `ciphertext` - A base64-encoded string containing RSA-encrypted data
-- `privatekey` - An RSA private key in PEM format
+- `privatekey` - An unencrypted RSA private key in PEM format
 
 The function returns the decrypted plaintext as a string.
 
@@ -94,7 +94,7 @@ The `password_data` attribute on the `aws_instance` resource contains the base64
 
 ### Important: Waiting for Password Generation
 
-Windows instances take several minutes to generate their password after launch. Terraform may need to wait:
+Windows instances take several minutes to generate their password after launch. With `get_password_data = true`, the AWS provider waits for the encrypted password data to become available, so make sure the create timeout allows enough time:
 
 ```hcl
 resource "aws_instance" "windows" {
@@ -241,6 +241,8 @@ resource "aws_secretsmanager_secret_version" "windows_password" {
 }
 ```
 
+This avoids printing the password as a Terraform output, but the `secret_string` value is still stored in Terraform state. Keep the state backend secured.
+
 ## Common Issues and Troubleshooting
 
 ### Empty password_data
@@ -253,10 +255,10 @@ If `password_data` is empty, the instance has not finished generating its passwo
 
 ### Invalid Key Format
 
-The private key must be in PEM format. If you get a decryption error, verify the key format:
+The private key must be an unencrypted PEM-encoded RSA private key. If you get a decryption error, verify the key format:
 
 ```hcl
-# Correct PEM format looks like this:
+# One valid PEM format looks like this:
 # -----BEGIN RSA PRIVATE KEY-----
 # MIIEpA...
 # -----END RSA PRIVATE KEY-----
