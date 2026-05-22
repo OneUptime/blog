@@ -184,7 +184,7 @@ locals {
   # Environment-specific tags
   env_tags = {
     Environment = terraform.workspace
-    Region      = data.aws_region.current.name
+    Region      = data.aws_region.current.id
   }
 
   # Application-specific tags
