@@ -16,7 +16,7 @@ Large-scale imports present several challenges. Each resource requires a matchin
 
 ## Strategy 1: Use Terraformer for Bulk Generation
 
-Terraformer can generate both configurations and state for large numbers of resources:
+Terraformer can generate both configurations and state for large numbers of resources. Note that the upstream Terraformer project was archived and marked deprecated in March 2026, so use it with that maintenance status in mind:
 
 ```bash
 # Import all supported AWS resources in a region
@@ -25,7 +25,7 @@ terraformer import aws --resources=* --regions=us-east-1
 
 # Import specific resource types in bulk
 terraformer import aws \
-  --resources=ec2_instance,ebs_volume,security_group,vpc,subnet \
+  --resources=ec2_instance,ebs,sg,vpc,subnet \
   --regions=us-east-1,us-west-2
 
 # Filter by tags to import only production resources
@@ -49,13 +49,13 @@ Use cloud provider CLIs to discover resources and generate import commands:
 OUTPUT_FILE="imports.tf"
 CONFIG_FILE="generated_resources.tf"
 
-echo "" > "$OUTPUT_FILE"
-echo "" > "$CONFIG_FILE"
+: > "$OUTPUT_FILE"
+: > "$CONFIG_FILE"
 
 # Discover all EC2 instances
 echo "Discovering EC2 instances..."
 INSTANCES=$(aws ec2 describe-instances \
-  --query 'Reservations[].Instances[].[InstanceId,InstanceType,ImageId,SubnetId,Tags[?Key==`Name`].Value|[0]]' \
+  --query 'Reservations[].Instances[?State.Name!=`terminated`].[InstanceId,InstanceType,ImageId,SubnetId,Tags[?Key==`Name`].Value|[0]]' \
   --output text)
 
 INDEX=0
@@ -63,9 +63,9 @@ while IFS=$'\t' read -r id type ami subnet name; do
   # Skip terminated instances
   [ -z "$id" ] && continue
 
-  RESOURCE_NAME="instance_${name:-unnamed_$INDEX}"
+  RESOURCE_NAME="instance_${name:-unnamed}_${id}"
   # Sanitize resource name for Terraform
-  RESOURCE_NAME=$(echo "$RESOURCE_NAME" | tr -cs 'a-zA-Z0-9_' '_' | sed 's/^_//')
+  RESOURCE_NAME=$(echo "$RESOURCE_NAME" | tr -cs 'a-zA-Z0-9_' '_' | sed 's/^_//;s/_$//')
 
   # Generate import block
   cat >> "$OUTPUT_FILE" <<EOF
@@ -115,7 +115,7 @@ IMPORT_DIR="./import-batches"
 mkdir -p "$IMPORT_DIR"
 
 # Split import blocks into batch files
-split -l $((BATCH_SIZE * 4)) imports.tf "$IMPORT_DIR/batch_" --additional-suffix=".tf"
+split -l $((BATCH_SIZE * 5)) imports.tf "$IMPORT_DIR/batch_" --additional-suffix=".tf"
 
 # Process each batch
 for batch in "$IMPORT_DIR"/batch_*.tf; do
@@ -257,7 +257,7 @@ terraform {
     bucket         = "terraform-state-large"
     key            = "bulk-import/terraform.tfstate"
     region         = "us-east-1"
-    dynamodb_table = "terraform-locks"
+    use_lockfile   = true
     encrypt        = true
   }
 }
