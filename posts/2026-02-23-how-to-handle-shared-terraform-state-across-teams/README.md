@@ -157,7 +157,8 @@ terraform {
     region         = "us-east-1"
     dynamodb_table = "terraform-locks"
     encrypt        = true
-    # Workspace name is automatically appended to the key
+    # For non-default workspaces, state is stored at
+    # <workspace_key_prefix>/<workspace_name>/<key>
     workspace_key_prefix = "application"
   }
 }
