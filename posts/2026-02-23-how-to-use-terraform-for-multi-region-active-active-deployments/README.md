@@ -20,6 +20,10 @@ In this guide, we will cover how to implement active-active multi-region infrast
 # Configure providers for each region
 
 provider "aws" {
+  region = "us-east-1"
+}
+
+provider "aws" {
   alias  = "us_east"
   region = "us-east-1"
 }
@@ -47,6 +51,14 @@ variable "region" {
 
 variable "environment" {
   type = string
+}
+
+variable "vpc_cidr" {
+  type = string
+}
+
+variable "desired_count" {
+  type = number
 }
 
 module "vpc" {
@@ -98,6 +110,14 @@ output "alb_dns_name" {
 
 output "alb_zone_id" {
   value = aws_lb.main.zone_id
+}
+
+output "alb_arn_suffix" {
+  value = aws_lb.main.arn_suffix
+}
+
+output "target_group_arn_suffix" {
+  value = aws_lb_target_group.app.arn_suffix
 }
 ```
 
@@ -165,6 +185,8 @@ resource "aws_route53_record" "us_east" {
   }
 
   set_identifier = "us-east-1"
+  health_check_id = aws_route53_health_check.us_east.id
+
   latency_routing_policy {
     region = "us-east-1"
   }
@@ -182,6 +204,8 @@ resource "aws_route53_record" "us_west" {
   }
 
   set_identifier = "us-west-2"
+  health_check_id = aws_route53_health_check.us_west.id
+
   latency_routing_policy {
     region = "us-west-2"
   }
@@ -199,16 +223,36 @@ resource "aws_route53_record" "eu_west" {
   }
 
   set_identifier = "eu-west-1"
+  health_check_id = aws_route53_health_check.eu_west.id
+
   latency_routing_policy {
     region = "eu-west-1"
   }
 }
 
-# Health checks for automatic failover
+# Optional application-level health check for Route 53 routing decisions
 resource "aws_route53_health_check" "us_east" {
   fqdn              = module.us_east.alb_dns_name
-  port               = 443
-  type               = "HTTPS"
+  port              = 80
+  type              = "HTTP"
+  resource_path      = "/health"
+  failure_threshold  = 3
+  request_interval   = 30
+}
+
+resource "aws_route53_health_check" "us_west" {
+  fqdn              = module.us_west.alb_dns_name
+  port              = 80
+  type              = "HTTP"
+  resource_path      = "/health"
+  failure_threshold  = 3
+  request_interval   = 30
+}
+
+resource "aws_route53_health_check" "eu_west" {
+  fqdn              = module.eu_west.alb_dns_name
+  port              = 80
+  type              = "HTTP"
   resource_path      = "/health"
   failure_threshold  = 3
   request_interval   = 30
@@ -224,7 +268,7 @@ resource "aws_route53_health_check" "us_east" {
 resource "aws_rds_global_cluster" "main" {
   global_cluster_identifier = "app-global"
   engine                    = "aurora-postgresql"
-  engine_version            = "15.4"
+  engine_version            = "15.17"
   database_name             = "app"
   storage_encrypted         = true
 }
@@ -235,7 +279,7 @@ resource "aws_rds_cluster" "primary" {
 
   cluster_identifier        = "app-primary"
   engine                    = "aurora-postgresql"
-  engine_version            = "15.4"
+  engine_version            = "15.17"
   global_cluster_identifier = aws_rds_global_cluster.main.id
   master_username           = var.db_username
   master_password           = var.db_password
@@ -251,7 +295,7 @@ resource "aws_rds_cluster" "secondary" {
 
   cluster_identifier        = "app-secondary"
   engine                    = "aurora-postgresql"
-  engine_version            = "15.4"
+  engine_version            = "15.17"
   global_cluster_identifier = aws_rds_global_cluster.main.id
 
   db_subnet_group_name   = module.eu_west.database_subnet_group
@@ -269,10 +313,28 @@ Monitor the health of each region and the overall deployment:
 # production/monitoring.tf
 # Cross-region monitoring for active-active deployment
 
-resource "aws_cloudwatch_metric_alarm" "regional_health" {
-  for_each = toset(["us_east", "us_west", "eu_west"])
+resource "aws_sns_topic" "global_alerts_us_east" {
+  provider = aws.us_east
 
-  alarm_name          = "regional-health-${each.key}"
+  name = "global-alerts"
+}
+
+resource "aws_sns_topic" "global_alerts_us_west" {
+  provider = aws.us_west
+
+  name = "global-alerts"
+}
+
+resource "aws_sns_topic" "global_alerts_eu_west" {
+  provider = aws.eu_west
+
+  name = "global-alerts"
+}
+
+resource "aws_cloudwatch_metric_alarm" "regional_health_us_east" {
+  provider = aws.us_east
+
+  alarm_name          = "regional-health-us-east-1"
   comparison_operator = "LessThanThreshold"
   evaluation_periods  = 2
   metric_name         = "HealthyHostCount"
@@ -280,13 +342,55 @@ resource "aws_cloudwatch_metric_alarm" "regional_health" {
   period              = 60
   statistic           = "Minimum"
   threshold           = 1
-  alarm_description   = "No healthy hosts in ${each.key} region"
+  alarm_description   = "No healthy hosts in us-east-1 region"
 
-  alarm_actions = [aws_sns_topic.global_alerts.arn]
+  alarm_actions = [aws_sns_topic.global_alerts_us_east.arn]
 
   dimensions = {
-    TargetGroup  = module[each.key].target_group_arn_suffix
-    LoadBalancer = module[each.key].alb_arn_suffix
+    TargetGroup  = module.us_east.target_group_arn_suffix
+    LoadBalancer = module.us_east.alb_arn_suffix
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "regional_health_us_west" {
+  provider = aws.us_west
+
+  alarm_name          = "regional-health-us-west-2"
+  comparison_operator = "LessThanThreshold"
+  evaluation_periods  = 2
+  metric_name         = "HealthyHostCount"
+  namespace           = "AWS/ApplicationELB"
+  period              = 60
+  statistic           = "Minimum"
+  threshold           = 1
+  alarm_description   = "No healthy hosts in us-west-2 region"
+
+  alarm_actions = [aws_sns_topic.global_alerts_us_west.arn]
+
+  dimensions = {
+    TargetGroup  = module.us_west.target_group_arn_suffix
+    LoadBalancer = module.us_west.alb_arn_suffix
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "regional_health_eu_west" {
+  provider = aws.eu_west
+
+  alarm_name          = "regional-health-eu-west-1"
+  comparison_operator = "LessThanThreshold"
+  evaluation_periods  = 2
+  metric_name         = "HealthyHostCount"
+  namespace           = "AWS/ApplicationELB"
+  period              = 60
+  statistic           = "Minimum"
+  threshold           = 1
+  alarm_description   = "No healthy hosts in eu-west-1 region"
+
+  alarm_actions = [aws_sns_topic.global_alerts_eu_west.arn]
+
+  dimensions = {
+    TargetGroup  = module.eu_west.target_group_arn_suffix
+    LoadBalancer = module.eu_west.alb_arn_suffix
   }
 }
 
@@ -302,9 +406,9 @@ resource "aws_cloudwatch_dashboard" "global" {
         height = 6
         properties = {
           metrics = [
-            ["AWS/ApplicationELB", "RequestCount", "LoadBalancer", module.us_east.alb_arn_suffix],
-            ["AWS/ApplicationELB", "RequestCount", "LoadBalancer", module.us_west.alb_arn_suffix],
-            ["AWS/ApplicationELB", "RequestCount", "LoadBalancer", module.eu_west.alb_arn_suffix]
+            ["AWS/ApplicationELB", "RequestCount", "LoadBalancer", module.us_east.alb_arn_suffix, { region = "us-east-1" }],
+            ["AWS/ApplicationELB", "RequestCount", "LoadBalancer", module.us_west.alb_arn_suffix, { region = "us-west-2" }],
+            ["AWS/ApplicationELB", "RequestCount", "LoadBalancer", module.eu_west.alb_arn_suffix, { region = "eu-west-1" }]
           ]
           title  = "Requests by Region"
           period = 300
@@ -325,7 +429,7 @@ Test failover regularly by deliberately taking down one region to verify the oth
 
 Keep regional deployments independent. Each region should be able to serve traffic even if other regions are unavailable. Avoid cross-region dependencies in the request path.
 
-Use global databases for data consistency, but design your application to handle read-after-write eventual consistency. Aurora Global Database provides sub-second replication lag, but applications should be designed to tolerate temporary inconsistencies.
+Use global databases for low-latency regional reads and disaster recovery, but remember that Aurora Global Database has one primary write region and read-only secondary regions. Design your application to route writes to the primary region and handle read-after-write eventual consistency. Aurora Global Database typically replicates to secondary regions in under a second, but applications should be designed to tolerate temporary inconsistencies.
 
 Monitor per-region metrics independently and as a whole. A problem in one region might not be visible in aggregated global metrics. Track latency, error rates, and throughput for each region separately.
 
