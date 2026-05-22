@@ -26,7 +26,7 @@ Without enforcement, tagging becomes optional in practice. Developers are focuse
 
 Let us start with a straightforward policy that requires a set of tags on all AWS resources that support tagging:
 
-```python
+```sentinel
 # enforce-tags.sentinel
 
 # Requires specific tags on all taggable resources
@@ -45,8 +45,8 @@ taggable_resources = filter tfplan.resource_changes as _, rc {
 # Function to check if a resource has all required tags
 check_tags = func(resource) {
     # Check if the resource has a tags attribute
-    if resource.change.after.tags is null or
-       resource.change.after.tags is undefined {
+    if resource.change.after.tags is not defined or
+       resource.change.after.tags is null {
         print("Resource", resource.address, "has no tags")
         return false
     }
@@ -68,7 +68,7 @@ check_tags = func(resource) {
 main = rule {
     all taggable_resources as _, rc {
         # Only check resources that have a tags attribute in their schema
-        if rc.change.after.tags is not undefined {
+        if rc.change.after.tags is defined {
             check_tags(rc)
         } else {
             true
@@ -81,7 +81,7 @@ main = rule {
 
 Not all Terraform resources support tags. Rather than trying to tag everything, you can target specific resource types:
 
-```python
+```sentinel
 import "tfplan/v2" as tfplan
 
 required_tags = ["Environment", "Team", "CostCenter"]
@@ -117,7 +117,8 @@ resources = filter tfplan.resource_changes as _, rc {
 
 # Validate tags
 validate_tags = func(resource) {
-    if resource.change.after.tags is null {
+    if resource.change.after.tags is not defined or
+       resource.change.after.tags is null {
         print(resource.address, "- no tags defined")
         return false
     }
@@ -146,7 +147,7 @@ main = rule {
 
 Requiring tags to exist is just the first step. You should also validate that tag values follow your standards:
 
-```python
+```sentinel
 import "tfplan/v2" as tfplan
 
 # Allowed values for specific tags
@@ -194,11 +195,16 @@ tag_validators = {
 # Get taggable resources
 resources = filter tfplan.resource_changes as _, rc {
     (rc.change.actions contains "create" or rc.change.actions contains "update") and
-    rc.change.after.tags is not null
+    rc.change.after.tags is defined
 }
 
 # Validate both presence and values
 validate_resource = func(resource) {
+    if resource.change.after.tags is null {
+        print(resource.address, "- no tags defined")
+        return false
+    }
+
     tags = resource.change.after.tags
     valid = true
 
@@ -227,12 +233,13 @@ main = rule {
 
 Beyond required tags, you might want to enforce conventions on all tag keys:
 
-```python
+```sentinel
 import "tfplan/v2" as tfplan
 
 # Resources with tags
 tagged_resources = filter tfplan.resource_changes as _, rc {
     (rc.change.actions contains "create" or rc.change.actions contains "update") and
+    rc.change.after.tags is defined and
     rc.change.after.tags is not null
 }
 
@@ -292,7 +299,7 @@ main = rule {
 
 Different environments might need different tags:
 
-```python
+```sentinel
 import "tfplan/v2" as tfplan
 import "tfrun"
 
@@ -329,11 +336,16 @@ required = get_required_tags()
 # Get taggable resources
 resources = filter tfplan.resource_changes as _, rc {
     (rc.change.actions contains "create" or rc.change.actions contains "update") and
-    rc.change.after.tags is not null
+    rc.change.after.tags is defined
 }
 
 # Validate
 validate = func(resource) {
+    if resource.change.after.tags is null {
+        print(resource.address, "- no tags defined")
+        return false
+    }
+
     tags = resource.change.after.tags
     valid = true
     for required as tag {
@@ -356,7 +368,7 @@ main = rule {
 
 Many organizations use AWS provider default tags. Your policy should account for this:
 
-```python
+```sentinel
 import "tfplan/v2" as tfplan
 
 required_tags = ["Environment", "Team", "ManagedBy"]
@@ -372,9 +384,11 @@ validate = func(resource) {
     # Fall back to tags if tags_all is not available
     tags = null
 
-    if resource.change.after.tags_all is not null {
+    if resource.change.after.tags_all is defined and
+       resource.change.after.tags_all is not null {
         tags = resource.change.after.tags_all
-    } else if resource.change.after.tags is not null {
+    } else if resource.change.after.tags is defined and
+              resource.change.after.tags is not null {
         tags = resource.change.after.tags
     } else {
         # Resource does not support tags
@@ -404,7 +418,7 @@ main = rule {
 
 If you work with multiple cloud providers, you can write a unified tagging policy:
 
-```python
+```sentinel
 import "tfplan/v2" as tfplan
 
 required_tags = ["Environment", "Team", "Owner"]
@@ -416,11 +430,13 @@ required_tags = ["Environment", "Team", "Owner"]
 # Get resources from any cloud that support tagging
 get_tag_attribute = func(resource) {
     # Try tags first (AWS, Azure)
-    if resource.change.after.tags is not null {
+    if resource.change.after.tags is defined and
+       resource.change.after.tags is not null {
         return resource.change.after.tags
     }
     # Try labels (GCP)
-    if resource.change.after.labels is not null {
+    if resource.change.after.labels is defined and
+       resource.change.after.labels is not null {
         return resource.change.after.labels
     }
     return null
