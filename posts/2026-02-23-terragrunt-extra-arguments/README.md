@@ -215,13 +215,13 @@ terraform plan \
 
 ## Root-Level Extra Arguments
 
-Define common arguments in the root `terragrunt.hcl` to apply them everywhere:
+Define common arguments in a root `terragrunt.hcl` and include that root config from child modules to apply them everywhere:
 
 ```hcl
 # root terragrunt.hcl
 
 terraform {
-  # All child modules inherit these arguments
+  # Child modules that include this root config inherit these arguments
   extra_arguments "common" {
     commands = get_terraform_commands_that_need_vars()
 
@@ -285,7 +285,7 @@ AUTO_APPROVE=true terragrunt apply
 
 ## Passing Backend Config Arguments
 
-For backend partial configuration:
+For backend partial configuration in an included root config:
 
 ```hcl
 terraform {
@@ -322,8 +322,8 @@ terraform {
 
     optional_var_files = [
       "${get_parent_terragrunt_dir()}/common.tfvars",
-      "${find_in_parent_folders("account.hcl", "ignore")}/../account.tfvars",
-      "${find_in_parent_folders("region.hcl", "ignore")}/../region.tfvars",
+      "${dirname(find_in_parent_folders("account.hcl", "ignore"))}/account.tfvars",
+      "${dirname(find_in_parent_folders("region.hcl", "ignore"))}/region.tfvars",
       "${get_terragrunt_dir()}/terraform.tfvars"
     ]
   }
@@ -355,7 +355,7 @@ To see what arguments Terragrunt is passing to Terraform:
 
 ```bash
 # Debug logging shows the full command being executed
-terragrunt plan --terragrunt-log-level debug
+terragrunt plan --log-level debug
 
 # Look for lines like:
 # DEBUG: Running command: terraform plan -var-file=... -parallelism=5 ...
@@ -363,4 +363,4 @@ terragrunt plan --terragrunt-log-level debug
 
 ## Summary
 
-Extra arguments save you from long command lines and wrapper scripts. The most impactful uses are automatic variable file loading (with `required_var_files` and `optional_var_files`), consistent performance settings, and environment-specific flags. Define them in the root `terragrunt.hcl` for project-wide defaults, and override in child modules when needed. For more on making Terraform DRY with Terragrunt, see our [Terragrunt with Terraform Modules guide](https://oneuptime.com/blog/post/2026-02-23-terragrunt-with-terraform-modules/view).
+Extra arguments save you from long command lines and wrapper scripts. The most impactful uses are automatic variable file loading (with `required_var_files` and `optional_var_files`), consistent performance settings, and environment-specific flags. Define them in a root `terragrunt.hcl` for project-wide defaults, include that root config from child modules, and override in child modules when needed. For more on making Terraform DRY with Terragrunt, see our [Terragrunt with Terraform Modules guide](https://oneuptime.com/blog/post/2026-02-23-terragrunt-with-terraform-modules/view).
