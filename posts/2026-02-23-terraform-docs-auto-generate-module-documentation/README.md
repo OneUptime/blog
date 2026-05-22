@@ -26,7 +26,7 @@ On Linux:
 
 ```bash
 # Download the latest release
-curl -Lo ./terraform-docs.tar.gz https://github.com/terraform-docs/terraform-docs/releases/download/v0.18.0/terraform-docs-v0.18.0-linux-amd64.tar.gz
+curl -sSLo ./terraform-docs.tar.gz https://terraform-docs.io/dl/v0.24.0/terraform-docs-v0.24.0-$(uname)-amd64.tar.gz
 
 # Extract and install
 tar -xzf terraform-docs.tar.gz
@@ -61,7 +61,7 @@ This prints the generated documentation to stdout. To write it into your README,
 
 The most common workflow is to have terraform-docs inject generated content into specific sections of your README. First, add markers to your README.md:
 
-```markdown
+````markdown
 # My Terraform Module
 
 This module creates a VPC with public and private subnets.
@@ -73,11 +73,11 @@ module "vpc" {
   source = "./modules/vpc"
   cidr_block = "10.0.0.0/16"
 }
-```bash
+```
 
 <!-- BEGIN_TF_DOCS -->
 <!-- END_TF_DOCS -->
-```text
+````
 
 Then run:
 
@@ -158,7 +158,7 @@ It picks up the configuration automatically.
 
 ## Generated Output Example
 
-Given these Terraform files:
+Given a module with these variables, plus matching provider requirements and outputs:
 
 ```hcl
 # variables.tf
@@ -185,7 +185,7 @@ variable "enable_nat_gateway" {
 }
 ```
 
-terraform-docs generates:
+terraform-docs generates output like:
 
 ```markdown
 ## Requirements
@@ -220,10 +220,10 @@ The best way to ensure documentation stays current is to run terraform-docs auto
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/terraform-docs/terraform-docs
-    rev: v0.18.0
+    rev: v0.24.0
     hooks:
       - id: terraform-docs-go
-        args: ["markdown", "table", "--output-file", "README.md", "--output-mode", "inject"]
+        args: ["markdown", "table", "--output-file", "README.md", "--output-mode", "inject", "./modules/vpc"]
 ```
 
 Install the pre-commit framework and set it up:
@@ -263,7 +263,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.ref }}
 
       - name: Render terraform-docs
-        uses: terraform-docs/gh-actions@v1
+        uses: terraform-docs/gh-actions@v1.4.1
         with:
           working-dir: modules
           recursive: true
@@ -306,38 +306,33 @@ terraform-docs markdown table --recursive --recursive-path modules --output-file
 
 terraform-docs supports Go templates for custom output formats. If the default markdown table does not fit your needs:
 
-```yaml
+````yaml
 # .terraform-docs.yml
 content: |-
-  # {{ .Name }}
-
-  {{ .Description }}
+  # Usage
 
   ## Quick Start
 
   ```hcl
   module "example" {
-    source = "{{ .Module.Source }}"
+    source = "./modules/example"
     {{ range .Module.Inputs }}
-    {{ .Name }} = {{ if .Default }}{{ .Default }}{{ else }}"<required>"{{ end }}
+    {{ .Name }} = {{ if .Required }}"<required>"{{ else }}{{ .Default }}{{ end }}
     {{ end }}
   }
-  ```bash
+  ```
 
   {{ .Inputs }}
 
   {{ .Outputs }}
-```text
+````
 
 This generates a pre-filled usage example from the module's variables, which is extremely helpful for users.
 
 ## Tips
 
-A few things to keep in mind. Always write good `description` fields in your variables and outputs, because terraform-docs pulls directly from them. If your descriptions are empty, the generated table will be empty too.
+A few things to keep in mind. Always write good `description` fields in your variables and outputs, because terraform-docs pulls directly from them. If your descriptions are empty, the generated description column will be empty too.
 
 Mark sensitive outputs with `sensitive = true` - terraform-docs will flag these in the generated documentation so users know which values are redacted in Terraform output.
 
 For more on the manual side of documentation, see [how to document Terraform modules with README](https://oneuptime.com/blog/post/2026-02-23-document-terraform-modules-with-readme/view).
-
-```bash
-```
