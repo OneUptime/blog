@@ -16,7 +16,7 @@ This guide covers building a thorough validation pipeline that catches Istio con
 
 Good Istio validation happens at multiple levels:
 
-1. **Syntax validation** - Is the YAML valid? Are all required fields present?
+1. **Syntax validation** - Does the YAML parse cleanly?
 2. **Schema validation** - Do the field values match the expected types and constraints?
 3. **Semantic validation** - Does the configuration make logical sense? (e.g., VirtualService references a real Gateway)
 4. **Policy validation** - Does the configuration comply with organizational policies?
@@ -57,7 +57,7 @@ yamllint -c .yamllint.yml services/ platform/
 
 ## Schema Validation with kubeconform
 
-kubeconform validates Kubernetes resources against their OpenAPI schemas. For Istio CRDs, you need to point it at the Istio schema catalog:
+kubeconform validates Kubernetes resources against their OpenAPI schemas. For Istio CRDs, you need to point it at a CRD schema catalog:
 
 ```bash
 go install github.com/yannh/kubeconform/cmd/kubeconform@latest
@@ -136,12 +136,12 @@ done
 # Check 3: No wildcard hosts in production Gateways
 echo "Checking Gateway hosts..."
 for file in $(find platform/gateways/ -name "*.yaml"); do
-  if grep -q 'hosts:' "$file" && grep -q '"*"' "$file"; then
+  if grep -q 'hosts:' "$file" && grep -Eq "['\"]\\*['\"]" "$file"; then
     echo "WARNING: $file uses wildcard host (ensure this is intentional)"
   fi
 done
 
-# Check 4: Timeout must be greater than perTryTimeout * attempts
+# Check 4: Timeout must be greater than perTryTimeout * (attempts + 1)
 echo "Checking timeout/retry consistency..."
 python3 scripts/check-timeout-consistency.py services/
 
@@ -165,13 +165,15 @@ import os
 import re
 
 def parse_duration(duration_str):
-    """Convert duration string like '30s', '5m' to seconds."""
-    match = re.match(r'^(\d+)(s|m|h)$', duration_str)
+    """Convert duration string like '500ms', '30s', '5m' to seconds."""
+    match = re.match(r'^(\d+)(ms|s|m|h)$', duration_str)
     if not match:
         return None
     value = int(match.group(1))
     unit = match.group(2)
-    if unit == 'm':
+    if unit == 'ms':
+        value /= 1000
+    elif unit == 'm':
         value *= 60
     elif unit == 'h':
         value *= 3600
@@ -194,8 +196,8 @@ def check_file(filepath):
                     timeout_s = parse_duration(timeout)
                     per_try_s = parse_duration(per_try)
                     if timeout_s and per_try_s:
-                        if per_try_s * attempts > timeout_s:
-                            print(f"ERROR: {filepath} - perTryTimeout({per_try}) * attempts({attempts}) > timeout({timeout})")
+                        if per_try_s * (attempts + 1) > timeout_s:
+                            print(f"ERROR: {filepath} - perTryTimeout({per_try}) * (attempts({attempts}) + 1) > timeout({timeout})")
                             errors += 1
     return errors
 
@@ -237,7 +239,7 @@ deny[msg] {
     input.kind == "VirtualService"
     http := input.spec.http[_]
     timeout := http.timeout
-    not regex.match(`^\d+(s|m|h)$`, timeout)
+    not regex.match(`^\d+(ms|s|m|h)$`, timeout)
     msg := sprintf("VirtualService %s has invalid timeout format: %s", [input.metadata.name, timeout])
 }
 ```
@@ -246,7 +248,7 @@ Run Conftest:
 
 ```bash
 kubectl kustomize services/api-gateway/overlays/production | \
-  conftest test -p policy/istio/ -
+  conftest test --all-namespaces -p policy/istio/ -
 ```
 
 ## Dry-Run Validation Against the Cluster
@@ -311,7 +313,7 @@ jobs:
           wget -q https://github.com/open-policy-agent/conftest/releases/download/v0.46.0/conftest_0.46.0_Linux_x86_64.tar.gz
           tar xzf conftest_0.46.0_Linux_x86_64.tar.gz
           for svc in services/*/overlays/production/; do
-            kubectl kustomize "$svc" | ./conftest test -p policy/istio/ -
+            kubectl kustomize "$svc" | ./conftest test --all-namespaces -p policy/istio/ -
           done
 
       - name: Custom Checks
