@@ -36,7 +36,7 @@ Store your HCP Terraform token as a GitLab CI/CD variable:
 2. Click **Add variable**
 3. Key: `TF_API_TOKEN`
 4. Value: Your HCP Terraform API token
-5. Check **Mask variable** and **Protect variable**
+5. Check **Mask variable**. Check **Protect variable** only if the jobs that need the token run on protected branches, protected tags, or protected merge request pipelines.
 
 ## Basic Pipeline Configuration
 
@@ -69,32 +69,31 @@ terraform {
 
 ```yaml
 # .gitlab-ci.yml
-image:
-  name: hashicorp/terraform:1.7.0
-  entrypoint: [""]
+default:
+  image:
+    name: hashicorp/terraform:1.7.0
+    entrypoint: [""]
+  # Cache Terraform plugins between pipeline runs
+  cache:
+    key: terraform-plugins
+    paths:
+      - .terraform/
+  before_script:
+    # Configure Terraform CLI credentials
+    - |
+      cat > ~/.terraformrc << EOF
+      credentials "app.terraform.io" {
+        token = "$TF_API_TOKEN"
+      }
+      EOF
 
 variables:
   TF_IN_AUTOMATION: "true"  # Reduces unnecessary output
-
-# Cache Terraform plugins between pipeline runs
-cache:
-  key: terraform-plugins
-  paths:
-    - .terraform/
 
 stages:
   - validate
   - plan
   - apply
-
-before_script:
-  # Configure Terraform CLI credentials
-  - |
-    cat > ~/.terraformrc << EOF
-    credentials "app.terraform.io" {
-      token = "$TF_API_TOKEN"
-    }
-    EOF
 
 validate:
   stage: validate
@@ -110,7 +109,9 @@ plan:
   stage: plan
   script:
     - terraform init -input=false
-    - terraform plan -no-color -input=false 2>&1 | tee plan_output.txt
+    - terraform plan -no-color -input=false > plan_output.txt 2>&1 || PLAN_EXIT_CODE=$?
+    - cat plan_output.txt
+    - exit ${PLAN_EXIT_CODE:-0}
   artifacts:
     paths:
       - plan_output.txt
@@ -138,9 +139,17 @@ Post the plan output as a comment on the merge request:
 
 ````yaml
 # .gitlab-ci.yml - Advanced version
-image:
-  name: hashicorp/terraform:1.7.0
-  entrypoint: [""]
+default:
+  image:
+    name: hashicorp/terraform:1.7.0
+    entrypoint: [""]
+  before_script:
+    - |
+      cat > ~/.terraformrc << EOF
+      credentials "app.terraform.io" {
+        token = "$TF_API_TOKEN"
+      }
+      EOF
 
 variables:
   TF_IN_AUTOMATION: "true"
@@ -150,14 +159,6 @@ stages:
   - validate
   - plan
   - apply
-
-before_script:
-  - |
-    cat > ~/.terraformrc << EOF
-    credentials "app.terraform.io" {
-      token = "$TF_API_TOKEN"
-    }
-    EOF
 
 # Validate Terraform configuration
 validate:
@@ -182,8 +183,9 @@ plan:
     - cd $TF_DIR
     - terraform init -input=false
     - |
-      terraform plan -no-color -input=false 2>&1 | tee /tmp/plan_output.txt
-      PLAN_EXIT_CODE=${PIPESTATUS[0]}
+      terraform plan -no-color -input=false > plan_output.txt 2>&1 || PLAN_EXIT_CODE=$?
+      PLAN_EXIT_CODE=${PLAN_EXIT_CODE:-0}
+      cat plan_output.txt
     - |
       # Post plan output as MR comment (if this is a merge request)
       if [ "$CI_PIPELINE_SOURCE" = "merge_request_event" ]; then
@@ -191,7 +193,7 @@ plan:
         apk add --no-cache curl jq
 
         # Truncate long plans
-        PLAN_OUTPUT=$(head -c 50000 /tmp/plan_output.txt)
+        PLAN_OUTPUT=$(head -c 50000 plan_output.txt)
 
         # Create the comment
         COMMENT_BODY=$(jq -n --arg body "### Terraform Plan Output
@@ -239,13 +241,21 @@ apply:
 
 ## Multi-Environment Pipeline
 
-Deploy to staging first, then production:
+Deploy to staging first, then production. For this pattern, do not hard-code `workspaces.name` in the Terraform `cloud` block; omit `workspaces` so `TF_WORKSPACE` can select an existing HCP Terraform workspace, or use workspace tags that match those workspaces and set `TF_WORKSPACE` to one matching workspace.
 
 ```yaml
 # .gitlab-ci.yml - Multi-environment
-image:
-  name: hashicorp/terraform:1.7.0
-  entrypoint: [""]
+default:
+  image:
+    name: hashicorp/terraform:1.7.0
+    entrypoint: [""]
+  before_script:
+    - |
+      cat > ~/.terraformrc << EOF
+      credentials "app.terraform.io" {
+        token = "$TF_API_TOKEN"
+      }
+      EOF
 
 variables:
   TF_IN_AUTOMATION: "true"
@@ -256,14 +266,6 @@ stages:
   - apply-staging
   - plan-production
   - apply-production
-
-before_script:
-  - |
-    cat > ~/.terraformrc << EOF
-    credentials "app.terraform.io" {
-      token = "$TF_API_TOKEN"
-    }
-    EOF
 
 .terraform_init: &terraform_init
   script:
@@ -335,20 +337,13 @@ apply-production:
 
 ## Using GitLab's Terraform Integration
 
-GitLab has built-in Terraform support with its managed state. However, when using HCP Terraform, you use GitLab's CI/CD features while HCP Terraform handles state:
+GitLab's older Terraform CI/CD templates were designed around GitLab-managed Terraform state and were deprecated before GitLab 18.0. When using HCP Terraform, use GitLab's CI/CD features while HCP Terraform handles state, as shown in the custom jobs above:
 
 ```yaml
-# Using GitLab's Terraform template as a base
-include:
-  - template: Terraform.gitlab-ci.yml
-
 variables:
   TF_ROOT: infrastructure
-  TF_STATE_NAME: default
 
-# Override the template stages to use HCP Terraform
-init:
-  extends: .terraform:init
+default:
   before_script:
     - |
       cat > ~/.terraformrc << EOF
@@ -356,6 +351,12 @@ init:
         token = "$TF_API_TOKEN"
       }
       EOF
+
+plan:
+  script:
+    - cd $TF_ROOT
+    - terraform init -input=false
+    - terraform plan -no-color -input=false
 ```
 
 ## Security Considerations
