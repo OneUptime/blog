@@ -17,8 +17,8 @@ OpenTofu forked from Terraform at version 1.5.x, which means the configuration l
 - **Configuration language**: Fully compatible. HCL files work in both tools.
 - **State format**: Compatible at the version OpenTofu forked from. Later versions may diverge.
 - **Provider protocol**: Compatible. Providers that work with Terraform work with OpenTofu.
-- **TFE API**: OpenTofu does not natively connect to Terraform Enterprise's API.
-- **TFE remote execution**: OpenTofu cannot use TFE as a remote execution backend directly.
+- **TFE API**: OpenTofu can use cloud or remote backend protocols when supported by the target Terraform Enterprise version, but it is not a replacement for the full TFE API.
+- **TFE remote execution**: OpenTofu's cloud backend supports CLI-driven remote runs when the backend implements the required workflow. Verify support against your TFE version before relying on remote execution.
 
 ## Strategy 1: Gradual Migration
 
@@ -29,8 +29,10 @@ The most common approach is a gradual migration where you move workspaces from T
 ```bash
 # Use the Terraform CLI (still compatible) to pull state from TFE
 
-# You need a TFE API token
-export TFE_TOKEN="your-tfe-api-token"
+# You need Terraform CLI credentials for your TFE hostname.
+# For app.terraform.io, Terraform CLI reads this token automatically:
+export TF_TOKEN_app_terraform_io="your-user-or-team-token"
+export TFE_TOKEN="$TF_TOKEN_app_terraform_io"
 
 # Navigate to the workspace configuration
 cd my-workspace
@@ -101,10 +103,11 @@ Some teams prefer to run OpenTofu and TFE in parallel for a period before fully 
 ### Setting Up Parallel Workspaces
 
 ```hcl
-# The same configuration can be used with both tools
-# Use different backend configurations for each
+# The same resource configuration can be used with both tools.
+# Keep backend or cloud settings in separate files or branches; do not
+# configure a cloud block and an S3 backend in the same working directory.
 
-# For TFE (keep existing)
+# For TFE with the cloud integration (keep existing)
 # terraform {
 #   cloud {
 #     organization = "my-org"
@@ -127,6 +130,11 @@ terraform {
 Use backend configuration files to switch between them:
 
 ```bash
+# main.tf
+# terraform {
+#   backend "remote" {}
+# }
+#
 # backend-tfe.hcl
 # workspaces {
 #   name = "my-workspace"
@@ -140,7 +148,10 @@ key            = "parallel/my-workspace/terraform.tfstate"
 region         = "us-east-1"
 dynamodb_table = "opentofu-state-locks"
 
-# Initialize with the S3 backend for OpenTofu
+# Initialize with the TFE remote backend
+terraform init -backend-config=backend-tfe.hcl
+
+# After changing main.tf to backend "s3" {}, initialize with the S3 backend for OpenTofu
 tofu init -backend-config=backend-s3.hcl
 ```
 
@@ -188,16 +199,19 @@ def list_workspaces():
     """List all workspaces in the TFE organization."""
     url = f"{TFE_URL}/organizations/{TFE_ORG}/workspaces"
     response = requests.get(url, headers=HEADERS)
+    response.raise_for_status()
     return response.json()["data"]
 
 def get_state(workspace_id):
     """Download the current state from a TFE workspace."""
     url = f"{TFE_URL}/workspaces/{workspace_id}/current-state-version"
     response = requests.get(url, headers=HEADERS)
+    response.raise_for_status()
     state_url = response.json()["data"]["attributes"]["hosted-state-download-url"]
 
     # Download the actual state file
-    state_response = requests.get(state_url, headers=HEADERS)
+    state_response = requests.get(state_url)
+    state_response.raise_for_status()
     return state_response.json()
 
 def migrate_workspace(workspace):
@@ -265,11 +279,11 @@ TFE uses Sentinel for policy-as-code. With OpenTofu, switch to Open Policy Agent
 package terraform
 
 # Deny changes that create more than 10 instances
-deny["Too many instances"] {
+deny contains "Too many instances" if {
   resource_count := count([r |
-    r := input.resource_changes[_]
+    some r in input.resource_changes
     r.type == "aws_instance"
-    r.change.actions[_] == "create"
+    "create" in r.change.actions
   ])
   resource_count > 10
 }
@@ -302,7 +316,7 @@ jobs:
       - name: Setup OpenTofu
         uses: opentofu/setup-opentofu@v1
         with:
-          tofu_version: "1.6.2"
+          tofu_version: "1.11.0"
 
       - name: Init
         run: tofu init
@@ -325,7 +339,7 @@ jobs:
       - name: Setup OpenTofu
         uses: opentofu/setup-opentofu@v1
         with:
-          tofu_version: "1.6.2"
+          tofu_version: "1.11.0"
 
       - name: Apply
         run: |
@@ -339,7 +353,7 @@ jobs:
 
 ### Private Registry
 
-TFE includes a private module registry. For OpenTofu, use alternatives:
+TFE includes a private module registry. If you move off the TFE private registry or your OpenTofu/TFE combination does not support the registry workflow you need, use alternatives:
 
 ```hcl
 # Option 1: Git-based module sources
@@ -360,13 +374,21 @@ module "networking" {
 Critical: ensure state is locked during migration to prevent concurrent modifications:
 
 ```bash
-# Lock the TFE workspace before migration
+# Lock the TFE workspace before migration.
+# First look up the workspace ID from the organization/name:
+WORKSPACE_ID=$(
+  curl --silent \
+    --header "Authorization: Bearer $TFE_TOKEN" \
+    --header "Content-Type: application/vnd.api+json" \
+    "https://app.terraform.io/api/v2/organizations/my-org/workspaces/my-workspace" |
+  jq -r '.data.id'
+)
+
 curl \
   --header "Authorization: Bearer $TFE_TOKEN" \
   --header "Content-Type: application/vnd.api+json" \
-  --request PATCH \
-  --data '{"data":{"type":"workspaces","attributes":{"locked":true}}}' \
-  "https://app.terraform.io/api/v2/organizations/my-org/workspaces/my-workspace"
+  --request POST \
+  "https://app.terraform.io/api/v2/workspaces/$WORKSPACE_ID/actions/lock"
 
 # Perform the migration...
 
