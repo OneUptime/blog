@@ -50,7 +50,7 @@ terraform {
     key    = "prod/networking/terraform.tfstate"
     region = "us-east-1"
 
-    # bucket, dynamodb_table, and credentials are provided at init time
+    # bucket, locking mode, and credentials are provided at init time
   }
 }
 ```
@@ -59,7 +59,7 @@ terraform {
 # Supply the remaining values at init time
 terraform init \
   -backend-config="bucket=my-terraform-state-bucket" \
-  -backend-config="dynamodb_table=terraform-locks" \
+  -backend-config="use_lockfile=true" \
   -backend-config="encrypt=true"
 ```
 
@@ -82,7 +82,7 @@ terraform {
 # config/prod.hcl - backend configuration file
 bucket         = "prod-terraform-state"
 region         = "us-east-1"
-dynamodb_table = "prod-terraform-locks"
+use_lockfile   = true
 encrypt        = true
 ```
 
@@ -90,7 +90,7 @@ encrypt        = true
 # config/staging.hcl - different environment configuration
 bucket         = "staging-terraform-state"
 region         = "us-east-1"
-dynamodb_table = "staging-terraform-locks"
+use_lockfile   = true
 encrypt        = true
 ```
 
@@ -129,16 +129,13 @@ The PostgreSQL backend reads from `PG_CONN_STR`:
 export PG_CONN_STR="postgres://user:pass@host/db"
 ```
 
-Environment variables are the cleanest approach for credentials since they leave no trace in files or command history.
+Environment variables are the cleanest approach for credentials since they avoid putting secrets in backend configuration files or shell history.
 
 ## Combining Multiple Methods
 
-You can combine all three methods. Terraform merges them in this order of precedence (highest to lowest):
+You can combine all three methods. Terraform merges explicit backend settings so that `-backend-config` options override values in the `backend` block, and later `-backend-config` options override earlier ones. Backend-specific environment variables are used when the corresponding argument is left unset.
 
-1. Command-line `-backend-config` flags
-2. Backend configuration file (via `-backend-config=file.hcl`)
-3. Values in the `backend` block in Terraform code
-4. Environment variables
+In this example, the command-line `encrypt` value overrides any `encrypt` value that might be present in the file:
 
 ```hcl
 # backend.tf - base configuration
@@ -153,7 +150,7 @@ terraform {
 ```hcl
 # backend-prod.hcl - environment-specific file
 bucket         = "prod-state-bucket"
-dynamodb_table = "prod-locks"
+use_lockfile   = true
 ```
 
 ```bash
@@ -182,7 +179,7 @@ terraform init \
   -backend-config="key=project/terraform.tfstate" \
   -backend-config="region=us-east-1" \
   -backend-config="encrypt=true" \
-  -backend-config="dynamodb_table=terraform-locks"
+  -backend-config="use_lockfile=true"
 ```
 
 This gives you maximum flexibility but means you cannot run `terraform init` without providing all the values.
@@ -216,7 +213,7 @@ terraform {
 # config/dev.backend.hcl
 bucket         = "dev-terraform-state"
 region         = "us-east-1"
-dynamodb_table = "dev-terraform-locks"
+use_lockfile   = true
 encrypt        = true
 ```
 
@@ -245,7 +242,7 @@ jobs:
           terraform init \
             -backend-config="bucket=${{ vars.STATE_BUCKET }}" \
             -backend-config="region=${{ vars.AWS_REGION }}" \
-            -backend-config="dynamodb_table=${{ vars.LOCK_TABLE }}"
+            -backend-config="use_lockfile=true"
 ```
 
 ### Pattern 3: Wrapper Script
@@ -291,7 +288,7 @@ remote_state {
     key            = "${path_relative_to_include()}/terraform.tfstate"
     region         = "us-east-1"
     encrypt        = true
-    dynamodb_table = "terraform-locks"
+    use_lockfile   = true
   }
 }
 ```
@@ -332,7 +329,7 @@ Provide example files instead:
 # config/prod.backend.hcl.example
 bucket         = "your-state-bucket-name"
 region         = "us-east-1"
-dynamodb_table = "your-lock-table-name"
+use_lockfile   = true
 encrypt        = true
 ```
 
