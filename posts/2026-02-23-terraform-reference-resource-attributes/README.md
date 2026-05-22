@@ -295,17 +295,24 @@ One frequent mistake is trying to reference an attribute that does not exist on 
 # This will NOT work - circular dependency
 resource "aws_security_group" "a" {
   ingress {
+    from_port       = 80
+    to_port         = 80
+    protocol        = "tcp"
     security_groups = [aws_security_group.b.id]  # references B
   }
 }
 
 resource "aws_security_group" "b" {
   ingress {
+    from_port       = 80
+    to_port         = 80
+    protocol        = "tcp"
     security_groups = [aws_security_group.a.id]  # references A
   }
 }
 
-# Solution: use aws_security_group_rule as separate resources
+# Solution: create the security groups first, then use separate
+# aws_vpc_security_group_ingress_rule resources for the rules
 ```
 
 ## Wrapping Up
