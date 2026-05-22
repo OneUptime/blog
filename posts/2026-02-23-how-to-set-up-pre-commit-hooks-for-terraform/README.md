@@ -46,10 +46,11 @@ Create a `.pre-commit-config.yaml` file in your repository root:
 ```yaml
 # .pre-commit-config.yaml
 repos:
-  - repo: https://github.com/antonbabenko/pre-commit-tf-docs
-    rev: v0.3.0
+  - repo: https://github.com/terraform-docs/terraform-docs
+    rev: v0.24.0
     hooks:
-      - id: terraform-docs
+      - id: terraform-docs-go
+        args: ["markdown", "table", "--output-file", "README.md", "."]
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.5.0
@@ -107,7 +108,7 @@ Runs `terraform validate` to check configuration syntax:
   args:
     - --args=-no-color
     # Initialize with no backend to avoid credential requirements
-    - --init-args=-backend=false
+    - --tf-init-args=-backend=false
 ```
 
 ### terraform_tflint
@@ -198,7 +199,7 @@ repos:
       # Validate Terraform configuration
       - id: terraform_validate
         args:
-          - --init-args=-backend=false
+          - --tf-init-args=-backend=false
 
       # Run TFLint
       - id: terraform_tflint
@@ -236,7 +237,7 @@ Hooks run in the order they are defined. Structure them from fastest to slowest:
 5. **terraform_trivy** - moderate
 6. **terraform_docs** - moderate
 
-If a faster hook fails, the slower hooks do not run. This saves time by failing fast.
+By default, pre-commit continues running the remaining hooks even if one fails. If you want it to stop after the first failure, set `fail_fast: true` at the top level of `.pre-commit-config.yaml`.
 
 ## Configuring Hook Scope
 
@@ -342,7 +343,7 @@ jobs:
           tflint --init
 
           # Install Trivy
-          sudo apt-get install -y trivy
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin
 
       - uses: pre-commit/action@v3.0.1
 ```
@@ -406,10 +407,10 @@ Some hooks (like Trivy scanning or terraform_validate with init) can be slow. St
 # Run slow hooks only on specific stages
 hooks:
   - id: terraform_trivy
-    stages: [push]  # Only run on git push, not on commit
+    stages: [pre-push]  # Only run on git push, not on commit
 
   - id: terraform_fmt
-    stages: [commit]  # Run on every commit (fast)
+    stages: [pre-commit]  # Run on every commit (fast)
 ```
 
 Install hooks for both stages:
@@ -432,7 +433,7 @@ Use the `-backend=false` init argument:
 ```yaml
 - id: terraform_validate
   args:
-    - --init-args=-backend=false
+    - --tf-init-args=-backend=false
 ```
 
 ### TFLint fails because plugins are not installed
