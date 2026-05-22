@@ -25,7 +25,7 @@ When working alone, Terraform stores state locally in a `terraform.tfstate` file
 
 Remote state stores your Terraform state in a shared, centralized location that all team members can access.
 
-### AWS S3 Backend with DynamoDB Locking
+### AWS S3 Backend with Native Locking
 
 The most common setup for AWS users:
 
@@ -38,12 +38,12 @@ terraform {
     key            = "production/infrastructure/terraform.tfstate"
     region         = "us-east-1"
     encrypt        = true
-    dynamodb_table = "terraform-state-locks"
+    use_lockfile   = true
   }
 }
 ```
 
-Create the S3 bucket and DynamoDB table before using this backend:
+Create the S3 bucket before using this backend:
 
 ```hcl
 # state-infrastructure/main.tf
@@ -91,18 +91,6 @@ resource "aws_s3_bucket_public_access_block" "terraform_state" {
   block_public_policy     = true
   ignore_public_acls      = true
   restrict_public_buckets = true
-}
-
-# DynamoDB table for state locking
-resource "aws_dynamodb_table" "terraform_locks" {
-  name         = "terraform-state-locks"
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "LockID"
-
-  attribute {
-    name = "LockID"
-    type = "S"
-  }
 }
 ```
 
@@ -154,7 +142,7 @@ terraform {
 
 State locking prevents two people from modifying the same state simultaneously. Most remote backends support locking natively:
 
-- **S3 + DynamoDB** - DynamoDB provides locking
+- **S3** - Native S3 lockfiles provide locking
 - **Azure Storage** - Blob leases provide locking
 - **GCS** - Built-in locking
 - **Terraform Cloud** - Built-in locking
