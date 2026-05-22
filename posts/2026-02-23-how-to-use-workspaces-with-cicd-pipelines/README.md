@@ -188,11 +188,11 @@ jobs:
             const plan = fs.readFileSync('/tmp/plan.txt', 'utf8');
             const truncated = plan.length > 60000 ? plan.substring(0, 60000) + '\n...(truncated)' : plan;
 
-            github.rest.issues.createComment({
+            await github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: `### Terraform Plan for \`${{ steps.ws.outputs.name }}\`\n```\n${truncated}\n````
+              body: `### Terraform Plan for \`${{ steps.ws.outputs.name }}\`\n\`\`\`\n${truncated}\n\`\`\``
             });
 
       - name: Apply
@@ -248,7 +248,9 @@ variables:
 
 validate:
   stage: validate
-  image: hashicorp/terraform:1.7
+  image: &terraform_image
+    name: hashicorp/terraform:1.7
+    entrypoint: [""]
   script:
     - terraform init -backend=false
     - terraform validate
@@ -257,7 +259,7 @@ validate:
 
 plan:dev:
   stage: plan
-  image: hashicorp/terraform:1.7
+  image: *terraform_image
   variables:
     ENVIRONMENT: dev
   script:
@@ -272,7 +274,7 @@ plan:dev:
 
 plan:staging:
   stage: plan
-  image: hashicorp/terraform:1.7
+  image: *terraform_image
   variables:
     ENVIRONMENT: staging
   script:
@@ -287,7 +289,7 @@ plan:staging:
 
 plan:prod:
   stage: plan
-  image: hashicorp/terraform:1.7
+  image: *terraform_image
   variables:
     ENVIRONMENT: prod
   script:
@@ -302,7 +304,7 @@ plan:prod:
 
 apply:dev:
   stage: apply
-  image: hashicorp/terraform:1.7
+  image: *terraform_image
   variables:
     ENVIRONMENT: dev
   script:
@@ -315,7 +317,7 @@ apply:dev:
 
 apply:staging:
   stage: apply
-  image: hashicorp/terraform:1.7
+  image: *terraform_image
   variables:
     ENVIRONMENT: staging
   script:
@@ -329,7 +331,7 @@ apply:staging:
 
 apply:prod:
   stage: apply
-  image: hashicorp/terraform:1.7
+  image: *terraform_image
   variables:
     ENVIRONMENT: prod
   script:
@@ -346,7 +348,7 @@ apply:prod:
 # Feature branch environments
 deploy:review:
   stage: apply
-  image: hashicorp/terraform:1.7
+  image: *terraform_image
   variables:
     ENVIRONMENT: "mr-${CI_MERGE_REQUEST_IID}"
   script:
@@ -360,7 +362,7 @@ deploy:review:
 
 cleanup:review:
   stage: cleanup
-  image: hashicorp/terraform:1.7
+  image: *terraform_image
   variables:
     ENVIRONMENT: "mr-${CI_MERGE_REQUEST_IID}"
     GIT_STRATEGY: clone
@@ -386,6 +388,7 @@ pipeline {
   agent {
     docker {
       image 'hashicorp/terraform:1.7'
+      args '--entrypoint='
     }
   }
 
