@@ -229,6 +229,10 @@ on:
         description: "Version to deploy as canary"
         required: true
         type: string
+      stable_version:
+        description: "Current stable version"
+        required: true
+        type: string
 
 permissions:
   id-token: write
@@ -257,6 +261,7 @@ jobs:
           terraform init -no-color
           terraform apply -no-color -auto-approve \
             -var="canary_enabled=true" \
+            -var="stable_version=${{ inputs.stable_version }}" \
             -var="canary_version=${{ inputs.canary_version }}" \
             -var="canary_weight=5"
 
@@ -264,6 +269,12 @@ jobs:
     needs: deploy-canary
     runs-on: ubuntu-latest
     steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::123456789012:role/terraform-cicd
+          aws-region: us-east-1
+
       - name: Monitor canary health for 10 minutes
         run: |
           echo "Monitoring canary metrics..."
@@ -325,6 +336,7 @@ jobs:
             echo "Setting canary weight to ${weight}%"
             terraform apply -no-color -auto-approve \
               -var="canary_enabled=true" \
+              -var="stable_version=${{ github.event.inputs.stable_version }}" \
               -var="canary_version=${{ github.event.inputs.canary_version }}" \
               -var="canary_weight=$weight"
 
@@ -379,6 +391,7 @@ If the canary monitoring step fails, automatically roll back:
           # Remove the canary and send all traffic back to stable
           terraform apply -no-color -auto-approve \
             -var="canary_enabled=false" \
+            -var="stable_version=${{ github.event.inputs.stable_version }}" \
             -var="canary_weight=0"
 
           echo "Canary rolled back. All traffic on stable."
