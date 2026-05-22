@@ -8,7 +8,7 @@ Description: Learn how to use TF_VAR_ prefixed environment variables to pass val
 
 ---
 
-Terraform can read variable values directly from environment variables. Any environment variable that starts with `TF_VAR_` followed by the variable name is automatically picked up by Terraform. This is one of the most practical methods for passing secrets and for integrating Terraform into CI/CD pipelines where you want to avoid putting sensitive values in files.
+Terraform can read variable values directly from environment variables. Any environment variable that starts with `TF_VAR_` followed by the variable name is automatically picked up by Terraform. This is one of the most practical methods for injecting values from secret managers and for integrating Terraform into CI/CD pipelines where you want to avoid hardcoding sensitive values in configuration files.
 
 This post covers how the `TF_VAR_` convention works, how to handle different types, and the real-world patterns that make this approach shine.
 
@@ -116,7 +116,7 @@ Note that for complex types in environment variables, you can use either HCL or 
 
 ## The Primary Use Case: Secrets
 
-The biggest advantage of environment variables for Terraform is keeping secrets out of files. Files can be accidentally committed, logged, or shared. Environment variables stay in memory.
+The biggest advantage of environment variables for Terraform is keeping secrets out of your Terraform configuration and variable definition files. Files can be accidentally committed, logged, or shared. Environment variables are still part of the Terraform process environment, and sensitive values can still be stored in Terraform state depending on how they are used, so you must also protect your state and plan files.
 
 ```bash
 # Set secrets as environment variables
@@ -127,7 +127,7 @@ export TF_VAR_db_password="$(aws secretsmanager get-secret-value \
 
 export TF_VAR_api_key="$(vault kv get -field=key secret/myapp/api)"
 
-# Run Terraform - secrets never touch disk
+# Run Terraform without writing secrets to a tfvars file
 terraform apply
 ```
 
@@ -147,7 +147,7 @@ variable "api_key" {
 }
 ```
 
-By combining `TF_VAR_` with the `sensitive = true` flag, the value is not written to any file and is not displayed in the terminal output.
+By combining `TF_VAR_` with the `sensitive = true` flag, Terraform redacts the value from CLI output. The value may still be stored in state or plan files, so secure your backend and avoid sharing saved plans that contain secrets.
 
 ## CI/CD Integration
 
@@ -284,27 +284,14 @@ terraform plan
 
 ## Precedence
 
-Environment variables have specific precedence in Terraform's variable value resolution. According to the Terraform documentation, the precedence from lowest to highest is:
-
-1. Default values in variable declarations
-2. `terraform.tfvars`
-3. `terraform.tfvars.json`
-4. `*.auto.tfvars` (alphabetical)
-5. `-var-file` flags (in order specified)
-6. `-var` flags (in order specified)
-7. `TF_VAR_` environment variables
-
-Wait - this is actually a point of confusion. Terraform's official documentation has varied on this, but in practice, **environment variables have the lowest precedence after defaults**. The `-var` flag and `-var-file` override environment variables.
-
-Let me correct that. The actual precedence from lowest to highest is:
+Environment variables have specific precedence in Terraform's variable value resolution. The precedence from lowest to highest is:
 
 1. Default values
 2. Environment variables (`TF_VAR_*`)
 3. `terraform.tfvars`
 4. `terraform.tfvars.json`
 5. `*.auto.tfvars` (alphabetical)
-6. `-var-file` flags (in order)
-7. `-var` flags (in order)
+6. Command-line `-var` and `-var-file` flags (in the order specified)
 
 So environment variables override defaults but are overridden by tfvars files and command-line flags. This means you can set baseline values with `TF_VAR_` and still override them with a tfvars file when needed.
 
@@ -346,9 +333,9 @@ This is important in scripts where you want to make sure a secret does not persi
 
 ## Best Practices
 
-1. **Use TF_VAR_ for secrets.** It is the safest way to pass sensitive values since they never touch disk.
+1. **Use TF_VAR_ for runtime secret injection.** It keeps sensitive values out of committed Terraform files, but you still need to protect Terraform state and plan files.
 
-2. **Combine with sensitive = true.** Mark the variable as sensitive in your declaration so the value does not appear in output either.
+2. **Combine with sensitive = true.** Mark the variable as sensitive in your declaration so the value does not appear in CLI output.
 
 3. **Unset after use in scripts.** If you set secrets in a script, unset them afterward to minimize exposure.
 
@@ -372,6 +359,6 @@ variable "db_password" {
 
 ## Wrapping Up
 
-The `TF_VAR_` prefix is Terraform's bridge between the operating system's environment and your infrastructure configuration. It is the preferred method for passing secrets since values stay in memory rather than in files. It integrates naturally with CI/CD pipelines and secret management tools. Just remember that environment variables sit low in the precedence chain, so tfvars files and command-line flags will override them.
+The `TF_VAR_` prefix is Terraform's bridge between the operating system's environment and your infrastructure configuration. It is a practical method for passing secrets from CI/CD systems and secret management tools while keeping those values out of committed Terraform files. Just remember that environment variables sit low in the precedence chain, so tfvars files and command-line flags will override them, and Terraform state or saved plan files still need to be treated as sensitive.
 
 For a full comparison of all variable-setting methods, see our guide on [variable precedence in Terraform](https://oneuptime.com/blog/post/2026-02-23-how-to-understand-variable-precedence-in-terraform/view).
