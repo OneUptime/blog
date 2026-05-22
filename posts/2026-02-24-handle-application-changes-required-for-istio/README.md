@@ -22,7 +22,7 @@ If your health check makes a network call (like checking a database connection),
 
 ### The Fix
 
-Istio automatically rewrites HTTP health check probes to go through the sidecar by default. But you need to make sure your probes are configured as HTTP probes, not TCP or exec probes that bypass the sidecar:
+Istio automatically rewrites HTTP, TCP, and gRPC health check probes to the sidecar agent by default. Command-based `exec` probes work without Istio-specific rewriting because Kubernetes runs the command inside the container:
 
 ```yaml
 apiVersion: apps/v1
@@ -30,10 +30,17 @@ kind: Deployment
 metadata:
   name: my-app
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   template:
+    metadata:
+      labels:
+        app: my-app
     spec:
       containers:
       - name: my-app
+        image: my-app:latest
         livenessProbe:
           httpGet:
             path: /healthz
@@ -48,7 +55,7 @@ spec:
           periodSeconds: 5
 ```
 
-If you need to keep non-HTTP probes, you can exclude the probe ports from sidecar interception:
+If you disable probe rewriting or have a dedicated health endpoint that must bypass Envoy, you can exclude that port from sidecar interception:
 
 ```yaml
 apiVersion: apps/v1
@@ -56,13 +63,19 @@ kind: Deployment
 metadata:
   name: my-app
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   template:
     metadata:
+      labels:
+        app: my-app
       annotations:
         traffic.sidecar.istio.io/excludeInboundPorts: "8081"
     spec:
       containers:
       - name: my-app
+        image: my-app:latest
         livenessProbe:
           tcpSocket:
             port: 8081
@@ -98,7 +111,7 @@ Valid protocol prefixes are: `http`, `http2`, `https`, `grpc`, `grpc-web`, `tcp`
 
 ### What Happens Without Named Ports
 
-If your port is named something like `web` or `api` without a protocol prefix, Istio uses protocol sniffing to guess. This usually works for HTTP/1.1 and HTTP/2, but it adds latency to the first request and can fail for protocols that do not have a clear signature.
+If your port is named something like `web` or `api` without a protocol prefix, Istio uses protocol sniffing to guess. This usually works for HTTP/1.1 and HTTP/2, but can fail for protocols that do not have a clear client-first signature.
 
 ```bash
 # Check which ports Istio detected correctly
@@ -110,7 +123,7 @@ If you see warnings about protocol detection, fix the port names.
 
 ## Trace Header Propagation
 
-Istio generates distributed traces by having the sidecar add trace headers to requests. But for traces to span multiple services, your application needs to propagate those headers. The sidecar cannot do this for you because it does not understand the relationship between an incoming request and the outgoing requests your app makes.
+Istio participates in distributed tracing by using trace context headers on requests. But for traces to span multiple services, your application needs to propagate those headers. The sidecar cannot do this for you because it does not understand the relationship between an incoming request and the outgoing requests your app makes.
 
 ### Headers to Propagate
 
@@ -205,7 +218,7 @@ public class OrderController {
 
 Some protocols like MySQL, MongoDB, and SMTP have the server send data first (before the client sends anything). Istio's protocol sniffing cannot detect these properly because it waits for the client to send data first.
 
-For server-first protocols, you have two options:
+For server-first protocols, explicitly declare the application protocol as TCP, or bypass the sidecar if that traffic does not need mesh features:
 
 ### Option 1: Name the Port Explicitly
 
@@ -216,7 +229,7 @@ metadata:
   name: mysql
 spec:
   ports:
-  - name: mysql
+  - name: tcp-mysql
     port: 3306
     targetPort: 3306
 ```
@@ -229,11 +242,20 @@ kind: Deployment
 metadata:
   name: mysql
 spec:
+  selector:
+    matchLabels:
+      app: mysql
   template:
     metadata:
+      labels:
+        app: mysql
       annotations:
         traffic.sidecar.istio.io/excludeInboundPorts: "3306"
         traffic.sidecar.istio.io/excludeOutboundPorts: "3306"
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:8
 ```
 
 ## Startup Ordering Issues
@@ -260,10 +282,19 @@ kind: Deployment
 metadata:
   name: my-app
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   template:
     metadata:
+      labels:
+        app: my-app
       annotations:
         proxy.istio.io/config: '{"holdApplicationUntilProxyStarts": true}'
+    spec:
+      containers:
+      - name: my-app
+        image: my-app:latest
 ```
 
 ## Graceful Shutdown
@@ -278,22 +309,29 @@ kind: Deployment
 metadata:
   name: my-app
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   template:
+    metadata:
+      labels:
+        app: my-app
     spec:
       terminationGracePeriodSeconds: 30
       containers:
       - name: my-app
+        image: my-app:latest
         lifecycle:
           preStop:
             exec:
               command: ["/bin/sh", "-c", "sleep 5"]
 ```
 
-The `sleep 5` in the preStop hook gives the sidecar time to drain its connections before the application starts shutting down.
+The `sleep 5` in the preStop hook gives Kubernetes time to remove the pod from service endpoints before the application exits. Istio's sidecar drains on termination according to `terminationDrainDuration`, which defaults to 5 seconds if it is not set.
 
 ## Outbound Traffic and ServiceEntry
 
-By default, Istio allows all outbound traffic from your pods. But if you configure the mesh to only allow registered services (which is recommended for security), your apps will lose access to external APIs unless you create ServiceEntry resources:
+By default, Istio allows all outbound traffic from your pods. But if you configure the mesh to only allow registered services (which is useful for egress visibility and control), your apps will lose access to external APIs unless you create ServiceEntry resources:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -305,7 +343,7 @@ spec:
   - api.stripe.com
   ports:
   - number: 443
-    name: https
+    name: tls
     protocol: TLS
   resolution: DNS
   location: MESH_EXTERNAL
@@ -323,6 +361,6 @@ Here is a quick checklist to work through for each service:
 4. Handle startup ordering with holdApplicationUntilProxyStarts
 5. Add preStop hooks for graceful shutdown
 6. Create ServiceEntry resources for external dependencies
-7. Exclude server-first protocol ports if needed
+7. Declare server-first protocol ports as TCP or exclude them if needed
 
 None of these changes are massive on their own, but skipping them is the number one reason teams hit problems during Istio adoption. Work through this list before you enable sidecar injection for each namespace, and your migration will be much smoother.
