@@ -18,8 +18,7 @@ Terraform scans the working directory for files matching these patterns and load
 
 1. `terraform.tfvars` (loaded first)
 2. `terraform.tfvars.json` (loaded second)
-3. `*.auto.tfvars` (loaded in alphabetical order)
-4. `*.auto.tfvars.json` (loaded in alphabetical order)
+3. `*.auto.tfvars` and `*.auto.tfvars.json` files (loaded in lexicographic order)
 
 You do not need to pass any flags. Just name your file with the `.auto.tfvars` suffix and Terraform picks it up.
 
@@ -95,8 +94,7 @@ The loading order matters because if the same variable is defined in multiple au
 
 1. `terraform.tfvars`
 2. `terraform.tfvars.json`
-3. `*.auto.tfvars` files in lexicographic (alphabetical) order
-4. `*.auto.tfvars.json` files in lexicographic order
+3. `*.auto.tfvars` and `*.auto.tfvars.json` files in lexicographic (alphabetical) order
 
 So if you have:
 
