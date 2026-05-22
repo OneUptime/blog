@@ -60,8 +60,34 @@ curl \
         "auto-apply": false,
         "terraform-version": "1.7.0",
         "working-directory": "infrastructure/vpc",
-        "execution-mode": "remote",
-        "tag-names": ["production", "networking", "aws"]
+        "execution-mode": "remote"
+      },
+      "relationships": {
+        "tag-bindings": {
+          "data": [
+            {
+              "type": "tag-bindings",
+              "attributes": {
+                "key": "environment",
+                "value": "production"
+              }
+            },
+            {
+              "type": "tag-bindings",
+              "attributes": {
+                "key": "component",
+                "value": "networking"
+              }
+            },
+            {
+              "type": "tag-bindings",
+              "attributes": {
+                "key": "cloud",
+                "value": "aws"
+              }
+            }
+          ]
+        }
       }
     }
   }' \
@@ -74,12 +100,12 @@ curl \
 # List workspaces with tag filter
 curl \
   --header "Authorization: Bearer $TFC_TOKEN" \
-  "https://app.terraform.io/api/v2/organizations/${TFC_ORG}/workspaces?search[tags]=production"
+  "https://app.terraform.io/api/v2/organizations/${TFC_ORG}/workspaces?filter%5Btagged%5D%5B0%5D%5Bkey%5D=environment&filter%5Btagged%5D%5B0%5D%5Bvalue%5D=production"
 
 # List workspaces with name search
 curl \
   --header "Authorization: Bearer $TFC_TOKEN" \
-  "https://app.terraform.io/api/v2/organizations/${TFC_ORG}/workspaces?search[name]=vpc"
+  "https://app.terraform.io/api/v2/organizations/${TFC_ORG}/workspaces?search%5Bname%5D=vpc"
 ```
 
 ### Updating Workspace Settings
@@ -203,6 +229,8 @@ echo "All variables set."
 
 ## Triggering and Managing Runs
 
+Use a user or team token for run creation and apply actions. Organization tokens cannot access those endpoints.
+
 ### Starting a Run
 
 ```bash
@@ -248,9 +276,8 @@ curl \
     message: .data.attributes.message,
     created_at: .data.attributes["created-at"],
     has_changes: .data.attributes["has-changes"],
-    resource_additions: .data.attributes["resource-additions"],
-    resource_changes: .data.attributes["resource-changes"],
-    resource_destructions: .data.attributes["resource-destructions"]
+    source: .data.attributes.source,
+    trigger_reason: .data.attributes["trigger-reason"]
   }'
 ```
 
@@ -258,7 +285,7 @@ curl \
 
 ```bash
 #!/bin/bash
-# wait-for-run.sh - Poll until a run reaches a terminal state
+# wait-for-run.sh - Poll until a run reaches a terminal or approval-required state
 
 RUN_ID="$1"
 TIMEOUT=600  # 10 minutes
@@ -280,8 +307,8 @@ while [ $ELAPSED -lt $TIMEOUT ]; do
       echo "Run completed with status: $STATUS"
       exit 0
       ;;
-    "planned")
-      echo "Run is planned and waiting for approval"
+    "planned"|"planned_and_saved"|"policy_checked")
+      echo "Run is waiting for approval with status: $STATUS"
       exit 0
       ;;
   esac
@@ -320,7 +347,6 @@ Here is a more complete example - a script that creates a fully configured works
 
 WORKSPACE_NAME="$1"
 ENVIRONMENT="$2"
-VCS_REPO="$3"
 
 # Step 1: Create the workspace
 echo "Creating workspace: ${WORKSPACE_NAME}"
@@ -334,8 +360,27 @@ WORKSPACE_RESPONSE=$(curl -s \
       \"attributes\": {
         \"name\": \"${WORKSPACE_NAME}\",
         \"auto-apply\": false,
-        \"terraform-version\": \"1.7.0\",
-        \"tag-names\": [\"${ENVIRONMENT}\", \"managed-by-api\"]
+        \"terraform-version\": \"1.7.0\"
+      },
+      \"relationships\": {
+        \"tag-bindings\": {
+          \"data\": [
+            {
+              \"type\": \"tag-bindings\",
+              \"attributes\": {
+                \"key\": \"environment\",
+                \"value\": \"${ENVIRONMENT}\"
+              }
+            },
+            {
+              \"type\": \"tag-bindings\",
+              \"attributes\": {
+                \"key\": \"managed-by\",
+                \"value\": \"api\"
+              }
+            }
+          ]
+        }
       }
     }
   }" \
@@ -413,15 +458,24 @@ class TFCClient:
 
     def create_workspace(self, name, **kwargs):
         """Create a new workspace."""
+        tag_bindings = [
+            {
+                "type": "tag-bindings",
+                "attributes": {"key": key, "value": value}
+            }
+            for key, value in kwargs.get("tag_bindings", {}).items()
+        ]
         payload = {
             "data": {
                 "type": "workspaces",
                 "attributes": {
                     "name": name,
                     "auto-apply": kwargs.get("auto_apply", False),
-                    "terraform-version": kwargs.get("tf_version", "1.7.0"),
-                    "tag-names": kwargs.get("tags", []),
-                }
+                    "terraform-version": kwargs.get("tf_version", "1.7.0")
+                },
+                "relationships": {
+                    "tag-bindings": {"data": tag_bindings}
+                },
             }
         }
         resp = requests.post(
@@ -454,10 +508,11 @@ class TFCClient:
         return resp.json()["data"]
 
     def wait_for_run(self, run_id, timeout=600):
-        """Wait for a run to reach a terminal state."""
-        terminal_states = {
+        """Wait for a run to reach a terminal or approval-required state."""
+        stop_states = {
             "applied", "planned_and_finished", "discarded",
-            "errored", "canceled", "force_canceled", "planned"
+            "errored", "canceled", "force_canceled",
+            "planned", "planned_and_saved", "policy_checked"
         }
         elapsed = 0
         while elapsed < timeout:
@@ -465,8 +520,9 @@ class TFCClient:
                 f"{self.base_url}/runs/{run_id}",
                 headers=self.headers
             )
+            resp.raise_for_status()
             status = resp.json()["data"]["attributes"]["status"]
-            if status in terminal_states:
+            if status in stop_states:
                 return status
             time.sleep(10)
             elapsed += 10
@@ -481,7 +537,10 @@ if __name__ == "__main__":
     )
 
     # Create a workspace and trigger a run
-    ws = client.create_workspace("api-demo", tags=["demo", "api"])
+    ws = client.create_workspace(
+        "api-demo",
+        tag_bindings={"purpose": "demo", "managed-by": "api"}
+    )
     run = client.trigger_run(ws["id"], message="Initial deployment")
     status = client.wait_for_run(run["id"])
     print(f"Run completed with status: {status}")
@@ -497,7 +556,7 @@ PAGE=1
 while true; do
   RESPONSE=$(curl -s \
     --header "Authorization: Bearer $TFC_TOKEN" \
-    "https://app.terraform.io/api/v2/organizations/${TFC_ORG}/workspaces?page[number]=${PAGE}&page[size]=100")
+    "https://app.terraform.io/api/v2/organizations/${TFC_ORG}/workspaces?page%5Bnumber%5D=${PAGE}&page%5Bsize%5D=100")
 
   # Process current page
   echo "$RESPONSE" | jq -r '.data[].attributes.name'
