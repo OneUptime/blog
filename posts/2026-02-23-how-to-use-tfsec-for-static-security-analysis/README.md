@@ -120,6 +120,10 @@ on:
 jobs:
   tfsec:
     runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
     steps:
       - uses: actions/checkout@v4
 
@@ -131,13 +135,14 @@ jobs:
           additional_args: --minimum-severity HIGH
 
       - name: tfsec with SARIF output
-        uses: aquasecurity/tfsec-action@v1.0.3
+        if: always()
+        uses: aquasecurity/tfsec-sarif-action@v0.1.4
         with:
           sarif_file: tfsec.sarif
-          soft_fail: true
 
       # Upload results to GitHub Security tab
       - name: Upload SARIF
+        if: always()
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: tfsec.sarif
@@ -157,8 +162,6 @@ tfsec:
   artifacts:
     paths:
       - tfsec-results.json
-    reports:
-      terraform: tfsec-results.json
   rules:
     - changes:
         - "**/*.tf"
@@ -235,7 +238,7 @@ If the built-in rules do not cover your organization's requirements, you can wri
 }
 ```
 
-Save this as `.tfsec/custom_checks.json` and tfsec will pick it up automatically.
+Save this as `.tfsec/custom_tfchecks.json` and tfsec will pick it up automatically.
 
 ## Generating Reports
 
