@@ -47,7 +47,7 @@ sudo certbot certonly \
 # privkey.pem   - private key
 ```
 
-For DNS-based validation (works even when port 80 is not available):
+For DNS-based validation (works even when port 80 is not available, as long as you can create the required public DNS TXT record):
 
 ```bash
 # Using DNS challenge - works for internal-facing instances too
@@ -70,17 +70,23 @@ cat > /opt/tfe/renew-cert.sh << 'SCRIPT'
 #!/bin/bash
 # Renew the Let's Encrypt certificate and restart TFE
 
-certbot renew --quiet
+certbot renew --quiet --deploy-hook /opt/tfe/deploy-renewed-cert.sh
+SCRIPT
+
+cat > /opt/tfe/deploy-renewed-cert.sh << 'SCRIPT'
+#!/bin/bash
+# Copy renewed certs to TFE location and restart TFE
 
 # Copy renewed certs to TFE location
-cp /etc/letsencrypt/live/tfe.example.com/fullchain.pem /opt/tfe/certs/tls.crt
-cp /etc/letsencrypt/live/tfe.example.com/privkey.pem /opt/tfe/certs/tls.key
+cp /etc/letsencrypt/live/tfe.example.com/fullchain.pem /opt/tfe/certs/tfe-fullchain.crt
+cp /etc/letsencrypt/live/tfe.example.com/privkey.pem /opt/tfe/certs/tfe.key
 
 # Restart TFE to pick up new certificates
 docker compose -f /opt/tfe/docker-compose.yml restart tfe
 SCRIPT
 
 chmod +x /opt/tfe/renew-cert.sh
+chmod +x /opt/tfe/deploy-renewed-cert.sh
 
 # Add to crontab - run twice daily as recommended by Let's Encrypt
 echo "0 2,14 * * * /opt/tfe/renew-cert.sh" | crontab -
@@ -195,10 +201,9 @@ TFE_TLS_ENFORCE=true
 
 ```yaml
 # docker-compose.yml with TLS configuration
-version: "3.9"
 services:
   tfe:
-    image: images.releases.hashicorp.com/hashicorp/terraform-enterprise:latest
+    image: images.releases.hashicorp.com/hashicorp/terraform-enterprise:<TFE version>
     environment:
       TFE_HOSTNAME: tfe.example.com
       TFE_TLS_CERT_FILE: /etc/tfe/tls/tfe-fullchain.crt
@@ -224,8 +229,8 @@ If TFE sits behind a load balancer that terminates TLS, the setup is different:
 TFE_TLS_CERT_FILE=/etc/tfe/tls/tfe-fullchain.crt
 TFE_TLS_KEY_FILE=/etc/tfe/tls/tfe.key
 
-# The load balancer's health check endpoint
-# Configure your LB to check: https://tfe.example.com/_health_check
+# The load balancer's readiness check endpoint
+# Configure your LB target health check to check: https://<node-address>/api/v1/health/readiness
 ```
 
 Your load balancer configuration (example for AWS ALB via Terraform):
@@ -253,7 +258,7 @@ resource "aws_lb_target_group" "tfe" {
   vpc_id   = var.vpc_id
 
   health_check {
-    path                = "/_health_check"
+    path                = "/api/v1/health/readiness"
     port                = 443
     protocol            = "HTTPS"
     healthy_threshold   = 2
@@ -278,7 +283,7 @@ openssl s_client -connect tfe.example.com:443 -servername tfe.example.com -showc
 openssl s_client -connect tfe.example.com:443 -servername tfe.example.com < /dev/null 2>/dev/null | openssl x509 -noout -dates
 
 # Test with curl
-curl -v https://tfe.example.com/_health_check
+curl -v https://tfe.example.com/api/v1/health/readiness
 
 # Test with the Terraform CLI
 terraform login tfe.example.com
@@ -316,18 +321,11 @@ If users see `x509: certificate signed by unknown authority` when running `terra
 sudo cp ca.crt /usr/local/share/ca-certificates/example-ca.crt
 sudo update-ca-certificates
 
-# Option 2: Set the SSL_CERT_FILE environment variable
+# Option 2: Set the SSL_CERT_FILE environment variable for a process-scoped workaround
 export SSL_CERT_FILE=/path/to/ca-bundle.crt
-
-# Option 3: Use TF_CLI_CONFIG_FILE with a custom config
-cat > ~/.terraformrc << 'EOF'
-host "tfe.example.com" {
-  services = {
-    "tfe.v2.1" = "https://tfe.example.com/api/v2/"
-  }
-}
-EOF
 ```
+
+Terraform CLI configuration files can store TFE credentials, but they do not override TLS certificate trust. The client operating system must trust the CA that issued the TFE certificate.
 
 ## Certificate Expiration Monitoring
 
