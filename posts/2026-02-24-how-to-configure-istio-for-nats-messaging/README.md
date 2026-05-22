@@ -226,14 +226,15 @@ spec:
 
 Configure your NATS server to accept leaf node connections:
 
-```yaml
-args:
-  - "--cluster_name"
-  - "my-nats"
-  - "--cluster"
-  - "nats://0.0.0.0:6222"
-  - "--leafnodes"
-  - "nats://0.0.0.0:7422"
+```text
+cluster {
+  name: "my-nats"
+  listen: "0.0.0.0:6222"
+}
+
+leafnodes {
+  listen: "0.0.0.0:7422"
+}
 ```
 
 ## External NATS
@@ -267,6 +268,8 @@ spec:
     tls:
       mode: SIMPLE
 ```
+
+The `DestinationRule` above assumes the external NATS endpoint accepts TLS. If the external server is plaintext NATS, omit the TLS policy or set `mode: DISABLE`.
 
 ## Access Control
 
@@ -311,18 +314,25 @@ Client connections from application namespaces go to port 4222. Cluster routing 
 
 ## Monitoring NATS Through Istio
 
-NATS has a built-in HTTP monitoring endpoint. You can scrape it with Prometheus directly:
+NATS has a built-in HTTP monitoring endpoint. The `/varz`, `/connz`, and related endpoints return JSON, so expose them to Prometheus through the NATS Prometheus exporter:
 
 ```yaml
 apiVersion: v1
 kind: Service
 metadata:
-  name: nats
+  name: nats-exporter
   namespace: messaging
   annotations:
     prometheus.io/scrape: "true"
-    prometheus.io/port: "8222"
-    prometheus.io/path: "/varz"
+    prometheus.io/port: "7777"
+    prometheus.io/path: "/metrics"
+spec:
+  selector:
+    app: nats-exporter
+  ports:
+    - name: http-metrics
+      port: 7777
+      targetPort: 7777
 ```
 
 In addition to NATS-native metrics, Istio provides TCP-level metrics:
