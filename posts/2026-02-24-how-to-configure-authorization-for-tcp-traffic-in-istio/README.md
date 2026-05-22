@@ -29,7 +29,7 @@ You cannot use these HTTP-specific fields in TCP authorization policies:
 - `request.auth.claims` (JWT claims)
 - `request.headers`
 
-If you accidentally include HTTP fields in a policy targeting a TCP service, Istio ignores those fields for TCP connections.
+If you accidentally include HTTP fields in a policy targeting a TCP service, the behavior depends on the action. For `ALLOW` policies, an invalid TCP rule with HTTP-only fields does not match and the connection is rejected if no other `ALLOW` rule matches. For `DENY` policies, missing HTTP attributes are treated as matches, so always scope `DENY` rules for TCP traffic to specific ports.
 
 ## Basic TCP Authorization
 
@@ -228,7 +228,7 @@ This prevents any development or staging service from reaching anything in the d
 
 ## Mixed HTTP and TCP Services
 
-Some services expose both HTTP and TCP ports. For example, a service might have an HTTP API on port 8080 and a gRPC stream on port 9090:
+Some services expose both HTTP and TCP ports. For example, a service might have an HTTP API on port 8080 and a custom TCP stream on port 9090:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -295,12 +295,12 @@ spec:
 
 ## Handling Services Without Sidecars
 
-If a TCP service doesn't have an Istio sidecar (common for third-party databases), authorization policies don't apply to it directly. In that case, apply policies to the calling services instead:
+If a TCP service doesn't have an Istio sidecar (common for third-party databases), authorization policies don't apply to it directly. Istio authorization policies are enforced on inbound traffic to workloads with proxies, not directly on outbound traffic from callers. In that case, register the external service and route traffic through an egress gateway if you need an enforcement point:
 
 ```yaml
 # This won't work if the external DB has no sidecar
 
-# Instead, use a ServiceEntry + egress policy approach
+# Instead, use a ServiceEntry + egress gateway approach
 
 apiVersion: networking.istio.io/v1
 kind: ServiceEntry
@@ -318,7 +318,7 @@ spec:
   resolution: DNS
 ```
 
-Then control which of your services can reach the external database using Sidecar resources or egress policies.
+Then control which of your services can reach the external database by routing through an egress gateway and applying authorization at that gateway. Sidecar resources can limit which outbound hosts are configured for selected workloads, but they are not a substitute for an inbound authorization enforcement point.
 
 ## Testing TCP Authorization
 
@@ -350,10 +350,10 @@ kubectl exec -n database deploy/postgres -c istio-proxy -- curl -s localhost:150
 Use Prometheus to monitor:
 
 ```promql
-# TCP connection denial rate
+# TCP connections closed with proxy response flags
 sum(rate(istio_tcp_connections_closed_total{
   destination_service_name="postgres",
-  response_flags=~".*UAEX.*"
+  response_flags!="-"
 }[5m]))
 ```
 
@@ -361,7 +361,7 @@ sum(rate(istio_tcp_connections_closed_total{
 
 1. **mTLS is essential.** Identity-based TCP policies (principals, namespaces) only work with mTLS enabled. Without mTLS, Istio can't verify who is connecting.
 
-2. **Protocol detection.** Istio needs to detect that traffic is TCP (not HTTP). If you use standard ports (like 3306 for MySQL), Istio auto-detects the protocol. For non-standard ports, name your service ports with the `tcp-` prefix:
+2. **Protocol selection.** Istio can automatically detect HTTP and HTTP/2. If the protocol cannot be detected, traffic is treated as plain TCP. Server-first protocols such as MySQL are not compatible with automatic protocol selection, so explicitly name raw TCP service ports with the `tcp-` prefix or set `appProtocol: tcp`:
 
 ```yaml
 apiVersion: v1
