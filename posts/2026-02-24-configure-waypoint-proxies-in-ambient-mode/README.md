@@ -30,7 +30,8 @@ If you only need mTLS and identity-based access control, ztunnel is sufficient a
 The simplest way to deploy a waypoint is using istioctl:
 
 ```bash
-istioctl waypoint apply -n bookinfo --enroll-namespace
+kubectl label namespace bookinfo istio.io/dataplane-mode=ambient
+istioctl waypoint apply -n bookinfo --name bookinfo-waypoint --enroll-namespace
 ```
 
 This creates a waypoint proxy deployment in the `bookinfo` namespace and configures the namespace to route traffic through it.
@@ -83,9 +84,9 @@ Then label the namespace to use the waypoint:
 kubectl label namespace bookinfo istio.io/use-waypoint=bookinfo-waypoint
 ```
 
-## Waypoint Proxy per Service Account
+## Waypoint Proxy per Service
 
-Instead of a namespace-wide waypoint, you can create waypoint proxies for specific service accounts. This gives finer-grained control:
+Instead of a namespace-wide waypoint, you can create waypoint proxies for specific services or pods. This gives finer-grained control:
 
 ```yaml
 apiVersion: gateway.networking.k8s.io/v1
@@ -144,7 +145,7 @@ Without a waypoint proxy, this policy would not work because ztunnel cannot insp
 
 ## Configuring HTTP Routing
 
-VirtualService resources work with waypoint proxies for advanced routing:
+VirtualService resources work with waypoint proxies for advanced routing, but this support is Alpha in ambient mode. For stable L7 traffic management with waypoints, prefer the Kubernetes Gateway API route resources such as HTTPRoute:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -315,7 +316,7 @@ curl http://localhost:15000/stats
 If you no longer need L7 features for a namespace:
 
 ```bash
-istioctl waypoint delete -n bookinfo
+istioctl waypoint delete bookinfo-waypoint -n bookinfo
 ```
 
 Or remove the specific Gateway resource:
