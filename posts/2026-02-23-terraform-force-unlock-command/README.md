@@ -129,13 +129,20 @@ If the plan shows unexpected changes, the previous operation might have partiall
 
 Different backends implement locking differently, and force-unlock interacts with each one in its own way.
 
-### S3 with DynamoDB
+### S3
 
-The lock is stored as an item in DynamoDB. Force-unlock deletes the lock item:
+With current S3 backend locking, Terraform can store the lock as a `.tflock` object next to the state file when `use_lockfile = true`. Force-unlock deletes that lock file:
+
+```bash
+# What force-unlock does behind the scenes for S3 native locking:
+# aws s3 rm s3://my-terraform-state/prod/terraform.tfstate.tflock
+```
+
+Older configurations may use the deprecated DynamoDB-based locking mechanism. In that case, the lock is stored as an item in DynamoDB and force-unlock deletes the lock item:
 
 ```bash
 # What force-unlock does behind the scenes for S3/DynamoDB:
-# aws dynamodb delete-item --table-name terraform-locks --key '{"LockID":{"S":"terraform-state/prod/terraform.tfstate-md5"}}'
+# aws dynamodb delete-item --table-name terraform-locks --key '{"LockID":{"S":"my-terraform-state/prod/terraform.tfstate"}}'
 ```
 
 You can also manually check the lock in DynamoDB:
@@ -144,7 +151,7 @@ You can also manually check the lock in DynamoDB:
 # View the lock item
 aws dynamodb get-item \
   --table-name terraform-locks \
-  --key '{"LockID":{"S":"terraform-state/prod/terraform.tfstate-md5"}}'
+  --key '{"LockID":{"S":"my-terraform-state/prod/terraform.tfstate"}}'
 ```
 
 ### Azure Blob Storage
@@ -176,11 +183,11 @@ gsutil ls gs://my-terraform-state/terraform/state/*.tflock
 
 ### PostgreSQL
 
-PostgreSQL uses a locks table. Force-unlock deletes the row:
+PostgreSQL uses database-native advisory locks rather than a lock row. If the Terraform process or database connection dies, PostgreSQL releases the advisory lock automatically, so manual force-unlock is normally not supported or needed:
 
 ```sql
--- What force-unlock does behind the scenes
-DELETE FROM locks WHERE name = 'default';
+-- Check outstanding PostgreSQL locks if you need to troubleshoot
+SELECT * FROM pg_locks WHERE locktype = 'advisory';
 ```
 
 ## What to Do After Force-Unlock
