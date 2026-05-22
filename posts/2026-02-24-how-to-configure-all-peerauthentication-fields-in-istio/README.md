@@ -16,7 +16,7 @@ When two sidecars communicate, they can establish mTLS automatically using certi
 
 There is a hierarchy of PeerAuthentication policies:
 
-1. Mesh-wide policy (in istio-system, no selector)
+1. Mesh-wide policy (in the Istio root namespace, commonly istio-system, no selector)
 2. Namespace-wide policy (in a namespace, no selector)
 3. Workload-specific policy (in a namespace, with selector)
 
@@ -25,7 +25,7 @@ More specific policies override broader ones.
 ## Top-Level Structure
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: my-peer-auth
@@ -57,15 +57,16 @@ spec:
 
 The `selector` field determines which workloads this policy applies to. It matches against pod labels. The matching rules are:
 
-- If `selector` is omitted and the policy is in `istio-system`, it becomes the mesh-wide default
+- If `selector` is omitted and the policy is in the Istio root namespace, commonly `istio-system`, it becomes the mesh-wide default
 - If `selector` is omitted and the policy is in any other namespace, it becomes the namespace default
 - If `selector` is present, it applies only to matching workloads in that namespace
+- Avoid workload selectors in the root namespace; Istio ignores PeerAuthentication policies with selectors there
 - Only one mesh-wide and one namespace-wide policy is allowed (no selector); having multiple causes undefined behavior
 
 ```yaml
 # Mesh-wide default
 
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -77,7 +78,7 @@ spec:
 
 ```yaml
 # Namespace default
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -89,7 +90,7 @@ spec:
 
 ```yaml
 # Workload-specific
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: reviews-policy
@@ -174,6 +175,8 @@ spec:
 
 The `portLevelMtls` field lets you override the top-level mTLS mode for specific ports. The key is the port number (as an integer), and the value is a mode object.
 
+Port-level settings only apply when the policy has a workload selector. The port number is the workload port, not the Kubernetes Service port.
+
 This is really useful when a service exposes multiple ports with different security requirements. For example:
 
 - Port 8080 is the main HTTP API that receives traffic from both mesh and non-mesh clients, so PERMISSIVE
@@ -181,7 +184,7 @@ This is really useful when a service exposes multiple ports with different secur
 - Port 3306 is an internal database port that should only accept mesh traffic, so STRICT
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: mixed-service
@@ -195,11 +198,11 @@ spec:
   portLevelMtls:
     8080:
       mode: PERMISSIVE
-    15021:
+    8001:
       mode: DISABLE
 ```
 
-Port 15021 is the Istio health check port, and you sometimes need to disable mTLS there so that Kubernetes liveness and readiness probes work correctly.
+If you disable Istio's probe rewrite feature, you sometimes need to disable mTLS on the workload's health check port so that Kubernetes liveness and readiness probes work correctly. With the default probe rewrite enabled, Istio rewrites HTTP, TCP, and gRPC probes to the sidecar agent instead.
 
 ## Migration Strategy
 
@@ -208,7 +211,7 @@ The typical migration path from no mTLS to full STRICT mTLS looks like this:
 ### Step 1: Start with mesh-wide PERMISSIVE
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -225,7 +228,7 @@ Deploy sidecars across your mesh. Since the mode is PERMISSIVE, nothing breaks d
 ### Step 3: Switch namespaces to STRICT one at a time
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -240,7 +243,7 @@ Test each namespace after switching. If something breaks, you can quickly roll b
 ### Step 4: Set mesh-wide STRICT
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -253,7 +256,7 @@ spec:
 ### Step 5: Add exceptions as needed
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: legacy-exception
@@ -279,7 +282,7 @@ This shows you which PeerAuthentication policies apply and the resulting mTLS mo
 You can also check if mTLS is actually being used for a connection:
 
 ```bash
-istioctl proxy-config listeners <pod-name> -n <namespace> --port 8080
+istioctl proxy-config listeners <pod-name> -n <namespace> --port 8080 -o json
 ```
 
 Look for the `transport_socket` in the listener configuration to confirm TLS is active.
