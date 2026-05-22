@@ -10,6 +10,8 @@ Description: Learn how to leverage full programming capabilities in CDKTF to han
 
 The biggest advantage CDKTF has over plain HCL is that you can use a real programming language. Loops, conditionals, functions, classes, external data, API calls - everything is available. This means infrastructure patterns that are awkward or impossible in HCL become straightforward in CDKTF. This guide shows practical examples of using complex programming logic to solve real infrastructure problems.
 
+Note: HashiCorp deprecated CDKTF on December 10, 2025 and no longer maintains it. These patterns still apply to existing CDKTF projects, but new projects should account for that maintenance status.
+
 ## Beyond Simple Resource Definitions
 
 In HCL, complex logic is limited to `count`, `for_each`, `dynamic` blocks, and a handful of built-in functions. In CDKTF, you have the full TypeScript (or Python, Go, Java) standard library and the entire npm ecosystem. Here is what that unlocks.
@@ -115,6 +117,12 @@ const privateCidrs = calculateSubnetCidrs(vpcCidr, 8, 3, 10);
 Read configuration from external files and generate infrastructure:
 
 ```typescript
+import { Construct } from "constructs";
+import { TerraformStack } from "cdktf";
+import { AwsProvider } from "@cdktf/provider-aws/lib/provider";
+import { CloudwatchLogGroup } from "@cdktf/provider-aws/lib/cloudwatch-log-group";
+import { LbTargetGroup } from "@cdktf/provider-aws/lib/lb-target-group";
+import { Vpc } from "@cdktf/provider-aws/lib/vpc";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -155,6 +163,10 @@ class MicroservicesStack extends TerraformStack {
 
     new AwsProvider(this, "aws", { region: "us-east-1" });
 
+    const vpc = new Vpc(this, "vpc", {
+      cidrBlock: "10.0.0.0/16",
+    });
+
     // Read service configurations from a JSON file
     const configPath = path.resolve(__dirname, "config/services.json");
     const configData = JSON.parse(fs.readFileSync(configPath, "utf-8"));
@@ -162,11 +174,11 @@ class MicroservicesStack extends TerraformStack {
 
     // Create infrastructure for each service
     services.forEach((service) => {
-      this.createService(service);
+      this.createService(service, vpc);
     });
   }
 
-  private createService(config: ServiceConfig): void {
+  private createService(config: ServiceConfig, vpc: Vpc): void {
     // Create a log group for the service
     new CloudwatchLogGroup(this, `${config.name}-logs`, {
       name: `/ecs/${config.name}`,
@@ -179,6 +191,7 @@ class MicroservicesStack extends TerraformStack {
       port: config.port,
       protocol: "HTTP",
       targetType: "ip",
+      vpcId: vpc.id,
       healthCheck: {
         path: config.healthCheckPath,
         interval: 30,
@@ -196,6 +209,12 @@ class MicroservicesStack extends TerraformStack {
 Use standard TypeScript conditionals for complex decision making:
 
 ```typescript
+import { Construct } from "constructs";
+import { App, TerraformStack } from "cdktf";
+import { AwsProvider } from "@cdktf/provider-aws/lib/provider";
+import { CloudwatchMetricAlarm } from "@cdktf/provider-aws/lib/cloudwatch-metric-alarm";
+import { DbInstance } from "@cdktf/provider-aws/lib/db-instance";
+
 interface StackConfig {
   environment: string;
   enableMonitoring: boolean;
@@ -211,6 +230,7 @@ class ApplicationStack extends TerraformStack {
     new AwsProvider(this, "aws", { region: "us-east-1" });
 
     const db = new DbInstance(this, "database", {
+      identifier: `${config.environment}-database`,
       engine: "postgres",
       instanceClass: config.environment === "production"
         ? "db.r5.large"
@@ -279,9 +299,11 @@ new ApplicationStack(app, "prod", {
 });
 ```
 
-## Using Maps and Reduce for Resource Aggregation
+## Using Maps for Resource Aggregation
 
 ```typescript
+import { SecurityGroup } from "@cdktf/provider-aws/lib/security-group";
+
 // Create security group rules from a structured definition
 interface FirewallRule {
   port: number;
@@ -324,6 +346,9 @@ new SecurityGroup(this, "app-sg", {
 ## Factory Patterns for Resource Creation
 
 ```typescript
+import { TerraformStack } from "cdktf";
+import { DbInstance } from "@cdktf/provider-aws/lib/db-instance";
+
 // Factory function that creates standardized databases
 function createDatabase(
   stack: TerraformStack,
@@ -359,11 +384,15 @@ const analyticsDb = createDatabase(this, "analytics-db", "large");
 const cacheDb = createDatabase(this, "cache-db", "small");
 ```
 
-## Using Async Data at Build Time
+## Using External Data at Build Time
 
 You can fetch data during synthesis:
 
 ```typescript
+import { Construct } from "constructs";
+import { TerraformStack } from "cdktf";
+import { AwsProvider } from "@cdktf/provider-aws/lib/provider";
+import { SecurityGroup } from "@cdktf/provider-aws/lib/security-group";
 import * as fs from "fs";
 
 class DynamicStack extends TerraformStack {
