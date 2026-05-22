@@ -30,8 +30,13 @@ kind: Deployment
 metadata:
   name: my-function
 spec:
+  selector:
+    matchLabels:
+      app: my-function
   template:
     metadata:
+      labels:
+        app: my-function
       annotations:
         sidecar.istio.io/proxyCPU: "50m"
         sidecar.istio.io/proxyMemory: "64Mi"
@@ -190,7 +195,7 @@ Make sure the Istio timeout is at least as long as your function's maximum execu
 
 ## Disabling Unnecessary Features
 
-For lightweight serverless functions, you can disable Istio features you don't need:
+For lightweight serverless functions, reduce telemetry overhead and only enable extra Envoy stats you actually need:
 
 ```yaml
 metadata:
@@ -220,7 +225,7 @@ spec:
   - disabled: true
 ```
 
-This reduces the per-request overhead of the sidecar.
+This reduces overhead from tracing and access logging. Be careful with `proxyStatsMatcher`: it enables additional Envoy stats beyond Istio's minimal defaults, so keep the matchers narrow to avoid unnecessary metric cardinality.
 
 ## Using Istio Ambient Mode
 
@@ -244,8 +249,13 @@ kind: Deployment
 metadata:
   name: my-function
 spec:
+  selector:
+    matchLabels:
+      app: my-function
   template:
     metadata:
+      labels:
+        app: my-function
       annotations:
         sidecar.istio.io/rewriteAppHTTPProbers: "true"
     spec:
@@ -273,11 +283,11 @@ The `rewriteAppHTTPProbers` annotation (which defaults to true in recent Istio v
 Track the additional latency and resource usage that Istio adds to your functions:
 
 ```bash
-# Check proxy latency for a specific function
-istioctl proxy-config log <pod-name> --level debug
+# Check route configuration for a specific function
+istioctl proxy-config route <pod-name> -n functions
 
 # Check Envoy stats
-kubectl exec -it <pod-name> -c istio-proxy -- curl localhost:15000/stats | grep -i latency
+kubectl exec -it <pod-name> -n functions -c istio-proxy -- pilot-agent request GET stats | grep -E 'rq_time|upstream_cx'
 ```
 
 Keep an eye on the `istio_request_duration_milliseconds` metric to see how much overhead the sidecar adds to your function execution time.
