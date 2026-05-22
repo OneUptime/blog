@@ -12,7 +12,7 @@ Terraform has a type system, and sometimes it gets in your way. You have a set b
 
 ## What is tolist?
 
-The `tolist` function converts its argument to a list value. It is most commonly used to convert sets to lists, since sets and lists are the two main sequence types in Terraform.
+The `tolist` function converts its argument to a list value. It is most commonly used to convert sets to lists, since sets and lists are two common collection types in Terraform.
 
 ```hcl
 # Convert a set to a list
@@ -40,7 +40,7 @@ The key differences between sets and lists in Terraform are:
 3. **Sets contain unique values** - duplicates are removed automatically
 4. **Lists can contain duplicates**
 
-Many Terraform functions return sets (like `setunion`, `setintersection`, `toset`). If you need to use the result with `count` or index into it, you need to convert it to a list first.
+Many Terraform functions return sets (like `setunion`, `setintersection`, `toset`). If you need to index into the result, including from a resource that uses `count`, you need to convert it to a list first.
 
 ## Converting Sets to Lists
 
@@ -62,7 +62,7 @@ locals {
 
 ## Practical Example: Using count with Set Results
 
-When you want to create resources based on a set, you need `tolist` because `count` requires list indexing:
+When you want to create resources based on a set, you need `tolist` because `count.index` is normally used to index into an ordered collection:
 
 ```hcl
 variable "dev_subnets" {
@@ -98,7 +98,7 @@ resource "aws_instance" "app" {
 
 ## tolist with for_each
 
-While `for_each` works directly with sets, sometimes you need list behavior for ordering:
+While `for_each` works directly with sets of strings, sometimes you need list behavior for index-based calculations:
 
 ```hcl
 variable "availability_zones" {
@@ -107,7 +107,7 @@ variable "availability_zones" {
 }
 
 locals {
-  # Convert to list for predictable ordering
+  # Convert to list for index-based access
   az_list = tolist(var.availability_zones)
 }
 
@@ -126,7 +126,7 @@ resource "aws_subnet" "main" {
 
 ## Converting Tuple Types
 
-Terraform sometimes infers tuple types for heterogeneous collections. `tolist` can normalize these:
+Terraform sometimes infers tuple types for collections. `tolist` can normalize these:
 
 ```hcl
 # A tuple from a conditional expression
@@ -174,9 +174,9 @@ locals {
 }
 ```
 
-## tolist and Sorting
+## tolist and String Ordering
 
-Sets in Terraform are stored in lexicographic order. When you convert a set to a list with `tolist`, the elements maintain that order:
+Sets in Terraform are unordered. When Terraform converts a set of strings to a list or tuple, the strings are returned in lexicographic order:
 
 ```hcl
 > tolist(toset(["cherry", "apple", "banana"]))
@@ -187,7 +187,7 @@ Sets in Terraform are stored in lexicographic order. When you convert a set to a
 ]
 ```
 
-This means `tolist(toset(list))` is actually a way to sort and deduplicate a list in one step:
+This means `tolist(toset(list))` can sort and deduplicate a list of strings in one step:
 
 ```hcl
 # Sort and deduplicate
@@ -201,7 +201,7 @@ This means `tolist(toset(list))` is actually a way to sort and deduplicate a lis
 
 ## Working with Data Source Results
 
-Some data sources return sets. Converting to lists lets you work with specific elements:
+Some data source attributes are already lists, while others may be sets. Converting to a list lets you work with specific elements when you need index-based access:
 
 ```hcl
 data "aws_availability_zones" "available" {
@@ -209,7 +209,8 @@ data "aws_availability_zones" "available" {
 }
 
 locals {
-  # Ensure we have a list for indexing
+  # data.aws_availability_zones.available.names is already a list,
+  # but tolist can normalize values before indexing
   azs = tolist(data.aws_availability_zones.available.names)
 
   # Pick specific AZs
@@ -221,7 +222,7 @@ locals {
 ## tolist with Numeric Sets
 
 ```hcl
-# Works with number sets too
+# Works with number sets too, but the resulting order is not guaranteed
 > tolist(toset([3, 1, 4, 1, 5, 9, 2, 6]))
 [
   1,
@@ -234,7 +235,7 @@ locals {
 ]
 ```
 
-The set removes the duplicate `1`, and `tolist` gives you an indexable result.
+The set removes the duplicate `1`, and `tolist` gives you an indexable result. For sets of non-string values, do not rely on any particular element order.
 
 ## Common Patterns
 
@@ -333,4 +334,4 @@ resource "null_resource" "item" {
 
 ## Summary
 
-The `tolist` function is your bridge between Terraform's set type and list type. Reach for it whenever you need to index into a set result, use a set with `count`, or pass a set to a function that requires a list. The most common pattern is converting the output of set operations (`setunion`, `setintersection`, `setsubtract`) into lists for resource creation. For the reverse operation, check out the [toset function](https://oneuptime.com/blog/post/2026-02-23-how-to-use-the-toset-function-in-terraform/view), and for other type conversions, see the [tomap function](https://oneuptime.com/blog/post/2026-02-23-how-to-use-the-tomap-function-in-terraform/view).
+The `tolist` function is your bridge between Terraform's set type and list type. Reach for it whenever you need to index into a set result, use set values with `count.index`, or pass a set to a function that requires a list. The most common pattern is converting the output of set operations (`setunion`, `setintersection`, `setsubtract`) into lists for resource creation. For the reverse operation, check out the [toset function](https://oneuptime.com/blog/post/2026-02-23-how-to-use-the-toset-function-in-terraform/view), and for other type conversions, see the [tomap function](https://oneuptime.com/blog/post/2026-02-23-how-to-use-the-tomap-function-in-terraform/view).
