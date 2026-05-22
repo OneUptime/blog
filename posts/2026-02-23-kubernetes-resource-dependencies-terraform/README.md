@@ -8,7 +8,7 @@ Description: Learn how to manage resource dependencies in Terraform for Kubernet
 
 ---
 
-Kubernetes resources rarely exist in isolation. A deployment needs a namespace, a service needs a deployment, an ingress needs a service, and a certificate needs an issuer. When managing all of these through Terraform, getting the order right is essential. Create a service before its namespace exists and Terraform fails. Apply a Certificate before cert-manager is installed and the API server rejects it.
+Kubernetes resources rarely exist in isolation. A deployment needs a namespace, a service usually selects application pods, an ingress needs a service, and a certificate needs an issuer. When managing all of these through Terraform, getting the order right is essential. Create a service before its namespace exists and Terraform fails. Apply a Certificate before cert-manager is installed and the API server rejects it.
 
 Terraform handles most ordering automatically through its dependency graph, but Kubernetes introduces some situations where you need to help it along. This guide covers how to manage resource dependencies effectively.
 
@@ -60,8 +60,8 @@ resource "kubernetes_deployment" "app" {
   }
 }
 
-# The service implicitly depends on the deployment
-# because it references the same namespace
+# The service implicitly depends on the namespace,
+# but not on the deployment
 resource "kubernetes_service" "app" {
   metadata {
     name      = "my-app"
@@ -94,10 +94,12 @@ resource "helm_release" "cert_manager" {
   repository = "https://charts.jetstack.io"
   chart      = "cert-manager"
   namespace  = "cert-manager"
-  version    = "1.14.0"
+  version    = "v1.20.2"
+
+  create_namespace = true
 
   set {
-    name  = "installCRDs"
+    name  = "crds.enabled"
     value = "true"
   }
 
@@ -176,6 +178,7 @@ resource "helm_release" "nginx_ingress" {
   chart      = "ingress-nginx"
   namespace  = "ingress-nginx"
 
+  create_namespace = true
   wait = true
 }
 
@@ -186,8 +189,10 @@ resource "helm_release" "cert_manager" {
   chart      = "cert-manager"
   namespace  = "cert-manager"
 
+  create_namespace = true
+
   set {
-    name  = "installCRDs"
+    name  = "crds.enabled"
     value = "true"
   }
 
@@ -199,6 +204,8 @@ resource "helm_release" "app" {
   name      = "my-app"
   chart     = "./charts/my-app"
   namespace = "production"
+
+  create_namespace = true
 
   values = [
     yamlencode({
@@ -232,6 +239,8 @@ resource "helm_release" "prometheus_operator" {
   repository = "https://prometheus-community.github.io/helm-charts"
   chart      = "kube-prometheus-stack"
   namespace  = "monitoring"
+
+  create_namespace = true
 
   # Wait for all pods to be ready
   wait    = true
@@ -305,7 +314,7 @@ resource "kubernetes_config_map" "app_config" {
 Occasionally you run into circular dependencies. Resource A needs an output from Resource B, but Resource B also needs something from Resource A. Break the cycle by separating the creation from the configuration.
 
 ```hcl
-# Create the service first (gets a ClusterIP assigned)
+# Create the service first (gets a stable DNS name and ClusterIP assigned)
 resource "kubernetes_service" "app" {
   metadata {
     name      = "my-app"
@@ -324,7 +333,7 @@ resource "kubernetes_service" "app" {
   }
 }
 
-# Deployment uses the service's cluster IP in its config
+# Deployment uses the service's DNS name in its config
 resource "kubernetes_deployment" "app" {
   metadata {
     name      = "my-app"
@@ -371,8 +380,9 @@ Terraform can generate a visual dependency graph to help you understand the orde
 # Generate a dependency graph
 terraform graph | dot -Tpng > graph.png
 
-# Or for a specific resource
-terraform graph -target=helm_release.app | dot -Tpng > app-graph.png
+# Or for a plan targeted at a specific resource
+terraform plan -target=helm_release.app -out=app.tfplan
+terraform graph -plan=app.tfplan | dot -Tpng > app-graph.png
 ```
 
 ## Best Practices
@@ -384,6 +394,6 @@ terraform graph -target=helm_release.app | dot -Tpng > app-graph.png
 - Group resources by namespace for clear dependency boundaries
 - Use `terraform graph` to verify your dependency chain
 - Keep dependency chains as shallow as possible - deep chains make applies slow
-- Test dependency ordering by running `terraform plan` and checking the output order
+- Test dependency ordering by running `terraform plan` and inspecting the dependency graph
 
 For more on Terraform and Kubernetes, see our guide on [handling Kubernetes resource updates in Terraform](https://oneuptime.com/blog/post/2026-02-23-kubernetes-resource-updates-terraform/view).
