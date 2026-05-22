@@ -165,9 +165,9 @@ locals {
   budget_status = signum(local.budget_remaining)
 
   status_message = (
-    local.budget_status == 1  ? "Under budget by $${abs(local.budget_remaining)}" :
+    local.budget_status == 1  ? format("Under budget by $%s", abs(local.budget_remaining)) :
     local.budget_status == 0  ? "Exactly at budget limit" :
-    "Over budget by $${abs(local.budget_remaining)}"
+    format("Over budget by $%s", abs(local.budget_remaining))
   )
 }
 
