@@ -113,10 +113,10 @@ Verify encryption is active:
 
 ```bash
 # Check mTLS status
-istioctl proxy-config endpoints deploy/payment-service -n production | head -20
+PAYMENT_POD=$(kubectl get pod -n production -l app=payment-service -o jsonpath='{.items[0].metadata.name}')
+istioctl x describe pod -n production "$PAYMENT_POD"
 
-# Look for "mTLS" in the output
-# All entries should show STRICT or mTLS
+# Look for output that says the pod enforces mTLS and clients speak mTLS
 
 # Test that plain text is rejected
 kubectl exec deploy/test-client -n production -- \
@@ -134,11 +134,11 @@ kubectl run test --image=curlimages/curl --annotations="sidecar.istio.io/inject=
 The most important step in zero trust is default deny. Without explicit permission, no communication is allowed:
 
 ```yaml
-# Deny all traffic in the namespace
+# Default deny: create an ALLOW policy with no rules
 apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
-  name: deny-all
+  name: allow-nothing
   namespace: production
 spec:
   {}
@@ -208,7 +208,7 @@ spec:
         paths: ["/api/payments"]
 
 ---
-# Order and notification services need access to product-service
+# Frontend and order-service need access to product-service
 apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
@@ -363,7 +363,9 @@ Run through this checklist to verify your zero-trust setup:
 
 ```bash
 # 1. Verify all traffic is encrypted
-istioctl proxy-config endpoints deploy/frontend -n production | grep -c "STRICT"
+FRONTEND_POD=$(kubectl get pod -n production -l app=frontend -o jsonpath='{.items[0].metadata.name}')
+istioctl x describe pod -n production "$FRONTEND_POD"
+# Look for output that says the pod enforces mTLS and clients speak mTLS
 
 # 2. Verify default deny is in place
 kubectl get authorizationpolicy -n production
