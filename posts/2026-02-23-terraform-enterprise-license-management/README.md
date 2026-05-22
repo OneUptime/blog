@@ -8,7 +8,7 @@ Description: A practical guide to managing Terraform Enterprise licenses, includ
 
 ---
 
-Terraform Enterprise requires a valid license from HashiCorp to operate. Unlike Terraform Cloud, which is a SaaS product, TFE is self-hosted software that you license annually (or on another term depending on your agreement). When the license expires, TFE stops processing new runs, which means your infrastructure pipeline grinds to a halt. Managing the license proactively prevents this entirely avoidable outage.
+Terraform Enterprise requires a valid license from HashiCorp to operate. Unlike HCP Terraform, which is a SaaS product formerly known as Terraform Cloud, TFE is self-hosted software that you license annually (or on another term depending on your agreement). For production licenses, HashiCorp does not terminate normal application operation on the expiry date, but an expired license can block authentication to the HashiCorp image registry, which can prevent reinstalling, scaling, or upgrading TFE. Managing the license proactively prevents this entirely avoidable operational risk.
 
 This guide covers everything about TFE license management - from initial installation to renewal monitoring and troubleshooting.
 
@@ -21,7 +21,7 @@ TFE licenses are tied to several parameters:
 - **Features**: Which TFE features are enabled (Sentinel, cost estimation, SSO, etc.)
 - **Module count**: In some license tiers, the number of private registry modules
 
-The license is delivered as a `.rli` file (for legacy installs) or a license string that you provide during installation.
+The license is delivered as the raw HashiCorp license body, which you provide during installation as a string or in a mounted file.
 
 ## Installing the License
 
@@ -43,7 +43,7 @@ TFE_LICENSE_PATH=/etc/tfe/license.rli
 version: "3.9"
 services:
   tfe:
-    image: images.releases.hashicorp.com/hashicorp/terraform-enterprise:latest
+    image: images.releases.hashicorp.com/hashicorp/terraform-enterprise:<vYYYYMM-#>
     environment:
       TFE_HOSTNAME: tfe.example.com
       # Option 1: License as a string (recommended for secrets management)
@@ -89,27 +89,33 @@ spec:
 
 ## Checking License Status
 
-### Via the API
+### Via the TFE CLI
 
 ```bash
 # Check current license status
-curl -s \
-  --header "Authorization: Bearer ${TFE_ADMIN_TOKEN}" \
-  "${TFE_URL}/api/v2/admin/general-settings" | \
-  jq '{
-    license_expiration: .data.attributes["license-expiration-date"],
-    license_entitled_users: .data.attributes["license-entitled-users"],
-    current_users: .data.attributes["user-count"]
-  }'
+tfectl app license
 ```
 
-### Via the Admin UI
+### Via the API
 
-Navigate to `https://tfe.example.com/app/admin` and look at the **License** section. It shows:
+The Admin API does not expose the license expiration date through `/api/v2/admin/general-settings`. You can use it to monitor the current user count:
 
-- License expiration date
-- Current user count vs. licensed limit
-- Enabled features
+```bash
+# Check current TFE user count
+curl -s \
+  --header "Authorization: Bearer ${TFE_ADMIN_TOKEN}" \
+  --header "Content-Type: application/vnd.api+json" \
+  "${TFE_URL}/api/v2/admin/users?page%5Bsize%5D=1" | \
+  jq '.meta.pagination["total-count"]'
+```
+
+### For Legacy Replicated Deployments
+
+Use the Replicated console at `https://tfe.example.com:8800` and select **View License**, or inspect the license from the command line:
+
+```bash
+replicatedctl license inspect
+```
 
 ### Via TFE Logs
 
@@ -130,11 +136,9 @@ Do not let your license expire unexpectedly. Set up automated monitoring:
 WARNING_DAYS=30
 CRITICAL_DAYS=7
 
-# Get the license expiration date
-EXPIRY_DATE=$(curl -s \
-  --header "Authorization: Bearer ${TFE_ADMIN_TOKEN}" \
-  "${TFE_URL}/api/v2/admin/general-settings" | \
-  jq -r '.data.attributes["license-expiration-date"]')
+# Get the license expiration date.
+# For current non-Replicated runtimes, run this command inside the TFE container or pod.
+EXPIRY_DATE=$(tfectl app license | awk -F': ' '/Expiration|Expires/ {print $2; exit}')
 
 if [ "${EXPIRY_DATE}" = "null" ] || [ -z "${EXPIRY_DATE}" ]; then
   echo "CRITICAL: Could not retrieve license expiration date"
@@ -142,7 +146,7 @@ if [ "${EXPIRY_DATE}" = "null" ] || [ -z "${EXPIRY_DATE}" ]; then
 fi
 
 # Calculate days until expiration
-EXPIRY_EPOCH=$(date -d "${EXPIRY_DATE}" +%s 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%S" "${EXPIRY_DATE}" +%s 2>/dev/null)
+EXPIRY_EPOCH=$(date -d "${EXPIRY_DATE}" +%s 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%SZ" "${EXPIRY_DATE}" +%s 2>/dev/null)
 NOW_EPOCH=$(date +%s)
 DAYS_LEFT=$(( (EXPIRY_EPOCH - NOW_EPOCH) / 86400 ))
 
@@ -170,10 +174,7 @@ fi
 # tfe-license-exporter.sh
 # Export license metrics for Prometheus scraping
 
-EXPIRY_DATE=$(curl -s \
-  --header "Authorization: Bearer ${TFE_ADMIN_TOKEN}" \
-  "${TFE_URL}/api/v2/admin/general-settings" | \
-  jq -r '.data.attributes["license-expiration-date"]')
+EXPIRY_DATE=$(tfectl app license | awk -F': ' '/Expiration|Expires/ {print $2; exit}')
 
 EXPIRY_EPOCH=$(date -d "${EXPIRY_DATE}" +%s 2>/dev/null)
 NOW_EPOCH=$(date +%s)
@@ -181,8 +182,9 @@ DAYS_LEFT=$(( (EXPIRY_EPOCH - NOW_EPOCH) / 86400 ))
 
 USER_COUNT=$(curl -s \
   --header "Authorization: Bearer ${TFE_ADMIN_TOKEN}" \
-  "${TFE_URL}/api/v2/admin/general-settings" | \
-  jq -r '.data.attributes["user-count"]')
+  --header "Content-Type: application/vnd.api+json" \
+  "${TFE_URL}/api/v2/admin/users?page%5Bsize%5D=1" | \
+  jq -r '.meta.pagination["total-count"]')
 
 # Output in Prometheus exposition format
 cat << EOF
@@ -245,10 +247,7 @@ cd /opt/tfe
 docker compose restart tfe
 
 # Verify the new license is active
-curl -s \
-  --header "Authorization: Bearer ${TFE_ADMIN_TOKEN}" \
-  "${TFE_URL}/api/v2/admin/general-settings" | \
-  jq '.data.attributes["license-expiration-date"]'
+tfectl app license
 ```
 
 ### For Kubernetes Deployments
@@ -267,13 +266,13 @@ kubectl -n tfe rollout restart deployment/tfe
 
 When a TFE license expires:
 
-1. **Existing runs in progress**: May complete, but this is not guaranteed.
-2. **New runs**: Will not be queued or executed.
-3. **UI access**: Users can still log in and view resources but cannot trigger runs.
-4. **API access**: Read operations may work, but write operations for runs will fail.
-5. **State access**: Existing state files remain accessible.
+1. **Existing application operation**: Production licenses provisioned by HashiCorp do not terminate on the expiry date.
+2. **Image registry authentication**: An expired license cannot be used to authenticate with the HashiCorp image registry.
+3. **Operational changes**: If your deployment pulls directly from the HashiCorp registry, reinstalling, scaling, or upgrading TFE can fail until the license is renewed.
+4. **License reporting**: Automated license utilization reporting continues to help HashiCorp validate entitlements.
+5. **State access**: Existing state files remain accessible as long as the TFE application and its storage remain healthy.
 
-The impact is significant but not catastrophic - no data is lost. Once you apply a valid license, everything resumes normal operation.
+The impact is significant but not catastrophic - no data is lost because the license date passed. Once you apply a valid license, image registry authentication and operational changes can resume normally.
 
 ## License Best Practices
 
@@ -289,16 +288,17 @@ The impact is significant but not catastrophic - no data is lost. Once you apply
 
 **"License has expired"**: Apply a renewed license. Contact HashiCorp support if you need an emergency extension.
 
-**"User limit exceeded"**: Your license has a user cap. Either upgrade your license or remove inactive users:
+**"User limit exceeded"**: Your license has a user cap. Either upgrade your license or review users for suspension or removal:
 
 ```bash
-# Find inactive users (no activity in the last 90 days)
+# Count all users
 curl -s \
   --header "Authorization: Bearer ${TFE_ADMIN_TOKEN}" \
-  "${TFE_URL}/api/v2/admin/users?page[size]=100" | \
-  jq '[.data[] | select(.attributes["last-active-at"] < "2025-11-25T00:00:00Z")] | length'
+  --header "Content-Type: application/vnd.api+json" \
+  "${TFE_URL}/api/v2/admin/users?page%5Bsize%5D=1" | \
+  jq '.meta.pagination["total-count"]'
 ```
 
 ## Summary
 
-TFE license management is a simple but critical admin task. Install the license during setup, monitor its expiration with automated alerts, and start the renewal process well before it expires. The consequences of an expired license - blocked runs across the entire organization - are easily avoidable with basic monitoring. Use tools like [OneUptime](https://oneuptime.com) to track the license expiration metric alongside your other TFE health checks, and you will never be caught off guard by an expiring license.
+TFE license management is a simple but critical admin task. Install the license during setup, monitor its expiration with automated alerts, and start the renewal process well before it expires. The consequences of an expired license - blocked registry authentication for reinstall, scale, or upgrade operations - are easily avoidable with basic monitoring. Use tools like [OneUptime](https://oneuptime.com) to track the license expiration metric alongside your other TFE health checks, and you will never be caught off guard by an expiring license.
