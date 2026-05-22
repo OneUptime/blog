@@ -38,7 +38,7 @@ The biggest challenge of using both tools is sharing outputs. When Terraform cre
 
 ### Reading Terraform State from Pulumi
 
-Pulumi has a built-in Terraform state reader that makes this straightforward.
+Pulumi's Terraform package provides state reference functions that make this straightforward.
 
 ```typescript
 // index.ts
@@ -47,17 +47,20 @@ import * as pulumi from "@pulumi/pulumi";
 import * as aws from "@pulumi/aws";
 import * as terraform from "@pulumi/terraform";
 
-// Read outputs from the Terraform state file in S3
-const tfState = new terraform.state.RemoteStateReference("network", {
-    backendType: "s3",
-    bucket: "my-terraform-state",
-    key: "network/terraform.tfstate",
-    region: "us-east-1",
+const config = new pulumi.Config();
+
+// Read outputs from a Terraform Cloud or HCP Terraform workspace
+const tfState = terraform.state.getRemoteReferenceOutput({
+    organization: "my-org",
+    workspaces: {
+        name: "network",
+    },
+    token: config.requireSecret("terraformCloudToken"),
 });
 
 // Extract specific outputs from the Terraform state
-const vpcId = tfState.getOutput("vpc_id") as pulumi.Output<string>;
-const privateSubnetIds = tfState.getOutput("private_subnet_ids") as pulumi.Output<string[]>;
+const vpcId = tfState.outputs["vpc_id"] as pulumi.Output<string>;
+const privateSubnetIds = tfState.outputs["private_subnet_ids"] as pulumi.Output<string[]>;
 
 // Use Terraform outputs to create Pulumi resources
 const securityGroup = new aws.ec2.SecurityGroup("app-sg", {
@@ -185,15 +188,18 @@ import * as pulumi from "@pulumi/pulumi";
 import * as k8s from "@pulumi/kubernetes";
 import * as terraform from "@pulumi/terraform";
 
+const config = new pulumi.Config();
+
 // Read the platform Terraform state
-const platform = new terraform.state.RemoteStateReference("platform", {
-    backendType: "s3",
-    bucket: "terraform-state",
-    key: "platform/terraform.tfstate",
-    region: "us-east-1",
+const platform = terraform.state.getRemoteReferenceOutput({
+    organization: "my-org",
+    workspaces: {
+        name: "platform",
+    },
+    token: config.requireSecret("terraformCloudToken"),
 });
 
-const clusterName = platform.getOutput("cluster_name") as pulumi.Output<string>;
+const clusterName = platform.outputs["cluster_name"] as pulumi.Output<string>;
 
 // Deploy a complex application with dynamic configuration
 const appConfig = new pulumi.Config("app");
@@ -251,16 +257,19 @@ import * as pulumi from "@pulumi/pulumi";
 import * as aws from "@pulumi/aws";
 import * as terraform from "@pulumi/terraform";
 
+const config = new pulumi.Config();
+
 // Reference existing Terraform-managed infrastructure
-const existingInfra = new terraform.state.RemoteStateReference("existing", {
-    backendType: "s3",
-    bucket: "terraform-state",
-    key: "production/terraform.tfstate",
-    region: "us-east-1",
+const existingInfra = terraform.state.getRemoteReferenceOutput({
+    organization: "my-org",
+    workspaces: {
+        name: "production",
+    },
+    token: config.requireSecret("terraformCloudToken"),
 });
 
-const vpcId = existingInfra.getOutput("vpc_id") as pulumi.Output<string>;
-const subnetIds = existingInfra.getOutput("private_subnet_ids") as pulumi.Output<string[]>;
+const vpcId = existingInfra.outputs["vpc_id"] as pulumi.Output<string>;
+const subnetIds = existingInfra.outputs["private_subnet_ids"] as pulumi.Output<string[]>;
 
 // Build new infrastructure with Pulumi
 // Using TypeScript allows for type safety and IDE support
@@ -321,8 +330,6 @@ jobs:
   # Run Terraform first for platform infrastructure
   terraform:
     runs-on: ubuntu-latest
-    outputs:
-      vpc_id: ${{ steps.output.outputs.vpc_id }}
     steps:
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v3
@@ -349,7 +356,7 @@ jobs:
         working-directory: pulumi/applications
         run: npm install
 
-      - uses: pulumi/actions@v5
+      - uses: pulumi/actions@v6
         with:
           command: up
           stack-name: production
