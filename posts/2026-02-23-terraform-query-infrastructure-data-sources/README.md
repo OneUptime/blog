@@ -32,7 +32,7 @@ resource "aws_subnet" "app" {
 }
 ```
 
-The `data` block queries AWS for a VPC with the tag `Name = production-vpc`. If it finds one, all of that VPC's attributes become available through `data.aws_vpc.main.*`.
+The `data` block queries AWS for a VPC with the tag `Name = production-vpc`. If it finds one, that VPC's exported attributes become available through references such as `data.aws_vpc.main.id`.
 
 ## Data Source Syntax
 
@@ -116,7 +116,7 @@ data "aws_iam_role" "lambda_exec" {
   name = "lambda-execution-role"
 }
 
-# Look up by ARN
+# Look up by domain
 data "aws_acm_certificate" "app" {
   domain   = "app.example.com"
   statuses = ["ISSUED"]
@@ -275,11 +275,12 @@ locals {
 }
 
 resource "aws_db_instance" "main" {
-  identifier     = "app-database"
-  engine         = "postgres"
-  instance_class = "db.r6g.large"
-  username       = local.db_creds.username
-  password       = local.db_creds.password
+  identifier        = "app-database"
+  engine            = "postgres"
+  allocated_storage = 20
+  instance_class    = "db.r6g.large"
+  username          = local.db_creds.username
+  password          = local.db_creds.password
 }
 ```
 
@@ -314,11 +315,11 @@ resource "aws_route53_record" "app" {
 
 ## Data Sources and the Plan Phase
 
-Data source queries run during `terraform plan`, not during apply. This means:
+Terraform attempts to query data sources during `terraform plan`, but it can defer a data source read until `terraform apply` if the query depends on values that are not known during planning. This means:
 
-1. The infrastructure being queried must exist when you run the plan.
+1. The infrastructure being queried must exist when Terraform reads the data source.
 2. If the queried infrastructure changes between plan and apply, you might get stale data.
-3. If a data source query fails (resource not found), the plan fails.
+3. If a data source query fails (resource not found), the plan fails, or the apply fails if the read was deferred.
 
 ```hcl
 # This will fail during plan if the VPC does not exist
@@ -355,7 +356,7 @@ data "aws_security_group" "existing" {
   }
 }
 
-# Use the existing SG if found, otherwise create one
+# Create a security group when no existing name was provided
 resource "aws_security_group" "app" {
   count  = var.existing_sg_name == "" ? 1 : 0
   name   = "app-sg"
