@@ -30,9 +30,10 @@ variable "db_password" {
   sensitive = true
 }
 
-# Ephemeral value - never stored anywhere
+# Ephemeral value - never stored in state or plan files
 variable "temp_token" {
   type      = string
+  sensitive = true
   ephemeral = true
 }
 ```
@@ -45,6 +46,7 @@ You can declare a variable as ephemeral:
 # This variable's value is never written to state or plan files
 variable "vault_token" {
   type        = string
+  sensitive   = true
   ephemeral   = true
   description = "Short-lived Vault token for secret retrieval"
 }
@@ -55,6 +57,7 @@ variable "session_credentials" {
     secret_key    = string
     session_token = string
   })
+  sensitive   = true
   ephemeral   = true
   description = "Temporary AWS STS credentials"
 }
@@ -72,17 +75,18 @@ terraform apply -var="vault_token=s.abc123xyz"
 
 ## Ephemeral Outputs
 
-Outputs can be ephemeral too, which is useful for passing temporary data between root module and child modules:
+Outputs in child modules can be ephemeral too, which is useful for passing temporary data between modules without storing it:
 
 ```hcl
 # In a child module
 output "temp_credentials" {
-  value     = data.vault_generic_secret.creds.data
+  value     = ephemeral.vault_generic_secret.creds.data
   ephemeral = true
+  sensitive = true
 }
 ```
 
-Ephemeral outputs cannot be queried with `terraform output` after an apply completes because they are not stored.
+Ephemeral outputs cannot be queried with `terraform output` after an apply completes because they are not stored. Terraform only allows `ephemeral = true` on child module outputs, not root module outputs.
 
 ## Ephemeral Resources
 
@@ -90,18 +94,19 @@ Terraform 1.10 introduced ephemeral resources - a new resource type that creates
 
 ```hcl
 # Get temporary AWS credentials from Vault
-ephemeral "vault_aws_secret" "deploy" {
+ephemeral "vault_aws_access_credentials" "deploy" {
   backend = "aws"
   role    = "deploy-role"
+  type    = "sts"
   ttl     = "15m"
 }
 
 # Use the temporary credentials in a provider
 provider "aws" {
   region     = "us-east-1"
-  access_key = ephemeral.vault_aws_secret.deploy.access_key
-  secret_key = ephemeral.vault_aws_secret.deploy.secret_key
-  token      = ephemeral.vault_aws_secret.deploy.security_token
+  access_key = ephemeral.vault_aws_access_credentials.deploy.access_key
+  secret_key = ephemeral.vault_aws_access_credentials.deploy.secret_key
+  token      = ephemeral.vault_aws_access_credentials.deploy.security_token
 }
 ```
 
@@ -160,9 +165,9 @@ resource "aws_ssm_parameter" "token" {
   value = var.temp_token  # ERROR: ephemeral value cannot be used here
 }
 
-# This will NOT work - non-ephemeral outputs are stored in state
+# This will NOT work - root module outputs cannot be ephemeral, and non-ephemeral outputs are stored in state
 output "token" {
-  value = var.temp_token  # ERROR: must mark output as ephemeral
+  value = var.temp_token  # ERROR: ephemeral value cannot be used here
 }
 
 # This will NOT work - locals could be referenced by state-persisted resources
@@ -179,6 +184,7 @@ One of the primary use cases is integrating with HashiCorp Vault for just-in-tim
 # Ephemeral variable for Vault authentication
 variable "vault_token" {
   type      = string
+  sensitive = true
   ephemeral = true
 }
 
@@ -188,7 +194,7 @@ provider "vault" {
   token   = var.vault_token
 }
 
-# Read secrets from Vault (the data source result is also ephemeral-safe)
+# Read secrets from Vault with an ephemeral resource
 ephemeral "vault_kv_secret_v2" "db_creds" {
   mount = "secret"
   name  = "database/production"
@@ -212,6 +218,7 @@ variable "sts_credentials" {
     secret_key    = string
     session_token = string
   })
+  sensitive = true
   ephemeral = true
 }
 
@@ -238,7 +245,7 @@ Here is a comparison to help you choose:
 
 | Feature | sensitive = true | ephemeral = true |
 |---------|-----------------|-----------------|
-| Hidden in CLI output | Yes | Yes |
+| Hidden in CLI output | Yes | Only if also marked `sensitive` |
 | Stored in state file | Yes | No |
 | Stored in plan file | Yes | No |
 | Available after apply | Yes | No |
