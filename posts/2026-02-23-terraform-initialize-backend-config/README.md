@@ -8,7 +8,7 @@ Description: A practical guide to using the terraform init -backend-config flag,
 
 ---
 
-The `terraform init` command is where your Terraform workflow begins, and the `-backend-config` flag is one of its most important options. It lets you supply backend configuration values at initialization time rather than hardcoding them in your Terraform files. This is essential for keeping secrets out of version control and for reusing the same code across multiple environments.
+The `terraform init` command is where your Terraform workflow begins, and the `-backend-config` flag is one of its most important options. It lets you supply backend configuration values at initialization time rather than hardcoding them in your Terraform files. This is essential for keeping environment-specific values out of version control and for reusing the same code across multiple environments.
 
 ## The Basics
 
@@ -45,6 +45,7 @@ This works with any backend. Here is an example with the Azure backend:
 terraform init \
   -backend-config="storage_account_name=tfstateaccount" \
   -backend-config="container_name=tfstate" \
+  -backend-config="key=prod.terraform.tfstate" \
   -backend-config="access_key=${ARM_ACCESS_KEY}"
 ```
 
@@ -66,7 +67,7 @@ bucket         = "my-terraform-state"
 key            = "prod/networking/terraform.tfstate"
 region         = "us-east-1"
 encrypt        = true
-dynamodb_table = "terraform-locks"
+use_lockfile   = true
 ```
 
 ```bash
@@ -84,7 +85,7 @@ You can also use JSON format:
   "key": "prod/networking/terraform.tfstate",
   "region": "us-east-1",
   "encrypt": true,
-  "dynamodb_table": "terraform-locks"
+  "use_lockfile": true
 }
 ```
 
@@ -101,7 +102,7 @@ You can use a file for base configuration and override specific values with flag
 bucket         = "my-terraform-state"
 region         = "us-east-1"
 encrypt        = true
-dynamodb_table = "terraform-locks"
+use_lockfile   = true
 ```
 
 ```bash
@@ -118,7 +119,7 @@ When the same key appears in both a file and a command-line flag, the command-li
 A good rule of thumb:
 
 - **In the backend block**: Values that identify the backend type and non-sensitive structural parameters
-- **In -backend-config**: Credentials, environment-specific values, and anything sensitive
+- **In -backend-config**: Environment-specific values; prefer environment variables for credentials when your backend supports them
 
 ```hcl
 # backend.tf - committed to version control
@@ -135,7 +136,7 @@ terraform {
 # These are provided at runtime
 terraform init \
   -backend-config="bucket=${STATE_BUCKET}" \
-  -backend-config="dynamodb_table=${LOCK_TABLE}" \
+  -backend-config="use_lockfile=true" \
   -backend-config="encrypt=true"
 ```
 
@@ -191,7 +192,7 @@ jobs:
             -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" \
             -backend-config="key=${{ github.repository }}/terraform.tfstate" \
             -backend-config="region=us-east-1" \
-            -backend-config="dynamodb_table=${{ vars.TF_LOCK_TABLE }}"
+            -backend-config="use_lockfile=true"
 
       - name: Terraform Plan
         run: terraform plan -out=tfplan
@@ -206,7 +207,6 @@ jobs:
 # .gitlab-ci.yml
 variables:
   TF_STATE_BUCKET: "terraform-state-prod"
-  TF_LOCK_TABLE: "terraform-locks"
 
 stages:
   - init
@@ -221,7 +221,7 @@ terraform-init:
         -backend-config="bucket=${TF_STATE_BUCKET}"
         -backend-config="key=${CI_PROJECT_NAME}/terraform.tfstate"
         -backend-config="region=us-east-1"
-        -backend-config="dynamodb_table=${TF_LOCK_TABLE}"
+        -backend-config="use_lockfile=true"
   artifacts:
     paths:
       - .terraform/
@@ -351,4 +351,4 @@ az storage blob list --account-name your-account --container-name tfstate
 
 ## Summary
 
-The `-backend-config` flag is the primary mechanism for supplying dynamic and sensitive backend configuration to Terraform. Whether you pass individual key-value pairs, reference configuration files, or combine both approaches, it keeps your code clean and your secrets safe. For CI/CD pipelines, always use `-input=false` to prevent interactive prompts, and use `-reconfigure` when switching between environments. For more background on partial configuration patterns, see our guide on [backend partial configuration in Terraform](https://oneuptime.com/blog/post/2026-02-23-terraform-backend-partial-configuration/view).
+The `-backend-config` flag is the primary mechanism for supplying dynamic backend configuration to Terraform. Whether you pass individual key-value pairs, reference configuration files, or combine both approaches, it keeps your code clean and reusable. For CI/CD pipelines, always use `-input=false` to prevent interactive prompts, and use `-reconfigure` when switching between environments. For more background on partial configuration patterns, see our guide on [backend partial configuration in Terraform](https://oneuptime.com/blog/post/2026-02-23-terraform-backend-partial-configuration/view).
