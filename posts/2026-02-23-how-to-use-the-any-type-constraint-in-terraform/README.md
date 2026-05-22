@@ -8,7 +8,7 @@ Description: Learn when and how to use the any type constraint in Terraform vari
 
 ---
 
-Terraform's type system is normally strict - you declare a variable as `string`, and Terraform rejects anything that is not a string. But sometimes you need flexibility. The `any` type constraint tells Terraform to accept whatever value is passed in and figure out the type at runtime.
+Terraform's type system is normally strict - you declare a variable as `string`, and Terraform converts or rejects values based on that constraint. But sometimes you need flexibility. The `any` type constraint tells Terraform to accept any valid Terraform value and choose a concrete type from the value that was provided.
 
 Sounds convenient, but it comes with trade-offs. Let's look at how `any` actually works, where it is genuinely useful, and where it causes more problems than it solves.
 
@@ -32,10 +32,10 @@ config = "hello"
 # Passing a number - Terraform infers type as number
 config = 42
 
-# Passing a list - Terraform infers type as list(string)
+# Passing a list-like value - Terraform accepts the sequence of strings
 config = ["a", "b", "c"]
 
-# Passing a map - Terraform infers type as map(string)
+# Passing a map-like value - Terraform accepts the object of strings
 config = {
   key1 = "value1"
   key2 = "value2"
@@ -50,19 +50,19 @@ config = {
 # Inferred type: object({ name = string, port = number, tags = list(string) })
 ```
 
-Once Terraform infers the type, it enforces it throughout the rest of the configuration. You cannot use a string-inferred value as a number without explicit conversion.
+Once Terraform infers the type, expressions that use the value still follow Terraform's normal type conversion rules. For example, primitive values can convert between strings, numbers, and booleans when the target context requires it, but incompatible conversions still fail.
 
 ## any in Collection Types
 
 The most common use of `any` is inside collection type constructors:
 
 ```hcl
-# Accept a map where values can be anything
+# Accept a map whose values share one inferred type
 variable "tags" {
   type = map(any)
 }
 
-# Accept a list of anything
+# Accept a list whose elements share one inferred type
 variable "items" {
   type = list(any)
 }
@@ -85,17 +85,15 @@ ports = {
 }
 # Inferred type: map(number)
 
-# This does NOT work with map(any)
+# This also works because Terraform can convert the values to one type
 mixed = {
   name = "web"    # string
   port = 8080     # number
 }
-# Error: all values must be the same type
-# Terraform tries to convert them all to one type
-# In this case, it would convert 8080 to "8080" (all strings)
+# Terraform converts 8080 to "8080" and selects map(string)
 ```
 
-Wait, actually Terraform will try to find a common type. If it can convert all values to a single type, it will. Numbers convert to strings, so `map(any)` with mixed strings and numbers would result in `map(string)` with numbers converted to their string representation.
+Terraform will try to find a common type. If it can convert all values to a single type, it will. Numbers convert to strings, so `map(any)` with mixed strings and numbers would result in `map(string)` with numbers converted to their string representation.
 
 ```hcl
 variable "metadata" {
@@ -178,13 +176,13 @@ locals {
 
 ### 4. Terraform Module Outputs
 
-Module outputs sometimes use `any` when the output type depends on input:
+Module outputs can also omit an explicit type constraint, or use `any`, when the output type depends on input:
 
 ```hcl
 output "config" {
   value       = local.computed_config
   description = "The computed configuration"
-  # No explicit type needed for outputs, but the value can be any type
+  # No explicit type constraint, so the value can be any type
 }
 ```
 
@@ -236,12 +234,12 @@ variable "database_settings" {
 
 ### 3. When Type Errors Should Be Caught Early
 
-With `any`, type mismatches are discovered at apply time rather than plan time. Explicit types catch them during validation:
+With `any`, type mismatches are discovered later, when Terraform evaluates how the value is used. Explicit types catch them during input validation:
 
 ```hcl
-# With 'any', this typo would not be caught until apply
+# With 'any', this typo is not caught by the variable declaration
 # variable "port" { type = any }
-# port = "eighty"  # No error at plan time
+# port = "eighty"  # Error only when the value is used where a number is required
 
 # With 'number', the error is caught immediately
 variable "port" {
@@ -267,10 +265,10 @@ variable "settings" {
   # All values must be the same type, but that type is flexible
 }
 
-# 3. Fully any - no type checking at all
+# 3. Fully any - no input type constraint
 variable "config" {
   type = any
-  # Accepts literally anything
+  # Accepts any valid Terraform value, then expressions using it may still require a specific type
 }
 ```
 
@@ -314,7 +312,7 @@ variable "environment_tags" {
 
 locals {
   # Merge base tags with environment-specific tags
-  # Both are map(any) because tag values might be strings or numbers
+  # Both are map(any), but the final tags argument still expects string values
   all_tags = merge(var.base_tags, var.environment_tags)
 }
 
