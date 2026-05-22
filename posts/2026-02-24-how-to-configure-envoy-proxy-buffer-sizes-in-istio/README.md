@@ -8,20 +8,20 @@ Description: A practical guide to configuring Envoy proxy buffer sizes in Istio 
 
 ---
 
-Envoy proxy buffers request and response data as it passes through the sidecar. By default, these buffers are sized for typical web traffic, but if your services handle large file uploads, chunked responses, or other data-heavy workloads, you might need to adjust them. Getting buffer sizes wrong can cause requests to fail with mysterious 413 or 503 errors.
+Envoy proxy buffers request and response data as it passes through the sidecar, but it usually streams HTTP bodies instead of reading the whole body before forwarding it. By default, these buffers are sized for typical web traffic, but if your services handle large file uploads, chunked responses, or other data-heavy workloads, you might need to adjust them. Getting buffer sizes wrong can cause requests to fail with mysterious 413 or 503 errors.
 
 ## How Envoy Buffering Works
 
-When a request comes into Envoy, the proxy needs to buffer the data before forwarding it to the upstream service. For HTTP requests, Envoy can operate in two modes:
+When a request comes into Envoy, the proxy may buffer data while forwarding it to the upstream service. For HTTP requests, Envoy can operate in two modes:
 
 1. **Buffered mode** - Envoy reads the entire request body into memory before forwarding it. This allows for things like request inspection and retries but uses more memory.
 2. **Streaming mode** - Envoy forwards data as it arrives, chunk by chunk. This uses less memory but limits what Envoy can do with the data.
 
-Istio's default configuration uses streaming for most traffic, but certain features (like fault injection or request mirroring) require buffering.
+Istio's default configuration uses streaming for most traffic, but certain filters and features, such as the buffer filter or external authorization with request-body checks, require buffering.
 
 ## Default Buffer Limits
 
-The default per-connection buffer limit in Envoy is 1 MiB (1,048,576 bytes). This applies to both the read buffer and the write buffer for each connection. The HTTP/2 initial stream window size defaults to 64 KiB.
+The default per-connection buffer limit in Envoy is 1 MiB (1,048,576 bytes). This is a soft limit for the read and write buffers of each new connection. HTTP/2's protocol default initial stream window is 65,535 bytes, but current Envoy defaults the HTTP/2 initial stream window to 16 MiB and the initial connection window to 24 MiB when these fields are not configured.
 
 These defaults work fine for most API traffic where request and response bodies are relatively small. But if you're dealing with file uploads, large JSON payloads, or binary data transfers, you might need to bump them up.
 
@@ -48,14 +48,14 @@ spec:
     patch:
       operation: MERGE
       value:
-        perConnectionBufferLimitBytes: 10485760  # 10 MiB
+        per_connection_buffer_limit_bytes: 10485760  # 10 MiB
 ```
 
 This increases the per-connection buffer limit to 10 MiB for inbound traffic to the file-upload-service.
 
-## HTTP Connection Manager Buffer Settings
+## HTTP Connection Manager Request Settings
 
-The HTTP Connection Manager (HCM) filter has its own buffer settings that control how HTTP request and response bodies are handled:
+The HTTP Connection Manager (HCM) filter has settings that affect HTTP request handling. These settings do not replace the buffer filter for full request-body buffering, but they are often tuned for large or slow uploads:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -78,9 +78,10 @@ spec:
     patch:
       operation: MERGE
       value:
-        typedConfig:
+        name: envoy.filters.network.http_connection_manager
+        typed_config:
           '@type': type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
-          streamIdleTimeout: 300s
+          stream_idle_timeout: 300s
 ```
 
 ## Adding a Buffer Filter
@@ -111,9 +112,9 @@ spec:
       operation: INSERT_BEFORE
       value:
         name: envoy.filters.http.buffer
-        typedConfig:
+        typed_config:
           '@type': type.googleapis.com/envoy.extensions.filters.http.buffer.v3.Buffer
-          maxRequestBytes: 52428800  # 50 MiB
+          max_request_bytes: 52428800  # 50 MiB
 ```
 
 This inserts a buffer filter that allows request bodies up to 50 MiB. Requests larger than this limit will be rejected with a 413 (Payload Too Large) response.
@@ -141,13 +142,13 @@ spec:
     patch:
       operation: MERGE
       value:
-        typedExtensionProtocolOptions:
+        typed_extension_protocol_options:
           envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
             '@type': type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
-            explicitHttpConfig:
-              http2ProtocolOptions:
-                initialStreamWindowSize: 1048576    # 1 MiB
-                initialConnectionWindowSize: 2097152 # 2 MiB
+            explicit_http_config:
+              http2_protocol_options:
+                initial_stream_window_size: 1048576    # 1 MiB
+                initial_connection_window_size: 2097152 # 2 MiB
 ```
 
 Larger window sizes allow more data to be in-flight, which improves throughput for large transfers but uses more memory.
@@ -197,7 +198,7 @@ spec:
     patch:
       operation: MERGE
       value:
-        perConnectionBufferLimitBytes: 104857600  # 100 MiB
+        per_connection_buffer_limit_bytes: 104857600  # 100 MiB
   # Add buffer filter with 100 MiB limit
   - applyTo: HTTP_FILTER
     match:
@@ -212,9 +213,9 @@ spec:
       operation: INSERT_BEFORE
       value:
         name: envoy.filters.http.buffer
-        typedConfig:
+        typed_config:
           '@type': type.googleapis.com/envoy.extensions.filters.http.buffer.v3.Buffer
-          maxRequestBytes: 104857600  # 100 MiB
+          max_request_bytes: 104857600  # 100 MiB
 ```
 
 Pair this with appropriate sidecar resource limits:
@@ -247,9 +248,9 @@ kubectl exec -it <pod-name> -c istio-proxy -- curl -s localhost:15000/stats | gr
 
 Key metrics:
 
-- `envoy_http_downstream_rq_too_large` - Requests rejected because they exceeded the buffer limit
-- `envoy_cluster_upstream_cx_rx_bytes_total` - Total bytes received from upstream
-- `envoy_cluster_upstream_cx_tx_bytes_total` - Total bytes sent to upstream
+- `http.<stat_prefix>.downstream_rq_too_large` - Requests rejected with 413 because they exceeded the buffer limit
+- `http.<stat_prefix>.downstream_cx_rx_bytes_buffered` - Downstream received bytes currently buffered
+- `http.<stat_prefix>.downstream_cx_tx_bytes_buffered` - Downstream sent bytes currently buffered
 
 ## Verifying Configuration
 
@@ -269,7 +270,7 @@ Then search the dump for your buffer settings.
 
 ## Troubleshooting
 
-**413 Payload Too Large:** Your request body exceeds the buffer limit. Increase `maxRequestBytes` in the buffer filter or `perConnectionBufferLimitBytes` on the listener.
+**413 Payload Too Large:** Your request body exceeds the buffer limit. Increase `max_request_bytes` in the buffer filter or `per_connection_buffer_limit_bytes` on the listener.
 
 **503 with upstream connection overflow:** The destination's connection pool might be full. This isn't a buffer issue per se, but large buffered requests hold connections longer, which can exhaust connection pools. Check your DestinationRule connection pool settings.
 
