@@ -295,7 +295,13 @@ output "config_summary" {
 # Cannot convert complex types
 # tostring(["a", "b"])     # Error! Use jsonencode for lists
 # tostring({ a = "b" })    # Error! Use jsonencode for maps
-# tostring(null)            # Error!
+```
+
+Null is allowed, but it stays null rather than becoming the string `"null"`:
+
+```hcl
+> tostring(null)
+tostring(null)
 ```
 
 For complex types, use `jsonencode` instead:
