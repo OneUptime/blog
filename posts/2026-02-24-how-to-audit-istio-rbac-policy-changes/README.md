@@ -14,7 +14,7 @@ Auditing Istio RBAC policy changes involves two layers: tracking who creates and
 
 ## Enabling Kubernetes Audit Logging
 
-Kubernetes audit logs record every API request, including who made it, what they changed, and when. Configure an audit policy that captures Istio resource changes:
+Kubernetes audit logs can record API requests, including who made them, what they changed, and when. Configure an audit policy that captures Istio resource changes:
 
 ```yaml
 apiVersion: audit.k8s.io/v1
@@ -75,11 +75,8 @@ rules:
 For managed Kubernetes services, enable audit logging through the cloud provider:
 
 ```bash
-# GKE
-
-gcloud container clusters update my-cluster \
-  --enable-master-authorized-networks \
-  --logging=SYSTEM,WORKLOAD,API_SERVER
+# GKE - Admin Activity audit logs are enabled by default.
+# Enable Data Access audit logs in Cloud Audit Logs if you need read-level events.
 
 # EKS - audit logging is enabled through the EKS console or API
 aws eks update-cluster-config \
@@ -153,15 +150,11 @@ spec:
         - name: watcher
           image: bitnami/kubectl:latest
           command:
-            - /bin/bash
+            - /bin/sh
             - -c
             - |
               echo "Starting Istio resource watcher..."
-              kubectl get virtualservices,destinationrules,authorizationpolicies,peerauthentications,gateways,serviceentries --all-namespaces --watch -o json | while read -r line; do
-                KIND=$(echo "$line" | jq -r '.kind // empty')
-                NAME=$(echo "$line" | jq -r '.metadata.name // empty')
-                NS=$(echo "$line" | jq -r '.metadata.namespace // empty')
-                RV=$(echo "$line" | jq -r '.metadata.resourceVersion // empty')
+              kubectl get virtualservices,destinationrules,authorizationpolicies,peerauthentications,gateways,serviceentries --all-namespaces --watch -o custom-columns=NAMESPACE:.metadata.namespace,KIND:.kind,NAME:.metadata.name,RESOURCE_VERSION:.metadata.resourceVersion --no-headers | while read -r NS KIND NAME RV; do
                 if [ -n "$KIND" ] && [ -n "$NAME" ]; then
                   echo "{\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"kind\":\"$KIND\",\"name\":\"$NAME\",\"namespace\":\"$NS\",\"resourceVersion\":\"$RV\"}"
                 fi
@@ -174,6 +167,18 @@ metadata:
   namespace: monitoring
 ---
 apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: istio-audit-watcher
+rules:
+  - apiGroups: ["networking.istio.io"]
+    resources: ["virtualservices", "destinationrules", "gateways", "serviceentries"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["security.istio.io"]
+    resources: ["authorizationpolicies", "peerauthentications"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   name: istio-audit-watcher
@@ -183,7 +188,7 @@ subjects:
     namespace: monitoring
 roleRef:
   kind: ClusterRole
-  name: istio-readonly
+  name: istio-audit-watcher
   apiGroup: rbac.authorization.k8s.io
 ```
 
@@ -196,7 +201,7 @@ The best audit trail comes from requiring all Istio configuration changes to go 
 - What changed (git diff)
 - Why it changed (commit message and PR description)
 
-Enforce this with a policy that prevents direct `kubectl apply`:
+Enforce this with a policy that requires Istio resources to be labeled as managed by your GitOps controller:
 
 ```yaml
 apiVersion: templates.gatekeeper.sh/v1
@@ -221,14 +226,16 @@ spec:
 
         violation[{"msg": msg}] {
           input.review.object.apiVersion == "networking.istio.io/v1"
-          not input.review.object.metadata.labels["app.kubernetes.io/managed-by"]
-          msg := "Istio resources must have a app.kubernetes.io/managed-by label"
+          labels := object.get(input.review.object.metadata, "labels", {})
+          object.get(labels, "app.kubernetes.io/managed-by", "") != input.parameters.managedBy
+          msg := sprintf("Istio resources must have app.kubernetes.io/managed-by=%v", [input.parameters.managedBy])
         }
 
         violation[{"msg": msg}] {
           input.review.object.apiVersion == "security.istio.io/v1"
-          not input.review.object.metadata.labels["app.kubernetes.io/managed-by"]
-          msg := "Istio resources must have a app.kubernetes.io/managed-by label"
+          labels := object.get(input.review.object.metadata, "labels", {})
+          object.get(labels, "app.kubernetes.io/managed-by", "") != input.parameters.managedBy
+          msg := sprintf("Istio resources must have app.kubernetes.io/managed-by=%v", [input.parameters.managedBy])
         }
 ```
 
@@ -331,7 +338,7 @@ For compliance frameworks like SOC 2 or PCI-DSS, you need to demonstrate:
 Generate a compliance summary:
 
 ```bash
-# List all users/groups with write access to Istio security resources
+# List bindings that reference Istio-named roles as a starting point for access review
 kubectl get clusterrolebindings,rolebindings --all-namespaces -o json | \
   jq '.items[] | select(.roleRef.name | test("istio")) |
   {binding: .metadata.name, namespace: .metadata.namespace, subjects: .subjects, role: .roleRef.name}'
