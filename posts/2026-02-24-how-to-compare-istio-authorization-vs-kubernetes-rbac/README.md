@@ -90,7 +90,7 @@ spec:
 
 This policy says: only the frontend service account (identified by its SPIFFE identity) can make GET or POST requests to paths starting with `/api/` on the api-service.
 
-AuthorizationPolicy operates at the Envoy sidecar level. When a request arrives, the sidecar checks it against the applicable policies before forwarding it to the application.
+AuthorizationPolicy is enforced by Istio's Envoy proxies, such as sidecars, gateways, or waypoints depending on the data plane mode. When a request arrives, the proxy checks it against the applicable policies before forwarding it to the application.
 
 ## The Key Difference Illustrated
 
@@ -111,9 +111,9 @@ You need both. RBAC prevents unauthorized API operations. AuthorizationPolicy pr
 | What it protects | Kubernetes API access | Service-to-service traffic |
 | Identity | Users, Groups, ServiceAccounts | SPIFFE identity, namespaces, IPs |
 | Granularity | API resources + verbs | HTTP methods, paths, headers, ports |
-| Enforcement point | API server | Envoy sidecar proxy |
+| Enforcement point | API server | Istio Envoy proxy |
 | Scope | Namespace or cluster | Namespace or mesh-wide |
-| Default behavior | Allow all (no policies = open) | Allow all (no policies = open) |
+| Default behavior | Deny actions that are not explicitly allowed, aside from built-in default roles | Allow all if no ALLOW policies apply |
 | Deny capability | No (only allow) | Yes (DENY, ALLOW, CUSTOM actions) |
 
 ## RBAC Cannot Replace AuthorizationPolicy
