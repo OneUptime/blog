@@ -79,7 +79,7 @@ module "vpc" {
   private_subnets = ["10.0.1.0/24", "10.0.2.0/24"]
   public_subnets  = ["10.0.101.0/24", "10.0.102.0/24"]
 
-  # New required variable in v5
+  # Optional setting to preserve the existing NAT gateway behavior
   enable_nat_gateway = true
 }
 ```
@@ -96,9 +96,9 @@ terraform plan -out=module-upgrade.tfplan
 
 ## Step 4: Handle Resource Moves
 
-If the module renamed internal resources, you may see destroy and create operations. Use moved blocks to handle these:
+If the module renamed internal resources, you may see destroy and create operations. Module authors can use moved blocks to handle these; if the module does not include the needed moved blocks, you may need to move state manually:
 
-```hcl
+```bash
 # If the module provides moved blocks, they are applied automatically
 # If not, you may need to handle state moves manually
 
@@ -143,13 +143,13 @@ If module outputs changed, update all references:
 
 ```hcl
 # Before - using old output name
-resource "aws_instance" "web" {
-  subnet_id = module.vpc.private_subnet_ids[0]  # Old output name
+locals {
+  app_subnet_ids = module.network.private_subnet_ids
 }
 
 # After - using new output name
-resource "aws_instance" "web" {
-  subnet_id = module.vpc.private_subnets[0]  # New output name
+locals {
+  app_subnet_ids = module.network.private_subnets
 }
 ```
 
@@ -172,7 +172,7 @@ version = "3.19.0"  # Latest 3.x
 version = "4.0.0"
 
 # Step 3: Upgrade to latest patch of that major version
-version = "4.16.0"  # Latest 4.x
+version = "4.0.2"  # Latest 4.x
 
 # Step 4: Upgrade to next major version
 version = "5.0.0"
@@ -180,11 +180,11 @@ version = "5.0.0"
 
 ## Testing Module Upgrades
 
-Use a separate workspace or state to test:
+Use a non-production workspace or state that already manages equivalent infrastructure to test:
 
 ```bash
-# Create a test workspace
-terraform workspace new module-upgrade-test
+# Switch to a non-production workspace with existing state
+terraform workspace select staging
 
 # Run plan with the new module version
 terraform plan
@@ -195,9 +195,6 @@ terraform workspace select default
 # Apply the upgrade
 terraform plan
 terraform apply
-
-# Clean up test workspace
-terraform workspace delete module-upgrade-test
 ```
 
 ## Handling Private Module Upgrades
