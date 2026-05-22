@@ -12,7 +12,7 @@ Terraform's sensitive value system is designed to protect secrets from being dis
 
 ## What Does nonsensitive Do?
 
-The `nonsensitive` function takes a value that has been marked as sensitive and returns the same value without the sensitive marking. After calling `nonsensitive`, the value will appear in plan output, logs, and state in plaintext.
+The `nonsensitive` function takes a value that has been marked as sensitive and returns the same value without the sensitive marking. After calling `nonsensitive`, the value can appear in Terraform CLI output, such as plan and output command output, in plaintext. Terraform also records output values in state regardless of sensitivity, so protect state separately.
 
 ```hcl
 variable "database_password" {
@@ -65,7 +65,8 @@ output "api_key_configured" {
   value = nonsensitive(var.api_key != "")
 }
 
-# A hash prefix for identification (not reversible) can be safe
+# A hash prefix for identification can be safe if the original value
+# has enough entropy for your threat model
 output "api_key_prefix" {
   value = nonsensitive(substr(sha256(var.api_key), 0, 8))
 }
