@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, Testing, State Management, Infrastructure as Code, DevOps
 
-Description: Learn how to safely test Terraform state operations like imports, moves, and replacements before running them against production infrastructure.
+Description: Learn how to safely test Terraform state operations like imports, moves, and removals before running them against production infrastructure.
 
 ---
 
@@ -87,6 +87,10 @@ elif [ $EXIT_CODE -eq 2 ]; then
     echo "$PLAN_OUTPUT"
     echo ""
     echo "This usually means configuration does not match the imported resource."
+else
+    echo "ERROR: terraform plan failed."
+    echo "$PLAN_OUTPUT"
+    exit 1
 fi
 
 # Option to rollback
@@ -162,6 +166,13 @@ if [ $EXIT_CODE -eq 0 ]; then
     echo "PASS: State move successful. No resource changes needed."
 elif [ $EXIT_CODE -eq 2 ]; then
     echo "FAIL: State move caused unexpected changes!"
+    echo "$PLAN_OUTPUT"
+    echo ""
+    echo "Rolling back..."
+    cp terraform.tfstate.pre-move terraform.tfstate
+    exit 1
+else
+    echo "ERROR: terraform plan failed."
     echo "$PLAN_OUTPUT"
     echo ""
     echo "Rolling back..."
@@ -289,6 +300,7 @@ Terraform's test framework supports testing state-related scenarios:
 # Verify that moved blocks work correctly
 run "create_original" {
   command = apply
+  state_key = "refactor"
 
   module {
     source = "./fixtures/before-refactor"
@@ -297,6 +309,7 @@ run "create_original" {
 
 run "apply_refactored" {
   command = apply
+  state_key = "refactor"
 
   # The moved blocks in this module should prevent recreation
   module {
@@ -330,7 +343,7 @@ Watch out for these when testing state operations:
 
 - **Count/for_each index changes**: Moving from `count` to `for_each` requires careful state moves for each instance
 - **Module nesting**: Moving resources into or out of modules changes the address format completely
-- **Provider aliases**: State moves between providers need the `-provider` flag
+- **Provider aliases**: `terraform state mv` does not change provider bindings; use matching provider configuration, or `terraform state replace-provider` when changing provider source addresses
 - **Workspaces**: Make sure you are operating on the correct workspace
 
 State operations are powerful but unforgiving. Testing them first - whether in a sandbox environment, with plan mode, or through automated tests - is the only way to build confidence before modifying production state.
