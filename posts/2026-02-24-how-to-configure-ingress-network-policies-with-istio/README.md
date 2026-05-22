@@ -142,7 +142,7 @@ spec:
         paths: ["/v1/*", "/health"]
 ```
 
-This allows anyone to access `/v1/*` and `/health`, but restricts `/admin/*` to specific IP ranges. Note that for IP-based rules to work correctly, you need to make sure the original client IP is preserved. If your ingress gateway is behind a load balancer, configure `externalTrafficPolicy: Local` on the gateway service or use proxy protocol.
+This allows anyone to access `/v1/*` and `/health`, but restricts `/admin/*` to specific IP ranges. Note that for IP-based rules to work correctly, you need to make sure the original client IP is preserved. If your ingress gateway is behind a load balancer and you want to match the packet source address with `ipBlocks`, configure `externalTrafficPolicy: Local` on the gateway service. If you use the `X-Forwarded-For` header or proxy protocol instead, use `remoteIpBlocks` in the authorization policy and configure trusted proxies for the gateway.
 
 ```yaml
 apiVersion: v1
@@ -239,6 +239,16 @@ spec:
               max_tokens: 1000
               tokens_per_fill: 1000
               fill_interval: 60s
+            filter_enabled:
+              runtime_key: local_rate_limit_enabled
+              default_value:
+                numerator: 100
+                denominator: HUNDRED
+            filter_enforced:
+              runtime_key: local_rate_limit_enforced
+              default_value:
+                numerator: 100
+                denominator: HUNDRED
 ```
 
 ## Configuring CORS at the Gateway
@@ -290,7 +300,7 @@ Keep an eye on what's coming through your ingress:
 kubectl logs -l istio=ingressgateway -n istio-system -f
 
 # Query Prometheus for ingress metrics
-istio_requests_total{reporter="destination",destination_service_name="istio-ingressgateway"}
+istio_requests_total{reporter="source",source_workload="istio-ingressgateway"}
 ```
 
 Set up dashboards for key ingress metrics:
