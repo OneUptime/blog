@@ -191,15 +191,25 @@ For nested modules, chain the module addresses:
 ```hcl
 # Root configuration calls the network module
 module "network" {
-  source = "./modules/network"
+  source     = "./modules/network"
+  cidr_block = "10.0.0.0/16"
 }
 
 # modules/network/main.tf calls the vpc module
+variable "cidr_block" {
+  type = string
+}
+
 module "vpc" {
-  source = "./modules/vpc"
+  source     = "./modules/vpc"
+  cidr_block = var.cidr_block
 }
 
 # modules/vpc/main.tf defines the VPC resource
+variable "cidr_block" {
+  type = string
+}
+
 resource "aws_vpc" "main" {
   cidr_block = var.cidr_block
 }
@@ -240,7 +250,7 @@ moved {
 }
 ```
 
-Run `terraform plan` to see the moves, then `terraform apply` to execute them. After applying, you can remove the moved blocks.
+Run `terraform plan` to see the moves, then `terraform apply` to execute them. Keep the moved blocks for shared or long-lived modules so older configurations still have an upgrade path; only remove them after every relevant workspace has applied the move.
 
 ## Handling Module Variables During Import
 
