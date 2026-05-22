@@ -197,7 +197,7 @@ spec:
     - providers:
         - name: envoy
       filter:
-        expression: "response.duration > duration('1s')"
+        expression: "request.duration > duration('1s')"
 ```
 
 ### Log Only Server Errors on Specific Paths
@@ -300,7 +300,7 @@ The filter expression uses CEL with these available attributes:
 | Expression | Type | Description |
 |------------|------|-------------|
 | `response.code` | int | HTTP response code |
-| `response.duration` | duration | Request duration |
+| `request.duration` | duration | Request duration |
 | `response.size` | int | Response body size |
 | `request.url_path` | string | Request URL path |
 | `request.host` | string | Request host header |
@@ -314,7 +314,7 @@ You can combine these with standard CEL operators:
 # Log errors or slow requests
 
 filter:
-  expression: "response.code >= 500 || response.duration > duration('2s')"
+  expression: "response.code >= 500 || request.duration > duration('2s')"
 
 # Log non-health-check requests that failed
 filter:
@@ -333,7 +333,7 @@ kubectl get telemetry -A
 kubectl describe telemetry mesh-default -n istio-system
 
 # Verify the Envoy configuration was pushed
-istioctl proxy-config log deploy/my-service --level debug
+istioctl proxy-config listeners deploy/my-service -o json | grep -i access_log
 kubectl logs deploy/my-service -c istio-proxy | head -20
 ```
 
@@ -345,6 +345,6 @@ When multiple Telemetry resources apply to the same workload:
 2. Namespace-level takes second priority
 3. Mesh-wide (root namespace) takes lowest priority
 
-If there are multiple Telemetry resources at the same scope level in the same namespace, the behavior is undefined. Avoid creating conflicting resources at the same level.
+For any namespace, it is only valid to have one selector-less Telemetry resource. It is also invalid for multiple selector-based Telemetry resources to select the same workload. In those cases, behavior is undefined. Avoid creating conflicting resources at the same level.
 
 The Telemetry API gives you much more control than the old mesh config approach. The combination of scope levels, custom providers, and CEL-based filtering means you can build an access logging strategy that captures exactly what you need without drowning in log volume.
