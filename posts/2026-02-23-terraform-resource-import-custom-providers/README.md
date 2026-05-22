@@ -260,6 +260,12 @@ func TestAccFirewallRule_Import(t *testing.T) {
         Steps: []resource.TestStep{
             {
                 Config: `
+                    resource "yourservice_server" "test" {
+                        name   = "import-test-server"
+                        region = "us-east-1"
+                        size   = "medium"
+                    }
+
                     resource "yourservice_firewall_rule" "test" {
                         server_id = yourservice_server.test.id
                         port      = 443
@@ -303,17 +309,14 @@ func (r *DatabaseResource) ImportState(ctx context.Context, req resource.ImportS
 }
 ```
 
-In the schema, mark write-only attributes appropriately.
+In the schema, mark write-only attributes appropriately. Write-only arguments are supported in Terraform 1.11 and later.
 
 ```go
 "password": schema.StringAttribute{
     Description: "Database admin password. Cannot be read after creation.",
     Required:    true,
     Sensitive:   true,
-    PlanModifiers: []planmodifier.String{
-        // Do not show a diff if the value has not changed in config
-        stringplanmodifier.UseStateForUnknown(),
-    },
+    WriteOnly:   true,
 },
 ```
 
