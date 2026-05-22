@@ -21,7 +21,7 @@ The `file` function takes a file path as its argument and returns the file's con
 file("./scripts/startup.sh")
 ```
 
-The path is relative to the root module directory (where you run `terraform plan`), unless you use `path.module`, `path.root`, or an absolute path.
+A relative path is resolved relative to Terraform's current working directory, which is typically the root module directory where you run `terraform plan`. Use `path.module`, `path.root`, or an absolute path when you need to be explicit.
 
 ## Basic Usage
 
@@ -112,7 +112,7 @@ A common pattern is reading SSH public keys from local files:
 resource "aws_key_pair" "deploy" {
   key_name   = "deploy-key"
   # Read the public key from the local .ssh directory
-  public_key = file("~/.ssh/id_rsa.pub")
+  public_key = file(pathexpand("~/.ssh/id_rsa.pub"))
 }
 
 # Or from a project-local file
@@ -206,10 +206,8 @@ resource "aws_lambda_function" "processor" {
   function_name = "data-processor"
   role          = aws_iam_role.lambda.arn
   handler       = "index.handler"
-  runtime       = "python3.9"
-
-  # Use the hash to trigger updates when the script changes
-  source_code_hash = local.script_hash
+  runtime       = "python3.12"
+  filename      = "${path.module}/lambda/function.zip"
 
   environment {
     variables = {
