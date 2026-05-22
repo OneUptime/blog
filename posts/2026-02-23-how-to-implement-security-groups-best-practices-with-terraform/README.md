@@ -47,7 +47,7 @@ resource "aws_security_group" "web" {
     ManagedBy   = "terraform"
   }
 
-  # Prevent Terraform from reverting manual emergency changes
+  # Help Terraform replace an attached security group in the right order
   lifecycle {
     create_before_destroy = true
   }
@@ -173,33 +173,33 @@ resource "aws_vpc_security_group_ingress_rule" "db_from_app" {
 
 ## Restrict Egress Rules
 
-The default security group allows all outbound traffic. In a secure environment, you should restrict egress as well:
+Security groups allow all outbound traffic when they are first created in AWS, and return traffic for allowed inbound connections is automatically allowed because security groups are stateful. In a secure environment, you should restrict egress to the outbound connections the resource actually needs:
 
 ```hcl
-# Restrict outbound traffic from database tier
-resource "aws_vpc_security_group_egress_rule" "db_to_app_response" {
-  security_group_id            = aws_security_group.database.id
-  description                  = "Allow responses back to app tier"
-  from_port                    = 1024
-  to_port                      = 65535
-  ip_protocol                  = "tcp"
-  referenced_security_group_id = aws_security_group.app.id
-}
-
-# Allow database to reach AWS services via VPC endpoints
+# Allow database to reach AWS services via interface VPC endpoints
 resource "aws_vpc_security_group_egress_rule" "db_to_vpc_endpoints" {
   security_group_id            = aws_security_group.database.id
-  description                  = "Allow HTTPS to VPC endpoints"
+  description                  = "Allow HTTPS to interface VPC endpoints"
   from_port                    = 443
   to_port                      = 443
   ip_protocol                  = "tcp"
   referenced_security_group_id = aws_security_group.vpc_endpoints.id
 }
+
+# Allow database to reach a controlled egress proxy for updates
+resource "aws_vpc_security_group_egress_rule" "db_to_egress_proxy" {
+  security_group_id            = aws_security_group.database.id
+  description                  = "Allow HTTPS to egress proxy"
+  from_port                    = 443
+  to_port                      = 443
+  ip_protocol                  = "tcp"
+  referenced_security_group_id = aws_security_group.egress_proxy.id
+}
 ```
 
-## Use Dynamic Blocks for Variable Rule Sets
+## Use for_each for Variable Rule Sets
 
-When you need to create rules from a variable list, dynamic blocks keep things clean:
+When you need to create rules from a variable list, `for_each` keeps things clean:
 
 ```hcl
 variable "allowed_ssh_cidrs" {
