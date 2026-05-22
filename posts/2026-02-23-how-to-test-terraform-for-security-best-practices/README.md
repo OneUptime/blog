@@ -68,7 +68,7 @@ resource "aws_security_group_rule" "good_ssh" {
 
 ## Custom Security Tests with Terraform's Native Framework
 
-For organization-specific security rules, write custom tests.
+For organization-specific security rules, write custom tests against the resources in your module.
 
 ```hcl
 # tests/security.tftest.hcl
@@ -82,13 +82,10 @@ run "no_unrestricted_ingress" {
   command = plan
 
   assert {
-    condition = alltrue([
-      for rc in plan.resource_changes : true
-      if rc.type != "aws_security_group_rule" || !(
-        rc.change.after.type == "ingress" &&
-        contains(coalesce(rc.change.after.cidr_blocks, []), "0.0.0.0/0")
-      )
-    ])
+    condition = !(
+      aws_security_group_rule.ssh.type == "ingress" &&
+      contains(coalesce(aws_security_group_rule.ssh.cidr_blocks, []), "0.0.0.0/0")
+    )
     error_message = "No security group rules should allow 0.0.0.0/0 ingress"
   }
 }
@@ -98,13 +95,11 @@ run "no_wildcard_iam_actions" {
   command = plan
 
   assert {
-    condition = alltrue([
-      for rc in plan.resource_changes : true
-      if rc.type != "aws_iam_policy" || !contains(
-        jsondecode(rc.change.after.policy).Statement[*].Action,
-        "*"
-      )
-    ])
+    condition = alltrue(flatten([
+      for stmt in jsondecode(aws_iam_policy.app.policy).Statement : [
+        for action in try(tolist(stmt.Action), [stmt.Action]) : action != "*"
+      ]
+    ]))
     error_message = "IAM policies must not use wildcard (*) actions"
   }
 }
@@ -114,11 +109,7 @@ run "imdsv2_required" {
   command = plan
 
   assert {
-    condition = alltrue([
-      for rc in plan.resource_changes :
-      rc.change.after.metadata_options[0].http_tokens == "required"
-      if rc.type == "aws_instance"
-    ])
+    condition = aws_instance.app.metadata_options[0].http_tokens == "required"
     error_message = "All EC2 instances must require IMDSv2 (http_tokens = required)"
   }
 }
@@ -231,18 +222,13 @@ variables {
   environment = "production"
 }
 
-# No resources in the default VPC
-run "no_default_vpc_usage" {
+# No instances should receive public IP addresses
+run "no_public_instance_ip" {
   command = plan
 
   assert {
-    condition = alltrue([
-      for rc in plan.resource_changes :
-      !contains(keys(rc.change.after), "vpc_id") ||
-      rc.change.after.vpc_id != "default"
-      if contains(["aws_instance", "aws_db_instance", "aws_lb"], rc.type)
-    ])
-    error_message = "No resources should use the default VPC"
+    condition     = aws_instance.app.associate_public_ip_address != true
+    error_message = "Instances should not be launched with public IP addresses"
   }
 }
 
@@ -250,12 +236,9 @@ run "no_default_vpc_usage" {
 run "vpc_flow_logs_enabled" {
   command = plan
 
-  # Check that for every VPC, there is a flow log
+  # Check that the main VPC has a flow log
   assert {
-    condition = length([
-      for rc in plan.resource_changes : rc
-      if rc.type == "aws_flow_log"
-    ]) > 0
+    condition     = aws_flow_log.main.vpc_id == aws_vpc.main.id
     error_message = "VPC flow logs must be enabled"
   }
 }
@@ -282,7 +265,7 @@ jobs:
 
       # Static security scan with Trivy
       - name: Trivy Security Scan
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: 'config'
           scan-ref: '.'
@@ -293,7 +276,7 @@ jobs:
 
       # Upload results to GitHub Security tab
       - name: Upload Trivy results
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: 'trivy-results.sarif'
@@ -328,7 +311,7 @@ Not every security finding is actionable. Some resources legitimately need publi
 ```hcl
 # This ALB is intentionally public-facing
 resource "aws_lb" "public" {
-  #checkov:skip=CKV_AWS_91:This ALB serves public traffic
+  #checkov:skip=CKV2_AWS_28:WAF is attached by the edge module
   #trivy:ignore:AVD-AWS-0053
 
   name               = "public-alb"
