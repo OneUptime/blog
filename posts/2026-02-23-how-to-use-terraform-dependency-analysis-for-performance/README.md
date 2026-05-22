@@ -21,7 +21,7 @@ resource "aws_vpc" "main" {
   cidr_block = "10.0.0.0/16"
 }
 
-# Implicit dependency on aws_vpc.main through subnet_id reference
+# Implicit dependency on aws_vpc.main through vpc_id reference
 
 resource "aws_subnet" "private" {
   vpc_id     = aws_vpc.main.id
@@ -62,8 +62,8 @@ terraform graph -type=apply > apply-graph.dot
 For large projects, the full graph is too complex to read visually. Filter it:
 
 ```bash
-# Filter to show only a specific resource and its dependencies
-terraform graph | grep -E "(aws_instance|aws_security_group|aws_subnet)" > filtered-graph.dot
+# Filter to show only selected resources while preserving DOT syntax
+terraform graph | awk '/digraph|{/{print} /aws_instance|aws_security_group|aws_subnet/{print} /}/{print}' > filtered-graph.dot
 ```
 
 ## Identifying Serial Bottlenecks
@@ -73,7 +73,7 @@ The longest chain of dependencies in your graph determines the minimum execution
 Look for chains like this:
 
 ```text
-aws_vpc -> aws_subnet -> aws_security_group -> aws_instance -> aws_eip
+aws_vpc -> aws_subnet -> aws_instance -> aws_eip -> aws_route53_record
 ```
 
 Each resource must complete before the next can start. If each takes 30 seconds, the chain takes 2.5 minutes regardless of parallelism.
@@ -117,18 +117,21 @@ resource "aws_cloudwatch_log_group" "app" {
 
 ### Avoiding Whole-Module Dependencies
 
-When you pass a module output to another module, the entire second module depends on the first:
+When you pass a module output to another module, Terraform can track the dependency through that specific output. Avoid adding a module-level `depends_on` unless every resource in the second module really must wait for the first module:
 
 ```hcl
-# This makes ALL resources in module.compute depend on ALL resources in module.networking
 module "compute" {
   source    = "./modules/compute"
-  vpc_id    = module.networking.vpc_id  # Creates dependency on entire networking module
+  vpc_id    = module.networking.vpc_id
   subnet_id = module.networking.subnet_id
+
+  # Avoid this unless the whole compute module has a hidden dependency
+  # on the whole networking module.
+  # depends_on = [module.networking]
 }
 ```
 
-If the networking module has 50 resources, the compute module waits for all 50 to complete, even though it only needs the VPC and subnet. Consider passing specific values instead of module outputs where possible, or restructuring modules to have smaller outputs.
+If the networking module has 50 resources, a module-level `depends_on` can force the compute module to wait for all of them, even though it only needs the VPC and subnet. Prefer passing the specific output values that downstream resources need, or restructuring modules to expose smaller outputs.
 
 ## Analyzing Dependency Depth
 
@@ -223,7 +226,7 @@ for group_name, group_nodes in groups.items():
 
 ## Optimizing Module Dependencies
 
-Modules introduce implicit dependency boundaries. All resources in a module are treated as a single unit for dependency purposes when referenced by other modules.
+Module inputs and outputs participate in the dependency graph. Terraform can usually infer dependencies from the specific output values that downstream resources use, while broad module-level dependencies make plans more conservative.
 
 To improve parallelism, make module interfaces narrow:
 
@@ -238,8 +241,8 @@ output "private_subnet_ids" {
   value = aws_subnet.private[*].id
 }
 
-# Do not output things that no one uses
-# This reduces the dependency surface
+# Do not add output dependencies that no one needs
+# This keeps the dependency surface narrow
 ```
 
 ## Checking for Circular Dependencies
@@ -250,8 +253,8 @@ Terraform refuses to plan if it detects circular dependencies. But near-circular
 # Check for potential issues
 terraform validate
 
-# If you get circular dependency errors, use terraform graph to find the cycle
-terraform graph | grep -E "->.*->.*->"
+# If you get circular dependency errors, ask Terraform to highlight cycles
+terraform graph -type=plan -draw-cycles | dot -Tpng > cycles.png
 ```
 
 ## Summary
