@@ -24,10 +24,10 @@ Verify the installation:
 kubectl get pods -n litmus
 ```
 
-You should see the litmus operator pods running. Also install the generic chaos experiments:
+You should see the litmus operator pods running. Also install the Kubernetes chaos experiments:
 
 ```bash
-kubectl apply -f https://hub.litmuschaos.io/api/chaos/3.0.0?file=charts/generic/experiments.yaml -n litmus
+kubectl apply -f "https://hub.litmuschaos.io/api/chaos/3.0.0?file=faults/kubernetes/experiments.yaml" -n litmus
 ```
 
 ## Setting Up the Test Environment
@@ -95,6 +95,7 @@ metadata:
   name: ratings-pod-delete
   namespace: litmus-istio-test
 spec:
+  engineState: "active"
   appinfo:
     appns: litmus-istio-test
     applabel: app=ratings
@@ -133,17 +134,32 @@ rules:
   resources: ["pods", "events"]
   verbs: ["create", "delete", "get", "list", "patch", "update", "deletecollection"]
 - apiGroups: [""]
-  resources: ["pods/exec", "pods/log"]
+  resources: ["configmaps"]
+  verbs: ["get", "list"]
+- apiGroups: [""]
+  resources: ["pods/exec"]
   verbs: ["create", "get", "list"]
+- apiGroups: [""]
+  resources: ["pods/log"]
+  verbs: ["get", "list", "watch"]
 - apiGroups: ["apps"]
-  resources: ["deployments", "replicasets"]
+  resources: ["deployments", "statefulsets", "replicasets", "daemonsets"]
+  verbs: ["get", "list"]
+- apiGroups: ["apps.openshift.io"]
+  resources: ["deploymentconfigs"]
+  verbs: ["get", "list"]
+- apiGroups: [""]
+  resources: ["replicationcontrollers"]
+  verbs: ["get", "list"]
+- apiGroups: ["argoproj.io"]
+  resources: ["rollouts"]
   verbs: ["get", "list"]
 - apiGroups: ["batch"]
   resources: ["jobs"]
   verbs: ["create", "get", "list", "delete", "deletecollection"]
 - apiGroups: ["litmuschaos.io"]
   resources: ["chaosengines", "chaosexperiments", "chaosresults"]
-  verbs: ["create", "get", "list", "patch", "update"]
+  verbs: ["create", "get", "list", "patch", "update", "delete"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -211,6 +227,7 @@ metadata:
   name: reviews-cpu-hog
   namespace: litmus-istio-test
 spec:
+  engineState: "active"
   appinfo:
     appns: litmus-istio-test
     applabel: app=reviews
@@ -268,6 +285,7 @@ metadata:
   name: ratings-network-loss
   namespace: litmus-istio-test
 spec:
+  engineState: "active"
   appinfo:
     appns: litmus-istio-test
     applabel: app=ratings
@@ -314,11 +332,11 @@ kubectl get chaosresult -n litmus-istio-test
 kubectl describe chaosresult ratings-pod-delete-pod-delete -n litmus-istio-test
 ```
 
-The result shows whether the experiment passed or failed based on the steady state hypothesis you defined.
+The result shows whether the experiment passed or failed based on the experiment verdict and any probes you defined.
 
-## Creating a Litmus Workflow with Istio Validation
+## Creating a Litmus ChaosEngine with Istio Validation
 
-You can create Litmus workflows that include validation steps checking Istio metrics:
+You can create Litmus ChaosEngine resources that include validation steps checking service health through the mesh:
 
 ```yaml
 apiVersion: litmuschaos.io/v1alpha1
@@ -327,6 +345,7 @@ metadata:
   name: full-test
   namespace: litmus-istio-test
 spec:
+  engineState: "active"
   appinfo:
     appns: litmus-istio-test
     applabel: app=ratings
@@ -346,8 +365,8 @@ spec:
               responseCode: "200"
         mode: Continuous
         runProperties:
-          probeTimeout: 5s
-          interval: 5s
+          probeTimeout: 5
+          interval: 5
           retry: 3
       components:
         env:
