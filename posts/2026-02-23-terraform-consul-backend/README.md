@@ -15,7 +15,7 @@ HashiCorp Consul is a service mesh and key-value store that also works as a Terr
 Consul brings a few advantages as a state backend:
 
 - Built-in state locking through Consul sessions
-- Highly available with multi-datacenter replication
+- Highly available within a datacenter, with multi-datacenter federation support
 - ACL system for fine-grained access control
 - Already present in many HashiCorp-heavy environments
 - Works well in air-gapped or on-premises deployments
@@ -130,7 +130,7 @@ consul acl token create \
 
 ## State Locking
 
-Consul provides state locking through its session mechanism. This is enabled by default. When Terraform starts a write operation, it creates a Consul session and acquires a lock on the key. Other Terraform processes see the lock and wait or fail.
+Consul provides state locking through its session mechanism. This is enabled by default. When Terraform starts a write operation, it creates a Consul session and acquires a lock at `$path/.lock`. Other Terraform processes see the lock and wait or fail.
 
 You can disable locking if needed (though this is not recommended):
 
@@ -146,14 +146,14 @@ terraform {
 }
 ```
 
-To see active locks, check the Consul sessions:
+To see active locks, inspect the lock key:
 
 ```bash
-# List active sessions
-consul session list
+# Show lock metadata for this backend
+consul kv get -detailed terraform/myproject/state/.lock
 
-# If a lock is stuck, you can destroy the session
-consul session destroy SESSION_ID
+# If a lock is stuck, check the Session value and destroy it through the HTTP API
+curl --request PUT http://127.0.0.1:8500/v1/session/destroy/SESSION_ID
 ```
 
 Or use Terraform's built-in unlock:
@@ -195,9 +195,9 @@ export CONSUL_CLIENT_KEY="/etc/consul/client-key.pem"
 terraform init
 ```
 
-## Datacenter and Namespace
+## Datacenter
 
-Consul supports multi-datacenter deployments and namespaces (in Enterprise):
+Consul supports multi-datacenter deployments:
 
 ```hcl
 terraform {
@@ -207,9 +207,6 @@ terraform {
 
     # Specify which datacenter to use
     datacenter = "dc1"
-
-    # Consul Enterprise namespace (if applicable)
-    # namespace  = "infrastructure"
   }
 }
 ```
@@ -281,20 +278,21 @@ terraform {
 ```
 
 ```bash
-# Pass configuration at init time
+# Keep credentials in environment variables
+export CONSUL_HTTP_TOKEN="your-consul-acl-token"
+
+# Pass non-sensitive configuration at init time
 terraform init \
   -backend-config="address=consul.example.com:8500" \
-  -backend-config="scheme=https" \
-  -backend-config="access_token=${CONSUL_TOKEN}"
+  -backend-config="scheme=https"
 ```
 
 Or use a backend config file:
 
 ```hcl
 # consul-backend.hcl
-address      = "consul.example.com:8500"
-scheme       = "https"
-access_token = "your-token-here"
+address = "consul.example.com:8500"
+scheme  = "https"
 ```
 
 ```bash
