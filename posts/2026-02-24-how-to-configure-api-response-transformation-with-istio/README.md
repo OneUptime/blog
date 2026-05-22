@@ -148,7 +148,7 @@ This strips any `internal_id` field from JSON responses. Keep in mind that Lua s
 If you just need to add or set response headers, VirtualService has built-in support without needing EnvoyFilter:
 
 ```yaml
-apiVersion: networking.istio.io/v1networking
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-api-vs
@@ -219,9 +219,9 @@ spec:
 
 You would mount the Wasm binary into the sidecar container using a ConfigMap or an init container.
 
-## Targeting Specific Routes
+## Targeting Specific Paths
 
-You do not always want to transform every response. Combining EnvoyFilter with route-level matching lets you be selective:
+You do not always want to transform every response. Recording the request path in Lua lets you be selective when the response comes back:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -250,8 +250,14 @@ spec:
         typed_config:
           "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
           inlineCode: |
+            function envoy_on_request(request_handle)
+              local path = request_handle:headers():get(":path")
+              request_handle:streamInfo():dynamicMetadata():set("envoy.filters.http.lua", "request.path", path)
+            end
+
             function envoy_on_response(response_handle)
-              local path = response_handle:headers():get(":path")
+              local metadata = response_handle:streamInfo():dynamicMetadata():get("envoy.filters.http.lua")
+              local path = metadata and metadata["request.path"]
               if path and string.find(path, "^/api/v1/") then
                 response_handle:headers():add("X-API-Deprecated", "true")
                 response_handle:headers():add("X-API-Sunset-Date", "2026-06-01")
