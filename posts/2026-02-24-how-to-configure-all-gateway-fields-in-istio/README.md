@@ -13,7 +13,7 @@ The Istio Gateway resource describes a load balancer that sits at the edge of yo
 ## Top-Level Structure
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: my-gateway
@@ -71,17 +71,15 @@ spec:
         number: 443
         name: https
         protocol: HTTPS
-        targetPort: 8443
 ```
 
 The `port` block has these fields:
 
-- `number` - the port the gateway listens on externally
-- `name` - a label for the port (must be unique within the gateway)
+- `number` - the port the gateway proxy should listen on
+- `name` - a required label for the port
 - `protocol` - determines how Envoy processes the traffic
-- `targetPort` - the actual port on the gateway pod (if different from `number`)
 
-Supported protocols include: `HTTP`, `HTTPS`, `GRPC`, `HTTP2`, `MONGO`, `TCP`, `TLS`. The protocol you choose affects what Envoy features are available. For example, `HTTP` enables all HTTP-level features like routing and header manipulation, while `TCP` gives you only L4 routing.
+Supported protocols include: `HTTP`, `HTTPS`, `GRPC`, `GRPC-WEB`, `HTTP2`, `MONGO`, `TCP`, `TLS`. The protocol you choose affects what Envoy features are available. For example, `HTTP` enables all HTTP-level features like routing and header manipulation, while `TCP` gives you only L4 routing.
 
 ### Hosts
 
@@ -145,15 +143,12 @@ The `mode` field supports:
 - `ISTIO_MUTUAL` - mutual TLS using Istio's internally managed certificates
 - `OPTIONAL_MUTUAL` - like MUTUAL but does not reject clients without certificates
 
-Here is a full TLS block with all fields:
+Here is a TLS block showing the commonly used fields:
 
 ```yaml
 tls:
   mode: MUTUAL
   credentialName: my-tls-secret
-  serverCertificate: /etc/certs/server.pem
-  privateKey: /etc/certs/server-key.pem
-  caCertificates: /etc/certs/ca.pem
   httpsRedirect: false
   minProtocolVersion: TLSV1_2
   maxProtocolVersion: TLSV1_3
@@ -168,9 +163,11 @@ tls:
     - "abc123..."
 ```
 
-When using `credentialName`, Istio reads the TLS certificate from a Kubernetes secret in the same namespace as the gateway workload. This is the recommended approach because it does not require mounting files. The secret should be of type `kubernetes.io/tls` or `generic` with `tls.crt`, `tls.key`, and optionally `ca.crt` keys.
+Other current TLS fields include `serverCertificate`, `privateKey`, `caCertificates`, `caCrl`, `credentialNames`, `caCertCredentialName`, and `tlsCertificates`. Do not mix `credentialName`, `credentialNames`, `tlsCertificates`, or the file-based certificate fields in the same server.
 
-The file-based options (`serverCertificate`, `privateKey`, `caCertificates`) are the older approach and require the files to be mounted into the gateway pod.
+When using `credentialName`, Istio reads the TLS certificate from a Kubernetes secret in the same namespace as the gateway workload. This is the recommended approach because it does not require mounting files. The secret should be of type `kubernetes.io/tls` or `Opaque`/generic. Opaque secrets can use `tls.crt` and `tls.key`, or `cert` and `key`; for mutual TLS, CA material can be provided with `cacert` in the same secret, in a separate `<secret>-cacert` secret, or with `ca.crt` in a TLS secret.
+
+The file-based options (`serverCertificate`, `privateKey`, `caCertificates`, and `caCrl`) are the older approach and require the files to be mounted into the gateway pod.
 
 `httpsRedirect` is a boolean. When set to true on an HTTP server, it sends a 301 redirect to the HTTPS version of the URL:
 
@@ -216,17 +213,16 @@ spec:
         - "*.example.com"
       bind: 0.0.0.0
       name: http-server
-      defaultEndpoint: 127.0.0.1:8080
 ```
 
-The `bind` field specifies the IP address the listener should bind to. The default is `0.0.0.0`. The `name` field gives the server a display name. The `defaultEndpoint` is for internal use with sidecar-based gateway deployments.
+The `bind` field specifies the IP address or Unix domain socket the listener should bind to. The default is `0.0.0.0`. The `name` field gives the server a name that must be unique across all servers and can be used when generating stats.
 
 ## Multiple Servers Example
 
 A realistic gateway often has multiple server blocks for different protocols and domains:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: production-gateway
@@ -268,7 +264,7 @@ spec:
         name: mysql
         protocol: TCP
       hosts:
-        - "db.internal.example.com"
+        - "*"
     - port:
         number: 15443
         name: tls-passthrough
