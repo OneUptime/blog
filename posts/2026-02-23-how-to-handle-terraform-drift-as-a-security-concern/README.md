@@ -35,9 +35,9 @@ The simplest way to detect drift is to run `terraform plan` regularly:
 #!/bin/bash
 # drift-check.sh - Run drift detection and alert on changes
 
-# Run plan in machine-readable format
+# Create a refresh-only plan file that can be converted to JSON
 
-terraform plan -detailed-exitcode -out=drift-check.plan 2>&1
+terraform plan -refresh-only -detailed-exitcode -out=drift-check.plan 2>&1
 
 EXIT_CODE=$?
 
@@ -61,7 +61,7 @@ esac
 rm -f drift-check.plan
 ```
 
-The `-detailed-exitcode` flag is key: exit code 2 means there are changes, which indicates drift.
+The `-detailed-exitcode` flag is key: when combined with `-refresh-only`, exit code 2 means Terraform detected changes made outside the Terraform workflow.
 
 ## Scheduled Drift Detection in CI/CD
 
@@ -89,6 +89,7 @@ jobs:
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.7.0
+          terraform_wrapper: false
 
       - name: Terraform Init
         run: terraform init
@@ -99,8 +100,11 @@ jobs:
       - name: Check for Drift
         id: plan
         run: |
-          terraform plan -detailed-exitcode -no-color 2>&1 | tee plan-output.txt
-          echo "exit_code=$?" >> $GITHUB_OUTPUT
+          set +e
+          terraform plan -refresh-only -detailed-exitcode -no-color 2>&1 | tee plan-output.txt
+          exit_code=${PIPESTATUS[0]}
+          echo "exit_code=$exit_code" >> $GITHUB_OUTPUT
+          exit $exit_code
         continue-on-error: true
 
       - name: Alert on Drift
@@ -199,6 +203,13 @@ resource "aws_config_delivery_channel" "main" {
   depends_on = [aws_config_configuration_recorder.main]
 }
 
+resource "aws_config_configuration_recorder_status" "main" {
+  name       = aws_config_configuration_recorder.main.name
+  is_enabled = true
+
+  depends_on = [aws_config_delivery_channel.main]
+}
+
 # Rule: alert when security groups allow unrestricted SSH
 resource "aws_config_config_rule" "restricted_ssh" {
   name = "restricted-ssh"
@@ -249,6 +260,11 @@ resource "aws_config_remediation_configuration" "cloudtrail" {
   parameter {
     name         = "S3BucketName"
     static_value = aws_s3_bucket.audit_logs.id
+  }
+
+  parameter {
+    name         = "TrailName"
+    static_value = "security-audit-trail"
   }
 
   automatic                  = true
