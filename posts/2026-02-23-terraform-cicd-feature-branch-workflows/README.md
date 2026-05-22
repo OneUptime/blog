@@ -37,6 +37,10 @@ on:
     branches: [main]
     paths: ['infrastructure/**']
 
+permissions:
+  id-token: write
+  contents: read
+
 jobs:
   # Plan runs on feature branches (PRs)
   plan:
@@ -77,6 +81,7 @@ jobs:
     concurrency:
       group: terraform-apply
       cancel-in-progress: false
+      queue: max
     steps:
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v3
@@ -107,6 +112,10 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, closed]
     paths: ['infrastructure/**']
+
+permissions:
+  id-token: write
+  contents: read
 
 jobs:
   # Create or update feature branch environment
@@ -276,6 +285,8 @@ Feature branches that sit too long accumulate drift. Add a staleness check:
 ```yaml
 - name: Check Branch Freshness
   run: |
+    git fetch origin main --prune
+
     # How many commits behind main?
     BEHIND=$(git rev-list --count HEAD..origin/main)
 
@@ -294,7 +305,8 @@ When several PRs merge close together, queue the applies:
 apply:
   concurrency:
     group: terraform-apply-${{ github.workflow }}
-    cancel-in-progress: false  # Queue instead of cancelling
+    cancel-in-progress: false
+    queue: max  # Queue instead of cancelling
   steps:
     - name: Terraform Apply
       run: |
